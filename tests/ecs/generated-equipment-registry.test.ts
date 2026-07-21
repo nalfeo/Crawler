@@ -244,6 +244,10 @@ describe('makeRunKey', () => {
     expect(makeRunKey(42)).toBe('42');
   });
 
+  it('preserves negative numeric seed identity with an alphanumeric prefix', () => {
+    expect(makeRunKey(-42)).toBe('neg-42');
+  });
+
   it('strips special characters', () => {
     expect(makeRunKey('seed:with:colons')).toBe('seedwithcolons');
   });

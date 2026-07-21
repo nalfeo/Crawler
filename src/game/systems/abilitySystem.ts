@@ -118,9 +118,6 @@ function validateSourceForKind(
     throw new AbilityGrantError('invalid-source', `Invalid ability grant source: ${sourceId}`);
   }
   if (sourceId.startsWith('learned:')) {
-    if (kind !== 'active') {
-      throw new AbilityGrantError('kind-mismatch', `Learned source cannot grant passive ability`);
-    }
     const embeddedAbilityId = sourceId.slice('learned:'.length);
     if (embeddedAbilityId !== abilityId) {
       throw new AbilityGrantError(
@@ -546,7 +543,7 @@ export function grantPassiveAbility(world: GameWorld, holderEid: number, ability
     {
       kind: 'passive',
       abilityId,
-      sourceId: legacyAbilityGrantSourceId('passive', abilityId),
+      sourceId: learnedAbilityGrantSourceId(abilityId),
     },
   ]);
 }

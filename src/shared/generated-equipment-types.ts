@@ -258,10 +258,13 @@ export function isValidFingerprintV1(value: string): value is EquipmentFingerpri
 }
 
 export function makeRunKey(seed: number | string): string {
-  const key = String(seed)
+  const sanitized = String(seed)
     .toLowerCase()
     .replace(/[^a-z0-9._-]/g, '');
-  if (!RUN_KEY_RE.test(key)) {
+  const leadingMinus = sanitized.startsWith('-');
+  const tail = sanitized.replace(/^[._-]+/, '');
+  const key = `${leadingMinus ? 'neg-' : ''}${tail}`;
+  if (tail.length === 0 || !RUN_KEY_RE.test(key)) {
     throw new Error(`makeRunKey: seed "${seed}" does not produce a valid run key`);
   }
   return key;

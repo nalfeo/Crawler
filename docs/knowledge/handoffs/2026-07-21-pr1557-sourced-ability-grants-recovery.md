@@ -28,12 +28,16 @@ identity validation, migration compatibility, review resolution, and merge gates
 - Required canonical safe-integer representations for equipment effect ordinals
   and skill milestone source levels so persisted ownership remains exactly
   revokable.
+- Canonicalized signed numeric run seeds to alphanumeric-prefixed run keys while
+  preserving negative-seed identity.
 - Made equipment revocation validate the complete instance ID before exact-prefix
   ownership scanning, including after registry teardown.
 - Preserved retained ability-state object identity when an owned active is
   unequipped and re-equipped.
 - Restored legacy `appliedPassiveAbilityIds` so old snapshots that persisted
   passive modifiers do not apply them twice.
+- Restored learned provenance for direct passive grants while retaining
+  `legacy:passive:*` ownership only for ambiguous migrated snapshots.
 - Normalized retired configured actives before enforcing the slot cap.
 - Aligned skill milestone and generated-equipment grants with deterministic typed
   source IDs.
@@ -41,7 +45,8 @@ identity validation, migration compatibility, review resolution, and merge gates
   and grant/revoke regressions.
 - Completed the 3🍎 review harness plus different-model GitHub thread
   validation. Follow-up related-instance passes found and closed canonical
-  numeric-source gaps; the final review was clean.
+  numeric-source gaps, retired carryover modifiers, signed-seed handling, and
+  learned-passive provenance; the final separate-model review was clean.
 - Maintained the hard no-asset boundary: no sprite generation, judging, approval,
   check-in, asset labels, queues, workflows, Azure operations, or asset PR mutation.
 
@@ -51,8 +56,8 @@ activation remains the real artifact; the focused
 
 Verification:
 
-- Focused recovery suite: 149 tests passed.
-- `npm run verify:fast`: 176 files and 2097 tests passed.
+- Focused latest-repair suite: 177 tests passed.
+- `npm run verify:fast`: 176 files and 2101 tests passed.
 - Review ledger:
   `docs/knowledge/review-ledgers/2026-07-21-pr1557-sourced-ability-grants-recovery.review-ledger.json`
   validates as a complete 3🍎 ledger.
@@ -72,10 +77,10 @@ Verification:
 
 ## What's Next / Blockers
 
-The code and local gates are complete. Hosted Actions congestion may delay the
-normal merge train. Push the consolidated recovery commit under the active
-emergency shepherd lease, validate and resolve every review thread, release that
-same lease, arm squash auto-merge, and verify a non-null merge commit.
+The code and local gates are complete. Push the final review repair under the
+active emergency shepherd lease, validate and resolve every review thread,
+release that same lease, arm squash auto-merge, and verify a non-null merge
+commit.
 
 ## Retrospective
 

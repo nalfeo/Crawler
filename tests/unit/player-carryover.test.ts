@@ -8,6 +8,7 @@ import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
 import { createEmptyAchievementFactSnapshot } from '../../src/shared/achievements.js';
 import {
   abilitySystem,
+  grantPassiveAbility,
   grantAbilitySources,
   normalizeAbilityState,
 } from '../../src/game/systems/abilitySystem.js';
@@ -219,6 +220,33 @@ describe('player floor carryover', () => {
     );
     expect(state.grantOwnership.passiveSourcesByAbilityId.get('veteran-instinct')).toEqual(
       new Set([skill]),
+    );
+    expect(
+      destination.statModifiers.filter((modifier) =>
+        modifier.sourceId.startsWith(`veteran-instinct:passive:${destinationPlayer}:`),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('preserves learned passive provenance across carryover snapshots', () => {
+    const source = createTestWorld({ seed: 191 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const learned = learnedAbilityGrantSourceId('veteran-instinct');
+
+    grantPassiveAbility(source, sourcePlayer, 'veteran-instinct');
+    abilitySystem(source);
+
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const destination = createTestWorld({ seed: 191, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    restorePlayerCarryover(destination, destinationPlayer, snapshot);
+
+    const restoredState = destination.abilityStatesByEntity.get(destinationPlayer);
+    if (!restoredState) throw new Error('Expected restored ability state');
+    const state = normalizeAbilityState(restoredState);
+    expect(state.grantOwnership.passiveSourcesByAbilityId.get('veteran-instinct')).toEqual(
+      new Set([learned]),
     );
     expect(
       destination.statModifiers.filter((modifier) =>

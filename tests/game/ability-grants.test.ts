@@ -7,6 +7,7 @@ import {
   equipActiveAbility,
   getOrCreateAbilityState,
   grantAbilitySources,
+  grantPassiveAbility,
   normalizeAbilityState,
   revokeAbilitySources,
   unequipActiveAbility,
@@ -150,6 +151,39 @@ describe('source-owned ability grants', () => {
 
     revokeAbilitySources(world, player, [requests[0]]);
     expect(getOrCreateAbilityState(world, player).passiveAbilityIds).toEqual([]);
+    expect(
+      world.statModifiers.filter((modifier) =>
+        modifier.sourceId.startsWith('veteran-instinct:passive'),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('uses learned passive ownership for direct grant/revoke helpers', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const learned = learnedAbilityGrantSourceId('veteran-instinct');
+
+    grantPassiveAbility(world, player, 'veteran-instinct');
+    abilitySystem(world);
+
+    let state = normalizeAbilityState(getOrCreateAbilityState(world, player));
+    expect(state.grantOwnership.passiveSourcesByAbilityId.get('veteran-instinct')).toEqual(
+      new Set([learned]),
+    );
+    expect(state.passiveAbilityIds).toEqual(['veteran-instinct']);
+    expect(
+      world.statModifiers.filter((modifier) =>
+        modifier.sourceId.startsWith('veteran-instinct:passive'),
+      ),
+    ).toHaveLength(2);
+
+    revokeAbilitySources(world, player, [
+      { kind: 'passive', abilityId: 'veteran-instinct', sourceId: learned },
+    ]);
+
+    state = normalizeAbilityState(getOrCreateAbilityState(world, player));
+    expect(state.grantOwnership.passiveSourcesByAbilityId.has('veteran-instinct')).toBe(false);
+    expect(state.passiveAbilityIds).toEqual([]);
     expect(
       world.statModifiers.filter((modifier) =>
         modifier.sourceId.startsWith('veteran-instinct:passive'),
