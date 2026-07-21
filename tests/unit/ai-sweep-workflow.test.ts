@@ -684,5 +684,40 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(uploadStep?.with?.name).toBe('search-baseline-legacy+legacy');
       expect(uploadStep?.with?.path).toBe('baseline-legacy+legacy.json');
     });
+
+    it('uploads the resumed-checkpoints bundle LAST -- strictly after both the legacy+legacy derive AND upload steps -- so its existence depends on the WHOLE job succeeding', () => {
+      const doc = loadWorkflow();
+      const job = getJob(doc, 'resume-import');
+      const steps = job.steps ?? [];
+      const indexOf = (predicate: (s: (typeof steps)[number]) => boolean): number =>
+        steps.findIndex(predicate);
+      const deriveIdx = indexOf((s) =>
+        Boolean(s.name?.startsWith('Derive legacy+legacy baseline shard')),
+      );
+      const uploadDerivedIdx = indexOf((s) =>
+        Boolean(s.name?.startsWith('Upload derived legacy+legacy baseline shard')),
+      );
+      const uploadResumedIdx = indexOf((s) =>
+        Boolean(s.name?.startsWith('Upload resumed checkpoints bundle')),
+      );
+      expect(deriveIdx).toBeGreaterThanOrEqual(0);
+      expect(uploadDerivedIdx).toBeGreaterThanOrEqual(0);
+      expect(uploadResumedIdx).toBeGreaterThanOrEqual(0);
+      // Without `continue-on-error`, a step failure stops every LATER step in
+      // the same job from running -- so ordering the resumed-checkpoints
+      // upload after both legacy-baseline steps means: if either of those
+      // fails, this upload never runs and `resumed-checkpoints` is never
+      // created this run. Placing it BEFORE them (the original ordering)
+      // would let it survive a later derive/upload failure, silently handing
+      // `round1-candidates`/`round1-select`/`validate` a partial bundle
+      // missing the legacy+legacy baseline while `resume-import`'s own job
+      // conclusion was 'failure' (found in review).
+      expect(uploadResumedIdx).toBeGreaterThan(deriveIdx);
+      expect(uploadResumedIdx).toBeGreaterThan(uploadDerivedIdx);
+      // It must also be the LAST step in the job -- nothing may follow it
+      // that could itself fail and leave the bundle uploaded but the job's
+      // overall conclusion misleadingly 'failure' for an unrelated reason.
+      expect(uploadResumedIdx).toBe(steps.length - 1);
+    });
   });
 });

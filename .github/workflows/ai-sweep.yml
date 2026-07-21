@@ -369,15 +369,6 @@ jobs:
           echo "resumedCombos=$RESUMED" >> "$GITHUB_OUTPUT"
           echo "hasFreshCombos=$HAS_FRESH" >> "$GITHUB_OUTPUT"
 
-      - name: Upload resumed checkpoints bundle (only if any combo was actually resumed)
-        if: ${{ hashFiles('resumed/*.json') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: resumed-checkpoints
-          path: resumed/*.json
-          if-no-files-found: ignore
-          retention-days: 7
-
       - name: Derive legacy+legacy baseline shard from its resumed checkpoint (closes non-LEGACY incumbent gap)
         # If legacy+legacy was itself cross-run RESUMED this run, it is
         # excluded from freshCombos, so the `baseline` job (fresh-only) never
@@ -418,6 +409,34 @@ jobs:
           name: search-baseline-legacy+legacy
           path: baseline-legacy+legacy.json
           if-no-files-found: error
+          retention-days: 7
+
+      # Deliberately the LAST step in this job (after the legacy+legacy
+      # baseline derivation/upload above), not the first. Without
+      # `continue-on-error`, a step failure stops every later step in the
+      # SAME job from running at all — so if this ran earlier and the
+      # legacy-baseline derivation/upload later failed, `resumed-checkpoints`
+      # would already be uploaded and durably available, while
+      # `resume-import`'s own job conclusion was 'failure'. `round1`,
+      # `round1-select`, and `validate` all gate on `!cancelled()` (not
+      # `needs.resume-import.result == 'success'` — see their own comments
+      # for why), so they would still download and continue from that
+      # partial bundle: every resumed combo EXCEPT `legacy+legacy` would look
+      # fully valid, silently reintroducing the narrowed-incumbent safety-net
+      # gap this whole feature exists to close (found in review). Ordering
+      # this upload last makes the bundle's existence depend on the WHOLE
+      # job's success — if any earlier step in this job fails, this step
+      # never runs, `resumed-checkpoints` is never created this run, and
+      # every downstream consumer's pattern-based download simply finds
+      # nothing (this action does not fail on a zero-match pattern) rather
+      # than a half-complete resume.
+      - name: Upload resumed checkpoints bundle (only if any combo was actually resumed)
+        if: ${{ hashFiles('resumed/*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: resumed-checkpoints
+          path: resumed/*.json
+          if-no-files-found: ignore
           retention-days: 7
 
   # One job per combo: evaluate ONLY the SSOT base config on TRAIN seeds. This

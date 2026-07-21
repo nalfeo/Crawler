@@ -105,7 +105,7 @@ new commit.
 ## Verification
 
 - `npx tsc --noEmit -p tsconfig.json` ✅ (0 errors)
-- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (162/162)
+- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (163/163)
 - `npm run verify:fast` ✅
 - `npm run verify:pr-prereqs` ✅
 
@@ -182,6 +182,29 @@ deliberate edit.
   it instead of inlining the ternary. 4 new tests cover: both-absent (legacy,
   allowed), both-present (modern, allowed), and each one-present/one-missing
   combination (rejected).
+
+A 6th bot-flagged bug surfaced in a fresh review pass right after the
+`bea4bc07` push: the `resume-import` job's "Upload resumed checkpoints
+bundle" step ran BEFORE the "Derive legacy+legacy baseline shard"/"Upload
+derived legacy+legacy baseline shard" steps. Since a step failure without
+`continue-on-error` only skips LATER steps in the same job, the
+`resumed-checkpoints` artifact was already durably uploaded by the time a
+later legacy-baseline derivation/upload failure could occur — so a
+hard-failed `resume-import` job could still leave a usable-looking
+`resumed-checkpoints` bundle (missing the derived legacy baseline) behind.
+`round1-candidates`/`round1-select`/`validate` gate on `!cancelled()`, not
+`needs.resume-import.result == 'success'` (documented reason: `resume-import`
+runs unconditionally right after preflight and its outputs must be readable
+even when it later fails one combo), so they would download and continue
+from that partial bundle — silently reintroducing the narrowed
+per-combo-incumbent safety-net gap the legacy-baseline-derivation step exists
+to close, for every non-LEGACY combo, purely because `legacy+legacy` itself
+was resumed. Fixed by reordering the "Upload resumed checkpoints bundle" step
+to be the LAST step in the job (after both legacy-baseline steps), so its
+existence now depends on the whole job having succeeded up to that point.
+Added a regression test (`ai-sweep-workflow.test.ts`) asserting the resumed-
+checkpoints upload step index is strictly greater than both legacy-baseline
+step indices AND equals `steps.length - 1` (last step in the job).
 
 ## Notes
 
