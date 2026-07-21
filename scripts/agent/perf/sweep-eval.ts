@@ -659,12 +659,6 @@ interface CliArgs {
   includeIncumbent: boolean;
   legacyBaseline: string | null;
   out: string | null;
-  /** Print this runner's `ShardMeta` calibration (schemaVersion/budget/frames/
-   *  runner/node/package-lock/workflow-sha) as JSON and exit — no combo/eval
-   *  work performed. Used by the ai-sweep.yml cross-run `resume_run_id` path
-   *  to compute "this run's expected provenance" for `round-plan.ts --mode
-   *  resume-check`, without duplicating `buildMeta`'s field list anywhere else. */
-  printMeta: boolean;
 }
 
 function parseArgs(argv: readonly string[]): CliArgs {
@@ -684,7 +678,6 @@ function parseArgs(argv: readonly string[]): CliArgs {
     includeIncumbent: true,
     legacyBaseline: null,
     out: null,
-    printMeta: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -735,11 +728,9 @@ function parseArgs(argv: readonly string[]): CliArgs {
     } else if (arg === '--out' && next) {
       args.out = next;
       i++;
-    } else if (arg === '--print-meta') {
-      args.printMeta = true;
     }
   }
-  if (!args.combo && !args.printMeta) {
+  if (!args.combo) {
     throw new Error('--combo is required (e.g. --combo legacy+legacy)');
   }
   if (args.stage === 'search-eval' && (!args.configId || !args.configJson)) {
@@ -785,14 +776,6 @@ async function evalStandalone(
 
 async function main(argv: readonly string[]): Promise<void> {
   const args = parseArgs(argv);
-  if (args.printMeta) {
-    // No combo/eval work — just this runner's calibration, reusing the exact
-    // same buildMeta() every other stage stamps onto its shards, so there is
-    // zero duplicated schemaVersion/budget/frame/runner/node/lock/sha logic
-    // for the resume-import job to drift from.
-    console.log(JSON.stringify(buildMeta(args.stage, args.floorId), null, 2));
-    return;
-  }
   const combo = parseComboId(args.combo!);
   const start = Date.now();
 
