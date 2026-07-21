@@ -15,6 +15,7 @@ import { generateEquipmentInstance } from '../game/generated-equipment-generator
 import { grantEquipmentAbilitySources } from '../game/equipment-ability-grants.js';
 import { runSimulationStep } from '../game/ai/simulation-step.js';
 import { getOrCreateAbilityState } from '../game/systems/abilitySystem.js';
+import { spendPoints } from '../game/systems/statsSystem.js';
 import type {
   GeneratedEquipmentEnhancementLevel,
   GeneratedEquipmentInstanceV1,
@@ -382,11 +383,16 @@ function equipGenerated(
 
 function configureCoreStats(
   world: GameWorld,
-  player: number,
+  level: EquipmentBalanceLevel,
   points: Partial<Readonly<Record<PrimaryStatId, number>>>,
 ): void {
-  for (const [stat, value] of Object.entries(points) as [PrimaryStatId, number][]) {
-    world.stores.coreStatPoints[stat][player] = value;
+  // Advance playerLevel so canonical hooks see the correct cohort level.
+  world.playerLevel.level = level;
+  // Grant the full production budget for this level (level × pointsPerLevel).
+  world.playerLevel.unspentPoints = level * world.playerLevel.pointsPerLevel;
+  // Allocate authored points through the production spending seam.
+  if (Object.keys(points).length > 0) {
+    spendPoints(world, points);
   }
 }
 
@@ -416,7 +422,7 @@ function runEncounter(
   initializeBaseStats(world, player, { maxHp: TARGET_HP });
   world.stores.health.current[player] = TARGET_HP;
   world.stores.health.max[player] = TARGET_HP;
-  configureCoreStats(world, player, build.stages[level].coreStats);
+  configureCoreStats(world, level, build.stages[level].coreStats);
 
   const weapon = generateEquipmentInstance(world, requestFor(build.weaponBaseId, level));
   const gear = build.stages[level].gear.map((spec) =>
