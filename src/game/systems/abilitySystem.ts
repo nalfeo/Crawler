@@ -344,6 +344,9 @@ function validateGrantRequests(
 
 // Revoke validation relaxes the catalog check: a retired ability that is no longer
 // in the catalog may still have persisted ownership that needs to be removed.
+// Unlike validateAbilityKind (used for grants), validatePersistedAbilityKind skips
+// the unknown-ability check — if the ability is not in the catalog it returns
+// silently, so retired IDs pass through instead of throwing 'unknown-ability'.
 function validateRevokeRequests(
   ownership: AbilityGrantOwnership,
   requests: readonly AbilityGrantRequest[],

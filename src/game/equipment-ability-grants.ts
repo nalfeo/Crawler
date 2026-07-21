@@ -34,7 +34,7 @@ function revocationRequestsForInstance(
   holderEid: number,
   instanceId: GeneratedEquipmentInstanceId,
 ): readonly AbilityGrantRequest[] {
-  // Validate the full instance ID before using it as a source prefix.  A
+  // Validate the full instance ID before using it as a source prefix. A
   // partial / malformed ID (e.g. "gei:v1:run") would otherwise match every
   // source that begins with that substring and revoke grants from unrelated
   // instances instead of failing explicitly.
