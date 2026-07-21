@@ -1175,16 +1175,16 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
     expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/package-lock/);
   });
 
-  it('does NOT throw on workflowSha mismatch — GITHUB_SHA always differs once the resuming workflow itself has changed, so it is deliberately excluded from the gate (see docstring)', () => {
+  it('throws on workflowSha mismatch', () => {
     const exp = expected();
     exp.meta = { ...exp.meta, workflowSha: 'ffffffffffffffffffffffffffffffff' };
-    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).not.toThrow();
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/workflow-sha/);
   });
 
-  it('still fails closed on a genuine incompatibility even when workflowSha ALSO differs (workflowSha exclusion does not widen the gate)', () => {
+  it('still fails closed when workflowSha mismatch appears alongside another provenance mismatch', () => {
     const exp = expected();
     exp.meta = { ...exp.meta, workflowSha: 'ffffffffffffffffffffffffffffffff', floorId: 'floor2' };
-    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/floorId/);
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow();
   });
 
   it('throws on trainSeeds mismatch (a different TRAIN panel makes scores incomparable)', () => {

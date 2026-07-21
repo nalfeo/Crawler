@@ -519,39 +519,21 @@ export interface ResumeExpectedProvenance {
  * scores incomparable with this run's. Fails closed on the FIRST mismatch
  * found (never partially merges an incompatible checkpoint).
  *
- * `workflowSha` (`GITHUB_SHA` at run time — see `ShardMeta`) is deliberately
- * NEUTRALIZED before delegating to `assertShardCompatible` (by copying the
- * checkpoint's own `workflowSha` into the comparison object), rather than
- * checked for equality. It changes on every commit to the default branch,
- * including the commit that ships resume support itself, so an exact-match
- * check here would make it structurally impossible to EVER resume a prior
- * run once its workflow file has since been touched — permanently
- * defeating the one scenario (a runner-starvation cancellation motivating a
- * same-day resume) this feature exists for. Every OTHER field
- * `assertShardCompatible` checks — schemaVersion/floorId/budgetMs/maxFrames
- * (win-definition + eval parameters), stage, and runnerOs/nodeVersion/
- * packageLockHash (runtime + build/dependency provenance) — is still
- * genuinely enforced via that shared function, plus trainSeeds/weapons/
- * secondary (the actual search space, via `runInputs`) below. A source-level
- * game/eval logic change that isn't captured by any of those fields (e.g. a
- * scoring-formula edit that doesn't bump `schemaVersion`) is a pre-existing,
- * separately-tracked gap in `SHARD_SCHEMA_VERSION` hygiene, not something
- * `workflowSha` equality was actually able to catch either (an unrelated
- * commit anywhere in the repo also changes `GITHUB_SHA`).
+ * `workflowSha` must also match exactly: a resumed checkpoint is merged with
+ * newly produced shards in {@link applyRoundResult}, and that merge path's
+ * `assertShardCompatible(checkpoint.meta, shard)` compares workflow SHA
+ * strictly. If resume pre-check accepted a mismatched SHA, the combo would be
+ * marked resumed and skipped by checkpoint-init, only to fail later when round
+ * shards are folded in (or at final validate) instead of deterministically
+ * falling back to fresh setup up front.
  */
 export function assertResumeCompatible(
   checkpoint: RoundCheckpoint,
   expected: ResumeExpectedProvenance,
 ): void {
   const contextLabel = `assertResumeCompatible(${checkpoint.combo})`;
-  // Reuse the shared shard-compatibility guard for every field EXCEPT
-  // workflowSha, which is neutralized by copying the checkpoint's own value
-  // into the expected-meta comparison object — see docstring above for why.
-  assertShardCompatible(
-    { ...expected.meta, workflowSha: checkpoint.meta.workflowSha },
-    { meta: checkpoint.meta, configs: {}, rows: [] },
-    contextLabel,
-  );
+  // Reuse the shared shard-compatibility guard (including exact workflowSha).
+  assertShardCompatible(expected.meta, { meta: checkpoint.meta, configs: {}, rows: [] }, contextLabel);
 
   if (!checkpoint.runInputs) {
     throw new Error(

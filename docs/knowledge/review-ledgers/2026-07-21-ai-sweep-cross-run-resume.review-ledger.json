@@ -3,6 +3,27 @@
   "date": "2026-07-21",
   "session_slug": "ai-sweep-cross-run-resume",
   "task_title": "AI Sweep cross-run resume + max-parallel:8",
-  "estimated_apples": 2,
-  "stages": {}
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review approved after addressing four concerns around resume provenance parity and workflow safeguards."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 21,
+          "resolved_count": 21,
+          "clean": true
+        }
+      ]
+    }
+  }
 }
