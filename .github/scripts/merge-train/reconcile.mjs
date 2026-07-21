@@ -7,6 +7,7 @@ import {
   request,
   graphql,
 } from '../ci-recovery/github.mjs';
+import { listTrustedAppCheckRunsForRef, resolveCandidateCheckState } from './check-runs.mjs';
 import {
   isTrainFastPathPushRun,
   parseStateComment,
@@ -108,6 +109,35 @@ async function checkRuns(sha) {
     if (runs.length < 100) return results;
     page += 1;
   }
+}
+
+async function candidateCheckState(sha, evidenceId, now = new Date()) {
+  const result = await resolveCandidateCheckState({
+    sha,
+    evidenceId,
+    trustedAppId,
+    now,
+    loadCommitCheckRuns: checkRuns,
+    loadTrustedAppCheckRuns: (ref) =>
+      listTrustedAppCheckRunsForRef({
+        request,
+        token,
+        owner,
+        repo,
+        sha: ref,
+        trustedAppId,
+      }),
+    classify: trainCheckState,
+  });
+  if (result.usedSuiteFallback) {
+    process.stdout.write(
+      `candidate check suite fallback sha=${sha} state=${result.state} ` +
+        `commit_runs=${result.commitCheckRunCount} trusted_runs=${result.trustedCheckRunCount} ` +
+        `suites=${result.suiteCount} suite_pages=${result.suitePages} ` +
+        `check_run_pages=${result.checkRunPages}\n`,
+    );
+  }
+  return result.state;
 }
 
 async function workflowRunJobs(runId) {
@@ -632,11 +662,9 @@ const loopResult = await runTrainBuildLoop({
     if (git(['cat-file', '-t', remoteTransportRef]) !== 'blob') {
       throw new Error(`Candidate transport ref for slot ${index + 1} is not a Git blob`);
     }
-    const state = trainCheckState(
-      await checkRuns(mainSha),
+    const state = await candidateCheckState(
+      mainSha,
       candidateEvidenceId(builtEntry.fingerprint, builtEntry.candidateSha),
-      trustedAppId,
-      new Date(),
     );
     await updateStatus(
       train[index].number,
@@ -713,11 +741,9 @@ async function promotePrefix(prefixLength, validationIndex) {
     // Re-confirm, immediately before every merge, that the selected maximal or
     // bisected batch candidate still has terminal SUCCESS evidence.
     verifyCandidateEvidence: async () => {
-      const state = trainCheckState(
-        await checkRuns(mainSha),
+      const state = await candidateCheckState(
+        mainSha,
         candidateEvidenceId(validationCandidate.fingerprint, validationCandidate.candidateSha),
-        trustedAppId,
-        new Date(),
       );
       return state === 'success';
     },
