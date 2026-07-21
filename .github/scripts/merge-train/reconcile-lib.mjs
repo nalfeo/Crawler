@@ -747,8 +747,41 @@ export async function promoteExactBatch({
       );
       return false;
     }
+    // Post-slot admission re-check: verifyMergeSlot can take several seconds
+    // during which admission state can change — a new unresolved review thread
+    // can be opened, human approval withdrawn, or CI-recovery evidence updated.
+    // main is unchanged (checked just above) but those changes are invisible to
+    // it, so re-fetch the PR and re-run the full stale/admission/auto-merge
+    // gate immediately before the merge PUT.
+    const postSlotPr = await fetchCurrentPr(entry, index);
+    const postSlotStale = promotionStaleReason({
+      currentMain: mainAfterSlotVerify,
+      currentPr: postSlotPr,
+      expectedBase: mainAfterSlotVerify,
+      pr: entry,
+      repository,
+    });
+    if (postSlotStale) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; ${postSlotStale} (post-slot recheck); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    const postSlotAdmission = await eligible(postSlotPr);
+    if (!postSlotAdmission.ok) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number} reason=${postSlotAdmission.reason} (post-slot recheck); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    if (postSlotPr.auto_merge) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number}; auto_merge re-armed during slot verification; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
     const merge = await mergePullRequest(entry, {
-      expectedHeadSha: freshPr.head.sha,
+      expectedHeadSha: postSlotPr.head.sha,
       commitTitle: squashCommitTitle(freshPr),
       commitMessage: squashCommitMessage(freshPr),
     });
