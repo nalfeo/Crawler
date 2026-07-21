@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "ai-sweep-cross-run-resume",
+  "task_title": "AI Sweep cross-run resume + max-parallel:8",
+  "estimated_apples": 2,
+  "stages": {}
+}
