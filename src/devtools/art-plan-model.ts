@@ -8,7 +8,16 @@ import {
   type IntegrationState,
 } from '../shared/art-plan-status.js';
 
-const spriteTypes = ['weapon', 'enemy', 'item', 'tile', 'vfx', 'character'] as const;
+const spriteTypes = [
+  'weapon',
+  'equipment',
+  'enemy',
+  'item',
+  'prop',
+  'tile',
+  'vfx',
+  'character',
+] as const;
 
 const integrationTargetSchema = z.discriminatedUnion('kind', [
   z

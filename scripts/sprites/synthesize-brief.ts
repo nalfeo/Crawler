@@ -88,6 +88,12 @@ export interface SynthesizeBriefOptions {
    * YAML (and recorded in the sidecar) only when not `'default'`.
    */
   readonly sizeVariant?: SizeVariant;
+  /**
+   * Optional mob role for enemy sprites. Written into the candidate YAML when
+   * provided so the judge and prompt receive the authoritative role immediately
+   * without needing post-promotion migration.
+   */
+  readonly mobRole?: 'normal' | 'elite' | 'boss';
   /** Synth provider — typically `createSynthProvider()` from `factory`. */
   readonly provider: SynthProvider;
   /** Repository root used to resolve sprite-type defaults + output dir. */
@@ -281,7 +287,7 @@ export async function synthesizeBrief(
 
   const written = accepted.map(({ candidate }, i) => {
     const yamlPath = path.join(outDir, `${name}-v${i + 1}.yaml`);
-    const yaml = renderCandidateYaml(candidate, sizeVariant, floor);
+    const yaml = renderCandidateYaml(candidate, sizeVariant, floor, options.mobRole);
     writes.writeFile(yamlPath, yaml);
     return { ...candidate, id: `${name}-v${i + 1}`, yamlPath };
   });
@@ -440,13 +446,15 @@ function renderCandidateYaml(
   candidate: SynthesizedBriefCandidate,
   sizeVariant: SizeVariant,
   floor: number,
+  mobRole?: 'normal' | 'elite' | 'boss',
 ): string {
-  // Minimal-brief shape only: type, name, [sizeVariant], description,
+  // Minimal-brief shape only: type, [mobRole], name, [sizeVariant], description,
   // variations. Let the loader's deep-merge fill in defaults.
   // `sizeVariant` is emitted only when non-default so default briefs stay
   // byte-for-byte identical to the pre-variant output.
   const doc = {
     type: candidate.type,
+    ...(mobRole ? { mobRole } : {}),
     name: candidate.id,
     ...(sizeVariant === DEFAULT_SIZE_VARIANT ? {} : { sizeVariant }),
     ...(floor === 1 ? {} : { floor }),
