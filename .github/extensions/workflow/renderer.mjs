@@ -13,19 +13,26 @@
  *     browser (server resolves ONLY allowlisted paths — no traversal).
  *   - `GET /img/sheet|processed?briefId=&runId=&file=` — binary image proxies.
  *
- * This is a READ-ONLY parity view of the READ surface of the monolith's
- * `sprite-generation-workflow` page: it browses the asset backlog, plans/briefs,
- * and generated runs. The durable queue + asset-request manifest (their status
- * reads AND controls) plus the write half of the workflow (synthesize/generate/
- * judge/approve/checkin/metadata, worker/issues start-stop, the interactive queue
- * state machine) are the documented follow-up slice (B2).
+ * The canvas browses the asset backlog, plans/briefs, and generated runs. Its
+ * focused write action accepts one variant through the sidecar's atomic
+ * approve-and-check-in operation.
  *
  * The client script is intentionally template-literal-free (plain string concat +
  * createElement) so this whole file stays one clean outer template literal with no
- * escaping.
+ * escaping. The handful of PURE helpers below (run search filter, sheet display
+ * sizing, judge/sensor summaries) are the one exception:
+ * they are self-contained (no imports/closures) modules under `lib/`, unit-tested
+ * directly in Node, and spliced into the client script here via
+ * `Function.prototype.toString()` — the SAME tested code runs in the iframe (the
+ * pattern already used by `postprocess/renderer.mjs`).
  *
  * @module workflow/renderer
  */
+
+import * as runFilterFns from './lib/run-filter.mjs';
+import * as sheetDisplayFns from './lib/sheet-display.mjs';
+import * as feedbackSummaryFns from './lib/feedback-summary.mjs';
+import * as briefLookupFns from './lib/brief-lookup.mjs';
 
 function escapeHtml(value) {
   return String(value)
@@ -33,6 +40,22 @@ function escapeHtml(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * Serialize a module's exported pure functions into browser source (`var name
+ * = function name(...) {...};` declarations), the same way
+ * `postprocess/renderer.mjs` splices `lib/slice-overlay.mjs` /
+ * `lib/anchor.mjs`. Every module passed here is self-contained (no imports,
+ * no closures over module scope) so `toString()` yields runnable source.
+ * @param {object} mod
+ * @returns {string}
+ */
+function serializePureModule(mod) {
+  return Object.keys(mod)
+    .filter((name) => typeof mod[name] === 'function')
+    .map((name) => 'var ' + name + ' = ' + mod[name].toString() + ';')
+    .join('\n');
 }
 
 const STYLES = `
@@ -86,6 +109,18 @@ const STYLES = `
     background: #1e293b; border-radius: 6px; }
   .status-pill { align-self: flex-start; font-size: 10px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.04em; }
+  .accept-button { width: 100%; margin-top: 6px; border-color: rgba(56,189,248,0.65);
+    background: rgba(14,116,144,0.28); color: #e0f2fe; font-weight: 700; }
+  .accept-button:hover:not(:disabled) { background: rgba(14,116,144,0.48); }
+  .accept-button:disabled { opacity: 0.65; cursor: default; }
+  .accept-state { margin-top: 6px; padding: 7px 8px; border-radius: 6px; font-size: 11px; }
+  .accept-state.queued { color: #bbf7d0; background: rgba(22,101,52,0.28);
+    border: 1px solid rgba(134,239,172,0.35); }
+  .accept-state.error { color: #fecaca; background: rgba(127,29,29,0.34);
+    border: 1px solid rgba(252,165,165,0.35); }
+  .accept-state.warn { color: #fde68a; background: rgba(120,53,15,0.4);
+    border: 1px solid rgba(253,230,138,0.4); }
+  .accept-state a { color: inherit; font-weight: 700; }
   .axis { display: flex; justify-content: space-between; font-size: 11px; }
   .axis .lbl { font-weight: 600; }
   .rationale { font-size: 10px; color: #94a3b8; line-height: 1.35; }
@@ -130,12 +165,65 @@ const STYLES = `
   .split { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 12px; align-items: start; }
   .draft-tag { font-size: 9px; color: #fde68a; border: 1px solid rgba(253,230,138,0.4); border-radius: 4px;
     padding: 0 4px; margin-left: 6px; }
+  .stale-badge { font-size: 10px; color: #fde68a; border: 1px solid rgba(253,230,138,0.4);
+    border-radius: 999px; padding: 2px 8px; display: inline-flex; align-items: center; gap: 5px; }
+  .stale-badge .spinner { width: 9px; height: 9px; border-width: 1.5px; }
+  .lifecycle-pill { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    padding: 2px 7px; border-radius: 999px; border: 1px solid transparent; align-self: flex-start; }
+  .lifecycle-pill.unaccepted { color: #94a3b8; border-color: rgba(148,163,184,0.35); background: rgba(148,163,184,0.08); }
+  .lifecycle-pill.accepted-staged { color: #7dd3fc; border-color: rgba(125,211,252,0.4); background: rgba(14,116,144,0.16); }
+  .lifecycle-pill.integrated { color: #86efac; border-color: rgba(134,239,172,0.4); background: rgba(22,101,52,0.18); }
+  .lifecycle-pill.unverified { color: #c4b5fd; border-color: rgba(196,181,253,0.4); background: rgba(88,28,135,0.18); }
+  .criterion-feedback { display: flex; flex-direction: column; gap: 4px; margin: 3px 0 7px; }
+  .criterion-feedback .feedback-verdict-row,
+  .criterion-feedback .feedback-comment-row { display: flex; align-items: center; gap: 6px; }
+  .criterion-feedback .feedback-comment-row[hidden] { display: none; }
+  .criterion-feedback button.thumb { width: 28px; height: 28px; min-width: 28px; padding: 0; font-size: 14px;
+    line-height: 1; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; }
+  .criterion-feedback button.thumb.on { border-color: #7dd3fc; background: rgba(14,116,144,0.35); }
+  .criterion-feedback input { min-width: 0; padding: 5px 7px; font-size: 11px; flex: 1; }
+  .criterion-feedback button.confirm-btn { padding: 2px 8px; font-size: 11px; color: #64748b; }
+  .criterion-feedback button.confirm-btn[hidden] { display: none; }
+  .criterion-feedback button.confirm-btn.dirty { color: #fde68a; border-color: rgba(253,230,138,0.5);
+    background: rgba(120,53,15,0.25); }
+  .criterion-feedback .feedback-status { font-size: 9px; }
+  .run-search { min-width: 160px; }
+  .details-summary { cursor: pointer; font-size: 11px; color: #7dd3fc; margin-top: 4px; }
+  .details-summary::-webkit-details-marker { color: #7dd3fc; }
+  .concise-summary { font-size: 11px; }
+  .concise-summary.pass { color: #86efac; }
+  .concise-summary.fail { color: #fca5a5; }
+  .concise-summary.unjudged, .concise-summary.none { color: #94a3b8; }
+  .sheet-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(2,6,23,0.75); display: flex;
+    align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
+  .modal-backdrop[hidden] { display: none; }
+  .modal { background: #0f172a; border: 1px solid rgba(148,163,184,0.35); border-radius: 10px;
+    max-width: min(720px, 90vw); max-height: 85vh; overflow: auto; padding: 16px 18px; }
+  .modal h2 { margin: 0 0 8px; font-size: 15px; }
+  .modal-close { float: right; }
+  #postprocess-host { margin-top: 18px; border: 1px solid rgba(125,211,252,0.3); border-radius: 8px;
+    background: #0b1220; }
+  #postprocess-host[hidden] { display: none; }
+  #postprocess-host .postprocess-host-head { display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 8px 12px; border-bottom: 1px solid rgba(148,163,184,0.15); }
+  #postprocess-host .postprocess-host-head h2 { font-size: 13px; margin: 0; font-weight: 600; color: #7dd3fc; }
+  #postprocess-host-status { font-size: 11px; color: #94a3b8; }
+  #postprocess-host-body { min-height: 0; }
+  #postprocess-host-body.collapsed { padding: 10px 12px; color: #94a3b8; font-size: 12px; }
+  #postprocess-iframe { display: block; width: 100%; height: 720px; border: 0; background: #0b1120; }
 `;
 
 // NOTE: template-literal-free on purpose (no backticks, no ${}) — see file header.
+// `/*__RUN_FILTER_FNS__*/` etc. are replaced with the serialized pure lib
+// helpers below (Function.prototype.toString() splice — see renderHtml()).
 const CLIENT_SCRIPT = String.raw`
 (function () {
   'use strict';
+  /*__RUN_FILTER_FNS__*/
+  /*__SHEET_DISPLAY_FNS__*/
+  /*__FEEDBACK_SUMMARY_FNS__*/
+  /*__BRIEF_LOOKUP_FNS__*/
   var STATUS_COLORS = {
     pass: '#86efac', 'sensor-failed': '#fca5a5', 'judge-rejected': '#fca5a5', unjudged: '#94a3b8'
   };
@@ -160,9 +248,14 @@ const CLIENT_SCRIPT = String.raw`
     'needs-art-placeholder', 'planned', 'approved-unverified'
   ];
   var JUDGE_AXES = [
-    { key: 'styleMatch', label: 'Style match' },
+    { key: 'designLanguage', label: 'Design language' },
+    { key: 'referenceStyleMatch', label: 'Reference style' },
     { key: 'briefMatch', label: 'Brief match' },
-    { key: 'readability', label: 'Readability' }
+    { key: 'readability', label: 'Readability' },
+    { key: 'poseOrientation', label: 'Pose orientation' },
+    { key: 'bossPresence', label: 'Boss presence' },
+    { key: 'presentation', label: 'Presentation' },
+    { key: 'themeAdherence', label: 'Theme adherence' }
   ];
   var TABS = [
     { id: 'backlog', label: 'Backlog' },
@@ -170,10 +263,117 @@ const CLIENT_SCRIPT = String.raw`
     { id: 'runs', label: 'Runs' }
   ];
   var app = document.getElementById('app');
+  var mutationToken = __WORKFLOW_MUTATION_TOKEN__;
   var activeTab = 'backlog';
   var lastState = null;
   var openedFile = null; // { relPath, kind, content, error }
   var runFilter = 'all'; // all | promoted | not-promoted (matches sidecar API token)
+  var runSearch = ''; // type-to-filter text over briefId/runId
+  var sheetViewMode = 'constrained'; // 'constrained' (<=512x512) | 'full'
+  var briefModal = null; // { relPath, name, content, error, triggerEl } | null
+
+  // ── Embedded Postprocess Debugger host (persistent sibling of #app) ─────
+  // #postprocess-host lives OUTSIDE #app in the static shell below (see
+  // renderHtml) so app.replaceChildren(...) in render() NEVER touches it —
+  // the lazily-created iframe (and all in-progress editor state inside it)
+  // survives every SSE push / tab switch / refresh / feedback confirm.
+  var postprocessHost = document.getElementById('postprocess-host');
+  var postprocessBody = document.getElementById('postprocess-host-body');
+  var postprocessStatusEl = document.getElementById('postprocess-host-status');
+  var postprocessIframe = null;
+  var postprocessIframeReady = false;
+  var postprocessOpenStartedAt = 0;
+  var postprocessExpectedContext = null;
+  var postprocessReadyRecorded = false;
+
+  /**
+   * Reveal the (initially collapsed) host, lazily create ONE iframe on the
+   * FIRST open (seeded via its initial URL's query string — see
+   * workflow/extension.mjs's '/postprocess/' route), and on every LATER open
+   * retarget that SAME iframe via a same-origin postMessage 'postprocess:select'.
+   * Before the first document is ready, later clicks retarget its pending
+   * navigation instead (there is no iframe message listener yet). Once ready,
+   * authoring/tuning state is preserved. Always scrolls the host into view.
+   */
+  function postprocessSrc(context) {
+    var qs = [];
+    if (context.briefId) qs.push('briefId=' + encodeURIComponent(context.briefId));
+    if (context.runId) qs.push('runId=' + encodeURIComponent(context.runId));
+    if (typeof context.variantIndex === 'number') qs.push('variantIndex=' + encodeURIComponent(context.variantIndex));
+    if (context.sheet) qs.push('sheet=' + encodeURIComponent(context.sheet));
+    return '/postprocess/' + (qs.length ? ('?' + qs.join('&')) : '');
+  }
+
+  function openPostprocess(context) {
+    if (!postprocessHost || !postprocessBody) return;
+    postprocessHost.hidden = false;
+    postprocessExpectedContext = {
+      briefId: context.briefId,
+      runId: context.runId,
+      variantIndex: context.variantIndex,
+      sheet: context.sheet
+    };
+    postprocessOpenStartedAt = (window.performance && performance.now) ? performance.now() : Date.now();
+    postprocessReadyRecorded = false;
+    if (postprocessStatusEl) postprocessStatusEl.textContent = 'Loading\u2026';
+    if (!postprocessIframe) {
+      postprocessIframe = document.createElement('iframe');
+      postprocessIframe.id = 'postprocess-iframe';
+      postprocessIframe.title = 'Postprocess Debugger';
+      postprocessIframe.src = postprocessSrc(context);
+      postprocessBody.className = '';
+      postprocessBody.replaceChildren(postprocessIframe);
+    } else if (!postprocessIframeReady) {
+      postprocessIframe.src = postprocessSrc(context);
+    } else {
+      postprocessIframe.contentWindow.postMessage({
+        type: 'postprocess:select',
+        briefId: context.briefId, runId: context.runId,
+        variantIndex: context.variantIndex, sheet: context.sheet
+      }, window.location.origin);
+    }
+    postprocessHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Same-origin only: this document and the embedded iframe are served by the
+  // SAME loopback server/port, so window.location.origin is the correct check
+  // on both the sender (contentWindow.postMessage target) and receiver sides.
+  function handlePostprocessReady(context) {
+    if (
+      postprocessReadyRecorded ||
+      !postprocessIframe ||
+      !context ||
+      !postprocessExpectedContext
+    ) return;
+    if (
+      context.briefId !== postprocessExpectedContext.briefId ||
+      context.runId !== postprocessExpectedContext.runId ||
+      (
+        typeof postprocessExpectedContext.variantIndex === 'number' &&
+        context.variantIndex !== postprocessExpectedContext.variantIndex
+      ) ||
+      (
+        postprocessExpectedContext.sheet &&
+        context.sheet !== postprocessExpectedContext.sheet
+      )
+    ) return;
+    var now = (window.performance && performance.now) ? performance.now() : Date.now();
+    var elapsedMs = Math.round(now - postprocessOpenStartedAt);
+    postprocessIframeReady = true;
+    postprocessReadyRecorded = true;
+    window.__postprocessReadyMetric = { elapsedMs: elapsedMs, context: context };
+    if (postprocessStatusEl) postprocessStatusEl.textContent = 'Ready \u00b7 ' + elapsedMs + ' ms';
+  }
+  window.__workflowPostprocessReady = handlePostprocessReady;
+
+  window.addEventListener('message', function (ev) {
+    if (!postprocessIframe || ev.source !== postprocessIframe.contentWindow) return;
+    if (ev.origin !== window.location.origin) return;
+    var msg = ev.data;
+    if (msg && msg.type === 'postprocess:ready') {
+      handlePostprocessReady(msg.context || null);
+    }
+  });
 
   function h(tag, props, children) {
     var elem = document.createElement(tag);
@@ -223,12 +423,17 @@ const CLIENT_SCRIPT = String.raw`
     if (health.version) meta.push('sidecar ' + health.version);
     if (health.storeBackend) meta.push(health.storeBackend);
     if (state.baseUrl) meta.push(state.baseUrl);
+    var badges = [badge];
+    if (state.stale) {
+      badges.push(h('span', { class: 'stale-badge', title: 'Showing a cached view while a background refresh checks for updates.' },
+        [h('span', { class: 'spinner' }), 'revalidating…']));
+    }
     return h('div', { class: 'between' }, [
       h('div', null, [
         h('h1', { text: 'Sprite Generation Workflow' }),
-        h('div', { class: 'muted', text: 'Read-only parity view: asset backlog, plans/briefs, generated runs.' })
+        h('div', { class: 'muted', text: 'Inspect generated runs and accept a variant into the durable asset queue.' })
       ]),
-      h('div', { class: 'row' }, [badge, h('span', { class: 'muted', text: meta.join('  ·  ') })])
+      h('div', { class: 'row' }, badges.concat([h('span', { class: 'muted', text: meta.join('  ·  ') })]))
     ]);
   }
 
@@ -248,10 +453,18 @@ const CLIENT_SCRIPT = String.raw`
           h('code', { text: 'npm run sprites:gallery' })])
       ]);
     }
+    var startup = state.sidecarStartup || {};
+    if (startup.state === 'starting') {
+      return h('div', { class: 'panel warn' }, [
+        h('div', { class: 'section-title', text: 'Starting sprite service…' }),
+        h('div', null, ['Runs are starting automatically. Backlog and plan/brief browsing remain available while startup completes.'])
+      ]);
+    }
     return h('div', { class: 'panel warn' }, [
-      h('div', { class: 'section-title', text: 'Sprite sidecar not running' }),
-      h('div', null, ['Runs need the sprite sidecar. Backlog and plan/brief browsing work without it. Start the sidecar, then reload:']),
-      h('div', { style: { marginTop: '8px' } }, [h('code', { text: 'npm run sprites:gallery' })]),
+      h('div', { class: 'section-title', text: 'Sprite service failed to start' }),
+      h('div', null, [startup.error || 'The managed sprite service is unavailable.']),
+      startup.logPath ? h('div', { class: 'muted', style: { marginTop: '6px' } }, ['Log: ', h('code', { text: startup.logPath })]) : null,
+      h('div', { style: { marginTop: '8px' } }, ['Compatibility fallback: ', h('code', { text: 'npm run sprites:gallery' })]),
       state.baseUrl ? h('div', { class: 'muted', style: { marginTop: '6px' } },
         ['Expected at ', h('code', { text: state.baseUrl })]) : null
     ]);
@@ -435,19 +648,38 @@ const CLIENT_SCRIPT = String.raw`
     }
     filterSel.addEventListener('change', function () { runFilter = filterSel.value; if (lastState) render(lastState); });
 
+    // Plain type-to-filter TEXT INPUT (not a bespoke combobox) composed with
+    // the native promotion <select> above — both preserve standard keyboard
+    // (Tab/Arrow/Enter) and screen-reader behavior for free.
+    var searchInput = h('input', {
+      type: 'search',
+      class: 'run-search',
+      placeholder: 'Filter by briefId or runId…',
+      'aria-label': 'Filter runs by briefId or runId',
+      value: runSearch
+    });
+    searchInput.addEventListener('input', function () {
+      runSearch = searchInput.value;
+      if (lastState) render(lastState);
+    });
+
     return h('div', { class: 'row', style: { marginTop: '10px', marginBottom: '4px' } }, [
       h('span', { class: 'muted', text: 'Run:' }), picker,
       h('span', { class: 'muted', text: 'Filter:' }), filterSel,
+      searchInput,
       h('span', { class: 'muted', text: runs.length + ' shown' })
     ]);
   }
 
   function filteredRuns(state) {
-    var runs = state.runs || [];
-    if (runFilter === 'promoted') return runs.filter(function (r) { return r.promoted; });
-    if (runFilter === 'not-promoted') return runs.filter(function (r) { return !r.promoted; });
-    return runs;
+    return filterRuns(state.runs || [], runFilter, runSearch);
   }
+
+  // findBriefEntryByPath / findBriefEntryByBasename / resolveBriefEntry come
+  // from the spliced lib/brief-lookup.mjs (the BRIEF_LOOKUP_FNS splice near
+  // the top of this script) — resolveBriefEntry prefers the run's EXACT
+  // briefPath and only falls back to the ambiguous basename match when no
+  // exact path exists.
 
   function renderSheetSection(state) {
     var sel = state.selected;
@@ -459,6 +691,14 @@ const CLIENT_SCRIPT = String.raw`
       wrap.appendChild(h('div', { class: 'muted', style: { color: '#fde68a', marginBottom: '6px' },
         text: 'Auto-selected latest run (briefId/runId were not specified).' }));
     }
+
+    var toolbar = h('div', { class: 'sheet-toolbar' }, []);
+    var viewBriefBtn = h('button', { id: 'view-brief-btn', type: 'button', text: 'View Brief' });
+    viewBriefBtn.addEventListener('click', function (ev) { openBriefModal(state, ev.currentTarget); });
+    toolbar.appendChild(viewBriefBtn);
+    toolbar.appendChild(renderPostprocessHandoff(sel, null));
+    wrap.appendChild(toolbar);
+
     if (sheets.length === 0) {
       wrap.appendChild(h('div', { class: 'panel warn' }, ['No sprite sheets available for this run.']));
       return wrap;
@@ -489,6 +729,22 @@ const CLIENT_SCRIPT = String.raw`
         text: 'Degraded slice-map: brief could not be loaded, so cell indices are sequential and do NOT map to variant indices.' }));
     }
 
+    // Presentation size toggle: DEFAULTS to constrained (<=512x512), never
+    // upscaled; "Full size" shows the sheet at its natural pixel dimensions.
+    // This ONLY changes the <img>'s CSS display box (computeSheetDisplaySize
+    // is pure sizing math over natural width/height) — the <img> src (and so
+    // the underlying asset's actual pixels) never changes between modes.
+    var sizeSelect = h('select', { title: 'Sheet display size', 'aria-label': 'Sheet display size' });
+    var sizeOpts = [['constrained', 'Fit to 512\u00d7512'], ['full', 'Full size']];
+    for (var so = 0; so < sizeOpts.length; so++) {
+      var sizeOpt = document.createElement('option');
+      sizeOpt.value = sizeOpts[so][0]; sizeOpt.textContent = sizeOpts[so][1];
+      if (sizeOpts[so][0] === sheetViewMode) sizeOpt.selected = true;
+      sizeSelect.appendChild(sizeOpt);
+    }
+    wrap.appendChild(h('div', { class: 'row', style: { marginBottom: '6px' } },
+      [h('span', { class: 'muted', text: 'Size:' }), sizeSelect]));
+
     var sheetWrap = h('div', { class: 'sheet-wrap' }, []);
     var loadingNote = h('div', { class: 'sheet-loading' }, [
       h('span', { class: 'spinner' }), 'Loading sheet from Azure…'
@@ -497,7 +753,11 @@ const CLIENT_SCRIPT = String.raw`
     var img = document.createElement('img');
     img.className = 'sheet-img';
     img.src = imgUrl('sheet', sel.briefId, sel.runId, current);
-    img.addEventListener('load', function () { loadingNote.remove(); drawOverlay(sheetWrap, img, sliceMap); });
+    img.addEventListener('load', function () {
+      loadingNote.remove();
+      applySheetSize(img);
+      drawOverlay(sheetWrap, img, sliceMap);
+    });
     img.addEventListener('error', function () {
       loadingNote.remove();
       sheetWrap.appendChild(h('div', { style: { color: '#fca5a5', padding: '8px' },
@@ -505,7 +765,40 @@ const CLIENT_SCRIPT = String.raw`
     });
     sheetWrap.appendChild(img);
     wrap.appendChild(sheetWrap);
+
+    // Toggling size mode NEVER re-fetches the image or re-renders the page —
+    // it resizes the ALREADY-LOADED <img> in place and recomputes the overlay
+    // off the new display size (img.clientWidth), matching the existing
+    // load-time redraw exactly (same drawOverlay call).
+    sizeSelect.addEventListener('change', function () {
+      sheetViewMode = sizeSelect.value;
+      applySheetSize(img);
+      drawOverlay(sheetWrap, img, sliceMap);
+    });
+    // Belt-and-suspenders: also redraw the overlay if the sheet's rendered box
+    // changes for any OTHER reason (e.g. the host iframe itself is resized).
+    if (typeof ResizeObserver !== 'undefined') {
+      var sheetResizeObserver = new ResizeObserver(function () { drawOverlay(sheetWrap, img, sliceMap); });
+      sheetResizeObserver.observe(img);
+    }
+    // Feedback on the OVERALL sheet (subjectType:'sheet') — distinct from the
+    // brief (subjectType:'brief', in the View Brief modal) and per-criterion
+    // judge/sensor feedback (subjectType:'criterion', per variant card below).
+    wrap.appendChild(renderSheetFeedback(state));
     return wrap;
+  }
+
+  /** Apply the constrained/full presentation size to an already-loaded <img>. */
+  function applySheetSize(img) {
+    var size = computeSheetDisplaySize(img.naturalWidth, img.naturalHeight, sheetViewMode);
+    if (size.width > 0 && size.height > 0) {
+      img.style.width = size.width + 'px';
+      img.style.height = size.height + 'px';
+    } else {
+      img.style.width = '';
+      img.style.height = '';
+    }
+    img.classList.toggle('full', sheetViewMode === 'full');
   }
 
   function drawOverlay(sheetWrap, img, sliceMap) {
@@ -530,53 +823,475 @@ const CLIENT_SCRIPT = String.raw`
     }
   }
 
-  function renderJudge(card, c) {
-    card.appendChild(h('div', { class: 'section-title', text: 'Judge (advisory)' }));
-    if (c.judge) {
-      for (var i = 0; i < JUDGE_AXES.length; i++) {
-        var axis = JUDGE_AXES[i];
-        var score = c.judge[axis.key] || 0;
-        var ok = score >= 3;
-        card.appendChild(h('div', { class: 'axis' }, [
-          h('span', { class: 'lbl', text: axis.label }),
-          h('span', { style: { color: ok ? '#86efac' : '#fca5a5', fontWeight: '600' },
-            text: (score || '–') + '/5 ' + (ok ? '✓' : '✗') })
-        ]));
-        var rationale = c.rationale ? c.rationale[axis.key] : null;
-        if (rationale) card.appendChild(h('div', { class: 'rationale', text: rationale }));
-      }
-      var verdict = 'Verdict: ' + (c.judge.passed ? 'passed' : 'rejected') + ' · lowest axis ' + c.judge.minScore + '/5';
-      if (c.judge.rejectedBy && c.judge.rejectedBy.length) verdict += ' · rejected on ' + c.judge.rejectedBy.join(', ');
-      card.appendChild(h('div', { style: { fontSize: '10px', color: c.judge.passed ? '#86efac' : '#fca5a5' },
-        text: verdict }));
-      var prov = [];
-      if (c.modelDeployment) prov.push(c.modelDeployment);
-      if (c.judgedAt) prov.push(c.judgedAt);
-      if (prov.length) card.appendChild(h('div', { style: { fontSize: '9px', color: '#64748b' }, text: prov.join(' · ') }));
-    } else {
-      card.appendChild(h('div', { class: 'muted', text: c.judgeSkipMessage || 'Not judged yet.' }));
+  // ---- "Open in Post-process Debugger" — embeds + reveals the editor -----
+  // Clicking reveals the persistent #postprocess-host section (lazily
+  // creating its ONE iframe on first use, retargeting it via postMessage on
+  // later opens — see openPostprocess()) and scrolls it into view.
+  function renderPostprocessHandoff(sel, variantIndex) {
+    var context = { briefId: sel.briefId, runId: sel.runId, sheet: sel.sheet, variantIndex: variantIndex };
+    var btn = h('button', { type: 'button', title: 'Open this exact context in the embedded Post-process Debugger below',
+      text: 'Open in Post-process Debugger' });
+    btn.addEventListener('click', function () { openPostprocess(context); });
+    return h('div', null, [btn]);
+  }
+
+  // ---- "View Brief" modal (accessible: focus trap, Escape, aria) ----------
+  var pendingFocusModal = false;
+  // Monotonic request identity for the brief fetch: guards against a late
+  // response for a CLOSED/REPLACED modal (close A, open B before A's fetch
+  // resolves) overwriting the currently-open modal's content with stale
+  // captured state. briefModal itself is reassigned on every open, so a
+  // bare !briefModal truthiness check is not enough - it stays truthy
+  // across an A-to-B reopen and would let A's late response clobber B.
+  var briefModalRequestSeq = 0;
+
+  function openBriefModal(state, triggerEl) {
+    var sel = state.selected;
+    var entry = resolveBriefEntry(state, sel);
+    var requestId = ++briefModalRequestSeq;
+    briefModal = {
+      id: requestId,
+      relPath: entry ? entry.relPath : null,
+      name: sel ? sel.briefId : '',
+      content: null,
+      loading: !!entry,
+      error: entry ? null : ('No brief file found for ' + (sel ? sel.briefId : '')),
+      triggerId: triggerEl && triggerEl.id ? triggerEl.id : null
+    };
+    pendingFocusModal = true;
+    render(state);
+    if (entry) {
+      fetch('/api/brief?relPath=' + encodeURIComponent(entry.relPath)).then(function (r) { return r.json(); }).then(function (data) {
+        // Discard a response that no longer belongs to the CURRENT modal -
+        // either the modal was closed (briefModal is null) or replaced by a
+        // newer open (briefModal.id !== requestId, e.g. a late A response
+        // arriving after B was opened).
+        if (!briefModal || briefModal.id !== requestId) return;
+        briefModal.loading = false;
+        if (data && data.error) briefModal.error = data.error;
+        else briefModal.content = (data && data.content) || '';
+        // Render from the CURRENT lastState, never the state snapshot
+        // captured when this fetch started - a background state update
+        // (SSE push, reload) that landed while the fetch was in flight must
+        // not be silently reverted by re-rendering stale captured state.
+        render(lastState);
+      }).catch(function (err) {
+        if (!briefModal || briefModal.id !== requestId) return;
+        briefModal.loading = false;
+        briefModal.error = String(err);
+        render(lastState);
+      });
     }
   }
 
-  function renderSensors(card, c) {
-    card.appendChild(h('div', { class: 'section-title', text: 'Sensors' }));
-    if (!c.sensors || c.sensors.length === 0) {
-      card.appendChild(h('div', { class: 'muted', text: c.passed
-        ? 'All sensors passed (no per-sensor detail recorded).'
-        : 'No per-sensor detail recorded for this run.' }));
-      return;
+  function closeBriefModal() {
+    var triggerId = briefModal && briefModal.triggerId;
+    briefModal = null;
+    if (lastState) render(lastState);
+    var trigger = triggerId ? document.getElementById(triggerId) : null;
+    if (trigger && typeof trigger.focus === 'function') trigger.focus();
+  }
+
+  function renderBriefModal(state) {
+    if (!briefModal) return null;
+    var backdrop = h('div', { class: 'modal-backdrop' }, []);
+    var modal = h('div', {
+      class: 'modal', role: 'dialog', 'aria-modal': 'true',
+      'aria-labelledby': 'brief-modal-title', tabindex: '-1'
+    }, []);
+    var closeBtn = h('button', { type: 'button', class: 'modal-close', 'aria-label': 'Close brief dialog', text: '\u2715 Close' });
+    closeBtn.addEventListener('click', function () { closeBriefModal(); });
+    modal.appendChild(closeBtn);
+    modal.appendChild(h('h2', { id: 'brief-modal-title', text: 'Brief: ' + briefModal.name }));
+    if (briefModal.loading) {
+      modal.appendChild(h('div', { class: 'busy' }, [h('span', { class: 'spinner' }), 'Loading brief\u2026']));
+    } else if (briefModal.error) {
+      modal.appendChild(h('div', { class: 'panel error', text: briefModal.error }));
+    } else {
+      modal.appendChild(h('pre', { class: 'yaml', text: briefModal.content || '' }));
     }
+    modal.appendChild(renderBriefFeedback(state));
+    backdrop.appendChild(modal);
+    backdrop.addEventListener('mousedown', function (ev) {
+      if (ev.target === backdrop) closeBriefModal();
+    });
+    backdrop.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') { ev.stopPropagation(); closeBriefModal(); return; }
+      if (ev.key === 'Tab') {
+        var focusables = modal.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length === 0) return;
+        var first = focusables[0];
+        var last = focusables[focusables.length - 1];
+        if (ev.shiftKey && document.activeElement === first) {
+          ev.preventDefault(); last.focus();
+        } else if (!ev.shiftKey && document.activeElement === last) {
+          ev.preventDefault(); first.focus();
+        }
+      }
+    });
+    return backdrop;
+  }
+
+  function postFeedback(payload) {
+    return fetch('/api/feedback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-workflow-mutation-token': mutationToken
+      },
+      body: JSON.stringify(payload)
+    }).then(function (response) {
+      return response.text().then(function (text) {
+        var body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (e) { body = null; }
+        if (!response.ok) {
+          var message = body && body.message ? body.message : 'Save failed (HTTP ' + response.status + ').';
+          throw new Error(message);
+        }
+        return body;
+      });
+    });
+  }
+
+  function saveFeedback(sel, c, kind, criterion, verdict, comment) {
+    return postFeedback({
+      subjectType: 'criterion',
+      briefId: sel.briefId, runId: sel.runId, variantIndex: c.index,
+      kind: kind, criterion: criterion, verdict: verdict, comment: comment
+    });
+  }
+
+  function saveSheetFeedback(briefId, runId, sheet, verdict, comment) {
+    return postFeedback({
+      subjectType: 'sheet', briefId: briefId, runId: runId, sheet: sheet,
+      verdict: verdict, comment: comment
+    });
+  }
+
+  function saveBriefFeedback(briefId, runId, verdict, comment) {
+    return postFeedback({
+      subjectType: 'brief', briefId: briefId, runId: runId,
+      verdict: verdict, comment: comment
+    });
+  }
+
+  // Generic feedback widget shared by criterion, sheet, and brief feedback.
+  // Verdict changes persist immediately. Comment edits stay local until the
+  // checkmark confirms a non-empty changed comment. Neither save path triggers
+  // a full render/reload; each patches only the affected feedback object.
+  function renderFeedbackWidget(persistedIn, save, confirmTitle) {
+    var persisted = persistedIn || { verdict: null, comment: '' };
+    var draft = { verdict: persisted.verdict || null, comment: persisted.comment || '' };
+
+    var up = h('button', { type: 'button', class: 'thumb', title: 'Thumbs up', text: '👍' });
+    var down = h('button', { type: 'button', class: 'thumb', title: 'Thumbs down', text: '👎' });
+    var input = h('input', { type: 'text', maxlength: '1000', placeholder: 'Optional feedback comment' });
+    var confirmBtn = h('button', { type: 'button', class: 'confirm-btn', title: confirmTitle || 'Confirm this feedback', text: '✓' });
+    var status = h('span', { class: 'feedback-status muted' });
+    var commentRow = h('div', { class: 'feedback-comment-row' }, [input, confirmBtn]);
+    var saving = false;
+
+    function setDisabled(disabled) {
+      up.disabled = disabled;
+      down.disabled = disabled;
+      input.disabled = disabled;
+      confirmBtn.disabled = disabled;
+    }
+
+    function hasCommentToSave() {
+      return Boolean(
+        draft.verdict &&
+        draft.comment.trim().length > 0 &&
+        draft.comment !== (persisted.comment || '')
+      );
+    }
+
+    function sync() {
+      up.className = 'thumb' + (draft.verdict === 'up' ? ' on' : '');
+      down.className = 'thumb' + (draft.verdict === 'down' ? ' on' : '');
+      commentRow.hidden = !draft.verdict;
+      input.value = draft.comment;
+      var commentDirty = hasCommentToSave();
+      confirmBtn.hidden = !commentDirty;
+      confirmBtn.className = 'confirm-btn' + (commentDirty ? ' dirty' : '');
+      status.textContent = commentDirty ? 'Comment not saved' : (persisted.verdict ? 'Saved' : '');
+    }
+
+    function saveVerdict(next) {
+      if (saving) return;
+      var previousVerdict = persisted.verdict || null;
+      var previousComment = persisted.comment || '';
+      draft.verdict = next;
+      if (!draft.verdict) draft.comment = '';
+      sync();
+      saving = true;
+      setDisabled(true);
+      status.textContent = 'Saving…';
+      save(next, next ? previousComment : '').then(function () {
+        persisted.verdict = next;
+        if (!next) persisted.comment = '';
+        sync();
+      }).catch(function (err) {
+        persisted.verdict = previousVerdict;
+        persisted.comment = previousComment;
+        draft.verdict = previousVerdict;
+        draft.comment = previousComment;
+        sync();
+        status.textContent = err && err.message ? err.message : 'Save failed.';
+      }).finally(function () {
+        saving = false;
+        setDisabled(false);
+      });
+    }
+
+    up.addEventListener('click', function () { saveVerdict(draft.verdict === 'up' ? null : 'up'); });
+    down.addEventListener('click', function () { saveVerdict(draft.verdict === 'down' ? null : 'down'); });
+    input.addEventListener('input', function () { draft.comment = input.value; sync(); });
+
+    confirmBtn.addEventListener('click', function () {
+      if (saving || !hasCommentToSave()) return;
+      var submitted = { verdict: draft.verdict, comment: draft.comment };
+      saving = true;
+      setDisabled(true);
+      status.textContent = 'Saving…';
+      save(submitted.verdict, submitted.comment).then(function () {
+        persisted.verdict = submitted.verdict;
+        persisted.comment = submitted.comment;
+        sync();
+      }).catch(function (err) {
+        status.textContent = err && err.message ? err.message : 'Save failed.';
+      }).finally(function () {
+        saving = false;
+        setDisabled(false);
+      });
+    });
+
+    sync();
+    return h('div', { class: 'criterion-feedback' }, [
+      h('div', { class: 'feedback-verdict-row' }, [up, down, status]),
+      commentRow
+    ]);
+  }
+
+  function renderCriterionFeedback(sel, c, kind, criterion) {
+    var persisted = readCriterionFeedback(c, kind, criterion);
+    return renderFeedbackWidget(
+      persisted,
+      function (verdict, comment) {
+        return saveFeedback(sel, c, kind, criterion, verdict, comment).then(function (result) {
+          // Patch-only (HARD GATE, see extension.mjs's /api/feedback route):
+          // write the CANONICAL location on the same c object retained in
+          // lastState.candidates, exactly like sheet/brief feedback already
+          // do. Without this, a first-time-confirmed criterion's fallback
+          // object is orphaned (never stored on c.feedback) and the
+          // confirmed value silently reverts on the next natural rerender.
+          writeCriterionFeedback(c, kind, criterion, result && result.feedback);
+          return result;
+        });
+      },
+      'Confirm this criterion\u2019s feedback'
+    );
+  }
+
+  function renderSheetFeedback(state) {
+    var sel = state.selected;
+    return renderFeedbackWidget(
+      state.sheetFeedback,
+      function (verdict, comment) {
+        return saveSheetFeedback(sel.briefId, sel.runId, sel.sheet, verdict, comment).then(function (result) {
+          // Patch-only: the server never rebuilds/broadcasts full state for a
+          // feedback confirm (HARD GATE) — mutate our own local copy so a
+          // later render() (e.g. tab switch) still reflects the confirmed
+          // value without needing a reload.
+          state.sheetFeedback = result && result.feedback ? result.feedback : null;
+          return result;
+        });
+      },
+      'Confirm feedback on this sheet'
+    );
+  }
+
+  function renderBriefFeedback(state) {
+    var sel = state.selected;
+    return renderFeedbackWidget(
+      state.briefFeedback,
+      function (verdict, comment) {
+        return saveBriefFeedback(sel.briefId, sel.runId, verdict, comment).then(function (result) {
+          state.briefFeedback = result && result.feedback ? result.feedback : null;
+          return result;
+        });
+      },
+      'Confirm feedback on this brief'
+    );
+  }
+
+  function renderJudge(card, c, sel) {
+    var summary = summarizeJudge(c);
+    card.appendChild(h('div', { class: 'section-title', text: 'Judge (advisory)' }));
+    card.appendChild(h('div', { class: 'concise-summary ' + summary.state, text: summary.text }));
+    if (!c.judge) return;
+    var details = document.createElement('details');
+    var summaryEl = h('summary', { class: 'details-summary', text: 'Show per-axis detail & feedback' });
+    details.appendChild(summaryEl);
+    for (var i = 0; i < JUDGE_AXES.length; i++) {
+      var axis = JUDGE_AXES[i];
+      var score = c.judge[axis.key] || 0;
+      if (!score) continue;
+      var ok = score >= 3;
+      details.appendChild(h('div', { class: 'axis' }, [
+        h('span', { class: 'lbl', text: axis.label }),
+        h('span', { style: { color: ok ? '#86efac' : '#fca5a5', fontWeight: '600' },
+          text: (score || '–') + '/5 ' + (ok ? '✓' : '✗') })
+      ]));
+      var rationale = c.rationale ? c.rationale[axis.key] : null;
+      if (rationale) details.appendChild(h('div', { class: 'rationale', text: rationale }));
+      details.appendChild(renderCriterionFeedback(sel, c, 'judge', axis.key));
+    }
+    var prov = [];
+    if (c.modelDeployment) prov.push(c.modelDeployment);
+    if (c.judgedAt) prov.push(c.judgedAt);
+    if (prov.length) details.appendChild(h('div', { style: { fontSize: '9px', color: '#64748b' }, text: prov.join(' · ') }));
+    card.appendChild(details);
+  }
+
+  function renderSensors(card, c, sel) {
+    var summary = summarizeSensors(c);
+    card.appendChild(h('div', { class: 'section-title', text: 'Sensors' }));
+    card.appendChild(h('div', { class: 'concise-summary ' + summary.state, text: summary.text }));
+    if (!c.sensors || c.sensors.length === 0) return;
+
+    var details = document.createElement('details');
+    details.appendChild(h('summary', { class: 'details-summary', text: 'Show per-sensor detail & feedback' }));
     for (var i = 0; i < c.sensors.length; i++) {
       var s = c.sensors[i];
-      card.appendChild(h('div', { class: 'sensor' }, [
+      details.appendChild(h('div', { class: 'sensor' }, [
         h('span', { text: s.sensor }),
         h('span', { style: { color: s.ok ? '#86efac' : '#fca5a5', fontWeight: '700' }, text: s.ok ? '✓' : '✗' })
       ]));
       if (!s.ok && (s.reason || s.pixelCount != null)) {
-        card.appendChild(h('div', { class: 'sensor-reason',
+        details.appendChild(h('div', { class: 'sensor-reason',
           text: (s.reason || 'failed') + (s.pixelCount != null ? ' (' + s.pixelCount + 'px)' : '') }));
       }
+      details.appendChild(renderCriterionFeedback(sel, c, 'sensor', s.sensor));
     }
+    card.appendChild(details);
+  }
+
+  function acceptanceKey(briefId, runId, variantIndex) {
+    return briefId + '/' + runId + '/' + variantIndex;
+  }
+
+  function acceptVariant(briefId, runId, variantIndex) {
+    if (!lastState) return;
+    var key = acceptanceKey(briefId, runId, variantIndex);
+    lastState.acceptance = lastState.acceptance || {};
+    lastState.acceptance[key] = { state: 'accepting' };
+    render(lastState);
+    setBusy(true, 'Approving and queueing variant…');
+    fetch('/api/accept', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-workflow-mutation-token': mutationToken
+      },
+      body: JSON.stringify({ briefId: briefId, runId: runId, variantIndex: variantIndex })
+    }).then(function (response) {
+      return response.text().then(function (text) {
+        var payload = null;
+        try { payload = text ? JSON.parse(text) : null; } catch (e) { payload = null; }
+        return { ok: response.ok, status: response.status, payload: payload };
+      });
+    }).then(function (result) {
+      if (!result.ok) {
+        var message = result.payload && result.payload.message
+          ? result.payload.message
+          : 'Acceptance failed with HTTP ' + result.status + '.';
+        throw new Error(message);
+      }
+      lastState.acceptance[key] = result.payload;
+      render(lastState);
+    }).catch(function (error) {
+      lastState.acceptance[key] = {
+        state: 'error',
+        message: error && error.message ? error.message : String(error)
+      };
+      render(lastState);
+    }).finally(function () {
+      setBusy(false);
+    });
+  }
+
+  function renderAcceptance(card, state, sel, candidate) {
+    var key = acceptanceKey(sel.briefId, sel.runId, candidate.index);
+    var acceptance = state.acceptance && state.acceptance[key];
+    if (acceptance && acceptance.state === 'queued') {
+      var queued = h('div', { class: 'accept-state queued' }, [
+        document.createTextNode(acceptance.existing ? 'Already queued · ' : 'Queued · '),
+        h('a', {
+          href: acceptance.issueUrl,
+          target: '_blank',
+          rel: 'noreferrer',
+          text: 'Open asset issue'
+        })
+      ]);
+      card.appendChild(queued);
+      // ADR 0066 RSK-003: check-in is intentionally batched — one acceptance
+      // can publish OTHER approved, unqueued art too. Surface the batch size
+      // so operators aren't surprised by what a single click just shipped.
+      if (typeof acceptance.assetCount === 'number' && acceptance.assetCount > 1) {
+        var extra = acceptance.assetCount - 1;
+        var extraNoun = extra === 1 ? 'asset' : 'assets';
+        var warnText = acceptance.existing
+          ? ('Heads up: this open issue batches ' + acceptance.assetCount +
+              ' approved assets (this variant plus ' + extra + ' other ' + extraNoun + ').')
+          : ('Heads up: accepting this variant also published ' + extra +
+              ' other approved, unqueued ' + extraNoun + ' in the same batch.');
+        card.appendChild(h('div', { class: 'accept-state warn', text: warnText }));
+      }
+      return;
+    }
+    if (acceptance && acceptance.state === 'error') {
+      card.appendChild(h('div', {
+        class: 'accept-state error',
+        text: acceptance.message || 'Acceptance failed.'
+      }));
+    }
+    var accepting = acceptance && acceptance.state === 'accepting';
+    // ADR 0066 DEC-004: disable ALL acceptance controls while any transaction
+    // is pending, not just the clicked variant's button. An in-flight accept
+    // is irreversible (approve + check-in); allowing a second click on any
+    // candidate while the first is still in progress could enqueue a
+    // conflicting, concurrent acceptance.
+    var anyAccepting = !!(state.acceptance && Object.keys(state.acceptance).some(function (k) {
+      return state.acceptance[k] && state.acceptance[k].state === 'accepting';
+    }));
+    // Label is driven by the per-variant LIFECYCLE (unaccepted/accepted-staged/
+    // integrated/unverified), not by this session's own ephemeral acceptance
+    // bookkeeping — a variant already accepted/staged/integrated/unverified
+    // exposes "Re-accept" (force-retrying the same idempotent sidecar
+    // acceptance path); a genuinely unaccepted variant uses "Accept & queue".
+    var lifecycleState = (candidate.lifecycle && candidate.lifecycle.state) || 'unaccepted';
+    var label = accepting
+      ? 'Accepting & queueing…'
+      : (lifecycleState === 'unaccepted' ? 'Accept & queue' : 'Re-accept');
+    var button = h('button', {
+      type: 'button',
+      class: 'accept-button',
+      text: label,
+      onclick: function () { acceptVariant(sel.briefId, sel.runId, candidate.index); }
+    });
+    if (anyAccepting) button.disabled = true;
+    card.appendChild(button);
+  }
+
+  function lifecyclePill(candidate) {
+    var lifecycle = candidate.lifecycle || { state: 'unaccepted', detail: null };
+    var label = lifecycle.state === 'accepted-staged' ? 'accepted/staged' : lifecycle.state;
+    var pill = h('span', { class: 'lifecycle-pill ' + lifecycle.state, text: label });
+    if (lifecycle.detail) pill.title = lifecycle.detail;
+    return pill;
   }
 
   function renderCandidates(state) {
@@ -599,13 +1314,16 @@ const CLIENT_SCRIPT = String.raw`
         h('span', { text: c.score + '/' + c.outOf, class: 'muted' })
       ]));
       card.appendChild(h('span', { class: 'status-pill', style: { color: STATUS_COLORS[status.kind] }, text: status.label }));
+      card.appendChild(lifecyclePill(c));
       var thumb = document.createElement('img');
       thumb.className = 'thumb';
       thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(c.index) + '.png');
       thumb.alt = 'variant ' + c.index;
       card.appendChild(thumb);
-      renderJudge(card, c);
-      renderSensors(card, c);
+      renderJudge(card, c, sel);
+      renderSensors(card, c, sel);
+      renderAcceptance(card, state, sel, c);
+      card.appendChild(renderPostprocessHandoff(sel, c.index));
       grid.appendChild(card);
     }
     wrap.appendChild(grid);
@@ -659,6 +1377,12 @@ const CLIENT_SCRIPT = String.raw`
 
   function render(state) {
     if (!state) return;
+    var restoreModalFocus = !!(
+      briefModal &&
+      document.activeElement &&
+      typeof document.activeElement.closest === 'function' &&
+      document.activeElement.closest('[role="dialog"]')
+    );
     lastState = state;
     var frag = document.createDocumentFragment();
     frag.appendChild(renderHealth(state));
@@ -668,6 +1392,15 @@ const CLIENT_SCRIPT = String.raw`
     frag.appendChild(renderTabs(state));
     frag.appendChild(h('div', { style: { marginTop: '4px' } }, [renderActiveTab(state)]));
     app.replaceChildren(frag);
+    var modalEl = renderBriefModal(state);
+    if (modalEl) {
+      app.appendChild(modalEl);
+      if (pendingFocusModal || restoreModalFocus) {
+        pendingFocusModal = false;
+        var modalContainer = modalEl.querySelector('.modal');
+        if (modalContainer) modalContainer.focus();
+      }
+    }
   }
 
   var selecting = false;
@@ -739,9 +1472,18 @@ const CLIENT_SCRIPT = String.raw`
 /**
  * Full HTML document for one canvas instance.
  * @param {string} instanceId
+ * @param {string} mutationToken
  * @returns {string}
  */
-export function renderHtml(instanceId) {
+export function renderHtml(instanceId, mutationToken = '') {
+  const clientScript = CLIENT_SCRIPT.replace(
+    '__WORKFLOW_MUTATION_TOKEN__',
+    JSON.stringify(mutationToken),
+  )
+    .replace('/*__RUN_FILTER_FNS__*/', () => serializePureModule(runFilterFns))
+    .replace('/*__SHEET_DISPLAY_FNS__*/', () => serializePureModule(sheetDisplayFns))
+    .replace('/*__FEEDBACK_SUMMARY_FNS__*/', () => serializePureModule(feedbackSummaryFns))
+    .replace('/*__BRIEF_LOOKUP_FNS__*/', () => serializePureModule(briefLookupFns));
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8" />',
@@ -756,7 +1498,20 @@ export function renderHtml(instanceId) {
     '<div id="app" data-instance="' + escapeHtml(instanceId) + '">',
     '<p class="muted">Loading sprite generation workflow…</p>',
     '</div>',
-    '<script>' + CLIENT_SCRIPT + '</script>',
+    // Persistent SIBLING of #app (never touched by render()'s
+    // app.replaceChildren) — collapsed/hidden placeholder until the first
+    // "Open in Post-process Debugger" click lazily creates its ONE iframe.
+    // See openPostprocess()/the postMessage bridge above.
+    '<div id="postprocess-host" hidden>',
+    '<div class="postprocess-host-head">',
+    '<h2>Postprocess Debugger</h2>',
+    '<span id="postprocess-host-status" class="muted"></span>',
+    '</div>',
+    '<div id="postprocess-host-body" class="collapsed">',
+    '<span class="muted">Opens here on demand — click "Open in Post-process Debugger" on any variant.</span>',
+    '</div>',
+    '</div>',
+    '<script>' + clientScript + '</script>',
     '</body></html>',
   ].join('');
 }

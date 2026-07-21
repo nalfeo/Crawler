@@ -54,7 +54,8 @@ function isCheckinAsset(value: unknown): value is CheckinAsset {
     typeof v.assetPath === 'string' &&
     (v.manifestKey === null || typeof v.manifestKey === 'string') &&
     (v.briefId === null || typeof v.briefId === 'string') &&
-    (v.variantIndex === null || typeof v.variantIndex === 'number')
+    (v.variantIndex === null || typeof v.variantIndex === 'number') &&
+    (v.contentHash === undefined || typeof v.contentHash === 'string')
   );
 }
 

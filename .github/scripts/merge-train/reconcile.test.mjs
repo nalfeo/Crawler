@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildCandidate,
   buildDispatchBindings,
+  buildGatedDispatchRecovery,
   deleteCandidateBundle,
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
@@ -831,6 +832,16 @@ test('promotion stale-state guard mirrors queue admission boundaries', () => {
     }),
     /marked merge-train-blocked/,
   );
+  assert.match(
+    promotionStaleReason({
+      currentMain: baseSha,
+      currentPr: makePr({ labels: [{ name: 'merge-train' }, { name: 'ci-conflict-order-wait' }] }),
+      expectedBase: baseSha,
+      pr: original,
+      repository: 'nalfeo/Crawler',
+    }),
+    /ci-conflict-order-wait/,
+  );
 });
 
 function makeCiRun(overrides = {}) {
@@ -1035,4 +1046,126 @@ test('resolveMergeTrainTokens ignores the legacy workflow PAT environment variab
     promotionToken: 'app-token',
     workflowDispatchToken: 'github-token',
   });
+});
+
+// buildGatedDispatchRecovery — admission gate for reconcile.mjs dispatch sites
+
+test('buildGatedDispatchRecovery dispatches when outstanding count is below cap', async () => {
+  const dispatched = [];
+  const countRuns = async () => 0;
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(42, 'merge-train-noop');
+  assert.deepEqual(dispatched, [{ prNumber: 42, trigger: 'merge-train-noop' }]);
+});
+
+test('buildGatedDispatchRecovery skips dispatch when outstanding count equals cap', async () => {
+  const dispatched = [];
+  const countRuns = async () => 1; // at cap
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(42, 'merge-train-noop');
+  assert.deepEqual(dispatched, [], 'expected no dispatch when at cap');
+});
+
+test('buildGatedDispatchRecovery skips dispatch when outstanding count exceeds cap', async () => {
+  const dispatched = [];
+  const countRuns = async () => 3; // above cap
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(99, 'merge-train-validation-failure');
+  assert.deepEqual(dispatched, [], 'expected no dispatch when above cap');
+});
+
+test('buildGatedDispatchRecovery passes token/owner/repo to countRuns', async () => {
+  const countCallArgs = [];
+  const countRuns = async (token, owner, repo) => {
+    countCallArgs.push({ token, owner, repo });
+    return 0;
+  };
+  const dispatchRecovery = async () => {};
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'mytoken',
+    owner: 'myowner',
+    repo: 'myrepo',
+  });
+  await gated(1, 'merge-train-admission-stale');
+  assert.deepEqual(countCallArgs, [{ token: 'mytoken', owner: 'myowner', repo: 'myrepo' }]);
+});
+
+test('buildGatedDispatchRecovery blocks second sequential call via in-process reservation when API is stale', async () => {
+  // Simulates the admission-loop thundering-herd: countRuns always returns 0
+  // because the Actions API has not yet reflected the first dispatch.  Without
+  // an in-process reservation both sequential calls would see 0 < cap=1 and
+  // dispatch independently, exceeding the cap.
+  const dispatched = [];
+  const countRuns = async () => 0; // stale API — never updated between calls
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(42, 'merge-train-admission-stale');
+  await gated(43, 'merge-train-admission-stale');
+  assert.deepEqual(
+    dispatched,
+    [{ prNumber: 42, trigger: 'merge-train-admission-stale' }],
+    'second sequential call must be blocked by in-process reservation despite stale API count',
+  );
+});
+
+test('buildGatedDispatchRecovery allows a second call once cap is raised (stale API, cap=2)', async () => {
+  // With cap=2 and a stale API (always 0), the first call reserves one slot
+  // (pendingDispatches=1) and the second call sees 0+1=1 < 2, so it is still
+  // allowed.  A third call is blocked by 0+2=2 >= 2.
+  const dispatched = [];
+  const countRuns = async () => 0;
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 2,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(10, 'merge-train-admission-stale');
+  await gated(11, 'merge-train-admission-stale');
+  await gated(12, 'merge-train-admission-stale');
+  assert.deepEqual(
+    dispatched,
+    [
+      { prNumber: 10, trigger: 'merge-train-admission-stale' },
+      { prNumber: 11, trigger: 'merge-train-admission-stale' },
+    ],
+    'third sequential call must be blocked once pendingDispatches reaches cap',
+  );
 });

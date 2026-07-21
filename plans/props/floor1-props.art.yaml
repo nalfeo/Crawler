@@ -10,7 +10,7 @@ summary: >
   tech/void prop are filtered out on Floor 1 and were removed from this plan.
 assets:
   - id: torch
-    type: item
+    type: prop
     label: Torch
     brief: >
       Wall-mounted flaming torch on a black iron bracket, 4-frame flicker,
@@ -22,7 +22,7 @@ assets:
       id: prop.torch
 
   - id: wall-sconce
-    type: item
+    type: prop
     label: Wall Sconce
     brief: >
       Iron bracket lamp mounted on a dungeon wall holding a small flickering
@@ -34,7 +34,7 @@ assets:
       id: prop.wall-sconce
 
   - id: junk-pile
-    type: item
+    type: prop
     label: Junk Pile
     brief: >
       Reality-show dungeon litter — cups, wrappers, and scattered trash that
@@ -46,7 +46,7 @@ assets:
       id: prop.junk-pile
 
   - id: rubble
-    type: item
+    type: prop
     label: Rubble Pile
     brief: >
       A low heap of broken stone chunks, grit, and dust — collapsed-masonry

@@ -1,0 +1,708 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+
+import { makeState as makeRecoveryState } from '../ci-recovery/state.mjs';
+import {
+  CI_CONFLICT_ORDER_WAIT_LABEL,
+  queueEntries,
+  shouldWaitForCiConflictOrder,
+} from '../merge-train/state.mjs';
+import {
+  bindProofToLeader,
+  buildSupersessionProofs,
+  duplicateProofStillMatches,
+} from './proof.mjs';
+import {
+  COORDINATOR_MARKER,
+  DISPATCH_LEASE_MS,
+  MAX_OVERLAP_FILES,
+  changeStatsFromFiles,
+  ciFilesFor,
+  clusterPullRequests,
+  discoverCoordinationClusters,
+  dispatchKey,
+  hasHealthyRecoveryOwner,
+  isCoordinatorStateSemanticallyEqual,
+  makeCoordinatorState,
+  mergeCoordinationGroups,
+  parseCoordinatorComment,
+  rankPullRequests,
+  renderCoordinatorComment,
+  selectCoordination,
+  shouldDispatchActiveSlot,
+} from './state.mjs';
+
+const repository = 'nalfeo/Crawler';
+
+function makePull(number, files, overrides = {}) {
+  return {
+    number,
+    title: `PR ${number}`,
+    state: 'open',
+    draft: false,
+    createdAt: `2026-07-${String(number).padStart(2, '0')}T00:00:00Z`,
+    additions: 10,
+    deletions: 2,
+    changedFiles: files.length,
+    headSha: String(number).padStart(40, '0'),
+    ciFiles: ciFilesFor(files),
+    green: false,
+    ...overrides,
+  };
+}
+
+test('CI scope covers workflows, scripts, actions, and agent automation', () => {
+  assert.deepEqual(
+    ciFilesFor([
+      '.github/workflows/ci.yml',
+      '.github/scripts/recover.mjs',
+      '.github/actions/setup/action.yml',
+      'scripts/agent/verify-fast.sh',
+      'src/game/ignored.ts',
+    ]),
+    [
+      '.github/actions/setup/action.yml',
+      '.github/scripts/recover.mjs',
+      '.github/workflows/ci.yml',
+      'scripts/agent/verify-fast.sh',
+    ],
+  );
+});
+
+test('change stats derive from per-file inventory', () => {
+  assert.deepEqual(
+    changeStatsFromFiles([
+      { filename: '.github/workflows/ci.yml', additions: 7, deletions: 2 },
+      { filename: '.github/scripts/reconcile.mjs', additions: 3, deletions: 5 },
+      { filename: '.github/actions/setup/action.yml' },
+    ]),
+    { additions: 10, deletions: 7, changedFiles: 3 },
+  );
+});
+
+test('cluster threshold excludes two PRs and includes three', () => {
+  const two = [
+    makePull(1, ['.github/workflows/ci.yml']),
+    makePull(2, ['.github/workflows/ci.yml']),
+  ];
+  assert.deepEqual(clusterPullRequests(two), []);
+  const clusters = clusterPullRequests([...two, makePull(3, ['.github/workflows/ci.yml'])]);
+  assert.deepEqual(
+    clusters.map((cluster) => cluster.map((pull) => pull.number)),
+    [[1, 2, 3]],
+  );
+});
+
+test('overlap clusters are transitive across different CI files', () => {
+  const clusters = clusterPullRequests([
+    makePull(1, ['.github/workflows/ci.yml']),
+    makePull(2, ['.github/workflows/ci.yml', 'scripts/agent/preflight.sh']),
+    makePull(3, ['scripts/agent/preflight.sh']),
+    makePull(4, ['.github/scripts/unrelated.mjs']),
+  ]);
+  assert.deepEqual(
+    clusters.map((cluster) => cluster.map((pull) => pull.number)),
+    [[1, 2, 3]],
+  );
+});
+
+test('leader ranking prefers green, then completeness, then oldest', () => {
+  const ranked = rankPullRequests([
+    makePull(1, ['.github/workflows/ci.yml'], { green: false, createdAt: '2026-07-01T00:00:00Z' }),
+    makePull(2, ['.github/workflows/ci.yml'], { green: true, createdAt: '2026-07-03T00:00:00Z' }),
+    makePull(3, ['.github/workflows/ci.yml', '.github/scripts/a.mjs'], {
+      green: true,
+      createdAt: '2026-07-04T00:00:00Z',
+    }),
+    makePull(4, ['.github/workflows/ci.yml', '.github/scripts/a.mjs'], {
+      green: true,
+      createdAt: '2026-07-02T00:00:00Z',
+    }),
+  ]);
+  assert.deepEqual(
+    ranked.map((pull) => pull.number),
+    [4, 3, 2, 1],
+  );
+});
+
+test('managed groups continue after open membership falls below three', () => {
+  const pulls = [
+    makePull(1, ['.github/workflows/ci.yml']),
+    makePull(2, ['.github/workflows/ci.yml']),
+  ];
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-existing',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: pulls,
+    proofs: pulls.map((pull) => ({
+      number: pull.number,
+      status: 'applied',
+      fingerprint: pull.headSha,
+      representedBy: [],
+    })),
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  const groups = mergeCoordinationGroups({
+    discoveredClusters: [],
+    existingStates: [state],
+    openPulls: pulls,
+  });
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].groupId, 'ci-conflict-existing');
+  assert.deepEqual(
+    groups[0].pulls.map((pull) => pull.number),
+    [1, 2],
+  );
+  assert.deepEqual(groups[0].originalMembers, [1, 2, 3]);
+});
+
+test('fresh two-PR overlap stays below threshold without persisted managed state', () => {
+  const pulls = [
+    makePull(3, ['.github/workflows/ci.yml']),
+    makePull(4, ['.github/workflows/ci.yml']),
+  ];
+  assert.deepEqual(discoverCoordinationClusters(pulls, []), []);
+});
+
+test('managed group can absorb a new two-PR overlap after shrinking below threshold', () => {
+  const pulls = [
+    makePull(3, ['.github/workflows/ci.yml']),
+    makePull(4, ['.github/workflows/ci.yml']),
+  ];
+  const state = makeCoordinatorState({
+    prNumber: 3,
+    groupId: 'ci-conflict-existing',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 3,
+    activeNumber: 3,
+    order: [pulls[0]],
+    proofs: [
+      {
+        number: 3,
+        status: 'applied',
+        fingerprint: pulls[0].headSha,
+        representedBy: [],
+      },
+    ],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  assert.deepEqual(
+    discoverCoordinationClusters(pulls, [state]).map((cluster) =>
+      cluster.map((pull) => pull.number),
+    ),
+    [[3, 4]],
+  );
+});
+
+test('coordinator state comment is parseable and semantic updates are idempotent', () => {
+  const pulls = [makePull(1, ['.github/workflows/ci.yml'])];
+  const base = {
+    prNumber: 1,
+    groupId: 'ci-conflict-idempotent',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: pulls,
+    proofs: [{ number: 1, status: 'applied', fingerprint: 'a'.repeat(64), representedBy: [] }],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    escalations: [],
+  };
+  const left = makeCoordinatorState({ ...base, updatedAt: '2026-07-20T00:00:00Z' });
+  const right = makeCoordinatorState({ ...base, updatedAt: '2026-07-20T00:05:00Z' });
+  const body = renderCoordinatorComment(left);
+  assert.match(body, new RegExp(COORDINATOR_MARKER));
+  assert.deepEqual(parseCoordinatorComment(body), left);
+  assert.equal(isCoordinatorStateSemanticallyEqual(left, right), true);
+});
+
+test('healthy shepherd lease suppresses ordered recovery dispatch', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const key = dispatchKey({
+    groupId: 'ci-conflict-lease',
+    active,
+    baseSha: 'a'.repeat(40),
+    order: [active],
+  });
+  const recoveryState = makeRecoveryState({
+    prNumber: 7,
+    headSha: active.headSha,
+    fingerprint: 'f'.repeat(64),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: 'lease-7',
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  assert.equal(
+    shouldDispatchActiveSlot({
+      recoveryState,
+      prNumber: 7,
+      priorDispatchKey: null,
+      nextKey: key,
+      now: new Date('2026-07-20T00:10:00Z'),
+    }),
+    false,
+  );
+});
+
+test('stale-head automation owner does not suppress ordered recovery dispatch', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const key = dispatchKey({
+    groupId: 'ci-conflict-automation-head',
+    active,
+    baseSha: 'a'.repeat(40),
+    order: [active],
+  });
+  const recoveryState = makeRecoveryState({
+    prNumber: 7,
+    headSha: 'f'.repeat(40),
+    fingerprint: 'f'.repeat(64),
+    owner: 'automation',
+    status: 'active',
+    blockers: [],
+    progressAt: '2026-07-20T00:00:00Z',
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  assert.equal(
+    hasHealthyRecoveryOwner({
+      prNumber: 7,
+      recoveryState,
+      headSha: active.headSha,
+      now: new Date('2026-07-20T00:10:00Z'),
+    }),
+    false,
+  );
+  assert.equal(
+    shouldDispatchActiveSlot({
+      recoveryState,
+      headSha: active.headSha,
+      prNumber: 7,
+      priorDispatchKey: null,
+      nextKey: key,
+      now: new Date('2026-07-20T00:10:00Z'),
+    }),
+    true,
+  );
+});
+
+test('expired dispatch lease allows retry when no healthy owner (lost-run regression)', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const key = dispatchKey({
+    groupId: 'ci-conflict-lost-run',
+    active,
+    baseSha: 'a'.repeat(40),
+    order: [active],
+  });
+  // No recovery state written: run was cancelled before ci-recovery could record anything
+  const dispatchedAt = '2026-07-20T00:00:00Z';
+  // Within lease window: suppressed even with same key and no recovery state
+  assert.equal(
+    shouldDispatchActiveSlot({
+      recoveryState: null,
+      headSha: active.headSha,
+      prNumber: 7,
+      priorDispatchKey: key,
+      nextKey: key,
+      lastDispatchAt: dispatchedAt,
+      now: new Date('2026-07-20T00:15:00Z'), // 15 min — within 30 min lease
+    }),
+    false,
+  );
+  // After lease expires: retry is allowed
+  assert.equal(
+    shouldDispatchActiveSlot({
+      recoveryState: null,
+      headSha: active.headSha,
+      prNumber: 7,
+      priorDispatchKey: key,
+      nextKey: key,
+      lastDispatchAt: dispatchedAt,
+      now: new Date('2026-07-20T00:31:00Z'), // 31 min — lease expired
+    }),
+    true,
+  );
+  // Verify DISPATCH_LEASE_MS is 30 minutes
+  assert.equal(DISPATCH_LEASE_MS, 30 * 60 * 1000);
+});
+
+test('same dispatch key without lastDispatchAt does not retry (legacy state)', () => {
+  const active = makePull(8, ['.github/workflows/ci.yml']);
+  const key = dispatchKey({
+    groupId: 'ci-conflict-legacy',
+    active,
+    baseSha: 'b'.repeat(40),
+    order: [active],
+  });
+  // Legacy state has no lastDispatchAt — same key suppresses without a lease check
+  assert.equal(
+    shouldDispatchActiveSlot({
+      recoveryState: null,
+      headSha: active.headSha,
+      prNumber: 8,
+      priorDispatchKey: key,
+      nextKey: key,
+      lastDispatchAt: null,
+      now: new Date('2026-07-20T02:00:00Z'), // 2 hours later — would be expired if lastDispatchAt were set
+    }),
+    false,
+  );
+});
+
+test('merge train excludes order-wait PRs', () => {
+  const pull = {
+    number: 1,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: repository } },
+    labels: [{ name: 'merge-train' }, { name: CI_CONFLICT_ORDER_WAIT_LABEL }],
+  };
+  assert.equal(shouldWaitForCiConflictOrder(pull.labels), true);
+  assert.deepEqual(queueEntries([pull], repository), []);
+});
+
+test('CI recovery is wired to stop at the conflict order fence', () => {
+  const source = readFileSync(path.resolve('.github/scripts/ci-recovery/reconcile.mjs'), 'utf8');
+  assert.match(source, /shouldWaitForCiConflictOrder\(pr\.labels\)/);
+  assert.match(source, /reason=ci-conflict-order-wait/);
+  assert.ok(
+    source.indexOf("release('expired-shepherd-lease')") <
+      source.indexOf('shouldWaitForCiConflictOrder(pr.labels)'),
+  );
+  assert.match(
+    source,
+    /mergeTrainEnabled\s*&&\s*!pendingHumanApproval\s*&&\s*shouldWaitForCiConflictOrder\(pr\.labels\)/,
+  );
+});
+
+test('coordinator inventories rename previous_filename paths for overlap clustering', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /previous_filename/);
+});
+
+test('coordinator validates automation ownership against the live PR head', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /headSha:\s*pull\.headSha/);
+});
+
+test('coordinator only trusts recovery state comments from trusted authors', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /TRUSTED_ASSOCIATIONS/);
+  assert.match(source, /TRUSTED_BOT_LOGINS/);
+  assert.match(source, /requireTrustedAuthor:\s*true/);
+});
+
+test('coordinator claims owner fence and disables auto-merge for every grouped member', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /claimOwnerFence\(proof\.number\)/);
+  assert.match(source, /released orphaned coordinator labels/);
+  assert.match(source, /await disableAutoMerge\(pull\);/);
+  assert.ok(
+    !source.includes('if (pull.number !== selection.active?.number) await disableAutoMerge(pull);'),
+  );
+});
+
+test('post-close proof guard revalidates the duplicate PR head before leaving it closed', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /fetchLivePull\(proof\.number\)/);
+  assert.match(source, /postTarget\?\.head\?\.sha !== proof\.targetHead/);
+  assert.match(source, /postTarget\?\.base\?\.ref !== BASE_REF/);
+});
+
+test('workflow is event-driven and has a five-minute scheduling backstop', () => {
+  const workflow = readFileSync(
+    path.resolve('.github/workflows/ci-conflict-coordinator.yml'),
+    'utf8',
+  );
+  assert.match(workflow, /types:\s*\[opened, reopened, synchronize, ready_for_review, closed\]/);
+  assert.match(workflow, /workflow_run:\s*\r?\n\s+workflows:\s*\['CI'\]/);
+  assert.match(workflow, /cron:\s*'\*\/5 \* \* \* \*'/);
+  assert.match(workflow, /group:\s*crawler-ci-conflict-coordinator/);
+});
+
+function git(cwd, args, options = {}) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, ...(options.env || {}) },
+  }).trim();
+}
+
+function commit(cwd, message) {
+  git(cwd, ['add', '.']);
+  git(cwd, ['commit', '-m', message], {
+    env: {
+      GIT_AUTHOR_NAME: 'Test',
+      GIT_AUTHOR_EMAIL: 'test@example.com',
+      GIT_COMMITTER_NAME: 'Test',
+      GIT_COMMITTER_EMAIL: 'test@example.com',
+    },
+  });
+  return git(cwd, ['rev-parse', 'HEAD']);
+}
+
+test('main-alone supersession has empty predecessorHeads (safe to close)', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'crawler-ci-conflict-'));
+  try {
+    git(cwd, ['init', '--initial-branch=main']);
+    mkdirSync(path.join(cwd, '.github', 'workflows'), { recursive: true });
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: base\n');
+    const baseSha = commit(cwd, 'base');
+
+    // Advance main with the same change the PR will propose
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: new\n');
+    const mainSha = commit(cwd, 'main-advance');
+
+    // PR branch that proposes the same change (already in main)
+    git(cwd, ['checkout', '-b', 'pr-branch', baseSha]);
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: new\n');
+    const prSha = commit(cwd, 'pr');
+
+    const gitRunner = (args, options) => git(cwd, args, options);
+    const proofs = buildSupersessionProofs({
+      baseSha: mainSha,
+      entries: [{ number: 1, headSha: prSha, ref: prSha }],
+      git: gitRunner,
+    });
+
+    assert.equal(proofs[0].status, 'superseded');
+    // No predecessor dependency — this PR is a no-op against main alone and is safe to close.
+    assert.equal(proofs[0].predecessorHeads.length, 0);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('predecessor-dependent supersession has non-empty predecessorHeads (retain until predecessor lands)', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'crawler-ci-conflict-'));
+  try {
+    git(cwd, ['init', '--initial-branch=main']);
+    mkdirSync(path.join(cwd, '.github', 'workflows'), { recursive: true });
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: base\n');
+    const baseSha = commit(cwd, 'base');
+
+    // Leader PR
+    git(cwd, ['checkout', '-b', 'leader', baseSha]);
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: leader\n');
+    const leaderSha = commit(cwd, 'leader');
+
+    // Duplicate PR that proposes the same change as leader (but leader is still open, not in main)
+    git(cwd, ['checkout', '-b', 'duplicate', baseSha]);
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: leader\n');
+    const duplicateSha = commit(cwd, 'duplicate');
+
+    const gitRunner = (args, options) => git(cwd, args, options);
+    const proofs = buildSupersessionProofs({
+      baseSha,
+      entries: [
+        { number: 1, headSha: leaderSha, ref: leaderSha },
+        { number: 2, headSha: duplicateSha, ref: duplicateSha },
+      ],
+      git: gitRunner,
+    });
+
+    assert.equal(proofs[1].status, 'superseded');
+    // Has predecessor dependency — closing now would risk permanent change loss if leader is
+    // force-pushed or closed without merging. Must retain until predecessor lands on main.
+    assert.equal(proofs[1].predecessorHeads.length, 1);
+    assert.equal(proofs[1].predecessorHeads[0].number, 1);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('full-tree proof preserves unique changes, closes only no-ops, and escalates conflicts', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'crawler-ci-conflict-'));
+  try {
+    git(cwd, ['init', '--initial-branch=main']);
+    mkdirSync(path.join(cwd, '.github', 'workflows'), { recursive: true });
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: base\n');
+    const baseSha = commit(cwd, 'base');
+
+    git(cwd, ['checkout', '-b', 'leader', baseSha]);
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: leader\n');
+    const leaderSha = commit(cwd, 'leader');
+
+    git(cwd, ['checkout', '-b', 'duplicate', baseSha]);
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: leader\n');
+    const duplicateSha = commit(cwd, 'duplicate');
+
+    git(cwd, ['checkout', '-b', 'unique', baseSha]);
+    mkdirSync(path.join(cwd, '.github', 'scripts'), { recursive: true });
+    writeFileSync(
+      path.join(cwd, '.github', 'scripts', 'unique.mjs'),
+      'export const unique = true;\n',
+    );
+    const uniqueSha = commit(cwd, 'unique');
+
+    git(cwd, ['checkout', '-b', 'ambiguous', baseSha]);
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: ambiguous\n');
+    const ambiguousSha = commit(cwd, 'ambiguous');
+
+    const gitRunner = (args, options) => git(cwd, args, options);
+    const entries = [
+      { number: 1, headSha: leaderSha, ref: leaderSha },
+      { number: 2, headSha: duplicateSha, ref: duplicateSha },
+      { number: 3, headSha: uniqueSha, ref: uniqueSha },
+      { number: 4, headSha: ambiguousSha, ref: ambiguousSha },
+    ];
+    const initial = buildSupersessionProofs({ baseSha, entries, git: gitRunner });
+    const leader = { number: 1, headSha: leaderSha };
+    const proofs = initial.map((proof) => bindProofToLeader(proof, leader));
+    assert.deepEqual(
+      proofs.map((proof) => proof.status),
+      ['applied', 'superseded', 'applied', 'ambiguous'],
+    );
+    assert.deepEqual(proofs[1].representedBy, [1]);
+    const ranked = entries.map((entry) =>
+      makePull(entry.number, ['.github/workflows/ci.yml'], { headSha: entry.headSha }),
+    );
+    const selection = selectCoordination({ rankedPulls: ranked, proofs });
+    assert.deepEqual(
+      selection.ordered.map((pull) => pull.number),
+      [1, 3, 4],
+    );
+    assert.deepEqual(
+      selection.duplicates.map((pull) => pull.number),
+      [2],
+    );
+    assert.deepEqual(
+      selection.ambiguous.map((pull) => pull.number),
+      [4],
+    );
+
+    const livePulls = new Map(
+      entries.map((entry) => [
+        entry.number,
+        {
+          number: entry.number,
+          state: 'open',
+          draft: false,
+          base: { ref: 'main' },
+          head: { sha: entry.headSha, repo: { full_name: repository } },
+        },
+      ]),
+    );
+    assert.equal(
+      duplicateProofStillMatches({
+        proof: proofs[1],
+        mainSha: baseSha,
+        livePulls,
+        repository,
+      }),
+      true,
+    );
+    livePulls.get(1).head.sha = 'f'.repeat(40);
+    assert.equal(
+      duplicateProofStillMatches({
+        proof: proofs[1],
+        mainSha: baseSha,
+        livePulls,
+        repository,
+      }),
+      false,
+    );
+    assert.equal(
+      duplicateProofStillMatches({
+        proof: proofs[3],
+        mainSha: baseSha,
+        livePulls,
+        repository,
+      }),
+      false,
+    );
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('renderCoordinatorComment stays below GitHub comment limit with many overlap files', () => {
+  // Build 200 distinct CI paths — well above the MAX_OVERLAP_FILES cap of 20.
+  const manyFiles = Array.from(
+    { length: 200 },
+    (_, index) => `.github/workflows/workflow-${String(index).padStart(3, '0')}.yml`,
+  );
+  const pull = makePull(1, manyFiles);
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-size-test',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [pull],
+    proofs: [{ number: 1, status: 'applied', fingerprint: 'a'.repeat(64), representedBy: [] }],
+    overlapFiles: manyFiles,
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+
+  // makeCoordinatorState must truncate to MAX_OVERLAP_FILES.
+  assert.equal(state.overlapFiles.length, MAX_OVERLAP_FILES);
+  assert.equal(state.overlapFilesCount, 200);
+
+  const body = renderCoordinatorComment(state);
+
+  // Must stay below the GitHub 65 536-character comment cap.
+  assert.ok(
+    body.length < 65_536,
+    `expected comment below GitHub limit, got ${body.length} characters`,
+  );
+  // The "…and N more" note must be present because files were truncated.
+  const hiddenCount = 200 - MAX_OVERLAP_FILES;
+  assert.ok(
+    body.includes(`…and ${hiddenCount} more`),
+    `expected "…and ${hiddenCount} more" in rendered comment`,
+  );
+  // Only MAX_OVERLAP_FILES file lines should appear (no raw overflow).
+  const fileLines = body.split('\n').filter((line) => line.match(/^- `\.github\/workflows\//));
+  assert.equal(fileLines.length, MAX_OVERLAP_FILES);
+});
+
+test('renderCoordinatorComment round-trips overlapFilesCount through parse', () => {
+  const manyFiles = Array.from(
+    { length: 50 },
+    (_, index) => `.github/workflows/w-${String(index).padStart(2, '0')}.yml`,
+  );
+  const state = makeCoordinatorState({
+    prNumber: 2,
+    groupId: 'ci-conflict-roundtrip',
+    originalMembers: [2, 3, 4],
+    leaderNumber: 2,
+    activeNumber: 2,
+    order: [makePull(2, manyFiles)],
+    proofs: [{ number: 2, status: 'applied', fingerprint: 'b'.repeat(64), representedBy: [] }],
+    overlapFiles: manyFiles,
+    updatedAt: '2026-07-20T00:01:00Z',
+  });
+  const body = renderCoordinatorComment(state);
+  const parsed = parseCoordinatorComment(body);
+  assert.equal(parsed.overlapFilesCount, 50);
+  assert.equal(parsed.overlapFiles.length, MAX_OVERLAP_FILES);
+  // "…and N more" must be rendered for the truncated portion.
+  const hiddenCount = 50 - MAX_OVERLAP_FILES;
+  assert.ok(body.includes(`…and ${hiddenCount} more`));
+});

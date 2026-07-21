@@ -7,15 +7,18 @@ import {
   request,
   graphql,
 } from '../ci-recovery/github.mjs';
+import { listTrustedAppCheckRunsForRef, resolveCandidateCheckState } from './check-runs.mjs';
 import {
   isTrainFastPathPushRun,
   parseStateComment,
   STATE_MARKER as RECOVERY_STATE_MARKER,
 } from '../ci-recovery/state.mjs';
+import { ciConflictOrderReasonForPromotion } from './ci-conflict-order.mjs';
 import {
   applyLandedRecoveryDecision,
   buildCandidate,
   buildDispatchBindings,
+  buildGatedDispatchRecovery,
   createMergePullRequest,
   deleteCandidateBundle,
   isDisabledTrainScheduleRun,
@@ -59,6 +62,7 @@ import {
   VALIDATION_FAILED_LABEL,
 } from './state.mjs';
 import { humanApprovalRejection } from './human-approval.mjs';
+import { countOutstandingRecoveryRuns, GLOBAL_TRAIN_DISPATCH_CAP } from '../ci-recovery/router.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -108,6 +112,35 @@ async function checkRuns(sha) {
     if (runs.length < 100) return results;
     page += 1;
   }
+}
+
+async function candidateCheckState(sha, evidenceId, now = new Date()) {
+  const result = await resolveCandidateCheckState({
+    sha,
+    evidenceId,
+    trustedAppId,
+    now,
+    loadCommitCheckRuns: checkRuns,
+    loadTrustedAppCheckRuns: (ref) =>
+      listTrustedAppCheckRunsForRef({
+        request,
+        token,
+        owner,
+        repo,
+        sha: ref,
+        trustedAppId,
+      }),
+    classify: trainCheckState,
+  });
+  if (result.usedSuiteFallback) {
+    process.stdout.write(
+      `candidate check suite fallback sha=${sha} state=${result.state} ` +
+        `commit_runs=${result.commitCheckRunCount} trusted_runs=${result.trustedCheckRunCount} ` +
+        `suites=${result.suiteCount} suite_pages=${result.suitePages} ` +
+        `check_run_pages=${result.checkRunPages}\n`,
+    );
+  }
+  return result.state;
 }
 
 async function workflowRunJobs(runId) {
@@ -241,6 +274,20 @@ async function createTrainCheck(
 const { dispatchRecovery, dispatchValidation: baseDispatchValidation } = buildDispatchBindings({
   request,
   workflowDispatchToken,
+  owner,
+  repo,
+});
+
+// Gate all reconcile.mjs CI Recovery dispatches against GLOBAL_TRAIN_DISPATCH_CAP
+// so they participate in the same backpressure as the router workflow. This is
+// best-effort: the router's concurrency group serialises its own invocations but
+// cannot serialise against reconcile.mjs calls, so a narrow race window remains.
+// See the router's `runFromEnv` comment for a full description of that gap.
+const dispatchRecoveryGated = buildGatedDispatchRecovery({
+  dispatchRecovery,
+  countRuns: countOutstandingRecoveryRuns,
+  cap: GLOBAL_TRAIN_DISPATCH_CAP,
+  token,
   owner,
   repo,
 });
@@ -514,7 +561,7 @@ async function deAdmitNoop(entry, detail) {
       detail,
     }),
   );
-  await dispatchRecovery(entry.number, 'merge-train-noop');
+  await dispatchRecoveryGated(entry.number, 'merge-train-noop');
 }
 
 async function dispatchValidation(sha, refName, fingerprint, entries) {
@@ -587,7 +634,7 @@ for (const pr of queued) {
         detail: admission.reason,
       }),
     );
-    await dispatchRecovery(pr.number, 'merge-train-admission-stale');
+    await dispatchRecoveryGated(pr.number, 'merge-train-admission-stale');
   }
 }
 
@@ -632,11 +679,9 @@ const loopResult = await runTrainBuildLoop({
     if (git(['cat-file', '-t', remoteTransportRef]) !== 'blob') {
       throw new Error(`Candidate transport ref for slot ${index + 1} is not a Git blob`);
     }
-    const state = trainCheckState(
-      await checkRuns(mainSha),
+    const state = await candidateCheckState(
+      mainSha,
       candidateEvidenceId(builtEntry.fingerprint, builtEntry.candidateSha),
-      trustedAppId,
-      new Date(),
     );
     await updateStatus(
       train[index].number,
@@ -662,7 +707,10 @@ const loopResult = await runTrainBuildLoop({
   onConflict: async (index, error) => {
     await blockEntry(train[index], { detail: error.message });
     const predecessor = train[index - 1]?.number || 0;
-    await dispatchRecovery(train[index].number, `merge-train-cumulative-conflict:${predecessor}`);
+    await dispatchRecoveryGated(
+      train[index].number,
+      `merge-train-cumulative-conflict:${predecessor}`,
+    );
     process.stdout.write(`returned conflict pr=#${train[index].number} to reconciliation\n`);
   },
   onNoop: async (index, error) => {
@@ -713,11 +761,9 @@ async function promotePrefix(prefixLength, validationIndex) {
     // Re-confirm, immediately before every merge, that the selected maximal or
     // bisected batch candidate still has terminal SUCCESS evidence.
     verifyCandidateEvidence: async () => {
-      const state = trainCheckState(
-        await checkRuns(mainSha),
+      const state = await candidateCheckState(
+        mainSha,
         candidateEvidenceId(validationCandidate.fingerprint, validationCandidate.candidateSha),
-        trustedAppId,
-        new Date(),
       );
       return state === 'success';
     },
@@ -726,6 +772,25 @@ async function promotePrefix(prefixLength, validationIndex) {
       landedCount += 1;
     },
     reattestHealth: mainHealthAllowsPromotion,
+    verifyMergeSlot: async ({ currentPr, currentMain }) =>
+      ciConflictOrderReasonForPromotion({
+        pullRequest: currentPr,
+        baseSha: currentMain,
+        owner,
+        repo,
+        repository,
+        trustedAppId,
+        requiredChecks: requiredAdmissionChecks,
+        git,
+        fetchOpenPulls: async () =>
+          paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`),
+        fetchPullFiles: async (number) =>
+          paginate(token, `/repos/${owner}/${repo}/pulls/${number}/files?per_page=100`),
+        fetchComments: async (number) =>
+          paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+        fetchCheckRuns: async (sha) => checkRuns(sha),
+        fetchClosingIssues: async (number) => listClosingIssues(token, owner, repo, number),
+      }),
   });
   return { promoted, landedCount };
 }
@@ -795,7 +860,7 @@ if (plan.firstFailure !== -1) {
     validationFailure: true,
     detail: `PR #${failingEntry.number} is the first failing addition in the validated prefix.`,
   });
-  await dispatchRecovery(failingEntry.number, 'merge-train-validation-failure');
+  await dispatchRecoveryGated(failingEntry.number, 'merge-train-validation-failure');
   process.stdout.write(
     `isolated first failing pr=#${failingEntry.number} green_prefix=${plan.greenPrefixLength}\n`,
   );

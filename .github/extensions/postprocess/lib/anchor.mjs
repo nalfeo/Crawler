@@ -55,3 +55,20 @@ export function anchorMarkerPercent(args) {
     topPct: ((y + 0.5) / naturalHeight) * 100,
   };
 }
+
+/**
+ * Select the center pixel using the same floor policy as a click exactly halfway
+ * across the rendered image. Even dimensions choose the lower/right center pixel.
+ *
+ * @param {{naturalWidth:number, naturalHeight:number}} args
+ * @returns {{x:number, y:number}|null}
+ */
+export function middleAnchor(args) {
+  if (!args || typeof args !== 'object') return null;
+  const { naturalWidth, naturalHeight } = args;
+  if (!(naturalWidth > 0) || !(naturalHeight > 0)) return null;
+  return {
+    x: Math.min(naturalWidth - 1, Math.floor(naturalWidth / 2)),
+    y: Math.min(naturalHeight - 1, Math.floor(naturalHeight / 2)),
+  };
+}
