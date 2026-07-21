@@ -15,6 +15,10 @@
  */
 
 import type { EquipmentItemDef } from './equipment-types.js';
+import {
+  FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS,
+  FLOOR2_EQUIPMENT_WAVE_B_WEAPON_EQUIPMENT_DEFS,
+} from './data/floor2-equipment-wave-b.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from './quest-types.js';
 import { getWeaponDef } from './weaponDefs.js';
 
@@ -164,6 +168,8 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     weaponId: 'landmine',
     weightLb: 3,
   }),
+  // --- Floor 2 weapons ---
+  ...FLOOR2_EQUIPMENT_WAVE_B_WEAPON_EQUIPMENT_DEFS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -301,6 +307,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     rarity: 'rare',
     weightLb: 0.25,
   },
+  ...FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS,
 ];
 
 /**
@@ -309,7 +316,9 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
  * slot without re-deriving the list. Weapons and the charm are intentionally
  * excluded (weapons occupy hand slots the paper-doll fills separately).
  */
-export const GEAR_ITEM_IDS: readonly string[] = GEAR_EQUIPMENT_DEFS.map((d) => d.id);
+export const GEAR_ITEM_IDS: readonly string[] = GEAR_EQUIPMENT_DEFS.filter(
+  (definition) => !definition.tags?.includes('wave-b'),
+).map((definition) => definition.id);
 
 /**
  * Canonical generated-stock bases for the Floor 2 Quartermaster. Generated

@@ -269,7 +269,7 @@ function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipme
     baseId: equipmentDef.id,
     template,
     displayName: equipmentDef.name,
-    artKey: floor2WeaponBase?.artKey ?? equipmentDef.id,
+    artKey: floor2WeaponBase?.artKey ?? equipmentDef.artKey ?? equipmentDef.id,
     slots: [...equipmentDef.slots],
     tags: baseTags(equipmentDef, targetKind),
     weightLb: equipmentDef.weightLb,

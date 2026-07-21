@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "floor-2-equipment-wave-b",
+  "task_title": "Floor 2 equipment content wave B",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adopted manifest-first ordinals 26-70 and a dedicated Wave B overlay; rejected a reservation-only split because this PR must deliver complete definitions. Added explicit 25/20 rosters, runtime art keys with existing fallback behavior, canonical slot mapping, per-base generation tests, and a final Wave A head check."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}
