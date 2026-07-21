@@ -251,6 +251,28 @@ describe('initCheckpoint', () => {
     );
   });
 
+  it("throws when legacyBaseline's config body is tuned by LESS than configId's 4-decimal rounding — configId() rounds every knob to 4dp for stable identity, so a body-vs-canonical check that compares configId strings (instead of raw values) would let a sub-4dp-tuned body slip through under the canonical key", () => {
+    // configId(BASE) rounds aggression to 4dp, so a body tuned by 0.00001 —
+    // below that resolution — computes to the IDENTICAL configId as the
+    // canonical base, even though the raw stored value is not exactly
+    // canonical. An id-based body comparison cannot distinguish these; only
+    // an exact (stableStringify) comparison of the raw values can.
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const subDpTunedBody: SweepConfig = { ...BASE, aggression: BASE.aggression! + 0.00001 };
+    expect(configId(subDpTunedBody)).toBe(BASE_ID); // same id despite different raw value
+    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100)], {
+      [BASE_ID]: subDpTunedBody, // canonical key AND canonical configId, but non-canonical raw body
+    });
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /config body does not match/,
+    );
+  });
+
   // A follow-up independent code-review pass on the net-win promotion rule
   // (PR #1735) found that build-fingerprint provenance checks added to the
   // legacy/manual `--stage search` path (assertLegacyBaselineProvenance in

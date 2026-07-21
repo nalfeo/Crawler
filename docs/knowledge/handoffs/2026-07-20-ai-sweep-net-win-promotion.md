@@ -210,7 +210,7 @@ No ADR was needed (single-system change, not affecting 2+ systems).
 - `npx tsc --noEmit` — clean, no errors.
 - `npx vitest run tests/unit/ai/sweep-aggregate-shards.test.ts
 tests/unit/ai/sweep-round-plan.test.ts
-tests/unit/ai/sweep-eval-search-promotion.test.ts` — **138/138 passing**
+tests/unit/ai/sweep-eval-search-promotion.test.ts` — **140/140 passing**
   (including the two mirrored 292/300-vs-286/300 regression tests at the
   aggregate-shards and legacy-path levels, the wins-tie rejection test, the
   wins-decrease rejection test, the isolated below-90%-floor test, the
@@ -219,10 +219,11 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **138/138 passing**
   across both provenance-check call sites, 4 `initCheckpoint` legacyBaseline
   provenance tests, 2 `currentBuildFingerprint` truncation tests, 3
   round-12 `initCheckpoint` legacyBaseline stage/safeRoomMs/config-identity
-  tests, 2 round-14 tuned-legacy-baseline-spoof (map-key) rejection tests, and
-  2 round-15 config-body-vs-key rejection tests).
-- `npx vitest run tests/unit/ai` (full AI suite) — **336/336 passing**.
-- `npx tsc --noEmit` — clean, no errors (re-verified after round 15).
+  tests, 2 round-14 tuned-legacy-baseline-spoof (map-key) rejection tests, 2
+  round-15 config-body-vs-key rejection tests, and 2 round-16 sub-4dp
+  config-body-drift rejection tests).
+- `npx vitest run tests/unit/ai` (full AI suite) — **338/338 passing**.
+- `npx tsc --noEmit` — clean, no errors (re-verified after round 16).
 - `npm run verify:fast` — ✅ passed (typecheck + lint + changed tests + size/
   weight/physics-defs coverage checks).
 - `npm run verify:pr-prereqs` — checked after handoff + ledger were committed.
@@ -443,6 +444,40 @@ LEGACY}))` right after the "exactly one config" check — but did not
       `sweep-round-plan.test.ts`, `sweep-eval-search-promotion.test.ts`),
       336/336 full `tests/unit/ai`, `tsc --noEmit` clean, `verify:fast` clean.
       Ledger: round 14 appended to `code_review` (`clean:true`,
+      `concerns_count:1`, `resolved_count:1`) in
+      `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
+  - **Round 16** (copilot-pull-request-reviewer, automated review posted
+    against round 15's pushed HEAD `52582843`): 1 new formal thread on
+    `sweep-eval.ts:351` (the round-15 formal thread on `round-plan.ts:236` was
+    already addressed by `bafa1a58` and resolved as-is with no code change).
+    - **`configId()`'s 4dp rounding defeats the round-15 body check**:
+      `configId()` rounds every numeric knob to 4dp for stable
+      identity/dedup (`gen-configs.ts` `round4()`), but round 15's
+      config-body-vs-key fix compared bodies via
+      `configId(storedBody) === configId(canonical)`. A stored body tuned by
+      less than 0.00005 from canonical (e.g. `aggression = canonical +
+0.00001`) rounds to the identical `configId`, so it would slip past the
+      round-15 check while still being a non-canonical runtime config —
+      defeating the exact-provenance guarantee that check exists to provide.
+      Confirmed genuine by re-reading `gen-configs.ts`'s `configId`/`round4`
+      directly (not just the reviewer's claim). Fix: replaced the
+      `configId`-based body comparison with an exact comparison of the raw
+      serialized body, reusing the pre-existing `stableStringify()` helper
+      (`round-plan.ts` — previously module-private, now exported so
+      `sweep-eval.ts` can import and reuse it instead of duplicating a second
+      serializer). `stableStringify` performs no numeric rounding, so it
+      cannot be fooled by sub-4dp drift; applied identically in both
+      `initCheckpoint` (`round-plan.ts`) and `assertLegacyBaselineProvenance`
+      (`sweep-eval.ts`) to keep the two promotion paths sharing one rule.
+      Two new regression tests (one per file) construct a body tuned by
+      exactly 0.00001 below the rounding threshold, assert
+      `configId(tunedBody) === configId(canonical)` (proving the old,
+      round-15 check would have missed it), then assert the new check still
+      throws `config body does not match`.
+      Verification: 140/140 targeted (+2 vs round 15's 138), 338/338 full
+      `tests/unit/ai` (+2 vs round 15's 336), `tsc --noEmit` clean,
+      `verify:fast` clean.
+      Ledger: round 15 appended to `code_review` (`clean:true`,
       `concerns_count:1`, `resolved_count:1`) in
       `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 - Apple record: `docs/knowledge/metrics/apples/2026-07-20-ai-sweep-net-win-promotion.json`

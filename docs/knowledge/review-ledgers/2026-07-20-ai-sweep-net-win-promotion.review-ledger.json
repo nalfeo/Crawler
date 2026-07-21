@@ -126,6 +126,14 @@
           "concerns_count": 1,
           "models": ["copilot-pull-request-reviewer"],
           "round": 14
+        },
+        {
+          "round": 15,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Automated review on head 52582843 found a precision gap in the config-body-vs-key spoof fix landed by bafa1a58 (round 14): both initCheckpoint (round-plan.ts) and assertLegacyBaselineProvenance (sweep-eval.ts) compared the stored config body to the canonical LEGACY base via configId(body) === configId(canonical). configId() rounds every numeric knob to 4dp for stable identity/dedup (gen-configs.ts round4()), so a tuned body differing from canonical by less than 0.00005 (e.g. aggression = canonical + 0.00001) computes to the IDENTICAL configId and would slip past an id-based body check while still being a non-canonical runtime config -- defeating the exact-provenance guarantee the check exists to provide. Fix: replaced the configId-based body comparison in both files with an exact comparison of the raw serialized body via the pre-existing stableStringify() helper (round-plan.ts, previously private, now exported for reuse in sweep-eval.ts), which performs no rounding and so cannot be fooled by sub-4dp drift. Two regression tests added (one per file) construct a body tuned by exactly 0.00001 below the rounding threshold, assert configId() collides with the canonical id (proving the old check would have missed it), and assert the new check still throws 'config body does not match'. 140/140 targeted (sweep-round-plan + sweep-eval-search-promotion + sweep-aggregate-shards, +2 vs round 14's 138), 338/338 full tests/unit/ai (+2 vs round 14's 336), tsc --noEmit clean, verify:fast green. A second, unrelated thread on the same review pass (round-plan.ts:236) reported the map-key/body check as already addressed by bafa1a58 and was resolved as-is with no further action."
         }
       ]
     }

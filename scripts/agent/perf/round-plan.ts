@@ -76,8 +76,13 @@ function makeRowKey(r: RunRow): string {
  * Plain `JSON.stringify` can produce different output for two logically-equal
  * objects that were constructed by different code paths with different key
  * insertion orders, causing spurious "conflicting config definition" errors.
+ *
+ * Exported so `sweep-eval.ts` can reuse it for exact (non-rounded) config-body
+ * provenance checks — see `assertLegacyBaselineProvenance`. Unlike `configId()`,
+ * this performs no numeric rounding, so it catches sub-4dp tuned drift that a
+ * configId-based body comparison would miss.
  */
-function stableStringify(obj: unknown): string {
+export function stableStringify(obj: unknown): string {
   if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
     return JSON.stringify(obj);
   }
@@ -230,9 +235,11 @@ export function initCheckpoint(
     // candidate also has one config, LEGACY-tagged rows, and valid row facts,
     // so it would otherwise pass every check below and silently replace the
     // fixed incumbent with a tuned (non-canonical) LEGACY variant.
-    const canonicalLegacyId = configId(
-      baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
-    );
+    const canonicalLegacyConfig = baseConfigForCombo({
+      pathing: AIPathingMode.LEGACY,
+      decision: AIDecisionMode.LEGACY,
+    });
+    const canonicalLegacyId = configId(canonicalLegacyConfig);
     if (legacyId !== canonicalLegacyId) {
       throw new Error(
         `initCheckpoint(${comboStr}): legacyBaseline shard's declared config must be the ` +
@@ -240,19 +247,25 @@ export function initCheckpoint(
           `config (id '${legacyId}').`,
       );
     }
-    // Also verify the stored config BODY computes to the same canonical id —
-    // the key check above catches a mis-keyed artifact, but the body could
-    // still carry tuned values if the canonical key string was supplied
-    // manually while the config object itself was a tuned variant. configId is
-    // a deterministic function of every field in the body, so a mismatch here
-    // guarantees the body is non-canonical.
-    const storedBodyId = configId(legacyBaseline.configs[legacyId]!);
-    if (storedBodyId !== canonicalLegacyId) {
+    // Also verify the stored config BODY is *exactly* the canonical LEGACY base
+    // config — the key check above catches a mis-keyed artifact, but the body
+    // could still carry tuned values if the canonical key string was supplied
+    // manually while the config object itself was a tuned variant. Comparing
+    // via `configId()` would miss sub-4dp drift: configId() rounds every
+    // numeric knob to 4dp (see gen-configs.ts `round4`), so a tuned value like
+    // canonical+0.00001 would round to the identical id and slip past an
+    // id-based body check while still being a non-canonical runtime config.
+    // `stableStringify` performs no rounding, so it catches any body drift,
+    // however small.
+    const canonicalLegacyBody = stableStringify(canonicalLegacyConfig);
+    const storedBody = stableStringify(legacyBaseline.configs[legacyId]!);
+    if (storedBody !== canonicalLegacyBody) {
       throw new Error(
         `initCheckpoint(${comboStr}): legacyBaseline shard config body does not match the ` +
           `canonical LEGACY base config. Config key '${legacyId}' is correct, but the stored ` +
-          `config body produces id '${storedBodyId}'. The config body must be the untuned ` +
-          `canonical LEGACY base, not a tuned variant under a canonical-looking key.`,
+          `config body's values differ from the untuned canonical LEGACY base. The config body ` +
+          `must be exactly the canonical LEGACY base, not a tuned variant under a ` +
+          `canonical-looking key.`,
       );
     }
     const legacyRowCombos = new Set(legacyBaseline.rows.map((r) => r.combo));

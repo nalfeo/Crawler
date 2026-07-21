@@ -546,6 +546,26 @@ describe('assertLegacyBaselineProvenance', () => {
       /config body does not match/,
     );
   });
+
+  it("rejects an artifact whose config body is tuned by LESS than configId's 4-decimal rounding — configId() rounds every knob to 4dp for stable identity, so a body-vs-canonical check that compares configId strings (instead of raw values) would let a sub-4dp-tuned body slip through under the canonical key", () => {
+    // configId() rounds aggression to 4dp (see gen-configs.ts `round4`), so a
+    // body tuned by 0.00001 — below that resolution — computes to the
+    // IDENTICAL configId as the canonical base even though the raw stored
+    // value is not exactly canonical. An id-based body comparison cannot
+    // distinguish these; only an exact (stableStringify) comparison of the
+    // raw values can.
+    const artifact = validArtifact();
+    const canonicalBody = baseConfigForCombo({
+      pathing: AIPathingMode.LEGACY,
+      decision: AIDecisionMode.LEGACY,
+    });
+    const subDpTunedBody = { ...canonicalBody, aggression: canonicalBody.aggression! + 0.00001 };
+    expect(configId(subDpTunedBody)).toBe(CANONICAL_LEGACY_ID); // same id, different raw value
+    artifact.configs[CANONICAL_LEGACY_ID] = subDpTunedBody; // canonical key AND configId, tuned raw body
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(
+      /config body does not match/,
+    );
+  });
 });
 
 describe('currentBuildFingerprint', () => {

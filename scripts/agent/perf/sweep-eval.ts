@@ -97,7 +97,7 @@ import {
   type ShardArtifact,
   type ShardMeta,
 } from './aggregate-shards.js';
-import { halveSteps } from './round-plan.js';
+import { halveSteps, stableStringify } from './round-plan.js';
 import {
   runWorkerPool,
   type WorkerPoolTaskPayload,
@@ -324,9 +324,11 @@ export function assertLegacyBaselineProvenance(
       `--legacy-baseline artifact must contain exactly one config, got ${legacyIds.length}.`,
     );
   }
-  const canonicalLegacyConfigId = configId(
-    baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
-  );
+  const canonicalLegacyConfig = baseConfigForCombo({
+    pathing: AIPathingMode.LEGACY,
+    decision: AIDecisionMode.LEGACY,
+  });
+  const canonicalLegacyConfigId = configId(canonicalLegacyConfig);
   if (legacyId !== canonicalLegacyConfigId) {
     throw new Error(
       `--legacy-baseline artifact configId '${legacyId}' is not the canonical LEGACY base config ` +
@@ -334,19 +336,24 @@ export function assertLegacyBaselineProvenance(
         `the fixed incumbent. Produce it via '--stage search-baseline --combo ${LEGACY_COMBO_ID}'.`,
     );
   }
-  // Also verify the stored config BODY computes to the same canonical id —
-  // the key check above catches a mis-keyed artifact, but the body could
-  // still carry tuned values if the canonical key string was supplied
-  // manually while the config object itself was a tuned variant. configId is
-  // a deterministic function of every field in the body, so a mismatch here
-  // guarantees the body is non-canonical.
-  const storedBodyId = configId(artifact.configs[legacyId]!);
-  if (storedBodyId !== canonicalLegacyConfigId) {
+  // Also verify the stored config BODY is *exactly* the canonical LEGACY base
+  // config — the key check above catches a mis-keyed artifact, but the body
+  // could still carry tuned values if the canonical key string was supplied
+  // manually while the config object itself was a tuned variant. Comparing
+  // via `configId()` would miss sub-4dp drift: configId() rounds every
+  // numeric knob to 4dp (see gen-configs.ts `round4`), so a tuned value like
+  // canonical+0.00001 would round to the identical id and slip past an
+  // id-based body check while still being a non-canonical runtime config.
+  // `stableStringify` performs no rounding, so it catches any body drift,
+  // however small.
+  const canonicalLegacyBody = stableStringify(canonicalLegacyConfig);
+  const storedBody = stableStringify(artifact.configs[legacyId]!);
+  if (storedBody !== canonicalLegacyBody) {
     throw new Error(
       `--legacy-baseline artifact config body does not match the canonical LEGACY base config. ` +
-        `Config key '${legacyId}' is correct, but the stored config body produces id ` +
-        `'${storedBodyId}'. The config body must be the untuned canonical LEGACY base, ` +
-        `not a tuned variant under a canonical-looking key.`,
+        `Config key '${legacyId}' is correct, but the stored config body's values differ from ` +
+        `the untuned canonical LEGACY base. The config body must be exactly the canonical ` +
+        `LEGACY base, not a tuned variant under a canonical-looking key.`,
     );
   }
   const rowCombos = new Set(artifact.rows.map((r) => r.combo));
