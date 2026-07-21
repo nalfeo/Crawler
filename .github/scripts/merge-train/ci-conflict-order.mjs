@@ -40,9 +40,16 @@ function normalizePull(pull, files) {
     state: pull.state,
     draft: pull.draft,
     createdAt: pull.created_at,
-    additions: Number(pull.additions || 0),
-    deletions: Number(pull.deletions || 0),
-    changedFiles: Number(pull.changed_files || paths.length),
+    // fetchOpenPulls() uses the list endpoint which does not carry additions,
+    // deletions, or changed_files. The candidate PR may be replaced with a
+    // full GET response that does carry them, creating an asymmetric snapshot
+    // where different candidates each rank themselves first on the
+    // additions+deletions tiebreaker. Derive all three fields uniformly from
+    // the file inventory (already fetched for every pull) so ranking is
+    // deterministic regardless of which REST shape is passed.
+    additions: 0,
+    deletions: 0,
+    changedFiles: paths.length,
     nodeId: pull.node_id,
     autoMerge: pull.auto_merge,
     headSha: pull.head?.sha,

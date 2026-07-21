@@ -102,6 +102,29 @@ function makePull(number, sha, fileCount, createdAt) {
   };
 }
 
+// Returns a pull object in the shape returned by the GitHub list endpoint:
+// no additions, deletions, or changed_files fields. This mirrors the real
+// shape used by fetchOpenPulls() and exposes the asymmetry that would arise
+// if normalizePull used the detailed REST shape for the candidate.
+function makeListShapePull(number, sha, createdAt) {
+  return {
+    number,
+    title: `feat: pr ${number}`,
+    state: 'open',
+    draft: false,
+    created_at: createdAt,
+    node_id: `PR_${number}`,
+    auto_merge: null,
+    labels: [{ name: 'merge-train' }],
+    base: { ref: 'main' },
+    head: {
+      sha,
+      ref: `feature/pr-${number}`,
+      repo: { full_name: REPOSITORY },
+    },
+  };
+}
+
 test('ciConflictOrderReasonForPromotion blocks a non-current PR even before the label fence exists', async () => {
   const { tmpDir, workDir, baseSha, pr1Sha, pr2Sha, pr3Sha } = setupRepo();
   try {
@@ -315,6 +338,62 @@ test('ciConflictOrderReasonForPromotion fails closed when a group member synchro
     });
     assert.match(reason, /head drifted/);
     assert.match(reason, /#3/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('ciConflictOrderReasonForPromotion uses file inventory for ranking regardless of REST shape', async () => {
+  // Regression: fetchOpenPulls() returns list-endpoint shape (no additions/
+  // deletions/changed_files), but the candidate is the detailed pullRequest
+  // object (full GET response with additions/deletions populated). Without
+  // uniform derivation from file inventory, the candidate always wins the
+  // additions+deletions tiebreaker and can claim to be the active slot even
+  // when an earlier-created peer should be ranked first.
+  const { tmpDir, workDir, baseSha, pr1Sha, pr2Sha, pr3Sha } = setupRepo();
+  try {
+    // PR #1 was created first and has the same CI-file footprint as PR #3.
+    // PR #3 is the candidate with a full GET shape (large additions/deletions).
+    // PR #2 connects the cluster via b.yml overlap.
+    const pull1 = makeListShapePull(1, pr1Sha, '2026-07-20T00:00:00Z');
+    const pull2 = makeListShapePull(2, pr2Sha, '2026-07-20T00:01:00Z');
+    // Candidate: full detailed GET shape with nonzero additions/deletions that
+    // would win the tiebreaker before the file-inventory fix.
+    const candidatePull3 = {
+      ...makeListShapePull(3, pr3Sha, '2026-07-20T00:02:00Z'),
+      additions: 200,
+      deletions: 150,
+      changed_files: 2,
+    };
+    const pulls = [pull1, pull2, candidatePull3];
+    const files = new Map([
+      [1, [{ filename: '.github/workflows/a.yml' }, { filename: '.github/workflows/b.yml' }]],
+      [2, [{ filename: '.github/workflows/b.yml' }]],
+      [3, [{ filename: '.github/workflows/a.yml' }, { filename: '.github/workflows/b.yml' }]],
+    ]);
+    // PR #1 and PR #3 both touch a.yml and b.yml (2 CI files each) so they
+    // rank equally on green/ciFiles/changedFiles. The createdAt tiebreaker
+    // makes PR #1 the active slot, so the later-created candidate #3 must be
+    // blocked — regardless of how large its additions/deletions are.
+    const reason = await ciConflictOrderReasonForPromotion({
+      pullRequest: candidatePull3,
+      baseSha,
+      owner: OWNER,
+      repo: REPO,
+      repository: REPOSITORY,
+      trustedAppId: TRUSTED_APP_ID,
+      requiredChecks: ['ci', 'Security checks'],
+      git: (args, options) => git(workDir, args, options),
+      fetchOpenPulls: async () => pulls,
+      fetchPullFiles: async (number) => files.get(number) || [],
+      fetchComments: async () => [],
+      fetchCheckRuns: async () => [
+        { name: 'ci', status: 'completed', conclusion: 'success' },
+        { name: 'Security checks', status: 'completed', conclusion: 'success' },
+      ],
+      fetchClosingIssues: async () => [],
+    });
+    assert.match(reason, /currently selects #1/);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
