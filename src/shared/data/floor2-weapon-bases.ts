@@ -3,6 +3,7 @@ import { MeleeStyle, WEAPON, WeaponType } from '../constants.js';
 import type { EquipmentSlotId } from '../equipment-slots.js';
 import type { EquipmentItemDef } from '../equipment-types.js';
 import type { WeaponDef } from '../weaponDefs.js';
+import { createWeaponDef } from '../weapon-def-defaults.js';
 import {
   FLOOR2_EQUIPMENT_ART_DEFINITIONS,
   type Floor2EquipmentFamily,
@@ -21,43 +22,8 @@ export interface Floor2WeaponBaseDefinition {
   readonly weaponDef: WeaponDef;
 }
 
-function weaponDef(
-  partial: Partial<WeaponDef> &
-    Pick<
-      WeaponDef,
-      | 'id'
-      | 'name'
-      | 'weaponType'
-      | 'baseDamage'
-      | 'cooldownMs'
-      | 'weaponClassSkillId'
-      | 'weaponTypeSkillId'
-    >,
-): WeaponDef {
-  return {
-    range: 0,
-    projectileSpeed: 0,
-    aoeRadius: 0,
-    durationMs: 0,
-    beamTickMs: 0,
-    beamLength: 0,
-    trapArmMs: 0,
-    trapTriggerRadius: 0,
-    trapExplosionRadius: 0,
-    returnSpeed: 0,
-    maxRange: 0,
-    swingArcDeg: 360,
-    meleeStyle: MeleeStyle.SLASH,
-    headRadius: 0,
-    shaftDamageMult: 1,
-    knockback: 0,
-    pierce: 0,
-    bounceCount: 0,
-    goreFactor: 0.5,
-    baseAccuracy: 0.85,
-    ...partial,
-  };
-}
+/** @see createWeaponDef in weapon-def-defaults.ts (shared with the canonical WEAPON_DEFS catalog) */
+const weaponDef = createWeaponDef;
 
 function base(
   stableId: Floor2WeaponStableId,
