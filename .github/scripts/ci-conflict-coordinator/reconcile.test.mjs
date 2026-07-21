@@ -208,6 +208,9 @@ async function runScript(port, workDir, extraEnv = {}) {
  * @param {string} opts.pr1Sha
  * @param {string} opts.pr2Sha
  * @param {string} opts.pr3Sha
+ * @param {string} [opts.livePr1Sha]      - SHA returned by live GET /pulls/1 reads;
+ *   defaults to pr1Sha. Pass a different value to simulate a synchronize race
+ *   after the initial open-PR snapshot but before active-slot exposure.
  * @param {string} [opts.postClosePr3Sha]  - SHA returned for PR3 in post-close reads;
  *   defaults to pr3Sha (no drift). Pass a different value to simulate drift.
  * @param {number} [opts.reopenStatus]     - HTTP status to return for the reopen PATCH;
@@ -220,6 +223,7 @@ function buildRoutes({
   pr1Sha,
   pr2Sha,
   pr3Sha,
+  livePr1Sha = pr1Sha,
   postClosePr3Sha,
   reopenStatus = 200,
   fenceReleaseStatus = 204,
@@ -309,8 +313,8 @@ function buildRoutes({
     // Check runs (all empty → not green)
     [`GET /repos/${OWNER}/${REPO}/commits`]: () => ({ body: { check_runs: [] } }),
 
-    // Live PR reads for PR1 (leader, unchanged throughout)
-    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({ body: livePull(1, pr1Sha) }),
+    // Live PR reads for PR1 (leader): can drift after the initial snapshot.
+    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({ body: livePull(1, livePr1Sha) }),
 
     // Live PR reads for PR2
     [`GET /repos/${OWNER}/${REPO}/pulls/2`]: () => ({ body: livePull(2, pr2Sha) }),
@@ -416,6 +420,69 @@ test('coordinator closes superseded duplicate and confirms on revalidation (no d
   assert.equal(reopenPatch, undefined, 'must not reopen when post-close proof is stable');
 
   assert.match(stdout, /closed pr=#3/, 'stdout must log successful closure');
+});
+
+test('coordinator keeps every member fenced when the active-slot head drifts before exposure', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const driftedActiveSha = '6'.repeat(40);
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha, livePr1Sha: driftedActiveSha }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const activeFenceAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      c.url === `/repos/${OWNER}/${REPO}/issues/1/labels` &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-order-wait'),
+  );
+  assert.ok(activeFenceAdd, 'expected active slot to be fenced before any exposure attempt');
+
+  const activeFenceRemove = mutatingCalls.find(
+    (c) =>
+      c.method === 'DELETE' &&
+      c.url === `/repos/${OWNER}/${REPO}/issues/1/labels/ci-conflict-order-wait`,
+  );
+  assert.equal(
+    activeFenceRemove,
+    undefined,
+    'must keep ORDER_WAIT on the selected active slot when its bound head drifts before exposure',
+  );
+
+  const recoveryDispatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      c.url === `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`,
+  );
+  assert.equal(
+    recoveryDispatch,
+    undefined,
+    'must not dispatch ci-recovery from a stale active-slot selection',
+  );
+
+  const closePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'closed',
+  );
+  assert.equal(
+    closePatch,
+    undefined,
+    'must not close another group member from the stale selection',
+  );
 });
 
 test('coordinator reopens duplicate when post-close drift is detected', async (t) => {

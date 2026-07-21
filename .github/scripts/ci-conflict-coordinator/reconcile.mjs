@@ -305,6 +305,45 @@ async function fetchBaseSha() {
     .sha;
 }
 
+function livePullMatchesSelectionBinding(pull, livePull) {
+  return (
+    Boolean(livePull) &&
+    livePull.state === 'open' &&
+    !livePull.draft &&
+    livePull.base?.ref === BASE_REF &&
+    livePull.head?.sha === pull.headSha &&
+    livePull.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+    (!pull.headRef || livePull.head?.ref === pull.headRef)
+  );
+}
+
+async function selectionBindingsStillMatch(pulls, mainSha) {
+  const currentMain = await fetchBaseSha();
+  if (currentMain !== mainSha) {
+    return {
+      matches: false,
+      reason: `selection bindings drifted: main advanced from ${mainSha} to ${currentMain}`,
+    };
+  }
+  const livePullEntries = await mapLimit(pulls, 4, async (pull) => [
+    pull.number,
+    await fetchLivePull(pull.number),
+  ]);
+  const livePulls = new Map(livePullEntries);
+  for (const pull of pulls) {
+    const livePull = livePulls.get(pull.number);
+    if (livePullMatchesSelectionBinding(pull, livePull)) continue;
+    return {
+      matches: false,
+      reason:
+        `selection bindings drifted: pr=#${pull.number} expected head=${pull.headSha}` +
+        `${pull.headRef ? ` ref=${pull.headRef}` : ''} got head=${livePull?.head?.sha ?? 'missing'}` +
+        `${livePull?.head?.ref ? ` ref=${livePull.head.ref}` : ''}`,
+    };
+  }
+  return { matches: true };
+}
+
 async function targetHasHealthyOwner(number) {
   const [pull, comments] = await Promise.all([fetchLivePull(number), commentsFor(number)]);
   const normalized = {
@@ -626,7 +665,22 @@ for (const group of groups) {
     if (escalated) await addLabel(pull, ESCALATION_LABEL);
     else await removeLabel(pull, ESCALATION_LABEL);
   }
-  if (activeSafe) await removeLabel(selection.active, ORDER_WAIT_LABEL);
+  let activeReady = false;
+  let selectionBindingDrift = null;
+  if (activeSafe) {
+    const bindingCheck = await selectionBindingsStillMatch(group.pulls, mainSha);
+    if (bindingCheck.matches) {
+      await removeLabel(selection.active, ORDER_WAIT_LABEL);
+      activeReady = true;
+    } else {
+      selectionBindingDrift = bindingCheck.reason;
+      escalations.push(bindingCheck.reason);
+      for (const pull of group.pulls) {
+        await addLabel(pull, ESCALATION_LABEL);
+      }
+      process.stdout.write(`retain fenced group=${group.groupId} reason=${bindingCheck.reason}\n`);
+    }
+  }
 
   const priorStates = group.pulls
     .map(
@@ -645,12 +699,12 @@ for (const group of groups) {
   let lastDispatchAt = priorStates[0]?.lastDispatchAt || null;
   const nextDispatchKey = dispatchKey({
     groupId: group.groupId,
-    active: activeSafe ? selection.active : null,
+    active: activeReady ? selection.active : null,
     baseSha: mainSha,
     order: selection.ordered,
   });
   if (
-    activeSafe &&
+    activeReady &&
     shouldDispatchActiveSlot({
       recoveryState: activeRecovery.state,
       headSha: selection.active.headSha,
@@ -676,7 +730,7 @@ for (const group of groups) {
       groupId: group.groupId,
       originalMembers: group.originalMembers,
       leaderNumber: selection.leader.number,
-      activeNumber: activeSafe ? selection.active.number : null,
+      activeNumber: activeReady ? selection.active.number : null,
       order: selection.ordered,
       proofs,
       overlapFiles,
@@ -689,6 +743,10 @@ for (const group of groups) {
   }
 
   for (const duplicate of selection.duplicates) {
+    if (selectionBindingDrift) {
+      process.stdout.write(`retain pr=#${duplicate.number} reason=selection-binding-drift\n`);
+      continue;
+    }
     const recovery = recoveryByNumber.get(duplicate.number);
     if (recovery.healthy || recovery.ownershipError) continue;
     if (humanApprovalByNumber.get(duplicate.number)) {
