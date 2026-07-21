@@ -135,6 +135,7 @@ function runPromotion(overrides = {}) {
     },
     recordMapping: (number, sha) => records.mapping.push({ number, sha }),
     reattestHealth: overrides.reattestHealth || (async () => true),
+    verifyMergeSlot: overrides.verifyMergeSlot || (async () => null),
     proofSleep: async () => {},
   });
 
@@ -367,6 +368,185 @@ test('promoteExactBatch pauses when main health regresses at final reattestation
   const { promise, records } = runPromotion({ reattestHealth: async () => false });
   assert.equal(await promise, false);
   assert.equal(records.merges.length, 0);
+});
+
+test('promoteExactBatch blocks a merge when the final merge-slot recheck fails', async () => {
+  const { promise, records } = runPromotion({
+    entries: [1],
+    candidateShas: [CAND1],
+    verifyMergeSlot: async () => 'ci-conflict coordinator currently selects #2',
+  });
+  assert.equal(await promise, false);
+  assert.deepEqual(records.merges, []);
+});
+
+test('promoteExactBatch fails closed when main moves during the coordinator slot verification', async () => {
+  // The base-CAS check passes (main === BASE), then verifyMergeSlot runs the
+  // coordinator scan (fetches files, comments, checks, git proofs for all
+  // group members). During that scan an external writer advances main. The
+  // post-verifyMergeSlot re-read must catch the drift and return false before
+  // issuing the merge PUT.
+  const EXTERNAL_SHA = '9'.repeat(40);
+  let main = BASE;
+  const merges = [];
+  const result = await promoteExactBatch({
+    entries: [makePromoPr(1)],
+    candidateShas: [CAND1],
+    expectedBase: BASE,
+    repository: REPO,
+    live: true,
+    fetchCurrentPr: async () => makePromoPr(1),
+    fetchCurrentMain: async () => main,
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+    eligible: async () => ({ ok: true }),
+    git: (args) =>
+      args[0] === 'rev-parse'
+        ? args[1]?.endsWith('^{tree}')
+          ? TREE1
+          : args[1]?.endsWith('^')
+            ? BASE
+            : args[1]
+        : '',
+    mergePullRequest: async (entry, args) => {
+      merges.push({ number: entry.number, ...args });
+      main = LAND1;
+      return { ok: true, sha: LAND1 };
+    },
+    setLabel: async () => {},
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    postLandedComment: async () => {},
+    publishPostconditionCheck: async () => {},
+    recordMapping: () => {},
+    reattestHealth: async () => true,
+    verifyCandidateEvidence: async () => true,
+    verifyMergeSlot: async () => {
+      // Simulate main advancing while the coordinator scan was running.
+      main = EXTERNAL_SHA;
+      return null; // the verifier itself found no blocking reason
+    },
+    proofSleep: async () => {},
+  });
+  // The post-verifyMergeSlot re-read detects EXTERNAL_SHA !== BASE and must
+  // rebuild without issuing the merge PUT.
+  assert.equal(result, false);
+  assert.deepEqual(merges, []);
+});
+
+test('promoteExactBatch fails closed when admission policy changes during the coordinator slot verification', async () => {
+  // The per-PR admission check passes before verifyMergeSlot, then verifyMergeSlot
+  // returns null (no blocking reason). During the scan a review thread is opened,
+  // making the PR no longer admission-eligible. The post-slot admission re-check
+  // must catch this and return false before the merge PUT.
+  const merges = [];
+  let slotVerified = false;
+  const result = await promoteExactBatch({
+    entries: [makePromoPr(1)],
+    candidateShas: [CAND1],
+    expectedBase: BASE,
+    repository: REPO,
+    live: true,
+    fetchCurrentPr: async () => makePromoPr(1),
+    fetchCurrentMain: async () => BASE,
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+    eligible: async () => {
+      // Pass on all pre-slot calls; only fail after the coordinator scan runs.
+      if (slotVerified) return { ok: false, reason: 'unresolved review thread' };
+      return { ok: true };
+    },
+    git: (args) =>
+      args[0] === 'rev-parse'
+        ? args[1]?.endsWith('^{tree}')
+          ? TREE1
+          : args[1]?.endsWith('^')
+            ? BASE
+            : args[1]
+        : '',
+    mergePullRequest: async (entry, args) => {
+      merges.push({ number: entry.number, ...args });
+      return { ok: true, sha: LAND1 };
+    },
+    setLabel: async () => {},
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    postLandedComment: async () => {},
+    publishPostconditionCheck: async () => {},
+    recordMapping: () => {},
+    reattestHealth: async () => true,
+    verifyCandidateEvidence: async () => true,
+    verifyMergeSlot: async () => {
+      // Simulate admission state changing while the coordinator scan ran.
+      slotVerified = true;
+      return null; // the verifier itself found no blocking reason
+    },
+    proofSleep: async () => {},
+  });
+  // The post-slot admission re-check detects the changed policy and must rebuild
+  // without issuing the merge PUT.
+  assert.equal(result, false);
+  assert.deepEqual(merges, []);
+});
+
+test('promoteExactBatch fails closed when auto_merge is re-armed during the coordinator slot verification', async () => {
+  // The per-PR auto_merge check passes (auto_merge === null) before verifyMergeSlot.
+  // A competing actor re-arms auto_merge during the coordinator scan. The post-slot
+  // admission re-check must catch this and return false before the merge PUT.
+  const merges = [];
+  let slotVerified = false;
+  const result = await promoteExactBatch({
+    entries: [makePromoPr(1)],
+    candidateShas: [CAND1],
+    expectedBase: BASE,
+    repository: REPO,
+    live: true,
+    fetchCurrentPr: async () =>
+      makePromoPr(1, { autoMerge: slotVerified ? {} : null }),
+    fetchCurrentMain: async () => BASE,
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+    eligible: async () => ({ ok: true }),
+    git: (args) =>
+      args[0] === 'rev-parse'
+        ? args[1]?.endsWith('^{tree}')
+          ? TREE1
+          : args[1]?.endsWith('^')
+            ? BASE
+            : args[1]
+        : '',
+    mergePullRequest: async (entry, args) => {
+      merges.push({ number: entry.number, ...args });
+      return { ok: true, sha: LAND1 };
+    },
+    setLabel: async () => {},
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    postLandedComment: async () => {},
+    publishPostconditionCheck: async () => {},
+    recordMapping: () => {},
+    reattestHealth: async () => true,
+    verifyCandidateEvidence: async () => true,
+    verifyMergeSlot: async () => {
+      // Simulate auto_merge being re-armed during the coordinator scan.
+      slotVerified = true;
+      return null; // the verifier itself found no blocking reason
+    },
+    proofSleep: async () => {},
+  });
+  // The post-slot auto_merge re-check detects the re-arming and must rebuild
+  // without issuing the merge PUT.
+  assert.equal(result, false);
+  assert.deepEqual(merges, []);
 });
 
 test('promoteExactBatch fails closed and publishes postcondition when final main guard sees main moved after promotion', async () => {
