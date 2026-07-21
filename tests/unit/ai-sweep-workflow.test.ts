@@ -155,7 +155,9 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(inputs.rounds).toMatchObject({ type: 'string', default: '2' });
     expect(inputs.secondary).toMatchObject({ type: 'boolean', default: false });
     // New resume input: blank by default so a fresh dispatch with no
-    // resume_run_id behaves byte-identically to before this feature existed.
+    // resume_run_id keeps the same combo set/search semantics as before this
+    // feature existed (not scheduling-identical -- baseline now always waits
+    // on the new resume-import job's checkout/Node-setup/metadata step).
     expect(inputs.resume_run_id).toMatchObject({ type: 'string', default: '' });
   });
 

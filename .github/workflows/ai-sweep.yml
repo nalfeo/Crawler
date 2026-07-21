@@ -79,8 +79,10 @@
 #   incomplete candidate shard from a round that was still in-flight when the
 #   prior run was cancelled; that in-flight round is simply recomputed from
 #   its last completed tier. Default `resume_run_id: ''` (blank) skips
-#   `resume-import`'s downloads entirely and behaves exactly as before this
-#   feature — a 100% fresh run for every combo.
+#   `resume-import`'s downloads entirely, giving a 100% fresh run for every
+#   combo — the same combo set/search semantics as before this feature, though
+#   not scheduling-identical (`baseline` still always waits on
+#   `resume-import`'s checkout/Node-setup/metadata step first).
 #
 #   `workflowSha` (`GITHUB_SHA` at record time) is deliberately EXCLUDED from
 #   this compatibility gate — see `assertResumeCompatible`'s docstring in
@@ -220,8 +222,11 @@ jobs:
   # never sees an empty/missing output (which would crash the workflow, not
   # just skip resume) and their `if:` guards never see a missing string. Blank
   # `resume_run_id` (default): `freshCombos` = every combo from preflight,
-  # `resumedCombos` = `[]`, `hasFreshCombos` = `'true'` — byte-identical to
-  # this workflow's pre-resume-support behavior. Non-blank: downloads the
+  # `resumedCombos` = `[]`, `hasFreshCombos` = `'true'` — the fresh combo set
+  # and search semantics are unchanged from this workflow's pre-resume-support
+  # behavior (NOT scheduling-identical: `baseline` now always waits on this
+  # `resume-import` job's checkout/Node-setup/metadata step, even on the
+  # blank/default path). Non-blank: downloads the
   # prior run's immutable per-round checkpoint artifacts (cross-run
   # `download-artifact@v4`, gated `continue-on-error` so a missing/expired
   # prior run degrades to "nothing importable" rather than failing this job)

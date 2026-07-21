@@ -43,8 +43,10 @@ verified, risking runner-starvation recurrence from an unbounded dispatch.
 
 - **`.github/workflows/ai-sweep.yml`**:
   - Added a `resume_run_id` `workflow_dispatch` input (blank by default — a
-    blank/omitted value is the fresh-run path and produces byte-identical
-    scheduling behavior to before this change).
+    blank/omitted value takes the fresh-run path: same combo set and search
+    semantics as before this change, though not scheduling-identical, since
+    `baseline` now always waits on the new `resume-import` job's
+    checkout/Node-setup/metadata step).
   - Added `actions: read` to `permissions:` (read-only; required for
     cross-run `download-artifact@v4` via `run-id`/`github-token`).
   - New **`resume-import`** job (runs unconditionally right after
@@ -97,12 +99,12 @@ verified, risking runner-starvation recurrence from an unbounded dispatch.
     final graduation gate at `validate`/`aggregate` is unaffected).
 
 - **`scripts/agent/perf/round-plan.ts`**:
-  - `RoundCheckpoint.runInputs?: { trainSeeds: string; weapons: string }` —
+  - `RoundCheckpoint.runInputs?: { trainSeeds: string; weapons: string; secondary: boolean }` —
     stamped once in `initCheckpoint` (new optional 5th param) and carried
     unchanged through every later round, same lifecycle as `meta`. Absent on
     checkpoints produced before this change (deliberately, so
     `assertResumeCompatible` fails closed rather than silently trusting an
-    old checkpoint's unknown TRAIN panel/weapon list).
+    old checkpoint's unknown TRAIN panel/weapon/knob-set).
   - New exported `ResumeExpectedProvenance` interface + `assertResumeCompatible()`:
     reuses the existing `assertShardCompatible` (schemaVersion/floorId/
     budgetMs/maxFrames — the same guard intra-run candidate shards already
