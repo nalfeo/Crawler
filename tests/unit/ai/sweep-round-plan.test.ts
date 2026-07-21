@@ -17,12 +17,15 @@
  *     cap, and emit nothing once a combo has converged;
  *   - `applyRoundResult` promotes only a candidate that BOTH out-scores the
  *     current best AND passes the same hard safety gate that governs final
- *     graduation (>=90% official wins AND zero win→loss flips vs the
- *     incumbent) — a higher-scoring candidate that flips an incumbent win
- *     must never be promoted (this is the fix for the real bug the 2026-07
- *     untuned graduation run, GH run 29597840666, exposed: 292/300-win
- *     candidates with 5 flips each were previously indistinguishable from a
- *     safe improvement by score alone);
+ *     graduation (human-approved net-win rule: >=90% official wins AND
+ *     STRICTLY MORE total wins than the incumbent — win→loss flips are
+ *     allowed as long as the candidate's absolute win count still increases)
+ *     — a higher-scoring candidate whose win count ties or decreases vs the
+ *     incumbent must never be promoted (this is the fix for the real bug the
+ *     2026-07 untuned graduation run, GH run 29597840666, exposed, and the
+ *     policy the human later refined: a 292/300-win candidate with 5 flips
+ *     vs a 286/300-win incumbent nets 6 MORE total wins and should qualify —
+ *     the old zero-flips gate wrongly rejected it);
  *   - otherwise it halves step sizes toward convergence — UNLESS the caller
  *     supplies `plannedCount` and some of this round's planned candidates
  *     never produced a shard at all (an infra failure, not a search
@@ -209,6 +212,203 @@ describe('initCheckpoint', () => {
       /legacyBaseline shard must contain exactly one config, got 2/,
     );
   });
+
+  it("throws when legacyBaseline's sole config is a TUNED (non-canonical) legacy+legacy candidate — a same-build --stage search-eval shard for a tuned legacy+legacy candidate also has one config, meta.stage='search', LEGACY-tagged rows, and valid row facts, so it would otherwise pass every other check and silently replace the fixed incumbent", () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const tunedLegacy: SweepConfig = { ...BASE, aggression: 1.5 };
+    const tunedLegacyId = configId(tunedLegacy);
+    const badLegacy = shard([row(tunedLegacyId, 'sword', 1, 100)], {
+      [tunedLegacyId]: tunedLegacy,
+    });
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /canonical LEGACY base config/,
+    );
+  });
+
+  it("throws when legacyBaseline's config body is a tuned variant stored under the canonical key — the canonical key alone is insufficient; the stored body must itself compute to the canonical id", () => {
+    // An artifact can be constructed where the dict key equals the canonical
+    // LEGACY ID string but the config BODY carries tuned values (e.g., a
+    // manually edited JSON or a search-eval shard whose key was overwritten).
+    // The key check passes, but configId(body) produces a different id —
+    // both must match before the artifact is trusted as the fixed incumbent.
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const tunedBody: SweepConfig = { ...BASE, aggression: 1.5 }; // tuned body, non-canonical
+    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100)], {
+      [BASE_ID]: tunedBody, // canonical key, but tuned body
+    });
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /config body does not match/,
+    );
+  });
+
+  it("throws when legacyBaseline's config body is tuned by LESS than configId's 4-decimal rounding — configId() rounds every knob to 4dp for stable identity, so a body-vs-canonical check that compares configId strings (instead of raw values) would let a sub-4dp-tuned body slip through under the canonical key", () => {
+    // configId(BASE) rounds aggression to 4dp, so a body tuned by 0.00001 —
+    // below that resolution — computes to the IDENTICAL configId as the
+    // canonical base, even though the raw stored value is not exactly
+    // canonical. An id-based body comparison cannot distinguish these; only
+    // an exact (stableStringify) comparison of the raw values can.
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const subDpTunedBody: SweepConfig = { ...BASE, aggression: BASE.aggression! + 0.00001 };
+    expect(configId(subDpTunedBody)).toBe(BASE_ID); // same id despite different raw value
+    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100)], {
+      [BASE_ID]: subDpTunedBody, // canonical key AND canonical configId, but non-canonical raw body
+    });
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /config body does not match/,
+    );
+  });
+
+  // A follow-up independent code-review pass on the net-win promotion rule
+  // (PR #1735) found that build-fingerprint provenance checks added to the
+  // legacy/manual `--stage search` path (assertLegacyBaselineProvenance in
+  // sweep-eval.ts) never protected the PRODUCTION round-DAG path — the
+  // `.github/workflows/ai-sweep.yml` `checkpoint-init` job calls
+  // initCheckpoint directly, and it had ZERO provenance validation on
+  // legacyBaseline at all. The tests below close that gap.
+  it('throws when legacyBaseline rows are tagged with a combo other than legacy+legacy', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    // legacyBaseline rows wrongly tagged with the navmesh combo instead of legacy+legacy.
+    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)], {
+      [BASE_ID]: BASE,
+    });
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /legacyBaseline shard rows must all be tagged combo='legacy\+legacy'/,
+    );
+  });
+
+  it('throws when legacyBaseline is provenance-incompatible with the combo baseline (schemaVersion mismatch)', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badLegacy: ShardArtifact = {
+      meta: { ...META, schemaVersion: SHARD_SCHEMA_VERSION + 1 },
+      configs: { [BASE_ID]: BASE },
+      rows: [row(BASE_ID, 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /schemaVersion .* != checkpoint/,
+    );
+  });
+
+  it('throws when legacyBaseline was produced under a different Node major version than the combo baseline', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badLegacy: ShardArtifact = {
+      meta: { ...META, nodeVersion: 'v18' },
+      configs: { [BASE_ID]: BASE },
+      rows: [row(BASE_ID, 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /node-version .* != checkpoint/,
+    );
+  });
+
+  it('throws when legacyBaseline was produced from a different code revision (workflow SHA) than the combo baseline', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badLegacy: ShardArtifact = {
+      meta: { ...META, workflowSha: 'stalesha0000stalesha0000stalesha0' },
+      configs: { [BASE_ID]: BASE },
+      rows: [row(BASE_ID, 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /workflow-sha .* != checkpoint/,
+    );
+  });
+
+  // A subsequent review round (PR #1735, round 12) found that
+  // assertShardCompatible omitted the `stage` check mergeShards already
+  // applies, and that legacyBaseline's rows were injected with neither a
+  // per-row safeRoomMs sanity check nor a check that every row actually
+  // references the shard's sole declared config — closing the same gap for
+  // the production round-DAG path that assertLegacyBaselineProvenance
+  // already closed for the legacy/manual `--stage search` path.
+  it('throws when legacyBaseline was produced by a different stage than the combo baseline', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badLegacy: ShardArtifact = {
+      meta: { ...META, stage: 'validate' },
+      configs: { [BASE_ID]: BASE },
+      rows: [row(BASE_ID, 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /shard stage 'validate' != checkpoint 'search'/,
+    );
+  });
+
+  it('throws when a legacyBaseline row has an out-of-range safeRoomMs (pre-v2/malformed artifact)', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badRow = { ...row(BASE_ID, 'sword', 1, 100), safeRoomMs: -1 };
+    const badLegacy: ShardArtifact = {
+      meta: { ...META },
+      configs: { [BASE_ID]: BASE },
+      rows: [badRow],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /safeRoomMs=-1 must be a finite number in/,
+    );
+  });
+
+  it("throws when a legacyBaseline row references a configId other than the shard's sole declared config", () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    // legacyBaseline declares only BASE_ID as its config, but its row
+    // references a different (stale/mistyped) configId — without this check
+    // buildLeaderboard's (incumbentCombo, incumbentConfigId) lookup would
+    // silently find no incumbent rows, disqualifying every candidate.
+    const badLegacy: ShardArtifact = {
+      meta: { ...META },
+      configs: { [BASE_ID]: BASE },
+      rows: [row('stale-config-id', 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /legacyBaseline shard rows must all reference its sole config/,
+    );
+  });
 });
 
 describe('planCandidates', () => {
@@ -286,18 +486,30 @@ describe('planRoundMatrix', () => {
 
 describe('applyRoundResult', () => {
   it('adopts a genuinely improving candidate as the new best, leaving steps untouched', () => {
-    const checkpoint = baseCheckpoint(100);
+    // Code-review finding: winsVsIncumbentDelta is only computed when the
+    // candidate's (weapon, seed) cell set is IDENTICAL to the incumbent's, so
+    // this uses a custom 2-cell incumbent panel (not the shared 1-cell
+    // baseCheckpoint helper) that the candidate matches exactly.
+    const baseline = shard(
+      [row(BASE_ID, 'sword', 1, 100, true), row(BASE_ID, 'bow', 2, 100, false)],
+      { [BASE_ID]: BASE },
+    );
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 200, 1 win
     const better: SweepConfig = { ...BASE, aggression: 1.5 };
     const betterId = configId(better);
-    const candidateShard = shard([row(betterId, 'sword', 1, 500)], { [betterId]: better });
+    // Wins BOTH cells on the same panel -> strictly more total wins (2) than
+    // the incumbent's 1.
+    const candidateShard = shard([row(betterId, 'sword', 1, 500), row(betterId, 'bow', 2, 100)], {
+      [betterId]: better,
+    });
     const updated = applyRoundResult(checkpoint, 1, KNOBS, [candidateShard]);
     expect(updated.bestConfigId).toBe(betterId);
-    expect(updated.bestScore).toBe(500);
+    expect(updated.bestScore).toBe(600);
     expect(updated.round).toBe(1);
     expect(updated.steps.aggression).toBe(0.5); // unchanged on improvement
     expect(updated.converged).toBe(false);
     // Prior + new rows/configs both retained.
-    expect(updated.rows).toHaveLength(2);
+    expect(updated.rows).toHaveLength(4); // 2 baseline rows + 2 candidate rows
     expect(Object.keys(updated.configs).sort()).toEqual([BASE_ID, betterId].sort());
   });
 
@@ -318,51 +530,69 @@ describe('applyRoundResult', () => {
     expect(updated).toEqual({ ...checkpoint, round: 3 });
   });
 
-  it('does NOT promote a higher-scoring candidate that flips an incumbent win into a loss — promotes a lower-scoring QUALIFYING candidate instead', () => {
+  it('does NOT promote a higher-scoring candidate that flips an incumbent win into a loss (net win count DECREASES) — promotes a lower-scoring candidate with strictly more total wins instead', () => {
     // Reproduces the exact class of bug GH run 29597840666 exposed: a config
     // that out-scores the incumbent while quietly flipping incumbent wins
     // into losses must never be adopted by the search's own hill-climb, even
     // though score-only promotion (the pre-fix behaviour) would pick it.
+    // Code-review finding: winsVsIncumbentDelta is only computed when a
+    // candidate's (weapon, seed) cell set exactly matches the incumbent's, so
+    // all three configs here share the same 3-cell panel (sword/1, bow/2,
+    // dagger/3) — nobody wins a cell the incumbent never ran.
     const baseline = shard(
-      [row(BASE_ID, 'sword', 1, 150, true), row(BASE_ID, 'bow', 2, 150, true)],
+      [
+        row(BASE_ID, 'sword', 1, 150, true),
+        row(BASE_ID, 'bow', 2, 150, true),
+        row(BASE_ID, 'dagger', 3, 150, false),
+      ],
       { [BASE_ID]: BASE },
     );
-    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 300
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 450, 2 wins
 
     const flippy: SweepConfig = { ...BASE, aggression: 1.5 };
     const flippyId = configId(flippy);
-    // Higher score (1400) but flips the incumbent's 'bow'/seed-2 win into a loss.
+    // Higher score (2100) but flips the incumbent's 'bow'/seed-2 win into a
+    // loss => 1 total win, strictly FEWER than the incumbent's 2 — a decrease.
     const flippyShard = shard(
-      [row(flippyId, 'sword', 1, 700, true), row(flippyId, 'bow', 2, 700, false)],
+      [
+        row(flippyId, 'sword', 1, 700, true),
+        row(flippyId, 'bow', 2, 700, false),
+        row(flippyId, 'dagger', 3, 700, false),
+      ],
       { [flippyId]: flippy },
     );
 
     const safe: SweepConfig = { ...BASE, aggression: 0.5 };
     const safeId = configId(safe);
-    // Lower score (700) but wins BOTH cells the incumbent won — zero flips, 100% win rate.
+    // Lower score (1050) but wins all 3 shared cells => 3 total wins, strictly
+    // MORE than the incumbent's 2.
     const safeShard = shard(
-      [row(safeId, 'sword', 1, 350, true), row(safeId, 'bow', 2, 350, true)],
+      [
+        row(safeId, 'sword', 1, 350, true),
+        row(safeId, 'bow', 2, 350, true),
+        row(safeId, 'dagger', 3, 350, true),
+      ],
       { [safeId]: safe },
     );
 
     const updated = applyRoundResult(checkpoint, 1, KNOBS, [flippyShard, safeShard]);
     expect(updated.bestConfigId).toBe(safeId); // NOT flippyId, despite its higher score
-    expect(updated.bestScore).toBe(700);
+    expect(updated.bestScore).toBe(1050);
     expect(updated.converged).toBe(false); // it did improve, so steps are untouched
     expect(updated.steps.aggression).toBe(0.5);
   });
 
-  it('rejects the ONLY out-scoring candidate purely for its flip, isolated from the win-rate floor (>=90% win rate + 1 flip must still disqualify)', () => {
-    // Code-review finding: the two tests above use a 50%-win-rate flippy
-    // candidate, which is ALSO disqualified by the win-rate floor alone —
-    // removing just the `flipsVsIncumbent === 0` clause from
-    // `selectQualifiedWinner` would not fail either test. This test isolates
-    // the flip gate specifically by giving the candidate a 90% win rate
-    // (mirroring GH run 29597840666's 97.3%) with exactly ONE flip, so it
-    // would pass the win-rate floor on its own but must still be rejected.
+  it('rejects the ONLY out-scoring candidate whose total win count only TIES the incumbent (>=90% win rate + a tie must still disqualify)', () => {
+    // Code-review finding: the two tests around this one use a 50%-win-rate
+    // flippy candidate, which is ALSO disqualified by the win-rate floor
+    // alone — that wouldn't isolate the net-win clause. This test isolates it
+    // specifically by giving the candidate a 90% win rate (mirroring GH run
+    // 29597840666's 97.3%) whose flip is exactly offset by a recovery, so its
+    // total win COUNT only ties the incumbent's — not a strict increase — and
+    // must still be rejected even though it clears the win-rate floor easily.
     const baselineRows: RunRow[] = [];
     for (let seed = 1; seed <= 10; seed++) {
-      // Incumbent wins seeds 1-9, loses seed 10.
+      // Incumbent wins seeds 1-9, loses seed 10. Total wins = 9.
       baselineRows.push(row(BASE_ID, 'sword', seed, 100, seed !== 10));
     }
     const checkpoint = initCheckpoint(
@@ -376,7 +606,8 @@ describe('applyRoundResult', () => {
     const flippyRows: RunRow[] = [];
     for (let seed = 1; seed <= 10; seed++) {
       // Wins everything EXCEPT seed 5 (a flip -- incumbent won seed 5) and
-      // ALSO wins seed 10 (a recovery, not a flip). 9/10 = 90% win rate.
+      // ALSO wins seed 10 (a recovery, not a flip). Net wins = 9 - 1 + 1 = 9,
+      // TIED with the incumbent's 9. 90% win rate.
       flippyRows.push(row(flippyId, 'sword', seed, 200, seed !== 5));
     }
     const flippyShard = shard(flippyRows, { [flippyId]: flippy });
@@ -384,14 +615,15 @@ describe('applyRoundResult', () => {
     const updated = applyRoundResult(checkpoint, 1, KNOBS, [flippyShard]);
     // Sanity-check the fixture: flippy both clears the 90% win-rate floor AND
     // out-scores the baseline (10*200=2000 > 1000) -- so a naive win-rate-only
-    // or score-only gate would wrongly promote it.
+    // or score-only gate would wrongly promote it. Its win count only ties
+    // the incumbent's (9 == 9), which is not a strict increase.
     expect(updated.bestConfigId).toBe(BASE_ID); // NOT flippyId
     expect(updated.bestScore).toBe(1000);
     expect(updated.steps.aggression).toBe(0.25); // halved -- nothing qualified
     expect(updated.converged).toBe(false);
   });
 
-  it('halves steps (does not promote anything) when the only out-scoring candidate is disqualified by a flip', () => {
+  it('halves steps (does not promote anything) when the only out-scoring candidate is disqualified for a net-win decrease', () => {
     const baseline = shard(
       [row(BASE_ID, 'sword', 1, 150, true), row(BASE_ID, 'bow', 2, 150, true)],
       { [BASE_ID]: BASE },
@@ -492,17 +724,30 @@ describe('applyRoundResult', () => {
     // neighbours of the NEW best instead of the OLD best, permanently skipping
     // the missing candidate. The arrived data is still merged in (deduped next
     // round) and the search retries from the same position.
+    // Code-review finding: the candidate must share the incumbent's exact
+    // (weapon, seed) panel for winsVsIncumbentDelta to be non-null, so the
+    // baseline also runs dagger/3 (as a loss) rather than the candidate
+    // winning a cell the incumbent never ran.
     const baseline = shard(
-      [row(BASE_ID, 'sword', 1, 100, true), row(BASE_ID, 'bow', 2, 100, true)],
+      [
+        row(BASE_ID, 'sword', 1, 100, true),
+        row(BASE_ID, 'bow', 2, 100, true),
+        row(BASE_ID, 'dagger', 3, 100, false),
+      ],
       { [BASE_ID]: BASE },
     );
-    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 200
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 300, 2 wins
 
     const better: SweepConfig = { ...BASE, aggression: 1.5 };
     const betterId = configId(better);
-    // This candidate qualifies (zero flips, 100% win rate) and outscores the baseline.
+    // This candidate genuinely qualifies (100% win rate, 3 total wins —
+    // strictly more than the baseline's 2) and outscores the baseline.
     const betterShard = shard(
-      [row(betterId, 'sword', 1, 500, true), row(betterId, 'bow', 2, 500, true)],
+      [
+        row(betterId, 'sword', 1, 500, true),
+        row(betterId, 'bow', 2, 500, true),
+        row(betterId, 'dagger', 3, 500, true),
+      ],
       { [betterId]: better },
     );
 
@@ -510,12 +755,12 @@ describe('applyRoundResult', () => {
     const updated = applyRoundResult(checkpoint, 1, KNOBS, [betterShard], { plannedCount: 2 });
     // Despite `better` qualifying and outscoring the baseline, must NOT be promoted.
     expect(updated.bestConfigId).toBe(BASE_ID); // unchanged
-    expect(updated.bestScore).toBe(200); // unchanged
+    expect(updated.bestScore).toBe(300); // unchanged
     expect(updated.steps.aggression).toBe(0.5); // NOT halved — round was incomplete
     expect(updated.converged).toBe(false);
     // Data is still merged in for deduplication next round.
     expect(updated.configs).toHaveProperty(betterId);
-    expect(updated.rows).toHaveLength(4); // 2 baseline + 2 candidate
+    expect(updated.rows).toHaveLength(6); // 3 baseline + 3 candidate
   });
 
   it('still halves normally when `plannedCount` matches the candidates actually received and none improve (no false safety net)', () => {
@@ -587,7 +832,9 @@ describe('applyRoundResult', () => {
     // times. The one with the FASTER clear time must win — score-only promotion
     // would arbitrarily keep whichever appeared first (since neither `>` the other).
     const baseline = shard(
-      Array.from({ length: 10 }, (_, i) => row(BASE_ID, 'sword', i + 1, 100, true)),
+      // Incumbent wins 9/10 (loses the last seed) so both 10/10 candidates
+      // below have strictly MORE total wins than it, not just a tie.
+      Array.from({ length: 10 }, (_, i) => row(BASE_ID, 'sword', i + 1, 100, i !== 9)),
       { [BASE_ID]: BASE },
     );
     const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 1000
@@ -609,7 +856,8 @@ describe('applyRoundResult', () => {
     );
     // Keep gameTimeMs at the default 100_000 ms (faster clear).
 
-    // Both candidates have totalScore = 2000 (equal). faster has meanClearTimeMsWins < slower.
+    // Both candidates have totalScore = 2000 (equal) and 10 wins (strictly
+    // more than the incumbent's 9). faster has meanClearTimeMsWins < slower.
     const slowerShard = shard(slowerRows, { [slowerId]: slower });
     const fasterShard = shard(fasterRows, { [fasterId]: faster });
 
@@ -651,9 +899,9 @@ describe('applyRoundResult', () => {
     // Regression test for the bug the reviewer identified: if incumbentCombo is
     // passed as checkpoint.combo ('navmeshFused+legacy') instead of LEGACY_COMBO_ID
     // ('legacy+legacy'), buildLeaderboard looks for incumbentRows under the navmesh
-    // group key and finds nothing — flipsVsIncumbent becomes null for every candidate,
-    // and selectQualifiedWinner disqualifies all of them, preventing any promotion
-    // even from genuinely zero-flip candidates.
+    // group key and finds nothing — winsVsIncumbentDelta becomes null for every
+    // candidate, and selectQualifiedWinner disqualifies all of them, preventing
+    // any promotion even from a genuinely qualifying candidate.
     const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
     const navmeshBaseId = configId(navmeshBase);
 
@@ -665,9 +913,15 @@ describe('applyRoundResult', () => {
       ],
       { [navmeshBaseId]: navmeshBase },
     );
-    // The LEGACY incumbent shard (rows tagged with 'legacy+legacy').
+    // The LEGACY incumbent shard (rows tagged with 'legacy+legacy'). Wins 2 of
+    // 3 cells (loses dagger/seed-3) so a same-panel candidate can strictly
+    // exceed its win count without needing a cell the incumbent never ran.
     const legacyBaselineShard = shard(
-      [row(BASE_ID, 'sword', 1, 80, true), row(BASE_ID, 'bow', 2, 80, true)],
+      [
+        row(BASE_ID, 'sword', 1, 80, true),
+        row(BASE_ID, 'bow', 2, 80, true),
+        row(BASE_ID, 'dagger', 3, 80, false),
+      ],
       { [BASE_ID]: BASE },
     );
 
@@ -680,21 +934,25 @@ describe('applyRoundResult', () => {
     expect(checkpoint.incumbentCombo).toBe(LEGACY_COMBO_ID);
     expect(checkpoint.incumbentConfigId).toBe(BASE_ID);
 
-    // A navmesh candidate that wins the same (weapon, seed) cells the LEGACY incumbent won
-    // — zero flips against LEGACY, so must be promoted when it outscores the current best.
+    // A navmesh candidate that wins all 3 of the LEGACY incumbent's cells
+    // (same weapon/seed panel: sword/1, bow/2, dagger/3) — 3 total wins,
+    // strictly more than the LEGACY incumbent's 2 — so it must be promoted
+    // when it outscores the current best.
     const goodCandidate: SweepConfig = { ...navmeshBase, aggression: 1.5 };
     const goodCandidateId = configId(goodCandidate);
     const candidateShard = shard(
       [
         row(goodCandidateId, 'sword', 1, 500, true, NAVMESH_LEGACY_COMBO_ID),
         row(goodCandidateId, 'bow', 2, 500, true, NAVMESH_LEGACY_COMBO_ID),
+        row(goodCandidateId, 'dagger', 3, 500, true, NAVMESH_LEGACY_COMBO_ID),
       ],
       { [goodCandidateId]: goodCandidate },
     );
 
     const updated = applyRoundResult(checkpoint, 1, KNOBS, [candidateShard]);
-    // With the bug, flipsVsIncumbent would be null → candidate disqualified → not promoted.
-    // With the fix, flipsVsIncumbent is 0 → candidate promoted (outscores navmeshBase).
+    // With the bug, winsVsIncumbentDelta would be null → candidate disqualified
+    // → not promoted. With the fix, winsVsIncumbentDelta is 1 (3 - 2) → candidate
+    // promoted (it also outscores navmeshBase).
     expect(updated.bestConfigId).toBe(goodCandidateId);
     expect(updated.incumbentCombo).toBe(LEGACY_COMBO_ID); // preserved across rounds
     expect(updated.incumbentConfigId).toBe(BASE_ID); // still the LEGACY config
