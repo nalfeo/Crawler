@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d36a5e825847242ec0aa33ad6e157fa099b9c782",
+    "commitDate": "2026-07-20T22:47:33Z",
+    "commitSubject": "feat(weapons): add immutable per-instance active weapon snapshots (#1552)",
+    "capturedAt": "2026-07-21T00:04:07.384Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29785714346",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/d36a5e825847242ec0aa33ad6e157fa099b9c782.json"
+  },
+  {
     "commit": "4e29134724eae0fdd4cfaece02a518dd296e7e87",
     "commitDate": "2026-07-20T22:34:05Z",
     "commitSubject": "feat(inventory): add instance-aware equipment transfers (#1555)",
