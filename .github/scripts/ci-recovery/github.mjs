@@ -128,9 +128,6 @@ export async function paginate(token, path) {
 export async function graphql(token, query, variables = {}) {
   const isQuery = /^\s*query(?:\s|[{(])/i.test(query);
   for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
-    if (attempt > 0) {
-      await sleep(retryDelay(response.headers, attempt + 1));
-    }
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: headers(token, { 'Content-Type': 'application/json' }),
@@ -145,6 +142,7 @@ export async function graphql(token, query, variables = {}) {
         (response.status === 429 || response.status >= 500 || rateLimited) &&
         attempt < MAX_RETRY_ATTEMPTS
       ) {
+        await sleep(retryDelay(response.headers, attempt + 1));
         continue;
       }
       throw new Error(`GitHub GraphQL failed: ${messages || response.status}`);
