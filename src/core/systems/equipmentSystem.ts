@@ -278,8 +278,6 @@ function deactivateGeneratedEquipment(
         state.activeAbilityGrantSources.delete(abilityId);
         const index = state.equippedActiveAbilityIds.indexOf(abilityId);
         if (index >= 0) state.equippedActiveAbilityIds.splice(index, 1);
-        state.cooldownByAbilityId.delete(abilityId);
-        state.cooldownFramesByAbilityId.delete(abilityId);
       }
     }
 
