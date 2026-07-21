@@ -76,6 +76,7 @@ export function coreGrantGeneratedEquipmentActiveAbility(
   instanceId: GeneratedEquipmentInstanceId,
   effectOrdinal: number,
 ): void {
+  if (!abilityId) throw new Error('abilityId must be a non-empty string');
   const state = getOrCreateAbilityStateForEntity(world, holderEid);
   const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
   // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
@@ -120,6 +121,7 @@ export function coreGrantGeneratedEquipmentPassiveAbility(
   instanceId: GeneratedEquipmentInstanceId,
   effectOrdinal: number,
 ): void {
+  if (!abilityId) throw new Error('abilityId must be a non-empty string');
   const state = getOrCreateAbilityStateForEntity(world, holderEid);
   const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
   // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
