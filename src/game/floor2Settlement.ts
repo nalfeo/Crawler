@@ -207,6 +207,7 @@ export function initializeFloor2Settlement(
     });
   });
 
+  const quartermasterStock = createInitialFloor2QuartermasterStock(world);
   const snapshot: Floor2SettlementSnapshot = {
     settlementRoomId: settlement.id,
     settlementRoomIds: settlements.map((room) => room.id),
@@ -216,7 +217,7 @@ export function initializeFloor2Settlement(
     defectorAppearanceKey,
     defectorFallbackAppearanceKey,
     quartermasterShop,
-    quartermasterStock: createInitialFloor2QuartermasterStock(world),
+    ...(quartermasterStock ? { quartermasterStock } : {}),
     shops,
   };
   world.floorExtendedState = { ...(world.floorExtendedState ?? {}), settlement: snapshot };

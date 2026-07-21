@@ -54,6 +54,9 @@ core layer owns the shared offer projection and atomic purchase transaction.
   replacement bag, stock, settlement, and gold values.
 - **DEC-006**: Expose one read model from the same purchase preflight used by the
   transaction so UI and AI cannot diverge on affordability or eligibility.
+- **DEC-007**: Require explicit `floor2EquipmentEconomy` enablement with registry and
+  catalog dependencies before generation, restock, projection eligibility, or purchase
+  mutation. Disabled consumers preserve persisted stock and instance records.
 
 ## Consequences
 
@@ -75,6 +78,8 @@ core layer owns the shared offer projection and atomic purchase transaction.
   for the floor lifetime, adding a small amount of state per restock.
 - **NEG-003**: Generated stock is intentionally restricted to wearable stat-effect gear
   until generated weapons and grant effects have complete runtime support.
+- **NEG-004**: Generated stock is absent by default until the Floor 2 equipment economy
+  rollout explicitly enables its complete dependency closure.
 
 ### Risks
 

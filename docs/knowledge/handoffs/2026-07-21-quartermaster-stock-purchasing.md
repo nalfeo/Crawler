@@ -34,13 +34,17 @@ read data, runtime wiring, and unit/property/integration/headless coverage.
   exact price, and mark the offer sold out. Duplicate attempts fail without mutation.
 - Added monotonic restock epochs. Current-epoch repeats are idempotent, skipped or
   backward epochs fail explicitly, and unsold prior instances are retired.
+- Enforced the existing Floor 2 rollout contract: generation, restock, projection
+  eligibility, and purchase mutation require explicit economy enablement plus registry
+  and catalog dependencies. Disabled consumers preserve persisted records.
 - Reused the guaranteed Quartermaster settlement placement and generated-equipment
   registry. No sprite, asset, Azure, queue, workflow, label, or asset-PR surface changed.
 
 ## Runtime evidence
 
-The real `runHeadless(..., { floorId: "floor2", maxFrames: 1 })` pipeline was exercised
-for stressed seeds 6 and 1 through `tests/headless/floor2-completion.test.ts`.
+The real `runHeadless(..., { floorId: "floor2", maxFrames: 1, floor2EquipmentFlags:
+... })` pipeline was exercised with explicit economy dependency closure for stressed
+seeds 6 and 1 through `tests/headless/floor2-completion.test.ts`.
 
 - Both runs booted exactly one Quartermaster and the expected settlement topology.
 - Each run created 3-4 generated offers.
@@ -52,7 +56,7 @@ authoritative API and observed the exact same registry instance in the player's 
 
 ## Validation
 
-- Targeted unit/property tests: 16 passed.
+- Targeted unit/property tests: 23 passed.
 - Floor 2 settlement integration tests: 8 passed.
 - Floor 2 headless pipeline tests: 6 passed.
 - `npm run verify:fast`: passed.
@@ -66,6 +70,9 @@ authoritative API and observed the exact same registry instance in the player's 
 - Multi-model review (`gpt-5.3-codex`, `gemini-3.1-pro-preview`) adjudicated by
   `gpt-5.4`: one retirement-state concern was rejected because the retired identity set
   protects against corrupted current stock reusing a registry-backed prior instance.
+- PR review (`copilot-pull-request-reviewer`), independently validated by `gpt-5.4`:
+  fixed two rollout-contract findings by gating stock and transactions on explicit
+  economy enablement and rejecting incomplete registry/catalog dependency closure.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-21-quartermaster-stock-purchasing.review-ledger.json`
 - Architecture decision:

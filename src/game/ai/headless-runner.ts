@@ -129,6 +129,12 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
+   * Explicit Floor 2 equipment rollout configuration. Omitted preserves the
+   * world defaults (all disabled); dependency closure is validated by each
+   * enabled consumer before it mutates state.
+   */
+  floor2EquipmentFlags?: Partial<GameWorld['floor2EquipmentFlags']>;
+  /**
    * Start the run at this player character level (applies XP and unspent stat
    * points to match). Level 1 (default) is a normal run with no boost.
    * Supports any positive level; clamped to ≥1.
@@ -170,7 +176,10 @@ export interface HeadlessRunnerConfig {
 }
 
 const DEFAULT_CONFIG: Required<
-  Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent' | 'forceWeaponId' | 'onFinish'>
+  Omit<
+    HeadlessRunnerConfig,
+    'simulationOptions' | 'recordEvent' | 'forceWeaponId' | 'onFinish' | 'floor2EquipmentFlags'
+  >
 > = {
   seed: 12345,
   maxFrames: 100_000, // ~27 min at 60 FPS
@@ -360,6 +369,9 @@ export async function runHeadless(
 
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
+  if (mergedConfig.floor2EquipmentFlags) {
+    Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
+  }
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
   configureMerchantWeaponPurchase(world, mergedConfig.merchantWeaponPurchase);
   if (mergedConfig.recordWeaponTelemetry) {

@@ -6,14 +6,23 @@ import { createInitialFloor2QuartermasterStock } from '../../src/game/quartermas
 import type { Floor2SettlementSnapshot } from '../../src/shared/floor-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
+function enableQuartermasterEconomy(world: ReturnType<typeof createTestWorld>): void {
+  world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+  world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+  world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+}
+
 describe('Quartermaster purchase properties', () => {
   it('conserves exact identity and currency on success and rolls back every unaffordable attempt', () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 10_000 }), fc.boolean(), (seed, affordable) => {
         const world = createTestWorld({ seed, floor: 2 });
+        enableQuartermasterEconomy(world);
         const playerEid = spawnPlayer(world, 0, 0);
         world.playerLevel.level = 1 + (seed % 20);
         const stock = createInitialFloor2QuartermasterStock(world);
+        expect(stock).toBeDefined();
+        if (!stock) return;
         const settlement: Floor2SettlementSnapshot = {
           settlementRoomId: 1,
           settlementRoomIds: [1, 2],
@@ -43,7 +52,7 @@ describe('Quartermaster purchase properties', () => {
           expect(result).toMatchObject({ ok: false, reason: 'insufficient-funds' });
           expect(world.playerGold).toBe(goldBefore);
           expect(world.inventories.get(playerEid)?.generatedEquipment).toBeUndefined();
-          expect(world.floorExtendedState.settlement?.quartermasterStock.offers[0]?.quantity).toBe(
+          expect(world.floorExtendedState.settlement?.quartermasterStock?.offers[0]?.quantity).toBe(
             1,
           );
           return;
@@ -54,7 +63,9 @@ describe('Quartermaster purchase properties', () => {
         expect(world.inventories.get(playerEid)?.generatedEquipment).toEqual([
           { kind: 'generated-instance', instanceKey: offer.instanceId },
         ]);
-        expect(world.floorExtendedState.settlement?.quartermasterStock.offers[0]?.quantity).toBe(0);
+        expect(world.floorExtendedState.settlement?.quartermasterStock?.offers[0]?.quantity).toBe(
+          0,
+        );
       }),
       { numRuns: 50, seed: 42 },
     );

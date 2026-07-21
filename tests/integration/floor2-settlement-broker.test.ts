@@ -99,6 +99,9 @@ describe('Floor 2 settlement · initialization', () => {
     world.floorMap = buildFloor2Map();
     const playerEid = spawnPlayer(world, 0, 0);
     world.floor = 2;
+    world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+    world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+    world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
     seedSettlementFamilyState(world);
 
     const snap = initializeFloor2Settlement(world, { shopCount: 2 });
@@ -115,15 +118,17 @@ describe('Floor 2 settlement · initialization', () => {
     for (const item of snap.quartermasterShop.inventory) {
       expect(item.unitPrice).toBeGreaterThanOrEqual(1);
     }
-    expect(snap.quartermasterStock.offers.length).toBeGreaterThanOrEqual(3);
-    expect(snap.quartermasterStock.offers.length).toBeLessThanOrEqual(4);
-    const generatedOffer = snap.quartermasterStock.offers[0]!;
+    expect(snap.quartermasterStock).toBeDefined();
+    const quartermasterStock = snap.quartermasterStock!;
+    expect(quartermasterStock.offers.length).toBeGreaterThanOrEqual(3);
+    expect(quartermasterStock.offers.length).toBeLessThanOrEqual(4);
+    const generatedOffer = quartermasterStock.offers[0]!;
     const generatedInstance = getGeneratedEquipmentInstance(world, generatedOffer.instanceId);
     expect(generatedInstance).toBeDefined();
     world.playerGold = generatedOffer.unitPrice;
     expect(
       purchaseQuartermasterOffer(world, playerEid, {
-        stockId: snap.quartermasterStock.stockId,
+        stockId: quartermasterStock.stockId,
         offerId: generatedOffer.offerId,
         quantity: 1,
       }),

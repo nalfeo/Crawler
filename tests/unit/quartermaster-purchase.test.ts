@@ -27,6 +27,12 @@ interface PurchaseContext {
   readonly request: QuartermasterPurchaseRequest;
 }
 
+function enableQuartermasterEconomy(world: TestWorld): void {
+  world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+  world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+  world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+}
+
 function attachStock(world: TestWorld, quartermasterStock: Floor2QuartermasterStockState): void {
   const settlement: Floor2SettlementSnapshot = {
     settlementRoomId: 1,
@@ -50,9 +56,13 @@ function attachStock(world: TestWorld, quartermasterStock: Floor2QuartermasterSt
 
 function setupPurchase(seed = 42): PurchaseContext {
   const world = createTestWorld({ seed, floor: 2 });
+  enableQuartermasterEconomy(world);
   const playerEid = spawnPlayer(world, 0, 0);
   world.playerLevel.level = 5;
   const stock = createInitialFloor2QuartermasterStock(world);
+  if (!stock) {
+    throw new Error('Quartermaster test requires generated stock');
+  }
   attachStock(world, stock);
   world.playerGold = 10_000;
   return {
@@ -87,16 +97,15 @@ function transactionSnapshot(world: TestWorld): object {
 describe('Quartermaster atomic purchase', () => {
   it('projects one shared UI/AI affordability, capacity, and utility read model', () => {
     const { world, playerEid } = setupPurchase();
-    const offer = world.floorExtendedState!.settlement!.quartermasterStock.offers[0]!;
+    const stock = world.floorExtendedState!.settlement!.quartermasterStock!;
+    const offer = stock.offers[0]!;
     world.playerGold = offer.unitPrice - 1;
 
     const views = getQuartermasterOfferViews(world, playerEid);
 
-    expect(views).toHaveLength(
-      world.floorExtendedState!.settlement!.quartermasterStock.offers.length,
-    );
+    expect(views).toHaveLength(stock.offers.length);
     expect(views[0]).toMatchObject({
-      stockId: world.floorExtendedState!.settlement!.quartermasterStock.stockId,
+      stockId: stock.stockId,
       offerId: offer.offerId,
       instanceId: offer.instanceId,
       unitPrice: offer.unitPrice,
@@ -117,7 +126,7 @@ describe('Quartermaster atomic purchase', () => {
 
   it('transfers the exact registry instance once and commits gold, bag, and stock together', () => {
     const { world, playerEid, request } = setupPurchase();
-    const stockBefore = world.floorExtendedState!.settlement!.quartermasterStock;
+    const stockBefore = world.floorExtendedState!.settlement!.quartermasterStock!;
     const offerBefore = stockBefore.offers[0]!;
     const instanceBefore = getGeneratedEquipmentInstance(world, offerBefore.instanceId);
     const goldBefore = world.playerGold;
@@ -134,7 +143,7 @@ describe('Quartermaster atomic purchase', () => {
     expect(world.inventories.get(playerEid)?.generatedEquipment).toEqual([
       { kind: 'generated-instance', instanceKey: offerBefore.instanceId },
     ]);
-    expect(world.floorExtendedState!.settlement!.quartermasterStock.offers[0]!.quantity).toBe(0);
+    expect(world.floorExtendedState!.settlement!.quartermasterStock!.offers[0]!.quantity).toBe(0);
 
     const afterSuccess = transactionSnapshot(world);
     expect(purchaseQuartermasterOffer(world, playerEid, request)).toMatchObject({
@@ -144,11 +153,47 @@ describe('Quartermaster atomic purchase', () => {
     expect(transactionSnapshot(world)).toEqual(afterSuccess);
   });
 
+  it('disables offer projections and purchase mutations while preserving persisted stock', () => {
+    const { world, playerEid, request } = setupPurchase();
+    world.floor2EquipmentFlags.floor2EquipmentEconomy = false;
+    const before = transactionSnapshot(world);
+
+    expect(getQuartermasterOfferViews(world, playerEid)[0]).toMatchObject({
+      stockId: request.stockId,
+      offerId: request.offerId,
+      canPurchase: false,
+      purchaseFailure: 'economy-disabled',
+      quantity: 1,
+    });
+    expect(purchaseQuartermasterOffer(world, playerEid, request)).toEqual({
+      ok: false,
+      reason: 'economy-disabled',
+      message: 'Floor 2 equipment economy is disabled',
+    });
+    expect(transactionSnapshot(world)).toEqual(before);
+  });
+
   const failureCases: readonly {
     readonly name: string;
     readonly reason: QuartermasterPurchaseFailureCode;
     readonly arrange: (context: PurchaseContext) => QuartermasterPurchaseRequest;
   }[] = [
+    {
+      name: 'disabled economy consumer',
+      reason: 'economy-disabled',
+      arrange: ({ world, request }) => {
+        world.floor2EquipmentFlags.floor2EquipmentEconomy = false;
+        return request;
+      },
+    },
+    {
+      name: 'invalid economy dependency closure',
+      reason: 'invalid-equipment-config',
+      arrange: ({ world, request }) => {
+        world.floor2EquipmentFlags.floor2EquipmentCatalog = false;
+        return request;
+      },
+    },
     {
       name: 'stale stock identity',
       reason: 'invalid-stock-identity',
@@ -168,7 +213,7 @@ describe('Quartermaster atomic purchase', () => {
       name: 'sold-out stock',
       reason: 'stock-unavailable',
       arrange: ({ world, request }) => {
-        const stock = world.floorExtendedState!.settlement!.quartermasterStock;
+        const stock = world.floorExtendedState!.settlement!.quartermasterStock!;
         replaceStock(world, {
           ...stock,
           offers: stock.offers.map((offer) =>
@@ -207,7 +252,7 @@ describe('Quartermaster atomic purchase', () => {
       name: 'missing registry instance',
       reason: 'instance-not-found',
       arrange: ({ world, request }) => {
-        const stock = world.floorExtendedState!.settlement!.quartermasterStock;
+        const stock = world.floorExtendedState!.settlement!.quartermasterStock!;
         const missingId = generatedEquipmentInstanceKey(makeRunKey('missing-instance'), 999);
         replaceStock(world, {
           ...stock,
@@ -222,7 +267,7 @@ describe('Quartermaster atomic purchase', () => {
       name: 'duplicate physical ownership',
       reason: 'ownership-conflict',
       arrange: ({ world, playerEid, request }) => {
-        const stock = world.floorExtendedState!.settlement!.quartermasterStock;
+        const stock = world.floorExtendedState!.settlement!.quartermasterStock!;
         const instanceKey = stock.offers[0]!.instanceId;
         const bag = world.inventories.get(playerEid)!;
         world.inventories.set(playerEid, {
@@ -236,7 +281,7 @@ describe('Quartermaster atomic purchase', () => {
       name: 'retired active instance',
       reason: 'ownership-conflict',
       arrange: ({ world, request }) => {
-        const stock = world.floorExtendedState!.settlement!.quartermasterStock;
+        const stock = world.floorExtendedState!.settlement!.quartermasterStock!;
         replaceStock(world, {
           ...stock,
           retiredInstanceIds: [...stock.retiredInstanceIds, stock.offers[0]!.instanceId],

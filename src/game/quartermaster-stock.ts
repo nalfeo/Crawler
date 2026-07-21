@@ -1,4 +1,5 @@
 import type { GameWorld } from '../core/world.js';
+import { getFloor2EquipmentEconomyAccess } from '../core/floor2-equipment-flags.js';
 import { createGeneratedEquipmentRegistry } from '../core/generated-equipment-registry.js';
 import {
   FLOOR2_QUARTERMASTER_GENERATED_BASE_IDS,
@@ -28,7 +29,12 @@ export type QuartermasterRestockResult =
     }
   | {
       readonly ok: false;
-      readonly reason: 'invalid-epoch' | 'missing-settlement';
+      readonly reason:
+        | 'economy-disabled'
+        | 'invalid-equipment-config'
+        | 'invalid-epoch'
+        | 'missing-settlement'
+        | 'missing-stock';
       readonly message: string;
     };
 
@@ -111,7 +117,14 @@ function generateStock(
 /** Create the one deterministic floor-load stock batch (epoch zero). */
 export function createInitialFloor2QuartermasterStock(
   world: GameWorld,
-): Floor2QuartermasterStockState {
+): Floor2QuartermasterStockState | undefined {
+  const access = getFloor2EquipmentEconomyAccess(world);
+  if (access.kind === 'disabled') {
+    return undefined;
+  }
+  if (access.kind === 'invalid') {
+    throw new Error(access.message);
+  }
   return generateStock(world, 0, []);
 }
 
@@ -123,6 +136,21 @@ export function restockFloor2Quartermaster(
   world: GameWorld,
   requestedEpoch: number,
 ): QuartermasterRestockResult {
+  const access = getFloor2EquipmentEconomyAccess(world);
+  if (access.kind === 'disabled') {
+    return {
+      ok: false,
+      reason: 'economy-disabled',
+      message: access.message,
+    };
+  }
+  if (access.kind === 'invalid') {
+    return {
+      ok: false,
+      reason: 'invalid-equipment-config',
+      message: access.message,
+    };
+  }
   const settlement = world.floorExtendedState?.settlement;
   if (!settlement) {
     return {
@@ -132,6 +160,13 @@ export function restockFloor2Quartermaster(
     };
   }
   const current = settlement.quartermasterStock;
+  if (!current) {
+    return {
+      ok: false,
+      reason: 'missing-stock',
+      message: 'Quartermaster generated stock is not initialized',
+    };
+  }
   if (requestedEpoch === current.restockEpoch) {
     return { ok: true, changed: false, stock: current };
   }

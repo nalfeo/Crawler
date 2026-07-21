@@ -1,4 +1,5 @@
 import type { GameWorld } from './world.js';
+import { getFloor2EquipmentEconomyAccess } from './floor2-equipment-flags.js';
 import { getGeneratedEquipmentInstance } from './generated-equipment-registry.js';
 import { findGeneratedPhysicalOwners } from './systems/equipmentSystem.js';
 import {
@@ -18,8 +19,10 @@ import type { EquipmentSlotId } from '../shared/equipment-slots.js';
 import type { StatId } from '../shared/stats.js';
 
 export type QuartermasterPurchaseFailureCode =
+  | 'economy-disabled'
   | 'inventory-capacity'
   | 'invalid-quantity'
+  | 'invalid-equipment-config'
   | 'invalid-stock-identity'
   | 'insufficient-funds'
   | 'instance-not-found'
@@ -96,6 +99,13 @@ function preparePurchase(
   playerEid: number,
   request: QuartermasterPurchaseRequest,
 ): PrepareResult {
+  const access = getFloor2EquipmentEconomyAccess(world);
+  if (access.kind === 'disabled') {
+    return failure('economy-disabled', access.message);
+  }
+  if (access.kind === 'invalid') {
+    return failure('invalid-equipment-config', access.message);
+  }
   const stock = currentStock(world);
   if (!stock || stock.stockId !== request.stockId) {
     return failure('invalid-stock-identity', 'Quartermaster stock identity is stale or unknown');

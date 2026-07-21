@@ -178,8 +178,13 @@ export interface Floor2SettlementSnapshot {
   readonly defectorFallbackAppearanceKey: string;
   /** Guaranteed Quartermaster shop instance, placed in addition to the seeded shops. */
   readonly quartermasterShop: Floor2ShopInstance;
-  /** Generated common/uncommon equipment stock owned by the Quartermaster. */
-  readonly quartermasterStock: Floor2QuartermasterStockState;
+  /**
+   * Generated common/uncommon equipment stock owned by the Quartermaster.
+   * Present only when the Floor 2 equipment economy consumer is enabled, or
+   * when a previously persisted stock snapshot is being preserved while the
+   * consumer is temporarily disabled.
+   */
+  readonly quartermasterStock?: Floor2QuartermasterStockState;
   /** 1–2 seeded non-Quartermaster shop instances. */
   readonly shops: readonly Floor2ShopInstance[];
 }

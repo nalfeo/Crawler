@@ -68,7 +68,7 @@ describe('Floor 2 headless completion', () => {
     });
   });
 
-  it('boots exact-one Quartermaster plus 1-2 other shops in stressed real-pipeline layouts', async () => {
+  it('boots generated Quartermaster stock when the economy is explicitly enabled', async () => {
     const cases = [
       { seed: 6, expectedRooms: 2, expectedShops: 3 },
       { seed: 1, expectedRooms: 3, expectedShops: 3 },
@@ -89,6 +89,11 @@ describe('Floor 2 headless completion', () => {
         seed,
         floorId: 'floor2',
         maxFrames: 1,
+        floor2EquipmentFlags: {
+          floor2EquipmentRegistry: true,
+          floor2EquipmentCatalog: true,
+          floor2EquipmentEconomy: true,
+        },
         onFinish: (world) => {
           const settlement = world.floorExtendedState?.settlement;
           const allShops = [
@@ -98,7 +103,7 @@ describe('Floor 2 headless completion', () => {
           const generatedInstanceIds = new Set(
             listGeneratedEquipmentInstances(world).map((instance) => instance.instanceId),
           );
-          const generatedOffers = settlement?.quartermasterStock.offers ?? [];
+          const generatedOffers = settlement?.quartermasterStock?.offers ?? [];
           observed = {
             roomCount: settlement?.settlementRoomIds.length ?? 0,
             shopIds: allShops.map((shop) => shop.archetypeId),
