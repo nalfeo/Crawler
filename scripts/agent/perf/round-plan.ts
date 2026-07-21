@@ -689,12 +689,18 @@ function assertShardCompatible(
 
 /** A cross-run resume candidate's expected provenance: this run's own runner
  *  calibration (from `sweep-eval --print-meta`) plus its TRAIN seed panel,
- *  weapon list, and secondary-knobs flag. */
+ *  weapon list, and secondary-knobs flag — PLUS the combo id and round number
+ *  the workflow selected THIS specific checkpoint file for (e.g. from its
+ *  `search-checkpoint-r2-<combo>.json` artifact filename). These bind the
+ *  payload to the slot the shell script is filling; see `assertResumeCompatible`
+ *  docstring for why filename trust alone is insufficient. */
 export interface ResumeExpectedProvenance {
   meta: ShardMeta;
   trainSeeds: string;
   weapons: string;
   secondary: boolean;
+  combo: string;
+  round: number;
 }
 
 /**
@@ -751,12 +757,36 @@ export interface ResumeExpectedProvenance {
  * run would NOT execute identically to the imported (duplicate-free)
  * panel. Modern checkpoints (`runInputs` present) are NOT affected — they
  * keep the original strict raw-string equality unchanged.
+ *
+ * COMBO/ROUND BINDING: none of the checks above ever compare the checkpoint
+ * payload itself against the combo/round SLOT the workflow selected it for
+ * — the shell script only trusts the `search-checkpoint-${r}-${COMBO}.json`
+ * ARTIFACT FILENAME, then renames the parsed JSON. A mislabeled artifact
+ * (wrong `checkpoint.combo`, or a `checkpoint.round` that doesn't match the
+ * tier being imported) would otherwise pass every check above and either
+ * fail confusingly much later, or silently resume MORE completed
+ * optimization than the requested tier. `expected.combo`/`expected.round`
+ * close this gap: they are checked FIRST, before any other field, so a
+ * mislabeled artifact fails fast with an unambiguous error.
  */
 export function assertResumeCompatible(
   checkpoint: RoundCheckpoint,
   expected: ResumeExpectedProvenance,
 ): void {
   const contextLabel = `assertResumeCompatible(${checkpoint.combo})`;
+  if (checkpoint.combo !== expected.combo) {
+    throw new Error(
+      `${contextLabel}: checkpoint combo '${checkpoint.combo}' != expected combo '${expected.combo}' — ` +
+        `this artifact appears mislabeled (imported for the wrong combo).`,
+    );
+  }
+  if (checkpoint.round !== expected.round) {
+    throw new Error(
+      `${contextLabel}: checkpoint round ${checkpoint.round} != expected round ${expected.round} for ` +
+        `the tier being imported — this artifact appears mislabeled (contains more or less completed ` +
+        `optimization than the requested tier).`,
+    );
+  }
   // Reuse the shared shard-compatibility guard for every field EXCEPT
   // workflowSha, which is neutralized by copying the checkpoint's own value
   // into the expected-meta comparison object — see docstring above for why.
@@ -1080,7 +1110,7 @@ export function toSearchArtifact(checkpoint: RoundCheckpoint): SearchArtifactLik
 //   --mode init   <combo> --baseline <shard.json> [--secondary] [--train-seeds <str> --weapons <str>] --out <checkpoint.json>
 //   --mode plan   --round N [--secondary] [--cap N] --out <matrix.json> <checkpoint.json...>
 //   --mode select --round N [--secondary] [--planned-count N|unknown] --checkpoint <checkpoint.json> --out <checkpoint.json> [<shard.json...>]
-//   --mode resume-check --checkpoint <checkpoint.json> --expect-meta <meta.json> [--expect-train-seeds <str>] [--expect-weapons <str>] [--expect-secondary] [--out <checkpoint.json>]
+//   --mode resume-check --checkpoint <checkpoint.json> --expect-meta <meta.json> --combo <id> --round <N> [--expect-train-seeds <str>] [--expect-weapons <str>] [--expect-secondary] [--out <checkpoint.json>]
 //   --mode extract-legacy-baseline --checkpoint <checkpoint.json> --out <shard.json>
 // ---------------------------------------------------------------------------
 
@@ -1270,9 +1300,11 @@ function runCli(argv: readonly string[]): void {
   }
 
   if (args.mode === 'resume-check') {
-    if (!args.checkpoint || !args.expectMeta) {
+    if (!args.checkpoint || !args.expectMeta || !args.combo || args.round === null) {
       throw new Error(
-        '--mode resume-check requires --checkpoint <checkpoint.json> --expect-meta <meta.json>',
+        '--mode resume-check requires --checkpoint <checkpoint.json> --expect-meta <meta.json> ' +
+          '--combo <id> --round <N> (the combo/round SLOT this checkpoint file is being imported ' +
+          'for — see assertResumeCompatible docstring for why filename trust alone is insufficient)',
       );
     }
     const checkpoint = JSON.parse(readFileSync(args.checkpoint, 'utf8')) as RoundCheckpoint;
@@ -1290,6 +1322,8 @@ function runCli(argv: readonly string[]): void {
       trainSeeds: args.expectTrainSeeds ?? '',
       weapons: args.expectWeapons ?? '',
       secondary: args.expectSecondary,
+      combo: args.combo,
+      round: args.round,
     });
     console.log(
       `[${checkpoint.combo}] resume-compatible: round ${checkpoint.round} checkpoint may be reused (best=${checkpoint.bestConfigId.slice(0, 48)} score=${checkpoint.bestScore.toExponential(3)})`,

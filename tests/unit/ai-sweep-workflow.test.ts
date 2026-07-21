@@ -625,6 +625,23 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(script).toMatch(/::notice::.*running fresh/);
     });
 
+    it('binds each resume-check call to its combo/round SLOT via --combo/--round (not just the artifact filename), mapping tier name -> exact round number (r3=3, r2=2, r1=1, init=0)', () => {
+      const doc = loadWorkflow();
+      const script = allRunSteps(getJob(doc, 'resume-import'));
+      // Tier -> numeric-round mapping must be exhaustive over every tier name
+      // ever produced in TIERS (r3/r2/r1/init) so no tier silently falls
+      // through without an EXPECT_ROUND value.
+      expect(script).toMatch(/r3\)\s*EXPECT_ROUND=3\s*;;/);
+      expect(script).toMatch(/r2\)\s*EXPECT_ROUND=2\s*;;/);
+      expect(script).toMatch(/r1\)\s*EXPECT_ROUND=1\s*;;/);
+      expect(script).toMatch(/init\)\s*EXPECT_ROUND=0\s*;;/);
+      // The resume-check invocation itself must pass both bounds -- a
+      // mislabeled artifact (wrong combo, or a round exceeding the tier
+      // being imported) must be rejected by assertResumeCompatible instead
+      // of trusted purely because its FILENAME matched the expected pattern.
+      expect(script).toMatch(/--combo "\$COMBO" --round "\$EXPECT_ROUND"/);
+    });
+
     it('default blank resume_run_id preserves fresh-run behavior byte-for-byte (freshCombos = every combo, resumedCombos = [])', () => {
       const doc = loadWorkflow();
       const script = allRunSteps(getJob(doc, 'resume-import'));

@@ -336,9 +336,22 @@ jobs:
               for r in $TIERS; do
                 f="prior-checkpoints/search-checkpoint-${r}-${COMBO}.json"
                 if [ -f "$f" ]; then
+                  # Map the tier name to the exact round number a checkpoint
+                  # FILE for that tier must carry — bind the combo/round
+                  # SLOT being filled, not just its filename, so a mislabeled
+                  # artifact (wrong combo, or more/less completed optimization
+                  # than this tier) is rejected by assertResumeCompatible
+                  # rather than silently trusted (found in review).
+                  case "$r" in
+                    r3) EXPECT_ROUND=3 ;;
+                    r2) EXPECT_ROUND=2 ;;
+                    r1) EXPECT_ROUND=1 ;;
+                    init) EXPECT_ROUND=0 ;;
+                  esac
                   echo "[$COMBO] latest prior checkpoint tier available (<=rounds=$ROUNDS): $r ($f)"
                   if npx tsx scripts/agent/perf/round-plan.ts --mode resume-check \
                        --checkpoint "$f" --expect-meta current-meta.json \
+                       --combo "$COMBO" --round "$EXPECT_ROUND" \
                        --expect-train-seeds "$TRAIN_SEEDS" --expect-weapons "$WEAPONS" $SECONDARY_FLAG \
                        --out "resumed/search-checkpoint-init-${COMBO}.json"; then
                     FOUND="$r"

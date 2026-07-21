@@ -105,7 +105,7 @@ new commit.
 ## Verification
 
 - `npx tsc --noEmit -p tsconfig.json` ✅ (0 errors)
-- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (167/167, after the 6th–9th fixes below)
+- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (171/171, after the 6th–10th fixes below)
 - `npm run verify:fast` ✅
 - `npm run verify:pr-prereqs` ✅
 
@@ -256,6 +256,45 @@ directly enabled by the 6th fix's new guarantee (fixed together in one batch,
 duplicate-seed rejection, empty-weapon-entry rejection, and duplicate-weapon
 rejection — each proving the DEDUPED request would have otherwise matched the
 inferred panel (so the fix is provably load-bearing, not just defensive).
+
+A 10th bot-flagged bug surfaced after CI settled on `edef5844` (all 13 prior
+threads confirmed resolved via GraphQL, but a brand-new thread appeared at
+`round-plan.ts:758`): `assertResumeCompatible`'s compatibility contract never
+bound the checkpoint PAYLOAD itself to the combo/round SLOT the workflow
+selected it for — the `resume-import` job's "Select latest compatible
+checkpoint" step only trusted the `search-checkpoint-${r}-${COMBO}.json`
+ARTIFACT FILENAME (looping over `$COMBO`/`$r`), then handed the parsed JSON to
+`round-plan.ts --mode resume-check` without ever passing the expected combo or
+round as an argument. `assertResumeCompatible` checked metadata
+(schemaVersion/floorId/budgetMs/maxFrames/stage/runnerOs/nodeVersion/
+packageLockHash via `assertShardCompatible`) and run-input semantics
+(trainSeeds/weapons/secondary), but never compared `checkpoint.combo` or
+`checkpoint.round` against anything. A mislabeled artifact (wrong combo, or a
+round exceeding the tier being imported — e.g. an r2 checkpoint accidentally
+uploaded/matched under the `r1` filename) would have passed every existing
+check and either failed confusingly much later in the round-DAG, or silently
+resumed MORE completed optimization than the requested tier.
+
+Fixed by adding two required fields to `ResumeExpectedProvenance`: `combo:
+string` and `round: number` (the exact combo id and round number the tier
+being imported implies). `assertResumeCompatible` now checks
+`checkpoint.combo === expected.combo` and `checkpoint.round === expected.round`
+FIRST, before the existing metadata/run-input checks, so a mislabeled artifact
+fails fast with an unambiguous combo/round error. The CLI's existing generic
+`--combo`/`--round` flags (already used by `init`/`plan`/`select` modes) are
+reused for `--mode resume-check` rather than adding new flag names — both are
+now REQUIRED for that mode. `ai-sweep.yml`'s "Select latest compatible
+checkpoint" step now maps the tier name it is already looping over to the
+exact round number that tier implies (`r3`→3, `r2`→2, `r1`→1, `init`→0) via an
+inline `case` statement, and passes `--combo "$COMBO" --round
+"$EXPECT_ROUND"` to every `resume-check` invocation.
+
+4 new tests cover this: combo-mismatch rejection, round-mismatch rejection,
+combo/round checked before other provenance fields (mislabeled artifact fails
+fast on the combo error, not a confusing downstream one), plus a workflow-level
+test asserting the exhaustive tier→round `case` mapping and the `--combo
+"$COMBO" --round "$EXPECT_ROUND"` invocation shape are present in
+`ai-sweep.yml`. Test count: 167 → 171.
 
 ## Notes
 

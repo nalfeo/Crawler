@@ -1147,10 +1147,35 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
     trainSeeds: '1-24',
     weapons: 'sword,bow,baseball-bat',
     secondary: false,
+    combo: LEGACY_COMBO_ID,
+    round: 0,
   });
 
   it('passes silently when every provenance field matches exactly', () => {
     expect(() => assertResumeCompatible(resumedCheckpoint(), expected())).not.toThrow();
+  });
+
+  it('throws when checkpoint.combo does not match expected.combo — a mislabeled artifact (wrong combo) must never be silently trusted from its filename alone', () => {
+    const exp = expected();
+    exp.combo = NAVMESH_LEGACY_COMBO_ID; // checkpoint is actually 'legacy+legacy'
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(
+      /checkpoint combo .* != expected combo/,
+    );
+  });
+
+  it('throws when checkpoint.round does not match expected.round — a mislabeled artifact (wrong tier, e.g. an r2 checkpoint imported as r1) must never silently resume more or less optimization than requested', () => {
+    const exp = expected();
+    exp.round = 2; // resumedCheckpoint() is always round 0 (initCheckpoint)
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(
+      /checkpoint round 0 != expected round 2/,
+    );
+  });
+
+  it('checks combo/round BEFORE any other provenance field, so a mislabeled artifact fails fast with an unambiguous combo/round error rather than a confusing downstream one', () => {
+    const exp = expected();
+    exp.combo = NAVMESH_LEGACY_COMBO_ID;
+    exp.meta = { ...exp.meta, floorId: 'floor2' }; // would ALSO fail on floorId
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/checkpoint combo/);
   });
 
   it('reuses the existing strict shard-provenance checks: throws on schemaVersion mismatch', () => {
@@ -1264,6 +1289,8 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
       trainSeeds: '1-3',
       weapons: 'sword,bow',
       secondary: false,
+      combo: LEGACY_COMBO_ID,
+      round: 0,
     });
 
     it('accepts a legacy checkpoint whose complete, duplicate-free, rectangular baseline panel exactly matches the requested trainSeeds/weapons/secondary (canonical run-29786216369 shape)', () => {
@@ -1349,6 +1376,8 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
         trainSeeds: '1-24',
         weapons: 'sword,bow,baseball-bat',
         secondary: false,
+        combo: LEGACY_COMBO_ID,
+        round: 0,
       };
       expect(() => assertResumeCompatible(modernCheckpoint, exp)).toThrow(/weapons/);
     });
