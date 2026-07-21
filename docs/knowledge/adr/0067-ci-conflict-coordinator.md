@@ -101,8 +101,33 @@ re-dispatches during rollout.
 - Stops repeated cross-PR CI invalidation loops that waste CI minutes.
 - All closure decisions are based on deterministic full-tree diff evidence,
   not coordinator opinion.
-- Composes with existing merge-train and ci-recovery without modifying their
-  core logic.
+- Composes with ci-recovery without modifying its core logic; integrates with
+  merge-train via a minimal, fail-closed `verifyMergeSlot` hook rather than
+  restructuring the train's queue model.
+
+### Promotion-time gate in merge-train
+
+`promoteExactBatch` accepts a `verifyMergeSlot` callback that is invoked
+immediately before every merge PUT. The callback runs `ciConflictOrderReasonForPromotion`,
+which performs a live coordinator scan:
+
+1. Fetches files and coordinator-managed comments for the candidate PR.
+2. Fetches all open, non-draft, same-repository PRs and discovers conflict clusters.
+3. Verifies the candidate is the current active coordinator slot.
+4. Fetches git proofs for every cluster member and runs the supersession check.
+
+After the callback returns (or raises), `main` is re-read: if it advanced during
+the scan, promotion is aborted and the train rebuilds on the next reconcile.
+
+**Latency boundary**: the scan can take several seconds (one HTTP round-trip per
+cluster member for files, comments, checks, and one `git fetch` per member). This
+delays each merge but does not block the scheduler; the train issues the next
+reconcile immediately after the abort.
+
+**Failure boundary**: if `verifyMergeSlot` throws or returns a non-null reason, the
+merge is not issued and the train rebuilds. If `main` drifts during the scan, the
+train also rebuilds. A coordinator scan failure therefore only delays the current
+promotion cycle; it does not permanently block the candidate.
 
 ### Negative
 
@@ -110,6 +135,8 @@ re-dispatches during rollout.
   debugging stuck PRs.
 - The five-minute backstop means ordering decisions can lag by up to five
   minutes after a cluster forms.
+- Each merge is delayed by the duration of the live coordinator scan (typically
+  a few seconds; bounded by cluster size).
 
 ### Risks
 
@@ -122,9 +149,13 @@ re-dispatches during rollout.
 1. **Extend ci-recovery to be cluster-aware**: rejected because ci-recovery
    operates per-PR by design; adding cross-PR state would violate its single
    responsibility and complicate the shepherd protocol.
-2. **Extend merge-train to block cluster members**: rejected because the train
-   only sees queue candidates, not all open PRs, and lacks the diff machinery to
-   prove supersession.
+2. **Redesign merge-train to be cluster-aware**: rejected as a primary strategy
+   because the train only sees queue candidates, not all open PRs, and lacks the
+   diff machinery to prove supersession. The accepted design instead adds a
+   minimal, fail-closed `verifyMergeSlot` hook that calls the coordinator's
+   existing proof scan immediately before each merge; this keeps the train's
+   queue model intact while making the coordinator's order authoritative at
+   promotion time.
 3. **Manual process / convention**: rejected as insufficient — the problem only
    manifests under concurrent agent activity and requires sub-minute reaction
    time.
