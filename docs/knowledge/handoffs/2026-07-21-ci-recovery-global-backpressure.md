@@ -116,10 +116,12 @@ final design.
     derived from `queueEntries()`, which itself keys off the `merge-train` PR
     label rather than the feature flag, so a stale label surviving a flag-off
     still correctly forces the stricter cap of 1 (fail closed).
-- **Tests (`router.test.mjs`)**: 54 tests total; **`reconcile.test.mjs`**: 52 tests total
-  (4 new tests for `buildGatedDispatchRecovery`: dispatches when under cap, skips
-  when at cap, skips when above cap, and verifies token/owner/repo are forwarded
-  to `countRuns`). The new `router.test.mjs` tests include:
+- **Tests (`router.test.mjs`)**: 54 tests total; **`reconcile.test.mjs`**: 54 tests total
+  (6 new tests for `buildGatedDispatchRecovery`: dispatches when under cap, skips
+  when at cap, skips when above cap, verifies token/owner/repo are forwarded
+  to `countRuns`, blocks second sequential call via in-process reservation when
+  API is stale, and allows a second call once cap is raised to 2). The new
+  `router.test.mjs` tests include:
   `computeDispatchBudget`/`partitionDispatchable`/`countOutstandingRecoveryRuns`
   unit tests covering the backlog-present, backlog-empty, and
   train-feature-disabled cases (the last of these proves the cap is still 2,
@@ -158,7 +160,7 @@ unconditional.
 ## Verification run
 
 - `node --test .github/scripts/ci-recovery/router.test.mjs`: 54/54 passing.
-- `node --test .github/scripts/merge-train/reconcile.test.mjs`: 52/52 passing (4 new `buildGatedDispatchRecovery` tests).
+- `node --test .github/scripts/merge-train/reconcile.test.mjs`: 54/54 passing (6 new `buildGatedDispatchRecovery` tests, including 2 sequential-call regression tests for the in-process reservation).
 - `npm run lint`: clean.
 - `npm run verify:fast`: passed.
 - `npm run test:guards`: 1273 tests; 6 pre-existing failures confirmed via
