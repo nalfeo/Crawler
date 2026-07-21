@@ -365,8 +365,19 @@ describe('source-owned ability grants', () => {
     const overCap: AbilityState = {
       learnedSpellIds: ['fireball'],
       // 11 entries: one duplicate and one over the 10-slot cap.
-      equippedActiveAbilityIds: ['fireball', 'fireball', 'battle-focus', 'dash', 'heal',
-        'summon-wolf', 'ice-bolt', 'ember-step', 'stone-skin', 'shield-bash', 'cleave'],
+      equippedActiveAbilityIds: [
+        'fireball',
+        'fireball',
+        'battle-focus',
+        'dash',
+        'heal',
+        'summon-wolf',
+        'ice-bolt',
+        'ember-step',
+        'stone-skin',
+        'shield-bash',
+        'cleave',
+      ],
       passiveAbilityIds: [],
       ownedActiveAbilityIds: [],
       cooldownByAbilityId: new Map(),
@@ -380,8 +391,12 @@ describe('source-owned ability grants', () => {
     };
     const normalized = normalizeAbilityState(overCap);
     // After dedup-and-cap, only fireball (owned) remains — unknown IDs are also stripped.
-    expect(normalized.equippedActiveAbilityIds.length).toBeLessThanOrEqual(ACTIVE_ABILITY_SLOT_LIMIT);
+    expect(normalized.equippedActiveAbilityIds.length).toBeLessThanOrEqual(
+      ACTIVE_ABILITY_SLOT_LIMIT,
+    );
     // No duplicates.
-    expect(new Set(normalized.equippedActiveAbilityIds).size).toBe(normalized.equippedActiveAbilityIds.length);
+    expect(new Set(normalized.equippedActiveAbilityIds).size).toBe(
+      normalized.equippedActiveAbilityIds.length,
+    );
   });
 });

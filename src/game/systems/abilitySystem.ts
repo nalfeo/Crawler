@@ -277,9 +277,10 @@ export function normalizeAbilityState(state: AbilityStateLike): AbilityState {
   // Canonicalize configured actives: deduplicate and enforce the authoritative slot
   // limit so legacy/migrated snapshots with over-cap or repeated IDs never bypass the
   // ten-slot contract enforced by the grant/configure paths.
-  normalized.equippedActiveAbilityIds = [
-    ...new Set(normalized.equippedActiveAbilityIds),
-  ].slice(0, ACTIVE_ABILITY_SLOT_LIMIT);
+  normalized.equippedActiveAbilityIds = [...new Set(normalized.equippedActiveAbilityIds)].slice(
+    0,
+    ACTIVE_ABILITY_SLOT_LIMIT,
+  );
   return normalized;
 }
 
