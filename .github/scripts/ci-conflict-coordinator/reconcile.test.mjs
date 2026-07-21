@@ -149,7 +149,7 @@ function startServer(routes) {
           handler = entry?.[1];
         }
         if (handler) {
-          const result = handler(req.url, parsed) ?? {};
+          const result = handler(req.url, parsed, req) ?? {};
           const status = result.status ?? 200;
           const bodyStr = result.body !== undefined ? JSON.stringify(result.body) : '{}';
           res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -219,6 +219,8 @@ async function runScript(port, workDir, extraEnv = {}) {
  *   defaults to 200 (success).
  * @param {number} [opts.fenceReleaseStatus] - HTTP status to return for the owner-fence
  *   DELETE; defaults to 204 (success).
+ * @param {Array<Array<object>>} [opts.checkRunPages] - check-runs response pages.
+ * @param {boolean} [opts.enforceGraphqlAuth] - require auth header on GraphQL calls.
  */
 function buildRoutes({
   mainSha,
@@ -236,6 +238,8 @@ function buildRoutes({
   pr3LabelsAfterGetCount = null,
   pr3LabelsAfter = [{ name: 'human-approval-required' }],
   pr3ClosingIssues = [],
+  checkRunPages = [[]],
+  enforceGraphqlAuth = false,
 }) {
   const driftedPr3Sha = postClosePr3Sha ?? pr3Sha;
   let pr3PatchCount = 0;
@@ -317,8 +321,12 @@ function buildRoutes({
       body: { object: { sha: mainSha } },
     }),
 
-    // Check runs (all empty → not green)
-    [`GET /repos/${OWNER}/${REPO}/commits`]: () => ({ body: { check_runs: [] } }),
+    // Check runs (all empty → not green by default)
+    [`GET /repos/${OWNER}/${REPO}/commits`]: (url) => {
+      const pageParam = new URL(url, 'http://localhost').searchParams.get('page');
+      const page = Number.parseInt(pageParam || '1', 10);
+      return { body: { check_runs: checkRunPages[page - 1] || [] } };
+    },
 
     // Live PR reads for PR1 (leader): can drift after the initial snapshot.
     [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({ body: livePull(1, livePr1Sha) }),
@@ -380,20 +388,26 @@ function buildRoutes({
     [`POST /repos/${OWNER}/${REPO}/issues/3/comments`]: () => ({ body: { id: 1003 } }),
 
     // GraphQL closing-issue lookup used by the shared human-approval gate.
-    [`POST /graphql`]: (_url, body) => ({
-      body: {
-        data: {
-          repository: {
-            pullRequest: {
-              closingIssuesReferences: {
-                pageInfo: { hasNextPage: false, endCursor: null },
-                nodes: body?.variables?.number === 3 ? pr3ClosingIssues : [],
+    [`POST /graphql`]: (_url, body, req) => {
+      const expectedAuth = `Be${'arer'} ${TOKEN}`;
+      if (enforceGraphqlAuth && req?.headers?.authorization !== expectedAuth) {
+        return { status: 401, body: { message: 'Bad credentials' } };
+      }
+      return {
+        body: {
+          data: {
+            repository: {
+              pullRequest: {
+                closingIssuesReferences: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: body?.variables?.number === 3 ? pr3ClosingIssues : [],
+                },
               },
             },
           },
         },
-      },
-    }),
+      };
+    },
   };
 }
 
@@ -894,5 +908,54 @@ test('coordinator retains superseded duplicate closing a human-approval-required
     stdout,
     /retain pr=#3 reason=human-approval-required/,
     'stdout must log human-approval retention for the labelled duplicate',
+  );
+});
+
+test('coordinator paginates check runs with filter=all and authenticates GraphQL approval checks', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const observedCheckRunUrls = [];
+  const page1 = Array.from({ length: 100 }, (_, idx) => ({
+    id: idx + 1,
+    name: `optional-${idx + 1}`,
+    status: 'completed',
+    conclusion: 'success',
+  }));
+  const page2 = [
+    {
+      id: 101,
+      name: 'optional-101',
+      status: 'completed',
+      conclusion: 'success',
+    },
+  ];
+
+  const routes = buildRoutes({
+    mainSha,
+    pr1Sha,
+    pr2Sha,
+    pr3Sha,
+    checkRunPages: [page1, page2],
+    enforceGraphqlAuth: true,
+  });
+  const baseCheckRunsRoute = routes[`GET /repos/${OWNER}/${REPO}/commits`];
+  routes[`GET /repos/${OWNER}/${REPO}/commits`] = (url, body, req) => {
+    observedCheckRunUrls.push(url);
+    return baseCheckRunsRoute(url, body, req);
+  };
+  const { server, port } = await startServer(routes);
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, workDir);
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstderr: ${stderr}`);
+  assert.ok(
+    observedCheckRunUrls.some((url) => url.includes('filter=all') && url.includes('page=2')),
+    'must request paginated check runs with filter=all when page 1 is full',
   );
 });

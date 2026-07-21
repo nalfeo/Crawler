@@ -234,12 +234,20 @@ async function updateCoordinatorComment(pull, comments, state) {
 }
 
 async function checkRunsFor(sha) {
-  const response = await request(
-    token,
-    `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`,
-    { headers: { Accept: 'application/vnd.github+json' } },
-  );
-  return response.data.check_runs || [];
+  const encodedSha = encodeURIComponent(sha);
+  const results = [];
+  let page = 1;
+  while (true) {
+    const response = await request(
+      token,
+      `/repos/${owner}/${repo}/commits/${encodedSha}/check-runs?filter=all&per_page=100&page=${page}`,
+      { headers: { Accept: 'application/vnd.github+json' } },
+    );
+    const runs = response.data.check_runs || [];
+    results.push(...runs);
+    if (runs.length < 100) return results;
+    page += 1;
+  }
 }
 
 function normalizePull(pull, paths) {
@@ -362,7 +370,7 @@ async function liveHumanApprovalRejection(
   const livePull = pull || (await fetchLivePull(number));
   const [liveComments, liveClosingIssues] = await Promise.all([
     comments ? Promise.resolve(comments) : commentsFor(number),
-    closingIssues ? Promise.resolve(closingIssues) : listClosingIssues(null, owner, repo, number),
+    closingIssues ? Promise.resolve(closingIssues) : listClosingIssues(token, owner, repo, number),
   ]);
   return humanApprovalRejection({
     pullRequest: livePull,
@@ -485,7 +493,7 @@ async function closeDuplicate(proof) {
           fetchLivePull(proof.number),
           proof.leaderHead ? fetchLivePull(proof.leaderHead.number) : Promise.resolve(null),
           commentsFor(proof.number),
-          listClosingIssues(null, owner, repo, proof.number),
+          listClosingIssues(token, owner, repo, proof.number),
         ],
       );
       const postLeaderSha = postLeader?.head?.sha ?? null;
