@@ -38,7 +38,7 @@ emit_all_false() {
   # Legacy flags (safe/only): false → broader gates run.
   # New positive-contract flags: true → fail toward broader validation when
   # scope cannot be determined (consistent with detect-art-only.sh fail-safe).
-  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nsim_touched=true\ncoverage_touched=true\ndependencies_touched=true\nai_code_touched=true\ncodeowners_touched=true\nsource_code_touched=true\nvisual_touched=true\ngame_visual_touched=true\nasset_visual_touched=true\ndevtool_visual_touched=true\n'
+  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=true\nsim_touched=true\ncoverage_touched=true\nsprite_pipeline_touched=true\ndependencies_touched=true\nai_code_touched=true\ncodeowners_touched=true\nsource_code_touched=true\nvisual_touched=true\ngame_visual_touched=true\nasset_visual_touched=true\ndevtool_visual_touched=true\n'
 }
 
 # Not a git work tree (or git unavailable) → cannot compute a trustworthy set.
@@ -63,14 +63,21 @@ fi
 # `set -o pipefail`; a partial/empty set only ever degrades toward all-false.
 changed="$(
   {
-    git diff --name-only "$base" HEAD
-    git diff --name-only
-    git diff --name-only --cached
+    git diff --no-renames --name-only "$base" HEAD
+    git diff --no-renames --name-only
+    git diff --no-renames --name-only --cached
     git ls-files --others --exclude-standard
   } 2>/dev/null | sort -u || true
 )"
 
 echo "local-scope: base=${base}" >&2
+
+# Empty working-tree union should fail closed for local heavy-check gating.
+if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
+  echo "local-scope: no changed files detected — forcing full-suite (all-false)." >&2
+  emit_all_false
+  exit 0
+fi
 
 # Hand the working-tree-aware set to the shared CI classifier via its documented
 # test hook. SCOPE_FILES_OVERRIDE is presence-detected (${VAR+x}) there, so even

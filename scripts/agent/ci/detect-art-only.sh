@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# detect-art-only.sh — detect change scope and emit art_only + docs_only +
-# gameplay_safe + sim_touched + coverage_touched + security-impact flags.
+# detect-art-only.sh — detect change scope and emit orthogonal impact flags
+# (art_only, docs_only, gameplay_safe, sim_touched, coverage_touched, visual
+# surfaces, and security-impact flags).
 #
 # art_only=true  — every changed file is under the approved-art surface:
 #   - public/assets/generated/**        (sprites + manifest.json)
@@ -59,10 +60,11 @@
 # directly instead of deriving it from git — used by the deterministic unit test.
 # Fail-safe: any ambiguity (no base, no changed files, detached history) yields
 # false for scope-narrowing flags (art_only, docs_only, gameplay_safe,
-# sprites_only, sprites_touched), TRUE for sim/coverage flags (sim_touched,
-# coverage_touched), and TRUE for security-impact flags (dependencies_touched,
-# ai_code_touched, codeowners_touched) so that all gated checks always run on
-# ambiguous scope. This script never blocks CI.
+# sprites_only), TRUE for sprite/sim/coverage flags (sprites_touched,
+# sim_touched, coverage_touched, sprite_pipeline_touched), and TRUE for
+# security-impact flags (dependencies_touched, ai_code_touched,
+# codeowners_touched, source_code_touched) so that all gated checks always
+# run on ambiguous scope. This script never blocks CI.
 
 set -euo pipefail
 
@@ -75,6 +77,9 @@ emit_output() {
 }
 
 # Emit all scope flags at once (fail-safe path uses this for early exits).
+# Args: art_only docs_only gameplay_safe sprites_only sprites_touched
+#       sim_touched coverage_touched sprite_pipeline_touched dependencies_touched
+#       ai_code_touched codeowners_touched source_code_touched
 emit_all() {
   emit_output art_only "$1"
   emit_output docs_only "$2"
@@ -83,10 +88,11 @@ emit_all() {
   emit_output sprites_touched "$5"
   emit_output sim_touched "$6"
   emit_output coverage_touched "$7"
-  emit_output dependencies_touched "$8"
-  emit_output ai_code_touched "$9"
-  emit_output codeowners_touched "${10}"
-  emit_output source_code_touched "${11}"
+  emit_output sprite_pipeline_touched "$8"
+  emit_output dependencies_touched "$9"
+  emit_output ai_code_touched "${10}"
+  emit_output codeowners_touched "${11}"
+  emit_output source_code_touched "${12}"
 }
 
 # Emit visual surface flags (new in #1688/#1698).
@@ -188,7 +194,7 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false false false true true true true true true
+    emit_all false false false false true true true true true true true true
     # No diff available: fail toward broader validation — run all visual suites.
     emit_visual_all true true true true
     exit 0
@@ -212,7 +218,7 @@ echo "${changed:-<none>}" >&2
 # For visual surface flags: we CANNOT safely skip — an empty/unknown diff means we
 # don't know what changed, so all three visual suites must run (fail toward more).
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false false false true true true true true true
+  emit_all false false false false true true true true true true true true
   emit_visual_all true true true true
   exit 0
 fi
@@ -440,6 +446,10 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
+# sprite_pipeline_touched: alias for sprites_touched with a clearer name for
+# downstream consumers. Always kept identical.
+sprite_pipeline_touched="$sprites_touched"
+
 # dependencies_touched: at least one changed file is a dependency manifest
 # (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json) or the
 # dependency-allowlist security script. Consumed by security-review.yml to gate
@@ -534,7 +544,7 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched" "$dependencies_touched" "$ai_code_touched" "$codeowners_touched" "$source_code_touched"
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched" "$sprite_pipeline_touched" "$dependencies_touched" "$ai_code_touched" "$codeowners_touched" "$source_code_touched"
 
 # ── Visual surface flags (#1688/#1698) ────────────────────────────────────────
 # Classify each changed file into one or more visual surfaces.

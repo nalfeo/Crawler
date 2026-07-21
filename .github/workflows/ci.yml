@@ -23,13 +23,18 @@ concurrency:
 
 jobs:
   # Job 0: Detect the change scope.
-  # art_only=true      → heavy gameplay gates skipped; typecheck/lint/format/unit run.
-  # docs_only=true     → ALL heavy gates skipped; only commit-lint / lightweight
-  #                      review workflows run. Documentation/governance surfaces
-  #                      cannot change shipped game logic.
-  # gameplay_safe=true → the diff provably can't change the deterministic Floor-1 sim
-  #                      (engine/labs/e2e/docs/assets only), so the headless gate is
-  #                      skipped ON PULL REQUESTS ONLY (main-push still runs it).
+  # art_only=true         → heavy gameplay gates skipped; typecheck/lint/format/unit run.
+  # docs_only=true        → ALL heavy gates skipped; only commit-lint / lightweight
+  #                         review workflows run. Documentation/governance surfaces
+  #                         cannot change shipped game logic.
+  # gameplay_safe=true    → (legacy compatibility signal) the diff provably can't change
+  #                         the deterministic Floor-1 sim (engine/labs/e2e/docs/assets only).
+  #                         No longer used to gate jobs; see sim_touched for current headless
+  #                         gating logic.
+  # visual_touched=true   → change may affect rendered output; E2E visual regression runs.
+  # sim_touched=true      → change may affect the deterministic sim; headless gate runs.
+  # coverage_touched=true → change may affect unit coverage; coverage advisory runs.
+  # dependencies_touched=true → package.json or lock file changed; npm audit runs.
   # The merge-gate treats skipped jobs as PASS for all scope flags.
   changes:
     name: Detect change scope
@@ -42,10 +47,12 @@ jobs:
       sprites_only: ${{ steps.scope.outputs.sprites_only }}
       sprites_touched: ${{ steps.scope.outputs.sprites_touched }}
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
+      visual_touched: ${{ steps.scope.outputs.visual_touched }}
       sim_touched: ${{ steps.scope.outputs.sim_touched }}
       coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
+      sprite_pipeline_touched: ${{ steps.scope.outputs.sprite_pipeline_touched }}
+      dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
       # Visual surface outputs (#1688/#1698): route E2E to the affected surface only.
-      visual_touched: ${{ steps.scope.outputs.visual_touched }}
       game_visual_touched: ${{ steps.scope.outputs.game_visual_touched }}
       asset_visual_touched: ${{ steps.scope.outputs.asset_visual_touched }}
       devtool_visual_touched: ${{ steps.scope.outputs.devtool_visual_touched }}
@@ -72,9 +79,11 @@ jobs:
           gameplay_safe='${{ steps.detect.outputs.gameplay_safe }}'
           sprites_only='${{ steps.detect.outputs.sprites_only }}'
           sprites_touched='${{ steps.detect.outputs.sprites_touched }}'
+          visual_touched='${{ steps.detect.outputs.visual_touched }}'
           sim_touched='${{ steps.detect.outputs.sim_touched }}'
           coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
-          visual_touched='${{ steps.detect.outputs.visual_touched }}'
+          sprite_pipeline_touched='${{ steps.detect.outputs.sprite_pipeline_touched }}'
+          dependencies_touched='${{ steps.detect.outputs.dependencies_touched }}'
           game_visual_touched='${{ steps.detect.outputs.game_visual_touched }}'
           asset_visual_touched='${{ steps.detect.outputs.asset_visual_touched }}'
           devtool_visual_touched='${{ steps.detect.outputs.devtool_visual_touched }}'
@@ -86,10 +95,12 @@ jobs:
             gameplay_safe=false
             sprites_only=false
             sprites_touched=true
+            visual_touched=true
             sim_touched=true
             coverage_touched=true
+            sprite_pipeline_touched=true
+            dependencies_touched=true
             # Schedule runs always execute the full visual suite.
-            visual_touched=true
             game_visual_touched=true
             asset_visual_touched=true
             devtool_visual_touched=true
@@ -140,10 +151,12 @@ jobs:
           echo "gameplay_safe=$gameplay_safe" >>"$GITHUB_OUTPUT"
           echo "sprites_only=$sprites_only" >>"$GITHUB_OUTPUT"
           echo "sprites_touched=$sprites_touched" >>"$GITHUB_OUTPUT"
-          echo "sim_touched=$sim_touched" >>"$GITHUB_OUTPUT"
-          echo "coverage_touched=$coverage_touched" >>"$GITHUB_OUTPUT"
           echo "train_promoted=$train_promoted" >>"$GITHUB_OUTPUT"
           echo "visual_touched=$visual_touched" >>"$GITHUB_OUTPUT"
+          echo "sim_touched=$sim_touched" >>"$GITHUB_OUTPUT"
+          echo "coverage_touched=$coverage_touched" >>"$GITHUB_OUTPUT"
+          echo "sprite_pipeline_touched=$sprite_pipeline_touched" >>"$GITHUB_OUTPUT"
+          echo "dependencies_touched=$dependencies_touched" >>"$GITHUB_OUTPUT"
           echo "game_visual_touched=$game_visual_touched" >>"$GITHUB_OUTPUT"
           echo "asset_visual_touched=$asset_visual_touched" >>"$GITHUB_OUTPUT"
           echo "devtool_visual_touched=$devtool_visual_touched" >>"$GITHUB_OUTPUT"
@@ -311,9 +324,8 @@ jobs:
   # Deterministically proves the behavior-tree AI can still clear Floor 1
   # (victory + all quests, under the 5-minute game-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
-  # Scoped: skipped on art_only/docs_only, and on PRs where sim_touched=false
-  # (engine/labs/e2e/docs/scripts/CI-only diffs the headless runner can't import).
-  # main-push and schedule always run it as a backstop in case the allowlist is wrong.
+  # Scoped: skipped on art_only/docs_only, and on PRs where sim_touched=false.
+  # Main-push and schedule always run it as a backstop in case the allowlist is wrong.
   test-headless:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
@@ -366,9 +378,8 @@ jobs:
   # does not block or serialize dead-code, security, typecheck, and build checks.
   # All are advisory (continue-on-error: true); independence keeps scheduling
   # flexible — this job can be re-run or skipped without affecting the others.
-  # Scoped: on PRs, skipped when coverage_touched=false (labs/e2e/docs/scripts-only
-  # diffs cannot change unit coverage numbers). Fail-closed: only an explicit 'false'
-  # skips the job — a missing/blank value keeps it running. Push/schedule always run.
+  # Scoped: on PRs, skipped when coverage_touched=false. Fail-closed: only an
+  # explicit 'false' skips the job; a missing value keeps it running.
   ci-coverage:
     name: Advisory coverage
     runs-on: ubuntu-latest
@@ -436,7 +447,7 @@ jobs:
         test-e2e-devtools,
         human-approval,
       ]
-    if: always()
+    if: ${{ !cancelled() }}
     steps:
       - name: Check required jobs
         run: |
@@ -496,9 +507,8 @@ jobs:
           check "Integration tests"             "${{ needs.test-integration.result }}" "true"
           # Sprite pipeline tests: skipped for art_only or docs_only (allow_skipped=true).
           check "Sprite pipeline tests"         "${{ needs.test-sprites.result }}"    "true"
-          # Headless Floor 1: skip is intentional only when sim_touched=false on a PR.
-          # A blank/empty sim_touched when headless was skipped on a PR indicates a
-          # potential classifier failure and rejects the gate.
+          # A headless skip is intentional only for docs or an explicit
+          # sim_touched=false classification. Missing classifier output fails closed.
           headless_result="${{ needs.test-headless.result }}"
           if [ "$headless_result" = "success" ]; then
             echo "✅ Headless Floor 1 completion: success"
@@ -524,7 +534,7 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
     needs: [merge-gate]
-    if: always()
+    if: ${{ !cancelled() }}
     steps:
       - name: Verify CI passed
         run: |

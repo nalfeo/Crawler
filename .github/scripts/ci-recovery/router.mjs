@@ -575,9 +575,7 @@ export async function listRecentOutstandingRunIds(
   );
   const outstandingStatuses = new Set(statuses);
   return new Set(
-    (data?.workflow_runs || [])
-      .filter((r) => outstandingStatuses.has(r.status))
-      .map((r) => r.id),
+    (data?.workflow_runs || []).filter((r) => outstandingStatuses.has(r.status)).map((r) => r.id),
   );
 }
 

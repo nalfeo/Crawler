@@ -507,8 +507,7 @@ test('promoteExactBatch fails closed when auto_merge is re-armed during the coor
     expectedBase: BASE,
     repository: REPO,
     live: true,
-    fetchCurrentPr: async () =>
-      makePromoPr(1, { autoMerge: slotVerified ? {} : null }),
+    fetchCurrentPr: async () => makePromoPr(1, { autoMerge: slotVerified ? {} : null }),
     fetchCurrentMain: async () => BASE,
     fetchCommit: async (sha) => ({
       sha,

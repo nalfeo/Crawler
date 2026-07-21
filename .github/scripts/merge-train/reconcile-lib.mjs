@@ -1302,7 +1302,14 @@ export function buildDispatchBindings({ request, workflowDispatchToken, owner, r
  * @param {string} opts.repo   Repository name.
  * @returns {(prNumber: number, trigger: string) => Promise<void>}
  */
-export function buildGatedDispatchRecovery({ dispatchRecovery, countRuns, cap, token, owner, repo }) {
+export function buildGatedDispatchRecovery({
+  dispatchRecovery,
+  countRuns,
+  cap,
+  token,
+  owner,
+  repo,
+}) {
   // Tracks dispatches made during this invocation that may not yet be visible
   // in the API. Incremented after a confirmed successful dispatch; never
   // decremented so the reservation persists for all subsequent calls within

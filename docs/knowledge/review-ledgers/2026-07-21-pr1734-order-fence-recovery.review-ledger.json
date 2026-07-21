@@ -20,9 +20,7 @@
       "rounds": [
         {
           "round": 1,
-          "models": [
-            "claude-sonnet-4.6"
-          ],
+          "models": ["claude-sonnet-4.6"],
           "concerns_count": 2,
           "resolved_count": 2,
           "clean": false,
@@ -30,9 +28,7 @@
         },
         {
           "round": 2,
-          "models": [
-            "claude-sonnet-4.6"
-          ],
+          "models": ["claude-sonnet-4.6"],
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true,

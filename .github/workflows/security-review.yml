@@ -28,6 +28,10 @@ jobs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
       art_only: ${{ steps.scope.outputs.art_only }}
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
+      visual_touched: ${{ steps.scope.outputs.visual_touched }}
+      sim_touched: ${{ steps.scope.outputs.sim_touched }}
+      coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
+      sprite_pipeline_touched: ${{ steps.scope.outputs.sprite_pipeline_touched }}
       dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
       ai_code_touched: ${{ steps.scope.outputs.ai_code_touched }}
       codeowners_touched: ${{ steps.scope.outputs.codeowners_touched }}
@@ -57,12 +61,21 @@ jobs:
           codeowners_touched='${{ steps.detect.outputs.codeowners_touched }}'
           source_code_touched='${{ steps.detect.outputs.source_code_touched }}'
           train_promoted='false'
+          visual_touched='${{ steps.detect.outputs.visual_touched }}'
+          sim_touched='${{ steps.detect.outputs.sim_touched }}'
+          coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
+          sprite_pipeline_touched='${{ steps.detect.outputs.sprite_pipeline_touched }}'
+          dependencies_touched='${{ steps.detect.outputs.dependencies_touched }}'
           if [ '${{ github.event_name }}' != 'pull_request' ]; then
             # Scheduled and workflow_dispatch runs must execute the full security
             # suite. Force all flags so every check runs regardless of what the
             # classifier saw (which may be empty for non-PR events).
             docs_only='false'
             art_only='false'
+            visual_touched='true'
+            sim_touched='true'
+            coverage_touched='true'
+            sprite_pipeline_touched='true'
             dependencies_touched='true'
             ai_code_touched='true'
             codeowners_touched='true'
@@ -110,6 +123,10 @@ jobs:
           echo "docs_only=${docs_only}" >>"$GITHUB_OUTPUT"
           echo "art_only=${art_only}" >>"$GITHUB_OUTPUT"
           echo "train_promoted=${train_promoted}" >>"$GITHUB_OUTPUT"
+          echo "visual_touched=${visual_touched}" >>"$GITHUB_OUTPUT"
+          echo "sim_touched=${sim_touched}" >>"$GITHUB_OUTPUT"
+          echo "coverage_touched=${coverage_touched}" >>"$GITHUB_OUTPUT"
+          echo "sprite_pipeline_touched=${sprite_pipeline_touched}" >>"$GITHUB_OUTPUT"
           echo "dependencies_touched=${dependencies_touched}" >>"$GITHUB_OUTPUT"
           echo "ai_code_touched=${ai_code_touched}" >>"$GITHUB_OUTPUT"
           echo "codeowners_touched=${codeowners_touched}" >>"$GITHUB_OUTPUT"
@@ -124,6 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changes]
+    if: ${{ !cancelled() }}
     steps:
       - name: Docs/asset-only fast-path
         if: (needs.changes.outputs.docs_only == 'true' || needs.changes.outputs.art_only == 'true') && needs.changes.outputs.train_promoted != 'true'

@@ -1158,13 +1158,20 @@ test('waitForDispatchedRunsVisible resolves when a newly dispatched run appears'
     visibleIds = new Set([1000, 1001, 1002]);
   };
 
-  const newCount = await waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
-    timeoutMs: 30,
-    pollIntervalMs: 10,
-    nowFn: () => now,
-    sleepFn,
-    listFn: async () => visibleIds,
-  });
+  const newCount = await waitForDispatchedRunsVisible(
+    'token',
+    'nalfeo',
+    'Crawler',
+    preDispatchIds,
+    1,
+    {
+      timeoutMs: 30,
+      pollIntervalMs: 10,
+      nowFn: () => now,
+      sleepFn,
+      listFn: async () => visibleIds,
+    },
+  );
 
   assert.equal(newCount, 1);
   assert.equal(sleeps.length, 1, 'must stop polling as soon as the new run is visible');
@@ -1178,13 +1185,20 @@ test('waitForDispatchedRunsVisible does not time out when a pre-existing run com
   // Pre-existing run 1000 completed; new run 1001 appeared.
   const visibleIds = new Set([1001]); // 1000 gone, 1001 new
 
-  const newCount = await waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
-    timeoutMs: 100,
-    pollIntervalMs: 10,
-    nowFn: () => 0,
-    sleepFn: async () => {},
-    listFn: async () => visibleIds,
-  });
+  const newCount = await waitForDispatchedRunsVisible(
+    'token',
+    'nalfeo',
+    'Crawler',
+    preDispatchIds,
+    1,
+    {
+      timeoutMs: 100,
+      pollIntervalMs: 10,
+      nowFn: () => 0,
+      sleepFn: async () => {},
+      listFn: async () => visibleIds,
+    },
+  );
 
   assert.equal(newCount, 1, 'must detect the new run even though a pre-existing run completed');
 });
