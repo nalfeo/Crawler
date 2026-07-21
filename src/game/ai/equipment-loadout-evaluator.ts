@@ -30,6 +30,7 @@ import {
   type LegacyStatModifierLike,
   type PrimaryStatId,
   type StatId,
+  type StatKey,
 } from '../../shared/stats.js';
 import { weaponSkillPrerequisiteMatches } from '../../shared/weapon-skills.js';
 
@@ -193,6 +194,12 @@ function emptyComponents(): Record<EquipmentErvComponent, number> {
 
 function sumComponents(components: EquipmentErvComponents): number {
   return COMPONENTS.reduce((sum, component) => sum + components[component], 0);
+}
+
+function validateFiniteComponents(components: EquipmentErvComponents, path: string): void {
+  for (const component of COMPONENTS) {
+    requireFinite(components[component], `${path}.${component}`);
+  }
 }
 
 function requireFinite(value: number, path: string, minimum?: number): void {
@@ -502,22 +509,31 @@ export function computeExpectedWeaponTargets(
 ): number {
   if (fixture.enemyCount === 0) return 0;
   const chainTargets = 1 + weapon.pierce;
-  const hasArea =
-    weapon.aoeRadius > 0 ||
-    weapon.trapExplosionRadius > 0 ||
-    weapon.beamLength > 0 ||
-    weapon.swingArcDeg > 90;
   return Math.min(
     fixture.enemyCount,
-    Math.max(chainTargets, hasArea ? fixture.clusteredEnemyCount : 1),
+    Math.max(chainTargets, weaponHasAreaCapability(weapon) ? fixture.clusteredEnemyCount : 1),
   );
 }
 
-function expectedWeaponDps(
+function weaponHasAreaCapability(weapon: ActiveWeaponSnapshotV1): boolean {
+  return (
+    weapon.aoeRadius > 0 ||
+    weapon.trapExplosionRadius > 0 ||
+    weapon.beamLength > 0 ||
+    weapon.swingArcDeg > 90
+  );
+}
+
+interface ExpectedWeaponDpsProfile {
+  readonly primary: number;
+  readonly additionalTarget: number;
+}
+
+function expectedWeaponDpsProfile(
   weapon: ActiveWeaponSnapshotV1 | null,
   stats: Readonly<Record<StatId, number>>,
-): number {
-  if (weapon === null) return 0;
+): ExpectedWeaponDpsProfile {
+  if (weapon === null) return { primary: 0, additionalTarget: 0 };
   const affinity = weapon.weaponType === WeaponType.MAGIC ? 'magic' : 'physical';
   const scaled = computePlayerScaledDamage(weapon.baseDamage, stats, {
     affinity,
@@ -538,7 +554,20 @@ function expectedWeaponDps(
     weapon.beamLength > 0 && weapon.beamTickMs > 0
       ? 1 + Math.floor(Math.max(0, weapon.durationMs) / weapon.beamTickMs)
       : 1;
-  return (damage * accuracy * beamTicks * 1_000) / cooldownMs;
+  const impactSplashHits = weapon.weaponType === WeaponType.MAGIC && weapon.aoeRadius > 0 ? 1 : 0;
+  const returnHits = weapon.returnSpeed > 0 && weapon.maxRange > 0 ? 1 : 0;
+  const damagePerSecond = (damage * accuracy * 1_000) / cooldownMs;
+  return {
+    primary: damagePerSecond * (beamTicks + impactSplashHits + returnHits),
+    additionalTarget: damagePerSecond * beamTicks,
+  };
+}
+
+function expectedWeaponDps(
+  weapon: ActiveWeaponSnapshotV1 | null,
+  stats: Readonly<Record<StatId, number>>,
+): number {
+  return expectedWeaponDpsProfile(weapon, stats).primary;
 }
 
 function triggerUptime(ability: AbilityDefinition, fixture: EquipmentEncounterFixture): number {
@@ -567,6 +596,16 @@ function expectedSpellDamage(baseDamage: number, stats: Readonly<Record<StatId, 
     stats.critChance,
     stats.critMultiplier,
   );
+}
+
+const RUNTIME_INERT_STAT_EFFECTS: ReadonlySet<StatKey> = new Set([
+  'pickupRange',
+  'projectileCount',
+  'projectileSpeed',
+]);
+
+function runtimeRealizableStatEffectValue(stat: StatKey, value: number): number {
+  return RUNTIME_INERT_STAT_EFFECTS.has(stat) ? 0 : Math.abs(value);
 }
 
 function activeEffectValue(
@@ -610,12 +649,16 @@ function activeEffectValue(
     case 'spell_timed_buff':
       return effect.modifiers.reduce(
         (sum, modifier) =>
-          sum + Math.abs(resolveScalableOutput(modifier.value, stats.intelligence)),
+          sum +
+          runtimeRealizableStatEffectValue(
+            modifier.stat,
+            resolveScalableOutput(modifier.value, stats.intelligence),
+          ),
         0,
       );
     case 'stat_add':
     case 'stat_multiply':
-      return Math.abs(effect.value);
+      return runtimeRealizableStatEffectValue(effect.stat, effect.value);
     case 'extra_projectile':
       return 0;
     case 'aura':
@@ -645,9 +688,11 @@ function expectedActiveAbilityValue(
         ? fixture.skillTriggerRatePerSecond * fixture.durationSeconds
         : Number.POSITIVE_INFINITY;
     const activations = Math.min(cooldownLimitedActivations, triggerLimitedActivations);
-    value +=
-      ability.effects.reduce((sum, effect) => sum + activeEffectValue(effect, stats, fixture), 0) *
-      activations;
+    for (const effect of ability.effects) {
+      const effectValue = activeEffectValue(effect, stats, fixture);
+      const isPersistentStatEffect = effect.type === 'stat_add' || effect.type === 'stat_multiply';
+      value += effectValue * (isPersistentStatEffect ? Math.min(1, activations) : activations);
+    }
   }
   return value;
 }
@@ -665,14 +710,18 @@ function scoreCoreComponents(
   const multiplier = computeEncumbranceMultiplier(
     computeEncumbranceBand(bodyWeightLb + equippedWeightLb, thresholds),
   );
-  const weaponDps = expectedWeaponDps(weapon, stats);
+  const weaponDps = expectedWeaponDpsProfile(weapon, stats);
 
   for (const fixture of fixtures) {
     const duration = fixture.durationSeconds;
     const targets = weapon === null ? 0 : computeExpectedWeaponTargets(weapon, fixture);
-    components.offense += weaponDps * duration * config.weights.offense;
+    components.offense +=
+      weaponDps.primary * Math.min(1, targets) * duration * config.weights.offense;
     components.encounterFit +=
-      weaponDps * Math.max(0, targets - 1) * duration * config.weights.encounterFit;
+      weaponDps.additionalTarget *
+      Math.max(0, targets - 1) *
+      duration *
+      config.weights.encounterFit;
 
     const incomingHits = fixture.incomingHitsPerSecond * duration;
     const rawIncoming = fixture.incomingHitDamage * incomingHits;
@@ -734,7 +783,7 @@ function affinityValue(
     if (weapon !== null) {
       tags.add('weapon');
       tags.add(weapon.weaponType === WeaponType.MAGIC ? 'magic' : 'physical');
-      tags.add(weapon.aoeRadius > 0 || weapon.pierce > 0 ? 'aoe' : 'single-target');
+      tags.add(weaponHasAreaCapability(weapon) || weapon.pierce > 0 ? 'aoe' : 'single-target');
       if (weapon.cooldownMs <= 500) tags.add('cadence');
     }
   }
@@ -805,9 +854,12 @@ function scoreLoadout(
   components.affinity =
     affinityValue(state.equipped, state.ownership, configured, affinityTagWeights) *
     config.weights.affinity;
+  validateFiniteComponents(components, '$.score.components');
+  const total = sumComponents(components);
+  requireFinite(total, '$.score.total');
 
   return {
-    total: sumComponents(components),
+    total,
     components,
     effectiveStats: fullStats,
     equippedActiveAbilityIds: configured,
@@ -826,6 +878,7 @@ function subtractComponents(
     result[component] = next[component] - current[component];
   }
   result.purchaseCost = purchaseCost;
+  validateFiniteComponents(result, '$.transition.components');
   return result;
 }
 
@@ -947,6 +1000,15 @@ export function evaluateEquipmentLoadoutCandidates(
     const candidateContribution = nextScore.total - retainedScore.total;
     const displacementCost = currentScore.total - retainedScore.total;
     const score = sumComponents(components);
+    requireFinite(
+      candidateContribution,
+      `$.candidates.${candidateInstance.instanceId}.candidateContribution`,
+    );
+    requireFinite(
+      displacementCost,
+      `$.candidates.${candidateInstance.instanceId}.displacementCost`,
+    );
+    requireFinite(score, `$.candidates.${candidateInstance.instanceId}.score`);
 
     ranked.push({
       candidate: { ...rawCandidate, instance: candidateInstance },

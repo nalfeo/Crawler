@@ -6,6 +6,10 @@ import {
   computePlayerScaledDamage,
 } from '../../src/core/combat-math.js';
 import {
+  computeActiveWeaponSnapshotFingerprint,
+  computeEquipmentFingerprint,
+} from '../../src/core/generated-equipment-registry.js';
+import {
   DEFAULT_EQUIPMENT_ERV_CONFIG,
   computeExpectedWeaponTargets,
   evaluateEquipmentLoadoutCandidates,
@@ -16,9 +20,13 @@ import {
 } from '../../src/game/ai/equipment-loadout-evaluator.js';
 import { generateEquipmentInstance } from '../../src/game/generated-equipment-generator.js';
 import { type AbilityGrantSource } from '../../src/shared/abilities.js';
+import { WeaponType } from '../../src/shared/constants.js';
 import type { GeneratedEquipmentInstanceV1 } from '../../src/shared/generated-equipment-types.js';
 import type { PrimaryStatId, StatId } from '../../src/shared/stats.js';
-import { applyAttackSpeedAndCooldownReduction } from '../../src/shared/stats.js';
+import {
+  applyAttackSpeedAndCooldownReduction,
+  applyCooldownReduction,
+} from '../../src/shared/stats.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const BASE_STATS = {
@@ -164,6 +172,32 @@ function mutableInputFingerprint(
   });
 }
 
+function expectedSingleHitDps(
+  instance: GeneratedEquipmentInstanceV1,
+  stats: Readonly<Record<StatId, number>>,
+): number {
+  const weapon = instance.frozen.activeWeaponSnapshot!;
+  const damage = computeExpectedCritDamage(
+    computePlayerScaledDamage(weapon.baseDamage, stats, {
+      affinity: weapon.weaponType === WeaponType.MAGIC ? 'magic' : 'physical',
+      scaleWithPrimary: true,
+    }),
+    stats.critChance,
+    stats.critMultiplier,
+  );
+  const accuracy = computeEffectiveAccuracyFromValues(
+    weapon.weaponType,
+    weapon.baseAccuracy,
+    stats.accuracy,
+  );
+  const cooldownMs = applyAttackSpeedAndCooldownReduction(
+    weapon.cooldownMs,
+    stats.attackSpeed,
+    stats.cooldownReduction,
+  );
+  return (damage * accuracy * 1_000) / cooldownMs;
+}
+
 describe('equipment loadout expected-run-value evaluator', () => {
   it('ranks equivalent candidate sets independently of input order with stable ties', () => {
     const pistol = candidate(generated('plasma-pistol', 'erv-order-pistol'));
@@ -191,16 +225,25 @@ describe('equipment loadout expected-run-value evaluator', () => {
     const byBaseId = new Map(
       result.ranked.map((entry) => [entry.candidate.instance.baseId, entry]),
     );
+    const fireballResult = byBaseId.get('fireball')!;
 
-    expect(byBaseId.get('fireball')?.components.encounterFit).toBeGreaterThan(0);
-    expect(
-      (byBaseId.get('fireball')?.components.encounterFit ?? 0) /
-        (byBaseId.get('fireball')?.components.offense ?? 1),
-    ).toBeGreaterThan(
-      (byBaseId.get('plasma-pistol')?.components.encounterFit ?? 0) /
-        (byBaseId.get('plasma-pistol')?.components.offense ?? 1),
+    expect(fireballResult.components.offense).toBeGreaterThan(0);
+    expect(fireballResult.components.encounterFit / fireballResult.components.offense).toBeCloseTo(
+      (CROWD.clusteredEnemyCount - 1) / 2,
+      10,
     );
     expect(byBaseId.get('plasma-pistol')?.components.offense).toBeGreaterThan(0);
+  });
+
+  it('uses the runtime area predicate for affinity tags', () => {
+    const laser = candidate(generated('laser', 'erv-area-affinity'));
+    const input = inputShape([], [laser]);
+    const result = evaluateEquipmentLoadoutCandidates({
+      ...input,
+      affinityTagWeights: { aoe: 7, 'single-target': -7 },
+    });
+
+    expect(result.ranked[0]?.nextScore.components.affinity).toBe(7);
   });
 
   it('models every realized beam tick in weapon offense', () => {
@@ -236,6 +279,48 @@ describe('equipment loadout expected-run-value evaluator', () => {
     );
   });
 
+  it.each([
+    ['fireball impact and splash', 'fireball', false],
+    ['returning projectile outbound and return', 'plasma-pistol', true],
+  ])('models both realized primary hits for %s', (_label, baseId, returning) => {
+    const generatedInstance = generated(baseId, `erv-multi-stage-${baseId}`);
+    let instance = generatedInstance;
+    if (returning) {
+      const { fingerprint: _snapshotFingerprint, ...snapshotWithoutFingerprint } =
+        generatedInstance.frozen.activeWeaponSnapshot!;
+      const returningSnapshotWithoutFingerprint = {
+        ...snapshotWithoutFingerprint,
+        returnSpeed: 500,
+        maxRange: 300,
+      };
+      const returningSnapshot = {
+        ...returningSnapshotWithoutFingerprint,
+        fingerprint: computeActiveWeaponSnapshotFingerprint(returningSnapshotWithoutFingerprint),
+      };
+      const { fingerprint: _instanceFingerprint, ...instanceWithoutFingerprint } =
+        generatedInstance;
+      const returningInstanceWithoutFingerprint = {
+        ...instanceWithoutFingerprint,
+        frozen: {
+          ...generatedInstance.frozen,
+          activeWeaponSnapshot: returningSnapshot,
+        },
+      };
+      instance = {
+        ...returningInstanceWithoutFingerprint,
+        fingerprint: computeEquipmentFingerprint(returningInstanceWithoutFingerprint),
+      };
+    }
+    const result = evaluateEquipmentLoadoutCandidates(inputShape([], [candidate(instance)]))
+      .ranked[0]!;
+    const expectedDps = expectedSingleHitDps(instance, result.nextScore.effectiveStats) * 2;
+
+    expect(result.nextScore.components.offense).toBeCloseTo(
+      expectedDps * SINGLE_TARGET.durationSeconds,
+      10,
+    );
+  });
+
   it('does not count arena-wall bounces as additional enemy targets', () => {
     const pistol = generated('plasma-pistol', 'erv-wall-bounces');
     const spreadTargets: EquipmentEncounterFixture = {
@@ -252,7 +337,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(computeExpectedWeaponTargets(weapon, spreadTargets)).toBe(3);
   });
 
-  it('caps skill-triggered activations by both event rate and cooldown capacity', () => {
+  it('fractionally values a persistent activation then caps it at one applied modifier', () => {
     const current: EquipmentLoadoutSnapshot = {
       ...snapshot([]),
       activeAbilityGrantSources: new Map([['battle-focus', [{ kind: 'learned' }]]]),
@@ -268,8 +353,39 @@ describe('equipment loadout expected-run-value evaluator', () => {
       current,
     }).ranked[0]!.nextScore.components.activeAbility;
 
-    expect(lowRate).toBeGreaterThan(0);
-    expect(highRate).toBeGreaterThan(lowRate * 1_000);
+    expect(lowRate).toBeCloseTo(0.15 * 0.001 * SINGLE_TARGET.durationSeconds, 10);
+    expect(highRate).toBeCloseTo(0.15, 10);
+  });
+
+  it('excludes runtime-inert stats from timed-buff value', () => {
+    const current: EquipmentLoadoutSnapshot = {
+      ...snapshot([]),
+      activeAbilityGrantSources: new Map([['haste', [{ kind: 'learned' }]]]),
+      equippedActiveAbilityIds: ['haste'],
+    };
+    const result = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [candidate(generated('iron-helm', 'erv-live-timed-buff'))]),
+      current,
+    }).ranked[0]!;
+    const expectedActivations =
+      (SINGLE_TARGET.durationSeconds * 60) /
+      applyCooldownReduction(1_080, result.nextScore.effectiveStats.cooldownReduction);
+
+    expect(result.nextScore.components.activeAbility).toBeCloseTo(0.125 * expectedActivations, 10);
+  });
+
+  it('awards no weapon offense when an encounter has no targets', () => {
+    const noTargets: EquipmentEncounterFixture = {
+      ...SINGLE_TARGET,
+      enemyCount: 0,
+      clusteredEnemyCount: 0,
+    };
+    const result = evaluateEquipmentLoadoutCandidates(
+      inputShape([], [candidate(generated('iron-sword', 'erv-empty-encounter'))], [noTargets]),
+    ).ranked[0]!;
+
+    expect(result.nextScore.components.offense).toBe(0);
+    expect(result.nextScore.components.encounterFit).toBe(0);
   });
 
   it('does not value extra projectiles until runtime consumes projectileCount', () => {
@@ -421,6 +537,24 @@ describe('equipment loadout expected-run-value evaluator', () => {
         current: { ...input.current, ...currentOverride },
       }),
     ).toThrow('must be a finite number');
+  });
+
+  it('rejects finite inputs whose derived score overflows', () => {
+    const input = inputShape([], [candidate(generated('iron-sword', 'erv-overflow'))]);
+
+    expect(() =>
+      evaluateEquipmentLoadoutCandidates({
+        ...input,
+        current: {
+          ...input.current,
+          baseStats: {
+            ...BASE_STATS,
+            damageBonus: Number.MAX_VALUE,
+            damagePercent: Number.MAX_VALUE,
+          },
+        },
+      }),
+    ).toThrow('$.score.components.offense must be a finite number');
   });
 
   it('replays finite results without mutating inputs', () => {

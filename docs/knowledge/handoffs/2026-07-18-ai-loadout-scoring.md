@@ -99,5 +99,19 @@ filtering, finiteness, replay determinism, and non-mutation.
 
 ## Publication
 
-Publish a ready, non-draft stacked PR targeting
-`nalfeo-d1-deterministic-equipment-generator`. Do not merge or arm auto-merge.
+PR #1575 was retargeted to `main` after its generator dependency merged. The
+shepherd replayed only the intended H1 commits onto current `main`, replacing
+conflicted automated-recovery heads under an exact force-with-lease fence.
+
+The final review repair aligns ERV with runtime behavior by:
+
+- recognizing beam, trap, wide-swing, and AOE area capability consistently;
+- counting MAGIC impact splash and returning-projectile primary re-hits;
+- rejecting non-finite derived components, totals, and transition scores;
+- excluding stat effects with no runtime consumer;
+- valuing persistent direct stat effects once rather than per activation; and
+- awarding no weapon offense when an encounter contains no targets.
+
+All seven review remedies have focused regression coverage. The final bounded
+review round was clean, all 22 evaluator tests passed, and `verify:fast` plus
+`verify:pr-prereqs` passed before publication.
