@@ -2375,8 +2375,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     const destRel =
       target === 'draft'
-        ? path.join('briefs', 'draft', briefDirectoryForType(body.type as Brief['type']), `${body.name}.yaml`)
-        : path.join('briefs', briefDirectoryForType(body.type as Brief['type']), `${body.name}.yaml`);
+        ? path.join(
+            'briefs',
+            'draft',
+            briefDirectoryForType(body.type as Brief['type']),
+            `${body.name}.yaml`,
+          )
+        : path.join(
+            'briefs',
+            briefDirectoryForType(body.type as Brief['type']),
+            `${body.name}.yaml`,
+          );
     const destAbs = path.resolve(deps.repoRoot, destRel);
     mkdirSync(path.dirname(destAbs), { recursive: true });
     copyFileSync(sourceAbs, destAbs);
