@@ -99,6 +99,7 @@ fallback.
 
 - `36882f1b` — implementation and focused tests.
 - `e26ad67d` — review round 1 ledger record.
+- `ec1d3187` — production-pipeline coverage and ranged bounce-path fix.
 
 ## Follow-up
 
