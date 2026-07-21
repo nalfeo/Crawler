@@ -665,7 +665,9 @@ export function runGeneratedEquipmentDistributionFixtures(
         0,
       ),
       effectIds: instance.resolvedEffects.map((effect) => effect.effectId),
-      effectKinds: instance.resolvedEffects.map((effect) => ('kind' in effect ? effect.kind : 'legacy')),
+      effectKinds: instance.resolvedEffects.map((effect) =>
+        'kind' in effect ? effect.kind : 'legacy',
+      ),
       inherentValue:
         instance.frozen.activeWeaponSnapshot?.baseDamage ?? instance.frozen.statBonuses.armor ?? 0,
       fingerprint: instance.fingerprint,
