@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "ci-health-dashboard",
+  "task_title": "Add CI Health canvas dashboard",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Added closed recovery-pending collection; reuse canonical merge-train exports; explicit malformed/missing/duplicate status states; repo-scoped 30-second coordinator; repository-visible inferred occupancy language; bounded labeled-PR comment fetches; lifecycle and forced-follow-up refresh tests."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}
