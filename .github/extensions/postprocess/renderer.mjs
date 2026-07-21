@@ -130,11 +130,14 @@ const STYLES = `
       linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%);
     background-size: 10px 10px; background-position: 0 0, 0 5px, 5px -5px, -5px 0px; background-color: #0f172a; }
   .step { border: 1px solid rgba(148,163,184,0.2); border-radius: 8px; padding: 10px; margin-bottom: 10px; background: #0b1220; }
-  .step .label { font-size: 12px; font-weight: 600; color: #f1f5f9; margin-bottom: 8px; }
+  .step .label-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .step .label { font-size: 12px; font-weight: 600; color: #f1f5f9; }
+  .step .skip { padding: 3px 8px; font-size: 11px; }
+  .step .skip[aria-pressed=true] { border-color: #fbbf24; color: #fbbf24; }
   .ba { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
   .ba .col { display: flex; flex-direction: column; gap: 4px; align-items: center; }
   .ba .cap { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-  .ba img { width: 96px; height: 96px; image-rendering: pixelated; border-radius: 4px;
+  .ba img { width: auto; height: auto; max-width: 160px; max-height: 160px; image-rendering: pixelated; border-radius: 4px;
     border: 1px solid rgba(148,163,184,0.2); }
   .ba .arrow { color: #475569; font-size: 18px; }
   .final img { max-width: 160px; max-height: 160px; image-rendering: pixelated; border-radius: 4px;
@@ -143,7 +146,7 @@ const STYLES = `
   .final .wrap { position: relative; display: inline-block; line-height: 0; }
   .final .marker { position: absolute; width: 9px; height: 9px; border-radius: 50%;
     transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 1px #0b1120, 0 0 4px rgba(0,0,0,0.6); }
-  .authoring { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px;
+  .authoring { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px;
     padding: 10px; border: 1px solid rgba(125,211,252,0.35); border-radius: 8px; background: #0b1220; }
   .authoring .fld { display: flex; flex-direction: column; gap: 3px; }
   .authoring .fld label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -151,7 +154,7 @@ const STYLES = `
   .authoring .primary { border-color: #7dd3fc; color: #7dd3fc; font-weight: 600; }
   .authoring .danger { border-color: rgba(252,165,165,0.5); color: #fca5a5; }
   .apply-status { font-size: 11px; min-width: 60px; }
-  .tuning { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px;
+  .tuning { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px;
     padding: 10px; border: 1px solid rgba(148,163,184,0.2); border-radius: 8px; background: #0b1220; }
   .tuning .fld { display: flex; flex-direction: column; gap: 3px; }
   .tuning .fld label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -204,6 +207,7 @@ const CLIENT_SCRIPT = String.raw`
   var currentFacing = 'right';       // 'left' | 'right'
   var currentScope = 'variant';      // 'variant' | 'all'
   var currentAnchor = null;          // {x,y} in final-image pixels, or null
+  var currentDisabledModules = new Set(); // canonical run-global template module IDs
   var pendingClear = false;          // "Reset anchor" staged a manualAnchor:null
   var pendingMode = 'default';       // 'default' | 'replace' | 'reset'
   var tuningColorInput = null;       // refs so "Reset to defaults" can reset the
@@ -456,7 +460,7 @@ const CLIENT_SCRIPT = String.raw`
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, dims.dw, dims.dh);
     ctx.drawImage(img, 0, 0, dims.dw, dims.dh);
-    canvas.style.display = '';
+    canvas.style.display = 'block';
   }
 
   // ── Slicing overlay (first pipeline item) ────────────────────────
@@ -471,7 +475,7 @@ const CLIENT_SCRIPT = String.raw`
     if (!sel) return;
     if (!sheetImg || !sheetImg.complete) { return; }
     overlayHitCells = drawSliceOverlay(overlayCanvas, sheetImg, sm, sel.variantIndex);
-    overlayCanvas.style.display = '';
+    overlayCanvas.style.display = 'block';
     if (overlayStatus) {
       if (sm && sm.ok === false) {
         overlayStatus.textContent = sm.error || 'Failed to load slice map.';
@@ -546,9 +550,10 @@ const CLIENT_SCRIPT = String.raw`
 
   // ── Background tuning ────────────────────────────────────────────
   function makeTuningPanel(state) {
-    var colorIn = h('input', { type: 'number', min: '0', max: String(MAX_TOLERANCE), step: '100', value: String(currentTweaks.colorToleranceSq) });
-    var fringeIn = h('input', { type: 'number', min: '0', max: String(MAX_TOLERANCE), step: '100', value: String(currentTweaks.fringeToleranceSq) });
+    var colorIn = h('input', { id: 'postprocess-color-tolerance', type: 'number', min: '0', max: String(MAX_TOLERANCE), step: '100', value: String(currentTweaks.colorToleranceSq) });
+    var fringeIn = h('input', { id: 'postprocess-fringe-tolerance', type: 'number', min: '0', max: String(MAX_TOLERANCE), step: '100', value: String(currentTweaks.fringeToleranceSq) });
     var upscaleIn = h('input', {
+      id: 'postprocess-upscale-factor',
       type: 'number',
       min: String(DEFAULT_UPSCALE_FACTOR),
       max: String(MAX_UPSCALE_FACTOR),
@@ -595,9 +600,9 @@ const CLIENT_SCRIPT = String.raw`
       startPipeline(currentState, renderToken);
     });
     return h('div', { class: 'tuning' }, [
-      h('div', { class: 'fld' }, [h('label', { text: 'colorToleranceSq' }), colorIn]),
-      h('div', { class: 'fld' }, [h('label', { text: 'fringeToleranceSq' }), fringeIn]),
-      h('div', { class: 'fld' }, [h('label', { text: 'upscaleFactor (live)' }), upscaleIn]),
+      h('div', { class: 'fld' }, [h('label', { for: 'postprocess-color-tolerance', text: 'colorToleranceSq' }), colorIn]),
+      h('div', { class: 'fld' }, [h('label', { for: 'postprocess-fringe-tolerance', text: 'fringeToleranceSq' }), fringeIn]),
+      h('div', { class: 'fld' }, [h('label', { for: 'postprocess-upscale-factor', text: 'upscaleFactor (live)' }), upscaleIn]),
       applyBtn, resetBtn,
       h('span', {
         class: 'muted',
@@ -626,7 +631,7 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function makeAuthoringPanel(state) {
-    var facingSel = h('select', { title: 'Facing direction to persist' });
+    var facingSel = h('select', { id: 'postprocess-facing', title: 'Facing direction to persist' });
     ['right', 'left'].forEach(function (dir) {
       var o = document.createElement('option');
       o.value = dir; o.textContent = dir;
@@ -638,7 +643,7 @@ const CLIENT_SCRIPT = String.raw`
       pendingMode = 'replace';
     });
 
-    var scopeSel = h('select', { title: 'Which variants the persist applies to' });
+    var scopeSel = h('select', { id: 'postprocess-scope', title: 'Which variants the persist applies to' });
     [['variant', 'This variant'], ['all', 'All variants']].forEach(function (pair) {
       var o = document.createElement('option');
       o.value = pair[0]; o.textContent = pair[1];
@@ -650,8 +655,8 @@ const CLIENT_SCRIPT = String.raw`
       pendingMode = 'replace';
     });
 
-    anchorXInput = h('input', { type: 'number', step: '1', value: currentAnchor ? String(currentAnchor.x) : '' });
-    anchorYInput = h('input', { type: 'number', step: '1', value: currentAnchor ? String(currentAnchor.y) : '' });
+    anchorXInput = h('input', { id: 'postprocess-anchor-x', type: 'number', step: '1', value: currentAnchor ? String(currentAnchor.x) : '' });
+    anchorYInput = h('input', { id: 'postprocess-anchor-y', type: 'number', step: '1', value: currentAnchor ? String(currentAnchor.y) : '' });
     anchorXInput.addEventListener('change', syncAnchorFromInputs);
     anchorYInput.addEventListener('change', syncAnchorFromInputs);
 
@@ -667,6 +672,29 @@ const CLIENT_SCRIPT = String.raw`
       redrawAnchorMarker();
     });
 
+    var middleAnchorBtn = h('button', { type: 'button', text: 'Set anchor to middle' });
+    middleAnchorBtn.addEventListener('click', function () {
+      if (!finalImgEl || !finalImgEl.complete) {
+        setApplyStatus('Final image is still loading.', '#fbbf24');
+        return;
+      }
+      var centered = middleAnchor({
+        naturalWidth: finalImgEl.naturalWidth,
+        naturalHeight: finalImgEl.naturalHeight
+      });
+      if (!centered) {
+        setApplyStatus('Final image has no usable dimensions.', '#fca5a5');
+        return;
+      }
+      currentAnchor = centered;
+      pendingClear = false;
+      pendingMode = 'replace';
+      anchorXInput.value = String(centered.x);
+      anchorYInput.value = String(centered.y);
+      redrawAnchorMarker();
+      setApplyStatus('Anchor centered.', '#86efac');
+    });
+
     var resetDefaultsBtn = h('button', { type: 'button', class: 'danger', text: 'Reset to defaults' });
     resetDefaultsBtn.addEventListener('click', function () {
       // Stage a full persist-reset (mode:'reset', monolith resetTweaksBtn): visually
@@ -679,6 +707,7 @@ const CLIENT_SCRIPT = String.raw`
       if (tuningUpscaleInput) tuningUpscaleInput.value = String(currentLiveUpscaleFactor);
       currentFacing = 'right'; facingSel.value = 'right';
       currentScope = 'variant'; scopeSel.value = 'variant';
+      currentDisabledModules = new Set();
       currentAnchor = null; pendingClear = false;
       anchorXInput.value = ''; anchorYInput.value = '';
       pendingMode = 'reset';
@@ -699,11 +728,11 @@ const CLIENT_SCRIPT = String.raw`
     }
 
     return h('div', { class: 'authoring' }, [
-      h('div', { class: 'fld' }, [h('label', { text: 'facing' }), facingSel]),
-      h('div', { class: 'fld' }, [h('label', { text: 'apply scope' }), scopeSel]),
-      h('div', { class: 'fld' }, [h('label', { text: 'anchor x' }), anchorXInput]),
-      h('div', { class: 'fld' }, [h('label', { text: 'anchor y' }), anchorYInput]),
-      resetAnchorBtn, resetDefaultsBtn, applyBtn, applyStatusEl
+      h('div', { class: 'fld' }, [h('label', { for: 'postprocess-facing', text: 'Facing' }), facingSel]),
+      h('div', { class: 'fld' }, [h('label', { for: 'postprocess-scope', text: 'Apply scope' }), scopeSel]),
+      h('div', { class: 'fld' }, [h('label', { for: 'postprocess-anchor-x', text: 'Anchor x' }), anchorXInput]),
+      h('div', { class: 'fld' }, [h('label', { for: 'postprocess-anchor-y', text: 'Anchor y' }), anchorYInput]),
+      middleAnchorBtn, resetAnchorBtn, resetDefaultsBtn, applyBtn, applyStatusEl
     ]);
   }
 
@@ -719,7 +748,7 @@ const CLIENT_SCRIPT = String.raw`
     // unit-tested predicate the server uses).
     if (isDestructivePersist({ mode: mode, applyToAll: applyToAll })) {
       var msg = mode === 'reset'
-        ? 'Reset ALL postprocess overrides for this run to defaults? This clears the persisted background tolerances, facing, and manual anchor.'
+        ? 'Reset ALL postprocess overrides for this run to defaults? This clears the persisted background tolerances, skipped steps, facing, and manual anchor.'
         : 'Apply these overrides to ALL variants of this run? This overwrites every variant\u2019s facing and anchor.';
       if (!window.confirm(msg)) return;
     }
@@ -728,7 +757,8 @@ const CLIENT_SCRIPT = String.raw`
       variantIndex: sel.variantIndex, applyToAll: applyToAll,
       facingDirection: currentFacing,
       colorToleranceSq: currentTweaks.colorToleranceSq,
-      fringeToleranceSq: currentTweaks.fringeToleranceSq
+      fringeToleranceSq: currentTweaks.fringeToleranceSq,
+      disabledModules: Array.from(currentDisabledModules)
     };
     if (pendingClear) body.manualAnchorClear = true;
     else if (currentAnchor) body.manualAnchor = { x: currentAnchor.x, y: currentAnchor.y };
@@ -766,23 +796,46 @@ const CLIENT_SCRIPT = String.raw`
   // ── Pipeline body (live + prebaked) ──────────────────────────────
   var pipelineBody = null;
 
-  function makeStepCard(label, beforeSrc, afterSrc) {
+  function makeStepCard(label, beforeSrc, afterSrc, meta) {
     var beforeCol = h('div', { class: 'col' }, [h('span', { class: 'cap', text: 'before' }),
       beforeSrc ? h('img', { class: 'checker', src: beforeSrc, alt: 'before' }) : h('span', { class: 'muted', text: '—' })]);
     var afterCol = h('div', { class: 'col' }, [h('span', { class: 'cap', text: 'after' }),
       afterSrc ? h('img', { class: 'checker', src: afterSrc, alt: 'after' }) : h('span', { class: 'muted', text: '—' })]);
-    return h('div', { class: 'step' }, [
-      h('div', { class: 'label', text: label }),
+    var labelKids = [h('div', { class: 'label', text: label + (meta && meta.skipped ? ' (skipped)' : '') })];
+    if (meta && meta.moduleId) {
+      var skipBtn = h('button', {
+        type: 'button',
+        class: 'skip',
+        'aria-pressed': meta.skipped ? 'true' : 'false',
+        text: meta.skipped ? 'Run step' : 'Skip step'
+      });
+      skipBtn.addEventListener('click', function () {
+        if (currentDisabledModules.has(meta.moduleId)) currentDisabledModules.delete(meta.moduleId);
+        else currentDisabledModules.add(meta.moduleId);
+        pendingMode = 'replace';
+        liveFailed = false;
+        startPipeline(currentState, renderToken);
+      });
+      labelKids.push(skipBtn);
+    }
+    var kids = [
+      h('div', { class: 'label-row' }, labelKids),
       h('div', { class: 'ba' }, [beforeCol, h('span', { class: 'arrow', text: '\u2192' }), afterCol])
-    ]);
+    ];
+    if (meta && meta.moduleId === 'background-removal') kids.push(makeTuningPanel(currentState));
+    return h('div', { class: 'step', 'data-module-id': meta && meta.moduleId ? meta.moduleId : '' }, kids);
   }
 
-  function makeFinalCard(src) {
+  function makeFinalCard(state, src) {
     var label = h('div', { class: 'label', text: 'Final output' });
     if (!src) {
       finalImgEl = null;
       finalMarkerEl = null;
-      return h('div', { class: 'step final' }, [label, h('span', { class: 'muted', text: 'No final output available.' })]);
+      return h('div', { class: 'step final' }, [
+        label,
+        h('span', { class: 'muted', text: 'No final output available.' }),
+        makeAuthoringPanel(state)
+      ]);
     }
     var img = h('img', { class: 'checker anchorable', src: src, alt: 'final output',
       title: 'Click to set a manual anchor (final-image pixel space)' });
@@ -805,7 +858,7 @@ const CLIENT_SCRIPT = String.raw`
       if (anchorYInput) anchorYInput.value = String(a.y);
       redrawAnchorMarker();
     });
-    return h('div', { class: 'step final' }, [label, wrap]);
+    return h('div', { class: 'step final' }, [label, wrap, makeAuthoringPanel(state)]);
   }
 
   // Position the anchor marker over the final image (center-of-pixel percent).
@@ -834,10 +887,15 @@ const CLIENT_SCRIPT = String.raw`
     var before = inputSrc;
     for (var i = 0; i < steps.length; i++) {
       var after = b64Src(steps[i].png);
-      pipelineBody.appendChild(makeStepCard(steps[i].label || steps[i].id || ('step ' + (i + 1)), before, after));
+      pipelineBody.appendChild(makeStepCard(
+        steps[i].label || steps[i].id || ('step ' + (i + 1)),
+        before,
+        after,
+        { moduleId: steps[i].moduleId || null, skipped: steps[i].skipped === true }
+      ));
       before = after;
     }
-    pipelineBody.appendChild(makeFinalCard(b64Src(resp.finalPng)));
+    pipelineBody.appendChild(makeFinalCard(state, b64Src(resp.finalPng)));
   }
 
   function renderPrebaked(state, reason) {
@@ -863,11 +921,16 @@ const CLIENT_SCRIPT = String.raw`
     } else {
       for (var i = 0; i < steps.length; i++) {
         var after = imgUrl('processed', sel.briefId, sel.runId, steps[i].file);
-        pipelineBody.appendChild(makeStepCard(steps[i].label || steps[i].file, before, after));
+        pipelineBody.appendChild(makeStepCard(
+          steps[i].label || steps[i].file,
+          before,
+          after,
+          { moduleId: steps[i].moduleId || null, skipped: steps[i].skipped === true }
+        ));
         before = after;
       }
     }
-    pipelineBody.appendChild(makeFinalCard(imgUrl('processed', sel.briefId, sel.runId, padded + '.png') + '&ts=' + Date.now()));
+    pipelineBody.appendChild(makeFinalCard(state, imgUrl('processed', sel.briefId, sel.runId, padded + '.png') + '&ts=' + Date.now()));
   }
 
   function computeInput(state) {
@@ -924,6 +987,7 @@ const CLIENT_SCRIPT = String.raw`
           rawPngBase64: input.base64,
           colorToleranceSq: currentTweaks.colorToleranceSq,
           fringeToleranceSq: currentTweaks.fringeToleranceSq,
+          disabledModules: Array.from(currentDisabledModules),
           seq: mySeq
         })
       });
@@ -1011,6 +1075,11 @@ const CLIENT_SCRIPT = String.raw`
     currentFacing = 'right';
     currentScope = 'variant';
     currentAnchor = null;
+    currentDisabledModules = new Set(
+      state.selected && Array.isArray(state.selected.appliedDisabledModules)
+        ? state.selected.appliedDisabledModules
+        : []
+    );
     pendingClear = false;
     pendingMode = 'default';
     anchorXInput = null;
@@ -1059,8 +1128,6 @@ const CLIENT_SCRIPT = String.raw`
     ]);
     if (state.selected) {
       pipelineBody.appendChild(makeSlicingCard(state));
-      pipelineBody.appendChild(makeTuningPanel(state));
-      pipelineBody.appendChild(makeAuthoringPanel(state));
       var stepsHost = h('div', {}, [h('div', { class: 'muted', text: 'Loading pipeline trace\u2026' })]);
       pipelineBody.appendChild(stepsHost);
       // re-point pipelineBody at the steps host so live/prebaked replace only steps,
@@ -1069,6 +1136,9 @@ const CLIENT_SCRIPT = String.raw`
     }
     frag.appendChild(pipeSection);
     app.replaceChildren(frag);
+    // A cached sheet may finish before makeSlicingCard assigns overlayCanvas.
+    // Redraw again after both the sheet and the mounted card can exist.
+    redrawOverlay(state, token);
     notifyReady(state);
 
     // if there are no sheets, the sheet section won't fire onload — kick the

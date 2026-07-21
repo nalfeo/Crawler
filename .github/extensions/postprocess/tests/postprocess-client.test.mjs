@@ -13,6 +13,7 @@ import {
   clampTolerance,
   normalizePipelineManifest,
   extractAppliedBackgroundTweaks,
+  extractAppliedDisabledModules,
   extractAppliedFacing,
   extractAppliedManualAnchor,
   isDestructivePersist,
@@ -92,9 +93,21 @@ test('normalizePipelineManifest drops fileless steps and resolves labels', () =>
   assert.equal(out.profile, 'default');
   assert.equal(out.sourceRunId, 'run-src');
   assert.deepEqual(out.steps, [
-    { id: 'bg', label: 'Background removal', file: '00.step-bg.png' },
-    { id: 'trim', label: 'trim', file: '00.step-trim.png' },
-    { id: null, label: '00.step-x.png', file: '00.step-x.png' },
+    {
+      id: 'bg',
+      label: 'Background removal',
+      file: '00.step-bg.png',
+      moduleId: null,
+      skipped: false,
+    },
+    { id: 'trim', label: 'trim', file: '00.step-trim.png', moduleId: null, skipped: false },
+    {
+      id: null,
+      label: '00.step-x.png',
+      file: '00.step-x.png',
+      moduleId: null,
+      skipped: false,
+    },
   ]);
 });
 
@@ -128,6 +141,24 @@ test('extractAppliedBackgroundTweaks reads persisted overrides or null', () => {
     }),
     null,
   );
+});
+
+test('extractAppliedDisabledModules hydrates canonical persisted skips in pipeline order', () => {
+  assert.deepEqual(
+    extractAppliedDisabledModules({
+      postprocessOverrides: {
+        options: { disabledModules: ['resize', 'background-removal', 'resize'] },
+      },
+    }),
+    ['background-removal', 'resize'],
+  );
+  assert.deepEqual(
+    extractAppliedDisabledModules({
+      postprocessOverrides: { options: { disabledModules: ['unknown-module'] } },
+    }),
+    [],
+  );
+  assert.deepEqual(extractAppliedDisabledModules({}), []);
 });
 
 test('createPostprocessClient requires a sidecar client with a baseUrl', () => {
@@ -182,7 +213,13 @@ test('relayLivePostprocess: happy path relays the monolith body + normalizes ste
       return jsonResponse({
         finalPng: 'FINAL',
         steps: [
-          { id: 'bg', label: 'Background', png: 'STEP1' },
+          {
+            id: 'bg',
+            label: 'Background',
+            png: 'STEP1',
+            moduleId: 'background-removal',
+            skipped: true,
+          },
           { id: 'noimg', label: 'skipped', png: '' }, // filtered (empty png)
           { png: 'STEP3' }, // id/label default
         ],
@@ -193,19 +230,31 @@ test('relayLivePostprocess: happy path relays the monolith body + normalizes ste
     briefId: 'b',
     runId: 'r',
     rawPngBase64: 'RAWPNG',
-    options: { background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 } },
+    options: {
+      background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 },
+      disabledModules: ['background-removal'],
+    },
   });
   assert.equal(capturedUrl, `${BASE}/api/postprocess`);
   assert.deepEqual(capturedBody, {
     briefPath: 'briefs/goblin.yaml',
     rawPng: 'RAWPNG',
-    options: { background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 } },
+    options: {
+      background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 },
+      disabledModules: ['background-removal'],
+    },
   });
   assert.equal(out.ok, true);
   assert.equal(out.finalPng, 'FINAL');
   assert.deepEqual(out.steps, [
-    { id: 'bg', label: 'Background', png: 'STEP1' },
-    { id: null, label: '', png: 'STEP3' },
+    {
+      id: 'bg',
+      label: 'Background',
+      png: 'STEP1',
+      moduleId: 'background-removal',
+      skipped: true,
+    },
+    { id: null, label: '', png: 'STEP3', moduleId: null, skipped: false },
   ]);
 });
 
@@ -253,7 +302,9 @@ test('fetchPipelineManifest: normalizes a 200 manifest, null on failure', async 
   });
   const manifest = await okClient.fetchPipelineManifest('b', 'r', '00');
   assert.equal(manifest.profile, 'p');
-  assert.deepEqual(manifest.steps, [{ id: 'a', label: 'a', file: 'a.png' }]);
+  assert.deepEqual(manifest.steps, [
+    { id: 'a', label: 'a', file: 'a.png', moduleId: null, skipped: false },
+  ]);
 
   const missClient = createPostprocessClient({
     sidecarClient: fakeSidecar(),

@@ -215,6 +215,7 @@ test('a fully-authorized replace relays a clamped, rebuilt payload with variantI
       facingDirection: 'left',
       colorToleranceSq: -50,
       fringeToleranceSq: 999999999,
+      disabledModules: ['resize', 'background-removal', 'resize'],
     }),
     {
       'content-type': 'application/json',
@@ -233,4 +234,28 @@ test('a fully-authorized replace relays a clamped, rebuilt payload with variantI
   // Clamped to [0, MAX] — never the raw out-of-range client values.
   assert.equal(sent.payload.options.background.colorToleranceSq, 0);
   assert.ok(sent.payload.options.background.fringeToleranceSq <= 255 * 255 * 3);
+  assert.deepEqual(sent.payload.options.disabledModules, ['background-removal', 'resize']);
+});
+
+test('an unknown disabled module is rejected before the sidecar relay', async () => {
+  const before = payloads.length;
+  const result = await post(
+    url,
+    JSON.stringify({
+      briefId: 'goblin',
+      runId: 'run-3',
+      mode: 'replace',
+      variantIndex: 0,
+      facingDirection: 'right',
+      disabledModules: ['not-a-module'],
+    }),
+    {
+      'content-type': 'application/json',
+      origin: new URL(url).origin,
+      'x-workflow-mutation-token': MUTATION_TOKEN,
+    },
+  );
+  assert.equal(result.status, 400);
+  assert.equal(result.json.reason, 'bad-request');
+  assert.equal(payloads.length, before);
 });

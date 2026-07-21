@@ -1361,6 +1361,34 @@ describe('workflow brief durability (Phase 2 re-materialise / mirror)', () => {
     expect(Array.isArray(body.steps)).toBe(true);
     // The brief was restored to disk as a side effect of recovery.
     expect(existsSync(briefAbs)).toBe(true);
+
+    const skipped = await app.inject({
+      method: 'POST',
+      url: '/api/postprocess',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        briefPath: briefRel,
+        rawPng: makeSolidPng(16, 16, [255, 255, 255]).toString('base64'),
+        options: { disabledModules: ['resize'] },
+      },
+    });
+    expect(skipped.statusCode).toBe(200);
+    expect(skipped.json().steps).toContainEqual(
+      expect.objectContaining({ moduleId: 'resize', skipped: true }),
+    );
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/api/postprocess',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        briefPath: briefRel,
+        rawPng: makeSolidPng(16, 16, [255, 255, 255]).toString('base64'),
+        options: { disabledModules: ['not-a-module'] },
+      },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json().message).toMatch(/unknown or inactive module/);
   });
 });
 

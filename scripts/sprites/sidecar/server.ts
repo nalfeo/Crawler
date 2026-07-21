@@ -97,7 +97,7 @@ import type { AssetQueue } from '../queue/types.js';
 import { computeSliceMap } from '../slice-sheet.js';
 import { loadStyleGuide } from '../build-prompt.js';
 import { loadRecordedReferencePngs } from '../load-reference-pngs.js';
-import type { PostprocessOptions } from '../postprocess.js';
+import { normalizeDisabledModules, type PostprocessOptions } from '../postprocess.js';
 import {
   removeManualAnchor,
   removeManualWeaponAnchor,
@@ -1500,6 +1500,23 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       : null;
   };
 
+  const parsePostprocessOptions = (
+    value: unknown,
+    loaded: LoadedBrief,
+  ): PostprocessOptions | undefined => {
+    if (value === undefined) return undefined;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('body.options must be an object');
+    }
+    const raw = value as Record<string, unknown>;
+    return {
+      ...raw,
+      ...(raw.disabledModules !== undefined
+        ? { disabledModules: normalizeDisabledModules(raw.disabledModules, loaded.brief) }
+        : {}),
+    } as PostprocessOptions;
+  };
+
   const parseManualAnchorPayload = (
     value: unknown,
   ): { variantIndex: number; x: number; y: number; applyToAllVariants?: boolean } | null => {
@@ -1560,11 +1577,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   }>('/api/runs/:briefId/:runId/postprocess', async (req, reply) => {
     const { briefId, runId } = req.params;
     const body = (req.body ?? {}) as RunPostprocessBody;
-    const options =
-      typeof body.options === 'object' && body.options !== null
-        ? (body.options as PostprocessOptions)
-        : undefined;
-    const mode = parsePostprocessMode(body.mode, options !== undefined);
+    const mode = parsePostprocessMode(body.mode, body.options !== undefined);
     if (mode === null) {
       reply.code(400);
       return {
@@ -1623,6 +1636,16 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     if (!resolution.ok) {
       reply.code(resolution.status);
       return resolution.body;
+    }
+    let options: PostprocessOptions | undefined;
+    try {
+      options = parsePostprocessOptions(body.options, resolution.loaded);
+    } catch (error) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: error instanceof Error ? error.message : String(error),
+      };
     }
     try {
       let persistedManualAnchor: ManualAnchorOverride | null | undefined = undefined;
@@ -2795,16 +2818,24 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       const loaded = loadBrief(briefPath, { projectRoot: deps.repoRoot });
       const { postprocessWithTrace } = await import('../postprocess.js');
       const rawPngBuffer = Buffer.from(body.rawPng, 'base64');
-      const traced = postprocessWithTrace(rawPngBuffer, loaded.brief, loaded.palette, {
-        ...(typeof body.options === 'object' && body.options !== null
-          ? (body.options as Record<string, unknown>)
-          : {}),
-      });
+      let options: PostprocessOptions | undefined;
+      try {
+        options = parsePostprocessOptions(body.options, loaded);
+      } catch (error) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+      const traced = postprocessWithTrace(rawPngBuffer, loaded.brief, loaded.palette, options);
       return {
         finalPng: traced.finalPng.toString('base64'),
         steps: traced.steps.map((step) => ({
           id: step.id,
           label: step.label,
+          moduleId: step.moduleId,
+          skipped: step.skipped,
           png: step.png.toString('base64'),
         })),
       };

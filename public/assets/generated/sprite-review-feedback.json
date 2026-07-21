@@ -1,4 +1,14 @@
 {
   "version": 1,
-  "entries": {}
+  "entries": {
+    "sheet::ice-pick-v3::2026-07-18T02-12-42-94da2dee::sheet-00.png": {
+      "subjectType": "sheet",
+      "briefId": "ice-pick-v3",
+      "runId": "2026-07-18T02-12-42-94da2dee",
+      "sheet": "sheet-00.png",
+      "verdict": "down",
+      "comment": "What the hell is this? It is just a crooked wrench",
+      "recordedAt": "2026-07-21T20:11:33.276Z"
+    }
+  }
 }

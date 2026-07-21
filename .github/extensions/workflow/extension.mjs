@@ -116,8 +116,10 @@ import { resolveActiveSheet } from '../postprocess/lib/run-selection.mjs';
 import {
   createPostprocessClient,
   extractAppliedBackgroundTweaks,
+  extractAppliedDisabledModules,
   extractAppliedFacing,
   extractAppliedManualAnchor,
+  normalizeDisabledModuleIds,
   normalizePersistRequest,
   buildPersistPostprocessPayload,
   padVariant,
@@ -788,6 +790,7 @@ async function buildPostprocessState(instanceId, { bypassCache = false } = {}) {
   let variantIndices = [];
   let briefPath = null;
   let appliedBackground = null;
+  let appliedDisabledModules = [];
   let appliedFacing = null;
   let appliedManualAnchor = null;
   let summaryError = null;
@@ -799,6 +802,7 @@ async function buildPostprocessState(instanceId, { bypassCache = false } = {}) {
         ? summary.briefPath
         : null;
     appliedBackground = extractAppliedBackgroundTweaks(summary);
+    appliedDisabledModules = extractAppliedDisabledModules(summary);
     appliedFacing = extractAppliedFacing(summary);
     appliedManualAnchor = extractAppliedManualAnchor(summary);
   } catch (err) {
@@ -876,6 +880,7 @@ async function buildPostprocessState(instanceId, { bypassCache = false } = {}) {
       manifestSteps: manifest ? manifest.steps : [],
       profile: manifest ? manifest.profile : null,
       appliedBackground,
+      appliedDisabledModules,
       appliedFacing,
       appliedManualAnchor,
     },
@@ -1283,11 +1288,25 @@ const jsonRoutes = [
         Number(body.fringeToleranceSq),
         DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
       );
+      const disabledModules = normalizeDisabledModuleIds(body.disabledModules);
+      if (disabledModules === null) {
+        return {
+          status: 400,
+          json: {
+            ok: false,
+            reason: 'bad-request',
+            message: 'disabledModules must contain only canonical module IDs',
+          },
+        };
+      }
       const result = await entry.postprocess.client.relayLivePostprocess({
         briefId,
         runId,
         rawPngBase64,
-        options: { background: { colorToleranceSq, fringeToleranceSq } },
+        options: {
+          background: { colorToleranceSq, fringeToleranceSq },
+          disabledModules,
+        },
       });
       return { json: result };
     },
