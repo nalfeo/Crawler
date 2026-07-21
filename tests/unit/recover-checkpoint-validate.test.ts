@@ -487,6 +487,7 @@ interface WorkflowJob {
   if?: string;
   'runs-on'?: string;
   'timeout-minutes'?: number;
+  env?: Record<string, string>;
   strategy?: WorkflowStrategy;
   outputs?: Record<string, string>;
   steps?: WorkflowStep[];
@@ -570,6 +571,7 @@ describe('ai-sweep-recover.yml structure', () => {
     const doc = loadRecoverWorkflow();
     for (const jobName of ['recover-validate', 'recover-aggregate']) {
       const job = getJob(doc, jobName);
+      expect(job.env?.GITHUB_SHA, `${jobName} job-level env.GITHUB_SHA`).toBeUndefined();
       for (const step of allSteps(job)) {
         expect(
           step.env?.GITHUB_SHA,
@@ -579,11 +581,17 @@ describe('ai-sweep-recover.yml structure', () => {
     }
   });
 
-  it('recover-validate threads the historical SHA through a non-reserved RECOVER_HEAD_SHA env var to match the historical commit', () => {
+  it('recover-validate and recover-aggregate both thread the historical SHA through a non-reserved RECOVER_HEAD_SHA env var to match the historical commit', () => {
     const doc = loadRecoverWorkflow();
-    const job = getJob(doc, 'recover-validate');
-    const step = allSteps(job).find((s) => s.run?.includes('sweep-eval.ts'));
-    expect(step?.env?.RECOVER_HEAD_SHA).toBe('${{ needs.recover-preflight.outputs.head_sha }}');
+    const expectedShaExpr = '${{ needs.recover-preflight.outputs.head_sha }}';
+
+    const validateJob = getJob(doc, 'recover-validate');
+    const validateStep = allSteps(validateJob).find((s) => s.run?.includes('sweep-eval.ts'));
+    expect(validateStep?.env?.RECOVER_HEAD_SHA).toBe(expectedShaExpr);
+
+    const aggregateJob = getJob(doc, 'recover-aggregate');
+    const aggregateStep = allSteps(aggregateJob).find((s) => s.run?.includes('gen-configs.ts'));
+    expect(aggregateStep?.env?.RECOVER_HEAD_SHA).toBe(expectedShaExpr);
   });
 
   it('recover-validate and recover-aggregate assign GITHUB_SHA inline at the exec boundary (immediately before each npx tsx invocation), not via env:', () => {
