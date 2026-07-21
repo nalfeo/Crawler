@@ -1205,3 +1205,53 @@ export function buildDispatchBindings({ request, workflowDispatchToken, owner, r
   }
   return { dispatchRecovery, dispatchValidation };
 }
+
+/**
+ * Wraps a `dispatchRecovery` function with a per-call admission check against
+ * `cap` outstanding CI Recovery runs.  Used by reconcile.mjs so that its four
+ * direct `dispatchRecovery` call sites are gated by the same cap applied by
+ * the router workflow.
+ *
+ * An in-process `pendingDispatches` counter tracks successful dispatches made
+ * during this reconcile.mjs invocation that may not yet be visible in the
+ * GitHub Actions API (due to visibility lag).  The admission check uses
+ * `outstandingCount + pendingDispatches >= cap` so that sequential calls in
+ * an admission loop cannot all see a stale API count of zero and each dispatch
+ * independently while exceeding `cap`.
+ *
+ * The check remains best-effort across processes: there is a narrow race
+ * window between this read and the router's own read/dispatch (the router's
+ * concurrency group serialises its own invocations but does not serialise
+ * against reconcile.mjs calls).  The window is acceptably small for the
+ * target repo scale; a durable reservation would be needed to close it
+ * completely.
+ *
+ * @param {object} opts
+ * @param {(prNumber: number, trigger: string) => Promise<void>} opts.dispatchRecovery
+ * @param {(token: string, owner: string, repo: string) => Promise<number>} opts.countRuns
+ * @param {number} opts.cap  Maximum outstanding runs to allow dispatch.
+ * @param {string} opts.token  GitHub token for the count request.
+ * @param {string} opts.owner  Repository owner.
+ * @param {string} opts.repo   Repository name.
+ * @returns {(prNumber: number, trigger: string) => Promise<void>}
+ */
+export function buildGatedDispatchRecovery({ dispatchRecovery, countRuns, cap, token, owner, repo }) {
+  // Tracks dispatches made during this invocation that may not yet be visible
+  // in the API. Incremented after a confirmed successful dispatch; never
+  // decremented so the reservation persists for all subsequent calls within
+  // the same reconcile.mjs run.
+  let pendingDispatches = 0;
+  return async function dispatchRecoveryGated(prNumber, trigger) {
+    const outstandingCount = await countRuns(token, owner, repo);
+    if (outstandingCount + pendingDispatches >= cap) {
+      process.stdout.write(
+        `backpressure: skipping dispatch pr=#${prNumber} trigger=${trigger} outstanding=${outstandingCount} pending=${pendingDispatches} cap=${cap} (10-min sweep will retry)\n`,
+      );
+      return;
+    }
+    await dispatchRecovery(prNumber, trigger);
+    // Reserve the slot only after a successful dispatch so a failed
+    // workflow_dispatch does not permanently consume capacity.
+    pendingDispatches++;
+  };
+}
