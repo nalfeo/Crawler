@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7724964efcc4158e35bfb4f516f7ef20b34168cf",
+    "commitDate": "2026-07-21T22:06:21Z",
+    "commitSubject": "feat(sprites): unify asset generation, review, and acceptance (#1740)",
+    "capturedAt": "2026-07-21T23:23:44.813Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29873230712",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/7724964efcc4158e35bfb4f516f7ef20b34168cf.json"
+  },
+  {
     "commit": "83cd1f591259e24a1c1f352428bd0b9d89274c3f",
     "commitDate": "2026-07-21T14:15:37-07:00",
     "commitSubject": "Scope Epic Drift Audit triggers to Floor 2 control-plane inputs (#1692)",
