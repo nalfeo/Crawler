@@ -321,7 +321,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(passiveSources).toEqual([{ kind: 'skill', skillId: 'unarmed' }]);
   });
 
-  it('removes legacy equipment sources when their generated instance is displaced', () => {
+  it('removes equipment-kind sources when their generated instance is displaced', () => {
     const equipped = generated('iron-helm', 'erv-legacy-source-current');
     const replacement = generated('iron-helm', 'erv-legacy-source-replacement');
     const current: EquipmentLoadoutSnapshot = {
