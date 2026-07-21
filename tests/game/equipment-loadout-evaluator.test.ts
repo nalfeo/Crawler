@@ -9,16 +9,8 @@ import {
   type EquipmentLoadoutSnapshot,
 } from '../../src/game/ai/equipment-loadout-evaluator.js';
 import { generateEquipmentInstance } from '../../src/game/generated-equipment-generator.js';
-import {
-  ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
-  equipmentAbilityGrantSourceId,
-  type AbilityGrantOwnership,
-  type AbilityGrantSourceId,
-} from '../../src/shared/abilities.js';
-import type {
-  GeneratedEquipmentInstanceV1,
-  ResolvedEquipmentGrantEffectV1,
-} from '../../src/shared/generated-equipment-types.js';
+import { type AbilityGrantSource } from '../../src/shared/abilities.js';
+import type { GeneratedEquipmentInstanceV1 } from '../../src/shared/generated-equipment-types.js';
 import type { PrimaryStatId, StatId } from '../../src/shared/stats.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -90,30 +82,25 @@ function generated(
   });
 }
 
-function isGrantEffect(
-  effect: GeneratedEquipmentInstanceV1['resolvedEffects'][number],
-): effect is ResolvedEquipmentGrantEffectV1 {
-  return effect.kind === 'abilityGrant' || effect.kind === 'passiveGrant';
-}
-
-function ownershipFor(equipped: readonly GeneratedEquipmentInstanceV1[]): AbilityGrantOwnership {
-  const activeSourcesByAbilityId = new Map<string, Set<AbilityGrantSourceId>>();
-  const passiveSourcesByAbilityId = new Map<string, Set<AbilityGrantSourceId>>();
+function sourcesFor(equipped: readonly GeneratedEquipmentInstanceV1[]): {
+  activeAbilityGrantSources: Map<string, AbilityGrantSource[]>;
+  passiveAbilityGrantSources: Map<string, AbilityGrantSource[]>;
+} {
+  const activeAbilityGrantSources = new Map<string, AbilityGrantSource[]>();
+  const passiveAbilityGrantSources = new Map<string, AbilityGrantSource[]>();
   for (const instance of equipped) {
-    for (const effect of instance.resolvedEffects.filter(isGrantEffect)) {
-      const target =
-        effect.kind === 'abilityGrant' ? activeSourcesByAbilityId : passiveSourcesByAbilityId;
-      const source = equipmentAbilityGrantSourceId(instance.instanceId, effect.effectOrdinal);
-      const sources = target.get(effect.grantId) ?? new Set<AbilityGrantSourceId>();
-      sources.add(source);
-      target.set(effect.grantId, sources);
-    }
+    instance.frozen.abilityGrants.forEach((abilityId, effectOrdinal) => {
+      const sources = activeAbilityGrantSources.get(abilityId) ?? [];
+      sources.push({ kind: 'generated-equipment', instanceId: instance.instanceId, effectOrdinal });
+      activeAbilityGrantSources.set(abilityId, sources);
+    });
+    instance.frozen.passiveGrants.forEach((abilityId, effectOrdinal) => {
+      const sources = passiveAbilityGrantSources.get(abilityId) ?? [];
+      sources.push({ kind: 'generated-equipment', instanceId: instance.instanceId, effectOrdinal });
+      passiveAbilityGrantSources.set(abilityId, sources);
+    });
   }
-  return {
-    schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
-    activeSourcesByAbilityId,
-    passiveSourcesByAbilityId,
-  };
+  return { activeAbilityGrantSources, passiveAbilityGrantSources };
 }
 
 function snapshot(
@@ -123,7 +110,7 @@ function snapshot(
     equipped,
     baseStats: BASE_STATS,
     coreStatPoints: CORE_STATS,
-    grantOwnership: ownershipFor(equipped),
+    ...sourcesFor(equipped),
     equippedActiveAbilityIds: [],
     bodyWeightLb: 180,
   };
@@ -222,6 +209,27 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(active.nextScore.components.activeAbility).toBeGreaterThan(0);
     expect(passive.nextScore.availablePassiveAbilityIds).toEqual(['veteran-instinct']);
     expect(snapshot([]).equippedActiveAbilityIds).toEqual([]);
+  });
+
+  it('preserves learned and skill grant sources while evaluating generated equipment', () => {
+    const activeSources: AbilityGrantSource[] = [{ kind: 'learned' }];
+    const passiveSources: AbilityGrantSource[] = [{ kind: 'skill', skillId: 'unarmed' }];
+    const current: EquipmentLoadoutSnapshot = {
+      ...snapshot([]),
+      activeAbilityGrantSources: new Map([['fireball', activeSources]]),
+      passiveAbilityGrantSources: new Map([['veteran-instinct', passiveSources]]),
+      equippedActiveAbilityIds: ['fireball'],
+    };
+    const result = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [candidate(generated('iron-helm', 'erv-non-equipment-sources'))]),
+      current,
+    });
+
+    expect(result.ranked[0]?.currentScore.equippedActiveAbilityIds).toEqual(['fireball']);
+    expect(result.ranked[0]?.nextScore.equippedActiveAbilityIds).toEqual(['fireball']);
+    expect(result.ranked[0]?.nextScore.availablePassiveAbilityIds).toEqual(['veteran-instinct']);
+    expect(activeSources).toEqual([{ kind: 'learned' }]);
+    expect(passiveSources).toEqual([{ kind: 'skill', skillId: 'unarmed' }]);
   });
 
   it('exposes defensive, encumbrance, displacement, and purchase opportunity costs', () => {

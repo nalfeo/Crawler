@@ -16,18 +16,10 @@ import {
   computeEncumbranceThresholds,
 } from '../../shared/encumbrance.js';
 import { isValidSlotId } from '../../shared/equipment-slots.js';
-import {
-  ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
-  ACTIVE_ABILITY_SLOT_LIMIT,
-  equipmentAbilityGrantSourceId,
-  isAbilityGrantSourceId,
-  type AbilityGrantOwnership,
-  type AbilityGrantSourceId,
-} from '../../shared/abilities.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityGrantSource } from '../../shared/abilities.js';
 import type {
   ActiveWeaponSnapshotV1,
   GeneratedEquipmentInstanceV1,
-  ResolvedEquipmentGrantEffectV1,
 } from '../../shared/generated-equipment-types.js';
 import type { CatalogEffect } from '../../shared/progression-effects.js';
 import {
@@ -103,7 +95,8 @@ export interface EquipmentLoadoutSnapshot {
   readonly equipped: readonly GeneratedEquipmentInstanceV1[];
   readonly baseStats: Readonly<Partial<Record<StatId, number>>>;
   readonly coreStatPoints: Readonly<Partial<Record<PrimaryStatId, number>>>;
-  readonly grantOwnership: AbilityGrantOwnership;
+  readonly activeAbilityGrantSources: ReadonlyMap<string, readonly AbilityGrantSource[]>;
+  readonly passiveAbilityGrantSources: ReadonlyMap<string, readonly AbilityGrantSource[]>;
   readonly equippedActiveAbilityIds: readonly string[];
   readonly bodyWeightLb: number;
 }
@@ -162,8 +155,8 @@ export class EquipmentLoadoutEvaluationError extends Error {
 }
 
 type MutableOwnership = {
-  active: Map<string, Set<AbilityGrantSourceId>>;
-  passive: Map<string, Set<AbilityGrantSourceId>>;
+  active: Map<string, AbilityGrantSource[]>;
+  passive: Map<string, AbilityGrantSource[]>;
 };
 
 interface LoadoutScoringState {
@@ -304,40 +297,40 @@ function canonicalInstances(
   return [...byId.values()].sort((a, b) => a.instanceId.localeCompare(b.instanceId));
 }
 
+function sourceKey(source: AbilityGrantSource): string {
+  switch (source.kind) {
+    case 'learned':
+      return 'learned';
+    case 'skill':
+      return `skill:${source.skillId}`;
+    case 'equipment':
+      return `equipment:${source.instanceId}`;
+    case 'generated-equipment':
+      return `generated-equipment:${source.instanceId}:${source.effectOrdinal}`;
+  }
+}
+
+function cloneSource(source: AbilityGrantSource): AbilityGrantSource {
+  return { ...source };
+}
+
 function cloneSourceMap(
-  source: ReadonlyMap<string, Set<AbilityGrantSourceId>>,
-  path: string,
-): Map<string, Set<AbilityGrantSourceId>> {
-  const result = new Map<string, Set<AbilityGrantSourceId>>();
+  source: ReadonlyMap<string, readonly AbilityGrantSource[]>,
+): Map<string, AbilityGrantSource[]> {
+  const result = new Map<string, AbilityGrantSource[]>();
   for (const [abilityId, sources] of [...source.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const validated = [...sources].sort().map((sourceId) => {
-      if (!isAbilityGrantSourceId(sourceId)) {
-        throw new EquipmentLoadoutEvaluationError(
-          `${path}.${abilityId} has invalid source ${sourceId}`,
-        );
-      }
-      return sourceId;
-    });
-    if (validated.length > 0) result.set(abilityId, new Set(validated));
+    const cloned = sources
+      .map(cloneSource)
+      .sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)));
+    if (cloned.length > 0) result.set(abilityId, cloned);
   }
   return result;
 }
 
-function cloneOwnership(ownership: AbilityGrantOwnership): MutableOwnership {
-  if (ownership.schemaVersion !== ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION) {
-    throw new EquipmentLoadoutEvaluationError(
-      `Unsupported grant ownership version ${ownership.schemaVersion}`,
-    );
-  }
+function cloneOwnership(snapshot: EquipmentLoadoutSnapshot): MutableOwnership {
   return {
-    active: cloneSourceMap(
-      ownership.activeSourcesByAbilityId,
-      '$.current.grantOwnership.activeSourcesByAbilityId',
-    ),
-    passive: cloneSourceMap(
-      ownership.passiveSourcesByAbilityId,
-      '$.current.grantOwnership.passiveSourcesByAbilityId',
-    ),
+    active: cloneSourceMap(snapshot.activeAbilityGrantSources),
+    passive: cloneSourceMap(snapshot.passiveAbilityGrantSources),
   };
 }
 
@@ -345,37 +338,55 @@ function removeEquipmentSources(
   ownership: MutableOwnership,
   removed: readonly GeneratedEquipmentInstanceV1[],
 ): void {
-  const prefixes = removed.map((instance) => `equipment:${instance.instanceId}:`);
+  const removedIds = new Set(removed.map((instance) => instance.instanceId));
   for (const sourceMap of [ownership.active, ownership.passive]) {
     for (const [abilityId, sources] of sourceMap) {
       const retained = [...sources].filter(
-        (sourceId) => !prefixes.some((prefix) => sourceId.startsWith(prefix)),
+        (source) => source.kind !== 'generated-equipment' || !removedIds.has(source.instanceId),
       );
       if (retained.length === 0) sourceMap.delete(abilityId);
-      else sourceMap.set(abilityId, new Set(retained.sort()));
+      else
+        sourceMap.set(
+          abilityId,
+          retained.sort((a, b) => sourceKey(a).localeCompare(sourceKey(b))),
+        );
     }
   }
+}
+
+function addGeneratedEquipmentSource(
+  sourceMap: Map<string, AbilityGrantSource[]>,
+  abilityId: string,
+  instance: GeneratedEquipmentInstanceV1,
+  effectOrdinal: number,
+): void {
+  const sources = sourceMap.get(abilityId) ?? [];
+  const alreadyPresent = sources.some(
+    (source) =>
+      source.kind === 'generated-equipment' &&
+      source.instanceId === instance.instanceId &&
+      source.effectOrdinal === effectOrdinal,
+  );
+  if (alreadyPresent) return;
+  sources.push({
+    kind: 'generated-equipment',
+    instanceId: instance.instanceId,
+    effectOrdinal,
+  });
+  sources.sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)));
+  sourceMap.set(abilityId, sources);
 }
 
 function addEquipmentSources(
   ownership: MutableOwnership,
   instance: GeneratedEquipmentInstanceV1,
 ): void {
-  for (const effect of [...instance.resolvedEffects].sort(
-    (a, b) => a.effectOrdinal - b.effectOrdinal,
-  )) {
-    if (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant') continue;
-    const sourceMap = effect.kind === 'passiveGrant' ? ownership.passive : ownership.active;
-    const sources = sourceMap.get(effect.grantId) ?? new Set<AbilityGrantSourceId>();
-    sources.add(equipmentAbilityGrantSourceId(instance.instanceId, effect.effectOrdinal));
-    sourceMap.set(effect.grantId, sources);
-  }
-}
-
-function isActiveGrant(
-  effect: GeneratedEquipmentInstanceV1['resolvedEffects'][number],
-): effect is ResolvedEquipmentGrantEffectV1 & { readonly kind: 'abilityGrant' } {
-  return effect.kind === 'abilityGrant';
+  instance.frozen.abilityGrants.forEach((abilityId, effectOrdinal) => {
+    addGeneratedEquipmentSource(ownership.active, abilityId, instance, effectOrdinal);
+  });
+  instance.frozen.passiveGrants.forEach((abilityId, effectOrdinal) => {
+    addGeneratedEquipmentSource(ownership.passive, abilityId, instance, effectOrdinal);
+  });
 }
 
 function configuredActives(
@@ -389,23 +400,18 @@ function configuredActives(
       available.has(abilityId) && currentConfiguration.indexOf(abilityId) === index,
   );
   if (candidate !== undefined) {
-    const grants = candidate.resolvedEffects
-      .filter(isActiveGrant)
-      .sort((a, b) => a.effectOrdinal - b.effectOrdinal);
-    for (const grant of grants) {
+    for (const abilityId of candidate.frozen.abilityGrants) {
       if (
-        available.has(grant.grantId) &&
-        !configured.includes(grant.grantId) &&
+        available.has(abilityId) &&
+        !configured.includes(abilityId) &&
         configured.length < ACTIVE_ABILITY_SLOT_LIMIT
       ) {
-        configured.push(grant.grantId);
+        configured.push(abilityId);
       }
     }
   }
   const blocked =
-    candidate?.resolvedEffects
-      .filter(isActiveGrant)
-      .map((effect) => effect.grantId)
+    candidate?.frozen.abilityGrants
       .filter((abilityId) => available.has(abilityId) && !configured.includes(abilityId))
       .sort() ?? [];
   return { configured, blocked: [...new Set(blocked)] };
@@ -818,7 +824,7 @@ export function evaluateEquipmentLoadoutCandidates(
   }
 
   const currentEquipped = canonicalInstances(input.current.equipped, '$.current.equipped');
-  const currentOwnership = cloneOwnership(input.current.grantOwnership);
+  const currentOwnership = cloneOwnership(input.current);
   const currentConfiguration = configuredActives(
     input.current.equippedActiveAbilityIds,
     currentOwnership,
@@ -874,7 +880,7 @@ export function evaluateEquipmentLoadoutCandidates(
       `$.candidates.${candidateInstance.instanceId}.next`,
     );
 
-    const retainedOwnership = cloneOwnership(input.current.grantOwnership);
+    const retainedOwnership = cloneOwnership(input.current);
     removeEquipmentSources(retainedOwnership, displaced);
     const retainedConfigured = configuredActives(
       currentConfiguration,
@@ -893,7 +899,7 @@ export function evaluateEquipmentLoadoutCandidates(
       config,
     );
 
-    const nextOwnership = cloneOwnership(input.current.grantOwnership);
+    const nextOwnership = cloneOwnership(input.current);
     removeEquipmentSources(nextOwnership, displaced);
     addEquipmentSources(nextOwnership, candidateInstance);
     const nextConfiguration = configuredActives(

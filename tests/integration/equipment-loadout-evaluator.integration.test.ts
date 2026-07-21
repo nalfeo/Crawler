@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry.js';
 import { evaluateEquipmentLoadoutCandidates } from '../../src/game/ai/equipment-loadout-evaluator.js';
 import { generateEquipmentInstance } from '../../src/game/generated-equipment-generator.js';
-import { ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION } from '../../src/shared/abilities.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('generated equipment to loadout evaluator integration', () => {
@@ -31,11 +30,8 @@ describe('generated equipment to loadout evaluator integration', () => {
           maxHp: 100,
         },
         coreStatPoints: {},
-        grantOwnership: {
-          schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
-          activeSourcesByAbilityId: new Map(),
-          passiveSourcesByAbilityId: new Map(),
-        },
+        activeAbilityGrantSources: new Map(),
+        passiveAbilityGrantSources: new Map(),
         equippedActiveAbilityIds: [],
         bodyWeightLb: 180,
       },
