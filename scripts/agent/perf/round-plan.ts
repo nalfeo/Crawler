@@ -176,6 +176,21 @@ export interface RoundCheckpoint {
   configs: Record<string, SweepConfig>;
   /** Every evaluated run across all rounds so far. */
   rows: RunRow[];
+  /**
+   * The TRAIN seed panel + weapon list + secondary-knobs flag this
+   * checkpoint's search has been run against so far — set once in
+   * {@link initCheckpoint} and never reassigned across rounds (same
+   * lifecycle as `meta`/`incumbentConfigId`). `secondary` is part of this
+   * provenance (not just trainSeeds/weapons) because `knobsFor(combo,
+   * secondary)` selects a DIFFERENT `TunableKnob[]` set depending on its
+   * value — resuming a checkpoint searched under one `secondary` value
+   * under a dispatch requesting the other would silently continue a
+   * different search space. Optional because checkpoints produced before
+   * cross-run resume support never populated it; {@link assertResumeCompatible}
+   * treats an absent value as INCOMPATIBLE (fail closed) rather than
+   * silently permitting a resume it cannot verify.
+   */
+  runInputs?: { trainSeeds: string; weapons: string; secondary: boolean };
 }
 
 /** Build the round-0 checkpoint from a combo's baseline shard (`--stage search-baseline`).
@@ -185,12 +200,18 @@ export interface RoundCheckpoint {
  * graduation gate in {@link selectQualifiedWinner}). Without it, the combo's
  * own base config is used, which can allow a flip-tainted candidate to pass the
  * in-search gate while still being rejected at graduation.
+ *
+ * `runInputs`, when supplied, is stamped onto the checkpoint verbatim and
+ * carried through every later round untouched (see `RoundCheckpoint.runInputs`)
+ * so a later cross-run resume can verify the TRAIN seed panel, weapon list,
+ * AND secondary-knobs flag this checkpoint's search actually ran against.
  */
 export function initCheckpoint(
   combo: Combo,
   knobs: readonly TunableKnob[],
   baseline: ShardArtifact,
   legacyBaseline?: ShardArtifact,
+  runInputs?: { trainSeeds: string; weapons: string; secondary: boolean },
 ): RoundCheckpoint {
   const comboStr = comboId(combo);
   const baseIds = Object.keys(baseline.configs);
@@ -319,6 +340,7 @@ export function initCheckpoint(
     converged: false,
     configs: allConfigs,
     rows: allRows,
+    ...(runInputs ? { runInputs } : {}),
   };
 }
 
@@ -327,12 +349,27 @@ export function initCheckpoint(
  * config. Empty once converged, or once every neighbour at the current step
  * has already been evaluated in an earlier round (coordinate-ascent moving
  * back over already-visited ground).
+ *
+ * `round`, when supplied, gates cross-run RESUME (not ordinary progression):
+ * if `checkpoint.round >= round`, this round's work was already completed by
+ * a PRIOR run and imported verbatim (see `resume-import` in
+ * `.github/workflows/ai-sweep.yml`), so no new candidates are planned here —
+ * `applyRoundResult` correspondingly no-ops this round's `select` step too.
+ * Without this guard, a resumed round-2 checkpoint's round-1 `select`/`plan`
+ * step would compute a fresh coordinate-ascent step from the CURRENT (already
+ * round-2) state and mislabel it as "round 1", silently performing extra,
+ * unrequested optimization work beyond `inputs.rounds` instead of continuing
+ * only unfinished stages.
  */
 export function planCandidates(
   checkpoint: RoundCheckpoint,
   knobs: readonly TunableKnob[],
+  round?: number,
 ): { id: string; config: SweepConfig }[] {
   if (checkpoint.converged) {
+    return [];
+  }
+  if (round !== undefined && checkpoint.round >= round) {
     return [];
   }
   const currentConfig = checkpoint.configs[checkpoint.bestConfigId];
@@ -367,14 +404,19 @@ export interface CheckpointWithKnobs {
  * already applies to the combo matrix; default cap kept in sync with
  * `assertMatrixWithinCap`'s own default of 200, well under GitHub's hard
  * 256-job matrix limit).
+ *
+ * `round`, when supplied, is forwarded to {@link planCandidates} so a
+ * cross-run-resumed checkpoint already past this round contributes zero
+ * candidates instead of silently redoing completed optimization work.
  */
 export function planRoundMatrix(
   checkpoints: readonly CheckpointWithKnobs[],
   cap = 200,
+  round?: number,
 ): FlatCandidate[] {
   const out: FlatCandidate[] = [];
   for (const { checkpoint, knobs } of checkpoints) {
-    for (const c of planCandidates(checkpoint, knobs)) {
+    for (const c of planCandidates(checkpoint, knobs, round)) {
       out.push({ combo: checkpoint.combo, configId: c.id, config: c.config });
     }
   }
@@ -454,6 +496,85 @@ function assertShardCompatible(
   }
 }
 
+/** A cross-run resume candidate's expected provenance: this run's own runner
+ *  calibration (from `sweep-eval --print-meta`) plus its TRAIN seed panel,
+ *  weapon list, and secondary-knobs flag. */
+export interface ResumeExpectedProvenance {
+  meta: ShardMeta;
+  trainSeeds: string;
+  weapons: string;
+  secondary: boolean;
+}
+
+/**
+ * Validate that a checkpoint recovered from a PRIOR workflow run (cross-run
+ * `resume_run_id`) is safe to continue in THIS run — must never silently
+ * combine incompatible search state. Reuses {@link assertShardCompatible}'s
+ * existing schemaVersion/floorId/budgetMs/maxFrames/stage/runnerOs/
+ * nodeVersion/packageLockHash checks (the exact same guard intra-run
+ * candidate shards must already pass), then adds checks that ONLY matter
+ * ACROSS separate runs: within one run every job shares one checkout + one
+ * runner image, so those fields can never differ — but a PRIOR run may have
+ * used a different weapon list or TRAIN seed panel, silently making its
+ * scores incomparable with this run's. Fails closed on the FIRST mismatch
+ * found (never partially merges an incompatible checkpoint).
+ *
+ * `workflowSha` (`GITHUB_SHA` at run time — see `ShardMeta`) is deliberately
+ * NEUTRALIZED before delegating to `assertShardCompatible` (by copying the
+ * checkpoint's own `workflowSha` into the comparison object), rather than
+ * checked for equality. It changes on every commit to the default branch,
+ * including the commit that ships resume support itself, so an exact-match
+ * check here would make it structurally impossible to EVER resume a prior
+ * run once its workflow file has since been touched — permanently
+ * defeating the one scenario (a runner-starvation cancellation motivating a
+ * same-day resume) this feature exists for. Every OTHER field
+ * `assertShardCompatible` checks — schemaVersion/floorId/budgetMs/maxFrames
+ * (win-definition + eval parameters), stage, and runnerOs/nodeVersion/
+ * packageLockHash (runtime + build/dependency provenance) — is still
+ * genuinely enforced via that shared function, plus trainSeeds/weapons/
+ * secondary (the actual search space, via `runInputs`) below. A source-level
+ * game/eval logic change that isn't captured by any of those fields (e.g. a
+ * scoring-formula edit that doesn't bump `schemaVersion`) is a pre-existing,
+ * separately-tracked gap in `SHARD_SCHEMA_VERSION` hygiene, not something
+ * `workflowSha` equality was actually able to catch either (an unrelated
+ * commit anywhere in the repo also changes `GITHUB_SHA`).
+ */
+export function assertResumeCompatible(
+  checkpoint: RoundCheckpoint,
+  expected: ResumeExpectedProvenance,
+): void {
+  const contextLabel = `assertResumeCompatible(${checkpoint.combo})`;
+  // Reuse the shared shard-compatibility guard for every field EXCEPT
+  // workflowSha, which is neutralized by copying the checkpoint's own value
+  // into the expected-meta comparison object — see docstring above for why.
+  assertShardCompatible(
+    { ...expected.meta, workflowSha: checkpoint.meta.workflowSha },
+    { meta: checkpoint.meta, configs: {}, rows: [] },
+    contextLabel,
+  );
+
+  if (!checkpoint.runInputs) {
+    throw new Error(
+      `${contextLabel}: checkpoint has no recorded runInputs (pre-resume-support checkpoint) — cannot verify its TRAIN seed panel/weapon list, refusing to resume.`,
+    );
+  }
+  if (checkpoint.runInputs.trainSeeds !== expected.trainSeeds) {
+    throw new Error(
+      `${contextLabel}: checkpoint trainSeeds '${checkpoint.runInputs.trainSeeds}' != expected '${expected.trainSeeds}'`,
+    );
+  }
+  if (checkpoint.runInputs.weapons !== expected.weapons) {
+    throw new Error(
+      `${contextLabel}: checkpoint weapons '${checkpoint.runInputs.weapons}' != expected '${expected.weapons}'`,
+    );
+  }
+  if (checkpoint.runInputs.secondary !== expected.secondary) {
+    throw new Error(
+      `${contextLabel}: checkpoint secondary knobs flag '${checkpoint.runInputs.secondary}' != expected '${expected.secondary}' — resuming would silently continue a DIFFERENT search space (knobsFor selects a different TunableKnob[] set per secondary value).`,
+    );
+  }
+}
+
 /**
  * Merge this round's evaluated candidate shards into a combo's checkpoint and
  * advance the search: promote the highest-scoring candidate that ALSO passes
@@ -510,8 +631,20 @@ export function applyRoundResult(
   // non-empty candidateShards here either; short-circuiting avoids
   // repeatedly halving an already-minimal step size on every remaining
   // bounded round (harmless numerically, but confusing to read/debug).
+  // `Math.max(round, checkpoint.round)` (here and below) guards a cross-run
+  // RESUMED checkpoint: it already has a higher `round` than this call's
+  // `round` argument, and must never be relabelled backward.
   if (checkpoint.converged) {
-    return { ...checkpoint, round };
+    return { ...checkpoint, round: Math.max(round, checkpoint.round) };
+  }
+  // Idempotent no-op for a round a cross-run resume already completed:
+  // `planCandidates(checkpoint, knobs, round)` correspondingly plans nothing
+  // for this round on this checkpoint, so there is nothing to merge — return
+  // unchanged (preserving the checkpoint's true, further-along round) rather
+  // than silently performing extra, unrequested optimization work beyond
+  // what `inputs.rounds` asked for.
+  if (checkpoint.round >= round && candidateShards.length === 0) {
+    return checkpoint;
   }
 
   const configs = { ...checkpoint.configs };
@@ -602,7 +735,7 @@ export function applyRoundResult(
 
   return {
     ...checkpoint,
-    round,
+    round: Math.max(round, checkpoint.round),
     bestConfigId: bestId,
     bestScore,
     steps,
@@ -634,10 +767,12 @@ export function toSearchArtifact(checkpoint: RoundCheckpoint): SearchArtifactLik
 
 // ---------------------------------------------------------------------------
 // CLI (guarded so importing this module for its pure helpers never runs it).
-// Three modes mirror the three round-DAG workflow steps:
-//   --mode init   <combo> --baseline <shard.json> [--secondary] --out <checkpoint.json>
+// Four modes mirror the round-DAG workflow steps (init/plan/select) plus the
+// cross-run resume compatibility check:
+//   --mode init   <combo> --baseline <shard.json> [--secondary] [--train-seeds <str> --weapons <str>] --out <checkpoint.json>
 //   --mode plan   --round N [--secondary] [--cap N] --out <matrix.json> <checkpoint.json...>
 //   --mode select --round N [--secondary] [--planned-count N|unknown] --checkpoint <checkpoint.json> --out <checkpoint.json> [<shard.json...>]
+//   --mode resume-check --checkpoint <checkpoint.json> --expect-meta <meta.json> [--expect-train-seeds <str>] [--expect-weapons <str>] [--expect-secondary]
 // ---------------------------------------------------------------------------
 
 function knobsFor(comboStr: string, secondary: boolean): TunableKnob[] {
@@ -645,7 +780,7 @@ function knobsFor(comboStr: string, secondary: boolean): TunableKnob[] {
 }
 
 interface CliArgs {
-  mode: 'init' | 'plan' | 'select' | null;
+  mode: 'init' | 'plan' | 'select' | 'resume-check' | null;
   combo: string | null;
   baseline: string | null;
   legacyBaseline: string | null;
@@ -656,6 +791,15 @@ interface CliArgs {
   plannedCount: number | 'unknown' | null;
   out: string | null;
   files: string[];
+  /** `--mode init` only: TRAIN seed panel + weapon list to stamp onto the new
+   *  checkpoint's `runInputs` (both required together — see initCheckpoint). */
+  trainSeeds: string | null;
+  weapons: string | null;
+  /** `--mode resume-check` only. */
+  expectMeta: string | null;
+  expectTrainSeeds: string | null;
+  expectWeapons: string | null;
+  expectSecondary: boolean;
 }
 
 function parseCliArgs(argv: readonly string[]): CliArgs {
@@ -671,14 +815,22 @@ function parseCliArgs(argv: readonly string[]): CliArgs {
     plannedCount: null,
     out: null,
     files: [],
+    trainSeeds: null,
+    weapons: null,
+    expectMeta: null,
+    expectTrainSeeds: null,
+    expectWeapons: null,
+    expectSecondary: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === undefined) continue;
     const next = argv[i + 1];
     if (arg === '--mode' && next) {
-      if (next !== 'init' && next !== 'plan' && next !== 'select') {
-        throw new Error(`--mode must be init|plan|select, got ${JSON.stringify(next)}`);
+      if (next !== 'init' && next !== 'plan' && next !== 'select' && next !== 'resume-check') {
+        throw new Error(
+          `--mode must be init|plan|select|resume-check, got ${JSON.stringify(next)}`,
+        );
       }
       args.mode = next;
       i++;
@@ -708,6 +860,23 @@ function parseCliArgs(argv: readonly string[]): CliArgs {
     } else if (arg === '--out' && next) {
       args.out = next;
       i++;
+    } else if (arg === '--train-seeds' && next) {
+      args.trainSeeds = next;
+      i++;
+    } else if (arg === '--weapons' && next) {
+      args.weapons = next;
+      i++;
+    } else if (arg === '--expect-meta' && next) {
+      args.expectMeta = next;
+      i++;
+    } else if (arg === '--expect-train-seeds' && next) {
+      args.expectTrainSeeds = next;
+      i++;
+    } else if (arg === '--expect-weapons' && next) {
+      args.expectWeapons = next;
+      i++;
+    } else if (arg === '--expect-secondary') {
+      args.expectSecondary = true;
     } else if (!arg.startsWith('--')) {
       args.files.push(arg);
     }
@@ -729,7 +898,7 @@ function runCli(argv: readonly string[]): void {
   const args = parseCliArgs(argv);
   if (!args.mode) {
     console.error(
-      'Usage: ai:round-plan --mode init|plan|select ... (see round-plan.ts header for per-mode flags)',
+      'Usage: ai:round-plan --mode init|plan|select|resume-check ... (see round-plan.ts header for per-mode flags)',
     );
     process.exit(1);
     return;
@@ -745,7 +914,11 @@ function runCli(argv: readonly string[]): void {
     const legacyBaseline = args.legacyBaseline
       ? (JSON.parse(readFileSync(args.legacyBaseline, 'utf8')) as ShardArtifact)
       : undefined;
-    const checkpoint = initCheckpoint(combo, knobs, baseline, legacyBaseline);
+    const runInputs =
+      args.trainSeeds && args.weapons
+        ? { trainSeeds: args.trainSeeds, weapons: args.weapons, secondary: args.secondary }
+        : undefined;
+    const checkpoint = initCheckpoint(combo, knobs, baseline, legacyBaseline, runInputs);
     const incumbentNote =
       checkpoint.incumbentConfigId !== checkpoint.bestConfigId
         ? ` (incumbent=${checkpoint.incumbentConfigId.slice(0, 48)})`
@@ -768,7 +941,7 @@ function runCli(argv: readonly string[]): void {
       const checkpoint = JSON.parse(readFileSync(f, 'utf8')) as RoundCheckpoint;
       return { checkpoint, knobs: knobsFor(checkpoint.combo, args.secondary) };
     });
-    const candidates = planRoundMatrix(inputs, args.cap);
+    const candidates = planRoundMatrix(inputs, args.cap, args.round);
     const hasCandidates = candidates.length > 0;
     const byCombo = new Map<string, number>();
     for (const c of candidates) {
@@ -781,6 +954,26 @@ function runCli(argv: readonly string[]): void {
           : ' — all converged, nothing to evaluate this round.'),
     );
     emit({ round: args.round, hasCandidates, candidates }, args.out);
+    return;
+  }
+
+  if (args.mode === 'resume-check') {
+    if (!args.checkpoint || !args.expectMeta) {
+      throw new Error(
+        '--mode resume-check requires --checkpoint <checkpoint.json> --expect-meta <meta.json>',
+      );
+    }
+    const checkpoint = JSON.parse(readFileSync(args.checkpoint, 'utf8')) as RoundCheckpoint;
+    const meta = JSON.parse(readFileSync(args.expectMeta, 'utf8')) as ShardMeta;
+    assertResumeCompatible(checkpoint, {
+      meta,
+      trainSeeds: args.expectTrainSeeds ?? '',
+      weapons: args.expectWeapons ?? '',
+      secondary: args.expectSecondary,
+    });
+    console.log(
+      `[${checkpoint.combo}] resume-compatible: round ${checkpoint.round} checkpoint may be reused (best=${checkpoint.bestConfigId.slice(0, 48)} score=${checkpoint.bestScore.toExponential(3)})`,
+    );
     return;
   }
 

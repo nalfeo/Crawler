@@ -40,12 +40,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyRoundResult,
+  assertResumeCompatible,
   halveSteps,
   initCheckpoint,
   planCandidates,
   planRoundMatrix,
   toSearchArtifact,
   type CheckpointWithKnobs,
+  type ResumeExpectedProvenance,
   type RoundCheckpoint,
 } from '../../../scripts/agent/perf/round-plan.js';
 import {
@@ -409,6 +411,25 @@ describe('initCheckpoint', () => {
       /legacyBaseline shard rows must all reference its sole config/,
     );
   });
+
+  it('stamps the optional runInputs (TRAIN seeds + weapons + secondary) onto the checkpoint verbatim when supplied, and omits the field entirely when not', () => {
+    const withRunInputs = initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(150), undefined, {
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: true,
+    });
+    expect(withRunInputs.runInputs).toEqual({
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: true,
+    });
+
+    // Legacy caller (no runInputs arg) must NOT get a `runInputs: undefined`
+    // key — assertResumeCompatible's `!checkpoint.runInputs` check must see a
+    // genuinely absent field, matching real pre-resume-support checkpoints.
+    const withoutRunInputs = baseCheckpoint(150);
+    expect('runInputs' in withoutRunInputs).toBe(false);
+  });
 });
 
 describe('planCandidates', () => {
@@ -440,6 +461,31 @@ describe('planCandidates', () => {
   it('throws when bestConfigId is missing from configs (corrupt checkpoint)', () => {
     const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), bestConfigId: 'no-such-id' };
     expect(() => planCandidates(checkpoint, KNOBS)).toThrow(/missing config for bestConfigId/);
+  });
+
+  it('with no `round` argument, behaves exactly as before (round-agnostic — legacy call sites unaffected)', () => {
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), round: 2 };
+    expect(planCandidates(checkpoint, KNOBS)).toHaveLength(2);
+  });
+
+  it('a cross-run RESUMED checkpoint already past this round emits ZERO candidates for it — the fix for the real "extra optimization step" bug (Copilot review finding #4)', () => {
+    // Without the `round` gate, planCandidates only looks at `converged`/
+    // `configs`, so a checkpoint imported at round 2 would still emit fresh
+    // round-1 candidates when round1-candidates re-derives its neighbour set
+    // — silently performing an UNREQUESTED extra coordinate-ascent step using
+    // the checkpoint's CURRENT (already-reduced) step size.
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), round: 2 };
+    expect(planCandidates(checkpoint, KNOBS, 1)).toEqual([]);
+  });
+
+  it('a checkpoint exactly AT the requested round also emits zero candidates (>= is inclusive — this round already ran)', () => {
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), round: 1 };
+    expect(planCandidates(checkpoint, KNOBS, 1)).toEqual([]);
+  });
+
+  it('a checkpoint BEHIND the requested round still plans normally (ordinary fresh-run progression is unaffected)', () => {
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), round: 0 };
+    expect(planCandidates(checkpoint, KNOBS, 1)).toHaveLength(2);
   });
 });
 
@@ -481,6 +527,18 @@ describe('planRoundMatrix', () => {
     ];
     // 4 total candidates, cap 3 -> must throw the same cardinality-guard message.
     expect(() => planRoundMatrix(checkpoints, 3)).toThrow(/exceeding the safe cap of 3/);
+  });
+
+  it('forwards `round` to planCandidates so a resumed-ahead combo contributes zero candidates while a fresh sibling combo still plans normally', () => {
+    const checkpoints: CheckpointWithKnobs[] = [
+      // Resumed at round 2 -- must plan nothing for round 1.
+      { checkpoint: { ...baseCheckpoint(), combo: 'legacy+legacy', round: 2 }, knobs: KNOBS },
+      // Fresh at round 0 -- must plan its 2 round-1 neighbours normally.
+      { checkpoint: { ...baseCheckpoint(), combo: 'navmeshFused+legacy', round: 0 }, knobs: KNOBS },
+    ];
+    const matrix = planRoundMatrix(checkpoints, 200, 1);
+    expect(matrix).toHaveLength(2);
+    expect(new Set(matrix.map((c) => c.combo))).toEqual(new Set(['navmeshFused+legacy']));
   });
 });
 
@@ -957,6 +1015,52 @@ describe('applyRoundResult', () => {
     expect(updated.incumbentCombo).toBe(LEGACY_COMBO_ID); // preserved across rounds
     expect(updated.incumbentConfigId).toBe(BASE_ID); // still the LEGACY config
   });
+
+  it('is an idempotent no-op for a round a cross-run resume already completed (checkpoint.round >= round, no shards) — never relabels round backward', () => {
+    // The fix for Copilot review finding #4: `round1-select` for a combo
+    // resumed at round 2 must not overwrite `checkpoint.round` back to 1 —
+    // `planCandidates(..., 1)` correspondingly plans (and thus evaluates)
+    // nothing for round 1 on this checkpoint, so candidateShards is empty.
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(500), round: 2 };
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, []);
+    expect(updated).toEqual(checkpoint); // fully unchanged, including round: 2
+  });
+
+  it('never relabels round backward even in the defensive case where shards ARE present for an already-past round', () => {
+    // Belt-and-suspenders: even if a caller passes candidateShards despite
+    // checkpoint.round already exceeding the requested round, the merged
+    // checkpoint's `round` must never regress below its own prior value.
+    // Uses a 2-cell panel (matching the "adopts a genuinely improving
+    // candidate" fixture above) so the candidate genuinely clears the
+    // net-win promotion gate — a 1-cell tie would never qualify.
+    const baseline = shard(
+      [row(BASE_ID, 'sword', 1, 100, true), row(BASE_ID, 'bow', 2, 100, false)],
+      { [BASE_ID]: BASE },
+    );
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // 1 win
+    const advanced: RoundCheckpoint = { ...checkpoint, round: 2 };
+    const better: SweepConfig = { ...BASE, aggression: 1.5 };
+    const betterId = configId(better);
+    // Wins both cells -> 2 total wins, strictly more than the incumbent's 1.
+    const candidateShard = shard([row(betterId, 'sword', 1, 500), row(betterId, 'bow', 2, 100)], {
+      [betterId]: better,
+    });
+    const updated = applyRoundResult(advanced, 1, KNOBS, [candidateShard]);
+    expect(updated.round).toBe(2); // Math.max(1, 2), never regresses to 1
+    expect(updated.bestConfigId).toBe(betterId); // merge/promotion logic still runs
+  });
+
+  it('still advances round forward normally for an ordinary fresh-run progression (round < checkpoint.round is the only special case)', () => {
+    const checkpoint = baseCheckpoint(500);
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, []);
+    expect(updated.round).toBe(1); // Math.max(1, 0) === 1, ordinary forward progress
+  });
+
+  it('preserves round on the already-converged idempotent-no-op path too (Math.max, not unconditional overwrite)', () => {
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(500), converged: true, round: 3 };
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, []);
+    expect(updated.round).toBe(3); // Math.max(1, 3), never regresses to 1
+  });
 });
 
 describe('toSearchArtifact', () => {
@@ -998,5 +1102,130 @@ describe('halveSteps', () => {
     const steps: Partial<Record<TunableKnob, number>> = {};
     halveSteps(steps, KNOBS);
     expect(steps.aggression).toBe(0.25); // default step 0.5, halved once
+  });
+});
+
+describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_id)', () => {
+  // A resumed checkpoint must carry `runInputs` (real ones stamp this via
+  // initCheckpoint's optional 5th arg — see the `initCheckpoint` describe
+  // block above) and match the CURRENT run's expected provenance exactly.
+  const resumedCheckpoint = (): RoundCheckpoint =>
+    initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(150), undefined, {
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: false,
+    });
+
+  const expected = (): ResumeExpectedProvenance => ({
+    meta: { ...META },
+    trainSeeds: '1-24',
+    weapons: 'sword,bow,baseball-bat',
+    secondary: false,
+  });
+
+  it('passes silently when every provenance field matches exactly', () => {
+    expect(() => assertResumeCompatible(resumedCheckpoint(), expected())).not.toThrow();
+  });
+
+  it('reuses the existing strict shard-provenance checks: throws on schemaVersion mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, schemaVersion: SHARD_SCHEMA_VERSION + 1 };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/schemaVersion/);
+  });
+
+  it('reuses the existing strict shard-provenance checks: throws on floorId mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, floorId: 'floor2' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/floorId/);
+  });
+
+  it('reuses the existing strict shard-provenance checks: throws on budgetMs mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, budgetMs: exp.meta.budgetMs + 1 };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/budgetMs/);
+  });
+
+  it('reuses the existing strict shard-provenance checks: throws on maxFrames mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, maxFrames: exp.meta.maxFrames + 1 };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/maxFrames/);
+  });
+
+  it('throws on stage mismatch (a cross-run-only check, never varies intra-run)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, stage: 'validate' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/stage/);
+  });
+
+  it('throws on runnerOs mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, runnerOs: 'macos' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/runner-OS/);
+  });
+
+  it('throws on nodeVersion mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, nodeVersion: 'v20.0.0' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/node-version/);
+  });
+
+  it('throws on packageLockHash mismatch (dependencies changed since the prior run)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, packageLockHash: 'ffffffffffffffffffffffff' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/package-lock/);
+  });
+
+  it('does NOT throw on workflowSha mismatch — GITHUB_SHA always differs once the resuming workflow itself has changed, so it is deliberately excluded from the gate (see docstring)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, workflowSha: 'ffffffffffffffffffffffffffffffff' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).not.toThrow();
+  });
+
+  it('still fails closed on a genuine incompatibility even when workflowSha ALSO differs (workflowSha exclusion does not widen the gate)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, workflowSha: 'ffffffffffffffffffffffffffffffff', floorId: 'floor2' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/floorId/);
+  });
+
+  it('throws on trainSeeds mismatch (a different TRAIN panel makes scores incomparable)', () => {
+    const exp = expected();
+    exp.trainSeeds = '1-80';
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/trainSeeds/);
+  });
+
+  it('throws on weapons mismatch', () => {
+    const exp = expected();
+    exp.weapons = 'sword';
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/weapons/);
+  });
+
+  it('throws on secondary mismatch: checkpoint searched WITHOUT secondary knobs, dispatch expects them (knobsFor selects a different TunableKnob[] set)', () => {
+    const exp = expected();
+    exp.secondary = true; // checkpoint stamped secondary:false above
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/secondary/);
+  });
+
+  it('throws on secondary mismatch: checkpoint searched WITH secondary knobs, dispatch expects the base set', () => {
+    const checkpointWithSecondary = initCheckpoint(
+      LEGACY_LEGACY,
+      KNOBS,
+      baselineShard(150),
+      undefined,
+      {
+        trainSeeds: '1-24',
+        weapons: 'sword,bow,baseball-bat',
+        secondary: true,
+      },
+    );
+    const exp = expected(); // secondary: false
+    expect(() => assertResumeCompatible(checkpointWithSecondary, exp)).toThrow(/secondary/);
+  });
+
+  it('fails closed when the checkpoint has no recorded runInputs (a pre-resume-support checkpoint) rather than silently permitting an unverifiable resume', () => {
+    const legacyCheckpoint = baseCheckpoint(150); // no runInputs arg passed
+    expect('runInputs' in legacyCheckpoint).toBe(false);
+    expect(() => assertResumeCompatible(legacyCheckpoint, expected())).toThrow(
+      /no recorded runInputs/,
+    );
   });
 });
