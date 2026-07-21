@@ -8,19 +8,20 @@
  *   3. Seal its perimeter via `sealSpecialRooms` (same guarantee Floor 1's
  *      welcome office / shop room enjoy).
  *   4. Repaint its floor tiles to `SAFE_ROOM_FLOOR` for the calm-blue tint.
- *   5. Spawn The Broker, a defected family member, one guaranteed Quartermaster,
- *      and 1–2 seeded non-Quartermaster shops onto settlement-room interior
- *      tiles with door buffers + spacing.
+ *   5. Spawn The Broker, a defected family member, one guaranteed
+ *      Quartermaster, and 1–2 seeded non-Quartermaster shops onto reachable
+ *      settlement-room interior tiles with door buffers + spacing.
  *   6. Generate each shop's inventory via the pure `generateShopInventory`
  *      roller.
  *
- * Deterministic — shop selection/inventory use `world.rng`, while the new
- * placement/defector picks use a derived seeded RNG so the existing shop-roll
- * stream stays stable. Idempotent-safe: an already-initialised settlement is
+ * Deterministic — legacy shop selection/inventory draws use `world.rng`, while
+ * supplemental inventory, placement, and defector picks use derived seeded RNGs
+ * so the existing shop-roll stream stays stable. Idempotent-safe: an
+ * already-initialised settlement is
  * not re-spawned; the existing snapshot is returned so tests can call the
  * function twice without duplication.
  */
-import { RoomRole, TerrainType, type RoomData } from '../shared/map-types.js';
+import { RoomRole, TerrainType, TileFlags, type RoomData } from '../shared/map-types.js';
 import { addComponent, set } from 'bitecs';
 import { DoorState } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
@@ -28,8 +29,18 @@ import { sealSpecialRooms } from '../core/map/special-rooms.js';
 import { spawnNpc } from '../core/spawners/world-objects.js';
 import { createEntity } from '../core/spawners/entity-core.js';
 import { generateShopInventory } from '../core/generateShopInventory.js';
-import { loadShopArchetypes, type ShopArchetypeDef } from '../shared/data/shop-archetypes.js';
-import { buildFloor2DefectorDialogue, FLOOR2_DEFECTOR_NPC_ID } from '../shared/npc-types.js';
+import { floodFill } from '../core/map/grid-utils.js';
+import type { FloorMap } from '../core/map/FloorMap.js';
+import {
+  FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+  loadShopArchetypes,
+  type ShopArchetypeDef,
+} from '../shared/data/shop-archetypes.js';
+import {
+  buildFloor2DefectorDialogue,
+  FLOOR2_DEFECTOR_NPC_ID,
+  getNpcDef,
+} from '../shared/npc-types.js';
 import {
   getFloor2FamilyEliteArchetype,
   getFloor2FamilyFallbackArchetype,
@@ -53,8 +64,16 @@ export interface InitializeFloor2SettlementOptions {
   readonly archetypes?: readonly ShopArchetypeDef[];
 }
 
-/** Archetype id of the guaranteed Quartermaster shop. */
-export const QUARTERMASTER_ARCHETYPE_ID = 'the-quartermaster';
+export const FLOOR2_SETTLEMENT_NPC_SPACING_TILES = 3;
+export const FLOOR2_SETTLEMENT_DOOR_BUFFER_TILES = 1;
+
+/** @deprecated Use {@link FLOOR2_QUARTERMASTER_ARCHETYPE_ID} from shop-archetypes instead. */
+export const QUARTERMASTER_ARCHETYPE_ID = FLOOR2_QUARTERMASTER_ARCHETYPE_ID;
+
+export interface PlannedFloor2SettlementShop {
+  readonly archetype: ShopArchetypeDef;
+  readonly inventory: readonly Floor2ShopInventoryItem[];
+}
 
 /**
  * Initialise the Floor 2 settlement. Returns the snapshot written to
@@ -85,43 +104,38 @@ export function initializeFloor2Settlement(
   }
   const settlementRng = new SeededRandom(hashStringToSeed(`floor2-settlement:${world.seed}`));
 
-  // 1. Retag all settlement-cluster rooms as SAFE + repaint floor tiles.
-  for (const room of settlements) {
-    floorMap.roomGraph.setRole(room.id, RoomRole.SAFE);
-    repaintSafeRoomFloor(world, room);
-  }
-
-  // 2. Seal perimeters — mirrors Floor 1's shop / welcome-office pass.
-  sealSpecialRooms(floorMap, { extraRoomIds: settlements.map((room) => room.id) });
-  for (const room of settlements) {
-    installSettlementDoorEntities(world, room);
-  }
-
-  // 3. Seeded shop roll — preserve the existing world.rng flow for shop selection
-  // and inventories; all new placement/defector randomness uses a derived RNG.
-  // Quartermaster is excluded from the random pool and always placed separately.
-  const allArchetypes = options.archetypes ?? loadShopArchetypes();
-  // QM must always come from the canonical list (options.archetypes may be a custom subset).
-  const quartermasterArchetype =
-    allArchetypes.find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID) ??
-    loadShopArchetypes().find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
-  if (!quartermasterArchetype) {
-    throw new Error(
-      `initializeFloor2Settlement: Quartermaster archetype "${QUARTERMASTER_ARCHETYPE_ID}" not found`,
-    );
-  }
-  const randomPool = allArchetypes.filter((a) => a.id !== QUARTERMASTER_ARCHETYPE_ID);
-  if (randomPool.length === 0) {
-    throw new Error(
-      'initializeFloor2Settlement: no non-Quartermaster archetypes available for random shop selection; ' +
-        'check shop-archetypes data or pass a non-empty non-Quartermaster options.archetypes override',
-    );
-  }
+  // Route all shop planning through planFloor2SettlementShops: preserves the
+  // legacy full-pack shuffle/inventory-draw stream, enforces archetype validation,
+  // and supplies pre-rolled inventories for both the Quartermaster and non-QM shops.
+  //
+  // options.archetypes is documented as a *non-Quartermaster* override pool (e.g.
+  // floor2Scenario forwards manifest shopArchetypes which may omit the QM).
+  // The Quartermaster is always sourced from the canonical pack and prepended so
+  // planFloor2SettlementShops always receives exactly one QM entry regardless of
+  // what the override pool contains.
+  const baseArchetypes = options.archetypes ?? loadShopArchetypes();
+  const hasQm = baseArchetypes.some((a) => a.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID);
+  const allArchetypes: readonly ShopArchetypeDef[] = hasQm
+    ? baseArchetypes
+    : (() => {
+        const canonicalQm = loadShopArchetypes().find(
+          (a) => a.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+        );
+        if (!canonicalQm) {
+          throw new Error(
+            `initializeFloor2Settlement: canonical "${FLOOR2_QUARTERMASTER_ARCHETYPE_ID}" archetype not found`,
+          );
+        }
+        return [canonicalQm, ...baseArchetypes];
+      })();
+  validateSettlementNpcDefs(allArchetypes);
   const shopCount = options.shopCount ?? (world.rng.next() < 0.5 ? 1 : 2);
-  const shuffled = [...randomPool];
-  world.rng.shuffle(shuffled);
-  const picked = shuffled.slice(0, Math.min(shopCount, shuffled.length));
-
+  const plannedShops = planFloor2SettlementShops(world.rng, world.seed, shopCount, allArchetypes);
+  const qmPlan = plannedShops.find((p) => p.archetype.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID)!;
+  const nonQmPlans = plannedShops.filter(
+    (p) => p.archetype.id !== FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+  );
+  const picked = nonQmPlans.map((p) => p.archetype);
   const shopRooms = settlements.filter((room) => room.id !== settlement.id);
   const fallbackShopRoom = shopRooms[0] ?? settlement;
   const assignedRooms = picked.map(
@@ -137,14 +151,13 @@ export function initializeFloor2Settlement(
   const eliteArchetype = getFloor2FamilyEliteArchetype(defectorFamilyId);
   const defectorAppearanceKey = eliteArchetype?.id ?? fallbackArchetype.id;
   const defectorFallbackAppearanceKey = fallbackArchetype.id;
-  const reservedTiles: Array<{ x: number; y: number }> = [];
   const placementPlan = buildSettlementPlacementPlan(
     settlement,
     settlements,
     assignedRooms,
     true /* includeQuartermaster */,
   );
-  const spawnTiles = placeSettlementNpcs(settlementRng, placementPlan, settlements, reservedTiles);
+  const spawnTiles = prepareSettlementMapAndPlacement(world, placementPlan, settlements, floorMap);
   const brokerTile = spawnTiles.get('broker');
   const defectorTile = spawnTiles.get('defector');
   const quartermasterTile = spawnTiles.get('quartermaster');
@@ -153,6 +166,10 @@ export function initializeFloor2Settlement(
       'initializeFloor2Settlement: failed to place broker, defector, or quartermaster',
     );
   }
+  for (const room of settlements) {
+    installSettlementDoorEntities(world, room);
+  }
+
   const brokerPos = floorMap.tileToWorld(brokerTile.x, brokerTile.y);
   const brokerEid = spawnNpc(world, brokerPos.x, brokerPos.y, 'the-broker');
   const defectorPos = floorMap.tileToWorld(defectorTile.x, defectorTile.y);
@@ -162,22 +179,15 @@ export function initializeFloor2Settlement(
     appearanceFallbackKey: defectorFallbackAppearanceKey,
   });
 
-  // Spawn guaranteed Quartermaster.
-  // QM is always guaranteed; roll its inventory with settlementRng so this extra
-  // guaranteed inventory roll does not perturb world.rng for downstream systems.
+  // Spawn guaranteed Quartermaster — archetype and pre-rolled inventory come
+  // from planFloor2SettlementShops so the RNG state is consistent with the plan.
   const qmWorldPos = floorMap.tileToWorld(quartermasterTile.x, quartermasterTile.y);
-  const qmNpcEid = spawnNpc(world, qmWorldPos.x, qmWorldPos.y, quartermasterArchetype.npcId);
-  const qmRolled = generateShopInventory(settlementRng, quartermasterArchetype);
-  const qmInventory: Floor2ShopInventoryItem[] = qmRolled.items.map((item) => ({
-    itemId: item.itemId,
-    unitPrice: item.unitPrice,
-    stock: item.stock,
-  }));
+  const qmNpcEid = spawnNpc(world, qmWorldPos.x, qmWorldPos.y, qmPlan.archetype.npcId);
   const quartermasterShop: Floor2ShopInstance = {
-    archetypeId: quartermasterArchetype.id,
-    npcId: quartermasterArchetype.npcId,
+    archetypeId: qmPlan.archetype.id,
+    npcId: qmPlan.archetype.npcId,
     npcEid: qmNpcEid,
-    inventory: qmInventory,
+    inventory: [...qmPlan.inventory],
   };
 
   const shops: Floor2ShopInstance[] = [];
@@ -188,17 +198,11 @@ export function initializeFloor2Settlement(
     }
     const worldPos = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
     const npcEid = spawnNpc(world, worldPos.x, worldPos.y, archetype.npcId);
-    const rolled = generateShopInventory(world.rng, archetype);
-    const inventory: Floor2ShopInventoryItem[] = rolled.items.map((item) => ({
-      itemId: item.itemId,
-      unitPrice: item.unitPrice,
-      stock: item.stock,
-    }));
     shops.push({
       archetypeId: archetype.id,
       npcId: archetype.npcId,
       npcEid,
-      inventory,
+      inventory: [...nonQmPlans[idx]!.inventory],
     });
   });
 
@@ -215,6 +219,102 @@ export function initializeFloor2Settlement(
   };
   world.floorExtendedState = { ...(world.floorExtendedState ?? {}), settlement: snapshot };
   return snapshot;
+}
+
+/**
+ * Compose one guaranteed Quartermaster with the legacy seeded count of random
+ * non-Quartermaster shops while preserving the old world-RNG draw stream.
+ */
+export function planFloor2SettlementShops(
+  rng: SeededRandom,
+  worldSeed: number,
+  shopCount: 1 | 2,
+  archetypes: readonly ShopArchetypeDef[],
+): readonly PlannedFloor2SettlementShop[] {
+  validateSettlementShopArchetypes(archetypes, shopCount);
+  const shuffled = [...archetypes];
+  rng.shuffle(shuffled);
+  const quartermaster = shuffled.find(
+    (archetype) => archetype.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+  )!;
+  const randomShops = shuffled
+    .filter((archetype) => archetype.id !== FLOOR2_QUARTERMASTER_ARCHETYPE_ID)
+    .slice(0, shopCount);
+  const selected = [quartermaster, ...randomShops];
+  const selectedIds = new Set(selected.map((archetype) => archetype.id));
+  const inventoryByArchetype = new Map<string, readonly Floor2ShopInventoryItem[]>();
+
+  // Consume exactly the inventory draws the legacy 1–2 picked-prefix consumed.
+  // Every selected prefix shop therefore retains its prior seeded inventory and
+  // the world RNG exits in the same state as before the guaranteed addition.
+  for (const archetype of shuffled.slice(0, shopCount)) {
+    const inventory = rollFloor2ShopInventory(rng, archetype);
+    if (selectedIds.has(archetype.id)) {
+      inventoryByArchetype.set(archetype.id, inventory);
+    }
+  }
+
+  // Shops pulled in beyond the legacy prefix use a stable derived stream. This
+  // adds their inventory without perturbing any downstream gameplay RNG draws.
+  for (const archetype of selected) {
+    if (inventoryByArchetype.has(archetype.id)) continue;
+    const supplementalRng = new SeededRandom(
+      hashStringToSeed(`floor2-settlement-supplemental-shop:${worldSeed}:${archetype.id}`),
+    );
+    inventoryByArchetype.set(archetype.id, rollFloor2ShopInventory(supplementalRng, archetype));
+  }
+
+  return selected.map((archetype) => ({
+    archetype,
+    inventory: inventoryByArchetype.get(archetype.id)!,
+  }));
+}
+
+function rollFloor2ShopInventory(
+  rng: SeededRandom,
+  archetype: ShopArchetypeDef,
+): readonly Floor2ShopInventoryItem[] {
+  return generateShopInventory(rng, archetype).items.map((item) => ({
+    itemId: item.itemId,
+    unitPrice: item.unitPrice,
+    stock: item.stock,
+  }));
+}
+
+function validateSettlementShopArchetypes(
+  archetypes: readonly ShopArchetypeDef[],
+  shopCount: 1 | 2,
+): void {
+  const seen = new Set<string>();
+  for (const archetype of archetypes) {
+    if (seen.has(archetype.id)) {
+      throw new Error(`initializeFloor2Settlement: duplicate shop archetype id "${archetype.id}"`);
+    }
+    seen.add(archetype.id);
+  }
+  const quartermasterCount = archetypes.filter(
+    (archetype) => archetype.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+  ).length;
+  if (quartermasterCount !== 1) {
+    throw new Error(
+      `initializeFloor2Settlement: expected exactly one "${FLOOR2_QUARTERMASTER_ARCHETYPE_ID}" archetype, found ${quartermasterCount}`,
+    );
+  }
+  const nonQuartermasterCount = archetypes.length - quartermasterCount;
+  if (nonQuartermasterCount < shopCount) {
+    throw new Error(
+      `initializeFloor2Settlement: requires ${shopCount} non-Quartermaster shop archetypes, found ${nonQuartermasterCount}`,
+    );
+  }
+}
+
+function validateSettlementNpcDefs(archetypes: readonly ShopArchetypeDef[]): void {
+  const requiredNpcIds = ['the-broker', FLOOR2_DEFECTOR_NPC_ID, ...archetypes.map((a) => a.npcId)];
+  for (const npcId of requiredNpcIds) {
+    if (!getNpcDef(npcId)) {
+      throw new Error(`initializeFloor2Settlement: missing NPC definition "${npcId}"`);
+    }
+  }
 }
 
 /**
@@ -260,6 +360,36 @@ interface SettlementPlacementEntry {
   readonly roomIds: readonly number[];
 }
 
+function prepareSettlementMapAndPlacement(
+  world: GameWorld,
+  placementPlan: readonly SettlementPlacementEntry[],
+  settlements: readonly RoomData[],
+  floorMap: FloorMap,
+): ReadonlyMap<string, { x: number; y: number }> {
+  const rooms = floorMap.roomGraph.getAll();
+  const rolesBefore = rooms.map((room) => room.role);
+  const doorsBefore = rooms.map((room) => room.doors);
+  const terrainBefore = floorMap.terrain.slice();
+  const flagsBefore = floorMap.tileMap.flags.slice();
+
+  try {
+    for (const room of settlements) {
+      floorMap.roomGraph.setRole(room.id, RoomRole.SAFE);
+      repaintSafeRoomFloor(world, room);
+    }
+    sealSpecialRooms(floorMap, { extraRoomIds: settlements.map((room) => room.id) });
+    return placeSettlementNpcs(world.seed, placementPlan, settlements, floorMap);
+  } catch (error) {
+    floorMap.terrain.set(terrainBefore);
+    floorMap.tileMap.flags.set(flagsBefore);
+    rooms.forEach((room, index) => {
+      room.role = rolesBefore[index]!;
+      Object.assign(room, { doors: doorsBefore[index]! });
+    });
+    throw error;
+  }
+}
+
 function buildSettlementPlacementPlan(
   settlement: RoomData,
   settlements: readonly RoomData[],
@@ -290,26 +420,55 @@ function buildSettlementPlacementPlan(
 }
 
 function placeSettlementNpcs(
-  rng: SeededRandom,
+  worldSeed: number,
   entries: readonly SettlementPlacementEntry[],
   settlements: readonly RoomData[],
-  reservedTiles: Array<{ x: number; y: number }>,
+  floorMap: FloorMap,
 ): ReadonlyMap<string, { x: number; y: number }> {
   const byRoom = new Map(settlements.map((room) => [room.id, room]));
+  const reachable = reachableFloorTiles(floorMap);
+  const candidateSets = entries
+    .map((entry, index) => ({
+      entry,
+      index,
+      candidates: settlementPlacementCandidatesForEntry(
+        worldSeed,
+        entry,
+        settlements,
+        byRoom,
+        floorMap,
+        reachable,
+      ),
+    }))
+    .sort((a, b) => a.candidates.length - b.candidates.length || a.index - b.index);
   const placements = new Map<string, { x: number; y: number }>();
-  for (const entry of entries) {
-    const preferredRooms = uniqueRoomOrder(
-      entry.roomIds,
-      settlements.map((room) => room.id),
-    );
-    const tile = pickSettlementPlacementTile(rng, preferredRooms, byRoom, reservedTiles);
-    if (!tile) {
-      throw new Error(
-        `initializeFloor2Settlement: could not place settlement NPC "${entry.key}" with spacing constraints`,
-      );
+  const reservedTiles: Array<{ x: number; y: number }> = [];
+  const placeNext = (index: number): boolean => {
+    if (index >= candidateSets.length) return true;
+    const current = candidateSets[index]!;
+    for (const tile of current.candidates) {
+      if (
+        !reservedTiles.every(
+          (reserved) => tileDistanceSq(tile, reserved) >= FLOOR2_SETTLEMENT_NPC_SPACING_TILES ** 2,
+        )
+      ) {
+        continue;
+      }
+      placements.set(current.entry.key, tile);
+      reservedTiles.push(tile);
+      if (placeNext(index + 1)) return true;
+      reservedTiles.pop();
+      placements.delete(current.entry.key);
     }
-    placements.set(entry.key, tile);
-    reservedTiles.push(tile);
+    return false;
+  };
+  if (!placeNext(0)) {
+    const uniqueCandidates = new Set(
+      candidateSets.flatMap(({ candidates }) => candidates.map((tile) => `${tile.x},${tile.y}`)),
+    );
+    throw new Error(
+      `initializeFloor2Settlement: settlement capacity insufficient; required=${entries.length}, reachableCandidates=${uniqueCandidates.size}, rooms=${settlements.length}, spacingTiles=${FLOOR2_SETTLEMENT_NPC_SPACING_TILES}, doorBufferTiles=${FLOOR2_SETTLEMENT_DOOR_BUFFER_TILES}`,
+    );
   }
   return placements;
 }
@@ -328,33 +487,63 @@ function uniqueRoomOrder(
   return ordered;
 }
 
-function pickSettlementPlacementTile(
-  rng: SeededRandom,
-  roomIds: readonly number[],
+function settlementPlacementCandidatesForEntry(
+  worldSeed: number,
+  entry: SettlementPlacementEntry,
+  settlements: readonly RoomData[],
   byRoom: ReadonlyMap<number, RoomData>,
-  reservedTiles: readonly { x: number; y: number }[],
-): { x: number; y: number } | null {
+  floorMap: FloorMap,
+  reachable: Uint8Array,
+): Array<{ x: number; y: number }> {
+  const roomIds = uniqueRoomOrder(
+    entry.roomIds,
+    settlements.map((room) => room.id),
+  );
+  const ordered: Array<{ x: number; y: number }> = [];
   for (const roomId of roomIds) {
     const room = byRoom.get(roomId);
     if (!room) continue;
-    const candidates = settlementPlacementCandidates(room).filter((tile) =>
-      reservedTiles.every((reserved) => tileDistanceSq(tile, reserved) >= 9),
+    const candidates = settlementPlacementCandidates(room, floorMap, reachable);
+    const candidateRng = new SeededRandom(
+      hashStringToSeed(`floor2-settlement-placement:${worldSeed}:${entry.key}:${roomId}`),
     );
-    if (candidates.length === 0) continue;
-    return candidates[rng.nextInt(0, candidates.length - 1)]!;
+    candidateRng.shuffle(candidates);
+    ordered.push(...candidates);
   }
-  return null;
+  return ordered;
 }
 
-function settlementPlacementCandidates(room: RoomData): Array<{ x: number; y: number }> {
+function settlementPlacementCandidates(
+  room: RoomData,
+  floorMap: FloorMap,
+  reachable: Uint8Array,
+): Array<{ x: number; y: number }> {
   const base =
     room.interiorCells && room.interiorCells.length > 0
       ? room.interiorCells.map((cell) => ({ x: cell.x, y: cell.y }))
       : boundedInteriorCells(room);
-  const filtered = base.filter((tile) =>
-    room.doors.every((door) => Math.max(Math.abs(tile.x - door.x), Math.abs(tile.y - door.y)) > 1),
+  const width = floorMap.config.widthTiles;
+  return base.filter(
+    (tile) =>
+      floorMap.tileMap.isPassable(tile.x, tile.y) &&
+      reachable[tile.y * width + tile.x] === 1 &&
+      room.doors.every(
+        (door) =>
+          Math.max(Math.abs(tile.x - door.x), Math.abs(tile.y - door.y)) >
+          FLOOR2_SETTLEMENT_DOOR_BUFFER_TILES,
+      ),
   );
-  return filtered.length > 0 ? filtered : base;
+}
+
+function reachableFloorTiles(floorMap: FloorMap): Uint8Array {
+  const width = floorMap.config.widthTiles;
+  const height = floorMap.config.heightTiles;
+  return floodFill(
+    floorMap.playerSpawn.y * width + floorMap.playerSpawn.x,
+    width,
+    height,
+    (index) => (floorMap.tileMap.flags[index]! & (TileFlags.PASSABLE | TileFlags.DOOR)) !== 0,
+  );
 }
 
 function boundedInteriorCells(room: RoomData): Array<{ x: number; y: number }> {
