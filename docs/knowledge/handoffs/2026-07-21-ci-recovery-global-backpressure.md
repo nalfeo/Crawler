@@ -116,7 +116,10 @@ final design.
     derived from `queueEntries()`, which itself keys off the `merge-train` PR
     label rather than the feature flag, so a stale label surviving a flag-off
     still correctly forces the stricter cap of 1 (fail closed).
-- **Tests (`router.test.mjs`)**: 54 tests total, including:
+- **Tests (`router.test.mjs`)**: 54 tests total; **`reconcile.test.mjs`**: 52 tests total
+  (4 new tests for `buildGatedDispatchRecovery`: dispatches when under cap, skips
+  when at cap, skips when above cap, and verifies token/owner/repo are forwarded
+  to `countRuns`). The new `router.test.mjs` tests include:
   `computeDispatchBudget`/`partitionDispatchable`/`countOutstandingRecoveryRuns`
   unit tests covering the backlog-present, backlog-empty, and
   train-feature-disabled cases (the last of these proves the cap is still 2,
@@ -155,6 +158,7 @@ unconditional.
 ## Verification run
 
 - `node --test .github/scripts/ci-recovery/router.test.mjs`: 54/54 passing.
+- `node --test .github/scripts/merge-train/reconcile.test.mjs`: 52/52 passing (4 new `buildGatedDispatchRecovery` tests).
 - `npm run lint`: clean.
 - `npm run verify:fast`: passed.
 - `npm run test:guards`: 1273 tests; 6 pre-existing failures confirmed via
@@ -186,17 +190,15 @@ minor`, 2 concerns raised and resolved before implementation was finalized:
   composed TOCTOU test that calls the same functions in the same sequence
   `runFromEnv` does, cover the new logic's correctness; they don't prove the
   wiring inside `runFromEnv` itself is correct end-to-end.
-- **reconcile.mjs bypass**: `merge-train/reconcile.mjs` calls
-  `dispatchRecovery()` directly (lines ~517, ~590, ~665, ~798 in that file)
-  and is NOT serialized through the router's concurrency group. A
-  reconcile-triggered dispatch racing with a router dispatch can briefly push
-  the live outstanding run count above `GLOBAL_TRAIN_DISPATCH_CAP=1` in the
-  train-backlog case. A code comment in `runFromEnv` documents this gap at
-  the call site. Closing it requires routing all CI Recovery dispatches through
-  a shared admission mechanism (e.g. a reusable workflow, a shared semaphore
-  via a repository variable, or having reconcile.mjs trigger the router
-  workflow rather than calling `dispatchRecovery()` directly) — a separate
-  follow-up.
+- **reconcile.mjs bypass (now partially addressed)**: `merge-train/reconcile.mjs`'s
+  four `dispatchRecovery()` call sites (~517, ~590, ~665, ~798) now go through
+  `buildGatedDispatchRecovery` (exported from `reconcile-lib.mjs`), which applies
+  `GLOBAL_TRAIN_DISPATCH_CAP` before each dispatch — the same cap used by the
+  router. A narrow race window still exists between each caller's
+  `countOutstandingRecoveryRuns` read and its POST: the router's concurrency
+  group serialises its own invocations but cannot serialise against a concurrent
+  `reconcile.mjs` run. A durable reservation (e.g. a shared semaphore via a
+  repository variable) is the required follow-up to close that gap completely.
 - GitHub's concurrency queue has an operational depth cap of ~100 pending runs
   per group (noted by the plan reviewer). This is more consequential now that
   every router event in every mode shares one global group: a burst far

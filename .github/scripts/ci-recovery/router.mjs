@@ -813,14 +813,14 @@ export async function runFromEnv(env = process.env) {
   // serialized invocations -- see computeDispatchBudget for what that does
   // and does not close.
   //
-  // Known limitation: merge-train/reconcile.mjs calls dispatchRecovery()
-  // directly (at lines ~517, ~590, ~665, ~798 in that file) and is NOT
-  // serialized through this router's concurrency group. A reconcile dispatch
-  // racing with a router dispatch can briefly push the live outstanding run
-  // count above GLOBAL_TRAIN_DISPATCH_CAP=1 in the train-backlog case.
-  // Closing that residual gap requires routing all CI Recovery dispatches
-  // through a shared admission mechanism -- flagged as a follow-up in the
-  // handoff's "Unresolved issues" section.
+  // Best-effort cap: merge-train/reconcile.mjs's four dispatchRecovery() call
+  // sites now go through buildGatedDispatchRecovery (GLOBAL_TRAIN_DISPATCH_CAP),
+  // so both callers apply the same cap before dispatching. A narrow race window
+  // still exists between each caller's countOutstandingRecoveryRuns read and
+  // its POST, because the router's concurrency group serialises its own
+  // invocations but cannot serialise against a concurrent reconcile.mjs run.
+  // A durable reservation (e.g. a shared semaphore via repository variable) is
+  // the required follow-up to close that gap completely.
   const trainQueueNonEmpty = queueEntries(scheduledPulls, repository).length > 0;
   const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
   const dispatchBudget = computeDispatchBudget({

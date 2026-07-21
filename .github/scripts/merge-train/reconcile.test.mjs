@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildCandidate,
   buildDispatchBindings,
+  buildGatedDispatchRecovery,
   deleteCandidateBundle,
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
@@ -1035,4 +1036,73 @@ test('resolveMergeTrainTokens ignores the legacy workflow PAT environment variab
     promotionToken: 'app-token',
     workflowDispatchToken: 'github-token',
   });
+});
+
+// buildGatedDispatchRecovery — admission gate for reconcile.mjs dispatch sites
+
+test('buildGatedDispatchRecovery dispatches when outstanding count is below cap', async () => {
+  const dispatched = [];
+  const countRuns = async () => 0;
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(42, 'merge-train-noop');
+  assert.deepEqual(dispatched, [{ prNumber: 42, trigger: 'merge-train-noop' }]);
+});
+
+test('buildGatedDispatchRecovery skips dispatch when outstanding count equals cap', async () => {
+  const dispatched = [];
+  const countRuns = async () => 1; // at cap
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(42, 'merge-train-noop');
+  assert.deepEqual(dispatched, [], 'expected no dispatch when at cap');
+});
+
+test('buildGatedDispatchRecovery skips dispatch when outstanding count exceeds cap', async () => {
+  const dispatched = [];
+  const countRuns = async () => 3; // above cap
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(99, 'merge-train-validation-failure');
+  assert.deepEqual(dispatched, [], 'expected no dispatch when above cap');
+});
+
+test('buildGatedDispatchRecovery passes token/owner/repo to countRuns', async () => {
+  const countCallArgs = [];
+  const countRuns = async (token, owner, repo) => {
+    countCallArgs.push({ token, owner, repo });
+    return 0;
+  };
+  const dispatchRecovery = async () => {};
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'mytoken',
+    owner: 'myowner',
+    repo: 'myrepo',
+  });
+  await gated(1, 'merge-train-admission-stale');
+  assert.deepEqual(countCallArgs, [{ token: 'mytoken', owner: 'myowner', repo: 'myrepo' }]);
 });

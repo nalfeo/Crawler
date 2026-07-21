@@ -16,6 +16,7 @@ import {
   applyLandedRecoveryDecision,
   buildCandidate,
   buildDispatchBindings,
+  buildGatedDispatchRecovery,
   createMergePullRequest,
   deleteCandidateBundle,
   isDisabledTrainScheduleRun,
@@ -59,6 +60,10 @@ import {
   VALIDATION_FAILED_LABEL,
 } from './state.mjs';
 import { humanApprovalRejection } from './human-approval.mjs';
+import {
+  countOutstandingRecoveryRuns,
+  GLOBAL_TRAIN_DISPATCH_CAP,
+} from '../ci-recovery/router.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -241,6 +246,20 @@ async function createTrainCheck(
 const { dispatchRecovery, dispatchValidation: baseDispatchValidation } = buildDispatchBindings({
   request,
   workflowDispatchToken,
+  owner,
+  repo,
+});
+
+// Gate all reconcile.mjs CI Recovery dispatches against GLOBAL_TRAIN_DISPATCH_CAP
+// so they participate in the same backpressure as the router workflow. This is
+// best-effort: the router's concurrency group serialises its own invocations but
+// cannot serialise against reconcile.mjs calls, so a narrow race window remains.
+// See the router's `runFromEnv` comment for a full description of that gap.
+const dispatchRecoveryGated = buildGatedDispatchRecovery({
+  dispatchRecovery,
+  countRuns: countOutstandingRecoveryRuns,
+  cap: GLOBAL_TRAIN_DISPATCH_CAP,
+  token,
   owner,
   repo,
 });
@@ -514,7 +533,7 @@ async function deAdmitNoop(entry, detail) {
       detail,
     }),
   );
-  await dispatchRecovery(entry.number, 'merge-train-noop');
+  await dispatchRecoveryGated(entry.number, 'merge-train-noop');
 }
 
 async function dispatchValidation(sha, refName, fingerprint, entries) {
@@ -587,7 +606,7 @@ for (const pr of queued) {
         detail: admission.reason,
       }),
     );
-    await dispatchRecovery(pr.number, 'merge-train-admission-stale');
+    await dispatchRecoveryGated(pr.number, 'merge-train-admission-stale');
   }
 }
 
@@ -662,7 +681,7 @@ const loopResult = await runTrainBuildLoop({
   onConflict: async (index, error) => {
     await blockEntry(train[index], { detail: error.message });
     const predecessor = train[index - 1]?.number || 0;
-    await dispatchRecovery(train[index].number, `merge-train-cumulative-conflict:${predecessor}`);
+    await dispatchRecoveryGated(train[index].number, `merge-train-cumulative-conflict:${predecessor}`);
     process.stdout.write(`returned conflict pr=#${train[index].number} to reconciliation\n`);
   },
   onNoop: async (index, error) => {
@@ -795,7 +814,7 @@ if (plan.firstFailure !== -1) {
     validationFailure: true,
     detail: `PR #${failingEntry.number} is the first failing addition in the validated prefix.`,
   });
-  await dispatchRecovery(failingEntry.number, 'merge-train-validation-failure');
+  await dispatchRecoveryGated(failingEntry.number, 'merge-train-validation-failure');
   process.stdout.write(
     `isolated first failing pr=#${failingEntry.number} green_prefix=${plan.greenPrefixLength}\n`,
   );
