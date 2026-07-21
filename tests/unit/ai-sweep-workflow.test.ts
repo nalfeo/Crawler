@@ -50,7 +50,18 @@ import { describe, expect, it } from 'vitest';
  *     workflow implements (a `rounds` value beyond what the DAG has explicit
  *     job triples for must be rejected before any runner spins up);
  *   - every original `workflow_dispatch` input must still be present, valid,
- *     and untouched in shape (no default-mode flip).
+ *     and untouched in shape (no default-mode flip), PLUS the new
+ *     `resume_run_id` input (blank default) that lets a fresh dispatch import
+ *     compatible checkpoints from a prior (e.g. manually-cancelled) run --
+ *     the `resume-import` job it drives must ALWAYS emit well-formed
+ *     `freshCombos`/`resumedCombos` JSON array outputs (even on the default
+ *     blank input) so `baseline`/`checkpoint-init`'s `fromJSON(...)` matrix
+ *     source never sees an empty/missing output, and must select the latest
+ *     compatible checkpoint tier per combo in strict r3 > r2 > r1 > init
+ *     order, deferring to the existing strict provenance checks
+ *     (`assertResumeCompatible` in round-plan.ts) so an incompatible or
+ *     missing prior checkpoint always falls back to a fresh run for that one
+ *     combo instead of silently merging mismatched search state.
  */
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -69,7 +80,15 @@ interface WorkflowJob {
   'timeout-minutes'?: number;
   strategy?: WorkflowStrategy;
   outputs?: Record<string, string>;
-  steps?: Array<{ name?: string; run?: string; uses?: string; with?: Record<string, unknown> }>;
+  steps?: Array<{
+    name?: string;
+    run?: string;
+    uses?: string;
+    if?: string;
+    env?: Record<string, unknown>;
+    with?: Record<string, unknown>;
+    'continue-on-error'?: boolean;
+  }>;
 }
 
 interface WorkflowInput {
@@ -112,12 +131,13 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(doc.jobs.search).toBeUndefined();
   });
 
-  it('keeps every original workflow_dispatch input present with an unchanged shape (no default-mode flip)', () => {
+  it('keeps every original workflow_dispatch input present with an unchanged shape (no default-mode flip), plus the new resume_run_id input', () => {
     const doc = loadWorkflow();
     const inputs = doc.on.workflow_dispatch.inputs;
     expect(Object.keys(inputs).sort()).toEqual(
       [
         'combos',
+        'resume_run_id',
         'rounds',
         'secondary',
         'train_seeds',
@@ -135,11 +155,20 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     // and the preflight cap change, per "no default mode flip".
     expect(inputs.rounds).toMatchObject({ type: 'string', default: '2' });
     expect(inputs.secondary).toMatchObject({ type: 'boolean', default: false });
+    // New resume input: blank by default so a fresh dispatch with no
+    // resume_run_id keeps the same combo set/search semantics as before this
+    // feature existed (not scheduling-identical -- baseline now always waits
+    // on the new resume-import job's checkout/Node-setup/metadata step).
+    expect(inputs.resume_run_id).toMatchObject({ type: 'string', default: '' });
   });
 
-  it('stays read-only (contents: read) with no elevated default permissions', () => {
+  it('adds actions: read (still read-only) for cross-run artifact download, keeping contents: read unchanged', () => {
     const doc = loadWorkflow();
-    expect(doc.permissions).toEqual({ contents: 'read' });
+    // actions: read is required by actions/download-artifact@v4's cross-run
+    // `run-id` support (resume-import job) -- it grants list/download of a
+    // PRIOR run's own already-uploaded artifacts only, no write/mutate
+    // capability, so this is still a read-only permissions block.
+    expect(doc.permissions).toEqual({ contents: 'read', actions: 'read' });
   });
 
   it('preflight hard-caps rounds to the explicit bounded 0-3 DAG before any runner spins up', () => {
@@ -155,8 +184,10 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     const baseline = getJob(doc, 'baseline');
     const checkpointInit = getJob(doc, 'checkpoint-init');
     expect(needsList(baseline)).toContain('preflight');
+    expect(needsList(baseline)).toContain('resume-import');
     expect(allRunSteps(baseline)).toContain('--stage search-baseline');
     expect(needsList(checkpointInit)).toContain('baseline');
+    expect(needsList(checkpointInit)).toContain('resume-import');
     expect(allRunSteps(checkpointInit)).toContain('--mode init');
     // Checkpoint artifact uses a per-round immutable name (search-checkpoint-init-*)
     // rather than overwriting a single artifact, so a later-round upload failure
@@ -166,6 +197,45 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     );
     expect(uploadStep?.with?.overwrite).toBeFalsy();
     expect(uploadStep?.with?.name).toContain('search-checkpoint-init-');
+    // Both jobs' matrix source is resume-import's freshCombos output (NOT the
+    // full preflight combo list) -- a combo that was successfully resumed
+    // from a prior run must skip baseline+checkpoint-init entirely rather
+    // than recomputing round-0 work the resumed checkpoint already has.
+    expect(String(baseline.strategy?.matrix?.combo)).toContain(
+      'needs.resume-import.outputs.freshCombos',
+    );
+    expect(String(checkpointInit.strategy?.matrix?.combo)).toContain(
+      'needs.resume-import.outputs.freshCombos',
+    );
+  });
+
+  it('checkpoint-init passes --train-seeds/--weapons to round-plan.ts --mode init so every checkpoint carries runInputs (required for assertResumeCompatible to ever succeed)', () => {
+    // Without these flags, initCheckpoint's runInputs stays undefined on
+    // EVERY checkpoint this workflow produces, so assertResumeCompatible's
+    // fail-closed `!checkpoint.runInputs` check would reject every checkpoint
+    // as a resume candidate, unconditionally -- resume would never work.
+    const doc = loadWorkflow();
+    const checkpointInit = getJob(doc, 'checkpoint-init');
+    const script = allRunSteps(checkpointInit);
+    expect(script).toContain('--train-seeds "$TRAIN_SEEDS"');
+    expect(script).toContain('--weapons "$WEAPONS"');
+    const initStep = (checkpointInit.steps ?? []).find((s) => s.run?.includes('--mode init'));
+    expect(initStep?.env).toMatchObject({
+      TRAIN_SEEDS: '${{ inputs.train_seeds }}',
+      WEAPONS: '${{ inputs.weapons }}',
+    });
+  });
+
+  it('checkpoint-init gracefully degrades the legacy+legacy safety gate (own base as incumbent) only when legacy+legacy was itself RESUMED this run, and still hard-fails on a genuinely missing/misconfigured legacy baseline', () => {
+    const doc = loadWorkflow();
+    const script = allRunSteps(getJob(doc, 'checkpoint-init'));
+    expect(script).toContain('RESUMED_COMBOS');
+    expect(script).toMatch(/jq -e --arg c "legacy\+legacy" 'index\(\$c\) != null'/);
+    // Both outcomes remain reachable: a genuine hard-fail message (misconfig)
+    // and a graceful warning (expected resume gap) -- the fix narrows, but
+    // does not remove, the original safety check.
+    expect(script).toContain('is required for non-LEGACY combo');
+    expect(script).toContain('falls back to its own base as the in-search incumbent');
   });
 
   it('gates checkpoint-init and round1-candidates with !cancelled() (not always()) so a partial baseline matrix failure never skips them for every combo, while a manual cancellation still stops the DAG', () => {
@@ -384,5 +454,189 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       const job = getJob(doc, name);
       expect(job.strategy?.['max-parallel'], `job "${name}" strategy.max-parallel`).toBe(8);
     }
+  });
+
+  describe('cross-run resume (resume_run_id, run 29786216369 runner-starvation fix)', () => {
+    it('every matrix/fan-out job strategy in the workflow is capped at max-parallel: 8 (no exceptions)', () => {
+      // Exhaustive sweep, not a fixed job-name list -- a future job that adds
+      // a `strategy.matrix` without this cap must fail this test rather than
+      // silently reintroducing unrestricted concurrency (the exact failure
+      // mode that caused run 29786216369's runner-starvation cancellation).
+      const doc = loadWorkflow();
+      const matrixJobs = Object.entries(doc.jobs).filter(([, job]) => job.strategy?.matrix);
+      expect(matrixJobs.length).toBeGreaterThan(0);
+      for (const [name, job] of matrixJobs) {
+        expect(job.strategy?.['max-parallel'], `job "${name}" strategy.max-parallel`).toBe(8);
+      }
+    });
+
+    it('resume-import runs unconditionally right after preflight and always emits well-formed freshCombos/resumedCombos/hasFreshCombos outputs', () => {
+      const doc = loadWorkflow();
+      const job = getJob(doc, 'resume-import');
+      expect(needsList(job)).toContain('preflight');
+      expect(job.outputs?.freshCombos).toBeDefined();
+      expect(job.outputs?.resumedCombos).toBeDefined();
+      expect(job.outputs?.hasFreshCombos).toBeDefined();
+      const script = allRunSteps(job);
+      // Both outputs are ALWAYS written (unconditional echo to $GITHUB_OUTPUT)
+      // regardless of the if/else branch taken -- a missing/empty output
+      // would crash baseline/checkpoint-init's fromJSON(...) matrix source,
+      // not just skip resume.
+      expect(script).toContain('echo "freshCombos=$FRESH" >> "$GITHUB_OUTPUT"');
+      expect(script).toContain('echo "resumedCombos=$RESUMED" >> "$GITHUB_OUTPUT"');
+      expect(script).toContain('echo "hasFreshCombos=$HAS_FRESH" >> "$GITHUB_OUTPUT"');
+    });
+
+    it("baseline and checkpoint-init are guarded by hasFreshCombos so an all-combos-resumed run (freshCombos=[]) never hits GitHub Actions' hard-fail on an empty matrix array", () => {
+      const doc = loadWorkflow();
+      // GitHub Actions hard-FAILS a job whose strategy.matrix source resolves
+      // to an empty array (`fromJSON('[]')`) rather than skipping it -- an
+      // all-combos-resumed run must therefore gate these jobs on an explicit
+      // string output, not rely on the (always-truthy) JSON array itself.
+      expect(getJob(doc, 'baseline').if).toContain(
+        "needs.resume-import.outputs.hasFreshCombos == 'true'",
+      );
+      const checkpointInitIf = getJob(doc, 'checkpoint-init').if;
+      expect(checkpointInitIf).toContain('!cancelled()');
+      expect(checkpointInitIf).toContain("needs.resume-import.outputs.hasFreshCombos == 'true'");
+    });
+
+    it('only downloads prior-run artifacts when resume_run_id is non-empty (cross-run download-artifact step is conditional)', () => {
+      const doc = loadWorkflow();
+      const job = getJob(doc, 'resume-import');
+      const downloadStep = (job.steps ?? []).find(
+        (s) => s.uses?.startsWith('actions/download-artifact') && s.with?.['run-id'] !== undefined,
+      );
+      expect(downloadStep).toBeDefined();
+      expect(downloadStep?.with?.['run-id']).toBe('${{ inputs.resume_run_id }}');
+      expect(downloadStep?.with?.['github-token']).toBeDefined();
+      expect(downloadStep?.if).toBeDefined();
+      expect(downloadStep?.if).toContain("inputs.resume_run_id != ''");
+    });
+
+    it('selects the latest compatible checkpoint tier in strict r3 > r2 > r1 > init order', () => {
+      const doc = loadWorkflow();
+      const script = allRunSteps(getJob(doc, 'resume-import'));
+      const tierLoopMatch = script.match(/for r in ([^;]+); do/);
+      expect(tierLoopMatch).not.toBeNull();
+      expect(tierLoopMatch![1]!.trim().split(/\s+/)).toEqual(['r3', 'r2', 'r1', 'init']);
+    });
+
+    it('an INCOMPATIBLE newer tier does not stop the scan -- it keeps trying strictly-older tiers for that combo instead of unconditionally breaking', () => {
+      const doc = loadWorkflow();
+      const script = allRunSteps(getJob(doc, 'resume-import'));
+      // Exactly one `break` in the whole job: it must fire ONLY on a
+      // COMPATIBLE match (right after recording FOUND="$r"), never
+      // unconditionally after the plain file-existence check -- an
+      // unconditional break there would stop scanning at the first EXISTING
+      // tier file even when it's incompatible, permanently blocking an older
+      // (possibly compatible) tier from ever being tried for that combo.
+      const breakCount = (script.match(/\bbreak\b/g) ?? []).length;
+      expect(breakCount).toBe(1);
+      expect(script).toMatch(/FOUND="\$r"\s*\n\s*break/);
+    });
+
+    it("routes each combo's compatibility check through round-plan.ts --mode resume-check (reuses existing strict provenance checks, fails closed on mismatch)", () => {
+      const doc = loadWorkflow();
+      const script = allRunSteps(getJob(doc, 'resume-import'));
+      expect(script).toContain('--mode resume-check');
+      expect(script).toContain('--expect-meta current-meta.json');
+      expect(script).toContain('--expect-train-seeds');
+      expect(script).toContain('--expect-weapons');
+      // The `secondary` dispatch input changes the knob search space
+      // (`knobsFor(combo, secondary)`), so it must also flow through the
+      // compatibility check -- same `--expect-*` presence-flag pattern the
+      // job already uses for the boolean `secondary` input elsewhere
+      // (SECONDARY_FLAG built from `inputs.secondary`).
+      expect(script).toContain('SECONDARY_FLAG="--expect-secondary"');
+      expect(script).toMatch(/--expect-weapons "\$WEAPONS" \$SECONDARY_FLAG/);
+      // Incompatible/missing checkpoints fall back to a fresh run for that
+      // ONE combo with a visible log line -- never a silent merge of
+      // mismatched search state.
+      expect(script).toMatch(/::warning::.*INCOMPATIBLE/);
+      expect(script).toMatch(/::notice::.*running fresh/);
+    });
+
+    it('default blank resume_run_id preserves fresh-run behavior byte-for-byte (freshCombos = every combo, resumedCombos = [])', () => {
+      const doc = loadWorkflow();
+      const script = allRunSteps(getJob(doc, 'resume-import'));
+      expect(script).toContain('if [ -z "$RESUME_RUN_ID" ]; then');
+      expect(script).toContain('FRESH="$COMBOS"');
+      // RESUMED stays at its initial '[]' in the blank-input branch (no
+      // reassignment of RESUMED inside the `if [ -z ... ]` branch).
+      const blankBranch = script.split('if [ -z "$RESUME_RUN_ID" ]; then')[1]?.split('else')[0];
+      expect(blankBranch).toBeDefined();
+      expect(blankBranch).not.toContain('RESUMED=');
+    });
+
+    it('round1-candidates, round1-select, and validate all tolerate the optional resumed-checkpoints bundle without hard-failing when absent', () => {
+      const doc = loadWorkflow();
+      for (const jobName of ['round1-candidates', 'round1-select', 'validate']) {
+        const job = getJob(doc, jobName);
+        const resumedDownload = (job.steps ?? []).find(
+          (s) =>
+            s.uses?.startsWith('actions/download-artifact') &&
+            s.with?.pattern === 'resumed-checkpoints',
+        );
+        expect(resumedDownload, `job "${jobName}" resumed-checkpoints download step`).toBeDefined();
+        // `if-no-artifact-found` is NOT a real input on actions/download-artifact@v4
+        // (confirmed against the action's own action.yml — only name, artifact-ids,
+        // path, pattern, merge-multiple, github-token, repository, run-id exist).
+        // Tolerance for a missing bundle comes from using `pattern` (which the
+        // action resolves via listArtifacts and succeeds with zero matches),
+        // NOT from this dead input — so it must be absent, not asserted 'warn'.
+        expect(resumedDownload?.with?.['if-no-artifact-found']).toBeUndefined();
+        expect(resumedDownload?.with?.['pattern']).toBe('resumed-checkpoints');
+        expect(resumedDownload?.with?.['merge-multiple']).toBe(true);
+      }
+    });
+
+    it('round1-select fails loudly (not silently) if a combo has neither a fresh nor a resumed init checkpoint', () => {
+      const doc = loadWorkflow();
+      const script = allRunSteps(getJob(doc, 'round1-select'));
+      expect(script).toMatch(/::error::.*no init checkpoint found/);
+      expect(script).toContain('exit 1');
+    });
+
+    it('derives and uploads a fresh legacy+legacy baseline shard from its OWN resumed checkpoint, ONLY when legacy+legacy is itself in resumedCombos (closes the non-LEGACY incumbent gap for a resumed legacy+legacy run)', () => {
+      const doc = loadWorkflow();
+      const job = getJob(doc, 'resume-import');
+      const deriveStep = (job.steps ?? []).find((s) =>
+        s.name?.startsWith('Derive legacy+legacy baseline shard'),
+      );
+      expect(deriveStep).toBeDefined();
+      expect(deriveStep?.if).toContain(
+        "contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy')",
+      );
+      // `continue-on-error` so an (unexpected) extraction failure only falls
+      // back to the existing warn-then-narrow behaviour instead of failing
+      // the whole run.
+      expect(deriveStep?.['continue-on-error']).toBe(true);
+      expect(deriveStep?.run).toContain('--mode extract-legacy-baseline');
+      expect(deriveStep?.run).toContain(
+        '--checkpoint "resumed/search-checkpoint-init-legacy+legacy.json"',
+      );
+      // Local output filename MUST match the `baseline` job's own convention
+      // (`baseline-$COMBO.json`) -- `checkpoint-init`'s existing
+      // pattern-based download step looks for exactly this filename, and
+      // actions/download-artifact@v4 restores files under their ORIGINALLY
+      // uploaded name, not the artifact name.
+      expect(deriveStep?.run).toContain('--out "baseline-legacy+legacy.json"');
+
+      const uploadStep = (job.steps ?? []).find((s) =>
+        s.name?.startsWith('Upload derived legacy+legacy baseline shard'),
+      );
+      expect(uploadStep).toBeDefined();
+      expect(uploadStep?.uses).toBe('actions/upload-artifact@v4');
+      expect(uploadStep?.if).toContain(
+        "contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy')",
+      );
+      // Only upload when extraction actually produced a file -- avoids a
+      // hard failure from `if-no-files-found: error` on an extraction
+      // failure the derive step already tolerated via continue-on-error.
+      expect(uploadStep?.if).toContain("hashFiles('baseline-legacy+legacy.json') != ''");
+      expect(uploadStep?.with?.name).toBe('search-baseline-legacy+legacy');
+      expect(uploadStep?.with?.path).toBe('baseline-legacy+legacy.json');
+    });
   });
 });
