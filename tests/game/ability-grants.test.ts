@@ -13,6 +13,7 @@ import {
 } from '../../src/game/systems/abilitySystem.js';
 import {
   equipmentAbilityGrantSourceId,
+  isAbilityGrantSourceId,
   learnedAbilityGrantSourceId,
   skillAbilityGrantSourceId,
   ACTIVE_ABILITY_SLOT_LIMIT,
@@ -252,6 +253,79 @@ describe('source-owned ability grants', () => {
     expect(
       normalizeAbilityState(before).grantOwnership.activeSourcesByAbilityId.has('fireball'),
     ).toBe(false);
+  });
+
+  it('rejects equipment sources with unsafe instance or effect ordinals', () => {
+    expect(() =>
+      equipmentAbilityGrantSourceId(
+        'gei:v1:run:9007199254740992' as Parameters<typeof equipmentAbilityGrantSourceId>[0],
+        0,
+      ),
+    ).toThrow(/invalid generated equipment instance id/i);
+    expect(() => equipmentAbilityGrantSourceId('gei:v1:run:0', 9_007_199_254_740_992)).toThrow(
+      /safe integer/i,
+    );
+    expect(isAbilityGrantSourceId('equipment:gei:v1:run:9007199254740992:0')).toBe(false);
+    expect(isAbilityGrantSourceId('equipment:gei:v1:run:0:9007199254740992')).toBe(false);
+    expect(isAbilityGrantSourceId('equipment:gei:v1:run:00:0')).toBe(false);
+    expect(isAbilityGrantSourceId('equipment:gei:v1:run:0:00')).toBe(false);
+
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    expect(() =>
+      grantAbilitySources(world, player, [
+        {
+          kind: 'active',
+          abilityId: 'fireball',
+          sourceId: 'equipment:gei:v1:run:9007199254740992:0' as AbilityGrantSourceId,
+        },
+      ]),
+    ).toThrowError(expect.objectContaining({ code: 'invalid-source' }));
+    expect(() =>
+      normalizeAbilityState({
+        learnedSpellIds: [],
+        equippedActiveAbilityIds: [],
+        passiveAbilityIds: [],
+        cooldownByAbilityId: new Map(),
+        cooldownFramesByAbilityId: new Map(),
+        appliedPassiveAbilityIds: new Set(),
+        grantOwnership: {
+          schemaVersion: 'ability-grant-ownership/v1',
+          activeSourcesByAbilityId: new Map([
+            [
+              'fireball',
+              new Set(['equipment:gei:v1:run:9007199254740992:0' as AbilityGrantSourceId]),
+            ],
+          ]),
+          passiveSourcesByAbilityId: new Map(),
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'invalid-source' }));
+  });
+
+  it('rejects skill sources with non-canonical or unsafe milestone levels', () => {
+    expect(() => skillAbilityGrantSourceId('iron-skin', 9_007_199_254_740_992)).toThrow(
+      /safe integer/i,
+    );
+    expect(isAbilityGrantSourceId('skill:iron-skin:01')).toBe(false);
+    expect(isAbilityGrantSourceId('skill:iron-skin:9007199254740992')).toBe(false);
+    expect(() =>
+      normalizeAbilityState({
+        learnedSpellIds: [],
+        equippedActiveAbilityIds: [],
+        passiveAbilityIds: [],
+        cooldownByAbilityId: new Map(),
+        cooldownFramesByAbilityId: new Map(),
+        appliedPassiveAbilityIds: new Set(),
+        grantOwnership: {
+          schemaVersion: 'ability-grant-ownership/v1',
+          activeSourcesByAbilityId: new Map(),
+          passiveSourcesByAbilityId: new Map([
+            ['veteran-instinct', new Set(['skill:iron-skin:01' as AbilityGrantSourceId])],
+          ]),
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'invalid-source' }));
   });
 
   it('rejects learned/legacy sources whose embedded ability id mismatches the request', () => {

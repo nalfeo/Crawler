@@ -214,6 +214,7 @@ describe('isValidGeneratedInstanceId', () => {
     expect(isValidGeneratedInstanceId('gei:v1::0')).toBe(false); // empty run key
     expect(isValidGeneratedInstanceId('gei:v2:abc:0')).toBe(false); // wrong version
     expect(isValidGeneratedInstanceId('gei:v1:abc:-1')).toBe(false); // negative ordinal
+    expect(isValidGeneratedInstanceId('gei:v1:abc:00')).toBe(false); // non-canonical ordinal
     expect(isValidGeneratedInstanceId(`gei:v1:abc:${'9'.repeat(400)}`)).toBe(false);
     expect(isValidGeneratedInstanceId('abc:1')).toBe(false);
     expect(isValidGeneratedInstanceId('')).toBe(false);

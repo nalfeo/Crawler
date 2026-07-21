@@ -236,7 +236,7 @@ export function parseGeneratedEquipmentInstanceId(
   const match = INSTANCE_ID_RE.exec(id);
   if (!match) return undefined;
   const ordinal = Number.parseInt(match[2]!, 10);
-  if (!Number.isSafeInteger(ordinal)) return undefined;
+  if (!Number.isSafeInteger(ordinal) || String(ordinal) !== match[2]) return undefined;
   return {
     runKey: match[1]!,
     ordinal,

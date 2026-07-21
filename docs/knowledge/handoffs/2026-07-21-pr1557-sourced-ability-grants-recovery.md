@@ -25,6 +25,9 @@ identity validation, migration compatibility, review resolution, and merge gates
 - Unified generated-equipment instance parsing across shared, core, and legacy
   creator paths. Canonical IDs accept lowercase dot, underscore, and hyphen run
   keys and reject non-safe ordinals.
+- Required canonical safe-integer representations for equipment effect ordinals
+  and skill milestone source levels so persisted ownership remains exactly
+  revokable.
 - Made equipment revocation validate the complete instance ID before exact-prefix
   ownership scanning, including after registry teardown.
 - Preserved retained ability-state object identity when an owned active is
@@ -36,8 +39,9 @@ identity validation, migration compatibility, review resolution, and merge gates
   source IDs.
 - Added migration, identity, malformed-ID, dotted-key, retired-slot, safe-ordinal,
   and grant/revoke regressions.
-- Completed a two-round 3🍎 review harness. Round 1 found two valid issues; both
-  were fixed, and round 2 was clean.
+- Completed the 3🍎 review harness plus different-model GitHub thread
+  validation. Follow-up related-instance passes found and closed canonical
+  numeric-source gaps; the final review was clean.
 - Maintained the hard no-asset boundary: no sprite generation, judging, approval,
   check-in, asset labels, queues, workflows, Azure operations, or asset PR mutation.
 
@@ -48,7 +52,7 @@ activation remains the real artifact; the focused
 Verification:
 
 - Focused recovery suite: 149 tests passed.
-- `npm run verify:fast`: 174 files and 2052 tests passed.
+- `npm run verify:fast`: 176 files and 2097 tests passed.
 - Review ledger:
   `docs/knowledge/review-ledgers/2026-07-21-pr1557-sourced-ability-grants-recovery.review-ledger.json`
   validates as a complete 3🍎 ledger.

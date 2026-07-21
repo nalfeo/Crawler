@@ -1,5 +1,8 @@
 import type { UsageMetric } from './skills.js';
-import type { GeneratedEquipmentInstanceId } from './generated-equipment-types.js';
+import {
+  parseGeneratedEquipmentInstanceId,
+  type GeneratedEquipmentInstanceId,
+} from './generated-equipment-types.js';
 
 export const ACTIVE_ABILITY_SLOT_LIMIT = 10;
 export const ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION = 'ability-grant-ownership/v1' as const;
@@ -115,8 +118,8 @@ export type AbilityStateLike = AbilityState;
 
 const ABILITY_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const LEARNED_SOURCE_PATTERN = /^learned:[a-z0-9][a-z0-9-]*$/;
-const SKILL_SOURCE_PATTERN = /^skill:[a-z0-9][a-z0-9-]*:[0-9]+$/;
-const EQUIPMENT_SOURCE_PATTERN = /^equipment:gei:v1:[a-z0-9][a-z0-9._-]{0,127}:[0-9]+:[0-9]+$/;
+const SKILL_SOURCE_PATTERN = /^skill:[a-z0-9][a-z0-9-]*:([0-9]+)$/;
+const EQUIPMENT_SOURCE_PATTERN = /^equipment:(gei:v1:[a-z0-9][a-z0-9._-]{0,127}:[0-9]+):([0-9]+)$/;
 const LEGACY_SOURCE_PATTERN = /^legacy:(active|passive):[a-z0-9][a-z0-9-]*$/;
 
 function requireAbilityId(value: string, label: string): string {
@@ -135,21 +138,36 @@ export function skillAbilityGrantSourceId(
   milestoneLevel: number,
 ): SkillAbilityGrantSourceId {
   requireAbilityId(skillId, 'Skill id');
-  if (!Number.isInteger(milestoneLevel) || milestoneLevel < 0) {
-    throw new Error('Skill milestone level must be a non-negative integer');
+  if (!Number.isSafeInteger(milestoneLevel) || milestoneLevel < 0) {
+    throw new Error('Skill milestone level must be a non-negative safe integer');
   }
   return `skill:${skillId}:${milestoneLevel}`;
+}
+
+function isValidSkillGrantSourceId(value: string): value is SkillAbilityGrantSourceId {
+  const match = SKILL_SOURCE_PATTERN.exec(value);
+  if (!match) return false;
+  const milestoneLevel = Number.parseInt(match[1]!, 10);
+  return Number.isSafeInteger(milestoneLevel) && String(milestoneLevel) === match[1];
+}
+
+function isValidEquipmentGrantSourceId(value: string): value is EquipmentGrantSourceId {
+  const match = EQUIPMENT_SOURCE_PATTERN.exec(value);
+  if (!match) return false;
+  if (parseGeneratedEquipmentInstanceId(match[1]!) === undefined) return false;
+  const effectOrdinal = Number.parseInt(match[2]!, 10);
+  return Number.isSafeInteger(effectOrdinal) && String(effectOrdinal) === match[2];
 }
 
 export function equipmentAbilityGrantSourceId(
   instanceId: GeneratedEquipmentInstanceId,
   effectOrdinal: number,
 ): EquipmentGrantSourceId {
-  if (!Number.isInteger(effectOrdinal) || effectOrdinal < 0) {
-    throw new Error('Equipment effect ordinal must be a non-negative integer');
+  if (!Number.isSafeInteger(effectOrdinal) || effectOrdinal < 0) {
+    throw new Error('Equipment effect ordinal must be a non-negative safe integer');
   }
   const sourceId = `equipment:${instanceId}:${effectOrdinal}` as EquipmentGrantSourceId;
-  if (!EQUIPMENT_SOURCE_PATTERN.test(sourceId)) {
+  if (!isValidEquipmentGrantSourceId(sourceId)) {
     throw new Error(`Invalid generated equipment instance id: ${instanceId}`);
   }
   return sourceId;
@@ -165,8 +183,8 @@ export function legacyAbilityGrantSourceId(
 export function isAbilityGrantSourceId(value: string): value is AbilityGrantSourceId {
   return (
     LEARNED_SOURCE_PATTERN.test(value) ||
-    SKILL_SOURCE_PATTERN.test(value) ||
-    EQUIPMENT_SOURCE_PATTERN.test(value) ||
+    isValidSkillGrantSourceId(value) ||
+    isValidEquipmentGrantSourceId(value) ||
     LEGACY_SOURCE_PATTERN.test(value)
   );
 }
