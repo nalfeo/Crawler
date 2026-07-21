@@ -2633,7 +2633,7 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
       body: {
         check_runs: [
-          { id: 1, name: 'Human approval', status: 'completed', conclusion: 'failure' },
+          { id: 1, name: 'Lightweight Checks', status: 'completed', conclusion: 'failure' },
           { id: 2, name: 'Merge gate', status: 'completed', conclusion: 'failure' },
           { id: 3, name: 'ci', status: 'completed', conclusion: 'failure' },
           { id: 4, name: 'Security checks', status: 'completed', conclusion: 'success' },

@@ -52,51 +52,53 @@ function loadWorkflow(relativePath: string): WorkflowDoc {
 }
 
 describe('ci workflow overhead reduction', () => {
-  it('reuses one shared setup job for static validation and splits coverage into its own advisory job', () => {
+  it('consolidates 4 former lightweight jobs into check-lightweight and splits coverage into ci-coverage', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
 
+    // Former independent jobs must be gone
     expect(workflow.jobs['check-types-and-lint']).toBeUndefined();
     expect(workflow.jobs['check-format-and-labs']).toBeUndefined();
+    expect(workflow.jobs['ci-advisory']).toBeUndefined();
+    expect(workflow.jobs['human-approval']).toBeUndefined();
     expect(workflow.jobs['test-unit-coverage']).toBeUndefined();
-    expect(workflow.jobs.build).toBeUndefined();
 
-    const staticValidation = workflow.jobs['static-validation'];
-    expect(staticValidation?.needs).toEqual(['changes']);
+    // check-lightweight: consolidates all 4 former lightweight jobs
+    const lightweightJob = workflow.jobs['check-lightweight'];
+    expect(lightweightJob, 'check-lightweight job').toBeTruthy();
+    expect(lightweightJob?.needs).toEqual(['changes']);
     expect(
-      staticValidation?.steps?.filter((step) => step.uses === 'actions/checkout@v4'),
+      lightweightJob?.steps?.filter((step) => step.uses === 'actions/checkout@v4'),
     ).toHaveLength(1);
     expect(
-      staticValidation?.steps?.filter((step) => step.uses === './.github/actions/setup-node'),
+      lightweightJob?.steps?.filter((step) => step.uses === './.github/actions/setup-node'),
     ).toHaveLength(1);
-    expect(staticValidation?.steps?.find((step) => step.name === 'Types & Lint')).toBeTruthy();
-    expect(staticValidation?.steps?.find((step) => step.name === 'Format check')).toBeTruthy();
-    expect(staticValidation?.steps?.find((step) => step.name === 'Lab gate check')).toBeTruthy();
-    expect(
-      staticValidation?.steps?.find((step) => step.name === 'Orphaned-system wiring guard'),
-    ).toBeTruthy();
-    expect(
-      staticValidation?.steps?.find((step) => step.name === 'Guard + review-ledger tests'),
-    ).toBeTruthy();
-
-    // static-validation MUST install Playwright: test:guards includes
-    // .github/extensions/sprite-editor/tests which launch Chromium via Playwright.
-    const setupNodeStep = staticValidation?.steps?.find(
-      (step) => step.uses === './.github/actions/setup-node',
-    );
-    expect(setupNodeStep?.with?.['install-playwright']).toBe('true');
-
-    // ci-advisory: lightweight checks only — no coverage (that lives in ci-coverage)
-    // and no npm audit (that lives in security-review.yml to avoid duplication)
-    const advisory = workflow.jobs['ci-advisory'];
-    expect(advisory?.steps?.find((step) => step.name === 'Dead code detection')).toBeTruthy();
-    expect(advisory?.steps?.find((step) => step.name === 'Security audit')).toBeFalsy();
-    expect(
-      advisory?.steps?.find((step) => step.name === 'Typecheck (full — tests + scripts)'),
-    ).toBeTruthy();
-    expect(advisory?.steps?.find((step) => step.name === 'Build')).toBeTruthy();
-    // Coverage must NOT be in ci-advisory (it is now its own independent job)
-    expect(advisory?.steps?.find((step) => step.name === 'Unit tests with coverage')).toBeFalsy();
-    expect(advisory?.steps?.find((step) => step.name === 'Coverage report comment')).toBeFalsy();
+    // All blocking steps must be present
+    const requiredBlockingSteps = [
+      'Format check',
+      'Lab gate check',
+      'Orphaned-system wiring guard',
+      'Guard + review-ledger tests',
+      'Typecheck & Lint',
+      'Human approval',
+    ];
+    for (const name of requiredBlockingSteps) {
+      expect(
+        lightweightJob?.steps?.find((step) => step.name === name),
+        `blocking step "${name}"`,
+      ).toBeTruthy();
+    }
+    // Advisory steps must be present
+    const requiredAdvisorySteps = [
+      'Dead code detection',
+      'Security audit',
+      'Typecheck (full — tests + scripts)',
+    ];
+    for (const name of requiredAdvisorySteps) {
+      expect(
+        lightweightJob?.steps?.find((step) => step.name === name),
+        `advisory step "${name}"`,
+      ).toBeTruthy();
+    }
 
     // ci-coverage: independent advisory job for the ~140-second coverage suite
     const coverage = workflow.jobs['ci-coverage'];
@@ -107,56 +109,49 @@ describe('ci workflow overhead reduction', () => {
     expect(coverage?.steps?.find((step) => step.name === 'Upload coverage summary')).toBeTruthy();
     expect(coverage?.steps?.find((step) => step.name === 'Coverage report comment')).toBeTruthy();
 
-    expect(workflow.jobs['merge-gate']?.needs).toContain('static-validation');
+    expect(workflow.jobs['merge-gate']?.needs).toContain('check-lightweight');
+    expect(workflow.jobs['merge-gate']?.needs).not.toContain('static-validation');
     expect(workflow.jobs['merge-gate']?.needs).not.toContain('check-types-and-lint');
     expect(workflow.jobs['merge-gate']?.needs).not.toContain('check-format-and-labs');
+    expect(workflow.jobs['merge-gate']?.needs).not.toContain('human-approval');
   });
 
-  it('static-validation steps each run with continue-on-error and are aggregated by a final result check', () => {
+  it('check-lightweight blocking steps fail-fast without continue-on-error; advisory steps have continue-on-error', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
-    const staticValidation = workflow.jobs['static-validation'];
-    const steps = staticValidation?.steps ?? [];
+    const lightweightJob = workflow.jobs['check-lightweight'];
+    const steps = lightweightJob?.steps ?? [];
 
-    // Each substantive check step must have continue-on-error: true so a failure
-    // does not suppress the remaining checks (preserves attribution parity with
-    // the former two-parallel-job layout).
-    const checkStepNames = [
-      'Types & Lint',
+    // Blocking steps must NOT have continue-on-error so any failure stops the job
+    const blockingStepNames = [
       'Format check',
       'Lab gate check',
       'Orphaned-system wiring guard',
       'Guard + review-ledger tests',
+      'Typecheck & Lint',
+      'Human approval',
     ];
-    for (const name of checkStepNames) {
+    for (const name of blockingStepNames) {
       const step = steps.find((s) => s.name === name);
-      expect(step, `Step "${name}" should exist`).toBeTruthy();
+      expect(step, `blocking step "${name}" should exist`).toBeTruthy();
       expect(
         step?.['continue-on-error'],
-        `Step "${name}" should have continue-on-error: true`,
-      ).toBe(true);
+        `blocking step "${name}" must not have continue-on-error`,
+      ).toBeFalsy();
     }
 
-    // A final aggregation step must run even after failures (if: always()) and
-    // must not itself have continue-on-error (it IS the gate).
-    const resultStep = steps.find((s) => s.name === 'Check static validation results');
-    expect(resultStep, 'Check static validation results step should exist').toBeTruthy();
-    expect(resultStep?.if).toBe('always()');
-    expect(resultStep?.['continue-on-error']).toBeFalsy();
-
-    // The aggregation script must reference every check step's outcome by id
-    // so no check can be silently omitted from the gate.
-    const aggregationScript = String(resultStep?.run ?? '');
-    const expectedStepIds = [
-      'types-lint',
-      'format-check',
-      'lab-gate',
-      'wiring-guard',
-      'guard-tests',
+    // Advisory steps must have continue-on-error: true so failures surface without blocking merge
+    const advisoryStepNames = [
+      'Dead code detection',
+      'Security audit',
+      'Typecheck (full — tests + scripts)',
     ];
-    for (const id of expectedStepIds) {
-      expect(aggregationScript, `Aggregation script must reference step id '${id}'`).toContain(
-        `steps.${id}.outcome`,
-      );
+    for (const name of advisoryStepNames) {
+      const step = steps.find((s) => s.name === name);
+      expect(step, `advisory step "${name}" should exist`).toBeTruthy();
+      expect(
+        step?.['continue-on-error'],
+        `advisory step "${name}" must have continue-on-error: true`,
+      ).toBe(true);
     }
   });
 });
@@ -186,13 +181,13 @@ describe('merge-gate aggregation policy', () => {
     expect(script).not.toMatch(/check "Change scope detection"\s+[^\n]+"true"/);
   });
 
-  it('static-validation always blocks (no allow_skipped, no docs-only escape)', () => {
+  it('Lightweight Checks always blocks (no allow_skipped, no docs-only escape)', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const step = workflow.jobs['merge-gate']?.steps?.[0];
     const script = String(step?.run ?? '');
-    expect(script).toContain('check "Static validation"');
-    // Static validation must NOT have allow_skipped=true; it blocks on all non-docs-only changes.
-    expect(script).not.toMatch(/check "Static validation"\s+[^\n]+"true"/);
+    expect(script).toContain('check "Lightweight Checks"');
+    // Lightweight Checks must NOT have allow_skipped=true; it blocks on all changes.
+    expect(script).not.toMatch(/check "Lightweight Checks"\s+[^\n]+"true"/);
   });
 
   it('docs-only skip path is present for scope-gated jobs', () => {
@@ -230,7 +225,7 @@ describe('merge-gate aggregation policy', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const needs = workflow.jobs['merge-gate']?.needs ?? [];
     expect(needs).toContain('changes');
-    expect(needs).toContain('static-validation');
+    expect(needs).toContain('check-lightweight');
     expect(needs).toContain('test-unit');
     expect(needs).toContain('test-integration');
     expect(needs).toContain('test-headless');
@@ -238,10 +233,11 @@ describe('merge-gate aggregation policy', () => {
     expect(needs).toContain('test-e2e-game');
     expect(needs).toContain('test-e2e-assets');
     expect(needs).toContain('test-e2e-devtools');
-    expect(needs).toContain('human-approval');
-    // Old job names must not appear.
+    // Old job names and superseded jobs must not appear.
+    expect(needs).not.toContain('static-validation');
     expect(needs).not.toContain('check-types-and-lint');
     expect(needs).not.toContain('check-format-and-labs');
+    expect(needs).not.toContain('human-approval');
     expect(needs).not.toContain('test-e2e');
   });
 });

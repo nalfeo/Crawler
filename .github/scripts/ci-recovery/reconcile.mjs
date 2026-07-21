@@ -1488,7 +1488,7 @@ const rawCheckRuns =
 // Collapse to the latest attempt per logical name so a successful rerun
 // replaces a previously failed run before any blocker classification.
 const checkRuns = collapseCheckRunsByName(rawCheckRuns);
-const humanApprovalDerivedChecks = new Set(['human approval', 'merge gate', 'ci']);
+const humanApprovalDerivedChecks = new Set(['lightweight checks', 'merge gate', 'ci']);
 for (const check of checkRuns) {
   const checkName = String(check.name || '').toLowerCase();
   if (
