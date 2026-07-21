@@ -176,12 +176,15 @@ const STYLES = `
   .lifecycle-pill.integrated { color: #86efac; border-color: rgba(134,239,172,0.4); background: rgba(22,101,52,0.18); }
   .lifecycle-pill.unverified { color: #c4b5fd; border-color: rgba(196,181,253,0.4); background: rgba(88,28,135,0.18); }
   .criterion-feedback { display: flex; flex-direction: column; gap: 4px; margin: 3px 0 7px; }
-  .criterion-feedback .row { gap: 6px; }
-  .criterion-feedback button.thumb { padding: 2px 6px; font-size: 11px; }
+  .criterion-feedback .feedback-verdict-row,
+  .criterion-feedback .feedback-comment-row { display: flex; align-items: center; gap: 6px; }
+  .criterion-feedback .feedback-comment-row[hidden] { display: none; }
+  .criterion-feedback button.thumb { width: 28px; height: 28px; min-width: 28px; padding: 0; font-size: 14px;
+    line-height: 1; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; }
   .criterion-feedback button.thumb.on { border-color: #7dd3fc; background: rgba(14,116,144,0.35); }
-  .criterion-feedback input { min-width: 0; padding: 3px 6px; font-size: 10px; flex: 1; }
-  .criterion-feedback input[hidden] { display: none; }
+  .criterion-feedback input { min-width: 0; padding: 5px 7px; font-size: 11px; flex: 1; }
   .criterion-feedback button.confirm-btn { padding: 2px 8px; font-size: 11px; color: #64748b; }
+  .criterion-feedback button.confirm-btn[hidden] { display: none; }
   .criterion-feedback button.confirm-btn.dirty { color: #fde68a; border-color: rgba(253,230,138,0.5);
     background: rgba(120,53,15,0.25); }
   .criterion-feedback .feedback-status { font-size: 9px; }
@@ -890,19 +893,10 @@ const CLIENT_SCRIPT = String.raw`
     });
   }
 
-  // Generic thumb/comment/confirm widget shared by criterion, sheet, and
-  // brief feedback (subjectType discriminated union — same store/route,
-  // ../shared/sprite-feedback-store.mjs). Edits are a LOCAL DRAFT until the
-  // ✓ confirm button is clicked — nothing is sent to the server on every
-  // click. The comment box stays hidden until a thumb is selected (draft, not
-  // yet persisted). Confirming persists {verdict, comment}; confirming a
-  // deselected thumb (which always clears the draft comment too, since the
-  // box that held it is hidden) deletes the persisted entry server-side. A
-  // reload/reopen only ever shows the last CONFIRMED (persisted) value — the
-  // draft lives purely in this closure and is rebuilt fresh from 'persisted'
-  // every render, so it can never leak across a reload. The confirm handler
-  // NEVER triggers a full render()/reload — see the HARD GATE note on the
-  // /api/feedback route in extension.mjs.
+  // Generic feedback widget shared by criterion, sheet, and brief feedback.
+  // Verdict changes persist immediately. Comment edits stay local until the
+  // checkmark confirms a non-empty changed comment. Neither save path triggers
+  // a full render/reload; each patches only the affected feedback object.
   function renderFeedbackWidget(persistedIn, save, confirmTitle) {
     var persisted = persistedIn || { verdict: null, comment: '' };
     var draft = { verdict: persisted.verdict || null, comment: persisted.comment || '' };
@@ -912,6 +906,7 @@ const CLIENT_SCRIPT = String.raw`
     var input = h('input', { type: 'text', maxlength: '1000', placeholder: 'Optional feedback comment' });
     var confirmBtn = h('button', { type: 'button', class: 'confirm-btn', title: confirmTitle || 'Confirm this feedback', text: '✓' });
     var status = h('span', { class: 'feedback-status muted' });
+    var commentRow = h('div', { class: 'feedback-comment-row' }, [input, confirmBtn]);
     var saving = false;
 
     function setDisabled(disabled) {
@@ -921,35 +916,58 @@ const CLIENT_SCRIPT = String.raw`
       confirmBtn.disabled = disabled;
     }
 
-    function isDirty() {
-      return draft.verdict !== (persisted.verdict || null) || draft.comment !== (persisted.comment || '');
+    function hasCommentToSave() {
+      return Boolean(
+        draft.verdict &&
+        draft.comment.trim().length > 0 &&
+        draft.comment !== (persisted.comment || '')
+      );
     }
 
     function sync() {
       up.className = 'thumb' + (draft.verdict === 'up' ? ' on' : '');
       down.className = 'thumb' + (draft.verdict === 'down' ? ' on' : '');
-      input.hidden = !draft.verdict;
+      commentRow.hidden = !draft.verdict;
       input.value = draft.comment;
-      var dirty = isDirty();
-      confirmBtn.className = 'confirm-btn' + (dirty ? ' dirty' : '');
-      status.textContent = dirty ? 'Unconfirmed' : (persisted.verdict ? 'Confirmed' : '');
+      var commentDirty = hasCommentToSave();
+      confirmBtn.hidden = !commentDirty;
+      confirmBtn.className = 'confirm-btn' + (commentDirty ? ' dirty' : '');
+      status.textContent = commentDirty ? 'Comment not saved' : (persisted.verdict ? 'Saved' : '');
     }
 
-    function setVerdict(next) {
+    function saveVerdict(next) {
+      if (saving) return;
+      var previousVerdict = persisted.verdict || null;
+      var previousComment = persisted.comment || '';
       draft.verdict = next;
-      // The comment box is hidden with no verdict selected — a deselected
-      // thumb always carries an EMPTY draft comment, so confirming it deletes
-      // the persisted entry rather than leaving an orphaned comment behind.
       if (!draft.verdict) draft.comment = '';
       sync();
+      saving = true;
+      setDisabled(true);
+      status.textContent = 'Saving…';
+      save(next, next ? previousComment : '').then(function () {
+        persisted.verdict = next;
+        if (!next) persisted.comment = '';
+        sync();
+      }).catch(function (err) {
+        persisted.verdict = previousVerdict;
+        persisted.comment = previousComment;
+        draft.verdict = previousVerdict;
+        draft.comment = previousComment;
+        sync();
+        status.textContent = err && err.message ? err.message : 'Save failed.';
+      }).finally(function () {
+        saving = false;
+        setDisabled(false);
+      });
     }
 
-    up.addEventListener('click', function () { setVerdict(draft.verdict === 'up' ? null : 'up'); });
-    down.addEventListener('click', function () { setVerdict(draft.verdict === 'down' ? null : 'down'); });
+    up.addEventListener('click', function () { saveVerdict(draft.verdict === 'up' ? null : 'up'); });
+    down.addEventListener('click', function () { saveVerdict(draft.verdict === 'down' ? null : 'down'); });
     input.addEventListener('input', function () { draft.comment = input.value; sync(); });
 
     confirmBtn.addEventListener('click', function () {
-      if (saving) return;
+      if (saving || !hasCommentToSave()) return;
       var submitted = { verdict: draft.verdict, comment: draft.comment };
       saving = true;
       setDisabled(true);
@@ -968,8 +986,8 @@ const CLIENT_SCRIPT = String.raw`
 
     sync();
     return h('div', { class: 'criterion-feedback' }, [
-      h('div', { class: 'row' }, [up, down, input, confirmBtn]),
-      status
+      h('div', { class: 'feedback-verdict-row' }, [up, down, status]),
+      commentRow
     ]);
   }
 

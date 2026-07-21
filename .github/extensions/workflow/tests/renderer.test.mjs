@@ -91,12 +91,19 @@ test('per-variant lifecycle pills are wired for all four states', () => {
   }
 });
 
-test('criterion feedback: comment box is hidden until a thumb is selected, and confirm persists a local draft', () => {
+test('feedback uses compact thumbs, saves verdicts immediately, and puts comments below', () => {
   const html = renderHtml('x');
   assert.match(html, /function renderCriterionFeedback\(/);
-  assert.match(html, /input\.hidden = !draft\.verdict/);
+  assert.match(html, /button\.thumb \{ width: 28px; height: 28px; min-width: 28px/);
+  assert.match(html, /class: 'feedback-verdict-row'/);
+  assert.match(html, /class: 'feedback-comment-row'/);
+  assert.match(html, /commentRow\.hidden = !draft\.verdict/);
+  assert.match(html, /function saveVerdict\(next\)/);
+  assert.match(html, /save\(next, next \? previousComment : ''\)/);
   assert.match(html, /class: 'confirm-btn'/);
-  assert.match(html, /if \(!draft\.verdict\) draft\.comment = ''/);
+  assert.match(html, /confirmBtn\.hidden = !commentDirty/);
+  assert.match(html, /draft\.comment\.trim\(\)\.length > 0/);
+  assert.match(html, /commentDirty \? 'Comment not saved'/);
   assert.match(html, /fetch\('\/api\/feedback'/);
   assert.match(html, /'x-workflow-mutation-token': mutationToken/);
 });

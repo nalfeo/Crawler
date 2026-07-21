@@ -31,8 +31,10 @@ backend or game system.
   modules while preserving atomic writes, locking, mutation-token/origin/content
   type checks, the 16 KiB request cap, and legacy criterion entries.
 - Extended the feedback store as a discriminated union for criterion, whole
-  sheet, and brief feedback. Draft thumbs/comments remain local until the
-  per-item checkmark confirms them.
+  sheet, and brief feedback. Thumb changes persist immediately; comment edits
+  remain local until a non-empty changed comment exposes its per-item checkmark.
+- Kept feedback controls compact and vertically structured: thumbs are exactly
+  28 by 28 pixels, with the conditional comment row below them.
 - Added cache-first run rendering with background Azure revalidation, selection
   ownership guards, resolved-run warm-key seeding, explicit-sheet cache bypass,
   and post-await stale-write protection.
@@ -61,6 +63,9 @@ After reloading the real project extensions against the managed Azure sidecar:
 - filtering `iron-cleaver` reduced 109 run options to the two matching runs;
 - judge and sensor details were collapsed into independent summaries;
 - sheet feedback comments were hidden until a thumb was selected;
+- feedback thumbs rendered at 28 by 28 pixels, persisted immediately, and
+  revealed the comment row below; the checkmark stayed hidden until non-empty
+  changed text existed and the status changed to `Comment not saved`;
 - the brief modal loaded the exact run brief, retained focus after its async
   rerender, closed on Escape, and returned focus to View Brief;
 - accepted iron-cleaver variants showed ACCEPTED/STAGED and Re-accept while
@@ -85,8 +90,8 @@ Ledger:
 
 - Shared, Workflow, and Postprocess focused Node suites passed after the
   consolidation and review fixes.
-- `node --test .github/extensions/workflow/tests/renderer.test.mjs` passed 26
-  tests after the runtime-discovered modal focus fix.
+- `node --test .github/extensions/workflow/tests/renderer.test.mjs` passed 27
+  tests after the runtime-discovered modal focus and feedback-control fixes.
 - `npm run verify:fast` passed after every final review/runtime fix.
 - Real Workflow and Postprocess canvases were observed through Chrome against
   the managed sidecar at `http://127.0.0.1:7690`.
