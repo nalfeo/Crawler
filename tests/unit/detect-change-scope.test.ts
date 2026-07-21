@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -30,6 +31,8 @@ const SCRIPT = toBashScriptPath(
     '../../scripts/agent/ci/detect-art-only.sh',
   ),
 );
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 
@@ -1145,4 +1148,50 @@ describe('detect-art-only.sh change-scope classifier', () => {
       expect(classify(c.files, c.env ?? {})).toEqual(c.expected);
     });
   }
+
+  // ── security-review.yml workflow YAML regression ──────────────────────────
+  // These tests read the real workflow source and assert that art_only is present
+  // in every affected step condition. They catch regressions where someone drops
+  // art_only from setup-node or either secret-scan condition — the exact gap the
+  // art-only fast-path classifier case cannot detect (it only exercises detect-art-only.sh).
+  describe('security-review.yml: art_only fast-path wiring', () => {
+    const wf = readFileSync(
+      path.join(REPO_ROOT, '.github/workflows/security-review.yml'),
+      'utf8',
+    );
+
+    it('fast-path echo step includes art_only condition', () => {
+      // "Docs/asset-only fast-path" step must fire on art_only, not only docs_only.
+      expect(wf).toMatch(
+        /- name: Docs\/asset-only fast-path[\s\S]*?if:.*art_only.*==.*'true'/,
+      );
+    });
+
+    it('setup-node skip includes art_only condition', () => {
+      // setup-node must be skipped when art_only to avoid unnecessary Node install on art PRs.
+      const setupNodeIdx = wf.indexOf('uses: ./.github/actions/setup-node');
+      expect(setupNodeIdx).toBeGreaterThan(-1);
+      // The `if:` condition immediately follows the `uses:` line (next non-blank line).
+      const condStart = wf.indexOf('if:', setupNodeIdx);
+      const condEnd = wf.indexOf('\n', condStart);
+      const condition = wf.slice(condStart, condEnd);
+      expect(condition).toContain('art_only');
+    });
+
+    it('docs/asset-only secret scan includes art_only condition', () => {
+      // The bash-direct secret scan (no Node) must fire for art_only, not only docs_only.
+      expect(wf).toMatch(
+        /- name: Scan for committed secrets \(docs\/asset-only\)[\s\S]*?if:.*art_only/,
+      );
+    });
+
+    it('Node-wrapped secret scan excludes art_only paths', () => {
+      // The Node-wrapped secret scan must be skipped for art_only (Node is not set up).
+      const wrappedScanMatch = wf.match(
+        /- name: Scan for committed secrets\n([\s\S]*?)(?=\n {6}- name:|\n {2}aggregate-results:)/,
+      );
+      expect(wrappedScanMatch).not.toBeNull();
+      expect(wrappedScanMatch![0]).toContain('art_only');
+    });
+  });
 });
