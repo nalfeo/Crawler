@@ -71,6 +71,11 @@ fallback.
 - Code review round 2, `claude-sonnet-4.6`: clean across correctness, edge cases,
   state lifecycle, deterministic generation, API compatibility, security,
   runtime wiring, performance, regression coverage, and repository policy.
+- Review-thread follow-up: deterministic generated-snapshot combat coverage now
+  proves all 25 Wave A IDs spawn the intended production attack kind, and
+  representative fixtures realize damage through melee, collision, returning,
+  beam, and trap pipelines. This also fixed the `storm-sling` ranged bounce
+  branch to honor its authored `bounceCount`.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-20-floor-2-weapon-wave-a.review-ledger.json`.
 
@@ -78,10 +83,13 @@ fallback.
 
 - Focused Wave A tests cover the exact 25-ID roster, ten-family distribution,
   unchanged 50-ID manifest, generator-only inventory isolation, deterministic
-  legal rarity generation, stable art keys, frozen weapon snapshots, and static
-  DPS outlier bounds.
-- The existing constitutional aggregate realized-DPS integration gate passed for
-  representative Floor 2 family fixtures.
+  legal rarity generation, stable art keys, frozen weapon snapshots, all 25
+  attack-spawn contracts, and representative production-pipeline damage
+  realization.
+- The existing constitutional aggregate realized-DPS integration gate still
+  covers its legacy representative cohort; this slice now supplements that gate
+  with explicit Floor 2 Wave A generated-snapshot combat coverage instead of
+  claiming the DPS harness already exercised those IDs.
 - `npm run typecheck` passed during implementation.
 - `npm run verify:fast` passed after implementation and review.
 - Review-ledger validation and `npm run verify:pr-prereqs` passed before PR
