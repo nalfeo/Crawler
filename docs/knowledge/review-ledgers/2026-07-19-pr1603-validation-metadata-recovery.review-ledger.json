@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "pr1603-validation-metadata-recovery",
+  "task_title": "PR #1603 validation metadata recovery",
+  "estimated_apples": 1,
+  "stages": {}
+}

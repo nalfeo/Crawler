@@ -380,6 +380,10 @@ _…and 78 older, see `archive/`._
 ## ci-policy
 
 - [2026-07-21-embedded-postprocess-parity](2026-07-21-embedded-postprocess-parity.md) — Handoff: Embedded Postprocess parity
+- [2026-07-21-pr1734-order-fence-recovery](2026-07-21-pr1734-order-fence-recovery.md) — Handoff: PR #1734 order-fence recovery
+- [2026-07-20-ci-conflict-coordinator](2026-07-20-ci-conflict-coordinator.md) — Handoff: CI conflict coordinator
+- [2026-07-20-ci-conflict-recovery-round3](2026-07-20-ci-conflict-recovery-round3.md) — Handoff: CI conflict coordinator PR recovery (round 3)
+- [2026-07-20-ci-conflict-recovery-round4](2026-07-20-ci-conflict-recovery-round4.md) — Handoff: CI conflict coordinator PR recovery (round 4)
 - [2026-07-20-fix-aborted-promotion-status](2026-07-20-fix-aborted-promotion-status.md) — Preserve queue position after aborted promotion
 - [2026-07-20-fix-merge-train-promotion](2026-07-20-fix-merge-train-promotion.md) — Merge-train validated-prefix promotion recovery
 - [2026-07-20-pr1276-stack-root-shepherd](2026-07-20-pr1276-stack-root-shepherd.md) — Handoff: PR #1276 Stack-Root Shepherd

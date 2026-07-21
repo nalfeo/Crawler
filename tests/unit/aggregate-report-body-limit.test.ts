@@ -22,7 +22,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SCRIPT = path.join(REPO_ROOT, 'scripts/agent/shared/aggregate-report.ts');
-const TSX_CLI = path.join(REPO_ROOT, 'node_modules/tsx/dist/cli.mjs');
+
+// Spawn the local tsx binary directly (not via `npx`) — `spawnSync('npx', ...)`
+// throws ENOENT on Windows because `npx` resolves to `npx.cmd` there. Windows
+// `.cmd` shims additionally require shell:true or spawnSync throws EINVAL.
+// See tests/integration/sidecar-lifecycle.test.ts for the same tsx-binary
+// resolution pattern (that test uses async spawn, which does not need
+// shell:true for .cmd files the way spawnSync does).
+const isWindows = process.platform === 'win32';
+const TSX_BIN = path.join(REPO_ROOT, 'node_modules', '.bin', isWindows ? 'tsx.cmd' : 'tsx');
 
 /**
  * Mirror of the constants in aggregate-report.ts.
@@ -65,8 +73,9 @@ afterAll(() => {
 
 describe('aggregate-report.ts body-limit truncation', () => {
   it('caps stdout at MAX_BODY_CHARS characters when findings overflow', () => {
-    const result = spawnSync(process.execPath, [TSX_CLI, SCRIPT], {
+    const result = spawnSync(TSX_BIN, [SCRIPT], {
       encoding: 'utf8',
+      shell: isWindows,
       env: {
         ...process.env,
         AUTOMATION_REPORT_DIR: tmpDir,
@@ -104,8 +113,9 @@ describe('aggregate-report.ts body-limit truncation', () => {
       };
       writeFileSync(path.join(shortTmpDir, 'docs-check-paths.json'), JSON.stringify(summary));
 
-      const result = spawnSync(process.execPath, [TSX_CLI, SCRIPT], {
+      const result = spawnSync(TSX_BIN, [SCRIPT], {
         encoding: 'utf8',
+        shell: isWindows,
         env: {
           ...process.env,
           AUTOMATION_REPORT_DIR: shortTmpDir,

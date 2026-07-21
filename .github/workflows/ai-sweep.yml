@@ -7,7 +7,9 @@
 #   full seed panel, then fans the shard artifacts into ONE leaderboard (Σ
 #   composite score, win count, flips-vs-incumbent, clear time, xp, gold,
 #   min-HP) AND a safety-gated qualified-winner recommendation (>=90% wins AND
-#   zero incumbent win→loss flips — see `selectQualifiedWinner` in
+#   strictly MORE total wins than the incumbent — win→loss flips are allowed
+#   as long as total wins still strictly increase, per the human-approved
+#   net-win promotion rule — see `selectQualifiedWinner` in
 #   aggregate-shards.ts), rendered to the run summary + a JSON artifact.
 #
 #   It only MEASURES. It never flips the shipped default (that is the separate,
@@ -47,15 +49,20 @@
 #
 #   RESIDUAL LIMITATION (documented, not hidden): the <=90-minute bound is
 #   proven at the PER-COMBO PER-ROUND grain (the grain this task's hard gate
-#   asks for) — one combo's ~12 primary-knob candidates, run with unrestricted
-#   matrix concurrency (no `max-parallel` set on round-eval, so GitHub schedules
-#   as many as the account's real concurrent-runner ceiling allows). A FULL
-#   8-combo × 3-round graduation run's aggregate wall-clock additionally
-#   depends on that (unknown-to-us) account/org concurrent-job ceiling, since
-#   all combos' round-eval candidates share one flat matrix per round. This is
-#   a materially better bound than the old design (which had NO per-round
-#   parallelism at all) but is not independently proven to keep the FULL
-#   8-combo scope under 90 minutes.
+#   asks for) — one combo's ~12 primary-knob candidates. round-eval's matrix
+#   is capped at `max-parallel: 8` (same cap as baseline/checkpoint-init/
+#   round-select/validate) so a FULL 8-combo × 3-round graduation run cannot
+#   saturate the account's entire GitHub-hosted concurrent-runner pool and
+#   starve unrelated repo-wide work (e.g. the shared merge-train queue's own
+#   validation jobs) — see run 29786216369, which fanned out 20 concurrent
+#   Round 3 eval jobs with 44 more queued behind them before it was manually
+#   cancelled. A FULL 8-combo × 3-round graduation run's aggregate wall-clock
+#   now additionally depends on this repo-level concurrency cap (8 candidates
+#   in flight at a time per round, per combo-fan), since all combos' round-eval
+#   candidates share one flat matrix per round. This is a materially better
+#   bound than the old design (which had NO per-round parallelism at all) but
+#   is not independently proven to keep the FULL 8-combo scope under 90
+#   minutes when the cap is the binding constraint.
 #
 # HOW TO RUN (staged, per the plan)
 #   - Cheap screen / calibration (DEFAULTS): rounds=2, train 1-24, validate 1-40.
@@ -244,7 +251,7 @@ jobs:
         with:
           name: search-baseline-${{ matrix.combo }}
 
-      - name: Download legacy+legacy baseline shard (optional — provides the LEGACY incumbent for non-LEGACY combo flip checks)
+      - name: Download legacy+legacy baseline shard (optional — provides the LEGACY incumbent for the non-LEGACY combo net-win comparison)
         uses: actions/download-artifact@v4
         with:
           pattern: search-baseline-legacy+legacy
@@ -259,12 +266,13 @@ jobs:
           set -euo pipefail
           SECONDARY_FLAG=""
           if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
-          # For non-LEGACY combos, seed the safety gate with the LEGACY incumbent
-          # so the in-search flip check mirrors the final graduation gate.
+          # For non-LEGACY combos, seed the net-win gate with the LEGACY incumbent
+          # so the in-search comparison mirrors the final graduation gate.
           # The LEGACY baseline is REQUIRED for non-LEGACY combos — without it,
           # initCheckpoint falls back to the combo's own base as incumbent, which
-          # can promote a candidate that flips LEGACY wins (passes in-search gate
-          # but gets rejected at final graduation). Fail fast here instead.
+          # can promote a candidate that has more wins than its combo baseline yet
+          # fewer total wins than LEGACY (passes in-search gate but gets rejected
+          # at final graduation). Fail fast here instead.
           LEGACY_BASELINE_FLAG=""
           if [ "$COMBO" != "legacy+legacy" ]; then
             if [ ! -f "baseline-legacy+legacy.json" ]; then
@@ -356,6 +364,13 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
+      # round-select/validate, so a full 8-combo round can't saturate the
+      # account's entire concurrent-runner pool and starve unrelated
+      # repo-wide work (e.g. the shared merge-train queue) — see run
+      # 29786216369, which fanned out 20 concurrent Round 3 eval jobs with
+      # 44 more queued before it was manually cancelled.
+      max-parallel: 8
       matrix:
         candidate: ${{ fromJSON(needs.round1-candidates.outputs.matrix) }}
     steps:
@@ -529,6 +544,10 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
+      # round-select/validate — see round1-eval's identical comment for why
+      # (run 29786216369 saturated the account's concurrent-runner pool).
+      max-parallel: 8
       matrix:
         candidate: ${{ fromJSON(needs.round2-candidates.outputs.matrix) }}
     steps:
@@ -691,6 +710,10 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
+      # round-select/validate — see round1-eval's identical comment for why
+      # (run 29786216369 saturated the account's concurrent-runner pool).
+      max-parallel: 8
       matrix:
         candidate: ${{ fromJSON(needs.round3-candidates.outputs.matrix) }}
     steps:
