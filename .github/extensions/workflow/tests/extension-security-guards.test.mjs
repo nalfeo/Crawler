@@ -1,0 +1,69 @@
+/**
+ * Source-wiring guards for extension.mjs's mutating routes. Mirrors the
+ * pattern the (now-removed) standalone Sprite Review canvas used: these are
+ * intentionally SOURCE-TEXT assertions (not live HTTP calls) because
+ * `extension.mjs` performs a top-level `joinSession()` side effect on import,
+ * so it cannot be safely `import`-ed in a plain unit test. The actual runtime
+ * behavior of the shared guards themselves (token/origin/content-type checks,
+ * body-size limit) is covered by
+ * `../../shared/tests/sprite-feedback-request*.test.mjs` and
+ * `mutation-security*.test.mjs`.
+ */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { test } from 'node:test';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const EXTENSION_PATH = path.join(HERE, '..', 'extension.mjs');
+
+test('the /api/feedback mutation route enforces token, origin, and content-type guards', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  assert.match(source, /path: '\/api\/feedback'/);
+  assert.match(source, /isTrustedMutationOrigin\(req, entry\)/);
+  assert.match(source, /forbidden-origin/);
+  assert.match(source, /x-workflow-mutation-token/);
+  assert.match(source, /isJsonContentType\(req\)/);
+  assert.match(source, /unsupported-media-type/);
+  assert.match(source, /body-too-large/);
+});
+
+test('REGRESSION (HARD GATE): the /api/feedback handler never calls buildState()/pushState() — a confirm must not recreate the loaded sheet', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const routeStart = source.indexOf("path: '/api/feedback'");
+  assert.ok(routeStart >= 0, 'the /api/feedback route must exist');
+  // Slice from the route declaration to the START of the next route/handler
+  // block (the /api/accept route immediately follows it) so this assertion is
+  // scoped to ONLY the feedback handler's body, not the whole file.
+  const nextRouteStart = source.indexOf("path: '/api/accept'", routeStart);
+  assert.ok(nextRouteStart > routeStart, 'the /api/accept route must follow /api/feedback');
+  const handlerSource = source.slice(routeStart, nextRouteStart);
+  assert.doesNotMatch(
+    handlerSource,
+    /buildState\(instanceId\)/,
+    'the feedback handler must not rebuild full state — that recreates the sheet <img>/loading UI on every confirm',
+  );
+  assert.doesNotMatch(
+    handlerSource,
+    /pushState\?\.\(/,
+    'the feedback handler must not broadcast a full state via SSE on every confirm',
+  );
+  // The response IS the scoped patch — verify it stays a bare { feedback } reply.
+  assert.match(handlerSource, /return \{ json: \{ feedback \} \};/);
+});
+
+test('the /api/accept mutation route enforces the mutation-token guard', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  assert.match(source, /path: '\/api\/accept'/);
+  assert.match(
+    source,
+    /tokensMatch\(req\.headers\['x-workflow-mutation-token'\], entry\.mutationToken\)/,
+  );
+});
+
+test('feedback and plan/brief content routes import the shared (not duplicated) helpers', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  assert.match(source, /from '\.\.\/shared\/sprite-feedback-store\.mjs'/);
+  assert.match(source, /from '\.\.\/shared\/sprite-feedback-request\.mjs'/);
+});

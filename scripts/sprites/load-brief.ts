@@ -66,6 +66,39 @@ export interface LoadBriefOptions {
   readonly loadTypeDefaults?: (type: string) => SpriteTypeDefaults | null;
 }
 
+/**
+ * Load and validate a brief from a raw YAML string. Identical to `loadBrief`
+ * except the content comes from a string rather than a file on disk. Used by
+ * server routes that load the brief from an immutable per-run cache snapshot
+ * instead of the current worktree file.
+ */
+export function loadBriefFromYaml(raw: string, opts: LoadBriefOptions = {}): Brief {
+  const parsed = parseYaml(raw) as unknown;
+
+  const minimal = minimalBriefSchema.safeParse(parsed);
+  if (!minimal.success) {
+    const issues = minimal.error.issues
+      .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('\n');
+    throw new Error(
+      `Brief failed minimal validation ` +
+        `(type, name, and one of description/prompt required):\n${issues}`,
+    );
+  }
+  const loadDefaults = opts.loadTypeDefaults ?? defaultTypeDefaultsLoader(opts.projectRoot);
+  const defaults = loadDefaults(minimal.data.type);
+  const merged = mergeMinimalIntoDefaults(minimal.data, defaults);
+
+  const result = briefSchema.safeParse(merged);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('\n');
+    throw new Error(`Brief failed validation:\n${issues}`);
+  }
+  return result.data;
+}
+
 export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): LoadedBrief {
   const absolute = path.resolve(briefPath);
   const raw = readFileSync(absolute, 'utf8');
@@ -135,7 +168,10 @@ export function mergeMinimalIntoDefaults(
   // Pull the size-variant directive off the minimal brief and strip it: it is
   // an authoring convenience, not a strict-schema field. Apply it to the
   // per-type defaults so the author's explicit fields still merge on top.
-  const variant = coerceSizeVariant(minimal.sizeVariant);
+  const variant = coerceSizeVariant(
+    minimal.sizeVariant ??
+      (minimal.type === 'enemy' && minimal.mobRole === 'boss' ? 'large' : undefined),
+  );
   const sanitizedMinimal: Record<string, unknown> = { ...minimal };
   delete sanitizedMinimal.sizeVariant;
 
