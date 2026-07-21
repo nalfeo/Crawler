@@ -341,6 +341,29 @@ function validateGrantRequests(
   }
 }
 
+// Revoke validation relaxes the catalog check: a retired ability that is no longer
+// in the catalog may still have persisted ownership that needs to be removed.
+function validateRevokeRequests(
+  ownership: AbilityGrantOwnership,
+  requests: readonly AbilityGrantRequest[],
+): void {
+  const owners = sourceOwnerMap(ownership);
+  for (const request of requests) {
+    // Allow catalog-missing (retired) ability IDs — normalizeAbilityState preserves
+    // them as inert ownership and equipment revokers scan those entries.
+    validatePersistedAbilityKind(request.abilityId, request.kind);
+    const sourceId = validateSourceForKind(request.sourceId, request.kind, request.abilityId);
+    const requestedOwner = `${request.kind}:${request.abilityId}`;
+    const existingOwner = owners.get(sourceId);
+    if (existingOwner !== undefined && existingOwner !== requestedOwner) {
+      throw new AbilityGrantError(
+        'source-conflict',
+        `Ability grant source ${sourceId} already owns ${existingOwner}`,
+      );
+    }
+  }
+}
+
 export function grantAbilitySources(
   world: GameWorld,
   holderEid: number,
@@ -392,11 +415,11 @@ export function revokeAbilitySources(
 ): void {
   const existing = world.abilityStatesByEntity.get(holderEid);
   if (existing === undefined) {
-    validateGrantRequests(emptyGrantOwnership(), requests);
+    validateRevokeRequests(emptyGrantOwnership(), requests);
     return;
   }
   const draft = cloneNormalizedAbilityState(existing);
-  validateGrantRequests(draft.grantOwnership, requests);
+  validateRevokeRequests(draft.grantOwnership, requests);
   const removedPassives = new Set<string>();
 
   for (const request of requests) {

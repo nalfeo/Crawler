@@ -270,6 +270,42 @@ describe('source-owned ability grants', () => {
     expect(normalized.passiveAbilityIds).toEqual([]);
   });
 
+  it('revokeAbilitySources removes persisted ownership for a retired (catalog-missing) ability', () => {
+    // normalizeAbilityState preserves unknown IDs as inert ownership; the equipment
+    // revoker must be able to clear them even after registry teardown.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const activeSrc = equipmentAbilityGrantSourceId('gei:v1:retire-test:0', 0);
+    const passiveSrc = equipmentAbilityGrantSourceId('gei:v1:retire-test:0', 1);
+    // Inject persisted ownership for retired abilities directly.
+    world.abilityStatesByEntity.set(player, {
+      learnedSpellIds: [],
+      equippedActiveAbilityIds: [],
+      ownedActiveAbilityIds: [],
+      passiveAbilityIds: [],
+      cooldownByAbilityId: new Map(),
+      cooldownFramesByAbilityId: new Map(),
+      appliedPassiveAbilityIds: new Set(),
+      grantOwnership: {
+        schemaVersion: 'ability-grant-ownership/v1',
+        activeSourcesByAbilityId: new Map([['retired-active', new Set([activeSrc])]]),
+        passiveSourcesByAbilityId: new Map([['retired-passive-old', new Set([passiveSrc])]]),
+      },
+    });
+
+    // Revoking retired IDs must not throw 'unknown-ability'.
+    expect(() =>
+      revokeAbilitySources(world, player, [
+        { kind: 'active', abilityId: 'retired-active', sourceId: activeSrc },
+        { kind: 'passive', abilityId: 'retired-passive-old', sourceId: passiveSrc },
+      ]),
+    ).not.toThrow();
+
+    const state = world.abilityStatesByEntity.get(player);
+    expect(state?.grantOwnership?.activeSourcesByAbilityId.has('retired-active')).toBe(false);
+    expect(state?.grantOwnership?.passiveSourcesByAbilityId.has('retired-passive-old')).toBe(false);
+  });
+
   it('requires ownership for the strict active configuration primitive', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);

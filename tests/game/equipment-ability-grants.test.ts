@@ -140,4 +140,19 @@ describe('generated equipment ability grants', () => {
       revokeEquipmentAbilitySources(target, targetPlayer, instance.instanceId),
     ).not.toThrow();
   });
+
+  it('rejects a malformed instanceId before prefix-scanning ownership', () => {
+    // A partial ID like "gei:v1:run" would match every source for that run and
+    // could revoke grants from multiple instances instead of failing explicitly.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+
+    expect(() =>
+      revokeEquipmentAbilitySources(
+        world,
+        player,
+        'gei:v1:run' as Parameters<typeof revokeEquipmentAbilitySources>[2],
+      ),
+    ).toThrow(/invalid generated equipment instance id/i);
+  });
 });

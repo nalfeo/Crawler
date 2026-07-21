@@ -1,7 +1,10 @@
 import { requireGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import type { GameWorld } from '../core/world.js';
 import { equipmentAbilityGrantSourceId } from '../shared/abilities.js';
-import type { GeneratedEquipmentInstanceId } from '../shared/generated-equipment-types.js';
+import {
+  isValidGeneratedInstanceId,
+  type GeneratedEquipmentInstanceId,
+} from '../shared/generated-equipment-types.js';
 import {
   grantAbilitySources,
   revokeAbilitySources,
@@ -31,6 +34,13 @@ function revocationRequestsForInstance(
   holderEid: number,
   instanceId: GeneratedEquipmentInstanceId,
 ): readonly AbilityGrantRequest[] {
+  // Validate the full instance ID before using it as a source prefix.  A
+  // partial / malformed ID (e.g. "gei:v1:run") would otherwise match every
+  // source that begins with that substring and revoke grants from unrelated
+  // instances instead of failing explicitly.
+  if (!isValidGeneratedInstanceId(instanceId)) {
+    throw new Error(`Invalid generated equipment instance ID: ${instanceId}`);
+  }
   const ownership = world.abilityStatesByEntity.get(holderEid)?.grantOwnership;
   if (ownership === undefined) return [];
   const sourcePrefix = `equipment:${instanceId}:`;
