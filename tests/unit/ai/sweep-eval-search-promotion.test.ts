@@ -38,6 +38,11 @@ import {
   type ShardArtifact,
   type ShardMeta,
 } from '../../../scripts/agent/perf/aggregate-shards.js';
+import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
+import {
+  baseConfigForCombo,
+  configId,
+} from '../../../scripts/agent/perf/gen-configs.js';
 
 const VICTORY_SCORE = 1_000_000;
 const BUDGET_MS = 360_000;
@@ -380,6 +385,9 @@ describe('selectSearchPromotion', () => {
 
 describe('assertLegacyBaselineProvenance', () => {
   const LEGACY_COMBO = 'legacy+legacy';
+  const CANONICAL_LEGACY_CONFIG_ID = configId(
+    baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+  );
   const VALID_META: ShardMeta = {
     schemaVersion: SHARD_SCHEMA_VERSION,
     budgetMs: BUDGET_MS,
@@ -404,29 +412,38 @@ describe('assertLegacyBaselineProvenance', () => {
   function validArtifact(): ShardArtifact {
     const rows: RunRow[] = [];
     for (let seed = 1; seed <= 3; seed++) {
-      rows.push(row({ combo: LEGACY_COMBO, configId: 'legacy-base', weapon: 'sword', seed }));
+      rows.push(
+        row({ combo: LEGACY_COMBO, configId: CANONICAL_LEGACY_CONFIG_ID, weapon: 'sword', seed }),
+      );
     }
     return {
       meta: VALID_META,
-      configs: { 'legacy-base': {} as never },
+      configs: { [CANONICAL_LEGACY_CONFIG_ID]: {} as never },
       rows,
     };
   }
 
   it('accepts a well-formed --legacy-baseline artifact and returns its sole configId', () => {
-    expect(assertLegacyBaselineProvenance(validArtifact(), EXPECTED)).toBe('legacy-base');
+    expect(assertLegacyBaselineProvenance(validArtifact(), EXPECTED)).toBe(
+      CANONICAL_LEGACY_CONFIG_ID,
+    );
   });
 
   it('rejects an artifact with more than one config', () => {
     const artifact = validArtifact();
-    artifact.configs['legacy-base-2'] = {} as never;
+    artifact.configs['extra-config-id'] = {} as never;
     expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/exactly one config/);
   });
 
   it('rejects an artifact whose rows are not all tagged the LEGACY combo', () => {
     const artifact = validArtifact();
     artifact.rows.push(
-      row({ combo: 'navmeshFused+slackAware', configId: 'legacy-base', weapon: 'sword', seed: 4 }),
+      row({
+        combo: 'navmeshFused+slackAware',
+        configId: CANONICAL_LEGACY_CONFIG_ID,
+        weapon: 'sword',
+        seed: 4,
+      }),
     );
     expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(
       /must all be tagged combo/,
@@ -494,6 +511,24 @@ describe('assertLegacyBaselineProvenance', () => {
     artifact.rows[0] = { ...firstRow, configId: 'wrong-config-id' };
     expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(
       /must all reference the sole configId/,
+    );
+  });
+
+  it('rejects a tuned legacy+legacy shard — only the canonical LEGACY base config is a valid fixed incumbent', () => {
+    // A `--stage search-eval` shard for a tuned legacy+legacy candidate has one
+    // config, LEGACY-tagged rows, and valid provenance — but its configId is NOT
+    // the canonical LEGACY base config. The fixed incumbent must be exactly the
+    // canonical base, not a search-tuned variant of it.
+    const tunedId = CANONICAL_LEGACY_CONFIG_ID + ',scanRadius=0.9500';
+    const artifact: ShardArtifact = {
+      meta: VALID_META,
+      configs: { [tunedId]: {} as never },
+      rows: [1, 2, 3].map((seed) =>
+        row({ combo: LEGACY_COMBO, configId: tunedId, weapon: 'sword', seed }),
+      ),
+    };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(
+      /canonical LEGACY base config/,
     );
   });
 });

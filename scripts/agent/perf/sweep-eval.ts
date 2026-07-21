@@ -318,6 +318,16 @@ export function assertLegacyBaselineProvenance(
       `--legacy-baseline artifact must contain exactly one config, got ${legacyIds.length}.`,
     );
   }
+  const canonicalLegacyConfigId = configId(
+    baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+  );
+  if (legacyId !== canonicalLegacyConfigId) {
+    throw new Error(
+      `--legacy-baseline artifact configId '${legacyId}' is not the canonical LEGACY base config ` +
+        `(expected '${canonicalLegacyConfigId}'). A tuned legacy+legacy shard must not be used as ` +
+        `the fixed incumbent. Produce it via '--stage search-baseline --combo ${LEGACY_COMBO_ID}'.`,
+    );
+  }
   const rowCombos = new Set(artifact.rows.map((r) => r.combo));
   if (rowCombos.size !== 1 || !rowCombos.has(LEGACY_COMBO_ID)) {
     throw new Error(
