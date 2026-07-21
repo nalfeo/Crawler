@@ -16,11 +16,13 @@ import {
   hydrateRecoveryOwnership,
   isRepairWindowSweepEvent,
   isRetryableError,
+  listRecentOutstandingRunIds,
   partitionDispatchable,
   recoveryStateFromComments,
   requestWithBackoff,
   recoveryTriggerForPr,
   isManagedCommentEvent,
+  waitForDispatchedRunsVisible,
   waitForOutstandingCount,
 } from './router.mjs';
 import {
@@ -1060,23 +1062,20 @@ test('partitionDispatchable defers PRs beyond the computed budget', () => {
   });
 });
 
-test('countOutstandingRecoveryRuns filters outstanding statuses from one paginated workflow snapshot', async () => {
-  const calls = [];
-  const allRuns = Array.from({ length: 100 }, (_, index) => ({
-    id: index,
-    status: index < 98 ? 'queued' : 'completed',
-  })).concat([
-    { id: 100, status: 'in_progress' },
-    { id: 101, status: 'requested' },
-    { id: 102, status: 'success' },
-  ]);
+test('countOutstandingRecoveryRuns uses concurrent per-status total_count queries (O(statuses) requests)', async () => {
+  // The implementation must NOT paginate all runs -- the live CI Recovery
+  // workflow can accumulate tens of thousands of completed runs, and a full
+  // pagination at 100 runs/request would exhaust the Actions token quota and
+  // 10-minute job timeout. Instead it fires one concurrent request per status
+  // using the `total_count` field in the response, keeping request count fixed
+  // at O(len(statuses)).
+  const queriedStatuses = [];
   const requestFn = async (_token, path) => {
-    calls.push(path);
     const url = new URL(path, 'http://example.test');
-    const page = Number(url.searchParams.get('page'));
-    const perPage = 100;
-    const slice = allRuns.slice((page - 1) * perPage, page * perPage);
-    return { data: { total_count: allRuns.length, workflow_runs: slice } };
+    const status = url.searchParams.get('status');
+    queriedStatuses.push(status);
+    const counts = { queued: 3, in_progress: 1, waiting: 2, requested: 0, pending: 1 };
+    return { data: { total_count: counts[status] ?? 0, workflow_runs: [] } };
   };
 
   const total = await countOutstandingRecoveryRuns(
@@ -1084,34 +1083,33 @@ test('countOutstandingRecoveryRuns filters outstanding statuses from one paginat
     'nalfeo',
     'Crawler',
     'ci-recovery.yml',
-    ['queued', 'in_progress', 'waiting', 'requested'],
+    ['queued', 'in_progress', 'waiting', 'requested', 'pending'],
     requestFn,
   );
 
-  assert.equal(total, 100);
-  assert.ok(
-    calls.some((path) => path.includes('page=2')),
-    'must paginate past a full page',
+  assert.equal(total, 7, 'must sum total_count across all queried statuses');
+  assert.deepEqual(
+    new Set(queriedStatuses),
+    new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']),
+    'must query each outstanding status exactly once',
   );
   assert.ok(
-    calls.every((path) => !path.includes('status=')),
-    'the workflow runs endpoint should be queried once per page, not once per status',
+    queriedStatuses.every((s) => s !== null),
+    'each request must carry a status= filter',
   );
+  // Exactly one request per status (no pagination):
+  assert.equal(queriedStatuses.length, 5, 'must issue exactly one request per status');
 });
 
 test('countOutstandingRecoveryRuns counts pending runs by default', async () => {
   // Regression guard: pending is a documented Actions run status; omitting
   // it from the default status list would let a run in that state go
   // uncounted and silently widen the outstanding-run gap.
-  const requestFn = async () => ({
-    data: {
-      total_count: 2,
-      workflow_runs: [
-        { id: 1, status: 'pending' },
-        { id: 2, status: 'completed' },
-      ],
-    },
-  });
+  const requestFn = async (_token, path) => {
+    const url = new URL(path, 'http://example.test');
+    const status = url.searchParams.get('status');
+    return { data: { total_count: status === 'pending' ? 1 : 0, workflow_runs: [] } };
+  };
   const total = await countOutstandingRecoveryRuns(
     'token',
     'nalfeo',
@@ -1121,6 +1119,95 @@ test('countOutstandingRecoveryRuns counts pending runs by default', async () => 
     requestFn,
   );
   assert.equal(total, 1, 'default OUTSTANDING_RUN_STATUSES must include pending');
+});
+
+test('listRecentOutstandingRunIds returns IDs of outstanding runs from first page only', async () => {
+  const requestFn = async () => ({
+    data: {
+      total_count: 5,
+      workflow_runs: [
+        { id: 1001, status: 'queued' },
+        { id: 1002, status: 'in_progress' },
+        { id: 1003, status: 'completed' },
+        { id: 1004, status: 'waiting' },
+        { id: 1005, status: 'success' },
+      ],
+    },
+  });
+  const ids = await listRecentOutstandingRunIds(
+    'token',
+    'nalfeo',
+    'Crawler',
+    'ci-recovery.yml',
+    ['queued', 'pending', 'in_progress', 'waiting', 'requested'],
+    requestFn,
+  );
+  assert.deepEqual(ids, new Set([1001, 1002, 1004]), 'must return only outstanding run IDs');
+});
+
+test('waitForDispatchedRunsVisible resolves when a newly dispatched run appears', async () => {
+  // Pre-dispatch: runs 1000 and 1001 were already outstanding.
+  const preDispatchIds = new Set([1000, 1001]);
+  let visibleIds = new Set([1000, 1001]); // new run not yet visible
+  let now = 0;
+  const sleeps = [];
+  const sleepFn = async (ms) => {
+    sleeps.push(ms);
+    now += ms;
+    // Newly dispatched run 1002 appears during the poll.
+    visibleIds = new Set([1000, 1001, 1002]);
+  };
+
+  const newCount = await waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
+    timeoutMs: 30,
+    pollIntervalMs: 10,
+    nowFn: () => now,
+    sleepFn,
+    listFn: async () => visibleIds,
+  });
+
+  assert.equal(newCount, 1);
+  assert.equal(sleeps.length, 1, 'must stop polling as soon as the new run is visible');
+});
+
+test('waitForDispatchedRunsVisible does not time out when a pre-existing run completes while waiting', async () => {
+  // Models the scenario the old waitForOutstandingCount would fail: invocation
+  // dispatches one run, but a pre-existing run completes right after dispatch.
+  // The aggregate outstanding count stays the same, but the new run IS visible.
+  const preDispatchIds = new Set([1000]); // one run was outstanding before dispatch
+  // Pre-existing run 1000 completed; new run 1001 appeared.
+  const visibleIds = new Set([1001]); // 1000 gone, 1001 new
+
+  const newCount = await waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
+    timeoutMs: 100,
+    pollIntervalMs: 10,
+    nowFn: () => 0,
+    sleepFn: async () => {},
+    listFn: async () => visibleIds,
+  });
+
+  assert.equal(newCount, 1, 'must detect the new run even though a pre-existing run completed');
+});
+
+test('waitForDispatchedRunsVisible rejects on timeout when no new runs ever appear', async () => {
+  const preDispatchIds = new Set([1000]);
+  let now = 0;
+  const sleeps = [];
+  await assert.rejects(
+    waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
+      timeoutMs: 10,
+      pollIntervalMs: 5,
+      nowFn: () => now,
+      sleepFn: async (ms) => {
+        sleeps.push(ms);
+        now += ms;
+      },
+      // Same IDs as pre-dispatch: no new run appeared.
+      listFn: async () => new Set([1000]),
+    }),
+    /Timed out waiting for 1 dispatched run\(s\) to become visible via Actions API/,
+  );
+  assert.deepEqual(sleeps, [5, 5], 'must keep the concurrency slot until timeout is exhausted');
 });
 
 test('waitForOutstandingCount observes a newly dispatched run before returning', async () => {
@@ -1175,14 +1262,14 @@ test('waitForOutstandingCount holds the router slot until timeout, then rejects 
 test('serialized router invocations do not both under-count the same in-flight dispatch (TOCTOU close)', async () => {
   // Models the exact race a plan reviewer flagged: invocation A dispatches
   // under the train cap, then -- per runFromEnv -- must observe its own
-  // dispatch via waitForOutstandingCount before this invocation ends and
+  // dispatch via waitForDispatchedRunsVisible before this invocation ends and
   // the router's `queue: max` concurrency group releases the slot to
   // invocation B. Without that wait, B could read a stale outstandingCount
   // of 0 and dispatch a second run, breaching GLOBAL_TRAIN_DISPATCH_CAP.
-  let apiVisibleCount = 0;
-  const countFn = async () => apiVisibleCount;
+  const preDispatchIds = new Set(); // no runs outstanding before A dispatches
+  let apiVisibleIds = new Set();
   const sleepFn = async () => {
-    apiVisibleCount = 1; // the dispatched run becomes visible during A's poll
+    apiVisibleIds = new Set([1001]); // the dispatched run becomes visible during A's poll
   };
 
   // Invocation A: budget allows exactly one dispatch.
@@ -1192,16 +1279,17 @@ test('serialized router invocations do not both under-count the same in-flight d
   });
   const { dispatchable: dispatchableA } = partitionDispatchable([101], budgetA);
   assert.deepEqual(dispatchableA, [101]);
-  await waitForOutstandingCount('token', 'nalfeo', 'Crawler', 1, {
-    attempts: 3,
-    delayMs: 1,
+  await waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
+    timeoutMs: 30,
+    pollIntervalMs: 10,
+    nowFn: () => 0,
     sleepFn,
-    countFn,
+    listFn: async () => apiVisibleIds,
   });
 
   // Invocation B only starts once A's serialized slot is released, so it
   // now reads the up-to-date, post-dispatch count.
-  const outstandingForB = await countFn();
+  const outstandingForB = apiVisibleIds.size;
   const budgetB = computeDispatchBudget({
     trainQueueNonEmpty: true,
     outstandingCount: outstandingForB,

@@ -510,36 +510,20 @@ export function isManagedCommentEvent(payload, eventName) {
   return MANAGED_COMMENT_MARKERS.some((marker) => body.startsWith(marker));
 }
 
-// Fetches every run of `workflowFile`, paginating until a short page confirms
-// the end. countOutstandingRecoveryRuns() filters outstanding statuses
-// client-side from this single logical snapshot instead of summing several
-// independently-timed status-filtered API views.
-export async function listWorkflowRuns(token, owner, repo, workflowFile, requestFn = request) {
-  const results = [];
-  let page = 1;
-  while (true) {
-    const { data } = await requestWithBackoff(
-      () =>
-        requestFn(
-          token,
-          `/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?per_page=100&page=${page}`,
-        ),
-      { label: `list-runs-${workflowFile}-page${page}` },
-    );
-    const runs = data?.workflow_runs || [];
-    results.push(...runs);
-    if (runs.length < 100) {
-      return results;
-    }
-    page += 1;
-  }
-}
-
 // Total number of `workflowFile` runs currently outstanding (not yet
 // completed) across every status that represents unfinished work,
 // including runs held `waiting`/`requested` behind a concurrency group --
 // those still occupy a dispatch slot even though a runner hasn't picked
 // them up yet.
+//
+// Implementation: fires one concurrent `?status=<s>&per_page=1` request per
+// status and sums the `total_count` fields. This is O(len(statuses)) requests
+// (5 for the default set) rather than O(total_runs/100) for a full history
+// paginator -- critical because the CI Recovery workflow can accumulate tens
+// of thousands of completed runs. The minor TOCTOU window (a run could
+// transition between two queried statuses while the concurrent requests are
+// in-flight) is accepted as the price of keeping this call fast enough to
+// run inside a 10-minute job timeout with repeated visibility polls.
 export async function countOutstandingRecoveryRuns(
   token,
   owner,
@@ -548,9 +532,53 @@ export async function countOutstandingRecoveryRuns(
   statuses = OUTSTANDING_RUN_STATUSES,
   requestFn = request,
 ) {
+  const counts = await Promise.all(
+    statuses.map((status) =>
+      requestWithBackoff(
+        () =>
+          requestFn(
+            token,
+            `/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?status=${encodeURIComponent(status)}&per_page=1`,
+          ),
+        { label: `list-runs-count-${workflowFile}-${status}` },
+      ).then(({ data }) => data?.total_count ?? 0),
+    ),
+  );
+  return counts.reduce((sum, c) => sum + c, 0);
+}
+
+// Returns the IDs of currently outstanding runs from the first page of the
+// workflow run history (up to 100 most-recent runs). Used by runFromEnv to
+// build a pre-dispatch snapshot so waitForDispatchedRunsVisible can
+// distinguish newly created runs from pre-existing outstanding ones.
+//
+// Restricting to the first page is safe here because GitHub orders workflow
+// runs by created_at descending, so newly dispatched runs always appear at
+// the top. The only risk of missing a pre-existing outstanding run is if
+// there are >100 outstanding runs simultaneously, which well exceeds any
+// realistic level at this repo's scale.
+export async function listRecentOutstandingRunIds(
+  token,
+  owner,
+  repo,
+  workflowFile = 'ci-recovery.yml',
+  statuses = OUTSTANDING_RUN_STATUSES,
+  requestFn = request,
+) {
+  const { data } = await requestWithBackoff(
+    () =>
+      requestFn(
+        token,
+        `/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?per_page=100`,
+      ),
+    { label: `list-runs-recent-${workflowFile}` },
+  );
   const outstandingStatuses = new Set(statuses);
-  const runs = await listWorkflowRuns(token, owner, repo, workflowFile, requestFn);
-  return runs.filter((run) => outstandingStatuses.has(run.status)).length;
+  return new Set(
+    (data?.workflow_runs || [])
+      .filter((r) => outstandingStatuses.has(r.status))
+      .map((r) => r.id),
+  );
 }
 
 // How many more CI Recovery dispatches this router invocation may send.
@@ -606,17 +634,57 @@ export function partitionDispatchable(prNumbers, budget) {
 // becomes visible to the Actions list-runs API". The router concurrency
 // group (see ci-recovery-router.yml) serializes invocations, but only for
 // the duration each invocation is running: if this run finishes and frees
-// its slot before the dispatch it just made shows up in
-// countOutstandingRecoveryRuns, the *next* serialized invocation can read a
-// stale (too-low) outstanding count and dispatch again, breaching the
-// global cap. Polling here, before this invocation's slot is released,
-// makes that race materially narrower but still not airtight: this invocation
-// now holds the concurrency slot until the dispatch becomes visible or until a
-// long timeout expires, then fails closed instead of silently logging and
-// succeeding. That means the residual gap now requires Actions list-runs
-// visibility to lag for nearly the whole workflow timeout, not just a couple of
-// quick polls; fully closing it still needs a durable reservation the next
-// invocation can observe.
+// its slot before the dispatch it just made shows up in the API, the *next*
+// serialized invocation can read a stale outstanding count and dispatch again,
+// breaching the global cap.
+//
+// This function accepts a pre-dispatch snapshot of outstanding run IDs and
+// polls until `count` NEW runs (IDs not in `preDispatchIds`) appear. Using
+// pre-dispatch IDs rather than an aggregate minimum count correctly handles
+// the case where pre-existing outstanding runs complete while we are waiting:
+// those completions lower the aggregate count but do not affect the new-run
+// tally, so the wait converges correctly regardless of concurrent completions.
+//
+// The router holds its concurrency slot until either the new runs become
+// visible or a long timeout expires, at which point it fails closed (throws)
+// rather than silently succeeding. That means the residual race now requires
+// Actions list-runs visibility to lag for nearly the whole workflow timeout,
+// not just a couple of quick polls; fully closing it still needs a durable
+// reservation the next invocation can observe.
+export async function waitForDispatchedRunsVisible(
+  token,
+  owner,
+  repo,
+  preDispatchIds,
+  count,
+  {
+    timeoutMs = DEFAULT_OUTSTANDING_VISIBILITY_TIMEOUT_MS,
+    pollIntervalMs = DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS,
+    nowFn = () => Date.now(),
+    sleepFn = sleep,
+    listFn = (t, o, r) => listRecentOutstandingRunIds(t, o, r),
+  } = {},
+) {
+  const deadline = nowFn() + timeoutMs;
+  while (true) {
+    const currentIds = await listFn(token, owner, repo);
+    const newCount = [...currentIds].filter((id) => !preDispatchIds.has(id)).length;
+    if (newCount >= count) {
+      return newCount;
+    }
+    const remainingMs = deadline - nowFn();
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Timed out waiting for ${count} dispatched run(s) to become visible via Actions API observed_new=${newCount} timeout_ms=${timeoutMs}`,
+      );
+    }
+    await sleepFn(Math.min(pollIntervalMs, remainingMs));
+  }
+}
+
+// Kept for backward compatibility. New callers should use
+// waitForDispatchedRunsVisible, which accepts pre-dispatch run IDs to avoid
+// false timeouts when pre-existing outstanding runs complete while waiting.
 export async function waitForOutstandingCount(
   token,
   owner,
@@ -744,6 +812,15 @@ export async function runFromEnv(env = process.env) {
   // global group in every mode, so this budget is enforced against fully
   // serialized invocations -- see computeDispatchBudget for what that does
   // and does not close.
+  //
+  // Known limitation: merge-train/reconcile.mjs calls dispatchRecovery()
+  // directly (at lines ~517, ~590, ~665, ~798 in that file) and is NOT
+  // serialized through this router's concurrency group. A reconcile dispatch
+  // racing with a router dispatch can briefly push the live outstanding run
+  // count above GLOBAL_TRAIN_DISPATCH_CAP=1 in the train-backlog case.
+  // Closing that residual gap requires routing all CI Recovery dispatches
+  // through a shared admission mechanism -- flagged as a follow-up in the
+  // handoff's "Unresolved issues" section.
   const trainQueueNonEmpty = queueEntries(scheduledPulls, repository).length > 0;
   const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
   const dispatchBudget = computeDispatchBudget({
@@ -751,6 +828,13 @@ export async function runFromEnv(env = process.env) {
     outstandingCount,
   });
   const { dispatchable, deferred } = partitionDispatchable(prNumbers, dispatchBudget);
+
+  // Capture pre-dispatch outstanding run IDs so waitForDispatchedRunsVisible
+  // below can identify newly appeared runs rather than relying on an aggregate
+  // count that would break if pre-existing runs complete while we are
+  // dispatching (they would lower the aggregate, preventing convergence).
+  const preDispatchIds =
+    dispatchable.length > 0 ? await listRecentOutstandingRunIds(token, owner, repo) : new Set();
 
   for (const prNumber of dispatchable) {
     const prTrigger = recoveryTriggerForPr({
@@ -760,22 +844,23 @@ export async function runFromEnv(env = process.env) {
       eventName,
       dispatchTrigger,
     });
-    await requestWithBackoff(
-      () =>
-        request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
-          method: 'POST',
-          body: {
-            ref: payload.repository?.default_branch || 'main',
-            inputs: {
-              operation: 'reconcile',
-              pr_number: String(prNumber),
-              trigger: prTrigger,
-              lease_id: '',
-            },
-          },
-        }),
-      { label: `dispatch-pr-${prNumber}` },
-    );
+    // Use a direct request() -- do NOT wrap in requestWithBackoff. The
+    // workflow_dispatch POST is non-idempotent: if GitHub accepts the first
+    // request but the response is lost or returns an ambiguous 5xx, retrying
+    // would create a second run, immediately violating the global cap. The
+    // 10-minute scheduled sweep retries failed dispatches instead.
+    await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
+      method: 'POST',
+      body: {
+        ref: payload.repository?.default_branch || 'main',
+        inputs: {
+          operation: 'reconcile',
+          pr_number: String(prNumber),
+          trigger: prTrigger,
+          lease_id: '',
+        },
+      },
+    });
     process.stdout.write(`dispatched pr=#${prNumber} trigger=${prTrigger}\n`);
   }
 
@@ -787,8 +872,7 @@ export async function runFromEnv(env = process.env) {
   }
 
   if (dispatchable.length > 0) {
-    const expectedMinimum = outstandingCount + dispatchable.length;
-    await waitForOutstandingCount(token, owner, repo, expectedMinimum);
+    await waitForDispatchedRunsVisible(token, owner, repo, preDispatchIds, dispatchable.length);
   }
 
   if (dispatchable.length === 0 && deferred.length === 0) {

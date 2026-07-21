@@ -23,19 +23,17 @@ Fixed the root cause of the 2026-07-21 CI Recovery thundering-herd incident, whe
 `CI_RECOVERY_MAX_DISPATCH_PER_RUN=8` with no shared view of total outstanding
 dispatches, producing 30+ queued/pending CI Recovery `workflow_dispatch` runs and
 starving Merge Train Validation of runner capacity. Two-part fix: (1) serialize
-ALL router invocations into one global concurrency group while the train feature
-is enabled (previously only a narrow event subset shared that group), with
-`queue: max` scoped so bursts queue instead of being dropped, without breaking
-the legacy flag-off cron/manual-dispatch path (`queue: max` cannot combine with
-`cancel-in-progress: true`, which that legacy path can set); (2) a
-capacity-aware dispatch budget in `router.mjs` that counts existing outstanding
-CI Recovery runs before dispatching, hard-caps outstanding runs to 1 while the
-merge-train queue is non-empty and to 2 whenever it is empty (measured capacity
-evidence: public repo, 20-job Actions concurrency limit; uncontended Validation
-peaks 7-9 concurrent jobs; an AI Sweep Eval run alone peaked at ~19 concurrent,
-which is what starved Validation runners), plus a bounded poll
-(`waitForOutstandingCount`) that closes a TOCTOU race between dispatching a run
-and it becoming visible via the Actions list-runs API.
+ALL router invocations — in every mode, every event type — into one unconditional
+static global concurrency group (`crawler-ci-recovery-router`,
+`cancel-in-progress: false`, `queue: max`; no `MERGE_TRAIN_ENABLED` branching, no
+per-PR/per-sweep fallback groups); (2) a capacity-aware dispatch budget in
+`router.mjs` that counts existing outstanding CI Recovery runs before dispatching,
+hard-caps outstanding runs to 1 while the merge-train queue is non-empty and to 2
+whenever it is empty (measured capacity evidence: public repo, 20-job Actions
+concurrency limit; uncontended Validation peaks 7-9 concurrent jobs; an AI Sweep
+Eval run alone peaked at ~19 concurrent, which is what starved Validation runners),
+plus a visibility wait (`waitForDispatchedRunsVisible`) that closes a TOCTOU race
+between dispatching a run and it becoming visible via the Actions list-runs API.
 
 **Post-merge correction (same PR, same day)**: the parent session flagged that
 the initial cut left the dispatch budget **unbounded (`Infinity`)** whenever
@@ -93,18 +91,22 @@ final design.
     backlog — queue empty, train idle, **or the train feature disabled**).
   - `OUTSTANDING_RUN_STATUSES` now includes `pending` (a documented Actions run
     status previously omitted, which would have undercounted outstanding runs).
-  - New `listWorkflowRunsByStatus` (custom pagination — the Actions "list
-    workflow runs" endpoint returns `{ total_count, workflow_runs }`, not a bare
-    array, so the repo's generic `paginate()` helper couldn't be reused),
-    `countOutstandingRecoveryRuns`, `computeDispatchBudget` (takes only
+  - New `listRecentOutstandingRunIds` (fetches first page of the workflow run
+    history and returns outstanding run IDs — used for the pre-dispatch snapshot,
+    not for counting, which uses the concurrent `total_count` approach below),
+    `countOutstandingRecoveryRuns` (concurrent per-status `total_count` queries
+    — O(5 requests) instead of O(total_runs/100) — previously used a full
+    history paginator that would have required ~349 requests for the 34,814-run
+    live workflow, exhausting the token quota and 10-minute timeout),
+    `computeDispatchBudget` (takes only
     `trainQueueNonEmpty`/`outstandingCount` — **no `trainEnabled` parameter and
     no `Infinity` branch**: backlog non-empty → cap 1; backlog empty/absent,
     including with the train feature off → cap 2), `partitionDispatchable`,
-    and `waitForOutstandingCount` (bounded poll that closes the narrower TOCTOU
-    window between a dispatch and its own visibility via the Actions API —
-    degrades to a logged warning on timeout rather than hanging, relying on
-    the existing 10-minute scheduled sweep as the eventual-consistency
-    backstop).
+    and `waitForDispatchedRunsVisible` (replaces the old aggregate-count based
+    `waitForOutstandingCount` for the dispatch path; accepts a pre-dispatch ID
+    snapshot so completions of pre-existing runs do not prevent convergence;
+    holds the concurrency slot until `count` NEW run IDs appear or a ~8 minute
+    timeout expires and rejects — failing closed rather than silently succeeding).
   - `runFromEnv()` now **always** fetches the open-PR list, computes
     train-queue-non-empty status, and fetches the outstanding recovery-run
     count — unconditionally, not gated on `MERGE_TRAIN_ENABLED` — computes the
@@ -114,13 +116,14 @@ final design.
     derived from `queueEntries()`, which itself keys off the `merge-train` PR
     label rather than the feature flag, so a stale label surviving a flag-off
     still correctly forces the stricter cap of 1 (fail closed).
-- **Tests (`router.test.mjs`)**: 48 tests total, including:
+- **Tests (`router.test.mjs`)**: 54 tests total, including:
   `computeDispatchBudget`/`partitionDispatchable`/`countOutstandingRecoveryRuns`
   unit tests covering the backlog-present, backlog-empty, and
   train-feature-disabled cases (the last of these proves the cap is still 2,
   never `Infinity`, when `trainQueueNonEmpty: false` regardless of why);
-  `waitForOutstandingCount` tests (observes newly-visible count, gives up after
-  bounded attempts, and a composed TOCTOU-race-closing test); three burst-bound
+  `waitForDispatchedRunsVisible` tests (observes a newly-visible run by ID,
+  handles pre-existing run completions without timing out, rejects on
+  timeout, and a composed TOCTOU-race-closing test); three burst-bound
   proof tests: the train-backlog-non-empty case (25 events → exactly 1
   dispatch, cap never breached mid-burst), the train-idle-but-enabled case (25
   events → exactly 2 dispatches), and the **train-feature-disabled** case (25
@@ -151,7 +154,7 @@ unconditional.
 
 ## Verification run
 
-- `node --test .github/scripts/ci-recovery/router.test.mjs`: 48/48 passing.
+- `node --test .github/scripts/ci-recovery/router.test.mjs`: 54/54 passing.
 - `npm run lint`: clean.
 - `npm run verify:fast`: passed.
 - `npm run test:guards`: 1273 tests; 6 pre-existing failures confirmed via
@@ -183,6 +186,17 @@ minor`, 2 concerns raised and resolved before implementation was finalized:
   composed TOCTOU test that calls the same functions in the same sequence
   `runFromEnv` does, cover the new logic's correctness; they don't prove the
   wiring inside `runFromEnv` itself is correct end-to-end.
+- **reconcile.mjs bypass**: `merge-train/reconcile.mjs` calls
+  `dispatchRecovery()` directly (lines ~517, ~590, ~665, ~798 in that file)
+  and is NOT serialized through the router's concurrency group. A
+  reconcile-triggered dispatch racing with a router dispatch can briefly push
+  the live outstanding run count above `GLOBAL_TRAIN_DISPATCH_CAP=1` in the
+  train-backlog case. A code comment in `runFromEnv` documents this gap at
+  the call site. Closing it requires routing all CI Recovery dispatches through
+  a shared admission mechanism (e.g. a reusable workflow, a shared semaphore
+  via a repository variable, or having reconcile.mjs trigger the router
+  workflow rather than calling `dispatchRecovery()` directly) — a separate
+  follow-up.
 - GitHub's concurrency queue has an operational depth cap of ~100 pending runs
   per group (noted by the plan reviewer). This is more consequential now that
   every router event in every mode shares one global group: a burst far
