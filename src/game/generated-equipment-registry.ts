@@ -81,14 +81,16 @@ function getMap(world: GameWorld): Map<GeneratedEquipmentInstanceId, GeneratedEq
  *
  * - `runKey` must match `/^[a-z0-9][a-z0-9._-]{0,127}$/`. Use `makeRunKey`
  *   from `generated-equipment-types.ts` to sanitize a numeric seed.
- * - `ordinal` must be a non-negative integer.
+ * - `ordinal` must be a non-negative safe integer.
  *
  * The same (runKey, ordinal) pair always produces the same ID. It never uses
  * wall-clock time. Per-run, increment ordinal for each new instance.
  */
 export function createInstanceId(runKey: string, ordinal: number): GeneratedEquipmentInstanceId {
-  if (!Number.isInteger(ordinal) || ordinal < 0) {
-    throw new Error(`createInstanceId: ordinal must be a non-negative integer, got ${ordinal}`);
+  if (!Number.isSafeInteger(ordinal) || ordinal < 0) {
+    throw new Error(
+      `createInstanceId: ordinal must be a non-negative safe integer, got ${ordinal}`,
+    );
   }
   const instanceId = `gei:v1:${runKey}:${ordinal}`;
   if (!isValidGeneratedInstanceId(instanceId)) {

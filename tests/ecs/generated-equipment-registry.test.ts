@@ -191,6 +191,12 @@ describe('createInstanceId', () => {
     expect(() => createInstanceId('run', -1)).toThrow();
   });
 
+  it('rejects unsafe ordinals with an ordinal-specific error', () => {
+    expect(() => createInstanceId('run', Number.MAX_SAFE_INTEGER + 1)).toThrow(
+      /ordinal must be a non-negative safe integer/i,
+    );
+  });
+
   it('allows hyphens and underscores in run key', () => {
     const id = createInstanceId('seed-42_v1', 0);
     expect(isValidGeneratedInstanceId(id)).toBe(true);

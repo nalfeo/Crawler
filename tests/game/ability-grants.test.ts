@@ -499,22 +499,36 @@ describe('source-owned ability grants', () => {
 
   it('deduplicates and enforces ACTIVE_ABILITY_SLOT_LIMIT on persisted equippedActiveAbilityIds', () => {
     // A legacy/versioned snapshot may have duplicate or over-cap configured actives.
-    const source = learnedAbilityGrantSourceId('fireball');
+    const ownedActiveIds = [
+      'fireball',
+      'battle-focus',
+      'heal',
+      'pulse-shield',
+      'magic-missile',
+      'frost-nova',
+      'bless',
+      'stoneskin',
+      'curse',
+      'vampiric-touch',
+      'haste',
+    ] as const;
+    const expectedConfigured = ownedActiveIds.slice(0, ACTIVE_ABILITY_SLOT_LIMIT);
     const overCap: AbilityState = {
-      learnedSpellIds: ['fireball'],
-      // 11 entries: one duplicate and one over the 10-slot cap.
+      learnedSpellIds: [...ownedActiveIds],
+      // 12 entries: one duplicate and one over the 10-slot cap.
       equippedActiveAbilityIds: [
         'fireball',
         'fireball',
         'battle-focus',
-        'dash',
         'heal',
-        'summon-wolf',
-        'ice-bolt',
-        'ember-step',
-        'stone-skin',
-        'shield-bash',
-        'cleave',
+        'pulse-shield',
+        'magic-missile',
+        'frost-nova',
+        'bless',
+        'stoneskin',
+        'curse',
+        'vampiric-touch',
+        'haste',
       ],
       passiveAbilityIds: [],
       ownedActiveAbilityIds: [],
@@ -523,18 +537,16 @@ describe('source-owned ability grants', () => {
       appliedPassiveAbilityIds: new Set(),
       grantOwnership: {
         schemaVersion: 'ability-grant-ownership/v1',
-        activeSourcesByAbilityId: new Map([['fireball', new Set([source])]]),
+        activeSourcesByAbilityId: new Map(
+          ownedActiveIds.map((abilityId) => [
+            abilityId,
+            new Set<AbilityGrantSourceId>([learnedAbilityGrantSourceId(abilityId)]),
+          ]),
+        ),
         passiveSourcesByAbilityId: new Map(),
       },
     };
     const normalized = normalizeAbilityState(overCap);
-    // After dedup-and-cap, only fireball (owned) remains — unknown IDs are also stripped.
-    expect(normalized.equippedActiveAbilityIds.length).toBeLessThanOrEqual(
-      ACTIVE_ABILITY_SLOT_LIMIT,
-    );
-    // No duplicates.
-    expect(new Set(normalized.equippedActiveAbilityIds).size).toBe(
-      normalized.equippedActiveAbilityIds.length,
-    );
+    expect(normalized.equippedActiveAbilityIds).toEqual(expectedConfigured);
   });
 });

@@ -291,7 +291,25 @@ describe('player floor carryover', () => {
         ...legacyAbilityState,
         equippedActiveAbilityIds: [...legacyAbilityState.equippedActiveAbilityIds, 'retired-spell'],
         passiveAbilityIds: [...legacyAbilityState.passiveAbilityIds, 'retired-passive'],
+        appliedPassiveAbilityIds: ['veteran-instinct', 'retired-passive'],
       },
+      persistentStatModifiers: [
+        ...currentSnapshot.persistentStatModifiers,
+        {
+          sourceType: 'ability' as const,
+          sourceId: `retired-spell:active:${sourcePlayer}`,
+          stat: 'damage' as const,
+          op: 'add' as const,
+          value: 1.5,
+        },
+        {
+          sourceType: 'ability' as const,
+          sourceId: `retired-passive:passive:${sourcePlayer}:0`,
+          stat: 'armor' as const,
+          op: 'add' as const,
+          value: 2,
+        },
+      ],
     };
     const destination = createTestWorld({ seed: 17, floor: 2 });
     const destinationPlayer = spawnPlayer(destination, 0, 0);
@@ -319,6 +337,18 @@ describe('player floor carryover', () => {
     expect(restored.learnedSpellIds).not.toContain('retired-spell');
     expect(restored.equippedActiveAbilityIds).not.toContain('retired-spell');
     expect(restored.passiveAbilityIds).not.toContain('retired-passive');
+    expect(restored.appliedPassiveAbilityIds.has('retired-passive')).toBe(false);
+    expect(restored.appliedPassiveAbilityIds.has('veteran-instinct')).toBe(true);
+    expect(
+      destination.statModifiers.some(
+        (modifier) => modifier.sourceId === `retired-spell:active:${destinationPlayer}`,
+      ),
+    ).toBe(false);
+    expect(
+      destination.statModifiers.some(
+        (modifier) => modifier.sourceId === `retired-passive:passive:${destinationPlayer}:0`,
+      ),
+    ).toBe(false);
   });
 
   it('rejects unsupported ownership snapshot versions explicitly', () => {

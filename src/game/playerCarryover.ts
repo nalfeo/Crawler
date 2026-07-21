@@ -20,6 +20,7 @@ import {
   mergeAchievementFactSnapshots,
   type AchievementFactSnapshot,
 } from '../shared/achievements.js';
+import { getAbilityDefinition } from './abilities/registry.js';
 import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
 import { normalizeAbilityState, synchronizeAbilityPassives } from './systems/abilitySystem.js';
 
@@ -148,28 +149,35 @@ function restoreAbilityState(snapshot: AbilityStateSnapshot, frameCount: number)
     cooldownFramesByAbilityId: new Map(snapshot.cooldownFramesByAbilityId),
     appliedPassiveAbilityIds: new Set(snapshot.appliedPassiveAbilityIds ?? []),
   };
-  if (snapshot.grantOwnership === undefined) {
-    return normalizeAbilityState(legacyState);
-  }
-  return normalizeAbilityState({
-    ...legacyState,
-    grantOwnership: {
-      schemaVersion: snapshot.grantOwnership
-        .schemaVersion as typeof ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
-      activeSourcesByAbilityId: new Map(
-        snapshot.grantOwnership.activeSourcesByAbilityId.map(([abilityId, sources]) => [
-          abilityId,
-          new Set(sources),
-        ]),
-      ),
-      passiveSourcesByAbilityId: new Map(
-        snapshot.grantOwnership.passiveSourcesByAbilityId.map(([abilityId, sources]) => [
-          abilityId,
-          new Set(sources),
-        ]),
-      ),
-    },
-  });
+  const normalized =
+    snapshot.grantOwnership === undefined
+      ? normalizeAbilityState(legacyState)
+      : normalizeAbilityState({
+          ...legacyState,
+          grantOwnership: {
+            schemaVersion: snapshot.grantOwnership
+              .schemaVersion as typeof ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+            activeSourcesByAbilityId: new Map(
+              snapshot.grantOwnership.activeSourcesByAbilityId.map(([abilityId, sources]) => [
+                abilityId,
+                new Set(sources),
+              ]),
+            ),
+            passiveSourcesByAbilityId: new Map(
+              snapshot.grantOwnership.passiveSourcesByAbilityId.map(([abilityId, sources]) => [
+                abilityId,
+                new Set(sources),
+              ]),
+            ),
+          },
+        });
+  normalized.appliedPassiveAbilityIds = new Set(
+    [...normalized.appliedPassiveAbilityIds].filter((abilityId) => {
+      const def = getAbilityDefinition(abilityId);
+      return def?.kind === 'passive';
+    }),
+  );
+  return normalized;
 }
 
 function getModifierHolderIndex(modifier: StatModifierSnapshot): number | undefined {
@@ -201,6 +209,13 @@ function modifierBelongsToPlayer(modifier: StatModifierSnapshot, playerEid: numb
 
 function isPassiveAbilityModifier(modifier: StatModifierSnapshot): boolean {
   return modifier.sourceType === 'ability' && modifier.sourceId.split(':')[1] === 'passive';
+}
+
+function isCatalogBackedAbilityModifier(modifier: StatModifierSnapshot): boolean {
+  if (modifier.sourceType !== 'ability') return true;
+  const abilityId = modifier.sourceId.split(':')[0];
+  if (!abilityId) return true;
+  return getAbilityDefinition(abilityId) !== undefined;
 }
 
 function remapModifierHolder(
@@ -341,13 +356,15 @@ export function restorePlayerCarryover(
   const floorModifiers = world.statModifiers.filter((modifier) => modifier.sourceType === 'floor');
   world.statModifiers = [
     ...floorModifiers,
-    ...snapshot.persistentStatModifiers.map(({ expiresInFrames, ...modifier }) => ({
-      ...modifier,
-      sourceId: remapModifierHolder(modifier, snapshot.sourcePlayerEid, playerEid),
-      ...(expiresInFrames === undefined
-        ? {}
-        : { expiresFrame: world.frameCount + expiresInFrames }),
-    })),
+    ...snapshot.persistentStatModifiers
+      .filter(isCatalogBackedAbilityModifier)
+      .map(({ expiresInFrames, ...modifier }) => ({
+        ...modifier,
+        sourceId: remapModifierHolder(modifier, snapshot.sourcePlayerEid, playerEid),
+        ...(expiresInFrames === undefined
+          ? {}
+          : { expiresFrame: world.frameCount + expiresInFrames }),
+      })),
   ];
   statSystem(world);
 
