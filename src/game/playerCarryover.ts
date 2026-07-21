@@ -449,11 +449,52 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       }
     }
   };
+  const validateGeneratedActiveGrantSources = (
+    grantSources: readonly (readonly [string, readonly AbilityGrantSource[]])[] | undefined,
+  ): void => {
+    if (!grantSources) return;
+    const equippedInstanceKeys = new Set(snapshot.generatedEquippedInstanceKeys);
+    const seenGeneratedSources = new Set<string>();
+    for (const [abilityId, sources] of grantSources) {
+      for (const source of sources) {
+        if (source.kind !== 'generated-equipment') continue;
+        if (!equippedInstanceKeys.has(source.instanceId)) {
+          throw new PlayerCarryoverSnapshotError(
+            `Snapshot activeAbilityGrantSources has unequipped generated source for ${abilityId}: ${source.instanceId}`,
+          );
+        }
+        const instance = instancesByKey.get(source.instanceId);
+        if (!instance) {
+          throw new PlayerCarryoverSnapshotError(
+            `Snapshot activeAbilityGrantSources has unknown generated source for ${abilityId}: ${source.instanceId}`,
+          );
+        }
+        if (!Number.isInteger(source.effectOrdinal) || source.effectOrdinal < 0) {
+          throw new PlayerCarryoverSnapshotError(
+            `Snapshot activeAbilityGrantSources has invalid generated source ordinal for ${abilityId}: ${String(source.effectOrdinal)}`,
+          );
+        }
+        const sourceKey = `${source.instanceId}:${source.effectOrdinal}`;
+        if (seenGeneratedSources.has(sourceKey)) {
+          throw new PlayerCarryoverSnapshotError(
+            `Snapshot activeAbilityGrantSources has duplicate generated source for ${abilityId}: ${sourceKey}`,
+          );
+        }
+        seenGeneratedSources.add(sourceKey);
+        if (instance.frozen.abilityGrants[source.effectOrdinal] !== abilityId) {
+          throw new PlayerCarryoverSnapshotError(
+            `Snapshot activeAbilityGrantSources mismatches generated source for ${abilityId}: ${sourceKey}`,
+          );
+        }
+      }
+    }
+  };
   assertNoSerializedEquipmentGrantSources(
     snapshot.abilityState?.activeAbilityGrantSources,
     'activeAbilityGrantSources',
     true,
   );
+  validateGeneratedActiveGrantSources(snapshot.abilityState?.activeAbilityGrantSources);
   assertNoSerializedEquipmentGrantSources(
     snapshot.abilityState?.passiveAbilityGrantSources,
     'passiveAbilityGrantSources',

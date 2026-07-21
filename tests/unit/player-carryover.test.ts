@@ -584,6 +584,99 @@ describe('player floor carryover', () => {
     }
   });
 
+  it('fails before mutation on invalid generated active grant sources', () => {
+    const runKey = 'carryover-invalid-generated-active-source';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'armor.invalid-generated-active-source',
+        slots: ['head'],
+        grants: true,
+      }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        source,
+        sourcePlayer,
+        { kind: 'generated-instance', instanceKey: generated.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const abilityState = snapshot.abilityState;
+    expect(abilityState?.activeAbilityGrantSources).toBeDefined();
+
+    const invalidInputs: readonly unknown[] = [
+      {
+        ...snapshot,
+        generatedInventoryInstanceKeys: [
+          ...snapshot.generatedInventoryInstanceKeys,
+          generated.instanceId,
+        ],
+        generatedEquippedInstanceKeys: snapshot.generatedEquippedInstanceKeys.filter(
+          (key) => key !== generated.instanceId,
+        ),
+      },
+      {
+        ...snapshot,
+        abilityState: {
+          ...abilityState!,
+          activeAbilityGrantSources: abilityState!.activeAbilityGrantSources!.map(
+            ([abilityId, sources]) =>
+              abilityId === 'magic-missile'
+                ? ([
+                    abilityId,
+                    [
+                      {
+                        kind: 'generated-equipment',
+                        instanceId: generated.instanceId,
+                        effectOrdinal: 1,
+                      },
+                    ],
+                  ] as const)
+                : ([abilityId, sources] as const),
+          ),
+        },
+      },
+      {
+        ...snapshot,
+        abilityState: {
+          ...abilityState!,
+          activeAbilityGrantSources: [
+            [
+              'magic-missile',
+              [
+                {
+                  kind: 'generated-equipment',
+                  instanceId: generated.instanceId,
+                  effectOrdinal: 0,
+                },
+                {
+                  kind: 'generated-equipment',
+                  instanceId: generated.instanceId,
+                  effectOrdinal: 0,
+                },
+              ],
+            ],
+          ],
+        },
+      },
+    ];
+
+    for (const invalid of invalidInputs) {
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      destination.playerName = 'Unchanged';
+
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow();
+      expect(destination.playerName).toBe('Unchanged');
+      expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+    }
+  });
+
   it('does not serialize passive ability modifiers that were only granted by generated equipment', () => {
     const runKey = 'carryover-passive-generated-filter';
     const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
