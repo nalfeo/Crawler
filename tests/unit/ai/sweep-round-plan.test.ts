@@ -45,6 +45,7 @@ import {
   halveSteps,
   inferRunInputsFromCheckpoint,
   initCheckpoint,
+  normalizeResumedCheckpoint,
   planCandidates,
   planRoundMatrix,
   toSearchArtifact,
@@ -57,6 +58,7 @@ import {
   comboId,
   configId,
   LEGACY_COMBO_ID,
+  SECONDARY_KNOBS,
   type Combo,
   type SweepConfig,
   type TunableKnob,
@@ -1368,6 +1370,41 @@ describe('inferRunInputsFromCheckpoint (legacy checkpoint panel inference, unit-
     // incumbentCombo/incumbentConfigId anchor.
     const corrupted: RoundCheckpoint = { ...checkpoint, rows: [] };
     expect(() => inferRunInputsFromCheckpoint(corrupted)).toThrow(/no round-0 baseline rows found/);
+  });
+
+  it('infers secondary=true from a checkpoint whose steps contain ALL of SECONDARY_KNOBS', () => {
+    const fullSecondaryKnobs: TunableKnob[] = [...KNOBS, ...SECONDARY_KNOBS];
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, fullSecondaryKnobs, baselineShard(150));
+    expect(inferRunInputsFromCheckpoint(checkpoint).secondary).toBe(true);
+  });
+
+  it('fails closed (does not guess) on a PARTIAL secondary-knobs key set — this is the exact `.some()` unsoundness the all-or-none check replaces: one stray secondary key must never be treated as proof of a full secondary-knobs search', () => {
+    const partialSecondaryKnobs: TunableKnob[] = [...KNOBS, SECONDARY_KNOBS[0]!];
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, partialSecondaryKnobs, baselineShard(150));
+    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
+      /PARTIAL secondary-knobs key set/,
+    );
+  });
+});
+
+describe('normalizeResumedCheckpoint (re-stamp workflowSha on an ALREADY-accepted resume checkpoint)', () => {
+  it("re-stamps meta.workflowSha to the expected (current run) value when the checkpoint carries the PRIOR run's workflowSha", () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    expect(checkpoint.meta.workflowSha).toBe(META.workflowSha);
+    const expectedMeta: ShardMeta = { ...META, workflowSha: 'currentrunsha0000currentrunsha00' };
+    const normalized = normalizeResumedCheckpoint(checkpoint, expectedMeta);
+    expect(normalized.meta.workflowSha).toBe('currentrunsha0000currentrunsha00');
+    // Every other meta field and the rows/steps/combo must be unchanged --
+    // this is a workflowSha-only re-stamp, not a general meta rewrite.
+    expect(normalized.meta).toEqual({ ...checkpoint.meta, workflowSha: expectedMeta.workflowSha });
+    expect(normalized.rows).toBe(checkpoint.rows);
+    expect(normalized.steps).toBe(checkpoint.steps);
+  });
+
+  it('is a no-op (returns the SAME object reference) when workflowSha already matches', () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    const expectedMeta: ShardMeta = { ...META, workflowSha: checkpoint.meta.workflowSha };
+    expect(normalizeResumedCheckpoint(checkpoint, expectedMeta)).toBe(checkpoint);
   });
 });
 

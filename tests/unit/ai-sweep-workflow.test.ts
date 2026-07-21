@@ -535,12 +535,24 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(downloadStep?.if).toContain("inputs.resume_run_id != ''");
     });
 
-    it('selects the latest compatible checkpoint tier in strict r3 > r2 > r1 > init order', () => {
+    it('selects the latest compatible checkpoint tier in strict r3 > r2 > r1 > init order, bounded by the dispatch rounds input', () => {
       const doc = loadWorkflow();
       const script = allRunSteps(getJob(doc, 'resume-import'));
-      const tierLoopMatch = script.match(/for r in ([^;]+); do/);
+      // The scan loop iterates over `$TIERS`, a shell variable set by a
+      // `case "$ROUNDS" in` block immediately above it -- NOT a hardcoded
+      // literal list. A prior run's r3/r2 checkpoint reflects MORE
+      // optimization than e.g. a rounds=1 dispatch asked for, so importing
+      // it unconditionally would silently perform more search than
+      // requested. Assert the loop variable AND that every rounds value maps
+      // to the correct strictly-bounded, strictly-descending tier subset.
+      const tierLoopMatch = script.match(/for r in (\S+); do/);
       expect(tierLoopMatch).not.toBeNull();
-      expect(tierLoopMatch![1]!.trim().split(/\s+/)).toEqual(['r3', 'r2', 'r1', 'init']);
+      expect(tierLoopMatch![1]).toBe('$TIERS');
+      expect(script).toMatch(/case "\$ROUNDS" in/);
+      expect(script).toMatch(/3\)\s*TIERS="r3 r2 r1 init"\s*;;/);
+      expect(script).toMatch(/2\)\s*TIERS="r2 r1 init"\s*;;/);
+      expect(script).toMatch(/1\)\s*TIERS="r1 init"\s*;;/);
+      expect(script).toMatch(/\*\)\s*TIERS="init"\s*;;/);
     });
 
     it('an INCOMPATIBLE newer tier does not stop the scan -- it keeps trying strictly-older tiers for that combo instead of unconditionally breaking', () => {
@@ -564,6 +576,13 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(script).toContain('--expect-meta current-meta.json');
       expect(script).toContain('--expect-train-seeds');
       expect(script).toContain('--expect-weapons');
+      // `--out` writes the NORMALIZED checkpoint (workflowSha re-stamped to
+      // THIS run's value via `normalizeResumedCheckpoint`) directly from the
+      // CLI, replacing a separate `cp` of the raw prior-run checkpoint --
+      // copying it through unchanged would leave the accepted checkpoint
+      // carrying the PRIOR run's workflowSha, silently failing every
+      // downstream same-run `assertShardCompatible` check one round later.
+      expect(script).toMatch(/--out "resumed\/search-checkpoint-init-\$\{COMBO\}\.json"/);
       // The `secondary` dispatch input changes the knob search space
       // (`knobsFor(combo, secondary)`), so it must also flow through the
       // compatibility check -- same `--expect-*` presence-flag pattern the
@@ -629,10 +648,15 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(deriveStep?.if).toContain(
         "contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy')",
       );
-      // `continue-on-error` so an (unexpected) extraction failure only falls
-      // back to the existing warn-then-narrow behaviour instead of failing
-      // the whole run.
-      expect(deriveStep?.['continue-on-error']).toBe(true);
+      // `continue-on-error` was REMOVED (found in review): a resumed
+      // legacy+legacy checkpoint has ALREADY passed `resume-check` (which
+      // requires a complete, duplicate-free, rectangular baseline panel),
+      // so extraction failing here means this step's own invariant is
+      // broken. Silently tolerating that failure would fall back to the
+      // narrowed per-combo incumbent gate -- reintroducing the exact
+      // safety-net gap this step exists to close. It must now fail the job
+      // hard instead.
+      expect(deriveStep?.['continue-on-error']).toBeUndefined();
       expect(deriveStep?.run).toContain('--mode extract-legacy-baseline');
       expect(deriveStep?.run).toContain(
         '--checkpoint "resumed/search-checkpoint-init-legacy+legacy.json"',
@@ -652,10 +676,11 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(uploadStep?.if).toContain(
         "contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy')",
       );
-      // Only upload when extraction actually produced a file -- avoids a
-      // hard failure from `if-no-files-found: error` on an extraction
-      // failure the derive step already tolerated via continue-on-error.
-      expect(uploadStep?.if).toContain("hashFiles('baseline-legacy+legacy.json') != ''");
+      // The `hashFiles(...) != ''` guard was REMOVED along with
+      // `continue-on-error` -- the derive step now either succeeds (file
+      // exists) or fails the job outright, so this upload step's `if:` no
+      // longer needs to defensively check for the file's existence.
+      expect(uploadStep?.if).not.toContain("hashFiles('baseline-legacy+legacy.json')");
       expect(uploadStep?.with?.name).toBe('search-baseline-legacy+legacy');
       expect(uploadStep?.with?.path).toBe('baseline-legacy+legacy.json');
     });

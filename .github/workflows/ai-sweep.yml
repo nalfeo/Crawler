@@ -297,11 +297,12 @@ jobs:
           merge-multiple: true
           path: prior-checkpoints
 
-      - name: Select latest compatible checkpoint per combo (r3 > r2 > r1 > init)
+      - name: Select latest compatible checkpoint per combo (r3 > r2 > r1 > init, bounded by rounds)
         id: resume
         env:
           COMBOS: ${{ needs.preflight.outputs.combos }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          ROUNDS: ${{ inputs.rounds }}
           TRAIN_SEEDS: ${{ inputs.train_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           SECONDARY: ${{ inputs.secondary }}
@@ -312,20 +313,34 @@ jobs:
           RESUMED='[]'
           SECONDARY_FLAG=""
           if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--expect-secondary"; fi
+          # Bound the tier scan by THIS run's requested `rounds` — a prior
+          # run's r3/r2 checkpoint reflects MORE optimization than a
+          # rounds=1 dispatch asked for; importing it would silently skip
+          # straight to a later round's state while validation still
+          # consumes it, performing more search than requested (found in
+          # plan review). Only tiers at or below the requested round are
+          # ever eligible; `init` (round 0) is always eligible since it
+          # predates any round-DAG tuning.
+          case "$ROUNDS" in
+            3) TIERS="r3 r2 r1 init" ;;
+            2) TIERS="r2 r1 init" ;;
+            1) TIERS="r1 init" ;;
+            *) TIERS="init" ;;
+          esac
           if [ -z "$RESUME_RUN_ID" ]; then
             echo "resume_run_id is blank — fresh run for every combo (default, unchanged behavior)."
             FRESH="$COMBOS"
           else
             for COMBO in $(jq -r '.[]' <<< "$COMBOS"); do
               FOUND=""
-              for r in r3 r2 r1 init; do
+              for r in $TIERS; do
                 f="prior-checkpoints/search-checkpoint-${r}-${COMBO}.json"
                 if [ -f "$f" ]; then
-                  echo "[$COMBO] latest prior checkpoint tier available: $r ($f)"
+                  echo "[$COMBO] latest prior checkpoint tier available (<=rounds=$ROUNDS): $r ($f)"
                   if npx tsx scripts/agent/perf/round-plan.ts --mode resume-check \
                        --checkpoint "$f" --expect-meta current-meta.json \
-                       --expect-train-seeds "$TRAIN_SEEDS" --expect-weapons "$WEAPONS" $SECONDARY_FLAG; then
-                    cp "$f" "resumed/search-checkpoint-init-${COMBO}.json"
+                       --expect-train-seeds "$TRAIN_SEEDS" --expect-weapons "$WEAPONS" $SECONDARY_FLAG \
+                       --out "resumed/search-checkpoint-init-${COMBO}.json"; then
                     FOUND="$r"
                     break
                   else
@@ -341,7 +356,7 @@ jobs:
               if [ -n "$FOUND" ]; then
                 RESUMED=$(jq -c --arg c "$COMBO" '. + [$c]' <<< "$RESUMED")
               else
-                echo "::notice::[$COMBO] no compatible prior checkpoint found in run $RESUME_RUN_ID — running fresh."
+                echo "::notice::[$COMBO] no compatible prior checkpoint found in run $RESUME_RUN_ID (within rounds=$ROUNDS bound) — running fresh."
                 FRESH=$(jq -c --arg c "$COMBO" '. + [$c]' <<< "$FRESH")
               fi
             done
@@ -378,19 +393,26 @@ jobs:
         # SAME local filename convention (`baseline-legacy+legacy.json`) the
         # `baseline` job's own upload uses — that `checkpoint-init`'s existing
         # download-by-pattern step already looks for closes this gap with NO
-        # change to that step. `continue-on-error` so an (unexpected)
-        # extraction failure only falls back to the existing warn-then-narrow
-        # behavior instead of failing the whole run.
+        # change to that step. Deliberately NOT `continue-on-error`: a
+        # resumed legacy+legacy checkpoint has ALREADY passed `resume-check`
+        # (a complete, duplicate-free, rectangular baseline panel is
+        # required there too), so extraction failing here would mean this
+        # step's own invariant is broken — silently falling back to the
+        # narrowed per-combo incumbent gate in that case would reintroduce
+        # the exact safety-net gap this step exists to close (found in
+        # review). Failing the job hard instead — combined with
+        # `baseline`/`checkpoint-init` both gating on
+        # `needs.resume-import.result == 'success'` — stops the run loudly
+        # rather than silently narrowing it.
         if: ${{ contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy') }}
-        continue-on-error: true
         run: |
           set -euo pipefail
           npx tsx scripts/agent/perf/round-plan.ts --mode extract-legacy-baseline \
             --checkpoint "resumed/search-checkpoint-init-legacy+legacy.json" \
             --out "baseline-legacy+legacy.json"
 
-      - name: Upload derived legacy+legacy baseline shard (only when legacy+legacy was resumed and extraction succeeded)
-        if: ${{ contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy') && hashFiles('baseline-legacy+legacy.json') != '' }}
+      - name: Upload derived legacy+legacy baseline shard (only when legacy+legacy was resumed)
+        if: ${{ contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy') }}
         uses: actions/upload-artifact@v4
         with:
           name: search-baseline-legacy+legacy

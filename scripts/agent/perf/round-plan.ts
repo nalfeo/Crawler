@@ -418,9 +418,13 @@ export function extractLegacyBaselineShard(checkpoint: RoundCheckpoint): ShardAr
  * specific run's hard-coded shape.
  *
  * - `secondary`: `RoundCheckpoint.steps` is populated once in
- *   {@link initCheckpoint} from `knobsFor(combo, secondary)`, so it contains a
- *   {@link SECONDARY_KNOBS} key if and only if the search actually ran with
- *   `secondary=true`. A config BODY can never be used for this instead —
+ *   {@link initCheckpoint} from `knobsFor(combo, secondary)`, whose secondary
+ *   portion is always ALL of `SECONDARY_KNOBS` (secondary=true) or NONE of
+ *   them (secondary=false) — never a partial subset. This function requires
+ *   that same all-or-none shape; any OTHER count fails closed rather than
+ *   guessing (a `.some()` check would wrongly treat even ONE stray secondary
+ *   key as proof of a full secondary-knobs search). A config BODY can never
+ *   be used for this instead —
  *   {@link baseConfigForCombo} always sets every knob, secondary knobs
  *   included, to its SSOT default regardless of `secondary`.
  * - `trainSeeds`/`weapons`: derived from the checkpoint's own round-0
@@ -444,7 +448,31 @@ export function inferRunInputsFromCheckpoint(checkpoint: RoundCheckpoint): {
   secondary: boolean;
 } {
   const contextLabel = `inferRunInputsFromCheckpoint(${checkpoint.combo})`;
-  const secondary = SECONDARY_KNOBS.some((knob) => knob in checkpoint.steps);
+  // `.some()` cannot prove the search space: a checkpoint with only ONE
+  // surviving secondary key (e.g. a malformed/partial checkpoint) would be
+  // treated as secondary=true even though its own step set is not actually a
+  // full secondary-knobs search. `initCheckpoint` always seeds `steps` from
+  // `knobsFor(combo, secondary)`, which either includes EVERY
+  // `SECONDARY_KNOBS` entry (secondary=true) or NONE of them
+  // (secondary=false) — there is no shape in between. Require the SAME
+  // all-or-none: any OTHER count (1 or 2 of 3 today) is a partial/malformed
+  // checkpoint and fails closed rather than guessing.
+  const stepKeys = new Set(Object.keys(checkpoint.steps));
+  const secondaryKeysPresent = SECONDARY_KNOBS.filter((knob) => stepKeys.has(knob));
+  let secondary: boolean;
+  if (secondaryKeysPresent.length === 0) {
+    secondary = false;
+  } else if (secondaryKeysPresent.length === SECONDARY_KNOBS.length) {
+    secondary = true;
+  } else {
+    throw new Error(
+      `${contextLabel}: checkpoint.steps has a PARTIAL secondary-knobs key set ` +
+        `(${secondaryKeysPresent.length}/${SECONDARY_KNOBS.length}: ` +
+        `{${secondaryKeysPresent.join(',')}}) — a real checkpoint always has either ALL of ` +
+        `{${SECONDARY_KNOBS.join(',')}} (secondary=true) or NONE of them (secondary=false); ` +
+        `cannot prove the secondary-knobs flag from a partial/malformed checkpoint.`,
+    );
+  }
 
   const rows = checkpoint.rows.filter(
     (r) => r.combo === checkpoint.incumbentCombo && r.configId === checkpoint.incumbentConfigId,
@@ -764,6 +792,35 @@ export function assertResumeCompatible(
 }
 
 /**
+ * Re-stamp an ACCEPTED cross-run resume checkpoint's `meta.workflowSha` to
+ * THIS run's value. Call this ONLY after {@link assertResumeCompatible} has
+ * already returned successfully for `checkpoint` against `expectedMeta` — it
+ * performs no compatibility checks of its own.
+ *
+ * `assertResumeCompatible` intentionally neutralizes `workflowSha` for the
+ * compatibility CHECK itself (see its docstring) so a prior run's checkpoint
+ * isn't rejected purely because the workflow file has since been touched.
+ * But the checkpoint OBJECT must not keep carrying the PRIOR run's
+ * `workflowSha` forward once accepted: every later round in THIS SAME run
+ * compares shards against THIS run's `meta` via the ordinary (non-resume)
+ * `assertShardCompatible` path — `applyRoundResult`'s round-N shard check and
+ * `aggregate-shards.ts`'s validate-stage provenance check both do an exact
+ * `workflowSha` `!==` comparison with no resume-awareness. Without this
+ * re-stamp, an accepted resumed checkpoint would fail those checks one round
+ * after import, silently defeating the whole feature for exactly the
+ * artifacts it exists to recover.
+ */
+export function normalizeResumedCheckpoint(
+  checkpoint: RoundCheckpoint,
+  expectedMeta: ShardMeta,
+): RoundCheckpoint {
+  if (checkpoint.meta.workflowSha === expectedMeta.workflowSha) {
+    return checkpoint;
+  }
+  return { ...checkpoint, meta: { ...checkpoint.meta, workflowSha: expectedMeta.workflowSha } };
+}
+
+/**
  * Merge this round's evaluated candidate shards into a combo's checkpoint and
  * advance the search: promote the highest-scoring candidate that ALSO passes
  * the approved hard safety gate (>=90% official wins AND strictly MORE total
@@ -960,7 +1017,7 @@ export function toSearchArtifact(checkpoint: RoundCheckpoint): SearchArtifactLik
 //   --mode init   <combo> --baseline <shard.json> [--secondary] [--train-seeds <str> --weapons <str>] --out <checkpoint.json>
 //   --mode plan   --round N [--secondary] [--cap N] --out <matrix.json> <checkpoint.json...>
 //   --mode select --round N [--secondary] [--planned-count N|unknown] --checkpoint <checkpoint.json> --out <checkpoint.json> [<shard.json...>]
-//   --mode resume-check --checkpoint <checkpoint.json> --expect-meta <meta.json> [--expect-train-seeds <str>] [--expect-weapons <str>] [--expect-secondary]
+//   --mode resume-check --checkpoint <checkpoint.json> --expect-meta <meta.json> [--expect-train-seeds <str>] [--expect-weapons <str>] [--expect-secondary] [--out <checkpoint.json>]
 //   --mode extract-legacy-baseline --checkpoint <checkpoint.json> --out <shard.json>
 // ---------------------------------------------------------------------------
 
@@ -1177,6 +1234,13 @@ function runCli(argv: readonly string[]): void {
     console.log(
       `[${checkpoint.combo}] resume-compatible: round ${checkpoint.round} checkpoint may be reused (best=${checkpoint.bestConfigId.slice(0, 48)} score=${checkpoint.bestScore.toExponential(3)})`,
     );
+    // Re-stamp `meta.workflowSha` to THIS run's value before the accepted
+    // checkpoint re-enters the round-DAG — see normalizeResumedCheckpoint's
+    // docstring for why the raw prior-run checkpoint must never be copied
+    // through unchanged.
+    if (args.out) {
+      emit(normalizeResumedCheckpoint(checkpoint, meta), args.out);
+    }
     return;
   }
 
