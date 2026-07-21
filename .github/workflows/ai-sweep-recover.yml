@@ -1,0 +1,268 @@
+# VALIDATE-ONLY recovery of a cancelled AI Sweep Eval run's completed round-2
+# checkpoints (dispatch-only). Standalone from `ai-sweep.yml` — never modifies it.
+#
+# WHY THIS EXISTS
+#   Run 29786216369 completed all round-2 (`search-checkpoint-r2-*`) checkpoints
+#   for every combo, then was cancelled mid-round-3 when an uncapped round-eval
+#   matrix fanned out 20 concurrent jobs (44 more queued), starving the account's
+#   shared GitHub-hosted runner pool (root cause fixed on main: every matrix job
+#   in `ai-sweep.yml` is now capped at `max-parallel: 8`; see that workflow's
+#   header and `docs/knowledge/handoffs/2026-07-20-ai-sweep-round-eval-max-parallel.md`).
+#   Round 2's finalists were fully computed but never validated before the run
+#   died. This workflow re-validates those already-computed finalists CROSS-RUN,
+#   reusing `sweep-eval.ts --stage validate` and `aggregate-shards.ts` UNCHANGED —
+#   it never re-plans, re-evaluates, or advances a round. `RoundCheckpoint` is a
+#   strict superset of the legacy `SearchArtifact` shape `--stage validate`
+#   consumes (same fact `ai-sweep.yml`'s own `validate` job relies on), so no
+#   reshape step is needed.
+#
+# WHY NOT THE GENERIC CROSS-RUN RESUME DESIGN (PR #1759, REJECTED)
+#   That design added a new `runInputs` schema, mixed fresh/resume modes, and
+#   generic search continuation for ANY run/round (1,560 additions / 8 files).
+#   This workflow is hardcoded to round-2-only, VALIDATE-ONLY: it adds zero new
+#   schema (reuses `RoundCheckpoint`/`ShardMeta`/`RunRow` exactly as defined
+#   today), has no mode switch (only ever validates), and never plans/evaluates
+#   round 3. `source_run_id` is parameterized only so a future analogous
+#   incident doesn't require editing this file — the BEHAVIOR stays round-2-only.
+#
+# WHY SHA-PINNING (checkout ref + GITHUB_SHA env override)
+#   `sweep-eval.ts --stage validate` (unchanged, reused as-is) already calls
+#   `assertSearchArtifactProvenance(search.meta, search.combo, {
+#   ...currentBuildFingerprint() })`, and `currentBuildFingerprint().workflowSha`
+#   reads `process.env.GITHUB_SHA` directly — set by the Actions runtime from
+#   the DISPATCHING ref, not by a later `actions/checkout` step's custom `ref:`.
+#   So this workflow (a) resolves the SOURCE run's exact `head_sha` via the
+#   GitHub API in `recover-preflight`, (b) checks out that exact historical
+#   commit in `recover-validate`/`recover-aggregate` (so `sweep-eval.ts`/
+#   `aggregate-shards.ts`/`gen-configs.ts` run as the code version that actually
+#   produced the checkpoints, and `./.github/actions/setup-node` installs the
+#   matching `package-lock.json`-pinned dependencies), AND (c) explicitly
+#   overrides `env: GITHUB_SHA` on every step invoking those scripts so
+#   `currentBuildFingerprint()` matches the recovered checkpoints' own stamped
+#   `workflowSha`. `recover-preflight` itself stays on the CURRENT/dispatched
+#   ref (no custom checkout `ref:`) because it must run the new
+#   `recover-checkpoint-validate.ts` gate script, which does not exist at the
+#   historical commit.
+#
+# ALL-OR-NOTHING
+#   `recover-preflight` downloads every `search-checkpoint-r2-*` artifact from
+#   the source run and runs `recover-checkpoint-validate.ts`, which fails the
+#   ENTIRE recovery (before any validate compute runs) unless there is exactly
+#   one round-2 checkpoint for every SSOT combo (LEGACY included), every
+#   checkpoint's stamped `workflowSha` equals the resolved source `head_sha`,
+#   every checkpoint mutually agrees on schema/floor/budget/frames/stage/
+#   runner-OS/node-version/package-lock, no secondary-knob tuning is present,
+#   and both the finalist's and the incumbent's TRAIN row panels are complete,
+#   duplicate-free rectangles over the requested `train_seeds x weapons`. It
+#   never patches/rewrites a checkpoint to force a match — a mismatch is a hard
+#   failure, not a spoofing opportunity.
+#
+# HOW TO RUN
+#   gh workflow run ai-sweep-recover.yml --ref <branch> \
+#     -f source_run_id=29786216369 \
+#     -f train_seeds=1-80 -f validate_seeds=1-100 \
+#     -f weapons=sword,bow,baseball-bat -f workers=4
+
+name: AI Sweep Recover (round-2 validate-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'GitHub Actions run ID to recover completed round-2 checkpoints from'
+        type: string
+        default: '29786216369'
+      train_seeds:
+        description: 'TRAIN seed panel the recovered round-2 checkpoints were tuned on (proves panel completeness only — never re-run)'
+        type: string
+        default: '1-80'
+      validate_seeds:
+        description: 'Seed panel for finalist validation (same semantics as ai-sweep.yml)'
+        type: string
+        default: '1-100'
+      weapons:
+        description: 'Comma-separated Floor-1 weapons'
+        type: string
+        default: 'sword,bow,baseball-bat'
+      workers:
+        description: 'Intra-job worker-pool size (match runner vCPUs)'
+        type: string
+        default: '4'
+
+# `actions: read` (beyond ai-sweep.yml's `contents: read`) is required for the
+# cross-run `gh api .../actions/runs/<id>` head_sha lookup and the cross-run
+# `actions/download-artifact@v4` (run-id) call, both scoped to recover-preflight.
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  # Resolves the source run's exact commit, downloads every round-2 checkpoint
+  # artifact from it, and gates the entire recovery on validateRecoveredCheckpoints
+  # before any expensive validate compute runs. Stays on the CURRENT/dispatched
+  # ref (no custom checkout `ref:`) because it needs this branch's new
+  # recover-checkpoint-validate.ts script.
+  recover-preflight:
+    name: Preflight (resolve source SHA + validate round-2 checkpoints)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      combos: ${{ steps.matrix.outputs.combos }}
+      head_sha: ${{ steps.source.outputs.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Resolve source run's exact commit SHA
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA=$(gh api "repos/${{ github.repository }}/actions/runs/$SOURCE_RUN_ID" --jq '.head_sha // empty')
+          if [ -z "$HEAD_SHA" ]; then
+            echo "::error::Could not resolve head_sha for source run $SOURCE_RUN_ID (not found, deleted, or inaccessible). Failing closed."
+            exit 1
+          fi
+          echo "Source run $SOURCE_RUN_ID -> head_sha=$HEAD_SHA"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve SSOT combo matrix
+        id: matrix
+        run: |
+          set -euo pipefail
+          ALL=$(npx tsx scripts/agent/perf/gen-configs.ts | jq -c '[.combos[].id]')
+          echo "SSOT combos: $ALL"
+          echo "combos=$ALL" >> "$GITHUB_OUTPUT"
+
+      - name: Download round-2 checkpoints from source run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: search-checkpoint-r2-*
+          merge-multiple: true
+          path: checkpoints
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Validate recovered round-2 checkpoints (all-or-nothing, fail closed)
+        env:
+          TRAIN_SEEDS: ${{ inputs.train_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          HEAD_SHA: ${{ steps.source.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          ls -la checkpoints
+          npx tsx scripts/agent/perf/recover-checkpoint-validate.ts \
+            --dir checkpoints --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
+            --expected-workflow-sha "$HEAD_SHA"
+
+      - name: Re-upload validated checkpoints for recover-validate
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovered-checkpoints
+          path: checkpoints/search-checkpoint-r2-*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # One job per combo: validate that combo's recovered round-2 finalist + the
+  # untuned incumbent control on the validation panel. Checks out the exact
+  # historical commit (not current main) so sweep-eval.ts/gen-configs.ts run as
+  # the code version that produced the checkpoint, and overrides GITHUB_SHA so
+  # sweep-eval.ts's own unchanged provenance gate (currentBuildFingerprint())
+  # matches the recovered checkpoint's stamped workflowSha.
+  recover-validate:
+    name: Validate ${{ matrix.combo }}
+    needs: recover-preflight
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        combo: ${{ fromJSON(needs.recover-preflight.outputs.combos) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.recover-preflight.outputs.head_sha }}
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+
+      - name: Download this combo's recovered round-2 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: recovered-checkpoints
+
+      - name: Validate finalist + incumbent
+        env:
+          COMBO: ${{ matrix.combo }}
+          VALIDATE_SEEDS: ${{ inputs.validate_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          WORKERS: ${{ inputs.workers }}
+          GITHUB_SHA: ${{ needs.recover-preflight.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          CHECKPOINT="search-checkpoint-r2-$COMBO.json"
+          if [ ! -f "$CHECKPOINT" ]; then
+            echo "::error::No recovered checkpoint found for combo $COMBO"
+            exit 1
+          fi
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage validate --combo "$COMBO" \
+            --search-artifact "$CHECKPOINT" \
+            --seeds "$VALIDATE_SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" \
+            --out "validate-$COMBO.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validate-${{ matrix.combo }}
+          path: validate-*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # Fan-in: merge every validate shard → recompute totals from rows → leaderboard
+  # + safety-gated qualified winner (existing aggregate path, unchanged). Needs
+  # BOTH prior jobs so it can access recover-preflight's head_sha output for its
+  # own historical checkout. `!cancelled()` so a fail-fast:false partial validate
+  # failure still aggregates whatever DID succeed, while a manual cancellation
+  # still stops aggregation (mirrors ai-sweep.yml's aggregate job exactly).
+  recover-aggregate:
+    name: Aggregate → leaderboard
+    needs: [recover-preflight, recover-validate]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.recover-preflight.outputs.head_sha }}
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+
+      - name: Download all validate shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: validate-*
+          merge-multiple: true
+          path: shards
+
+      - name: Build leaderboard
+        env:
+          GITHUB_SHA: ${{ needs.recover-preflight.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          ls -la shards
+          BASE_ID=$(npx tsx scripts/agent/perf/gen-configs.ts --combo legacy+legacy | jq -r .baseId)
+          echo "Incumbent (untuned LEGACY/LEGACY) config id: $BASE_ID"
+          npx tsx scripts/agent/perf/aggregate-shards.ts shards/*.json \
+            --incumbent-combo legacy+legacy --incumbent-config "$BASE_ID" \
+            --out leaderboard.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: leaderboard
+          path: leaderboard.json
+          if-no-files-found: error
+          retention-days: 30
