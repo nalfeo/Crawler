@@ -25,11 +25,11 @@ Removed the duplicate `npm audit` from `ci.yml`'s advisory job.
 
 ### New classifier flags
 
-| Flag                   | `true` when…                                                                                                         |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `dependencies_touched` | `package.json`, `package-lock.json`, `yarn.lock`, `npm-shrinkwrap.json`, or `scripts/agent/security/check-deps.ts` changed |
-| `ai_code_touched`      | `src/game/ai/**` or `scripts/agent/security/check-ai-prompts.ts` changed (instruction `.md` files are intentionally excluded — `check-ai-prompts.ts` only scans `src/game/ai`) |
-| `codeowners_touched`   | `CODEOWNERS`, `.github/workflows/**`, or `scripts/agent/security/check-codeowners.ts` changed                       |
+| Flag                   | `true` when…                                                                                                                                                                                                                                        |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dependencies_touched` | `package.json`, `package-lock.json`, `yarn.lock`, `npm-shrinkwrap.json`, or `scripts/agent/security/check-deps.ts` changed                                                                                                                          |
+| `ai_code_touched`      | `src/game/ai/**` or `scripts/agent/security/check-ai-prompts.ts` changed (instruction `.md` files are intentionally excluded — `check-ai-prompts.ts` only scans `src/game/ai`)                                                                      |
+| `codeowners_touched`   | `CODEOWNERS`, `.github/workflows/**`, or `scripts/agent/security/check-codeowners.ts` changed                                                                                                                                                       |
 | `source_code_touched`  | Any file in `src/core/**`, `src/engine/**`, `src/game/**`, or `src/shared/**` (excluding data-only `sprite-catalog.json`) changed, or `scripts/agent/security/check-dynamic-patterns.sh` changed. Fail-safe: unknown/unclassified paths set `true`. |
 
 All four flags default to `false` (no matching file); fail-safe paths (`emit_all` no-base and
@@ -83,17 +83,34 @@ authoritative path for npm audit on PRs.
 
 ## Acceptance Criteria Mapping
 
-| Criterion                                      | Implementation                                    |
-| ---------------------------------------------- | ------------------------------------------------- |
-| Dep allowlist + npm audit gated on manifests   | `dependencies_touched != 'false'`                 |
-| AI prompt-injection gated on AI surfaces       | `ai_code_touched != 'false'`                      |
+| Criterion                                      | Implementation                                                                                |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Dep allowlist + npm audit gated on manifests   | `dependencies_touched != 'false'`                                                             |
+| AI prompt-injection gated on AI surfaces       | `ai_code_touched != 'false'`                                                                  |
 | Dynamic-execution gated on executable surfaces | `source_code_touched != 'false'` (src/core/engine/game/shared or dynamic-execution validator) |
-| Secret scan fail-closed                        | Always runs (except `train_promoted`)             |
-| CODEOWNERS gated on ownership changes          | `codeowners_touched != 'false'`                   |
-| npm audit one authoritative path               | Removed from `ci-advisory` in `ci.yml`            |
-| Docs/asset PRs: no Node setup                  | `setup-node` skipped when `docs_only == 'true'` OR `art_only == 'true'` |
-| Classifier failures → broader set              | Fail-safe `!= 'false'` pattern                    |
-| Scheduled runs unchanged                       | Normalize step forces all flags `true` for non-PR |
+| Secret scan fail-closed                        | Always runs (except `train_promoted`)                                                         |
+| CODEOWNERS gated on ownership changes          | `codeowners_touched != 'false'`                                                               |
+| npm audit one authoritative path               | Removed from `ci-advisory` in `ci.yml`                                                        |
+| Docs/asset PRs: no Node setup                  | `setup-node` skipped when `docs_only == 'true'` OR `art_only == 'true'`                       |
+| Classifier failures → broader set              | Fail-safe `!= 'false'` pattern                                                                |
+| Scheduled runs unchanged                       | Normalize step forces all flags `true` for non-PR                                             |
+
+## Post-merge-train fix (2026-07-21)
+
+Merge Train Validation's `npm run security:check` was failing on `npm audit
+--audit-level=high`: `fast-uri` 3.0.0–3.1.2 (transitive dep of `ajv`/`fast-json-stringify`
+via `@fastify/ajv-compiler` and Stryker) carries a high-severity host-confusion
+advisory (GHSA-4c8g-83qw-93j6). Fixed with the smallest possible remediation —
+`npm update fast-uri` bumps it to the patched 3.1.3 (already satisfied by the
+existing `^3.0.x` semver ranges of its dependents), a 3-line `package-lock.json`
+diff with no unrelated dependency churn. The local sandbox's corporate npm proxy
+resolves packages through an internal Azure DevOps feed mirror with sha1-only
+integrity; that resolved URL/integrity was manually normalized back to the
+standard `registry.npmjs.org` URL + sha512 integrity (computed from the actual
+tarball) to keep the lockfile consistent with the rest of the file and avoid a
+private-feed URL that GitHub Actions runners cannot reach. `npm audit
+--audit-level=high` now reports 0 vulnerabilities; `npm ci` and `verify:fast`
+pass.
 
 ## Closes
 
