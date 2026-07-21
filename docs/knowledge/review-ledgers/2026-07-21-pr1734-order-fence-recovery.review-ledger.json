@@ -1,0 +1,40 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "pr1734-order-fence-recovery",
+  "task_title": "PR #1734 order-fence recovery: merge-train coordinator slot verifier",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Reviewer raised 3 concerns: (1) fork PR filter placement — resolved by filtering after fetchOpenPulls mapping; (2) final binding revalidation should re-fetch all group members not just the candidate — resolved by re-calling fetchOpenPulls and iterating group.pulls; (3) second main read placement — resolved by adding fetchCurrentMain call after verifyMergeSlot returns. Minor divergence on ordering: reviewer suggested binding check before recovery/human-approval scans; kept after for minimal diff surface.",
+      "adversarial": false,
+      "alternatives_considered": 0
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "(1) `push(pullRequest)` mutates the filtered array in place — fixed by using let. (2) Test EXTERNAL_SHA collides with LAND2 (both \"f\".repeat(40)) — fixed by using \"9\".repeat(40)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verified: filter mutability and SHA collision both resolved. Final binding revalidation loop correct. Second main read matches expected pattern. No new concerns."
+        }
+      ]
+    }
+  }
+}

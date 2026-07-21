@@ -23,13 +23,18 @@ concurrency:
 
 jobs:
   # Job 0: Detect the change scope.
-  # art_only=true      → heavy gameplay gates skipped; typecheck/lint/format/unit run.
-  # docs_only=true     → ALL heavy gates skipped; only commit-lint / lightweight
-  #                      review workflows run. Documentation/governance surfaces
-  #                      cannot change shipped game logic.
-  # gameplay_safe=true → the diff provably can't change the deterministic Floor-1 sim
-  #                      (engine/labs/e2e/docs/assets only), so the headless gate is
-  #                      skipped ON PULL REQUESTS ONLY (main-push still runs it).
+  # art_only=true         → heavy gameplay gates skipped; typecheck/lint/format/unit run.
+  # docs_only=true        → ALL heavy gates skipped; only commit-lint / lightweight
+  #                         review workflows run. Documentation/governance surfaces
+  #                         cannot change shipped game logic.
+  # gameplay_safe=true    → (legacy compatibility signal) the diff provably can't change
+  #                         the deterministic Floor-1 sim (engine/labs/e2e/docs/assets only).
+  #                         No longer used to gate jobs; see sim_touched for current headless
+  #                         gating logic.
+  # visual_touched=true   → change may affect rendered output; E2E visual regression runs.
+  # sim_touched=true      → change may affect the deterministic sim; headless gate runs.
+  # coverage_touched=true → change may affect unit coverage; coverage advisory runs.
+  # dependencies_touched=true → package.json or lock file changed; npm audit runs.
   # The merge-gate treats skipped jobs as PASS for all scope flags.
   changes:
     name: Detect change scope
@@ -42,10 +47,12 @@ jobs:
       sprites_only: ${{ steps.scope.outputs.sprites_only }}
       sprites_touched: ${{ steps.scope.outputs.sprites_touched }}
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
+      visual_touched: ${{ steps.scope.outputs.visual_touched }}
       sim_touched: ${{ steps.scope.outputs.sim_touched }}
       coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
+      sprite_pipeline_touched: ${{ steps.scope.outputs.sprite_pipeline_touched }}
+      dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
       # Visual surface outputs (#1688/#1698): route E2E to the affected surface only.
-      visual_touched: ${{ steps.scope.outputs.visual_touched }}
       game_visual_touched: ${{ steps.scope.outputs.game_visual_touched }}
       asset_visual_touched: ${{ steps.scope.outputs.asset_visual_touched }}
       devtool_visual_touched: ${{ steps.scope.outputs.devtool_visual_touched }}
@@ -72,9 +79,11 @@ jobs:
           gameplay_safe='${{ steps.detect.outputs.gameplay_safe }}'
           sprites_only='${{ steps.detect.outputs.sprites_only }}'
           sprites_touched='${{ steps.detect.outputs.sprites_touched }}'
+          visual_touched='${{ steps.detect.outputs.visual_touched }}'
           sim_touched='${{ steps.detect.outputs.sim_touched }}'
           coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
-          visual_touched='${{ steps.detect.outputs.visual_touched }}'
+          sprite_pipeline_touched='${{ steps.detect.outputs.sprite_pipeline_touched }}'
+          dependencies_touched='${{ steps.detect.outputs.dependencies_touched }}'
           game_visual_touched='${{ steps.detect.outputs.game_visual_touched }}'
           asset_visual_touched='${{ steps.detect.outputs.asset_visual_touched }}'
           devtool_visual_touched='${{ steps.detect.outputs.devtool_visual_touched }}'
@@ -86,10 +95,12 @@ jobs:
             gameplay_safe=false
             sprites_only=false
             sprites_touched=true
+            visual_touched=true
             sim_touched=true
             coverage_touched=true
+            sprite_pipeline_touched=true
+            dependencies_touched=true
             # Schedule runs always execute the full visual suite.
-            visual_touched=true
             game_visual_touched=true
             asset_visual_touched=true
             devtool_visual_touched=true
@@ -140,35 +151,62 @@ jobs:
           echo "gameplay_safe=$gameplay_safe" >>"$GITHUB_OUTPUT"
           echo "sprites_only=$sprites_only" >>"$GITHUB_OUTPUT"
           echo "sprites_touched=$sprites_touched" >>"$GITHUB_OUTPUT"
-          echo "sim_touched=$sim_touched" >>"$GITHUB_OUTPUT"
-          echo "coverage_touched=$coverage_touched" >>"$GITHUB_OUTPUT"
           echo "train_promoted=$train_promoted" >>"$GITHUB_OUTPUT"
           echo "visual_touched=$visual_touched" >>"$GITHUB_OUTPUT"
+          echo "sim_touched=$sim_touched" >>"$GITHUB_OUTPUT"
+          echo "coverage_touched=$coverage_touched" >>"$GITHUB_OUTPUT"
+          echo "sprite_pipeline_touched=$sprite_pipeline_touched" >>"$GITHUB_OUTPUT"
+          echo "dependencies_touched=$dependencies_touched" >>"$GITHUB_OUTPUT"
           echo "game_visual_touched=$game_visual_touched" >>"$GITHUB_OUTPUT"
           echo "asset_visual_touched=$asset_visual_touched" >>"$GITHUB_OUTPUT"
           echo "devtool_visual_touched=$devtool_visual_touched" >>"$GITHUB_OUTPUT"
 
-  # Job 1: Static validation (shared setup for fast deterministic checks)
-  static-validation:
-    name: Static validation
+  # Job 1: Lightweight checks — consolidates Types & Lint, Format & Labs,
+  # advisory dead-code/typecheck, and human-approval into a single runner to
+  # eliminate three repeated setup/checkout sequences on a full CI run.
+  #
+  # Blocking steps (format, lab gate, wiring guard, guard tests, typecheck+lint,
+  # human approval) use GitHub Actions' default fail-fast behaviour. Each step is
+  # named independently so failures remain clearly attributable in logs and
+  # summaries.
+  #
+  # Advisory steps (dead code, security audit, full typecheck) run after the
+  # blocking steps with continue-on-error: true so failures surface without
+  # blocking the merge. They are additionally gated on GAMEPLAY_SAFE != 'true'
+  # so they are skipped for scope-limited PRs (gameplay_safe / sprites_only /
+  # art_only all set gameplay_safe=true) where the headless gate is already
+  # skipped and advisory runtime would otherwise become the new bottleneck.
+  # On full code PRs the headless gate (~306 s) remains the critical-path
+  # bottleneck; check-lightweight is expected to complete in ~235 s or less.
+  check-lightweight:
+    name: Lightweight Checks
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true'
+    # No docs_only skip here: the human-approval step must run unconditionally
+    # so a docs-only PR that carries (or closes an issue with) the
+    # human-approval-required label is not silently bypassed. The non-approval
+    # steps below carry their own `if: env.DOCS_ONLY != 'true'` guards so the
+    # build/lint/test work is still skipped on pure documentation changes.
+    env:
+      GAMEPLAY_SAFE: ${{ needs.changes.outputs.gameplay_safe }}
+      DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
 
+      # Playwright is required by the guard tests: sprite-editor and set-piece-editor
+      # extension tests import chromium directly (see .github/extensions/*/tests/).
+      # On docs-only PRs we skip the guard tests, so Playwright is not installed
+      # to avoid the ~30 s download overhead on documentation-only changes.
       - uses: ./.github/actions/setup-node
         with:
-          # test:guards includes .github/extensions/sprite-editor/tests which
-          # launch a headed Chromium via Playwright — Playwright must be installed
-          # here even though no vitest E2E project runs in this job.
-          install-playwright: 'true'
+          install-playwright: ${{ needs.changes.outputs.docs_only != 'true' && 'true' || 'false' }}
 
       # Persist ESLint's incremental cache across runs. The unique run_id suffix
       # forces a fresh (immutable) cache entry each run; restore-keys warm-start
       # from the most recent prior cache. ESLint re-lints any file whose content
       # changed, so a stale restore is always safe.
       - name: Restore ESLint cache
+        if: env.DOCS_ONLY != 'true'
         uses: actions/cache@v4
         with:
           path: .cache/eslint
@@ -177,13 +215,41 @@ jobs:
             eslint-${{ runner.os }}-${{ hashFiles('eslint.config.js', 'package-lock.json') }}-
             eslint-${{ runner.os }}-
 
+      # --- Blocking checks (fail-fast; each failure is clearly attributable) ---
+
+      # Run synchronously so a failing format check actually fails CI. These
+      # were previously `npm run format:check &` plus a trailing `run: wait`
+      # step; because each `run:` is a fresh shell, that `wait` reaped nothing
+      # and the format:check exit code was silently discarded.
+      - name: Format check
+        if: env.DOCS_ONLY != 'true'
+        run: npm run format:check
+
+      - name: Lab gate check
+        if: env.DOCS_ONLY != 'true'
+        run: bash scripts/agent/lab-gate-check.sh
+
+      # Deterministic architecture guard (ADR 0039): every *System exported from
+      # src/core|src/game must be referenced by a real runtime pipeline (visual
+      # bootstrap, engine/AI sim steps, headless runner, MainGameScene) or be on
+      # the documented allowlist. Blocks the class of bug where spawnerSystem
+      # shipped inert because only its lab force-called it.
+      - name: Orphaned-system wiring guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:wired-systems
+
+      # copilot-guards + review-ledger validator tests (node:test). These run
+      # nowhere else in CI; this is their merge-gate home.
+      - name: Guard + review-ledger tests
+        if: env.DOCS_ONLY != 'true'
+        run: npm run test:guards
+
       # Run typecheck:src and lint in parallel, but FAIL the step if either fails.
       # typecheck:src covers src/ only (~340 files, strict). The full typecheck
-      # (tests/ + scripts/, ~860 files) runs in the advisory job below so a
-      # breakage in test helpers or scripts surfaces without stalling the merge.
-      - name: Types & Lint
-        id: types-lint
-        continue-on-error: true
+      # (tests/ + scripts/, ~860 files) runs in the advisory steps below so a
+      # breakage in test helpers or scripts surfaces without blocking the merge.
+      - name: Typecheck & Lint
+        if: env.DOCS_ONLY != 'true'
         run: |
           npm run typecheck:src & tc=$!
           npm run lint:cache & lint=$!
@@ -192,61 +258,47 @@ jobs:
           wait "$lint" || rc=1
           exit "$rc"
 
-      # Run synchronously so a failing format check actually fails CI. These
-      # were previously `npm run format:check &` plus a trailing `run: wait`
-      # step; because each `run:` is a fresh shell, that `wait` reaped nothing
-      # and the format:check exit code was silently discarded.
-      - name: Format check
-        id: format-check
-        continue-on-error: true
-        run: npm run format:check
+      # Human approval gate: runs on ALL PRs (including docs-only) so that a
+      # documentation PR carrying the human-approval-required label (or closing
+      # an issue with that label) is not silently bypassed.
+      # Exits cleanly for non-PR events (push, schedule) where PR_NUMBER is
+      # undefined. The human-approval-rerun.yml automation watches this step's
+      # conclusion within the Lightweight Checks job to detect approval-state
+      # divergence after CI runs.
+      - name: Human approval
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node .github/scripts/merge-train/human-approval-check.mjs
 
-      - name: Lab gate check
-        id: lab-gate
-        continue-on-error: true
-        run: bash scripts/agent/lab-gate-check.sh
+      # --- Advisory checks (non-blocking; run even if blocking steps failed) ---
+      # Gated on GAMEPLAY_SAFE != 'true': sprites_only / art_only changes also
+      # have gameplay_safe=true so this single gate covers all scope-limited
+      # PR classes. Skipping advisory checks for these PR classes prevents a
+      # ~70 s advisory budget from shifting the merge-gate critical path on runs
+      # where the headless gate is already skipped.
 
-      # Deterministic architecture guard (ADR 0039): every *System exported from
-      # src/core|src/game must be referenced by a real runtime pipeline (visual
-      # bootstrap, engine/AI sim steps, headless runner, MainGameScene) or be on
-      # the documented allowlist. Blocks the class of bug where spawnerSystem
-      # shipped inert because only its lab force-called it. Gated into merge-gate
-      # via static-validation.
-      - name: Orphaned-system wiring guard
-        id: wiring-guard
+      - name: Dead code detection
+        if: always() && env.GAMEPLAY_SAFE != 'true'
         continue-on-error: true
-        run: npm run check:wired-systems
+        run: npm run lint:dead-code
 
-      # copilot-guards + review-ledger validator tests (node:test). These run
-      # nowhere else in CI; this is their merge-gate home.
-      - name: Guard + review-ledger tests
-        id: guard-tests
+      - name: Security audit
+        if: always() && env.GAMEPLAY_SAFE != 'true'
         continue-on-error: true
-        run: npm run test:guards
+        run: npm audit --audit-level=high
 
-      # Aggregate all static validation results and fail once if any step failed.
-      # This ensures every check above runs and is individually attributed before
-      # the job fails, matching the parallel-attribution behavior of the former
-      # two-job layout (check-types-and-lint + check-format-and-labs).
-      # INVARIANT: All check steps above must run unconditionally (no `if:` guard)
-      # so their outcome is always 'success' or 'failure' — never 'skipped'. A
-      # skipped step outcome would be treated as failure here, which is correct:
-      # any step that is unexpectedly skipped should block the gate.
-      - name: Check static validation results
-        if: always()
-        run: |
-          rc=0
-          [ "${{ steps.types-lint.outcome }}"   = "success" ] || { echo "❌ Types & Lint failed"; rc=1; }
-          [ "${{ steps.format-check.outcome }}" = "success" ] || { echo "❌ Format check failed"; rc=1; }
-          [ "${{ steps.lab-gate.outcome }}"     = "success" ] || { echo "❌ Lab gate check failed"; rc=1; }
-          [ "${{ steps.wiring-guard.outcome }}" = "success" ] || { echo "❌ Orphaned-system wiring guard failed"; rc=1; }
-          [ "${{ steps.guard-tests.outcome }}"  = "success" ] || { echo "❌ Guard + review-ledger tests failed"; rc=1; }
-          exit "$rc"
+      # Full typecheck (src/ + tests/ + scripts/). Separated from the blocking
+      # gate so a broken script or test helper surfaces without stalling the merge.
+      - name: Typecheck (full — tests + scripts)
+        if: always() && env.GAMEPLAY_SAFE != 'true'
+        continue-on-error: true
+        run: npm run typecheck
 
   # Job 3: Unit tests (critical path, must pass)
   # Runs WITHOUT coverage instrumentation so the gate stays fast (~27 s).
-  # v8 coverage adds ~5× overhead (~140 s); coverage stays advisory below so
-  # regressions remain visible without blocking merge.
+  # v8 coverage adds ~5× overhead (~140 s); it runs separately in the advisory
+  # test-unit-coverage job which posts the PR comment but does not block merge.
   # Skipped for sprites_only changes — only the sprites test project is relevant.
   test-unit:
     name: Unit Tests
@@ -262,6 +314,47 @@ jobs:
 
       - name: Unit tests
         run: npx vitest run --project unit --reporter=verbose
+
+  # Coverage advisory job: kept independent so the ~140-second v8 coverage suite
+  # does not block or serialize other checks. Scoped: on PRs, skipped when
+  # coverage_touched=false (labs/e2e/docs/scripts-only diffs cannot change unit
+  # coverage numbers). Fail-closed: only an explicit 'false' skips — a missing/blank
+  # value keeps it running. Push/schedule always run.
+  ci-coverage:
+    name: Advisory coverage
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: >-
+      needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.sprites_only != 'true' &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched != 'false')
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Unit tests with coverage
+        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json-summary --coverage.reporter=text
+
+      - name: Upload coverage summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage/coverage-summary.json
+          retention-days: 7
+
+      - name: Coverage report comment
+        if: github.event_name == 'pull_request'
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
 
   # Job 4: Integration tests (critical path, must pass)
   # Promoted from advisory to a blocking gate: the sprite/judge integration
@@ -311,9 +404,8 @@ jobs:
   # Deterministically proves the behavior-tree AI can still clear Floor 1
   # (victory + all quests, under the 5-minute game-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
-  # Scoped: skipped on art_only/docs_only, and on PRs where sim_touched=false
-  # (engine/labs/e2e/docs/scripts/CI-only diffs the headless runner can't import).
-  # main-push and schedule always run it as a backstop in case the allowlist is wrong.
+  # Scoped: skipped on art_only/docs_only, and on PRs where sim_touched=false.
+  # Main-push and schedule always run it as a backstop in case the allowlist is wrong.
   test-headless:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
@@ -330,100 +422,23 @@ jobs:
       - name: Headless Floor 1 completion
         run: npx vitest run --project headless --reporter=verbose
 
-  ci-advisory:
-    name: Advisory checks
+  # Job 6: Build (moved to advisory, not blocking)
+  build:
+    name: Build
     runs-on: ubuntu-latest
-    continue-on-error: true
-    needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true'
+    needs: [changes, test-unit]
+    if: >-
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
+      needs.changes.outputs.art_only != 'true' &&
+      needs.changes.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-node
-
-      - name: Dead code detection
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        run: npm run lint:dead-code
-
-      - name: Security audit
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        run: npm audit --audit-level=high
-
-      # Full typecheck (src/ + tests/ + scripts/). Separated from the blocking
-      # gate so a broken script or test helper surfaces without stalling the merge.
-      - name: Typecheck (full — tests + scripts)
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        run: npm run typecheck
 
       - name: Build
-        if: >-
-          !cancelled() &&
-          needs.changes.outputs.art_only != 'true' &&
-          (github.event_name == 'schedule' ||
-           (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-        continue-on-error: true
         run: npm run build
-
-  # Coverage advisory job: kept independent so the ~140-second v8 coverage suite
-  # does not block or serialize dead-code, security, typecheck, and build checks.
-  # All are advisory (continue-on-error: true); independence keeps scheduling
-  # flexible — this job can be re-run or skipped without affecting the others.
-  # Scoped: on PRs, skipped when coverage_touched=false (labs/e2e/docs/scripts-only
-  # diffs cannot change unit coverage numbers). Fail-closed: only an explicit 'false'
-  # skips the job — a missing/blank value keeps it running. Push/schedule always run.
-  ci-coverage:
-    name: Advisory coverage
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    needs: [changes]
-    if: >-
-      needs.changes.outputs.docs_only != 'true' &&
-      needs.changes.outputs.sprites_only != 'true' &&
-      (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched != 'false')
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node
-
-      - name: Unit tests with coverage
-        continue-on-error: true
-        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json-summary --coverage.reporter=text
-
-      - name: Upload coverage summary
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-summary
-          path: coverage/coverage-summary.json
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Coverage report comment
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        uses: davelosert/vitest-coverage-report-action@v2
-        with:
-          json-summary-path: coverage/coverage-summary.json
-
-  human-approval:
-    name: Human approval
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-node
-      - name: Enforce owner approval for human-gated PRs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: node .github/scripts/merge-train/human-approval-check.mjs
 
   merge-gate:
     name: Merge gate
@@ -431,7 +446,7 @@ jobs:
     needs:
       [
         changes,
-        static-validation,
+        check-lightweight,
         test-unit,
         test-integration,
         test-sprites,
@@ -439,9 +454,8 @@ jobs:
         test-e2e-game,
         test-e2e-assets,
         test-e2e-devtools,
-        human-approval,
       ]
-    if: always()
+    if: ${{ !cancelled() }}
     steps:
       - name: Check required jobs
         run: |
@@ -465,7 +479,6 @@ jobs:
           fi
 
           docs_only="${{ needs.changes.outputs.docs_only }}"
-          sim_touched="${{ needs.changes.outputs.sim_touched }}"
 
           check() {
             local name="$1" result="$2" allow_skipped="${3:-false}"
@@ -491,19 +504,21 @@ jobs:
           # skippable check, a `changes`/detect-art-only failure on a code PR
           # would skip every heavy gate and be silently counted as PASS.
           check "Change scope detection"        "${{ needs.changes.result }}"
-          # Heavy gameplay gates are allowed to be skipped on art-only or
-          # sprites-only changes (see the `changes` job). They still BLOCK on any
-          # game code change. docs-only changes skip all heavy gates.
-          check "Static validation"             "${{ needs.static-validation.result }}"
+          # Lightweight Checks consolidates Types & Lint, Format & Labs,
+          # advisory dead-code/typecheck, and human-approval. On docs-only
+          # changes the non-approval steps are skipped at the step level; the
+          # job still runs (and succeeds) so the human-approval gate is
+          # unconditionally enforced for labeled docs-only PRs.
+          check "Lightweight Checks"            "${{ needs.check-lightweight.result }}"
           # Unit tests: skipped for sprites_only (allow_skipped=true).
           check "Unit tests"                    "${{ needs.test-unit.result }}"        "true"
           # Integration tests: skipped for art_only or sprites_only (allow_skipped=true).
           check "Integration tests"             "${{ needs.test-integration.result }}" "true"
           # Sprite pipeline tests: skipped for art_only or docs_only (allow_skipped=true).
           check "Sprite pipeline tests"         "${{ needs.test-sprites.result }}"    "true"
-          # Headless Floor 1: skip is intentional only when sim_touched=false on a PR.
-          # A blank/empty sim_touched when headless was skipped on a PR indicates a
-          # potential classifier failure and rejects the gate.
+          # A headless skip is intentional only for docs or an explicit
+          # sim_touched=false classification. Missing classifier output fails closed.
+          sim_touched="${{ needs.changes.outputs.sim_touched }}"
           headless_result="${{ needs.test-headless.result }}"
           if [ "$headless_result" = "success" ]; then
             echo "✅ Headless Floor 1 completion: success"
@@ -522,14 +537,13 @@ jobs:
           check "E2E Visual — Game/UI"          "${{ needs.test-e2e-game.result }}"    "true"
           check "E2E Visual — Asset Smoke"      "${{ needs.test-e2e-assets.result }}"  "true"
           check "E2E Visual — Devtools"         "${{ needs.test-e2e-devtools.result }}" "true"
-          check "Human approval"                 "${{ needs.human-approval.result }}"
           echo "✅ All required checks passed"
 
   ci:
     name: ci
     runs-on: ubuntu-latest
     needs: [merge-gate]
-    if: always()
+    if: ${{ !cancelled() }}
     steps:
       - name: Verify CI passed
         run: |

@@ -109,14 +109,32 @@ jobs:
                 run_id: runId,
                 per_page: 100,
               });
-              const humanJob = (response.data.jobs || []).find((job) => job.name === 'Human approval');
-              return humanJob?.conclusion || null;
+              const lightweightJob = (response.data.jobs || []).find((job) => job.name === 'Lightweight Checks');
+              if (!lightweightJob) return null;
+              // Use the step-level conclusion for the "Human approval" step rather
+              // than the overall job conclusion. This prevents the rerun automation
+              // from looping indefinitely when an unrelated blocking step (e.g.
+              // lint, format) fails while human approval is already granted:
+              //   'success'  → approval present and gate passed
+              //   'failure'  → approval gate failed (approval not yet present)
+              //   'skipped'  → an earlier step failed before the approval step ran;
+              //                this is not an approval issue, so no rerun is needed
+              const approvalStep = (lightweightJob.steps || []).find(
+                (step) => step.name === 'Human approval',
+              );
+              return approvalStep?.conclusion || null;
             }
 
-            function needsRerun(approvalPresent, humanJobConclusion) {
+            function needsRerun(approvalPresent, humanStepConclusion) {
+              // A skipped step means an earlier blocking step failed before the
+              // approval gate was reached. Do not rerun — the developer must fix
+              // the upstream failure. A null conclusion means no step data is
+              // available (e.g. the Lightweight Checks job was skipped entirely on
+              // a docs-only PR); no rerun is appropriate in that case either.
+              if (humanStepConclusion === 'skipped' || humanStepConclusion === null) return false;
               return (
-                (approvalPresent && humanJobConclusion !== 'success') ||
-                (!approvalPresent && humanJobConclusion === 'success')
+                (approvalPresent && humanStepConclusion !== 'success') ||
+                (!approvalPresent && humanStepConclusion === 'success')
               );
             }
 

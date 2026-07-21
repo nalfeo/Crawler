@@ -112,6 +112,23 @@ test('normalizes blocker order before fingerprinting', () => {
   assert.equal(blockerFingerprint(left), blockerFingerprint(right));
 });
 
+test('normalizeBlockers preserves isOutdated flag and it is included in the fingerprint', () => {
+  const fresh = { kind: 'review-thread', id: 'rt:abc:000', summary: 'finding', path: 'foo.ts' };
+  const outdated = { ...fresh, isOutdated: true };
+
+  // isOutdated:true must survive normalisation
+  const normalizedOutdated = normalizeBlockers([outdated]);
+  assert.equal(normalizedOutdated[0].isOutdated, true);
+
+  // isOutdated:false / absent must NOT set the field (stays absent)
+  const normalizedFresh = normalizeBlockers([fresh]);
+  assert.equal(normalizedFresh[0].isOutdated, undefined);
+
+  // fingerprints must differ between outdated and fresh so the automation
+  // resets the retry budget when a thread transitions to outdated state
+  assert.notEqual(blockerFingerprint([fresh]), blockerFingerprint([outdated]));
+});
+
 test('line-number drift does not change the blocker fingerprint', () => {
   // Regression: diff-position line numbers drift whenever surrounding code is
   // modified (e.g. INDEX.md regenerated).  Including `line` in normalizeBlockers
@@ -597,6 +614,24 @@ test('broad sweeps suppress only healthy consistent owners', () => {
       now: new Date('2026-07-17T12:29:59.000Z'),
     }),
     true,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: automation,
+      headSha: 'abc',
+      now: new Date('2026-07-17T12:29:59.000Z'),
+    }),
+    true,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: automation,
+      headSha: 'def',
+      now: new Date('2026-07-17T12:29:59.000Z'),
+    }),
+    false,
   );
   assert.equal(
     isHealthyRecoveryOwner({
