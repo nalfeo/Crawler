@@ -358,14 +358,6 @@ jobs:
         continue-on-error: true
         run: npm run lint:dead-code
 
-      - name: Security audit
-        if: >-
-          !cancelled() &&
-          (github.event_name != 'pull_request' ||
-           needs.changes.outputs.dependencies_touched != 'false')
-        continue-on-error: true
-        run: npm audit --audit-level=high
-
       # Full typecheck (src/ + tests/ + scripts/). Separated from the blocking
       # gate so a broken script or test helper surfaces without stalling the merge.
       - name: Typecheck (full — tests + scripts)

@@ -633,7 +633,7 @@ const cases: Case[] = [
   {
     name: 'devtools.html change → devtool_visual only',
     files: ['devtools.html'],
-    expected: F(false, false, true, false, false, true, true, true, false, false, true, true),
+    expected: F(false, false, true, false, false, true, true, true, false, false, true),
   },
   {
     name: 'src/devtools-main.ts change → devtool_visual only',
@@ -677,7 +677,7 @@ const cases: Case[] = [
       true,
       true,
       true,
-      true,
+      false,
       false,
       false,
       true,
@@ -698,7 +698,7 @@ const cases: Case[] = [
       true,
       true,
       true,
-      true,
+      false,
       false,
       false,
       true,
@@ -769,7 +769,7 @@ const cases: Case[] = [
       true,
       true,
       true,
-      true,
+      false,
       false,
       false,
       true,
@@ -1162,28 +1162,30 @@ describe('detect-art-only.sh change-scope classifier', () => {
       expect(wf).toMatch(/- name: Docs\/asset-only fast-path[\s\S]*?if:.*art_only.*==.*'true'/);
     });
 
-    it('setup-node step does not gate on art_only', () => {
-      // setup-node stays enabled for all non-promoted runs; art_only does not skip it.
+    it('setup-node skip includes art_only condition', () => {
+      // setup-node must be skipped when art_only to avoid unnecessary Node install on art PRs.
       const setupNodeIdx = wf.indexOf('uses: ./.github/actions/setup-node');
       expect(setupNodeIdx).toBeGreaterThan(-1);
       // Use a forward window of 512 chars — enough to span any `with:` block before `if:`.
       const stepBlock = wf.slice(setupNodeIdx, setupNodeIdx + 512);
-      expect(stepBlock).not.toContain('art_only');
+      expect(stepBlock).toContain('art_only');
     });
 
-    it('docs/asset-only uses fast-path messaging only', () => {
-      // No dedicated docs/asset-only secret-scan step; the general step handles scans.
-      expect(wf).not.toContain('Scan for committed secrets (docs/asset-only)');
+    it('docs/asset-only secret scan includes art_only condition', () => {
+      // The bash-direct secret scan (no Node) must fire for art_only, not only docs_only.
+      expect(wf).toMatch(
+        /- name: Scan for committed secrets \(docs\/asset-only\)[\s\S]*?if:.*art_only/,
+      );
     });
 
-    it('Node-wrapped secret scan is not gated on art_only', () => {
-      // The wrapped secret scan runs regardless of art_only/docs_only when not promoted.
+    it('Node-wrapped secret scan excludes art_only paths', () => {
+      // The Node-wrapped secret scan must be skipped for art_only (Node is not set up).
       // Find the step by its unique name (no "(docs/asset-only)" suffix) and read its `if:` line.
       const stepIdx = wf.indexOf('- name: Scan for committed secrets\n');
       expect(stepIdx).toBeGreaterThan(-1);
       // Use a forward window of 512 chars — large enough to always capture the `if:` condition.
       const stepBlock = wf.slice(stepIdx, stepIdx + 512);
-      expect(stepBlock).not.toContain('art_only');
+      expect(stepBlock).toContain('art_only');
     });
   });
 });

@@ -62,6 +62,7 @@
  *   npm run ai:sweep-eval -- --stage validate        --combo navmeshFused+slackAware --search-artifact search.json --seeds 1-100 --workers 4 --out validate.json
  */
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -71,6 +72,7 @@ import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { AIDecisionMode, AIPathingMode, type RunStats } from '../../../src/game/ai/types.js';
 import { GAME } from '../../../src/shared/constants.js';
 import {
+  LEGACY_COMBO_ID,
   type Combo,
   type SweepConfig,
   type TunableKnob,
@@ -84,6 +86,7 @@ import {
 } from './gen-configs.js';
 import {
   SHARD_SCHEMA_VERSION,
+  assertRowSafeRoomInRange,
   assertSearchArtifactProvenance,
   buildLeaderboard,
   deriveRunFacts,
@@ -94,7 +97,7 @@ import {
   type ShardArtifact,
   type ShardMeta,
 } from './aggregate-shards.js';
-import { halveSteps } from './round-plan.js';
+import { halveSteps, stableStringify } from './round-plan.js';
 import {
   runWorkerPool,
   type WorkerPoolTaskPayload,
@@ -217,13 +220,22 @@ function winsOf(rows: readonly RunRow[], id: string): number {
  * Pure gate-aware promotion decision for the legacy `--stage search` hill
  * climb: a candidate may only replace the search's current position if it
  * ALSO passes {@link selectQualifiedWinner}'s hard safety gate (>=90%
- * official wins AND zero win→loss flips vs the FIXED original baseline
+ * official wins AND strictly MORE total wins than the FIXED original baseline
  * `incumbentConfigId` — never the search's current position, which would let
- * the gate itself drift), exactly mirroring `applyRoundResult`'s
- * round-to-round promotion in `round-plan.ts`. Extracted as a pure function
- * (taking already-evaluated rows, not running anything) so it is unit
- * testable without headless game runs — the exact wiring bug class a review
- * would otherwise only catch by re-deriving this logic by hand.
+ * the gate itself drift; win→loss flips are allowed as long as total wins
+ * still strictly increase, per the human-approved net-win promotion rule),
+ * exactly mirroring `applyRoundResult`'s round-to-round promotion in
+ * `round-plan.ts`. Extracted as a pure function (taking already-evaluated
+ * rows, not running anything) so it is unit testable without headless game
+ * runs — the exact wiring bug class a review would otherwise only catch by
+ * re-deriving this logic by hand.
+ *
+ * `incumbentCombo` defaults to `comboStr` when omitted (the `legacy+legacy`
+ * case where combo IS the incumbent). For non-LEGACY combos whose LEGACY
+ * baseline rows are threaded in from `searchCombo`, pass `LEGACY_COMBO_ID`
+ * so `buildLeaderboard` can locate the incumbent rows by their actual combo
+ * tag — without this, `winsVsIncumbentDelta` is always `null` and every
+ * candidate is disqualified by panel mismatch.
  *
  * Returns `null` when no candidate both qualifies and ranks ahead of the
  * current position under the full tie-break ordering (steps should be halved
@@ -237,9 +249,10 @@ export function selectSearchPromotion(
   candidateIds: ReadonlySet<string>,
   budgetMs: number,
   currentConfigId: string,
+  incumbentCombo?: string,
 ): { bestId: string; bestScore: number } | null {
   const leaderboard = buildLeaderboard(allRows, {
-    incumbentCombo: comboStr,
+    incumbentCombo: incumbentCombo ?? comboStr,
     incumbentConfigId,
     configs,
     budgetMs,
@@ -266,6 +279,113 @@ interface SearchResult {
 }
 
 /**
+ * Validate an externally-loaded `--legacy-baseline` artifact BEFORE injecting
+ * its rows into a search's `allRows`/`configs`. Unlike shard rows fanned in via
+ * {@link mergeShards} (which apply the same guards internally), this artifact
+ * crosses a JSON.parse boundary straight into `searchCombo` with no provenance
+ * check, so a stale/pre-v{@link SHARD_SCHEMA_VERSION} or wrong-floor/wrong-combo
+ * baseline would silently seed a mis-calibrated incumbent that the emitted
+ * search artifact's fresh metadata stamp would then hide from `--stage
+ * validate`'s downstream `assertSearchArtifactProvenance` check. Reuses the
+ * exact same schema/stage/floor/budget/frame guard as the search→validate
+ * boundary, plus per-row `safeRoomMs` sanity (a pre-v2 baseline could parse
+ * as valid JSON yet lack `safeRoomMs`, silently reverting win recomputation to
+ * raw-time semantics and undercounting the incumbent). Also validates the
+ * artifact's sole config/id is the CANONICAL LEGACY base config — not merely
+ * "exactly one config, tagged combo=legacy+legacy" — because a same-build
+ * `--stage search-eval` shard for a *tuned* `legacy+legacy` candidate also
+ * has one config, `meta.stage='search'`, LEGACY-tagged rows, and valid row
+ * facts, so it would otherwise pass every prior check and silently replace
+ * the fixed incumbent with a tuned (non-canonical) LEGACY variant.
+ *
+ * @param expected the caller's calibration to check the artifact against — floor/
+ *   budget/frames PLUS the current-build fingerprint (see
+ *   {@link currentBuildFingerprint}), threaded in by the caller (rather than
+ *   computed internally here) so callers can inject a deterministic fixture in
+ *   tests instead of depending on the actual host's OS/Node/dependency hash.
+ * @returns the artifact's sole configId (the LEGACY baseline's config).
+ */
+export function assertLegacyBaselineProvenance(
+  artifact: ShardArtifact,
+  expected: {
+    floorId: string;
+    budgetMs: number;
+    maxFrames: number;
+    runnerOs: string;
+    nodeVersion: string;
+    packageLockHash: string;
+    workflowSha: string;
+  },
+): string {
+  const legacyIds = Object.keys(artifact.configs);
+  const legacyId = legacyIds[0];
+  if (!legacyId || legacyIds.length !== 1) {
+    throw new Error(
+      `--legacy-baseline artifact must contain exactly one config, got ${legacyIds.length}.`,
+    );
+  }
+  const canonicalLegacyConfig = baseConfigForCombo({
+    pathing: AIPathingMode.LEGACY,
+    decision: AIDecisionMode.LEGACY,
+  });
+  const canonicalLegacyConfigId = configId(canonicalLegacyConfig);
+  if (legacyId !== canonicalLegacyConfigId) {
+    throw new Error(
+      `--legacy-baseline artifact configId '${legacyId}' is not the canonical LEGACY base config ` +
+        `(expected '${canonicalLegacyConfigId}'). A tuned legacy+legacy shard must not be used as ` +
+        `the fixed incumbent. Produce it via '--stage search-baseline --combo ${LEGACY_COMBO_ID}'.`,
+    );
+  }
+  // Also verify the stored config BODY is *exactly* the canonical LEGACY base
+  // config — the key check above catches a mis-keyed artifact, but the body
+  // could still carry tuned values if the canonical key string was supplied
+  // manually while the config object itself was a tuned variant. Comparing
+  // via `configId()` would miss sub-4dp drift: configId() rounds every
+  // numeric knob to 4dp (see gen-configs.ts `round4`), so a tuned value like
+  // canonical+0.00001 would round to the identical id and slip past an
+  // id-based body check while still being a non-canonical runtime config.
+  // `stableStringify` performs no rounding, so it catches any body drift,
+  // however small.
+  const canonicalLegacyBody = stableStringify(canonicalLegacyConfig);
+  const storedBody = stableStringify(artifact.configs[legacyId]!);
+  if (storedBody !== canonicalLegacyBody) {
+    throw new Error(
+      `--legacy-baseline artifact config body does not match the canonical LEGACY base config. ` +
+        `Config key '${legacyId}' is correct, but the stored config body's values differ from ` +
+        `the untuned canonical LEGACY base. The config body must be exactly the canonical ` +
+        `LEGACY base, not a tuned variant under a canonical-looking key.`,
+    );
+  }
+  const rowCombos = new Set(artifact.rows.map((r) => r.combo));
+  if (rowCombos.size !== 1 || !rowCombos.has(LEGACY_COMBO_ID)) {
+    throw new Error(
+      `--legacy-baseline artifact rows must all be tagged combo='${LEGACY_COMBO_ID}', got: ` +
+        `${[...rowCombos].join(', ')}. Produce it via ` +
+        `'--stage search-baseline --combo ${LEGACY_COMBO_ID}'.`,
+    );
+  }
+  assertSearchArtifactProvenance(artifact.meta as ShardMeta | undefined, LEGACY_COMBO_ID, {
+    combo: LEGACY_COMBO_ID,
+    floorId: expected.floorId,
+    budgetMs: expected.budgetMs,
+    maxFrames: expected.maxFrames,
+    runnerOs: expected.runnerOs,
+    nodeVersion: expected.nodeVersion,
+    packageLockHash: expected.packageLockHash,
+    workflowSha: expected.workflowSha,
+  });
+  for (const row of artifact.rows) {
+    if (row.configId !== legacyId) {
+      throw new Error(
+        `--legacy-baseline artifact rows must all reference the sole configId '${legacyId}', got row configId '${row.configId}'.`,
+      );
+    }
+    assertRowSafeRoomInRange(row);
+  }
+  return legacyId;
+}
+
+/**
  * Coordinate-ascent search for one combo over the TRAIN seeds. Starts from the
  * combo's SSOT base config, probes ±step neighbours of each tunable knob, moves
  * to the best-scoring neighbour, and halves steps when a round finds no
@@ -280,6 +400,15 @@ async function searchCombo(
     rounds: number;
     secondary: boolean;
     floorId: string;
+    /** When provided and the combo is not `legacy+legacy`, this PRE-VALIDATED
+     *  (see {@link assertLegacyBaselineProvenance}) shard's rows/config are
+     *  injected into `allRows`/`configs` and used as the safety-gate incumbent
+     *  — exactly mirroring {@link initCheckpoint} in `round-plan.ts`. This is
+     *  an OPTIMIZATION to reuse one LEGACY baseline across multiple combo
+     *  searches in a session — NOT a correctness requirement: when omitted,
+     *  `searchCombo` evaluates the LEGACY baseline itself so the gate is
+     *  threaded correctly by default either way. */
+    legacyBaseline?: ShardArtifact;
   },
 ): Promise<SearchResult> {
   const shared: EvalShared = {
@@ -321,6 +450,56 @@ async function searchCombo(
     `[${comboStr}] baseline ${base.id.slice(0, 48)} score=${currentScore.toExponential(3)} wins=${winsOf(allRows, currentId)}/${opts.weapons.length * opts.trainSeeds.length}`,
   );
 
+  // Incumbent for the safety gate: use the LEGACY incumbent for non-LEGACY
+  // combos so that the in-search net-win check mirrors the final graduation
+  // gate (`selectQualifiedWinner`), exactly like `round-plan.ts`'s
+  // `initCheckpoint`. For `legacy+legacy` the combo IS the LEGACY incumbent,
+  // so no separate baseline is needed.
+  //
+  // `opts.legacyBaseline` lets a caller sweeping multiple non-LEGACY combos in
+  // one session pass a PRE-COMPUTED LEGACY shard to avoid re-running the
+  // LEGACY baseline once per combo. It is an optimization, NOT a correctness
+  // requirement: when omitted, this function computes the LEGACY baseline
+  // itself (one extra headless eval pass) so the safety gate is threaded
+  // correctly by default, with no opt-in flag required to avoid silently
+  // falling back to the pre-fix bug (gating against the combo's own
+  // baseline instead of the fixed LEGACY incumbent).
+  const comboIsLegacy = comboStr === LEGACY_COMBO_ID;
+  let incumbentConfigId = base.id;
+  let incumbentCombo = comboStr;
+  if (!comboIsLegacy) {
+    if (opts.legacyBaseline) {
+      const legacyId = assertLegacyBaselineProvenance(opts.legacyBaseline, {
+        floorId: opts.floorId,
+        budgetMs: shared.budgetMs,
+        maxFrames: shared.maxFrames,
+        ...currentBuildFingerprint(),
+      });
+      incumbentConfigId = legacyId;
+      Object.assign(configs, opts.legacyBaseline.configs);
+      allRows.push(...opts.legacyBaseline.rows);
+    } else {
+      // No pre-computed shard supplied — evaluate the LEGACY baseline
+      // ourselves (register() already merges it into `configs`) so the
+      // gate is correct by default rather than silently falling back to
+      // the pre-fix behaviour of gating against the combo's own baseline.
+      const legacyBase = register(
+        baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+      );
+      const legacyRows = await runTasks(
+        buildTasks([legacyBase], LEGACY_COMBO_ID, opts.weapons, opts.trainSeeds),
+        shared,
+        opts.workers,
+      );
+      allRows.push(...legacyRows);
+      incumbentConfigId = legacyBase.id;
+      console.log(
+        `[${comboStr}] auto-computed LEGACY incumbent ${legacyBase.id.slice(0, 48)} wins=${winsOf(legacyRows, legacyBase.id)}/${opts.weapons.length * opts.trainSeeds.length} (pass --legacy-baseline to reuse across combos and skip this)`,
+      );
+    }
+    incumbentCombo = LEGACY_COMBO_ID;
+  }
+
   for (let round = 0; round < opts.rounds; round++) {
     const currentConfig = configs[currentId]!;
     const candidates = neighbors(currentConfig, knobs, steps)
@@ -346,9 +525,13 @@ async function searchCombo(
 
     // Gate promotion through the SAME hard safety gate used for round-plan.ts
     // and final graduation (see selectSearchPromotion doc comment): a
-    // higher-scoring neighbour must ALSO have >=90% wins AND zero win->loss
-    // flips vs the FIXED original baseline (base.id, not the search's current
-    // position) before it can replace currentId. Naive score-only promotion
+    // higher-scoring neighbour must ALSO have >=90% wins AND strictly MORE
+    // total wins than the FIXED original incumbent (incumbentConfigId — the
+    // LEGACY config ID for every non-LEGACY combo, whether supplied via
+    // --legacy-baseline or auto-computed above; base.id only when the combo
+    // itself IS legacy+legacy) before it can replace currentId — win→loss
+    // flips are allowed as long as total wins still strictly increase
+    // (human-approved net-win promotion rule). Naive score-only promotion
     // here would reintroduce the exact GH-run-29597840666 bug this module
     // exists to fix, just in the legacy local-smoke-run path instead of CI.
     const candidateIds = new Set(candidates.map((c) => c.id));
@@ -356,10 +539,11 @@ async function searchCombo(
       allRows,
       configs,
       comboStr,
-      base.id,
+      incumbentConfigId,
       candidateIds,
       shared.budgetMs,
       currentId,
+      incumbentCombo,
     );
 
     if (promotion) {
@@ -392,6 +576,57 @@ function packageLockHash(): string {
   }
 }
 
+function localWorkflowSha(packageLock: string): string {
+  const head = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  const dirty = spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  const headSha =
+    head.status === 0 && typeof head.stdout === 'string' && head.stdout.trim().length > 0
+      ? head.stdout.trim()
+      : 'unknown-head';
+  const dirtyHash =
+    dirty.status === 0 && typeof dirty.stdout === 'string'
+      ? createHash('sha256').update(dirty.stdout).digest('hex').slice(0, 12)
+      : packageLock.slice(0, 12);
+  return `local:${headSha}:${dirtyHash}`;
+}
+
+/**
+ * The current process's build fingerprint (OS/arch, Node runtime, dependency
+ * hash, code revision). Shared by {@link buildMeta} (stamped onto every shard
+ * this process emits) and every `assertSearchArtifactProvenance` call site
+ * (checked against an externally-loaded artifact's stamped fingerprint) so a
+ * schema/floor/budget-matching artifact from a different build is still
+ * rejected — see {@link assertSearchArtifactProvenance}'s doc comment.
+ *
+ * `nodeVersion` is truncated to the major version (e.g. `'v22'`) rather than
+ * the full `process.version` (e.g. `'v22.4.1'`): `.github/actions/setup-node`
+ * pins only the major version, so `actions/setup-node@v4` can legitimately
+ * resolve a different patch release per job within the SAME multi-hour
+ * workflow run (round-DAG jobs run sequentially across rounds). Comparing the
+ * full patch version would spuriously reject an otherwise-valid same-run
+ * shard the moment a Node patch release lands mid-run; the major version is
+ * still a meaningful compatibility signal without that fragility.
+ */
+export function currentBuildFingerprint(): Pick<
+  ShardMeta,
+  'runnerOs' | 'nodeVersion' | 'packageLockHash' | 'workflowSha'
+> {
+  const lockHash = packageLockHash();
+  const workflowSha = process.env.GITHUB_SHA?.trim();
+  return {
+    runnerOs: `${process.platform}-${process.arch}`,
+    nodeVersion: process.version.match(/^v\d+/)?.[0] ?? process.version,
+    packageLockHash: lockHash,
+    workflowSha: workflowSha && workflowSha.length > 0 ? workflowSha : localWorkflowSha(lockHash),
+  };
+}
+
 function buildMeta(stage: string, floorId: string): ShardMeta {
   return {
     schemaVersion: SHARD_SCHEMA_VERSION,
@@ -399,10 +634,7 @@ function buildMeta(stage: string, floorId: string): ShardMeta {
     floorId,
     maxFrames: MAX_FRAMES,
     stage,
-    runnerOs: `${process.platform}-${process.arch}`,
-    nodeVersion: process.version,
-    packageLockHash: packageLockHash(),
-    workflowSha: process.env.GITHUB_SHA ?? 'local',
+    ...currentBuildFingerprint(),
   };
 }
 
@@ -425,6 +657,7 @@ interface CliArgs {
   floorId: string;
   searchArtifact: string | null;
   includeIncumbent: boolean;
+  legacyBaseline: string | null;
   out: string | null;
 }
 
@@ -443,6 +676,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     floorId: 'floor1',
     searchArtifact: null,
     includeIncumbent: true,
+    legacyBaseline: null,
     out: null,
   };
   for (let i = 2; i < argv.length; i++) {
@@ -488,6 +722,9 @@ function parseArgs(argv: readonly string[]): CliArgs {
       i++;
     } else if (arg === '--no-incumbent') {
       args.includeIncumbent = false;
+    } else if (arg === '--legacy-baseline' && next) {
+      args.legacyBaseline = next;
+      i++;
     } else if (arg === '--out' && next) {
       args.out = next;
       i++;
@@ -546,6 +783,9 @@ async function main(argv: readonly string[]): Promise<void> {
     console.log(
       `🔎 SEARCH ${comboId(combo)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers} · rounds ${args.rounds}${args.secondary ? ' · +secondary' : ''}`,
     );
+    const legacyBaseline = args.legacyBaseline
+      ? (JSON.parse(readFileSync(args.legacyBaseline, 'utf8')) as ShardArtifact)
+      : undefined;
     const result = await searchCombo(combo, {
       trainSeeds: args.trainSeeds,
       weapons: args.weapons,
@@ -553,6 +793,7 @@ async function main(argv: readonly string[]): Promise<void> {
       rounds: args.rounds,
       secondary: args.secondary,
       floorId: args.floorId,
+      legacyBaseline,
     });
     const artifact: SearchArtifact = {
       meta: buildMeta('search', args.floorId),
@@ -632,6 +873,7 @@ async function main(argv: readonly string[]): Promise<void> {
     floorId: args.floorId,
     budgetMs: FLOOR1_TIME_BUDGET_MS,
     maxFrames: MAX_FRAMES,
+    ...currentBuildFingerprint(),
   });
   const finalist = search.configs[search.bestConfigId];
   if (!finalist) {

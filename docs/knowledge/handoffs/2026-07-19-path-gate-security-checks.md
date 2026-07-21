@@ -95,6 +95,23 @@ authoritative path for npm audit on PRs.
 | Classifier failures → broader set              | Fail-safe `!= 'false'` pattern                                                                |
 | Scheduled runs unchanged                       | Normalize step forces all flags `true` for non-PR                                             |
 
+## Post-merge-train fix (2026-07-21)
+
+Merge Train Validation's `npm run security:check` was failing on `npm audit
+--audit-level=high`: `fast-uri` 3.0.0–3.1.2 (transitive dep of `ajv`/`fast-json-stringify`
+via `@fastify/ajv-compiler` and Stryker) carries a high-severity host-confusion
+advisory (GHSA-4c8g-83qw-93j6). Fixed with the smallest possible remediation —
+`npm update fast-uri` bumps it to the patched 3.1.3 (already satisfied by the
+existing `^3.0.x` semver ranges of its dependents), a 3-line `package-lock.json`
+diff with no unrelated dependency churn. The local sandbox's corporate npm proxy
+resolves packages through an internal Azure DevOps feed mirror with sha1-only
+integrity; that resolved URL/integrity was manually normalized back to the
+standard `registry.npmjs.org` URL + sha512 integrity (computed from the actual
+tarball) to keep the lockfile consistent with the rest of the file and avoid a
+private-feed URL that GitHub Actions runners cannot reach. `npm audit
+--audit-level=high` now reports 0 vulnerabilities; `npm ci` and `verify:fast`
+pass.
+
 ## Closes
 
 nalfeo/Crawler#1697

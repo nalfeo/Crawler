@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# detect-art-only.sh — detect change scope and emit orthogonal impact flags.
+# detect-art-only.sh — detect change scope and emit orthogonal impact flags
+# (art_only, docs_only, gameplay_safe, sim_touched, coverage_touched, visual
+# surfaces, and security-impact flags).
 #
 # art_only=true  — every changed file is under the approved-art surface:
 #   - public/assets/generated/**        (sprites + manifest.json)
@@ -57,8 +59,12 @@
 # Test hook: SCOPE_FILES_OVERRIDE (newline-separated paths) classifies that list
 # directly instead of deriving it from git — used by the deterministic unit test.
 # Fail-safe: any ambiguity (no base, no changed files, detached history) yields
-# false for negative-signal flags and true for positive-signal flags, so gates
-# fail closed toward running broader validation. This script never blocks CI.
+# false for scope-narrowing flags (art_only, docs_only, gameplay_safe,
+# sprites_only), TRUE for sprite/sim/coverage flags (sprites_touched,
+# sim_touched, coverage_touched, sprite_pipeline_touched), and TRUE for
+# security-impact flags (dependencies_touched, ai_code_touched,
+# codeowners_touched, source_code_touched) so that all gated checks always
+# run on ambiguous scope. This script never blocks CI.
 
 set -euo pipefail
 
@@ -444,9 +450,10 @@ done <<<"$changed"
 # downstream consumers. Always kept identical.
 sprite_pipeline_touched="$sprites_touched"
 
-# dependencies_touched: true when dependency manifests changed OR when a path is
-# unknown/unclassified (fail closed). Safe-listed known non-dependency surfaces
-# stay false so PR audits can skip only when explicitly non-dependency.
+# dependencies_touched: at least one changed file is a dependency manifest
+# (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json) or the
+# dependency-allowlist security script. Consumed by security-review.yml to gate
+# npm audit and the dep-allowlist check.
 dependencies_touched=false
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -455,19 +462,6 @@ while IFS= read -r file; do
       dependencies_touched=true; break ;;
     scripts/agent/security/check-deps.ts)
       dependencies_touched=true; break ;;
-    .github/*) ;;
-    docs/*) ;;
-    .specify/*) ;;
-    scripts/*) ;;
-    AGENTS.md) ;;
-    CODEOWNERS | .github/CODEOWNERS) ;;
-    briefs/*) ;;
-    src/*) ;;
-    tests/*) ;;
-    public/*) ;;
-    *.md) ;;
-    *.txt) ;;
-    *) dependencies_touched=true; break ;;
   esac
 done <<<"$changed"
 

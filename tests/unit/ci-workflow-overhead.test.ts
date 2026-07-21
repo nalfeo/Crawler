@@ -85,10 +85,11 @@ describe('ci workflow overhead reduction', () => {
     );
     expect(setupNodeStep?.with?.['install-playwright']).toBe('true');
 
-    // ci-advisory: lightweight checks — no coverage (that lives in ci-coverage)
+    // ci-advisory: lightweight checks only — no coverage (that lives in ci-coverage)
+    // and no npm audit (that lives in security-review.yml to avoid duplication)
     const advisory = workflow.jobs['ci-advisory'];
     expect(advisory?.steps?.find((step) => step.name === 'Dead code detection')).toBeTruthy();
-    expect(advisory?.steps?.find((step) => step.name === 'Security audit')).toBeTruthy();
+    expect(advisory?.steps?.find((step) => step.name === 'Security audit')).toBeFalsy();
     expect(
       advisory?.steps?.find((step) => step.name === 'Typecheck (full — tests + scripts)'),
     ).toBeTruthy();
@@ -312,20 +313,11 @@ describe('impact-flag job gating contracts (#1697/#1698)', () => {
     expect(devtoolIf).toContain("docs_only != 'true'");
   });
 
-  it('ci-advisory Security audit runs on PRs unless dependencies_touched is explicitly false (fail-closed: != false)', () => {
-    const workflow = loadWorkflow('.github/workflows/ci.yml');
-    const condition = getStepIf(workflow.jobs['ci-advisory'], 'Security audit');
-    // Fail-closed: only an explicit 'false' skips; blank/missing output keeps the step running.
-    expect(condition).toContain("dependencies_touched != 'false'");
-    // The fail-open form must not be present.
-    expect(condition).not.toContain("dependencies_touched == 'true'");
-    expect(condition).toContain("github.event_name != 'pull_request'");
-  });
-
   it('security-review npm audit and dependency allowlist gate on dependencies_touched (fail-closed: != false)', () => {
     const workflow = loadWorkflow('.github/workflows/security-review.yml');
     const job = workflow.jobs['security-checks'];
     for (const step of ['npm audit', 'Dependency allowlist']) {
+      const stepDef = job?.steps?.find((s) => s.name === step);
       const condition = getStepIf(job, step);
       // Fail-closed: only explicit 'false' skips; blank/missing output keeps the gate running.
       expect(condition, `${step} must gate on dependencies_touched != false`).toContain(
@@ -335,20 +327,33 @@ describe('impact-flag job gating contracts (#1697/#1698)', () => {
       expect(condition, `${step} must not use fail-open == true`).not.toContain(
         "dependencies_touched == 'true'",
       );
-      expect(condition, `${step} must still run on non-PR events`).toContain(
-        "github.event_name != 'pull_request'",
+      // Non-PR events (schedule/workflow_dispatch) must not hard-fail the workflow
+      // on advisory findings; that is expressed via continue-on-error, not the if:.
+      expect(stepDef?.['continue-on-error'], `${step} must not hard-fail on non-PR events`).toBe(
+        "${{ github.event_name != 'pull_request' }}",
       );
     }
   });
 
-  it('security-review secret scanning stays fail-closed (not gated on scope flags)', () => {
+  it('security-review secret scanning stays fail-closed (not gated on dependencies_touched)', () => {
     const workflow = loadWorkflow('.github/workflows/security-review.yml');
-    const condition = getStepIf(workflow.jobs['security-checks'], 'Scan for committed secrets');
-    // Secret scanning must run for every relevant PR change set: it must NOT be
-    // gated on docs_only or dependencies_touched, only on train-promotion + not-cancelled.
-    expect(condition).toContain("train_promoted != 'true'");
-    expect(condition).not.toContain('dependencies_touched');
-    expect(condition).not.toContain('docs_only');
+    const job = workflow.jobs['security-checks'];
+    // Secret scanning must run for every relevant PR change set regardless of
+    // dependency-manifest scope: it is split into a docs/asset-only variant and a
+    // non-docs variant (train-promotion + not-cancelled), never gated on
+    // dependencies_touched.
+    for (const step of [
+      'Scan for committed secrets (docs/asset-only)',
+      'Scan for committed secrets',
+    ]) {
+      const condition = getStepIf(job, step);
+      expect(condition, `${step} must gate on train_promoted`).toContain(
+        "train_promoted != 'true'",
+      );
+      expect(condition, `${step} must not be gated on dependencies_touched`).not.toContain(
+        'dependencies_touched',
+      );
+    }
   });
 
   it('security-checks job is skipped when the workflow is cancelled but runs on changes failure (if: !cancelled())', () => {
