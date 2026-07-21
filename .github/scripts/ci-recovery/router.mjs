@@ -25,6 +25,7 @@ const MANAGED_COMMENT_MARKERS = [
   '<!-- crawler-ci-state:v1 -->',
   '<!-- crawler-ci-task:v1',
   '<!-- crawler-merge-train:v1 -->',
+  '<!-- crawler-review-request:v1',
 ];
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;

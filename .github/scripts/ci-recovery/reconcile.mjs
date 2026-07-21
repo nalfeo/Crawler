@@ -50,6 +50,7 @@ import {
   hasIntakeRequirementComment,
   reviewThreadPlanIssueNumbers,
 } from './issue-intake-lib.mjs';
+import { reviewRequestMarker, REVIEWER_LOGIN, shouldRequestReview } from './review-request.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -73,6 +74,7 @@ const workflowRunUrl =
   process.env.GITHUB_SERVER_URL && process.env.GITHUB_RUN_ID
     ? `${process.env.GITHUB_SERVER_URL}/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`
     : null;
+const copilotReviewerLogin = String(process.env.COPILOT_REVIEWER_LOGIN || REVIEWER_LOGIN).trim();
 const REBASE_FAILURE_MAX_ATTEMPTS = 3;
 const REBASE_FAILURE_BASE_BACKOFF_MS = 60 * 1000;
 const REBASE_FAILURE_MAX_BACKOFF_MS = 10 * 60 * 1000;
@@ -1608,6 +1610,32 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
 }
 
 const normalized = normalizeBlockers(blockers);
+const reviewRequestReason = shouldRequestReview({
+  trigger,
+  pr,
+  checkRuns,
+  blockers: normalized,
+  comments,
+  previousState: state,
+});
+if (reviewRequestReason && live) {
+  await assertExpectedMetadataUnchanged('request-review');
+  await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers`, {
+    method: 'POST',
+    body: { reviewers: [copilotReviewerLogin] },
+  });
+  await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+    method: 'POST',
+    body: { body: reviewRequestMarker({ headSha: pr.head.sha, reason: reviewRequestReason }) },
+  });
+  process.stdout.write(
+    `requested copilot review pr=#${prNumber} reviewer=${copilotReviewerLogin} reason=${reviewRequestReason}\n`,
+  );
+} else if (reviewRequestReason) {
+  process.stdout.write(
+    `dry-run would-request copilot review pr=#${prNumber} reason=${reviewRequestReason}\n`,
+  );
+}
 const fingerprint =
   normalized.length === 0
     ? admissionFingerprint({

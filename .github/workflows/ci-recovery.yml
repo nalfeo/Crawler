@@ -77,4 +77,5 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
           EXPECTED_BASE_REF: ${{ inputs.expected_base_ref }}
           LEASE_ID: ${{ inputs.lease_id }}
+          COPILOT_REVIEWER_LOGIN: copilot-pull-request-reviewer
         run: node .github/scripts/ci-recovery/reconcile.mjs

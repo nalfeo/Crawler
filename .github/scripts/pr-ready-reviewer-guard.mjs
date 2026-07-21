@@ -668,6 +668,7 @@ export async function runPrReadyReviewerGuard({
   log = console,
   now = new Date(),
   graceMs = EMPTY_DRAFT_REPAIR_GRACE_MS,
+  reviewerCleanupEnabled = true,
 }) {
   const reviewerLogin = String(reviewerLoginRaw || '')
     .trim()
@@ -719,16 +720,18 @@ export async function runPrReadyReviewerGuard({
           triggeringPullNumber,
         });
         if (changedFiles === 0) {
-          reviewerCleanupAttempted = true;
-          reviewerRemovals += Number(
-            await removeRequestedReviewerIfPresent({
-              api,
-              pr,
-              prNumber,
-              reviewerLogin,
-              log,
-            }),
-          );
+          reviewerCleanupAttempted = reviewerCleanupEnabled;
+          if (reviewerCleanupEnabled) {
+            reviewerRemovals += Number(
+              await removeRequestedReviewerIfPresent({
+                api,
+                pr,
+                prNumber,
+                reviewerLogin,
+                log,
+              }),
+            );
+          }
           attemptedRepair = true;
           const repairResult = await repairEmptyCopilotDraft({
             api,
@@ -784,7 +787,7 @@ export async function runPrReadyReviewerGuard({
       continue;
     }
 
-    if (!reviewerCleanupAttempted) {
+    if (reviewerCleanupEnabled && !reviewerCleanupAttempted) {
       reviewerRemovals += Number(
         await removeRequestedReviewerIfPresent({
           api,
@@ -846,6 +849,7 @@ async function main() {
     triggeringPullNumber: payload?.pull_request?.number,
     api: createApi({ token, owner, repo }),
     log: logger,
+    reviewerCleanupEnabled: process.env.REVIEWER_CLEANUP_ENABLED !== 'false',
   });
 }
 
