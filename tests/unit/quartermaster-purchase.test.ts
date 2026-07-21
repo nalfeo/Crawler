@@ -86,12 +86,12 @@ function replaceStock(world: TestWorld, stock: Floor2QuartermasterStockState): v
 }
 
 function transactionSnapshot(world: TestWorld): object {
-  return {
+  return structuredClone({
     playerGold: world.playerGold,
     inventories: [...world.inventories.entries()],
     stock: world.floorExtendedState?.settlement?.quartermasterStock,
     registry: listGeneratedEquipmentInstances(world),
-  };
+  });
 }
 
 describe('Quartermaster atomic purchase', () => {

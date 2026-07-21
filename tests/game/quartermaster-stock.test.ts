@@ -203,4 +203,53 @@ describe('Floor 2 Quartermaster generated stock', () => {
     });
     expect(world.floorExtendedState?.settlement?.quartermasterStock).toBe(initial);
   });
+
+  it('generates stock using the explicit effectivePlayerLevel when world.playerLevel is not yet updated', () => {
+    // Simulates a Floor 1→2 carryover where world.playerLevel is still the
+    // default (1) at settlement-init time but the intended level is 8.
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    enableQuartermasterEconomy(world);
+    // world.playerLevel.level is intentionally left at its default (0) to
+    // simulate a pre-carryover state.
+    expect(world.playerLevel.level).toBe(0);
+
+    const effectiveLevel = 8;
+    const stock = createInitialFloor2QuartermasterStock(world, effectiveLevel);
+    expect(stock).toBeDefined();
+    if (!stock) return;
+
+    for (const offer of stock.offers) {
+      const instance = listGeneratedEquipmentInstances(world).find(
+        (candidate) => candidate.instanceId === offer.instanceId,
+      );
+      expect(instance).toBeDefined();
+      expect(instance?.itemLevel).toBeGreaterThanOrEqual(Math.max(1, effectiveLevel - 1));
+      expect(instance?.itemLevel).toBeLessThanOrEqual(effectiveLevel + 1);
+    }
+  });
+
+  it('generates different stock when effectivePlayerLevel differs from world.playerLevel', () => {
+    const worldAtDefault = createTestWorld({ seed: 42, floor: 2 });
+    const worldExplicit = createTestWorld({ seed: 42, floor: 2 });
+    enableQuartermasterEconomy(worldAtDefault);
+    enableQuartermasterEconomy(worldExplicit);
+
+    // Both worlds have playerLevel.level = 1 (default).
+    const stockDefault = createInitialFloor2QuartermasterStock(worldAtDefault);
+    // Pass level 10 explicitly — simulating a high-level carryover.
+    const stockExplicit = createInitialFloor2QuartermasterStock(worldExplicit, 10);
+
+    expect(stockDefault).toBeDefined();
+    expect(stockExplicit).toBeDefined();
+    if (!stockDefault || !stockExplicit) return;
+
+    // The stock IDs use seed + epoch only (not level), so they are equal;
+    // but the generated item levels should differ between the two.
+    expect(stockDefault.stockId).toBe(stockExplicit.stockId);
+    const defaultLevels = listGeneratedEquipmentInstances(worldAtDefault).map((i) => i.itemLevel);
+    const explicitLevels = listGeneratedEquipmentInstances(worldExplicit).map((i) => i.itemLevel);
+    // High-level stock offers must be above the default band [1, 2].
+    expect(explicitLevels.some((l) => l > 2)).toBe(true);
+    expect(defaultLevels.every((l) => l <= 2)).toBe(true);
+  });
 });

@@ -64,6 +64,14 @@ export interface InitializeFloor2SettlementOptions {
    * is excluded from this pool regardless.
    */
   readonly archetypes?: readonly ShopArchetypeDef[];
+  /**
+   * The player level to use for Quartermaster stock item-level rolling.  Pass
+   * the carried-over or intended level explicitly when `world.playerLevel` has
+   * not yet been updated to the effective play level (e.g. Floor 1→2 carryover
+   * or a headless run with a custom `startPlayerLevel` set after scenario
+   * configuration).  Defaults to `world.playerLevel.level` when omitted.
+   */
+  readonly effectivePlayerLevel?: number;
 }
 
 export const FLOOR2_SETTLEMENT_NPC_SPACING_TILES = 3;
@@ -217,7 +225,10 @@ export function initializeFloor2Settlement(
     });
   });
 
-  const quartermasterStock = createInitialFloor2QuartermasterStock(world);
+  const quartermasterStock = createInitialFloor2QuartermasterStock(
+    world,
+    options.effectivePlayerLevel,
+  );
   const snapshot: Floor2SettlementSnapshot = {
     settlementRoomId: settlement.id,
     settlementRoomIds: settlements.map((room) => room.id),

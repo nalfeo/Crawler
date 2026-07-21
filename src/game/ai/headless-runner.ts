@@ -382,10 +382,17 @@ export async function runHeadless(
     mergedConfig.enemyDamageMultiplier,
   );
 
+  // Apply the intended player level BEFORE scenario configuration so that any
+  // settlement or stock generation that reads world.playerLevel during
+  // configureWorld (e.g. Floor 2 Quartermaster stock) sees the correct level.
+  // applyStartPlayerLevel is raise-only, so scenario-internal level overrides
+  // (e.g. applyFloor2DirectStartPlayerState) are no-ops when the requested
+  // level is already >= the baseline they would set.
+  applyStartPlayerLevel(world, mergedConfig.startPlayerLevel);
+
   // Initialize selected scenario (map/objective/NPC wiring).
   const scenario = getScenarioDefinition(mergedConfig.floorId);
   scenario.configureWorld(world, playerEid);
-  applyStartPlayerLevel(world, mergedConfig.startPlayerLevel);
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
   // Select starter weapon when the scenario exposes a loadout phase.

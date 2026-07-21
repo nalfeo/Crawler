@@ -64,6 +64,7 @@ function generateStock(
   world: GameWorld,
   restockEpoch: number,
   retiredInstanceIds: readonly Floor2QuartermasterStockState['retiredInstanceIds'][number][],
+  effectivePlayerLevel?: number,
 ): Floor2QuartermasterStockState {
   ensureFloor2EquipmentRegistry(world);
   const quartermaster = loadShopArchetypes().find(
@@ -75,6 +76,7 @@ function generateStock(
   const rng = new SeededRandom(
     hashStringToSeed(`floor2-quartermaster-stock:${world.seed}:${restockEpoch}`),
   );
+  const playerLevel = effectivePlayerLevel ?? world.playerLevel.level;
   const bases = [...FLOOR2_QUARTERMASTER_GENERATED_BASE_IDS];
   rng.shuffle(bases);
   const size = rng.nextInt(quartermaster.minInventorySize, quartermaster.maxInventorySize);
@@ -92,7 +94,7 @@ function generateStock(
       world,
       {
         baseId,
-        itemLevel: rng.nextInt(Math.max(1, world.playerLevel.level - 1), world.playerLevel.level + 1),
+        itemLevel: rng.nextInt(Math.max(1, playerLevel - 1), playerLevel + 1),
         rarity,
         enhancementLevel: 0,
       },
@@ -114,9 +116,18 @@ function generateStock(
   });
 }
 
-/** Create the one deterministic floor-load stock batch (epoch zero). */
+/**
+ * Create the one deterministic floor-load stock batch (epoch zero).
+ *
+ * @param effectivePlayerLevel - The player level to use for item level rolling.
+ *   Pass the carried-over or intended level explicitly when `world.playerLevel`
+ *   has not yet been updated to the effective play level (e.g. Floor 1→2
+ *   carryover or headless custom `startPlayerLevel`).  Defaults to
+ *   `world.playerLevel.level` when omitted.
+ */
 export function createInitialFloor2QuartermasterStock(
   world: GameWorld,
+  effectivePlayerLevel?: number,
 ): Floor2QuartermasterStockState | undefined {
   const access = getFloor2EquipmentEconomyAccess(world);
   if (access.kind === 'disabled') {
@@ -125,7 +136,7 @@ export function createInitialFloor2QuartermasterStock(
   if (access.kind === 'invalid') {
     throw new Error(access.message);
   }
-  return generateStock(world, 0, []);
+  return generateStock(world, 0, [], effectivePlayerLevel);
 }
 
 /**
