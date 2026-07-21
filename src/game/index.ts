@@ -163,4 +163,10 @@ export {
 export type {
   GeneratedEquipmentGeneratorErrorCode,
   GenerateEquipmentInstanceRequest,
+  GenerateEquipmentInstanceOptions,
 } from './generated-equipment-generator.js';
+export {
+  createInitialFloor2QuartermasterStock,
+  restockFloor2Quartermaster,
+} from './quartermaster-stock.js';
+export type { QuartermasterRestockResult } from './quartermaster-stock.js';

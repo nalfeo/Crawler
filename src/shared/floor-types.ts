@@ -1,4 +1,8 @@
 import type { Floor1BossRewardSpellId } from './abilities.js';
+import type {
+  GeneratedEquipmentInstanceId,
+  GeneratedEquipmentRarity,
+} from './generated-equipment-types.js';
 
 /**
  * Enemy archetype identifier from the current floor's enemy pack.
@@ -132,6 +136,26 @@ export interface Floor2ShopInstance {
   readonly inventory: readonly Floor2ShopInventoryItem[];
 }
 
+/** One exact generated instance offered by the Floor 2 Quartermaster. */
+export interface Floor2QuartermasterStockOffer {
+  readonly offerId: string;
+  readonly instanceId: GeneratedEquipmentInstanceId;
+  readonly rarity: Exclude<GeneratedEquipmentRarity, 'rare'>;
+  readonly unitPrice: number;
+  readonly quantity: 0 | 1;
+}
+
+/**
+ * Authoritative Quartermaster stock owner. A new deterministic epoch retires
+ * unsold prior offers so stale offer identities can never be purchased.
+ */
+export interface Floor2QuartermasterStockState {
+  readonly stockId: string;
+  readonly restockEpoch: number;
+  readonly offers: readonly Floor2QuartermasterStockOffer[];
+  readonly retiredInstanceIds: readonly GeneratedEquipmentInstanceId[];
+}
+
 /**
  * Floor 2 · Slice 6 — the settlement snapshot written to
  * `world.floorExtendedState.settlement` by `initializeFloor2Settlement`. Consumed by the
@@ -154,6 +178,8 @@ export interface Floor2SettlementSnapshot {
   readonly defectorFallbackAppearanceKey: string;
   /** Guaranteed Quartermaster shop instance, placed in addition to the seeded shops. */
   readonly quartermasterShop: Floor2ShopInstance;
+  /** Generated common/uncommon equipment stock owned by the Quartermaster. */
+  readonly quartermasterStock: Floor2QuartermasterStockState;
   /** 1–2 seeded non-Quartermaster shop instances. */
   readonly shops: readonly Floor2ShopInstance[];
 }

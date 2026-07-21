@@ -51,6 +51,7 @@ import type {
   Floor2ShopInstance,
   Floor2ShopInventoryItem,
 } from '../shared/floor-types.js';
+import { createInitialFloor2QuartermasterStock } from './quartermaster-stock.js';
 
 /** Options for {@link initializeFloor2Settlement}. */
 export interface InitializeFloor2SettlementOptions {
@@ -215,6 +216,7 @@ export function initializeFloor2Settlement(
     defectorAppearanceKey,
     defectorFallbackAppearanceKey,
     quartermasterShop,
+    quartermasterStock: createInitialFloor2QuartermasterStock(world),
     shops,
   };
   world.floorExtendedState = { ...(world.floorExtendedState ?? {}), settlement: snapshot };

@@ -11,6 +11,7 @@ import {
 import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-anchor.js';
 import { AIState } from '../../src/game/ai/types.js';
 import { FLOOR2_QUARTERMASTER_ARCHETYPE_ID } from '../../src/shared/data/shop-archetypes.js';
+import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry.js';
 
 describe('Floor 2 headless completion', () => {
   it('starts direct Floor 2 headless runs at level 5 with the charm equipped', async () => {
@@ -75,7 +76,14 @@ describe('Floor 2 headless completion', () => {
 
     for (const { seed, expectedRooms, expectedShops } of cases) {
       let observed:
-        | { roomCount: number; shopIds: readonly string[]; quartermasterCount: number }
+        | {
+            roomCount: number;
+            shopIds: readonly string[];
+            quartermasterCount: number;
+            generatedStockCount: number;
+            generatedStockRegistryBacked: boolean;
+            generatedStockRarities: readonly string[];
+          }
         | undefined;
       await runHeadless(new BehaviorTreeAI({ seed }), {
         seed,
@@ -87,12 +95,21 @@ describe('Floor 2 headless completion', () => {
             ...(settlement?.quartermasterShop ? [settlement.quartermasterShop] : []),
             ...(settlement?.shops ?? []),
           ];
+          const generatedInstanceIds = new Set(
+            listGeneratedEquipmentInstances(world).map((instance) => instance.instanceId),
+          );
+          const generatedOffers = settlement?.quartermasterStock.offers ?? [];
           observed = {
             roomCount: settlement?.settlementRoomIds.length ?? 0,
             shopIds: allShops.map((shop) => shop.archetypeId),
             quartermasterCount: allShops.filter(
               (shop) => shop.archetypeId === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
             ).length,
+            generatedStockCount: generatedOffers.length,
+            generatedStockRegistryBacked: generatedOffers.every((offer) =>
+              generatedInstanceIds.has(offer.instanceId),
+            ),
+            generatedStockRarities: generatedOffers.map((offer) => offer.rarity),
           };
         },
       });
@@ -102,6 +119,17 @@ describe('Floor 2 headless completion', () => {
         quartermasterCount: 1,
       });
       expect(observed?.shopIds).toHaveLength(expectedShops);
+      expect(observed?.generatedStockCount).toBeGreaterThanOrEqual(3);
+      expect(observed?.generatedStockCount).toBeLessThanOrEqual(4);
+      expect(observed?.generatedStockRegistryBacked).toBe(true);
+      expect(observed?.generatedStockRarities).toEqual(
+        expect.arrayContaining(['common', 'uncommon']),
+      );
+      expect(
+        observed?.generatedStockRarities.every(
+          (rarity) => rarity === 'common' || rarity === 'uncommon',
+        ),
+      ).toBe(true);
       expect(
         observed?.shopIds.filter(
           (archetypeId) => archetypeId !== FLOOR2_QUARTERMASTER_ARCHETYPE_ID,

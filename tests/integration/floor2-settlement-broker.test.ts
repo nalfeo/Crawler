@@ -41,6 +41,8 @@ import { runSimulationStep as runHeadlessStep } from '../../src/game/ai/simulati
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { purchaseQuartermasterOffer } from '../../src/core/quartermaster-purchase.js';
+import { getGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
 
 const WIDTH = 120;
 const HEIGHT = 90;
@@ -95,7 +97,7 @@ describe('Floor 2 settlement · initialization', () => {
   it('spawns the Broker, a family defector, a guaranteed Quartermaster, and 1-2 non-QM shops inside the settlement cluster', () => {
     const world = createTestWorld({ seed: 999 });
     world.floorMap = buildFloor2Map();
-    spawnPlayer(world, 0, 0);
+    const playerEid = spawnPlayer(world, 0, 0);
     world.floor = 2;
     seedSettlementFamilyState(world);
 
@@ -113,6 +115,28 @@ describe('Floor 2 settlement · initialization', () => {
     for (const item of snap.quartermasterShop.inventory) {
       expect(item.unitPrice).toBeGreaterThanOrEqual(1);
     }
+    expect(snap.quartermasterStock.offers.length).toBeGreaterThanOrEqual(3);
+    expect(snap.quartermasterStock.offers.length).toBeLessThanOrEqual(4);
+    const generatedOffer = snap.quartermasterStock.offers[0]!;
+    const generatedInstance = getGeneratedEquipmentInstance(world, generatedOffer.instanceId);
+    expect(generatedInstance).toBeDefined();
+    world.playerGold = generatedOffer.unitPrice;
+    expect(
+      purchaseQuartermasterOffer(world, playerEid, {
+        stockId: snap.quartermasterStock.stockId,
+        offerId: generatedOffer.offerId,
+        quantity: 1,
+      }),
+    ).toEqual({
+      ok: true,
+      instanceId: generatedOffer.instanceId,
+      goldSpent: generatedOffer.unitPrice,
+      remainingGold: 0,
+    });
+    expect(world.inventories.get(playerEid)?.generatedEquipment).toEqual([
+      { kind: 'generated-instance', instanceKey: generatedOffer.instanceId },
+    ]);
+    expect(getGeneratedEquipmentInstance(world, generatedOffer.instanceId)).toBe(generatedInstance);
 
     // Non-Quartermaster shops (1–2 seeded).
     expect(snap.shops.length).toBe(2);
