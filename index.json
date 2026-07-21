@@ -1,5 +1,16 @@
 [
   {
+    "commit": "83cd1f591259e24a1c1f352428bd0b9d89274c3f",
+    "commitDate": "2026-07-21T14:15:37-07:00",
+    "commitSubject": "Scope Epic Drift Audit triggers to Floor 2 control-plane inputs (#1692)",
+    "capturedAt": "2026-07-21T22:37:21.197Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29870064599",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/83cd1f591259e24a1c1f352428bd0b9d89274c3f.json"
+  },
+  {
     "commit": "862df843e325e4b990b15ba175bed69a14a80c16",
     "commitDate": "2026-07-21T13:54:20-07:00",
     "commitSubject": "feat(ci): stop irrelevant PR validation — 5 orthogonal impact flags + superseded-run cancellation (#1706)",
