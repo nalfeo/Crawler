@@ -367,18 +367,94 @@ since expired or never existed.
 
 ## Unresolved / Next Steps
 
-1. **First real resume dispatch — expect a full fresh run, not a resume, for
-   run 29786216369 specifically.** Because `workflowSha` = `GITHUB_SHA` and
+1. **UPDATED (post-stacking, supersedes the original point 1 below):**
+   `workflowSha` was subsequently EXCLUDED from `assertResumeCompatible`'s
+   hard-fail set (it is `GITHUB_SHA` at record time, guaranteed to differ
+   across runs/commits, so hard-equality on it would make cross-run resume
+   permanently impossible for any run after the first commit touching this
+   workflow — defeating the exact scenario this feature exists for). What
+   still governs comparability is schemaVersion/floorId/budgetMs/maxFrames,
+   stage, runnerOs/nodeVersion/packageLockHash, and TRAIN
+   seeds/weapons/secondary via `runInputs` — all still fully enforced.
+   **However, dispatching `resume_run_id: 29786216369` will still resume
+   ZERO combos for a different, more fundamental reason:** `runInputs` is
+   brand-new in this PR, so run 29786216369's own checkpoints all predate it
+   and have `runInputs === undefined`. `assertResumeCompatible` unconditionally
+   fails closed on a missing `runInputs` (cannot verify an old checkpoint's
+   TRAIN seed panel/weapon/knob-set), so every combo from that specific run
+   falls back to fresh with a visible `::warning::`. This is correct
+   fail-closed behavior by explicit design (not a bug, and not fixable within
+   the 2🍎/no-refactor cap without either weakening the safety check or
+   fetching external run metadata) — **only runs dispatched AFTER this
+   feature merges are resumable.** The original point 1 below (about
+   `workflowSha` alone blocking resume) is now stale/superseded; kept for
+   history.
+2. ~~First real resume dispatch — expect a full fresh run, not a resume, for
+   run 29786216369 specifically. Because `workflowSha` = `GITHUB_SHA` and
    this PR's merge commit necessarily produces a new SHA (see Finding #7
    above), dispatching `resume_run_id: 29786216369` immediately after merge
-   will resume **zero** combos — every combo will fall back to fresh with a
-   visible `::warning::` per combo, since that run's checkpoints were
-   produced under a pre-merge SHA. This is expected/correct fail-closed
-   behavior, **not a defect** in this change. The feature can only be
-   exercised end-to-end by cancelling and then resuming a LATER run that was
-   itself dispatched on the already-merged SHA.
-2. Report the PR link + merge commit back to the requesting session
+   will resume zero combos...~~ (superseded by point 1 above — `workflowSha`
+   is no longer a hard-fail field; the real blocker is the `runInputs` gap).
+3. Report the PR link + merge commit back to the requesting session
    (`5392703e-46a9-4d27-a466-3d0af0a09c72`), flagging point 1 above.
-3. Flag the round-2 Findings #12/#13 apple-scope disagreement (2🍎 declared
+4. Flag the round-2 Findings #12/#13 apple-scope disagreement (2🍎 declared
    vs. reviewer's 3🍎 argument) to the parent session for human awareness —
    not resolved unilaterally in either direction, per instruction.
+
+## Stacked-PR Reconciliation + Final Merge Outcome (added post-hoc)
+
+PR #1754 was blocked in the repo's FIFO merge-train queue behind PR #1735
+(`nalfeo-ai-sweep-net-win-promotion`, a real content conflict, not a false
+positive) and, per explicit parent instruction (session
+`5392703e-46a9-4d27-a466-3d0af0a09c72`), was converted into a stacked PR
+directly onto #1735's exact head (`df498098af152cfa90eb144224c7a28c4ea6c74e`)
+rather than waiting for #1735 to land first.
+
+- **Reconciliation method**: `git rebase --onto` was tried first and rejected
+  after it silently dropped the `hasFreshCombos` output/guard with no
+  conflict marker — a real, dangerous data-loss failure mode of git's diff3
+  merge, not a hypothetical concern. All 8 overlapping files (`round-plan.ts`,
+  `sweep-eval.ts`, `aggregate-shards.ts`, `ai-sweep.yml`, and their test/doc
+  files) were instead reconciled by hand: non-overlapping files copied
+  wholesale from #1735, overlapping files rebuilt from #1735's base with this
+  PR's changes manually spliced back in and verified via typecheck + targeted
+  tests after each file. Final commit (`23e38148`, later amended to
+  `f91d3667` with review-finding fixes) reduced to exactly 8 truly-differing
+  files vs #1735's head — confirmed via `git reset --soft` onto #1735's tip
+  and re-diffing, proving the wholesale copies were byte-identical and no
+  content was lost or duplicated.
+- **`workflowSha` fix**: made as part of this same reconciliation (see point 1
+  above) — this was the parent's explicitly stated blocker for resuming run
+  29786216369 post-merge; it is now fixed. The separate `runInputs` gap (also
+  described above) was found and is NOT fixable within this PR's declared
+  scope; it is disclosed rather than hidden.
+- **Base changed** to `nalfeo-ai-sweep-net-win-promotion` via
+  `gh api -X PATCH repos/nalfeo/Crawler/pulls/1754 -f base=...` (explicit
+  REST call, per parent's literal instruction, rather than `gh pr edit
+--base`, even though the latter also uses the same REST endpoint
+  internally).
+- **Merge outcome**: PR #1754's previously-armed `gh pr merge --auto --squash`
+  fired as soon as the stacked base became mergeable — **before** a final
+  round of 4 review-finding fixes (secondary-field wording in the handoff
+  doc, and 3 "byte-identical"/"exactly as before" scheduling-accuracy
+  corrections) could be pushed to it. Those fixes therefore landed as a
+  separate tiny follow-up, **PR #1756** (`nalfeo-ai-sweep-resume-wording-fix`,
+  wording/doc-comment-only, 3 files, +18/-9, no behavior change), stacked
+  on top of #1754's merge commit and targeting the still-open
+  `nalfeo-ai-sweep-net-win-promotion` branch. Both #1754 and #1756 are now
+  MERGED (commits `0cea2fd4` and `eaae25d7` respectively) onto that branch,
+  which remains open against `main` as PR #1735. All originally-unresolved
+  review threads on #1754 were replied to with `✅ Addressed in eaae25d7 (PR
+#1756)...` markers and explicitly resolved via the GraphQL
+  `resolveReviewThread` mutation (the automated ci-recovery reconciler only
+  sweeps open PRs, so it would not have picked these up on its own once
+  #1754 had already merged).
+- **Net-win promotion logic** (#1735's own scope) verified preserved
+  byte-for-byte throughout — confirmed via the clean, minimal 8-file
+  incremental diff and by re-running the full 202-test combined suite
+  (`ai-sweep-workflow.test.ts` + `sweep-round-plan.test.ts` +
+  `sweep-aggregate-shards.test.ts` + `sweep-eval-search-promotion.test.ts`)
+  both before and after the stacking work.
+- This feature's own AI Sweep was **not** dispatched or resumed from any
+  session in this chain, per instruction — that remains the parent session's
+  responsibility once #1735 itself merges to `main`.
