@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 
-import { graphql, paginate, request } from '../ci-recovery/github.mjs';
+import { graphql, listClosingIssues, paginate, request } from '../ci-recovery/github.mjs';
 import {
   assertOwnershipInvariant,
   ownerLabel,
@@ -14,6 +14,7 @@ import {
   resolveAdmissionChecks,
   successfulChecks,
 } from '../merge-train/state.mjs';
+import { humanApprovalRejection } from '../merge-train/human-approval.mjs';
 import {
   bindProofToLeader,
   buildSupersessionProofs,
@@ -564,10 +565,25 @@ for (const group of groups) {
   const recoveryByNumber = new Map(
     group.pulls.map((pull) => [pull.number, recoveryContext(pull, groupComments.get(pull.number))]),
   );
+  const humanApprovalByNumber = new Map(
+    await mapLimit(group.pulls, 4, async (pull) => [
+      pull.number,
+      humanApprovalRejection({
+        pullRequest: {
+          labels: [...pull.labelNames].map((name) => ({ name })),
+          head: { ref: pull.headRef },
+        },
+        closingIssues: await listClosingIssues(token, owner, repo, pull.number),
+        comments: groupComments.get(pull.number) || [],
+        ownerLogin: owner,
+      }),
+    ]),
+  );
   const escalations = [];
   for (const pull of group.pulls) {
     const proof = proofByNumber.get(pull.number);
     const recovery = recoveryByNumber.get(pull.number);
+    const humanApproval = humanApprovalByNumber.get(pull.number);
     if (proof?.status === 'ambiguous') {
       escalations.push(`#${pull.number}: ${proof.reason}`);
     }
@@ -576,13 +592,23 @@ for (const group of groups) {
     } else if (recovery.healthy) {
       escalations.push(`#${pull.number}: active CI recovery owner retained; no close or dispatch`);
     }
+    if (humanApproval) {
+      escalations.push(`#${pull.number}: ${humanApproval}`);
+    }
   }
 
   const activeRecovery = selection.active ? recoveryByNumber.get(selection.active.number) : null;
+  const activeHumanApproval = selection.active
+    ? humanApprovalByNumber.get(selection.active.number)
+    : null;
   // A healthy shepherd lease on the active slot must keep it fenced: remove
-  // ORDER_WAIT only when there is no ownership error AND no active shepherd.
+  // ORDER_WAIT only when there is no ownership error, active shepherd, or
+  // outstanding repository-owner approval.
   const activeSafe =
-    selection.active && !activeRecovery?.ownershipError && !activeRecovery?.healthy;
+    selection.active &&
+    !activeRecovery?.ownershipError &&
+    !activeRecovery?.healthy &&
+    !activeHumanApproval;
 
   // Fence every member before exposing one slot, so concurrent train runs can
   // observe zero active slots briefly but never two.
@@ -595,7 +621,8 @@ for (const group of groups) {
     const escalated =
       proofByNumber.get(pull.number)?.status === 'ambiguous' ||
       Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
-      Boolean(recoveryByNumber.get(pull.number)?.healthy);
+      Boolean(recoveryByNumber.get(pull.number)?.healthy) ||
+      Boolean(humanApprovalByNumber.get(pull.number));
     if (escalated) await addLabel(pull, ESCALATION_LABEL);
     else await removeLabel(pull, ESCALATION_LABEL);
   }
@@ -664,6 +691,10 @@ for (const group of groups) {
   for (const duplicate of selection.duplicates) {
     const recovery = recoveryByNumber.get(duplicate.number);
     if (recovery.healthy || recovery.ownershipError) continue;
+    if (humanApprovalByNumber.get(duplicate.number)) {
+      process.stdout.write(`retain pr=#${duplicate.number} reason=human-approval-required\n`);
+      continue;
+    }
     const proof = proofByNumber.get(duplicate.number);
     // Only close duplicates that are no-op against current main alone.
     // A proof with open predecessor heads is superseded by the combination of

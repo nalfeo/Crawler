@@ -223,6 +223,9 @@ function buildRoutes({
   postClosePr3Sha,
   reopenStatus = 200,
   fenceReleaseStatus = 204,
+  pr3HeadRef = undefined,
+  pr3Labels = [],
+  pr3ClosingIssues = [],
 }) {
   const driftedPr3Sha = postClosePr3Sha ?? pr3Sha;
   let pr3PatchCount = 0;
@@ -249,6 +252,19 @@ function buildRoutes({
     };
   }
 
+  // PR3-specific helper that merges optional head-ref and label overrides so
+  // tests can simulate human-approval-gated scenarios without boilerplate.
+  function pr3Pull(sha, extra = {}) {
+    return livePull(3, sha, {
+      changed_files: 2,
+      ...(pr3HeadRef
+        ? { head: { ref: pr3HeadRef, sha, repo: { full_name: `${OWNER}/${REPO}` } } }
+        : {}),
+      ...(pr3Labels.length > 0 ? { labels: pr3Labels } : {}),
+      ...extra,
+    });
+  }
+
   return {
     // Ensure labels (coordinator labels already exist → 422 ignored)
     [`POST /repos/${OWNER}/${REPO}/labels`]: (_url, body) => {
@@ -263,7 +279,7 @@ function buildRoutes({
     [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({
       body: [
         // PR3 has 2 CI files → ranks first
-        livePull(3, pr3Sha, { changed_files: 2 }),
+        pr3Pull(pr3Sha),
         livePull(1, pr1Sha),
         livePull(2, pr2Sha),
       ],
@@ -307,21 +323,21 @@ function buildRoutes({
       //   2. mapLimit live pull fetch
       // The third GET is the post-close revalidation read.
       const sha = pr3GetCount >= 3 ? driftedPr3Sha : pr3Sha;
-      return { body: livePull(3, sha, { changed_files: 2 }) };
+      return { body: pr3Pull(sha) };
     },
 
     // PATCH to close/reopen PR3
     [`PATCH /repos/${OWNER}/${REPO}/pulls/3`]: (_url, body) => {
       pr3PatchCount += 1;
       if (body?.state === 'closed')
-        return { status: 200, body: livePull(3, pr3Sha, { state: 'closed', changed_files: 2 }) };
+        return { status: 200, body: pr3Pull(pr3Sha, { state: 'closed' }) };
       // Reopen call
       if (pr3PatchCount >= 2)
         return {
           status: reopenStatus,
           body: { message: reopenStatus === 200 ? 'ok' : 'server error' },
         };
-      return { status: 200, body: livePull(3, pr3Sha, { changed_files: 2 }) };
+      return { status: 200, body: pr3Pull(pr3Sha) };
     },
 
     // Label mutations on issues (add/remove)
@@ -341,10 +357,20 @@ function buildRoutes({
     [`POST /repos/${OWNER}/${REPO}/issues/2/comments`]: () => ({ body: { id: 1002 } }),
     [`POST /repos/${OWNER}/${REPO}/issues/3/comments`]: () => ({ body: { id: 1003 } }),
 
-    // GraphQL (used for disableAutoMerge; PRs have auto_merge=null so this
-    // should not be called, but provide a stub as a safeguard)
-    [`POST /graphql`]: () => ({
-      body: { data: {} },
+    // GraphQL closing-issue lookup used by the shared human-approval gate.
+    [`POST /graphql`]: (_url, body) => ({
+      body: {
+        data: {
+          repository: {
+            pullRequest: {
+              closingIssuesReferences: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: body?.variables?.number === 3 ? pr3ClosingIssues : [],
+              },
+            },
+          },
+        },
+      },
     }),
   };
 }
@@ -536,5 +562,123 @@ test('UNSAFE reopen error is preserved even when owner-fence release also fails'
     stdout,
     /warn: owner-fence release failed for PR #3/,
     'fence-release failure must be logged as a warning',
+  );
+});
+
+test('coordinator retains superseded duplicate with nightly-balance branch (human-approval-required, label absent)', async (t) => {
+  // Regression for: a nightly-balance PR superseded by main alone could be
+  // closed before CI recovery wrote the human-approval-required label, because
+  // the duplicate-close gate only checked recovery ownership (ADR 0067 §94).
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  // PR3 is on a nightly-balance branch (requires human approval by branch
+  // prefix alone — no label is present yet).
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      pr3HeadRef: 'copilot/balance-telemetry-improvement-sweep',
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  // The coordinator must NOT close the human-approval-gated duplicate.
+  const closePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'closed',
+  );
+  assert.equal(
+    closePatch,
+    undefined,
+    'must not close a human-approval-required (nightly-balance) duplicate before the label is applied',
+  );
+
+  // Retention must be logged.
+  assert.match(
+    stdout,
+    /retain pr=#3 reason=human-approval-required/,
+    'stdout must log human-approval retention for the nightly-balance duplicate',
+  );
+
+  // The duplicate must be escalated so operators can see it is blocked.
+  const escalationLabel = 'ci-conflict-escalation';
+  const escalatePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      c.url === `/repos/${OWNER}/${REPO}/issues/3/labels` &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes(escalationLabel),
+  );
+  assert.ok(
+    escalatePatch,
+    'must add ci-conflict-escalation label to the retained nightly-balance duplicate',
+  );
+});
+
+test('coordinator retains superseded duplicate closing a human-approval-required issue', async (t) => {
+  // Regression: a newly opened PR that closes an approval-gated issue must be
+  // retained before CI recovery has time to copy the approval label to the PR.
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      pr3ClosingIssues: [
+        {
+          id: 'ISSUE_42',
+          number: 42,
+          title: 'Approval-gated issue',
+          state: 'OPEN',
+          labels: { nodes: [{ name: 'human-approval-required' }] },
+          repository: { nameWithOwner: `${OWNER}/${REPO}` },
+        },
+      ],
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const closePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'closed',
+  );
+  assert.equal(
+    closePatch,
+    undefined,
+    'must not close a duplicate that closes a human-approval-required issue',
+  );
+
+  assert.match(
+    stdout,
+    /retain pr=#3 reason=human-approval-required/,
+    'stdout must log human-approval retention for the labelled duplicate',
   );
 });
