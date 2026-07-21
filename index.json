@@ -1,5 +1,16 @@
 [
   {
+    "commit": "855f8bd99c4a0519bdd0284118b8993de56f47e4",
+    "commitDate": "2026-07-21T13:02:30-07:00",
+    "commitSubject": "feat(ci): path-gate security checks and deduplicate npm audit (#1701)",
+    "capturedAt": "2026-07-21T21:22:25.138Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29864847582",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/855f8bd99c4a0519bdd0284118b8993de56f47e4.json"
+  },
+  {
     "commit": "d36a5e825847242ec0aa33ad6e157fa099b9c782",
     "commitDate": "2026-07-20T22:47:33Z",
     "commitSubject": "feat(weapons): add immutable per-instance active weapon snapshots (#1552)",
