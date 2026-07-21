@@ -299,11 +299,11 @@ describe('ci.yml — merge-gate uses check-lightweight', () => {
     expect(script).not.toMatch(/check "Human approval"/);
   });
 
-  it('merge-gate has always() condition so it runs regardless of upstream outcomes', () => {
+  it('merge-gate has !cancelled() condition so it runs regardless of upstream failures but stops on cancellation', () => {
     const doc = loadCiWorkflow();
     const mergeGate = doc.jobs['merge-gate'];
     if (!mergeGate) throw new Error('merge-gate job not found');
-    expect(String(mergeGate.if ?? '')).toContain('always()');
+    expect(String(mergeGate.if ?? '')).toContain('!cancelled()');
   });
 
   it('merge-gate docs-only skip logic is present (skipped check-lightweight result is tolerated)', () => {
