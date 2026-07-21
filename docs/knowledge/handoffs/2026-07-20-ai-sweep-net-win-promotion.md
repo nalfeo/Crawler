@@ -210,7 +210,7 @@ No ADR was needed (single-system change, not affecting 2+ systems).
 - `npx tsc --noEmit` — clean, no errors.
 - `npx vitest run tests/unit/ai/sweep-aggregate-shards.test.ts
 tests/unit/ai/sweep-round-plan.test.ts
-tests/unit/ai/sweep-eval-search-promotion.test.ts` — **136/136 passing**
+tests/unit/ai/sweep-eval-search-promotion.test.ts` — **138/138 passing**
   (including the two mirrored 292/300-vs-286/300 regression tests at the
   aggregate-shards and legacy-path levels, the wins-tie rejection test, the
   wins-decrease rejection test, the isolated below-90%-floor test, the
@@ -219,9 +219,10 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **136/136 passing**
   across both provenance-check call sites, 4 `initCheckpoint` legacyBaseline
   provenance tests, 2 `currentBuildFingerprint` truncation tests, 3
   round-12 `initCheckpoint` legacyBaseline stage/safeRoomMs/config-identity
-  tests, and 2 round-14 tuned-legacy-baseline-spoof rejection tests).
-- `npx vitest run tests/unit/ai` (full AI suite) — **334/334 passing**.
-- `npx tsc --noEmit` — clean, no errors (re-verified after round 14).
+  tests, 2 round-14 tuned-legacy-baseline-spoof (map-key) rejection tests, and
+  2 round-15 config-body-vs-key rejection tests).
+- `npx vitest run tests/unit/ai` (full AI suite) — **336/336 passing**.
+- `npx tsc --noEmit` — clean, no errors (re-verified after round 15).
 - `npm run verify:fast` — ✅ passed (typecheck + lint + changed tests + size/
   weight/physics-defs coverage checks).
 - `npm run verify:pr-prereqs` — checked after handoff + ledger were committed.
@@ -343,50 +344,107 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **136/136 passing**
     `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
   - **Round 14** (github-copilot-pr-reviewer, live GitHub review threads
     surfaced after round 13's terminal-clean state, addressed by a follow-up
-    shepherding session): 2 concerns, resolved.
-    - (a) **Tuned-legacy-baseline spoof gap**: `assertLegacyBaselineProvenance`
-      (`sweep-eval.ts`) and `initCheckpoint` (`round-plan.ts`) proved only that
-      a `--legacy-baseline` artifact declared exactly one config — never that
-      the config's _content_ matched the canonical (untuned) LEGACY base. A
-      same-build `--stage search-eval` shard for a **tuned** `legacy+legacy`
-      candidate satisfies every existing check (single config, correct combo
-      tag, matching schema/build/floor/budget/frame facts, present
-      `safeRoomMs`) yet is not the fixed incumbent, so it would silently
-      replace the true incumbent with a moving target. An automated push
-      (commit `aef6812e`, concurrent with this shepherding session) already
-      fixed `sweep-eval.ts`'s side by validating the declared config's id
-      against `configId(baseConfigForCombo({pathing: LEGACY, decision:
+    shepherding session): 2 concerns, resolved. - (a) **Tuned-legacy-baseline spoof gap**: `assertLegacyBaselineProvenance`
+    (`sweep-eval.ts`) and `initCheckpoint` (`round-plan.ts`) proved only that
+    a `--legacy-baseline` artifact declared exactly one config — never that
+    the config's _content_ matched the canonical (untuned) LEGACY base. A
+    same-build `--stage search-eval` shard for a **tuned** `legacy+legacy`
+    candidate satisfies every existing check (single config, correct combo
+    tag, matching schema/build/floor/budget/frame facts, present
+    `safeRoomMs`) yet is not the fixed incumbent, so it would silently
+    replace the true incumbent with a moving target. An automated push
+    (commit `aef6812e`, concurrent with this shepherding session) already
+    fixed `sweep-eval.ts`'s side by validating the declared config's id
+    against `configId(baseConfigForCombo({pathing: LEGACY, decision:
 LEGACY}))` right after the "exactly one config" check — but did not
-      touch `round-plan.ts`, leaving the exact parity gap rounds 9–10 found
-      for build-fingerprint checks. This round adds the identical check to
-      `initCheckpoint`'s `legacyBaseline` handling in `round-plan.ts`, and
-      rebases `sweep-eval-search-promotion.test.ts`'s changes onto
-      `aef6812e`'s version — deduping to one canonical-id constant
-      (`CANONICAL_LEGACY_ID`, replacing this session's own hardcoded
-      `'legacy-base'` placeholder AND a duplicate test) and one
-      tuned-candidate rejection test (the upstream version, which derives a
-      realistic tuned id from the canonical one). `configId` is a
-      deterministic content-derived id (`p=<pathing>,d=<decision>` plus every
-      tunable knob as sorted, 4-dp-rounded `key=value` strings), so id
-      equality is a sufficient, cheap proxy for "this is the untuned
-      canonical base." A mirrored regression test was added to
-      `sweep-round-plan.test.ts` for the `round-plan.ts` side (this file's
-      existing fixtures already used real canonical ids, so no other changes
-      were needed there).
-    - (b) **PR body accuracy**: the body described the
-      `.github/workflows/ai-sweep.yml` change as inline-comment-only and
-      claimed no AI Sweep dispatch was triggered by this PR, omitting the
-      round-eval `max-parallel: 8` concurrency cap (a real
-      security/resource-relevant fix — see the companion handoff
-      `2026-07-20-ai-sweep-round-eval-max-parallel.md`), the bundled
-      `brace-expansion` dependency security fix, and that a manual
-      `workflow_dispatch` validation run (`29786216369`, event=
-      `workflow_dispatch`) actually was dispatched on this branch and later
-      cancelled. Fixed by rewriting the PR body's "How"/closing sections to
-      disclose all three accurately.
-      Ledger unchanged (still the valid 3🍎 `plan_review`/`code_review` ledger
-      above) — this round addressed live GitHub review-thread comments, not a
-      new ledger-tracked code-review-loop iteration.
+    touch `round-plan.ts`, leaving the exact parity gap rounds 9–10 found
+    for build-fingerprint checks. This round adds the identical check to
+    `initCheckpoint`'s `legacyBaseline` handling in `round-plan.ts`, and
+    rebases `sweep-eval-search-promotion.test.ts`'s changes onto
+    `aef6812e`'s version — deduping to one canonical-id constant
+    (`CANONICAL_LEGACY_ID`, replacing this session's own hardcoded
+    `'legacy-base'` placeholder AND a duplicate test) and one
+    tuned-candidate rejection test (the upstream version, which derives a
+    realistic tuned id from the canonical one). `configId` is a
+    deterministic content-derived id (`p=<pathing>,d=<decision>` plus every
+    tunable knob as sorted, 4-dp-rounded `key=value` strings), so id
+    equality is a sufficient, cheap proxy for "this is the untuned
+    canonical base." A mirrored regression test was added to
+    `sweep-round-plan.test.ts` for the `round-plan.ts` side (this file's
+    existing fixtures already used real canonical ids, so no other changes
+    were needed there). - (b) **PR body accuracy**: the body described the
+    `.github/workflows/ai-sweep.yml` change as inline-comment-only and
+    claimed no AI Sweep dispatch was triggered by this PR, omitting the
+    round-eval `max-parallel: 8` concurrency cap (a real
+    security/resource-relevant fix — see the companion handoff
+    `2026-07-20-ai-sweep-round-eval-max-parallel.md`), the bundled
+    `brace-expansion` dependency security fix, and that a manual
+    `workflow_dispatch` validation run (`29786216369`, event=
+    `workflow_dispatch`) actually was dispatched on this branch and later
+    cancelled. Fixed by rewriting the PR body's "How"/closing sections to
+    disclose all three accurately.
+    Ledger unchanged (still the valid 3🍎 `plan_review`/`code_review` ledger
+    above) — this round addressed live GitHub review-thread comments, not a
+    new ledger-tracked code-review-loop iteration.
+  - **Round 15** (copilot-pull-request-reviewer, automated review posted
+    against round 14's pushed HEAD): 1 formal thread + 3 low-confidence
+    suppressed comments, all substantive.
+    - (a) **Config-body-vs-key spoof gap** (formal thread, `round-plan.ts:236`,
+      mirrored by a suppressed comment on `sweep-eval.ts:330`): round 14's
+      canonical-LEGACY check validated only the artifact's map **key**
+      (`legacyId`), never the config **body** stored under it. Since
+      `--legacy-baseline` is built from independently-supplied
+      `--config-id`/`--config-json` CLI args, a caller can pair the canonical
+      id string with a tuned config's JSON body — the map key says
+      "canonical" while the actual knob values are tuned, bypassing round
+      14's check entirely. An automated push (commit `bafa1a58`, racing
+      concurrently with this shepherding session's own fix attempt — the
+      second such race this PR has seen, after `aef6812e`) landed first and
+      fixes both `assertLegacyBaselineProvenance` (`sweep-eval.ts`) and
+      `initCheckpoint` (`round-plan.ts`) by ADDING a second check that
+      derives an id from the **stored config body**
+      (`configId(configs[legacyId])`) and compares it to the canonical id —
+      alongside (not replacing) the existing map-key check. `configId()` is a
+      pure function of the config object's own fields, so this can't be
+      spoofed independently of the config's real values. It also fixes the
+      pre-existing test fixtures that used `{} as never` empty-body
+      placeholders (a landmine left over from when the check only looked at
+      the key) with a real canonical config body, and adds a dedicated
+      regression test to each of `sweep-eval-search-promotion.test.ts` and
+      `sweep-round-plan.test.ts` proving a tuned body stored under the
+      canonical key is now rejected. This session's own equivalent fix
+      (drafted independently, same security property, slightly different
+      shape — replacing the key check with a body-derived one rather than
+      adding a second check) was discarded in favor of the already-landed
+      upstream version to avoid duplicate/conflicting checks; only this
+      session's ledger and handoff updates were kept.
+    - (b) **PR body accuracy**: a suppressed comment on `package.json:167`
+      correctly flagged that the body claimed a `package-lock.json` diff
+      that does not exist (`git diff main...HEAD --stat` confirms
+      `package.json`-only). Fixed via `gh pr edit`.
+    - (c) **Ledger staleness**: a suppressed comment on the review ledger
+      flagged that round 13's clean terminal state predates this round's
+      diff. This round's ledger entry (round 14 in the ledger's own
+      `code_review` counter — the ledger and this handoff's round numbers
+      diverge slightly because round 14 in this handoff did not add a
+      ledger entry) is exactly that resynchronization.
+    - (d) **Deferred**: a suppressed comment on `sweep-eval.ts:565`
+      (`currentBuildFingerprint`'s `git status --porcelain` dirty check
+      hashes file paths/status codes, not tracked-diff content, so two
+      different same-HEAD edits could collide on `workflowSha`) is real and
+      traces to an earlier commit in this PR's history (`cc7ac1407`), but is
+      a distinct vulnerability class from this PR's net-win-promotion/
+      tuned-baseline scope, was flagged at low confidence (not promoted to a
+      blocking thread), and a correct fix requires redesigning the
+      fingerprint to hash actual diff content rather than status codes —
+      deferred as an explicit out-of-scope follow-up (see "Deferred" below),
+      matching how round 13 handled an equivalent out-of-scope observation.
+      Verification: 138/138 targeted (`sweep-aggregate-shards.test.ts`,
+      `sweep-round-plan.test.ts`, `sweep-eval-search-promotion.test.ts`),
+      336/336 full `tests/unit/ai`, `tsc --noEmit` clean, `verify:fast` clean.
+      Ledger: round 14 appended to `code_review` (`clean:true`,
+      `concerns_count:1`, `resolved_count:1`) in
+      `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 - Apple record: `docs/knowledge/metrics/apples/2026-07-20-ai-sweep-net-win-promotion.json`
   (3🍎 estimated → 3🍎 actual, exact).
 
@@ -397,10 +455,25 @@ LEGACY}))` right after the "exactly one config" check — but did not
   PR merges, per explicit instruction.
 - `ab-pathing-mode.ts`/`ab-decision-mode.ts`'s separate zero-flip gate — out of
   scope, unrelated purpose (see "Scoped out" above).
+- **`currentBuildFingerprint`'s dirty-check fidelity** (round 15, item d):
+  `sweep-eval.ts`'s `git status --porcelain --untracked-files=no` dirty check
+  hashes file paths/status codes, not tracked-diff content — two different
+  edits to the same tracked files at the same HEAD can therefore produce an
+  identical `workflowSha`. Real, pre-existing (introduced by commit
+  `cc7ac1407` earlier in this PR's history), but a distinct vulnerability
+  class from this PR's net-win-promotion/tuned-baseline-spoof scope, flagged
+  at low confidence and not promoted to a blocking review thread. A correct
+  fix means hashing actual tracked-diff content instead of status codes —
+  left as a follow-up rather than expanding this PR's scope further.
 
 ## Unresolved issues / recommended next steps
 
-None outstanding. The rule change is self-contained and fully covered by the
-regression tests. If a future incident finds the net-win rule itself too
-permissive (e.g. a candidate improves net wins by 1 while flipping 20 seeds),
-that would be a new human-approved policy question, not a bug in this change.
+- **Follow-up recommended**: harden `currentBuildFingerprint`'s dirty-worktree
+  fingerprint to hash tracked-diff content (e.g. `git diff HEAD` piped through
+  a stable hash) instead of `git status --porcelain` status codes, closing the
+  same-HEAD-different-edits collision described above.
+- Otherwise none outstanding. The net-win rule change itself is self-contained
+  and fully covered by the regression tests. If a future incident finds the
+  net-win rule itself too permissive (e.g. a candidate improves net wins by 1
+  while flipping 20 seeds), that would be a new human-approved policy
+  question, not a bug in this change.
