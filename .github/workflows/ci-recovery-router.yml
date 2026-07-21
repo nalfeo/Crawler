@@ -40,8 +40,16 @@ jobs:
     # total outstanding CI Recovery runs -- a thundering herd that starved
     # Merge Train Validation runners (2026-07-21 incident). Serializing
     # router execution here, combined with the capacity-aware dispatch cap
-    # in router.mjs (see countOutstandingRecoveryRuns), keeps at most one CI
-    # Recovery run outstanding while the train queue is non-empty.
+    # in router.mjs (see computeDispatchBudget/countOutstandingRecoveryRuns),
+    # keeps at most one CI Recovery run outstanding while the train queue is
+    # non-empty, and at most GLOBAL_IDLE_TRAIN_DISPATCH_CAP otherwise --
+    # including while the train feature itself is disabled/paused, since
+    # that is precisely when runner-capacity protection must not lapse. The
+    # legacy flag-off concurrency groups below remain per-PR/per-sweep (see
+    # the router.mjs comment on computeDispatchBudget for the accepted
+    # best-effort limitation this creates: the JS-side cap still applies in
+    # that mode, but without a shared concurrency group it cannot close the
+    # race window between truly concurrent different-PR invocations).
     # cancel-in-progress stays false while the train is enabled so no queued
     # event is ever dropped -- they run one at a time instead of
     # concurrently. queue: max is required alongside that: GitHub's default

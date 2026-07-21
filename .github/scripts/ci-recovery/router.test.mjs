@@ -926,53 +926,45 @@ test('requestWithBackoff stops immediately for non-retryable errors', async () =
   assert.equal(attempts, 1);
 });
 
-test('computeDispatchBudget is unbounded when the train feature is off entirely', () => {
-  assert.equal(
-    computeDispatchBudget({ trainEnabled: false, trainQueueNonEmpty: false, outstandingCount: 0 }),
-    Infinity,
-  );
-  assert.equal(
-    computeDispatchBudget({ trainEnabled: false, trainQueueNonEmpty: false, outstandingCount: 25 }),
-    Infinity,
-    'without the shared concurrency group, invocations are not serialized so a global cap cannot be enforced',
-  );
-});
-
-test('computeDispatchBudget caps outstanding recovery runs to GLOBAL_IDLE_TRAIN_DISPATCH_CAP while the train feature is on but its queue is empty', () => {
+test('computeDispatchBudget caps outstanding recovery runs to GLOBAL_IDLE_TRAIN_DISPATCH_CAP when there is no active merge-train backlog', () => {
   assert.equal(GLOBAL_IDLE_TRAIN_DISPATCH_CAP, 2);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 2);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 1 }), 1);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 2 }), 0);
   assert.equal(
-    computeDispatchBudget({ trainEnabled: true, trainQueueNonEmpty: false, outstandingCount: 0 }),
-    2,
-  );
-  assert.equal(
-    computeDispatchBudget({ trainEnabled: true, trainQueueNonEmpty: false, outstandingCount: 1 }),
-    1,
-  );
-  assert.equal(
-    computeDispatchBudget({ trainEnabled: true, trainQueueNonEmpty: false, outstandingCount: 2 }),
-    0,
-  );
-  assert.equal(
-    computeDispatchBudget({ trainEnabled: true, trainQueueNonEmpty: false, outstandingCount: 25 }),
+    computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 25 }),
     0,
     'budget never goes negative when outstanding exceeds the idle cap',
   );
 });
 
-test('computeDispatchBudget hard-caps outstanding recovery runs to 1 while the train queue is non-empty', () => {
+test('computeDispatchBudget still applies the idle cap -- never Infinity -- when the merge-train feature itself is disabled or paused', () => {
+  // Regression for the parent-session correction: protecting runner
+  // capacity must not lapse specifically when the train is disabled --
+  // that is exactly the maintenance/rollback window operators need
+  // backpressure to keep working. computeDispatchBudget no longer takes a
+  // trainEnabled flag at all: callers determine trainQueueNonEmpty from
+  // live PR labels (see runFromEnv), which is naturally false when the
+  // train feature is off, so this collapses to the same idle-cap path
+  // above rather than an unbounded fallback.
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 2);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 2 }), 0);
+});
+
+test('computeDispatchBudget hard-caps outstanding recovery runs to 1 whenever the merge-train backlog is non-empty, including with the train feature disabled', () => {
   assert.equal(GLOBAL_TRAIN_DISPATCH_CAP, 1);
   assert.equal(
-    computeDispatchBudget({ trainEnabled: true, trainQueueNonEmpty: true, outstandingCount: 0 }),
+    computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 0 }),
     1,
     'a fully idle recovery workflow may dispatch exactly one run',
   );
   assert.equal(
-    computeDispatchBudget({ trainEnabled: true, trainQueueNonEmpty: true, outstandingCount: 1 }),
+    computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 1 }),
     0,
     'one outstanding run already exhausts the global budget',
   );
   assert.equal(
-    computeDispatchBudget({ trainEnabled: true, trainQueueNonEmpty: true, outstandingCount: 25 }),
+    computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 25 }),
     0,
     'budget never goes negative when outstanding exceeds the cap',
   );
@@ -1105,7 +1097,6 @@ test('serialized router invocations do not both under-count the same in-flight d
 
   // Invocation A: budget allows exactly one dispatch.
   const budgetA = computeDispatchBudget({
-    trainEnabled: true,
     trainQueueNonEmpty: true,
     outstandingCount: 0,
   });
@@ -1122,7 +1113,6 @@ test('serialized router invocations do not both under-count the same in-flight d
   // now reads the up-to-date, post-dispatch count.
   const outstandingForB = await countFn();
   const budgetB = computeDispatchBudget({
-    trainEnabled: true,
     trainQueueNonEmpty: true,
     outstandingCount: outstandingForB,
   });
@@ -1141,7 +1131,6 @@ test('25 concurrent router-trigger events leave at most one CI Recovery run outs
 
   for (const prNumber of prNumbers) {
     const budget = computeDispatchBudget({
-      trainEnabled: true,
       trainQueueNonEmpty: true,
       outstandingCount,
     });
@@ -1163,7 +1152,6 @@ test('25 concurrent router-trigger events leave at most one CI Recovery run outs
   // can dispatch again -- eventual processing is preserved.
   outstandingCount = 0;
   const budgetAfterCompletion = computeDispatchBudget({
-    trainEnabled: true,
     trainQueueNonEmpty: true,
     outstandingCount,
   });
@@ -1182,7 +1170,6 @@ test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPAT
 
   for (const prNumber of prNumbers) {
     const budget = computeDispatchBudget({
-      trainEnabled: true,
       trainQueueNonEmpty: false,
       outstandingCount,
     });
@@ -1196,6 +1183,40 @@ test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPAT
   }
 
   assert.equal(totalDispatched, 2, 'exactly two dispatches should escape the burst');
+});
+
+test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPATCH_CAP runs outstanding when the merge-train feature is disabled', () => {
+  // Regression for the parent-session correction: the 2026-07-21 herd could
+  // just as easily recur while the train feature is paused/disabled for
+  // maintenance -- exactly the incident-response window an operator sets
+  // MERGE_TRAIN_ENABLED=false or leans on ci-recovery-opt-out. Backpressure
+  // must not lapse there. computeDispatchBudget takes no trainEnabled input
+  // at all: this burst is driven purely by trainQueueNonEmpty=false (the
+  // natural state once the train feature is off -- no PR is being actively
+  // queued through it) and proves the same idle cap of 2 holds regardless.
+  const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
+  let outstandingCount = 0;
+  let totalDispatched = 0;
+
+  for (const prNumber of prNumbers) {
+    const budget = computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount,
+    });
+    const { dispatchable } = partitionDispatchable([prNumber], budget);
+    totalDispatched += dispatchable.length;
+    outstandingCount += dispatchable.length;
+    assert.ok(
+      outstandingCount <= GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      `outstanding=${outstandingCount} exceeded idle cap=${GLOBAL_IDLE_TRAIN_DISPATCH_CAP} after event for PR #${prNumber} with the train feature disabled`,
+    );
+  }
+
+  assert.equal(
+    totalDispatched,
+    2,
+    'exactly two dispatches should escape the burst even with the train feature disabled',
+  );
 });
 
 test('hydrateRecoveryOwnership stops after six dispatchable PRs in the resolved prefix', async () => {

@@ -31,6 +31,14 @@
           "resolved_count": 0,
           "clean": true,
           "notes": "Verified blocking fix is genuinely correct (queue and cancel-in-progress expressions are mutually exclusive on MERGE_TRAIN_ENABLED), confirmed non-blocking fixes, fresh full-diff pass found no new issues. 47/47 tests passing, lint clean."
+        },
+        {
+          "round": 3,
+          "models": ["default"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-merge correction round: removed the trainEnabled->Infinity fallback from computeDispatchBudget per parent-session instruction (protection must not lapse when the merge-train feature is disabled). Reviewer confirmed: (1) no remaining path to Infinity from computeDispatchBudget; (2) unconditionally fetching scheduledPulls does not change collectPrNumbers' existing routing semantics; (3) trainQueueNonEmpty via queueEntries() is safe/fail-closed since that function is not gated by MERGE_TRAIN_ENABLED; (4) making waitForOutstandingCount unconditional is a deliberate, documented tradeoff (extra API calls for closing the TOCTOU race in previously-unaffected paths); (5) the new 25-event train-disabled burst test and cap-of-2 unit tests correctly replace the old Infinity-asserting test, no stale assertions remain; (6) the new 'Known residual limitation' handoff section accurately describes the legacy/flag-off per-PR concurrency-group race, correctly scoped. One non-blocking observation: the train-disabled burst test is logically identical in code path to the train-idle-but-enabled burst test (both drive trainQueueNonEmpty:false) -- accepted as intentional documentation of the explicitly-requested scenario, not a distinct code path to prove. 48/48 tests passing, lint clean, verify:fast passed."
         }
       ]
     }

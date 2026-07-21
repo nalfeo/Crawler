@@ -29,17 +29,22 @@ const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
 // bounds the number of CI Recovery runs competing with Merge Train
 // Validation for runners at any moment.
 export const GLOBAL_TRAIN_DISPATCH_CAP = 1;
-// Cap applied when the train feature is enabled but its queue is currently
-// empty. Measured capacity evidence (2026-07-21 incident follow-up): this
-// repo is public on GitHub Free (standard-hosted concurrency limit: 20
-// concurrent jobs). Representative peaks observed: a normal full PR CI run
-// uses ~5 concurrent jobs; uncontended Merge Train Validation runs alone
-// peak at 7-9 concurrent jobs; an active AI Sweep Eval run can spawn 200+
-// jobs and peak at ~19 concurrent, which is what starved Validation runners
-// during the incident. With the queue empty there is no Validation run to
-// protect, but sweep-style jobs can still be running, so dispatch is not
+// Cap applied whenever there is no active merge-train backlog to protect --
+// the queue is empty, the train feature is enabled but idle, OR the train
+// feature is disabled/paused entirely. Measured capacity evidence
+// (2026-07-21 incident follow-up): this repo is public on GitHub Free
+// (standard-hosted concurrency limit: 20 concurrent jobs). Representative
+// peaks observed: a normal full PR CI run uses ~5 concurrent jobs;
+// uncontended Merge Train Validation runs alone peak at 7-9 concurrent jobs;
+// an active AI Sweep Eval run can spawn 200+ jobs and peak at ~19 concurrent,
+// which is what starved Validation runners during the incident. Even with no
+// backlog to protect, sweep-style jobs can still be running (and can be
+// running whether or not the train feature itself is on), so dispatch is not
 // left fully unbounded here -- 2 preserves at least some runner headroom
-// instead of going back to effectively-unlimited (Infinity) dispatch.
+// instead of going back to effectively-unlimited (Infinity) dispatch. This
+// cap must remain in force during train maintenance/disablement too: that is
+// precisely when protecting shared runner capacity matters most, not a
+// window where backpressure can safely lapse.
 export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = 2;
 // GitHub Actions run states that represent a run not yet finished: actively
 // running, waiting to be scheduled, or held by a concurrency group (queued
@@ -537,20 +542,36 @@ export async function countOutstandingRecoveryRuns(
 // How many more CI Recovery dispatches this router invocation may send.
 // While the merge train queue holds any PR, outstanding recovery runs are
 // hard-capped at GLOBAL_TRAIN_DISPATCH_CAP so Merge Train Validation is not
-// starved for runner capacity. With the train feature enabled but its queue
-// currently empty, there's no Validation run to protect but other jobs
-// (e.g. sweep evals) can still be consuming runners, so dispatch is capped
-// at the looser GLOBAL_IDLE_TRAIN_DISPATCH_CAP rather than left unbounded
-// (see that constant's comment for the measured capacity evidence). Only
-// when the train feature itself is off does this return Infinity: without
-// the shared concurrency group (see ci-recovery-router.yml), invocations
-// aren't serialized, so a global outstanding-count cap can't be enforced
-// consistently -- the existing per-run maxDispatchPerRun cap in
-// collectPrNumbers is what bounds dispatch in that legacy mode.
-export function computeDispatchBudget({ trainEnabled, trainQueueNonEmpty, outstandingCount }) {
-  if (!trainEnabled) {
-    return Infinity;
-  }
+// starved for runner capacity. Otherwise -- queue empty, train feature idle,
+// OR the train feature disabled/paused entirely -- dispatch is capped at the
+// looser GLOBAL_IDLE_TRAIN_DISPATCH_CAP rather than left unbounded (see that
+// constant's comment for the measured capacity evidence).
+//
+// This budget is applied unconditionally, independent of MERGE_TRAIN_ENABLED:
+// disabling/pausing the train is precisely the scenario runner-capacity
+// protection must not lapse (2026-07-21 incident follow-up guidance), so
+// there is no "train off -> Infinity" branch here. `trainQueueNonEmpty` is
+// itself computed independent of the flag too (see runFromEnv) -- a stale
+// `merge-train` label surviving a flag-off still counts as backlog and gets
+// the stricter cap, which fails closed rather than open.
+//
+// Known limitation: the router's concurrency group (see
+// ci-recovery-router.yml) is only unified into one global group while the
+// train feature is enabled; in legacy/flag-off mode each PR still gets its
+// own concurrency group, so different-PR invocations can run truly
+// concurrently rather than serialized. This budget check still bounds
+// *sustained* dispatch volume in that mode (each invocation reads the live
+// outstanding count from the Actions API before deciding), but it cannot
+// close the race window between two invocations that read that count in the
+// same instant, before either dispatch is visible -- the same category of
+// best-effort (not airtight) guarantee already accepted for the serialized
+// path's TOCTOU window (see waitForOutstandingCount). Closing that window
+// fully would require unifying concurrency groups across all PRs regardless
+// of MERGE_TRAIN_ENABLED, which conflicts with the legacy path's
+// cancel-in-progress dedup requirement for schedule/workflow_dispatch events
+// -- out of scope for this fix; flagged for follow-up rather than silently
+// assumed away.
+export function computeDispatchBudget({ trainQueueNonEmpty, outstandingCount }) {
   const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
   return Math.max(0, cap - outstandingCount);
 }
@@ -629,50 +650,55 @@ export async function runFromEnv(env = process.env) {
   const dispatchTrigger =
     payload.action && !trigger.includes(':') ? `${trigger}:${payload.action}` : trigger;
 
-  let scheduledPulls = [];
-  if (trainEnabled || eventName === 'schedule' || eventName === 'workflow_dispatch') {
-    scheduledPulls = await requestWithBackoff(
-      () =>
-        paginate(
-          token,
-          `/repos/${owner}/${repo}/pulls?state=open&base=main&sort=updated&direction=desc`,
+  // Always fetched now (previously only for schedule/workflow_dispatch or
+  // train-enabled events): the global backpressure check below needs to
+  // determine merge-train backlog state consistently on every invocation,
+  // including direct per-PR events with the train feature disabled, so that
+  // runner-capacity protection does not lapse whenever the train is paused.
+  // This does not change collectPrNumbers' own routing semantics -- it still
+  // only consults scheduledPulls for schedule/workflow_dispatch events or
+  // when trainEnabled is true, exactly as before.
+  let scheduledPulls = await requestWithBackoff(
+    () =>
+      paginate(
+        token,
+        `/repos/${owner}/${repo}/pulls?state=open&base=main&sort=updated&direction=desc`,
+      ),
+    { label: 'list-open-prs' },
+  );
+  if (
+    trainEnabled &&
+    isRepairWindowSweepEvent({
+      payload,
+      eventName,
+      trainEnabled,
+    })
+  ) {
+    // Snapshot the reference time before hydration so the age-ordering and
+    // "healthy owner" checks inside the callback all share the same clock.
+    const hydrateNow = new Date();
+    scheduledPulls = await hydrateRecoveryOwnership(
+      scheduledPulls,
+      (number) =>
+        requestWithBackoff(
+          () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+          { label: `load-owner-state-${number}` },
         ),
-      { label: 'list-open-prs' },
+      OWNERSHIP_HYDRATION_BATCH_SIZE,
+      {
+        targetDispatchable: REPAIR_WINDOW_SIZE,
+        countDispatchable: (resolvedPulls) =>
+          collectPrNumbers({
+            payload: {},
+            eventName: 'workflow_dispatch',
+            repository,
+            scheduledPulls: resolvedPulls,
+            maxDispatchPerRun: REPAIR_WINDOW_SIZE,
+            trainEnabled: true,
+            now: hydrateNow,
+          }).length,
+      },
     );
-    if (
-      trainEnabled &&
-      isRepairWindowSweepEvent({
-        payload,
-        eventName,
-        trainEnabled,
-      })
-    ) {
-      // Snapshot the reference time before hydration so the age-ordering and
-      // "healthy owner" checks inside the callback all share the same clock.
-      const hydrateNow = new Date();
-      scheduledPulls = await hydrateRecoveryOwnership(
-        scheduledPulls,
-        (number) =>
-          requestWithBackoff(
-            () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
-            { label: `load-owner-state-${number}` },
-          ),
-        OWNERSHIP_HYDRATION_BATCH_SIZE,
-        {
-          targetDispatchable: REPAIR_WINDOW_SIZE,
-          countDispatchable: (resolvedPulls) =>
-            collectPrNumbers({
-              payload: {},
-              eventName: 'workflow_dispatch',
-              repository,
-              scheduledPulls: resolvedPulls,
-              maxDispatchPerRun: REPAIR_WINDOW_SIZE,
-              trainEnabled: true,
-              now: hydrateNow,
-            }).length,
-        },
-      );
-    }
   }
 
   const prNumbers = collectPrNumbers({
@@ -686,17 +712,18 @@ export async function runFromEnv(env = process.env) {
   });
   const directlyTriggeredPrs = eventPrNumbers(payload);
 
-  // Global backpressure: only meaningful while the train feature is on,
-  // since that's the only mode where router runs share a single
-  // concurrency group (see ci-recovery-router.yml) and a global
-  // outstanding-count cap can be enforced consistently. Skip the extra API
-  // call in legacy/off mode.
-  const trainQueueNonEmpty = trainEnabled && queueEntries(scheduledPulls, repository).length > 0;
-  const outstandingCount = trainEnabled
-    ? await countOutstandingRecoveryRuns(token, owner, repo)
-    : 0;
+  // Global backpressure applies unconditionally now -- independent of
+  // MERGE_TRAIN_ENABLED -- because runner-capacity protection must hold even
+  // while the train feature is paused/disabled (2026-07-21 incident
+  // follow-up guidance). `trainQueueNonEmpty` is computed independent of the
+  // flag too: a `merge-train` label surviving a flag-off still counts as
+  // backlog and gets the stricter cap (fail closed). See computeDispatchBudget
+  // for the accepted best-effort limitation in legacy/flag-off mode, where
+  // router invocations for different PRs are not serialized by a shared
+  // concurrency group.
+  const trainQueueNonEmpty = queueEntries(scheduledPulls, repository).length > 0;
+  const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
   const dispatchBudget = computeDispatchBudget({
-    trainEnabled,
     trainQueueNonEmpty,
     outstandingCount,
   });
@@ -736,7 +763,7 @@ export async function runFromEnv(env = process.env) {
     );
   }
 
-  if (trainEnabled && dispatchable.length > 0) {
+  if (dispatchable.length > 0) {
     const expectedMinimum = outstandingCount + dispatchable.length;
     const observed = await waitForOutstandingCount(token, owner, repo, expectedMinimum);
     if (observed < expectedMinimum) {
