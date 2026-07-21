@@ -230,6 +230,27 @@ describe('initCheckpoint', () => {
     );
   });
 
+  it("throws when legacyBaseline's config body is a tuned variant stored under the canonical key — the canonical key alone is insufficient; the stored body must itself compute to the canonical id", () => {
+    // An artifact can be constructed where the dict key equals the canonical
+    // LEGACY ID string but the config BODY carries tuned values (e.g., a
+    // manually edited JSON or a search-eval shard whose key was overwritten).
+    // The key check passes, but configId(body) produces a different id —
+    // both must match before the artifact is trusted as the fixed incumbent.
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const tunedBody: SweepConfig = { ...BASE, aggression: 1.5 }; // tuned body, non-canonical
+    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100)], {
+      [BASE_ID]: tunedBody, // canonical key, but tuned body
+    });
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /config body does not match/,
+    );
+  });
+
   // A follow-up independent code-review pass on the net-win promotion rule
   // (PR #1735) found that build-fingerprint provenance checks added to the
   // legacy/manual `--stage search` path (assertLegacyBaselineProvenance in

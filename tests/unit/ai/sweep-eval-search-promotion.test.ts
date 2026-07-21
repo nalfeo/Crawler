@@ -409,13 +409,17 @@ describe('assertLegacyBaselineProvenance', () => {
   };
 
   function validArtifact(): ShardArtifact {
+    const canonicalConfig = baseConfigForCombo({
+      pathing: AIPathingMode.LEGACY,
+      decision: AIDecisionMode.LEGACY,
+    });
     const rows: RunRow[] = [];
     for (let seed = 1; seed <= 3; seed++) {
       rows.push(row({ combo: LEGACY_COMBO, configId: CANONICAL_LEGACY_ID, weapon: 'sword', seed }));
     }
     return {
       meta: VALID_META,
-      configs: { [CANONICAL_LEGACY_ID]: {} as never },
+      configs: { [CANONICAL_LEGACY_ID]: canonicalConfig },
       rows,
     };
   }
@@ -524,6 +528,22 @@ describe('assertLegacyBaselineProvenance', () => {
     };
     expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(
       /canonical LEGACY base config/,
+    );
+  });
+
+  it('rejects an artifact whose config body is a tuned variant stored under the canonical key — the canonical key alone is insufficient; the stored body itself must compute to the canonical id', () => {
+    // A same-build artifact can be constructed where the dict key is the
+    // canonical LEGACY ID string but the config BODY carries tuned values.
+    // The key check (legacyId === canonicalLegacyConfigId) passes, but
+    // configId(body) produces a different id, catching the tampered body.
+    const artifact = validArtifact();
+    const tunedBody = {
+      ...baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+      aggression: 1.5,
+    };
+    artifact.configs[CANONICAL_LEGACY_ID] = tunedBody;
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(
+      /config body does not match/,
     );
   });
 });

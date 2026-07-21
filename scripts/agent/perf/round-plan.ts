@@ -240,6 +240,21 @@ export function initCheckpoint(
           `config (id '${legacyId}').`,
       );
     }
+    // Also verify the stored config BODY computes to the same canonical id —
+    // the key check above catches a mis-keyed artifact, but the body could
+    // still carry tuned values if the canonical key string was supplied
+    // manually while the config object itself was a tuned variant. configId is
+    // a deterministic function of every field in the body, so a mismatch here
+    // guarantees the body is non-canonical.
+    const storedBodyId = configId(legacyBaseline.configs[legacyId]!);
+    if (storedBodyId !== canonicalLegacyId) {
+      throw new Error(
+        `initCheckpoint(${comboStr}): legacyBaseline shard config body does not match the ` +
+          `canonical LEGACY base config. Config key '${legacyId}' is correct, but the stored ` +
+          `config body produces id '${storedBodyId}'. The config body must be the untuned ` +
+          `canonical LEGACY base, not a tuned variant under a canonical-looking key.`,
+      );
+    }
     const legacyRowCombos = new Set(legacyBaseline.rows.map((r) => r.combo));
     if (legacyRowCombos.size !== 1 || !legacyRowCombos.has(LEGACY_COMBO_ID)) {
       throw new Error(

@@ -334,6 +334,21 @@ export function assertLegacyBaselineProvenance(
         `the fixed incumbent. Produce it via '--stage search-baseline --combo ${LEGACY_COMBO_ID}'.`,
     );
   }
+  // Also verify the stored config BODY computes to the same canonical id —
+  // the key check above catches a mis-keyed artifact, but the body could
+  // still carry tuned values if the canonical key string was supplied
+  // manually while the config object itself was a tuned variant. configId is
+  // a deterministic function of every field in the body, so a mismatch here
+  // guarantees the body is non-canonical.
+  const storedBodyId = configId(artifact.configs[legacyId]!);
+  if (storedBodyId !== canonicalLegacyConfigId) {
+    throw new Error(
+      `--legacy-baseline artifact config body does not match the canonical LEGACY base config. ` +
+        `Config key '${legacyId}' is correct, but the stored config body produces id ` +
+        `'${storedBodyId}'. The config body must be the untuned canonical LEGACY base, ` +
+        `not a tuned variant under a canonical-looking key.`,
+    );
+  }
   const rowCombos = new Set(artifact.rows.map((r) => r.combo));
   if (rowCombos.size !== 1 || !rowCombos.has(LEGACY_COMBO_ID)) {
     throw new Error(
