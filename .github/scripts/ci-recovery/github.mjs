@@ -17,13 +17,13 @@ function isRateLimitResponse(status, data) {
     .includes('rate limit');
 }
 
-function retryDelay(headers, attempt) {
+function retryDelay(headers, retryNumber) {
   const retryAfter = headers?.get?.('retry-after');
   const retryAfterSeconds = Number.parseInt(retryAfter || '', 10);
   if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
     return Math.min(MAX_RETRY_DELAY_MS, retryAfterSeconds * 1000);
   }
-  return Math.min(MAX_RETRY_DELAY_MS, RETRY_DELAY_MS * Math.pow(2, attempt - 1));
+  return Math.min(MAX_RETRY_DELAY_MS, RETRY_DELAY_MS * Math.pow(2, retryNumber - 1));
 }
 
 function summarizeBody(text, maxLength = 240) {
@@ -126,7 +126,8 @@ export async function paginate(token, path) {
 }
 
 export async function graphql(token, query, variables = {}) {
-  const isQuery = /^\s*(?:query(?:\s|[{(])|{)/i.test(query);
+  const isMutation = /^\s*mutation(?:\s|[{(])/i.test(query);
+  const isQuery = !isMutation && /^\s*(?:query(?:\s|[{(])|{)/i.test(query);
   for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
     const response = await fetch(graphqlUrl, {
       method: 'POST',

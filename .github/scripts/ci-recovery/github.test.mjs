@@ -244,7 +244,7 @@ test('graphql retries rate-limited queries but not mutations', async (t) => {
   t.after(() => server.close());
 
   const { graphql: graphqlFromFreshImport } = await importRequestWithApiBase(port);
-  const result = await graphqlFromFreshImport('token', 'query { repository { id } }');
+  const result = await graphqlFromFreshImport('token', '{ repository { id } }');
   assert.deepEqual(result, { repository: { id: 'repo' } });
   assert.equal(callCount, 2);
 
