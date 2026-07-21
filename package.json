@@ -29,7 +29,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --project integration",
-    "test:equipment-gates": "vitest run tests/integration/generated-equipment-dps-gate.integration.test.ts tests/unit/generated-equipment-distribution-fixtures.test.ts",
+    "test:equipment-gates": "npm run equipment:balance-gate",
     "test:e2e": "vitest run --project e2e",
     "test:headless": "vitest run --project headless --reporter=verbose",
     "equipment:balance-gate": "vitest run --project unit tests/game/equipment-balance-gate.test.ts --reporter=verbose",
@@ -108,7 +108,6 @@
     "review:visual:equipment": "tsx scripts/agent/review/visual-review-agent.ts --url http://127.0.0.1:4176/lab.html?lab=ui-probe-lab --setup-file scripts/agent/review/setup/ui-probe-equipment.js --ux-name \"equipment panel\" --ux-goal \"clean slot grouping, no overlap, clear hierarchy, readable typography, icon-first item rendering\" --screenshot-name equipment-panel",
     "producer": "tsx scripts/agent/producer.ts",
     "epic:status": "tsx scripts/agent/epics/epic-status.ts",
-
     "epic:materialize": "tsx scripts/agent/epics/epic-materialize.ts",
     "verify:core": "npm run typecheck:src && npm run lint:core && vitest run tests/ecs tests/property --reporter=dot",
     "verify:game": "npm run typecheck:src && npm run lint:game && vitest run tests/game --reporter=dot",
