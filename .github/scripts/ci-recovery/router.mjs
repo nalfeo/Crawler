@@ -15,11 +15,40 @@ import {
   BLOCKED_LABEL,
   NOOP_LABEL,
   parseEnabledFlag,
+  queueEntries,
   QUEUE_LABEL,
   VALIDATION_FAILED_LABEL,
 } from '../merge-train/state.mjs';
 
 const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
+// Hard global cap on outstanding CI Recovery workflow runs while the merge
+// train queue is non-empty. This is intentionally independent of
+// CI_RECOVERY_MAX_DISPATCH_PER_RUN: that var caps dispatch *per router
+// invocation*, but with the router now serialized under a single
+// concurrency group (see ci-recovery-router.yml), this cap is what actually
+// bounds the number of CI Recovery runs competing with Merge Train
+// Validation for runners at any moment.
+export const GLOBAL_TRAIN_DISPATCH_CAP = 1;
+// Cap applied when the train feature is enabled but its queue is currently
+// empty. Measured capacity evidence (2026-07-21 incident follow-up): this
+// repo is public on GitHub Free (standard-hosted concurrency limit: 20
+// concurrent jobs). Representative peaks observed: a normal full PR CI run
+// uses ~5 concurrent jobs; uncontended Merge Train Validation runs alone
+// peak at 7-9 concurrent jobs; an active AI Sweep Eval run can spawn 200+
+// jobs and peak at ~19 concurrent, which is what starved Validation runners
+// during the incident. With the queue empty there is no Validation run to
+// protect, but sweep-style jobs can still be running, so dispatch is not
+// left fully unbounded here -- 2 preserves at least some runner headroom
+// instead of going back to effectively-unlimited (Infinity) dispatch.
+export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = 2;
+// GitHub Actions run states that represent a run not yet finished: actively
+// running, waiting to be scheduled, or held by a concurrency group (queued
+// runs whose concurrency group is busy report as `waiting`). `pending` is
+// included even though the router itself never produces it, because it is a
+// documented Actions run status and omitting it would let a run in that
+// state go uncounted, silently widening the outstanding-run gap this cap
+// exists to close.
+const OUTSTANDING_RUN_STATUSES = ['queued', 'pending', 'in_progress', 'waiting', 'requested'];
 const REPAIR_WINDOW_SIZE = 6;
 const MANAGED_COMMENT_MARKERS = [
   '<!-- crawler-ci-state:v1 -->',
@@ -445,6 +474,136 @@ export function isManagedCommentEvent(payload, eventName) {
   return MANAGED_COMMENT_MARKERS.some((marker) => body.startsWith(marker));
 }
 
+// Fetches every run of `workflowFile` currently in `status`, paginating
+// until a short page confirms the end. The Actions "list workflow runs"
+// endpoint returns `{ total_count, workflow_runs }`, not a bare array, so
+// this cannot reuse the generic `paginate()` helper from github.mjs.
+export async function listWorkflowRunsByStatus(
+  token,
+  owner,
+  repo,
+  workflowFile,
+  status,
+  requestFn = request,
+) {
+  const results = [];
+  let page = 1;
+  while (true) {
+    const { data } = await requestWithBackoff(
+      () =>
+        requestFn(
+          token,
+          `/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?status=${status}&per_page=100&page=${page}`,
+        ),
+      { label: `list-runs-${workflowFile}-${status}-page${page}` },
+    );
+    const runs = data?.workflow_runs || [];
+    results.push(...runs);
+    if (runs.length < 100) {
+      return results;
+    }
+    page += 1;
+  }
+}
+
+// Total number of `workflowFile` runs currently outstanding (not yet
+// completed) across every status that represents unfinished work,
+// including runs held `waiting`/`requested` behind a concurrency group --
+// those still occupy a dispatch slot even though a runner hasn't picked
+// them up yet.
+export async function countOutstandingRecoveryRuns(
+  token,
+  owner,
+  repo,
+  workflowFile = 'ci-recovery.yml',
+  statuses = OUTSTANDING_RUN_STATUSES,
+  requestFn = request,
+) {
+  let total = 0;
+  for (const status of statuses) {
+    const runs = await listWorkflowRunsByStatus(
+      token,
+      owner,
+      repo,
+      workflowFile,
+      status,
+      requestFn,
+    );
+    total += runs.length;
+  }
+  return total;
+}
+
+// How many more CI Recovery dispatches this router invocation may send.
+// While the merge train queue holds any PR, outstanding recovery runs are
+// hard-capped at GLOBAL_TRAIN_DISPATCH_CAP so Merge Train Validation is not
+// starved for runner capacity. With the train feature enabled but its queue
+// currently empty, there's no Validation run to protect but other jobs
+// (e.g. sweep evals) can still be consuming runners, so dispatch is capped
+// at the looser GLOBAL_IDLE_TRAIN_DISPATCH_CAP rather than left unbounded
+// (see that constant's comment for the measured capacity evidence). Only
+// when the train feature itself is off does this return Infinity: without
+// the shared concurrency group (see ci-recovery-router.yml), invocations
+// aren't serialized, so a global outstanding-count cap can't be enforced
+// consistently -- the existing per-run maxDispatchPerRun cap in
+// collectPrNumbers is what bounds dispatch in that legacy mode.
+export function computeDispatchBudget({ trainEnabled, trainQueueNonEmpty, outstandingCount }) {
+  if (!trainEnabled) {
+    return Infinity;
+  }
+  const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
+  return Math.max(0, cap - outstandingCount);
+}
+
+// Splits the PRs collectPrNumbers deemed eligible into what this run may
+// actually dispatch now versus what must wait. Deferred PRs are not lost:
+// the next scheduled sweep (every 10 minutes) re-evaluates ownership and
+// picks up any PR still lacking a healthy recovery owner, guaranteeing
+// eventual processing once capacity frees up.
+export function partitionDispatchable(prNumbers, budget) {
+  if (budget === Infinity) {
+    return { dispatchable: prNumbers, deferred: [] };
+  }
+  return {
+    dispatchable: prNumbers.slice(0, budget),
+    deferred: prNumbers.slice(budget),
+  };
+}
+
+// Closes the TOCTOU window between "dispatch a recovery run" and "that run
+// becomes visible to the Actions list-runs API". The router concurrency
+// group (see ci-recovery-router.yml) serializes invocations, but only for
+// the duration each invocation is running: if this run finishes and frees
+// its slot before the dispatch it just made shows up in
+// countOutstandingRecoveryRuns, the *next* serialized invocation can read a
+// stale (too-low) outstanding count and dispatch again, breaching the
+// global cap. Polling here, before this invocation's slot is released,
+// makes that race unlikely rather than airtight: the wait is deliberately
+// bounded (a handful of short retries), and a slow/unavailable API still
+// degrades to a logged warning and lets this invocation end anyway -- the
+// 10-minute sweep is the eventual-consistency backstop, not a guarantee
+// that the cap is never exceeded if Actions API visibility lags longer
+// than the bounded retry window.
+export async function waitForOutstandingCount(
+  token,
+  owner,
+  repo,
+  expectedMinimum,
+  { attempts = 5, delayMs = 2000, sleepFn = sleep, countFn = countOutstandingRecoveryRuns } = {},
+) {
+  let lastObserved = 0;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    lastObserved = await countFn(token, owner, repo);
+    if (lastObserved >= expectedMinimum) {
+      return lastObserved;
+    }
+    if (attempt < attempts) {
+      await sleepFn(delayMs);
+    }
+  }
+  return lastObserved;
+}
+
 export async function runFromEnv(env = process.env) {
   const token = env.GITHUB_TOKEN;
   const repository = env.GITHUB_REPOSITORY || '';
@@ -527,7 +686,23 @@ export async function runFromEnv(env = process.env) {
   });
   const directlyTriggeredPrs = eventPrNumbers(payload);
 
-  for (const prNumber of prNumbers) {
+  // Global backpressure: only meaningful while the train feature is on,
+  // since that's the only mode where router runs share a single
+  // concurrency group (see ci-recovery-router.yml) and a global
+  // outstanding-count cap can be enforced consistently. Skip the extra API
+  // call in legacy/off mode.
+  const trainQueueNonEmpty = trainEnabled && queueEntries(scheduledPulls, repository).length > 0;
+  const outstandingCount = trainEnabled
+    ? await countOutstandingRecoveryRuns(token, owner, repo)
+    : 0;
+  const dispatchBudget = computeDispatchBudget({
+    trainEnabled,
+    trainQueueNonEmpty,
+    outstandingCount,
+  });
+  const { dispatchable, deferred } = partitionDispatchable(prNumbers, dispatchBudget);
+
+  for (const prNumber of dispatchable) {
     const prTrigger = recoveryTriggerForPr({
       trainEnabled,
       directlyTriggeredPrs,
@@ -554,14 +729,31 @@ export async function runFromEnv(env = process.env) {
     process.stdout.write(`dispatched pr=#${prNumber} trigger=${prTrigger}\n`);
   }
 
-  if (prNumbers.length === 0) {
+  if (deferred.length > 0) {
+    const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
+    process.stdout.write(
+      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${cap}\n`,
+    );
+  }
+
+  if (trainEnabled && dispatchable.length > 0) {
+    const expectedMinimum = outstandingCount + dispatchable.length;
+    const observed = await waitForOutstandingCount(token, owner, repo, expectedMinimum);
+    if (observed < expectedMinimum) {
+      process.stdout.write(
+        `warning: dispatched run(s) not yet visible via Actions API after backoff observed=${observed} expected>=${expectedMinimum} -- relying on scheduled sweep for eventual consistency\n`,
+      );
+    }
+  }
+
+  if (dispatchable.length === 0 && deferred.length === 0) {
     process.stdout.write(`no eligible PR found for ${eventName}\n`);
   } else if (
     (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
     scheduledPulls.length > prNumbers.length
   ) {
     process.stdout.write(
-      `dispatch cap applied sent=${prNumbers.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun}\n`,
+      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun}\n`,
     );
   }
 }

@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "ci-recovery-global-backpressure",
+  "task_title": "CI Recovery global backpressure fix",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Reviewer found 2 blocking gaps: (1) router concurrency group lacked queue: max, so GitHub would drop pending events instead of queueing them under burst -- fixed by adding queue: max matching the ci-recovery.yml pattern; (2) TOCTOU race between dispatch and Actions-API visibility across serialized invocations, plus missing pending status -- fixed by adding pending to OUTSTANDING_RUN_STATUSES and a bounded waitForOutstandingCount poll before a dispatching invocation releases its concurrency slot. Both fixes verified by new unit tests."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["default"],
+          "concerns_count": 4,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Blocking: queue:max unconditionally combined with a cancel-in-progress expression that can be true (flag-off schedule/workflow_dispatch path) -- GitHub rejects that combination, breaking the legacy/rollback path. Fixed by making queue conditional on MERGE_TRAIN_ENABLED, matching where cancel-in-progress is guaranteed false. Non-blocking: (1) runFromEnv has no end-to-end test (accepted as pre-existing convention/out of scope), (2) dispatch-cap log used prNumbers.length instead of dispatchable.length (fixed), (3) waitForOutstandingCount comment overstated as airtight (reworded)."
+        },
+        {
+          "round": 2,
+          "models": ["default"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verified blocking fix is genuinely correct (queue and cancel-in-progress expressions are mutually exclusive on MERGE_TRAIN_ENABLED), confirmed non-blocking fixes, fresh full-diff pass found no new issues. 47/47 tests passing, lint clean."
+        }
+      ]
+    }
+  }
+}
