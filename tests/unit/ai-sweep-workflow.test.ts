@@ -226,16 +226,44 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     });
   });
 
-  it('checkpoint-init gracefully degrades the legacy+legacy safety gate (own base as incumbent) only when legacy+legacy was itself RESUMED this run, and still hard-fails on a genuinely missing/misconfigured legacy baseline', () => {
+  it('checkpoint-init hard-fails unconditionally when the legacy+legacy baseline shard is missing for a non-LEGACY combo -- no resumed-combo exemption', () => {
+    // A prior version of this check silently fell back to each non-LEGACY
+    // combo's own base as incumbent whenever `legacy+legacy` appeared in
+    // `resumedCombos`, reasoning that the derivation might have failed
+    // independently of resume-import's own job result. That reasoning no
+    // longer holds: `resume-import`'s "Derive legacy+legacy baseline
+    // shard"/"Upload derived legacy+legacy baseline shard" steps have no
+    // `continue-on-error`, and `checkpoint-init` already requires
+    // `needs.resume-import.result == 'success'` -- so a successful
+    // resume-import that resumed legacy+legacy GUARANTEES the derived
+    // baseline artifact was uploaded. A still-missing artifact here can now
+    // ONLY mean a genuine infra fault (e.g. an artifact-download race), which
+    // must fail loudly rather than silently narrow the in-search safety net
+    // for every non-LEGACY combo (found in review, superseding the earlier
+    // resumed-combo exemption).
     const doc = loadWorkflow();
     const script = allRunSteps(getJob(doc, 'checkpoint-init'));
-    expect(script).toContain('RESUMED_COMBOS');
-    expect(script).toMatch(/jq -e --arg c "legacy\+legacy" 'index\(\$c\) != null'/);
-    // Both outcomes remain reachable: a genuine hard-fail message (misconfig)
-    // and a graceful warning (expected resume gap) -- the fix narrows, but
-    // does not remove, the original safety check.
+    expect(script).not.toContain('RESUMED_COMBOS');
+    expect(script).not.toMatch(/jq -e --arg c "legacy\+legacy" 'index\(\$c\) != null'/);
+    expect(script).not.toContain('falls back to its own base as the in-search incumbent');
     expect(script).toContain('is required for non-LEGACY combo');
-    expect(script).toContain('falls back to its own base as the in-search incumbent');
+    expect(script).toContain('exit 1');
+    // The unconditional hard-fail branch must not be gated behind any
+    // resumedCombos check -- it is the ONLY branch left when the file is
+    // missing.
+    const ifMissingBlock = script.split('if [ ! -f "baseline-legacy+legacy.json" ]; then')[1];
+    expect(ifMissingBlock).toBeDefined();
+    const beforeElse = ifMissingBlock?.split(/\belse\b/)[0] ?? '';
+    expect(beforeElse).toContain('exit 1');
+  });
+
+  it("checkpoint-init's legacy+legacy download step's if-no-artifact-found:warn is a display-only choice -- the actual gate is the Build round-0 checkpoint step's own explicit file check + exit 1, not the download step's own error handling", () => {
+    const doc = loadWorkflow();
+    const checkpointInit = getJob(doc, 'checkpoint-init');
+    const downloadStep = (checkpointInit.steps ?? []).find(
+      (s) => s.with?.pattern === 'search-baseline-legacy+legacy',
+    );
+    expect(downloadStep?.with?.['if-no-artifact-found']).toBe('warn');
   });
 
   it('gates checkpoint-init and round1-candidates with !cancelled() (not always()) so a partial baseline matrix failure never skips them for every combo, while a manual cancellation still stops the DAG', () => {

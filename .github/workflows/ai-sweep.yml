@@ -544,14 +544,11 @@ jobs:
         # baseline shard..." step re-derives and uploads it under this SAME
         # name straight from the resumed checkpoint's own round-0 rows — so
         # this download step needs NO changes either way. `if-no-artifact-found:
-        # warn` (not `error`) remains only for the residual edge case where
-        # legacy+legacy was resumed AND that derivation step itself failed
-        # (`continue-on-error: true` there): initCheckpoint then falls back to
-        # each non-LEGACY combo's own base as incumbent for the IN-SEARCH
-        # net-win gate only. The final graduation gate at `validate`/
-        # `aggregate` always re-evaluates the REAL LEGACY incumbent
-        # regardless, so even this residual fallback only narrows (never
-        # removes) the early safety check.
+        # warn` (not `error`) remains ONLY so the "Build round-0 checkpoint"
+        # step below can emit its own clearer ❌ error message and `exit 1`
+        # when the file genuinely never showed up — there is no longer a
+        # silent-fallback path here (see that step's comment: the
+        # RESUMED_COMBOS exemption was removed, found in review).
         uses: actions/download-artifact@v4
         with:
           pattern: search-baseline-legacy+legacy
@@ -564,7 +561,6 @@ jobs:
           SECONDARY: ${{ inputs.secondary }}
           TRAIN_SEEDS: ${{ inputs.train_seeds }}
           WEAPONS: ${{ inputs.weapons }}
-          RESUMED_COMBOS: ${{ needs.resume-import.outputs.resumedCombos }}
         run: |
           set -euo pipefail
           SECONDARY_FLAG=""
@@ -576,21 +572,30 @@ jobs:
           # base as incumbent, which can promote a candidate that has more
           # wins than its combo baseline yet fewer total wins than LEGACY
           # (passes in-search gate but gets rejected at final graduation).
-          # Fail fast here — UNLESS legacy+legacy itself was cross-run
-          # RESUMED this run (so no fresh baseline artifact was ever going to
-          # exist): that is an expected, not an infra-failure, absence — see
-          # the download step's comment above for why this narrows (never
-          # removes) the early safety check.
+          # Fail fast unconditionally when missing — there is NO expected
+          # case where this artifact is legitimately absent: if legacy+legacy
+          # is FRESH this run, `baseline` uploads it; if legacy+legacy was
+          # cross-run RESUMED, `resume-import` (which `checkpoint-init`
+          # requires to have succeeded via `needs.resume-import.result ==
+          # 'success'`) derives and uploads it as its own LAST step with no
+          # `continue-on-error` — so a successful resume-import that resumed
+          # legacy+legacy GUARANTEES this artifact exists. A prior version of
+          # this check silently fell back to each combo's own base whenever
+          # `legacy+legacy` appeared in `resumedCombos`, reasoning that the
+          # derivation might have failed independently — but with the
+          # derivation step now unconditionally required to succeed for the
+          # whole job to report success, that residual case can no longer
+          # occur through normal execution; a still-missing artifact here now
+          # means a genuine infra fault (e.g. an artifact-download race),
+          # which must fail loudly rather than silently narrow the
+          # in-search safety net for every non-LEGACY combo (found in
+          # review).
           LEGACY_BASELINE_FLAG=""
           if [ "$COMBO" != "legacy+legacy" ]; then
             if [ ! -f "baseline-legacy+legacy.json" ]; then
-              if jq -e --arg c "legacy+legacy" 'index($c) != null' <<< "$RESUMED_COMBOS" >/dev/null; then
-                echo "⚠️  legacy+legacy was cross-run resumed this run (no fresh baseline artifact) — '$COMBO' falls back to its own base as the in-search incumbent. Final graduation always re-checks the real LEGACY incumbent regardless."
-              else
-                echo "❌ LEGACY baseline shard 'baseline-legacy+legacy.json' is required for non-LEGACY combo '$COMBO' but was not found." >&2
-                echo "   Ensure legacy+legacy is included in the 'combos' input and its checkpoint-init leg succeeded." >&2
-                exit 1
-              fi
+              echo "❌ LEGACY baseline shard 'baseline-legacy+legacy.json' is required for non-LEGACY combo '$COMBO' but was not found." >&2
+              echo "   Ensure legacy+legacy is included in the 'combos' input and its checkpoint-init leg succeeded." >&2
+              exit 1
             else
               LEGACY_BASELINE_FLAG="--legacy-baseline baseline-legacy+legacy.json"
             fi

@@ -105,7 +105,7 @@ new commit.
 ## Verification
 
 - `npx tsc --noEmit -p tsconfig.json` ✅ (0 errors)
-- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (163/163)
+- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (167/167, after the 6th–9th fixes below)
 - `npm run verify:fast` ✅
 - `npm run verify:pr-prereqs` ✅
 
@@ -205,6 +205,57 @@ existence now depends on the whole job having succeeded up to that point.
 Added a regression test (`ai-sweep-workflow.test.ts`) asserting the resumed-
 checkpoints upload step index is strictly greater than both legacy-baseline
 step indices AND equals `steps.length - 1` (last step in the job).
+
+Re-querying review threads after that push surfaced 3 MORE threads, all
+directly enabled by the 6th fix's new guarantee (fixed together in one batch,
+`d6be2fb0`'s follow-up commit):
+
+- **7th (`ai-sweep.yml`, `checkpoint-init`'s "Build round-0 checkpoint" step)**:
+  the `RESUMED_COMBOS`-conditioned fallback that degraded the legacy+legacy
+  safety gate to a warning (instead of hard-failing) when `legacy+legacy` was
+  itself resumed is now provably unreachable/unsafe reasoning — the 6th fix's
+  ordering + the pre-existing `needs.resume-import.result == 'success'` gate on
+  `checkpoint-init` together guarantee that if `checkpoint-init` runs at all
+  and `legacy+legacy` was resumed, the derived legacy+legacy baseline artifact
+  MUST already exist (deriving+uploading it is now an unconditional,
+  non-last-position requirement for `resume-import` to report success). The
+  fallback was therefore silently reintroducing the exact incumbent-narrowing
+  gap the whole PR exists to close, on an "expected absence" case that can no
+  longer occur. Removed the `RESUMED_COMBOS` env var and `jq`-based
+  conditional entirely; the step now ALWAYS `exit 1`s (unconditionally) when
+  the legacy+legacy baseline shard is missing for a non-LEGACY combo,
+  regardless of resume state. Updated the surrounding step comments (the old
+  comment referenced a `continue-on-error: true` on the derive step that no
+  longer exists after the 6th fix).
+- **8th (`round-plan.ts`'s `assertResumeCompatible`, legacy-fallback branch)**:
+  the legacy-checkpoint comparison deduped the REQUESTED `trainSeeds`/`weapons`
+  strings (via `new Set(...)`) before comparing against the inferred panel.
+  But the real evaluator (`sweep-eval.ts`'s `--train-seeds`/`--seeds`/
+  `--weapons` parsing, confirmed at lines ~724-731, backed by
+  `winrate-sweep-args.ts`'s `parseSeeds` which preserves every CSV
+  segment/range verbatim) does **not** dedupe — a fresh leg requesting e.g.
+  `"1,1,2"` genuinely executes seed 1 TWICE and persists a duplicate row for
+  it. Deduping the request before comparing meant `"1,1,2"` was silently
+  accepted as equivalent to an inferred duplicate-free `[1,2]` panel, even
+  though a real fresh run of that request would NOT match the imported
+  panel's row set — a genuine (if narrow) correctness gap. Fixed by rejecting
+  duplicate seeds and duplicate/empty weapon entries in the REQUESTED string
+  outright (fail closed with a clear error) rather than canonicalizing past
+  them, for the legacy-fallback comparison path only; modern
+  (`runInputs`-present) checkpoints are unaffected and keep their existing
+  strict raw-string equality.
+- **9th (`ai-sweep-workflow.test.ts`, stale test)**: the old test codifying
+  the `RESUMED_COMBOS` graceful-degrade behavior as correct/expected was
+  replaced with two new tests: one asserting the hard-fail-unconditionally
+  behavior (no `RESUMED_COMBOS`, no `jq` conditional, `exit 1` always
+  reachable when the shard is missing) and one asserting the legacy+legacy
+  download step's `if-no-artifact-found: warn` is a display-only choice, not
+  a fallback mechanism.
+
+3 new tests were added to `sweep-round-plan.test.ts` covering the 8th fix:
+duplicate-seed rejection, empty-weapon-entry rejection, and duplicate-weapon
+rejection — each proving the DEDUPED request would have otherwise matched the
+inferred panel (so the fix is provably load-bearing, not just defensive).
 
 ## Notes
 

@@ -1352,6 +1352,36 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
       };
       expect(() => assertResumeCompatible(modernCheckpoint, exp)).toThrow(/weapons/);
     });
+
+    it('rejects a requested trainSeeds string containing a duplicate seed, even if the DEDUPED set would otherwise match the inferred panel exactly', () => {
+      // parseSeeds (the ACTUAL evaluator's --train-seeds/--seeds parser)
+      // preserves duplicates verbatim -- a fresh leg requesting "1,1,2,3"
+      // genuinely executes seed 1 TWICE and persists two rows for it, so
+      // silently deduping the request before comparing would accept a
+      // request whose fresh execution would NOT match the imported
+      // duplicate-free panel's row set (found in review).
+      const exp = canonicalExpected();
+      exp.trainSeeds = '1,1,2,3'; // dedupes to [1,2,3], same as the inferred panel
+      expect(() => assertResumeCompatible(canonicalPanelCheckpoint(), exp)).toThrow(
+        /requested trainSeeds '1,1,2,3' contains duplicate seed/,
+      );
+    });
+
+    it('rejects a requested weapons string containing an empty entry (stray/doubled comma)', () => {
+      const exp = canonicalExpected();
+      exp.weapons = 'sword,bow,'; // trailing comma -> empty 3rd entry
+      expect(() => assertResumeCompatible(canonicalPanelCheckpoint(), exp)).toThrow(
+        /requested weapons 'sword,bow,' contains an empty entry/,
+      );
+    });
+
+    it('rejects a requested weapons string containing a duplicate weapon, even if the DEDUPED set would otherwise match the inferred panel exactly', () => {
+      const exp = canonicalExpected();
+      exp.weapons = 'sword,bow,sword'; // dedupes to {sword,bow}, same as inferred
+      expect(() => assertResumeCompatible(canonicalPanelCheckpoint(), exp)).toThrow(
+        /requested weapons 'sword,bow,sword' contains duplicate weapon/,
+      );
+    });
   });
 });
 

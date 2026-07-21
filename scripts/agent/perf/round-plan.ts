@@ -743,8 +743,14 @@ export interface ResumeExpectedProvenance {
  * no memory of the ORIGINAL request string's exact notation (e.g. `"1-80"`
  * vs an equivalent explicit list), only the actual seeds evaluated, so
  * comparing derived sets is the correct (and only) exact-equality check
- * available. Modern checkpoints (`runInputs` present) are NOT affected —
- * they keep the original strict raw-string equality unchanged.
+ * available. The REQUESTED trainSeeds/weapons strings are themselves
+ * rejected outright if they contain a duplicate seed or an empty/duplicate
+ * weapon entry — the real evaluator (`sweep-eval.ts`'s `--train-seeds`/
+ * `--seeds`/`--weapons` parsing) preserves duplicates verbatim, so silently
+ * deduping the request before comparing would accept a request that a FRESH
+ * run would NOT execute identically to the imported (duplicate-free)
+ * panel. Modern checkpoints (`runInputs` present) are NOT affected — they
+ * keep the original strict raw-string equality unchanged.
  */
 export function assertResumeCompatible(
   checkpoint: RoundCheckpoint,
@@ -764,15 +770,43 @@ export function assertResumeCompatible(
     // Fails closed (throws) if the panel can't be safely characterized —
     // see inferRunInputsFromCheckpoint's docstring for every fail-closed case.
     const inferred = inferRunInputsFromCheckpoint(checkpoint);
-    const expectedSeeds = [...new Set(parseSeeds(expected.trainSeeds))].sort((a, b) => a - b);
-    const expectedWeapons = [
-      ...new Set(
-        expected.weapons
-          .split(',')
-          .map((w) => w.trim())
-          .filter((w) => w.length > 0),
-      ),
-    ].sort();
+    // Requested trainSeeds/weapons must themselves be duplicate-free and
+    // non-empty BEFORE comparing against the inferred panel. `parseSeeds`
+    // (used by the ACTUAL evaluator, `sweep-eval.ts`'s `--train-seeds`/
+    // `--seeds` parsing) preserves duplicates verbatim — a fresh leg
+    // requesting e.g. `"1,1,2"` genuinely executes seed 1 TWICE and persists
+    // two rows for it. Deduping the REQUESTED string here before comparing
+    // would silently accept that request as equivalent to an inferred
+    // duplicate-free `[1,2]` panel, even though a fresh run of the same
+    // request would NOT produce a matching (duplicate-free) row set — a
+    // real, if narrow, correctness gap (found in review). Reject duplicates/
+    // empties in the request outright instead of canonicalizing past them;
+    // this only affects the LEGACY (no-runInputs) inference path — modern
+    // checkpoints below keep exact raw-string equality regardless.
+    const parsedSeeds = parseSeeds(expected.trainSeeds);
+    const expectedSeeds = [...new Set(parsedSeeds)].sort((a, b) => a - b);
+    if (parsedSeeds.length !== expectedSeeds.length) {
+      throw new Error(
+        `${contextLabel}: requested trainSeeds '${expected.trainSeeds}' contains duplicate seed(s) — ` +
+          `legacy-checkpoint resume requires an exact, duplicate-free requested seed set (a fresh run ` +
+          `of a duplicate-containing request would execute and persist duplicate rows the imported ` +
+          `panel does not have).`,
+      );
+    }
+    const rawWeaponParts = expected.weapons.split(',').map((w) => w.trim());
+    if (rawWeaponParts.some((w) => w.length === 0)) {
+      throw new Error(
+        `${contextLabel}: requested weapons '${expected.weapons}' contains an empty entry ` +
+          `(check for stray/doubled commas).`,
+      );
+    }
+    const expectedWeapons = [...new Set(rawWeaponParts)].sort();
+    if (expectedWeapons.length !== rawWeaponParts.length) {
+      throw new Error(
+        `${contextLabel}: requested weapons '${expected.weapons}' contains duplicate weapon(s) — ` +
+          `legacy-checkpoint resume requires an exact, duplicate-free requested weapon set.`,
+      );
+    }
     const seedsMatch =
       inferred.trainSeeds.length === expectedSeeds.length &&
       inferred.trainSeeds.every((s, idx) => s === expectedSeeds[idx]);
@@ -802,6 +836,7 @@ export function assertResumeCompatible(
     }
     return;
   }
+
   if (checkpoint.runInputs.trainSeeds !== expected.trainSeeds) {
     throw new Error(
       `${contextLabel}: checkpoint trainSeeds '${checkpoint.runInputs.trainSeeds}' != expected '${expected.trainSeeds}'`,
