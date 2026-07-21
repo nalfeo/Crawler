@@ -57,6 +57,9 @@ Writer credentials and App identity were correct (`crawler-ci`, App ID
 - A terminal same-ID suite snapshot replaces stale in-progress commit evidence.
 - Multiple suites and check-run pages are fully traversed and deduplicated.
 - The complete merge-train test suite and `npm run verify:fast` pass.
+- Before final promotion, the lockfile was refreshed from `fast-uri` 3.1.2 to
+  patched 3.1.3 for GHSA-4c8g-83qw-93j6; `npm audit --audit-level=high`
+  reports zero vulnerabilities.
 
 ## Production recovery
 
