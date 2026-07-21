@@ -818,59 +818,50 @@ test('router listens only for completed CI workflow runs', () => {
   assert.deepEqual(workflow.on.workflow_run.types, ['completed']);
 });
 
-test('router concurrency serializes every event into one global group while the train is enabled', () => {
+test('router concurrency serializes every event into one unconditional global group', () => {
   // queue: max is required so GitHub actually queues every event under the
   // shared group instead of its default "1 running + 1 pending, newest
   // replaces pending" behavior, which would silently drop router
-  // invocations during a burst rather than serializing them. It must be
-  // conditional on train mode (not the literal string 'max') because
-  // GitHub rejects queue: max combined with cancel-in-progress: true, and
-  // the flag-off legacy path below can set cancel-in-progress: true.
-  assert.match(routeJob.concurrency.queue, /vars\.MERGE_TRAIN_ENABLED == 'true' && 'max'/);
-  assert.match(
+  // invocations during a burst rather than serializing them. Both group
+  // and queue are now static (not conditional on MERGE_TRAIN_ENABLED): an
+  // earlier revision only unified the group in train mode, leaving the
+  // legacy flag-off path on per-PR groups where truly concurrent
+  // different-PR invocations could each read a stale outstanding-run count
+  // before either dispatch became visible. A static, unconditional group
+  // makes that race architecturally impossible in any mode.
+  assert.equal(
     routeJob.concurrency.queue,
-    /'single'/,
-    'flag-off path must keep the default single-queue behavior',
+    'max',
+    'queue must be an unconditional max, not gated on MERGE_TRAIN_ENABLED',
   );
   const group = routeJob.concurrency.group;
-  // Train mode must route ALL events -- direct PR events and sweeps alike --
-  // into a single shared group so router execution is fully serialized.
-  // A per-PR sub-expression here would reopen the thundering-herd bug: N
-  // independently-triggered PR events would again get N distinct groups and
-  // run concurrently.
-  assert.match(group, /vars\.MERGE_TRAIN_ENABLED == 'true' && 'crawler-ci-recovery-router-train'/);
   assert.equal(
-    /'crawler-ci-recovery-router-train'\s*\n?\s*&&\s*format/.test(group),
-    false,
-    'train branch must not be gated by a per-PR sub-condition',
+    group,
+    'crawler-ci-recovery-router',
+    'concurrency group must be a static, unconditional string -- not a per-PR/per-sweep/train-gated expression',
   );
-  // Legacy (flag-off) fallback still isolates single-PR workflow events.
-  assert.match(group, /github\.event\.workflow_run\.pull_requests\[0\]\.number/);
-  assert.match(group, /!github\.event\.workflow_run\.pull_requests\[1\]\.number/);
 });
 
-test('router concurrency cancel-in-progress never fires while the train is enabled', () => {
-  // cancel-in-progress must stay false whenever MERGE_TRAIN_ENABLED == 'true'
-  // so every queued router event eventually runs instead of being dropped;
-  // serialization (not cancellation) is what bounds concurrency.
-  assert.match(routeJob.concurrency['cancel-in-progress'], /vars\.MERGE_TRAIN_ENABLED != 'true'/);
+test('router concurrency cancel-in-progress is unconditionally false', () => {
+  // cancel-in-progress must never fire, in any mode, so every queued
+  // router event eventually runs instead of being dropped or a stale one
+  // cancelled; serialization (not cancellation) is what bounds
+  // concurrency, and the scheduled sweep is the backstop for
+  // deduplication instead of cancel-in-progress.
+  assert.equal(
+    routeJob.concurrency['cancel-in-progress'],
+    false,
+    'cancel-in-progress must be a static false, not a conditional expression',
+  );
 });
 
 test('router concurrency never combines queue: max with a cancel-in-progress: true condition (GitHub rejects that combination)', () => {
   // GitHub Actions docs: "The combination of queue: max and
   // cancel-in-progress: true is not allowed and will result in a workflow
-  // validation error." cancel-in-progress can only evaluate true when
-  // MERGE_TRAIN_ENABLED != 'true' (the flag-off schedule/workflow_dispatch
-  // dedup path); queue must therefore resolve to something other than
-  // 'max' in that same branch.
-  const cancelExpr = routeJob.concurrency['cancel-in-progress'];
-  const queueExpr = routeJob.concurrency.queue;
-  assert.match(cancelExpr, /MERGE_TRAIN_ENABLED != 'true'/);
-  assert.match(
-    queueExpr,
-    /MERGE_TRAIN_ENABLED == 'true' && 'max' \|\| 'single'/,
-    'queue must fall back to single (not max) whenever cancel-in-progress could evaluate true',
-  );
+  // validation error." Both values are now static, so this is
+  // structurally guaranteed rather than conditionally guaranteed.
+  assert.equal(routeJob.concurrency['cancel-in-progress'], false);
+  assert.equal(routeJob.concurrency.queue, 'max');
 });
 
 test('isRetryableError only retries relevant HTTP errors', () => {
@@ -1194,6 +1185,16 @@ test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPAT
   // at all: this burst is driven purely by trainQueueNonEmpty=false (the
   // natural state once the train feature is off -- no PR is being actively
   // queued through it) and proves the same idle cap of 2 holds regardless.
+  //
+  // This sequential loop is now also an accurate model of real router
+  // behavior, not just a JS-level budget check: the workflow's concurrency
+  // group (see ci-recovery-router.yml and the 'router concurrency serializes
+  // every event into one unconditional global group' test) is a single
+  // static group applied to every event in every mode, so all 25 events in
+  // this burst would in practice run one invocation at a time, each reading
+  // the previous invocation's committed outstandingCount -- there is no
+  // window in which two of these 25 invocations observe the same stale
+  // count concurrently.
   const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
   let outstandingCount = 0;
   let totalDispatched = 0;

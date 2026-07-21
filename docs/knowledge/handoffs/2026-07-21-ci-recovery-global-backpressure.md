@@ -43,9 +43,23 @@ the initial cut left the dispatch budget **unbounded (`Infinity`)** whenever
 where runner-capacity protection must NOT lapse. `computeDispatchBudget` was
 changed to drop the `trainEnabled` parameter entirely and always return a
 finite budget (cap 1 with an active merge-train backlog, cap 2 otherwise,
-including with the train feature disabled/paused). See "What changed" and
-"Known residual limitation" below for the corrected behavior and the accepted
-trade-off this creates.
+including with the train feature disabled/paused).
+
+**Second post-merge correction (same PR, same day)**: the parent session found
+that the finite budget alone still left a residual race — the workflow
+concurrency group only unified into one shared group while
+`MERGE_TRAIN_ENABLED == 'true'`, so in legacy/flag-off mode different-PR router
+invocations could still run truly concurrently and each read a stale
+outstanding-run count before either dispatch became visible. Per the parent's
+explicit instruction that safety takes priority over preserving the legacy
+`cancel-in-progress: true` dedup behavior, the concurrency block was replaced
+with a single **unconditional, static** global group
+(`crawler-ci-recovery-router`), `cancel-in-progress: false`, and `queue: max`
+— all three now static values applying to every event type in every mode, with
+no `MERGE_TRAIN_ENABLED` branching left in the concurrency config. This closes
+the cross-PR race entirely: it is architecturally impossible for two router
+invocations to run concurrently, in any mode. See "What changed" below for the
+final design.
 
 ## Files touched
 
@@ -57,19 +71,22 @@ trade-off this creates.
 
 ## What changed
 
-- **Workflow concurrency (`ci-recovery-router.yml`)**: unified the concurrency
-  group so ALL event types (direct PR events, sweeps, `workflow_run`) share
-  `crawler-ci-recovery-router-train` whenever `MERGE_TRAIN_ENABLED == 'true'`
-  (previously only a narrow subset of event types routed into a shared group;
-  everything else got a unique per-PR group, allowing unlimited concurrent
-  router runs). Added `queue: ${{ vars.MERGE_TRAIN_ENABLED == 'true' && 'max'
-|| 'single' }}` — conditional, not a static `queue: max` — because GitHub
-  rejects the combination of `queue: max` with `cancel-in-progress: true`, and
-  the pre-existing flag-off legacy path (`MERGE_TRAIN_ENABLED` unset/false)
-  intentionally sets `cancel-in-progress: true` for `schedule`/
-  `workflow_dispatch` events to dedup stale sweeps. Scoping `queue: max` to the
-  train branch only (where `cancel-in-progress` is always `false`) avoids
-  breaking that legacy/rollback path with a workflow validation error.
+- **Workflow concurrency (`ci-recovery-router.yml`)**: every router
+  invocation — direct PR events, sweeps, `workflow_run` completions, all of
+  them, in every mode — now shares one unconditional, static concurrency
+  group: `group: crawler-ci-recovery-router`, `cancel-in-progress: false`,
+  `queue: max`. There is no `MERGE_TRAIN_ENABLED`-conditional branching left in
+  the concurrency block, and no per-PR/per-sweep fallback groups. GitHub
+  forbids combining `queue: max` with `cancel-in-progress: true`; since
+  `cancel-in-progress` is a static `false`, that combination is trivially
+  always valid rather than needing conditional guarding. This intentionally
+  drops the legacy path's previous behavior of cancelling a stale pending
+  `schedule`/`workflow_dispatch` sweep in favor of the newest one — per
+  explicit instruction, safety (no dropped events, an airtight global
+  serialization guarantee) takes priority over that cancellation
+  optimization. The existing 10-minute scheduled sweep, plus the live
+  outstanding-count check in `router.mjs`, are the eventual-consistency
+  backstop for the deduplication `cancel-in-progress: true` used to provide.
 - **Capacity-aware dispatch (`router.mjs`)**:
   - `GLOBAL_TRAIN_DISPATCH_CAP = 1` (an active merge-train backlog — the
     incident scenario) and `GLOBAL_IDLE_TRAIN_DISPATCH_CAP = 2` (no active
@@ -83,10 +100,11 @@ trade-off this creates.
     `trainQueueNonEmpty`/`outstandingCount` — **no `trainEnabled` parameter and
     no `Infinity` branch**: backlog non-empty → cap 1; backlog empty/absent,
     including with the train feature off → cap 2), `partitionDispatchable`,
-    and `waitForOutstandingCount` (bounded poll that closes the TOCTOU race
-    between a dispatch and its visibility via the Actions API — degrades to a
-    logged warning on timeout rather than hanging, relying on the existing
-    10-minute scheduled sweep as the eventual-consistency backstop).
+    and `waitForOutstandingCount` (bounded poll that closes the narrower TOCTOU
+    window between a dispatch and its own visibility via the Actions API —
+    degrades to a logged warning on timeout rather than hanging, relying on
+    the existing 10-minute scheduled sweep as the eventual-consistency
+    backstop).
   - `runFromEnv()` now **always** fetches the open-PR list, computes
     train-queue-non-empty status, and fetches the outstanding recovery-run
     count — unconditionally, not gated on `MERGE_TRAIN_ENABLED` — computes the
@@ -99,20 +117,22 @@ trade-off this creates.
 - **Tests (`router.test.mjs`)**: 48 tests total, including:
   `computeDispatchBudget`/`partitionDispatchable`/`countOutstandingRecoveryRuns`
   unit tests covering the backlog-present, backlog-empty, and
-  train-feature-disabled cases (the last of these is the post-merge correction
-  addition, proving the cap is still 2, never `Infinity`, when
-  `trainQueueNonEmpty: false` regardless of why); `waitForOutstandingCount`
-  tests (observes newly-visible count, gives up after bounded attempts, and a
-  composed TOCTOU-race-closing test); three burst-bound proof tests: the
-  train-backlog-non-empty case (25 events → exactly 1 dispatch, cap never
-  breached mid-burst), the train-idle-but-enabled case (25 events → exactly 2
-  dispatches), and the new **train-feature-disabled** case (25 events →
-  exactly 2 dispatches, cap never breached mid-burst) added specifically for
-  this correction; workflow YAML structural tests confirming the concurrency
-  group unifies correctly under train mode, `cancel-in-progress` stays `false`
-  in that branch, and — the round-1 regression fix — `queue` can never resolve
-  to `'max'` in the same branch where `cancel-in-progress` could resolve to
-  `true`.
+  train-feature-disabled cases (the last of these proves the cap is still 2,
+  never `Infinity`, when `trainQueueNonEmpty: false` regardless of why);
+  `waitForOutstandingCount` tests (observes newly-visible count, gives up after
+  bounded attempts, and a composed TOCTOU-race-closing test); three burst-bound
+  proof tests: the train-backlog-non-empty case (25 events → exactly 1
+  dispatch, cap never breached mid-burst), the train-idle-but-enabled case (25
+  events → exactly 2 dispatches), and the **train-feature-disabled** case (25
+  events → exactly 2 dispatches, cap never breached mid-burst) — this last
+  test's sequential-loop model is now also an accurate model of real router
+  behavior, since every event in every mode is genuinely serialized by the
+  unconditional workflow concurrency group, not just JS-budget-capped;
+  workflow YAML structural tests confirming the concurrency `group` is a
+  static, unconditional literal (`crawler-ci-recovery-router`), that
+  `cancel-in-progress` is a static `false`, and that the `queue: max` /
+  `cancel-in-progress: true` combination GitHub rejects can never occur since
+  both are now static values.
 
 ## Root-cause finding
 
@@ -123,41 +143,15 @@ per-PR concurrency groups, so N independently-triggered PR events could spawn
 N fully concurrent router runs. Each run applied
 `CI_RECOVERY_MAX_DISPATCH_PER_RUN` in isolation with no shared view of the
 total number of CI Recovery runs already outstanding, so the effective global
-dispatch rate scaled with the size of the burst instead of being bounded.
-
-## Known residual limitation (explicitly reported, not silently accepted)
-
-Making `computeDispatchBudget` unconditional closes the "train disabled →
-unbounded dispatch" gap, but it cannot be made fully race-proof in
-legacy/flag-off mode: `.github/workflows/ci-recovery-router.yml`'s concurrency
-`group` only unifies into the single global `crawler-ci-recovery-router-train`
-group when `MERGE_TRAIN_ENABLED == 'true'`. With the feature off, groups
-remain per-PR (`crawler-ci-recovery-router-pr-{number}`) or per-sweep, so two
-different-PR router invocations CAN run truly concurrently and each read the
-Actions API's outstanding-run count before either dispatch becomes visible —
-both could observe the same stale low count and both dispatch, momentarily
-exceeding the cap of 2 by one. This was evaluated and intentionally NOT closed
-by unifying concurrency groups universally, because that breaks the legacy
-path's deliberate `cancel-in-progress: true` dedup semantics for `schedule`/
-`workflow_dispatch` events (a pre-existing, already-reviewed design
-constraint), and introducing a separate cross-invocation lock was ruled out by
-the task's explicit priority to avoid new credentials/workflow-write
-permissions. The mitigation is real (a live API-backed check on every
-invocation, not a no-op) and bounds the worst case to a small, one-invocation
-overshoot rather than the original unbounded/thundering-herd failure mode —
-but it is best-effort, not airtight, against truly simultaneous different-PR
-invocations specifically in flag-off mode. This mirrors the already-accepted
-TOCTOU race in the serialized/train-enabled path, just with a wider (unserialized)
-race window. Flagged here per the parent session's explicit instruction to
-report the limitation rather than paper over it; unifying concurrency
-universally (accepting the `cancel-in-progress` UX trade-off for the legacy
-path) is the natural follow-up if this residual gap needs to be closed further.
+dispatch rate scaled with the size of the burst instead of being bounded. An
+initial fix unified the group only while the train feature was enabled,
+leaving a narrower version of the same problem in legacy/flag-off mode; the
+final design (below) closes this for every mode by making the group
+unconditional.
 
 ## Verification run
 
-- `node --test .github/scripts/ci-recovery/router.test.mjs`: 48/48 passing
-  (up from 47, +1 for the new train-feature-disabled burst test added in the
-  post-merge correction).
+- `node --test .github/scripts/ci-recovery/router.test.mjs`: 48/48 passing.
 - `npm run lint`: clean.
 - `npm run verify:fast`: passed.
 - `npm run test:guards`: 1273 tests; 6 pre-existing failures confirmed via
@@ -189,12 +183,16 @@ minor`, 2 concerns raised and resolved before implementation was finalized:
   composed TOCTOU test that calls the same functions in the same sequence
   `runFromEnv` does, cover the new logic's correctness; they don't prove the
   wiring inside `runFromEnv` itself is correct end-to-end.
-- GitHub's concurrency queue has an operational depth cap of ~100 pending
-  runs per group (noted by the plan reviewer); a burst far larger than 25
-  events could still exceed that depth and cause additional runs to be
-  canceled outright rather than queued. Not addressed here — out of scope for
-  the declared 25-event burst success gate, and worth a separate follow-up if
-  bursts of that scale become plausible.
+- GitHub's concurrency queue has an operational depth cap of ~100 pending runs
+  per group (noted by the plan reviewer). This is more consequential now that
+  every router event in every mode shares one global group: a burst far
+  larger than 25 events across ALL event types (PR events, comments, sweeps,
+  `workflow_run` completions) could exceed that depth and cause additional
+  runs to be canceled outright rather than queued. Not addressed here — out
+  of scope for the declared 25-event burst success gate — but flagged as the
+  main trade-off of moving from several isolated per-mode groups to one
+  universal group, worth monitoring and a candidate follow-up if sustained
+  event rates approach that depth.
 - Sweep isolation / max-parallel limits for other workflows (e.g. AI Sweep
   Eval, which was observed peaking at ~19 concurrent jobs and directly
   contributing to the original starvation) are explicitly out of scope for

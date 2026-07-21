@@ -32,55 +32,46 @@ jobs:
           !startsWith(github.event.comment.body, '<!-- crawler-ci-task:v1') &&
           !startsWith(github.event.comment.body, '<!-- crawler-merge-train:v1 -->')))
       }}
-    # Backpressure: when the merge train is enabled, EVERY router invocation
-    # (direct PR events and sweeps alike) shares one global concurrency
-    # group. Per-PR groups previously let N independently-triggered PR
-    # events spawn N concurrent router runs, each applying
-    # CI_RECOVERY_MAX_DISPATCH_PER_RUN in isolation with no shared view of
-    # total outstanding CI Recovery runs -- a thundering herd that starved
-    # Merge Train Validation runners (2026-07-21 incident). Serializing
-    # router execution here, combined with the capacity-aware dispatch cap
-    # in router.mjs (see computeDispatchBudget/countOutstandingRecoveryRuns),
-    # keeps at most one CI Recovery run outstanding while the train queue is
-    # non-empty, and at most GLOBAL_IDLE_TRAIN_DISPATCH_CAP otherwise --
-    # including while the train feature itself is disabled/paused, since
-    # that is precisely when runner-capacity protection must not lapse. The
-    # legacy flag-off concurrency groups below remain per-PR/per-sweep (see
-    # the router.mjs comment on computeDispatchBudget for the accepted
-    # best-effort limitation this creates: the JS-side cap still applies in
-    # that mode, but without a shared concurrency group it cannot close the
-    # race window between truly concurrent different-PR invocations).
-    # cancel-in-progress stays false while the train is enabled so no queued
-    # event is ever dropped -- they run one at a time instead of
-    # concurrently. queue: max is required alongside that: GitHub's default
-    # concurrency behavior keeps only one run pending per group and replaces
-    # it with the next arrival, which would silently drop router invocations
-    # under a 25-event burst instead of queueing them. See ci-recovery.yml
-    # for the same pattern. queue: max is scoped to the train group only
-    # (not the legacy flag-off sweep/per-PR groups): GitHub forbids
-    # combining queue: max with cancel-in-progress: true, and the flag-off
-    # schedule/workflow_dispatch path below intentionally cancels a stale
-    # pending sweep in favor of the newest one -- applying queue: max there
-    # unconditionally would make that legacy path fail workflow validation
-    # whenever MERGE_TRAIN_ENABLED is unset/false.
+    # Backpressure: EVERY router invocation -- direct PR events, sweeps, and
+    # workflow_run alike, regardless of MERGE_TRAIN_ENABLED -- shares one
+    # unconditional global concurrency group. Per-PR/per-sweep groups
+    # previously let N independently-triggered PR events spawn N concurrent
+    # router runs, each applying CI_RECOVERY_MAX_DISPATCH_PER_RUN in
+    # isolation with no shared view of total outstanding CI Recovery runs --
+    # a thundering herd that starved Merge Train Validation runners
+    # (2026-07-21 incident). An earlier revision of this fix only unified
+    # the group while MERGE_TRAIN_ENABLED == 'true', leaving the legacy
+    # flag-off path (train disabled/paused -- precisely the maintenance
+    # window where protection must not lapse) on per-PR groups, which meant
+    # truly concurrent different-PR invocations could each read a stale
+    # outstanding-run count before either dispatch became visible. Making
+    # the group unconditional closes that race entirely: it is now
+    # architecturally impossible for two router invocations to run at the
+    # same time, in any mode.
+    #
+    # cancel-in-progress is unconditionally false and queue is
+    # unconditionally max so every queued event eventually runs instead of
+    # being dropped or a stale one cancelled -- GitHub's default behavior
+    # keeps only one run pending per group and replaces it with the next
+    # arrival, which would silently drop router invocations under a
+    # 25-event burst instead of queueing them (see ci-recovery.yml for the
+    # same pattern). This intentionally gives up the legacy flag-off path's
+    # previous behavior of cancelling a stale pending schedule/
+    # workflow_dispatch sweep in favor of the newest one: safety (no dropped
+    # events, a hard global cap on outstanding runs) takes priority over
+    # that cancellation optimization. GitHub forbids combining queue: max
+    # with cancel-in-progress: true, so cancel-in-progress must stay a
+    # static false, not a conditional expression, for queue: max to be
+    # valid in every mode. The 10-minute scheduled sweep remains the
+    # eventual-consistency backstop: a queued/coalesced event that arrives
+    # while another is still running will simply observe an up-to-date
+    # outstanding count and re-derive dispatchable PRs when its turn comes,
+    # so deduplication happens naturally via the live capacity check in
+    # router.mjs rather than via cancellation.
     concurrency:
-      group: >-
-        ${{ vars.MERGE_TRAIN_ENABLED == 'true' && 'crawler-ci-recovery-router-train'
-          || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-          && 'crawler-ci-recovery-router-sweep'
-          || format('crawler-ci-recovery-router-pr-{0}',
-               github.event.pull_request.number
-               || github.event.issue.number
-               || (github.event.workflow_run.pull_requests[0].number
-                   && !github.event.workflow_run.pull_requests[1].number
-                   && github.event.workflow_run.pull_requests[0].number)
-               || github.event.workflow_run.id
-               || github.run_id) }}
-      cancel-in-progress: >-
-        ${{ vars.MERGE_TRAIN_ENABLED != 'true' &&
-            (github.event_name == 'schedule' ||
-             github.event_name == 'workflow_dispatch') }}
-      queue: ${{ vars.MERGE_TRAIN_ENABLED == 'true' && 'max' || 'single' }}
+      group: crawler-ci-recovery-router
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

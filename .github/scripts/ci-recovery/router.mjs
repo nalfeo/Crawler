@@ -555,22 +555,19 @@ export async function countOutstandingRecoveryRuns(
 // `merge-train` label surviving a flag-off still counts as backlog and gets
 // the stricter cap, which fails closed rather than open.
 //
-// Known limitation: the router's concurrency group (see
-// ci-recovery-router.yml) is only unified into one global group while the
-// train feature is enabled; in legacy/flag-off mode each PR still gets its
-// own concurrency group, so different-PR invocations can run truly
-// concurrently rather than serialized. This budget check still bounds
-// *sustained* dispatch volume in that mode (each invocation reads the live
-// outstanding count from the Actions API before deciding), but it cannot
-// close the race window between two invocations that read that count in the
-// same instant, before either dispatch is visible -- the same category of
-// best-effort (not airtight) guarantee already accepted for the serialized
-// path's TOCTOU window (see waitForOutstandingCount). Closing that window
-// fully would require unifying concurrency groups across all PRs regardless
-// of MERGE_TRAIN_ENABLED, which conflicts with the legacy path's
-// cancel-in-progress dedup requirement for schedule/workflow_dispatch events
-// -- out of scope for this fix; flagged for follow-up rather than silently
-// assumed away.
+// The router's concurrency group (see ci-recovery-router.yml) is now an
+// unconditional single global group in every mode -- a second follow-up
+// correction that replaced the earlier per-mode group split, which left
+// legacy/flag-off invocations on per-PR groups where two different-PR
+// invocations could each read a stale outstanding count before either
+// dispatch became visible. With one global group active in all modes,
+// router invocations are always fully serialized, so this budget check is
+// no longer merely a live-but-racy API read: it is enforced against a
+// single invocation running at a time, closing that cross-PR race window.
+// The residual TOCTOU window this budget still relies on
+// (waitForOutstandingCount closing it) is the narrower one between a
+// dispatch and its own visibility via the Actions list-runs API within the
+// *same* serialized lineage -- see that function's comment.
 export function computeDispatchBudget({ trainQueueNonEmpty, outstandingCount }) {
   const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
   return Math.max(0, cap - outstandingCount);
@@ -717,10 +714,11 @@ export async function runFromEnv(env = process.env) {
   // while the train feature is paused/disabled (2026-07-21 incident
   // follow-up guidance). `trainQueueNonEmpty` is computed independent of the
   // flag too: a `merge-train` label surviving a flag-off still counts as
-  // backlog and gets the stricter cap (fail closed). See computeDispatchBudget
-  // for the accepted best-effort limitation in legacy/flag-off mode, where
-  // router invocations for different PRs are not serialized by a shared
-  // concurrency group.
+  // backlog and gets the stricter cap (fail closed). The router's
+  // concurrency group (see ci-recovery-router.yml) is a single unconditional
+  // global group in every mode, so this budget is enforced against fully
+  // serialized invocations -- see computeDispatchBudget for what that does
+  // and does not close.
   const trainQueueNonEmpty = queueEntries(scheduledPulls, repository).length > 0;
   const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
   const dispatchBudget = computeDispatchBudget({
