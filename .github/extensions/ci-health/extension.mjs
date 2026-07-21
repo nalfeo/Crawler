@@ -223,7 +223,11 @@ const session = await joinSession({
             } catch (error) {
               throw new CanvasError('refresh_failed', errorMessage(error));
             }
-            return statePayload(ctx.instanceId).snapshot;
+            const payload = statePayload(ctx.instanceId);
+            if (!payload?.snapshot) {
+              throw new CanvasError('no_state', 'CI Health canvas is not open.');
+            }
+            return payload.snapshot;
           },
         },
         {

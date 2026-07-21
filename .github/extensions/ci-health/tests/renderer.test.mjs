@@ -18,10 +18,29 @@ test('uses app theme tokens and includes live state controls', () => {
 test('restores the manual refresh control after a request failure', () => {
   const html = renderHtml({ instanceId: 'ci-health-1', refreshIntervalMs: 30_000 });
   const catchBlock = html.match(/catch \(error\) \{([\s\S]*?)const errorBox/);
+  const eventErrorBlock = html.match(
+    /events\.onerror = \(\) => \{([\s\S]*?)if \(currentState\) \{/,
+  );
 
   assert.ok(catchBlock);
   assert.match(catchBlock[1], /refreshButton\.disabled = false/);
   assert.match(catchBlock[1], /refreshButton\.textContent = 'Refresh now'/);
+  assert.ok(eventErrorBlock);
+  assert.match(eventErrorBlock[1], /refreshButton\.disabled = false/);
+  assert.match(eventErrorBlock[1], /refreshButton\.textContent = 'Refresh now'/);
+});
+
+test('renders structured refresh errors before evaluating HTTP status', () => {
+  const html = renderHtml({ instanceId: 'ci-health-1', refreshIntervalMs: 30_000 });
+  const refreshHandler = html.match(
+    /refreshButton\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n    \}\);/,
+  );
+
+  assert.ok(refreshHandler);
+  assert.match(
+    refreshHandler[1],
+    /const payload = await response\.json\(\);\s+render\(payload\);\s+if \(!response\.ok && !payload\.error\)/,
+  );
 });
 
 test('escapes the instance id embedded into renderer HTML', () => {

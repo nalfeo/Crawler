@@ -15,7 +15,29 @@
     },
     "code_review": {
       "clean": false,
-      "rounds": []
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found a manual-refresh failure path that depended on SSE reconnection to restore the disabled Refresh button. Added an explicit catch-path reset and regression coverage; test:ci-health and verify:fast passed."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "The reviewer confirmed round 1 was resolved, then identified the unfinished ledger plus three additional lifecycle/error-path concerns: refresh-action close races, SSE disconnect while refreshing, and structured 502 diagnostics being overwritten. All three code paths now have explicit guards or recovery behavior and regression coverage; test:ci-health passes 19/19 and verify:fast passes. The two-round model cap prevents a third independent model verification pass, so final acceptance is escalated to the human."
+        }
+      ],
+      "escalated_to_human": {
+        "after_round": 2,
+        "reason": "The bounded two-round code-review loop ended with new concerns in round 2. Their fixes are implemented and locally green, but policy requires human attention rather than a third model round.",
+        "unresolved_concerns": 1
+      }
     }
   }
 }

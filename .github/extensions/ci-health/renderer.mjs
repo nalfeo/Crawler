@@ -387,8 +387,11 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
       refreshButton.textContent = 'Refreshing…';
       try {
         const response = await fetch(endpoint('/api/refresh'), { method: 'POST' });
-        if (!response.ok) throw new Error('Refresh failed (' + response.status + ').');
-        render(await response.json());
+        const payload = await response.json();
+        render(payload);
+        if (!response.ok && !payload.error) {
+          throw new Error('Refresh failed (' + response.status + ').');
+        }
       } catch (error) {
         refreshButton.disabled = false;
         refreshButton.textContent = 'Refresh now';
@@ -400,6 +403,10 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
     const events = new EventSource(endpoint('/events'));
     events.onmessage = (event) => render(JSON.parse(event.data));
     events.onerror = () => {
+      if (currentState?.refreshing) {
+        refreshButton.disabled = false;
+        refreshButton.textContent = 'Refresh now';
+      }
       if (currentState) {
         const errorBox = document.getElementById('error');
         errorBox.hidden = false;
