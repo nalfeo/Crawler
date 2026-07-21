@@ -215,6 +215,15 @@ function validateConfig(config: EquipmentErvConfig): void {
   }
 }
 
+function validateFiniteRecord(
+  values: Readonly<Partial<Record<string, number>>>,
+  path: string,
+): void {
+  for (const [key, value] of Object.entries(values)) {
+    requireFinite(value ?? Number.NaN, `${path}.${key}`);
+  }
+}
+
 function validateEncounter(fixture: EquipmentEncounterFixture, index: number): void {
   if (fixture.id.trim().length === 0) {
     throw new EquipmentLoadoutEvaluationError(`$.remainingEncounters[${index}].id is required`);
@@ -826,6 +835,8 @@ export function evaluateEquipmentLoadoutCandidates(
   const config = input.config ?? DEFAULT_EQUIPMENT_ERV_CONFIG;
   validateConfig(config);
   requireFinite(input.current.bodyWeightLb, '$.current.bodyWeightLb', 0);
+  validateFiniteRecord(input.current.baseStats, '$.current.baseStats');
+  validateFiniteRecord(input.current.coreStatPoints, '$.current.coreStatPoints');
   input.remainingEncounters.forEach(validateEncounter);
   for (const [tag, weight] of Object.entries(input.affinityTagWeights)) {
     requireFinite(weight, `$.affinityTagWeights.${tag}`);

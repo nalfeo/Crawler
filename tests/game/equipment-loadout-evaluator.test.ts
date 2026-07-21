@@ -409,6 +409,20 @@ describe('equipment loadout expected-run-value evaluator', () => {
     ]);
   });
 
+  it.each([
+    ['base stat', { baseStats: { ...BASE_STATS, strength: Number.NaN } }],
+    ['core stat point', { coreStatPoints: { ...CORE_STATS, strength: Number.POSITIVE_INFINITY } }],
+  ])('rejects a non-finite %s before scoring', (_label, currentOverride) => {
+    const input = inputShape([], [candidate(generated('iron-helm', 'erv-non-finite-stats'))]);
+
+    expect(() =>
+      evaluateEquipmentLoadoutCandidates({
+        ...input,
+        current: { ...input.current, ...currentOverride },
+      }),
+    ).toThrow('must be a finite number');
+  });
+
   it('replays finite results without mutating inputs', () => {
     const equipped = [generated('iron-sword', 'erv-replay-current')];
     const candidates = [
