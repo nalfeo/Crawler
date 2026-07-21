@@ -45,6 +45,28 @@ export function padVariant(index) {
 }
 
 /**
+ * Collect the sorted, unique variant indices from a run summary's candidates.
+ * Extracted (not duplicated) so both the standalone Postprocess canvas AND the
+ * embedded `/postprocess/*` surface under the Sprite Generation Workflow canvas
+ * build the exact same variant-picker list from the same run summary shape.
+ * @param {unknown} summary
+ * @returns {number[]}
+ */
+export function collectVariantIndices(summary) {
+  const candidates =
+    summary && typeof summary === 'object' && Array.isArray(summary.candidates)
+      ? summary.candidates
+      : [];
+  const seen = new Set();
+  for (const c of candidates) {
+    if (c && typeof c === 'object' && typeof c.index === 'number' && c.index >= 0) {
+      seen.add(c.index);
+    }
+  }
+  return [...seen].sort((a, b) => a - b);
+}
+
+/**
  * Clamp a background tolerance to `[0, MAX_BACKGROUND_TOLERANCE_SQ]` (rounded).
  * Non-finite input returns `fallback` (default 0).
  * @param {number} value

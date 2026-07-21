@@ -174,6 +174,17 @@ const CLIENT_SCRIPT = String.raw`
   /*__OVERLAY_FNS__*/
   /*__ANCHOR_FNS__*/
 
+  // BASE is '' for the standalone canvas (root-relative transport, unchanged
+  // behavior) and '/postprocess' when this SAME document is served under the
+  // Sprite Generation Workflow canvas's own loopback server (see
+  // renderHtml's basePath param + workflow/extension.mjs's namespaced
+  // '/postprocess/*' routes). EMBED_TOKEN is the Workflow mutation token,
+  // sent ONLY on the persisting Apply-changes write (empty/absent when
+  // standalone, matching its current unauthenticated persist route).
+  var BASE = __POSTPROCESS_BASE_PATH__;
+  var EMBED_TOKEN = __POSTPROCESS_MUTATION_TOKEN__;
+  var EMBEDDED = !!BASE;
+
   var DEFAULT_TWEAKS = { colorToleranceSq: 4000, fringeToleranceSq: 12000 };
   var MAX_TOLERANCE = 255 * 255 * 3;
   var DEFAULT_UPSCALE_FACTOR = 1;
@@ -241,7 +252,7 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function imgUrl(kind, briefId, runId, file) {
-    return '/img/' + kind + '?briefId=' + encodeURIComponent(briefId)
+    return BASE + '/img/' + kind + '?briefId=' + encodeURIComponent(briefId)
       + '&runId=' + encodeURIComponent(runId) + '&file=' + encodeURIComponent(file);
   }
 
@@ -725,8 +736,10 @@ const CLIENT_SCRIPT = String.raw`
     setBusy(true, 'Persisting overrides\u2026');
     applyInFlight = true;
     if (authoringApplyBtn) authoringApplyBtn.disabled = true;
-    fetch('/api/persist-postprocess', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    var persistHeaders = { 'Content-Type': 'application/json' };
+    if (EMBED_TOKEN) persistHeaders['x-workflow-mutation-token'] = EMBED_TOKEN;
+    fetch(BASE + '/api/persist-postprocess', {
+      method: 'POST', headers: persistHeaders,
       body: JSON.stringify(body)
     }).then(function (r) { return r.json(); }).then(function (resp) {
       setBusy(false);
@@ -904,7 +917,7 @@ const CLIENT_SCRIPT = String.raw`
     var inputSrc = null;
     computeInput(state).then(function (input) {
       inputSrc = input.src;
-      return fetch('/api/live-postprocess', {
+      return fetch(BASE + '/api/live-postprocess', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           briefId: sel.briefId, runId: sel.runId, variant: sel.variantIndex,
@@ -923,6 +936,52 @@ const CLIENT_SCRIPT = String.raw`
       setBusy(false);
       if (token !== renderToken || !shouldApplyResponse(mySeq, liveSeq)) return;
       liveFailed = true; renderPrebaked(state, 'error');
+    });
+  }
+
+  // ── Embedded-host bridge (postMessage) ────────────────────────────
+  // Only active when EMBEDDED (BASE non-empty) — the standalone canvas's
+  // parent is the host's own iframe chrome, not a Workflow document, so it
+  // has no 'postprocess:select' contract to listen for and nothing useful to
+  // notify. Same-origin only (window.location.origin — this document and its
+  // embedding parent are served by the SAME loopback server/port).
+  function notifyReady(state) {
+    if (!EMBEDDED) return;
+    var sel = state && state.selected;
+    var context = sel ? {
+      briefId: sel.briefId,
+      runId: sel.runId,
+      variantIndex: sel.variantIndex,
+      sheet: sel.activeSheet
+    } : null;
+    try {
+      // Same-origin embedded canvases can call the parent directly. This avoids
+      // losing a fast first-paint signal during iframe startup. Keep postMessage
+      // as a fallback for hosts that intentionally hide parent properties.
+      if (typeof window.parent.__workflowPostprocessReady === 'function') {
+        window.parent.__workflowPostprocessReady(context);
+        return;
+      }
+      window.parent.postMessage({
+        type: 'postprocess:ready',
+        context: context
+      }, window.location.origin);
+    } catch (e) { /* no-op — a detached/closed parent must never break the iframe */ }
+  }
+
+  if (EMBEDDED) {
+    window.addEventListener('message', function (ev) {
+      if (ev.source !== window.parent || ev.origin !== window.location.origin) return;
+      var msg = ev.data;
+      if (!msg || msg.type !== 'postprocess:select') return;
+      // Reuses the SAME select() the run/variant pickers call — no separate
+      // reload path, so an already-open iframe retargets in place instead of
+      // resetting its authoring/tuning state via a fresh document load.
+      select(
+        msg.briefId, msg.runId,
+        typeof msg.variantIndex === 'number' ? msg.variantIndex : undefined,
+        msg.sheet || null
+      );
     });
   }
 
@@ -975,12 +1034,14 @@ const CLIENT_SCRIPT = String.raw`
     if (!state.health || state.health.state !== 'up') {
       frag.appendChild(h('div', { style: { marginTop: '12px' } }, [renderDegrade(state)]));
       app.replaceChildren(frag);
+      notifyReady(state);
       return;
     }
     if (!state.runs || state.runs.length === 0) {
       frag.appendChild(h('div', { class: 'panel warn', style: { marginTop: '12px' } },
         ['No sprite runs found yet. Generate a run from the Sprite Generation Workflow, then reopen this debugger.']));
       app.replaceChildren(frag);
+      notifyReady(state);
       return;
     }
     frag.appendChild(renderPickers(state));
@@ -1008,6 +1069,7 @@ const CLIENT_SCRIPT = String.raw`
     }
     frag.appendChild(pipeSection);
     app.replaceChildren(frag);
+    notifyReady(state);
 
     // if there are no sheets, the sheet section won't fire onload — kick the
     // pipeline now (raw-input fallback). With sheets, onload drives it.
@@ -1018,16 +1080,34 @@ const CLIENT_SCRIPT = String.raw`
 
   // ── Selection + busy + boot ──────────────────────────────────────
   var selecting = false;
+  var pendingSelection = null;
+  function runPendingSelection() {
+    if (!pendingSelection) return false;
+    var next = pendingSelection;
+    pendingSelection = null;
+    select(next.briefId, next.runId, next.variant, next.sheet);
+    return true;
+  }
   function select(briefId, runId, variant, sheet) {
-    if (selecting) return;
+    if (selecting) {
+      pendingSelection = { briefId: briefId, runId: runId, variant: variant, sheet: sheet };
+      return;
+    }
     selecting = true;
     setBusy(true, 'Loading run\u2026');
-    var url = '/api/select?briefId=' + encodeURIComponent(briefId) + '&runId=' + encodeURIComponent(runId);
+    var url = BASE + '/api/select?briefId=' + encodeURIComponent(briefId) + '&runId=' + encodeURIComponent(runId);
     if (typeof variant === 'number' && !isNaN(variant)) url += '&variant=' + encodeURIComponent(variant);
     if (sheet) url += '&sheet=' + encodeURIComponent(sheet);
     fetch(url).then(function (r) { return r.json(); }).then(function (state) {
-      selecting = false; setBusy(false); render(state);
-    }).catch(function () { selecting = false; setBusy(false); });
+      selecting = false;
+      setBusy(false);
+      if (runPendingSelection()) return;
+      render(state);
+    }).catch(function () {
+      selecting = false;
+      setBusy(false);
+      runPendingSelection();
+    });
   }
 
   var busyEl = document.getElementById('busy');
@@ -1054,7 +1134,7 @@ const CLIENT_SCRIPT = String.raw`
 
   function loadState(label, isBoot) {
     setBusy(true, label || 'Loading from sidecar\u2026');
-    return fetch('/api/state').then(function (r) { return r.json(); }).then(function (state) {
+    return fetch(BASE + '/api/state').then(function (r) { return r.json(); }).then(function (state) {
       setBusy(false);
       if (isBoot && bootRendered) return; // SSE initial frame already rendered boot
       bootRendered = true;
@@ -1070,7 +1150,7 @@ const CLIENT_SCRIPT = String.raw`
 
   function connect() {
     try {
-      var es = new EventSource('/events');
+      var es = new EventSource(BASE + '/events');
       es.onmessage = function (ev) {
         try {
           var msg = JSON.parse(ev.data);
@@ -1097,13 +1177,23 @@ const CLIENT_SCRIPT = String.raw`
 
 /**
  * Full HTML document for one canvas instance.
+ *
  * @param {string} instanceId
+ * @param {string} [basePath] '' for the standalone canvas (root-relative
+ *   transport paths, unchanged); a non-empty prefix (e.g. '/postprocess') when
+ *   this SAME document is mounted under another canvas's own loopback server
+ *   (see workflow/extension.mjs's namespaced routes). Every fetch/EventSource
+ *   URL in the client script is prefixed with this value.
+ * @param {string} [mutationToken] sent as `x-workflow-mutation-token` on the
+ *   persisting Apply-changes write ONLY when non-empty (embedded case); the
+ *   standalone canvas's persist route has no token to check.
  * @returns {string}
  */
-export function renderHtml(instanceId) {
-  const clientScript = CLIENT_SCRIPT.replace('/*__OVERLAY_FNS__*/', () =>
-    overlayFnsSource(),
-  ).replace('/*__ANCHOR_FNS__*/', () => anchorFnsSource());
+export function renderHtml(instanceId, basePath = '', mutationToken = '') {
+  const clientScript = CLIENT_SCRIPT.replace('/*__OVERLAY_FNS__*/', () => overlayFnsSource())
+    .replace('/*__ANCHOR_FNS__*/', () => anchorFnsSource())
+    .replace('__POSTPROCESS_BASE_PATH__', JSON.stringify(basePath))
+    .replace('__POSTPROCESS_MUTATION_TOKEN__', JSON.stringify(mutationToken));
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8" />',

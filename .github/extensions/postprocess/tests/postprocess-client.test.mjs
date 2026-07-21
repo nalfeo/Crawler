@@ -16,6 +16,7 @@ import {
   extractAppliedFacing,
   extractAppliedManualAnchor,
   isDestructivePersist,
+  collectVariantIndices,
   DEFAULT_BACKGROUND_TWEAKS,
   MAX_BACKGROUND_TOLERANCE_SQ,
 } from '../lib/postprocess-client.mjs';
@@ -45,6 +46,18 @@ test('padVariant zero-pads to two digits (monolith parity)', () => {
   assert.equal(padVariant(0), '00');
   assert.equal(padVariant(7), '07');
   assert.equal(padVariant(12), '12');
+});
+
+test('collectVariantIndices dedupes, sorts, and ignores malformed candidates', () => {
+  assert.deepEqual(
+    collectVariantIndices({
+      candidates: [{ index: 3 }, { index: 1 }, { index: 3 }, { index: -1 }, { notIndex: 9 }, null],
+    }),
+    [1, 3],
+  );
+  assert.deepEqual(collectVariantIndices({ candidates: [] }), []);
+  assert.deepEqual(collectVariantIndices(null), []);
+  assert.deepEqual(collectVariantIndices({}), []);
 });
 
 test('clampTolerance clamps to [0, MAX] and falls back on non-finite', () => {

@@ -26,6 +26,30 @@
  * `../shared/sprite-feedback-request.mjs`). `/api/feedback` intentionally does
  * NOT buildState()+pushState() after a save — see the handler for why.
  *
+ * EMBEDDED Postprocess Debugger (`/postprocess/*`): the full standalone
+ * `postprocess` canvas document (`../postprocess/renderer.mjs`) is mounted
+ * verbatim under this SAME loopback server/origin at `/postprocess/*` —
+ * HTML root, `/postprocess/api/state|select|runs`, `/postprocess/api/
+ * live-postprocess|persist-postprocess`, `/postprocess/img/*`, and
+ * `/postprocess/events` (SSE) — parameterized via `renderHtml(instanceId,
+ * basePath, mutationToken)`'s `basePath`. This is ONE Workflow-owned server
+ * and ONE sidecar connection (`entry.client`, rebound together with
+ * `entry.postprocess.client` on sidecar restart) — no second canvas server,
+ * no second `beginSpriteSidecarStartup`. Postprocess keeps its OWN versioned
+ * selection substate (`entry.postprocess.{requested,selected,
+ * selectionVersion}`) so a stale in-flight build can never clobber a newer
+ * selection (see `buildPostprocessState`). `renderer.mjs`'s persistent
+ * `#postprocess-host` sibling of `#app` lazily creates ONE iframe on first
+ * "Open in Post-process Debugger" click (seeded via the initial URL's query
+ * string) and RETARGETS it in place via a same-origin `postMessage`
+ * `postprocess:select` bridge on later opens — never a `src` reload, so
+ * in-progress editor state survives. `/postprocess/api/persist-postprocess`
+ * is additionally guarded by the SAME mutation-token + trusted-origin +
+ * JSON-content-type + bounded-body checks as `/api/feedback`/`/api/accept`
+ * (`live-postprocess` is a non-persisting preview relay; only its origin is
+ * checked). The standalone `postprocess` canvas remains registered
+ * unchanged pending parity verification.
+ *
  * Architecture (the pattern shared with postprocess/achievements/storage):
  *   - `lib/canvas-harness.mjs`     — GENERIC loopback HTTP server (vendored; single
  *     source of truth is `scripts/canvas-harness/`; do not hand-edit).
@@ -52,6 +76,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { setInterval, clearInterval } from 'node:timers';
 import { createCanvas, CanvasError, joinSession } from '@github/copilot-sdk/extension';
 
 import { startCanvasServer } from './lib/canvas-harness.mjs';
@@ -86,6 +111,20 @@ import {
   isTrustedMutationOrigin,
   readJsonBody as readFeedbackJsonBody,
 } from '../shared/sprite-feedback-request.mjs';
+import { renderHtml as renderPostprocessHtml } from '../postprocess/renderer.mjs';
+import { resolveActiveSheet } from '../postprocess/lib/run-selection.mjs';
+import {
+  createPostprocessClient,
+  extractAppliedBackgroundTweaks,
+  extractAppliedFacing,
+  extractAppliedManualAnchor,
+  normalizePersistRequest,
+  buildPersistPostprocessPayload,
+  padVariant,
+  clampTolerance,
+  collectVariantIndices,
+  DEFAULT_BACKGROUND_TWEAKS,
+} from '../postprocess/lib/postprocess-client.mjs';
 
 /**
  * Repo root, derived from THIS file's location. The extension physically lives
@@ -131,6 +170,15 @@ let sessionRef = null;
  *     promotedRunIds: Set<string>,
  *     files: { plans: object[], briefs: object[], error: string | null },
  *     allowlist: Map<string, { path: string, kind: 'plan' | 'brief' }>,
+ *   },
+ *   postprocess: {
+ *     client: ReturnType<typeof createPostprocessClient>,
+ *     requested: { briefId: string | null, runId: string | null, variantIndex: number | null, sheet: string | null },
+ *     selected: { briefId: string, runId: string, variantIndex: number, sheet: string | null } | null,
+ *     selectionVersion: number,
+ *     stateCache: Map<string, object>,
+ *     revalidatingKeys: Set<string>,
+ *     sseClients: Set<import('node:http').ServerResponse>,
  *   },
  *   pushState: (state?: unknown) => Promise<unknown>,
  *   close: () => Promise<void>,
@@ -610,6 +658,239 @@ async function acceptAndQueue(instanceId, briefId, runId, variantIndex) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Embedded Postprocess Debugger (`/postprocess/*`) — see the module header
+// for the architecture summary. `buildPostprocessState` is a 1:1 port of
+// `postprocess/extension.mjs`'s own `buildState`, but reads/writes
+// `entry.postprocess.*` (this canvas's OWN versioned substate — see rule #5
+// in the embed-postprocess plan) and calls through `entry.client` (the SAME
+// sidecar connection Workflow's own routes use) rather than a second one.
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the full Postprocess Debugger view model for one Workflow instance.
+ * Never throws — every failure folds into a structured, renderable state,
+ * mirroring `postprocess/extension.mjs`'s own `buildState`.
+ *
+ * Ownership guard (plan requirement #5): `versionAtCall` is captured BEFORE
+ * any await; if `entry.postprocess.selectionVersion` moved on by the time the
+ * sidecar round-trips resolve (a newer select/persist landed while this call
+ * was in flight), the computed view is still returned to ITS OWN caller (the
+ * HTTP response that awaited it), but `entry.postprocess.selected` is left
+ * alone so this now-stale completion can never overwrite a newer selection.
+ */
+function postprocessStateKey(selection) {
+  if (!selection || typeof selection.briefId !== 'string' || typeof selection.runId !== 'string') {
+    return null;
+  }
+  const variantIndex =
+    typeof selection.variantIndex === 'number' && selection.variantIndex >= 0
+      ? selection.variantIndex
+      : 0;
+  const sheet = typeof selection.sheet === 'string' ? selection.sheet : '';
+  return `${selection.briefId}::${selection.runId}::${variantIndex}::${sheet}`;
+}
+
+async function buildPostprocessState(instanceId, { bypassCache = false } = {}) {
+  const entry = instances.get(instanceId);
+  if (!entry) return { error: 'instance not found' };
+  const pp = entry.postprocess;
+  const baseUrl = entry.baseUrl;
+  const versionAtCall = pp.selectionVersion;
+  const requestedSnapshot = { ...pp.requested };
+  const selectedSnapshot = pp.selected ? { ...pp.selected } : null;
+  const targetSelection = {
+    briefId: requestedSnapshot.briefId ?? selectedSnapshot?.briefId ?? null,
+    runId: requestedSnapshot.runId ?? selectedSnapshot?.runId ?? null,
+    variantIndex:
+      typeof requestedSnapshot.variantIndex === 'number'
+        ? requestedSnapshot.variantIndex
+        : (selectedSnapshot?.variantIndex ?? 0),
+    sheet:
+      typeof requestedSnapshot.sheet === 'string'
+        ? requestedSnapshot.sheet
+        : (selectedSnapshot?.sheet ?? null),
+  };
+  const targetKey = postprocessStateKey(targetSelection);
+
+  if (!bypassCache && targetKey && pp.stateCache.has(targetKey)) {
+    const cached = pp.stateCache.get(targetKey);
+    pp.selected = cached.selected
+      ? {
+          briefId: cached.selected.briefId,
+          runId: cached.selected.runId,
+          variantIndex: cached.selected.variantIndex,
+          sheet: cached.selected.activeSheet,
+        }
+      : null;
+    if (!pp.revalidatingKeys.has(targetKey)) {
+      pp.revalidatingKeys.add(targetKey);
+      void buildPostprocessState(instanceId, { bypassCache: true })
+        .catch((error) => {
+          log(`postprocess background revalidate failed: ${error?.message ?? error}`, 'warn');
+        })
+        .finally(() => {
+          pp.revalidatingKeys.delete(targetKey);
+        });
+    }
+    return { ...cached, stale: true };
+  }
+
+  const health = await entry.client.probeHealth();
+  if (health.state !== 'up') {
+    return { health, baseUrl, sidecarStartup: entry.sidecarStartup };
+  }
+
+  let runs = [];
+  try {
+    const raw = await entry.client.listRuns();
+    runs = raw
+      .filter((run) => run && typeof run.briefId === 'string' && typeof run.runId === 'string')
+      .map((run) => ({
+        briefId: run.briefId,
+        runId: run.runId,
+        candidateCount: typeof run.candidateCount === 'number' ? run.candidateCount : null,
+      }));
+  } catch (err) {
+    return { health, baseUrl, runs: [], error: `Failed to list runs: ${err?.message ?? err}` };
+  }
+
+  if (runs.length === 0) {
+    pp.selected = null;
+    return { health, baseUrl, runs: [], selected: null };
+  }
+
+  const findRun = (briefId, runId) =>
+    runs.find((run) => run.briefId === briefId && run.runId === runId) ?? null;
+
+  let autoSelectedLatest = false;
+  let selected = selectedSnapshot;
+  if (selected && !findRun(selected.briefId, selected.runId)) {
+    selected = null; // previously-selected run vanished (e.g. archived)
+  }
+  if (!selected) {
+    const req = requestedSnapshot;
+    const reqRun = req.briefId && req.runId ? findRun(req.briefId, req.runId) : null;
+    if (reqRun) {
+      selected = {
+        briefId: reqRun.briefId,
+        runId: reqRun.runId,
+        variantIndex: typeof req.variantIndex === 'number' ? req.variantIndex : 0,
+        sheet: typeof req.sheet === 'string' ? req.sheet : null,
+      };
+    } else {
+      const latest = runs[0];
+      selected = { briefId: latest.briefId, runId: latest.runId, variantIndex: 0, sheet: null };
+      autoSelectedLatest = true;
+    }
+  }
+
+  let variantIndices = [];
+  let briefPath = null;
+  let appliedBackground = null;
+  let appliedFacing = null;
+  let appliedManualAnchor = null;
+  let summaryError = null;
+  try {
+    const summary = await entry.client.fetchRunSummary(selected.briefId, selected.runId);
+    variantIndices = collectVariantIndices(summary);
+    briefPath =
+      summary && typeof summary.briefPath === 'string' && summary.briefPath.length > 0
+        ? summary.briefPath
+        : null;
+    appliedBackground = extractAppliedBackgroundTweaks(summary);
+    appliedFacing = extractAppliedFacing(summary);
+    appliedManualAnchor = extractAppliedManualAnchor(summary);
+  } catch (err) {
+    summaryError = `Failed to load run summary: ${err?.message ?? err}`;
+  }
+
+  if (variantIndices.length > 0 && !variantIndices.includes(selected.variantIndex)) {
+    selected.variantIndex = variantIndices[0];
+  }
+  const padded = padVariant(selected.variantIndex);
+
+  const manifest = await pp.client.fetchPipelineManifest(selected.briefId, selected.runId, padded);
+
+  let sheetRunId = selected.runId;
+  let sheets = [];
+  try {
+    sheets = await entry.client.fetchSheets(selected.briefId, selected.runId);
+  } catch (err) {
+    log(
+      `postprocess fetchSheets failed for ${selected.briefId}/${selected.runId}: ${err?.message ?? err}`,
+      'warn',
+    );
+    sheets = [];
+  }
+  if (sheets.length === 0 && manifest?.sourceRunId) {
+    sheetRunId = manifest.sourceRunId;
+    try {
+      sheets = await entry.client.fetchSheets(selected.briefId, sheetRunId);
+    } catch (err) {
+      log(
+        `postprocess fetchSheets (sourceRun) failed for ${selected.briefId}/${sheetRunId}: ${err?.message ?? err}`,
+        'warn',
+      );
+      sheets = [];
+    }
+  }
+  const activeSheet = resolveActiveSheet(sheets, selected.sheet, sheets[sheets.length - 1] ?? null);
+
+  let sliceMap = null;
+  if (activeSheet) {
+    try {
+      sliceMap = await entry.client.fetchSliceMap(selected.briefId, sheetRunId, activeSheet);
+    } catch (err) {
+      sliceMap = { ok: false, error: `slice-map fetch failed: ${err?.message ?? err}` };
+    }
+  }
+
+  // Ownership guard: only commit the resolved selection if nothing newer
+  // (another select/persist) has landed while the above awaits were in flight.
+  if (pp.selectionVersion === versionAtCall) {
+    pp.selected = {
+      briefId: selected.briefId,
+      runId: selected.runId,
+      variantIndex: selected.variantIndex,
+      sheet: activeSheet,
+    };
+  }
+
+  const state = {
+    health,
+    baseUrl,
+    runs,
+    autoSelectedLatest,
+    sliceMap,
+    error: summaryError,
+    selected: {
+      briefId: selected.briefId,
+      runId: selected.runId,
+      variantIndex: selected.variantIndex,
+      variantIndices,
+      briefPath,
+      sheetRunId,
+      sheets,
+      activeSheet,
+      manifestSteps: manifest ? manifest.steps : [],
+      profile: manifest ? manifest.profile : null,
+      appliedBackground,
+      appliedFacing,
+      appliedManualAnchor,
+    },
+  };
+  const resolvedKey = postprocessStateKey({
+    briefId: state.selected.briefId,
+    runId: state.selected.runId,
+    variantIndex: state.selected.variantIndex,
+    sheet: state.selected.activeSheet,
+  });
+  if (targetKey) pp.stateCache.set(targetKey, state);
+  if (resolvedKey) pp.stateCache.set(resolvedKey, state);
+  return state;
+}
+
 /** Relay a sidecar image (sheet / processed / raw) as a streamed web Response. */
 function imageRoute(pathname, kind) {
   return {
@@ -842,12 +1123,316 @@ const jsonRoutes = [
   },
   fileContentRoute('/api/plan', 'plan'),
   fileContentRoute('/api/brief', 'brief'),
+
+  // ---- Embedded Postprocess Debugger (`/postprocess/*`) ------------------
+  // See the module header + `buildPostprocessState` for the architecture.
+  {
+    // HTML root. Query params (briefId/runId/variantIndex/sheet) seed
+    // `entry.postprocess.requested/selected` BEFORE the document is returned,
+    // so the client's very first `/postprocess/api/state` fetch already
+    // resolves the exact handoff context — no extra select round-trip. Writes
+    // directly via `res` (text/html, not the harness's JSON envelope).
+    method: 'GET',
+    path: '/postprocess/',
+    handler: async ({ url, res, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      const pp = entry.postprocess;
+      const qBriefId = url.searchParams.get('briefId');
+      const qRunId = url.searchParams.get('runId');
+      const qVariantRaw = url.searchParams.get('variantIndex');
+      const qVariant =
+        qVariantRaw != null && qVariantRaw !== '' && Number.isFinite(Number(qVariantRaw))
+          ? Number(qVariantRaw)
+          : null;
+      const qSheet = url.searchParams.get('sheet');
+      if (qBriefId && qRunId) {
+        const changedRun =
+          !pp.selected || pp.selected.briefId !== qBriefId || pp.selected.runId !== qRunId;
+        pp.requested = { briefId: qBriefId, runId: qRunId, variantIndex: qVariant, sheet: qSheet };
+        pp.selected = {
+          briefId: qBriefId,
+          runId: qRunId,
+          variantIndex: qVariant ?? (changedRun ? 0 : (pp.selected?.variantIndex ?? 0)),
+          sheet: qSheet ?? (changedRun ? null : (pp.selected?.sheet ?? null)),
+        };
+        pp.selectionVersion += 1;
+      }
+      const html = renderPostprocessHtml(instanceId, '/postprocess', entry.mutationToken);
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(html);
+      return undefined;
+    },
+  },
+  {
+    method: 'GET',
+    path: '/postprocess/api/state',
+    handler: async ({ instanceId }) => ({ json: await buildPostprocessState(instanceId) }),
+  },
+  {
+    method: 'GET',
+    path: '/postprocess/api/select',
+    handler: async ({ url, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      const pp = entry.postprocess;
+      const briefId = url.searchParams.get('briefId');
+      const runId = url.searchParams.get('runId');
+      const sheet = url.searchParams.get('sheet');
+      const variantParam = url.searchParams.get('variant');
+      const variant =
+        variantParam != null && variantParam !== '' && Number.isFinite(Number(variantParam))
+          ? Number(variantParam)
+          : null;
+      if (briefId && runId) {
+        const changedRun =
+          !pp.selected || pp.selected.briefId !== briefId || pp.selected.runId !== runId;
+        pp.requested = {
+          briefId,
+          runId,
+          variantIndex: variant ?? (changedRun ? null : (pp.requested?.variantIndex ?? null)),
+        };
+        pp.selected = {
+          briefId,
+          runId,
+          variantIndex: variant ?? (changedRun ? 0 : (pp.selected?.variantIndex ?? 0)),
+          sheet: sheet ?? (changedRun ? null : (pp.selected?.sheet ?? null)),
+        };
+      } else if (pp.selected) {
+        if (variant != null) pp.selected = { ...pp.selected, variantIndex: variant };
+        if (sheet) pp.selected = { ...pp.selected, sheet };
+      }
+      // A newer selection supersedes any in-flight background build for the
+      // PREVIOUS target — see buildPostprocessState's ownership guard.
+      pp.selectionVersion += 1;
+      // The in-iframe client renders this fetch response directly — do NOT
+      // also broadcast over `/postprocess/events` (a double delivery would
+      // re-render and fire a duplicate live-postprocess relay), matching the
+      // standalone canvas's own `/api/select` route.
+      return { json: await buildPostprocessState(instanceId) };
+    },
+  },
+  {
+    method: 'GET',
+    path: '/postprocess/api/runs',
+    handler: async ({ instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      return { json: { runs: await entry.client.listRuns() } };
+    },
+  },
+  {
+    // Non-persisting preview relay. Only the trusted-origin check applies —
+    // no mutation token (nothing is written), matching the standalone canvas.
+    method: 'POST',
+    path: '/postprocess/api/live-postprocess',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) {
+        return {
+          status: 404,
+          json: { ok: false, reason: 'not-open', message: 'instance not found' },
+        };
+      }
+      if (!isTrustedMutationOrigin(req, entry)) {
+        return {
+          status: 403,
+          json: { ok: false, reason: 'forbidden-origin', message: 'forbidden' },
+        };
+      }
+      let body;
+      try {
+        // Payload carries a base64 raw PNG crop — needs a larger bound than
+        // the 16 KiB default (matches the standalone canvas's 8 MiB limit).
+        body = await readJsonBody(req, 8 * 1024 * 1024);
+      } catch (error) {
+        const tooLarge =
+          error?.statusCode === 413 ||
+          error?.code === 'body-too-large' ||
+          error?.message === 'request body too large';
+        return {
+          status: tooLarge ? 413 : 400,
+          json: {
+            ok: false,
+            reason: tooLarge ? 'body-too-large' : 'bad-request',
+            message: error?.message ?? String(error),
+          },
+        };
+      }
+      const briefId = typeof body.briefId === 'string' ? body.briefId : null;
+      const runId = typeof body.runId === 'string' ? body.runId : null;
+      const rawPngBase64 = typeof body.rawPngBase64 === 'string' ? body.rawPngBase64 : null;
+      if (!briefId || !runId || !rawPngBase64) {
+        return {
+          status: 400,
+          json: {
+            ok: false,
+            reason: 'bad-request',
+            message: 'briefId, runId and rawPngBase64 are required',
+          },
+        };
+      }
+      const colorToleranceSq = clampTolerance(
+        Number(body.colorToleranceSq),
+        DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
+      );
+      const fringeToleranceSq = clampTolerance(
+        Number(body.fringeToleranceSq),
+        DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
+      );
+      const result = await entry.postprocess.client.relayLivePostprocess({
+        briefId,
+        runId,
+        rawPngBase64,
+        options: { background: { colorToleranceSq, fringeToleranceSq } },
+      });
+      return { json: result };
+    },
+  },
+  {
+    // The one WRITING postprocess route — guarded exactly like `/api/feedback`
+    // / `/api/accept`: trusted origin, the Workflow mutation token, a strict
+    // JSON content-type, and a bounded body (plan requirement #6).
+    method: 'POST',
+    path: '/postprocess/api/persist-postprocess',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) {
+        return {
+          status: 404,
+          json: { ok: false, reason: 'not-open', message: 'instance not found' },
+        };
+      }
+      if (!isTrustedMutationOrigin(req, entry)) {
+        return {
+          status: 403,
+          json: { ok: false, reason: 'forbidden-origin', message: 'forbidden' },
+        };
+      }
+      if (!tokensMatch(req.headers['x-workflow-mutation-token'], entry.mutationToken)) {
+        return {
+          status: 403,
+          json: { ok: false, reason: 'forbidden', message: 'Invalid mutation token.' },
+        };
+      }
+      if (!isJsonContentType(req)) {
+        return {
+          status: 415,
+          json: {
+            ok: false,
+            reason: 'unsupported-media-type',
+            message: 'Content-Type must be application/json.',
+          },
+        };
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        const tooLarge = error?.statusCode === 413 || error?.code === 'body-too-large';
+        return {
+          status: tooLarge ? 413 : 400,
+          json: {
+            ok: false,
+            reason: tooLarge ? 'body-too-large' : 'bad-request',
+            message: error?.message ?? String(error),
+          },
+        };
+      }
+      // NEVER trust the client: validate + rebuild the payload server-side.
+      const normalized = normalizePersistRequest(body);
+      if (!normalized.ok) {
+        return {
+          status: 400,
+          json: { ok: false, reason: 'bad-request', message: normalized.error },
+        };
+      }
+      const payload = buildPersistPostprocessPayload(normalized.args);
+      const result = await entry.postprocess.client.relayPersistPostprocess({
+        briefId: normalized.args.briefId,
+        runId: normalized.args.runId,
+        payload,
+      });
+      if (!result.ok) return { json: result };
+      const pp = entry.postprocess;
+      pp.stateCache.clear();
+      const changedRun =
+        !pp.selected ||
+        pp.selected.briefId !== normalized.args.briefId ||
+        pp.selected.runId !== normalized.args.runId;
+      const targetVariant =
+        normalized.args.mode === 'replace'
+          ? normalized.args.variantIndex
+          : (pp.selected?.variantIndex ?? 0);
+      pp.requested = {
+        briefId: normalized.args.briefId,
+        runId: normalized.args.runId,
+        variantIndex: targetVariant,
+      };
+      pp.selected = {
+        briefId: normalized.args.briefId,
+        runId: normalized.args.runId,
+        variantIndex: targetVariant,
+        sheet: changedRun ? null : (pp.selected?.sheet ?? null),
+      };
+      pp.selectionVersion += 1;
+      return { json: { ok: true, state: await buildPostprocessState(instanceId) } };
+    },
+  },
+  {
+    // SSE, scoped to this instance's OWN postprocess sub-state — kept
+    // separate from the harness's built-in `/events` (which broadcasts
+    // Workflow's own `buildState()`). Writes directly via `res` and never
+    // ends the response, so `runJsonRoute`'s `res.headersSent` check leaves
+    // the connection open (the same pattern `canvas-harness.mjs`'s own
+    // `/events` uses). Only the initial connect frame is ever sent here —
+    // `/postprocess/api/select` and a successful persist intentionally do NOT
+    // also broadcast (the fetch response IS the update; see those handlers).
+    method: 'GET',
+    path: '/postprocess/events',
+    handler: async ({ req, res, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      res.write(': connected\n\n');
+      const initial = await buildPostprocessState(instanceId);
+      res.write(`data: ${JSON.stringify({ type: 'state', state: initial })}\n\n`);
+      entry.postprocess.sseClients.add(res);
+      const heartbeat = setInterval(() => {
+        try {
+          res.write(': heartbeat\n\n');
+        } catch {
+          clearInterval(heartbeat);
+          entry.postprocess.sseClients.delete(res);
+        }
+      }, 25000);
+      heartbeat.unref?.();
+      req.on('close', () => {
+        clearInterval(heartbeat);
+        entry.postprocess.sseClients.delete(res);
+      });
+      return undefined;
+    },
+  },
 ];
 
 const binaryRoutes = [
   imageRoute('/img/sheet', 'sheet'),
   imageRoute('/img/processed', 'processed'),
   imageRoute('/img/raw', 'raw'),
+  // Same handler, reused verbatim under the embedded namespace — same
+  // `entry.client` + shared `imageCache`, no second cache/connection.
+  imageRoute('/postprocess/img/sheet', 'sheet'),
+  imageRoute('/postprocess/img/processed', 'processed'),
+  imageRoute('/postprocess/img/raw', 'raw'),
 ];
 
 async function ensureServer(ctx) {
@@ -890,6 +1475,15 @@ async function startServerForInstance(ctx) {
     selectionVersion: 0,
     revalidatingKeys: new Set(),
     cache: null,
+    postprocess: {
+      client: createPostprocessClient({ sidecarClient: client }),
+      requested: { briefId: null, runId: null, variantIndex: null, sheet: null },
+      selected: null,
+      selectionVersion: 0,
+      stateCache: new Map(),
+      revalidatingKeys: new Set(),
+      sseClients: new Set(),
+    },
     sidecarStartup: { state: 'starting', error: null, logPath: null },
     pushState: async () => {},
     close: async () => {},
@@ -913,6 +1507,10 @@ async function startServerForInstance(ctx) {
   beginSpriteSidecarStartup(entry, {
     rebindClients: (url) => {
       entry.client = createSidecarClient({ baseUrl: url, workspaceRoot });
+      // The embedded Postprocess client composes `entry.client` — rebuild it
+      // alongside so it never holds a stale closed-over sidecar client after
+      // a restart (ONE sidecar startup/rebind owner for both surfaces).
+      entry.postprocess.client = createPostprocessClient({ sidecarClient: entry.client });
     },
   });
   log(`serving instance ${ctx.instanceId} at ${server.url} (sidecar ${baseUrl})`);

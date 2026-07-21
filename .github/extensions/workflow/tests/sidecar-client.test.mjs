@@ -20,6 +20,7 @@ import {
   sheetUrl,
   sliceMapUrl,
   acceptUrl,
+  runPostprocessUrl,
   candidateStatus,
   describeJudgeSkipReason,
   toJudgeSummary,
@@ -84,6 +85,16 @@ test('run/sheet/slice-map url builders encode their path + query segments', () =
   // No sheet → bare slice-map endpoint (no query).
   assert.equal(sliceMapUrl(BASE, 'b', 'r'), `${BASE}/api/runs/b/r/slice-map`);
   assert.equal(acceptUrl(BASE, 'a b', 'r/1'), `${BASE}/api/runs/a%20b/r%2F1/accept`);
+  // The embedded Postprocess Debugger (`/postprocess/*` under this canvas)
+  // reuses THIS client, so it needs the persist-postprocess URL builder too —
+  // kept 1:1 with `postprocess/lib/sidecar-client.mjs`'s own copy.
+  assert.equal(runPostprocessUrl(BASE, 'b', 'r'), `${BASE}/api/runs/b/r/postprocess`);
+  assert.equal(runPostprocessUrl(BASE, 'a b', 'r/1'), `${BASE}/api/runs/a%20b/r%2F1/postprocess`);
+});
+
+test('client.urls.runPostprocess is wired to the same builder', () => {
+  const client = createSidecarClient({ baseUrl: BASE, fetchImpl: async () => jsonResponse({}) });
+  assert.equal(client.urls.runPostprocess('b', 'r'), runPostprocessUrl(BASE, 'b', 'r'));
 });
 
 test('listRuns returns the runs array from the sidecar payload with no-store caching', async () => {

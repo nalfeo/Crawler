@@ -202,7 +202,6 @@ test('the client script splices the serialized pure lib helpers (no placeholders
   assert.match(html, /function computeSheetDisplaySize\(/);
   assert.match(html, /function summarizeJudge\(/);
   assert.match(html, /function summarizeSensors\(/);
-  assert.match(html, /function buildPostprocessDeepLink\(/);
   assert.match(html, /function resolveBriefEntry\(/);
 });
 
@@ -334,10 +333,59 @@ test('brief/sheet/criterion feedback all funnel through ONE generic confirm widg
   );
 });
 
-test('a per-variant "Open in Post-process Debugger" control builds a deep link with briefId, runId, sheet, and variantIndex', () => {
+test('a per-variant "Open in Post-process Debugger" control opens the embedded editor directly', () => {
   const html = renderHtml('x');
   assert.match(html, /text: 'Open in Post-process Debugger'/);
   assert.match(html, /function renderPostprocessHandoff\(/);
-  assert.match(html, /buildPostprocessDeepLink\(\{/);
+  assert.match(html, /function openPostprocess\(/);
+  assert.match(
+    html,
+    /btn\.addEventListener\('click', function \(\) \{ openPostprocess\(context\); \}\)/,
+  );
+  assert.doesNotMatch(html, /Copy link/);
+  assert.doesNotMatch(html, /project:postprocess/);
   assert.match(html, /renderPostprocessHandoff\(sel, c\.index\)/);
+});
+
+test('opening the embedded Post-process Debugger reveals the persistent host, lazily creates ONE iframe seeded by query string, and retargets later opens via postMessage', () => {
+  const html = renderHtml('x');
+  assert.match(html, /var postprocessHost = document\.getElementById\('postprocess-host'\)/);
+  assert.match(html, /postprocessHost\.hidden = false/);
+  assert.match(html, /postprocessIframe\.src = postprocessSrc\(context\)/);
+  assert.match(html, /else if \(!postprocessIframeReady\)/);
+  assert.match(html, /type: 'postprocess:select'/);
+  assert.match(html, /postprocessIframe\.contentWindow\.postMessage/);
+  assert.match(html, /postprocessHost\.scrollIntoView/);
+  // The ready-metric bridge accepts same-origin direct callbacks with a
+  // postMessage fallback, and rejects stale context before recording elapsed ms.
+  assert.match(html, /window\.__workflowPostprocessReady = handlePostprocessReady/);
+  assert.match(html, /type === 'postprocess:ready'/);
+  assert.match(html, /postprocessReadyRecorded/);
+  assert.match(html, /context\.briefId !== postprocessExpectedContext\.briefId/);
+  assert.match(html, /typeof postprocessExpectedContext\.variantIndex === 'number'/);
+  assert.match(html, /window\.__postprocessReadyMetric/);
+});
+
+test('the persistent #postprocess-host sits OUTSIDE #app (a sibling, like the toolbar) so render() never recreates it', () => {
+  const html = renderHtml('x');
+  const appAt = html.indexOf('id="app"');
+  const hostAt = html.indexOf('id="postprocess-host"');
+  assert.ok(appAt >= 0 && hostAt >= 0);
+  assert.ok(
+    hostAt > appAt,
+    'the host must be declared as a sibling AFTER #app in the static shell',
+  );
+  // Starts collapsed/hidden — no eager iframe/network activity on initial paint.
+  assert.match(html, /<div id="postprocess-host" hidden>/);
+  assert.doesNotMatch(html, /<iframe/); // no iframe in the initial server-rendered shell
+  // render()'s app.replaceChildren body must never reference postprocess-host —
+  // a static guard that a future edit doesn't accidentally fold the host into
+  // the re-rendered #app subtree (which would reset the iframe on every SSE
+  // push/tab switch/refresh).
+  const renderBody = html.slice(
+    html.indexOf('function render(state) {'),
+    html.indexOf('var selecting = false;'),
+  );
+  assert.doesNotMatch(renderBody, /postprocess-host/);
+  assert.doesNotMatch(renderBody, /postprocessIframe/);
 });

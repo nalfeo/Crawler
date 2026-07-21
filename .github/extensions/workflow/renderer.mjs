@@ -20,7 +20,7 @@
  * The client script is intentionally template-literal-free (plain string concat +
  * createElement) so this whole file stays one clean outer template literal with no
  * escaping. The handful of PURE helpers below (run search filter, sheet display
- * sizing, judge/sensor summaries, postprocess deep-link) are the one exception:
+ * sizing, judge/sensor summaries) are the one exception:
  * they are self-contained (no imports/closures) modules under `lib/`, unit-tested
  * directly in Node, and spliced into the client script here via
  * `Function.prototype.toString()` — the SAME tested code runs in the iframe (the
@@ -32,7 +32,6 @@
 import * as runFilterFns from './lib/run-filter.mjs';
 import * as sheetDisplayFns from './lib/sheet-display.mjs';
 import * as feedbackSummaryFns from './lib/feedback-summary.mjs';
-import * as postprocessHandoffFns from './lib/postprocess-handoff.mjs';
 import * as briefLookupFns from './lib/brief-lookup.mjs';
 
 function escapeHtml(value) {
@@ -203,8 +202,16 @@ const STYLES = `
     max-width: min(720px, 90vw); max-height: 85vh; overflow: auto; padding: 16px 18px; }
   .modal h2 { margin: 0 0 8px; font-size: 15px; }
   .modal-close { float: right; }
-  .deep-link-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
-  .deep-link-row input { flex: 1; font-size: 10px; font-family: var(--font-mono, monospace); }
+  #postprocess-host { margin-top: 18px; border: 1px solid rgba(125,211,252,0.3); border-radius: 8px;
+    background: #0b1220; }
+  #postprocess-host[hidden] { display: none; }
+  #postprocess-host .postprocess-host-head { display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 8px 12px; border-bottom: 1px solid rgba(148,163,184,0.15); }
+  #postprocess-host .postprocess-host-head h2 { font-size: 13px; margin: 0; font-weight: 600; color: #7dd3fc; }
+  #postprocess-host-status { font-size: 11px; color: #94a3b8; }
+  #postprocess-host-body { min-height: 0; }
+  #postprocess-host-body.collapsed { padding: 10px 12px; color: #94a3b8; font-size: 12px; }
+  #postprocess-iframe { display: block; width: 100%; height: 720px; border: 0; background: #0b1120; }
 `;
 
 // NOTE: template-literal-free on purpose (no backticks, no ${}) — see file header.
@@ -216,7 +223,6 @@ const CLIENT_SCRIPT = String.raw`
   /*__RUN_FILTER_FNS__*/
   /*__SHEET_DISPLAY_FNS__*/
   /*__FEEDBACK_SUMMARY_FNS__*/
-  /*__POSTPROCESS_HANDOFF_FNS__*/
   /*__BRIEF_LOOKUP_FNS__*/
   var STATUS_COLORS = {
     pass: '#86efac', 'sensor-failed': '#fca5a5', 'judge-rejected': '#fca5a5', unjudged: '#94a3b8'
@@ -265,6 +271,109 @@ const CLIENT_SCRIPT = String.raw`
   var runSearch = ''; // type-to-filter text over briefId/runId
   var sheetViewMode = 'constrained'; // 'constrained' (<=512x512) | 'full'
   var briefModal = null; // { relPath, name, content, error, triggerEl } | null
+
+  // ── Embedded Postprocess Debugger host (persistent sibling of #app) ─────
+  // #postprocess-host lives OUTSIDE #app in the static shell below (see
+  // renderHtml) so app.replaceChildren(...) in render() NEVER touches it —
+  // the lazily-created iframe (and all in-progress editor state inside it)
+  // survives every SSE push / tab switch / refresh / feedback confirm.
+  var postprocessHost = document.getElementById('postprocess-host');
+  var postprocessBody = document.getElementById('postprocess-host-body');
+  var postprocessStatusEl = document.getElementById('postprocess-host-status');
+  var postprocessIframe = null;
+  var postprocessIframeReady = false;
+  var postprocessOpenStartedAt = 0;
+  var postprocessExpectedContext = null;
+  var postprocessReadyRecorded = false;
+
+  /**
+   * Reveal the (initially collapsed) host, lazily create ONE iframe on the
+   * FIRST open (seeded via its initial URL's query string — see
+   * workflow/extension.mjs's '/postprocess/' route), and on every LATER open
+   * retarget that SAME iframe via a same-origin postMessage 'postprocess:select'.
+   * Before the first document is ready, later clicks retarget its pending
+   * navigation instead (there is no iframe message listener yet). Once ready,
+   * authoring/tuning state is preserved. Always scrolls the host into view.
+   */
+  function postprocessSrc(context) {
+    var qs = [];
+    if (context.briefId) qs.push('briefId=' + encodeURIComponent(context.briefId));
+    if (context.runId) qs.push('runId=' + encodeURIComponent(context.runId));
+    if (typeof context.variantIndex === 'number') qs.push('variantIndex=' + encodeURIComponent(context.variantIndex));
+    if (context.sheet) qs.push('sheet=' + encodeURIComponent(context.sheet));
+    return '/postprocess/' + (qs.length ? ('?' + qs.join('&')) : '');
+  }
+
+  function openPostprocess(context) {
+    if (!postprocessHost || !postprocessBody) return;
+    postprocessHost.hidden = false;
+    postprocessExpectedContext = {
+      briefId: context.briefId,
+      runId: context.runId,
+      variantIndex: context.variantIndex,
+      sheet: context.sheet
+    };
+    postprocessOpenStartedAt = (window.performance && performance.now) ? performance.now() : Date.now();
+    postprocessReadyRecorded = false;
+    if (postprocessStatusEl) postprocessStatusEl.textContent = 'Loading\u2026';
+    if (!postprocessIframe) {
+      postprocessIframe = document.createElement('iframe');
+      postprocessIframe.id = 'postprocess-iframe';
+      postprocessIframe.title = 'Postprocess Debugger';
+      postprocessIframe.src = postprocessSrc(context);
+      postprocessBody.className = '';
+      postprocessBody.replaceChildren(postprocessIframe);
+    } else if (!postprocessIframeReady) {
+      postprocessIframe.src = postprocessSrc(context);
+    } else {
+      postprocessIframe.contentWindow.postMessage({
+        type: 'postprocess:select',
+        briefId: context.briefId, runId: context.runId,
+        variantIndex: context.variantIndex, sheet: context.sheet
+      }, window.location.origin);
+    }
+    postprocessHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Same-origin only: this document and the embedded iframe are served by the
+  // SAME loopback server/port, so window.location.origin is the correct check
+  // on both the sender (contentWindow.postMessage target) and receiver sides.
+  function handlePostprocessReady(context) {
+    if (
+      postprocessReadyRecorded ||
+      !postprocessIframe ||
+      !context ||
+      !postprocessExpectedContext
+    ) return;
+    if (
+      context.briefId !== postprocessExpectedContext.briefId ||
+      context.runId !== postprocessExpectedContext.runId ||
+      (
+        typeof postprocessExpectedContext.variantIndex === 'number' &&
+        context.variantIndex !== postprocessExpectedContext.variantIndex
+      ) ||
+      (
+        postprocessExpectedContext.sheet &&
+        context.sheet !== postprocessExpectedContext.sheet
+      )
+    ) return;
+    var now = (window.performance && performance.now) ? performance.now() : Date.now();
+    var elapsedMs = Math.round(now - postprocessOpenStartedAt);
+    postprocessIframeReady = true;
+    postprocessReadyRecorded = true;
+    window.__postprocessReadyMetric = { elapsedMs: elapsedMs, context: context };
+    if (postprocessStatusEl) postprocessStatusEl.textContent = 'Ready \u00b7 ' + elapsedMs + ' ms';
+  }
+  window.__workflowPostprocessReady = handlePostprocessReady;
+
+  window.addEventListener('message', function (ev) {
+    if (!postprocessIframe || ev.source !== postprocessIframe.contentWindow) return;
+    if (ev.origin !== window.location.origin) return;
+    var msg = ev.data;
+    if (msg && msg.type === 'postprocess:ready') {
+      handlePostprocessReady(msg.context || null);
+    }
+  });
 
   function h(tag, props, children) {
     var elem = document.createElement(tag);
@@ -714,41 +823,16 @@ const CLIENT_SCRIPT = String.raw`
     }
   }
 
-  // ---- "Open in Post-process Debugger" deep-link handoff -----------------
-  // PLATFORM CONSTRAINT (see lib/postprocess-handoff.mjs header): a canvas
-  // iframe has no privileged bridge to the host, so it cannot itself trigger
-  // canvas.open for a DIFFERENT canvas. Clicking the button reveals/selects
-  // a 'project:postprocess ...' deep link carrying the EXACT handoff context
-  // (briefId, runId, sheet, variantIndex) — the SAME convention this codebase
-  // already uses for the Sweep Results Viewer jump — and best-effort copies it
-  // to the clipboard, for the operator to paste into chat to actually open
-  // Post-process pre-seeded on this variant.
+  // ---- "Open in Post-process Debugger" — embeds + reveals the editor -----
+  // Clicking reveals the persistent #postprocess-host section (lazily
+  // creating its ONE iframe on first use, retargeting it via postMessage on
+  // later opens — see openPostprocess()) and scrolls it into view.
   function renderPostprocessHandoff(sel, variantIndex) {
-    var link = buildPostprocessDeepLink({
-      briefId: sel.briefId, runId: sel.runId, sheet: sel.sheet, variantIndex: variantIndex
-    });
-    var btn = h('button', { type: 'button', title: 'Copy a deep link that opens this exact context in the Post-process Debugger',
+    var context = { briefId: sel.briefId, runId: sel.runId, sheet: sel.sheet, variantIndex: variantIndex };
+    var btn = h('button', { type: 'button', title: 'Open this exact context in the embedded Post-process Debugger below',
       text: 'Open in Post-process Debugger' });
-    var input = h('input', { type: 'text', readonly: 'true', 'aria-label': 'Post-process Debugger deep link' });
-    var status = h('span', { class: 'muted' });
-    var box = h('div', { class: 'deep-link-row' }, [input, status]);
-    box.hidden = true;
-    btn.addEventListener('click', function () {
-      input.value = link;
-      box.hidden = false;
-      input.focus();
-      input.select();
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(link).then(function () {
-          status.textContent = 'Copied \u2014 paste into chat to open.';
-        }).catch(function () {
-          status.textContent = 'Selected \u2014 press Ctrl/Cmd+C to copy, then paste into chat.';
-        });
-      } else {
-        status.textContent = 'Selected \u2014 press Ctrl/Cmd+C to copy, then paste into chat.';
-      }
-    });
-    return h('div', null, [btn, box]);
+    btn.addEventListener('click', function () { openPostprocess(context); });
+    return h('div', null, [btn]);
   }
 
   // ---- "View Brief" modal (accessible: focus trap, Escape, aria) ----------
@@ -1399,7 +1483,6 @@ export function renderHtml(instanceId, mutationToken = '') {
     .replace('/*__RUN_FILTER_FNS__*/', () => serializePureModule(runFilterFns))
     .replace('/*__SHEET_DISPLAY_FNS__*/', () => serializePureModule(sheetDisplayFns))
     .replace('/*__FEEDBACK_SUMMARY_FNS__*/', () => serializePureModule(feedbackSummaryFns))
-    .replace('/*__POSTPROCESS_HANDOFF_FNS__*/', () => serializePureModule(postprocessHandoffFns))
     .replace('/*__BRIEF_LOOKUP_FNS__*/', () => serializePureModule(briefLookupFns));
   return [
     '<!doctype html>',
@@ -1414,6 +1497,19 @@ export function renderHtml(instanceId, mutationToken = '') {
     '</div>',
     '<div id="app" data-instance="' + escapeHtml(instanceId) + '">',
     '<p class="muted">Loading sprite generation workflow…</p>',
+    '</div>',
+    // Persistent SIBLING of #app (never touched by render()'s
+    // app.replaceChildren) — collapsed/hidden placeholder until the first
+    // "Open in Post-process Debugger" click lazily creates its ONE iframe.
+    // See openPostprocess()/the postMessage bridge above.
+    '<div id="postprocess-host" hidden>',
+    '<div class="postprocess-host-head">',
+    '<h2>Postprocess Debugger</h2>',
+    '<span id="postprocess-host-status" class="muted"></span>',
+    '</div>',
+    '<div id="postprocess-host-body" class="collapsed">',
+    '<span class="muted">Opens here on demand — click "Open in Post-process Debugger" on any variant.</span>',
+    '</div>',
     '</div>',
     '<script>' + clientScript + '</script>',
     '</body></html>',

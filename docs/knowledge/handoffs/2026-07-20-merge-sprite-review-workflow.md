@@ -43,9 +43,8 @@ backend or game system.
   idempotent sidecar acceptance operation.
 - Added text filtering beside the native run selector, a 512 by 512 default
   sheet preview with full-size toggle and overlay redraw, collapsed judge/sensor
-  summaries, an accessible brief modal, and exact Post-process context handoff.
-- Extended Postprocess Debugger open input to preserve brief, run, sheet, and
-  variant selection.
+  summaries, an accessible brief modal, and an exact embedded Postprocess
+  context handoff.
 
 ## Runtime observation
 
@@ -70,10 +69,10 @@ After reloading the real project extensions against the managed Azure sidecar:
   rerender, closed on Escape, and returned focus to View Brief;
 - accepted iron-cleaver variants showed ACCEPTED/STAGED and Re-accept while
   unaccepted variants showed Accept & queue;
-- the generated Post-process handoff contained
+- the embedded Postprocess Open action contained
   `briefId=iron-cleaver-v1`, the exact run id, `sheet=sheet-00.png`, and
-  `variantIndex=0`; opening Postprocess with those inputs preserved the run,
-  sheet, and variant.
+  `variantIndex=0`; opening it preserved the run, sheet, and variant in the
+  persistent editor at the bottom of Workflow.
 
 ## Review harness
 
@@ -106,8 +105,8 @@ Ledger:
 - Feedback confirmation patches only the touched local feedback state so it
   cannot recreate the loaded sheet or regress warm paint.
 - Canvas iframes cannot invoke another canvas through a privileged host bridge.
-  Workflow therefore emits and copies the repository's established
-  `project:postprocess ...` deep-link form with complete context.
+  Workflow therefore owns a same-origin embedded Postprocess iframe and
+  retargets it directly without a second canvas or copied-link fallback.
 
 ## Blockers
 
