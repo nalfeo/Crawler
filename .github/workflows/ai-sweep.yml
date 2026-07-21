@@ -49,15 +49,20 @@
 #
 #   RESIDUAL LIMITATION (documented, not hidden): the <=90-minute bound is
 #   proven at the PER-COMBO PER-ROUND grain (the grain this task's hard gate
-#   asks for) — one combo's ~12 primary-knob candidates, run with unrestricted
-#   matrix concurrency (no `max-parallel` set on round-eval, so GitHub schedules
-#   as many as the account's real concurrent-runner ceiling allows). A FULL
-#   8-combo × 3-round graduation run's aggregate wall-clock additionally
-#   depends on that (unknown-to-us) account/org concurrent-job ceiling, since
-#   all combos' round-eval candidates share one flat matrix per round. This is
-#   a materially better bound than the old design (which had NO per-round
-#   parallelism at all) but is not independently proven to keep the FULL
-#   8-combo scope under 90 minutes.
+#   asks for) — one combo's ~12 primary-knob candidates. round-eval's matrix
+#   is capped at `max-parallel: 8` (same cap as baseline/checkpoint-init/
+#   round-select/validate) so a FULL 8-combo × 3-round graduation run cannot
+#   saturate the account's entire GitHub-hosted concurrent-runner pool and
+#   starve unrelated repo-wide work (e.g. the shared merge-train queue's own
+#   validation jobs) — see run 29786216369, which fanned out 20 concurrent
+#   Round 3 eval jobs with 44 more queued behind them before it was manually
+#   cancelled. A FULL 8-combo × 3-round graduation run's aggregate wall-clock
+#   now additionally depends on this repo-level concurrency cap (8 candidates
+#   in flight at a time per round, per combo-fan), since all combos' round-eval
+#   candidates share one flat matrix per round. This is a materially better
+#   bound than the old design (which had NO per-round parallelism at all) but
+#   is not independently proven to keep the FULL 8-combo scope under 90
+#   minutes when the cap is the binding constraint.
 #
 # HOW TO RUN (staged, per the plan)
 #   - Cheap screen / calibration (DEFAULTS): rounds=2, train 1-24, validate 1-40.
@@ -359,6 +364,13 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
+      # round-select/validate, so a full 8-combo round can't saturate the
+      # account's entire concurrent-runner pool and starve unrelated
+      # repo-wide work (e.g. the shared merge-train queue) — see run
+      # 29786216369, which fanned out 20 concurrent Round 3 eval jobs with
+      # 44 more queued before it was manually cancelled.
+      max-parallel: 8
       matrix:
         candidate: ${{ fromJSON(needs.round1-candidates.outputs.matrix) }}
     steps:
@@ -532,6 +544,10 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
+      # round-select/validate — see round1-eval's identical comment for why
+      # (run 29786216369 saturated the account's concurrent-runner pool).
+      max-parallel: 8
       matrix:
         candidate: ${{ fromJSON(needs.round2-candidates.outputs.matrix) }}
     steps:
@@ -694,6 +710,10 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
+      # round-select/validate — see round1-eval's identical comment for why
+      # (run 29786216369 saturated the account's concurrent-runner pool).
+      max-parallel: 8
       matrix:
         candidate: ${{ fromJSON(needs.round3-candidates.outputs.matrix) }}
     steps:
