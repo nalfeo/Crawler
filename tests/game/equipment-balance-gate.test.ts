@@ -138,13 +138,39 @@ describe('seeded D1 equipment distribution fixtures', () => {
         }),
       ).not.toThrow();
     }
-    const invalidWorld = worldFactory(99, 'enhancement-invalid');
+    const invalidUpperWorld = worldFactory(99, 'enhancement-invalid-upper');
     expect(() =>
-      generateEquipmentInstance(invalidWorld, {
+      generateEquipmentInstance(invalidUpperWorld, {
         baseId: 'plasma-pistol',
         itemLevel: 6,
         rarity: 'common',
         enhancementLevel: 6 as GeneratedEquipmentEnhancementLevel,
+      }),
+    ).toThrowError(
+      expect.objectContaining<Partial<GeneratedEquipmentGeneratorError>>({
+        code: 'invalid-request',
+      }),
+    );
+    const invalidNegWorld = worldFactory(100, 'enhancement-invalid-negative');
+    expect(() =>
+      generateEquipmentInstance(invalidNegWorld, {
+        baseId: 'plasma-pistol',
+        itemLevel: 6,
+        rarity: 'common',
+        enhancementLevel: -1 as GeneratedEquipmentEnhancementLevel,
+      }),
+    ).toThrowError(
+      expect.objectContaining<Partial<GeneratedEquipmentGeneratorError>>({
+        code: 'invalid-request',
+      }),
+    );
+    const invalidRarityWorld = worldFactory(101, 'rarity-invalid');
+    expect(() =>
+      generateEquipmentInstance(invalidRarityWorld, {
+        baseId: 'plasma-pistol',
+        itemLevel: 6,
+        rarity: 'legendary' as GeneratedEquipmentRarity,
+        enhancementLevel: 0,
       }),
     ).toThrowError(
       expect.objectContaining<Partial<GeneratedEquipmentGeneratorError>>({
