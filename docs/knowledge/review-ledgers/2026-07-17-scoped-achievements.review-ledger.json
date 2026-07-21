@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "scoped-achievements",
+  "task_title": "Add scoped achievement catalogs and run-global facts",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted introduction-floor gating for run-global definitions; formalized carriedFacts=completed floors and effectiveFacts=carried+current; separated floor-local/current-run fact evaluation; added reached/cleared floor identity facts; expanded order, legacy migration, no-double-count, and devtools parity coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

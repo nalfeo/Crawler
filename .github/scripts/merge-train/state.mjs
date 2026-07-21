@@ -4,6 +4,7 @@ export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
 export const RECOVERY_PENDING_LABEL = 'merge-train-recovery-pending';
 export const NOOP_LABEL = 'merge-train-noop';
+export const CI_CONFLICT_ORDER_WAIT_LABEL = 'ci-conflict-order-wait';
 // Durable, permanent marker that a PR's validated change actually reached
 // `main` through the train. Unlike the transient QUEUE/BLOCKED labels (which
 // are added and removed as a PR moves through admission and promotion), this
@@ -87,13 +88,18 @@ export function queueEntries(pullRequests, repository) {
         pr.base?.ref === 'main' &&
         pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
         (pr.labels || []).some((label) => label.name === QUEUE_LABEL) &&
-        !(pr.labels || []).some((label) => label.name === BLOCKED_LABEL),
+        !(pr.labels || []).some((label) => label.name === BLOCKED_LABEL) &&
+        !(pr.labels || []).some((label) => label.name === CI_CONFLICT_ORDER_WAIT_LABEL),
     )
     .sort(
       (left, right) =>
         new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
         left.number - right.number,
     );
+}
+
+export function shouldWaitForCiConflictOrder(labels) {
+  return (labels || []).some((label) => label.name === CI_CONFLICT_ORDER_WAIT_LABEL);
 }
 
 export function candidateFingerprint(baseSha, entries) {
@@ -118,7 +124,19 @@ export function candidateRef(slot, fingerprint) {
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
     throw new Error('Candidate fingerprint must be a SHA-256 hex digest');
   }
-  return `merge-train/candidate-${slot}-${fingerprint.slice(0, 16)}`;
+  return `refs/merge-train-candidates/candidate-${slot}-${fingerprint.slice(0, 16)}`;
+}
+
+export function candidateEvidenceId(fingerprint, candidateSha) {
+  if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
+    throw new Error('Candidate fingerprint must be a SHA-256 hex digest');
+  }
+  if (!/^[0-9a-f]{40}$/i.test(candidateSha)) {
+    throw new Error('Candidate evidence requires a Git commit SHA');
+  }
+  // Hash the combined value so external_id stays within GitHub's 100-char limit
+  // (fingerprint is 64 chars + ':' + 40-char SHA = 105 chars; SHA-256 hex = 64 chars).
+  return createHash('sha256').update(`${fingerprint}:${candidateSha.toLowerCase()}`).digest('hex');
 }
 
 export function admissionFingerprint({

@@ -3059,6 +3059,49 @@ test('legacy mode removes train labels without recursive cleanup', async (t) => 
   assert.deepEqual(deletedLabels, [...trainLabels].sort());
 });
 
+test('disabled merge train still clears stale train labels before honoring an active shepherd lease', async (t) => {
+  const trainLabels = [
+    'merge-train',
+    'merge-train-blocked',
+    'merge-train-noop',
+    'merge-train-validation-failed',
+  ];
+  const stateComment = shepherdStateComment(910);
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: trainLabels.map((name) => ({ name })),
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: { name: LABEL } }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/`]: () => ({ body: {} }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'false',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'required-check',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /skip pr=#42 reason=active-shepherd-lease/);
+  const deletedLabels = mutatingCalls
+    .filter((call) => call.method === 'DELETE')
+    .map((call) => decodeURIComponent(call.url.split('/').at(-1)))
+    .sort();
+  assert.deepEqual(deletedLabels, [...trainLabels].sort());
+});
+
 test('reconcile still emits merge-conflict blocker for dirty or mergeable=false PRs', async (t) => {
   const conflictFixtures = [
     { name: 'dirty', pr: { ...basePr(), mergeable: true, mergeable_state: 'dirty' } },

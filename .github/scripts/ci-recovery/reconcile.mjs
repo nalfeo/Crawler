@@ -30,6 +30,7 @@ import { graphql, listClosingIssues, listReviewThreads, paginate, request } from
 import {
   admissionFingerprint,
   BLOCKED_LABEL,
+  shouldWaitForCiConflictOrder,
   hasLeadingMarker,
   NOOP_LABEL,
   parseEnabledFlag,
@@ -965,15 +966,6 @@ if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
   }
 }
 
-if (
-  mergeTrainEnabled &&
-  !pendingHumanApproval &&
-  (pr.labels || []).some((label) => label.name === QUEUE_LABEL)
-) {
-  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
-  process.exit(0);
-}
-
 if (!mergeTrainEnabled) {
   const existingLabels = new Set((pr.labels || []).map((label) => label.name));
   for (const trainLabel of [QUEUE_LABEL, BLOCKED_LABEL, NOOP_LABEL, VALIDATION_FAILED_LABEL]) {
@@ -990,6 +982,20 @@ if (labelExists && state?.owner === 'shepherd' && !isLeaseExpired(state, now)) {
 }
 if (labelExists && state?.owner === 'shepherd') {
   stopIfReleaseConvergedElsewhere(await release('expired-shepherd-lease'));
+}
+
+if (
+  mergeTrainEnabled &&
+  !pendingHumanApproval &&
+  (pr.labels || []).some((label) => label.name === QUEUE_LABEL)
+) {
+  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
+  process.exit(0);
+}
+
+if (mergeTrainEnabled && !pendingHumanApproval && shouldWaitForCiConflictOrder(pr.labels)) {
+  process.stdout.write(`skip pr=#${prNumber} reason=ci-conflict-order-wait\n`);
+  process.exit(0);
 }
 
 const review = await listReviewThreads(readToken, owner, repo, prNumber);

@@ -82,13 +82,13 @@ band, initially Level 1 → 6 and Level 6 → 11.
 
 ## Authority
 
-| Contract                                                                          | Normative authority                                       |
-| --------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Five-level DPS growth principle                                                   | `.specify/memory/constitution.md` (Principle 9)           |
-| Generated identity, resolution, ownership, rewards, economy, AI, flags, migration | `.specify/specs/equipment-system.md` (Floor 2 Contract §) |
-| Static weapon template and frozen active snapshot                                 | `.specify/specs/weapon-system.md` (Frozen Snapshot §)     |
+| Contract                                                                          | Normative authority                                                                                                                 |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Five-level DPS growth principle                                                   | `.specify/memory/constitution.md` (Principle 9)                                                                                     |
+| Generated identity, resolution, ownership, rewards, economy, AI, flags, migration | `.specify/specs/equipment-system.md` (Floor 2 Contract §)                                                                           |
+| Static weapon template and frozen active snapshot                                 | `.specify/specs/weapon-system.md` (Frozen Snapshot §)                                                                               |
 | Epic counts, stable manifest, DAG, release flags, and rollout                     | Producer-owned: to be published under `docs/knowledge/epics/` once the epic A0 validates and the canonical A1 branch is designated. |
-| Cached observed lifecycle facts                                                   | Same as above; the epic-state file is co-located with the PLAN manifest once it is designated canonical. |
+| Cached observed lifecycle facts                                                   | Same as above; the epic-state file is co-located with the PLAN manifest once it is designated canonical.                            |
 
 ## Consequences
 

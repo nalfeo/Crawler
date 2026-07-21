@@ -36,12 +36,37 @@ interface Scope {
   art_only: boolean;
   docs_only: boolean;
   gameplay_safe: boolean;
+  sprites_only: boolean;
+  sprites_touched: boolean;
+  visual_touched: boolean;
+  sim_touched: boolean;
+  coverage_touched: boolean;
+  sprite_pipeline_touched: boolean;
+  dependencies_touched: boolean;
 }
 
-const F = (art_only: boolean, docs_only: boolean, gameplay_safe: boolean): Scope => ({
+const F = (
+  art_only: boolean,
+  docs_only: boolean,
+  gameplay_safe: boolean,
+  sprites_only: boolean,
+  sprites_touched: boolean,
+  visual_touched: boolean,
+  sim_touched: boolean,
+  coverage_touched: boolean,
+  sprite_pipeline_touched: boolean,
+  dependencies_touched: boolean,
+): Scope => ({
   art_only,
   docs_only,
   gameplay_safe,
+  sprites_only,
+  sprites_touched,
+  visual_touched,
+  sim_touched,
+  coverage_touched,
+  sprite_pipeline_touched,
+  dependencies_touched,
 });
 
 const tempDirs: string[] = [];
@@ -128,6 +153,13 @@ function makeRepo(): Repo {
       art_only: read('art_only'),
       docs_only: read('docs_only'),
       gameplay_safe: read('gameplay_safe'),
+      sprites_only: read('sprites_only'),
+      sprites_touched: read('sprites_touched'),
+      visual_touched: read('visual_touched'),
+      sim_touched: read('sim_touched'),
+      coverage_touched: read('coverage_touched'),
+      sprite_pipeline_touched: read('sprite_pipeline_touched'),
+      dependencies_touched: read('dependencies_touched'),
     };
   };
   // Deterministic identity + no signing so commits work on any runner.
@@ -152,33 +184,49 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     expect(hasBash).toBe(true);
   });
 
-  it.skipIf(!hasBash)('CRIT-1: no merge base ⇒ all-false even for a docs-only working tree', () => {
-    const repo = makeRepo();
-    repo.write('README.md', '# seed\n');
-    repo.git('add', '.');
-    repo.git('commit', '-q', '-m', 'seed');
-    // Rename the only branch away from main so neither origin/main nor main resolves.
-    repo.git('branch', '-M', 'feature');
-    // A docs-only edit would look "safe" if classified from the working tree alone —
-    // but with no base we must refuse and force the full suite.
-    repo.write('docs/notes.md', 'notes\n');
-    expect(repo.scope()).toEqual(F(false, false, false));
-  });
+  it.skipIf(!hasBash)(
+    'CRIT-1: no merge base ⇒ fail-closed shape even for a docs-only working tree',
+    () => {
+      const repo = makeRepo();
+      repo.write('README.md', '# seed\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'seed');
+      // Rename the only branch away from main so neither origin/main nor main resolves.
+      repo.git('branch', '-M', 'feature');
+      // A docs-only edit would look "safe" if classified from the working tree alone —
+      // but with no base we must refuse and force the full suite (positive-signal flags true).
+      repo.write('docs/notes.md', 'notes\n');
+      //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, true, true, true, true, true, true),
+      );
+    },
+  );
 
-  it.skipIf(!hasBash)('clean tree with a resolved base fails safe to all-false', () => {
-    const repo = makeRepo();
-    mainWithFeature(repo);
-    // feature == main, nothing changed → empty set → detect-art-only fail-safe.
-    expect(repo.scope()).toEqual(F(false, false, false));
-  });
+  it.skipIf(!hasBash)(
+    'clean tree with a resolved base fails safe (positive-signal flags true)',
+    () => {
+      const repo = makeRepo();
+      mainWithFeature(repo);
+      // feature == main, nothing changed → empty set → detect-art-only fail-safe
+      // emits gameplay_safe=false with all positive-signal flags true.
+      //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, true, true, true, true, true, true),
+      );
+    },
+  );
 
-  it.skipIf(!hasBash)('committed docs-only branch change ⇒ gameplay_safe', () => {
+  it.skipIf(!hasBash)('committed docs-only branch change ⇒ gameplay_safe, no touched flags', () => {
     const repo = makeRepo();
     mainWithFeature(repo);
     repo.write('docs/architecture.md', '# arch\n');
     repo.git('add', '.');
     repo.git('commit', '-q', '-m', 'docs');
-    expect(repo.scope()).toEqual(F(false, true, true));
+    //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expect(repo.scope()).toEqual(
+      F(false, true, true, false, false, false, false, false, false, false),
+    );
   });
 
   it.skipIf(!hasBash)('committed docs json branch change still counts as docs-only', () => {
@@ -187,32 +235,47 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     repo.write('docs/knowledge/metrics/apples/2026-07-08-adr-cleanup.json', '{"ok":true}\n');
     repo.git('add', '.');
     repo.git('commit', '-q', '-m', 'docs json');
-    expect(repo.scope()).toEqual(F(false, true, true));
+    //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expect(repo.scope()).toEqual(
+      F(false, true, true, false, false, false, false, false, false, false),
+    );
   });
 
-  it.skipIf(!hasBash)('committed src/core branch change ⇒ not safe', () => {
-    const repo = makeRepo();
-    mainWithFeature(repo);
-    repo.write('src/core/systems/movementSystem.ts', 'export const x = 1;\n');
-    repo.git('add', '.');
-    repo.git('commit', '-q', '-m', 'core');
-    expect(repo.scope()).toEqual(F(false, false, false));
-  });
+  it.skipIf(!hasBash)(
+    'committed src/core branch change ⇒ not safe, visual+sim+coverage touched',
+    () => {
+      const repo = makeRepo();
+      mainWithFeature(repo);
+      repo.write('src/core/systems/movementSystem.ts', 'export const x = 1;\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'core');
+      //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, false),
+      );
+    },
+  );
 
   it.skipIf(!hasBash)('untracked src/core file is unioned in ⇒ not safe', () => {
     const repo = makeRepo();
     mainWithFeature(repo);
     // No commit on feature; the change exists only as an untracked working file.
     repo.write('src/core/world.ts', 'export const w = 1;\n');
-    expect(repo.scope()).toEqual(F(false, false, false));
+    //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expect(repo.scope()).toEqual(
+      F(false, false, false, false, false, true, true, true, false, false),
+    );
   });
 
-  it.skipIf(!hasBash)('unstaged docs-only edit ⇒ gameplay_safe', () => {
+  it.skipIf(!hasBash)('unstaged docs-only edit ⇒ gameplay_safe, no touched flags', () => {
     const repo = makeRepo();
     mainWithFeature(repo);
     // README.md is tracked; edit it without staging.
     repo.write('README.md', '# seed edited\n');
-    expect(repo.scope()).toEqual(F(false, true, true));
+    //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expect(repo.scope()).toEqual(
+      F(false, true, true, false, false, false, false, false, false, false),
+    );
   });
 
   it.skipIf(!hasBash)(
@@ -232,7 +295,58 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       repo.git('commit', '-q', '-m', 'delete core + docs');
       // With --diff-filter=ACMR the deletion would vanish and only docs would remain
       // → a spurious gameplay_safe=true. The helper uses no filter, so it stays false.
-      expect(repo.scope()).toEqual(F(false, false, false));
+      //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, false),
+      );
+    },
+  );
+
+  it.skipIf(!hasBash)(
+    'CRIT-3: a committed src/core rename (git mv within core) forces not safe',
+    () => {
+      const repo = makeRepo();
+      repo.write('README.md', '# seed\n');
+      repo.write('src/core/doomed.ts', 'export const d = 1;\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'seed');
+      repo.git('branch', '-M', 'main');
+      repo.git('checkout', '-q', '-b', 'feature');
+      // Rename within src/core: git diff --name-only shows only the new path, which
+      // still matches the core allowlist — so the change remains not-safe.
+      repo.git('mv', 'src/core/doomed.ts', 'src/core/renamed.ts');
+      repo.git('commit', '-q', '-m', 'rename core file');
+      //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, false),
+      );
+    },
+  );
+
+  it.skipIf(!hasBash)(
+    'CRIT-4: cross-surface rename src/core→docs exposes old path via --no-renames',
+    () => {
+      const repo = makeRepo();
+      repo.write('README.md', '# seed\n');
+      repo.write('src/core/doomed.ts', 'export const d = 1;\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'seed');
+      repo.git('branch', '-M', 'main');
+      repo.git('checkout', '-q', '-b', 'feature');
+      // Rename across surfaces: src/core/doomed.ts -> docs/doomed.md.
+      // git mv triggers rename detection so `git diff --name-only` (without
+      // --no-renames) shows only the NEW path `docs/doomed.md` and suppresses
+      // the old `src/core/doomed.ts`. That would make the classifier emit
+      // docs_only=true and silently bypass all gates. With --no-renames BOTH
+      // endpoints appear, the src/core path forces gameplay_safe=false / sim_touched.
+      // Create the destination directory first (git mv doesn't auto-create it).
+      mkdirSync(path.join(repo.dir, 'docs'), { recursive: true });
+      repo.git('mv', 'src/core/doomed.ts', 'docs/doomed.md');
+      repo.git('commit', '-q', '-m', 'cross-surface rename via git mv');
+      //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, false),
+      );
     },
   );
 });

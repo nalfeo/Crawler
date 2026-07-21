@@ -1,5 +1,10 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import {
   BLOCKED_LABEL,
+  CI_CONFLICT_ORDER_WAIT_LABEL,
   LANDED_LABEL,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
@@ -227,8 +232,8 @@ export function resolveMergeTrainTokens(environment) {
   const liveActionsRun = environment.GITHUB_ACTIONS === 'true';
   const promotionToken =
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
-  const workflowDispatchToken =
-    environment.GITHUB_TOKEN || (!liveActionsRun ? environment.MERGE_TRAIN_TOKEN || '' : '');
+  // The repository App receives 403 from workflow_dispatch; never reuse it here.
+  const workflowDispatchToken = environment.GITHUB_TOKEN || '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
   }
@@ -236,6 +241,12 @@ export function resolveMergeTrainTokens(environment) {
     throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
   }
   return { promotionToken, workflowDispatchToken };
+}
+
+export function mergeTrainGitEnvironment(environment, overrides = {}) {
+  const childEnvironment = { ...environment, ...overrides };
+  delete childEnvironment.MERGE_TRAIN_WORKFLOW_TOKEN;
+  return childEnvironment;
 }
 
 export async function dispatchRecoveryWorkflow({ request, token, owner, repo, prNumber, trigger }) {
@@ -259,6 +270,8 @@ export async function dispatchValidationWorkflow({
   owner,
   repo,
   sha,
+  refName,
+  attestationSha,
   fingerprint,
   entries,
 }) {
@@ -271,6 +284,8 @@ export async function dispatchValidationWorkflow({
         ref: 'main',
         inputs: {
           candidate_sha: sha,
+          candidate_ref: refName,
+          attestation_sha: attestationSha,
           fingerprint,
           pr_numbers: entries.map((entry) => entry.number).join(','),
         },
@@ -279,7 +294,50 @@ export async function dispatchValidationWorkflow({
   );
 }
 
+const CANDIDATE_REF_PREFIX = 'refs/merge-train-candidates/';
+
+function pushCandidateBundle({ baseSha, refName, git }) {
+  const bundleDirectory = mkdtempSync(join(tmpdir(), 'crawler-merge-train-'));
+  const bundlePath = join(bundleDirectory, 'candidate.bundle');
+  try {
+    git(['bundle', 'create', bundlePath, 'HEAD', `^${baseSha}`]);
+    const transportSha = git(['hash-object', '-w', bundlePath]);
+    if (!/^[0-9a-f]{40}$/i.test(transportSha)) {
+      throw new Error('Merge-train candidate transport did not produce a Git blob SHA');
+    }
+    git(['update-ref', refName, transportSha]);
+    git(['push', '--force', 'origin', `${refName}:${refName}`]);
+    return transportSha;
+  } finally {
+    rmSync(bundleDirectory, { recursive: true, force: true });
+  }
+}
+
+export function deleteCandidateBundle({ refName, transportSha, git }) {
+  if (!refName.startsWith(CANDIDATE_REF_PREFIX)) {
+    throw new Error(`Candidate cleanup requires the ref namespace ${CANDIDATE_REF_PREFIX}`);
+  }
+  if (!/^[0-9a-f]{40}$/i.test(transportSha)) {
+    throw new Error('Candidate cleanup requires a Git blob SHA');
+  }
+  const remoteLine = git(['ls-remote', '--refs', 'origin', refName]).trim();
+  if (!remoteLine) return false;
+  const [remoteSha, remoteRef] = remoteLine.split(/\s+/);
+  if (remoteRef !== refName || remoteSha !== transportSha) {
+    throw new Error(
+      `Candidate transport ref changed before cleanup: expected ${transportSha}, found ${remoteSha || 'unknown'}`,
+    );
+  }
+  git(['push', `--force-with-lease=${refName}:${transportSha}`, 'origin', `:${refName}`]);
+  return true;
+}
+
 export function buildCandidate({ baseSha, entries, refName, git, live }) {
+  if (live && !refName.startsWith(CANDIDATE_REF_PREFIX)) {
+    throw new Error(
+      `Live merge-train candidates must use the non-event ref namespace ${CANDIDATE_REF_PREFIX}`,
+    );
+  }
   git(['fetch', 'origin', 'main', '--prune']);
   const candidateRefs = entries.map((entry) => fetchCandidateHead(git, entry));
   git(['checkout', '--detach', baseSha]);
@@ -329,7 +387,7 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
   }
   const sha = git(['rev-parse', 'HEAD']);
   if (live) {
-    git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);
+    pushCandidateBundle({ baseSha, refName, git });
   }
   return sha;
 }
@@ -393,6 +451,8 @@ export function promotionStaleReason({ currentMain, currentPr, expectedBase, pr,
   if (!sameRepository(currentPr, repository)) return 'PR head repository changed';
   if (!hasLabel(currentPr, QUEUE_LABEL)) return `PR no longer has the ${QUEUE_LABEL} label`;
   if (hasLabel(currentPr, BLOCKED_LABEL)) return `PR is marked ${BLOCKED_LABEL}`;
+  if (hasLabel(currentPr, CI_CONFLICT_ORDER_WAIT_LABEL))
+    return `PR has ${CI_CONFLICT_ORDER_WAIT_LABEL} label`;
   return null;
 }
 
@@ -464,6 +524,7 @@ export async function promoteExactBatch({
   positions = entries.map((_, index) => index + 1),
   recordMapping = () => {},
   reattestHealth = async () => true,
+  verifyMergeSlot = async () => null,
   proofPollDelaysMs,
   proofSleep,
 }) {
@@ -662,8 +723,71 @@ export async function promoteExactBatch({
       );
       return false;
     }
+    const mergeSlotReason = await verifyMergeSlot({
+      entry,
+      index,
+      currentPr: freshPr,
+      currentMain: mainBeforeMerge,
+    });
+    if (mergeSlotReason) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number} reason=${mergeSlotReason}; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    // Re-read main immediately after the potentially long coordinator scan:
+    // verifyMergeSlot fetches files, comments, checks, and runs git proofs for
+    // every group member, which can take several seconds. Re-assert that main
+    // has not advanced since the base-CAS check above so we do not land onto an
+    // unexpected parent.
+    const mainAfterSlotVerify = await fetchCurrentMain();
+    if (mainAfterSlotVerify !== mainBeforeMerge) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; main moved to ${mainAfterSlotVerify} during coordinator scan (expected ${mainBeforeMerge}); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    // Post-slot admission re-check: verifyMergeSlot can take several seconds
+    // during which admission state can change — a new unresolved review thread
+    // can be opened, human approval withdrawn, or CI-recovery evidence updated.
+    // main is unchanged (checked just above) but those changes are invisible to
+    // it, so re-fetch the PR and re-run the full stale/admission/auto-merge
+    // gate immediately before the merge PUT.
+    const postSlotPr = await fetchCurrentPr(entry, index);
+    const postSlotStale = promotionStaleReason({
+      currentMain: mainAfterSlotVerify,
+      currentPr: postSlotPr,
+      expectedBase: mainAfterSlotVerify,
+      pr: entry,
+      repository,
+    });
+    if (postSlotStale) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; ${postSlotStale} (post-slot recheck); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    const postSlotAdmission = await eligible(postSlotPr);
+    if (!postSlotAdmission.ok) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number} reason=${postSlotAdmission.reason} (post-slot recheck); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    if (postSlotPr.auto_merge) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number}; auto_merge re-armed during slot verification; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    // Use postSlotPr.head.sha as the merge anchor. promotionStaleReason above
+    // already compares postSlotPr.head.sha against entry.head.sha (the
+    // batch-validated snapshot); if a push landed during the coordinator scan
+    // they diverge and we return false above with "PR head changed since
+    // validation". So if we reach here, postSlotPr.head.sha === entry.head.sha
+    // === freshPr.head.sha and all three are equivalent.
     const merge = await mergePullRequest(entry, {
-      expectedHeadSha: freshPr.head.sha,
+      expectedHeadSha: postSlotPr.head.sha,
       commitTitle: squashCommitTitle(freshPr),
       commitMessage: squashCommitMessage(freshPr),
     });
@@ -674,7 +798,13 @@ export async function promoteExactBatch({
         );
         return false;
       }
-      await publishPostcondition(candidateShas[index] || finalCandidateSha);
+      // Nothing landed for this entry -- the merge API call itself failed --
+      // so there is no landed commit to blame. Publish on `mainBeforeMerge`,
+      // the confirmed-current, real main commit asserted by the base-CAS
+      // check just above, not a candidate SHA: candidates are transported as
+      // opaque git blobs and are never real commit objects on GitHub, so a
+      // check-run attached to one would not resolve.
+      await publishPostcondition(mainBeforeMerge);
       throw new MergeTrainPromotionError(
         `promotion aborted at pr=#${entry.number}: ${merge.reason}`,
       );
@@ -1127,16 +1257,75 @@ export function buildDispatchBindings({ request, workflowDispatchToken, owner, r
       trigger,
     });
   }
-  async function dispatchValidation(sha, fingerprint, entries) {
+  async function dispatchValidation(sha, refName, attestationSha, fingerprint, entries) {
     await dispatchValidationWorkflow({
       request,
       token: workflowDispatchToken,
       owner,
       repo,
       sha,
+      refName,
+      attestationSha,
       fingerprint,
       entries,
     });
   }
   return { dispatchRecovery, dispatchValidation };
+}
+
+/**
+ * Wraps a `dispatchRecovery` function with a per-call admission check against
+ * `cap` outstanding CI Recovery runs.  Used by reconcile.mjs so that its four
+ * direct `dispatchRecovery` call sites are gated by the same cap applied by
+ * the router workflow.
+ *
+ * An in-process `pendingDispatches` counter tracks successful dispatches made
+ * during this reconcile.mjs invocation that may not yet be visible in the
+ * GitHub Actions API (due to visibility lag).  The admission check uses
+ * `outstandingCount + pendingDispatches >= cap` so that sequential calls in
+ * an admission loop cannot all see a stale API count of zero and each dispatch
+ * independently while exceeding `cap`.
+ *
+ * The check remains best-effort across processes: there is a narrow race
+ * window between this read and the router's own read/dispatch (the router's
+ * concurrency group serialises its own invocations but does not serialise
+ * against reconcile.mjs calls).  The window is acceptably small for the
+ * target repo scale; a durable reservation would be needed to close it
+ * completely.
+ *
+ * @param {object} opts
+ * @param {(prNumber: number, trigger: string) => Promise<void>} opts.dispatchRecovery
+ * @param {(token: string, owner: string, repo: string) => Promise<number>} opts.countRuns
+ * @param {number} opts.cap  Maximum outstanding runs to allow dispatch.
+ * @param {string} opts.token  GitHub token for the count request.
+ * @param {string} opts.owner  Repository owner.
+ * @param {string} opts.repo   Repository name.
+ * @returns {(prNumber: number, trigger: string) => Promise<void>}
+ */
+export function buildGatedDispatchRecovery({
+  dispatchRecovery,
+  countRuns,
+  cap,
+  token,
+  owner,
+  repo,
+}) {
+  // Tracks dispatches made during this invocation that may not yet be visible
+  // in the API. Incremented after a confirmed successful dispatch; never
+  // decremented so the reservation persists for all subsequent calls within
+  // the same reconcile.mjs run.
+  let pendingDispatches = 0;
+  return async function dispatchRecoveryGated(prNumber, trigger) {
+    const outstandingCount = await countRuns(token, owner, repo);
+    if (outstandingCount + pendingDispatches >= cap) {
+      process.stdout.write(
+        `backpressure: skipping dispatch pr=#${prNumber} trigger=${trigger} outstanding=${outstandingCount} pending=${pendingDispatches} cap=${cap} (10-min sweep will retry)\n`,
+      );
+      return;
+    }
+    await dispatchRecovery(prNumber, trigger);
+    // Reserve the slot only after a successful dispatch so a failed
+    // workflow_dispatch does not permanently consume capacity.
+    pendingDispatches++;
+  };
 }

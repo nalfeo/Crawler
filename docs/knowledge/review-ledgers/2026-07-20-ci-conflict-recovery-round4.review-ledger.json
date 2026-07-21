@@ -1,0 +1,10 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "ci-conflict-recovery-round4",
+  "task_title": "Recover CI conflict coordinator PR from reviewer findings (round 4)",
+  "estimated_apples": 2,
+  "apples_rescored_from": 4,
+  "rescore_reason": "Planned as a 4🍎 multi-session recovery covering coordinator trust, shrunk-group absorption, and integration coverage across multiple subsystems; the actual diff collapsed to two focused coordinator amendments (requireTrustedAuthor guard on recovery-state parsing, managed-group overlap absorption for shrunk clusters) plus a mock-server integration test suite — 3 files / one contained CI module, consistent with 2🍎.",
+  "stages": {}
+}

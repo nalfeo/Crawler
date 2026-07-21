@@ -34,7 +34,17 @@ interface WorkflowDoc {
     pull_request?: TriggerConfig;
     push?: TriggerConfig;
   };
+  concurrency?: {
+    group?: string;
+    'cancel-in-progress'?: string | boolean;
+  };
   jobs: Record<string, WorkflowJob>;
+}
+
+function getStepIf(job: WorkflowJob | undefined, stepName: string): string {
+  const step = job?.steps?.find((s) => s.name === stepName);
+  if (!step) throw new Error(`step "${stepName}" not found`);
+  return String(step.if ?? '').trim();
 }
 
 function loadWorkflow(relativePath: string): WorkflowDoc {
@@ -147,12 +157,17 @@ describe('ci workflow overhead reduction', () => {
 });
 
 describe('merge-gate aggregation policy', () => {
-  it('runs even when a required job fails (fail-closed: if: always())', () => {
+  it('runs when dependencies fail but is skipped on cancellation (if: !cancelled())', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const mergeGate = workflow.jobs['merge-gate'];
-    // Without `if: always()`, a failing needed job causes merge-gate to be skipped,
-    // which silently counts as PASS and lets broken changes through.
-    expect(mergeGate?.if).toBe('always()');
+    // !cancelled() preserves fail-closed behavior on dependency failures while
+    // allowing superseded PR runs to stop cleanly under concurrency cancellation.
+    expect(mergeGate?.if).toBe('${{ !cancelled() }}');
+  });
+
+  it('final ci job mirrors merge-gate cancellation policy', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml');
+    expect(workflow.jobs.ci?.if).toBe('${{ !cancelled() }}');
   });
 
   it('changes detection job failure blocks the gate (no allow_skipped)', () => {
@@ -245,5 +260,106 @@ describe('epic drift audit trigger scope', () => {
     expect(workflow.on.push?.paths).toEqual(expectedPaths);
     expect(workflow.on.pull_request?.paths).not.toContain('docs/knowledge/epics/**');
     expect(workflow.on.pull_request?.paths).toContain('tests/unit/agent/epic-status.test.ts');
+  });
+});
+
+describe('superseded-run concurrency cancellation policy (#1689)', () => {
+  // Both PR-triggered workflows must cancel superseded runs on the same PR while
+  // never cancelling across workflows or across different PRs, and must keep a
+  // distinct non-cancelling group for push/schedule/manual events.
+  for (const relPath of ['.github/workflows/ci.yml', '.github/workflows/security-review.yml']) {
+    it(`${relPath} defines a workflow-namespaced, PR-scoped concurrency group`, () => {
+      const workflow = loadWorkflow(relPath);
+      const group = String(workflow.concurrency?.group ?? '');
+      expect(group, `${relPath} must define a concurrency.group`).toBeTruthy();
+      // A stable per-workflow literal prefix prevents cross-workflow collisions.
+      const expectedPrefix =
+        relPath === '.github/workflows/ci.yml' ? 'crawler-ci-' : 'crawler-security-review-';
+      expect(group).toContain(expectedPrefix);
+      // PRs group by PR number so a newer synchronize cancels the older head.
+      expect(group).toContain("github.event_name == 'pull_request'");
+      expect(group).toContain("format('pr-{0}', github.event.pull_request.number)");
+      // Non-PR events fall back to a unique per-run group (never cancel).
+      expect(group).toContain('github.run_id');
+    });
+
+    it(`${relPath} only cancels in-progress runs for pull_request events`, () => {
+      const workflow = loadWorkflow(relPath);
+      const cancel = String(workflow.concurrency?.['cancel-in-progress'] ?? '');
+      // Must be gated on the event being a pull_request so push/schedule/manual
+      // runs are never cancelled mid-flight.
+      expect(cancel).toContain("github.event_name == 'pull_request'");
+    });
+  }
+});
+
+describe('impact-flag job gating contracts (#1697/#1698)', () => {
+  it('surface-targeted E2E jobs gate on per-surface visual flags', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml');
+    const gameIf = String(workflow.jobs['test-e2e-game']?.if ?? '').trim();
+    const assetIf = String(workflow.jobs['test-e2e-assets']?.if ?? '').trim();
+    const devtoolIf = String(workflow.jobs['test-e2e-devtools']?.if ?? '').trim();
+
+    expect(gameIf).toContain("game_visual_touched == 'true'");
+    expect(assetIf).toContain("asset_visual_touched == 'true'");
+    expect(devtoolIf).toContain("devtool_visual_touched == 'true'");
+
+    expect(gameIf).toContain("docs_only != 'true'");
+    expect(assetIf).toContain("docs_only != 'true'");
+    expect(devtoolIf).toContain("docs_only != 'true'");
+  });
+
+  it('security-review npm audit and dependency allowlist gate on dependencies_touched (fail-closed: != false)', () => {
+    const workflow = loadWorkflow('.github/workflows/security-review.yml');
+    const job = workflow.jobs['security-checks'];
+    for (const step of ['npm audit', 'Dependency allowlist']) {
+      const stepDef = job?.steps?.find((s) => s.name === step);
+      const condition = getStepIf(job, step);
+      // Fail-closed: only explicit 'false' skips; blank/missing output keeps the gate running.
+      expect(condition, `${step} must gate on dependencies_touched != false`).toContain(
+        "dependencies_touched != 'false'",
+      );
+      // The old fail-open form must not be present.
+      expect(condition, `${step} must not use fail-open == true`).not.toContain(
+        "dependencies_touched == 'true'",
+      );
+      // Non-PR events (schedule/workflow_dispatch) must not hard-fail the workflow
+      // on advisory findings; that is expressed via continue-on-error, not the if:.
+      expect(stepDef?.['continue-on-error'], `${step} must not hard-fail on non-PR events`).toBe(
+        "${{ github.event_name != 'pull_request' }}",
+      );
+    }
+  });
+
+  it('security-review secret scanning stays fail-closed (not gated on dependencies_touched)', () => {
+    const workflow = loadWorkflow('.github/workflows/security-review.yml');
+    const job = workflow.jobs['security-checks'];
+    // Secret scanning must run for every relevant PR change set regardless of
+    // dependency-manifest scope: it is split into a docs/asset-only variant and a
+    // non-docs variant (train-promotion + not-cancelled), never gated on
+    // dependencies_touched.
+    for (const step of [
+      'Scan for committed secrets (docs/asset-only)',
+      'Scan for committed secrets',
+    ]) {
+      const condition = getStepIf(job, step);
+      expect(condition, `${step} must gate on train_promoted`).toContain(
+        "train_promoted != 'true'",
+      );
+      expect(condition, `${step} must not be gated on dependencies_touched`).not.toContain(
+        'dependencies_touched',
+      );
+    }
+  });
+
+  it('security-checks job is skipped when the workflow is cancelled but runs on changes failure (if: !cancelled())', () => {
+    const workflow = loadWorkflow('.github/workflows/security-review.yml');
+    const securityChecks = workflow.jobs['security-checks'];
+    // !cancelled() skips the job when the concurrency policy cancels a superseded run
+    // (preserving the intent of the concurrency block), while still running when the
+    // changes job fails normally — preventing scope-detection failure from silently
+    // bypassing the security gate.
+    // always() would keep the job running even after cancellation, undermining #1689.
+    expect(securityChecks?.if).toBe('${{ !cancelled() }}');
   });
 });

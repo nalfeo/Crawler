@@ -1,5 +1,15 @@
 # Session Handoff: AI Sweep Eval bounded parallel-round redesign + safety-gate fixes
 
+> **Superseded (partially) — 2026-07-20:** the "≥90% wins **AND zero flips**"
+> qualification rule described below was replaced by a human-approved
+> **net-win** rule: incumbent win→loss flips are now ALLOWED as long as the
+> candidate's absolute total wins strictly exceed the incumbent's (still ≥90%
+> win-rate floor). The exact 292/300-vs-286/300-with-5-flips scenario this
+> handoff fixed (by rejecting it) now correctly QUALIFIES under the new rule.
+> See `docs/knowledge/handoffs/2026-07-20-ai-sweep-net-win-promotion.md` for
+> the follow-up change; this handoff's parallel-round-DAG redesign is
+> otherwise still accurate.
+
 ## Date
 
 2026-07-19

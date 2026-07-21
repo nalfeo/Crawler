@@ -602,6 +602,24 @@ test('broad sweeps suppress only healthy consistent owners', () => {
     isHealthyRecoveryOwner({
       prNumber: 42,
       state: automation,
+      headSha: 'abc',
+      now: new Date('2026-07-17T12:29:59.000Z'),
+    }),
+    true,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: automation,
+      headSha: 'def',
+      now: new Date('2026-07-17T12:29:59.000Z'),
+    }),
+    false,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: automation,
       now: new Date('2026-07-17T12:30:01.000Z'),
     }),
     false,

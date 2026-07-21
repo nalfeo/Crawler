@@ -104,7 +104,6 @@ import {
   questSystem,
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
-import { finalizeFloorAchievementProgressOnExit } from './systems/achievementSystem.js';
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
@@ -131,6 +130,8 @@ import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { applyStartPlayerLevel } from './scenarios/playerLevelProgression.js';
 import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolicy.js';
 import { restorePlayerCarryover, type PlayerCarryoverSnapshot } from './playerCarryover.js';
+import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
+import type { AchievementCatalogRegistry } from '../shared/achievements.js';
 
 const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
@@ -740,7 +741,11 @@ export function floor2VictorySystem(world: GameWorld): void {
  * Sets `staircaseDiscovered` and transitions `world.state` to `'safe_room'`.
  * Returns `true` on success, `false` if preconditions not met.
  */
-export function confirmFloor2StairDescend(world: GameWorld, _playerEid: number): boolean {
+export function confirmFloor2StairDescend(
+  world: GameWorld,
+  _playerEid: number,
+  achievementRegistry?: AchievementCatalogRegistry,
+): boolean {
   const floor2State = world.floorExtendedState?.familyState;
   if (!floor2State || world.state !== 'playing') return false;
   if (!floor2State.staircaseSpawned || !floor2State.staircaseUnlocked) return false;
@@ -750,7 +755,7 @@ export function confirmFloor2StairDescend(world: GameWorld, _playerEid: number):
   // The visual scene switches to safe_room immediately after this callback returns,
   // so complete any goal-backed finale quests before the state flip.
   questSystem(world);
-  finalizeFloorAchievementProgressOnExit(world);
+  evaluateAchievementUnlocksForPhase(world, 'run_end_clear', achievementRegistry);
   world.state = 'safe_room';
   return true;
 }
