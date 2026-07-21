@@ -26,6 +26,7 @@ import {
   ESCALATION_LABEL,
   LEADER_LABEL,
   ORDER_WAIT_LABEL,
+  changeStatsFromFiles,
   ciFilesFor,
   discoverCoordinationClusters,
   dispatchKey,
@@ -251,15 +252,16 @@ async function checkRunsFor(sha) {
 }
 
 function normalizePull(pull, paths) {
+  const { additions, deletions, changedFiles } = changeStatsFromFiles(paths);
   return {
     number: pull.number,
     title: pull.title,
     state: pull.state,
     draft: pull.draft,
     createdAt: pull.created_at,
-    additions: Number(pull.additions || 0),
-    deletions: Number(pull.deletions || 0),
-    changedFiles: Number(pull.changed_files || paths.length),
+    additions,
+    deletions,
+    changedFiles,
     nodeId: pull.node_id,
     autoMerge: pull.auto_merge,
     headSha: pull.head?.sha,

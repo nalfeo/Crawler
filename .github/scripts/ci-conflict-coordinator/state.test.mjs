@@ -20,6 +20,7 @@ import {
   COORDINATOR_MARKER,
   DISPATCH_LEASE_MS,
   MAX_OVERLAP_FILES,
+  changeStatsFromFiles,
   ciFilesFor,
   clusterPullRequests,
   discoverCoordinationClusters,
@@ -69,6 +70,17 @@ test('CI scope covers workflows, scripts, actions, and agent automation', () => 
       '.github/workflows/ci.yml',
       'scripts/agent/verify-fast.sh',
     ],
+  );
+});
+
+test('change stats derive from per-file inventory', () => {
+  assert.deepEqual(
+    changeStatsFromFiles([
+      { filename: '.github/workflows/ci.yml', additions: 7, deletions: 2 },
+      { filename: '.github/scripts/reconcile.mjs', additions: 3, deletions: 5 },
+      { filename: '.github/actions/setup/action.yml' },
+    ]),
+    { additions: 10, deletions: 7, changedFiles: 3 },
   );
 });
 

@@ -53,6 +53,17 @@ export function ciFilesFor(paths) {
   return [...new Set((paths || []).map(normalizedPath).filter(isCiCoordinationPath))].sort();
 }
 
+export function changeStatsFromFiles(files) {
+  const inventory = Array.isArray(files) ? files : [];
+  let additions = 0;
+  let deletions = 0;
+  for (const file of inventory) {
+    additions += Number(file?.additions || 0);
+    deletions += Number(file?.deletions || 0);
+  }
+  return { additions, deletions, changedFiles: inventory.length };
+}
+
 function overlap(left, right) {
   const rightFiles = new Set(right.ciFiles);
   return left.ciFiles.some((file) => rightFiles.has(file));
@@ -376,7 +387,8 @@ export function validateCoordinatorState(state) {
   // (which may be a bounded sample of the full list).
   if (
     state.overlapFilesCount !== undefined &&
-    (!Number.isInteger(state.overlapFilesCount) || state.overlapFilesCount < state.overlapFiles.length)
+    (!Number.isInteger(state.overlapFilesCount) ||
+      state.overlapFilesCount < state.overlapFiles.length)
   ) {
     throw new Error('CI conflict state has invalid overlapFilesCount');
   }
@@ -412,7 +424,8 @@ export function renderCoordinatorComment(state) {
     );
   // overlapFiles is already bounded to MAX_OVERLAP_FILES; overlapFilesCount holds
   // the original total so we can render an accurate "…and N more" note.
-  const hiddenCount = (state.overlapFilesCount ?? state.overlapFiles.length) - state.overlapFiles.length;
+  const hiddenCount =
+    (state.overlapFilesCount ?? state.overlapFiles.length) - state.overlapFiles.length;
   const overlapLines =
     state.overlapFiles.length > 0
       ? [

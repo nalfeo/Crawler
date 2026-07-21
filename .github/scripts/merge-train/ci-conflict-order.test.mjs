@@ -488,3 +488,58 @@ test('ciConflictOrderReasonForPromotion uses file inventory for ranking regardle
     rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('ciConflictOrderReasonForPromotion applies changed-line tiebreaker from file inventory', async () => {
+  const { tmpDir, workDir, baseSha, pr1Sha, pr2Sha, pr3Sha } = setupRepo();
+  try {
+    const pull1 = makeListShapePull(1, pr1Sha, '2026-07-20T00:00:00Z');
+    const pull2 = makeListShapePull(2, pr2Sha, '2026-07-20T00:01:00Z');
+    const candidatePull3 = {
+      ...makeListShapePull(3, pr3Sha, '2026-07-20T00:02:00Z'),
+      additions: 1,
+      deletions: 1,
+      changed_files: 2,
+    };
+    const pulls = [pull1, pull2, candidatePull3];
+    const files = new Map([
+      [
+        1,
+        [
+          { filename: '.github/workflows/a.yml', additions: 1, deletions: 1 },
+          { filename: '.github/workflows/b.yml', additions: 1, deletions: 1 },
+        ],
+      ],
+      [2, [{ filename: '.github/workflows/b.yml', additions: 1, deletions: 0 }]],
+      [
+        3,
+        [
+          { filename: '.github/workflows/a.yml', additions: 12, deletions: 4 },
+          { filename: '.github/workflows/b.yml', additions: 10, deletions: 6 },
+        ],
+      ],
+    ]);
+
+    const reason = await ciConflictOrderReasonForPromotion({
+      pullRequest: candidatePull3,
+      baseSha,
+      owner: OWNER,
+      repo: REPO,
+      repository: REPOSITORY,
+      trustedAppId: TRUSTED_APP_ID,
+      requiredChecks: ['ci', 'Security checks'],
+      git: (args, options) => git(workDir, args, options),
+      fetchOpenPulls: async () => pulls,
+      fetchPullFiles: async (number) => files.get(number) || [],
+      fetchComments: async () => [],
+      fetchCheckRuns: async () => [
+        { name: 'ci', status: 'completed', conclusion: 'success' },
+        { name: 'Security checks', status: 'completed', conclusion: 'success' },
+      ],
+      fetchClosingIssues: async () => [],
+    });
+
+    assert.equal(reason, null);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

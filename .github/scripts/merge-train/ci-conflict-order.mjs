@@ -1,5 +1,6 @@
 import {
   COORDINATOR_MARKER,
+  changeStatsFromFiles,
   ciFilesFor,
   discoverCoordinationClusters,
   mergeCoordinationGroups,
@@ -34,6 +35,7 @@ function pathsForFiles(files) {
 
 function normalizePull(pull, files) {
   const paths = pathsForFiles(files);
+  const { additions, deletions, changedFiles } = changeStatsFromFiles(files);
   return {
     number: pull.number,
     title: pull.title,
@@ -44,12 +46,12 @@ function normalizePull(pull, files) {
     // deletions, or changed_files. The candidate PR may be replaced with a
     // full GET response that does carry them, creating an asymmetric snapshot
     // where different candidates each rank themselves first on the
-    // additions+deletions tiebreaker. Derive all three fields uniformly from
-    // the file inventory (already fetched for every pull) so ranking is
+    // additions+deletions tiebreaker. Derive ranking fields uniformly from the
+    // file inventory (already fetched for every pull) so ranking is
     // deterministic regardless of which REST shape is passed.
-    additions: 0,
-    deletions: 0,
-    changedFiles: paths.length,
+    additions,
+    deletions,
+    changedFiles,
     nodeId: pull.node_id,
     autoMerge: pull.auto_merge,
     headSha: pull.head?.sha,
