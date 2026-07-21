@@ -780,6 +780,12 @@ export async function promoteExactBatch({
       );
       return false;
     }
+    // Use postSlotPr.head.sha as the merge anchor. promotionStaleReason above
+    // already compares postSlotPr.head.sha against entry.head.sha (the
+    // batch-validated snapshot); if a push landed during the coordinator scan
+    // they diverge and we return false above with "PR head changed since
+    // validation". So if we reach here, postSlotPr.head.sha === entry.head.sha
+    // === freshPr.head.sha and all three are equivalent.
     const merge = await mergePullRequest(entry, {
       expectedHeadSha: postSlotPr.head.sha,
       commitTitle: squashCommitTitle(freshPr),
