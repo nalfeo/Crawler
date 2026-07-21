@@ -3,6 +3,7 @@ const graphqlUrl = process.env.GITHUB_GRAPHQL_URL || 'https://api.github.com/gra
 
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRY_ATTEMPTS = 2;
+const MAX_TOTAL_ATTEMPTS = MAX_RETRY_ATTEMPTS + 1;
 const RETRY_DELAY_MS = Number(process.env.GITHUB_REQUEST_RETRY_DELAY_MS ?? 1000);
 const MAX_RETRY_DELAY_MS = Number(process.env.GITHUB_REQUEST_MAX_RETRY_DELAY_MS ?? 30000);
 
@@ -70,7 +71,7 @@ function headers(token, extra = {}) {
 export async function request(token, path, options = {}) {
   const method = options.method || 'GET';
   const canRetry = method === 'GET';
-  for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < MAX_TOTAL_ATTEMPTS; attempt++) {
     if (attempt > 0) {
       await sleep(RETRY_DELAY_MS * Math.pow(2, attempt - 1));
     }
@@ -151,8 +152,8 @@ export async function graphql(token, query, variables = {}) {
   const isMutation = /^mutation(?:\s|[{(])/i.test(operation);
   // Only recognized query forms are retried; comments/fragments and other
   // unrecognized documents fail closed to avoid replaying a mutation.
-  const isQuery = !isMutation && /^(?:query(?:\s|[{(])|{)/i.test(operation);
-  for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
+  const isQuery = !isMutation && /^(?:query[\s{(]|{)/i.test(operation);
+  for (let attempt = 0; attempt < MAX_TOTAL_ATTEMPTS; attempt += 1) {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: headers(token, { 'Content-Type': 'application/json' }),
