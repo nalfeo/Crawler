@@ -524,6 +524,7 @@ export async function promoteExactBatch({
   positions = entries.map((_, index) => index + 1),
   recordMapping = () => {},
   reattestHealth = async () => true,
+  verifyMergeSlot = async () => null,
   proofPollDelaysMs,
   proofSleep,
 }) {
@@ -719,6 +720,18 @@ export async function promoteExactBatch({
     if (freshPr.auto_merge) {
       process.stdout.write(
         `blocked promotion pr=#${entry.number}; auto_merge re-armed before merge; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    const mergeSlotReason = await verifyMergeSlot({
+      entry,
+      index,
+      currentPr: freshPr,
+      currentMain: mainBeforeMerge,
+    });
+    if (mergeSlotReason) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number} reason=${mergeSlotReason}; rebuilding next reconcile\n`,
       );
       return false;
     }

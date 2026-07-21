@@ -135,6 +135,7 @@ function runPromotion(overrides = {}) {
     },
     recordMapping: (number, sha) => records.mapping.push({ number, sha }),
     reattestHealth: overrides.reattestHealth || (async () => true),
+    verifyMergeSlot: overrides.verifyMergeSlot || (async () => null),
     proofSleep: async () => {},
   });
 
@@ -367,6 +368,16 @@ test('promoteExactBatch pauses when main health regresses at final reattestation
   const { promise, records } = runPromotion({ reattestHealth: async () => false });
   assert.equal(await promise, false);
   assert.equal(records.merges.length, 0);
+});
+
+test('promoteExactBatch blocks a merge when the final merge-slot recheck fails', async () => {
+  const { promise, records } = runPromotion({
+    entries: [1],
+    candidateShas: [CAND1],
+    verifyMergeSlot: async () => 'ci-conflict coordinator currently selects #2',
+  });
+  assert.equal(await promise, false);
+  assert.deepEqual(records.merges, []);
 });
 
 test('promoteExactBatch fails closed and publishes postcondition when final main guard sees main moved after promotion', async () => {
