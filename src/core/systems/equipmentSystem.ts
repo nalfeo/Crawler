@@ -611,39 +611,53 @@ function equipmentSourceId(instanceId: EquipmentInstanceId): string {
   return `equipment:${instanceId}`;
 }
 
-function commitEquipInstance(
+/**
+ * Commit phase shared by `equip` and `equipFromBag` for static items.
+ * Allocates an instance id, writes slots and instance map, recomputes stats,
+ * grants status effects, and activates the weapon — in the canonical order
+ * established by `equip`.
+ *
+ * Callers are responsible for all pre-validation and bag mutations before
+ * invoking this helper.
+ */
+function commitStaticEquipInstance(
   world: GameWorld,
   entity: number,
   state: EquipmentState,
-  instance: EquipmentInstance,
-  options?: { persistLegacyInstance?: boolean },
-): void {
-  for (const slotId of instance.def.slots) {
-    state.equipped[slotId] = instance.instanceId;
+  def: EquipmentItemDef,
+): EquipmentInstanceId {
+  const instanceId = getNextInstanceId(world);
+  const instance: EquipmentInstance = { instanceId, def };
+
+  for (const slotId of def.slots) {
+    state.equipped[slotId] = instanceId;
   }
-  if (options?.persistLegacyInstance !== false) {
-    if (typeof instance.instanceId !== 'number') {
-      throw new Error('commitEquipInstance expected a numeric legacy instance id');
-    }
-    state.instances.set(instance.instanceId, instance);
-  }
+  state.instances.set(instanceId, instance);
 
   recomputeEffectiveStats(world, entity);
 
-  for (const spec of instance.def.grantsStatusEffects ?? []) {
+  // Grant any timed/tracked status effects this item provides. Specs were
+  // pre-validated in canEquip (validateItemDef), so these writes are infallible
+  // and the caller stays atomic. Both sourceType and sourceId are normalized to
+  // this equipment instance so unequip() clears them symmetrically.
+  for (const spec of def.grantsStatusEffects ?? []) {
     applyStatusEffect(world, entity, {
       ...spec,
       sourceType: 'equipment',
-      sourceId: equipmentSourceId(instance.instanceId),
+      sourceId: equipmentSourceId(instanceId),
     });
   }
 
-  if (instance.def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
-    const weaponDef = getWeaponDef(instance.def.weaponId);
+  // Weapon-typed equipment: activate the underlying WeaponDef when the player
+  // equips it. Non-player entities silently skip this.
+  if (def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    const weaponDef = getWeaponDef(def.weaponId);
     if (weaponDef !== undefined) {
       setActiveWeaponDef(world, weaponDef);
     }
   }
+
+  return instanceId;
 }
 
 /** Equip an item. Atomic — either fully succeeds or no state change. */
@@ -667,9 +681,7 @@ export function equip(
   }
 
   const state = getOrCreateState(world, entity);
-  const instanceId = getNextInstanceId(world);
-  const instance: EquipmentInstance = { instanceId, def: itemDef };
-  commitEquipInstance(world, entity, state, instance);
+  const instanceId = commitStaticEquipInstance(world, entity, state, itemDef);
 
   return { ok: true, instanceId };
 }
@@ -699,9 +711,6 @@ export function unequip(
   if (!instance) return { ok: false, reason: 'Instance not found' };
 
   let generatedBagEntry: GeneratedEquipmentInventoryEntry | undefined;
-  let bagWithValidatedGeneratedOwnership:
-    | NonNullable<ReturnType<GameWorld['inventories']['get']>>
-    | undefined;
   if (typeof instId !== 'number') {
     const bag = world.inventories.get(entity);
     if (!bag) return { ok: false, reason: 'Entity has no inventory' };
@@ -712,7 +721,6 @@ export function unequip(
     if (hasGeneratedEquipmentReference(bag, instId)) {
       return { ok: false, reason: `Generated equipment already exists in bag: ${instId}` };
     }
-    bagWithValidatedGeneratedOwnership = bag;
     generatedBagEntry = generatedInventoryEntry(instId);
   }
 
@@ -740,11 +748,8 @@ export function unequip(
     clearActiveWeaponDef(world);
   }
 
-  if (generatedBagEntry && bagWithValidatedGeneratedOwnership) {
-    addGeneratedEquipmentReference(
-      bagWithValidatedGeneratedOwnership,
-      generatedBagEntry.instanceKey,
-    );
+  if (generatedBagEntry) {
+    addGeneratedEquipmentReference(world.inventories.get(entity)!, generatedBagEntry.instanceKey);
   }
   recomputeEffectiveStats(world, entity);
   return {
@@ -978,9 +983,7 @@ export function equipFromBag(
     prepared.displaced,
   );
   removeItem(bag, itemId, 1);
-  const instanceId = getNextInstanceId(world);
-  const instance: EquipmentInstance = { instanceId, def };
-  commitEquipInstance(world, entity, state, instance);
+  const instanceId = commitStaticEquipInstance(world, entity, state, def);
 
   return {
     ok: true,

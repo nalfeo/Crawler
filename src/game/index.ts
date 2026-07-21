@@ -100,6 +100,7 @@ export {
 } from './systems/abilitySystem.js';
 export {
   achievementSystem,
+  collectCurrentFloorAchievementFacts,
   evaluateAchievementUnlocksForPhase,
   unlockAchievement,
 } from './systems/achievementSystem.js';

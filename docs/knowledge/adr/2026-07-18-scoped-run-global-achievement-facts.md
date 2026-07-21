@@ -24,12 +24,15 @@ Achievement evaluation was hard-wired to Floor 1 with a single catalog and floor
 4. Constrain `current_run` scoped rules to a run-global-safe fact subset at catalog-parse time.
 5. Standardize floor-exit ordering with a shared helper that evaluates `run_end_clear` rules before snapshotting floor facts into run-global state.
 6. Add an empty Floor 2 catalog seam and floor2 fact-collection seam now, without shipping new achievement content.
+7. Preserve `registry.all` authored order when evaluating mixed `floor` and `current_run` achievements, choosing the fact snapshot per achievement instead of batching by scope.
+8. Treat `clearedFloorCount` as a run-global-safe fact so authored cross-floor clear-count achievements can parse and evaluate.
 
 ## Consequences
 
 ### Positive
 
 - Floor-scoped lookup/evaluation can stay isolated per floor while still supporting run-global achievements.
+- Mixed-scope unlock toasts stay aligned with authored registry order even when a later floor unlocks an earlier-floor `current_run` definition.
 - Run-global progress survives floor transitions deterministically and resets automatically on new run creation.
 - Existing Floor 1 achievements remain compatible without catalog rewrites.
 - Exit-ordering is explicit and reusable across floor transitions.
@@ -38,6 +41,7 @@ Achievement evaluation was hard-wired to Floor 1 with a single catalog and floor
 
 - Achievement contracts and validation logic are stricter, so malformed future catalog entries fail fast.
 - Additional state is now carried in the player carryover snapshot payload.
+- Runtime evaluation must preserve registry order while still switching between floor-local and effective-run facts.
 
 ### Risks
 

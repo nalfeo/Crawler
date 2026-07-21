@@ -85,7 +85,7 @@ describe('ci workflow overhead reduction', () => {
     );
     expect(setupNodeStep?.with?.['install-playwright']).toBe('true');
 
-    // ci-advisory: lightweight checks only — no coverage (that lives in ci-coverage)
+    // ci-advisory: lightweight checks — no coverage (that lives in ci-coverage)
     const advisory = workflow.jobs['ci-advisory'];
     expect(advisory?.steps?.find((step) => step.name === 'Dead code detection')).toBeTruthy();
     expect(advisory?.steps?.find((step) => step.name === 'Security audit')).toBeTruthy();
