@@ -355,6 +355,23 @@ async function targetHasHealthyOwner(number) {
   return context.ownershipError || context.healthy;
 }
 
+async function liveHumanApprovalRejection(
+  number,
+  { pull = null, comments = null, closingIssues = null } = {},
+) {
+  const livePull = pull || (await fetchLivePull(number));
+  const [liveComments, liveClosingIssues] = await Promise.all([
+    comments ? Promise.resolve(comments) : commentsFor(number),
+    closingIssues ? Promise.resolve(closingIssues) : listClosingIssues(null, owner, repo, number),
+  ]);
+  return humanApprovalRejection({
+    pullRequest: livePull,
+    closingIssues: liveClosingIssues,
+    comments: liveComments,
+    ownerLogin: owner,
+  });
+}
+
 async function claimOwnerFence(number) {
   const labelName = ownerLabel(number);
   try {
@@ -420,10 +437,37 @@ async function closeDuplicate(proof) {
       process.stdout.write(`retain pr=#${proof.number} reason=supersession-proof-drifted\n`);
       return false;
     }
-    await request(token, `/repos/${owner}/${repo}/pulls/${proof.number}`, {
-      method: 'PATCH',
-      body: { state: 'closed' },
+    const liveTargetForApproval = await fetchLivePull(proof.number);
+    const approvalRejection = await liveHumanApprovalRejection(proof.number, {
+      pull: liveTargetForApproval,
     });
+    if (approvalRejection) {
+      process.stdout.write(`retain pr=#${proof.number} reason=human-approval-required\n`);
+      return false;
+    }
+
+    let closeRequestError = null;
+    try {
+      await request(token, `/repos/${owner}/${repo}/pulls/${proof.number}`, {
+        method: 'PATCH',
+        body: { state: 'closed' },
+      });
+    } catch (error) {
+      closeRequestError = error;
+      let postErrorPull = null;
+      try {
+        postErrorPull = await fetchLivePull(proof.number);
+      } catch (readError) {
+        // Close may have applied even though the response failed. Continue into
+        // the post-close reopen safety flow and mark reads as unverifiable.
+        process.stdout.write(
+          `warn: close response for PR #${proof.number} failed and post-error state read failed: ${readError.message}\n`,
+        );
+      }
+      if (postErrorPull && postErrorPull.state !== 'closed') {
+        throw error;
+      }
+    }
     // Post-close revalidation: if main or the leader head has shifted between
     // the pre-check reads and the close API call, reopen the PR and let the
     // next coordinator run re-evaluate. GitHub's close endpoint has no CAS, so
@@ -431,22 +475,36 @@ async function closeDuplicate(proof) {
     // post-close read as equally unsafe: the PR is already closed, and without
     // a confirmed reopen it would disappear from future coordinator discovery.
     let postCloseReopenReason = null;
-    let postCloseUnsafeContext = 'post-close proof drift';
+    let postCloseUnsafeContext = closeRequestError
+      ? `post-close proof revalidation after ambiguous close failed: ${closeRequestError.message}`
+      : 'post-close proof drift';
     try {
-      const [postMain, postTarget, postLeader] = await Promise.all([
-        fetchBaseSha(),
-        fetchLivePull(proof.number),
-        proof.leaderHead ? fetchLivePull(proof.leaderHead.number) : Promise.resolve(null),
-      ]);
+      const [postMain, postTarget, postLeader, postComments, postClosingIssues] = await Promise.all(
+        [
+          fetchBaseSha(),
+          fetchLivePull(proof.number),
+          proof.leaderHead ? fetchLivePull(proof.leaderHead.number) : Promise.resolve(null),
+          commentsFor(proof.number),
+          listClosingIssues(null, owner, repo, proof.number),
+        ],
+      );
       const postLeaderSha = postLeader?.head?.sha ?? null;
       const postTargetDrifted =
         postTarget?.head?.sha !== proof.targetHead ||
         postTarget?.base?.ref !== BASE_REF ||
         postTarget?.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase();
+      const postApprovalRejection = await liveHumanApprovalRejection(proof.number, {
+        pull: postTarget,
+        comments: postComments,
+        closingIssues: postClosingIssues,
+      });
       const proofDrifted =
         postMain !== currentMain ||
         postTargetDrifted ||
         (proof.leaderHead && postLeaderSha !== proof.leaderHead.headSha);
+      if (!postCloseReopenReason && postApprovalRejection) {
+        postCloseReopenReason = 'post-close-human-approval-required';
+      }
       if (proofDrifted) {
         postCloseReopenReason = 'post-close-proof-drifted';
       }

@@ -213,6 +213,8 @@ async function runScript(port, workDir, extraEnv = {}) {
  *   after the initial open-PR snapshot but before active-slot exposure.
  * @param {string} [opts.postClosePr3Sha]  - SHA returned for PR3 in post-close reads;
  *   defaults to pr3Sha (no drift). Pass a different value to simulate drift.
+ * @param {number} [opts.closeStatus]      - HTTP status for PATCH {state:closed};
+ *   defaults to 200. Values >=400 simulate an ambiguous close response.
  * @param {number} [opts.reopenStatus]     - HTTP status to return for the reopen PATCH;
  *   defaults to 200 (success).
  * @param {number} [opts.fenceReleaseStatus] - HTTP status to return for the owner-fence
@@ -226,15 +228,19 @@ function buildRoutes({
   livePr1Sha = pr1Sha,
   postClosePr3Sha,
   postClosePr3Status = 200,
+  closeStatus = 200,
   reopenStatus = 200,
   fenceReleaseStatus = 204,
   pr3HeadRef = undefined,
   pr3Labels = [],
+  pr3LabelsAfterGetCount = null,
+  pr3LabelsAfter = [{ name: 'human-approval-required' }],
   pr3ClosingIssues = [],
 }) {
   const driftedPr3Sha = postClosePr3Sha ?? pr3Sha;
   let pr3PatchCount = 0;
   let pr3GetCount = 0;
+  let pr3Closed = false;
 
   function livePull(number, sha, extraFields = {}) {
     return {
@@ -320,34 +326,39 @@ function buildRoutes({
     // Live PR reads for PR2
     [`GET /repos/${OWNER}/${REPO}/pulls/2`]: () => ({ body: livePull(2, pr2Sha) }),
 
-    // Live PR reads for PR3: pre-close uses pr3Sha; post-close uses driftedPr3Sha
+    // Live PR reads for PR3: pre-close uses pr3Sha; once closed, post-close
+    // reads use driftedPr3Sha and may fail per postClosePr3Status.
     [`GET /repos/${OWNER}/${REPO}/pulls/3`]: () => {
       pr3GetCount += 1;
-      // The first two GETs are in closeDuplicate's pre-checks:
-      //   1. targetHasHealthyOwner
-      //   2. mapLimit live pull fetch
-      // The third GET is the post-close revalidation read.
-      if (pr3GetCount >= 3 && postClosePr3Status >= 400) {
+      if (pr3Closed && postClosePr3Status >= 400) {
         return {
           status: postClosePr3Status,
           body: { message: 'post-close pull fetch failed' },
         };
       }
-      const sha = pr3GetCount >= 3 ? driftedPr3Sha : pr3Sha;
-      return { body: pr3Pull(sha) };
+      const sha = pr3Closed ? driftedPr3Sha : pr3Sha;
+      const labels =
+        pr3LabelsAfterGetCount !== null && pr3GetCount >= pr3LabelsAfterGetCount
+          ? pr3LabelsAfter
+          : pr3Labels;
+      return { body: pr3Pull(sha, { labels, state: pr3Closed ? 'closed' : 'open' }) };
     },
 
     // PATCH to close/reopen PR3
     [`PATCH /repos/${OWNER}/${REPO}/pulls/3`]: (_url, body) => {
       pr3PatchCount += 1;
-      if (body?.state === 'closed')
-        return { status: 200, body: pr3Pull(pr3Sha, { state: 'closed' }) };
+      if (body?.state === 'closed') {
+        pr3Closed = true;
+        return { status: closeStatus, body: pr3Pull(pr3Sha, { state: 'closed' }) };
+      }
       // Reopen call
-      if (pr3PatchCount >= 2)
+      if (pr3PatchCount >= 2) {
+        if (reopenStatus < 400) pr3Closed = false;
         return {
           status: reopenStatus,
           body: { message: reopenStatus === 200 ? 'ok' : 'server error' },
         };
+      }
       return { status: 200, body: pr3Pull(pr3Sha) };
     },
 
@@ -684,6 +695,88 @@ test('UNSAFE reopen error is preserved even when owner-fence release also fails'
     /warn: owner-fence release failed for PR #3/,
     'fence-release failure must be logged as a warning',
   );
+});
+
+test('coordinator runs post-close safety flow when close response is ambiguous', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      closeStatus: 500,
+      postClosePr3Sha: 'f'.repeat(40),
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const closePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'closed',
+  );
+  assert.ok(closePatch, 'expected close PATCH to be attempted');
+
+  const reopenPatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'open',
+  );
+  assert.ok(reopenPatch, 'expected reopen after ambiguous close response and detected drift');
+  assert.match(stdout, /reopen pr=#3 reason=post-close-proof-drifted/);
+});
+
+test('coordinator rechecks human approval inside close fence before closing duplicate', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      // Label appears after initial snapshot, before close mutation.
+      pr3LabelsAfterGetCount: 3,
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const closePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'closed',
+  );
+  assert.equal(
+    closePatch,
+    undefined,
+    'must not close duplicate once live human-approval requirement appears before close',
+  );
+  assert.match(stdout, /retain pr=#3 reason=human-approval-required/);
 });
 
 test('coordinator retains superseded duplicate with nightly-balance branch (human-approval-required, label absent)', async (t) => {

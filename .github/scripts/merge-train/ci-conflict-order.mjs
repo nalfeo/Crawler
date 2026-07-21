@@ -300,20 +300,83 @@ export async function ciConflictOrderReasonForPromotion({
     return `ci-conflict coordinator currently selects #${selection.active.number}`;
   }
 
-  // Final binding revalidation: re-fetch all group member heads immediately
-  // before returning success to catch a synchronize event that occurred during
-  // the scan. Any head or membership drift fails closed, forcing a rebuild.
-  const finalOpenPulls = await fetchOpenPulls();
-  const finalHeadByNumber = new Map(
-    finalOpenPulls.map((pull) => [pull.number, pull.head?.sha]),
+  // Final binding revalidation: re-scan the candidate's live coordination group
+  // and ranking immediately before returning success. Any membership, head, or
+  // green-status drift fails closed and forces a rebuild.
+  const finalOpenPulls = (await fetchOpenPulls()).filter(
+    (pull) =>
+      !pull.draft &&
+      String(pull.head?.repo?.full_name ?? '').toLowerCase() === repository.toLowerCase(),
   );
-  for (const pull of group.pulls) {
-    const liveHead = finalHeadByNumber.get(pull.number);
-    if (!liveHead) {
-      return `ci-conflict coordinator group member #${pull.number} disappeared during verification`;
+  if (!finalOpenPulls.some((pull) => pull.number === pullRequest.number)) {
+    return `ci-conflict coordinator candidate #${pullRequest.number} disappeared during verification`;
+  }
+  const finalFilesByNumber = new Map();
+  const finalCommentsByNumber = new Map();
+  await mapLimit(finalOpenPulls, 6, async (pull) => {
+    finalFilesByNumber.set(pull.number, await fetchPullFiles(pull.number));
+  });
+  await mapLimit(finalOpenPulls, 4, async (pull) => {
+    finalCommentsByNumber.set(pull.number, await fetchComments(pull.number));
+  });
+  const finalNormalizedPulls = finalOpenPulls.map((pull) =>
+    normalizePull(pull, finalFilesByNumber.get(pull.number) || []),
+  );
+  const finalStates = finalNormalizedPulls
+    .map(
+      (pull) =>
+        singleManagedComment(
+          finalCommentsByNumber.get(pull.number),
+          COORDINATOR_MARKER,
+          parseCoordinatorComment,
+          pull.number,
+          trustedAppId,
+          { requireCoordinatorApp: true },
+        )?.state,
+    )
+    .filter(Boolean);
+  const finalDiscovered = discoverCoordinationClusters(finalNormalizedPulls, finalStates);
+  const finalGroups = mergeCoordinationGroups({
+    discoveredClusters: finalDiscovered,
+    existingStates: finalStates,
+    openPulls: finalNormalizedPulls,
+  });
+  const finalGroup = finalGroups.find((candidate) =>
+    candidate.pulls.some((pull) => pull.number === pullRequest.number),
+  );
+  if (!finalGroup) {
+    return `ci-conflict coordinator candidate #${pullRequest.number} left coordinated groups during verification`;
+  }
+  const initialMembers = new Set(group.pulls.map((pull) => pull.number));
+  const finalMembers = new Set(finalGroup.pulls.map((pull) => pull.number));
+  if (
+    initialMembers.size !== finalMembers.size ||
+    [...initialMembers].some((number) => !finalMembers.has(number))
+  ) {
+    return 'ci-conflict coordinator group membership changed during verification';
+  }
+  await mapLimit(finalGroup.pulls, 6, async (pull) => {
+    pull.green = successfulChecks(await fetchCheckRuns(pull.headSha), requiredChecks);
+  });
+  for (const pull of finalGroup.pulls) {
+    const prior = group.pulls.find((candidate) => candidate.number === pull.number);
+    if (!prior) {
+      return 'ci-conflict coordinator group membership changed during verification';
     }
-    if (liveHead !== pull.headSha) {
-      return `ci-conflict coordinator group member #${pull.number} head drifted (was ${pull.headSha}, now ${liveHead})`;
+    if (pull.headSha !== prior.headSha) {
+      return `ci-conflict coordinator group member #${pull.number} head drifted (was ${prior.headSha}, now ${pull.headSha})`;
+    }
+    if (pull.green !== prior.green) {
+      return `ci-conflict coordinator group member #${pull.number} check status changed during verification`;
+    }
+  }
+  const finalRanked = rankPullRequests(finalGroup.pulls);
+  if (finalRanked.length !== ranked.length) {
+    return 'ci-conflict coordinator ranking changed during verification';
+  }
+  for (let index = 0; index < ranked.length; index += 1) {
+    if (finalRanked[index].number !== ranked[index].number) {
+      return 'ci-conflict coordinator ranking changed during verification';
     }
   }
   return null;

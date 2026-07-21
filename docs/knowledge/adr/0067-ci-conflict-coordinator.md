@@ -119,10 +119,11 @@ which performs a live coordinator scan:
 After the callback returns (or raises), `main` is re-read: if it advanced during
 the scan, promotion is aborted and the train rebuilds on the next reconcile.
 
-**Latency boundary**: the scan can take several seconds (one HTTP round-trip per
-cluster member for files, comments, checks, and one `git fetch` per member). This
-delays each merge but does not block the scheduler; the train issues the next
-reconcile immediately after the abort.
+**Latency boundary**: the scan can take several seconds because it first inventories
+all open, non-draft, same-repository PRs (one list call, then files/comments calls
+per PR) to discover clusters, then performs per-cluster-member check-run fetches and
+`git fetch` proof reads. This delays each merge but does not block the scheduler; the
+train issues the next reconcile immediately after the abort.
 
 **Failure boundary**: if `verifyMergeSlot` throws or returns a non-null reason, the
 merge is not issued and the train rebuilds. If `main` drifts during the scan, the
@@ -136,7 +137,7 @@ promotion cycle; it does not permanently block the candidate.
 - The five-minute backstop means ordering decisions can lag by up to five
   minutes after a cluster forms.
 - Each merge is delayed by the duration of the live coordinator scan (typically
-  a few seconds; bounded by cluster size).
+  a few seconds; bounded by open PR inventory as well as cluster size).
 
 ### Risks
 

@@ -343,6 +343,96 @@ test('ciConflictOrderReasonForPromotion fails closed when a group member synchro
   }
 });
 
+test('ciConflictOrderReasonForPromotion fails closed when coordinated group membership changes during final revalidation', async () => {
+  const { tmpDir, workDir, baseSha, pr1Sha, pr2Sha, pr3Sha } = setupRepo();
+  try {
+    const pulls = [
+      makePull(1, pr1Sha, 2, '2026-07-20T00:00:00Z'),
+      makePull(2, pr2Sha, 1, '2026-07-20T00:01:00Z'),
+      makePull(3, pr3Sha, 2, '2026-07-20T00:02:00Z'),
+    ];
+    const pull4 = makePull(4, '4'.repeat(40), 1, '2026-07-20T00:03:00Z');
+    const files = new Map([
+      [1, [{ filename: '.github/workflows/a.yml' }, { filename: '.github/workflows/b.yml' }]],
+      [2, [{ filename: '.github/workflows/b.yml' }]],
+      [3, [{ filename: '.github/workflows/b.yml' }, { filename: '.github/workflows/c.yml' }]],
+      [4, [{ filename: '.github/workflows/b.yml' }]],
+    ]);
+    let fetchOpenPullsCallCount = 0;
+    const reason = await ciConflictOrderReasonForPromotion({
+      pullRequest: pulls[0],
+      baseSha,
+      owner: OWNER,
+      repo: REPO,
+      repository: REPOSITORY,
+      trustedAppId: TRUSTED_APP_ID,
+      requiredChecks: ['ci', 'Security checks'],
+      git: (args, options) => git(workDir, args, options),
+      fetchOpenPulls: async () => {
+        fetchOpenPullsCallCount += 1;
+        return fetchOpenPullsCallCount === 1 ? pulls : [...pulls, pull4];
+      },
+      fetchPullFiles: async (number) => files.get(number) || [],
+      fetchComments: async () => [],
+      fetchCheckRuns: async () => [
+        { name: 'ci', status: 'completed', conclusion: 'success' },
+        { name: 'Security checks', status: 'completed', conclusion: 'success' },
+      ],
+      fetchClosingIssues: async () => [],
+    });
+    assert.match(reason, /group membership changed during verification/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('ciConflictOrderReasonForPromotion fails closed when peer check status changes during final revalidation', async () => {
+  const { tmpDir, workDir, baseSha, pr1Sha, pr2Sha, pr3Sha } = setupRepo();
+  try {
+    const pulls = [
+      makePull(1, pr1Sha, 2, '2026-07-20T00:00:00Z'),
+      makePull(2, pr2Sha, 1, '2026-07-20T00:01:00Z'),
+      makePull(3, pr3Sha, 2, '2026-07-20T00:02:00Z'),
+    ];
+    const files = new Map([
+      [1, [{ filename: '.github/workflows/a.yml' }, { filename: '.github/workflows/b.yml' }]],
+      [2, [{ filename: '.github/workflows/b.yml' }]],
+      [3, [{ filename: '.github/workflows/b.yml' }, { filename: '.github/workflows/c.yml' }]],
+    ]);
+    let fetchOpenPullsCallCount = 0;
+    const reason = await ciConflictOrderReasonForPromotion({
+      pullRequest: pulls[0],
+      baseSha,
+      owner: OWNER,
+      repo: REPO,
+      repository: REPOSITORY,
+      trustedAppId: TRUSTED_APP_ID,
+      requiredChecks: ['ci', 'Security checks'],
+      git: (args, options) => git(workDir, args, options),
+      fetchOpenPulls: async () => {
+        fetchOpenPullsCallCount += 1;
+        return pulls;
+      },
+      fetchPullFiles: async (number) => files.get(number) || [],
+      fetchComments: async () => [],
+      fetchCheckRuns: async (sha) => {
+        const finalPass = fetchOpenPullsCallCount > 1;
+        if (finalPass && sha === pr2Sha) {
+          return [{ name: 'ci', status: 'completed', conclusion: 'failure' }];
+        }
+        return [
+          { name: 'ci', status: 'completed', conclusion: 'success' },
+          { name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ];
+      },
+      fetchClosingIssues: async () => [],
+    });
+    assert.match(reason, /check status changed during verification/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('ciConflictOrderReasonForPromotion uses file inventory for ranking regardless of REST shape', async () => {
   // Regression: fetchOpenPulls() returns list-endpoint shape (no additions/
   // deletions/changed_files), but the candidate is the detailed pullRequest
