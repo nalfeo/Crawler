@@ -59,8 +59,9 @@ Floor 2 art manifest was read only.
   manifest-backed 26-70 partition; all six concerns were addressed.
 - Code review by `claude-sonnet-4.6` completed cleanly.
 - Multi-model review used `claude-sonnet-4.6`, `gpt-5.3-codex`, and
-  `gemini-3.1-pro-preview`; `gpt-5.4` adjudicated all three raw concerns as
-  non-defects.
+  `gemini-3.1-pro-preview`; `gpt-5.4` adjudicated round 1 clean. Round 2 caught
+  and resolved the equipment-lab catalog boundary plus stale coordination
+  wording, then all three models returned clean.
 
 ## Coordination
 
