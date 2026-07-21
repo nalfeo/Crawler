@@ -228,7 +228,7 @@ test('graphql retries rate-limited queries but not mutations', async (t) => {
       res.end(JSON.stringify({ errors: [{ message: 'API rate limit exceeded' }] }));
       return;
     }
-    if (req.url === '/graphql' && callCount === 2) {
+    if (req.url === '/graphql' && (callCount === 2 || callCount === 3)) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ data: { repository: { id: 'repo' } } }));
       return;
@@ -248,10 +248,14 @@ test('graphql retries rate-limited queries but not mutations', async (t) => {
   assert.deepEqual(result, { repository: { id: 'repo' } });
   assert.equal(callCount, 2);
 
+  const explicitQueryResult = await graphqlFromFreshImport('token', 'query { repository { id } }');
+  assert.deepEqual(explicitQueryResult, { repository: { id: 'repo' } });
+  assert.equal(callCount, 3);
+
   await assert.rejects(() =>
     graphqlFromFreshImport('token', 'mutation { updatePullRequest { pullRequest { id } } }'),
   );
-  assert.equal(callCount, 3);
+  assert.equal(callCount, 4);
 });
 
 test('request does not retry a non-GET (POST) on 503', async (t) => {

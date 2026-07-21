@@ -24,13 +24,13 @@ function isRateLimitResponse(status, data) {
     .includes('rate limit');
 }
 
-function retryDelay(headers, retryNumber) {
+function retryDelay(headers, retryIndex) {
   const retryAfter = headers?.get?.('retry-after');
   const retryAfterSeconds = Number.parseInt(retryAfter || '', 10);
   if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
     return Math.min(MAX_RETRY_DELAY_MS, retryAfterSeconds * 1000);
   }
-  return Math.min(MAX_RETRY_DELAY_MS, RETRY_DELAY_MS * Math.pow(2, retryNumber - 1));
+  return Math.min(MAX_RETRY_DELAY_MS, RETRY_DELAY_MS * Math.pow(2, retryIndex));
 }
 
 function summarizeBody(text, maxLength = 240) {
@@ -92,7 +92,7 @@ export async function request(token, path, options = {}) {
         attempt < MAX_RETRY_ATTEMPTS
       ) {
         // Retryable transient error — next iteration backs off and retries.
-        await sleep(retryDelay(response.headers, attempt + 1));
+        await sleep(retryDelay(response.headers, attempt));
         continue;
       }
       throw error;
@@ -148,7 +148,7 @@ export async function graphql(token, query, variables = {}) {
     const rateLimited = isRateLimitResponse(response.status, payload);
     if (!response.ok || payload.errors?.length) {
       if (isQuery && (response.status >= 500 || rateLimited) && attempt < MAX_RETRY_ATTEMPTS) {
-        await sleep(retryDelay(response.headers, attempt + 1));
+        await sleep(retryDelay(response.headers, attempt));
         continue;
       }
       throw new Error(`GitHub GraphQL failed: ${messages || response.status}`);
