@@ -3857,9 +3857,11 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
-test('live reconcile task comment includes explicit review-thread reply comment IDs', async (t) => {
-  const reviewCommentId = '3606008324';
-  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+test('live reconcile auto-resolves outdated threads and keeps reply targets on remaining review-thread blockers', async (t) => {
+  const outdatedReviewCommentId = '3606008324';
+  const freshReviewCommentId = '3606008325';
+  const outdatedThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${outdatedReviewCommentId}`;
+  const freshThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${freshReviewCommentId}`;
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
@@ -3867,9 +3869,15 @@ test('live reconcile task comment includes explicit review-thread reply comment 
       status: 404,
       body: { message: 'Not Found' },
     }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${outdatedReviewCommentId}/replies`]:
+      () => ({
+        body: { id: 99998, body: '✅ Addressed in abc123' },
+      }),
     [`POST /graphql`]: (_url, parsed) => {
       const query = String(parsed?.query ?? '');
-      if (query.includes('suggestedActors')) {
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      } else if (query.includes('suggestedActors')) {
         return {
           body: {
             data: {
@@ -3877,8 +3885,7 @@ test('live reconcile task comment includes explicit review-thread reply comment 
             },
           },
         };
-      }
-      if (query.includes('replaceActorsForAssignable')) {
+      } else if (query.includes('replaceActorsForAssignable')) {
         return {
           body: {
             data: {
@@ -3892,19 +3899,37 @@ test('live reconcile task comment includes explicit review-thread reply comment 
       return {
         body: gqlReviewThreads([
           {
-            id: 'thread-review-target',
+            id: 'thread-review-target-outdated',
             isResolved: false,
-            isOutdated: false,
+            isOutdated: true,
             path: 'src/core/mob-abilities/runtime.ts',
             line: 93,
             comments: {
               nodes: [
                 {
-                  id: 'comment-review-target',
+                  id: 'comment-review-target-outdated',
                   body: 'Please resolve in-thread.',
                   author: { login: 'copilot-pull-request-reviewer' },
                   authorAssociation: 'NONE',
-                  url: threadUrl,
+                  url: outdatedThreadUrl,
+                },
+              ],
+            },
+          },
+          {
+            id: 'thread-review-target-fresh',
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/core/mob-abilities/runtime.ts',
+            line: 99,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-review-target-fresh',
+                  body: 'Please resolve in-thread.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: freshThreadUrl,
                 },
               ],
             },
@@ -3930,7 +3955,7 @@ test('live reconcile task comment includes explicit review-thread reply comment 
 
   t.after(() => server.close());
 
-  const { code, stderr } = await runScript(port, {
+  const { code, stdout, stderr } = await runScript(port, {
     RECOVERY_OPERATION: 'reconcile',
     CI_RECOVERY_MODE: 'live',
   });
@@ -3945,8 +3970,60 @@ test('live reconcile task comment includes explicit review-thread reply comment 
   );
   assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
   assert.ok(
-    taskCommentCall.body.body.includes(`Reply target comment ID: \`${reviewCommentId}\``),
-    'task comment should include the review-thread reply target comment ID',
+    taskCommentCall.body.body.includes(`Reply target comment ID: \`${freshReviewCommentId}\``),
+    'task comment should include the fresh review-thread reply target comment ID',
+  );
+  const outdatedReplyCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url ===
+        `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${outdatedReviewCommentId}/replies`,
+  );
+  assert.ok(outdatedReplyCall, 'expected a reply to be posted on the outdated review thread');
+  const outdatedResolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === 'thread-review-target-outdated',
+  );
+  assert.ok(
+    outdatedResolveCall,
+    'expected the outdated review thread to be resolved via GraphQL mutation',
+  );
+  const postedIndex = stdout.indexOf('posted outdated-marker thread=thread-review-target-outdated');
+  const resolvedIndex = stdout.indexOf('resolved thread=thread-review-target-outdated');
+  assert.notEqual(
+    postedIndex,
+    -1,
+    'stdout should record the outdated-marker post for the expected thread',
+  );
+  assert.notEqual(
+    resolvedIndex,
+    -1,
+    'stdout should record the review-thread resolution for the expected outdated thread',
+  );
+  assert.ok(
+    postedIndex < resolvedIndex,
+    'stdout should record the outdated-marker post before the thread resolution',
+  );
+  assert.ok(
+    !taskCommentCall.body.body.includes(`Reply target comment ID: \`${outdatedReviewCommentId}\``),
+    'task comment should omit the outdated review-thread reply target once the reconciler resolved it',
+  );
+  const outdatedThreadLine = taskCommentCall.body.body
+    .split('\n')
+    .find((line) => line.includes('thread-review-target-outdated'));
+  assert.ok(
+    !outdatedThreadLine,
+    'task comment should omit the outdated review-thread blocker once the reconciler resolved it',
+  );
+  const freshThreadLine = taskCommentCall.body.body
+    .split('\n')
+    .find((line) => line.includes('thread-review-target-fresh'));
+  assert.ok(freshThreadLine, 'task comment should include the fresh review-thread blocker');
+  assert.ok(
+    !freshThreadLine.includes('**(outdated — deterministic non-applicability candidate)**'),
+    'fresh review-thread blocker should not include the outdated annotation',
   );
   assert.ok(
     taskCommentCall.body.body.includes('not the ID of this task comment'),
@@ -6867,13 +6944,142 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 // an automatic outdated-thread marker.
 // ---------------------------------------------------------------------------
 
-test('outdated stale-marker thread remains blocked with a recovery hint', async (t) => {
+test('non-outdated stale-marker thread includes recovery hint in blocker summary', async (t) => {
+  // Simulate the root cause from the PR #1266 loop incident:
+  // The recovery agent replied to a review thread with ✅ Addressed in <sha>
+  // but that commit was created locally and never pushed. The compare API
+  // returns 404, so the thread stays unresolved and the same fingerprint
+  // repeats indefinitely. The reconciler should detect the stale marker and
+  // include a targeted hint in the blocker summary so the next recovery agent
+  // knows to re-post the marker with the current-head SHA.
+  const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
+  const threadId = 'PRRT_stale_marker_thread';
+  const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'scripts/sprites/cli.ts',
+            line: 285,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: originalConcern,
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_stale_reply',
+                  body: `✅ Addressed in \`${staleMarkerSha}\`: Added themeAdherence to the score vector.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${staleMarkerSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1001 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /assigned copilot pr=#42/);
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`posted outdated-marker thread=${threadId}`),
+    'must not replace a stale marker with an automatic outdated marker',
+  );
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment for the stale-marker blocker');
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(
+      `Stale marker: ✅ Addressed in ${staleMarkerSha} exists but that commit is not reachable from current head`,
+    ),
+  );
+  assert.match(taskCommentCall.body.body, new RegExp(threadId));
+  assert.match(
+    taskCommentCall.body.body,
+    /reply to this thread with ✅ Addressed in <head-sha>: <note>/i,
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /outdated — deterministic non-applicability candidate/i,
+  );
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+});
+
+test('outdated stale-marker thread stays on the stale-marker hint path', async (t) => {
   // PR #1266 scenario: the recovery agent replied with ✅ Addressed in <sha>
   // but the commit was never pushed to GitHub (compare API returns 404).
-  // Because the marker names a commit that was never pushed, the reconciler
-  // must not replace it with an automatic outdated-thread marker and silently
-  // resolve the original concern.
-  const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
+  // Even though the thread is also isOutdated, a definitively stale marker SHA
+  // keeps it on the stale-marker hint path instead of auto-resolving through
+  // the reconciler-authored outdated-marker fast path.
+  const staleMarkerSha = 'feed0000aabbccddeeff00112233445566778899';
   const threadId = 'PRRT_stale_marker_thread';
   const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
 
@@ -6922,7 +7128,7 @@ test('outdated stale-marker thread remains blocked with a recovery hint', async 
               nodes: [
                 {
                   id: 'PRIC_original',
-                  body: 'the CLI does not propagate the fifth score.',
+                  body: originalConcern,
                   url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
                   authorAssociation: 'COLLABORATOR',
                   author: { login: 'reviewer' },
@@ -6961,7 +7167,7 @@ test('outdated stale-marker thread remains blocked with a recovery hint', async 
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-
+  assert.match(stdout, /assigned copilot pr=#42/);
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
   assert.doesNotMatch(
     stdout,
@@ -6980,13 +7186,36 @@ test('outdated stale-marker thread remains blocked with a recovery hint', async 
 
   assert.match(
     taskCommentCall.body.body,
-    new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
-    'task body must identify the stale marker SHA',
+    new RegExp(
+      `Stale marker: ✅ Addressed in ${staleMarkerSha} exists but that commit is not reachable from current head`,
+    ),
   );
+  assert.match(taskCommentCall.body.body, /outdated — deterministic non-applicability candidate/i);
   assert.match(
     taskCommentCall.body.body,
     /verify fix is present.*reply to this thread/i,
     'task body must instruct the agent to verify and re-post the marker',
+  );
+  assert.doesNotMatch(stdout, new RegExp(`posted outdated-marker thread=${threadId}`));
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/1/replies`,
+    ),
+    false,
+    'expected no outdated-marker reply when the thread stays on the stale-marker hint path',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'GRAPHQL_MUTATION' &&
+        String(call.body?.query || '').includes('resolveReviewThread') &&
+        call.body?.variables?.threadId === threadId,
+    ),
+    false,
+    'expected no resolveReviewThread mutation when the stale marker remains unresolved',
   );
 });
 

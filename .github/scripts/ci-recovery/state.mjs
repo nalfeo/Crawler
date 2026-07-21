@@ -118,6 +118,7 @@ export function normalizeBlockers(blockers) {
                 : compact(blocker.line),
           }
         : {}),
+      ...(blocker.isOutdated === true ? { isOutdated: true } : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
