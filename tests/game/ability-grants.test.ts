@@ -61,6 +61,21 @@ describe('source-owned ability grants', () => {
     );
   });
 
+  it('learnedSpellIds contains only spell-kind abilities even when non-spell actives are learned', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+
+    // battle-focus is kind: 'active', not 'spell' — must not enter learnedSpellIds.
+    grantAbilitySources(world, player, [
+      { kind: 'active', abilityId: 'battle-focus', sourceId: learnedAbilityGrantSourceId('battle-focus') },
+      { kind: 'active', abilityId: 'fireball', sourceId: learnedAbilityGrantSourceId('fireball') },
+    ]);
+
+    const state = getOrCreateAbilityState(world, player);
+    expect(state.learnedSpellIds).toContain('fireball');
+    expect(state.learnedSpellIds).not.toContain('battle-focus');
+  });
+
   it('drops retired configured actives before enforcing the legacy equip slot cap', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);

@@ -403,7 +403,7 @@ describe('generated equipment instance registry', () => {
     const passiveEffect: ResolvedEquipmentEffectV1 = {
       schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
       effectId: 'warded',
-      effectOrdinal: 1,
+      effectOrdinal: 0,
       unitCost: 1,
       kind: 'passiveGrant',
       grantId: 'warded',
@@ -430,34 +430,40 @@ describe('generated equipment instance registry', () => {
     );
 
     // resolvedEffects advertises a passive grant that frozen.passiveGrants omits.
-    expectRegistryError(
+    // Use uncommon rarity so the 1-unit effect passes the budget check and the
+    // validation reaches validateGrantEquivalence rather than the unit-budget gate.
+    const passiveMismatch = expectRegistryError(
       () =>
         createGeneratedEquipmentInstance(world, {
-          ...createInput('common'),
+          ...createInput('uncommon'),
           resolvedEffects: [passiveEffect],
         }),
       'invalid-payload',
     );
+    expect(passiveMismatch.path).toBe('$.instance.frozen.passiveGrants');
 
     // Order matters: if frozen has two passive grants in reversed order it is rejected.
     const passiveEffect2: ResolvedEquipmentEffectV1 = {
       schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
       effectId: 'sturdy',
-      effectOrdinal: 2,
+      effectOrdinal: 1,
       unitCost: 1,
       kind: 'passiveGrant',
       grantId: 'sturdy',
     };
-    expectRegistryError(
+    // Use rare rarity so the 2-unit total passes the budget check and the
+    // validation reaches validateGrantEquivalence for the ordering assertion.
+    const passiveOrder = expectRegistryError(
       () =>
         createGeneratedEquipmentInstance(world, {
-          ...createInput('common'),
+          ...createInput('rare'),
           resolvedEffects: [passiveEffect, passiveEffect2],
           // frozen lists the two passive grants in reverse order — rejected.
           frozen: { ...frozenFields(), passiveGrants: ['sturdy', 'warded'] },
         }),
       'invalid-payload',
     );
+    expect(passiveOrder.path).toBe('$.instance.frozen.passiveGrants');
 
     // After all failed attempts the allocator must not have advanced.
     expect(createGeneratedEquipmentInstance(world, createInput()).instanceId).toBe(

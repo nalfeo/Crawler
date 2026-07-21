@@ -192,10 +192,14 @@ function syncDerivedAbilityLists(state: AbilityState): void {
   ];
 
   const learnedIds = [...state.grantOwnership.activeSourcesByAbilityId]
-    .filter(
-      ([abilityId, sources]) =>
-        activeIds.has(abilityId) && sources.has(learnedAbilityGrantSourceId(abilityId)),
-    )
+    .filter(([abilityId, sources]) => {
+      const def = getAbilityDefinition(abilityId);
+      return (
+        activeIds.has(abilityId) &&
+        sources.has(learnedAbilityGrantSourceId(abilityId)) &&
+        def?.kind === 'spell'
+      );
+    })
     .map(([abilityId]) => abilityId);
   const learnedSet = new Set(learnedIds);
   state.learnedSpellIds = [
