@@ -39,7 +39,11 @@ import { isInSafeContext } from '../safe-space.js';
 import { applyStatusEffect, clearStatusEffects, isValidSpec } from '../status-effects.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import type { WeaponDef } from '../../shared/weaponDefs.js';
-import { setActiveWeaponDef, clearActiveWeaponDef, getActiveWeaponDef } from '../active-weapon.js';
+import {
+  setActiveWeaponDef,
+  clearActiveWeaponDef,
+  getActiveWeaponSnapshot,
+} from '../active-weapon.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { getItemById } from '../../shared/items.js';
 import {
@@ -217,17 +221,7 @@ function ownershipConflict(
 }
 
 function generatedWeaponDef(instance: GeneratedEquipmentInstanceV1): WeaponDef | undefined {
-  const snapshot = instance.frozen.activeWeaponSnapshot;
-  if (snapshot === null) return undefined;
-  const {
-    schemaVersion: _schemaVersion,
-    generatedEquipmentInstanceId: _generatedEquipmentInstanceId,
-    sourceWeaponDefId: _sourceWeaponDefId,
-    canonicalSkillTags: _canonicalSkillTags,
-    fingerprint: _fingerprint,
-    ...frozen
-  } = snapshot;
-  return Object.freeze({ ...frozen, id: instance.instanceId });
+  return instance.frozen.activeWeaponSnapshot ?? undefined;
 }
 
 function activateGeneratedEquipment(
@@ -315,7 +309,7 @@ function deactivateGeneratedEquipment(
   if (
     generated.frozen.activeWeaponSnapshot !== null &&
     hasComponent(world.ecs, entity, Player) &&
-    getActiveWeaponDef(world)?.id === instanceKey
+    getActiveWeaponSnapshot(world)?.generatedEquipmentInstanceId === instanceKey
   ) {
     clearActiveWeaponDef(world);
   }

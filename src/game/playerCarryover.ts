@@ -20,6 +20,7 @@ import {
 } from '../shared/achievements.js';
 import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
 import { migrateAbilityStateToSourceTracking } from './systems/abilitySystem.js';
+import { getAbilityDefinition } from './abilities/registry.js';
 import {
   createGeneratedEquipmentRegistry,
   listGeneratedEquipmentInstances,
@@ -322,6 +323,38 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   for (const key of snapshot.generatedInventoryInstanceKeys) claim(key, 'inventory');
   for (const key of snapshot.generatedEquippedInstanceKeys) claim(key, 'equipped');
 
+  const validateFrozenAbilityGrants = (
+    instance: GeneratedEquipmentInstanceV1,
+    owner: string,
+  ): void => {
+    for (const abilityId of instance.frozen.abilityGrants) {
+      const def = getAbilityDefinition(abilityId);
+      if (def === undefined) {
+        throw new PlayerCarryoverSnapshotError(
+          `Unknown active ability grant ${abilityId} for ${instance.instanceId} (${owner})`,
+        );
+      }
+      if (def.kind === 'passive') {
+        throw new PlayerCarryoverSnapshotError(
+          `Active grant ${abilityId} is passive for ${instance.instanceId} (${owner})`,
+        );
+      }
+    }
+    for (const abilityId of instance.frozen.passiveGrants) {
+      const def = getAbilityDefinition(abilityId);
+      if (def === undefined) {
+        throw new PlayerCarryoverSnapshotError(
+          `Unknown passive ability grant ${abilityId} for ${instance.instanceId} (${owner})`,
+        );
+      }
+      if (def.kind !== 'passive') {
+        throw new PlayerCarryoverSnapshotError(
+          `Passive grant ${abilityId} is not passive for ${instance.instanceId} (${owner})`,
+        );
+      }
+    }
+  };
+
   const bundleIds = new Set<string>();
   for (const bundle of snapshot.generatedEquipmentRewardBundles) {
     if (bundle.schemaVersion !== GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION) {
@@ -389,6 +422,36 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
     );
   }
 
+  for (const [instanceKey, owner] of owners) {
+    const instance = instancesByKey.get(instanceKey);
+    if (!instance) continue;
+    validateFrozenAbilityGrants(instance, owner);
+  }
+
+  const assertNoSerializedEquipmentGrantSources = (
+    grantSources: readonly (readonly [string, readonly AbilityGrantSource[]])[] | undefined,
+    field: 'activeAbilityGrantSources' | 'passiveAbilityGrantSources',
+  ): void => {
+    if (!grantSources) return;
+    for (const [abilityId, sources] of grantSources) {
+      for (const source of sources) {
+        if (source.kind === 'generated-equipment' || source.kind === 'equipment') {
+          throw new PlayerCarryoverSnapshotError(
+            `Snapshot ${field} must not contain equipment source for ${abilityId}`,
+          );
+        }
+      }
+    }
+  };
+  assertNoSerializedEquipmentGrantSources(
+    snapshot.abilityState?.activeAbilityGrantSources,
+    'activeAbilityGrantSources',
+  );
+  assertNoSerializedEquipmentGrantSources(
+    snapshot.abilityState?.passiveAbilityGrantSources,
+    'passiveAbilityGrantSources',
+  );
+
   return { snapshot, instancesByKey };
 }
 
@@ -417,6 +480,15 @@ function modifierBelongsToPlayer(modifier: StatModifierSnapshot, playerEid: numb
     return modifier.sourceType === 'skill';
   }
   return Number(modifier.sourceId.split(':')[holderIndex]) === playerEid;
+}
+
+function parseAbilityModifierSource(
+  sourceId: string,
+): { readonly abilityId: string; readonly kind: 'active' | 'passive' } | undefined {
+  const parts = sourceId.split(':');
+  if (parts.length < 3) return undefined;
+  if (parts[1] !== 'active' && parts[1] !== 'passive') return undefined;
+  return { abilityId: parts[0] ?? '', kind: parts[1] };
 }
 
 function remapModifierHolder(
@@ -479,6 +551,9 @@ export function capturePlayerCarryover(
     world.abilityStatesByEntity.get(playerEid),
     world.frameCount,
   );
+  const carriedActiveAbilityIds = new Set(abilityState?.equippedActiveAbilityIds ?? []);
+  const carriedPassiveAbilityIds = new Set(abilityState?.passiveAbilityIds ?? []);
+  const carriedAppliedPassiveAbilityIds = new Set(abilityState?.appliedPassiveAbilityIds ?? []);
   const generatedEquipmentRegistry =
     world.generatedEquipmentRegistry.runKey === null
       ? undefined
@@ -519,7 +594,19 @@ export function capturePlayerCarryover(
         (modifier) =>
           (modifier.sourceType === 'skill' || modifier.sourceType === 'ability') &&
           (modifier.expiresFrame === undefined || modifier.expiresFrame > world.frameCount) &&
-          modifierBelongsToPlayer(modifier, playerEid),
+          modifierBelongsToPlayer(modifier, playerEid) &&
+          (modifier.sourceType !== 'ability' ||
+            (() => {
+              const parsed = parseAbilityModifierSource(modifier.sourceId);
+              if (!parsed) return false;
+              if (parsed.kind === 'active') {
+                return carriedActiveAbilityIds.has(parsed.abilityId);
+              }
+              return (
+                carriedPassiveAbilityIds.has(parsed.abilityId) &&
+                carriedAppliedPassiveAbilityIds.has(parsed.abilityId)
+              );
+            })()),
       )
       .map(({ expiresFrame, ...modifier }) => ({
         ...modifier,

@@ -24,7 +24,7 @@ import {
   createGeneratedEquipmentInstance,
   snapshotGeneratedEquipmentRegistry,
 } from '../../src/core/generated-equipment-registry.js';
-import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
+import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../src/core/active-weapon.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 
@@ -324,18 +324,8 @@ describe('player floor carryover', () => {
     expect(getEquipmentState(destination, destinationPlayer)?.equipped.mainHand).toBe(
       equipped.instanceId,
     );
-    const {
-      schemaVersion: _weaponSchemaVersion,
-      generatedEquipmentInstanceId: _generatedEquipmentInstanceId,
-      sourceWeaponDefId: _sourceWeaponDefId,
-      canonicalSkillTags: _canonicalSkillTags,
-      fingerprint: _fingerprint,
-      ...frozenWeapon
-    } = equipped.frozen.activeWeaponSnapshot!;
-    expect(getActiveWeaponDef(destination)).toEqual({
-      ...frozenWeapon,
-      id: equipped.instanceId,
-    });
+    expect(getActiveWeaponDef(destination)).toEqual(equipped.frozen.activeWeaponSnapshot);
+    expect(getActiveWeaponSnapshot(destination)).toEqual(equipped.frozen.activeWeaponSnapshot);
     expect(
       destination.abilityStatesByEntity.get(destinationPlayer)?.equippedActiveAbilityIds,
     ).toContain('magic-missile');
@@ -410,6 +400,19 @@ describe('player floor carryover', () => {
           },
         ],
       },
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState,
+          activeAbilityGrantSources: [
+            [
+              'magic-missile',
+              [{ kind: 'generated-equipment', instanceId: generated.instanceId, effectOrdinal: 0 }],
+            ],
+          ],
+          passiveAbilityGrantSources: [],
+        },
+      },
     ];
 
     for (const invalid of invalidInputs) {
@@ -421,5 +424,46 @@ describe('player floor carryover', () => {
       expect(destination.playerName).toBe('Unchanged');
       expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
     }
+  });
+
+  it('does not serialize passive ability modifiers that were only granted by generated equipment', () => {
+    const runKey = 'carryover-passive-generated-filter';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    source.abilityStatesByEntity.set(player, {
+      learnedSpellIds: [],
+      equippedActiveAbilityIds: [],
+      passiveAbilityIds: ['combat-flow'],
+      cooldownByAbilityId: new Map(),
+      cooldownFramesByAbilityId: new Map(),
+      appliedPassiveAbilityIds: new Set(['combat-flow']),
+      activeAbilityGrantSources: new Map(),
+      passiveAbilityGrantSources: new Map([
+        [
+          'combat-flow',
+          [
+            {
+              kind: 'generated-equipment',
+              instanceId: 'gei:v1:carryover-passive-generated-filter:0',
+              effectOrdinal: 0,
+            },
+          ],
+        ],
+      ]),
+    });
+    addStatModifier(source, {
+      sourceType: 'ability',
+      sourceId: `combat-flow:passive:${player}:0`,
+      stat: 'damage',
+      op: 'add',
+      value: 2,
+    });
+
+    const snapshot = capturePlayerCarryover(source, player);
+    expect(snapshot.persistentStatModifiers).not.toContainEqual(
+      expect.objectContaining({
+        sourceId: `combat-flow:passive:${player}:0`,
+      }),
+    );
   });
 });
