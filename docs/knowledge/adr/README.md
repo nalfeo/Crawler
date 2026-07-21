@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 138 ADR files — 99 numbered (0001–0066, with number reuse and gaps in this index — see below) + 39 date-prefixed
+- **Count:** 139 ADR files — 100 numbered (0001–0066, with number reuse and gaps in this index — see below) + 39 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 

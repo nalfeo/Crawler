@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "sprite-workflow-feedback",
+  "task_title": "Improve sprite taxonomy, judging, and feedback",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "plan_divergence": "minor",
+      "notes": "",
+      "models": ["claude-sonnet-4.6"],
+      "summary": "Kept the architecture and incorporated all execution gaps: update duplicate type vocabularies; add equipment/prop defaults; make brief mobRole canonical with issue inference only a hint; add three-quarter facing; use a separate versioned feedback file and POST route; bump judge prompt cache version; migrate existing item-family metadata; inject disliked sprite names into the pure reference selector; and isolate feedback persistence for deterministic tests."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

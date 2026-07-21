@@ -25,6 +25,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 - **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
 - **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.
 - **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight (no review ledger/full PR paperwork). If a fix should land, spin a separate implementation child session/PR and run the normal full process there.
+- **Tooling-only ceremony is capped at 3🍎:** Work confined to developer/agent tooling, canvases, automation, or asset-pipeline tooling is estimated at no more than 3🍎 regardless of file count; the cap does not apply when runtime gameplay behavior or shipped game data changes.
 
 ## Validation
 

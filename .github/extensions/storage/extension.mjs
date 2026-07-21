@@ -39,6 +39,7 @@ import { randomUUID } from 'node:crypto';
 import { createCanvas, CanvasError, joinSession } from '@github/copilot-sdk/extension';
 
 import { startCanvasServer } from './lib/canvas-harness.mjs';
+import { beginSpriteSidecarStartup } from '../shared/sprite-sidecar-service.mjs';
 import { createImageCache, resolveExtCacheDir } from './lib/image-cache.mjs';
 import { renderHtml } from './renderer.mjs';
 import { resolveSidecarBaseUrl, createSidecarClient } from './lib/sidecar-client.mjs';
@@ -140,11 +141,12 @@ async function buildState(instanceId) {
   if (!entry) return { error: 'instance not found' };
   try {
     const health = await entry.sidecarClient.probeHealth();
-    return { health, baseUrl: entry.baseUrl };
+    return { health, baseUrl: entry.baseUrl, sidecarStartup: entry.sidecarStartup };
   } catch (err) {
     return {
       health: { state: 'down' },
       baseUrl: entry.baseUrl,
+      sidecarStartup: entry.sidecarStartup,
       error: String(err?.message ?? err),
     };
   }
@@ -197,7 +199,15 @@ const jsonRoutes = [
       const search = url.searchParams.get('search') ?? '';
       const health = await entry.sidecarClient.probeHealth();
       if (health.state !== 'up') {
-        return { json: { health, scope, search, runs: [] } };
+        return {
+          json: {
+            health,
+            scope,
+            search,
+            runs: [],
+            sidecarStartup: entry.sidecarStartup ?? null,
+          },
+        };
       }
       try {
         const runs = await entry.storageClient.listRuns({ scope, search });
@@ -327,6 +337,7 @@ async function startServerForInstance(ctx) {
     // server starts so it can be embedded in the iframe HTML via the renderHtml
     // closure below.
     mutationToken: randomUUID(),
+    sidecarStartup: { state: 'starting', error: null, logPath: null },
     pushState: async () => {},
     close: async () => {},
   };
@@ -346,6 +357,12 @@ async function startServerForInstance(ctx) {
   // missing entry, so an early request degrades cleanly rather than observing a
   // half-initialized entry.
   instances.set(ctx.instanceId, entry);
+  beginSpriteSidecarStartup(entry, {
+    rebindClients: (url) => {
+      entry.sidecarClient = createSidecarClient({ baseUrl: url, workspaceRoot });
+      entry.storageClient = createStorageClient({ baseUrl: url });
+    },
+  });
   log(`serving instance ${ctx.instanceId} at ${server.url} (sidecar ${baseUrl})`);
   return entry;
 }

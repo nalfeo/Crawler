@@ -633,7 +633,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "baseball-bat-v1-var-0": {
       "briefId": "baseball-bat-v1",
@@ -807,7 +807,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "beetlefolk-boss-var-0": {
       "briefId": "beetlefolk-boss",
@@ -1216,7 +1216,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "cactusfolk-boss-var-0": {
       "briefId": "cactusfolk-boss",
@@ -3319,7 +3319,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "iron-breastplate-placeholder": {
       "briefId": "iron-breastplate",
@@ -3331,7 +3331,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "iron-greaves-placeholder": {
       "briefId": "iron-greaves",
@@ -3343,7 +3343,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "iron-helm-placeholder": {
       "briefId": "iron-helm",
@@ -3355,7 +3355,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "iron-ore-var-0": {
       "briefId": "iron-ore",
@@ -3413,7 +3413,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "kobold-boss-var-0": {
       "briefId": "kobold-boss",
@@ -3539,7 +3539,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "leather-bracer-placeholder": {
       "briefId": "leather-bracer",
@@ -3551,7 +3551,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "leather-gloves-placeholder": {
       "briefId": "leather-gloves",
@@ -3563,7 +3563,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "living-stone-placeholder": {
       "briefId": "living-stone",
@@ -3797,7 +3797,7 @@
       },
       "sensorScore": "manual-authored",
       "judgeScore": null,
-      "type": "item",
+      "type": "equipment",
       "contentHash": "dd5885a474498ff120e0d95b42cf3dd1f9a8b6aab87fd5d2077184c824d24d85",
       "effectiveAnchorSource": "manual",
       "facingDirection": "right"
@@ -3828,7 +3828,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "5",
-      "type": null,
+      "type": "equipment",
       "contentHash": "36c58f2f94b5c589488718c0f6f2bba3f0de0f695fb0dbf2e8a0660c0bfa821c",
       "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/merchants-stained-charm-v1/2026-07-08T00-04-17-5583442f/postprocess.pipeline.effective.json",
@@ -4675,7 +4675,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "66b119229ec9f2eba730e21695eba5b5fcfe382c2433d345fab5b939d705c8ba"
     },
     "prop-junk-pile-v1-var-3": {
@@ -4704,7 +4704,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "4034085ecd9ec122152fb34133867abdc65907fe631c734716947ac228959871"
     },
     "prop-rubble-pile-var-1": {
@@ -4733,7 +4733,7 @@
       },
       "sensorScore": "6/7",
       "judgeScore": "4",
-      "type": "item",
+      "type": "prop",
       "contentHash": "22bd0ca97e111f061c587e394c102cedcd40102a04afd477a3272726b762b0b6",
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.json",
@@ -4767,7 +4767,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "c3fd43bcc09e03807a5be6338b8d69cbb1cac726200c2129bc2f03f12d35a148"
     },
     "prop-torch-v1-var-14": {
@@ -4796,7 +4796,7 @@
       },
       "sensorScore": "5/8",
       "judgeScore": "4",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "e7a3c699d372b21c1ab82c27b7980316aae5ea02c4c91f883539a55fb2d43833"
     },
     "prop-torch-v1-var-2": {
@@ -4825,7 +4825,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "d4ef1c0915580fdc0f4b66747ac0e19b762a01dab65eff2dce1ed38216a082d7"
     },
     "prop-torch-v1-var-8": {
@@ -4854,7 +4854,7 @@
       },
       "sensorScore": "5/8",
       "judgeScore": "4",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "8821a076e8deee9750f8b01d599a9941440e9a8adb3635323635d13fff88c311"
     },
     "prop-wall-sconce-v1-var-1": {
@@ -4883,7 +4883,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": null,
+      "type": "prop",
       "contentHash": "7a8c699059c5b5a86988d9befb547125bcd8ed679f2f39433496ff4b819b10de",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -4917,7 +4917,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": null,
+      "type": "prop",
       "contentHash": "f1e64d20a65b6af804cdcafbc49232d5d2c1aca386757360f052c8ccb71eadd1",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -4951,7 +4951,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": null,
+      "type": "prop",
       "contentHash": "45c4610b97ed2e0bb0d5335f6b7f017be0ee90252d680d78edf6a865b93ca9ec",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -4985,7 +4985,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": null,
+      "type": "prop",
       "contentHash": "e7b7ad9c4bf775b10f79a76ae9d733f11436845991c745311214dafecb575ae5",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -5019,7 +5019,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
-      "type": null,
+      "type": "prop",
       "contentHash": "46221082db59800e1f535cf11d0ae37726eedef1b9db9d7f114c7fb980add401",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -5053,7 +5053,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "3",
-      "type": null,
+      "type": "prop",
       "contentHash": "4d41db9921f46a7cac44c457e2987e7354dc8b1d34f7d6fba6ef0fdba018b5e9",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -5087,7 +5087,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "3",
-      "type": null,
+      "type": "prop",
       "contentHash": "aa12f07338f278af13cc7c4f90ffa7c1a91147960ffdb1e8e5e27a66abd5a026",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -5913,7 +5913,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": null,
-      "type": "item",
+      "type": "equipment",
       "contentHash": "bc35e930fdba78610e2c49c1286e1b254c9f62730c6888d9e03fc7523ee4360b",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -6075,7 +6075,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "5",
-      "type": "item",
+      "type": "equipment",
       "contentHash": "11a576309686ea155d062da3c0e0a44a17cb525fef201a21a15fc9730aa0dbcc",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
@@ -6171,7 +6171,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "silk-thread-placeholder": {
       "briefId": "silk-thread",
@@ -6703,7 +6703,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "stim-shot-placeholder": {
       "briefId": "stim-shot",
@@ -6751,7 +6751,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "sun-hammer-placeholder": {
       "briefId": "sun-hammer",
@@ -7613,7 +7613,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "twin-fangs-placeholder": {
       "briefId": "twin-fangs",
@@ -7769,7 +7769,7 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "4",
-      "type": "item",
+      "type": "prop",
       "contentHash": "de103c7c90e28b47a660f9c6e955e5ae4cdc5d249f8180291707bda38e5e8295",
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.pipeline.effective.json",
@@ -8149,7 +8149,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "compass-charm-placeholder": {
       "briefId": "compass-charm",
@@ -8161,7 +8161,7 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null,
-      "type": "item"
+      "type": "equipment"
     },
     "equipment/accessory/lucky-feather": {
       "briefId": "lucky-feather",
@@ -8173,7 +8173,7 @@
       "anchor": null,
       "sensorScore": "manual",
       "judgeScore": null,
-      "type": "item",
+      "type": "equipment",
       "contentHash": "51baee84d222c27d4696892674c742ea1d447af94be95f4d70c84463672c4c12"
     },
     "bone-saw-var-1": {

@@ -15,7 +15,7 @@ import type { RunStore } from './store/types.js';
 import { briefDirectoryForType } from './brief-paths.js';
 import { mirrorBriefToStore } from './brief-durability.js';
 import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-ingester-controller.js';
-import { resolveAssetRequestSizeVariant } from './asset-request.js';
+import { resolveAssetRequestSizeVariant, resolveAssetRequestMobRole } from './asset-request.js';
 
 export interface IssuePipelineIssueApi {
   comment(issueNumber: number, body: string): Promise<void>;
@@ -110,14 +110,20 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   await progressComment(
     `🧪 Started asset-request pipeline for \`${request.name}\`.\n\nStage: synthesize`,
   );
-  const spriteType = request.type || inferSpriteTypeFromName(request.name);
   const sizeVariant = resolveAssetRequestSizeVariant(request);
+  const mobRole = resolveAssetRequestMobRole(request);
+  // Resolve mobRole first: a type-omitted boss request (e.g. "countess-boss")
+  // must synthesize as 'enemy', not 'character', so the boss prompt and
+  // boss_presence judge axis are activated.
+  const spriteType =
+    request.type || (mobRole === 'boss' ? 'enemy' : inferSpriteTypeFromName(request.name));
   const synth = await synthesizeBrief({
     name: request.name,
     briefHint: request.briefSentence,
     type: spriteType as Brief['type'],
     floor: request.floor ?? 1,
     sizeVariant,
+    ...(mobRole ? { mobRole } : {}),
     candidates: 3,
     partial: true,
     provider: options.synthProvider,

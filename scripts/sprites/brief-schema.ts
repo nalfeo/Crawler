@@ -154,12 +154,12 @@ const sensorOverridesSchema = z
          *   omitted (score-candidate enforces vertical silhouette orientation
          *   only for `facing: 'front'`).
          * - Enemy scoring no longer uses orientation-axis gating, but the
-         *   value flows into the mob-rules prompt so authors can pin the
-         *   sideways direction the mob should face. The enemy sprite-type
-         *   template pins `right` by default so mobs land consistently
-         *   oriented instead of drifting between left/right runs.
+         *   value flows into the mob-rules prompt so authors can choose a
+         *   camera-facing pose or a left/right three-quarter bias. The enemy
+         *   sprite-type template defaults to `three-quarter`; left/right never
+         *   permits a full side profile.
          */
-        facing: z.enum(['front', 'left', 'right', 'any']).optional(),
+        facing: z.enum(['front', 'three-quarter', 'left', 'right', 'any']).optional(),
         toleranceDeg: z.number().min(0).max(45).default(2),
       })
       .strict()
@@ -199,6 +199,7 @@ const sensorOverridesSchema = z
 export const briefSchema = z
   .object({
     type: z.enum(SPRITE_TYPES),
+    mobRole: z.enum(['normal', 'elite', 'boss']).optional(),
     name: z
       .string()
       .min(1)
@@ -395,6 +396,7 @@ export type PaletteColors = readonly RgbTriple[];
 export const minimalBriefSchema = z
   .object({
     type: z.enum(SPRITE_TYPES),
+    mobRole: z.enum(['normal', 'elite', 'boss']).optional(),
     name: z
       .string()
       .min(1)

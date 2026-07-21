@@ -92,7 +92,27 @@ test('normalizePersistRequest: replace with defaults (no anchor, no applyToAll, 
     manualAnchor: undefined,
     colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
     fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
+    disabledModules: [],
   });
+});
+
+test('normalizePersistRequest: canonicalizes disabled modules and rejects unknown IDs', () => {
+  const base = {
+    briefId: 'b',
+    runId: 'r',
+    mode: 'replace',
+    variantIndex: 0,
+    facingDirection: 'right',
+  };
+  const valid = normalizePersistRequest({
+    ...base,
+    disabledModules: ['resize', 'background-removal', 'resize'],
+  });
+  assert.deepEqual(valid.args.disabledModules, ['background-removal', 'resize']);
+
+  const invalid = normalizePersistRequest({ ...base, disabledModules: ['not-a-module'] });
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.error, /canonical module IDs/);
 });
 
 test('normalizePersistRequest: manualAnchor is truncated and only honoured when finite + not cleared', () => {
@@ -162,7 +182,10 @@ test('buildPersistPostprocessPayload: single-variant replace carries variantInde
   });
   assert.deepEqual(payload, {
     mode: 'replace',
-    options: { background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 } },
+    options: {
+      background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 },
+      disabledModules: [],
+    },
     facing: { variantIndex: 2, direction: 'left' },
     manualAnchor: { variantIndex: 2, x: 5, y: 6 },
     variantIndexes: [2],
@@ -184,7 +207,10 @@ test('buildPersistPostprocessPayload: apply-to-all stamps applyToAllVariants and
   });
   assert.deepEqual(payload, {
     mode: 'replace',
-    options: { background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 } },
+    options: {
+      background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 },
+      disabledModules: [],
+    },
     facing: { variantIndex: 0, direction: 'right', applyToAllVariants: true },
     manualAnchor: { variantIndex: 0, x: 1, y: 2, applyToAllVariants: true },
   });
@@ -253,7 +279,10 @@ test('normalize→build: a this-variant replace produces the monolith body shape
   const payload = buildPersistPostprocessPayload(norm.args);
   assert.deepEqual(payload, {
     mode: 'replace',
-    options: { background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 } },
+    options: {
+      background: { colorToleranceSq: 4000, fringeToleranceSq: 12000 },
+      disabledModules: [],
+    },
     facing: { variantIndex: 0, direction: 'right' },
     manualAnchor: { variantIndex: 0, x: 8, y: 8 },
     variantIndexes: [0],

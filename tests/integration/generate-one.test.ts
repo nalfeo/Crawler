@@ -400,6 +400,68 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     ).rejects.toThrow(/no eligible generated reference sprites/);
   });
 
+  it('does not crash when annotation JSON is temporarily malformed', async () => {
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    mkdirSync(generatedDir, { recursive: true });
+    writeFileSync(path.join(generatedDir, 'sprite-editor-annotations.json'), '{', 'utf8');
+
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider: makeMockProvider(sheet),
+      repoRoot: root,
+      outputRoot,
+      now: fixedClock,
+      ...refInjection,
+    });
+
+    expect(result.summary.variantCount).toBe(4);
+    expect(result.summary.referenceSprites?.selected.length).toBeGreaterThan(0);
+  });
+
+  it('ignores null annotation notes while honoring disliked=true entries', async () => {
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    mkdirSync(generatedDir, { recursive: true });
+
+    const disliked = refEntry({ briefId: 'alpha-disliked', type: 'weapon' });
+    const liked = refEntry({ briefId: 'beta-liked', type: 'weapon' });
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify(
+        {
+          sprites: {
+            [disliked.spriteName]: { disliked: true },
+            'invalid-null-note': null,
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider: makeMockProvider(sheet),
+      repoRoot: root,
+      outputRoot,
+      now: fixedClock,
+      loadReferenceCandidates: () => [disliked, liked],
+      referenceAssetExists: () => true,
+      readReference: (absolutePath: string) => Buffer.from(absolutePath),
+    });
+
+    const selectedNames =
+      result.summary.referenceSprites?.selected.map((entry) => entry.spriteName) ?? [];
+    expect(selectedNames).toContain(liked.spriteName);
+    expect(selectedNames).not.toContain(disliked.spriteName);
+  });
+
   it('skips reference selection for providers that declare no reference-image support', async () => {
     const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
