@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a7a2b8f747f80fd4231ef1a18238d933961f5073",
+    "commitDate": "2026-07-21T13:18:28-07:00",
+    "commitSubject": "ci(prs): coordinate overlapping CI changes (#1734)",
+    "capturedAt": "2026-07-21T21:44:46.009Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29866191635",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/a7a2b8f747f80fd4231ef1a18238d933961f5073.json"
+  },
+  {
     "commit": "855f8bd99c4a0519bdd0284118b8993de56f47e4",
     "commitDate": "2026-07-21T13:02:30-07:00",
     "commitSubject": "feat(ci): path-gate security checks and deduplicate npm audit (#1701)",
