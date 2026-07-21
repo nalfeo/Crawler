@@ -1155,27 +1155,20 @@ describe('detect-art-only.sh change-scope classifier', () => {
   // art_only from setup-node or either secret-scan condition — the exact gap the
   // art-only fast-path classifier case cannot detect (it only exercises detect-art-only.sh).
   describe('security-review.yml: art_only fast-path wiring', () => {
-    const wf = readFileSync(
-      path.join(REPO_ROOT, '.github/workflows/security-review.yml'),
-      'utf8',
-    );
+    const wf = readFileSync(path.join(REPO_ROOT, '.github/workflows/security-review.yml'), 'utf8');
 
     it('fast-path echo step includes art_only condition', () => {
       // "Docs/asset-only fast-path" step must fire on art_only, not only docs_only.
-      expect(wf).toMatch(
-        /- name: Docs\/asset-only fast-path[\s\S]*?if:.*art_only.*==.*'true'/,
-      );
+      expect(wf).toMatch(/- name: Docs\/asset-only fast-path[\s\S]*?if:.*art_only.*==.*'true'/);
     });
 
     it('setup-node skip includes art_only condition', () => {
       // setup-node must be skipped when art_only to avoid unnecessary Node install on art PRs.
       const setupNodeIdx = wf.indexOf('uses: ./.github/actions/setup-node');
       expect(setupNodeIdx).toBeGreaterThan(-1);
-      // The `if:` condition immediately follows the `uses:` line (next non-blank line).
-      const condStart = wf.indexOf('if:', setupNodeIdx);
-      const condEnd = wf.indexOf('\n', condStart);
-      const condition = wf.slice(condStart, condEnd);
-      expect(condition).toContain('art_only');
+      // Use a forward window of 512 chars — enough to span any `with:` block before `if:`.
+      const stepBlock = wf.slice(setupNodeIdx, setupNodeIdx + 512);
+      expect(stepBlock).toContain('art_only');
     });
 
     it('docs/asset-only secret scan includes art_only condition', () => {
@@ -1187,11 +1180,12 @@ describe('detect-art-only.sh change-scope classifier', () => {
 
     it('Node-wrapped secret scan excludes art_only paths', () => {
       // The Node-wrapped secret scan must be skipped for art_only (Node is not set up).
-      const wrappedScanMatch = wf.match(
-        /- name: Scan for committed secrets\n([\s\S]*?)(?=\n {6}- name:|\n {2}aggregate-results:)/,
-      );
-      expect(wrappedScanMatch).not.toBeNull();
-      expect(wrappedScanMatch![0]).toContain('art_only');
+      // Find the step by its unique name (no "(docs/asset-only)" suffix) and read its `if:` line.
+      const stepIdx = wf.indexOf('- name: Scan for committed secrets\n');
+      expect(stepIdx).toBeGreaterThan(-1);
+      // Use a forward window of 512 chars — large enough to always capture the `if:` condition.
+      const stepBlock = wf.slice(stepIdx, stepIdx + 512);
+      expect(stepBlock).toContain('art_only');
     });
   });
 });
