@@ -501,6 +501,27 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(checkpointInitIf).toContain("needs.resume-import.outputs.hasFreshCombos == 'true'");
     });
 
+    it('baseline and checkpoint-init also require needs.resume-import.result == \'success\' so a hard-failed resume-import (e.g. its "Select latest compatible checkpoint" step) cannot silently let downstream jobs proceed on stale/incomplete outputs', () => {
+      const doc = loadWorkflow();
+      // A custom job-level `if:` REPLACES GitHub Actions' implicit
+      // `success()` gate rather than ANDing with it. Because
+      // `hasFreshCombos`/`freshCombos`/`resumedCombos` are set by an EARLIER
+      // step within `resume-import`, a LATER step in that same job failing
+      // (e.g. the "Upload resumed checkpoints bundle" step) would still
+      // leave those outputs readable -- so `baseline`/`checkpoint-init`'s
+      // `if:` must explicitly require `needs.resume-import.result ==
+      // 'success'` to avoid running on a run whose resume-import job did not
+      // fully succeed. `resume-import` is a single (non-matrix) job, so
+      // unlike `baseline`'s own `needs.baseline` conclusion (which is
+      // 'failure' if even one combo's leg failed, hence `!cancelled()`
+      // instead), its `result` is a genuine all-or-nothing signal safe to
+      // gate on directly.
+      expect(getJob(doc, 'baseline').if).toContain("needs.resume-import.result == 'success'");
+      expect(getJob(doc, 'checkpoint-init').if).toContain(
+        "needs.resume-import.result == 'success'",
+      );
+    });
+
     it('only downloads prior-run artifacts when resume_run_id is non-empty (cross-run download-artifact step is conditional)', () => {
       const doc = loadWorkflow();
       const job = getJob(doc, 'resume-import');

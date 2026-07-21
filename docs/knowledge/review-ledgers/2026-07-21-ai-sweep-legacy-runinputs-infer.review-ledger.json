@@ -3,6 +3,28 @@
   "date": "2026-07-21",
   "session_slug": "ai-sweep-legacy-runinputs-infer",
   "task_title": "AI Sweep resume rebuild + legacy runInputs inference",
-  "estimated_apples": 2,
-  "stages": {}
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "plan_divergence": "minor",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "notes": "Retroactive plan review, triggered by copilot-pull-request-reviewer[bot] correctly identifying this diff (8 files, ~1560 insertions across .github/workflows/ai-sweep.yml, scripts/agent/perf/round-plan.ts, scripts/agent/perf/sweep-eval.ts, and 2 test files) as 3 apples, not the originally-declared 2. Reviewed the cross-run resume design (resume_run_id workflow_dispatch input, resume-import job, assertResumeCompatible/inferRunInputsFromCheckpoint/extractLegacyBaselineShard, round-boundary resume granularity) against two alternatives -- strict same-workflow-SHA-only resume, and salvaging in-flight round shards instead of whole-round-tier resume -- both rejected for the reasons documented in the PR body/handoff. BLOCKING finding: baseline and checkpoint-init jobs' if: conditions gated only on needs.resume-import.outputs.hasFreshCombos, not on resume-import's own job result. A custom job-level if: REPLACES (does not AND with) GitHub Actions' implicit success() gate, so a resume-import job that fails after its 'Select latest compatible checkpoint' step has already written hasFreshCombos/freshCombos/resumedCombos (e.g. a later 'Upload resumed checkpoints bundle' step failing) could still let baseline/checkpoint-init proceed on stale/incomplete resume state. FIXED: added `needs.resume-import.result == 'success'` to both jobs' if: conditions, plus a dedicated regression test in tests/unit/ai-sweep-workflow.test.ts. Legacy-runInputs inference (complete/duplicate-free/rectangular baseline-panel requirement, exact secondary key-set match, workflowSha deliberately excluded from provenance) and round-boundary-only resume granularity (no partial-round shard salvage) were both assessed as sound and correctly the smallest-correct design for the declared scope cap."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewed assertResumeCompatible/inferRunInputsFromCheckpoint/normalizeResumedCheckpoint/extractLegacyBaselineShard in round-plan.ts, the resume-import/baseline/checkpoint-init wiring in ai-sweep.yml (including the needs.resume-import.result == 'success' fix from the plan-review round), and test coverage in both spec files. npx tsc --noEmit clean; targeted vitest run (tests/unit/ai/sweep-round-plan.test.ts + tests/unit/ai-sweep-workflow.test.ts) green. No new concerns raised; independently confirmed the plan-review DAG-gating fix is applied to exactly the two places it is needed (baseline, checkpoint-init) and that round1/round2/round3-select jobs correctly do NOT need the same guard, since they consume preflight.outputs.combos rather than resume-import's freshCombos/hasFreshCombos outputs."
+        }
+      ]
+    }
+  }
 }

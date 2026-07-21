@@ -407,8 +407,15 @@ jobs:
     # `hasFreshCombos` guard: GitHub Actions hard-FAILS a job whose matrix
     # source array is empty (`fromJSON('[]')`) rather than skipping it, so an
     # all-combos-resumed run (freshCombos=[]) would otherwise crash this job
-    # instead of correctly running zero legs for it.
-    if: ${{ needs.resume-import.outputs.hasFreshCombos == 'true' }}
+    # instead of correctly running zero legs for it. Also requires
+    # `needs.resume-import.result == 'success'`: a custom job-level `if:`
+    # REPLACES (does not AND with) GitHub Actions' implicit `success()` gate,
+    # so without this explicit check a hard-failed `resume-import` (e.g. its
+    # "Select latest compatible checkpoint" step) could still leave
+    # `hasFreshCombos` readable from an earlier-set output and let this job
+    # silently proceed on stale/incomplete resume state (found in plan
+    # review).
+    if: ${{ needs.resume-import.result == 'success' && needs.resume-import.outputs.hasFreshCombos == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -462,8 +469,17 @@ jobs:
     # every downstream round-select/validate/aggregate job the user just
     # asked to stop (found in multi-model review, gemini-3.1-pro-preview).
     # Also guarded by `hasFreshCombos` for the same empty-matrix reason as
-    # `baseline` above (this job shares its `freshCombos` matrix source).
-    if: ${{ !cancelled() && needs.resume-import.outputs.hasFreshCombos == 'true' }}
+    # `baseline` above (this job shares its `freshCombos` matrix source), and
+    # by `needs.resume-import.result == 'success'` for the same reason as
+    # `baseline` above: a custom job-level `if:` REPLACES GitHub Actions'
+    # implicit `success()` gate rather than ANDing with it, so a hard-failed
+    # `resume-import` job could otherwise still leave `hasFreshCombos`
+    # readable and let this job proceed on stale/incomplete resume state
+    # (found in plan review). `resume-import` is a single (non-matrix) job,
+    # so unlike `baseline`'s `needs.baseline` conclusion above, its `result`
+    # is a genuine all-or-nothing success/failure signal — safe to gate on
+    # directly.
+    if: ${{ !cancelled() && needs.resume-import.result == 'success' && needs.resume-import.outputs.hasFreshCombos == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
