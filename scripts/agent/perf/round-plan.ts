@@ -198,6 +198,34 @@ export interface RoundCheckpoint {
   runInputs?: { trainSeeds: string; weapons: string; secondary: boolean };
 }
 
+/**
+ * Resolve `--mode init`'s optional `--train-seeds`/`--weapons` CLI flags into a
+ * `runInputs` provenance record, or `undefined` when the caller supplied
+ * neither (producing a legacy-style checkpoint on purpose).
+ *
+ * `trainSeeds` and `weapons` are a required PAIR — either both are present or
+ * neither is. Silently accepting exactly one (e.g. a typo dropping
+ * `--weapons`) would produce a checkpoint with no `runInputs` at all, which
+ * *looks* like a deliberately-legacy checkpoint but is actually a malformed
+ * modern one; every later resume then falls through to
+ * {@link inferRunInputsFromCheckpoint}'s legacy inference path instead of the
+ * strict modern equality check the caller almost certainly intended. Fail
+ * closed instead: reject the one-present/one-missing case before
+ * constructing the checkpoint.
+ */
+export function resolveInitRunInputs(
+  trainSeeds: string | null | undefined,
+  weapons: string | null | undefined,
+  secondary: boolean,
+): { trainSeeds: string; weapons: string; secondary: boolean } | undefined {
+  if (Boolean(trainSeeds) !== Boolean(weapons)) {
+    throw new Error(
+      '--mode init requires --train-seeds and --weapons together (both or neither) to record runInputs provenance; supplying only one silently drops both and produces a legacy-style checkpoint',
+    );
+  }
+  return trainSeeds && weapons ? { trainSeeds, weapons, secondary } : undefined;
+}
+
 /** Build the round-0 checkpoint from a combo's baseline shard (`--stage search-baseline`).
  *
  * When `legacyBaseline` is provided and the combo is not `legacy+legacy`, the
@@ -1166,10 +1194,7 @@ function runCli(argv: readonly string[]): void {
     const legacyBaseline = args.legacyBaseline
       ? (JSON.parse(readFileSync(args.legacyBaseline, 'utf8')) as ShardArtifact)
       : undefined;
-    const runInputs =
-      args.trainSeeds && args.weapons
-        ? { trainSeeds: args.trainSeeds, weapons: args.weapons, secondary: args.secondary }
-        : undefined;
+    const runInputs = resolveInitRunInputs(args.trainSeeds, args.weapons, args.secondary);
     const checkpoint = initCheckpoint(combo, knobs, baseline, legacyBaseline, runInputs);
     const incumbentNote =
       checkpoint.incumbentConfigId !== checkpoint.bestConfigId

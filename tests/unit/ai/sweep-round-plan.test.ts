@@ -48,6 +48,7 @@ import {
   normalizeResumedCheckpoint,
   planCandidates,
   planRoundMatrix,
+  resolveInitRunInputs,
   toSearchArtifact,
   type CheckpointWithKnobs,
   type ResumeExpectedProvenance,
@@ -1405,6 +1406,32 @@ describe('normalizeResumedCheckpoint (re-stamp workflowSha on an ALREADY-accepte
     const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
     const expectedMeta: ShardMeta = { ...META, workflowSha: checkpoint.meta.workflowSha };
     expect(normalizeResumedCheckpoint(checkpoint, expectedMeta)).toBe(checkpoint);
+  });
+});
+
+describe("resolveInitRunInputs (--mode init's --train-seeds/--weapons CLI-flag pairing)", () => {
+  it('returns undefined when neither --train-seeds nor --weapons is supplied (deliberately legacy)', () => {
+    expect(resolveInitRunInputs(undefined, undefined, false)).toBeUndefined();
+  });
+
+  it('returns a populated runInputs record when both flags are supplied', () => {
+    expect(resolveInitRunInputs('1,2,3', 'sword,bow', true)).toEqual({
+      trainSeeds: '1,2,3',
+      weapons: 'sword,bow',
+      secondary: true,
+    });
+  });
+
+  it('rejects --train-seeds without --weapons (one-present/one-missing)', () => {
+    expect(() => resolveInitRunInputs('1,2,3', undefined, false)).toThrow(
+      /--train-seeds and --weapons together/,
+    );
+  });
+
+  it('rejects --weapons without --train-seeds (one-present/one-missing)', () => {
+    expect(() => resolveInitRunInputs(undefined, 'sword,bow', false)).toThrow(
+      /--train-seeds and --weapons together/,
+    );
   });
 });
 

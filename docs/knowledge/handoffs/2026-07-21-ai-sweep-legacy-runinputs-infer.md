@@ -76,7 +76,7 @@ new commit.
 - **Estimated (kickoff): 2🍎** — workflow/test/docs-only, no `src/core`/`src/game`
   runtime changes, no architectural refactor.
 - **Actual: 3🍎** — honest post-hoc recalibration. The diff rebuilds the full
-  generic `resume_run_id` mechanism (workflow_dispatch input, `resume-import`
+  generic `resume_run_id` mechanism (workflow*dispatch input, `resume-import`
   job, `assertResumeCompatible`/`inferRunInputsFromCheckpoint`/
   `normalizeResumedCheckpoint`/`extractLegacyBaselineShard`) across 8 files
   (~1560 insertions: `.github/workflows/ai-sweep.yml`,
@@ -88,7 +88,7 @@ new commit.
   already records `estimated_apples: 3` with a completed plan-review + code-review
   round matching that tier. This estimate is recorded as calibration, not a
   downward re-score (complexity-policy.md's downward-only re-scoring rule does
-  not apply — the actual complexity came in _higher_, not lower, than the
+  not apply — the actual complexity came in \_higher*, not lower, than the
   kickoff estimate).
 - **Verdict: 📉 Under** (delta = actual − estimated = +1: the task was harder/
   larger than the kickoff estimate). Recorded via `npm run apples:record` at
@@ -105,7 +105,7 @@ new commit.
 ## Verification
 
 - `npx tsc --noEmit -p tsconfig.json` ✅ (0 errors)
-- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (158/158)
+- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (162/162)
 - `npm run verify:fast` ✅
 - `npm run verify:pr-prereqs` ✅
 
@@ -169,6 +169,19 @@ default and both `evalStandalone` call sites, plus a pinning regression test
 in `sweep-eval-search-promotion.test.ts` (`STANDALONE_SHARD_STAGE` describe
 block) that fails if the constant's value ever changes without a
 deliberate edit.
+
+- **`resolveInitRunInputs`**: `--mode init`'s `--train-seeds`/`--weapons` CLI
+  flags previously silently dropped BOTH when only one was supplied (e.g. a
+  typo omitting `--weapons`), producing a checkpoint with no `runInputs` at
+  all — indistinguishable from a deliberately-legacy checkpoint, but actually
+  a malformed modern one that would fall through to the legacy-inference path
+  instead of the strict modern equality check the caller intended. Extracted
+  the pairing validation into an exported, independently-tested
+  `resolveInitRunInputs(trainSeeds, weapons, secondary)` helper that throws on
+  the one-present/one-missing case; `runCli`'s `--mode init` branch now calls
+  it instead of inlining the ternary. 4 new tests cover: both-absent (legacy,
+  allowed), both-present (modern, allowed), and each one-present/one-missing
+  combination (rejected).
 
 ## Notes
 
