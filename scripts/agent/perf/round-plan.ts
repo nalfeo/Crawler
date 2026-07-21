@@ -38,8 +38,10 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 import {
   assertMatrixWithinCap,
+  baseConfigForCombo,
   comboId,
   configId,
   LEGACY_COMBO_ID,
@@ -220,6 +222,22 @@ export function initCheckpoint(
     if (!legacyId || legacyIds.length !== 1) {
       throw new Error(
         `initCheckpoint(${comboStr}): legacyBaseline shard must contain exactly one config, got ${legacyIds.length}`,
+      );
+    }
+    // The declared config/id must be the CANONICAL LEGACY base config — not
+    // merely "exactly one config, tagged combo=legacy+legacy" — because a
+    // same-build `--stage search-eval` shard for a *tuned* `legacy+legacy`
+    // candidate also has one config, LEGACY-tagged rows, and valid row facts,
+    // so it would otherwise pass every check below and silently replace the
+    // fixed incumbent with a tuned (non-canonical) LEGACY variant.
+    const canonicalLegacyId = configId(
+      baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+    );
+    if (legacyId !== canonicalLegacyId) {
+      throw new Error(
+        `initCheckpoint(${comboStr}): legacyBaseline shard's declared config must be the ` +
+          `canonical LEGACY base config (id '${canonicalLegacyId}'), got a tuned/non-canonical ` +
+          `config (id '${legacyId}').`,
       );
     }
     const legacyRowCombos = new Set(legacyBaseline.rows.map((r) => r.combo));

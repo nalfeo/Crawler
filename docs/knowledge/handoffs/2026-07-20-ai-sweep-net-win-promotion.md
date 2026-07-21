@@ -210,17 +210,18 @@ No ADR was needed (single-system change, not affecting 2+ systems).
 - `npx tsc --noEmit` — clean, no errors.
 - `npx vitest run tests/unit/ai/sweep-aggregate-shards.test.ts
 tests/unit/ai/sweep-round-plan.test.ts
-tests/unit/ai/sweep-eval-search-promotion.test.ts` — **129/129 passing**
+tests/unit/ai/sweep-eval-search-promotion.test.ts` — **136/136 passing**
   (including the two mirrored 292/300-vs-286/300 regression tests at the
   aggregate-shards and legacy-path levels, the wins-tie rejection test, the
   wins-decrease rejection test, the isolated below-90%-floor test, the
   incumbent-identity-scoping test, 2 non-LEGACY combo path tests, the 8-test
   `assertLegacyBaselineProvenance` suite, 8 build-fingerprint regression tests
   across both provenance-check call sites, 4 `initCheckpoint` legacyBaseline
-  provenance tests, 2 `currentBuildFingerprint` truncation tests, and 3
+  provenance tests, 2 `currentBuildFingerprint` truncation tests, 3
   round-12 `initCheckpoint` legacyBaseline stage/safeRoomMs/config-identity
-  tests).
-- `npx vitest run tests/unit/ai` (full AI suite) — **326/326 passing**.
+  tests, and 2 round-14 tuned-legacy-baseline-spoof rejection tests).
+- `npx vitest run tests/unit/ai` (full AI suite) — **334/334 passing**.
+- `npx tsc --noEmit` — clean, no errors (re-verified after round 14).
 - `npm run verify:fast` — ✅ passed (typecheck + lint + changed tests + size/
   weight/physics-defs coverage checks).
 - `npm run verify:pr-prereqs` — checked after handoff + ledger were committed.
@@ -340,6 +341,52 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **129/129 passing**
     addressed. Honest, independently-earned terminal clean round.
     Ledger:
     `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
+  - **Round 14** (github-copilot-pr-reviewer, live GitHub review threads
+    surfaced after round 13's terminal-clean state, addressed by a follow-up
+    shepherding session): 2 concerns, resolved.
+    - (a) **Tuned-legacy-baseline spoof gap**: `assertLegacyBaselineProvenance`
+      (`sweep-eval.ts`) and `initCheckpoint` (`round-plan.ts`) proved only that
+      a `--legacy-baseline` artifact declared exactly one config — never that
+      the config's _content_ matched the canonical (untuned) LEGACY base. A
+      same-build `--stage search-eval` shard for a **tuned** `legacy+legacy`
+      candidate satisfies every existing check (single config, correct combo
+      tag, matching schema/build/floor/budget/frame facts, present
+      `safeRoomMs`) yet is not the fixed incumbent, so it would silently
+      replace the true incumbent with a moving target. An automated push
+      (commit `aef6812e`, concurrent with this shepherding session) already
+      fixed `sweep-eval.ts`'s side by validating the declared config's id
+      against `configId(baseConfigForCombo({pathing: LEGACY, decision:
+LEGACY}))` right after the "exactly one config" check — but did not
+      touch `round-plan.ts`, leaving the exact parity gap rounds 9–10 found
+      for build-fingerprint checks. This round adds the identical check to
+      `initCheckpoint`'s `legacyBaseline` handling in `round-plan.ts`, and
+      rebases `sweep-eval-search-promotion.test.ts`'s changes onto
+      `aef6812e`'s version — deduping to one canonical-id constant
+      (`CANONICAL_LEGACY_ID`, replacing this session's own hardcoded
+      `'legacy-base'` placeholder AND a duplicate test) and one
+      tuned-candidate rejection test (the upstream version, which derives a
+      realistic tuned id from the canonical one). `configId` is a
+      deterministic content-derived id (`p=<pathing>,d=<decision>` plus every
+      tunable knob as sorted, 4-dp-rounded `key=value` strings), so id
+      equality is a sufficient, cheap proxy for "this is the untuned
+      canonical base." A mirrored regression test was added to
+      `sweep-round-plan.test.ts` for the `round-plan.ts` side (this file's
+      existing fixtures already used real canonical ids, so no other changes
+      were needed there).
+    - (b) **PR body accuracy**: the body described the
+      `.github/workflows/ai-sweep.yml` change as inline-comment-only and
+      claimed no AI Sweep dispatch was triggered by this PR, omitting the
+      round-eval `max-parallel: 8` concurrency cap (a real
+      security/resource-relevant fix — see the companion handoff
+      `2026-07-20-ai-sweep-round-eval-max-parallel.md`), the bundled
+      `brace-expansion` dependency security fix, and that a manual
+      `workflow_dispatch` validation run (`29786216369`, event=
+      `workflow_dispatch`) actually was dispatched on this branch and later
+      cancelled. Fixed by rewriting the PR body's "How"/closing sections to
+      disclose all three accurately.
+      Ledger unchanged (still the valid 3🍎 `plan_review`/`code_review` ledger
+      above) — this round addressed live GitHub review-thread comments, not a
+      new ledger-tracked code-review-loop iteration.
 - Apple record: `docs/knowledge/metrics/apples/2026-07-20-ai-sweep-net-win-promotion.json`
   (3🍎 estimated → 3🍎 actual, exact).
 

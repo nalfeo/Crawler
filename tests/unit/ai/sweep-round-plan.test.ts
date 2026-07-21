@@ -213,6 +213,23 @@ describe('initCheckpoint', () => {
     );
   });
 
+  it("throws when legacyBaseline's sole config is a TUNED (non-canonical) legacy+legacy candidate — a same-build --stage search-eval shard for a tuned legacy+legacy candidate also has one config, meta.stage='search', LEGACY-tagged rows, and valid row facts, so it would otherwise pass every other check and silently replace the fixed incumbent", () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const tunedLegacy: SweepConfig = { ...BASE, aggression: 1.5 };
+    const tunedLegacyId = configId(tunedLegacy);
+    const badLegacy = shard([row(tunedLegacyId, 'sword', 1, 100)], {
+      [tunedLegacyId]: tunedLegacy,
+    });
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /canonical LEGACY base config/,
+    );
+  });
+
   // A follow-up independent code-review pass on the net-win promotion rule
   // (PR #1735) found that build-fingerprint provenance checks added to the
   // legacy/manual `--stage search` path (assertLegacyBaselineProvenance in

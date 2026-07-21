@@ -290,7 +290,13 @@ interface SearchResult {
  * exact same schema/stage/floor/budget/frame guard as the search→validate
  * boundary, plus per-row `safeRoomMs` sanity (a pre-v2 baseline could parse
  * as valid JSON yet lack `safeRoomMs`, silently reverting win recomputation to
- * raw-time semantics and undercounting the incumbent).
+ * raw-time semantics and undercounting the incumbent). Also validates the
+ * artifact's sole config/id is the CANONICAL LEGACY base config — not merely
+ * "exactly one config, tagged combo=legacy+legacy" — because a same-build
+ * `--stage search-eval` shard for a *tuned* `legacy+legacy` candidate also
+ * has one config, `meta.stage='search'`, LEGACY-tagged rows, and valid row
+ * facts, so it would otherwise pass every prior check and silently replace
+ * the fixed incumbent with a tuned (non-canonical) LEGACY variant.
  *
  * @param expected the caller's calibration to check the artifact against — floor/
  *   budget/frames PLUS the current-build fingerprint (see

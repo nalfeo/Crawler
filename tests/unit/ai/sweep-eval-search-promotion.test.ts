@@ -32,17 +32,14 @@ import {
   currentBuildFingerprint,
   selectSearchPromotion,
 } from '../../../scripts/agent/perf/sweep-eval.js';
+import { baseConfigForCombo, configId } from '../../../scripts/agent/perf/gen-configs.js';
+import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 import {
   SHARD_SCHEMA_VERSION,
   type RunRow,
   type ShardArtifact,
   type ShardMeta,
 } from '../../../scripts/agent/perf/aggregate-shards.js';
-import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
-import {
-  baseConfigForCombo,
-  configId,
-} from '../../../scripts/agent/perf/gen-configs.js';
 
 const VICTORY_SCORE = 1_000_000;
 const BUDGET_MS = 360_000;
@@ -385,7 +382,9 @@ describe('selectSearchPromotion', () => {
 
 describe('assertLegacyBaselineProvenance', () => {
   const LEGACY_COMBO = 'legacy+legacy';
-  const CANONICAL_LEGACY_CONFIG_ID = configId(
+  // The declared config/id must be the CANONICAL LEGACY base config — see the
+  // "tuned legacy+legacy candidate" test below for the exact spoof this guards.
+  const CANONICAL_LEGACY_ID = configId(
     baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
   );
   const VALID_META: ShardMeta = {
@@ -412,21 +411,17 @@ describe('assertLegacyBaselineProvenance', () => {
   function validArtifact(): ShardArtifact {
     const rows: RunRow[] = [];
     for (let seed = 1; seed <= 3; seed++) {
-      rows.push(
-        row({ combo: LEGACY_COMBO, configId: CANONICAL_LEGACY_CONFIG_ID, weapon: 'sword', seed }),
-      );
+      rows.push(row({ combo: LEGACY_COMBO, configId: CANONICAL_LEGACY_ID, weapon: 'sword', seed }));
     }
     return {
       meta: VALID_META,
-      configs: { [CANONICAL_LEGACY_CONFIG_ID]: {} as never },
+      configs: { [CANONICAL_LEGACY_ID]: {} as never },
       rows,
     };
   }
 
   it('accepts a well-formed --legacy-baseline artifact and returns its sole configId', () => {
-    expect(assertLegacyBaselineProvenance(validArtifact(), EXPECTED)).toBe(
-      CANONICAL_LEGACY_CONFIG_ID,
-    );
+    expect(assertLegacyBaselineProvenance(validArtifact(), EXPECTED)).toBe(CANONICAL_LEGACY_ID);
   });
 
   it('rejects an artifact with more than one config', () => {
@@ -440,7 +435,7 @@ describe('assertLegacyBaselineProvenance', () => {
     artifact.rows.push(
       row({
         combo: 'navmeshFused+slackAware',
-        configId: CANONICAL_LEGACY_CONFIG_ID,
+        configId: CANONICAL_LEGACY_ID,
         weapon: 'sword',
         seed: 4,
       }),
@@ -519,7 +514,7 @@ describe('assertLegacyBaselineProvenance', () => {
     // config, LEGACY-tagged rows, and valid provenance — but its configId is NOT
     // the canonical LEGACY base config. The fixed incumbent must be exactly the
     // canonical base, not a search-tuned variant of it.
-    const tunedId = CANONICAL_LEGACY_CONFIG_ID + ',scanRadius=0.9500';
+    const tunedId = CANONICAL_LEGACY_ID + ',scanRadius=0.9500';
     const artifact: ShardArtifact = {
       meta: VALID_META,
       configs: { [tunedId]: {} as never },
