@@ -18,15 +18,57 @@ import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const LEGAL_RARITIES = ['common', 'uncommon', 'rare'] as const;
+const COORDINATED_WAVE_A_WEAPON_IDS = [
+  'weapon.iron-cleaver',
+  'weapon.bone-saw',
+  'weapon.dueling-saber',
+  'weapon.war-pick',
+  'weapon.butcher-hook',
+  'weapon.rune-axe',
+  'weapon.chain-flail',
+  'weapon.stone-maul',
+  'weapon.sun-hammer',
+  'weapon.quarterstaff',
+  'weapon.blood-lance',
+  'weapon.grave-shovel',
+  'weapon.ashwood-bow',
+  'weapon.hand-crossbow',
+  'weapon.storm-sling',
+  'weapon.musketeer-rifle',
+  'weapon.cog-pistol',
+  'weapon.throwing-knives',
+  'weapon.twin-katar',
+  'weapon.ember-wand',
+  'weapon.frost-crook',
+  'weapon.alchemist-sprayer',
+  'weapon.thorn-whip',
+  'weapon.sawblade-launcher',
+  'weapon.oil-lantern',
+] as const;
 
 describe('Floor 2 equipment Wave B', () => {
-  it('owns canonical manifest ordinals 26-70 in deterministic 25 weapon / 20 non-weapon order', () => {
+  it('complements the coordinated Wave A roster in deterministic manifest order', () => {
     expect(FLOOR2_EQUIPMENT_ART_DEFINITIONS).toHaveLength(70);
     expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS).toHaveLength(25);
     expect(FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS).toHaveLength(20);
-    expect(FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS).toEqual(
-      FLOOR2_EQUIPMENT_ART_DEFINITIONS.slice(25).map((entry) => entry.stableId),
+    const manifestWeaponIds = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter(
+      (entry) => entry.category === 'weapon',
+    ).map((entry) => entry.stableId);
+    const waveAIds = new Set<string>(COORDINATED_WAVE_A_WEAPON_IDS);
+    expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS).toEqual(
+      manifestWeaponIds.filter((stableId) => !waveAIds.has(stableId)),
     );
+    expect(FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS).toEqual(
+      FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter((entry) => entry.category !== 'weapon').map(
+        (entry) => entry.stableId,
+      ),
+    );
+    expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS.filter((stableId) => waveAIds.has(stableId))).toEqual(
+      [],
+    );
+    expect(
+      new Set([...COORDINATED_WAVE_A_WEAPON_IDS, ...FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS]),
+    ).toEqual(new Set(manifestWeaponIds));
     expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_DEFS.map((def) => def.id)).toEqual(
       FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS,
     );

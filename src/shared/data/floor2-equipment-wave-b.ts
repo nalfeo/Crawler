@@ -9,17 +9,16 @@ import {
   type Floor2WeaponStableId,
 } from './floor2-equipment-art.js';
 
-const WAVE_B_FIRST_ORDINAL = 26;
 const WAVE_B_WEAPON_COUNT = 25;
 const WAVE_B_NON_WEAPON_COUNT = 20;
 
 export const FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS = [
-  'weapon.thorn-whip',
+  'weapon.venom-dirk',
+  'weapon.moon-scythe',
+  'weapon.tower-spear',
   'weapon.crystal-cannon',
   'weapon.baseball-bat',
   'weapon.rivet-gun',
-  'weapon.sawblade-launcher',
-  'weapon.oil-lantern',
   'weapon.shock-baton',
   'weapon.boarding-axe',
   'weapon.hunting-bola',
@@ -69,12 +68,13 @@ export const FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS = [
   ...FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS,
 ] as const;
 
-const WAVE_B_MANIFEST = FLOOR2_EQUIPMENT_ART_DEFINITIONS.slice(WAVE_B_FIRST_ORDINAL - 1);
-const WAVE_B_MANIFEST_BY_ID: ReadonlyMap<Floor2EquipmentStableId, Floor2EquipmentArtDefinition> =
-  new Map(WAVE_B_MANIFEST.map((entry) => [entry.stableId, entry]));
+const WAVE_B_STABLE_ID_SET = new Set<Floor2EquipmentStableId>(FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS);
+const MANIFEST_BY_ID: ReadonlyMap<Floor2EquipmentStableId, Floor2EquipmentArtDefinition> = new Map(
+  FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => [entry.stableId, entry]),
+);
 
 function manifestEntry(stableId: Floor2EquipmentStableId): Floor2EquipmentArtDefinition {
-  const entry = WAVE_B_MANIFEST_BY_ID.get(stableId);
+  const entry = MANIFEST_BY_ID.get(stableId);
   if (!entry) {
     throw new Error(`Missing canonical Floor 2 Wave B manifest entry: ${stableId}`);
   }
@@ -88,12 +88,16 @@ function validateWavePartition(): void {
   ) {
     throw new Error('Floor 2 equipment Wave B must contain exactly 25 weapons and 20 non-weapons');
   }
-  const canonicalIds = WAVE_B_MANIFEST.map((entry) => entry.stableId);
+  const canonicalIds = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter((entry) =>
+    WAVE_B_STABLE_ID_SET.has(entry.stableId),
+  ).map((entry) => entry.stableId);
   if (
     canonicalIds.length !== FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS.length ||
     canonicalIds.some((stableId, index) => stableId !== FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS[index])
   ) {
-    throw new Error('Floor 2 equipment Wave B IDs must match canonical manifest ordinals 26-70');
+    throw new Error(
+      'Floor 2 equipment Wave B IDs must be the coordinated Wave A complement in manifest order',
+    );
   }
 }
 
@@ -284,12 +288,12 @@ interface WaveBWeaponInput {
 }
 
 const WAVE_B_WEAPON_INPUTS: readonly WaveBWeaponInput[] = [
-  { stableId: 'weapon.thorn-whip', rarity: 'uncommon', weightLb: 3, twoHanded: false },
+  { stableId: 'weapon.venom-dirk', rarity: 'uncommon', weightLb: 1, twoHanded: false },
+  { stableId: 'weapon.moon-scythe', rarity: 'rare', weightLb: 5, twoHanded: true },
+  { stableId: 'weapon.tower-spear', rarity: 'common', weightLb: 8, twoHanded: true },
   { stableId: 'weapon.crystal-cannon', rarity: 'rare', weightLb: 9, twoHanded: true },
   { stableId: 'weapon.baseball-bat', rarity: 'common', weightLb: 6, twoHanded: true },
   { stableId: 'weapon.rivet-gun', rarity: 'uncommon', weightLb: 5, twoHanded: false },
-  { stableId: 'weapon.sawblade-launcher', rarity: 'rare', weightLb: 8, twoHanded: true },
-  { stableId: 'weapon.oil-lantern', rarity: 'common', weightLb: 3, twoHanded: false },
   { stableId: 'weapon.shock-baton', rarity: 'uncommon', weightLb: 3, twoHanded: false },
   { stableId: 'weapon.boarding-axe', rarity: 'common', weightLb: 5, twoHanded: false },
   { stableId: 'weapon.hunting-bola', rarity: 'uncommon', weightLb: 2, twoHanded: false },

@@ -19,6 +19,7 @@ import {
   FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS,
   FLOOR2_EQUIPMENT_WAVE_B_WEAPON_EQUIPMENT_DEFS,
 } from './data/floor2-equipment-wave-b.js';
+import { getItemById } from './items.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from './quest-types.js';
 import { getWeaponDef } from './weaponDefs.js';
 
@@ -419,9 +420,14 @@ export function isEquippableItem(itemId: string): boolean {
   return EQUIPMENT_BY_ITEM_ID.has(itemId);
 }
 
-/** All inventory item slugs that map to equipment. */
+/** All registered equipment base IDs, including generated-only bases. */
 export function getEquippableItemIds(): string[] {
   return [...EQUIPMENT_BY_ITEM_ID.keys()];
+}
+
+/** Equipment IDs that can be inserted through the static inventory item catalog. */
+export function getCatalogEquippableItemIds(): string[] {
+  return getEquippableItemIds().filter((itemId) => getItemById(itemId) !== undefined);
 }
 
 /**

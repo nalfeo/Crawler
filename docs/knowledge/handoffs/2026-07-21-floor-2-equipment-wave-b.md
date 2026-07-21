@@ -11,10 +11,10 @@ inventory, weapons, ci-policy
 
 ## What was done
 
-- Added exactly 25 generated weapon bases for canonical Floor 2 equipment
-  ordinals 26-50.
-- Added exactly 20 generated armor, accessory, and off-hand bases for ordinals
-  51-70.
+- Added exactly 25 generated weapon bases as the deterministic manifest-order
+  complement of coordinated Wave A head `a2ccffbb`.
+- Added exactly 20 generated armor, accessory, and off-hand bases for canonical
+  Floor 2 equipment ordinals 51-70.
 - Covered all 10 weapon families and every canonical 18-slot paper-doll
   position.
 - Registered the bases in the production weapon/equipment registries with
@@ -23,6 +23,8 @@ inventory, weapons, ci-policy
   field while preserving the existing item-ID fallback.
 - Kept generated-only base IDs out of `GEAR_ITEM_IDS`, whose lab consumer uses
   static item-catalog insertion and would reject those IDs.
+- Added a catalog-backed equipment-ID query for static bag seeders so the
+  equipment lab cannot offer generated-only IDs to `addItem`.
 - Repaired `test:equipment-gates` so its unit and integration projects run
   separately under their compatible Vitest worker configurations.
 
@@ -40,6 +42,8 @@ Floor 2 art manifest was read only.
 - Before this change, Wave B stable IDs had no runtime weapon/equipment
   definitions. After it, all 45 resolve through the production registries and
   generate deterministic instances through the production generator.
+- The live Wave A/B roster comparison proves zero overlap and a 50-ID weapon
+  union equal to the canonical manifest.
 - The authoritative aggregate DPS/distribution gates remain unchanged and
   pass, including the constitutional 1.7x-2.3x per-five-level envelope.
 
@@ -60,6 +64,7 @@ Floor 2 art manifest was read only.
 
 ## Coordination
 
-Wave A owns weapon ordinals 1-25. Its final head, ID roster, and merge order
-must be rechecked immediately before this PR publishes so the combined catalog
-lands with at least 70 distinct canonical bases.
+Wave A head `a2ccffbb` owns a family-balanced 25-ID roster. Wave B is its
+manifest-order complement, and the two rosters form the canonical 50-weapon
+set without overlap. Wave A should merge first; Wave B can then rebase onto
+main so the combined catalog lands with all 70 canonical bases.

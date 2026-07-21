@@ -13,7 +13,7 @@
       "adversarial": true,
       "alternatives_considered": 3,
       "plan_divergence": "major_fork",
-      "notes": "Adopted manifest-first ordinals 26-70 and a dedicated Wave B overlay; rejected a reservation-only split because this PR must deliver complete definitions. Added explicit 25/20 rosters, runtime art keys with existing fallback behavior, canonical slot mapping, per-base generation tests, and a final Wave A head check."
+      "notes": "Adopted a manifest-first dedicated Wave B overlay; rejected a reservation-only split because this PR must deliver complete definitions. The final live check against coordinated Wave A head a2ccffbb replaced the provisional contiguous weapon split with the deterministic 25-ID manifest-order complement, preserving distinct IDs and all ten families in both waves. Added explicit 25/20 rosters, runtime art keys with existing fallback behavior, canonical slot mapping, and per-base generation tests."
     },
     "code_review": {
       "clean": true,
