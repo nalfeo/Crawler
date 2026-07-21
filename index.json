@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2917959acd43941b355bb9dfc12970b131e93395",
+    "commitDate": "2026-07-21T13:28:25-07:00",
+    "commitSubject": "fix(deps): patch fast-uri advisory (#1758)",
+    "capturedAt": "2026-07-21T21:48:16.016Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29866792775",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/2917959acd43941b355bb9dfc12970b131e93395.json"
+  },
+  {
     "commit": "904e4e84e9635b0402255246ea5a19bcdd12242f",
     "commitDate": "2026-07-21T13:28:15-07:00",
     "commitSubject": "fix(ai-sweep): allow net-win incumbent flips in promotion gate (#1735)",
