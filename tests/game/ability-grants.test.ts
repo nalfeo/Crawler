@@ -48,6 +48,19 @@ describe('source-owned ability grants', () => {
     expect(retained.equippedActiveAbilityIds).toEqual(['fireball']);
   });
 
+  it('records learned provenance for a direct equipActiveAbility grant', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+
+    equipActiveAbility(world, player, 'battle-focus');
+
+    const state = getOrCreateAbilityState(world, player);
+    expect(state.equippedActiveAbilityIds).toEqual(['battle-focus']);
+    expect(state.grantOwnership.activeSourcesByAbilityId.get('battle-focus')).toEqual(
+      new Set([learnedAbilityGrantSourceId('battle-focus')]),
+    );
+  });
+
   it('drops retired configured actives before enforcing the legacy equip slot cap', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);

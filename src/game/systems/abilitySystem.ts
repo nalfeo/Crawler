@@ -481,9 +481,10 @@ export function configureOwnedActiveAbility(
 }
 
 /**
- * Backward-compatible configuration entry point. A pre-ownership caller that
- * equips a catalog ability receives an explicit legacy source; new callers
- * should grant a typed source first, then configure it.
+ * Backward-compatible configuration entry point. Equips a catalog ability with
+ * learned provenance; if the ability already has an owned source, configures it
+ * in-place. New callers that require a different provenance should call
+ * `grantAbilitySources` directly.
  */
 export function equipActiveAbility(world: GameWorld, holderEid: number, abilityId: string): void {
   validateAbilityKind(abilityId, 'active');
@@ -508,7 +509,7 @@ export function equipActiveAbility(world: GameWorld, holderEid: number, abilityI
       {
         kind: 'active',
         abilityId,
-        sourceId: legacyAbilityGrantSourceId('active', abilityId),
+        sourceId: learnedAbilityGrantSourceId(abilityId),
       },
     ],
     { configureActives: 'require-slots' },
