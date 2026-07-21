@@ -1,5 +1,16 @@
 [
   {
+    "commit": "904e4e84e9635b0402255246ea5a19bcdd12242f",
+    "commitDate": "2026-07-21T13:28:15-07:00",
+    "commitSubject": "fix(ai-sweep): allow net-win incumbent flips in promotion gate (#1735)",
+    "capturedAt": "2026-07-21T21:45:59.345Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29866691383",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/904e4e84e9635b0402255246ea5a19bcdd12242f.json"
+  },
+  {
     "commit": "a7a2b8f747f80fd4231ef1a18238d933961f5073",
     "commitDate": "2026-07-21T13:18:28-07:00",
     "commitSubject": "ci(prs): coordinate overlapping CI changes (#1734)",
