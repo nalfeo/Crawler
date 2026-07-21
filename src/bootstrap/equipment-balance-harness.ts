@@ -9,7 +9,8 @@ import {
 } from '../core/systems/equipmentSystem.js';
 import { computeEquippedWeightLb } from '../core/effective-stats.js';
 import { getEntityEncumbranceSnapshot } from '../core/encumbrance.js';
-import { setActiveWeaponFromGeneratedInstance } from '../core/active-weapon.js';
+import { requireGeneratedEquipmentActiveWeaponSnapshot } from '../core/generated-equipment-registry.js';
+import { setActiveWeapon } from '../game/weaponSystem.js';
 import { generateEquipmentInstance } from '../game/generated-equipment-generator.js';
 import { grantEquipmentAbilitySources } from '../game/equipment-ability-grants.js';
 import { runSimulationStep } from '../game/ai/simulation-step.js';
@@ -423,7 +424,7 @@ function runEncounter(
   );
   const instances = [weapon, ...gear];
   for (const instance of instances) equipGenerated(world, player, instance);
-  setActiveWeaponFromGeneratedInstance(world, weapon.instanceId);
+  setActiveWeapon(world, requireGeneratedEquipmentActiveWeaponSnapshot(world, weapon.instanceId));
 
   const abilityState = getOrCreateAbilityState(world, player);
   const configuredActiveAbilityIds = [...abilityState.equippedActiveAbilityIds];
@@ -473,7 +474,7 @@ function runEncounter(
   const seconds = (MEASUREMENT_FRAMES * GAME.DELTA_MS) / 1_000;
   const stats = getEffectiveStats(world, player);
   const equipmentState = getEquipmentState(world, player);
-  const equippedWeightLb = computeEquippedWeightLb(equipmentState);
+  const equippedWeightLb = computeEquippedWeightLb(world, equipmentState);
   const encumbranceBand = getEntityEncumbranceSnapshot(world, player).band;
 
   return {
@@ -653,9 +654,12 @@ export function runGeneratedEquipmentDistributionFixtures(
       baseId: config.baseId,
       rarity: config.rarity,
       enhancementLevel: config.enhancementLevel,
-      effectUnits: instance.resolvedEffects.reduce((sum, effect) => sum + effect.unitCost, 0),
+      effectUnits: instance.resolvedEffects.reduce(
+        (sum, effect) => sum + ('unitCost' in effect ? effect.unitCost : 0),
+        0,
+      ),
       effectIds: instance.resolvedEffects.map((effect) => effect.effectId),
-      effectKinds: instance.resolvedEffects.map((effect) => effect.kind),
+      effectKinds: instance.resolvedEffects.map((effect) => ('kind' in effect ? effect.kind : 'legacy')),
       inherentValue:
         instance.frozen.activeWeaponSnapshot?.baseDamage ?? instance.frozen.statBonuses.armor ?? 0,
       fingerprint: instance.fingerprint,

@@ -4,10 +4,6 @@ export { skillSystem } from './skillSystem.js';
 export {
   abilitySystem,
   createAbilityState,
-  normalizeAbilityState,
-  grantAbilitySources,
-  revokeAbilitySources,
-  configureOwnedActiveAbility,
   equipActiveAbility,
   memorizeSpell,
   grantPassiveAbility,
@@ -17,14 +13,7 @@ export {
   migrateAbilityStateToSourceTracking,
   queueAbilityTrigger,
   getOrCreateAbilityState,
-  synchronizeAbilityPassives,
   weaponPrerequisiteMet,
-  AbilityGrantError,
-} from './abilitySystem.js';
-export type {
-  AbilityGrantErrorCode,
-  AbilityGrantRequest,
-  GrantAbilitySourcesOptions,
 } from './abilitySystem.js';
 export {
   achievementSystem,
