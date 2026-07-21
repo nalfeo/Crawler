@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import {
   BLOCKED_LABEL,
+  CI_CONFLICT_ORDER_WAIT_LABEL,
   LANDED_LABEL,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
@@ -450,6 +451,8 @@ export function promotionStaleReason({ currentMain, currentPr, expectedBase, pr,
   if (!sameRepository(currentPr, repository)) return 'PR head repository changed';
   if (!hasLabel(currentPr, QUEUE_LABEL)) return `PR no longer has the ${QUEUE_LABEL} label`;
   if (hasLabel(currentPr, BLOCKED_LABEL)) return `PR is marked ${BLOCKED_LABEL}`;
+  if (hasLabel(currentPr, CI_CONFLICT_ORDER_WAIT_LABEL))
+    return `PR has ${CI_CONFLICT_ORDER_WAIT_LABEL} label`;
   return null;
 }
 
@@ -521,6 +524,7 @@ export async function promoteExactBatch({
   positions = entries.map((_, index) => index + 1),
   recordMapping = () => {},
   reattestHealth = async () => true,
+  verifyMergeSlot = async () => null,
   proofPollDelaysMs,
   proofSleep,
 }) {
@@ -719,8 +723,71 @@ export async function promoteExactBatch({
       );
       return false;
     }
+    const mergeSlotReason = await verifyMergeSlot({
+      entry,
+      index,
+      currentPr: freshPr,
+      currentMain: mainBeforeMerge,
+    });
+    if (mergeSlotReason) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number} reason=${mergeSlotReason}; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    // Re-read main immediately after the potentially long coordinator scan:
+    // verifyMergeSlot fetches files, comments, checks, and runs git proofs for
+    // every group member, which can take several seconds. Re-assert that main
+    // has not advanced since the base-CAS check above so we do not land onto an
+    // unexpected parent.
+    const mainAfterSlotVerify = await fetchCurrentMain();
+    if (mainAfterSlotVerify !== mainBeforeMerge) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; main moved to ${mainAfterSlotVerify} during coordinator scan (expected ${mainBeforeMerge}); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    // Post-slot admission re-check: verifyMergeSlot can take several seconds
+    // during which admission state can change — a new unresolved review thread
+    // can be opened, human approval withdrawn, or CI-recovery evidence updated.
+    // main is unchanged (checked just above) but those changes are invisible to
+    // it, so re-fetch the PR and re-run the full stale/admission/auto-merge
+    // gate immediately before the merge PUT.
+    const postSlotPr = await fetchCurrentPr(entry, index);
+    const postSlotStale = promotionStaleReason({
+      currentMain: mainAfterSlotVerify,
+      currentPr: postSlotPr,
+      expectedBase: mainAfterSlotVerify,
+      pr: entry,
+      repository,
+    });
+    if (postSlotStale) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; ${postSlotStale} (post-slot recheck); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    const postSlotAdmission = await eligible(postSlotPr);
+    if (!postSlotAdmission.ok) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number} reason=${postSlotAdmission.reason} (post-slot recheck); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    if (postSlotPr.auto_merge) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number}; auto_merge re-armed during slot verification; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    // Use postSlotPr.head.sha as the merge anchor. promotionStaleReason above
+    // already compares postSlotPr.head.sha against entry.head.sha (the
+    // batch-validated snapshot); if a push landed during the coordinator scan
+    // they diverge and we return false above with "PR head changed since
+    // validation". So if we reach here, postSlotPr.head.sha === entry.head.sha
+    // === freshPr.head.sha and all three are equivalent.
     const merge = await mergePullRequest(entry, {
-      expectedHeadSha: freshPr.head.sha,
+      expectedHeadSha: postSlotPr.head.sha,
       commitTitle: squashCommitTitle(freshPr),
       commitMessage: squashCommitMessage(freshPr),
     });
