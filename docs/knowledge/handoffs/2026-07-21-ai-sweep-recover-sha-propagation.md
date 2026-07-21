@@ -108,11 +108,28 @@ test fix.
   coverage checks all green).
 - `npm run verify:pr-prereqs` — passed after this handoff + review ledger were added.
 
+## Secondary fix (pushed by CI-recovery automation during this PR's own CI run)
+
+While this PR's CI was running, `tests/unit/verify-fast-typecheck.test.ts`'s
+signal-lifecycle test hit a pre-existing, unrelated flake on a loaded runner:
+`cleanup_parallel()` in `scripts/agent/verify-fast.sh` sent only `SIGTERM` in
+its `EXIT` trap and returned immediately, so the test's single `kill -0`
+liveness check could run before the OS finished reaping the killed
+descendants. The repo's CI-recovery automation dispatched `@copilot`, and
+`copilot-swe-agent` pushed commit `f7c715e8` with a narrowly-scoped fix:
+`cleanup_parallel()` now follows `SIGTERM` with `SIGKILL`, and the test polls
+up to 1s (20 × 50ms) for descendant reaping instead of checking once. This is
+unrelated to the AI-sweep SHA-propagation fix but is disclosed here (and in
+the PR description) per the repo's holistic-PR-description policy, after a
+`copilot-pull-request-reviewer` finding flagged it as undisclosed scope.
+
 ## Apple estimate
 
 **2🍎** — narrow single-workflow-file + single-test-file fix, matching the
 precedent scope in `docs/knowledge/handoffs/2026-07-21-ai-sweep-recover-checkpoint-r2.md`.
-No review-harness stages required at this tier (ledger only).
+No review-harness stages required at this tier (ledger only). The secondary
+flaky-test fix above is a small, independently-scoped addition that doesn't
+change the tier.
 
 ## Unresolved issues / follow-ups
 
