@@ -134,6 +134,8 @@ export async function paginate(token, path) {
 
 export async function graphql(token, query, variables = {}) {
   const isMutation = /^\s*mutation(?:\s|[{(])/i.test(query);
+  // Only recognized query forms are retried; comments/fragments and other
+  // unrecognized documents fail closed to avoid replaying a mutation.
   const isQuery = !isMutation && /^\s*(?:query(?:\s|[{(])|{)/i.test(query);
   for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
     const response = await fetch(graphqlUrl, {
@@ -145,11 +147,7 @@ export async function graphql(token, query, variables = {}) {
     const messages = payload.errors?.map((error) => error.message).join('; ');
     const rateLimited = isRateLimitResponse(response.status, payload);
     if (!response.ok || payload.errors?.length) {
-      if (
-        isQuery &&
-        (response.status === 429 || response.status >= 500 || rateLimited) &&
-        attempt < MAX_RETRY_ATTEMPTS
-      ) {
+      if (isQuery && (response.status >= 500 || rateLimited) && attempt < MAX_RETRY_ATTEMPTS) {
         await sleep(retryDelay(response.headers, attempt + 1));
         continue;
       }
