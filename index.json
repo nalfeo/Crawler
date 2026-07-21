@@ -77,6 +77,17 @@
     "path": "by-sha/a1c23cbeabdec9d74633a8ffa3f0f9586443936d.json"
   },
   {
+    "commit": "708437f736bf918c8e1690627db5988313df3bfe",
+    "commitDate": "2026-07-20T16:41:37-07:00",
+    "commitSubject": "docs(equipment): backfill D1/C2 review records (#1565)",
+    "capturedAt": "2026-07-21T00:48:48.923Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29788062321",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/708437f736bf918c8e1690627db5988313df3bfe.json"
+  },
+  {
     "commit": "260f6fc61c574f5566cffaf19d254674a0a10dcf",
     "commitDate": "2026-07-20T14:58:00-07:00",
     "commitSubject": "fix(deps): update brace-expansion security patch (#1748)",
