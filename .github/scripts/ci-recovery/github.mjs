@@ -30,7 +30,21 @@ function retryDelay(headers, retryIndex) {
   if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
     return Math.min(MAX_RETRY_DELAY_MS, retryAfterSeconds * 1000);
   }
+  const retryAfterDate = Date.parse(retryAfter || '');
+  if (Number.isFinite(retryAfterDate)) {
+    return Math.min(MAX_RETRY_DELAY_MS, Math.max(0, retryAfterDate - new Date().getTime()));
+  }
   return Math.min(MAX_RETRY_DELAY_MS, RETRY_DELAY_MS * Math.pow(2, retryIndex));
+}
+
+function stripGraphqlPreamble(query) {
+  let source = String(query || '').trimStart();
+  while (source.startsWith('#')) {
+    const newline = source.indexOf('\n');
+    if (newline < 0) return '';
+    source = source.slice(newline + 1).trimStart();
+  }
+  return source;
 }
 
 function summarizeBody(text, maxLength = 240) {
@@ -133,10 +147,11 @@ export async function paginate(token, path) {
 }
 
 export async function graphql(token, query, variables = {}) {
-  const isMutation = /^\s*mutation(?:\s|[{(])/i.test(query);
+  const operation = stripGraphqlPreamble(query);
+  const isMutation = /^mutation(?:\s|[{(])/i.test(operation);
   // Only recognized query forms are retried; comments/fragments and other
   // unrecognized documents fail closed to avoid replaying a mutation.
-  const isQuery = !isMutation && /^\s*(?:query(?:\s|[{(])|{)/i.test(query);
+  const isQuery = !isMutation && /^(?:query(?:\s|[{(])|{)/i.test(operation);
   for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
     const response = await fetch(graphqlUrl, {
       method: 'POST',

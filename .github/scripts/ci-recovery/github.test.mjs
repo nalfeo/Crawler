@@ -248,7 +248,10 @@ test('graphql retries rate-limited queries but not mutations', async (t) => {
   assert.deepEqual(result, { repository: { id: 'repo' } });
   assert.equal(callCount, 2);
 
-  const explicitQueryResult = await graphqlFromFreshImport('token', 'query { repository { id } }');
+  const explicitQueryResult = await graphqlFromFreshImport(
+    'token',
+    '\n# leading comment\nquery { repository { id } }',
+  );
   assert.deepEqual(explicitQueryResult, { repository: { id: 'repo' } });
   assert.equal(callCount, 3);
 
