@@ -11,8 +11,15 @@ function sleep(ms) {
 }
 
 function isRateLimitResponse(status, data) {
+  if (status === 429) return true;
   if (status !== 403) return false;
-  return String(data?.message || '')
+  const message =
+    data?.message ||
+    data?.errors
+      ?.map((error) => error?.message)
+      .filter(Boolean)
+      .join('; ');
+  return String(message || '')
     .toLowerCase()
     .includes('rate limit');
 }
@@ -136,7 +143,7 @@ export async function graphql(token, query, variables = {}) {
     });
     const payload = await response.json();
     const messages = payload.errors?.map((error) => error.message).join('; ');
-    const rateLimited = isRateLimitResponse(response.status, { message: messages });
+    const rateLimited = isRateLimitResponse(response.status, payload);
     if (!response.ok || payload.errors?.length) {
       if (
         isQuery &&
