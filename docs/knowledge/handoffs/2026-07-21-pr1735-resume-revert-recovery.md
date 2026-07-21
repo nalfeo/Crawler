@@ -31,7 +31,7 @@ Given the available tools in this session, the smallest correct recovery was to 
 
 - 3🍎 session.
 - Separate-model plan review (`gpt-5.4`) approved with 2 concerns; both resolved. `plan_divergence=major_fork` because the recovery strategy changed from “fix resume in place” to “revert resume entirely”.
-- Code-review loop: round 1 found 2 real concerns (unstaged deletions/new ledger, incomplete code-review stage); fixed before the terminal clean pass.
+- Code-review loop: round 1 found 2 real concerns and round 2 found 1 additional concern; all were fixed, followed by a zero-concern terminal clean pass in round 3.
 
 ## Notes
 

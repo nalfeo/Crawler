@@ -11,7 +11,7 @@ sibling session monitoring the merge-train queue.
 
 ## Systems touched
 
-ci-workflow (`.github/workflows/ai-sweep.yml`)
+ci-policy (`.github/workflows/ai-sweep.yml`)
 
 ## Apples
 
