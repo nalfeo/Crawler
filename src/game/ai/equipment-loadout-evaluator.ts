@@ -338,11 +338,13 @@ function removeEquipmentSources(
   ownership: MutableOwnership,
   removed: readonly GeneratedEquipmentInstanceV1[],
 ): void {
-  const removedIds = new Set(removed.map((instance) => instance.instanceId));
+  const removedIds = new Set<string | number>(removed.map((instance) => instance.instanceId));
   for (const sourceMap of [ownership.active, ownership.passive]) {
     for (const [abilityId, sources] of sourceMap) {
       const retained = [...sources].filter(
-        (source) => source.kind !== 'generated-equipment' || !removedIds.has(source.instanceId),
+        (source) =>
+          (source.kind !== 'generated-equipment' && source.kind !== 'equipment') ||
+          !removedIds.has(source.instanceId),
       );
       if (retained.length === 0) sourceMap.delete(abilityId);
       else
@@ -485,9 +487,12 @@ function effectiveStats(
   );
 }
 
-function weaponTargets(weapon: ActiveWeaponSnapshotV1, fixture: EquipmentEncounterFixture): number {
+export function computeExpectedWeaponTargets(
+  weapon: ActiveWeaponSnapshotV1,
+  fixture: EquipmentEncounterFixture,
+): number {
   if (fixture.enemyCount === 0) return 0;
-  const chainTargets = 1 + weapon.pierce + weapon.bounceCount;
+  const chainTargets = 1 + weapon.pierce;
   const hasArea =
     weapon.aoeRadius > 0 ||
     weapon.trapExplosionRadius > 0 ||
@@ -520,7 +525,11 @@ function expectedWeaponDps(
     stats.attackSpeed,
     stats.cooldownReduction,
   );
-  return (damage * accuracy * 1_000) / cooldownMs;
+  const beamTicks =
+    weapon.beamLength > 0 && weapon.beamTickMs > 0
+      ? 1 + Math.floor(Math.max(0, weapon.durationMs) / weapon.beamTickMs)
+      : 1;
+  return (damage * accuracy * beamTicks * 1_000) / cooldownMs;
 }
 
 function triggerUptime(ability: AbilityDefinition, fixture: EquipmentEncounterFixture): number {
@@ -555,7 +564,6 @@ function activeEffectValue(
   effect: CatalogEffect,
   stats: Readonly<Record<StatId, number>>,
   fixture: EquipmentEncounterFixture,
-  weaponDps: number,
 ): number {
   const areaTargets = Math.max(1, fixture.clusteredEnemyCount);
   switch (effect.type) {
@@ -600,7 +608,7 @@ function activeEffectValue(
     case 'stat_multiply':
       return Math.abs(effect.value);
     case 'extra_projectile':
-      return effect.count * weaponDps;
+      return 0;
     case 'aura':
       return effect.dpsPercentOfDamage * areaTargets;
   }
@@ -608,28 +616,29 @@ function activeEffectValue(
 
 function expectedActiveAbilityValue(
   configured: readonly string[],
-  weapon: ActiveWeaponSnapshotV1 | null,
   stats: Readonly<Record<StatId, number>>,
   fixture: EquipmentEncounterFixture,
   config: EquipmentErvConfig,
 ): number {
   let value = 0;
-  const weaponDps = expectedWeaponDps(weapon, stats);
   for (const abilityId of configured) {
     const ability = getAbilityDefinition(abilityId);
     if (ability === undefined || ability.kind === 'passive') continue;
     const uptime = triggerUptime(ability, fixture);
     if (uptime <= 0) continue;
     const cooldownFrames = applyCooldownReduction(ability.cooldownFrames, stats.cooldownReduction);
-    const activations =
+    const cooldownLimitedActivations =
       cooldownFrames > 0
         ? (fixture.durationSeconds * config.framesPerSecond * uptime) / cooldownFrames
         : 0;
+    const triggerLimitedActivations =
+      ability.trigger.kind === 'skill_usage'
+        ? fixture.skillTriggerRatePerSecond * fixture.durationSeconds
+        : Number.POSITIVE_INFINITY;
+    const activations = Math.min(cooldownLimitedActivations, triggerLimitedActivations);
     value +=
-      ability.effects.reduce(
-        (sum, effect) => sum + activeEffectValue(effect, stats, fixture, weaponDps),
-        0,
-      ) * activations;
+      ability.effects.reduce((sum, effect) => sum + activeEffectValue(effect, stats, fixture), 0) *
+      activations;
   }
   return value;
 }
@@ -651,7 +660,7 @@ function scoreCoreComponents(
 
   for (const fixture of fixtures) {
     const duration = fixture.durationSeconds;
-    const targets = weapon === null ? 0 : weaponTargets(weapon, fixture);
+    const targets = weapon === null ? 0 : computeExpectedWeaponTargets(weapon, fixture);
     components.offense += weaponDps * duration * config.weights.offense;
     components.encounterFit +=
       weaponDps * Math.max(0, targets - 1) * duration * config.weights.encounterFit;
@@ -686,7 +695,7 @@ function passiveNonStatValue(
     if (ability === undefined || !passivePrerequisiteMet(ability, weapon)) continue;
     for (const effect of ability.effects) {
       if (effect.type === 'extra_projectile') {
-        value += effect.count * weaponDps * fixtures.reduce((sum, f) => sum + f.durationSeconds, 0);
+        continue;
       } else if (effect.type === 'aura') {
         value += fixtures.reduce(
           (sum, fixture) =>
@@ -781,8 +790,7 @@ function scoreLoadout(
     config.weights.passiveAbility;
   components.activeAbility =
     fixtures.reduce(
-      (sum, fixture) =>
-        sum + expectedActiveAbilityValue(configured, weapon, fullStats, fixture, config),
+      (sum, fixture) => sum + expectedActiveAbilityValue(configured, fullStats, fixture, config),
       0,
     ) * config.weights.activeAbility;
   components.affinity =
@@ -862,11 +870,11 @@ export function evaluateEquipmentLoadoutCandidates(
     if (candidateIds.has(candidateInstance.instanceId)) {
       reasons.push(`duplicate candidate ${candidateInstance.instanceId}`);
     }
-    candidateIds.add(candidateInstance.instanceId);
     if (reasons.length > 0) {
       rejected.push({ candidate: rawCandidate, reasons: [...new Set(reasons)].sort() });
       continue;
     }
+    candidateIds.add(candidateInstance.instanceId);
 
     const candidateSlots = new Set(candidateInstance.frozen.slots);
     const displaced = currentEquipped.filter((instance) =>

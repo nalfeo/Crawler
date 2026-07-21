@@ -1,7 +1,13 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
+  computeEffectiveAccuracyFromValues,
+  computeExpectedCritDamage,
+  computePlayerScaledDamage,
+} from '../../src/core/combat-math.js';
+import {
   DEFAULT_EQUIPMENT_ERV_CONFIG,
+  computeExpectedWeaponTargets,
   evaluateEquipmentLoadoutCandidates,
   type EquipmentEncounterFixture,
   type EquipmentErvConfig,
@@ -12,6 +18,7 @@ import { generateEquipmentInstance } from '../../src/game/generated-equipment-ge
 import { type AbilityGrantSource } from '../../src/shared/abilities.js';
 import type { GeneratedEquipmentInstanceV1 } from '../../src/shared/generated-equipment-types.js';
 import type { PrimaryStatId, StatId } from '../../src/shared/stats.js';
+import { applyAttackSpeedAndCooldownReduction } from '../../src/shared/stats.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const BASE_STATS = {
@@ -196,6 +203,88 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(byBaseId.get('plasma-pistol')?.components.offense).toBeGreaterThan(0);
   });
 
+  it('models every realized beam tick in weapon offense', () => {
+    const laser = generated('laser', 'erv-beam-ticks');
+    const result = evaluateEquipmentLoadoutCandidates(inputShape([], [candidate(laser)]))
+      .ranked[0]!;
+    const weapon = laser.frozen.activeWeaponSnapshot!;
+    const stats = result.nextScore.effectiveStats;
+    const damage = computeExpectedCritDamage(
+      computePlayerScaledDamage(weapon.baseDamage, stats, {
+        affinity: 'physical',
+        scaleWithPrimary: true,
+      }),
+      stats.critChance,
+      stats.critMultiplier,
+    );
+    const accuracy = computeEffectiveAccuracyFromValues(
+      weapon.weaponType,
+      weapon.baseAccuracy,
+      stats.accuracy,
+    );
+    const cooldownMs = applyAttackSpeedAndCooldownReduction(
+      weapon.cooldownMs,
+      stats.attackSpeed,
+      stats.cooldownReduction,
+    );
+    const beamTicks = 1 + Math.floor(weapon.durationMs / weapon.beamTickMs);
+    const expectedDps = (damage * accuracy * beamTicks * 1_000) / cooldownMs;
+
+    expect(result.nextScore.components.offense).toBeCloseTo(
+      expectedDps * SINGLE_TARGET.durationSeconds,
+      10,
+    );
+  });
+
+  it('does not count arena-wall bounces as additional enemy targets', () => {
+    const pistol = generated('plasma-pistol', 'erv-wall-bounces');
+    const spreadTargets: EquipmentEncounterFixture = {
+      ...SINGLE_TARGET,
+      enemyCount: 30,
+      clusteredEnemyCount: 1,
+    };
+    const weapon = {
+      ...pistol.frozen.activeWeaponSnapshot!,
+      pierce: 2,
+      bounceCount: 6,
+    };
+
+    expect(computeExpectedWeaponTargets(weapon, spreadTargets)).toBe(3);
+  });
+
+  it('caps skill-triggered activations by both event rate and cooldown capacity', () => {
+    const current: EquipmentLoadoutSnapshot = {
+      ...snapshot([]),
+      activeAbilityGrantSources: new Map([['battle-focus', [{ kind: 'learned' }]]]),
+      equippedActiveAbilityIds: ['battle-focus'],
+    };
+    const helm = candidate(generated('iron-helm', 'erv-skill-trigger-rate'));
+    const lowRate = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [helm], [{ ...SINGLE_TARGET, skillTriggerRatePerSecond: 0.001 }]),
+      current,
+    }).ranked[0]!.nextScore.components.activeAbility;
+    const highRate = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [helm], [{ ...SINGLE_TARGET, skillTriggerRatePerSecond: 100 }]),
+      current,
+    }).ranked[0]!.nextScore.components.activeAbility;
+
+    expect(lowRate).toBeGreaterThan(0);
+    expect(highRate).toBeGreaterThan(lowRate * 1_000);
+  });
+
+  it('does not value extra projectiles until runtime consumes projectileCount', () => {
+    const current: EquipmentLoadoutSnapshot = {
+      ...snapshot([]),
+      passiveAbilityGrantSources: new Map([['juggling-arsenal', [{ kind: 'learned' }]]]),
+    };
+    const result = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [candidate(generated('throwing-knife', 'erv-extra-projectile-runtime'))]),
+      current,
+    });
+
+    expect(result.ranked[0]?.nextScore.components.passiveAbility).toBe(0);
+  });
+
   it('models source-owned active and passive grants without mutating configuration', () => {
     const activeGrant = generated('band-of-fortune', 'erv-active-grant', 2, 'rare');
     const passiveGrant = generated('band-of-fortune', 'erv-passive-grant', 1, 'rare');
@@ -230,6 +319,25 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(result.ranked[0]?.nextScore.availablePassiveAbilityIds).toEqual(['veteran-instinct']);
     expect(activeSources).toEqual([{ kind: 'learned' }]);
     expect(passiveSources).toEqual([{ kind: 'skill', skillId: 'unarmed' }]);
+  });
+
+  it('removes legacy equipment sources when their generated instance is displaced', () => {
+    const equipped = generated('iron-helm', 'erv-legacy-source-current');
+    const replacement = generated('iron-helm', 'erv-legacy-source-replacement');
+    const current: EquipmentLoadoutSnapshot = {
+      ...snapshot([equipped]),
+      activeAbilityGrantSources: new Map([
+        ['fireball', [{ kind: 'equipment', instanceId: equipped.instanceId }]],
+      ]),
+      equippedActiveAbilityIds: ['fireball'],
+    };
+    const result = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([equipped], [candidate(replacement)]),
+      current,
+    }).ranked[0]!;
+
+    expect(result.displacedInstanceIds).toEqual([equipped.instanceId]);
+    expect(result.nextScore.equippedActiveAbilityIds).toEqual([]);
   });
 
   it('exposes defensive, encumbrance, displacement, and purchase opportunity costs', () => {
@@ -285,6 +393,20 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(result.rejected[0]?.reasons).toContain(
       `duplicate candidate ${pistol.instance.instanceId}`,
     );
+  });
+
+  it('does not let an invalid occurrence consume the first legal candidate transition', () => {
+    const pistol = candidate(generated('plasma-pistol', 'erv-invalid-before-valid'));
+    const result = evaluateEquipmentLoadoutCandidates(
+      inputShape([], [{ ...pistol, purchaseCost: -1 }, pistol]),
+    );
+
+    expect(result.ranked).toHaveLength(1);
+    expect(result.ranked[0]?.candidate.instance.instanceId).toBe(pistol.instance.instanceId);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0]?.reasons).toEqual([
+      'purchaseCost must be a finite non-negative number',
+    ]);
   });
 
   it('replays finite results without mutating inputs', () => {
