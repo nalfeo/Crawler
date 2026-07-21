@@ -32,4 +32,4 @@ Repaired PR #1564's failing integration regression after the active-weapon persi
 
 ## Notes
 
-- `npm run verify:pr-prereqs` currently reports the branch-level cross-layer ADR requirement for the existing PR diff (`src/core`, `src/engine`, `src/game`); that guard is unrelated to this test-only repair and was not changed here.
+- At the time of this test-only repair, `npm run verify:pr-prereqs` reported the branch-level cross-layer ADR requirement for the existing PR diff (`src/core`, `src/engine`, `src/game`); a later recovery session addressed that prerequisite separately.

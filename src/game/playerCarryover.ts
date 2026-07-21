@@ -142,19 +142,21 @@ function snapshotAbilityState(
 ): AbilityStateSnapshot | undefined {
   if (!state) return undefined;
 
-  const nonEquipmentSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
+  const carriedActiveSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
+    sources.filter((source) => source.kind !== 'equipment');
+  const carriedPassiveSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
     sources.filter(
       (source) => source.kind !== 'equipment' && source.kind !== 'generated-equipment',
     );
 
   const filteredActiveSources = new Map<string, AbilityGrantSource[]>();
   for (const [abilityId, sources] of state.activeAbilityGrantSources) {
-    const kept = nonEquipmentSources(sources);
+    const kept = carriedActiveSources(sources);
     if (kept.length > 0) filteredActiveSources.set(abilityId, kept);
   }
   const filteredPassiveSources = new Map<string, AbilityGrantSource[]>();
   for (const [abilityId, sources] of state.passiveAbilityGrantSources) {
-    const kept = nonEquipmentSources(sources);
+    const kept = carriedPassiveSources(sources);
     if (kept.length > 0) filteredPassiveSources.set(abilityId, kept);
   }
 
@@ -431,11 +433,15 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   const assertNoSerializedEquipmentGrantSources = (
     grantSources: readonly (readonly [string, readonly AbilityGrantSource[]])[] | undefined,
     field: 'activeAbilityGrantSources' | 'passiveAbilityGrantSources',
+    allowGeneratedEquipment: boolean,
   ): void => {
     if (!grantSources) return;
     for (const [abilityId, sources] of grantSources) {
       for (const source of sources) {
-        if (source.kind === 'generated-equipment' || source.kind === 'equipment') {
+        if (
+          source.kind === 'equipment' ||
+          (source.kind === 'generated-equipment' && !allowGeneratedEquipment)
+        ) {
           throw new PlayerCarryoverSnapshotError(
             `Snapshot ${field} must not contain equipment source for ${abilityId}`,
           );
@@ -446,10 +452,12 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   assertNoSerializedEquipmentGrantSources(
     snapshot.abilityState?.activeAbilityGrantSources,
     'activeAbilityGrantSources',
+    true,
   );
   assertNoSerializedEquipmentGrantSources(
     snapshot.abilityState?.passiveAbilityGrantSources,
     'passiveAbilityGrantSources',
+    false,
   );
 
   return { snapshot, instancesByKey };
