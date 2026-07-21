@@ -30,6 +30,7 @@ const SPELL_DAMAGE_OPTIONS: DamageOptions = {
   affinity: 'magic',
   scaleWithPrimary: false,
   canCrit: true,
+  fromActiveAbility: true,
 };
 
 function tilesToFeet(world: GameWorld, radiusTiles: number): number {

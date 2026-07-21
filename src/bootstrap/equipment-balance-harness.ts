@@ -301,6 +301,7 @@ export interface EquipmentBalanceCohortReport {
 interface EncounterRun {
   readonly damage: number;
   readonly dps: number;
+  readonly abilityDps: number;
   readonly hitCount: number;
   readonly critCount: number;
   readonly instances: readonly GeneratedEquipmentInstanceV1[];
@@ -410,15 +411,14 @@ function step(
 function runEncounter(
   build: EquipmentBalanceBuild,
   level: EquipmentBalanceLevel,
-  includeActiveAbilities: boolean,
   worldFactory: EquipmentBalanceWorldFactory,
 ): EncounterRun {
   const seed = build.seedBase + level * 17;
-  const runKey = `balance-${build.id}-${level}-${includeActiveAbilities ? 'full' : 'weapon'}`;
+  const runKey = `balance-${build.id}-${level}`;
   const world = worldFactory(seed, runKey);
   world.state = 'playing';
   const player = spawnPlayer(world, build.encounter.playerStartX, 0);
-  world.featureUnlocks.spells = includeActiveAbilities;
+  world.featureUnlocks.spells = true;
   initializeBaseStats(world, player, { maxHp: TARGET_HP });
   world.stores.health.current[player] = TARGET_HP;
   world.stores.health.max[player] = TARGET_HP;
@@ -434,9 +434,6 @@ function runEncounter(
 
   const abilityState = getOrCreateAbilityState(world, player);
   const configuredActiveAbilityIds = [...abilityState.equippedActiveAbilityIds];
-  if (!includeActiveAbilities) {
-    abilityState.equippedActiveAbilityIds = [];
-  }
 
   const hooks = createFloorMainSceneOptions('floor1');
   const warmupInput = createInputState();
@@ -451,6 +448,7 @@ function runEncounter(
   const startingHealth = TARGET_HP * targetIds.length;
   let hitCount = 0;
   let critCount = 0;
+  let abilityDamage = 0;
   const input = createInputState();
 
   for (let frame = 0; frame < MEASUREMENT_FRAMES; frame += 1) {
@@ -467,6 +465,7 @@ function runEncounter(
       }
       hitCount += 1;
       if (event.isCrit === true) critCount += 1;
+      if (event.fromActiveAbility === true) abilityDamage += event.amount;
     }
     world.combatEvents.length = 0;
     world.vfxEvents.length = 0;
@@ -486,6 +485,7 @@ function runEncounter(
   return {
     damage,
     dps: damage / seconds,
+    abilityDps: abilityDamage / seconds,
     hitCount,
     critCount,
     instances,
@@ -508,39 +508,38 @@ function measurement(
   level: EquipmentBalanceLevel,
   worldFactory: EquipmentBalanceWorldFactory,
 ): EquipmentBalanceMeasurement {
-  const full = runEncounter(build, level, true, worldFactory);
-  const weaponOnly = runEncounter(build, level, false, worldFactory);
+  const run = runEncounter(build, level, worldFactory);
   return {
     buildId: build.id,
     buildLabel: build.label,
     focus: build.focus,
     level,
     seed: build.seedBase + level * 17,
-    aggregateDps: full.dps,
-    weaponAndPassiveDps: weaponOnly.dps,
-    activeAbilityDps: Math.max(0, full.dps - weaponOnly.dps),
-    totalDamage: full.damage,
-    hitCount: full.hitCount,
-    critCount: full.critCount,
+    aggregateDps: run.dps,
+    weaponAndPassiveDps: Math.max(0, run.dps - run.abilityDps),
+    activeAbilityDps: run.abilityDps,
+    totalDamage: run.damage,
+    hitCount: run.hitCount,
+    critCount: run.critCount,
     targetCount: build.encounter.targets.length,
-    equipmentConfigs: full.instances.map(
+    equipmentConfigs: run.instances.map(
       (instance) =>
         `${instance.baseId}@L${instance.itemLevel}/${instance.rarity}/+${instance.enhancementLevel}`,
     ),
-    effectIds: full.instances.flatMap((instance) =>
+    effectIds: run.instances.flatMap((instance) =>
       instance.resolvedEffects.map((effect) => effect.effectId),
     ),
-    activeAbilityIds: full.activeAbilityIds,
-    passiveAbilityIds: full.passiveAbilityIds,
-    baseDamage: full.baseDamage,
-    attackSpeed: full.attackSpeed,
-    critChance: full.critChance,
-    damageBonus: full.damageBonus,
-    damagePercent: full.damagePercent,
-    strength: full.strength,
-    armor: full.armor,
-    equippedWeightLb: full.equippedWeightLb,
-    encumbranceBand: full.encumbranceBand,
+    activeAbilityIds: run.activeAbilityIds,
+    passiveAbilityIds: run.passiveAbilityIds,
+    baseDamage: run.baseDamage,
+    attackSpeed: run.attackSpeed,
+    critChance: run.critChance,
+    damageBonus: run.damageBonus,
+    damagePercent: run.damagePercent,
+    strength: run.strength,
+    armor: run.armor,
+    equippedWeightLb: run.equippedWeightLb,
+    encumbranceBand: run.encumbranceBand,
   };
 }
 
