@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
   existsSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -10,6 +11,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
@@ -393,12 +395,29 @@ export async function ensureSidecarService(
         );
       }
       if (isReady(health, repoRoot)) {
+        // Verify the sidecar is manager-owned and its instance matches the registry
+        // before treating it as the managed singleton. An unmanaged `cli.ts` process
+        // can satisfy `isReady` but omits provenance/ownership metadata, so
+        // authenticated shutdown and registry ownership invariants would not hold.
+        if (health.service?.managed !== true) {
+          throw new Error(
+            `An unmanaged sprite sidecar is running at ${baseUrl}; ` +
+              `stop it (kill PID ${health.service?.pid ?? 'unknown'}) before retrying.`,
+          );
+        }
         const registry = readRegistry(registryPath);
+        if (!registry || health.service.instanceId !== registry.instanceId) {
+          throw new Error(
+            `Sprite sidecar at ${baseUrl} instance (${health.service.instanceId}) ` +
+              `does not match registry (${registry?.instanceId ?? 'none'}); ` +
+              `stop the sidecar and retry.`,
+          );
+        }
         return {
           state: 'reused',
           baseUrl,
-          logPath: registry?.logPath ?? null,
-          pid: health.service?.pid ?? registry?.pid ?? null,
+          logPath: registry.logPath ?? null,
+          pid: health.service.pid ?? registry.pid ?? null,
           version: SPRITE_SIDECAR_SERVICE_VERSION,
         };
       }
@@ -577,10 +596,16 @@ export async function stopSidecarService(
 }
 
 export function releaseSidecarRegistry(filePath: string, instanceId: string): void {
-  // Atomic rename prevents a successor that re-claimed the path after our token
-  // check from having its registry removed by our subsequent rmSync. Once we've
-  // renamed the file we own the moved copy exclusively; any new owner writes a
-  // fresh file at the original path and is unaffected.
+  // Pre-check ownership BEFORE moving to avoid displacing a successor's registry
+  // during the rename window. This prevents a stale caller from accidentally moving
+  // an active instance B's registry when B replaced the stale instance A.
+  const snapshot = readRegistry(filePath);
+  if (!snapshot || snapshot.instanceId !== instanceId) {
+    return; // Not our registry (already gone or replaced by a successor).
+  }
+
+  // Atomic rename gives us exclusive ownership of the moved copy. Any new claimant
+  // that races between our pre-check and this rename starts fresh at filePath.
   const recoveryPath = `${filePath}.releasing.${process.pid}.${randomUUID()}`;
   try {
     renameSync(filePath, recoveryPath);
@@ -594,14 +619,15 @@ export function releaseSidecarRegistry(filePath: string, instanceId: string): vo
     // Our registry — delete the moved copy to complete the release.
     rmSync(recoveryPath, { force: true });
   } else {
-    // We grabbed someone else's registry. Restore it so the current owner
-    // can still be discovered. If another process created a new registry at
-    // the original path in the brief window, prefer their version.
+    // A successor raced between our pre-check and the rename, replacing filePath
+    // with their registry; we inadvertently moved it. Restore using link+unlink so
+    // we never overwrite a further successor on Linux (rename would silently do so).
     try {
-      renameSync(recoveryPath, filePath);
+      linkSync(recoveryPath, filePath); // atomic; throws EEXIST if a new owner is there
+      unlinkSync(recoveryPath);
     } catch {
-      // Restoring failed (e.g. a new file was created at filePath); clean up
-      // the orphan copy to avoid stale junk files.
+      // EEXIST: another claimant already holds filePath — clean up the orphan copy
+      // rather than leaving a stale file or overwriting the current owner.
       rmSync(recoveryPath, { force: true });
     }
   }

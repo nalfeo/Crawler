@@ -67,6 +67,14 @@ export function beginSpriteSidecarStartup(entry, options = {}) {
   entry.sidecarStartup = { state: 'starting', error: null, logPath: null };
   void ensureSpriteSidecar(entry.workspaceRoot, options)
     .then((result) => {
+      // Rebind to the manager's authoritative URL before publishing ready state.
+      // The URL returned by the manager is the source of truth: it may differ from
+      // the one computed at entry creation time (e.g. after a SPRITES_SIDECAR_PORT
+      // env change, or when the port is loaded only from .env.local by the manager).
+      if (typeof result.baseUrl === 'string' && result.baseUrl !== entry.baseUrl) {
+        entry.baseUrl = result.baseUrl;
+        options.rebindClients?.(result.baseUrl);
+      }
       entry.sidecarStartup = {
         state: 'ready',
         error: null,

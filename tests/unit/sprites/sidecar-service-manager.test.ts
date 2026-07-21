@@ -72,6 +72,24 @@ describe('sprite sidecar service manager', () => {
   it('waits for existing service to be ready rather than spawning a duplicate when health present but controllers not ready', async () => {
     const repoRoot = makeRoot('crawler-sidecar-ready-');
     const registryRoot = makeRoot('crawler-sidecar-ready-registry-');
+    const existingInstanceId = 'existing-managed-ready-instance';
+    // Pre-write a registry so the managed-reuse check can match instanceId once ready.
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    mkdirSync(path.dirname(regPath), { recursive: true });
+    writeFileSync(
+      regPath,
+      JSON.stringify({
+        schema: 1,
+        repoRoot,
+        port: 3010,
+        version: SPRITE_SIDECAR_SERVICE_VERSION,
+        instanceId: existingInstanceId,
+        shutdownToken: 'tok',
+        startedAt: new Date().toISOString(),
+        logPath: path.join(registryRoot, 'svc.log'),
+        pid: 7654,
+      }),
+    );
     let controllersRunning = false;
     let sleepCount = 0;
     const spawnService = vi.fn(() => ({ pid: 99 }));
@@ -86,6 +104,9 @@ describe('sprite sidecar service manager', () => {
         queueBackend: 'azure-queue',
         worker: { running: controllersRunning },
         issueIngester: { running: controllersRunning },
+        ...(controllersRunning
+          ? { service: { managed: true, instanceId: existingInstanceId, pid: 7654, startedAt: '' } }
+          : {}),
       }),
       spawnService,
       isProcessAlive: () => true,
@@ -170,6 +191,24 @@ describe('sprite sidecar service manager', () => {
     const repoRoot = makeRoot('crawler-sidecar-reuse-');
     const registryRoot = makeRoot('crawler-sidecar-reuse-registry-');
     const bootstrapFn = vi.fn();
+    // Pre-write a registry so the managed-reuse check can match instanceId.
+    const existingInstanceId = 'existing-managed-instance';
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    mkdirSync(path.dirname(regPath), { recursive: true });
+    writeFileSync(
+      regPath,
+      JSON.stringify({
+        schema: 1,
+        repoRoot,
+        port: 3010,
+        version: SPRITE_SIDECAR_SERVICE_VERSION,
+        instanceId: existingInstanceId,
+        shutdownToken: 'tok',
+        startedAt: new Date().toISOString(),
+        logPath: path.join(registryRoot, 'svc.log'),
+        pid: 999,
+      }),
+    );
     const result = await ensureSidecarService(repoRoot, {
       registryRoot,
       bootstrap: bootstrapFn,
@@ -180,6 +219,7 @@ describe('sprite sidecar service manager', () => {
         queueBackend: 'azure-queue',
         worker: { running: true },
         issueIngester: { running: true },
+        service: { managed: true, instanceId: existingInstanceId, pid: 999, startedAt: '' },
       }),
       spawnService: vi.fn(() => ({ pid: 999 })),
       isProcessAlive: () => true,
@@ -192,6 +232,23 @@ describe('sprite sidecar service manager', () => {
   it('skips bootstrap even when bootstrap would throw, if reusing a healthy service', async () => {
     const repoRoot = makeRoot('crawler-sidecar-reuse-throw-');
     const registryRoot = makeRoot('crawler-sidecar-reuse-throw-registry-');
+    const existingInstanceId = 'existing-managed-instance-throw';
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    mkdirSync(path.dirname(regPath), { recursive: true });
+    writeFileSync(
+      regPath,
+      JSON.stringify({
+        schema: 1,
+        repoRoot,
+        port: 3010,
+        version: SPRITE_SIDECAR_SERVICE_VERSION,
+        instanceId: existingInstanceId,
+        shutdownToken: 'tok',
+        startedAt: new Date().toISOString(),
+        logPath: path.join(registryRoot, 'svc.log'),
+        pid: 999,
+      }),
+    );
     const result = await ensureSidecarService(repoRoot, {
       registryRoot,
       bootstrap: () => {
@@ -204,12 +261,75 @@ describe('sprite sidecar service manager', () => {
         queueBackend: 'azure-queue',
         worker: { running: true },
         issueIngester: { running: true },
+        service: { managed: true, instanceId: existingInstanceId, pid: 999, startedAt: '' },
       }),
       spawnService: vi.fn(() => ({ pid: 999 })),
       isProcessAlive: () => true,
       sleep: async () => Promise.resolve(),
     });
     expect(result.state).toBe('reused');
+  });
+
+  it('rejects an unmanaged sidecar that satisfies isReady', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-unmanaged-reject-');
+    const registryRoot = makeRoot('crawler-sidecar-unmanaged-reject-registry-');
+    await expect(
+      ensureSidecarService(repoRoot, {
+        registryRoot,
+        bootstrap: vi.fn(),
+        probeHealth: async () => ({
+          status: 'ok',
+          repoRoot,
+          version: SPRITE_SIDECAR_SERVICE_VERSION,
+          queueBackend: 'azure-queue',
+          worker: { running: true },
+          issueIngester: { running: true },
+          // No service field — unmanaged cli.ts process.
+        }),
+        spawnService: vi.fn(() => ({ pid: 999 })),
+        isProcessAlive: () => true,
+        sleep: async () => Promise.resolve(),
+      }),
+    ).rejects.toThrow('unmanaged sprite sidecar');
+  });
+
+  it('rejects a managed sidecar whose instanceId does not match the registry', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-instance-mismatch-');
+    const registryRoot = makeRoot('crawler-sidecar-instance-mismatch-registry-');
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    mkdirSync(path.dirname(regPath), { recursive: true });
+    writeFileSync(
+      regPath,
+      JSON.stringify({
+        schema: 1,
+        repoRoot,
+        port: 3010,
+        version: SPRITE_SIDECAR_SERVICE_VERSION,
+        instanceId: 'registry-instance',
+        shutdownToken: 'tok',
+        startedAt: new Date().toISOString(),
+        logPath: path.join(registryRoot, 'svc.log'),
+        pid: 999,
+      }),
+    );
+    await expect(
+      ensureSidecarService(repoRoot, {
+        registryRoot,
+        bootstrap: vi.fn(),
+        probeHealth: async () => ({
+          status: 'ok',
+          repoRoot,
+          version: SPRITE_SIDECAR_SERVICE_VERSION,
+          queueBackend: 'azure-queue',
+          worker: { running: true },
+          issueIngester: { running: true },
+          service: { managed: true, instanceId: 'different-instance', pid: 999, startedAt: '' },
+        }),
+        spawnService: vi.fn(() => ({ pid: 999 })),
+        isProcessAlive: () => true,
+        sleep: async () => Promise.resolve(),
+      }),
+    ).rejects.toThrow('does not match registry');
   });
 
   it('releases claimed registry when bootstrap throws', async () => {
@@ -892,5 +1012,22 @@ describe('releaseSidecarRegistry', () => {
     // Do not write anything — file is absent.
 
     expect(() => releaseSidecarRegistry(regPath, 'my-instance')).not.toThrow();
+  });
+
+  it('does not touch a successor registry when a stale instanceId is released', () => {
+    // Simulates: instance A's release is called after instance B replaced A at filePath.
+    // The pre-check reads B's instanceId ≠ A, so release returns without touching the file.
+    const repoRoot = makeRoot('crawler-release-successor-');
+    const registryRoot = makeRoot('crawler-release-successor-reg-');
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    writeReg(regPath, 'instance-B', repoRoot);
+
+    // A stale caller tries to release 'instance-A', but the file has 'instance-B'.
+    releaseSidecarRegistry(regPath, 'instance-A');
+
+    // instance-B's registry must remain intact at the original path.
+    expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(true);
+    const content = readFileSync(regPath, 'utf8');
+    expect(JSON.parse(content)).toMatchObject({ instanceId: 'instance-B' });
   });
 });

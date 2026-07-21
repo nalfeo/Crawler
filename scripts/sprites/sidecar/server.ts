@@ -78,6 +78,7 @@ import {
 } from '../checkin.js';
 import { createDefaultCheckinDeps } from '../checkin-runtime.js';
 import { SPRITE_TYPES, type Brief } from '../brief-schema.js';
+import { briefDirectoryForType } from '../brief-paths.js';
 import { generateOne } from '../generate-one.js';
 import {
   DEFAULT_CATALOG_PATH,
@@ -2374,8 +2375,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     const destRel =
       target === 'draft'
-        ? path.join('briefs', 'draft', `${body.type}s`, `${body.name}.yaml`)
-        : path.join('briefs', `${body.type}s`, `${body.name}.yaml`);
+        ? path.join('briefs', 'draft', briefDirectoryForType(body.type as Brief['type']), `${body.name}.yaml`)
+        : path.join('briefs', briefDirectoryForType(body.type as Brief['type']), `${body.name}.yaml`);
     const destAbs = path.resolve(deps.repoRoot, destRel);
     mkdirSync(path.dirname(destAbs), { recursive: true });
     copyFileSync(sourceAbs, destAbs);

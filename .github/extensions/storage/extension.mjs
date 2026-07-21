@@ -357,7 +357,12 @@ async function startServerForInstance(ctx) {
   // missing entry, so an early request degrades cleanly rather than observing a
   // half-initialized entry.
   instances.set(ctx.instanceId, entry);
-  beginSpriteSidecarStartup(entry);
+  beginSpriteSidecarStartup(entry, {
+    rebindClients: (url) => {
+      entry.sidecarClient = createSidecarClient({ baseUrl: url, workspaceRoot });
+      entry.storageClient = createStorageClient({ baseUrl: url });
+    },
+  });
   log(`serving instance ${ctx.instanceId} at ${server.url} (sidecar ${baseUrl})`);
   return entry;
 }

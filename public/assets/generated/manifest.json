@@ -4675,7 +4675,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "66b119229ec9f2eba730e21695eba5b5fcfe382c2433d345fab5b939d705c8ba"
     },
     "prop-junk-pile-v1-var-3": {
@@ -4704,7 +4704,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "4034085ecd9ec122152fb34133867abdc65907fe631c734716947ac228959871"
     },
     "prop-rubble-pile-var-1": {
@@ -4767,7 +4767,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "c3fd43bcc09e03807a5be6338b8d69cbb1cac726200c2129bc2f03f12d35a148"
     },
     "prop-torch-v1-var-14": {
@@ -4796,7 +4796,7 @@
       },
       "sensorScore": "5/8",
       "judgeScore": "4",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "e7a3c699d372b21c1ab82c27b7980316aae5ea02c4c91f883539a55fb2d43833"
     },
     "prop-torch-v1-var-2": {
@@ -4825,7 +4825,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "d4ef1c0915580fdc0f4b66747ac0e19b762a01dab65eff2dce1ed38216a082d7"
     },
     "prop-torch-v1-var-8": {
@@ -4854,7 +4854,7 @@
       },
       "sensorScore": "5/8",
       "judgeScore": "4",
-      "type": "tile",
+      "type": "prop",
       "contentHash": "8821a076e8deee9750f8b01d599a9941440e9a8adb3635323635d13fff88c311"
     },
     "prop-wall-sconce-v1-var-1": {
@@ -4883,7 +4883,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": null,
+      "type": "prop",
       "contentHash": "7a8c699059c5b5a86988d9befb547125bcd8ed679f2f39433496ff4b819b10de",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -4917,7 +4917,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": null,
+      "type": "prop",
       "contentHash": "f1e64d20a65b6af804cdcafbc49232d5d2c1aca386757360f052c8ccb71eadd1",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -4951,7 +4951,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": null,
+      "type": "prop",
       "contentHash": "45c4610b97ed2e0bb0d5335f6b7f017be0ee90252d680d78edf6a865b93ca9ec",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -4985,7 +4985,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "2",
-      "type": null,
+      "type": "prop",
       "contentHash": "e7b7ad9c4bf775b10f79a76ae9d733f11436845991c745311214dafecb575ae5",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -5019,7 +5019,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "4",
-      "type": null,
+      "type": "prop",
       "contentHash": "46221082db59800e1f535cf11d0ae37726eedef1b9db9d7f114c7fb980add401",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -5053,7 +5053,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "3",
-      "type": null,
+      "type": "prop",
       "contentHash": "4d41db9921f46a7cac44c457e2987e7354dc8b1d34f7d6fba6ef0fdba018b5e9",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,
@@ -5087,7 +5087,7 @@
       },
       "sensorScore": "6/8",
       "judgeScore": "3",
-      "type": null,
+      "type": "prop",
       "contentHash": "aa12f07338f278af13cc7c4f90ffa7c1a91147960ffdb1e8e5e27a66abd5a026",
       "postprocessOverrideProfilePath": null,
       "effectivePipelineSnapshotPath": null,

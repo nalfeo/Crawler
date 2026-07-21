@@ -59,6 +59,55 @@ test('beginSpriteSidecarStartup publishes ready state after automatic startup', 
   assert.equal(states.at(-1).state, 'ready');
 });
 
+test('beginSpriteSidecarStartup rebinds entry.baseUrl and calls rebindClients when manager returns a different URL', async () => {
+  const entry = {
+    workspaceRoot: process.cwd(),
+    baseUrl: 'http://127.0.0.1:3010',
+    sidecarStartup: null,
+    pushState: async () => {},
+  };
+  let reboundUrl = null;
+
+  beginSpriteSidecarStartup(entry, {
+    execFile: async () => ({
+      stdout:
+        '{"ok":true,"state":"reused","pid":7,"logPath":"managed.log","baseUrl":"http://127.0.0.1:3020"}\n',
+    }),
+    rebindClients: (url) => {
+      reboundUrl = url;
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(entry.baseUrl, 'http://127.0.0.1:3020');
+  assert.equal(reboundUrl, 'http://127.0.0.1:3020');
+  assert.equal(entry.sidecarStartup.state, 'ready');
+});
+
+test('beginSpriteSidecarStartup does not call rebindClients when URL is unchanged', async () => {
+  const entry = {
+    workspaceRoot: process.cwd(),
+    baseUrl: 'http://127.0.0.1:3010',
+    sidecarStartup: null,
+    pushState: async () => {},
+  };
+  let rebindCalled = false;
+
+  beginSpriteSidecarStartup(entry, {
+    execFile: async () => ({
+      stdout:
+        '{"ok":true,"state":"reused","pid":7,"logPath":"managed.log","baseUrl":"http://127.0.0.1:3010"}\n',
+    }),
+    rebindClients: () => {
+      rebindCalled = true;
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(rebindCalled, false);
+  assert.equal(entry.baseUrl, 'http://127.0.0.1:3010');
+});
+
 test('beginSpriteSidecarStartup publishes actionable failures', async () => {
   const entry = {
     workspaceRoot: process.cwd(),
