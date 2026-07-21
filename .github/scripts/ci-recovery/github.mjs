@@ -4,9 +4,26 @@ const graphqlUrl = process.env.GITHUB_GRAPHQL_URL || 'https://api.github.com/gra
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRY_ATTEMPTS = 2;
 const RETRY_DELAY_MS = Number(process.env.GITHUB_REQUEST_RETRY_DELAY_MS ?? 1000);
+const MAX_RETRY_DELAY_MS = Number(process.env.GITHUB_REQUEST_MAX_RETRY_DELAY_MS ?? 30000);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitResponse(status, data) {
+  if (status !== 403) return false;
+  return String(data?.message || '')
+    .toLowerCase()
+    .includes('rate limit');
+}
+
+function retryDelay(headers, attempt) {
+  const retryAfter = headers?.get?.('retry-after');
+  const retryAfterSeconds = Number.parseInt(retryAfter || '', 10);
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+    return Math.min(MAX_RETRY_DELAY_MS, retryAfterSeconds * 1000);
+  }
+  return Math.min(MAX_RETRY_DELAY_MS, RETRY_DELAY_MS * Math.pow(2, attempt - 1));
 }
 
 function summarizeBody(text, maxLength = 240) {
@@ -62,8 +79,13 @@ export async function request(token, path, options = {}) {
       if (parseError) {
         error.cause = parseError;
       }
-      if (canRetry && RETRYABLE_STATUSES.has(response.status) && attempt < MAX_RETRY_ATTEMPTS) {
+      if (
+        canRetry &&
+        (RETRYABLE_STATUSES.has(response.status) || isRateLimitResponse(response.status, data)) &&
+        attempt < MAX_RETRY_ATTEMPTS
+      ) {
         // Retryable transient error — next iteration backs off and retries.
+        await sleep(retryDelay(response.headers, attempt + 1));
         continue;
       }
       throw error;
@@ -104,18 +126,32 @@ export async function paginate(token, path) {
 }
 
 export async function graphql(token, query, variables = {}) {
-  const response = await fetch(graphqlUrl, {
-    method: 'POST',
-    headers: headers(token, { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ query, variables }),
-  });
-  const payload = await response.json();
-  if (!response.ok || payload.errors?.length) {
-    throw new Error(
-      `GitHub GraphQL failed: ${payload.errors?.map((error) => error.message).join('; ') || response.status}`,
-    );
+  const isQuery = /^\s*query(?:\s|[{(])/i.test(query);
+  for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) {
+      await sleep(retryDelay(response.headers, attempt + 1));
+    }
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: headers(token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ query, variables }),
+    });
+    const payload = await response.json();
+    const messages = payload.errors?.map((error) => error.message).join('; ');
+    const rateLimited = isRateLimitResponse(response.status, { message: messages });
+    if (!response.ok || payload.errors?.length) {
+      if (
+        isQuery &&
+        (response.status === 429 || response.status >= 500 || rateLimited) &&
+        attempt < MAX_RETRY_ATTEMPTS
+      ) {
+        continue;
+      }
+      throw new Error(`GitHub GraphQL failed: ${messages || response.status}`);
+    }
+    return payload.data;
   }
-  return payload.data;
+  throw new Error('GitHub GraphQL: exhausted all retry attempts');
 }
 
 export async function listReviewThreads(token, owner, repo, number, graphqlFn = graphql) {

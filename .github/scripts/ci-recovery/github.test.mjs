@@ -180,6 +180,71 @@ test('request exhausts retries and surfaces the last 503 error', async (t) => {
   );
 });
 
+test('request retries a GET on a rate-limit 403 and succeeds', async (t) => {
+  let callCount = 0;
+  const { server, port } = await startServer((req, res) => {
+    callCount += 1;
+    if (callCount === 1) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'API rate limit exceeded for user' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  t.after(() => server.close());
+
+  const { request: requestFromFreshImport } = await importRequestWithApiBase(port);
+  const result = await requestFromFreshImport('token', '/repos/test-owner/test-repo/pulls');
+  assert.equal(callCount, 2);
+  assert.deepEqual(result.data, { ok: true });
+});
+
+test('request does not retry a rate-limit 403 on a POST', async (t) => {
+  let callCount = 0;
+  const { server, port } = await startServer((_req, res) => {
+    callCount += 1;
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'API rate limit exceeded for user' }));
+  });
+  t.after(() => server.close());
+
+  const { request: requestFromFreshImport } = await importRequestWithApiBase(port);
+  await assert.rejects(() =>
+    requestFromFreshImport('token', '/repos/test-owner/test-repo/dispatches', {
+      method: 'POST',
+      body: {},
+    }),
+  );
+  assert.equal(callCount, 1);
+});
+
+test('graphql retries rate-limited queries but not mutations', async (t) => {
+  let callCount = 0;
+  const { server, port } = await startServer((req, res) => {
+    callCount += 1;
+    if (req.url === '/graphql') {
+      res.writeHead(callCount === 1 ? 403 : 200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify(
+          callCount === 1
+            ? { errors: [{ message: 'API rate limit exceeded' }] }
+            : { data: { repository: { id: 'repo' } } },
+        ),
+      );
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  t.after(() => server.close());
+
+  const { graphql: graphqlFromFreshImport } = await importRequestWithApiBase(port);
+  const result = await graphqlFromFreshImport('token', 'query { repository { id } }');
+  assert.deepEqual(result, { repository: { id: 'repo' } });
+  assert.equal(callCount, 2);
+});
+
 test('request does not retry a non-GET (POST) on 503', async (t) => {
   let callCount = 0;
   const { server, port } = await startServer((req, res) => {
