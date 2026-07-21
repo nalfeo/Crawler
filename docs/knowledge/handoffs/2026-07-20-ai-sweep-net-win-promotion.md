@@ -189,10 +189,11 @@ contextLabel: string)`, adding 4 build-fingerprint checks
   inflate `wins`/`runs` past the panel check and produce a false positive delta.
   Two regression tests added covering both the candidate-duplicate and
   incumbent-duplicate cases.
-- `package.json` / `package-lock.json` — added `brace-expansion: ^5.0.7`
-  override to fix security vulnerability GHSA-3jxr-9vmj-r5cp, surfaced by the
-  CI security check during PR shepherding. Validated: `npm install` updated
-  the lockfile; `npm run verify:fast` and the CI security check both pass.
+- `package.json` — added `brace-expansion: ^5.0.7` override to fix security
+  vulnerability GHSA-3jxr-9vmj-r5cp, surfaced by the CI security check during
+  PR shepherding. The existing lockfile already resolves `brace-expansion` 5.0.7
+  (no `package-lock.json` change needed). Validated: `npm run verify:fast` and
+  the CI security check both pass.
 
 ### Scoped out
 
