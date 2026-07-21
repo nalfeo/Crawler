@@ -735,6 +735,18 @@ export async function promoteExactBatch({
       );
       return false;
     }
+    // Re-read main immediately after the potentially long coordinator scan:
+    // verifyMergeSlot fetches files, comments, checks, and runs git proofs for
+    // every group member, which can take several seconds. Re-assert that main
+    // has not advanced since the base-CAS check above so we do not land onto an
+    // unexpected parent.
+    const mainAfterSlotVerify = await fetchCurrentMain();
+    if (mainAfterSlotVerify !== mainBeforeMerge) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; main moved to ${mainAfterSlotVerify} during coordinator scan (expected ${mainBeforeMerge}); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
     const merge = await mergePullRequest(entry, {
       expectedHeadSha: freshPr.head.sha,
       commitTitle: squashCommitTitle(freshPr),

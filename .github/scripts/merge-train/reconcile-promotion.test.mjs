@@ -380,6 +380,63 @@ test('promoteExactBatch blocks a merge when the final merge-slot recheck fails',
   assert.deepEqual(records.merges, []);
 });
 
+test('promoteExactBatch fails closed when main moves during the coordinator slot verification', async () => {
+  // The base-CAS check passes (main === BASE), then verifyMergeSlot runs the
+  // coordinator scan (fetches files, comments, checks, git proofs for all
+  // group members). During that scan an external writer advances main. The
+  // post-verifyMergeSlot re-read must catch the drift and return false before
+  // issuing the merge PUT.
+  const EXTERNAL_SHA = '9'.repeat(40);
+  let main = BASE;
+  const merges = [];
+  const result = await promoteExactBatch({
+    entries: [makePromoPr(1)],
+    candidateShas: [CAND1],
+    expectedBase: BASE,
+    repository: REPO,
+    live: true,
+    fetchCurrentPr: async () => makePromoPr(1),
+    fetchCurrentMain: async () => main,
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+    eligible: async () => ({ ok: true }),
+    git: (args) =>
+      args[0] === 'rev-parse'
+        ? args[1]?.endsWith('^{tree}')
+          ? TREE1
+          : args[1]?.endsWith('^')
+            ? BASE
+            : args[1]
+        : '',
+    mergePullRequest: async (entry, args) => {
+      merges.push({ number: entry.number, ...args });
+      main = LAND1;
+      return { ok: true, sha: LAND1 };
+    },
+    setLabel: async () => {},
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    postLandedComment: async () => {},
+    publishPostconditionCheck: async () => {},
+    recordMapping: () => {},
+    reattestHealth: async () => true,
+    verifyCandidateEvidence: async () => true,
+    verifyMergeSlot: async () => {
+      // Simulate main advancing while the coordinator scan was running.
+      main = EXTERNAL_SHA;
+      return null; // the verifier itself found no blocking reason
+    },
+    proofSleep: async () => {},
+  });
+  // The post-verifyMergeSlot re-read detects EXTERNAL_SHA !== BASE and must
+  // rebuild without issuing the merge PUT.
+  assert.equal(result, false);
+  assert.deepEqual(merges, []);
+});
+
 test('promoteExactBatch fails closed and publishes postcondition when final main guard sees main moved after promotion', async () => {
   // After both PRs are merged and their per-PR proofs pass, an external writer
   // advances main. The final guard must detect this (after exhausting its zero-

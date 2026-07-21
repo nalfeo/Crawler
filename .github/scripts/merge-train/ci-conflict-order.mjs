@@ -179,9 +179,23 @@ export async function ciConflictOrderReasonForPromotion({
     return null;
   }
 
-  const openPulls = (await fetchOpenPulls()).map((pull) =>
-    pull.number === pullRequest.number ? pullRequest : pull,
-  );
+  const rawOpenPulls = await fetchOpenPulls();
+  // Apply the same eligibility filter as the coordinator reconciler: non-draft,
+  // same-repository PRs only. External fork PRs could otherwise join the
+  // cluster, become the ranked active slot, and permanently block internal
+  // merge-train promotion (or cause a git-fetch failure for their SHA).
+  const openPulls = rawOpenPulls
+    .map((pull) => (pull.number === pullRequest.number ? pullRequest : pull))
+    .filter(
+      (pull) =>
+        !pull.draft &&
+        String(pull.head?.repo?.full_name ?? '').toLowerCase() === repository.toLowerCase(),
+    );
+  // Retain the candidate itself even if the snapshot did not include it
+  // (e.g. the fetch page was split across a race).
+  if (!openPulls.some((pull) => pull.number === pullRequest.number)) {
+    openPulls.push(pullRequest);
+  }
   const filesByNumber = new Map([[pullRequest.number, currentFiles]]);
   const commentsByNumber = new Map([[pullRequest.number, currentComments]]);
   const otherPulls = openPulls.filter((pull) => pull.number !== pullRequest.number);
@@ -277,6 +291,23 @@ export async function ciConflictOrderReasonForPromotion({
   }
   if (selection.active.number !== pullRequest.number) {
     return `ci-conflict coordinator currently selects #${selection.active.number}`;
+  }
+
+  // Final binding revalidation: re-fetch all group member heads immediately
+  // before returning success to catch a synchronize event that occurred during
+  // the scan. Any head or membership drift fails closed, forcing a rebuild.
+  const finalOpenPulls = await fetchOpenPulls();
+  const finalHeadByNumber = new Map(
+    finalOpenPulls.map((pull) => [pull.number, pull.head?.sha]),
+  );
+  for (const pull of group.pulls) {
+    const liveHead = finalHeadByNumber.get(pull.number);
+    if (!liveHead) {
+      return `ci-conflict coordinator group member #${pull.number} disappeared during verification`;
+    }
+    if (liveHead !== pull.headSha) {
+      return `ci-conflict coordinator group member #${pull.number} head drifted (was ${pull.headSha}, now ${liveHead})`;
+    }
   }
   return null;
 }
