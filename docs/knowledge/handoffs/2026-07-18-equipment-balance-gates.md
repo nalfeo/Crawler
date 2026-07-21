@@ -46,9 +46,9 @@ this slice does not duplicate or modify that correction.
 - Measured realized aggregate DPS from target-health loss over 600 frames through
   production generated equipment, equip/stat/snapshot/ability behavior,
   canonical floor bootstrap hooks, and the real headless simulation step.
-- Isolated active-ability contribution with paired same-seed worlds that retain
-  identical generated loadouts and passive ownership while suppressing only
-  active slots in the comparison run.
+- Isolated active-ability contribution inside the single full encounter by
+  summing `CombatEvent.fromActiveAbility` hits at the shared `applyDamage`
+  choke point, then deriving weapon/passive DPS from the same RNG sequence.
 - Added the hard median gate `[1.7, 2.3]` for both transitions. Measured medians
   are `1.942` for level 1->6 and `1.832` for level 6->11.
 - Added actionable diagnostics by build, level, seed, target count, damage/hits/
@@ -76,11 +76,9 @@ lab report; the final report has no horizontal overflow. Screenshot:
   every intentionally diverse build to remain inside the band.
 - Use target-health loss through production systems, never item-damage proxy
   formulas.
-- Give each paired encounter an independent world and registry run key while
-  preserving the same numeric RNG seed, preventing cross-run ECS or registry
-  contamination.
-- Enable the production spell feature only for active-enabled runs and clear
-  configured active slots in the comparison run, preserving passive grants.
+- Attribute active-ability DPS from tagged combat events inside the single full
+  encounter instead of subtracting a separate comparison run with divergent
+  crit/accuracy RNG.
 - Use canonical encumbrance snapshots and production equipment grant ownership
   rather than duplicating threshold or ability-source logic in the harness.
 - Use independent per-request worlds for reordered distribution checks because

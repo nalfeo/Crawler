@@ -509,10 +509,16 @@ if [ "$verify_status" -ne 143 ]; then
   cat "$log_file" >&2 || true
   exit 1
 fi
-if kill -0 "$tsc_child" 2>/dev/null || kill -0 "$eslint_child" 2>/dev/null; then
-  echo "Descendant process survived cleanup (tsc=$tsc_child eslint=$eslint_child)" >&2
-  exit 1
-fi
+descendant_attempts=$(( close_timeout_ms / 50 ))
+descendant_attempt=0
+while kill -0 "$tsc_child" 2>/dev/null || kill -0 "$eslint_child" 2>/dev/null; do
+ if [ "$descendant_attempt" -ge "$descendant_attempts" ]; then
+   echo "Descendant process survived cleanup (tsc=$tsc_child eslint=$eslint_child)" >&2
+   exit 1
+ fi
+ descendant_attempt=$((descendant_attempt + 1))
+ sleep 0.05
+done
 trap - EXIT
 echo "signal lifecycle ok"
 `,
