@@ -1,5 +1,16 @@
 [
   {
+    "commit": "862df843e325e4b990b15ba175bed69a14a80c16",
+    "commitDate": "2026-07-21T13:54:20-07:00",
+    "commitSubject": "feat(ci): stop irrelevant PR validation — 5 orthogonal impact flags + superseded-run cancellation (#1706)",
+    "capturedAt": "2026-07-21T22:11:39.152Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29868493785",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/862df843e325e4b990b15ba175bed69a14a80c16.json"
+  },
+  {
     "commit": "2917959acd43941b355bb9dfc12970b131e93395",
     "commitDate": "2026-07-21T13:28:25-07:00",
     "commitSubject": "fix(deps): patch fast-uri advisory (#1758)",
