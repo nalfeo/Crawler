@@ -347,6 +347,40 @@ describe('Floor 2 settlement · initialization', () => {
     expect(world.floorExtendedState?.settlement).toBeUndefined();
     expect(world.npcs.size).toBe(0);
   });
+
+  it('fails before any RNG or world mutation when economy is enabled with an invalid dependency closure', () => {
+    const world = createTestWorld({ seed: 999 });
+    world.floorMap = buildFloor2Map();
+    spawnPlayer(world, 0, 0);
+    world.floor = 2;
+    seedSettlementFamilyState(world);
+
+    // Enable economy but omit the required catalog dependency — invalid closure.
+    world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+    world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+    // floor2EquipmentCatalog left false.
+
+    const settlementRooms = world.floorMap.roomGraph.getRoomsByRole(RoomRole.SETTLEMENT);
+    const rolesBefore = settlementRooms.map((room) => room.role);
+    const doorCountBefore = query(world.ecs, [DoorState]).length;
+
+    // Use a control world to verify world.rng is not consumed before the throw.
+    const control = createTestWorld({ seed: 999 });
+
+    expect(() => initializeFloor2Settlement(world, { shopCount: 2 })).toThrowError(
+      'floor2EquipmentEconomy requires floor2EquipmentRegistry and floor2EquipmentCatalog',
+    );
+
+    // No NPCs spawned, no settlement snapshot written.
+    expect(world.floorExtendedState?.settlement).toBeUndefined();
+    expect(world.npcs.size).toBe(0);
+    // No door entities created.
+    expect(query(world.ecs, [DoorState])).toHaveLength(doorCountBefore);
+    // Settlement room roles unmodified.
+    expect(settlementRooms.map((room) => room.role)).toEqual(rolesBefore);
+    // world.rng was not advanced — next value matches an untouched control world.
+    expect(world.rng.next()).toBe(control.rng.next());
+  });
 });
 
 describe('Floor 2 emergent events · end-to-end propagation through the pipeline', () => {

@@ -92,7 +92,7 @@ function generateStock(
       world,
       {
         baseId,
-        itemLevel: Math.max(1, world.playerLevel.level),
+        itemLevel: rng.nextInt(Math.max(1, world.playerLevel.level - 1), world.playerLevel.level + 1),
         rarity,
         enhancementLevel: 0,
       },

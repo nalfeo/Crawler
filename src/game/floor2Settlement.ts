@@ -52,6 +52,7 @@ import type {
   Floor2ShopInventoryItem,
 } from '../shared/floor-types.js';
 import { createInitialFloor2QuartermasterStock } from './quartermaster-stock.js';
+import { getFloor2EquipmentEconomyAccess } from '../core/floor2-equipment-flags.js';
 
 /** Options for {@link initializeFloor2Settlement}. */
 export interface InitializeFloor2SettlementOptions {
@@ -103,6 +104,15 @@ export function initializeFloor2Settlement(
   if (!presentFamilies || presentFamilies.length === 0) {
     throw new Error('initializeFloor2Settlement: world.floorExtendedState.familyState is missing');
   }
+
+  // Preflight: reject an invalid economy dependency closure before any RNG
+  // consumption or world mutation so a caller that corrects the config and
+  // retries does not duplicate side effects.
+  const economyAccess = getFloor2EquipmentEconomyAccess(world);
+  if (economyAccess.kind === 'invalid') {
+    throw new Error(economyAccess.message);
+  }
+
   const settlementRng = new SeededRandom(hashStringToSeed(`floor2-settlement:${world.seed}`));
 
   // Route all shop planning through planFloor2SettlementShops: preserves the

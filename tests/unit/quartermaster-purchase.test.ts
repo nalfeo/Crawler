@@ -103,6 +103,15 @@ describe('Quartermaster atomic purchase', () => {
 
     const views = getQuartermasterOfferViews(world, playerEid);
 
+    // Resolve the actual instance level (rolled from max(1,level-1)..level+1 at generation).
+    const instance = listGeneratedEquipmentInstances(world).find(
+      (i) => i.instanceId === offer.instanceId,
+    );
+    expect(instance).toBeDefined();
+    const expectedItemLevel = instance!.itemLevel;
+    expect(expectedItemLevel).toBeGreaterThanOrEqual(Math.max(1, world.playerLevel.level - 1));
+    expect(expectedItemLevel).toBeLessThanOrEqual(world.playerLevel.level + 1);
+
     expect(views).toHaveLength(stock.offers.length);
     expect(views[0]).toMatchObject({
       stockId: stock.stockId,
@@ -115,7 +124,7 @@ describe('Quartermaster atomic purchase', () => {
       canPurchase: false,
       purchaseFailure: 'insufficient-funds',
       utility: {
-        itemLevel: 5,
+        itemLevel: expectedItemLevel,
         rarity: offer.rarity,
         enhancementLevel: 0,
       },

@@ -70,7 +70,9 @@ describe('Floor 2 Quartermaster generated stock', () => {
         (candidate) => candidate.instanceId === offer.instanceId,
       );
       expect(instance).toBeDefined();
-      expect(instance?.itemLevel).toBe(7);
+      // Level is rolled from max(1, playerLevel-1)..playerLevel+1 (spec §552-554).
+      expect(instance?.itemLevel).toBeGreaterThanOrEqual(Math.max(1, left.playerLevel.level - 1));
+      expect(instance?.itemLevel).toBeLessThanOrEqual(left.playerLevel.level + 1);
       expect(instance?.rarity).toBe(offer.rarity);
       expect(instance?.rarity).not.toBe('rare');
       expect(instance?.enhancementLevel).toBe(0);
