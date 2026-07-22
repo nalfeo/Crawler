@@ -17,11 +17,7 @@ type Floor2WeaponFamily = (typeof FLOOR2_WEAPON_FAMILIES)[number];
 export type Floor2EquipmentCategory = 'weapon' | 'armor' | 'accessory';
 export type Floor2EquipmentSlot = 'weapon' | 'head' | 'torso' | 'hands' | 'feet' | 'accessory';
 export type Floor2NonWeaponFamily =
-  | 'headgear'
-  | 'body-armor'
-  | 'handwear'
-  | 'footwear'
-  | 'accessory';
+  'headgear' | 'body-armor' | 'handwear' | 'footwear' | 'accessory';
 export type Floor2EquipmentFamily = Floor2WeaponFamily | Floor2NonWeaponFamily;
 
 const FLOOR2_EQUIPMENT_STABLE_IDS = [

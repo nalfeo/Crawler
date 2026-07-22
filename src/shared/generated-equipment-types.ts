@@ -72,9 +72,7 @@ export interface LegacyResolvedEquipmentEffectV1 {
 }
 
 export type ResolvedEquipmentEffectV1 =
-  | ResolvedEquipmentStatEffectV1
-  | ResolvedEquipmentGrantEffectV1
-  | LegacyResolvedEquipmentEffectV1;
+  ResolvedEquipmentStatEffectV1 | ResolvedEquipmentGrantEffectV1 | LegacyResolvedEquipmentEffectV1;
 
 export interface ActiveWeaponSnapshotV1 extends WeaponDef {
   readonly schemaVersion: typeof ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION;

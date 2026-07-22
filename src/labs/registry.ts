@@ -1,10 +1,5 @@
 export type LabCategory =
-  | 'Combat'
-  | 'Movement & Physics'
-  | 'Items & Equipment'
-  | 'Progression'
-  | 'Entities'
-  | 'Meta';
+  'Combat' | 'Movement & Physics' | 'Items & Equipment' | 'Progression' | 'Entities' | 'Meta';
 
 export interface LabDefinition {
   name: string;

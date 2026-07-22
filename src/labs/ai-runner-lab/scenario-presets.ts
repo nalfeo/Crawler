@@ -52,10 +52,7 @@ const SEALED_SLICE_PLAYER_TILE = { x: 7, y: 18 } as const;
 const SEALED_SLICE_DOOR_TILE = { x: 7, y: 15 } as const;
 
 export type AiRunnerScenarioPresetId =
-  | 'floor1-default'
-  | 'spawner-sealable-room'
-  | 'spawner-unsealable-room'
-  | 'spawner-cave';
+  'floor1-default' | 'spawner-sealable-room' | 'spawner-unsealable-room' | 'spawner-cave';
 
 export interface AiRunnerScenarioPreset {
   readonly id: AiRunnerScenarioPresetId;

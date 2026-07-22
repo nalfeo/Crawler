@@ -75,8 +75,7 @@ describe('Floor 2 headless completion', () => {
 
     for (const { seed, expectedRooms, expectedShops } of cases) {
       let observed:
-        | { roomCount: number; shopIds: readonly string[]; quartermasterCount: number }
-        | undefined;
+        { roomCount: number; shopIds: readonly string[]; quartermasterCount: number } | undefined;
       await runHeadless(new BehaviorTreeAI({ seed }), {
         seed,
         floorId: 'floor2',
