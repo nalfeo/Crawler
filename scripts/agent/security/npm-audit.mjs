@@ -63,10 +63,13 @@ export function evaluateAudit(report, { auditLevel = 'high', now = new Date() } 
     }
   }
 
-  const blocking = Object.values(report.vulnerabilities).filter(
-    (vulnerability) =>
-      isAtOrAbove(vulnerability.severity, auditLevel) && !ignored.has(vulnerability.name),
-  );
+  const blocking = Object.values(report.vulnerabilities).filter((vulnerability) => {
+    if (ignored.has(vulnerability.name)) return false;
+    // Fail closed: treat null, array, or unknown severity as blocking so malformed
+    // entries never silently pass through the audit gate.
+    if (!SEVERITY_ORDER.includes(vulnerability.severity)) return true;
+    return isAtOrAbove(vulnerability.severity, auditLevel);
+  });
   return { blocking, ignored: [...ignored].sort() };
 }
 

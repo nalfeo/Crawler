@@ -77,3 +77,51 @@ test('does not suppress a different advisory for fast-uri', () => {
     ['fast-uri'],
   );
 });
+
+test('fails closed when severity is null', () => {
+  const result = evaluateAudit(
+    report({ pkg: { name: 'pkg', severity: null, via: [] } }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['pkg'],
+  );
+});
+
+test('fails closed when severity is an array', () => {
+  const result = evaluateAudit(
+    report({ pkg: { name: 'pkg', severity: ['high'], via: [] } }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['pkg'],
+  );
+});
+
+test('fails closed when severity is an unknown string', () => {
+  const result = evaluateAudit(
+    report({ pkg: { name: 'pkg', severity: 'unknown-level', via: [] } }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['pkg'],
+  );
+});
+
+test('fails closed when severity is missing (undefined)', () => {
+  const result = evaluateAudit(
+    report({ pkg: { name: 'pkg', via: [] } }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['pkg'],
+  );
+});
