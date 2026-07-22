@@ -1003,10 +1003,10 @@ test('requestWithBackoff stops immediately for non-retryable errors', async () =
 });
 
 test('computeDispatchBudget caps outstanding recovery runs to GLOBAL_IDLE_TRAIN_DISPATCH_CAP when there is no active merge-train backlog', () => {
-  assert.equal(GLOBAL_IDLE_TRAIN_DISPATCH_CAP, 2);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 2);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 1 }), 1);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 2 }), 0);
+  assert.equal(GLOBAL_IDLE_TRAIN_DISPATCH_CAP, 5);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 5);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 1 }), 4);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 5 }), 0);
   assert.equal(
     computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 25 }),
     0,
@@ -1023,21 +1023,21 @@ test('computeDispatchBudget still applies the idle cap -- never Infinity -- when
   // live PR labels (see runFromEnv), which is naturally false when the
   // train feature is off, so this collapses to the same idle-cap path
   // above rather than an unbounded fallback.
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 2);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 2 }), 0);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 5);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 5 }), 0);
 });
 
-test('computeDispatchBudget hard-caps outstanding recovery runs to 1 whenever the merge-train backlog is non-empty, including with the train feature disabled', () => {
-  assert.equal(GLOBAL_TRAIN_DISPATCH_CAP, 1);
+test('computeDispatchBudget caps outstanding recovery runs to GLOBAL_TRAIN_DISPATCH_CAP whenever the merge-train backlog is non-empty, including with the train feature disabled', () => {
+  assert.equal(GLOBAL_TRAIN_DISPATCH_CAP, 5);
   assert.equal(
     computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 0 }),
-    1,
-    'a fully idle recovery workflow may dispatch exactly one run',
+    5,
+    'a fully idle recovery workflow may dispatch up to the train cap',
   );
   assert.equal(
     computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 1 }),
-    0,
-    'one outstanding run already exhausts the global budget',
+    4,
+    'each outstanding run consumes one unit of the global budget',
   );
   assert.equal(
     computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 25 }),
@@ -1284,17 +1284,19 @@ test('serialized router invocations do not both under-count the same in-flight d
   // the router's `queue: max` concurrency group releases the slot to
   // invocation B. Without that wait, B could read a stale outstandingCount
   // of 0 and dispatch a second run, breaching GLOBAL_TRAIN_DISPATCH_CAP.
-  const preDispatchIds = new Set(); // no runs outstanding before A dispatches
-  let apiVisibleIds = new Set();
+  const preexistingIds = Array.from({ length: GLOBAL_TRAIN_DISPATCH_CAP - 1 }, (_, i) => 900 + i);
+  const preDispatchIds = new Set(preexistingIds); // fills all but one slot before A dispatches
+  let apiVisibleIds = new Set(preexistingIds);
   const sleepFn = async () => {
-    apiVisibleIds = new Set([1001]); // the dispatched run becomes visible during A's poll
+    apiVisibleIds = new Set([...preexistingIds, 1001]); // A's dispatched run becomes visible during A's poll
   };
 
-  // Invocation A: budget allows exactly one dispatch.
+  // Invocation A: budget allows exactly one dispatch, taking the cap to its ceiling.
   const budgetA = computeDispatchBudget({
     trainQueueNonEmpty: true,
-    outstandingCount: 0,
+    outstandingCount: preDispatchIds.size,
   });
+  assert.equal(budgetA, 1, 'A may dispatch exactly one run to reach the cap');
   const { dispatchable: dispatchableA } = partitionDispatchable([101], budgetA);
   assert.deepEqual(dispatchableA, [101]);
   await waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
@@ -1316,7 +1318,7 @@ test('serialized router invocations do not both under-count the same in-flight d
   assert.deepEqual(dispatchableB, [], 'B must defer -- the cap is already exhausted by A');
 });
 
-test('25 concurrent router-trigger events leave at most one CI Recovery run outstanding while the train queue is non-empty', () => {
+test('25 concurrent router-trigger events leave at most GLOBAL_TRAIN_DISPATCH_CAP CI Recovery runs outstanding while the train queue is non-empty', () => {
   // Simulates the 2026-07-21 incident shape: 25 independently-triggered PR
   // events all resolve to a router invocation wanting to dispatch its own
   // PR while the merge train queue is non-empty. Each invocation must
@@ -1341,7 +1343,11 @@ test('25 concurrent router-trigger events leave at most one CI Recovery run outs
     );
   }
 
-  assert.equal(totalDispatched, 1, 'exactly one dispatch should escape the burst');
+  assert.equal(
+    totalDispatched,
+    5,
+    'exactly GLOBAL_TRAIN_DISPATCH_CAP dispatches should escape the burst',
+  );
 
   // Once the one outstanding run completes, capacity frees up and the next
   // event (or the 10-minute scheduled sweep re-evaluating the same PR list)
@@ -1351,13 +1357,14 @@ test('25 concurrent router-trigger events leave at most one CI Recovery run outs
     trainQueueNonEmpty: true,
     outstandingCount,
   });
-  assert.equal(budgetAfterCompletion, 1);
+  assert.equal(budgetAfterCompletion, 5);
 });
 
 test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPATCH_CAP runs outstanding while the train feature is on but its queue is empty', () => {
   // Same burst shape as the non-empty-queue case, but with no Merge Train
-  // Validation run to protect: budget relaxes from 1 to
-  // GLOBAL_IDLE_TRAIN_DISPATCH_CAP (2) instead of going fully unbounded, per
+  // Validation run to protect: budget relaxes from GLOBAL_TRAIN_DISPATCH_CAP
+  // to GLOBAL_IDLE_TRAIN_DISPATCH_CAP (both 5 as of the 2026-07-22 emergency
+  // raise) instead of going fully unbounded, per
   // the measured capacity evidence (public repo, 20-job Actions concurrency
   // limit; sweep-style jobs can still be running even with an empty queue).
   const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
@@ -1378,7 +1385,11 @@ test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPAT
     );
   }
 
-  assert.equal(totalDispatched, 2, 'exactly two dispatches should escape the burst');
+  assert.equal(
+    totalDispatched,
+    5,
+    'exactly GLOBAL_IDLE_TRAIN_DISPATCH_CAP dispatches should escape the burst',
+  );
 });
 
 test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPATCH_CAP runs outstanding when the merge-train feature is disabled', () => {
@@ -1399,7 +1410,7 @@ test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPAT
   // this burst would in practice run one invocation at a time, each reading
   // the previous invocation's committed outstandingCount -- there is no
   // window in which two of these 25 invocations observe the same stale
-  // count concurrently.
+  // count concurrently. The idle cap is 5 as of the 2026-07-22 emergency raise.
   const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
   let outstandingCount = 0;
   let totalDispatched = 0;
@@ -1420,8 +1431,8 @@ test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPAT
 
   assert.equal(
     totalDispatched,
-    2,
-    'exactly two dispatches should escape the burst even with the train feature disabled',
+    5,
+    'exactly GLOBAL_IDLE_TRAIN_DISPATCH_CAP dispatches should escape the burst even with the train feature disabled',
   );
 });
 
