@@ -54,7 +54,7 @@ import {
   type SweepConfig,
   type TunableKnob,
 } from './gen-configs.js';
-import { parseSeeds } from './winrate-sweep-args.js';
+import { parsePositiveInt, parseSeeds } from './winrate-sweep-args.js';
 import {
   assertRowSafeRoomInRange,
   buildLeaderboard,
@@ -92,6 +92,33 @@ export function stableStringify(obj: unknown): string {
     .sort()
     .map((k) => `${JSON.stringify(k)}:${stableStringify((obj as Record<string, unknown>)[k])}`);
   return `{${sorted.join(',')}}`;
+}
+
+export interface SweepLineageArtifact {
+  schemaVersion: 1;
+  kind: 'resume';
+  sourceRunId: number;
+}
+
+/**
+ * Deterministically materialize the Sweep Results Viewer lineage contract from
+ * a workflow-dispatch `resume_run_id` input.
+ *
+ * Returns `null` for a blank or non-positive-integer input so the workflow can
+ * skip emitting/uploading the artifact without changing existing resume-import
+ * semantics for malformed values.
+ */
+export function buildResumeLineageArtifact(
+  resumeRunId: string | number | null | undefined,
+): SweepLineageArtifact | null {
+  if (resumeRunId === null || resumeRunId === undefined) return null;
+  const raw = typeof resumeRunId === 'number' ? String(resumeRunId) : resumeRunId.trim();
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  return {
+    schemaVersion: 1,
+    kind: 'resume',
+    sourceRunId: parsePositiveInt('--resume-run-id', raw),
+  };
 }
 
 /**
@@ -1247,13 +1274,15 @@ export function toSearchArtifact(checkpoint: RoundCheckpoint): SearchArtifactLik
 
 // ---------------------------------------------------------------------------
 // CLI (guarded so importing this module for its pure helpers never runs it).
-// Five modes mirror the round-DAG workflow steps (init/plan/select) plus the
-// cross-run resume compatibility check and legacy-baseline extraction:
+// Six modes mirror the round-DAG workflow steps (init/plan/select) plus the
+// cross-run resume compatibility check, legacy-baseline extraction, and the
+// additive sweep-lineage viewer contract:
 //   --mode init   <combo> --baseline <shard.json> [--secondary] [--train-seeds <str> --weapons <str>] --out <checkpoint.json>
 //   --mode plan   --round N [--secondary] [--cap N] --out <matrix.json> <checkpoint.json...>
 //   --mode select --round N [--secondary] [--planned-count N|unknown] --checkpoint <checkpoint.json> --out <checkpoint.json> [<shard.json...>]
 //   --mode resume-check --checkpoint <checkpoint.json> --expect-meta <meta.json> --combo <id> --round <N> [--expect-train-seeds <str>] [--expect-weapons <str>] [--expect-secondary] [--out <checkpoint.json>]
 //   --mode extract-legacy-baseline --checkpoint <checkpoint.json> --out <shard.json>
+//   --mode emit-resume-lineage [--resume-run-id <id>] --out <lineage.json>
 // ---------------------------------------------------------------------------
 
 function knobsFor(comboStr: string, secondary: boolean): TunableKnob[] {
@@ -1261,7 +1290,14 @@ function knobsFor(comboStr: string, secondary: boolean): TunableKnob[] {
 }
 
 interface CliArgs {
-  mode: 'init' | 'plan' | 'select' | 'resume-check' | 'extract-legacy-baseline' | null;
+  mode:
+    | 'init'
+    | 'plan'
+    | 'select'
+    | 'resume-check'
+    | 'extract-legacy-baseline'
+    | 'emit-resume-lineage'
+    | null;
   combo: string | null;
   baseline: string | null;
   legacyBaseline: string | null;
@@ -1281,6 +1317,7 @@ interface CliArgs {
   expectTrainSeeds: string | null;
   expectWeapons: string | null;
   expectSecondary: boolean;
+  resumeRunId: string | null;
 }
 
 function parseCliArgs(argv: readonly string[]): CliArgs {
@@ -1302,6 +1339,7 @@ function parseCliArgs(argv: readonly string[]): CliArgs {
     expectTrainSeeds: null,
     expectWeapons: null,
     expectSecondary: false,
+    resumeRunId: null,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -1313,10 +1351,11 @@ function parseCliArgs(argv: readonly string[]): CliArgs {
         next !== 'plan' &&
         next !== 'select' &&
         next !== 'resume-check' &&
-        next !== 'extract-legacy-baseline'
+        next !== 'extract-legacy-baseline' &&
+        next !== 'emit-resume-lineage'
       ) {
         throw new Error(
-          `--mode must be init|plan|select|resume-check|extract-legacy-baseline, got ${JSON.stringify(next)}`,
+          `--mode must be init|plan|select|resume-check|extract-legacy-baseline|emit-resume-lineage, got ${JSON.stringify(next)}`,
         );
       }
       args.mode = next;
@@ -1364,6 +1403,9 @@ function parseCliArgs(argv: readonly string[]): CliArgs {
       i++;
     } else if (arg === '--expect-secondary') {
       args.expectSecondary = true;
+    } else if (arg === '--resume-run-id' && next) {
+      args.resumeRunId = next;
+      i++;
     } else if (!arg.startsWith('--')) {
       args.files.push(arg);
     }
@@ -1385,7 +1427,7 @@ function runCli(argv: readonly string[]): void {
   const args = parseCliArgs(argv);
   if (!args.mode) {
     console.error(
-      'Usage: ai:round-plan --mode init|plan|select|resume-check|extract-legacy-baseline ... (see round-plan.ts header for per-mode flags)',
+      'Usage: ai:round-plan --mode init|plan|select|resume-check|extract-legacy-baseline|emit-resume-lineage ... (see round-plan.ts header for per-mode flags)',
     );
     process.exit(1);
     return;
@@ -1490,6 +1532,19 @@ function runCli(argv: readonly string[]): void {
       `[${checkpoint.combo}] extracted legacy baseline shard: ${shard.rows.length} row(s) for config ${Object.keys(shard.configs)[0]?.slice(0, 48)}`,
     );
     emit(shard, args.out);
+    return;
+  }
+
+  if (args.mode === 'emit-resume-lineage') {
+    const lineage = buildResumeLineageArtifact(args.resumeRunId);
+    if (!lineage) {
+      console.log(
+        'No resume lineage artifact emitted (resume_run_id is blank or not a positive integer).',
+      );
+      return;
+    }
+    console.log(`[resume] lineage source run ${lineage.sourceRunId}`);
+    emit(lineage, args.out);
     return;
   }
 

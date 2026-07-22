@@ -389,6 +389,29 @@ jobs:
           echo "resumedCombos=$RESUMED" >> "$GITHUB_OUTPUT"
           echo "hasFreshCombos=$HAS_FRESH" >> "$GITHUB_OUTPUT"
 
+      - name: Emit sweep-lineage payload from resume_run_id (viewer lineage contract)
+        # Additive viewer contract only: uses the already-requested resume input,
+        # writes EXACTLY {schemaVersion:1,kind:'resume',sourceRunId:<positive int>}
+        # when the input is a positive integer, and otherwise emits nothing so
+        # existing resume-import semantics remain unchanged.
+        if: ${{ inputs.resume_run_id != '' }}
+        env:
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/round-plan.ts --mode emit-resume-lineage \
+            --resume-run-id "$RESUME_RUN_ID" \
+            --out "sweep-lineage.json"
+
+      - name: Upload sweep-lineage artifact (only when emitted)
+        if: ${{ hashFiles('sweep-lineage.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-lineage
+          path: sweep-lineage.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Derive legacy+legacy baseline shard from its resumed checkpoint (closes non-LEGACY incumbent gap)
         # If legacy+legacy was itself cross-run RESUMED this run, it is
         # excluded from freshCombos, so the `baseline` job (fresh-only) never

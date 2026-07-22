@@ -41,6 +41,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyRoundResult,
   assertResumeCompatible,
+  buildResumeLineageArtifact,
   extractLegacyBaselineShard,
   halveSteps,
   inferRunInputsFromCheckpoint,
@@ -1732,6 +1733,29 @@ describe("resolveInitRunInputs (--mode init's --train-seeds/--weapons CLI-flag p
     expect(() => resolveInitRunInputs(undefined, 'sword,bow', false)).toThrow(
       /--train-seeds and --weapons together/,
     );
+  });
+});
+
+describe('buildResumeLineageArtifact (durable viewer lineage contract)', () => {
+  it('returns the exact resume-lineage payload shape for a positive integer run id', () => {
+    expect(buildResumeLineageArtifact('29786216369')).toEqual({
+      schemaVersion: 1,
+      kind: 'resume',
+      sourceRunId: 29_786_216_369,
+    });
+  });
+
+  it('returns null for a blank resume_run_id so the workflow can skip upload on a fresh run', () => {
+    expect(buildResumeLineageArtifact('')).toBeNull();
+    expect(buildResumeLineageArtifact('   ')).toBeNull();
+    expect(buildResumeLineageArtifact(undefined)).toBeNull();
+  });
+
+  it('returns null for a non-positive-integer resume_run_id so lineage emission stays additive-only', () => {
+    expect(buildResumeLineageArtifact('0')).toBeNull();
+    expect(buildResumeLineageArtifact('-7')).toBeNull();
+    expect(buildResumeLineageArtifact('abc')).toBeNull();
+    expect(buildResumeLineageArtifact('12.5')).toBeNull();
   });
 });
 

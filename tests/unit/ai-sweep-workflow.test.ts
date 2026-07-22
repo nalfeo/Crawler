@@ -654,6 +654,39 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(blankBranch).not.toContain('RESUMED=');
     });
 
+    it('emits/uploads the additive sweep-lineage artifact from resume_run_id only after the resume-selection step, with the exact durable filename and artifact name', () => {
+      const doc = loadWorkflow();
+      const job = getJob(doc, 'resume-import');
+      const steps = job.steps ?? [];
+      const indexOf = (predicate: (s: (typeof steps)[number]) => boolean): number =>
+        steps.findIndex(predicate);
+      const selectIdx = indexOf((s) =>
+        Boolean(s.name?.startsWith('Select latest compatible checkpoint per combo')),
+      );
+      const emitIdx = indexOf((s) =>
+        Boolean(s.name?.startsWith('Emit sweep-lineage payload from resume_run_id')),
+      );
+      const uploadIdx = indexOf((s) =>
+        Boolean(s.name?.startsWith('Upload sweep-lineage artifact')),
+      );
+      expect(selectIdx).toBeGreaterThanOrEqual(0);
+      expect(emitIdx).toBeGreaterThan(selectIdx);
+      expect(uploadIdx).toBeGreaterThan(emitIdx);
+
+      const emitStep = steps[emitIdx];
+      expect(emitStep?.if).toContain("inputs.resume_run_id != ''");
+      expect(emitStep?.env).toMatchObject({ RESUME_RUN_ID: '${{ inputs.resume_run_id }}' });
+      expect(emitStep?.run).toContain('--mode emit-resume-lineage');
+      expect(emitStep?.run).toContain('--resume-run-id "$RESUME_RUN_ID"');
+      expect(emitStep?.run).toContain('--out "sweep-lineage.json"');
+
+      const uploadStep = steps[uploadIdx];
+      expect(uploadStep?.if).toContain("hashFiles('sweep-lineage.json') != ''");
+      expect(uploadStep?.uses).toBe('actions/upload-artifact@v4');
+      expect(uploadStep?.with?.name).toBe('sweep-lineage');
+      expect(uploadStep?.with?.path).toBe('sweep-lineage.json');
+    });
+
     it('round1-candidates, round1-select, and validate all tolerate the optional resumed-checkpoints bundle without hard-failing when absent', () => {
       const doc = loadWorkflow();
       for (const jobName of ['round1-candidates', 'round1-select', 'validate']) {
