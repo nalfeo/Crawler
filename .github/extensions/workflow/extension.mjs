@@ -204,7 +204,6 @@ const pendingStartups = new Map();
  * the full cache-first / background-revalidate contract this backs.
  */
 const runViewCache = createRunViewCache();
-const runViewEpochs = new Map();
 /** Most recently viewed run's key, used as the cache-first target for an
  * instance that has no explicit requested/selected run yet (a bare open). */
 let lastRunKey = null;
@@ -213,14 +212,8 @@ function runViewKey(briefId, runId) {
   return briefId && runId ? `${briefId}::${runId}` : null;
 }
 
-function runViewEpoch(key) {
-  return key ? (runViewEpochs.get(key) ?? 0) : 0;
-}
-
 function invalidateRunView(key) {
-  if (!key) return;
-  runViewCache.delete(key);
-  runViewEpochs.set(key, runViewEpoch(key) + 1);
+  runViewCache.invalidate(key);
 }
 
 function acceptanceKey(briefId, runId, variantIndex) {
@@ -547,8 +540,7 @@ async function buildState(instanceId, { explicitSheet = null } = {}) {
   const targetBriefId = requestedSnapshot.briefId ?? priorSelectedSnapshot?.briefId ?? null;
   const targetRunId = requestedSnapshot.runId ?? priorSelectedSnapshot?.runId ?? null;
   const naturalKey = runViewKey(targetBriefId, targetRunId) ?? lastRunKey;
-  const epochKey = naturalKey;
-  const epochAtCall = runViewEpoch(epochKey);
+  const isEpochCurrent = runViewCache.captureFence();
   // An explicit sheet request forces the bypass key (null), which makes
   // `resolveCacheFirstState` treat this call as a cold miss: it awaits
   // `liveFetch` unconditionally instead of ever replaying a cached snapshot.
@@ -584,15 +576,17 @@ async function buildState(instanceId, { explicitSheet = null } = {}) {
     // re-read and BEFORE mutating `entry.selected` or pushing — if the
     // selection moved on during the await, it is a no-op instead of
     // clobbering the newer selection with this now-superseded completion.
-    onFresh: async (fresh) =>
-      applyFreshRevalidation({
-        isCurrent: () => entry.selectionVersion === versionAtCall,
+    onFresh: async (fresh) => {
+      const freshKey = runViewKey(fresh.selected?.briefId ?? null, fresh.selected?.runId ?? null);
+      return applyFreshRevalidation({
+        isCurrent: () => entry.selectionVersion === versionAtCall && isEpochCurrent(freshKey),
         getStatic: () => getStatic(entry),
         applyMutation: () => {
           entry.selected = fresh.selected ?? null;
         },
         pushState: (currentStat) => entry.pushState?.(composeState(entry, currentStat, fresh)),
-      }),
+      });
+    },
     onRevalidateError: (err) =>
       log(`background run-view revalidate failed: ${err?.message ?? err}`, 'warn'),
     isRevalidating: () => (key ? entry.revalidatingKeys.has(key) : false),
@@ -607,7 +601,7 @@ async function buildState(instanceId, { explicitSheet = null } = {}) {
     // key, never under the (possibly unrelated) guessed read key.
     deriveWriteKey: (fresh) =>
       runViewKey(fresh.selected?.briefId ?? null, fresh.selected?.runId ?? null),
-    canWrite: (writeKey) => writeKey !== epochKey || runViewEpoch(epochKey) === epochAtCall,
+    canWrite: (writeKey) => isEpochCurrent(writeKey),
   });
 
   // Persist the run ACTUALLY resolved by this view as the "last viewed run"
@@ -620,6 +614,9 @@ async function buildState(instanceId, { explicitSheet = null } = {}) {
   // down and `view.selected` is null.
   const resolvedKey =
     runViewKey(view.selected?.briefId ?? null, view.selected?.runId ?? null) ?? naturalKey;
+  if (entry.selectionVersion !== versionAtCall || !isEpochCurrent(resolvedKey)) {
+    return buildState(instanceId, { explicitSheet: entry.selected?.sheet ?? null });
+  }
   if (resolvedKey) lastRunKey = resolvedKey;
   entry.selected = view.selected ?? null;
   return composeState(entry, stat, view);
@@ -635,15 +632,26 @@ async function forceLiveState(instanceId) {
   const entry = instances.get(instanceId);
   if (!entry) return { error: 'instance not found' };
   entry.selectionVersion += 1;
+  const versionAtCall = entry.selectionVersion;
   entry.cache = null;
-  const stat = await getStatic(entry);
   const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
   const priorSelectedSnapshot = entry.selected;
+  const targetKey = runViewKey(
+    requestedSnapshot.briefId ?? priorSelectedSnapshot?.briefId ?? null,
+    requestedSnapshot.runId ?? priorSelectedSnapshot?.runId ?? null,
+  );
+  invalidateRunView(targetKey);
+  const isEpochCurrent = runViewCache.captureFence();
+  const stat = await getStatic(entry);
   const view = await liveBuildState(entry, stat, {
     requested: requestedSnapshot,
     priorSelected: priorSelectedSnapshot,
   });
   const key = runViewKey(view.selected?.briefId ?? null, view.selected?.runId ?? null);
+  if (entry.selectionVersion !== versionAtCall || !isEpochCurrent(key)) {
+    return buildState(instanceId, { explicitSheet: entry.selected?.sheet ?? null });
+  }
+  if (key && key !== targetKey) invalidateRunView(key);
   if (key) {
     runViewCache.set(key, view);
     lastRunKey = key;
@@ -656,46 +664,27 @@ async function refreshWorkflowAfterPostprocessPersist(instanceId, args, persiste
   const entry = instances.get(instanceId);
   if (!entry) return null;
   const key = runViewKey(args.briefId, args.runId);
-  const cached = key ? runViewCache.get(key) : null;
   invalidateRunView(key);
   if (!parentSelectionMatches(entry.selected, args.briefId, args.runId)) return null;
 
-  const refreshVersion = ++entry.selectionVersion;
-  const priorSelected = entry.selected;
-  const stat = await getStatic(entry);
-  const view =
-    persistedSummary && typeof persistedSummary === 'object'
-      ? {
-          ...(cached ?? {}),
-          selected: priorSelected,
-          candidates: withSkipMessages(normalizeCandidates(persistedSummary)),
-          stale: false,
-          error: null,
-        }
-      : await liveBuildState(entry, stat, {
-          requested: { briefId: args.briefId, runId: args.runId },
-          priorSelected,
-        });
-  if (
-    view.error ||
-    !parentSelectionMatches(view.selected, args.briefId, args.runId) ||
-    entry.selectionVersion !== refreshVersion
-  ) {
-    return null;
+  entry.selectionVersion += 1;
+  let candidates;
+  if (persistedSummary && typeof persistedSummary === 'object') {
+    candidates = withSkipMessages(normalizeCandidates(persistedSummary));
+  } else {
+    const state = await forceLiveState(instanceId);
+    if (state.error || !parentSelectionMatches(state.selected, args.briefId, args.runId)) {
+      return null;
+    }
+    candidates = state.candidates;
   }
-  if (key) {
-    runViewCache.set(key, view);
-    lastRunKey = key;
-  }
-  entry.selected = view.selected ?? null;
-  const state = composeState(entry, stat, { ...view, stale: false });
   return buildPostprocessParentPatch({
     briefId: args.briefId,
     runId: args.runId,
     mode: args.mode,
     applyToAll: args.applyToAll,
     variantIndex: args.variantIndex,
-    candidates: state.candidates,
+    candidates,
   });
 }
 

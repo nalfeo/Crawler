@@ -386,6 +386,9 @@ const CLIENT_SCRIPT = String.raw`
     } else {
       return;
     }
+    lastState.stale = false;
+    var staleBadge = document.querySelector('.stale-badge');
+    if (staleBadge) staleBadge.remove();
     if (activeTab !== 'runs') return;
     if (patch.scope === 'all') {
       var section = document.querySelector('[data-workflow-candidates]');

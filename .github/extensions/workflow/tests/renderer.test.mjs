@@ -70,6 +70,8 @@ test('successful embedded Postprocess applies patch one variant or the whole run
   assert.match(html, /data-variant-index/);
   assert.match(html, /card\.replaceWith\(renderCandidateCard/);
   assert.match(html, /section\.replaceWith\(renderCandidates/);
+  assert.match(html, /lastState\.stale = false/);
+  assert.match(html, /staleBadge\.remove\(\)/);
 });
 
 test('the client script exposes token-gated accept and visible queue states', () => {

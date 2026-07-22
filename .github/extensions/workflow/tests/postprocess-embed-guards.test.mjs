@@ -107,6 +107,40 @@ test('/postprocess/api/persist-postprocess enforces the FULL mutation guard chai
   assert.match(body, /workflowPatch/);
 });
 
+test('persisted Postprocess candidates patch the parent without synthesizing a shared full-view cache entry', () => {
+  const fnStart = source.indexOf('async function refreshWorkflowAfterPostprocessPersist(');
+  const fnEnd = source.indexOf('async function acceptAndQueue(');
+  assert.ok(fnStart >= 0 && fnEnd > fnStart);
+  const body = source.slice(fnStart, fnEnd);
+  assert.match(body, /invalidateRunView\(key\)/);
+  assert.match(body, /withSkipMessages\(normalizeCandidates\(persistedSummary\)\)/);
+  assert.match(body, /buildPostprocessParentPatch\(/);
+  assert.doesNotMatch(body, /runViewCache\.get\(/);
+  assert.doesNotMatch(body, /runViewCache\.set\(/);
+  assert.doesNotMatch(body, /\.\.\.\(cached \?\? \{\}\)/);
+});
+
+test('run-view rebuilds fence the actual resolved key and explicit refresh reserves an epoch before awaiting', () => {
+  const buildStart = source.indexOf('async function buildState(instanceId,');
+  const buildEnd = source.indexOf('async function forceLiveState(instanceId)');
+  const buildBody = source.slice(buildStart, buildEnd);
+  assert.match(buildBody, /const isEpochCurrent = runViewCache\.captureFence\(\)/);
+  assert.match(buildBody, /canWrite: \(writeKey\) => isEpochCurrent\(writeKey\)/);
+  assert.match(buildBody, /isEpochCurrent\(freshKey\)/);
+
+  const forceStart = buildEnd;
+  const forceEnd = source.indexOf('async function refreshWorkflowAfterPostprocessPersist(');
+  const forceBody = source.slice(forceStart, forceEnd);
+  assert.ok(forceStart >= 0 && forceEnd > forceStart);
+  assert.ok(
+    forceBody.indexOf('invalidateRunView(targetKey)') < forceBody.indexOf('await getStatic(entry)'),
+    'explicit refresh must reserve the target epoch before its first await',
+  );
+  assert.match(forceBody, /entry\.selectionVersion !== versionAtCall/);
+  assert.match(forceBody, /!isEpochCurrent\(key\)/);
+  assert.match(forceBody, /explicitSheet: entry\.selected\?\.sheet \?\? null/);
+});
+
 test('/postprocess/api/live-postprocess is origin-checked but NOT token-gated (non-persisting preview relay, matches the standalone canvas)', () => {
   const routeStart = source.indexOf("path: '/postprocess/api/live-postprocess'");
   const routeEnd = source.indexOf("path: '/postprocess/api/persist-postprocess'");
