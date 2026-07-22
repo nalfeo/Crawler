@@ -131,3 +131,18 @@ hand-authored brief rather than the synthesized fallback.
   loop can be completed in the same session as brief authoring.
 - Alternatively, the asset-request CI workflow could be extended to auto-approve the best
   `combinedPassed` variant and auto-checkin, eliminating the manual approve step entirely.
+
+### Lessons Learned
+
+- Brief authoring and CI artifact inspection are separable tasks when Azure credentials are
+  intentionally unavailable to the coding-agent runner.
+
+### Mistakes Made
+
+- The session investigated artifact access before confirming the runner's deliberate credential
+  boundary, which added avoidable diagnostic work.
+
+### Opportunities for Future Improvement
+
+- A safe read-only artifact path would let agents complete visual adjudication without widening
+  Azure write access.

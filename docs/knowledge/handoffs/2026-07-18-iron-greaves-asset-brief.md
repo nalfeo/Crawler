@@ -83,6 +83,11 @@ Created a high-quality sprite brief for the `iron-greaves` Floor 2 equipment ico
 - Check Azure credential availability early in the session before attempting the generation step
 - Use the `asset-request.yml` workflow dispatch approach as the primary generation path when running as a coding agent
 
+### Opportunities for Future Improvement
+
+- Add an early credential-capability check to the agent workflow so generation attempts route to
+  GitHub Actions before local commands are tried.
+
 ## Files Changed
 
 - `briefs/items/iron-greaves.yaml` — new brief for iron greaves equipment icon

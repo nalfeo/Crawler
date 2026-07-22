@@ -86,7 +86,7 @@ test('isPlaywrightChromiumCached returns true when Linux binary exists (warm cac
   const result = isPlaywrightChromiumCached({
     revision: '1223',
     cacheDir,
-    _existsSync: (p) => p === `${cacheDir}/chromium-1223/chrome-linux64/chrome`,
+    _existsSync: (p) => p === join(cacheDir, 'chromium-1223', 'chrome-linux64', 'chrome'),
   });
   assert.equal(result, true);
 });
@@ -96,7 +96,7 @@ test('isPlaywrightChromiumCached returns true when Windows binary exists (warm c
   const result = isPlaywrightChromiumCached({
     revision: '1223',
     cacheDir,
-    _existsSync: (p) => p === `${cacheDir}/chromium-1223/chrome-win64/chrome.exe`,
+    _existsSync: (p) => p === join(cacheDir, 'chromium-1223', 'chrome-win64', 'chrome.exe'),
   });
   assert.equal(result, true);
 });
@@ -106,7 +106,7 @@ test('isPlaywrightChromiumCached returns true when macOS arm64 app exists (warm 
   const result = isPlaywrightChromiumCached({
     revision: '1223',
     cacheDir,
-    _existsSync: (p) => p === `${cacheDir}/chromium-1223/chrome-mac-arm64/Chromium.app`,
+    _existsSync: (p) => p === join(cacheDir, 'chromium-1223', 'chrome-mac-arm64', 'Chromium.app'),
   });
   assert.equal(result, true);
 });

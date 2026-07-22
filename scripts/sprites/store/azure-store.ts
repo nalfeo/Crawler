@@ -36,24 +36,37 @@ export interface AzureBlobRunStoreOptions {
 export class AzureBlobRunStore implements RunStore {
   readonly backend = 'azure-blob' as const;
 
+  /**
+   * Non-secret identity used to namespace the shared resource cache. Contains
+   * ONLY the blob endpoint host, account name, and container — never the storage
+   * key or connection string. Isolates Azurite/dev/prod and distinct accounts.
+   */
+  readonly identity: {
+    readonly host: string;
+    readonly account: string;
+    readonly container: string;
+  };
+
   private constructor(
     private readonly container: ContainerClient,
     private readonly accountName: string,
     private readonly containerName: string,
-  ) {}
+    host: string,
+  ) {
+    this.identity = { host, account: accountName, container: containerName };
+  }
 
   /** Construct from explicit account name + key. */
   static fromOptions(options: AzureBlobRunStoreOptions): AzureBlobRunStore {
     const containerName = options.containerName ?? 'generated-runs';
     const cred = new StorageSharedKeyCredential(options.accountName, options.accountKey);
-    const service = new BlobServiceClient(
-      `https://${options.accountName}.blob.core.windows.net`,
-      cred,
-    );
+    const endpoint = `https://${options.accountName}.blob.core.windows.net`;
+    const service = new BlobServiceClient(endpoint, cred);
     return new AzureBlobRunStore(
       service.getContainerClient(containerName),
       options.accountName,
       containerName,
+      hostOf(endpoint),
     );
   }
 
@@ -67,7 +80,12 @@ export class AzureBlobRunStore implements RunStore {
     // 'devstoreaccount1' is the well-known Azurite account name used when
     // AccountName is absent from the connection string (UseDevelopmentStorage=true).
     const accountName = extractFromConnStr(connectionString, 'AccountName') ?? 'devstoreaccount1';
-    return new AzureBlobRunStore(service.getContainerClient(name), accountName, name);
+    return new AzureBlobRunStore(
+      service.getContainerClient(name),
+      accountName,
+      name,
+      hostOf(service.url),
+    );
   }
 
   async put(key: string, data: Buffer): Promise<void> {
@@ -123,6 +141,15 @@ function contentTypeFor(key: string): string {
   if (key.endsWith('.png')) return 'image/png';
   if (key.endsWith('.json')) return 'application/json; charset=utf-8';
   return 'application/octet-stream';
+}
+
+/** Extract the `host[:port]` from a blob endpoint URL for cache namespacing. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
 
 function isNotFound(err: unknown): boolean {

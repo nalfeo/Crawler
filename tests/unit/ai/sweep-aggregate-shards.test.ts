@@ -321,6 +321,29 @@ describe('buildLeaderboard', () => {
     const [recomputed] = buildLeaderboard(rows, { budgetMs: META.budgetMs });
     expect(recomputed!.wins).toBe(0);
   });
+  it('scopes incumbent identity to the exact (combo, configId) pair, not configId alone', () => {
+    // Regression for plan-review concern #2: buildLeaderboard supports exactly
+    // ONE incumbent identity per call (see BuildLeaderboardOptions doc). A row
+    // sharing the incumbent's configId but under a DIFFERENT combo must NOT be
+    // treated as "the incumbent" — it is just an unrelated candidate group.
+    const rows = [
+      // true incumbent: legacy+legacy / 'shared-id'
+      row({ combo: 'legacy+legacy', configId: 'shared-id', weapon: 'sword', seed: 1 }),
+      // same configId, but a DIFFERENT combo — must be its own independent group
+      row({ combo: 'navmesh+legacy', configId: 'shared-id', weapon: 'sword', seed: 1 }),
+      loss({ combo: 'navmesh+legacy', configId: 'shared-id', weapon: 'sword', seed: 2 }),
+    ];
+    const lb = buildLeaderboard(rows, {
+      incumbentCombo: 'legacy+legacy',
+      incumbentConfigId: 'shared-id',
+    });
+    expect(lb).toHaveLength(2);
+    const trueIncumbent = lb.find((r) => r.combo === 'legacy+legacy')!;
+    const lookalike = lb.find((r) => r.combo === 'navmesh+legacy')!;
+    expect(trueIncumbent.isIncumbent).toBe(true);
+    expect(lookalike.isIncumbent).toBe(false); // combo differs → not the incumbent
+    expect(lookalike.runs).toBe(2); // its own 2 rows, not merged with the incumbent's 1
+  });
 });
 
 describe('selectQualifiedWinner', () => {
@@ -329,16 +352,22 @@ describe('selectQualifiedWinner', () => {
   });
 
   /**
-   * Reproduces the exact real-world failure the hard gate was built to catch:
+   * Reproduces the exact real-world shape the hard gate was built around:
    * GitHub run 29597840666 (full untuned graduation). `riskRewardFused+legacy`
-   * scored 292/300 wins (97.3%, above the incumbent's 286/300 = 95.3%) but had
-   * 5 win→loss flips vs the incumbent — a violation of the approved hard gate
-   * that pure composite-score ranking never caught. Scaled down to 10 cells:
-   * incumbent wins 9/10 (seeds 1-9, loses seed10); the high-scoring challenger
-   * ("riskRewardFused+legacy") also wins 9/10 (>=90%) but flips one of the
-   * incumbent's wins into a loss (seed5) — so it must be REJECTED despite its
-   * much higher composite score. A second, lower-scoring, zero-flip challenger
-   * ("navmeshFused+legacy") must be selected instead.
+   * scored 292/300 wins (97.3%) vs the incumbent's 286/300 (95.3%) — a
+   * candidate with 5 win→loss flips vs the incumbent, but whose absolute win
+   * COUNT still strictly exceeds the incumbent's. Per the human-approved
+   * net-win rule, that candidate now QUALIFIES (see the dedicated 292/300 vs
+   * 286/300 regression test below). This scaled-down 10-cell fixture instead
+   * covers the case the rule still rejects: incumbent wins 9/10 (seeds 1-9,
+   * loses seed10); the high-scoring challenger ("riskRewardFused+legacy") also
+   * wins 9/10 — TIED with the incumbent's total, not strictly more — because it
+   * flips one of the incumbent's wins into a loss (seed5) while only recovering
+   * the incumbent's single loss (seed10), netting zero. A tie is not a strict
+   * increase, so it must still be REJECTED despite its much higher composite
+   * score. A second, lower-scoring, zero-flip challenger ("navmeshFused+legacy")
+   * — which strictly outperforms the incumbent (10 wins > 9) — is selected
+   * instead.
    */
   function graduationScenarioRows(): RunRow[] {
     const rows: RunRow[] = [];
@@ -356,7 +385,8 @@ describe('selectQualifiedWinner', () => {
             }),
       );
       // High-score challenger: wins everything EXCEPT seed 5 (a flip — incumbent
-      // won seed5) and additionally wins seed10 (a recovery, not a flip).
+      // won seed5) and additionally wins seed10 (a recovery, not a flip). Net
+      // wins = 9 (9 - 1 flip + 1 recovery), TIED with the incumbent's 9.
       rows.push(
         seed === 5
           ? loss({ combo: 'riskRewardFused+legacy', configId: 'rrf', weapon: 'sword', seed })
@@ -369,7 +399,7 @@ describe('selectQualifiedWinner', () => {
             }),
       );
       // Lower-score, zero-flip challenger: wins every cell the incumbent won
-      // PLUS the one it lost — no flips at all.
+      // PLUS the one it lost — 10 wins, strictly more than the incumbent's 9.
       rows.push(
         row({
           combo: 'navmeshFused+legacy',
@@ -383,7 +413,7 @@ describe('selectQualifiedWinner', () => {
     return rows;
   }
 
-  it('rejects the higher-scoring flip-tainted candidate and selects the zero-flip qualifier (GH run 29597840666)', () => {
+  it('rejects a flip-tainted candidate whose total wins only TIE the incumbent, and selects the strictly-more-wins qualifier (GH run 29597840666 shape)', () => {
     const lb = buildLeaderboard(graduationScenarioRows(), {
       incumbentCombo: 'legacy+legacy',
       incumbentConfigId: 'inc',
@@ -392,23 +422,90 @@ describe('selectQualifiedWinner', () => {
     const nfq = lb.find((r) => r.configId === 'nfq')!;
     // Sanity-check the fixture actually reproduces the reported shape: the
     // flip-tainted candidate both meets the win-rate floor AND out-scores the
-    // zero-flip qualifier — so a naive score-only ranking would wrongly pick it.
+    // strictly-more-wins qualifier — so a naive score-only ranking would
+    // wrongly pick it — but its win count only ties the incumbent's, not
+    // strictly exceeds it.
     expect(rrf.winRate).toBeCloseTo(0.9);
     expect(rrf.flipsVsIncumbent).toBe(1);
+    expect(rrf.winsVsIncumbentDelta).toBe(0);
     expect(nfq.winRate).toBe(1);
     expect(nfq.flipsVsIncumbent).toBe(0);
+    expect(nfq.winsVsIncumbentDelta).toBe(1);
     expect(rrf.totalScore).toBeGreaterThan(nfq.totalScore);
 
     const selection = selectQualifiedWinner(lb);
     expect(selection.winner?.combo).toBe('navmeshFused+legacy');
-    expect(selection.winner?.flipsVsIncumbent).toBe(0);
+    expect(selection.winner?.winsVsIncumbentDelta).toBe(1);
     expect(selection.qualifying.map((r) => r.combo)).toEqual(['navmeshFused+legacy']);
     expect(selection.reason).toMatch(
       /riskRewardFused\+legacy.*disqualified by the hard safety gate/,
     );
   });
 
-  it('qualifies a candidate that meets both the win-rate floor and zero flips', () => {
+  /**
+   * The exact real-world regression the net-win rule change was written for:
+   * GitHub run 29597840666 at full scale. Incumbent wins 286/300 (95.3%,
+   * loses the last 14 seeds). Candidate flips 5 of the incumbent's wins
+   * (seeds 1-5) into losses but recovers 11 of the incumbent's 14 losses
+   * (seeds 287-297), netting 292/300 (97.3%) — 5 flips, but 6 MORE total wins
+   * than the incumbent. Under the old zero-flips gate this was rejected;
+   * under the human-approved net-win rule (candidate must have >=90% wins AND
+   * strictly more total wins than the incumbent — flips are not disqualifying
+   * on their own) it now QUALIFIES.
+   */
+  function netWinRegressionRows(): RunRow[] {
+    const rows: RunRow[] = [];
+    for (let seed = 1; seed <= 300; seed++) {
+      // Incumbent: wins seeds 1-286, loses seeds 287-300 (14 losses).
+      const incumbentWins = seed <= 286;
+      rows.push(
+        incumbentWins
+          ? row({
+              combo: 'legacy+legacy',
+              configId: 'inc',
+              weapon: 'sword',
+              seed,
+              score: 1_000_000,
+            })
+          : loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed }),
+      );
+      // Candidate: flips seeds 1-5 (was a win, now a loss) and recovers seeds
+      // 287-297 (was a loss, now a win) => 286 - 5 + 11 = 292 total wins.
+      const flipped = seed >= 1 && seed <= 5;
+      const recovered = seed >= 287 && seed <= 297;
+      const candidateWins = (incumbentWins && !flipped) || (!incumbentWins && recovered);
+      rows.push(
+        candidateWins
+          ? row({
+              combo: 'riskRewardFused+legacy',
+              configId: 'rrf',
+              weapon: 'sword',
+              seed,
+              score: 5_000_000,
+            })
+          : loss({ combo: 'riskRewardFused+legacy', configId: 'rrf', weapon: 'sword', seed }),
+      );
+    }
+    return rows;
+  }
+
+  it('qualifies a flip-tainted candidate whose total wins STRICTLY EXCEED the incumbent (292/300 vs 286/300, 5 flips — GH run 29597840666)', () => {
+    const lb = buildLeaderboard(netWinRegressionRows(), {
+      incumbentCombo: 'legacy+legacy',
+      incumbentConfigId: 'inc',
+    });
+    const rrf = lb.find((r) => r.configId === 'rrf')!;
+    expect(rrf.wins).toBe(292);
+    expect(rrf.winRate).toBeCloseTo(292 / 300);
+    expect(rrf.flipsVsIncumbent).toBe(5);
+    expect(rrf.winsVsIncumbentDelta).toBe(6); // 292 - 286
+
+    const selection = selectQualifiedWinner(lb);
+    expect(selection.winner?.combo).toBe('riskRewardFused+legacy');
+    expect(selection.reason).toBeNull();
+  });
+
+  it('rejects a candidate whose total wins only TIE the incumbent, even with zero flips', () => {
     const rows = [
       row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
       row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
@@ -417,19 +514,107 @@ describe('selectQualifiedWinner', () => {
       incumbentCombo: 'legacy+legacy',
       incumbentConfigId: 'inc',
     });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    expect(candidate.flipsVsIncumbent).toBe(0);
+    expect(candidate.winsVsIncumbentDelta).toBe(0); // 1 win == incumbent's 1 win
     const selection = selectQualifiedWinner(lb);
-    expect(selection.winner?.combo).toBe('a+legacy');
-    expect(selection.reason).toBeNull();
+    expect(selection.winner).toBeNull();
+    expect(selection.reason).toMatch(/No candidate met the hard gate/);
   });
 
-  it('rejects a candidate below the win-rate floor even with zero flips', () => {
+  it('rejects a candidate whose total wins DECREASE relative to the incumbent at the win-rate floor', () => {
+    // Use the same 10-seed panel for both groups so the panel-alignment guard
+    // permits a non-null delta. Incumbent wins all 10 seeds (100%); candidate
+    // wins 9 out of the same 10 seeds (exactly 90% — clears the win-rate
+    // floor). Asserting winRate here ensures the floor is not what causes
+    // the rejection: removing the win-decrease clause would flip this test
+    // from failing to passing.
+    const seeds = Array.from({ length: 10 }, (_, i) => i + 1);
     const rows = [
-      row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
+      ...seeds.map((seed) =>
+        row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed }),
+      ),
+      ...seeds.map((seed) =>
+        seed === 10
+          ? loss({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed })
+          : row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed }),
+      ),
+    ];
+    const lb = buildLeaderboard(rows, {
+      incumbentCombo: 'legacy+legacy',
+      incumbentConfigId: 'inc',
+    });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    expect(candidate.wins).toBe(9);
+    expect(candidate.winRate).toBeCloseTo(0.9); // passes the 90% floor…
+    expect(candidate.winsVsIncumbentDelta).toBe(-1); // …but 9 < 10 incumbent wins
+    const selection = selectQualifiedWinner(lb);
+    expect(selection.winner).toBeNull();
+    expect(selection.reason).toMatch(/No candidate met the hard gate/);
+  });
+
+  it('rejects a candidate evaluated on a different weapon/seed panel', () => {
+    const rows = [
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'bow', seed: 1 }),
+    ];
+    const lb = buildLeaderboard(rows, {
+      incumbentCombo: 'legacy+legacy',
+      incumbentConfigId: 'inc',
+    });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    expect(candidate.winRate).toBe(1);
+    expect(candidate.winsVsIncumbentDelta).toBeNull();
+    expect(selectQualifiedWinner(lb).winner).toBeNull();
+  });
+
+  it('leaves winsVsIncumbentDelta null when the candidate group contains duplicate (weapon,seed) rows', () => {
+    // A candidate with a duplicated winning row satisfies the unique-cell-count
+    // panel check (1 unique cell == 1 incumbent cell) but has runs=2 / wins=2,
+    // giving an inflated positive delta. The fix: require one row per cell.
+    const rows = [
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }), // duplicate
+    ];
+    const lb = buildLeaderboard(rows, {
+      incumbentCombo: 'legacy+legacy',
+      incumbentConfigId: 'inc',
+    });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    expect(candidate.runs).toBe(2);
+    expect(candidate.wins).toBe(2);
+    // Delta must be null — duplicate rows make the comparison untrustworthy.
+    expect(candidate.winsVsIncumbentDelta).toBeNull();
+    expect(selectQualifiedWinner(lb).winner).toBeNull();
+  });
+
+  it('leaves winsVsIncumbentDelta null when the incumbent group contains duplicate (weapon,seed) rows', () => {
+    // If the incumbent itself has a duplicated row its incumbentWins count is
+    // inflated. The fix: treat the incumbent as having duplicate rows and null
+    // out the delta rather than comparing against an inflated baseline.
+    const rows = [
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }), // duplicate
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
+    ];
+    const lb = buildLeaderboard(rows, {
+      incumbentCombo: 'legacy+legacy',
+      incumbentConfigId: 'inc',
+    });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    // Delta must be null — duplicate incumbent rows make the comparison untrustworthy.
+    expect(candidate.winsVsIncumbentDelta).toBeNull();
+    expect(selectQualifiedWinner(lb).winner).toBeNull();
+  });
+
+  it('rejects a candidate below the win-rate floor even with strictly more total wins than the incumbent', () => {
+    const rows = [
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
       loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'bow', seed: 1 }),
-      // Candidate matches the incumbent on both cells (win where incumbent wins,
-      // loss where incumbent loses) => flipsVsIncumbent = 0. Only the win-rate
-      // floor (50% < 90%) should disqualify it, isolating that clause from the
-      // flip check.
+      // Candidate has MORE total wins (1) than the incumbent (0), isolating
+      // the win-rate floor clause: 50% < 90% must disqualify it on its own.
       row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
       loss({ combo: 'a+legacy', configId: 'a', weapon: 'bow', seed: 1 }),
     ];
@@ -437,20 +622,23 @@ describe('selectQualifiedWinner', () => {
       incumbentCombo: 'legacy+legacy',
       incumbentConfigId: 'inc',
     });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    expect(candidate.winsVsIncumbentDelta).toBe(1); // strictly more wins…
+    expect(candidate.winRate).toBe(0.5); // …but below the 90% floor.
     const selection = selectQualifiedWinner(lb);
     expect(selection.winner).toBeNull();
     expect(selection.reason).toMatch(/No candidate met the hard gate/);
   });
 
-  it('disqualifies every candidate when no incumbent is identifiable (flipsVsIncumbent is null)', () => {
-    // No incumbentCombo/incumbentConfigId supplied → flipsVsIncumbent is null
-    // for every row, which must NEVER be treated as "zero flips".
+  it('disqualifies every candidate when no incumbent is identifiable (winsVsIncumbentDelta is null)', () => {
+    // No incumbentCombo/incumbentConfigId supplied → winsVsIncumbentDelta is
+    // null for every row, which must NEVER be treated as "strictly more wins".
     const rows = [
       row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
       row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
     ];
     const lb = buildLeaderboard(rows);
-    expect(lb.every((r) => r.flipsVsIncumbent === null)).toBe(true);
+    expect(lb.every((r) => r.winsVsIncumbentDelta === null)).toBe(true);
     const selection = selectQualifiedWinner(lb);
     expect(selection.winner).toBeNull();
     expect(selection.reason).toMatch(/No candidate met the hard gate/);
@@ -470,7 +658,10 @@ describe('selectQualifiedWinner', () => {
 
   it('breaks ties among qualifiers by mean clear time (faster wins) when scores are equal', () => {
     const rows = [
-      row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
+      // Incumbent loses its only cell (0 wins) so both candidates below
+      // strictly exceed it (1 win > 0), keeping them both qualified while
+      // preserving the score tie the clear-time tie-break is meant to test.
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
       row({
         combo: 'a+legacy',
         configId: 'a',
@@ -498,15 +689,24 @@ describe('selectQualifiedWinner', () => {
 
   it('honors a custom minWinRate override', () => {
     const rows = [
+      // Incumbent: 1 win / 4 runs = 25% win rate, 1 total win.
       row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
       loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'bow', seed: 1 }),
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'dagger', seed: 1 }),
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'staff', seed: 1 }),
+      // Candidate: 2 wins / 4 runs = 50% win rate, 2 total wins — strictly
+      // more than the incumbent's 1, so only the win-rate floor gates it.
       row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
-      loss({ combo: 'a+legacy', configId: 'a', weapon: 'bow', seed: 1 }),
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'bow', seed: 1 }),
+      loss({ combo: 'a+legacy', configId: 'a', weapon: 'dagger', seed: 1 }),
+      loss({ combo: 'a+legacy', configId: 'a', weapon: 'staff', seed: 1 }),
     ];
     const lb = buildLeaderboard(rows, {
       incumbentCombo: 'legacy+legacy',
       incumbentConfigId: 'inc',
     });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    expect(candidate.winsVsIncumbentDelta).toBe(1);
     // 50% win rate fails the default 90% floor…
     expect(selectQualifiedWinner(lb).winner).toBeNull();
     // …but qualifies under a relaxed 40% floor.
@@ -656,12 +856,18 @@ describe('renderMarkdown', () => {
   it('renders the qualified-winner section, calling out a disqualified composite leader', () => {
     const shards = [
       shard([
+        // Incumbent wins 1 of the shared 2-cell panel.
         row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
-        // flip-tainted, highest-score challenger — must be flagged as disqualified
+        loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'bow', seed: 1 }),
+        // Flip-tainted, highest-score challenger: flips the incumbent's win
+        // and recovers the incumbent's loss, so its total (1 win) only TIES
+        // the incumbent — must be flagged as disqualified despite the huge score.
         loss({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
         row({ combo: 'a+legacy', configId: 'a', weapon: 'bow', seed: 1, score: 9_000_000 }),
-        // zero-flip, lower-score qualifier — must be the recommended winner
+        // Lower-score qualifier with 2 wins — strictly more than the
+        // incumbent's 1 — must be the recommended winner.
         row({ combo: 'b+legacy', configId: 'b', weapon: 'sword', seed: 1, score: 1_000_000 }),
+        row({ combo: 'b+legacy', configId: 'b', weapon: 'bow', seed: 1, score: 1_000_000 }),
       ]),
     ];
     const md = renderMarkdown(
@@ -701,6 +907,10 @@ describe('assertSearchArtifactProvenance', () => {
     floorId: 'floor1',
     budgetMs: META.budgetMs,
     maxFrames: META.maxFrames,
+    runnerOs: META.runnerOs,
+    nodeVersion: META.nodeVersion,
+    packageLockHash: META.packageLockHash,
+    workflowSha: META.workflowSha,
   } as const;
 
   it('accepts a matching, current-schema search artifact', () => {
@@ -769,5 +979,45 @@ describe('assertSearchArtifactProvenance', () => {
     expect(() => assertSearchArtifactProvenance(SEARCH_META, 'legacy+legacy', EXPECTED)).toThrow(
       /combo 'legacy\+legacy' != requested/,
     );
+  });
+
+  it('rejects an artifact produced on a different runner OS', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, runnerOs: 'darwin-arm64' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/runner-OS 'darwin-arm64' != current/);
+  });
+
+  it('rejects an artifact produced under a different Node runtime', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, nodeVersion: 'v18.0.0' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/node-version 'v18\.0\.0' != current/);
+  });
+
+  it('rejects an artifact produced against different dependencies (package-lock hash)', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, packageLockHash: 'stalehash0000stalehash0000' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/package-lock 'stalehash0000stalehash0000' != current/);
+  });
+
+  it('rejects an artifact produced by a different code revision (workflow SHA) — the exact gap that let a stale --legacy-baseline be trusted', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, workflowSha: 'stalesha0000stalesha0000stalesha0' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/workflow-sha 'stalesha0000stalesha0000stalesha0' != current/);
   });
 });

@@ -114,7 +114,14 @@ export async function postprocessScoreAndStoreVariant(
   );
   const pipelineSteps = traced.steps.map((step, idx) => {
     const file = `${id}.step-${String(idx + 1).padStart(2, '0')}-${step.id}.png`;
-    return { id: step.id, label: step.label, file, png: step.png };
+    return {
+      id: step.id,
+      label: step.label,
+      file,
+      png: step.png,
+      moduleId: step.moduleId,
+      skipped: step.skipped,
+    };
   });
   for (const step of pipelineSteps) {
     await store.put(storeKey(`processed/${step.file}`), step.png);
@@ -135,6 +142,8 @@ export async function postprocessScoreAndStoreVariant(
             id: step.id,
             label: step.label,
             file: step.file,
+            moduleId: step.moduleId,
+            skipped: step.skipped,
           })),
         },
         null,

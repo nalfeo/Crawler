@@ -74,7 +74,7 @@ export function briefKey(type, name) {
 // Ported verbatim from `src/devtools/art-plan-model.ts` (types erased).
 // ===========================================================================
 
-const spriteTypes = ['weapon', 'enemy', 'item', 'tile', 'vfx', 'character'];
+const spriteTypes = ['weapon', 'equipment', 'enemy', 'item', 'prop', 'tile', 'vfx', 'character'];
 
 const integrationTargetSchema = z.discriminatedUnion('kind', [
   z
@@ -208,6 +208,35 @@ export function parseApprovedSprites(manifest, options) {
     const briefId = entry.briefId || mapKey;
     out.set(briefId, {
       briefId,
+      assetPath: entry.assetPath,
+      sourceRun: entry.sourceRun,
+      variantIndex: entry.variantIndex,
+      exists: options.existingAssets.has(entry.assetPath),
+    });
+  }
+  return out;
+}
+
+/**
+ * Every valid, non-placeholder manifest entry, individually — unlike
+ * {@link parseApprovedSprites} (keyed by briefId, so a SECOND manifest entry
+ * sharing a briefId silently overwrites the first), this keeps every entry.
+ * Used by the Workflow canvas's per-variant lifecycle classification, which
+ * must be able to match an EXACT `{briefId, sourceRun, variantIndex}` triple
+ * even when a briefId has more than one manifest entry (e.g. multiple
+ * accepted variants generated from the same brief).
+ * @param {unknown} manifest
+ * @param {{ existingAssets: ReadonlySet<string> }} options
+ * @returns {Array<{ briefId: string, assetPath: string, sourceRun: string, variantIndex: number, exists: boolean }>}
+ */
+export function listManifestApprovals(manifest, options) {
+  const parsed = generatedManifestSchema.safeParse(manifest);
+  if (!parsed.success) return [];
+  const out = [];
+  for (const [mapKey, entry] of Object.entries(parsed.data.entries)) {
+    if (entry.sourceRun === 'placeholder') continue;
+    out.push({
+      briefId: entry.briefId || mapKey,
       assetPath: entry.assetPath,
       sourceRun: entry.sourceRun,
       variantIndex: entry.variantIndex,
@@ -356,6 +385,29 @@ export function normalizeAssetPath(assetPath) {
   return rel;
 }
 
+/**
+ * True when a manifest `sourceRun` value refers to the exact `{briefId, runId}`
+ * run — the same last-two-path-segments normalization `loadBacklog()` uses to
+ * build `promotedRunIds`, exposed standalone so per-VARIANT lifecycle can ask
+ * "did the manifest select exactly THIS run?" without re-deriving the promotion
+ * set. Backslash-normalized so Windows-recorded paths still match.
+ * @param {string | null | undefined} sourceRun
+ * @param {string} briefId
+ * @param {string} runId
+ * @returns {boolean}
+ */
+export function sourceRunMatchesRun(sourceRun, briefId, runId) {
+  if (typeof sourceRun !== 'string' || sourceRun.length === 0) return false;
+  const parts = sourceRun
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((segment) => segment !== '');
+  if (parts.length < 2) return false;
+  const runSegment = parts[parts.length - 1];
+  const briefSegment = parts[parts.length - 2];
+  return briefSegment === briefId && runSegment === runId;
+}
+
 /** Read the generated manifest from disk. Returns `null` (never throws) if absent. */
 function readManifest(repoRoot) {
   try {
@@ -385,7 +437,12 @@ function readRawByRelPath(entries) {
  * @param {{ repoRoot: string, spriteIds: ReadonlySet<string> | null,
  *   itemIds: ReadonlySet<string> | null }} args
  * @returns {{ reports: object[], planCount: number, totals: Record<string, number>,
- *   unresolvedPlaceholders: number, integrationResolved: boolean }}
+ *   unresolvedPlaceholders: number, integrationResolved: boolean,
+ *   promotedRunIds: Set<string>, manifestApprovals: object[] }}
+ *   `manifestApprovals` is every valid manifest entry (see
+ *   {@link listManifestApprovals}) — used by the Workflow canvas's per-variant
+ *   lifecycle classification as a fallback for a manifest-approved variant that
+ *   has NO corresponding art-plan asset (so it never appears in `reports`).
  */
 export function loadBacklog({ repoRoot, spriteIds, itemIds }) {
   const rawPlans = readRawByRelPath(listArtPlans({ repoRoot }));
@@ -422,6 +479,7 @@ export function loadBacklog({ repoRoot, spriteIds, itemIds }) {
     }
   }
   const approvedSprites = parseApprovedSprites(manifest, { existingAssets });
+  const manifestApprovals = listManifestApprovals(manifest, { existingAssets });
 
   const integrationResolved = Boolean(spriteIds && itemIds);
   const reports = plans.map((plan) =>
@@ -451,5 +509,6 @@ export function loadBacklog({ repoRoot, spriteIds, itemIds }) {
     unresolvedPlaceholders,
     integrationResolved,
     promotedRunIds,
+    manifestApprovals,
   };
 }

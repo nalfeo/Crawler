@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "embed-postprocess-workflow",
+  "task_title": "Embed Postprocess editor in Workflow",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Adopted all six concerns: persistent sibling iframe root outside #app; parameterize HTML/API/image/SSE paths before mounting; lazy-create once then retarget with postMessage plus ready metric and seeded Workflow context; isolated versioned Postprocess selection state with ownership guards; Workflow mutation security on persistence; regressions for iframe survival across parent rerenders and click-to-ready under one second."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
