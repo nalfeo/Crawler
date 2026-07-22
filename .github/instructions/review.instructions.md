@@ -12,22 +12,26 @@ not an incremental stream of discoveries.
 
 1. Read the complete diff before reporting any finding. Inventory each changed behavior
    and the repository instructions that apply to every touched path.
-2. Trace changed symbols through their callers, state mutations, error paths, runtime
+2. Read all prior review threads, including resolved threads and their replies, before
+   reporting any finding. Treat a prior `✅ Addressed in <sha>` or `✅ Not applicable:`
+   reply as resolved history: do not reopen or repost that finding unless a later
+   follow-up comment contains concrete evidence that the resolution is invalid.
+3. Trace changed symbols through their callers, state mutations, error paths, runtime
    wiring, and tests. Inspect relevant code outside the diff when needed to validate a
    concern.
-3. Review every category below, even after finding a blocker:
+4. Review every category below, even after finding a blocker:
    - correctness, edge cases, and failure handling;
    - data flow, state lifecycle, ordering, concurrency, and determinism;
    - API/contracts, compatibility, and cross-layer integration;
    - security, trust boundaries, secrets, and unsafe input/output handling;
    - runtime wiring, cleanup, resource ownership, and performance regressions;
    - regression coverage and compliance with Crawler's path-specific policies.
-4. Group duplicate symptoms under one root-cause finding. Before finalizing, make a
+5. Group duplicate symptoms under one root-cause finding. Before finalizing, make a
    second pass over the complete diff specifically for related instances of every root
    cause already found.
-5. Report all validated findings together in one response, ordered by severity. Include
+6. Report all validated findings together in one response, ordered by severity. Include
    the file/line, concrete failure scenario, impact, and smallest correct remedy.
-6. End with a compact coverage statement listing every category checked and either its
+7. End with a compact coverage statement listing every category checked and either its
    finding count or `clean`.
 
 ## Signal rules

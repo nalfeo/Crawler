@@ -83,19 +83,6 @@ describe('InventoryBag', () => {
       ]);
     });
 
-    it('returns generated entries as copies so callers cannot mutate bag references', () => {
-      addGeneratedEquipmentReference(bag, first);
-      const listed = listInventoryEntries(bag);
-      const generated = listed.find((entry) => entry.kind === 'generated-instance');
-      expect(generated).toBeDefined();
-      if (!generated || generated.kind !== 'generated-instance') return;
-
-      const mutatedCopy = generated as { instanceKey: GeneratedEquipmentInstanceKey };
-      mutatedCopy.instanceKey = second;
-
-      expect(bag.generatedEquipment).toEqual([{ kind: 'generated-instance', instanceKey: first }]);
-    });
-
     it('rejects a duplicate exact key without changing the bag', () => {
       addGeneratedEquipmentReference(bag, first);
       const before = structuredClone(bag);
@@ -104,6 +91,22 @@ describe('InventoryBag', () => {
         'Generated equipment instance already exists in bag',
       );
       expect(bag).toEqual(before);
+    });
+
+    it('listInventoryEntries returns a snapshot — mutating a listed entry does not affect the bag', () => {
+      addGeneratedEquipmentReference(bag, first);
+      const entries = listInventoryEntries(bag);
+      const listed = entries.find((e) => e.kind === 'generated-instance');
+      expect(listed).toBeDefined();
+
+      // Force-cast to mutate the returned object
+      (listed as { instanceKey: string }).instanceKey = 'gei:v1:mutated:0';
+
+      // The bag's stored entry must be unchanged
+      expect(hasGeneratedEquipmentReference(bag, first)).toBe(true);
+      expect(
+        hasGeneratedEquipmentReference(bag, 'gei:v1:mutated:0' as GeneratedEquipmentInstanceKey),
+      ).toBe(false);
     });
 
     it('removes only the requested key and leaves distinct instances intact', () => {

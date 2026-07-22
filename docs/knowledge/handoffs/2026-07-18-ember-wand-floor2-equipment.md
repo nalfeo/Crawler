@@ -83,3 +83,16 @@ is generated, approved, and checked in.
 ### What to do differently
 
 Nothing to flag — 2🍎 wiring went smoothly once the test snapshots were updated.
+
+### Lessons Learned
+
+- Existing equipment conventions and catalog guards make small content additions predictable.
+
+### Mistakes Made
+
+- The initial change omitted the art-plan entry until the catalog guard identified it.
+
+### Opportunities for Future Improvement
+
+- A scaffold that creates the equipment definition and art-plan entry together would prevent
+  that omission.

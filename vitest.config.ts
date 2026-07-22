@@ -113,7 +113,6 @@ export default defineConfig({
             'tests/integration/weapons-pipeline.test.ts',
           ],
           testTimeout: 120_000,
-          passWithNoTests: true,
         },
       },
       {
@@ -138,7 +137,6 @@ export default defineConfig({
           ],
           testTimeout: 120_000,
           hookTimeout: 120_000,
-          passWithNoTests: true,
         },
       },
       {
@@ -159,12 +157,68 @@ export default defineConfig({
           include: ['tests/e2e/**/*.{test,spec}.ts'],
           testTimeout: 120_000,
           hookTimeout: 120_000,
-          passWithNoTests: true,
           globalSetup: ['tests/e2e/global-setup.ts'],
           // e2e specs share ONE Vite lab server and each drives its own
           // headless Chromium. Running files in parallel overloads the dev
           // server (network never goes idle, renders stall under CPU
           // contention), so force sequential file execution.
+          fileParallelism: false,
+        },
+      },
+      // ── Surface-targeted E2E sub-projects (#1698) ────────────────────────────
+      // These projects let CI route Playwright to only the affected visual surface:
+      //   e2e-game     → game/engine/UI visual (all tests except devtools-specific)
+      //   e2e-assets   → generated art smoke (3 tests that verify sprite rendering)
+      //   e2e-devtools → devtools browser UI (sprite-workflow-sensors test)
+      // The top-level `e2e` project above stays for full local runs and fallback.
+      // Surface-to-test mapping is documented in scripts/agent/ci/detect-art-only.sh.
+      {
+        extends: true,
+        test: {
+          // Game/engine/UI visual suite. Runs when any game, engine, core, shared,
+          // labs, or non-devtool e2e source changes (game_visual_touched=true).
+          name: 'e2e-game',
+          include: ['tests/e2e/**/*.{test,spec}.ts'],
+          exclude: [
+            // Devtools-specific test belongs to e2e-devtools, not e2e-game.
+            'tests/e2e/sprite-workflow-sensors.test.ts',
+          ],
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
+          globalSetup: ['tests/e2e/global-setup.ts'],
+          fileParallelism: false,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // Asset visual smoke suite. Runs when only generated art or sprite-catalog
+          // changes (asset_visual_touched=true, e.g. art_only=true). Tests here
+          // directly verify that approved generated sprites render in the real scene,
+          // providing targeted visual validation without the full UI suite overhead.
+          name: 'e2e-assets',
+          include: [
+            'tests/e2e/generated-door-overlay.test.ts',
+            'tests/e2e/harvestable-node-sprite.test.ts',
+            'tests/e2e/terrain-generated-tiles.test.ts',
+          ],
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
+          globalSetup: ['tests/e2e/global-setup.ts'],
+          fileParallelism: false,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // Devtools browser visual suite. Runs when devtools source or its e2e test
+          // changes (devtool_visual_touched=true). Isolated so a pure devtools change
+          // never triggers the full game visual suite.
+          name: 'e2e-devtools',
+          include: ['tests/e2e/sprite-workflow-sensors.test.ts'],
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
+          globalSetup: ['tests/e2e/global-setup.ts'],
           fileParallelism: false,
         },
       },

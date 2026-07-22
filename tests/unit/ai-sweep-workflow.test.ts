@@ -20,9 +20,13 @@ import { describe, expect, it } from 'vitest';
  *   - the monolithic `search` job must be gone (replaced by baseline +
  *     checkpoint-init + an explicit bounded round1-3 DAG);
  *   - every round's candidate-eval matrix job must be independently timed at
- *     <=90 minutes (the hard timing gate), with NO `max-parallel` cap (so
- *     GitHub schedules maximum concurrency rather than an artificial
- *     bottleneck);
+ *     <=90 minutes (the hard timing gate), with a `max-parallel: 8` cap
+ *     matching every other matrix job in this workflow (baseline,
+ *     checkpoint-init, round-select, validate) -- an UNCAPPED round-eval
+ *     matrix previously fanned out 20 concurrent jobs with 44 more queued
+ *     (run 29786216369), saturating the account's entire GitHub-hosted
+ *     concurrent-runner pool and starving the shared merge-train queue's own
+ *     validation jobs repo-wide;
  *   - every round-select (checkpoint fold-in) job must be gated with
  *     `!cancelled()` so a `fail-fast:false` partial candidate failure upstream
  *     never causes the checkpoint-persistence step itself to be skipped --
@@ -205,15 +209,19 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(script).toContain('--cap 200');
     });
 
-    it(`${evalJob} is one independent matrix job per candidate, timed <=90min, with unrestricted concurrency`, () => {
+    it(`${evalJob} is one independent matrix job per candidate, timed <=90min, capped at max-parallel:8 (shared-runner-pool protection)`, () => {
       const doc = loadWorkflow();
       const job = getJob(doc, evalJob);
       expect(job.if).toContain(`needs.${candidatesJob}.outputs.hasCandidates == 'true'`);
       expect(job.strategy?.matrix).toBeDefined();
-      // No max-parallel cap: let GitHub's real concurrent-runner ceiling be
-      // the only limiter, so a combo's candidates get scheduled as promptly
-      // as the account allows (see workflow header "residual limitation").
-      expect(job.strategy?.['max-parallel']).toBeUndefined();
+      // max-parallel: 8 caps this round's candidate fan-out so a full
+      // 8-combo graduation run cannot saturate the account's entire
+      // GitHub-hosted concurrent-runner pool and starve unrelated repo-wide
+      // work (e.g. the shared merge-train queue's own validation jobs).
+      // Run 29786216369 fanned out 20 concurrent Round 3 eval jobs with 44
+      // more queued before it was manually cancelled -- this cap must never
+      // silently regress back to unbounded concurrency.
+      expect(job.strategy?.['max-parallel']).toBe(8);
       expect(job.strategy?.['fail-fast']).toBe(false);
       const timeout = job['timeout-minutes'];
       expect(timeout).toBeDefined();
@@ -341,6 +349,40 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     for (const n of ROUND_NUMBERS) {
       const candidatesScript = allRunSteps(getJob(doc, `round${n}-candidates`));
       expect(candidatesScript).toContain('--cap 200');
+    }
+  });
+
+  it('every matrix job in the workflow caps concurrency at max-parallel:8 (shared GitHub-hosted runner pool protection)', () => {
+    // Every fan-out matrix job -- baseline, checkpoint-init, round1-3 eval,
+    // round1-3 select, and validate -- must cap concurrency at the same
+    // max-parallel:8, so a full 8-combo graduation run can never saturate
+    // the account's entire concurrent-runner pool and starve unrelated
+    // repo-wide work (e.g. the shared merge-train queue's own validation
+    // jobs). round1-eval, round2-eval, and round3-eval previously had NO
+    // cap at all: run 29786216369 fanned out 20 concurrent Round 3 eval
+    // jobs with 44 more queued behind them before it was manually
+    // cancelled. This test guards every matrix job in the file at once so
+    // the cap cannot silently regress on any of them.
+    const doc = loadWorkflow();
+    const matrixJobNames = Object.entries(doc.jobs)
+      .filter(([, job]) => (job as WorkflowJob).strategy?.matrix !== undefined)
+      .map(([name]) => name);
+    expect(matrixJobNames.sort()).toEqual(
+      [
+        'baseline',
+        'checkpoint-init',
+        'round1-eval',
+        'round1-select',
+        'round2-eval',
+        'round2-select',
+        'round3-eval',
+        'round3-select',
+        'validate',
+      ].sort(),
+    );
+    for (const name of matrixJobNames) {
+      const job = getJob(doc, name);
+      expect(job.strategy?.['max-parallel'], `job "${name}" strategy.max-parallel`).toBe(8);
     }
   });
 });

@@ -51,6 +51,8 @@ export type SpeckleMode = 'edge-drop' | 'preserve-orphans' | 'disabled';
 export type EnclosedBackgroundMode = 'enabled' | 'disabled';
 
 export interface PostprocessOptions {
+  /** Canonical template module names to pass through without executing. */
+  readonly disabledModules?: ReadonlyArray<string>;
   readonly background?: {
     readonly colorToleranceSq?: number;
     readonly fringeToleranceSq?: number;
@@ -79,11 +81,37 @@ export interface PostprocessStepTrace {
   readonly id: string;
   readonly label: string;
   readonly png: Buffer;
+  readonly moduleId: string;
+  readonly skipped: boolean;
 }
 
 export interface PostprocessTrace {
   readonly finalPng: Buffer;
   readonly steps: ReadonlyArray<PostprocessStepTrace>;
+}
+
+/**
+ * Validate and canonicalize disabled module names against the effective pipeline
+ * for this brief. The pipeline order is authoritative, so persisted profiles are
+ * deterministic even when the client sends duplicate or reordered names.
+ */
+export function normalizeDisabledModules(value: unknown, brief: Brief): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
+    throw new Error('postprocess: disabledModules must be an array of module names');
+  }
+  const activeNames = getActiveModules(getPipelineForType(brief.type), brief.type).map(
+    ({ name }) => name,
+  );
+  const activeSet = new Set(activeNames);
+  const requested = new Set(value as string[]);
+  const invalid = [...requested].find((name) => !activeSet.has(name));
+  if (invalid !== undefined) {
+    throw new Error(
+      `postprocess: disabledModules contains unknown or inactive module "${invalid}"`,
+    );
+  }
+  return activeNames.filter((name) => requested.has(name));
 }
 
 export function postprocessWithTrace(
@@ -97,9 +125,6 @@ export function postprocessWithTrace(
   }
 
   const steps: PostprocessStepTrace[] = [];
-  const pushStep = (id: string, label: string, image: RgbaImage): void => {
-    steps.push({ id, label, png: encodePng(image) });
-  };
 
   let image = decodePng(rawPng);
   const backgroundSource = image;
@@ -113,9 +138,20 @@ export function postprocessWithTrace(
   // Load the pipeline template for this sprite type
   const pipeline = getPipelineForType(brief.type);
   const activeModules = getActiveModules(pipeline, brief.type);
+  const disabledModules = new Set(normalizeDisabledModules(options.disabledModules, brief));
 
   // Execute each module in the pipeline
   for (const { name, config } of activeModules) {
+    if (disabledModules.has(name)) {
+      steps.push({
+        id: name,
+        label: config.description ?? name,
+        png: encodePng(image),
+        moduleId: name,
+        skipped: true,
+      });
+      continue;
+    }
     const handler = postprocessModules[config.type];
     if (!handler) {
       throw new Error(`Unknown module type: ${config.type} (from module: ${name})`);
@@ -155,7 +191,15 @@ export function postprocessWithTrace(
     image = handler(image, moduleParams, {
       brief,
       palette,
-      pushStep,
+      pushStep: (id: string, label: string, stepImage: RgbaImage): void => {
+        steps.push({
+          id,
+          label,
+          png: encodePng(stepImage),
+          moduleId: name,
+          skipped: false,
+        });
+      },
       backgroundSource,
       shouldRunEnclosedBackgroundCleanup,
     });

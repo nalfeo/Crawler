@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 128 ADR files — 96 numbered (0001–0064, with number reuse and gaps in this index — see below) + 32 date-prefixed
+- **Count:** 139 ADR files — 100 numbered (0001–0066, with number reuse and gaps in this index — see below) + 39 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -283,3 +283,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0064 | [In-Process Floor Transition Carryover](0064-in-process-floor-transition-carryover.md)                                                             | Accepted                 | 2026-07-17 |
 | 0064 | [Data-Driven Boss Ability Catalog and Separate Delivery Evidence](0064-data-driven-boss-ability-catalog.md)                                        | Accepted                 | 2026-07-17 |
 | 0065 | [Versioned Frozen Floor 2 Equipment Instances](0065-versioned-frozen-floor2-equipment-instances.md)                                                | Accepted                 | 2026-07-17 |
+| 0066 | [Unique Equipment Schema, Acquisition, and Duplicate Policy](0066-unique-equipment-schema-and-acquisition.md)                                      | Accepted                 | 2026-07-19 |

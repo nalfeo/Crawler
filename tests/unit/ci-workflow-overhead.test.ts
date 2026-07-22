@@ -34,7 +34,17 @@ interface WorkflowDoc {
     pull_request?: TriggerConfig;
     push?: TriggerConfig;
   };
+  concurrency?: {
+    group?: string;
+    'cancel-in-progress'?: string | boolean;
+  };
   jobs: Record<string, WorkflowJob>;
+}
+
+function getStepIf(job: WorkflowJob | undefined, stepName: string): string {
+  const step = job?.steps?.find((s) => s.name === stepName);
+  if (!step) throw new Error(`step "${stepName}" not found`);
+  return String(step.if ?? '').trim();
 }
 
 function loadWorkflow(relativePath: string): WorkflowDoc {
@@ -42,50 +52,53 @@ function loadWorkflow(relativePath: string): WorkflowDoc {
 }
 
 describe('ci workflow overhead reduction', () => {
-  it('reuses one shared setup job for static validation and splits coverage into its own advisory job', () => {
+  it('consolidates 4 former lightweight jobs into check-lightweight and splits coverage into ci-coverage', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
 
+    // Former independent jobs must be gone
     expect(workflow.jobs['check-types-and-lint']).toBeUndefined();
     expect(workflow.jobs['check-format-and-labs']).toBeUndefined();
+    expect(workflow.jobs['ci-advisory']).toBeUndefined();
+    expect(workflow.jobs['human-approval']).toBeUndefined();
     expect(workflow.jobs['test-unit-coverage']).toBeUndefined();
-    expect(workflow.jobs.build).toBeUndefined();
 
-    const staticValidation = workflow.jobs['static-validation'];
-    expect(staticValidation?.needs).toEqual(['changes']);
+    // check-lightweight: consolidates all 4 former lightweight jobs
+    const lightweightJob = workflow.jobs['check-lightweight'];
+    expect(lightweightJob, 'check-lightweight job').toBeTruthy();
+    expect(lightweightJob?.needs).toEqual(['changes']);
     expect(
-      staticValidation?.steps?.filter((step) => step.uses === 'actions/checkout@v4'),
+      lightweightJob?.steps?.filter((step) => step.uses === 'actions/checkout@v4'),
     ).toHaveLength(1);
     expect(
-      staticValidation?.steps?.filter((step) => step.uses === './.github/actions/setup-node'),
+      lightweightJob?.steps?.filter((step) => step.uses === './.github/actions/setup-node'),
     ).toHaveLength(1);
-    expect(staticValidation?.steps?.find((step) => step.name === 'Types & Lint')).toBeTruthy();
-    expect(staticValidation?.steps?.find((step) => step.name === 'Format check')).toBeTruthy();
-    expect(staticValidation?.steps?.find((step) => step.name === 'Lab gate check')).toBeTruthy();
-    expect(
-      staticValidation?.steps?.find((step) => step.name === 'Orphaned-system wiring guard'),
-    ).toBeTruthy();
-    expect(
-      staticValidation?.steps?.find((step) => step.name === 'Guard + review-ledger tests'),
-    ).toBeTruthy();
-
-    // static-validation MUST install Playwright: test:guards includes
-    // .github/extensions/sprite-editor/tests which launch Chromium via Playwright.
-    const setupNodeStep = staticValidation?.steps?.find(
-      (step) => step.uses === './.github/actions/setup-node',
-    );
-    expect(setupNodeStep?.with?.['install-playwright']).toBe('true');
-
-    // ci-advisory: lightweight checks only — no coverage (that lives in ci-coverage)
-    const advisory = workflow.jobs['ci-advisory'];
-    expect(advisory?.steps?.find((step) => step.name === 'Dead code detection')).toBeTruthy();
-    expect(advisory?.steps?.find((step) => step.name === 'Security audit')).toBeTruthy();
-    expect(
-      advisory?.steps?.find((step) => step.name === 'Typecheck (full — tests + scripts)'),
-    ).toBeTruthy();
-    expect(advisory?.steps?.find((step) => step.name === 'Build')).toBeTruthy();
-    // Coverage must NOT be in ci-advisory (it is now its own independent job)
-    expect(advisory?.steps?.find((step) => step.name === 'Unit tests with coverage')).toBeFalsy();
-    expect(advisory?.steps?.find((step) => step.name === 'Coverage report comment')).toBeFalsy();
+    // All blocking steps must be present
+    const requiredBlockingSteps = [
+      'Format check',
+      'Lab gate check',
+      'Orphaned-system wiring guard',
+      'Guard + review-ledger tests',
+      'Typecheck & Lint',
+      'Human approval',
+    ];
+    for (const name of requiredBlockingSteps) {
+      expect(
+        lightweightJob?.steps?.find((step) => step.name === name),
+        `blocking step "${name}"`,
+      ).toBeTruthy();
+    }
+    // Advisory steps must be present
+    const requiredAdvisorySteps = [
+      'Dead code detection',
+      'Security audit',
+      'Typecheck (full — tests + scripts)',
+    ];
+    for (const name of requiredAdvisorySteps) {
+      expect(
+        lightweightJob?.steps?.find((step) => step.name === name),
+        `advisory step "${name}"`,
+      ).toBeTruthy();
+    }
 
     // ci-coverage: independent advisory job for the ~140-second coverage suite
     const coverage = workflow.jobs['ci-coverage'];
@@ -96,67 +109,65 @@ describe('ci workflow overhead reduction', () => {
     expect(coverage?.steps?.find((step) => step.name === 'Upload coverage summary')).toBeTruthy();
     expect(coverage?.steps?.find((step) => step.name === 'Coverage report comment')).toBeTruthy();
 
-    expect(workflow.jobs['merge-gate']?.needs).toContain('static-validation');
+    expect(workflow.jobs['merge-gate']?.needs).toContain('check-lightweight');
+    expect(workflow.jobs['merge-gate']?.needs).not.toContain('static-validation');
     expect(workflow.jobs['merge-gate']?.needs).not.toContain('check-types-and-lint');
     expect(workflow.jobs['merge-gate']?.needs).not.toContain('check-format-and-labs');
+    expect(workflow.jobs['merge-gate']?.needs).not.toContain('human-approval');
   });
 
-  it('static-validation steps each run with continue-on-error and are aggregated by a final result check', () => {
+  it('check-lightweight blocking steps fail-fast without continue-on-error; advisory steps have continue-on-error', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
-    const staticValidation = workflow.jobs['static-validation'];
-    const steps = staticValidation?.steps ?? [];
+    const lightweightJob = workflow.jobs['check-lightweight'];
+    const steps = lightweightJob?.steps ?? [];
 
-    // Each substantive check step must have continue-on-error: true so a failure
-    // does not suppress the remaining checks (preserves attribution parity with
-    // the former two-parallel-job layout).
-    const checkStepNames = [
-      'Types & Lint',
+    // Blocking steps must NOT have continue-on-error so any failure stops the job
+    const blockingStepNames = [
       'Format check',
       'Lab gate check',
       'Orphaned-system wiring guard',
       'Guard + review-ledger tests',
+      'Typecheck & Lint',
+      'Human approval',
     ];
-    for (const name of checkStepNames) {
+    for (const name of blockingStepNames) {
       const step = steps.find((s) => s.name === name);
-      expect(step, `Step "${name}" should exist`).toBeTruthy();
+      expect(step, `blocking step "${name}" should exist`).toBeTruthy();
       expect(
         step?.['continue-on-error'],
-        `Step "${name}" should have continue-on-error: true`,
-      ).toBe(true);
+        `blocking step "${name}" must not have continue-on-error`,
+      ).toBeFalsy();
     }
 
-    // A final aggregation step must run even after failures (if: always()) and
-    // must not itself have continue-on-error (it IS the gate).
-    const resultStep = steps.find((s) => s.name === 'Check static validation results');
-    expect(resultStep, 'Check static validation results step should exist').toBeTruthy();
-    expect(resultStep?.if).toBe('always()');
-    expect(resultStep?.['continue-on-error']).toBeFalsy();
-
-    // The aggregation script must reference every check step's outcome by id
-    // so no check can be silently omitted from the gate.
-    const aggregationScript = String(resultStep?.run ?? '');
-    const expectedStepIds = [
-      'types-lint',
-      'format-check',
-      'lab-gate',
-      'wiring-guard',
-      'guard-tests',
+    // Advisory steps must have continue-on-error: true so failures surface without blocking merge
+    const advisoryStepNames = [
+      'Dead code detection',
+      'Security audit',
+      'Typecheck (full — tests + scripts)',
     ];
-    for (const id of expectedStepIds) {
-      expect(aggregationScript, `Aggregation script must reference step id '${id}'`).toContain(
-        `steps.${id}.outcome`,
-      );
+    for (const name of advisoryStepNames) {
+      const step = steps.find((s) => s.name === name);
+      expect(step, `advisory step "${name}" should exist`).toBeTruthy();
+      expect(
+        step?.['continue-on-error'],
+        `advisory step "${name}" must have continue-on-error: true`,
+      ).toBe(true);
     }
   });
 });
 
 describe('merge-gate aggregation policy', () => {
-  it('runs even when a required job fails (fail-closed: if: always())', () => {
+  it('runs when dependencies fail but is skipped on cancellation (if: !cancelled())', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const mergeGate = workflow.jobs['merge-gate'];
-    // Without `if: always()`, a failing needed job causes merge-gate to be skipped,
-    // which silently counts as PASS and lets broken changes through.
-    expect(mergeGate?.if).toBe('always()');
+    // !cancelled() preserves fail-closed behavior on dependency failures while
+    // allowing superseded PR runs to stop cleanly under concurrency cancellation.
+    expect(mergeGate?.if).toBe('${{ !cancelled() }}');
+  });
+
+  it('final ci job mirrors merge-gate cancellation policy', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml');
+    expect(workflow.jobs.ci?.if).toBe('${{ !cancelled() }}');
   });
 
   it('changes detection job failure blocks the gate (no allow_skipped)', () => {
@@ -170,13 +181,13 @@ describe('merge-gate aggregation policy', () => {
     expect(script).not.toMatch(/check "Change scope detection"\s+[^\n]+"true"/);
   });
 
-  it('static-validation always blocks (no allow_skipped, no docs-only escape)', () => {
+  it('Lightweight Checks always blocks (no allow_skipped, no docs-only escape)', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const step = workflow.jobs['merge-gate']?.steps?.[0];
     const script = String(step?.run ?? '');
-    expect(script).toContain('check "Static validation"');
-    // Static validation must NOT have allow_skipped=true; it blocks on all non-docs-only changes.
-    expect(script).not.toMatch(/check "Static validation"\s+[^\n]+"true"/);
+    expect(script).toContain('check "Lightweight Checks"');
+    // Lightweight Checks must NOT have allow_skipped=true; it blocks on all changes.
+    expect(script).not.toMatch(/check "Lightweight Checks"\s+[^\n]+"true"/);
   });
 
   it('docs-only skip path is present for scope-gated jobs', () => {
@@ -192,13 +203,16 @@ describe('merge-gate aggregation policy', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const step = workflow.jobs['merge-gate']?.steps?.[0];
     const script = String(step?.run ?? '');
-    // Unit tests, integration tests, headless, E2E all use allow_skipped=true.
+    // Unit tests, integration tests, and E2E all use allow_skipped=true via the check() helper.
+    // Headless Floor 1 uses a custom sim_touched validation block instead — see ci-gating-policy.test.ts.
+    // E2E has been split into three surface-targeted jobs (PR #1698).
     const allowSkippedJobs = [
       'Unit tests',
       'Integration tests',
       'Sprite pipeline tests',
-      'Headless Floor 1 completion',
-      'E2E Visual Regression',
+      'E2E Visual — Game/UI',
+      'E2E Visual — Asset Smoke',
+      'E2E Visual — Devtools',
     ];
     for (const name of allowSkippedJobs) {
       expect(script, `"${name}" check should have allow_skipped=true`).toMatch(
@@ -211,15 +225,20 @@ describe('merge-gate aggregation policy', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const needs = workflow.jobs['merge-gate']?.needs ?? [];
     expect(needs).toContain('changes');
-    expect(needs).toContain('static-validation');
+    expect(needs).toContain('check-lightweight');
     expect(needs).toContain('test-unit');
     expect(needs).toContain('test-integration');
     expect(needs).toContain('test-headless');
-    expect(needs).toContain('test-e2e');
-    expect(needs).toContain('human-approval');
-    // Old job names must not appear.
+    // E2E split into three surface-targeted jobs (PR #1698).
+    expect(needs).toContain('test-e2e-game');
+    expect(needs).toContain('test-e2e-assets');
+    expect(needs).toContain('test-e2e-devtools');
+    // Old job names and superseded jobs must not appear.
+    expect(needs).not.toContain('static-validation');
     expect(needs).not.toContain('check-types-and-lint');
     expect(needs).not.toContain('check-format-and-labs');
+    expect(needs).not.toContain('human-approval');
+    expect(needs).not.toContain('test-e2e');
   });
 });
 
@@ -230,10 +249,7 @@ describe('epic drift audit trigger scope', () => {
       'docs/knowledge/epics/floor-2-equipment/**',
       'scripts/agent/epics/**',
       'tests/unit/agent/epic-status.test.ts',
-      '.github/actions/setup-node/action.yml',
-      'package.json',
-      'package-lock.json',
-      'tsconfig*.json',
+      'tests/unit/agent/epic-status-inaccessible-commit.test.ts',
       '.github/workflows/epic-drift-audit.yml',
     ];
 
@@ -241,5 +257,106 @@ describe('epic drift audit trigger scope', () => {
     expect(workflow.on.push?.paths).toEqual(expectedPaths);
     expect(workflow.on.pull_request?.paths).not.toContain('docs/knowledge/epics/**');
     expect(workflow.on.pull_request?.paths).toContain('tests/unit/agent/epic-status.test.ts');
+  });
+});
+
+describe('superseded-run concurrency cancellation policy (#1689)', () => {
+  // Both PR-triggered workflows must cancel superseded runs on the same PR while
+  // never cancelling across workflows or across different PRs, and must keep a
+  // distinct non-cancelling group for push/schedule/manual events.
+  for (const relPath of ['.github/workflows/ci.yml', '.github/workflows/security-review.yml']) {
+    it(`${relPath} defines a workflow-namespaced, PR-scoped concurrency group`, () => {
+      const workflow = loadWorkflow(relPath);
+      const group = String(workflow.concurrency?.group ?? '');
+      expect(group, `${relPath} must define a concurrency.group`).toBeTruthy();
+      // A stable per-workflow literal prefix prevents cross-workflow collisions.
+      const expectedPrefix =
+        relPath === '.github/workflows/ci.yml' ? 'crawler-ci-' : 'crawler-security-review-';
+      expect(group).toContain(expectedPrefix);
+      // PRs group by PR number so a newer synchronize cancels the older head.
+      expect(group).toContain("github.event_name == 'pull_request'");
+      expect(group).toContain("format('pr-{0}', github.event.pull_request.number)");
+      // Non-PR events fall back to a unique per-run group (never cancel).
+      expect(group).toContain('github.run_id');
+    });
+
+    it(`${relPath} only cancels in-progress runs for pull_request events`, () => {
+      const workflow = loadWorkflow(relPath);
+      const cancel = String(workflow.concurrency?.['cancel-in-progress'] ?? '');
+      // Must be gated on the event being a pull_request so push/schedule/manual
+      // runs are never cancelled mid-flight.
+      expect(cancel).toContain("github.event_name == 'pull_request'");
+    });
+  }
+});
+
+describe('impact-flag job gating contracts (#1697/#1698)', () => {
+  it('surface-targeted E2E jobs gate on per-surface visual flags', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml');
+    const gameIf = String(workflow.jobs['test-e2e-game']?.if ?? '').trim();
+    const assetIf = String(workflow.jobs['test-e2e-assets']?.if ?? '').trim();
+    const devtoolIf = String(workflow.jobs['test-e2e-devtools']?.if ?? '').trim();
+
+    expect(gameIf).toContain("game_visual_touched == 'true'");
+    expect(assetIf).toContain("asset_visual_touched == 'true'");
+    expect(devtoolIf).toContain("devtool_visual_touched == 'true'");
+
+    expect(gameIf).toContain("docs_only != 'true'");
+    expect(assetIf).toContain("docs_only != 'true'");
+    expect(devtoolIf).toContain("docs_only != 'true'");
+  });
+
+  it('security-review npm audit and dependency allowlist gate on dependencies_touched (fail-closed: != false)', () => {
+    const workflow = loadWorkflow('.github/workflows/security-review.yml');
+    const job = workflow.jobs['security-checks'];
+    for (const step of ['npm audit', 'Dependency allowlist']) {
+      const stepDef = job?.steps?.find((s) => s.name === step);
+      const condition = getStepIf(job, step);
+      // Fail-closed: only explicit 'false' skips; blank/missing output keeps the gate running.
+      expect(condition, `${step} must gate on dependencies_touched != false`).toContain(
+        "dependencies_touched != 'false'",
+      );
+      // The old fail-open form must not be present.
+      expect(condition, `${step} must not use fail-open == true`).not.toContain(
+        "dependencies_touched == 'true'",
+      );
+      // Non-PR events (schedule/workflow_dispatch) must not hard-fail the workflow
+      // on advisory findings; that is expressed via continue-on-error, not the if:.
+      expect(stepDef?.['continue-on-error'], `${step} must not hard-fail on non-PR events`).toBe(
+        "${{ github.event_name != 'pull_request' }}",
+      );
+    }
+  });
+
+  it('security-review secret scanning stays fail-closed (not gated on dependencies_touched)', () => {
+    const workflow = loadWorkflow('.github/workflows/security-review.yml');
+    const job = workflow.jobs['security-checks'];
+    // Secret scanning must run for every relevant PR change set regardless of
+    // dependency-manifest scope: it is split into a docs/asset-only variant and a
+    // non-docs variant (train-promotion + not-cancelled), never gated on
+    // dependencies_touched.
+    for (const step of [
+      'Scan for committed secrets (docs/asset-only)',
+      'Scan for committed secrets',
+    ]) {
+      const condition = getStepIf(job, step);
+      expect(condition, `${step} must gate on train_promoted`).toContain(
+        "train_promoted != 'true'",
+      );
+      expect(condition, `${step} must not be gated on dependencies_touched`).not.toContain(
+        'dependencies_touched',
+      );
+    }
+  });
+
+  it('security-checks job is skipped when the workflow is cancelled but runs on changes failure (if: !cancelled())', () => {
+    const workflow = loadWorkflow('.github/workflows/security-review.yml');
+    const securityChecks = workflow.jobs['security-checks'];
+    // !cancelled() skips the job when the concurrency policy cancels a superseded run
+    // (preserving the intent of the concurrency block), while still running when the
+    // changes job fails normally — preventing scope-detection failure from silently
+    // bypassing the security gate.
+    // always() would keep the job running even after cancellation, undermining #1689.
+    expect(securityChecks?.if).toBe('${{ !cancelled() }}');
   });
 });

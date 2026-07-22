@@ -20,6 +20,8 @@ import {
   normalizeWorkspaceKey,
 } from '../../../../scripts/shared/session-server-ports.js';
 
+const EXPECTED_SIDECAR_VERSION = '0.3.0-managed';
+
 /**
  * Legacy fixed port the monolith falls back to when no per-worktree port can be
  * derived. Mirrors `LEGACY_SPRITE_SIDECAR_FALLBACK` in
@@ -88,6 +90,18 @@ export function runSummaryUrl(baseUrl, briefId, runId) {
   return `${baseUrl}/api/runs/${enc(briefId)}/${enc(runId)}`;
 }
 
+/**
+ * Persist-postprocess endpoint for a run. The monolith `renderPostprocessDebugger`
+ * "Apply changes" POSTs its override payload here (`src/devtools-main.ts` ~5729);
+ * the sidecar writes `postprocessOverrides` onto the run (`server.ts` ~1029).
+ * Kept 1:1 with `postprocess/lib/sidecar-client.mjs` — the embedded Postprocess
+ * Debugger under `/postprocess/*` reuses THIS client (one sidecar connection per
+ * Workflow instance) rather than instantiating a second one.
+ */
+export function runPostprocessUrl(baseUrl, briefId, runId) {
+  return `${runSummaryUrl(baseUrl, briefId, runId)}/postprocess`;
+}
+
 export function sheetsUrl(baseUrl, briefId, runId) {
   return `${runSummaryUrl(baseUrl, briefId, runId)}/sheets`;
 }
@@ -109,7 +123,12 @@ export function sliceMapUrl(baseUrl, briefId, runId, sheet) {
   if (typeof sheet === 'string' && sheet.length > 0) {
     return `${base}?sheet=${enc(sheet)}`;
   }
+
   return base;
+}
+
+export function acceptUrl(baseUrl, briefId, runId) {
+  return `${runSummaryUrl(baseUrl, briefId, runId)}/accept`;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,9 +138,14 @@ export function sliceMapUrl(baseUrl, briefId, runId, sheet) {
 
 /** Judge axes, in display order. Mirrors `JUDGE_AXES` in `src/devtools-main.ts`. */
 export const JUDGE_AXES = Object.freeze([
-  { key: 'styleMatch', label: 'Style match' },
+  { key: 'designLanguage', label: 'Design language' },
+  { key: 'referenceStyleMatch', label: 'Reference style' },
   { key: 'briefMatch', label: 'Brief match' },
   { key: 'readability', label: 'Readability' },
+  { key: 'poseOrientation', label: 'Pose orientation' },
+  { key: 'bossPresence', label: 'Boss presence' },
+  { key: 'presentation', label: 'Presentation' },
+  { key: 'themeAdherence', label: 'Theme adherence' },
 ]);
 
 /** A judge axis passes when its score is >= 3. */
@@ -182,9 +206,15 @@ export function toJudgeSummary(raw) {
   return {
     passed: raw.passed === true,
     minScore: typeof raw.minScore === 'number' ? raw.minScore : 0,
+    designLanguage: axisScore(raw.designLanguage),
+    referenceStyleMatch: axisScore(raw.referenceStyleMatch ?? raw.styleMatch),
     styleMatch: axisScore(raw.styleMatch),
     briefMatch: axisScore(raw.briefMatch),
     readability: axisScore(raw.readability),
+    poseOrientation: axisScore(raw.poseOrientation),
+    bossPresence: axisScore(raw.bossPresence),
+    presentation: axisScore(raw.presentation),
+    themeAdherence: axisScore(raw.themeAdherence),
     rejectedBy: Array.isArray(raw.rejectedBy)
       ? raw.rejectedBy.filter((r) => typeof r === 'string')
       : [],
@@ -234,9 +264,15 @@ export function parseCandidateDetail(raw) {
           ? scorecard.rejectedBy.filter((r) => typeof r === 'string')
           : [],
         rationale: {
+          designLanguage: axisRationale('designLanguage'),
+          referenceStyleMatch: axisRationale('referenceStyleMatch') ?? axisRationale('styleMatch'),
           styleMatch: axisRationale('styleMatch'),
           briefMatch: axisRationale('briefMatch'),
           readability: axisRationale('readability'),
+          poseOrientation: axisRationale('poseOrientation'),
+          bossPresence: axisRationale('bossPresence'),
+          presentation: axisRationale('presentation'),
+          themeAdherence: axisRationale('themeAdherence'),
         },
         modelDeployment:
           typeof scorecard.modelDeployment === 'string' ? scorecard.modelDeployment : null,
@@ -372,6 +408,16 @@ async function readJson(response) {
   return response.json();
 }
 
+function isSidecarStrictReady(payload) {
+  if (!payload || payload.status !== 'ok' || payload.version !== EXPECTED_SIDECAR_VERSION) {
+    return false;
+  }
+  if (payload.queueBackend === 'azure-queue') {
+    return payload.worker?.running === true && payload.issueIngester?.running === true;
+  }
+  return true;
+}
+
 /**
  * Build a read-only sidecar client bound to `baseUrl`. Every method throws on a
  * non-2xx response (callers in the harness proxy translate that into a controlled
@@ -424,10 +470,37 @@ export function createSidecarClient(options) {
     } catch {
       payload = null;
     }
+
     if (!response.ok) {
       return normalizeSliceMap(payload ?? { error: `http-${response.status}` });
     }
     return normalizeSliceMap(payload);
+  }
+
+  async function acceptVariant(briefId, runId, variantIndex) {
+    const response = await fetchImpl(acceptUrl(baseUrl, briefId, runId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variantIndex }),
+      cache: 'no-store',
+    });
+    let payload = null;
+    try {
+      payload = await readJson(response);
+    } catch {
+      payload = null;
+    }
+    if (!response.ok) {
+      const message =
+        typeof payload?.message === 'string'
+          ? payload.message
+          : `Sprite acceptance failed (${response.status} ${response.statusText})`;
+      const error = new Error(message);
+      error.code = typeof payload?.error === 'string' ? payload.error : `http-${response.status}`;
+      error.status = response.status;
+      throw error;
+    }
+    return payload;
   }
 
   /**
@@ -477,6 +550,9 @@ export function createSidecarClient(options) {
         return { ...health, state: 'wrong-repo' };
       }
     }
+    if (!isSidecarStrictReady(payload)) {
+      return { ...health, state: 'down' };
+    }
     return health;
   }
 
@@ -486,6 +562,7 @@ export function createSidecarClient(options) {
     fetchRunSummary,
     fetchSheets,
     fetchSliceMap,
+    acceptVariant,
     probeHealth,
     urls: {
       health: () => healthUrl(baseUrl),
@@ -496,6 +573,8 @@ export function createSidecarClient(options) {
       processed: (b, r, f) => processedUrl(baseUrl, b, r, f),
       raw: (b, r, f) => rawUrl(baseUrl, b, r, f),
       sliceMap: (b, r, s) => sliceMapUrl(baseUrl, b, r, s),
+      accept: (b, r) => acceptUrl(baseUrl, b, r),
+      runPostprocess: (b, r) => runPostprocessUrl(baseUrl, b, r),
     },
   };
 }

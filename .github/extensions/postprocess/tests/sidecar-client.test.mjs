@@ -30,6 +30,7 @@ import {
 } from '../lib/sidecar-client.mjs';
 
 const BASE = 'http://127.0.0.1:17790';
+const EXPECTED_VERSION = '0.3.0-managed';
 
 /** Build a fake fetch that maps URL substrings to canned responses. */
 function fakeFetch(routes) {
@@ -119,9 +120,15 @@ test('toJudgeSummary reads axis scores and defaults missing axes to 0', () => {
   assert.deepEqual(s, {
     passed: true,
     minScore: 3,
+    designLanguage: 0,
+    referenceStyleMatch: 4,
     styleMatch: 4,
     briefMatch: 3,
     readability: 0,
+    poseOrientation: 0,
+    bossPresence: 0,
+    presentation: 0,
+    themeAdherence: 0,
     rejectedBy: ['x'],
   });
 });
@@ -266,14 +273,64 @@ test('probeHealth: up when the sidecar answers for the matching repo', async () 
     workspaceRoot: '/repo/a',
     fetchImpl: fakeFetch({
       '/api/health': {
-        json: { status: 'ok', repoRoot: '/repo/a', version: '9', storeBackend: 'azure-blob' },
+        json: {
+          status: 'ok',
+          repoRoot: '/repo/a',
+          version: EXPECTED_VERSION,
+          storeBackend: 'azure-blob',
+          queueBackend: 'azure-queue',
+          worker: { running: true },
+          issueIngester: { running: true },
+        },
       },
     }),
   });
   const health = await client.probeHealth();
   assert.equal(health.state, 'up');
-  assert.equal(health.version, '9');
+  assert.equal(health.version, EXPECTED_VERSION);
   assert.equal(health.storeBackend, 'azure-blob');
+});
+
+test('probeHealth: down when azure queue controllers are not ready', async () => {
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    workspaceRoot: '/repo/a',
+    fetchImpl: fakeFetch({
+      '/api/health': {
+        json: {
+          status: 'ok',
+          repoRoot: '/repo/a',
+          version: EXPECTED_VERSION,
+          queueBackend: 'azure-queue',
+          worker: { running: false },
+          issueIngester: { running: true },
+        },
+      },
+    }),
+  });
+  const health = await client.probeHealth();
+  assert.equal(health.state, 'down');
+});
+
+test('probeHealth: down when the sidecar version is stale', async () => {
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    workspaceRoot: '/repo/a',
+    fetchImpl: fakeFetch({
+      '/api/health': {
+        json: {
+          status: 'ok',
+          repoRoot: '/repo/a',
+          version: '0.2.0-workflow',
+          queueBackend: 'azure-queue',
+          worker: { running: true },
+          issueIngester: { running: true },
+        },
+      },
+    }),
+  });
+  const health = await client.probeHealth();
+  assert.equal(health.state, 'down');
 });
 
 test('probeHealth: wrong-repo when the sidecar serves a different checkout', async () => {

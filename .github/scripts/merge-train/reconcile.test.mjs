@@ -4,19 +4,26 @@ import test from 'node:test';
 import {
   buildCandidate,
   buildDispatchBindings,
+  buildGatedDispatchRecovery,
+  deleteCandidateBundle,
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
+  mergeTrainGitEnvironment,
+  promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
+  queuePositionAfterRecovery,
   resolveMergeTrainTokens,
+  runTrainBuildLoop,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 
 const baseSha = 'a'.repeat(40);
 const candidateSha = 'b'.repeat(40);
+const transportSha = 'c'.repeat(40);
 const prSha = '1'.repeat(40);
 
 function makePr(overrides = {}) {
@@ -74,6 +81,11 @@ function createGitStub({
     if (args[0] === 'rev-parse' && args[1] === 'HEAD') return candidateSha;
     if (args[0] === 'rev-parse' && args[1] === `${candidateSha}^`) return parentSha;
     if (args[0] === 'rev-parse') return refs.get(args[1]) || fetchedSha;
+    if (args[0] === 'hash-object') return transportSha;
+    if (args[0] === 'update-ref') {
+      refs.set(args[1], args[2]);
+      return '';
+    }
     return '';
   };
   return { git, calls };
@@ -119,6 +131,61 @@ test('buildCandidate treats exact-SHA mismatches as retryable operational failur
       assert.match(error.message, /head changed while building candidate/);
       return true;
     },
+  );
+});
+
+test('deleteCandidateBundle removes only the exact terminal transport ref', () => {
+  const refName = 'refs/merge-train-candidates/candidate-1-deadbeef';
+  const transportSha = 'a'.repeat(40);
+  const calls = [];
+  const deleted = deleteCandidateBundle({
+    refName,
+    transportSha,
+    git: (args) => {
+      calls.push(args);
+      if (args[0] === 'ls-remote') return `${transportSha}\t${refName}`;
+      return '';
+    },
+  });
+  assert.equal(deleted, true);
+  assert.deepEqual(calls[1], [
+    'push',
+    `--force-with-lease=${refName}:${transportSha}`,
+    'origin',
+    `:${refName}`,
+  ]);
+});
+
+test('deleteCandidateBundle is idempotent and rejects ref drift', () => {
+  const refName = 'refs/merge-train-candidates/candidate-1-deadbeef';
+  const transportSha = 'a'.repeat(40);
+  assert.equal(
+    deleteCandidateBundle({
+      refName,
+      transportSha,
+      git: () => '',
+    }),
+    false,
+  );
+  assert.throws(
+    () =>
+      deleteCandidateBundle({
+        refName,
+        transportSha,
+        git: () => `${'b'.repeat(40)}\t${refName}`,
+      }),
+    /changed before cleanup/,
+  );
+});
+
+test('non-Actions runs fail before mutation when only the non-dispatching App token is present', () => {
+  assert.throws(
+    () =>
+      resolveMergeTrainTokens({
+        GITHUB_ACTIONS: 'false',
+        MERGE_TRAIN_TOKEN: 'app-token',
+      }),
+    /requires GITHUB_TOKEN for workflow dispatch/,
   );
 });
 
@@ -219,6 +286,389 @@ test('buildCandidate leaves non-conflict merge failures retryable', () => {
   );
 });
 
+test('live candidates use a non-event custom ref with the checkout App credential', () => {
+  const { git, calls } = createGitStub({});
+  buildCandidate({
+    baseSha,
+    entries: [makePr()],
+    refName: 'refs/merge-train-candidates/candidate-ordinary',
+    git,
+    live: true,
+  });
+
+  const pushCall = calls.find((call) => call.args[0] === 'push');
+  assert.deepEqual(pushCall.args, [
+    'push',
+    '--force',
+    'origin',
+    'refs/merge-train-candidates/candidate-ordinary:' +
+      'refs/merge-train-candidates/candidate-ordinary',
+  ]);
+  assert.deepEqual(pushCall.options, {});
+  assert.ok(calls.some((call) => call.args[0] === 'bundle' && call.args[1] === 'create'));
+  assert.ok(calls.some((call) => call.args[0] === 'hash-object'));
+});
+
+test('live candidates reject event-emitting refs before Git mutation', () => {
+  const { git, calls } = createGitStub({});
+  for (const refName of [
+    'refs/heads/merge-train/candidate-workflow',
+    'refs/tags/merge-train-candidate-workflow',
+  ]) {
+    assert.throws(
+      () =>
+        buildCandidate({
+          baseSha,
+          entries: [makePr()],
+          refName,
+          git,
+          live: true,
+        }),
+      /non-event ref namespace/,
+    );
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('custom-ref push failures remain credential-safe retryable failures', () => {
+  const { git, calls } = createGitStub({ failPush: true });
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [makePr()],
+        refName: 'refs/merge-train-candidates/candidate-workflow',
+        git,
+        live: true,
+      }),
+    (error) => {
+      assert.equal(isMergeTrainConflictError(error), false);
+      assert.equal(isMergeTrainNoopError(error), false);
+      return true;
+    },
+  );
+  const pushCall = calls.find((call) => call.args[0] === 'push');
+  assert.deepEqual(pushCall.options, {});
+});
+
+test('raw workflow credentials are stripped from every Git child environment', () => {
+  assert.deepEqual(
+    mergeTrainGitEnvironment(
+      {
+        PATH: '/usr/bin',
+        MERGE_TRAIN_WORKFLOW_TOKEN: 'owner-workflow-token',
+      },
+      {
+        GIT_CONFIG_COUNT: '1',
+      },
+    ),
+    {
+      PATH: '/usr/bin',
+      GIT_CONFIG_COUNT: '1',
+    },
+  );
+});
+
+test('later build failure promotes the highest successful cumulative prefix in order', async () => {
+  const train = [1, 2, 3, 4].map((number) => makePr({ number }));
+  const candidates = [
+    { state: 'missing', entries: train.slice(0, 1) },
+    { state: 'success', entries: train.slice(0, 2) },
+    { state: 'pending', entries: train.slice(0, 3) },
+  ];
+  const promotedEntries = [];
+  const result = await promoteValidatedPrefixAfterBuildFailure({
+    candidates,
+    promotePrefix: async (prefixLength, validationIndex) => {
+      assert.equal(validationIndex, 1);
+      promotedEntries.push(...train.slice(0, prefixLength).map((entry) => entry.number));
+      return true;
+    },
+  });
+
+  assert.deepEqual(promotedEntries, [1, 2]);
+  assert.deepEqual(result, {
+    greenPrefixLength: 2,
+    landedCount: 2,
+    validationIndex: 1,
+    promotionAttempted: true,
+    promoted: true,
+  });
+  assert.deepEqual(
+    train.slice(result.greenPrefixLength).map((entry) => entry.number),
+    [3, 4],
+  );
+});
+
+test('build failure before any successful prefix does not attempt promotion', async () => {
+  let promotionCalls = 0;
+  const result = await promoteValidatedPrefixAfterBuildFailure({
+    candidates: [{ state: 'missing' }, { state: 'pending' }],
+    promotePrefix: async () => {
+      promotionCalls += 1;
+      return true;
+    },
+  });
+
+  assert.equal(promotionCalls, 0);
+  assert.deepEqual(result, {
+    greenPrefixLength: 0,
+    validationIndex: -1,
+    promotionAttempted: false,
+    promoted: false,
+  });
+});
+
+test('build failure recovery never promotes later unvalidated candidates', async () => {
+  const calls = [];
+  const result = await promoteValidatedPrefixAfterBuildFailure({
+    candidates: [{ state: 'success' }, { state: 'failure' }, { state: 'pending' }],
+    promotePrefix: async (...args) => {
+      calls.push(args);
+      return true;
+    },
+  });
+
+  assert.deepEqual(calls, [[1, 0]]);
+  assert.equal(result.greenPrefixLength, 1);
+});
+
+// Orchestration-level regression: these tests exercise the runTrainBuildLoop
+// controller that was changed in the production bug fix. Calling the lib helper
+// (promoteValidatedPrefixAfterBuildFailure) in isolation would leave these bugs
+// undetected — this seam catches the missing transition.
+
+test('runTrainBuildLoop promotes validated prefix when a later build entry fails with a retryable error', async () => {
+  const train = [1, 2, 3].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  const promotionCalls = [];
+
+  const result = await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index === 0) {
+        return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+      }
+      // index >= 1: retryable failure (not a conflict, not a noop)
+      throw new Error('transient git failure');
+    },
+    promotePrefix: async (prefixLength, validationIndex) => {
+      promotionCalls.push({ prefixLength, validationIndex });
+      return true;
+    },
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  assert.equal(result.entry.number, 2); // PR #2 is the failing entry (index 1)
+  assert.equal(result.recovery.greenPrefixLength, 1);
+  assert.equal(result.recovery.promoted, true);
+  assert.deepEqual(promotionCalls, [{ prefixLength: 1, validationIndex: 0 }]);
+  // Only the first candidate was accumulated; later entries were never reached.
+  assert.equal(builtCandidates.length, 1);
+});
+
+test('runTrainBuildLoop does not attempt promotion when no candidate succeeded before the retryable failure', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let promotionCalled = false;
+
+  const result = await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (_index) => {
+      throw new Error('immediate retryable failure');
+    },
+    promotePrefix: async () => {
+      promotionCalled = true;
+      return true;
+    },
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  assert.equal(result.recovery.promotionAttempted, false);
+  assert.equal(promotionCalled, false);
+  assert.equal(builtCandidates.length, 0);
+});
+
+test('candidate custom-ref push rejection remains a retryable build failure', async () => {
+  const { git } = createGitStub({ failPush: true });
+  const result = await runTrainBuildLoop({
+    train: [makePr()],
+    candidates: [],
+    buildEntry: async () => ({
+      candidateSha: buildCandidate({
+        baseSha,
+        entries: [makePr()],
+        refName: 'refs/merge-train-candidates/candidate-workflow',
+        git,
+        live: true,
+      }),
+    }),
+    promotePrefix: async () => true,
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  assert.match(result.error.message, /lease rejected/);
+  assert.equal(result.recovery.promotionAttempted, false);
+});
+
+test('runTrainBuildLoop does not invoke buildEntry for entries beyond the retryable failure', async () => {
+  const train = [1, 2, 3].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  const invoked = [];
+
+  const result = await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      invoked.push(train[index].number);
+      if (index === 1) throw new Error('retryable on #2');
+      return { candidateSha: `sha-${index}`, state: 'pending', entries: train.slice(0, index + 1) };
+    },
+    promotePrefix: async () => true,
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  // Entries 0 (#1) and 1 (#2) were attempted; entry 2 (#3) was never started.
+  assert.deepEqual(invoked, [1, 2]);
+  assert.equal(builtCandidates.length, 1); // only index 0 succeeded and was accumulated
+});
+
+test('runTrainBuildLoop does not reclassify post-build finalization errors as build retries', async () => {
+  let promotionCalled = false;
+  await assert.rejects(
+    runTrainBuildLoop({
+      train: [makePr({ number: 1 })],
+      candidates: [],
+      buildEntry: async () => ({ candidateSha: 'sha-0' }),
+      finalizeEntry: async () => {
+        throw new Error('validation read failed');
+      },
+      promotePrefix: async () => {
+        promotionCalled = true;
+        return true;
+      },
+    }),
+    /validation read failed/,
+  );
+  assert.equal(promotionCalled, false);
+});
+
+test('runTrainBuildLoop promotes prefix even if status reporting rejects', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let promotionCalled = false;
+
+  await assert.rejects(
+    runTrainBuildLoop({
+      train,
+      candidates: builtCandidates,
+      buildEntry: async (index) => {
+        if (index === 0) {
+          return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+        }
+        throw new Error('transient git failure');
+      },
+      onRetryableFailure: async () => {
+        throw new Error('reporting failure');
+      },
+      promotePrefix: async () => {
+        promotionCalled = true;
+        return true;
+      },
+    }),
+    /reporting failure/,
+  );
+
+  assert.equal(promotionCalled, true);
+});
+
+test('runTrainBuildLoop passes recovery to onRetryableFailure so the failing PR position reflects the post-promotion queue', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let capturedPosition;
+
+  await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index === 0) {
+        return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+      }
+      throw new Error('transient git failure');
+    },
+    onRetryableFailure: async (_index, _error, recovery) => {
+      capturedPosition = queuePositionAfterRecovery(_index, recovery);
+    },
+    promotePrefix: async () => true,
+  });
+
+  // PR #2 was at original index 1 (position 2), but PR #1 was promoted (greenPrefixLength=1).
+  // Its new queue position is 2 - 1 = 1.
+  assert.equal(capturedPosition, 1);
+});
+
+test('runTrainBuildLoop preserves the failing PR position when validated-prefix promotion aborts', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let capturedRecovery;
+  let capturedPosition;
+
+  await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index === 0) {
+        return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+      }
+      throw new Error('transient git failure');
+    },
+    onRetryableFailure: async (index, _error, recovery) => {
+      capturedRecovery = recovery;
+      capturedPosition = queuePositionAfterRecovery(index, recovery);
+    },
+    promotePrefix: async () => false,
+  });
+
+  assert.equal(capturedRecovery.promotionAttempted, true);
+  assert.equal(capturedRecovery.promoted, false);
+  assert.equal(capturedRecovery.landedCount, 0);
+  assert.equal(capturedPosition, 2);
+});
+
+test('runTrainBuildLoop subtracts only the proven landed count after partial promotion', async () => {
+  const train = [1, 2, 3].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let capturedRecovery;
+  let capturedPosition;
+
+  await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index < 2) {
+        return {
+          candidateSha: `sha-${index}`,
+          state: 'success',
+          entries: train.slice(0, index + 1),
+        };
+      }
+      throw new Error('transient git failure');
+    },
+    onRetryableFailure: async (index, _error, recovery) => {
+      capturedRecovery = recovery;
+      capturedPosition = queuePositionAfterRecovery(index, recovery);
+    },
+    promotePrefix: async () => ({ promoted: false, landedCount: 1 }),
+  });
+
+  assert.equal(capturedRecovery.greenPrefixLength, 2);
+  assert.equal(capturedRecovery.promoted, false);
+  assert.equal(capturedRecovery.landedCount, 1);
+  assert.equal(capturedPosition, 2);
+});
+
 test('live Actions runs require separate promotion and workflow-dispatch tokens', () => {
   assert.deepEqual(
     resolveMergeTrainTokens({
@@ -268,6 +718,8 @@ test('workflow dispatch helpers use the Actions token for recovery and validatio
     owner: 'nalfeo',
     repo: 'Crawler',
     sha: candidateSha,
+    refName: 'refs/merge-train-candidates/candidate-1',
+    attestationSha: baseSha,
     fingerprint: 'fingerprint',
     entries: [makePr()],
   });
@@ -275,6 +727,13 @@ test('workflow dispatch helpers use the Actions token for recovery and validatio
   assert.ok(calls.every((call) => call.token === 'actions-token'));
   assert.match(calls[0].path, /ci-recovery\.yml\/dispatches$/);
   assert.match(calls[1].path, /merge-train-validate\.yml\/dispatches$/);
+  assert.deepEqual(calls[1].options.body.inputs, {
+    candidate_sha: candidateSha,
+    candidate_ref: 'refs/merge-train-candidates/candidate-1',
+    attestation_sha: baseSha,
+    fingerprint: 'fingerprint',
+    pr_numbers: '42',
+  });
 });
 
 test('buildDispatchBindings routes both dispatch calls to workflowDispatchToken not promotionToken', async () => {
@@ -294,7 +753,13 @@ test('buildDispatchBindings routes both dispatch calls to workflowDispatchToken 
     repo: 'Crawler',
   });
   await dispatchRecovery(42, 'merge-train-validation-failure');
-  await dispatchValidation(candidateSha, 'fingerprint', [makePr()]);
+  await dispatchValidation(
+    candidateSha,
+    'refs/merge-train-candidates/candidate-1',
+    baseSha,
+    'fingerprint',
+    [makePr()],
+  );
   assert.equal(calls.length, 2);
   assert.ok(
     calls.every((call) => call.token === 'actions-token'),
@@ -366,6 +831,16 @@ test('promotion stale-state guard mirrors queue admission boundaries', () => {
       repository: 'nalfeo/Crawler',
     }),
     /marked merge-train-blocked/,
+  );
+  assert.match(
+    promotionStaleReason({
+      currentMain: baseSha,
+      currentPr: makePr({ labels: [{ name: 'merge-train' }, { name: 'ci-conflict-order-wait' }] }),
+      expectedBase: baseSha,
+      pr: original,
+      repository: 'nalfeo/Crawler',
+    }),
+    /ci-conflict-order-wait/,
   );
 });
 
@@ -557,5 +1032,140 @@ test('mainHealthReason allows promotion when a non-no-op schedule run is green',
       ],
     }),
     null,
+  );
+});
+
+test('resolveMergeTrainTokens ignores the legacy workflow PAT environment variable', () => {
+  const result = resolveMergeTrainTokens({
+    GITHUB_ACTIONS: 'true',
+    MERGE_TRAIN_TOKEN: 'app-token',
+    GITHUB_TOKEN: 'github-token',
+    MERGE_TRAIN_WORKFLOW_TOKEN: 'a-pat-that-must-not-be-used',
+  });
+  assert.deepEqual(result, {
+    promotionToken: 'app-token',
+    workflowDispatchToken: 'github-token',
+  });
+});
+
+// buildGatedDispatchRecovery — admission gate for reconcile.mjs dispatch sites
+
+test('buildGatedDispatchRecovery dispatches when outstanding count is below cap', async () => {
+  const dispatched = [];
+  const countRuns = async () => 0;
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(42, 'merge-train-noop');
+  assert.deepEqual(dispatched, [{ prNumber: 42, trigger: 'merge-train-noop' }]);
+});
+
+test('buildGatedDispatchRecovery skips dispatch when outstanding count equals cap', async () => {
+  const dispatched = [];
+  const countRuns = async () => 1; // at cap
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(42, 'merge-train-noop');
+  assert.deepEqual(dispatched, [], 'expected no dispatch when at cap');
+});
+
+test('buildGatedDispatchRecovery skips dispatch when outstanding count exceeds cap', async () => {
+  const dispatched = [];
+  const countRuns = async () => 3; // above cap
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(99, 'merge-train-validation-failure');
+  assert.deepEqual(dispatched, [], 'expected no dispatch when above cap');
+});
+
+test('buildGatedDispatchRecovery passes token/owner/repo to countRuns', async () => {
+  const countCallArgs = [];
+  const countRuns = async (token, owner, repo) => {
+    countCallArgs.push({ token, owner, repo });
+    return 0;
+  };
+  const dispatchRecovery = async () => {};
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'mytoken',
+    owner: 'myowner',
+    repo: 'myrepo',
+  });
+  await gated(1, 'merge-train-admission-stale');
+  assert.deepEqual(countCallArgs, [{ token: 'mytoken', owner: 'myowner', repo: 'myrepo' }]);
+});
+
+test('buildGatedDispatchRecovery blocks second sequential call via in-process reservation when API is stale', async () => {
+  // Simulates the admission-loop thundering-herd: countRuns always returns 0
+  // because the Actions API has not yet reflected the first dispatch.  Without
+  // an in-process reservation both sequential calls would see 0 < cap=1 and
+  // dispatch independently, exceeding the cap.
+  const dispatched = [];
+  const countRuns = async () => 0; // stale API — never updated between calls
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 1,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(42, 'merge-train-admission-stale');
+  await gated(43, 'merge-train-admission-stale');
+  assert.deepEqual(
+    dispatched,
+    [{ prNumber: 42, trigger: 'merge-train-admission-stale' }],
+    'second sequential call must be blocked by in-process reservation despite stale API count',
+  );
+});
+
+test('buildGatedDispatchRecovery allows a second call once cap is raised (stale API, cap=2)', async () => {
+  // With cap=2 and a stale API (always 0), the first call reserves one slot
+  // (pendingDispatches=1) and the second call sees 0+1=1 < 2, so it is still
+  // allowed.  A third call is blocked by 0+2=2 >= 2.
+  const dispatched = [];
+  const countRuns = async () => 0;
+  const dispatchRecovery = async (prNumber, trigger) => dispatched.push({ prNumber, trigger });
+  const gated = buildGatedDispatchRecovery({
+    dispatchRecovery,
+    countRuns,
+    cap: 2,
+    token: 'tok',
+    owner: 'owner',
+    repo: 'repo',
+  });
+  await gated(10, 'merge-train-admission-stale');
+  await gated(11, 'merge-train-admission-stale');
+  await gated(12, 'merge-train-admission-stale');
+  assert.deepEqual(
+    dispatched,
+    [
+      { prNumber: 10, trigger: 'merge-train-admission-stale' },
+      { prNumber: 11, trigger: 'merge-train-admission-stale' },
+    ],
+    'third sequential call must be blocked once pendingDispatches reaches cap',
   );
 });

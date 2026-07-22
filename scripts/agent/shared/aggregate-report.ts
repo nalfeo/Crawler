@@ -4,12 +4,23 @@
  * `$AUTOMATION_REPORT_DIR` into a single Markdown issue body on stdout.
  *
  * The workflow pipes this output into `gh issue create --body-file`.
+ *
+ * GitHub imposes a 65 536-character limit on issue bodies.
+ * `withTrackingIssueRunMetadata` (called by the workflow step) prepends ~200
+ * characters of HTML-comment metadata, so we cap at GITHUB_BODY_LIMIT minus a
+ * conservative overhead before writing to stdout.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import type { ReportSummary } from './report.js';
+
+/** GitHub REST API hard limit for issue/PR body text (characters). */
+const GITHUB_BODY_LIMIT = 65_536;
+/** Reserved headroom for metadata prepended by withTrackingIssueRunMetadata. */
+const METADATA_OVERHEAD = 400;
+const MAX_BODY_CHARS = GITHUB_BODY_LIMIT - METADATA_OVERHEAD;
 
 const dir = process.env.AUTOMATION_REPORT_DIR;
 if (!dir) {
@@ -64,7 +75,17 @@ for (const s of summaries) {
   lines.push('');
 }
 
-process.stdout.write(lines.join('\n'));
+const body = lines.join('\n');
+if (body.length > MAX_BODY_CHARS) {
+  const truncationNotice =
+    `\n\n---\n_Report truncated: body exceeded ${MAX_BODY_CHARS} characters. ` +
+    `${totalFindings} findings total across ${summaries.length} script(s). ` +
+    `See the [workflow run](${runUrl ?? '#'}) for the full output._`;
+  const trimmed = body.slice(0, MAX_BODY_CHARS - truncationNotice.length) + truncationNotice;
+  process.stdout.write(trimmed);
+} else {
+  process.stdout.write(body);
+}
 
 // Non-zero exit means "issue should be created"; zero means "all clean".
 process.exit(totalBlocking > 0 || hasNonInformational(summaries) ? 1 : 0);

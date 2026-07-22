@@ -34,7 +34,7 @@
     "test:headless": "vitest run --project headless --reporter=verbose",
     "test:sprites": "vitest run --project sprites --reporter=verbose",
     "test:sweep-viewer": "node --test .github/extensions/sweep-results-viewer/tests/cloud-results.test.mjs .github/extensions/sweep-results-viewer/tests/github-client.test.mjs .github/extensions/sweep-results-viewer/tests/local-results.test.mjs .github/extensions/sweep-results-viewer/tests/renderer.test.mjs .github/extensions/sweep-results-viewer/tests/state-helpers.test.mjs",
-    "test:guards": "node --test \".github/extensions/copilot-guards/tests/*.test.mjs\" \".github/extensions/agent-perf-panel/tests/*.test.mjs\" \".github/extensions/sprite-review/tests/*.test.mjs\" \".github/extensions/postprocess/tests/*.test.mjs\" \".github/extensions/achievements/tests/*.test.mjs\" \".github/extensions/storage/tests/*.test.mjs\" \".github/extensions/workflow/tests/*.test.mjs\" \".github/extensions/set-piece-editor/tests/*.test.mjs\" \".github/extensions/sprite-editor/tests/*.test.mjs\" \".github/extensions/azure-credit-dashboard/tests/*.test.mjs\" \".github/extensions/sweep-results-viewer/tests/*.test.mjs\" \"scripts/agent/*.test.mjs\" \"scripts/agent/review/*.test.mjs\" \".github/scripts/*.test.mjs\" \".github/scripts/ci-recovery/*.test.mjs\" \".github/scripts/tracking-issues/*.test.mjs\" \".github/scripts/merge-train/*.test.mjs\"",
+    "test:guards": "node --test \".github/extensions/copilot-guards/tests/*.test.mjs\" \".github/extensions/agent-perf-panel/tests/*.test.mjs\" \".github/extensions/shared/tests/*.test.mjs\" \".github/extensions/postprocess/tests/*.test.mjs\" \".github/extensions/achievements/tests/*.test.mjs\" \".github/extensions/storage/tests/*.test.mjs\" \".github/extensions/workflow/tests/*.test.mjs\" \".github/extensions/set-piece-editor/tests/*.test.mjs\" \".github/extensions/sprite-editor/tests/*.test.mjs\" \".github/extensions/azure-credit-dashboard/tests/*.test.mjs\" \".github/extensions/sweep-results-viewer/tests/*.test.mjs\" \"scripts/agent/*.test.mjs\" \"scripts/agent/review/*.test.mjs\" \".github/scripts/*.test.mjs\" \".github/scripts/ci-conflict-coordinator/*.test.mjs\" \".github/scripts/ci-recovery/*.test.mjs\" \".github/scripts/tracking-issues/*.test.mjs\" \".github/scripts/merge-train/*.test.mjs\"",
     "train:protection": "node .github/scripts/merge-train/protection.mjs",
     "train:protection:status": "node .github/scripts/merge-train/protection.mjs status",
     "train:protection:enable": "node .github/scripts/merge-train/protection.mjs enable",
@@ -56,6 +56,8 @@
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
     "sprites:gallery": "tsx scripts/sprites/sidecar/launcher.ts",
+    "sprites:sidecar:ensure": "tsx scripts/sprites/sidecar/service-cli.ts ensure",
+    "sprites:sidecar:stop": "tsx scripts/sprites/sidecar/service-cli.ts stop",
     "sprites:approve": "tsx scripts/sprites/approve-cli.ts",
     "sprites:checkin": "tsx scripts/sprites/checkin-cli.ts",
     "sprites:asset-pr": "tsx scripts/sprites/asset-pr-cli.ts",
@@ -116,7 +118,8 @@
     "perf:find-baseline": "node scripts/agent/perf/find-baseline.mjs",
     "bench": "vitest bench",
     "docs:check": "tsx scripts/agent/docs/check-paths.ts && tsx scripts/agent/docs/check-adr-consistency.ts && tsx scripts/agent/docs/check-readme-commands.ts && tsx scripts/agent/docs/check-session-instructions.ts && tsx scripts/agent/docs/check-personas.ts && tsx scripts/agent/docs/stale-game-design.ts && tsx scripts/agent/docs/lint-handoff.ts && tsx scripts/agent/docs/promote-handoffs.ts && tsx scripts/agent/docs/apple-calibration.ts && tsx scripts/agent/docs/guard-telemetry.ts && tsx scripts/agent/docs/archive-handoffs.ts",
-    "security:check": "npm audit --audit-level=high && bash scripts/agent/security/scan-secrets.sh && tsx scripts/agent/security/check-codeowners.ts && tsx scripts/agent/security/check-deps.ts && bash scripts/agent/security/check-dynamic-patterns.sh && tsx scripts/agent/security/check-ai-prompts.ts",
+    "security:audit": "node scripts/agent/security/npm-audit.mjs --audit-level=high",
+    "security:check": "npm run security:audit && bash scripts/agent/security/scan-secrets.sh && tsx scripts/agent/security/check-codeowners.ts && tsx scripts/agent/security/check-deps.ts && bash scripts/agent/security/check-dynamic-patterns.sh && tsx scripts/agent/security/check-ai-prompts.ts",
     "health:check": "vitest run --project unit --coverage --reporter=dot && tsx scripts/agent/health/coverage-trend.ts && tsx scripts/agent/health/untested-systems.ts && tsx scripts/agent/health/extended-property.ts && tsx scripts/agent/health/governor-playthroughs.ts && tsx scripts/agent/health/balance-regression.ts && tsx scripts/agent/health/bench-regression.ts"
   },
   "keywords": [
@@ -130,6 +133,7 @@
   "dependencies": {
     "@recast-navigation/wasm": "0.43.1",
     "bitecs": "^0.4.0",
+    "cacache": "^20.0.4",
     "loglevel": "^1.9.2",
     "phaser": "^4.1.0",
     "recast-navigation": "0.43.1",
@@ -142,6 +146,7 @@
     "@stryker-mutator/core": "^9.6.1",
     "@stryker-mutator/typescript-checker": "^9.6.1",
     "@stryker-mutator/vitest-runner": "^9.6.1",
+    "@types/cacache": "^20.0.1",
     "@types/node": "^25.9.1",
     "@types/pngjs": "^6.0.5",
     "@vitest/coverage-v8": "^4.1.8",
@@ -163,6 +168,7 @@
     "zod": "^4.4.3"
   },
   "overrides": {
-    "qs": "^6.15.2"
+    "qs": "^6.15.2",
+    "brace-expansion": "^5.0.7"
   }
 }

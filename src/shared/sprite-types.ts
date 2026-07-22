@@ -10,7 +10,16 @@
  * from here, keeping its existing importers unchanged.
  */
 
-export const SPRITE_TYPES = ['weapon', 'enemy', 'item', 'tile', 'vfx', 'character'] as const;
+export const SPRITE_TYPES = [
+  'weapon',
+  'equipment',
+  'enemy',
+  'item',
+  'prop',
+  'tile',
+  'vfx',
+  'character',
+] as const;
 
 export type SpriteType = (typeof SPRITE_TYPES)[number];
 

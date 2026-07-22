@@ -38,7 +38,7 @@ if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]
 fi
 
 is_supported_ts_path() {
-  [[ "$1" =~ ^(vite\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
+  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
 }
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
@@ -91,7 +91,7 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
     fi
   done
   if [ "${#unsupported_ts[@]}" -ne 0 ]; then
-    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:" >&2
+    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:" >&2
     printf '   - %s\n' "${unsupported_ts[@]}" >&2
     echo "   Move the file into a supported tree or extend verify:fast + tsconfig.json first." >&2
     exit 1
@@ -140,8 +140,10 @@ cleanup_parallel() {
   # Works because set -m gives every background job its own process group whose
   # PGID equals the job leader's PID.
   kill -- -"$TSC_PID" -"$ESLINT_PID" 2>/dev/null || true
-  # No blocking wait in the EXIT trap — the shell exits immediately after and
-  # the OS reaps any remaining children.
+  # Follow up with SIGKILL to guarantee immediate termination without waiting
+  # for SIGTERM handlers; this prevents descendants from surviving on loaded CI.
+  kill -KILL -- -"$TSC_PID" -"$ESLINT_PID" 2>/dev/null || true
+  # No blocking wait in the EXIT trap — the shell exits immediately after.
 }
 trap cleanup_parallel EXIT
 trap 'exit 130' INT

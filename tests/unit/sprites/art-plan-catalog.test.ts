@@ -84,7 +84,11 @@ describe('art-plan catalog coverage', () => {
       for (const asset of plan.assets) {
         const item = itemById.get(asset.id);
         if (!item) continue;
-        const expected = item.tags.includes('Weapons') ? 'weapon' : 'item';
+        const expected = item.tags.includes('Weapons')
+          ? 'weapon'
+          : item.tags.some((tag) => String(tag) === 'Gear')
+            ? 'equipment'
+            : 'item';
         if (asset.type !== expected) {
           mistyped.push(`${asset.id} in ${file}: type=${asset.type}, expected ${expected}`);
         }

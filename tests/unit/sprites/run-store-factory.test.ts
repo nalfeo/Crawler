@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createRunStore } from '../../../scripts/sprites/store/index.js';
+import { resolveMaxCacheBytes } from '../../../scripts/sprites/store/shared-cache.js';
 
 const REPO_ROOT = '/fake/repo';
 
@@ -62,7 +63,7 @@ describe('createRunStore factory', () => {
     expect(store.backend).toBe('azure-blob');
   });
 
-  it('wraps the Azure store in the local sheet cache by default', () => {
+  it('wraps the Azure store in the shared resource cache by default', () => {
     const store = createRunStore({
       env: {
         SPRITES_RUN_STORE: 'azure-blob',
@@ -76,7 +77,20 @@ describe('createRunStore factory', () => {
     expect(store.constructor.name).toBe('CachingRunStore');
   });
 
-  it('skips the cache wrapper when SPRITES_AZURE_CACHE=off', () => {
+  it('skips the cache wrapper when CRAWLER_AZURE_CACHE=off', () => {
+    const store = createRunStore({
+      env: {
+        SPRITES_RUN_STORE: 'azure-blob',
+        AZURE_STORAGE_ACCOUNT: 'myaccount',
+        AZURE_STORAGE_KEY: 'dGVzdA==',
+        CRAWLER_AZURE_CACHE: 'off',
+      },
+      repoRoot: REPO_ROOT,
+    });
+    expect(store.constructor.name).toBe('AzureBlobRunStore');
+  });
+
+  it('still honours the legacy SPRITES_AZURE_CACHE=off alias', () => {
     const store = createRunStore({
       env: {
         SPRITES_RUN_STORE: 'azure-blob',
@@ -89,32 +103,13 @@ describe('createRunStore factory', () => {
     expect(store.constructor.name).toBe('AzureBlobRunStore');
   });
 
-  it('defaults the cache size cap to 2 GiB', () => {
-    const store = createRunStore({
-      env: {
-        SPRITES_RUN_STORE: 'azure-blob',
-        AZURE_STORAGE_ACCOUNT: 'myaccount',
-        AZURE_STORAGE_KEY: 'dGVzdA==',
-      },
-      repoRoot: REPO_ROOT,
-    });
-    // White-box: the factory must pass the parsed byte budget to the wrapper.
-    expect((store as unknown as { maxCacheBytes: number }).maxCacheBytes).toBe(
-      2 * 1024 * 1024 * 1024,
-    );
+  it('defaults the shared cache LRU budget to exactly 5 GiB', () => {
+    expect(resolveMaxCacheBytes({})).toBe(5 * 1024 * 1024 * 1024);
   });
 
-  it('wires SPRITES_AZURE_CACHE_MAX_BYTES through to the cache size cap', () => {
-    const store = createRunStore({
-      env: {
-        SPRITES_RUN_STORE: 'azure-blob',
-        AZURE_STORAGE_ACCOUNT: 'myaccount',
-        AZURE_STORAGE_KEY: 'dGVzdA==',
-        SPRITES_AZURE_CACHE_MAX_BYTES: '5242880',
-      },
-      repoRoot: REPO_ROOT,
-    });
-    expect((store as unknown as { maxCacheBytes: number }).maxCacheBytes).toBe(5242880);
+  it('wires CRAWLER_AZURE_CACHE_MAX_BYTES (and legacy alias) through the resolver', () => {
+    expect(resolveMaxCacheBytes({ CRAWLER_AZURE_CACHE_MAX_BYTES: '5242880' })).toBe(5242880);
+    expect(resolveMaxCacheBytes({ SPRITES_AZURE_CACHE_MAX_BYTES: '1048576' })).toBe(1048576);
   });
 
   it('resolve() on LocalRunStore returns path inside generated/runs', () => {
