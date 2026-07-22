@@ -120,6 +120,15 @@ function preparePurchase(
   if (!offer) {
     return failure('unknown-offer', 'Quartermaster offer identity is unknown');
   }
+  const duplicateOfferIds = stock.offers.filter(
+    (candidate) => candidate.offerId === request.offerId,
+  );
+  if (duplicateOfferIds.length > 1) {
+    return failure(
+      'invalid-stock-identity',
+      'Quartermaster stock contains a duplicate offer identity',
+    );
+  }
   if (offer.quantity < request.quantity) {
     return failure('stock-unavailable', 'Quartermaster offer is sold out');
   }

@@ -182,16 +182,56 @@ describe('Quartermaster atomic purchase', () => {
     expect(transactionSnapshot(world)).toEqual(before);
   });
 
+  it('disables offer projections and purchase mutations on a non-Floor-2 world while preserving persisted stock', () => {
+    const { world, playerEid, request } = setupPurchase();
+    world.floor = 1;
+    const before = transactionSnapshot(world);
+
+    expect(getQuartermasterOfferViews(world, playerEid)[0]).toMatchObject({
+      stockId: request.stockId,
+      offerId: request.offerId,
+      canPurchase: false,
+      purchaseFailure: 'economy-disabled',
+      quantity: 1,
+    });
+    expect(purchaseQuartermasterOffer(world, playerEid, request)).toEqual({
+      ok: false,
+      reason: 'economy-disabled',
+      message: 'Floor 2 equipment economy is only available on Floor 2',
+    });
+    expect(transactionSnapshot(world)).toEqual(before);
+  });
+
   const failureCases: readonly {
     readonly name: string;
     readonly reason: QuartermasterPurchaseFailureCode;
     readonly arrange: (context: PurchaseContext) => QuartermasterPurchaseRequest;
   }[] = [
     {
+      name: 'non-Floor-2 world (floor guard)',
+      reason: 'economy-disabled',
+      arrange: ({ world, request }) => {
+        world.floor = 1;
+        return request;
+      },
+    },
+    {
       name: 'disabled economy consumer',
       reason: 'economy-disabled',
       arrange: ({ world, request }) => {
         world.floor2EquipmentFlags.floor2EquipmentEconomy = false;
+        return request;
+      },
+    },
+    {
+      name: 'duplicate offer identity in persisted stock',
+      reason: 'invalid-stock-identity',
+      arrange: ({ world, request }) => {
+        const stock = world.floorExtendedState!.settlement!.quartermasterStock!;
+        replaceStock(world, {
+          ...stock,
+          offers: [...stock.offers, { ...stock.offers[0]!, offerId: request.offerId }],
+        });
         return request;
       },
     },
