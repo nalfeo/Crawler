@@ -48,9 +48,12 @@ function addActiveGrantSource(
   abilityId: string,
   source: AbilityGrantSource,
 ): void {
-  const sources = state.activeAbilityGrantSources.get(abilityId);
+  const sourceMap =
+    state.activeAbilityGrantSources ??
+    (state.activeAbilityGrantSources = new Map<string, AbilityGrantSource[]>());
+  const sources = sourceMap.get(abilityId);
   if (sources === undefined) {
-    state.activeAbilityGrantSources.set(abilityId, [source]);
+    sourceMap.set(abilityId, [source]);
   } else {
     sources.push(source);
   }
@@ -61,9 +64,12 @@ function addPassiveGrantSource(
   abilityId: string,
   source: AbilityGrantSource,
 ): void {
-  const sources = state.passiveAbilityGrantSources.get(abilityId);
+  const sourceMap =
+    state.passiveAbilityGrantSources ??
+    (state.passiveAbilityGrantSources = new Map<string, AbilityGrantSource[]>());
+  const sources = sourceMap.get(abilityId);
   if (sources === undefined) {
-    state.passiveAbilityGrantSources.set(abilityId, [source]);
+    sourceMap.set(abilityId, [source]);
   } else {
     sources.push(source);
   }
@@ -88,8 +94,11 @@ export function coreGrantGeneratedEquipmentActiveAbility(
   if (!abilityId) throw new Error('abilityId must be a non-empty string');
   const state = getOrCreateAbilityStateForEntity(world, holderEid);
   const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
+  const activeSourceMap =
+    state.activeAbilityGrantSources ??
+    (state.activeAbilityGrantSources = new Map<string, AbilityGrantSource[]>());
   // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
-  const existing = state.activeAbilityGrantSources.get(abilityId);
+  const existing = activeSourceMap.get(abilityId);
   if (
     existing?.some(
       (s) =>
@@ -133,8 +142,11 @@ export function coreGrantGeneratedEquipmentPassiveAbility(
   if (!abilityId) throw new Error('abilityId must be a non-empty string');
   const state = getOrCreateAbilityStateForEntity(world, holderEid);
   const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
+  const passiveSourceMap =
+    state.passiveAbilityGrantSources ??
+    (state.passiveAbilityGrantSources = new Map<string, AbilityGrantSource[]>());
   // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
-  const existing = state.passiveAbilityGrantSources.get(abilityId);
+  const existing = passiveSourceMap.get(abilityId);
   if (
     existing?.some(
       (s) =>

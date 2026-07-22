@@ -3,6 +3,7 @@ import {
   parseGeneratedEquipmentInstanceId,
   type GeneratedEquipmentInstanceId,
 } from './generated-equipment-types.js';
+import type { EquipmentInstanceId } from './equipment-types.js';
 
 export const ACTIVE_ABILITY_SLOT_LIMIT = 10;
 export const ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION = 'ability-grant-ownership/v1' as const;
@@ -31,11 +32,7 @@ export type Floor1BossRewardSpellId = (typeof FLOOR1_BOSS_REWARD_SPELL_IDS)[numb
 export const DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID: Floor1BossRewardSpellId = 'heal';
 
 export type AbilityTriggerKind =
-  | 'skill_usage'
-  | 'enemy_cluster'
-  | 'low_health'
-  | 'low_health_crowded'
-  | 'health_deficit_at_least';
+  'skill_usage' | 'enemy_cluster' | 'low_health' | 'low_health_crowded' | 'health_deficit_at_least';
 
 export type AbilityTriggerCondition =
   | {
@@ -82,6 +79,15 @@ export type AbilityGrantSourceId =
   | EquipmentGrantSourceId
   | LegacyAbilityGrantSourceId;
 export type AbilityGrantKind = 'active' | 'passive';
+export type AbilityGrantSource =
+  | { readonly kind: 'learned' }
+  | { readonly kind: 'skill'; readonly skillId: string }
+  | { readonly kind: 'equipment'; readonly instanceId: EquipmentInstanceId }
+  | {
+      readonly kind: 'generated-equipment';
+      readonly instanceId: GeneratedEquipmentInstanceId;
+      readonly effectOrdinal: number;
+    };
 
 export interface AbilityGrantOwnership {
   readonly schemaVersion: typeof ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION;
@@ -100,6 +106,8 @@ interface AbilityStateFields {
   cooldownByAbilityId: Map<string, number>;
   cooldownFramesByAbilityId: Map<string, number>;
   appliedPassiveAbilityIds: Set<string>;
+  activeAbilityGrantSources?: Map<string, AbilityGrantSource[]>;
+  passiveAbilityGrantSources?: Map<string, AbilityGrantSource[]>;
 }
 
 export interface AbilityState extends AbilityStateFields {

@@ -699,14 +699,14 @@ describe('player floor carryover', () => {
     const sourceState = source.abilityStatesByEntity.get(player);
     expect(sourceState?.equippedActiveAbilityIds).toContain('battle-focus');
     expect(sourceState?.equippedActiveAbilityIds).not.toContain('frost-nova');
-    expect(sourceState?.activeAbilityGrantSources.get('battle-focus')).toEqual([
+    expect(sourceState?.activeAbilityGrantSources?.get('battle-focus')).toEqual([
       {
         kind: 'generated-equipment',
         instanceId: activeGenerated.instanceId,
         effectOrdinal: 0,
       },
     ]);
-    expect(sourceState?.activeAbilityGrantSources.get('frost-nova')).toEqual([
+    expect(sourceState?.activeAbilityGrantSources?.get('frost-nova')).toEqual([
       {
         kind: 'generated-equipment',
         instanceId: inactiveGenerated.instanceId,
@@ -747,14 +747,14 @@ describe('player floor carryover', () => {
     const destinationState = destination.abilityStatesByEntity.get(destinationPlayer);
     expect(destinationState?.equippedActiveAbilityIds).toContain('battle-focus');
     expect(destinationState?.equippedActiveAbilityIds).not.toContain('frost-nova');
-    expect(destinationState?.activeAbilityGrantSources.get('battle-focus')).toEqual([
+    expect(destinationState?.activeAbilityGrantSources?.get('battle-focus')).toEqual([
       {
         kind: 'generated-equipment',
         instanceId: activeGenerated.instanceId,
         effectOrdinal: 0,
       },
     ]);
-    expect(destinationState?.activeAbilityGrantSources.get('frost-nova')).toEqual([
+    expect(destinationState?.activeAbilityGrantSources?.get('frost-nova')).toEqual([
       {
         kind: 'generated-equipment',
         instanceId: inactiveGenerated.instanceId,

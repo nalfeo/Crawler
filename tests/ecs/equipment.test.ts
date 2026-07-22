@@ -865,7 +865,7 @@ describe('generated equipment inventory transfers', () => {
     expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).not.toContain(
       'magic-missile',
     );
-    expect(world.abilityStatesByEntity.get(entity)?.activeAbilityGrantSources.size).toBe(0);
+    expect(world.abilityStatesByEntity.get(entity)?.activeAbilityGrantSources?.size).toBe(0);
   });
 
   it('preserves ability cooldown state across generated equipment unequip/re-equip', () => {

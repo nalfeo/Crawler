@@ -264,42 +264,48 @@ function deactivateGeneratedEquipment(
   if (!generated) throw new Error(`Generated equipment instance not found: ${instanceKey}`);
   const state = world.abilityStatesByEntity.get(entity);
   if (state) {
+    const activeSourceMap = state.activeAbilityGrantSources;
+    const passiveSourceMap = state.passiveAbilityGrantSources;
     const isMatchingSource = (source: AbilityGrantSource): boolean =>
       source.kind === 'generated-equipment' && source.instanceId === instanceKey;
 
-    for (const abilityId of [...state.activeAbilityGrantSources.keys()]) {
-      const sources = state.activeAbilityGrantSources.get(abilityId);
-      if (!sources) continue;
-      const remaining = sources.filter((source) => !isMatchingSource(source));
-      if (remaining.length === sources.length) continue;
-      if (remaining.length > 0) {
-        state.activeAbilityGrantSources.set(abilityId, remaining);
-      } else {
-        state.activeAbilityGrantSources.delete(abilityId);
-        const index = state.equippedActiveAbilityIds.indexOf(abilityId);
-        if (index >= 0) state.equippedActiveAbilityIds.splice(index, 1);
+    if (activeSourceMap) {
+      for (const abilityId of [...activeSourceMap.keys()]) {
+        const sources = activeSourceMap.get(abilityId);
+        if (!sources) continue;
+        const remaining = sources.filter((source) => !isMatchingSource(source));
+        if (remaining.length === sources.length) continue;
+        if (remaining.length > 0) {
+          activeSourceMap.set(abilityId, remaining);
+        } else {
+          activeSourceMap.delete(abilityId);
+          const index = state.equippedActiveAbilityIds.indexOf(abilityId);
+          if (index >= 0) state.equippedActiveAbilityIds.splice(index, 1);
+        }
       }
     }
 
-    for (const abilityId of [...state.passiveAbilityGrantSources.keys()]) {
-      const sources = state.passiveAbilityGrantSources.get(abilityId);
-      if (!sources) continue;
-      const remaining = sources.filter((source) => !isMatchingSource(source));
-      if (remaining.length === sources.length) continue;
-      if (remaining.length > 0) {
-        state.passiveAbilityGrantSources.set(abilityId, remaining);
-      } else {
-        state.passiveAbilityGrantSources.delete(abilityId);
-        const index = state.passiveAbilityIds.indexOf(abilityId);
-        if (index >= 0) state.passiveAbilityIds.splice(index, 1);
-        world.statModifiers = world.statModifiers.filter(
-          (modifier) =>
-            !(
-              modifier.sourceType === 'ability' &&
-              modifier.sourceId.startsWith(`${abilityId}:passive:${entity}:`)
-            ),
-        );
-        state.appliedPassiveAbilityIds.delete(abilityId);
+    if (passiveSourceMap) {
+      for (const abilityId of [...passiveSourceMap.keys()]) {
+        const sources = passiveSourceMap.get(abilityId);
+        if (!sources) continue;
+        const remaining = sources.filter((source) => !isMatchingSource(source));
+        if (remaining.length === sources.length) continue;
+        if (remaining.length > 0) {
+          passiveSourceMap.set(abilityId, remaining);
+        } else {
+          passiveSourceMap.delete(abilityId);
+          const index = state.passiveAbilityIds.indexOf(abilityId);
+          if (index >= 0) state.passiveAbilityIds.splice(index, 1);
+          world.statModifiers = world.statModifiers.filter(
+            (modifier) =>
+              !(
+                modifier.sourceType === 'ability' &&
+                modifier.sourceId.startsWith(`${abilityId}:passive:${entity}:`)
+              ),
+          );
+          state.appliedPassiveAbilityIds.delete(abilityId);
+        }
       }
     }
   }
