@@ -215,7 +215,7 @@ function defaultTerminateProcess(pid: number): void {
  * commit hash so that committed branch or code changes trigger a managed
  * restart while dirty dev changes in the working tree do not.
  */
-export function computeCodeProvenance(repoRoot: string): string {
+function computeCodeProvenance(repoRoot: string): string {
   try {
     const hash = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: repoRoot,
