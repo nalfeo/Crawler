@@ -286,7 +286,7 @@ jobs:
       - name: Security audit
         if: always() && env.GAMEPLAY_SAFE != 'true'
         continue-on-error: true
-        run: npm audit --audit-level=high
+        run: npm run security:audit
 
       # Full typecheck (src/ + tests/ + scripts/). Separated from the blocking
       # gate so a broken script or test helper surfaces without stalling the merge.
