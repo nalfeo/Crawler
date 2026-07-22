@@ -204,31 +204,11 @@ export function collectPrNumbers({
       eventName,
       trainEnabled,
     });
-    const eligiblePulls = scheduledPulls
-      .filter((pullRequest) => {
-        const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
-        const labels = pullRequest.labels || [];
-        const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
-        const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
-        const waiting = labels.some((label) => label.name === WAITING_LABEL);
-        const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
-        const owned = labels.some((label) => String(label.name || '').startsWith('ci-owner-pr-'));
-        const shouldExcludeByLabels =
-          hasQueueLabel ||
-          (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
-        return (
-          pullRequest.state === 'open' &&
-          !pullRequest.draft &&
-          pullRequest.base?.ref === 'main' &&
-          pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
-          !shouldExcludeByLabels
-        );
-      })
-      .sort(
-        (left, right) =>
-          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-          left.number - right.number,
-      );
+    const eligiblePulls = eligibleTrainRecoveryPulls({
+      scheduledPulls,
+      repository,
+      directlyTriggeredPrs,
+    });
     const direct = eligiblePulls.filter((pullRequest) =>
       directlyTriggeredPrs.has(pullRequest.number),
     );
@@ -337,6 +317,44 @@ export function collectPrNumbers({
     return ordered.slice(0, maxDispatchPerRun);
   }
   return eligible;
+}
+
+export function eligibleTrainRecoveryPulls({
+  scheduledPulls,
+  repository,
+  directlyTriggeredPrs = new Set(),
+}) {
+  return scheduledPulls
+    .filter((pullRequest) => {
+      const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
+      const labels = pullRequest.labels || [];
+      const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
+      const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
+      const waiting = labels.some((label) => label.name === WAITING_LABEL);
+      const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
+      const owned = labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX));
+      const shouldExcludeByLabels =
+        hasQueueLabel ||
+        (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
+      return (
+        pullRequest.state === 'open' &&
+        !pullRequest.draft &&
+        pullRequest.base?.ref === 'main' &&
+        pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+        !shouldExcludeByLabels
+      );
+    })
+    .sort(
+      (left, right) =>
+        new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+        left.number - right.number,
+    );
+}
+
+export function recoveryBacklogEntries(scheduledPulls, repository, now = new Date()) {
+  return eligibleTrainRecoveryPulls({ scheduledPulls, repository }).filter(
+    (pullRequest) => !hasHealthyOwnerForSweep(pullRequest, now),
+  );
 }
 
 export function recoveryStateFromComments(comments) {

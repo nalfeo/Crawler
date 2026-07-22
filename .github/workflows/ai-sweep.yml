@@ -49,20 +49,17 @@
 #
 #   RESIDUAL LIMITATION (documented, not hidden): the <=90-minute bound is
 #   proven at the PER-COMBO PER-ROUND grain (the grain this task's hard gate
-#   asks for) — one combo's ~12 primary-knob candidates. round-eval's matrix
-#   is capped at `max-parallel: 8` (same cap as baseline/checkpoint-init/
-#   round-select/validate) so a FULL 8-combo × 3-round graduation run cannot
-#   saturate the account's entire GitHub-hosted concurrent-runner pool and
-#   starve unrelated repo-wide work (e.g. the shared merge-train queue's own
-#   validation jobs) — see run 29786216369, which fanned out 20 concurrent
-#   Round 3 eval jobs with 44 more queued behind them before it was manually
-#   cancelled. A FULL 8-combo × 3-round graduation run's aggregate wall-clock
-#   now additionally depends on this repo-level concurrency cap (8 candidates
-#   in flight at a time per round, per combo-fan), since all combos' round-eval
-#   candidates share one flat matrix per round. This is a materially better
+#   asks for) — one combo's ~12 primary-knob candidates. Every sweep job now
+#   acquires one of ten repository-global semaphore slots, while each matrix
+#   recalculates its fair queue-aware share at the preceding batch boundary.
+#   This prevents a FULL 8-combo × 3-round graduation run from saturating the
+#   account's entire runner pool and yields future batches to CI/recovery
+#   backlog — see run 29786216369, which fanned out 20 concurrent Round 3 eval
+#   jobs with 44 more queued before cancellation. A full run's aggregate wall
+#   time now depends on the dynamically available sweep share. This is a better
 #   bound than the old design (which had NO per-round parallelism at all) but
 #   is not independently proven to keep the FULL 8-combo scope under 90
-#   minutes when the cap is the binding constraint.
+#   minutes when the dynamic share is the binding constraint.
 #
 # HOW TO RUN (staged, per the plan)
 #   - Cheap screen / calibration (DEFAULTS): rounds=2, train 1-24, validate 1-40.
@@ -117,6 +114,9 @@ on:
 # Read-only: checkout + artifact up/download need nothing more. No default flip here.
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
+  issues: read
 
 jobs:
   # Derive the combo matrix from the SSOT generator (not hard-coded here), validate
@@ -125,10 +125,16 @@ jobs:
   # explicit bounded 1-3 round DAG this workflow implements.
   preflight:
     name: Preflight (derive + cap combo matrix)
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       combos: ${{ steps.matrix.outputs.combos }}
+      baseline_matrix: ${{ steps.budget.outputs.matrix }}
+      baseline_max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -176,26 +182,38 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate queue-aware sweep slots for baseline
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.matrix.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
   # One job per combo: evaluate ONLY the SSOT base config on TRAIN seeds. This
   # replaces the old flat `search` job's implicit round-0 evaluation with an
   # explicit, independently-timed stage (see header for the timing rationale).
   baseline:
-    name: Baseline ${{ matrix.combo }}
+    name: Baseline ${{ matrix.combo.combo }}
     needs: preflight
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.preflight.outputs.baseline_max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.preflight.outputs.baseline_matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
       - name: Evaluate SSOT base config (TRAIN panel)
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           TRAIN_SEEDS: ${{ inputs.train_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
@@ -209,7 +227,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-baseline-${{ matrix.combo }}
+          name: search-baseline-${{ matrix.combo.combo }}
           path: baseline-*.json
           if-no-files-found: error
           retention-days: 7
@@ -218,9 +236,32 @@ jobs:
   # select jobs upload immutable per-round checkpoint artifacts (search-checkpoint-r1-*,
   # etc.) rather than overwriting a single artifact, so `validate` can always find
   # the last successfully-uploaded round even if a later upload failed.
-  checkpoint-init:
-    name: Checkpoint init ${{ matrix.combo }}
+  checkpoint-budget:
+    name: Allocate checkpoint-init sweep slots
     needs: [preflight, baseline]
+    if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.preflight.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  checkpoint-init:
+    name: Checkpoint init ${{ matrix.combo.combo }}
+    needs: [preflight, baseline, checkpoint-budget]
     # if: !cancelled() — `baseline` is a fail-fast:false MATRIX job, so the
     # job-level `needs.baseline` conclusion is 'failure' if even ONE combo's
     # leg failed, even though every other combo's baseline artifact uploaded
@@ -235,13 +276,17 @@ jobs:
     # every downstream round-select/validate/aggregate job the user just
     # asked to stop (found in multi-model review, gemini-3.1-pro-preview).
     if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.checkpoint-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.checkpoint-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -249,7 +294,7 @@ jobs:
       - name: Download this combo's baseline shard
         uses: actions/download-artifact@v4
         with:
-          name: search-baseline-${{ matrix.combo }}
+          name: search-baseline-${{ matrix.combo.combo }}
 
       - name: Download legacy+legacy baseline shard (optional — provides the LEGACY incumbent for the non-LEGACY combo net-win comparison)
         uses: actions/download-artifact@v4
@@ -260,7 +305,7 @@ jobs:
 
       - name: Build round-0 checkpoint
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           SECONDARY: ${{ inputs.secondary }}
         run: |
           set -euo pipefail
@@ -288,7 +333,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-init-${{ matrix.combo }}
+          name: search-checkpoint-init-${{ matrix.combo.combo }}
           path: search-checkpoint-init-*.json
           if-no-files-found: error
           retention-days: 7
@@ -302,6 +347,10 @@ jobs:
   round1-candidates:
     name: Round 1 — plan candidates
     needs: checkpoint-init
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # if: !cancelled() — `checkpoint-init` is a fail-fast:false MATRIX job; one
@@ -318,7 +367,8 @@ jobs:
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 1 }}
     outputs:
       hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
-      matrix: ${{ steps.plan.outputs.matrix }}
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -349,6 +399,13 @@ jobs:
             echo 'MTRX_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Allocate queue-aware sweep slots for round 1 eval
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.plan.outputs.matrix }}
+        run: node .github/scripts/sweep-budget.mjs
+
       - uses: actions/upload-artifact@v4
         with:
           name: round1-candidates
@@ -360,6 +417,10 @@ jobs:
     name: Round 1 eval ${{ matrix.candidate.combo }}
     needs: round1-candidates
     if: needs.round1-candidates.outputs.hasCandidates == 'true'
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.candidate.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -370,7 +431,7 @@ jobs:
       # repo-wide work (e.g. the shared merge-train queue) — see run
       # 29786216369, which fanned out 20 concurrent Round 3 eval jobs with
       # 44 more queued before it was manually cancelled.
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.round1-candidates.outputs.max_parallel) }}
       matrix:
         candidate: ${{ fromJSON(needs.round1-candidates.outputs.matrix) }}
     steps:
@@ -420,17 +481,44 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  round1-select:
-    name: Round 1 select ${{ matrix.combo }}
+  round1-select-budget:
+    name: Allocate round 1 select sweep slots
     needs: [preflight, checkpoint-init, round1-candidates, round1-eval]
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 1 }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.preflight.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  round1-select:
+    name: Round 1 select ${{ matrix.combo.combo }}
+    needs: [preflight, checkpoint-init, round1-candidates, round1-eval, round1-select-budget]
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 1 }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.round1-select-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.round1-select-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -438,7 +526,7 @@ jobs:
       - name: Download this combo's init checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-init-${{ matrix.combo }}
+          name: search-checkpoint-init-${{ matrix.combo.combo }}
 
       - name: Download round 1's candidate plan (to know this combo's PLANNED count)
         uses: actions/download-artifact@v4
@@ -450,14 +538,14 @@ jobs:
       - name: Download this combo's round-1 shards (if any)
         uses: actions/download-artifact@v4
         with:
-          pattern: round1-shard-${{ matrix.combo }}-*
+          pattern: round1-shard-${{ matrix.combo.combo }}-*
           merge-multiple: true
           path: shards
           if-no-artifact-found: warn
 
       - name: Fold round 1 into checkpoint
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           SECONDARY: ${{ inputs.secondary }}
         run: |
           set -euo pipefail
@@ -482,7 +570,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-r1-${{ matrix.combo }}
+          name: search-checkpoint-r1-${{ matrix.combo.combo }}
           path: search-checkpoint-r1-*.json
           if-no-files-found: error
           retention-days: 7
@@ -493,12 +581,17 @@ jobs:
   round2-candidates:
     name: Round 2 — plan candidates
     needs: round1-select
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 2 }}
     outputs:
       hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
-      matrix: ${{ steps.plan.outputs.matrix }}
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -529,6 +622,13 @@ jobs:
             echo 'MTRX_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Allocate queue-aware sweep slots for round 2 eval
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.plan.outputs.matrix }}
+        run: node .github/scripts/sweep-budget.mjs
+
       - uses: actions/upload-artifact@v4
         with:
           name: round2-candidates
@@ -540,6 +640,10 @@ jobs:
     name: Round 2 eval ${{ matrix.candidate.combo }}
     needs: round2-candidates
     if: needs.round2-candidates.outputs.hasCandidates == 'true'
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.candidate.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -547,7 +651,7 @@ jobs:
       # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
       # round-select/validate — see round1-eval's identical comment for why
       # (run 29786216369 saturated the account's concurrent-runner pool).
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.round2-candidates.outputs.max_parallel) }}
       matrix:
         candidate: ${{ fromJSON(needs.round2-candidates.outputs.matrix) }}
     steps:
@@ -591,17 +695,44 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  round2-select:
-    name: Round 2 select ${{ matrix.combo }}
+  round2-select-budget:
+    name: Allocate round 2 select sweep slots
     needs: [preflight, round1-select, round2-candidates, round2-eval]
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 2 }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.preflight.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  round2-select:
+    name: Round 2 select ${{ matrix.combo.combo }}
+    needs: [preflight, round1-select, round2-candidates, round2-eval, round2-select-budget]
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 2 }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.round2-select-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.round2-select-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -609,7 +740,7 @@ jobs:
       - name: Download this combo's round-1 checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-r1-${{ matrix.combo }}
+          name: search-checkpoint-r1-${{ matrix.combo.combo }}
 
       - name: Download round 2's candidate plan (to know this combo's PLANNED count)
         uses: actions/download-artifact@v4
@@ -621,14 +752,14 @@ jobs:
       - name: Download this combo's round-2 shards (if any)
         uses: actions/download-artifact@v4
         with:
-          pattern: round2-shard-${{ matrix.combo }}-*
+          pattern: round2-shard-${{ matrix.combo.combo }}-*
           merge-multiple: true
           path: shards
           if-no-artifact-found: warn
 
       - name: Fold round 2 into checkpoint
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           SECONDARY: ${{ inputs.secondary }}
         run: |
           set -euo pipefail
@@ -647,7 +778,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-r2-${{ matrix.combo }}
+          name: search-checkpoint-r2-${{ matrix.combo.combo }}
           path: search-checkpoint-r2-*.json
           if-no-files-found: error
           retention-days: 7
@@ -659,12 +790,17 @@ jobs:
   round3-candidates:
     name: Round 3 — plan candidates
     needs: round2-select
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 3 }}
     outputs:
       hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
-      matrix: ${{ steps.plan.outputs.matrix }}
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -695,6 +831,13 @@ jobs:
             echo 'MTRX_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Allocate queue-aware sweep slots for round 3 eval
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.plan.outputs.matrix }}
+        run: node .github/scripts/sweep-budget.mjs
+
       - uses: actions/upload-artifact@v4
         with:
           name: round3-candidates
@@ -706,6 +849,10 @@ jobs:
     name: Round 3 eval ${{ matrix.candidate.combo }}
     needs: round3-candidates
     if: needs.round3-candidates.outputs.hasCandidates == 'true'
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.candidate.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -713,7 +860,7 @@ jobs:
       # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
       # round-select/validate — see round1-eval's identical comment for why
       # (run 29786216369 saturated the account's concurrent-runner pool).
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.round3-candidates.outputs.max_parallel) }}
       matrix:
         candidate: ${{ fromJSON(needs.round3-candidates.outputs.matrix) }}
     steps:
@@ -757,17 +904,44 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  round3-select:
-    name: Round 3 select ${{ matrix.combo }}
+  round3-select-budget:
+    name: Allocate round 3 select sweep slots
     needs: [preflight, round2-select, round3-candidates, round3-eval]
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 3 }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.preflight.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  round3-select:
+    name: Round 3 select ${{ matrix.combo.combo }}
+    needs: [preflight, round2-select, round3-candidates, round3-eval, round3-select-budget]
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 3 }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.round3-select-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.round3-select-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -775,7 +949,7 @@ jobs:
       - name: Download this combo's round-2 checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-r2-${{ matrix.combo }}
+          name: search-checkpoint-r2-${{ matrix.combo.combo }}
 
       - name: Download round 3's candidate plan (to know this combo's PLANNED count)
         uses: actions/download-artifact@v4
@@ -787,14 +961,14 @@ jobs:
       - name: Download this combo's round-3 shards (if any)
         uses: actions/download-artifact@v4
         with:
-          pattern: round3-shard-${{ matrix.combo }}-*
+          pattern: round3-shard-${{ matrix.combo.combo }}-*
           merge-multiple: true
           path: shards
           if-no-artifact-found: warn
 
       - name: Fold round 3 into checkpoint
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           SECONDARY: ${{ inputs.secondary }}
         run: |
           set -euo pipefail
@@ -813,7 +987,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-r3-${{ matrix.combo }}
+          name: search-checkpoint-r3-${{ matrix.combo.combo }}
           path: search-checkpoint-r3-*.json
           if-no-files-found: error
           retention-days: 7
@@ -829,17 +1003,45 @@ jobs:
   # skipped or partially-failed round-select job upstream never silently skips
   # validation of whatever the search DID manage to produce, while a manual
   # workflow cancellation still stops validation (unlike `always()`).
-  validate:
-    name: Validate ${{ matrix.combo }}
+  validate-budget:
+    name: Allocate validate sweep slots
     needs: [preflight, checkpoint-init, round1-select, round2-select, round3-select]
     if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.preflight.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  validate:
+    name: Validate ${{ matrix.combo.combo }}
+    needs:
+      [preflight, checkpoint-init, round1-select, round2-select, round3-select, validate-budget]
+    if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.validate-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.validate-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -847,12 +1049,12 @@ jobs:
       - name: Download all available checkpoints for this combo (immutable per-round artifacts)
         uses: actions/download-artifact@v4
         with:
-          pattern: search-checkpoint-*-${{ matrix.combo }}
+          pattern: search-checkpoint-*-${{ matrix.combo.combo }}
           merge-multiple: true
 
       - name: Validate finalist + incumbent
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           VALIDATE_SEEDS: ${{ inputs.validate_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
@@ -881,7 +1083,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: validate-${{ matrix.combo }}
+          name: validate-${{ matrix.combo.combo }}
           path: validate-*.json
           if-no-files-found: error
           retention-days: 7
@@ -902,6 +1104,10 @@ jobs:
     name: Aggregate → leaderboard
     needs: validate
     if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
