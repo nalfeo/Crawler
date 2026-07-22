@@ -763,7 +763,7 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(uploadStep?.with?.path).toBe('baseline-legacy+legacy.json');
     });
 
-    it('uploads the resumed-checkpoints bundle LAST -- strictly after both the legacy+legacy derive AND upload steps -- so its existence depends on the WHOLE job succeeding', () => {
+    it('uploads the resumed-checkpoints bundle SECOND-TO-LAST -- strictly after both the legacy+legacy derive AND upload steps -- so its existence depends on the WHOLE job succeeding', () => {
       const doc = loadWorkflow();
       const job = getJob(doc, 'resume-import');
       const steps = job.steps ?? [];
@@ -778,9 +778,13 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       const uploadResumedIdx = indexOf((s) =>
         Boolean(s.name?.startsWith('Upload resumed checkpoints bundle')),
       );
+      const tierUploadIdx = indexOf((s) =>
+        Boolean(s.name?.startsWith('Upload resumed tier checkpoints for chained resume')),
+      );
       expect(deriveIdx).toBeGreaterThanOrEqual(0);
       expect(uploadDerivedIdx).toBeGreaterThanOrEqual(0);
       expect(uploadResumedIdx).toBeGreaterThanOrEqual(0);
+      expect(tierUploadIdx).toBeGreaterThanOrEqual(0);
       // Without `continue-on-error`, a step failure stops every LATER step in
       // the same job from running -- so ordering the resumed-checkpoints
       // upload after both legacy-baseline steps means: if either of those
@@ -792,10 +796,47 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       // conclusion was 'failure' (found in review).
       expect(uploadResumedIdx).toBeGreaterThan(deriveIdx);
       expect(uploadResumedIdx).toBeGreaterThan(uploadDerivedIdx);
-      // It must also be the LAST step in the job -- nothing may follow it
-      // that could itself fail and leave the bundle uploaded but the job's
-      // overall conclusion misleadingly 'failure' for an unrelated reason.
-      expect(uploadResumedIdx).toBe(steps.length - 1);
+      // The tier-upload step (chained resume, continue-on-error) is the
+      // true last step. It uses continue-on-error so a transient upload
+      // failure cannot make resume-import's conclusion 'failure' and
+      // misleadingly block current-run downstream jobs. The resumed-checkpoints
+      // bundle upload must come BEFORE it (and LAST among the non-best-effort
+      // steps) so its existence still depends on the whole job succeeding.
+      expect(tierUploadIdx).toBeGreaterThan(uploadResumedIdx);
+      expect(tierUploadIdx).toBe(steps.length - 1);
+      expect(uploadResumedIdx).toBe(steps.length - 2);
+    });
+
+    it('copies accepted r1/r2/r3 checkpoints to tier-named files for chained resume, and uploads them under a search-checkpoint-* discoverable artifact name with continue-on-error', () => {
+      const doc = loadWorkflow();
+      const job = getJob(doc, 'resume-import');
+      const steps = job.steps ?? [];
+
+      // Shell script must copy init-named normalized checkpoints to their
+      // original tier name (r1/r2/r3) so a future run's `search-checkpoint-*`
+      // download finds them. Only non-init tiers need a copy (init-tier
+      // resumes are named correctly already).
+      const script = allRunSteps(job);
+      expect(script).toMatch(
+        /if \[ "\$FOUND" != "init" \]; then\s+cp "resumed\/search-checkpoint-init-\$\{COMBO\}\.json" \\\s+"resumed\/search-checkpoint-\$\{FOUND\}-\$\{COMBO\}\.json"/,
+      );
+
+      // Upload step: artifact name must match `search-checkpoint-*` so the
+      // next run's cross-run download (pattern: search-checkpoint-*) can
+      // find it. Path must be the tier-named files (not init-named).
+      const tierUploadStep = steps.find((s) =>
+        s.name?.startsWith('Upload resumed tier checkpoints for chained resume'),
+      );
+      expect(tierUploadStep).toBeDefined();
+      expect(tierUploadStep?.uses).toBe('actions/upload-artifact@v4');
+      // Must be best-effort: a transient failure here must NOT block
+      // current-run downstream jobs via resume-import conclusion='failure'.
+      expect(tierUploadStep?.['continue-on-error']).toBe(true);
+      expect(tierUploadStep?.if).toContain(
+        "hashFiles('resumed/search-checkpoint-r*.json') != ''",
+      );
+      expect(tierUploadStep?.with?.name).toBe('search-checkpoint-resumed');
+      expect(tierUploadStep?.with?.path).toBe('resumed/search-checkpoint-r*.json');
     });
   });
 });

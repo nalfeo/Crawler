@@ -375,6 +375,15 @@ jobs:
               done
               if [ -n "$FOUND" ]; then
                 RESUMED=$(jq -c --arg c "$COMBO" '. + [$c]' <<< "$RESUMED")
+                # Preserve the accepted checkpoint under its ORIGINAL tier
+                # name so a future run pointing `resume_run_id` at THIS run
+                # can discover it via the `search-checkpoint-*` download
+                # pattern (chained resume). `init`-tier resumes (round=0)
+                # already have the correct name; only r1/r2/r3 need a copy.
+                if [ "$FOUND" != "init" ]; then
+                  cp "resumed/search-checkpoint-init-${COMBO}.json" \
+                     "resumed/search-checkpoint-${FOUND}-${COMBO}.json"
+                fi
               else
                 echo "::notice::[$COMBO] no compatible prior checkpoint found in run $RESUME_RUN_ID (within rounds=$ROUNDS bound) — running fresh."
                 FRESH=$(jq -c --arg c "$COMBO" '. + [$c]' <<< "$FRESH")
@@ -479,6 +488,32 @@ jobs:
         with:
           name: resumed-checkpoints
           path: resumed/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # Upload tier-named checkpoints under a `search-checkpoint-*`
+      # discoverable artifact name so that a future run pointing
+      # `resume_run_id` at THIS run's ID can re-import them in its own
+      # `resume-import` job (chained resume). The prior download step at
+      # line 303 uses `pattern: search-checkpoint-*`; the `resumed-checkpoints`
+      # artifact (uploaded above) does NOT match that pattern, so without
+      # this step, cancelling THIS run after `resume-import` but before the
+      # `select` jobs reproduce the imported tiers would leave NOTHING for
+      # the next run to resume from. The tier-named copies were already
+      # written to `resumed/` by the "Select" step above. Uses
+      # `continue-on-error: true` because: (a) this is best-effort for
+      # FUTURE runs and cannot affect THIS run's downstream jobs, and (b)
+      # the current run's `baseline`/`checkpoint-init` gates on
+      # `needs.resume-import.result == 'success'` — a hard failure here
+      # would misleadingly block CURRENT-run downstream jobs even though
+      # they have everything they need via `resumed-checkpoints` above.
+      - name: Upload resumed tier checkpoints for chained resume (search-checkpoint-* discoverable)
+        if: ${{ hashFiles('resumed/search-checkpoint-r*.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-checkpoint-resumed
+          path: resumed/search-checkpoint-r*.json
           if-no-files-found: ignore
           retention-days: 7
 
