@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f620633b944445d8b5db1efb015731d1b45cf142",
+    "commitDate": "2026-07-22T15:43:59-07:00",
+    "commitSubject": "fix: harden fast-uri audit exception — fail-closed on malformed severity, scope classifier, docs (#1774)",
+    "capturedAt": "2026-07-22T23:35:49.831Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29964461285",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/f620633b944445d8b5db1efb015731d1b45cf142.json"
+  },
+  {
     "commit": "d6218ff44a96a31ff896259c304926b303ca999e",
     "commitDate": "2026-07-22T09:12:10Z",
     "commitSubject": "feat(ci): gate Copilot re-reviews in reconciler (#1770)",
