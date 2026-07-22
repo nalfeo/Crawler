@@ -24,7 +24,7 @@ type AjvCompatValidator = ((input: unknown) => boolean) & {
 
 type AjvCompat = new (options?: Record<string, unknown>) => {
   compile(schema: object): AjvCompatValidator;
-  addFormat?(name: string, format: true): void;
+  addFormat?(name: string, format: { validate(value: string): boolean }): void;
 };
 
 // ajv is a transitive dependency available at runtime; load it via createRequire so that
@@ -1200,7 +1200,7 @@ function validateCommittedSchema(
       JSON.stringify(ajvCompatSchema).replace(/#\/\$defs\//g, '#/definitions/'),
     ) as object;
     const ajv = new Ajv({ allErrors: true });
-    ajv.addFormat?.('date-time', true);
+    ajv.addFormat?.('date-time', { validate: () => true });
     const validate = ajv.compile(patched);
     if (!validate(input)) {
       const messages = (validate.errors ?? [])
