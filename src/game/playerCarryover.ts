@@ -180,13 +180,14 @@ function snapshotAbilityState(
     if (kept.length > 0) filteredPassiveSources.set(abilityId, kept);
   }
 
+  const normalized = normalizeAbilityState(state);
+
   const equippedActiveAbilityIds = state.equippedActiveAbilityIds.filter(
     (id) => filteredActiveSources.has(id) || !activeSourceMap.has(id),
   );
-  const passiveAbilityIds = state.passiveAbilityIds.filter(
+  const passiveAbilityIds = normalized.passiveAbilityIds.filter(
     (id) => filteredPassiveSources.has(id) || !passiveSourceMap.has(id),
   );
-  const normalized = normalizeAbilityState(state);
   const snapshotSources = (
     sourceMap: ReadonlyMap<string, ReadonlySet<AbilityGrantSourceId>>,
   ): readonly (readonly [string, readonly AbilityGrantSourceId[]])[] =>
@@ -227,7 +228,11 @@ function snapshotAbilityState(
   };
 }
 
-function restoreAbilityState(snapshot: AbilityStateSnapshot, frameCount: number) {
+function restoreAbilityState(
+  snapshot: AbilityStateSnapshot,
+  frameCount: number,
+  persistedPassiveAbilityIds: ReadonlySet<string>,
+) {
   const legacyState: AbilityStateLike = {
     learnedSpellIds: [...snapshot.learnedSpellIds],
     equippedActiveAbilityIds: [...snapshot.equippedActiveAbilityIds],
@@ -269,11 +274,13 @@ function restoreAbilityState(snapshot: AbilityStateSnapshot, frameCount: number)
           },
         });
   normalized.appliedPassiveAbilityIds = new Set(
-    [...normalized.appliedPassiveAbilityIds].filter((abilityId) => {
-      const def = getAbilityDefinition(abilityId);
-      return def?.kind === 'passive';
-    }),
+    [...normalized.appliedPassiveAbilityIds].filter(
+      (abilityId) =>
+        getAbilityDefinition(abilityId)?.kind === 'passive' &&
+        persistedPassiveAbilityIds.has(abilityId),
+    ),
   );
+  normalized.equippedActiveAbilityIds = [...snapshot.equippedActiveAbilityIds];
   normalized.activeAbilityGrantSources = legacyState.activeAbilityGrantSources;
   normalized.passiveAbilityGrantSources = legacyState.passiveAbilityGrantSources;
   return normalized;
@@ -675,11 +682,6 @@ export function capturePlayerCarryover(
   }
 
   const inventory = world.inventories.get(playerEid);
-  if ((inventory?.generatedEquipment?.length ?? 0) > 0) {
-    throw new Error(
-      'Generated equipment carryover is not supported until the B3 persistence slice lands',
-    );
-  }
   const abilityState = snapshotAbilityState(
     world.abilityStatesByEntity.get(playerEid),
     world.frameCount,
@@ -812,9 +814,17 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
   world.playerSkills = restoredSkills;
   world.skillStatesByEntity.set(playerEid, new Map(restoredSkills));
   if (snapshot.abilityState) {
+    const persistedPassiveAbilityIds = new Set(
+      snapshot.persistentStatModifiers
+        .filter(isPassiveAbilityModifier)
+        .map((modifier) => parseAbilityModifierSource(modifier.sourceId)?.abilityId)
+        .filter(
+          (abilityId): abilityId is string => abilityId !== undefined && abilityId.length > 0,
+        ),
+    );
     world.abilityStatesByEntity.set(
       playerEid,
-      restoreAbilityState(snapshot.abilityState, world.frameCount),
+      restoreAbilityState(snapshot.abilityState, world.frameCount, persistedPassiveAbilityIds),
     );
     synchronizeAbilityPassives(world, playerEid);
   } else {

@@ -16,6 +16,7 @@
 
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
+  type AbilityStateLike,
   createEmptyAbilityState,
   type AbilityGrantSource,
   type AbilityState,
@@ -25,7 +26,18 @@ import type { GameWorld } from './world.js';
 
 function getOrCreateAbilityStateForEntity(world: GameWorld, holderEid: number): AbilityState {
   const existing = world.abilityStatesByEntity.get(holderEid);
-  if (existing !== undefined) return existing;
+  if (existing !== undefined) {
+    const draft = existing as Partial<AbilityStateLike>;
+    draft.learnedSpellIds ??= [];
+    draft.equippedActiveAbilityIds ??= [];
+    draft.passiveAbilityIds ??= [];
+    draft.cooldownByAbilityId ??= new Map();
+    draft.cooldownFramesByAbilityId ??= new Map();
+    draft.appliedPassiveAbilityIds ??= new Set();
+    draft.activeAbilityGrantSources ??= new Map();
+    draft.passiveAbilityGrantSources ??= new Map();
+    return draft as AbilityState;
+  }
   const created = createEmptyAbilityState();
   world.abilityStatesByEntity.set(holderEid, created);
   return created;
