@@ -127,6 +127,186 @@ test('admission fingerprints bind immutable head evidence without binding main',
   );
 });
 
+test('admission fingerprints are stable across benign check-run id churn (regression for PR #1557)', () => {
+  // PR #1557 was idle/converged with a matching head, both required checks
+  // SUCCESS, and 0 unresolved threads -- yet eligible() rejected it as stale
+  // purely because a required check's run id changed (a benign re-run, or a
+  // brand-new unrelated check-run appearing in the same commit's check-runs
+  // set) between the pass that persisted the state comment and the pass that
+  // tried to admit it. The digest must depend only on { name, status,
+  // conclusion }, never on the ever-incrementing GitHub check-run id.
+  const requiredNames = ['ci', 'Security checks'];
+  const stored = admissionFingerprint({
+    headSha: 'head-1557',
+    title: 'fix: unblock things',
+    baseRef: 'main',
+    requiredNames,
+    reviewThreads: [],
+    checkRuns: [
+      { id: 100, name: 'ci', status: 'completed', conclusion: 'success' },
+      { id: 101, name: 'Security checks', status: 'completed', conclusion: 'success' },
+    ],
+  });
+  const live = admissionFingerprint({
+    headSha: 'head-1557',
+    title: 'fix: unblock things',
+    baseRef: 'main',
+    requiredNames,
+    reviewThreads: [],
+    checkRuns: [
+      // Same two required checks, same conclusions, but brand-new run ids
+      // (as if both re-ran, or GitHub simply reports a new attempt id) --
+      // plus an extra, unrelated check-run that appeared in the meantime.
+      { id: 9001, name: 'ci', status: 'completed', conclusion: 'success' },
+      { id: 9002, name: 'Security checks', status: 'completed', conclusion: 'success' },
+      { id: 9003, name: 'codeql', status: 'completed', conclusion: 'neutral' },
+    ],
+  });
+  assert.equal(
+    stored,
+    live,
+    'benign check-run id churn (re-runs, new unrelated check-runs) must not change the fingerprint',
+  );
+});
+
+test('admission fingerprints still change when a required check conclusion actually flips', () => {
+  // The churn-resilience fix must not become a rubber stamp: a real
+  // success -> failure regression on a required check must still be
+  // detected as a distinct fingerprint so eligible() keeps rejecting it.
+  const requiredNames = ['ci'];
+  const passing = admissionFingerprint({
+    headSha: 'head-1',
+    title: 'fix: one',
+    baseRef: 'main',
+    requiredNames,
+    reviewThreads: [],
+    checkRuns: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+  });
+  const failing = admissionFingerprint({
+    headSha: 'head-1',
+    title: 'fix: one',
+    baseRef: 'main',
+    requiredNames,
+    reviewThreads: [],
+    checkRuns: [{ id: 2, name: 'ci', status: 'completed', conclusion: 'failure' }],
+  });
+  assert.notEqual(
+    passing,
+    failing,
+    'a real conclusion flip on a required check must still change the fingerprint',
+  );
+});
+
+test('admission fingerprints ignore resolved review-thread content churn (new replies, edited bodies, ids)', () => {
+  // Both callers of admissionFingerprint (eligible() itself, and ci-recovery
+  // before it persists a converged state comment) only ever compute the
+  // fingerprint once they have already confirmed zero unresolved threads --
+  // any unresolved thread is rejected upstream as its own distinct blocker.
+  // So two review-thread snapshots with entirely different ids/bodies/authors
+  // but the same (zero) unresolved count must be indistinguishable: a new
+  // reply on an already-resolved thread carries no admission-relevant signal.
+  const base = {
+    headSha: 'head-1',
+    title: 'fix: one',
+    baseRef: 'main',
+    requiredNames: ['ci'],
+    checkRuns: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+  };
+  const firstPass = admissionFingerprint({
+    ...base,
+    reviewThreads: [
+      {
+        id: 'thread-a',
+        isResolved: true,
+        comments: { nodes: [{ id: 'c1', body: 'looks good', author: { login: 'reviewer-a' } }] },
+      },
+    ],
+  });
+  const laterPassWithNewReply = admissionFingerprint({
+    ...base,
+    reviewThreads: [
+      {
+        id: 'thread-a',
+        isResolved: true,
+        comments: {
+          nodes: [
+            { id: 'c1', body: 'looks good', author: { login: 'reviewer-a' } },
+            { id: 'c2', body: 'thanks!', author: { login: 'author-b' } },
+          ],
+        },
+      },
+    ],
+  });
+  assert.equal(
+    firstPass,
+    laterPassWithNewReply,
+    'a new reply on an already-resolved thread must not change the fingerprint',
+  );
+
+  // A genuinely different resolved-thread SET (different id, different
+  // resolved-thread count is unchanged at zero unresolved) must also be
+  // indistinguishable -- only the unresolved COUNT is semantically load
+  // bearing, not which specific threads happen to be resolved.
+  const differentResolvedThreadSet = admissionFingerprint({
+    ...base,
+    reviewThreads: [
+      { id: 'thread-z', isResolved: true, comments: { nodes: [] } },
+      { id: 'thread-y', isResolved: true, comments: { nodes: [] } },
+    ],
+  });
+  assert.equal(
+    firstPass,
+    differentResolvedThreadSet,
+    'the specific set/ids of resolved threads must not change the fingerprint, only the unresolved count',
+  );
+});
+
+test('the eligible() admission gate now admits a converged, green, thread-clean PR whose check-run set churned (end-to-end mirror of PR #1557)', () => {
+  // Mirrors eligible()'s literal final gate
+  // (`state.headSha !== pr.head.sha || state.fingerprint !== fingerprint`,
+  // merge-train/reconcile.mjs) without needing to refactor or invoke that
+  // live, network-calling, process.exit()-ing script directly: build the
+  // "stored" fingerprint (as ci-recovery would have persisted it on a prior
+  // pass) and the "live" fingerprint (as eligible() computes it on this
+  // pass) from the same PR #1557-shaped evidence, differing only in benign
+  // check-run id churn, and assert the gate's own comparison now evaluates
+  // to "not stale".
+  const headSha = 'head-1557-live';
+  const requiredNames = ['ci', 'Security checks'];
+  const reviewThreads = [{ id: 'thread-1', isResolved: true, comments: { nodes: [] } }];
+  const storedFingerprint = admissionFingerprint({
+    headSha,
+    title: 'fix: unblock things',
+    baseRef: 'main',
+    requiredNames,
+    reviewThreads,
+    checkRuns: [
+      { id: 100, name: 'ci', status: 'completed', conclusion: 'success' },
+      { id: 101, name: 'Security checks', status: 'completed', conclusion: 'success' },
+    ],
+  });
+  const liveFingerprint = admissionFingerprint({
+    headSha,
+    title: 'fix: unblock things',
+    baseRef: 'main',
+    requiredNames,
+    reviewThreads,
+    checkRuns: [
+      { id: 9001, name: 'ci', status: 'completed', conclusion: 'success' },
+      { id: 9002, name: 'Security checks', status: 'completed', conclusion: 'success' },
+    ],
+  });
+  const state = { headSha, fingerprint: storedFingerprint };
+  const pr = { head: { sha: headSha } };
+  // This is eligible()'s exact boolean gate, inlined:
+  const isStale = state.headSha !== pr.head.sha || state.fingerprint !== liveFingerprint;
+  assert.equal(
+    isStale,
+    false,
+    'a converged, green, thread-clean PR must not be rejected as stale merely because its required checks were re-run with new ids',
+  );
+});
+
 test('bisection validates the midpoint then isolates the first failing addition', () => {
   assert.deepEqual(
     nextBisectStep(['missing', 'missing', 'missing', 'missing', 'missing', 'failure']),
