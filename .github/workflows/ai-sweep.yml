@@ -425,12 +425,12 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
-      # round-select/validate, so a full 8-combo round can't saturate the
-      # account's entire concurrent-runner pool and starve unrelated
-      # repo-wide work (e.g. the shared merge-train queue) — see run
-      # 29786216369, which fanned out 20 concurrent Round 3 eval jobs with
-      # 44 more queued before it was manually cancelled.
+      # Queue-aware max-parallel comes from sweep-budget.mjs, while the shared
+      # crawler-sweep-slot-* semaphore still hard-caps all broad sweeps at ten
+      # repo-global slots so a large eval round cannot starve unrelated work
+      # (e.g. the shared merge-train queue) — see run 29786216369, which
+      # fanned out 20 concurrent Round 3 eval jobs with 44 more queued before
+      # it was manually cancelled.
       max-parallel: ${{ fromJSON(needs.round1-candidates.outputs.max_parallel) }}
       matrix:
         candidate: ${{ fromJSON(needs.round1-candidates.outputs.matrix) }}
@@ -648,9 +648,10 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
-      # round-select/validate — see round1-eval's identical comment for why
-      # (run 29786216369 saturated the account's concurrent-runner pool).
+      # Queue-aware max-parallel comes from sweep-budget.mjs, while the shared
+      # crawler-sweep-slot-* semaphore still hard-caps all broad sweeps at ten
+      # repo-global slots — see round1-eval's identical comment for why (run
+      # 29786216369 saturated the account's concurrent-runner pool).
       max-parallel: ${{ fromJSON(needs.round2-candidates.outputs.max_parallel) }}
       matrix:
         candidate: ${{ fromJSON(needs.round2-candidates.outputs.matrix) }}
@@ -857,9 +858,10 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
-      # round-select/validate — see round1-eval's identical comment for why
-      # (run 29786216369 saturated the account's concurrent-runner pool).
+      # Queue-aware max-parallel comes from sweep-budget.mjs, while the shared
+      # crawler-sweep-slot-* semaphore still hard-caps all broad sweeps at ten
+      # repo-global slots — see round1-eval's identical comment for why (run
+      # 29786216369 saturated the account's concurrent-runner pool).
       max-parallel: ${{ fromJSON(needs.round3-candidates.outputs.max_parallel) }}
       matrix:
         candidate: ${{ fromJSON(needs.round3-candidates.outputs.matrix) }}

@@ -163,6 +163,12 @@ export async function inspectLatentBacklog({
     (number) => paginateFn(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
     6,
   );
+  const unreadableOwners = pullRequests.filter((pullRequest) => pullRequest.recoveryStateUnreadable);
+  if (unreadableOwners.length > 0) {
+    throw new Error(
+      `CI recovery ownership unreadable for PR ${unreadableOwners.map((pullRequest) => `#${pullRequest.number}`).join(', ')}`,
+    );
+  }
   return countLatentBacklog({ pullRequests, repository, now });
 }
 

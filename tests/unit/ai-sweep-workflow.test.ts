@@ -20,13 +20,12 @@ import { describe, expect, it } from 'vitest';
  *   - the monolithic `search` job must be gone (replaced by baseline +
  *     checkpoint-init + an explicit bounded round1-3 DAG);
  *   - every round's candidate-eval matrix job must be independently timed at
- *     <=90 minutes (the hard timing gate), with a `max-parallel: 8` cap
- *     matching every other matrix job in this workflow (baseline,
- *     checkpoint-init, round-select, validate) -- an UNCAPPED round-eval
- *     matrix previously fanned out 20 concurrent jobs with 44 more queued
- *     (run 29786216369), saturating the account's entire GitHub-hosted
+ *     <=90 minutes (the hard timing gate), with queue-aware `max-parallel`
+ *     wiring plus the shared `crawler-sweep-slot-*` semaphore preventing an
+ *     eval round from saturating the account's entire GitHub-hosted
  *     concurrent-runner pool and starving the shared merge-train queue's own
- *     validation jobs repo-wide;
+ *     validation jobs repo-wide (run 29786216369 previously fanned out 20
+ *     concurrent jobs with 44 more queued);
  *   - every round-select (checkpoint fold-in) job must be gated with
  *     `!cancelled()` so a `fail-fast:false` partial candidate failure upstream
  *     never causes the checkpoint-persistence step itself to be skipped --

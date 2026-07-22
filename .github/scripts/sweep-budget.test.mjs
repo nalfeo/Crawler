@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   allocateSweepSlots,
+  calculateSweepAdmission,
   computeSweepBudget,
   countLatentBacklog,
   enrichMatrix,
@@ -142,6 +143,58 @@ test('CLI fails closed to slot zero when GitHub probing fails', async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('unreadable recovery ownership turns sweep admission into a fail-closed probe error', async () => {
+  const requestFn = async (_token, requestPath) => {
+    if (
+      requestPath === '/repos/nalfeo/Crawler/actions/runs?status=in_progress&per_page=100&page=1' ||
+      requestPath === '/repos/nalfeo/Crawler/actions/runs?status=queued&per_page=100&page=1' ||
+      requestPath === '/repos/nalfeo/Crawler/actions/runs?status=pending&per_page=100&page=1' ||
+      requestPath === '/repos/nalfeo/Crawler/actions/runs?status=waiting&per_page=100&page=1' ||
+      requestPath === '/repos/nalfeo/Crawler/actions/runs?status=requested&per_page=100&page=1'
+    ) {
+      return { data: { workflow_runs: [] } };
+    }
+    assert.fail(`unexpected request ${requestPath}`);
+  };
+  const paginateFn = async (_token, requestPath) => {
+    if (
+      requestPath === '/repos/nalfeo/Crawler/pulls?state=open&base=main&sort=updated&direction=desc'
+    ) {
+      return [
+        {
+          number: 17,
+          state: 'open',
+          draft: false,
+          created_at: '2026-07-21T00:00:00Z',
+          base: { ref: 'main' },
+          head: { repo: { full_name: 'nalfeo/Crawler' }, sha: 'abc123' },
+          labels: [{ name: 'ci-owner-pr-17' }],
+        },
+      ];
+    }
+    if (requestPath === '/repos/nalfeo/Crawler/issues/17/comments') {
+      throw new Error('comments API unavailable');
+    }
+    assert.fail(`unexpected pagination request ${requestPath}`);
+  };
+
+  await assert.rejects(
+    calculateSweepAdmission({
+      token: 'token',
+      repository: 'nalfeo/Crawler',
+      currentRunId: 42,
+      matrixEntries: ['sword'],
+      requestFn,
+      paginateFn,
+    }),
+    (error) => {
+      assert.equal(error instanceof SweepProbeError, true);
+      assert.match(error.message, /CI recovery ownership unreadable for PR #17/);
+      return true;
+    },
+  );
 });
 
 test('CLI surfaces invalid inputs instead of disguising them as probe failures', async () => {
