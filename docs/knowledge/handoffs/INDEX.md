@@ -379,6 +379,7 @@ _…and 79 older, see `archive/`._
 
 ## ci-policy
 
+- [2026-07-22-pr1231-ci-recovery](2026-07-22-pr1231-ci-recovery.md) — Handoff: PR #1231 CI recovery
 - [2026-07-22-pr1231-merge-conflict-recovery](2026-07-22-pr1231-merge-conflict-recovery.md) — Handoff: PR #1231 merge-conflict recovery
 - [2026-07-22-raise-ci-dispatch-caps](2026-07-22-raise-ci-dispatch-caps.md) — Handoff: Raise CI Recovery dispatch caps to 5 (emergency throughput unfreeze)
 - [2026-07-22-reconciler-review-gating](2026-07-22-reconciler-review-gating.md) — Handoff: Reconciler-controlled Copilot review gating

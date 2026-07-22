@@ -66,7 +66,11 @@ export interface SynthProvider {
 }
 
 export type SynthProviderErrorKind =
-  'auth' | 'rate-limit' | 'network' | 'malformed' | 'provider-error';
+  | 'auth'
+  | 'rate-limit'
+  | 'network'
+  | 'malformed'
+  | 'provider-error';
 
 export class SynthProviderError extends Error {
   override readonly name = 'SynthProviderError';

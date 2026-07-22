@@ -57,7 +57,12 @@ import { loadLabState, saveLabState } from '../lab-persistence.js';
 const LAB_ID = 'sprite-tint-lab';
 
 type TintTechnique =
-  'original' | 'hue-rotate' | 'multiply' | 'screen' | 'colorize' | 'palette-swap';
+  | 'original'
+  | 'hue-rotate'
+  | 'multiply'
+  | 'screen'
+  | 'colorize'
+  | 'palette-swap';
 
 interface SpriteTintSettings {
   spriteId: string;
