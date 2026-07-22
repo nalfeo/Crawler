@@ -30,6 +30,7 @@ import { graphql, listClosingIssues, listReviewThreads, paginate, request } from
 import {
   admissionFingerprint,
   BLOCKED_LABEL,
+  shouldWaitForCiConflictOrder,
   hasLeadingMarker,
   NOOP_LABEL,
   parseEnabledFlag,
@@ -50,6 +51,14 @@ import {
   hasIntakeRequirementComment,
   reviewThreadPlanIssueNumbers,
 } from './issue-intake-lib.mjs';
+import {
+  conflictEpisodeMarker,
+  executeReviewDecision,
+  REVIEWER_LOGIN,
+  reviewRequestMarker,
+  shouldRequestReview,
+  unrecordedConflictEpisode,
+} from './review-request.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -66,6 +75,7 @@ const live = mode === 'live';
 const shouldMutate = shouldMutateRecoveryState(mode, operation);
 const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
+const copilotReviewerLogin = (process.env.COPILOT_REVIEWER_LOGIN || REVIEWER_LOGIN).trim();
 const now = new Date();
 // GitHub Actions populates GITHUB_SERVER_URL and GITHUB_RUN_ID automatically.
 // Outside of Actions (tests, local runs) these are absent; workflowRunUrl is null.
@@ -254,6 +264,40 @@ async function assertExpectedMetadataUnchanged(phase) {
     .data;
   const rejection = expectedMetadataRejection(livePullRequest);
   if (rejection) skipForExpectedMetadata(rejection, phase);
+}
+
+class ExpectedMetadataChangedError extends Error {
+  constructor(rejection, phase) {
+    super(`PR metadata changed before ${phase}: ${rejection.reason}`);
+    this.rejection = rejection;
+    this.phase = phase;
+    this.markerRollbackSafe = true;
+  }
+}
+
+async function assertExpectedMetadataUnchangedOrThrow(phase) {
+  if (!expectedHeadSha) return;
+  const livePullRequest = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`))
+    .data;
+  const rejection = expectedMetadataRejection(livePullRequest);
+  if (rejection) throw new ExpectedMetadataChangedError(rejection, phase);
+}
+
+async function assertPrHeadUnchangedOrThrow(phase, expectedSha) {
+  const expected = String(expectedSha || '').trim().toLowerCase();
+  if (!expected) return;
+  const livePullRequest = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`))
+    .data;
+  const actual = String(livePullRequest?.head?.sha || '').trim().toLowerCase();
+  if (actual && actual === expected) return;
+  throw new ExpectedMetadataChangedError(
+    {
+      reason: 'head-sha-changed',
+      expected,
+      actual: actual || '(empty)',
+    },
+    phase,
+  );
 }
 const comments = await paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
 let approvalRejection = null;
@@ -965,15 +1009,6 @@ if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
   }
 }
 
-if (
-  mergeTrainEnabled &&
-  !pendingHumanApproval &&
-  (pr.labels || []).some((label) => label.name === QUEUE_LABEL)
-) {
-  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
-  process.exit(0);
-}
-
 if (!mergeTrainEnabled) {
   const existingLabels = new Set((pr.labels || []).map((label) => label.name));
   for (const trainLabel of [QUEUE_LABEL, BLOCKED_LABEL, NOOP_LABEL, VALIDATION_FAILED_LABEL]) {
@@ -992,7 +1027,33 @@ if (labelExists && state?.owner === 'shepherd') {
   stopIfReleaseConvergedElsewhere(await release('expired-shepherd-lease'));
 }
 
+if (
+  mergeTrainEnabled &&
+  !pendingHumanApproval &&
+  (pr.labels || []).some((label) => label.name === QUEUE_LABEL)
+) {
+  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
+  process.exit(0);
+}
+
+if (mergeTrainEnabled && !pendingHumanApproval && shouldWaitForCiConflictOrder(pr.labels)) {
+  process.stdout.write(`skip pr=#${prNumber} reason=ci-conflict-order-wait\n`);
+  process.exit(0);
+}
+
 const review = await listReviewThreads(readToken, owner, repo, prNumber);
+const initialReviewByCopilot = review.reviews.find((candidate) => {
+  const login = String(candidate?.author?.login || '').toLowerCase();
+  return login === String(copilotReviewerLogin).toLowerCase() && Boolean(candidate?.submittedAt);
+});
+const hasInitialReviewEvidence = Boolean(initialReviewByCopilot);
+// SHA of the commit that was actually reviewed by Copilot; used when seeding the
+// bootstrap marker so that the current head is not incorrectly deduplicated.
+const copilotReviewedCommitSha = String(initialReviewByCopilot?.commit?.oid || '').toLowerCase();
+// Bootstrap whenever review evidence exists and managed markers are absent,
+// independent of recovery-state ownership. Already-reconciled PRs have state but
+// may still lack review-request markers at rollout time.
+const canBootstrapInitialReviewMarker = hasInitialReviewEvidence;
 const copilotAssigned = review.assignees.some((actor) =>
   ['copilot', 'copilot-swe-agent'].includes(String(actor.login || '').toLowerCase()),
 );
@@ -1293,6 +1354,25 @@ for (const thread of unresolvedThreads) {
 
 const blockers = [];
 const hasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
+const conflictEpisode = unrecordedConflictEpisode({ pr, hasMergeConflict, comments });
+if (conflictEpisode) {
+  const marker = conflictEpisodeMarker(conflictEpisode);
+  if (live) {
+    await assertExpectedMetadataUnchanged('conflict-episode-marker');
+    const created = await request(
+      pat,
+      `/repos/${owner}/${repo}/issues/${prNumber}/comments`,
+      {
+        method: 'POST',
+        body: { body: marker },
+      },
+    );
+    comments.push(created.data);
+  }
+  process.stdout.write(
+    `${live ? 'recorded' : 'would-record'} conflict episode pr=#${prNumber} episode=${conflictEpisode.episode}\n`,
+  );
+}
 const labels = new Set((pr.labels || []).map((label) => label.name));
 const trainBlocked = labels.has(BLOCKED_LABEL);
 let trainNoop = labels.has(NOOP_LABEL);
@@ -1482,7 +1562,7 @@ const rawCheckRuns =
 // Collapse to the latest attempt per logical name so a successful rerun
 // replaces a previously failed run before any blocker classification.
 const checkRuns = collapseCheckRunsByName(rawCheckRuns);
-const humanApprovalDerivedChecks = new Set(['human approval', 'merge gate', 'ci']);
+const humanApprovalDerivedChecks = new Set(['lightweight checks', 'merge gate', 'ci']);
 for (const check of checkRuns) {
   const checkName = String(check.name || '').toLowerCase();
   if (
@@ -1603,11 +1683,83 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     path: thread.path || undefined,
     line: thread.isOutdated ? undefined : thread.line || undefined,
     summary,
+    isOutdated: thread.isOutdated === true,
     url: root?.url,
   });
 }
 
 const normalized = normalizeBlockers(blockers);
+const reviewDecision = shouldRequestReview({
+  trigger,
+  pr,
+  hasMergeConflict,
+  requiredChecksPassing:
+    mergeTrainAdmissionChecks.length > 0 && waitingRequiredChecks.length === 0,
+  hasInitialReviewEvidence: canBootstrapInitialReviewMarker,
+  blockers: normalized,
+  comments,
+});
+if (reviewDecision) {
+  // When bootstrapping an already-reviewed PR (reason=ready, not an initial publish event),
+  // record the actual reviewed commit SHA so that the current head is not prematurely
+  // deduplicated and can still receive a synchronize review.
+  const isInitialEventTrigger =
+    trigger === 'pull_request_target:opened' ||
+    trigger === 'pull_request_target:reopened' ||
+    trigger === 'pull_request_target:ready_for_review';
+  const markerHeadSha =
+    reviewDecision.reason === 'ready' && !isInitialEventTrigger && copilotReviewedCommitSha
+      ? copilotReviewedCommitSha
+      : String(pr.head.sha || '').trim().toLowerCase();
+  const reviewDecisionHeadSha = markerHeadSha;
+  const marker = reviewRequestMarker({
+    headSha: markerHeadSha,
+    reason: reviewDecision.reason,
+    episode: reviewDecision.episode,
+  });
+  if (live) {
+    await assertExpectedMetadataUnchanged('review-request-marker');
+    try {
+      await executeReviewDecision({
+        decision: reviewDecision,
+        marker,
+        createMarker: async (body) => {
+          await assertPrHeadUnchangedOrThrow('review-request-marker', reviewDecisionHeadSha);
+          const created = await request(
+            pat,
+            `/repos/${owner}/${repo}/issues/${prNumber}/comments`,
+            {
+              method: 'POST',
+              body: { body },
+            },
+          );
+          return created.data;
+        },
+        deleteMarker: async (commentId) => {
+          await request(pat, `/repos/${owner}/${repo}/issues/comments/${commentId}`, {
+            method: 'DELETE',
+          });
+        },
+        requestReviewer: async () => {
+          await assertPrHeadUnchangedOrThrow('copilot-review-request', reviewDecisionHeadSha);
+          await assertExpectedMetadataUnchangedOrThrow('copilot-review-request');
+          await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers`, {
+            method: 'POST',
+            body: { reviewers: [copilotReviewerLogin] },
+          });
+        },
+      });
+    } catch (error) {
+      if (error instanceof ExpectedMetadataChangedError) {
+        skipForExpectedMetadata(error.rejection, error.phase);
+      }
+      throw error;
+    }
+  }
+  process.stdout.write(
+    `${live ? 'recorded' : 'would-record'} review reason=${reviewDecision.reason} pr=#${prNumber} head=${pr.head.sha}${reviewDecision.requestReviewer ? ` reviewer=${copilotReviewerLogin}` : ' reviewer=platform'}\n`,
+  );
+}
 const fingerprint =
   normalized.length === 0
     ? admissionFingerprint({
@@ -1965,7 +2117,7 @@ const taskBody = [
     const replyCommentId =
       blocker.kind === 'review-thread' ? reviewThreadReplyCommentId(blocker.url) : null;
     return [
-      `${index + 1}. **${blocker.kind}** \`${blocker.id}\`${blocker.path ? ` at \`${blocker.path}${blocker.line ? `:${blocker.line}` : ''}\`` : ''}`,
+      `${index + 1}. **${blocker.kind}** \`${blocker.id}\`${blocker.path ? ` at \`${blocker.path}${blocker.line ? `:${blocker.line}` : ''}\`` : ''}${blocker.isOutdated ? ' **(outdated — deterministic non-applicability candidate)**' : ''}`,
       `   ${blocker.summary}`,
       ...(blocker.url ? [`   ${blocker.url}`] : []),
       ...(replyCommentId

@@ -1,25 +1,70 @@
 /**
- * workflow — a READ-ONLY canvas view of the Crawler sprite-generation workflow.
+ * workflow — the Sprite Generation Workflow canvas: inspect the asset backlog,
+ * plans/briefs, and generated sprite RUNS (variants + judge + sensors +
+ * sheet/slice-map), record per-criterion reviewer feedback, view each
+ * variant's accept/integration LIFECYCLE, and accept a selected variant into
+ * the durable asset-checkin queue.
  *
- * Functional parity with the READ surface of the `?page=sprite-generation-workflow`
- * DevTool in the monolith (`DEVTOOLS_PAGE_SPRITE_WORKFLOW` in `src/devtools-main.ts`):
- * it browses the asset BACKLOG (per-plan status + integration column), the
- * PLANS/BRIEFS YAML, and generated RUNS (variants + judge + sensors + sheet/slice-map).
- * It never mutates anything — the durable QUEUE + asset-REQUEST manifest (their
- * status reads AND controls) and the write half of the workflow (synthesize /
- * generate / judge / approve / checkin / metadata, worker & issues start-stop, and
- * the interactive queue state machine) are the documented follow-up slice (B2).
+ * This canvas ABSORBED the former standalone `sprite-review` canvas's
+ * read-only run/variant-inspection surface (judge/sensor traces, sheet +
+ * slice-map viewing, per-criterion feedback) once Workflow reached parity with
+ * it and its live behavior was verified — sprite-review has been removed.
+ * Functional parity with the `?page=sprite-generation-workflow` DevTool in the
+ * monolith (`DEVTOOLS_PAGE_SPRITE_WORKFLOW` in `src/devtools-main.ts`) for the
+ * backlog/plans/briefs/runs READ surface. The durable QUEUE + asset-REQUEST
+ * manifest's full read/control surface (synthesize / generate / judge / worker
+ * & issues start-stop, and the interactive queue state machine) beyond the
+ * atomic accept-and-check-in below remains the documented follow-up slice.
  *
- * Architecture (the pattern shared with sprite-review / slices B–E):
- *   - `lib/canvas-harness.mjs`  — GENERIC loopback HTTP server (vendored; single
+ * Mutating routes: `POST /api/accept` (approve + durable check-in, atomic and
+ * idempotent — see `scripts/sprites/sidecar/server.ts`) and `POST /api/feedback`
+ * (criterion/sheet/brief reviewer feedback — a discriminated union on
+ * `subjectType`, persisted to `public/assets/generated/
+ * sprite-review-feedback.json` — shared schema/keying with the removed
+ * sprite-review canvas). Both are guarded by a per-instance mutation token;
+ * feedback additionally checks request Origin + Content-Type (see
+ * `../shared/sprite-feedback-request.mjs`). `/api/feedback` intentionally does
+ * NOT buildState()+pushState() after a save — see the handler for why.
+ *
+ * EMBEDDED Postprocess Debugger (`/postprocess/*`): the full standalone
+ * `postprocess` canvas document (`../postprocess/renderer.mjs`) is mounted
+ * verbatim under this SAME loopback server/origin at `/postprocess/*` —
+ * HTML root, `/postprocess/api/state|select|runs`, `/postprocess/api/
+ * live-postprocess|persist-postprocess`, `/postprocess/img/*`, and
+ * `/postprocess/events` (SSE) — parameterized via `renderHtml(instanceId,
+ * basePath, mutationToken)`'s `basePath`. This is ONE Workflow-owned server
+ * and ONE sidecar connection (`entry.client`, rebound together with
+ * `entry.postprocess.client` on sidecar restart) — no second canvas server,
+ * no second `beginSpriteSidecarStartup`. Postprocess keeps its OWN versioned
+ * selection substate (`entry.postprocess.{requested,selected,
+ * selectionVersion}`) so a stale in-flight build can never clobber a newer
+ * selection (see `buildPostprocessState`). `renderer.mjs`'s persistent
+ * `#postprocess-host` sibling of `#app` lazily creates ONE iframe on first
+ * "Open in Post-process Debugger" click (seeded via the initial URL's query
+ * string) and RETARGETS it in place via a same-origin `postMessage`
+ * `postprocess:select` bridge on later opens — never a `src` reload, so
+ * in-progress editor state survives. `/postprocess/api/persist-postprocess`
+ * is additionally guarded by the SAME mutation-token + trusted-origin +
+ * JSON-content-type + bounded-body checks as `/api/feedback`/`/api/accept`
+ * (`live-postprocess` is a non-persisting preview relay; only its origin is
+ * checked). The standalone `postprocess` canvas remains registered
+ * unchanged pending parity verification.
+ *
+ * Architecture (the pattern shared with postprocess/achievements/storage):
+ *   - `lib/canvas-harness.mjs`     — GENERIC loopback HTTP server (vendored; single
  *     source of truth is `scripts/canvas-harness/`; do not hand-edit).
- *   - `lib/image-cache.mjs`     — vendored outside-worktree on-disk image cache.
- *   - `lib/sidecar-client.mjs`  — DOMAIN sidecar adapter (runs + image URL builders).
- *   - `lib/yaml-reader.mjs`     — fs reader for `plans/**` + `briefs/**`.
- *   - `lib/registry-ids.mjs`    — best-effort sprite/item registry id loader.
- *   - `lib/workflow-model.mjs`  — 1:1 port of the monolith's backlog/report logic.
- *   - `renderer.mjs`            — the iframe document (state-driven, SSE).
- *   - `extension.mjs` (this)    — wires them together.
+ *   - `lib/image-cache.mjs`        — vendored outside-worktree on-disk image cache
+ *     (pass-through — the sidecar's `CachingRunStore` is the one authoritative cache).
+ *   - `lib/sidecar-client.mjs`     — DOMAIN sidecar adapter (runs + image URL builders).
+ *   - `lib/yaml-reader.mjs`        — fs reader for `plans/**` + `briefs/**`.
+ *   - `lib/registry-ids.mjs`       — best-effort sprite/item registry id loader.
+ *   - `lib/workflow-model.mjs`     — 1:1 port of the monolith's backlog/report logic.
+ *   - `lib/variant-lifecycle.mjs`  — per-variant unaccepted/accepted-staged/integrated/unverified.
+ *   - `lib/run-view-cache.mjs`     — cache-first / background-revalidate run view.
+ *   - `../shared/sprite-feedback-store.mjs` / `sprite-feedback-request.mjs` — feedback
+ *     persistence + request guards, shared with the (removed) sprite-review canvas.
+ *   - `renderer.mjs`               — the iframe document (state-driven, SSE).
+ *   - `extension.mjs` (this)       — wires them together.
  *
  * stdout is reserved for JSON-RPC — we log via `session.log`, never `console.log`.
  *
@@ -28,11 +73,14 @@
 
 import process from 'node:process';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { setInterval, clearInterval } from 'node:timers';
 import { createCanvas, CanvasError, joinSession } from '@github/copilot-sdk/extension';
 
 import { startCanvasServer } from './lib/canvas-harness.mjs';
+import { beginSpriteSidecarStartup } from '../shared/sprite-sidecar-service.mjs';
 import { createImageCache, resolveExtCacheDir } from './lib/image-cache.mjs';
 import { renderHtml } from './renderer.mjs';
 import {
@@ -44,6 +92,41 @@ import {
 import { listArtPlans, listBriefs } from './lib/yaml-reader.mjs';
 import { loadRegistryIds } from './lib/registry-ids.mjs';
 import { loadBacklog } from './lib/workflow-model.mjs';
+import { computeVariantLifecycle } from './lib/variant-lifecycle.mjs';
+import { readJsonBody, tokensMatch } from './lib/mutation-security.mjs';
+import {
+  createRunViewCache,
+  resolveCacheFirstState,
+  applyFreshRevalidation,
+} from './lib/run-view-cache.mjs';
+import {
+  briefFeedback,
+  feedbackForRun,
+  readFeedback,
+  saveFeedback,
+  sheetFeedback,
+} from '../shared/sprite-feedback-store.mjs';
+import {
+  isJsonContentType,
+  isTrustedMutationOrigin,
+  readJsonBody as readFeedbackJsonBody,
+} from '../shared/sprite-feedback-request.mjs';
+import { renderHtml as renderPostprocessHtml } from '../postprocess/renderer.mjs';
+import { resolveActiveSheet } from '../postprocess/lib/run-selection.mjs';
+import {
+  createPostprocessClient,
+  extractAppliedBackgroundTweaks,
+  extractAppliedDisabledModules,
+  extractAppliedFacing,
+  extractAppliedManualAnchor,
+  normalizeDisabledModuleIds,
+  normalizePersistRequest,
+  buildPersistPostprocessPayload,
+  padVariant,
+  clampTolerance,
+  collectVariantIndices,
+  DEFAULT_BACKGROUND_TWEAKS,
+} from '../postprocess/lib/postprocess-client.mjs';
 
 /**
  * Repo root, derived from THIS file's location. The extension physically lives
@@ -58,6 +141,15 @@ import { loadBacklog } from './lib/workflow-model.mjs';
  */
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
+/** Durable per-criterion reviewer feedback, shared with the (removed) sprite-review canvas. */
+const FEEDBACK_PATH = path.join(
+  REPO_ROOT,
+  'public',
+  'assets',
+  'generated',
+  'sprite-review-feedback.json',
+);
+
 /** @type {import('@github/copilot-sdk/extension').CopilotSession | null} */
 let sessionRef = null;
 
@@ -69,13 +161,26 @@ let sessionRef = null;
  *   baseUrl: string,
  *   workspaceRoot: string,
  *   requested: { briefId: string | null, runId: string | null },
- *   selected: { briefId: string, runId: string, sheet: string | null } | null,
+ *   selected: { briefId: string, runId: string, sheet: string | null, briefPath: string | null } | null,
+ *   mutationToken: string,
+ *   acceptance: Map<string, object>,
+ *   selectionVersion: number,
+ *   revalidatingKeys: Set<string>,
  *   cache: null | {
  *     registryError: string | null,
  *     backlog: object,
  *     promotedRunIds: Set<string>,
  *     files: { plans: object[], briefs: object[], error: string | null },
  *     allowlist: Map<string, { path: string, kind: 'plan' | 'brief' }>,
+ *   },
+ *   postprocess: {
+ *     client: ReturnType<typeof createPostprocessClient>,
+ *     requested: { briefId: string | null, runId: string | null, variantIndex: number | null, sheet: string | null },
+ *     selected: { briefId: string, runId: string, variantIndex: number, sheet: string | null } | null,
+ *     selectionVersion: number,
+ *     stateCache: Map<string, object>,
+ *     revalidatingKeys: Set<string>,
+ *     sseClients: Set<import('node:http').ServerResponse>,
  *   },
  *   pushState: (state?: unknown) => Promise<unknown>,
  *   close: () => Promise<void>,
@@ -88,6 +193,24 @@ const instances = new Map();
 // racing a second server; on failure the promise is dropped so a later `open`
 // can retry cleanly (no poisoned map entry).
 const pendingStartups = new Map();
+
+/**
+ * Cross-instance ("cross-surface") cache of the last successfully-rendered
+ * run view, keyed by `${briefId}::${runId}`. See `lib/run-view-cache.mjs` for
+ * the full cache-first / background-revalidate contract this backs.
+ */
+const runViewCache = createRunViewCache();
+/** Most recently viewed run's key, used as the cache-first target for an
+ * instance that has no explicit requested/selected run yet (a bare open). */
+let lastRunKey = null;
+
+function runViewKey(briefId, runId) {
+  return briefId && runId ? `${briefId}::${runId}` : null;
+}
+
+function acceptanceKey(briefId, runId, variantIndex) {
+  return `${briefId}/${runId}/${variantIndex}`;
+}
 
 function log(message, level = 'info') {
   try {
@@ -129,6 +252,7 @@ async function getStatic(entry) {
 
   let backlogClient;
   let promotedRunIds = new Set();
+  let manifestApprovals = [];
   try {
     const backlog = loadBacklog({
       repoRoot: entry.workspaceRoot,
@@ -136,6 +260,7 @@ async function getStatic(entry) {
       itemIds: registry.itemIds,
     });
     promotedRunIds = backlog.promotedRunIds ?? new Set();
+    manifestApprovals = backlog.manifestApprovals ?? [];
     backlogClient = {
       reports: backlog.reports,
       planCount: backlog.planCount,
@@ -172,6 +297,7 @@ async function getStatic(entry) {
     registryError: registry.error ?? null,
     backlog: backlogClient,
     promotedRunIds,
+    manifestApprovals,
     files,
     allowlist,
   };
@@ -179,31 +305,39 @@ async function getStatic(entry) {
 }
 
 /**
- * Build the full read view model for one instance. Never throws — every failure
- * is folded into a structured, renderable state (health badge + degrade panels +
- * per-section error strings), mirroring the monolith's graceful-degrade page.
- * Backlog + plan/brief browsing work even when the sidecar is DOWN (fs-only).
+ * Live (network-hitting) half of the view model: sidecar health probe, run
+ * listing, and (once a target run is resolved) its summary/sheets/slice-map.
+ * Deliberately takes `requested`/`priorSelected` SNAPSHOTS rather than reading
+ * `entry.requested`/`entry.selected` live — this function may run as a
+ * detached BACKGROUND revalidation for an older selection while the
+ * foreground instance has since navigated elsewhere, and reading the entry's
+ * mutable fields mid-flight (after an `await`) would silently resolve against
+ * whatever the user has navigated to by then instead of the target this
+ * particular call was actually resolving. Never mutates `entry`.
+ * @returns {Promise<{
+ *   health: object, runs: object[],
+ *   selected: { briefId: string, runId: string, sheet: string | null, briefPath: string | null } | null,
+ *   autoSelectedLatest: boolean, sheets: string[], candidates: object[],
+ *   sliceMap: object | null, error: string | null,
+ * }>}
  */
-async function buildState(instanceId) {
-  const entry = instances.get(instanceId);
-  if (!entry) return { error: 'instance not found' };
-  const baseUrl = entry.baseUrl;
-
-  const stat = await getStatic(entry);
-  const backlog = stat.backlog;
-  const files = stat.files;
-
+async function liveBuildState(entry, stat, { requested, priorSelected }) {
   const health = await entry.client.probeHealth();
   if (health.state !== 'up') {
     // Sidecar down/wrong-repo: fs-backed backlog + plan/brief browsing still work;
-    // the sidecar-backed Runs tab renders a degrade panel.
+    // the sidecar-backed Runs tab renders a degrade panel. Preserve the prior
+    // selection (rather than clearing it) so a transient sidecar blip doesn't
+    // lose the operator's place — once it's back up, the resolution logic below
+    // re-validates it against the fresh run list anyway.
     return {
       health,
-      baseUrl,
-      backlog,
-      files,
       runs: [],
-      selected: null,
+      selected: priorSelected ?? null,
+      autoSelectedLatest: false,
+      sheets: [],
+      candidates: [],
+      sliceMap: null,
+      error: null,
     };
   }
 
@@ -228,7 +362,7 @@ async function buildState(instanceId) {
   // Resolve the selected run (mirrors the monolith: honour a requested
   // briefId/runId when it resolves to a real run; otherwise auto-select latest).
   let autoSelectedLatest = false;
-  let selected = entry.selected;
+  let selected = priorSelected;
   let sheets = [];
   let candidates = [];
   let sliceMap = null;
@@ -239,12 +373,10 @@ async function buildState(instanceId) {
       runs.find((run) => run.briefId === briefId && run.runId === runId) ?? null;
     if (selected && !findRun(selected.briefId, selected.runId)) selected = null;
     if (!selected) {
-      const requested =
-        entry.requested.briefId && entry.requested.runId
-          ? findRun(entry.requested.briefId, entry.requested.runId)
-          : null;
-      if (requested) {
-        selected = { briefId: requested.briefId, runId: requested.runId, sheet: null };
+      const requestedRun =
+        requested.briefId && requested.runId ? findRun(requested.briefId, requested.runId) : null;
+      if (requestedRun) {
+        selected = { briefId: requestedRun.briefId, runId: requestedRun.runId, sheet: null };
       } else {
         const latest = runs[0];
         selected = { briefId: latest.briefId, runId: latest.runId, sheet: null };
@@ -252,9 +384,19 @@ async function buildState(instanceId) {
       }
     }
 
+    // The run's exact brief path (repo-relative, e.g. `briefs/draft/x.yaml`),
+    // as recorded in the run's own summary.json at generation time. Carried
+    // through to `selected.briefPath` so "View Brief" can load THIS run's
+    // brief by its exact allowlisted path instead of guessing by basename —
+    // a basename-only lookup picks the WRONG file when a draft and a
+    // committed brief share a basename (see renderer.mjs's `openBriefModal`).
+    let briefPath = null;
     try {
       const summary = await entry.client.fetchRunSummary(selected.briefId, selected.runId);
       candidates = withSkipMessages(normalizeCandidates(summary));
+      if (typeof summary?.briefPath === 'string' && summary.briefPath.length > 0) {
+        briefPath = summary.briefPath;
+      }
     } catch (err) {
       summaryError = `Failed to load run summary: ${err?.message ?? err}`;
     }
@@ -269,8 +411,7 @@ async function buildState(instanceId) {
     }
     const currentSheet =
       selected.sheet && sheets.includes(selected.sheet) ? selected.sheet : (sheets[0] ?? null);
-    entry.selected = { briefId: selected.briefId, runId: selected.runId, sheet: currentSheet };
-    selected = entry.selected;
+    selected = { briefId: selected.briefId, runId: selected.runId, sheet: currentSheet, briefPath };
     if (currentSheet) {
       try {
         sliceMap = await entry.client.fetchSliceMap(selected.briefId, selected.runId, currentSheet);
@@ -279,15 +420,11 @@ async function buildState(instanceId) {
       }
     }
   } else {
-    entry.selected = null;
     selected = null;
   }
 
   return {
     health,
-    baseUrl,
-    backlog,
-    files,
     runs,
     selected,
     autoSelectedLatest,
@@ -296,6 +433,467 @@ async function buildState(instanceId) {
     sliceMap,
     error: summaryError ?? runsError ?? null,
   };
+}
+
+/**
+ * Merge the fs-static parts (backlog/files), this instance's acceptance map,
+ * and — critically — FRESH per-criterion/sheet/brief feedback + per-variant
+ * lifecycle onto a run-view (cached or live). Feedback and lifecycle are
+ * recomputed on every call regardless of whether `view` came from the cache or
+ * the network: both are cheap local reads (fs feedback JSON, in-memory backlog
+ * + acceptance map) with no Azure dependency, so a confirmed feedback edit or a
+ * just-completed acceptance is reflected immediately even while the run view
+ * itself is stale.
+ */
+function composeState(entry, stat, view) {
+  const backlogReports = stat.backlog?.reports ?? [];
+  const manifestApprovals = stat.manifestApprovals ?? [];
+  const selected = view.selected ?? null;
+  let candidates = view.candidates ?? [];
+  let sheetFeedbackValue = null;
+  let briefFeedbackValue = null;
+  if (selected) {
+    const store = readFeedback(FEEDBACK_PATH);
+    const feedbackByVariant = feedbackForRun(store, selected.briefId, selected.runId);
+    candidates = candidates.map((candidate) => ({
+      ...candidate,
+      feedback: feedbackByVariant[String(candidate.index)] ?? { sensor: {}, judge: {} },
+      lifecycle: computeVariantLifecycle({
+        backlogReports,
+        manifestApprovals,
+        acceptanceEntry: entry.acceptance.get(
+          acceptanceKey(selected.briefId, selected.runId, candidate.index),
+        ),
+        briefId: selected.briefId,
+        runId: selected.runId,
+        variantIndex: candidate.index,
+      }),
+    }));
+    if (selected.sheet) {
+      sheetFeedbackValue = sheetFeedback(store, selected.briefId, selected.runId, selected.sheet);
+    }
+    briefFeedbackValue = briefFeedback(store, selected.briefId, selected.runId);
+  }
+  return {
+    health: view.health,
+    baseUrl: entry.baseUrl,
+    backlog: stat.backlog,
+    files: stat.files,
+    runs: view.runs ?? [],
+    selected,
+    autoSelectedLatest: view.autoSelectedLatest === true,
+    sheets: view.sheets ?? [],
+    candidates,
+    sliceMap: view.sliceMap ?? null,
+    sheetFeedback: sheetFeedbackValue,
+    briefFeedback: briefFeedbackValue,
+    acceptance: Object.fromEntries(entry.acceptance),
+    sidecarStartup: entry.sidecarStartup,
+    stale: view.stale === true,
+    error: view.error ?? null,
+  };
+}
+
+/**
+ * Build the full read view model for one instance. Never throws — every failure
+ * is folded into a structured, renderable state (health badge + degrade panels +
+ * per-section error strings), mirroring the monolith's graceful-degrade page.
+ * Backlog + plan/brief browsing work even when the sidecar is DOWN (fs-only).
+ *
+ * CACHE-FIRST: when the target run has already been rendered once (in ANY
+ * instance/surface — `runViewCache` is module-wide), this returns the
+ * last-known-good view synchronously (`stale: true`) with NO awaited network
+ * call, and schedules a background revalidation that pushes fresh state via
+ * SSE once it completes (see `lib/run-view-cache.mjs`). Only a true cold miss
+ * (a target never rendered before) awaits the sidecar.
+ *
+ * @param {string} instanceId
+ * @param {{ explicitSheet?: string | null }} [options] `explicitSheet` is the
+ *   raw `sheet` query param from an explicit `/api/select?...&sheet=` request
+ *   (same run or not). The shared `runViewCache` is keyed ONLY by
+ *   `briefId::runId`, not by sheet, so a run that was already rendered under a
+ *   DIFFERENT sheet would otherwise replay that STALE sheet + slice-map via
+ *   cache-first and silently clobber the just-requested selection — worse, an
+ *   already in-flight background revalidation for the OLD sheet can suppress
+ *   a fresh fetch entirely (see `resolveCacheFirstState`'s "concurrent
+ *   requests never start a second overlapping live fetch" contract). When
+ *   `explicitSheet` is set, this call BYPASSES the cache-first read for the
+ *   run-view cache (forces the cold/live path) so the response always
+ *   reflects the requested sheet, while still overlaying the shared cache
+ *   under the run's own resolved key afterwards for later cache-first reads.
+ */
+async function buildState(instanceId, { explicitSheet = null } = {}) {
+  const entry = instances.get(instanceId);
+  if (!entry) return { error: 'instance not found' };
+  const stat = await getStatic(entry);
+
+  const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
+  const priorSelectedSnapshot = entry.selected;
+  const targetBriefId = requestedSnapshot.briefId ?? priorSelectedSnapshot?.briefId ?? null;
+  const targetRunId = requestedSnapshot.runId ?? priorSelectedSnapshot?.runId ?? null;
+  const naturalKey = runViewKey(targetBriefId, targetRunId) ?? lastRunKey;
+  // An explicit sheet request forces the bypass key (null), which makes
+  // `resolveCacheFirstState` treat this call as a cold miss: it awaits
+  // `liveFetch` unconditionally instead of ever replaying a cached snapshot.
+  const key = explicitSheet ? null : naturalKey;
+  const versionAtCall = entry.selectionVersion;
+
+  const view = await resolveCacheFirstState({
+    cache: runViewCache,
+    key,
+    liveFetch: () =>
+      liveBuildState(entry, stat, {
+        requested: requestedSnapshot,
+        priorSelected: priorSelectedSnapshot,
+      }),
+    isCurrent: () => entry.selectionVersion === versionAtCall,
+    // `applyFreshRevalidation` (lib/run-view-cache.mjs) re-reads the static
+    // half of the view model right before mutating/pushing — NEVER reuse the
+    // `stat` snapshot captured when this call started. A background
+    // revalidation can complete AFTER a static-mutating action
+    // (accept-and-queue, an explicit reload) has already invalidated/rebuilt
+    // `entry.cache`, and `isCurrent()` only tracks `selectionVersion` (bumped
+    // by run/sheet selection), which accept does NOT bump. Pushing with the
+    // stale closed-over `stat` would silently clobber the just-rebuilt
+    // post-accept backlog/promotedRunIds/manifestApprovals (and therefore
+    // per-variant lifecycle) with the pre-accept snapshot even though this
+    // completion is still "current". `getStatic` is cheap when `entry.cache`
+    // is already populated (memoised read), so this adds no cost on the
+    // common path.
+    //
+    // The inverse race also matters: `entry.selectionVersion` can change
+    // WHILE that re-read is in flight (e.g. a user click selects a different
+    // run/sheet). `applyFreshRevalidation` re-checks `isCurrent()` AFTER the
+    // re-read and BEFORE mutating `entry.selected` or pushing — if the
+    // selection moved on during the await, it is a no-op instead of
+    // clobbering the newer selection with this now-superseded completion.
+    onFresh: async (fresh) =>
+      applyFreshRevalidation({
+        isCurrent: () => entry.selectionVersion === versionAtCall,
+        getStatic: () => getStatic(entry),
+        applyMutation: () => {
+          entry.selected = fresh.selected ?? null;
+        },
+        pushState: (currentStat) => entry.pushState?.(composeState(entry, currentStat, fresh)),
+      }),
+    onRevalidateError: (err) =>
+      log(`background run-view revalidate failed: ${err?.message ?? err}`, 'warn'),
+    isRevalidating: () => (key ? entry.revalidatingKeys.has(key) : false),
+    setRevalidating: (value) => {
+      if (!key) return;
+      if (value) entry.revalidatingKeys.add(key);
+      else entry.revalidatingKeys.delete(key);
+    },
+    // A bare open with no explicit target reads under `lastRunKey` as a GUESS
+    // at "whatever was last viewed", but "auto-select latest" may resolve to a
+    // DIFFERENT run — always write the fresh result under ITS OWN resolved
+    // key, never under the (possibly unrelated) guessed read key.
+    deriveWriteKey: (fresh) =>
+      runViewKey(fresh.selected?.briefId ?? null, fresh.selected?.runId ?? null),
+  });
+
+  // Persist the run ACTUALLY resolved by this view as the "last viewed run"
+  // pointer, not the (possibly null) natural/guessed read key — a first-ever,
+  // no-input bootstrap has `naturalKey === null` (nothing requested/selected
+  // yet, and `lastRunKey` itself is still null), so using `naturalKey` here
+  // would leave the just-resolved run un-discoverable by the NEXT bare open,
+  // forcing it to hit Azure again despite the run now being cached. Falling
+  // back to `naturalKey` preserves the previous selection when the sidecar is
+  // down and `view.selected` is null.
+  const resolvedKey =
+    runViewKey(view.selected?.briefId ?? null, view.selected?.runId ?? null) ?? naturalKey;
+  if (resolvedKey) lastRunKey = resolvedKey;
+  entry.selected = view.selected ?? null;
+  return composeState(entry, stat, view);
+}
+
+/**
+ * Force a live (network) rebuild, bypassing the cache-first read entirely —
+ * used by the explicit Refresh action, which the operator expects to actually
+ * re-probe the sidecar rather than replay a snapshot. Updates the cache with
+ * the fresh result so subsequent cache-first reads pick it up.
+ */
+async function forceLiveState(instanceId) {
+  const entry = instances.get(instanceId);
+  if (!entry) return { error: 'instance not found' };
+  entry.selectionVersion += 1;
+  entry.cache = null;
+  const stat = await getStatic(entry);
+  const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
+  const priorSelectedSnapshot = entry.selected;
+  const view = await liveBuildState(entry, stat, {
+    requested: requestedSnapshot,
+    priorSelected: priorSelectedSnapshot,
+  });
+  const key = runViewKey(view.selected?.briefId ?? null, view.selected?.runId ?? null);
+  if (key) {
+    runViewCache.set(key, view);
+    lastRunKey = key;
+  }
+  entry.selected = view.selected ?? null;
+  return composeState(entry, stat, { ...view, stale: false });
+}
+
+async function acceptAndQueue(instanceId, briefId, runId, variantIndex) {
+  const entry = instances.get(instanceId);
+  if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
+  const key = acceptanceKey(briefId, runId, variantIndex);
+  entry.acceptance.set(key, { state: 'accepting' });
+  await entry.pushState?.(await buildState(instanceId));
+  try {
+    const result = await entry.client.acceptVariant(briefId, runId, variantIndex);
+    if (!result || result.state !== 'queued' || typeof result.issueUrl !== 'string') {
+      throw new Error('Sidecar returned an invalid acceptance result.');
+    }
+    entry.acceptance.set(key, result);
+    entry.cache = null;
+    await entry.pushState?.(await buildState(instanceId));
+    return result;
+  } catch (error) {
+    entry.acceptance.set(key, {
+      state: 'error',
+      code: typeof error?.code === 'string' ? error.code : 'accept-failed',
+      message: error?.message ?? String(error),
+    });
+    await entry.pushState?.(await buildState(instanceId));
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Embedded Postprocess Debugger (`/postprocess/*`) — see the module header
+// for the architecture summary. `buildPostprocessState` is a 1:1 port of
+// `postprocess/extension.mjs`'s own `buildState`, but reads/writes
+// `entry.postprocess.*` (this canvas's OWN versioned substate — see rule #5
+// in the embed-postprocess plan) and calls through `entry.client` (the SAME
+// sidecar connection Workflow's own routes use) rather than a second one.
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the full Postprocess Debugger view model for one Workflow instance.
+ * Never throws — every failure folds into a structured, renderable state,
+ * mirroring `postprocess/extension.mjs`'s own `buildState`.
+ *
+ * Ownership guard (plan requirement #5): `versionAtCall` is captured BEFORE
+ * any await; if `entry.postprocess.selectionVersion` moved on by the time the
+ * sidecar round-trips resolve (a newer select/persist landed while this call
+ * was in flight), the computed view is still returned to ITS OWN caller (the
+ * HTTP response that awaited it), but `entry.postprocess.selected` is left
+ * alone so this now-stale completion can never overwrite a newer selection.
+ */
+function postprocessStateKey(selection) {
+  if (!selection || typeof selection.briefId !== 'string' || typeof selection.runId !== 'string') {
+    return null;
+  }
+  const variantIndex =
+    typeof selection.variantIndex === 'number' && selection.variantIndex >= 0
+      ? selection.variantIndex
+      : 0;
+  const sheet = typeof selection.sheet === 'string' ? selection.sheet : '';
+  return `${selection.briefId}::${selection.runId}::${variantIndex}::${sheet}`;
+}
+
+async function buildPostprocessState(instanceId, { bypassCache = false } = {}) {
+  const entry = instances.get(instanceId);
+  if (!entry) return { error: 'instance not found' };
+  const pp = entry.postprocess;
+  const baseUrl = entry.baseUrl;
+  const versionAtCall = pp.selectionVersion;
+  const requestedSnapshot = { ...pp.requested };
+  const selectedSnapshot = pp.selected ? { ...pp.selected } : null;
+  const targetSelection = {
+    briefId: requestedSnapshot.briefId ?? selectedSnapshot?.briefId ?? null,
+    runId: requestedSnapshot.runId ?? selectedSnapshot?.runId ?? null,
+    variantIndex:
+      typeof requestedSnapshot.variantIndex === 'number'
+        ? requestedSnapshot.variantIndex
+        : (selectedSnapshot?.variantIndex ?? 0),
+    sheet:
+      typeof requestedSnapshot.sheet === 'string'
+        ? requestedSnapshot.sheet
+        : (selectedSnapshot?.sheet ?? null),
+  };
+  const targetKey = postprocessStateKey(targetSelection);
+
+  if (!bypassCache && targetKey && pp.stateCache.has(targetKey)) {
+    const cached = pp.stateCache.get(targetKey);
+    pp.selected = cached.selected
+      ? {
+          briefId: cached.selected.briefId,
+          runId: cached.selected.runId,
+          variantIndex: cached.selected.variantIndex,
+          sheet: cached.selected.activeSheet,
+        }
+      : null;
+    if (!pp.revalidatingKeys.has(targetKey)) {
+      pp.revalidatingKeys.add(targetKey);
+      void buildPostprocessState(instanceId, { bypassCache: true })
+        .catch((error) => {
+          log(`postprocess background revalidate failed: ${error?.message ?? error}`, 'warn');
+        })
+        .finally(() => {
+          pp.revalidatingKeys.delete(targetKey);
+        });
+    }
+    return { ...cached, stale: true };
+  }
+
+  const health = await entry.client.probeHealth();
+  if (health.state !== 'up') {
+    return { health, baseUrl, sidecarStartup: entry.sidecarStartup };
+  }
+
+  let runs = [];
+  try {
+    const raw = await entry.client.listRuns();
+    runs = raw
+      .filter((run) => run && typeof run.briefId === 'string' && typeof run.runId === 'string')
+      .map((run) => ({
+        briefId: run.briefId,
+        runId: run.runId,
+        candidateCount: typeof run.candidateCount === 'number' ? run.candidateCount : null,
+      }));
+  } catch (err) {
+    return { health, baseUrl, runs: [], error: `Failed to list runs: ${err?.message ?? err}` };
+  }
+
+  if (runs.length === 0) {
+    pp.selected = null;
+    return { health, baseUrl, runs: [], selected: null };
+  }
+
+  const findRun = (briefId, runId) =>
+    runs.find((run) => run.briefId === briefId && run.runId === runId) ?? null;
+
+  let autoSelectedLatest = false;
+  let selected = selectedSnapshot;
+  if (selected && !findRun(selected.briefId, selected.runId)) {
+    selected = null; // previously-selected run vanished (e.g. archived)
+  }
+  if (!selected) {
+    const req = requestedSnapshot;
+    const reqRun = req.briefId && req.runId ? findRun(req.briefId, req.runId) : null;
+    if (reqRun) {
+      selected = {
+        briefId: reqRun.briefId,
+        runId: reqRun.runId,
+        variantIndex: typeof req.variantIndex === 'number' ? req.variantIndex : 0,
+        sheet: typeof req.sheet === 'string' ? req.sheet : null,
+      };
+    } else {
+      const latest = runs[0];
+      selected = { briefId: latest.briefId, runId: latest.runId, variantIndex: 0, sheet: null };
+      autoSelectedLatest = true;
+    }
+  }
+
+  let variantIndices = [];
+  let briefPath = null;
+  let appliedBackground = null;
+  let appliedDisabledModules = [];
+  let appliedFacing = null;
+  let appliedManualAnchor = null;
+  let summaryError = null;
+  try {
+    const summary = await entry.client.fetchRunSummary(selected.briefId, selected.runId);
+    variantIndices = collectVariantIndices(summary);
+    briefPath =
+      summary && typeof summary.briefPath === 'string' && summary.briefPath.length > 0
+        ? summary.briefPath
+        : null;
+    appliedBackground = extractAppliedBackgroundTweaks(summary);
+    appliedDisabledModules = extractAppliedDisabledModules(summary);
+    appliedFacing = extractAppliedFacing(summary);
+    appliedManualAnchor = extractAppliedManualAnchor(summary);
+  } catch (err) {
+    summaryError = `Failed to load run summary: ${err?.message ?? err}`;
+  }
+
+  if (variantIndices.length > 0 && !variantIndices.includes(selected.variantIndex)) {
+    selected.variantIndex = variantIndices[0];
+  }
+  const padded = padVariant(selected.variantIndex);
+
+  const manifest = await pp.client.fetchPipelineManifest(selected.briefId, selected.runId, padded);
+
+  let sheetRunId = selected.runId;
+  let sheets = [];
+  try {
+    sheets = await entry.client.fetchSheets(selected.briefId, selected.runId);
+  } catch (err) {
+    log(
+      `postprocess fetchSheets failed for ${selected.briefId}/${selected.runId}: ${err?.message ?? err}`,
+      'warn',
+    );
+    sheets = [];
+  }
+  if (sheets.length === 0 && manifest?.sourceRunId) {
+    sheetRunId = manifest.sourceRunId;
+    try {
+      sheets = await entry.client.fetchSheets(selected.briefId, sheetRunId);
+    } catch (err) {
+      log(
+        `postprocess fetchSheets (sourceRun) failed for ${selected.briefId}/${sheetRunId}: ${err?.message ?? err}`,
+        'warn',
+      );
+      sheets = [];
+    }
+  }
+  const activeSheet = resolveActiveSheet(sheets, selected.sheet, sheets[sheets.length - 1] ?? null);
+
+  let sliceMap = null;
+  if (activeSheet) {
+    try {
+      sliceMap = await entry.client.fetchSliceMap(selected.briefId, sheetRunId, activeSheet);
+    } catch (err) {
+      sliceMap = { ok: false, error: `slice-map fetch failed: ${err?.message ?? err}` };
+    }
+  }
+
+  // Ownership guard: only commit the resolved selection if nothing newer
+  // (another select/persist) has landed while the above awaits were in flight.
+  if (pp.selectionVersion === versionAtCall) {
+    pp.selected = {
+      briefId: selected.briefId,
+      runId: selected.runId,
+      variantIndex: selected.variantIndex,
+      sheet: activeSheet,
+    };
+  }
+
+  const state = {
+    health,
+    baseUrl,
+    runs,
+    autoSelectedLatest,
+    sliceMap,
+    error: summaryError,
+    selected: {
+      briefId: selected.briefId,
+      runId: selected.runId,
+      variantIndex: selected.variantIndex,
+      variantIndices,
+      briefPath,
+      sheetRunId,
+      sheets,
+      activeSheet,
+      manifestSteps: manifest ? manifest.steps : [],
+      profile: manifest ? manifest.profile : null,
+      appliedBackground,
+      appliedDisabledModules,
+      appliedFacing,
+      appliedManualAnchor,
+    },
+  };
+  const resolvedKey = postprocessStateKey({
+    briefId: state.selected.briefId,
+    runId: state.selected.runId,
+    variantIndex: state.selected.variantIndex,
+    sheet: state.selected.activeSheet,
+  });
+  if (targetKey) pp.stateCache.set(targetKey, state);
+  if (resolvedKey) pp.stateCache.set(resolvedKey, state);
+  return state;
 }
 
 /** Relay a sidecar image (sheet / processed / raw) as a streamed web Response. */
@@ -377,35 +975,483 @@ const jsonRoutes = [
           runId,
           sheet: sheet ?? (changedRun ? null : (entry.selected?.sheet ?? null)),
         };
+        // A newer selection supersedes any in-flight background revalidation
+        // for the PREVIOUS target — bumping the version means that stale
+        // completion's `isCurrent()` check will fail and it will be dropped
+        // instead of clobbering this (possibly cache-first, possibly live) read.
+        entry.selectionVersion += 1;
       } else if (sheet && entry.selected) {
         entry.selected = { ...entry.selected, sheet };
+        entry.selectionVersion += 1;
       }
-      const state = await buildState(instanceId);
+      // `sheet` (when present) is an EXPLICIT request — see buildState()'s
+      // `explicitSheet` option doc for why this must bypass the run-view
+      // cache-first read rather than risk replaying a stale cached sheet.
+      const state = await buildState(instanceId, { explicitSheet: sheet || null });
       await entry.pushState?.(state);
       return { json: state };
     },
   },
   {
-    // Explicit reload: invalidate the fs-static cache, then rebuild + push.
+    method: 'POST',
+    path: '/api/feedback',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      if (!isTrustedMutationOrigin(req, entry)) {
+        return { status: 403, json: { error: 'forbidden-origin' } };
+      }
+      if (!tokensMatch(req.headers['x-workflow-mutation-token'], entry.mutationToken)) {
+        return { status: 403, json: { error: 'forbidden', message: 'Invalid mutation token.' } };
+      }
+      if (!isJsonContentType(req)) {
+        return {
+          status: 415,
+          json: {
+            error: 'unsupported-media-type',
+            message: 'Content-Type must be application/json.',
+          },
+        };
+      }
+      let payload;
+      try {
+        payload = await readFeedbackJsonBody(req);
+      } catch (error) {
+        if (error?.code === 'body-too-large') {
+          return {
+            status: 413,
+            json: { error: 'body-too-large', message: 'Feedback payload exceeds 16 KiB.' },
+          };
+        }
+        if (error?.code === 'invalid-json') {
+          return {
+            status: 400,
+            json: { error: 'bad-request', message: 'Feedback payload must be valid JSON.' },
+          };
+        }
+        throw error;
+      }
+      let feedback;
+      try {
+        feedback = saveFeedback(FEEDBACK_PATH, payload);
+      } catch (error) {
+        if (error?.code === 'invalid-feedback') {
+          return {
+            status: 400,
+            json: { error: 'bad-request', message: error.message },
+          };
+        }
+        throw error;
+      }
+      // HARD GATE (ADR: cache-first sheet load must never regress): do NOT
+      // buildState()+pushState() here. A full state rebuild would broadcast a
+      // brand-new `state` over THIS SAME instance's own SSE connection, whose
+      // `render(state)` handler does a full `app.replaceChildren(...)` —
+      // recreating the sheet `<img>` (and its loading spinner) on every single
+      // criterion/sheet/brief confirm. The response body IS the patch: the
+      // calling widget already applies it to its own local draft (see
+      // `renderCriterionFeedback`/sheet/brief confirm handlers in
+      // renderer.mjs) without any re-render. Other open instances simply pick
+      // up the fresh value on their next natural rebuild (select/reload/
+      // reconnect) — feedback is read fresh from disk on every buildState call
+      // regardless, so no server-side cache goes stale.
+      return { json: { feedback } };
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/accept',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance-not-found' } };
+      if (!tokensMatch(req.headers['x-workflow-mutation-token'], entry.mutationToken)) {
+        return { status: 403, json: { error: 'forbidden', message: 'Invalid mutation token.' } };
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        const tooLarge =
+          error?.statusCode === 413 ||
+          error?.code === 'body-too-large' ||
+          error?.message === 'request body too large';
+        return {
+          status: tooLarge ? 413 : 400,
+          json: {
+            error: tooLarge ? 'body-too-large' : 'bad-request',
+            message: tooLarge ? error.message : 'Request body must be valid JSON.',
+          },
+        };
+      }
+      const { briefId, runId, variantIndex } = body;
+      if (
+        typeof briefId !== 'string' ||
+        typeof runId !== 'string' ||
+        typeof variantIndex !== 'number' ||
+        !Number.isInteger(variantIndex) ||
+        variantIndex < 0
+      ) {
+        return {
+          status: 400,
+          json: {
+            error: 'bad-request',
+            message: 'briefId, runId, and a non-negative integer variantIndex are required.',
+          },
+        };
+      }
+      try {
+        return { json: await acceptAndQueue(instanceId, briefId, runId, variantIndex) };
+      } catch (error) {
+        return {
+          status: Number.isInteger(error?.status) ? error.status : 502,
+          json: {
+            error: typeof error?.code === 'string' ? error.code : 'accept-failed',
+            message: error?.message ?? String(error),
+          },
+        };
+      }
+    },
+  },
+  {
+    // Explicit reload: invalidate the fs-static cache, force a LIVE (non
+    // cache-first) rebuild, then push. The operator clicking Refresh expects an
+    // actual re-probe, not a replayed snapshot.
     method: 'GET',
     path: '/api/reload',
     handler: async ({ instanceId }) => {
       const entry = instances.get(instanceId);
       if (!entry) return { status: 404, json: { error: 'instance not found' } };
-      entry.cache = null;
-      const state = await buildState(instanceId);
+      const state = await forceLiveState(instanceId);
       await entry.pushState?.(state);
       return { json: state };
     },
   },
   fileContentRoute('/api/plan', 'plan'),
   fileContentRoute('/api/brief', 'brief'),
+
+  // ---- Embedded Postprocess Debugger (`/postprocess/*`) ------------------
+  // See the module header + `buildPostprocessState` for the architecture.
+  {
+    // HTML root. Query params (briefId/runId/variantIndex/sheet) seed
+    // `entry.postprocess.requested/selected` BEFORE the document is returned,
+    // so the client's very first `/postprocess/api/state` fetch already
+    // resolves the exact handoff context — no extra select round-trip. Writes
+    // directly via `res` (text/html, not the harness's JSON envelope).
+    method: 'GET',
+    path: '/postprocess/',
+    handler: async ({ url, res, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      const pp = entry.postprocess;
+      const qBriefId = url.searchParams.get('briefId');
+      const qRunId = url.searchParams.get('runId');
+      const qVariantRaw = url.searchParams.get('variantIndex');
+      const qVariant =
+        qVariantRaw != null && qVariantRaw !== '' && Number.isFinite(Number(qVariantRaw))
+          ? Number(qVariantRaw)
+          : null;
+      const qSheet = url.searchParams.get('sheet');
+      if (qBriefId && qRunId) {
+        const changedRun =
+          !pp.selected || pp.selected.briefId !== qBriefId || pp.selected.runId !== qRunId;
+        pp.requested = { briefId: qBriefId, runId: qRunId, variantIndex: qVariant, sheet: qSheet };
+        pp.selected = {
+          briefId: qBriefId,
+          runId: qRunId,
+          variantIndex: qVariant ?? (changedRun ? 0 : (pp.selected?.variantIndex ?? 0)),
+          sheet: qSheet ?? (changedRun ? null : (pp.selected?.sheet ?? null)),
+        };
+        pp.selectionVersion += 1;
+      }
+      const html = renderPostprocessHtml(instanceId, '/postprocess', entry.mutationToken);
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(html);
+      return undefined;
+    },
+  },
+  {
+    method: 'GET',
+    path: '/postprocess/api/state',
+    handler: async ({ instanceId }) => ({ json: await buildPostprocessState(instanceId) }),
+  },
+  {
+    method: 'GET',
+    path: '/postprocess/api/select',
+    handler: async ({ url, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      const pp = entry.postprocess;
+      const briefId = url.searchParams.get('briefId');
+      const runId = url.searchParams.get('runId');
+      const sheet = url.searchParams.get('sheet');
+      const variantParam = url.searchParams.get('variant');
+      const variant =
+        variantParam != null && variantParam !== '' && Number.isFinite(Number(variantParam))
+          ? Number(variantParam)
+          : null;
+      if (briefId && runId) {
+        const changedRun =
+          !pp.selected || pp.selected.briefId !== briefId || pp.selected.runId !== runId;
+        pp.requested = {
+          briefId,
+          runId,
+          variantIndex: variant ?? (changedRun ? null : (pp.requested?.variantIndex ?? null)),
+        };
+        pp.selected = {
+          briefId,
+          runId,
+          variantIndex: variant ?? (changedRun ? 0 : (pp.selected?.variantIndex ?? 0)),
+          sheet: sheet ?? (changedRun ? null : (pp.selected?.sheet ?? null)),
+        };
+      } else if (pp.selected) {
+        if (variant != null) pp.selected = { ...pp.selected, variantIndex: variant };
+        if (sheet) pp.selected = { ...pp.selected, sheet };
+      }
+      // A newer selection supersedes any in-flight background build for the
+      // PREVIOUS target — see buildPostprocessState's ownership guard.
+      pp.selectionVersion += 1;
+      // The in-iframe client renders this fetch response directly — do NOT
+      // also broadcast over `/postprocess/events` (a double delivery would
+      // re-render and fire a duplicate live-postprocess relay), matching the
+      // standalone canvas's own `/api/select` route.
+      return { json: await buildPostprocessState(instanceId) };
+    },
+  },
+  {
+    method: 'GET',
+    path: '/postprocess/api/runs',
+    handler: async ({ instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      return { json: { runs: await entry.client.listRuns() } };
+    },
+  },
+  {
+    // Non-persisting preview relay. Only the trusted-origin check applies —
+    // no mutation token (nothing is written), matching the standalone canvas.
+    method: 'POST',
+    path: '/postprocess/api/live-postprocess',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) {
+        return {
+          status: 404,
+          json: { ok: false, reason: 'not-open', message: 'instance not found' },
+        };
+      }
+      if (!isTrustedMutationOrigin(req, entry)) {
+        return {
+          status: 403,
+          json: { ok: false, reason: 'forbidden-origin', message: 'forbidden' },
+        };
+      }
+      let body;
+      try {
+        // Payload carries a base64 raw PNG crop — needs a larger bound than
+        // the 16 KiB default (matches the standalone canvas's 8 MiB limit).
+        body = await readJsonBody(req, 8 * 1024 * 1024);
+      } catch (error) {
+        const tooLarge =
+          error?.statusCode === 413 ||
+          error?.code === 'body-too-large' ||
+          error?.message === 'request body too large';
+        return {
+          status: tooLarge ? 413 : 400,
+          json: {
+            ok: false,
+            reason: tooLarge ? 'body-too-large' : 'bad-request',
+            message: error?.message ?? String(error),
+          },
+        };
+      }
+      const briefId = typeof body.briefId === 'string' ? body.briefId : null;
+      const runId = typeof body.runId === 'string' ? body.runId : null;
+      const rawPngBase64 = typeof body.rawPngBase64 === 'string' ? body.rawPngBase64 : null;
+      if (!briefId || !runId || !rawPngBase64) {
+        return {
+          status: 400,
+          json: {
+            ok: false,
+            reason: 'bad-request',
+            message: 'briefId, runId and rawPngBase64 are required',
+          },
+        };
+      }
+      const colorToleranceSq = clampTolerance(
+        Number(body.colorToleranceSq),
+        DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
+      );
+      const fringeToleranceSq = clampTolerance(
+        Number(body.fringeToleranceSq),
+        DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
+      );
+      const disabledModules = normalizeDisabledModuleIds(body.disabledModules);
+      if (disabledModules === null) {
+        return {
+          status: 400,
+          json: {
+            ok: false,
+            reason: 'bad-request',
+            message: 'disabledModules must contain only canonical module IDs',
+          },
+        };
+      }
+      const result = await entry.postprocess.client.relayLivePostprocess({
+        briefId,
+        runId,
+        rawPngBase64,
+        options: {
+          background: { colorToleranceSq, fringeToleranceSq },
+          disabledModules,
+        },
+      });
+      return { json: result };
+    },
+  },
+  {
+    // The one WRITING postprocess route — guarded exactly like `/api/feedback`
+    // / `/api/accept`: trusted origin, the Workflow mutation token, a strict
+    // JSON content-type, and a bounded body (plan requirement #6).
+    method: 'POST',
+    path: '/postprocess/api/persist-postprocess',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) {
+        return {
+          status: 404,
+          json: { ok: false, reason: 'not-open', message: 'instance not found' },
+        };
+      }
+      if (!isTrustedMutationOrigin(req, entry)) {
+        return {
+          status: 403,
+          json: { ok: false, reason: 'forbidden-origin', message: 'forbidden' },
+        };
+      }
+      if (!tokensMatch(req.headers['x-workflow-mutation-token'], entry.mutationToken)) {
+        return {
+          status: 403,
+          json: { ok: false, reason: 'forbidden', message: 'Invalid mutation token.' },
+        };
+      }
+      if (!isJsonContentType(req)) {
+        return {
+          status: 415,
+          json: {
+            ok: false,
+            reason: 'unsupported-media-type',
+            message: 'Content-Type must be application/json.',
+          },
+        };
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        const tooLarge = error?.statusCode === 413 || error?.code === 'body-too-large';
+        return {
+          status: tooLarge ? 413 : 400,
+          json: {
+            ok: false,
+            reason: tooLarge ? 'body-too-large' : 'bad-request',
+            message: error?.message ?? String(error),
+          },
+        };
+      }
+      // NEVER trust the client: validate + rebuild the payload server-side.
+      const normalized = normalizePersistRequest(body);
+      if (!normalized.ok) {
+        return {
+          status: 400,
+          json: { ok: false, reason: 'bad-request', message: normalized.error },
+        };
+      }
+      const payload = buildPersistPostprocessPayload(normalized.args);
+      const result = await entry.postprocess.client.relayPersistPostprocess({
+        briefId: normalized.args.briefId,
+        runId: normalized.args.runId,
+        payload,
+      });
+      if (!result.ok) return { json: result };
+      const pp = entry.postprocess;
+      pp.stateCache.clear();
+      const changedRun =
+        !pp.selected ||
+        pp.selected.briefId !== normalized.args.briefId ||
+        pp.selected.runId !== normalized.args.runId;
+      const targetVariant =
+        normalized.args.mode === 'replace'
+          ? normalized.args.variantIndex
+          : (pp.selected?.variantIndex ?? 0);
+      pp.requested = {
+        briefId: normalized.args.briefId,
+        runId: normalized.args.runId,
+        variantIndex: targetVariant,
+      };
+      pp.selected = {
+        briefId: normalized.args.briefId,
+        runId: normalized.args.runId,
+        variantIndex: targetVariant,
+        sheet: changedRun ? null : (pp.selected?.sheet ?? null),
+      };
+      pp.selectionVersion += 1;
+      return { json: { ok: true, state: await buildPostprocessState(instanceId) } };
+    },
+  },
+  {
+    // SSE, scoped to this instance's OWN postprocess sub-state — kept
+    // separate from the harness's built-in `/events` (which broadcasts
+    // Workflow's own `buildState()`). Writes directly via `res` and never
+    // ends the response, so `runJsonRoute`'s `res.headersSent` check leaves
+    // the connection open (the same pattern `canvas-harness.mjs`'s own
+    // `/events` uses). Only the initial connect frame is ever sent here —
+    // `/postprocess/api/select` and a successful persist intentionally do NOT
+    // also broadcast (the fetch response IS the update; see those handlers).
+    method: 'GET',
+    path: '/postprocess/events',
+    handler: async ({ req, res, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      res.write(': connected\n\n');
+      const initial = await buildPostprocessState(instanceId);
+      res.write(`data: ${JSON.stringify({ type: 'state', state: initial })}\n\n`);
+      entry.postprocess.sseClients.add(res);
+      const heartbeat = setInterval(() => {
+        try {
+          res.write(': heartbeat\n\n');
+        } catch {
+          clearInterval(heartbeat);
+          entry.postprocess.sseClients.delete(res);
+        }
+      }, 25000);
+      heartbeat.unref?.();
+      req.on('close', () => {
+        clearInterval(heartbeat);
+        entry.postprocess.sseClients.delete(res);
+      });
+      return undefined;
+    },
+  },
 ];
 
 const binaryRoutes = [
   imageRoute('/img/sheet', 'sheet'),
   imageRoute('/img/processed', 'processed'),
   imageRoute('/img/raw', 'raw'),
+  // Same handler, reused verbatim under the embedded namespace — same
+  // `entry.client` + shared `imageCache`, no second cache/connection.
+  imageRoute('/postprocess/img/sheet', 'sheet'),
+  imageRoute('/postprocess/img/processed', 'processed'),
+  imageRoute('/postprocess/img/raw', 'raw'),
 ];
 
 async function ensureServer(ctx) {
@@ -443,14 +1489,28 @@ async function startServerForInstance(ctx) {
       runId: typeof input.runId === 'string' ? input.runId : null,
     },
     selected: null,
+    mutationToken: randomBytes(24).toString('hex'),
+    acceptance: new Map(),
+    selectionVersion: 0,
+    revalidatingKeys: new Set(),
     cache: null,
+    postprocess: {
+      client: createPostprocessClient({ sidecarClient: client }),
+      requested: { briefId: null, runId: null, variantIndex: null, sheet: null },
+      selected: null,
+      selectionVersion: 0,
+      stateCache: new Map(),
+      revalidatingKeys: new Set(),
+      sseClients: new Set(),
+    },
+    sidecarStartup: { state: 'starting', error: null, logPath: null },
     pushState: async () => {},
     close: async () => {},
   };
 
   const server = await startCanvasServer({
     instanceId: ctx.instanceId,
-    renderHtml,
+    renderHtml: () => renderHtml(ctx.instanceId, entry.mutationToken),
     buildState: () => buildState(ctx.instanceId),
     jsonRoutes,
     binaryRoutes,
@@ -463,6 +1523,15 @@ async function startServerForInstance(ctx) {
   // missing entry, so an early /api/state request degrades cleanly rather than
   // observing a half-initialized entry.
   instances.set(ctx.instanceId, entry);
+  beginSpriteSidecarStartup(entry, {
+    rebindClients: (url) => {
+      entry.client = createSidecarClient({ baseUrl: url, workspaceRoot });
+      // The embedded Postprocess client composes `entry.client` — rebuild it
+      // alongside so it never holds a stale closed-over sidecar client after
+      // a restart (ONE sidecar startup/rebind owner for both surfaces).
+      entry.postprocess.client = createPostprocessClient({ sidecarClient: entry.client });
+    },
+  });
   log(`serving instance ${ctx.instanceId} at ${server.url} (sidecar ${baseUrl})`);
   return entry;
 }
@@ -471,7 +1540,7 @@ const canvas = createCanvas({
   id: 'workflow',
   displayName: 'Sprite Generation Workflow',
   description:
-    'Read-only parity view of the sprite-generation workflow READ surface: asset backlog with integration status, plan/brief YAML browsing, and generated runs (variants + judge + sensors + sheet/slice-map). The durable queue, asset-request manifest, and all write actions are the follow-up slice (B2).',
+    'Inspect the sprite-generation workflow, review judge/sensor traces and record per-criterion feedback, see each variant\u2019s accept/integration lifecycle, and accept a selected run variant into the durable asset-checkin queue.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -627,9 +1696,41 @@ const canvas = createCanvas({
         const { briefId, runId, sheet } = ctx.input;
         entry.requested = { briefId, runId };
         entry.selected = { briefId, runId, sheet: sheet ?? null };
-        const state = await buildState(ctx.instanceId);
+        entry.selectionVersion += 1;
+        // Thread `sheet` through exactly like the HTTP `/api/select` route:
+        // an explicit sheet on the SAME run must bypass the run-view
+        // cache-first read (see buildState()'s `explicitSheet` option doc),
+        // otherwise this action-path selection can replay an unrelated
+        // cached sheet/slice-map for the run instead of the one requested.
+        const state = await buildState(ctx.instanceId, { explicitSheet: sheet || null });
         await entry.pushState?.(state);
         return { selected: state.selected, runCount: state.runs?.length ?? 0 };
+      },
+    },
+    {
+      name: 'accept_variant',
+      description:
+        'Approve a generated variant and publish it to the durable asset-checkin queue atomically.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['briefId', 'runId', 'variantIndex'],
+        properties: {
+          briefId: { type: 'string' },
+          runId: { type: 'string' },
+          variantIndex: { type: 'integer', minimum: 0 },
+        },
+      },
+      handler: async (ctx) => {
+        const { briefId, runId, variantIndex } = ctx.input;
+        try {
+          return await acceptAndQueue(ctx.instanceId, briefId, runId, variantIndex);
+        } catch (error) {
+          throw new CanvasError(
+            typeof error?.code === 'string' ? error.code : 'accept_failed',
+            error?.message ?? String(error),
+          );
+        }
       },
     },
     {
@@ -640,8 +1741,7 @@ const canvas = createCanvas({
       handler: async (ctx) => {
         const entry = instances.get(ctx.instanceId);
         if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
-        entry.cache = null;
-        const state = await buildState(ctx.instanceId);
+        const state = await forceLiveState(ctx.instanceId);
         await entry.pushState?.(state);
         return { health: state.health, runCount: state.runs?.length ?? 0 };
       },

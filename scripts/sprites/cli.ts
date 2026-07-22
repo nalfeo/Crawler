@@ -24,8 +24,6 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { spawn } from 'node:child_process';
-import { getSessionServerPorts } from '../shared/session-server-ports.js';
 import { JudgeBudget } from './cost-tracker.js';
 import { runFull } from './run-full.js';
 import { JudgeCache } from './judge-cache.js';
@@ -36,6 +34,7 @@ import {
   createVisionProvider,
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
+import { ensureSidecarService } from './sidecar/service-manager.js';
 
 // The baseline `DEFAULT_AZURE_DEPLOYMENT` (provider/factory.ts) is listed first
 // so the default/only-tested deployment stays selectable and benchmarkable via
@@ -68,58 +67,17 @@ interface BriefRunOutcome {
   readonly message?: string;
 }
 
-const SESSION_PORTS = getSessionServerPorts({ cwd: process.cwd(), env: process.env });
-const SIDECAR_HEALTH_URL = `${SESSION_PORTS.sidecarBaseUrl}/api/health`;
-const LAB_URL = `${SESSION_PORTS.labBaseUrl}/lab.html?lab=sprite-gallery`;
-
-async function isGalleryHealthy(timeoutMs = 1500): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+async function ensureSidecarRunning(): Promise<void> {
   try {
-    const res = await fetch(SIDECAR_HEALTH_URL, {
-      cache: 'no-store',
-      signal: controller.signal,
-    });
-    return res.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function ensureGalleryRunning(): Promise<void> {
-  if (await isGalleryHealthy()) {
-    process.stdout.write(`gallery : already running (${SIDECAR_HEALTH_URL})\n`);
-    return;
-  }
-  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  try {
-    const child = spawn(npmCmd, ['run', 'sprites:gallery'], {
-      cwd: process.cwd(),
-      detached: true,
-      stdio: 'ignore',
-    });
-    child.unref();
+    const result = await ensureSidecarService(process.cwd());
+    process.stdout.write(
+      `sidecar : ${result.state} (${result.baseUrl}/api/health, pid=${result.pid ?? 'unknown'})\n`,
+    );
   } catch (err) {
     process.stderr.write(
-      `gallery : failed to auto-launch sprites:gallery (${err instanceof Error ? err.message : String(err)})\n`,
+      `sidecar : failed to auto-start (${err instanceof Error ? err.message : String(err)})\n`,
     );
-    return;
   }
-
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    if (await isGalleryHealthy()) {
-      process.stdout.write(`gallery : started (${SIDECAR_HEALTH_URL})\n`);
-      process.stdout.write(`lab     : ${LAB_URL}\n`);
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 300));
-  }
-  process.stderr.write(
-    `gallery : launch requested but health endpoint is still unavailable (${SIDECAR_HEALTH_URL})\n`,
-  );
 }
 
 export function parseArgs(argv: ReadonlyArray<string>): CliArgs {
@@ -586,7 +544,7 @@ async function main(): Promise<number> {
   process.stdout.write(`\n${judgeBudget.format()}\n`);
   const cs = judgeCache.stats;
   process.stdout.write(`judge-cache: ${cs.hits} hit, ${cs.misses} miss, ${cs.bypassed} bypassed\n`);
-  await ensureGalleryRunning();
+  await ensureSidecarRunning();
   const failed = outcomes.filter((o) => !o.success);
   if (failed.length > 0) {
     process.stderr.write('\nFailures:\n');

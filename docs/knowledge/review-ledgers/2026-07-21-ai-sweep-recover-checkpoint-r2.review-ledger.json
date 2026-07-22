@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "ai-sweep-recover-checkpoint-r2",
+  "task_title": "Recover cancelled AI Sweep run 29786216369 (round-2 checkpoints, validate-only)",
+  "estimated_apples": 2,
+  "stages": {}
+}

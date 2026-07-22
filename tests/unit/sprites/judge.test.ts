@@ -30,6 +30,7 @@ import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 
 import { briefSchema, type Brief } from '../../../scripts/sprites/brief-schema.js';
+import { JudgeCache } from '../../../scripts/sprites/judge-cache.js';
 import { judgeVariant, JudgeError } from '../../../scripts/sprites/judge.js';
 import {
   VisionProviderError,
@@ -114,6 +115,13 @@ function throwingProvider(err: unknown): VisionProvider {
       throw err;
     },
   };
+}
+
+function responseShape(systemInstructions: string): unknown {
+  const marker = 'matching this shape:\n';
+  const start = systemInstructions.indexOf(marker);
+  expect(start).toBeGreaterThanOrEqual(0);
+  return JSON.parse(systemInstructions.slice(start + marker.length));
 }
 
 const FIXED_NOW = () => new Date('2026-06-05T14:30:00Z');
@@ -246,6 +254,7 @@ describe('judgeVariant — happy path', () => {
         readability: { score: 5, rationale: 'silhouette pops' },
       },
     });
+
     const scorecard = await judgeVariant({
       processed: makeTinyPng(),
       referencePngs: [makeRefPng()],
@@ -355,6 +364,7 @@ describe('judgeVariant — happy path', () => {
         reference_style_match: { score: 5, rationale: 'style fit' },
         brief_match: { score: 5, rationale: 'brief fit' },
         readability: { score: 5, rationale: 'readable' },
+        pose_orientation: { score: 5, rationale: 'camera-facing turn' },
         theme_adherence: { score: 5, rationale: 'goblin cartel details visible' },
       },
     });
@@ -374,6 +384,125 @@ describe('judgeVariant — happy path', () => {
     expect(calls[0]?.request.systemInstructions).toContain('The Snaggle Cartel');
   });
 
+  it('requires and scores camera-facing pose orientation for enemies', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'specific' },
+        reference_style_match: { score: 5, rationale: 'on style' },
+        brief_match: { score: 5, rationale: 'matches' },
+        readability: { score: 5, rationale: 'readable' },
+        pose_orientation: { score: 2, rationale: 'full side profile' },
+      },
+    });
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({ type: 'enemy', name: 'camera-facing-mob' }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      env: {},
+    });
+    expect(calls[0]?.request.systemInstructions).toContain('pose_orientation');
+    expect(scorecard.poseOrientation).toEqual({ score: 2, rationale: 'full side profile' });
+    expect(scorecard.rejectedBy).toContain('pose_orientation');
+  });
+
+  it('skips pose_orientation for enemies with facing: front', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'specific' },
+        reference_style_match: { score: 5, rationale: 'on style' },
+        brief_match: { score: 5, rationale: 'matches' },
+        readability: { score: 5, rationale: 'readable' },
+      },
+    });
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({
+        type: 'enemy',
+        name: 'front-facing-boss',
+        sensors: { enemy: { facing: 'front', toleranceDeg: 20 } },
+      }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      env: {},
+    });
+    expect(calls[0]?.request.systemInstructions).not.toContain('pose_orientation');
+    expect(scorecard.poseOrientation).toBeUndefined();
+    expect(scorecard.rejectedBy).not.toContain('pose_orientation');
+  });
+
+  it('requires boss presence in addition to enemy pose orientation', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'specific' },
+        reference_style_match: { score: 5, rationale: 'on style' },
+        brief_match: { score: 5, rationale: 'matches' },
+        readability: { score: 5, rationale: 'readable' },
+        pose_orientation: { score: 5, rationale: 'camera-facing turn' },
+        boss_presence: { score: 2, rationale: 'ordinary mob scale' },
+        theme_adherence: { score: 5, rationale: 'cartel details visible' },
+      },
+    });
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({ type: 'enemy', name: 'goblin-boss', floor: 2, mobRole: 'boss' }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      env: {},
+    });
+    expect(calls[0]?.request.systemInstructions).toContain('boss_presence');
+    expect(scorecard.bossPresence).toEqual({ score: 2, rationale: 'ordinary mob scale' });
+    expect(scorecard.rejectedBy).toContain('boss_presence');
+    const axes = [
+      ...(calls[0]?.request.systemInstructions.matchAll(/^ {2}(\d+)\. ([a-z_]+)/gm) ?? []),
+    ].map((match) => `${match[1]}:${match[2]}`);
+    expect(axes).toEqual([
+      '1:design_language',
+      '2:reference_style_match',
+      '3:brief_match',
+      '4:readability',
+      '5:pose_orientation',
+      '6:boss_presence',
+      '7:theme_adherence',
+    ]);
+    expect(responseShape(calls[0]!.request.systemInstructions)).toMatchObject({
+      boss_presence: { score: 3 },
+      theme_adherence: { score: 3 },
+    });
+  });
+
+  it.each(['equipment', 'item', 'prop'] as const)(
+    'requires family presentation for %s briefs',
+    async (type) => {
+      const { provider, calls } = stubProvider({
+        responseJson: {
+          design_language: { score: 5, rationale: 'specific' },
+          reference_style_match: { score: 5, rationale: 'on style' },
+          brief_match: { score: 5, rationale: 'matches' },
+          readability: { score: 5, rationale: 'readable' },
+          presentation: { score: 5, rationale: `${type} presentation is correct` },
+        },
+      });
+      const scorecard = await judgeVariant({
+        processed: makeTinyPng(),
+        referencePngs: [],
+        brief: makeBrief({ type, name: `${type}-subject` }),
+        styleGuide: '',
+        provider,
+        variantIndex: 0,
+        env: {},
+      });
+      expect(calls[0]?.request.systemInstructions).toContain('presentation');
+      expect(scorecard.presentation?.score).toBe(5);
+    },
+  );
+
   it('requests a fifth theme_adherence axis when a floor or theme addendum applies (goblin-grunt has both)', async () => {
     const { provider, calls } = stubProvider({
       responseJson: {
@@ -381,6 +510,7 @@ describe('judgeVariant — happy path', () => {
         reference_style_match: { score: 4, rationale: 'b' },
         brief_match: { score: 4, rationale: 'c' },
         readability: { score: 4, rationale: 'd' },
+        pose_orientation: { score: 4, rationale: 'camera-facing turn' },
         theme_adherence: { score: 5, rationale: 'cartel details visible' },
       },
     });
@@ -396,9 +526,9 @@ describe('judgeVariant — happy path', () => {
       env: {},
     });
 
-    expect(calls[0]?.request.systemInstructions).toContain('five independent 1-5 ordinal axes');
+    expect(calls[0]?.request.systemInstructions).toContain('6 independent 1-5 ordinal axes');
     expect(calls[0]?.request.systemInstructions).toContain('theme_adherence');
-    expect(calls[0]?.request.userPrompt).toContain('Return your five scores');
+    expect(calls[0]?.request.userPrompt).toContain('Return your 6 scores');
     expect(scorecard.themeAdherence).toEqual({ score: 5, rationale: 'cartel details visible' });
   });
 
@@ -409,6 +539,7 @@ describe('judgeVariant — happy path', () => {
         reference_style_match: { score: 4, rationale: 'b' },
         brief_match: { score: 4, rationale: 'c' },
         readability: { score: 4, rationale: 'd' },
+        pose_orientation: { score: 4, rationale: 'camera-facing turn' },
         theme_adherence: { score: 4, rationale: 'floor Family Matters vibe present' },
       },
     });
@@ -424,9 +555,9 @@ describe('judgeVariant — happy path', () => {
       env: {},
     });
 
-    expect(calls[0]?.request.systemInstructions).toContain('five independent 1-5 ordinal axes');
+    expect(calls[0]?.request.systemInstructions).toContain('6 independent 1-5 ordinal axes');
     expect(calls[0]?.request.systemInstructions).toContain('theme_adherence');
-    expect(calls[0]?.request.userPrompt).toContain('Return your five scores');
+    expect(calls[0]?.request.userPrompt).toContain('Return your 6 scores');
     expect(scorecard.passed).toBe(true);
     expect(scorecard.themeAdherence).toEqual({
       score: 4,
@@ -459,6 +590,9 @@ describe('judgeVariant — happy path', () => {
     expect(calls[0]?.request.systemInstructions).not.toContain('theme_adherence');
     expect(calls[0]?.request.userPrompt).toContain('Return your four scores');
     expect(scorecard.themeAdherence).toBeUndefined();
+    expect(responseShape(calls[0]!.request.systemInstructions)).toMatchObject({
+      readability: { score: 3 },
+    });
   });
 
   it('writes a `NN.judge.json` artifact when processedDir is supplied', async () => {
@@ -511,6 +645,69 @@ describe('judgeVariant — happy path', () => {
       env: {},
     });
     expect(scorecard.passed).toBe(true);
+  });
+});
+
+describe('judgeVariant - cache key includes conditional rubric contract', () => {
+  it('does not reuse non-boss cached verdict for boss brief with identical pixels', async () => {
+    const cache = new JudgeCache({ cacheDir: mkdtempSync(path.join(tmpdir(), 'judge-cache-')) });
+    let calls = 0;
+    const provider: VisionProvider = {
+      modelDeployment: 'gpt-4o-vision',
+      evaluate: async (request) => {
+        calls += 1;
+        const boss = request.systemInstructions.includes('boss_presence');
+        return {
+          modelDeployment: 'gpt-4o-vision',
+          usage: null,
+          json: boss
+            ? {
+                design_language: { score: 5, rationale: 'crawler' },
+                reference_style_match: { score: 5, rationale: 'style' },
+                brief_match: { score: 5, rationale: 'boss brief' },
+                readability: { score: 5, rationale: 'clear' },
+                pose_orientation: { score: 5, rationale: 'forward' },
+                boss_presence: { score: 5, rationale: 'dominant' },
+              }
+            : {
+                design_language: { score: 5, rationale: 'crawler' },
+                reference_style_match: { score: 5, rationale: 'style' },
+                brief_match: { score: 5, rationale: 'normal brief' },
+                readability: { score: 5, rationale: 'clear' },
+                pose_orientation: { score: 5, rationale: 'forward' },
+              },
+        };
+      },
+    };
+
+    const processed = makeTinyPng();
+    const refs = [makeRefPng()];
+    const normal = await judgeVariant({
+      processed,
+      referencePngs: refs,
+      brief: makeBrief({ type: 'enemy', mobRole: 'normal', prompt: 'A normal dungeon rat enemy.' }),
+      styleGuide: 'style',
+      provider,
+      variantIndex: 0,
+      cache,
+      now: FIXED_NOW,
+      env: {},
+    });
+    const boss = await judgeVariant({
+      processed,
+      referencePngs: refs,
+      brief: makeBrief({ type: 'enemy', mobRole: 'boss', prompt: 'A boss dungeon rat enemy.' }),
+      styleGuide: 'style',
+      provider,
+      variantIndex: 1,
+      cache,
+      now: FIXED_NOW,
+      env: {},
+    });
+
+    expect(calls).toBe(2);
+    expect(normal.bossPresence).toBeUndefined();
+    expect(boss.bossPresence?.score).toBe(5);
   });
 });
 
@@ -594,6 +791,7 @@ describe('judgeVariant — threshold rejection', () => {
         reference_style_match: { score: 5, rationale: 'b' },
         brief_match: { score: 5, rationale: 'c' },
         readability: { score: 5, rationale: 'd' },
+        pose_orientation: { score: 5, rationale: 'camera-facing turn' },
         theme_adherence: { score: 1, rationale: 'ignores the family addendum entirely' },
       },
     });
@@ -619,6 +817,7 @@ describe('judgeVariant — threshold rejection', () => {
         reference_style_match: { score: 5, rationale: 'b' },
         brief_match: { score: 5, rationale: 'c' },
         readability: { score: 5, rationale: 'd' },
+        pose_orientation: { score: 5, rationale: 'camera-facing turn' },
         theme_adherence: { score: 2, rationale: 'on-vibe but no addendum details visible' },
       },
     });

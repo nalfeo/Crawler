@@ -38,8 +38,10 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 import {
   assertMatrixWithinCap,
+  baseConfigForCombo,
   comboId,
   configId,
   LEGACY_COMBO_ID,
@@ -52,6 +54,7 @@ import {
   type TunableKnob,
 } from './gen-configs.js';
 import {
+  assertRowSafeRoomInRange,
   buildLeaderboard,
   isBetterQualifiedCandidate,
   selectQualifiedWinner,
@@ -73,8 +76,13 @@ function makeRowKey(r: RunRow): string {
  * Plain `JSON.stringify` can produce different output for two logically-equal
  * objects that were constructed by different code paths with different key
  * insertion orders, causing spurious "conflicting config definition" errors.
+ *
+ * Exported so `sweep-eval.ts` can reuse it for exact (non-rounded) config-body
+ * provenance checks — see `assertLegacyBaselineProvenance`. Unlike `configId()`,
+ * this performs no numeric rounding, so it catches sub-4dp tuned drift that a
+ * configId-based body comparison would miss.
  */
-function stableStringify(obj: unknown): string {
+export function stableStringify(obj: unknown): string {
   if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
     return JSON.stringify(obj);
   }
@@ -145,9 +153,11 @@ export interface RoundCheckpoint {
    * NEVER reassigned across rounds (baseline rows are seeded into `rows` at
    * round 0 and never removed). Lets every later round evaluate promotion
    * candidates against the SAME hard safety gate that governs final
-   * graduation (`selectQualifiedWinner`: >=90% official wins AND zero
-   * incumbent win→loss flips, THEN highest score) instead of promoting on
-   * composite score alone — see `applyRoundResult`.
+   * graduation (`selectQualifiedWinner`: >=90% official wins AND strictly
+   * MORE total wins than the incumbent, THEN highest score) instead of
+   * promoting on composite score alone — see `applyRoundResult`. Win→loss
+   * flips vs the incumbent are allowed as long as total wins still strictly
+   * increase (human-approved net-win promotion rule).
    */
   incumbentConfigId: string;
   /**
@@ -196,7 +206,7 @@ export function initCheckpoint(
   }
 
   // Incumbent for the safety gate: use the LEGACY incumbent (from legacyBaseline)
-  // for non-LEGACY combos so that the in-search flip check mirrors the final
+  // for non-LEGACY combos so that the in-search net-win check mirrors the final
   // graduation gate (`selectQualifiedWinner`). For `legacy+legacy` the combo
   // IS the LEGACY incumbent, so no separate baseline is needed.
   const comboIsLegacy = comboStr === LEGACY_COMBO_ID;
@@ -205,8 +215,8 @@ export function initCheckpoint(
   // For a non-LEGACY combo with a legacyBaseline, the incumbent rows carry
   // `combo: LEGACY_COMBO_ID`, NOT `combo: comboStr` — so buildLeaderboard must
   // be given the correct `incumbentCombo` or it will find no incumbent rows,
-  // flipsVsIncumbent becomes null, and selectQualifiedWinner disqualifies every
-  // candidate (preventing any promotion).
+  // winsVsIncumbentDelta becomes null, and selectQualifiedWinner disqualifies
+  // every candidate (preventing any promotion).
   let incumbentCombo = comboStr;
   const allConfigs: Record<string, SweepConfig> = { ...baseline.configs };
   const allRows: RunRow[] = [...baseline.rows];
@@ -218,6 +228,78 @@ export function initCheckpoint(
       throw new Error(
         `initCheckpoint(${comboStr}): legacyBaseline shard must contain exactly one config, got ${legacyIds.length}`,
       );
+    }
+    // The declared config/id must be the CANONICAL LEGACY base config — not
+    // merely "exactly one config, tagged combo=legacy+legacy" — because a
+    // same-build `--stage search-eval` shard for a *tuned* `legacy+legacy`
+    // candidate also has one config, LEGACY-tagged rows, and valid row facts,
+    // so it would otherwise pass every check below and silently replace the
+    // fixed incumbent with a tuned (non-canonical) LEGACY variant.
+    const canonicalLegacyConfig = baseConfigForCombo({
+      pathing: AIPathingMode.LEGACY,
+      decision: AIDecisionMode.LEGACY,
+    });
+    const canonicalLegacyId = configId(canonicalLegacyConfig);
+    if (legacyId !== canonicalLegacyId) {
+      throw new Error(
+        `initCheckpoint(${comboStr}): legacyBaseline shard's declared config must be the ` +
+          `canonical LEGACY base config (id '${canonicalLegacyId}'), got a tuned/non-canonical ` +
+          `config (id '${legacyId}').`,
+      );
+    }
+    // Also verify the stored config BODY is *exactly* the canonical LEGACY base
+    // config — the key check above catches a mis-keyed artifact, but the body
+    // could still carry tuned values if the canonical key string was supplied
+    // manually while the config object itself was a tuned variant. Comparing
+    // via `configId()` would miss sub-4dp drift: configId() rounds every
+    // numeric knob to 4dp (see gen-configs.ts `round4`), so a tuned value like
+    // canonical+0.00001 would round to the identical id and slip past an
+    // id-based body check while still being a non-canonical runtime config.
+    // `stableStringify` performs no rounding, so it catches any body drift,
+    // however small.
+    const canonicalLegacyBody = stableStringify(canonicalLegacyConfig);
+    const storedBody = stableStringify(legacyBaseline.configs[legacyId]!);
+    if (storedBody !== canonicalLegacyBody) {
+      throw new Error(
+        `initCheckpoint(${comboStr}): legacyBaseline shard config body does not match the ` +
+          `canonical LEGACY base config. Config key '${legacyId}' is correct, but the stored ` +
+          `config body's values differ from the untuned canonical LEGACY base. The config body ` +
+          `must be exactly the canonical LEGACY base, not a tuned variant under a ` +
+          `canonical-looking key.`,
+      );
+    }
+    const legacyRowCombos = new Set(legacyBaseline.rows.map((r) => r.combo));
+    if (legacyRowCombos.size !== 1 || !legacyRowCombos.has(LEGACY_COMBO_ID)) {
+      throw new Error(
+        `initCheckpoint(${comboStr}): legacyBaseline shard rows must all be tagged combo='${LEGACY_COMBO_ID}', got: ` +
+          `${[...legacyRowCombos].join(', ')}.`,
+      );
+    }
+    // Every row must reference the shard's sole config (legacyId), or
+    // `buildLeaderboard`'s (incumbentCombo, incumbentConfigId) lookup below
+    // finds no incumbent rows at all — silently making the incumbent
+    // unfindable and disqualifying EVERY candidate (winsVsIncumbentDelta
+    // becomes null for all of them) rather than failing fast here.
+    const legacyRowConfigIds = new Set(legacyBaseline.rows.map((r) => r.configId));
+    if (legacyRowConfigIds.size !== 1 || !legacyRowConfigIds.has(legacyId)) {
+      throw new Error(
+        `initCheckpoint(${comboStr}): legacyBaseline shard rows must all reference its sole ` +
+          `config '${legacyId}', got: ${[...legacyRowConfigIds].join(', ')}.`,
+      );
+    }
+    // Vet legacyBaseline's provenance against the combo's own baseline shard
+    // (which becomes this checkpoint's meta below) — the production
+    // round-DAG's equivalent of sweep-eval.ts's assertLegacyBaselineProvenance
+    // (the legacy/manual `--stage search` path), so both paths reject a
+    // stale/wrong-floor/wrong-build legacyBaseline shard from silently
+    // seeding a mis-calibrated incumbent.
+    assertShardCompatible(baseline.meta, legacyBaseline, `initCheckpoint(${comboStr})`);
+    // Per-row safe-room sanity — mirrors assertLegacyBaselineProvenance's own
+    // per-row loop in sweep-eval.ts, so a pre-v2 or malformed legacyBaseline
+    // artifact (missing/out-of-range safeRoomMs) cannot silently undercount
+    // the incumbent's win classification in the production round-DAG path.
+    for (const row of legacyBaseline.rows) {
+      assertRowSafeRoomInRange(row);
     }
     incumbentConfigId = legacyId;
     incumbentCombo = LEGACY_COMBO_ID;
@@ -302,26 +384,72 @@ export function planRoundMatrix(
   return out;
 }
 
-/** Fields that must match a checkpoint's own provenance for a candidate shard to be mergeable. */
-function assertShardCompatible(checkpoint: RoundCheckpoint, shard: ShardArtifact): void {
-  if (shard.meta.schemaVersion !== checkpoint.meta.schemaVersion) {
+/** Fields that must match a checkpoint's own provenance for a candidate shard to be mergeable.
+ *
+ * Also reused by {@link initCheckpoint} to vet an externally-supplied
+ * `legacyBaseline` shard against the combo's own `baseline` shard — this is
+ * `round-plan.ts`'s production-round-DAG equivalent of `sweep-eval.ts`'s
+ * `assertLegacyBaselineProvenance`/`assertSearchArtifactProvenance` (the
+ * legacy/manual `--stage search` path), so both paths reject a
+ * stale/wrong-floor/wrong-build shard from silently seeding a
+ * mis-calibrated incumbent or corrupting a round's candidate pool — see
+ * `assertSearchArtifactProvenance`'s doc comment in `aggregate-shards.ts`
+ * for the build-fingerprint rationale.
+ */
+function assertShardCompatible(
+  expectedMeta: ShardMeta,
+  shard: ShardArtifact,
+  contextLabel: string,
+): void {
+  if (shard.meta.schemaVersion !== expectedMeta.schemaVersion) {
     throw new Error(
-      `applyRoundResult(${checkpoint.combo}): shard schemaVersion ${shard.meta.schemaVersion} != checkpoint ${checkpoint.meta.schemaVersion}`,
+      `${contextLabel}: shard schemaVersion ${shard.meta.schemaVersion} != checkpoint ${expectedMeta.schemaVersion}`,
     );
   }
-  if (shard.meta.floorId !== checkpoint.meta.floorId) {
+  if (shard.meta.floorId !== expectedMeta.floorId) {
     throw new Error(
-      `applyRoundResult(${checkpoint.combo}): shard floorId '${shard.meta.floorId}' != checkpoint '${checkpoint.meta.floorId}'`,
+      `${contextLabel}: shard floorId '${shard.meta.floorId}' != checkpoint '${expectedMeta.floorId}'`,
     );
   }
-  if (shard.meta.budgetMs !== checkpoint.meta.budgetMs) {
+  if (shard.meta.budgetMs !== expectedMeta.budgetMs) {
     throw new Error(
-      `applyRoundResult(${checkpoint.combo}): shard budgetMs ${shard.meta.budgetMs} != checkpoint ${checkpoint.meta.budgetMs}`,
+      `${contextLabel}: shard budgetMs ${shard.meta.budgetMs} != checkpoint ${expectedMeta.budgetMs}`,
     );
   }
-  if (shard.meta.maxFrames !== checkpoint.meta.maxFrames) {
+  if (shard.meta.maxFrames !== expectedMeta.maxFrames) {
     throw new Error(
-      `applyRoundResult(${checkpoint.combo}): shard maxFrames ${shard.meta.maxFrames} != checkpoint ${checkpoint.meta.maxFrames}`,
+      `${contextLabel}: shard maxFrames ${shard.meta.maxFrames} != checkpoint ${expectedMeta.maxFrames}`,
+    );
+  }
+  // Rows from a different stage are not comparable and must never be merged —
+  // mirrors mergeShards' own stage guard in aggregate-shards.ts.
+  if (shard.meta.stage !== expectedMeta.stage) {
+    throw new Error(
+      `${contextLabel}: shard stage '${shard.meta.stage}' != checkpoint '${expectedMeta.stage}'`,
+    );
+  }
+  // Build-fingerprint checks — mirror mergeShards'/assertSearchArtifactProvenance's
+  // per-shard guards so a shard whose schema/floor/budget/frames happen to
+  // match, but whose rows were produced by a different code revision or
+  // runtime, is still rejected rather than silently trusted.
+  if (shard.meta.runnerOs !== expectedMeta.runnerOs) {
+    throw new Error(
+      `${contextLabel}: shard runner-OS '${shard.meta.runnerOs}' != checkpoint '${expectedMeta.runnerOs}'`,
+    );
+  }
+  if (shard.meta.nodeVersion !== expectedMeta.nodeVersion) {
+    throw new Error(
+      `${contextLabel}: shard node-version '${shard.meta.nodeVersion}' != checkpoint '${expectedMeta.nodeVersion}'`,
+    );
+  }
+  if (shard.meta.packageLockHash !== expectedMeta.packageLockHash) {
+    throw new Error(
+      `${contextLabel}: shard package-lock '${shard.meta.packageLockHash}' != checkpoint '${expectedMeta.packageLockHash}'`,
+    );
+  }
+  if (shard.meta.workflowSha !== expectedMeta.workflowSha) {
+    throw new Error(
+      `${contextLabel}: shard workflow-sha '${shard.meta.workflowSha}' != checkpoint '${expectedMeta.workflowSha}'`,
     );
   }
 }
@@ -329,19 +457,23 @@ function assertShardCompatible(checkpoint: RoundCheckpoint, shard: ShardArtifact
 /**
  * Merge this round's evaluated candidate shards into a combo's checkpoint and
  * advance the search: promote the highest-scoring candidate that ALSO passes
- * the approved hard safety gate (>=90% official wins AND zero win→loss flips
- * vs the incumbent — the same {@link selectQualifiedWinner} gate that governs
- * final graduation in `aggregate-shards.ts`), or — when nothing qualifying
- * improved — halve the step sizes and mark `converged` once every knob's step
- * has fallen below its minStep.
+ * the approved hard safety gate (>=90% official wins AND strictly MORE total
+ * wins than the incumbent — the same {@link selectQualifiedWinner} gate that
+ * governs final graduation in `aggregate-shards.ts`), or — when nothing
+ * qualifying improved — halve the step sizes and mark `converged` once every
+ * knob's step has fallen below its minStep.
  *
  * This is the round-plan half of the fix for the real bug the 2026-07 untuned
  * graduation run (GitHub run 29597840666) exposed: a config can out-score the
  * incumbent while quietly flipping incumbent wins into losses, and a
  * score-only hill-climb would happily chase that config round after round.
- * Gating promotion on `selectQualifiedWinner` means the search's own
- * trajectory can never walk toward (or settle on) a config the final gate
- * would reject.
+ * Per the human-approved net-win promotion rule, such flips are now ALLOWED
+ * when the candidate's absolute total wins still strictly exceed the
+ * incumbent's (e.g. 292/300 candidate vs 286/300 incumbent, 5 flips —
+ * qualifies); a candidate whose total wins tie or fall below the incumbent's
+ * is still rejected regardless of flips or score. Gating promotion on
+ * `selectQualifiedWinner` means the search's own trajectory can never walk
+ * toward (or settle on) a config the final gate would reject.
  *
  * `options.plannedCount` (when supplied) lets the caller distinguish "this
  * round genuinely produced fewer/no improving candidates" (a real search
@@ -388,7 +520,7 @@ export function applyRoundResult(
   const newCandidateIds = new Set<string>();
 
   for (const shard of candidateShards) {
-    assertShardCompatible(checkpoint, shard);
+    assertShardCompatible(checkpoint.meta, shard, `applyRoundResult(${checkpoint.combo})`);
     for (const [id, config] of Object.entries(shard.configs)) {
       const existing = configs[id];
       if (existing && stableStringify(existing) !== stableStringify(config)) {

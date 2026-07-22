@@ -1,0 +1,7 @@
+# Prop post-processing pipeline template
+#
+# Prop sprites (furniture, environmental objects, etc.) inherit the base pipeline.
+
+extends: base.yml
+name: prop-postprocess-pipeline
+description: Pipeline for prop sprites - inherits base pipeline

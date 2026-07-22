@@ -37,34 +37,39 @@ import { buildServer } from './server.js';
 import { createWorkerController } from './worker-controller.js';
 import { createIssueIngesterController } from './issue-ingester-controller.js';
 import { createGhAssetRequestIssueApi } from './asset-request-issue-api.js';
+import { releaseSidecarRegistry } from './service-manager.js';
+import { SPRITE_SIDECAR_SERVICE_VERSION, type SidecarServiceControl } from './service-contract.js';
 
 const HOST = '127.0.0.1';
-const VERSION = '0.2.0-workflow';
-const DEFAULT_PORT = getSessionServerPorts({ cwd: process.cwd(), env: process.env }).sidecarPort;
-
-function resolvePort(): number {
+function resolvePort(defaultPort: number): number {
   // SPRITES_SIDECAR_PORT lets tests bind to a free port (commonly 0 →
   // "any") so they never race a real instance on the session sidecar port.
   // Production usage (`npm run sprites:gallery`) leaves it unset and gets the
   // deterministic per-session port.
   const raw = process.env['SPRITES_SIDECAR_PORT'];
-  if (!raw) return DEFAULT_PORT;
+  if (!raw) return defaultPort;
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0 || n > 65535) {
     process.stderr.write(
-      `sprites:gallery sidecar: invalid SPRITES_SIDECAR_PORT=${raw}, using ${DEFAULT_PORT}\n`,
+      `sprites:gallery sidecar: invalid SPRITES_SIDECAR_PORT=${raw}, using ${defaultPort}\n`,
     );
-    return DEFAULT_PORT;
+    return defaultPort;
   }
   return n;
 }
 
 async function main(): Promise<number> {
   const repoRoot = process.cwd();
+  const managedInstanceId = process.env['CRAWLER_SIDECAR_INSTANCE_ID'];
+  const managedShutdownToken = process.env['CRAWLER_SIDECAR_SHUTDOWN_TOKEN'];
+  const managedStartedAt = process.env['CRAWLER_SIDECAR_STARTED_AT'];
+  const managedRegistryPath = process.env['CRAWLER_SIDECAR_REGISTRY_PATH'];
+  const managedCodeProvenance = process.env['CRAWLER_SIDECAR_CODE_PROVENANCE'];
 
   // Pick up Azure credentials + SPRITES_* selectors from .env.local (written by
   // `npm run setup:azure`) without overwriting anything already in the shell.
   loadEnvLocal(repoRoot);
+  const sessionPorts = getSessionServerPorts({ cwd: repoRoot, env: process.env });
 
   // The sidecar defaults to the shared Azure backends; local/noop are opt-in
   // for tests and offline runs. Fail fast (don't silently use local) when Azure
@@ -95,34 +100,22 @@ async function main(): Promise<number> {
     requestedBy: process.env['COPILOT_AGENT_SESSION'] ?? process.env['USER'] ?? 'sidecar',
     issues: createGhAssetRequestIssueApi(repoRoot),
   });
-  const app = buildServer({
-    repoRoot,
-    runsDir,
-    version: VERSION,
-    logger: true,
-    store,
-    queue,
-    worker,
-    issueIngester,
-  });
-  const port = resolvePort();
-
-  // SIGINT / SIGTERM both trigger a clean Fastify close so the port is
-  // released even when the parent (e.g. the gallery launcher) is killed.
-  // Without this an orphan binding survives in `netstat` for ~30s on
-  // Windows and immediately on Linux but keeps the FD open.
   let shuttingDown = false;
+  const releaseRegistry = (): void => {
+    if (managedRegistryPath && managedInstanceId) {
+      releaseSidecarRegistry(managedRegistryPath, managedInstanceId);
+    }
+  };
   async function shutdown(signal: string): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     process.stderr.write(`sprites:gallery sidecar: received ${signal}, closing\n`);
     try {
       await app.close();
+      releaseRegistry();
       process.exit(0);
     } catch (err) {
-      // If Fastify's own teardown rejects we still want a deterministic
-      // exit — leaving the rejection unhandled would let the process
-      // linger with the port held.
+      releaseRegistry();
       process.stderr.write(
         `sprites:gallery sidecar: error during close: ${
           err instanceof Error ? err.message : String(err)
@@ -131,6 +124,41 @@ async function main(): Promise<number> {
       process.exit(1);
     }
   }
+  const service: SidecarServiceControl | undefined =
+    process.env['CRAWLER_SIDECAR_MANAGED'] === '1' &&
+    managedInstanceId &&
+    managedShutdownToken &&
+    managedStartedAt
+      ? {
+          identity: {
+            managed: true,
+            instanceId: managedInstanceId,
+            pid: process.pid,
+            startedAt: managedStartedAt,
+            ...(managedCodeProvenance ? { codeProvenance: managedCodeProvenance } : {}),
+          },
+          shutdownToken: managedShutdownToken,
+          requestShutdown: () => void shutdown('managed shutdown'),
+        }
+      : undefined;
+  const app: ReturnType<typeof buildServer> = buildServer({
+    repoRoot,
+    runsDir,
+    version: SPRITE_SIDECAR_SERVICE_VERSION,
+    logger: true,
+    store,
+    queue,
+    worker,
+    issueIngester,
+    service,
+    trustedMutationOrigins: [sessionPorts.labBaseUrl, sessionPorts.devtoolsBaseUrl],
+  });
+  const port = resolvePort(sessionPorts.sidecarPort);
+
+  // SIGINT / SIGTERM both trigger a clean Fastify close so the port is
+  // released even when the parent (e.g. the gallery launcher) is killed.
+  // Without this an orphan binding survives in `netstat` for ~30s on
+  // Windows and immediately on Linux but keeps the FD open.
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
@@ -182,6 +210,7 @@ async function main(): Promise<number> {
     }
     return 0;
   } catch (err) {
+    releaseRegistry();
     process.stderr.write(`sprites:gallery sidecar: failed to bind ${HOST}:${port}\n`);
     process.stderr.write(`  ${err instanceof Error ? err.message : String(err)}\n`);
     if (err instanceof Error && /EADDRINUSE/.test(err.message)) {

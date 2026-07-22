@@ -48,3 +48,13 @@ Observed before/after:
 
 - The Floor 2 equipment source-of-truth data currently lives on `origin/nalfeo-floor-2-equipment-placeholders`, not in this branch’s base `main`, so single-asset issue work can require checking that branch before assuming a runtime key is missing project-wide.
 - For art-only asset additions, manifest validation plus a served-asset hash check is a useful deterministic runtime sanity check even when a full sprite-generation run is unavailable locally.
+
+### Mistakes Made
+
+- The initial repository scan assumed `main` contained the complete Floor 2 equipment source of
+  truth before checking the production-wave branch.
+
+### Opportunities for Future Improvement
+
+- Consolidate production-wave equipment metadata onto the default branch or expose its location
+  through a deterministic lookup command.

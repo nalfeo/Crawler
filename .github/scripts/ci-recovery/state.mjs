@@ -118,6 +118,7 @@ export function normalizeBlockers(blockers) {
                 : compact(blocker.line),
           }
         : {}),
+      ...(blocker.isOutdated === true ? { isOutdated: true } : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
@@ -367,7 +368,7 @@ export function automationStallAction({
   return stallAttempt >= 2 ? 'release' : 'retry';
 }
 
-export function isHealthyRecoveryOwner({ prNumber, state, now = new Date() }) {
+export function isHealthyRecoveryOwner({ prNumber, state, headSha = null, now = new Date() }) {
   if (!state || state.prNumber !== prNumber) return false;
   if (state.owner === 'shepherd') {
     return state.status === 'active' && !isLeaseExpired(state, now);
@@ -376,6 +377,15 @@ export function isHealthyRecoveryOwner({ prNumber, state, now = new Date() }) {
     state.owner !== 'automation' ||
     !['active', 'dispatched', 'escalated'].includes(state.status)
   ) {
+    return false;
+  }
+  const liveHead = String(headSha || '').toLowerCase();
+  const stateHead = String(state.headSha || '').toLowerCase();
+  // Some shared callers only know the persisted state and freshness window.
+  // When a live PR head is available, require it to match before automation
+  // ownership can suppress new work; otherwise preserve the legacy freshness-only
+  // fallback for callers that do not have a head SHA to compare against.
+  if (liveHead && stateHead !== liveHead) {
     return false;
   }
   const progressAt = Date.parse(state.progressAt || state.updatedAt);
