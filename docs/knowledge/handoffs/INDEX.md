@@ -42,6 +42,7 @@ _…and 16 older, see `archive/`._
 - [2026-07-21-ai-sweep-recover-sha-propagation](2026-07-21-ai-sweep-recover-sha-propagation.md) — 2026-07-21 — Fix GITHUB_SHA propagation in ai-sweep-recover.yml
 - [2026-07-21-pr1735-resume-revert-recovery](2026-07-21-pr1735-resume-revert-recovery.md) — Handoff — PR #1735 cross-run resume revert recovery
 - [2026-07-20-ai-sweep-net-win-promotion](2026-07-20-ai-sweep-net-win-promotion.md) — Replaced the "zero flips" hard-gate clause with a "strictly more total wins
+- [2026-07-18-equipment-balance-gates](2026-07-18-equipment-balance-gates.md) — Added a deterministic production-backed balance harness with five fixed build
 - [2026-07-19-ai-sweep-eval-parallel-rounds](2026-07-19-ai-sweep-eval-parallel-rounds.md) — Redesigned the search into a **checkpointed, matrix-parallel, bounded 1–3
 - [2026-07-19-local-sweep-discovery-main-merge-recovery](2026-07-19-local-sweep-discovery-main-merge-recovery.md) — Fetched the latest `origin/main` and merged it into `nalfeo-local-sweep-discovery`.
 - [2026-07-16-cloud-sweep-viewer](2026-07-16-cloud-sweep-viewer.md) — Extended the project-scoped Sweep Results Viewer canvas to load weapon-sweep
