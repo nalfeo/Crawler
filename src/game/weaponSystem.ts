@@ -32,6 +32,7 @@ import {
 import type { GameWorld } from '../core/world.js';
 import { getBodyRadius } from '../core/physics-body.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
+import { computeEffectiveAccuracyFromValues } from '../core/combat-math.js';
 import { computeEffectiveValue, getStatusEffects } from '../core/status-effects.js';
 import {
   setActiveWeaponDef,
@@ -672,11 +673,10 @@ export function emitWeaponSkillEvents(world: GameWorld, player: number, def: Wea
  * Traps (TRAP type) always hit regardless of accuracy.
  */
 export function computeEffectiveAccuracy(world: GameWorld, player: number, def: WeaponDef): number {
-  if (def.weaponType === WeaponType.TRAP) return 1.0;
   const bonus = hasComponent(world.ecs, player, EffectiveStats)
     ? (world.stores.effectiveStats.accuracy[player] ?? 0)
     : 0;
-  return Math.min(1.0, Math.max(0, def.baseAccuracy + bonus));
+  return computeEffectiveAccuracyFromValues(def.weaponType, def.baseAccuracy, bonus);
 }
 
 /**
