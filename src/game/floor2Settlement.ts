@@ -51,6 +51,8 @@ import type {
   Floor2ShopInstance,
   Floor2ShopInventoryItem,
 } from '../shared/floor-types.js';
+import { createInitialFloor2QuartermasterStock } from './quartermaster-stock.js';
+import { getFloor2EquipmentEconomyAccess } from '../core/floor2-equipment-flags.js';
 
 /** Options for {@link initializeFloor2Settlement}. */
 export interface InitializeFloor2SettlementOptions {
@@ -62,6 +64,14 @@ export interface InitializeFloor2SettlementOptions {
    * is excluded from this pool regardless.
    */
   readonly archetypes?: readonly ShopArchetypeDef[];
+  /**
+   * The player level to use for Quartermaster stock item-level rolling.  Pass
+   * the carried-over or intended level explicitly when `world.playerLevel` has
+   * not yet been updated to the effective play level (e.g. Floor 1→2 carryover
+   * or a headless run with a custom `startPlayerLevel` set after scenario
+   * configuration).  Defaults to `world.playerLevel.level` when omitted.
+   */
+  readonly effectivePlayerLevel?: number;
 }
 
 const FLOOR2_SETTLEMENT_NPC_SPACING_TILES = 3;
@@ -102,6 +112,15 @@ export function initializeFloor2Settlement(
   if (!presentFamilies || presentFamilies.length === 0) {
     throw new Error('initializeFloor2Settlement: world.floorExtendedState.familyState is missing');
   }
+
+  // Preflight: reject an invalid economy dependency closure before any RNG
+  // consumption or world mutation so a caller that corrects the config and
+  // retries does not duplicate side effects.
+  const economyAccess = getFloor2EquipmentEconomyAccess(world);
+  if (economyAccess.kind === 'invalid') {
+    throw new Error(economyAccess.message);
+  }
+
   const settlementRng = new SeededRandom(hashStringToSeed(`floor2-settlement:${world.seed}`));
 
   // Route all shop planning through planFloor2SettlementShops: preserves the
@@ -206,6 +225,10 @@ export function initializeFloor2Settlement(
     });
   });
 
+  const quartermasterStock = createInitialFloor2QuartermasterStock(
+    world,
+    options.effectivePlayerLevel,
+  );
   const snapshot: Floor2SettlementSnapshot = {
     settlementRoomId: settlement.id,
     settlementRoomIds: settlements.map((room) => room.id),
@@ -215,6 +238,7 @@ export function initializeFloor2Settlement(
     defectorAppearanceKey,
     defectorFallbackAppearanceKey,
     quartermasterShop,
+    ...(quartermasterStock ? { quartermasterStock } : {}),
     shops,
   };
   world.floorExtendedState = { ...(world.floorExtendedState ?? {}), settlement: snapshot };
