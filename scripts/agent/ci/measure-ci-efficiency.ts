@@ -20,12 +20,7 @@ const MAX_BACKOFF_MS = 8000;
 const LIST_PAGE_THROTTLE_MS = 200;
 
 type ChangeImpact =
-  | 'art_only'
-  | 'docs_only'
-  | 'gameplay_safe'
-  | 'sprites_only'
-  | 'full'
-  | 'unknown';
+  'art_only' | 'docs_only' | 'gameplay_safe' | 'sprites_only' | 'full' | 'unknown';
 
 type ImpactMetricValue = number | null;
 
