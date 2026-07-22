@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-22",
+  "session_slug": "merge-train-admission-deadlock",
+  "task_title": "Fix merge-train admission deadlock (reviewed-then-rebased guard + fingerprint drift)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "convergent",
+      "notes": "Separate-model plan review (gpt-5.4, high reasoning, rubber-duck agent, 257s/51+ tool calls verifying claims against actual source). Both vectors' root-cause diagnoses and primary fix designs CONFIRMED CORRECT; no alternative design substituted (Option 2 for Vector B -- extracting eligible()'s gate into a standalone function -- explicitly considered and rejected: the bug is entirely upstream in admissionFingerprint, not the gate expression). 2 blocking concerns, both resolved: (1) workflow-ordering bug -- plan had verify:pr-prereqs before writing the handoff file, but the pr-preflight guard requires a handoff to exist first; fixed by swapping step order (handoff now precedes verify:pr-prereqs) and reversing the todo_deps edge. (2) Vector A's regression test was under-discriminating (stdout-only assertions could pass even if an overzealous wrong fix changed BOTH the guard argument and the marker body to pr.head.sha, silently breaking the stale-marker dedup semantics); fixed by additionally asserting the POSTed review-request-marker comment body contains the literal STALE reviewed SHA (head=<STALE_SHA>) per reviewRequestMarker's serialization, while the reconcile still reaches 'queued merge-train' -- pinning both 'guard uses live head' and 'marker retains stale head' simultaneously. 3 non-blocking suggestions, all adopted: (3) Vector B's churn-stability test uses multiple required checks (ci + Security checks) with only one churning, not a single-check strawman; (4) added a second Vector A test proving the guard still correctly catches a GENUINE same-pass race (stateful mock returns a different head on the guard's live re-fetch than the pass's initial fetch) -- confirms the fix corrects WHICH baseline is used, not that it disables the guard's protective purpose; (5) the eligible()-gate-mirror test is framed as supplemental, not as closing the pre-existing zero-coverage gap for eligible() itself."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}
