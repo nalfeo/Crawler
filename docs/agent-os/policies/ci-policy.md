@@ -31,7 +31,7 @@ Run the gate stack in this order:
 9. **Headless Governor / e2e smoke** — `npx vitest run --project e2e`
 10. **Coverage thresholds** — `npm run test:coverage`
 11. **Production build** — `npm run build`
-12. **Dependency audit** — `npm audit --audit-level=high`
+12. **Dependency audit** — `npm run security:audit`
 
 ## Coverage Thresholds
 

@@ -64,7 +64,7 @@ export interface InitializeFloor2SettlementOptions {
   readonly archetypes?: readonly ShopArchetypeDef[];
 }
 
-export const FLOOR2_SETTLEMENT_NPC_SPACING_TILES = 3;
+const FLOOR2_SETTLEMENT_NPC_SPACING_TILES = 3;
 export const FLOOR2_SETTLEMENT_DOOR_BUFFER_TILES = 1;
 
 /** @deprecated Use {@link FLOOR2_QUARTERMASTER_ARCHETYPE_ID} from shop-archetypes instead. */
