@@ -22,6 +22,17 @@
     "path": "by-sha/443c19f73e81aa6ed920478a347ee558f8547b1e.json"
   },
   {
+    "commit": "9ae48b86cd513171ae665bf38a356a1f62d29e7f",
+    "commitDate": "2026-07-22T02:55:04-07:00",
+    "commitSubject": "fix(ci): raise CI Recovery dispatch caps 1/2 -> 5 (emergency throughput unfreeze) (#1781)",
+    "capturedAt": "2026-07-22T11:10:53.484Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29910542837",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/9ae48b86cd513171ae665bf38a356a1f62d29e7f.json"
+  },
+  {
     "commit": "f1765cbb4e75be340448099cb5e46b5e13a25a31",
     "commitDate": "2026-07-22T01:37:55-07:00",
     "commitSubject": "fix(deps): temporarily restore proxy-compatible fast-uri (#1771)",
