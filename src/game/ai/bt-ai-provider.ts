@@ -3585,7 +3585,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // follow layer deflects it) — the recast query stays pure; danger/reward is a
     // FOLLOW-time layer only. For LEGACY/RISK_REWARD_FUSED/NAVMESH, usePureNavmesh ===
     // the old `useNavmesh` and useFused is unchanged, so those three stay byte-identical.
-    // DEFAULT is LEGACY.
+    // DEFAULT is RISK_REWARD_FUSED (promoted 2026-07-21 from the AI Sweep winner).
     const usesNavmeshRoute =
       this.config.pathingMode === AIPathingMode.NAVMESH ||
       this.config.pathingMode === AIPathingMode.NAVMESH_FUSED;

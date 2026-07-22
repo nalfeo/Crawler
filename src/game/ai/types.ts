@@ -204,9 +204,11 @@ export interface AIConfig {
   farmPullWeight?: number;
   /**
    * A/B axis 1: how a Track A goal becomes a heading. Defaults to
-   * {@link AIPathingMode.LEGACY} — with the default the movement path is
-   * byte-identical to main. {@link AIPathingMode.RISK_REWARD_FUSED} is
-   * selectable but currently IMPL-PENDING (delegates to legacy).
+   * {@link AIPathingMode.RISK_REWARD_FUSED} — promoted from the AI Sweep
+   * winner (2026-07-21, GitHub Actions run 29893475612: 294/300 vs the
+   * legacy+legacy incumbent's 286/300). Pass
+   * {@link AIPathingMode.LEGACY} explicitly for the pre-promotion,
+   * byte-identical-to-original-main movement path.
    */
   pathingMode?: AIPathingModeValue;
   /**
@@ -218,9 +220,10 @@ export interface AIConfig {
    * byte-identical to Slice 4a. This defaults to NAVMESH_FUSED_SEAM_WEIGHT (=2, the
    * human-adjudicated production weight), so an AI in NAVMESH_FUSED with no explicit
    * seamWeight runs the seam term at 2 — NOT off. The shipped game stays
-   * byte-identical to 4a because the default pathingMode is LEGACY and the call site
-   * forces seamWeight to 0 for every non-NAVMESH_FUSED mode, not because this
-   * defaults to 0. Ignored by every other pathing mode. Clamped to a finite value
+   * byte-identical to 4a because the default pathingMode is RISK_REWARD_FUSED
+   * (not NAVMESH_FUSED) and the call site forces seamWeight to 0 for every
+   * non-NAVMESH_FUSED mode, not because this defaults to 0. Ignored by every
+   * other pathing mode. Clamped to a finite value
    * ≥ 0 at construction; the production value is human-adjudicated via the two-stage
    * tuning sweep (`npm run ai:navmesh-seam-sweep`).
    */

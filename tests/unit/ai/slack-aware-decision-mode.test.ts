@@ -82,8 +82,14 @@ describe('isRunPlanUrgent — pure gate math', () => {
 });
 
 describe('AI A/B axes — getters + defaults', () => {
-  it('defaults to LEGACY on both axes (byte-identity guarantee)', () => {
+  it('defaults to the production AI Sweep winner (pathing=riskRewardFused, decision=legacy)', () => {
     const ai = new BehaviorTreeAI({ seed: 42 });
+    expect(ai.getPathingMode()).toBe(AIPathingMode.RISK_REWARD_FUSED);
+    expect(ai.getDecisionMode()).toBe(AIDecisionMode.LEGACY);
+  });
+
+  it('preserves pre-promotion byte-identical behavior when LEGACY is explicitly requested', () => {
+    const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.LEGACY });
     expect(ai.getPathingMode()).toBe(AIPathingMode.LEGACY);
     expect(ai.getDecisionMode()).toBe(AIDecisionMode.LEGACY);
   });

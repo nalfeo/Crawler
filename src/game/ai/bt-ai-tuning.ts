@@ -26,16 +26,28 @@ import { AIDecisionMode, AIPathingMode, type AIConfig } from './types.js';
 // At weight 0 the whole tangential-seam block in computeRiskRewardFusedHeading is
 // skipped, so NAVMESH_FUSED is byte-identical to Slice 4a (that dormancy is the
 // A/B control, locked by tests/unit/ai/navmesh-pathing.test.ts). Because the seam
-// weight only applies when pathingMode === NAVMESH_FUSED (an opt-in A/B mode) and
-// the default pathingMode is LEGACY, raising this from 0→2 does NOT change the
-// live game: LEGACY / pure-NAVMESH / RISK_REWARD_FUSED stay byte-identical.
+// weight only applies when pathingMode === NAVMESH_FUSED (an opt-in A/B mode, NOT
+// the default), raising this from 0→2 does NOT change LEGACY / RISK_REWARD_FUSED
+// (the production default since the 2026-07-21 AI Sweep winner promotion) /
+// pure-NAVMESH: all three stay byte-identical regardless of this weight.
 // Do NOT re-tune this without a fresh operator-adjudicated sweep.
 const NAVMESH_FUSED_SEAM_WEIGHT = 2;
 
+// Production default AI config. Promoted from the AI Sweep winner (2026-07-21):
+// GitHub Actions recovery run 29893475612, leaderboard artifact provenance
+// workflowSha=18929bed51edb1979db2650e3329cf4fe63ff418. Composite and
+// lexicographic winners agreed on pathingMode=riskRewardFused,
+// decisionMode=legacy, retreatThreshold=0.1, farmPullWeight=0.12 (all other
+// knobs already matched the prior incumbent default). Validation: 294/300 wins
+// (98%; 98/100 each sword/bow/baseball-bat) vs the legacy+legacy incumbent's
+// 286/300 (retreatThreshold=0.15) — +8 wins, +2.6667pp, with 3 incumbent
+// win→loss flips allowed by the merged net-win promotion rule. See
+// docs/knowledge/handoffs/2026-07-21-ai-sweep-winner-promotion.md. Do NOT
+// weaken these exact values to satisfy a test — fix the test instead.
 export const DEFAULT_CONFIG: Required<AIConfig> = {
   seed: 12345,
   aggression: 1,
-  retreatThreshold: 0.15,
+  retreatThreshold: 0.1,
   retreatDangerRadius: 20,
   scanRadius: 50,
   rangedSafeDistance: 15,
@@ -51,19 +63,24 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   collectPullWeight: 0.5,
   // Enemy-farm pull: drift toward the nearest enemy AHEAD on the player's path
   // while travelling (explore + quest-objective navigation), so auto-fire starts
-  // sooner on swarm the player walks past. Kept low and forward-biased (see
+  // sooner on swarm the player walks past. Kept forward-biased (see
   // OpportunisticFarm) so Track A's quest path stays dominant and the pull can
   // never drag the player off-objective into an off-path fight — the failure
   // mode that previously forced this to 0.0 and blew the floor-clear budget.
-  farmPullWeight: 0.07,
-  // A/B axes default to LEGACY so the AI is byte-identical to main unless a
-  // caller explicitly opts into an experimental mode.
-  pathingMode: AIPathingMode.LEGACY,
+  // Raised 0.07→0.12 by the AI Sweep winner promotion above.
+  farmPullWeight: 0.12,
+  // A/B axis 1 (pathingMode) was promoted OFF LEGACY by the AI Sweep winner
+  // above: RISK_REWARD_FUSED is now the production default. Axis 2
+  // (decisionMode) stays LEGACY — the winner didn't change it. A caller can
+  // still opt back into byte-identical-to-pre-promotion behavior by passing
+  // pathingMode: AIPathingMode.LEGACY explicitly.
+  pathingMode: AIPathingMode.RISK_REWARD_FUSED,
   decisionMode: AIDecisionMode.LEGACY,
   // Slice 4b tangential-seam term. The production weight (NAVMESH_FUSED_SEAM_WEIGHT
   // = 2) only takes effect when a caller opts into pathingMode NAVMESH_FUSED; every
-  // other mode forces the seam weight to 0 at the call site, so the LEGACY default
-  // (and pure-NAVMESH / RISK_REWARD_FUSED) stay byte-identical to main.
+  // other mode (including the RISK_REWARD_FUSED default) forces the seam weight to
+  // 0 at the call site, so LEGACY / RISK_REWARD_FUSED / pure-NAVMESH stay mutually
+  // byte-identical with respect to this weight.
   seamWeight: NAVMESH_FUSED_SEAM_WEIGHT,
   debug: false,
 };

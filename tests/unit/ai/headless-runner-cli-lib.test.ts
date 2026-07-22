@@ -16,9 +16,9 @@ function cli(...flags: string[]): ReturnType<typeof parseArgs> {
 }
 
 describe('headless-runner-cli parseArgs — A/B mode flags', () => {
-  it('defaults both A/B axes to LEGACY', () => {
+  it('defaults A/B axes to the production DEFAULT_CONFIG (pathing=riskRewardFused, decision=legacy)', () => {
     const args = cli();
-    expect(args.pathingMode).toBe(AIPathingMode.LEGACY);
+    expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
     expect(args.decisionMode).toBe(AIDecisionMode.LEGACY);
     expect(args).toEqual(defaultCLIArgs({}));
   });
