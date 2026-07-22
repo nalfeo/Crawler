@@ -83,21 +83,30 @@ export { skillSystem } from './systems/skillSystem.js';
 export {
   abilitySystem,
   createAbilityState,
+  normalizeAbilityState,
+  grantAbilitySources,
+  revokeAbilitySources,
+  configureOwnedActiveAbility,
   equipActiveAbility,
   unequipActiveAbility,
   memorizeSpell,
   grantPassiveAbility,
-  grantEquipmentActiveAbility,
-  grantEquipmentPassiveAbility,
-  grantGeneratedEquipmentActiveAbility,
-  grantGeneratedEquipmentPassiveAbility,
-  revokeEquipmentAbilityGrants,
-  migrateAbilityStateToSourceTracking,
   queueAbilityTrigger,
   getOrCreateAbilityState,
+  synchronizeAbilityPassives,
   forceActivateAbility,
   weaponPrerequisiteMet,
+  AbilityGrantError,
 } from './systems/abilitySystem.js';
+export type {
+  AbilityGrantErrorCode,
+  AbilityGrantRequest,
+  GrantAbilitySourcesOptions,
+} from './systems/abilitySystem.js';
+export {
+  grantEquipmentAbilitySources,
+  revokeEquipmentAbilitySources,
+} from './equipment-ability-grants.js';
 export {
   achievementSystem,
   collectCurrentFloorAchievementFacts,
@@ -145,16 +154,11 @@ export type {
   ActiveAbilityDefinition,
   PassiveAbilityDefinition,
   AbilityCategory,
-  AbilityGrantSource,
   AbilityState,
   AbilityTriggerCondition,
   AbilityTriggerEvent,
 } from './abilities/types.js';
 export { ACTIVE_ABILITY_SLOT_LIMIT } from './abilities/types.js';
-export {
-  grantEquipmentAbilitySources,
-  revokeEquipmentAbilitySources,
-} from './equipment-ability-grants.js';
 export {
   GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
