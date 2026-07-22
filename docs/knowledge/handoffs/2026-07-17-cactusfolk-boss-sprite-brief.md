@@ -87,6 +87,11 @@ The issue requests Abuela Saguaro as an elderly grandmother character.
 - The `sizeVariant: large` field is easy to omit from the first-pass brief. Cross-check the
   issue's "Size" field and encode it explicitly in the YAML.
 
+### Mistakes Made
+
+- The first pass treated the existing brief as authoritative before comparing it with the
+  issue's full character description and size requirement.
+
 ### Opportunities for Future Improvement
 
 - A brief-vs-issue validator could flag when a brief's prose diverges significantly from the

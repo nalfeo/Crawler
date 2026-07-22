@@ -393,7 +393,9 @@ function truncate(s: string, maxLen: number): string {
 const SHEET_BG_RGB: readonly [number, number, number] = [255, 0, 255];
 const LOCAL_A1111_SUPPORTED_TYPES: ReadonlySet<SpriteType> = new Set([
   'weapon',
+  'equipment',
   'item',
+  'prop',
   'tile',
   'vfx',
 ]);

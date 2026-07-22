@@ -1,0 +1,7 @@
+# Equipment post-processing pipeline template
+#
+# Equipment sprites (armour, accessories, etc.) inherit the base pipeline.
+
+extends: base.yml
+name: equipment-postprocess-pipeline
+description: Pipeline for equipment sprites - inherits base pipeline

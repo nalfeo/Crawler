@@ -16,6 +16,7 @@
 - **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.
 - **Sweep Results Viewer deep links are required:** Whenever you discuss, start, check, check the status of, or report results for any sweep (weapon-sweep **or** AI Sweep Eval), you **MUST** include an app-native Sweep Results Viewer reference in your response. Use the canvas `runId` input: `project:sweep-results-viewer runId=<run-id>`. A raw GitHub Actions URL may appear as a **secondary** fallback only — never as the sole navigation path. This applies to every mention of a sweep run id, workflow dispatch confirmation, status update, and results summary.
 - **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight (no review ledger/full PR paperwork). If a fix should land, spin a separate implementation child session/PR and run the normal full process there.
+- **Tooling-only ceremony is capped at 3🍎:** Work confined to developer/agent tooling, canvases, automation, or asset-pipeline tooling is estimated at no more than 3🍎 regardless of file count; the cap does not apply when runtime gameplay behavior or shipped game data changes.
 
 ## Request Intake
 

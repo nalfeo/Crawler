@@ -1,10 +1,10 @@
 import { requireGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import type { GameWorld } from '../core/world.js';
+import { equipmentAbilityGrantSourceId } from '../shared/abilities.js';
 import {
-  equipmentAbilityGrantSourceId,
-  type AbilityGrantSourceId,
+  isValidGeneratedInstanceId,
   type GeneratedEquipmentInstanceId,
-} from '../shared/index.js';
+} from '../shared/generated-equipment-types.js';
 import {
   grantAbilitySources,
   revokeAbilitySources,
@@ -17,9 +17,8 @@ function grantRequestsForInstance(
 ): readonly AbilityGrantRequest[] {
   const instance = requireGeneratedEquipmentInstance(world, instanceId);
   return instance.resolvedEffects.flatMap((effect): AbilityGrantRequest[] => {
-    if (!('kind' in effect) || (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant')) {
-      return [];
-    }
+    if (!('kind' in effect)) return [];
+    if (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant') return [];
     return [
       {
         kind: effect.kind === 'passiveGrant' ? 'passive' : 'active',
@@ -34,26 +33,33 @@ function revocationRequestsForInstance(
   world: GameWorld,
   holderEid: number,
   instanceId: GeneratedEquipmentInstanceId,
-): readonly AbilityGrantSourceId[] {
+): readonly AbilityGrantRequest[] {
+  // Validate the full instance ID before using it as a source prefix. A
+  // partial / malformed ID (e.g. "gei:v1:run") would otherwise match every
+  // source that begins with that substring and revoke grants from unrelated
+  // instances instead of failing explicitly.
+  if (!isValidGeneratedInstanceId(instanceId)) {
+    throw new Error(`Invalid generated equipment instance ID: ${instanceId}`);
+  }
   const ownership = world.abilityStatesByEntity.get(holderEid)?.grantOwnership;
   if (ownership === undefined) return [];
   const sourcePrefix = `equipment:${instanceId}:`;
-  const sourceIds: AbilityGrantSourceId[] = [];
-  for (const [, sources] of ownership.activeSourcesByAbilityId) {
+  const requests: AbilityGrantRequest[] = [];
+  for (const [abilityId, sources] of ownership.activeSourcesByAbilityId) {
     for (const sourceId of sources) {
       if (sourceId.startsWith(sourcePrefix)) {
-        sourceIds.push(sourceId);
+        requests.push({ kind: 'active', abilityId, sourceId });
       }
     }
   }
-  for (const [, sources] of ownership.passiveSourcesByAbilityId) {
+  for (const [abilityId, sources] of ownership.passiveSourcesByAbilityId) {
     for (const sourceId of sources) {
       if (sourceId.startsWith(sourcePrefix)) {
-        sourceIds.push(sourceId);
+        requests.push({ kind: 'passive', abilityId, sourceId });
       }
     }
   }
-  return sourceIds;
+  return requests;
 }
 
 export function grantEquipmentAbilitySources(

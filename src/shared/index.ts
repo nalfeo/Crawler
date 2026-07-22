@@ -135,7 +135,6 @@ export {
   equipmentAbilityGrantSourceId,
   legacyAbilityGrantSourceId,
   isAbilityGrantSourceId,
-  abilityGrantSourceCategory,
 } from './abilities.js';
 export type {
   AbilityState,

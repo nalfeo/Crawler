@@ -109,9 +109,18 @@ export interface ManifestEntry {
   readonly sensorScore: string;
   /** Judge `minScore` as a string, or `null` if not judged. */
   readonly judgeScore: string | null;
+  /** Full deterministic sensor results retained for later calibration. */
+  readonly sensorBreakdown?: ReadonlyArray<{
+    readonly sensor: string;
+    readonly ok: boolean;
+    readonly reason?: string;
+    readonly pixels?: ReadonlyArray<unknown>;
+  }>;
+  /** Full per-axis VLM scorecard retained for later calibration. */
+  readonly judgeScorecard?: Readonly<Record<string, unknown>> | null;
   /**
-   * Canonical sprite type resolved from the brief (`weapon`/`enemy`/`item`/
-   * `tile`/`vfx`/`character`), or `null` when it couldn't be resolved. Written
+   * Canonical sprite type resolved from the brief, or `null` when it couldn't
+   * be resolved. Written
    * so the reference selector can favour same-type examples without re-reading
    * briefs (which are often deleted after approval).
    */
@@ -173,12 +182,19 @@ interface RunSummaryShape {
     readonly index?: number;
     readonly score?: number;
     readonly outOf?: number;
+    readonly breakdown?: ReadonlyArray<{
+      readonly sensor: string;
+      readonly ok: boolean;
+      readonly reason?: string;
+      readonly pixels?: ReadonlyArray<unknown>;
+    }>;
     readonly derivedAnchor?: { readonly x: number; readonly y: number } | null;
     readonly derivedAnchors?: {
       readonly hold?: { readonly x: number; readonly y: number } | null;
       readonly centerOfGravity?: { readonly x: number; readonly y: number } | null;
     } | null;
-    readonly judgeScorecard?: { readonly minScore?: number } | null;
+    readonly judgeScorecard?:
+      (Readonly<Record<string, unknown>> & { readonly minScore?: number }) | null;
   }>;
   readonly postprocessOverrides?: {
     readonly profilePath?: string | null;
@@ -350,6 +366,8 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     anchors,
     sensorScore,
     judgeScore,
+    sensorBreakdown: candidate.breakdown,
+    judgeScorecard: candidate.judgeScorecard ?? null,
     type,
     contentHash,
     postprocessOverrideProfilePath: summary.postprocessOverrides?.profilePath ?? null,
@@ -362,6 +380,66 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   upsertManifest(fs, options.manifestPath, entry, variantId);
   upsertCatalog(fs, options.catalogPath, entry, variantId, entry.type);
   return entry;
+}
+
+/** Deterministic identity + content hash for one run variant, resolved WITHOUT mutating anything. */
+export interface VariantIdentity {
+  /** Canonical brief id (item-alias `-vN` stripped when applicable). */
+  readonly briefId: string;
+  /** `${briefId}-var-${variantIndex}` — the manifest/catalog key. */
+  readonly variantId: string;
+  /** `generated/${variantId}.png` — repo-relative-to-`public/assets/` path. */
+  readonly assetPath: string;
+  /** SHA-256 (hex) of the candidate's processed PNG bytes. */
+  readonly contentHash: string;
+}
+
+/**
+ * Resolve the canonical identity (briefId, variantId, assetPath) and content
+ * hash a variant WOULD get if approved right now — without copying the PNG or
+ * touching the manifest/catalog. Shares `approveVariant`'s validation (throws
+ * the same `ApproveError` kinds: `run-not-found`, `summary-invalid`,
+ * `variant-not-found`, `processed-missing`) so callers that need to reconcile
+ * against durable state BEFORE deciding whether to mutate (e.g. the sidecar's
+ * atomic accept route checking the check-in queue) can do so safely.
+ */
+export function resolveVariantIdentity(
+  runDir: string,
+  variantIndex: number,
+  fs: ApproveFs = DEFAULT_FS,
+): VariantIdentity {
+  const summaryPath = path.join(runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${runDir}`);
+  }
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const rawBriefId = summary.brief;
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+
+  const candidate = (summary.candidates ?? []).find((c) => c.index === variantIndex);
+  if (!candidate) {
+    throw new ApproveError(
+      'variant-not-found',
+      `Variant ${variantIndex} not in summary.json candidates ` +
+        `(have: ${(summary.candidates ?? []).map((c) => c.index).join(', ') || 'none'})`,
+    );
+  }
+
+  const padded = padIndex(variantIndex);
+  const processedPng = path.join(runDir, 'processed', `${padded}.png`);
+  if (!fs.existsSync(processedPng)) {
+    throw new ApproveError(
+      'processed-missing',
+      `Processed PNG not found for variant ${variantIndex}: ${processedPng}`,
+    );
+  }
+
+  const variantId = `${briefId}-var-${variantIndex}`;
+  const contentHash = createHash('sha256').update(fs.readFileSync(processedPng)).digest('hex');
+  return { briefId, variantId, assetPath: `generated/${variantId}.png`, contentHash };
 }
 
 function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {

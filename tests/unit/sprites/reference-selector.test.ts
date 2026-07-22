@@ -177,6 +177,20 @@ describe('selectReferences — same-type favouring + broadening', () => {
 });
 
 describe('selectReferences — eligibility filtering', () => {
+  it('excludes asset-level disliked sprites', () => {
+    const disliked = entry({ briefId: 'bad-reference', type: 'item' });
+    const good = entry({ briefId: 'good-reference', type: 'item' });
+    const result = selectReferences({
+      candidates: [disliked, good],
+      briefName: 'subject-v1',
+      briefType: 'item',
+      count: 3,
+      seed: SEED,
+      dislikedSpriteNames: new Set([disliked.spriteName]),
+    });
+    expect(names(result.selected)).toEqual([good.spriteName]);
+  });
+
   it('excludes placeholders (all three placeholder signals)', () => {
     const candidates: ManifestEntry[] = [
       entry({ briefId: 'good-v1', type: 'item' }),

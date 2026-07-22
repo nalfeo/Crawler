@@ -11,18 +11,18 @@ import {
   memorizeSpell,
 } from '../../src/game/systems/abilitySystem.js';
 import {
-  equipmentAbilityGrantSourceId,
-  learnedAbilityGrantSourceId,
-} from '../../src/shared/abilities.js';
-import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
 } from '../../src/shared/generated-equipment-types.js';
+import {
+  equipmentAbilityGrantSourceId,
+  learnedAbilityGrantSourceId,
+} from '../../src/shared/abilities.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('generated equipment ability grants', () => {
   it('grants and revokes a real frozen registry instance by stable identity', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'ability-grants' });
+    const world = createTestWorld({ generatedEquipmentRunKey: 'ability.grants' });
     const player = spawnPlayer(world, 0, 0);
     const instance = createGeneratedEquipmentInstance(world, {
       baseId: 'armor.ceremonial-coat',
@@ -60,6 +60,7 @@ describe('generated equipment ability grants', () => {
         activeWeaponSnapshot: null,
       },
     });
+    expect(instance.instanceId).toBe('gei:v1:ability.grants:0');
     const learned = learnedAbilityGrantSourceId('fireball');
     grantAbilitySources(world, player, [
       { kind: 'active', abilityId: 'fireball', sourceId: learned },
@@ -142,7 +143,7 @@ describe('generated equipment ability grants', () => {
     ).not.toThrow();
   });
 
-  it('is idempotent: revoking twice does not throw', () => {
+  it('is idempotent when revoking the same equipment instance twice', () => {
     const world = createTestWorld({ generatedEquipmentRunKey: 'ability-idempotent' });
     const player = spawnPlayer(world, 0, 0);
     const instance = createGeneratedEquipmentInstance(world, {
@@ -179,7 +180,7 @@ describe('generated equipment ability grants', () => {
     expect(() => revokeEquipmentAbilitySources(world, player, instance.instanceId)).not.toThrow();
   });
 
-  it('keeps learned ability equipped after equipment grant is revoked', () => {
+  it('keeps a learned spell equipped after an equipment copy is revoked', () => {
     const world = createTestWorld({ generatedEquipmentRunKey: 'ability-keep-learned' });
     const player = spawnPlayer(world, 0, 0);
     memorizeSpell(world, player, 'fireball');
@@ -214,8 +215,24 @@ describe('generated equipment ability grants', () => {
 
     grantEquipmentAbilitySources(world, player, instance.instanceId);
     revokeEquipmentAbilitySources(world, player, instance.instanceId);
+
     const state = getOrCreateAbilityState(world, player);
     expect(state.equippedActiveAbilityIds).toContain('fireball');
     expect(state.learnedSpellIds).toContain('fireball');
+  });
+
+  it('rejects a malformed instanceId before prefix-scanning ownership', () => {
+    // A partial ID like "gei:v1:run" would match every source for that run and
+    // could revoke grants from multiple instances instead of failing explicitly.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+
+    expect(() =>
+      revokeEquipmentAbilitySources(
+        world,
+        player,
+        'gei:v1:run' as Parameters<typeof revokeEquipmentAbilitySources>[2],
+      ),
+    ).toThrow(/invalid generated equipment instance id/i);
   });
 });

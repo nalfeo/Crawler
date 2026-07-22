@@ -4,8 +4,10 @@ type SpriteType = Brief['type'];
 
 const BRIEF_DIRECTORY_BY_TYPE: Readonly<Record<SpriteType, string>> = {
   weapon: 'weapons',
+  equipment: 'equipment',
   enemy: 'enemies',
   item: 'items',
+  prop: 'props',
   tile: 'tiles',
   vfx: 'vfx',
   character: 'characters',

@@ -286,8 +286,7 @@ declare global {
       getWorld?: () => GameWorld;
       getPlayerEid?: () => number;
       getIntroData?: () =>
-        | { playerName: string; playerGender: 'female' | 'male' | 'other' }
-        | undefined;
+        { playerName: string; playerGender: 'female' | 'male' | 'other' } | undefined;
       getDirectorCommentaryText?: () => string | null;
       lighting: {
         getConfig: () => LightingConfig;
@@ -608,8 +607,7 @@ export class MainGameScene extends Phaser.Scene {
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
     const introData = this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
-      | { playerName: string; playerGender: 'female' | 'male' | 'other' }
-      | undefined;
+      { playerName: string; playerGender: 'female' | 'male' | 'other' } | undefined;
     if (introData) {
       this.world.playerName = introData.playerName;
       this.world.playerGender = introData.playerGender;
@@ -775,8 +773,7 @@ export class MainGameScene extends Phaser.Scene {
               getPlayerEid: () => this.playerEid,
               getIntroData: () =>
                 this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
-                  | { playerName: string; playerGender: 'female' | 'male' | 'other' }
-                  | undefined,
+                  { playerName: string; playerGender: 'female' | 'male' | 'other' } | undefined,
               getDirectorCommentaryText: () => this.directorCommentaryText?.text ?? null,
             }
           : {}),
@@ -2341,17 +2338,20 @@ export class MainGameScene extends Phaser.Scene {
       state = {
         learnedSpellIds: [],
         equippedActiveAbilityIds: [],
+        ownedActiveAbilityIds: [],
         passiveAbilityIds: [],
         cooldownByAbilityId: new Map(),
         cooldownFramesByAbilityId: new Map(),
         appliedPassiveAbilityIds: new Set(),
-        activeAbilityGrantSources: new Map(),
-        passiveAbilityGrantSources: new Map(),
       } satisfies AbilityState;
       this.world.abilityStatesByEntity.set(this.playerEid, state);
     }
     const availableIds = [
-      ...new Set([...state.equippedActiveAbilityIds, ...state.learnedSpellIds]),
+      ...new Set([
+        ...state.equippedActiveAbilityIds,
+        ...state.learnedSpellIds,
+        ...(state.ownedActiveAbilityIds ?? []),
+      ]),
     ];
     if (availableIds.length === 0) {
       this.flashHint('No learned spells yet. Defeat the Slime Rat and claim a spellbook first.');

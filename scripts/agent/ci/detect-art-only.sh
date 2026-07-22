@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# detect-art-only.sh — detect change scope and emit art_only + docs_only +
-# gameplay_safe flags.
+# detect-art-only.sh — detect change scope and emit orthogonal impact flags
+# (art_only, docs_only, gameplay_safe, sim_touched, coverage_touched, visual
+# surfaces, and security-impact flags).
 #
 # art_only=true  — every changed file is under the approved-art surface:
 #   - public/assets/generated/**        (sprites + manifest.json)
@@ -23,11 +24,47 @@
 # 306s headless job on PULL_REQUESTS ONLY; main-push always runs it, preserving
 # an observe-after-merge backstop in case the allowlist is ever wrong.
 #
+# sim_touched=true — at least one changed file is in the simulation-critical surface.
+# Fail-closed: unknown/unclassified paths set sim_touched=true (run the gate).
+# ci.yml uses this to gate the headless Floor-1 job on PRs: headless runs only
+# when sim_touched=true; main-push and schedule always run it as a backstop.
+#
+# coverage_touched=true — at least one changed file is in the unit-test coverage
+# surface. Fail-closed: unknown/unclassified paths set coverage_touched=true.
+# ci.yml uses this to gate the advisory unit-coverage job on PRs.
+#
+# dependencies_touched=true — at least one changed file is a dependency manifest
+# (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json) or the
+# dependency-allowlist security script. Used to gate npm audit and the dep
+# allowlist check in security-review.yml.
+#
+# ai_code_touched=true — at least one changed file is in the AI source surface
+# (src/game/ai/**) or the AI prompt-injection validator
+# (scripts/agent/security/check-ai-prompts.ts). Used to gate the AI prompt-
+# injection check in security-review.yml.
+#
+# codeowners_touched=true — at least one changed file is the CODEOWNERS file,
+# a workflow file (.github/workflows/**), or the CODEOWNERS validator
+# (scripts/agent/security/check-codeowners.ts). Used to gate CODEOWNERS coverage
+# validation in security-review.yml.
+#
+# source_code_touched=true — at least one changed file is in the production source
+# surface scanned by check-dynamic-patterns.sh (src/core, src/engine, src/game,
+# src/shared — excluding the data-only sprite-catalog.json) or is the dynamic-
+# execution validator itself. Fail-safe: unknown/unclassified paths set
+# source_code_touched=true so the dynamic-execution check always runs on ambiguous
+# scope. Used to gate the dynamic-execution patterns scan in security-review.yml.
+#
 # Output: writes all flags to $GITHUB_OUTPUT (when set) and stdout.
 # Test hook: SCOPE_FILES_OVERRIDE (newline-separated paths) classifies that list
 # directly instead of deriving it from git — used by the deterministic unit test.
 # Fail-safe: any ambiguity (no base, no changed files, detached history) yields
-# false for every flag, so the full suite runs. This script never blocks CI.
+# false for scope-narrowing flags (art_only, docs_only, gameplay_safe,
+# sprites_only), TRUE for sprite/sim/coverage flags (sprites_touched,
+# sim_touched, coverage_touched, sprite_pipeline_touched), and TRUE for
+# security-impact flags (dependencies_touched, ai_code_touched,
+# codeowners_touched, source_code_touched) so that all gated checks always
+# run on ambiguous scope. This script never blocks CI.
 
 set -euo pipefail
 
@@ -40,6 +77,9 @@ emit_output() {
 }
 
 # Emit all scope flags at once (fail-safe path uses this for early exits).
+# Args: art_only docs_only gameplay_safe sprites_only sprites_touched
+#       sim_touched coverage_touched sprite_pipeline_touched dependencies_touched
+#       ai_code_touched codeowners_touched source_code_touched
 emit_all() {
   emit_output art_only "$1"
   emit_output docs_only "$2"
@@ -48,6 +88,11 @@ emit_all() {
   emit_output sprites_touched "$5"
   emit_output sim_touched "$6"
   emit_output coverage_touched "$7"
+  emit_output sprite_pipeline_touched "$8"
+  emit_output dependencies_touched "$9"
+  emit_output ai_code_touched "${10}"
+  emit_output codeowners_touched "${11}"
+  emit_output source_code_touched "${12}"
 }
 
 # Emit visual surface flags (new in #1688/#1698).
@@ -149,7 +194,7 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false false false true true
+    emit_all false false false false true true true true true true true true
     # No diff available: fail toward broader validation — run all visual suites.
     emit_visual_all true true true true
     exit 0
@@ -173,7 +218,7 @@ echo "${changed:-<none>}" >&2
 # For visual surface flags: we CANNOT safely skip — an empty/unknown diff means we
 # don't know what changed, so all three visual suites must run (fail toward more).
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false false false true true
+  emit_all false false false false true true true true true true true true
   emit_visual_all true true true true
   exit 0
 fi
@@ -401,7 +446,108 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched"
+# sprite_pipeline_touched: alias for sprites_touched with a clearer name for
+# downstream consumers. Always kept identical.
+sprite_pipeline_touched="$sprites_touched"
+
+# dependencies_touched: at least one changed file is a dependency manifest
+# (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json), the
+# dependency-allowlist security script, or the npm-audit wrapper (which hosts
+# the temporary fast-uri exception). Consumed by security-review.yml to gate
+# npm audit and the dep-allowlist check.
+dependencies_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    package.json | package-lock.json | yarn.lock | npm-shrinkwrap.json)
+      dependencies_touched=true; break ;;
+    scripts/agent/security/check-deps.ts)
+      dependencies_touched=true; break ;;
+    scripts/agent/security/npm-audit.mjs)
+      dependencies_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+# ai_code_touched: at least one changed file is in the AI source surface or the
+# AI prompt-injection validator. Consumed by security-review.yml to gate the
+# AI prompt-injection scan. Note: .github/instructions/*.md are docs-only and
+# check-ai-prompts.ts only scans src/game/ai, so they are intentionally excluded.
+ai_code_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    src/game/ai/*) ai_code_touched=true; break ;;
+    scripts/agent/security/check-ai-prompts.ts) ai_code_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+# codeowners_touched: at least one changed file is the CODEOWNERS file, a workflow
+# file (.github/workflows/**), or the CODEOWNERS validator. Consumed by
+# security-review.yml to gate CODEOWNERS coverage validation.
+codeowners_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    CODEOWNERS | .github/CODEOWNERS) codeowners_touched=true; break ;;
+    .github/workflows/*) codeowners_touched=true; break ;;
+    scripts/agent/security/check-codeowners.ts) codeowners_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+# source_code_touched: at least one changed file is in the production source surface
+# scanned by check-dynamic-patterns.sh (src/core, src/engine, src/game, src/shared
+# — excluding the data-only sprite-catalog.json) or is the dynamic-execution
+# validator itself. Fail-safe: unknown/unclassified paths set source_code_touched=true
+# so the dynamic-execution check always runs on ambiguous scope.
+source_code_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    # Data-only: not code, safe to skip even though it's under src/shared.
+    src/shared/data/sprite-catalog.json) ;;
+    # Production source surfaces scanned by check-dynamic-patterns.sh.
+    src/core/* | src/engine/* | src/game/* | src/shared/*)
+      source_code_touched=true; break ;;
+    # Dynamic-execution validator: changing it means the check definitions changed.
+    scripts/agent/security/check-dynamic-patterns.sh)
+      source_code_touched=true; break ;;
+    # Non-source surfaces: safe to skip the dynamic-execution scan.
+    src/labs/*) ;;
+    src/devtools/*) ;;
+    src/devtools-main.ts) ;;
+    devtools.html) ;;
+    tests/*) ;;
+    docs/*) ;;
+    public/*) ;;
+    .github/*) ;;
+    .specify/*) ;;
+    scripts/*) ;;
+    AGENTS.md) ;;
+    CODEOWNERS | .github/CODEOWNERS) ;;
+    package.json | package-lock.json | yarn.lock | npm-shrinkwrap.json) ;;
+    *.md) ;;
+    *.txt) ;;
+    # Unknown path: fail toward running the check (conservative).
+    *)
+      source_code_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+# security_infra_upgrade: when the security workflow itself or the scope classifier
+# that gates its steps is changed, all four security-impact flags are forced to
+# true. This ensures a PR that edits security-review.yml or detect-art-only.sh
+# actually exercises the npm audit, dependency-allowlist, AI prompt, CODEOWNERS,
+# and dynamic-execution checks that the modified workflow controls.
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    .github/workflows/security-review.yml | scripts/agent/ci/detect-art-only.sh)
+      dependencies_touched=true; ai_code_touched=true; codeowners_touched=true
+      source_code_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched" "$sprite_pipeline_touched" "$dependencies_touched" "$ai_code_touched" "$codeowners_touched" "$source_code_touched"
 
 # ── Visual surface flags (#1688/#1698) ────────────────────────────────────────
 # Classify each changed file into one or more visual surfaces.

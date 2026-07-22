@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "shared-azure-cache",
+  "task_title": "Shared Azure resource cache",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer rejected shared raw files across independent TS/MJS caches. Adopted sidecar-authoritative cache backed by an industry-standard cross-process content-addressable store plus serialized global LRU maintenance; extensions become thin proxies and no longer own disk caches. Added non-secret account/container namespace hashing, mutable-vs-immutable snapshot semantics, write/invalidation commit ordering, first-class cached brief/slice/list responses, and zero-Azure-read plus namespace/concurrency tests. Alt A sidecar-authoritative selected; Alt B shared SQLite library rejected because Node 22 sqlite is experimental and native dependency cost is high; Alt C split caches folded into typed entries within one authoritative cache."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gemini-3.1-pro-preview"],
+          "concerns_count": 7,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -1,26 +1,28 @@
 # canvas-harness — the shared canvas-extension scaffold
 
 This directory is the **single source of truth** for the boilerplate every Crawler
-DevTool canvas extension is built on. The five DevTools (sprite-generation-workflow,
-**sprite-review**, postprocess, achievements, storage) are being rewritten from the
+DevTool canvas extension is built on. The DevTools (sprite-generation-workflow,
+postprocess, achievements, storage) are being rewritten from the
 `src/devtools-main.ts` monolith into self-contained canvas extensions under
 `.github/extensions/<tool>/`. Rather than let each one re-invent (and drift) its own
 `http.createServer` + SSE + proxy plumbing — which is exactly what the pre-existing
 extensions did — they all sit on top of this one harness.
 
-`sprite-review` is the reference implementation (Slice A). Slices B–E copy the model
-below.
+`workflow` (the Sprite Generation Workflow canvas) is the reference implementation —
+it absorbed the original `sprite-review` canvas's read-only run/variant-inspection
+surface (Slice A) once its parity + live behavior were verified, so it is now the most
+complete example to copy from. Slices C–E copy the model below.
 
 ## The three layers
 
 A DevTool canvas extension is split into three cleanly-separated layers. Only the
 first is truly shared verbatim; the other two are patterns.
 
-| Layer                     | File                                        | Shared how                                                                                                             | Domain knowledge                               |
-| ------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| **1. Generic harness**    | `canvas-harness.mjs`, `image-cache.mjs`     | **Vendored byte-copy** into `<ext>/lib/` via `sync.mjs`; a drift test keeps copies identical                           | **None.** No sidecar, YAML, or tool specifics. |
-| **2. Domain adapter**     | e.g. `sprite-review/lib/sidecar-client.mjs` | **Copied + adapted** per tool (sprite tools can copy `sidecar-client.mjs` verbatim; non-sidecar tools write their own) | All of it — the tool's data source.            |
-| **3. Reusable utilities** | e.g. `sprite-review/lib/yaml-reader.mjs`    | **Copied as-needed** (fs reader for `plans/` + `briefs/`)                                                              | A little (repo layout).                        |
+| Layer                     | File                                    | Shared how                                                                                                             | Domain knowledge                               |
+| ------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **1. Generic harness**    | `canvas-harness.mjs`, `image-cache.mjs` | **Vendored byte-copy** into `<ext>/lib/` via `sync.mjs`; a drift test keeps copies identical                           | **None.** No sidecar, YAML, or tool specifics. |
+| **2. Domain adapter**     | e.g. `workflow/lib/sidecar-client.mjs`  | **Copied + adapted** per tool (sprite tools can copy `sidecar-client.mjs` verbatim; non-sidecar tools write their own) | All of it — the tool's data source.            |
+| **3. Reusable utilities** | e.g. `workflow/lib/yaml-reader.mjs`     | **Copied as-needed** (fs reader for `plans/` + `briefs/`)                                                              | A little (repo layout).                        |
 
 Layer 1 is **two** canonical files today (`CANONICAL_FILES` in `sync.mjs`): the generic
 server (`canvas-harness.mjs`) and the on-disk image cache (`image-cache.mjs`). Both are
@@ -101,26 +103,33 @@ Two small renderer conventions the tools share:
 - **Persistent toolbar.** If `render()` does `app.replaceChildren(...)`, it wipes
   everything under `#app` each render. Put durable controls (a **↻ Refresh** button, a
   **busy/loading** indicator) in the HTML shell **outside `#app`** so they survive
-  re-render. See `sprite-review/renderer.mjs` `renderHtml()`.
+  re-render. See `workflow/renderer.mjs` `renderHtml()`.
 - **Busy counter.** Track in-flight loads with an `inflight` counter and a `setBusy(on,
 label)` that toggles the indicator + disables Refresh while `inflight > 0`. Wrap every
   `/api/state` load (`loadState()`) and selection fetch. This surfaces "waiting on Azure"
   during the cold sidecar/blob calls. Because images are immutably cached, Refresh need
   not bust the image cache.
+- **Cache-first paint, background revalidate.** A tool that proxies a warmed remote
+  resource (Workflow's sidecar-backed run view) should not force a blocking spinner just
+  to re-confirm data it already rendered once. See `workflow/lib/run-view-cache.mjs`:
+  replay the last-known-good view synchronously (`stale: true`) for any target already
+  rendered once — module-wide, not per canvas instance, so a DIFFERENT open of the same
+  target still paints instantly — and refresh it in the background, guarded by a
+  selection/version check so a slow/late completion can never clobber a newer selection.
+  Only a true cold miss (a target never rendered before) may block.
 
 ## Layer 2 + 3: domain adapter and utilities
 
-`sprite-review/lib/sidecar-client.mjs` is the reference layer-2 adapter: URL builders,
+`workflow/lib/sidecar-client.mjs` is the reference layer-2 adapter: URL builders,
 response normalizers, a repo-aware health probe, and a `createSidecarClient({ baseUrl,
 fetchImpl?, workspaceRoot? })` factory. **All I/O funnels through an injectable
 `fetchImpl`** so it is fully unit-testable with a fake fetch and no live sidecar.
 
-`sprite-review/lib/yaml-reader.mjs` is the reference layer-3 utility: an fs-based reader
+`workflow/lib/yaml-reader.mjs` is the reference layer-3 utility: an fs-based reader
 for `plans/**/*.art.yaml` + `briefs/**/*.yaml`, replacing the monolith's build-time
-`import.meta.glob` (which only works inside a Vite build). Sprite-review uses it lightly;
-the workflow tool (Slice B) needs it heavily.
+`import.meta.glob` (which only works inside a Vite build).
 
-## How to bootstrap a new tool (slices B–E)
+## How to bootstrap a new tool
 
 1. Scaffold the extension: `extensions_manage({ operation: "scaffold", kind: "canvas", name: "<tool>", location: "project" })`.
 2. Vendor the harness into it:
@@ -132,16 +141,16 @@ the workflow tool (Slice B) needs it heavily.
    This creates `.github/extensions/<tool>/lib/canvas-harness.mjs` **and**
    `.github/extensions/<tool>/lib/image-cache.mjs` (every file in `CANONICAL_FILES`).
 
-3. Copy the layer-2/3 files you need from `sprite-review/lib/` (sprite tools can copy
+3. Copy the layer-2/3 files you need from `workflow/lib/` (sprite tools can copy
    `sidecar-client.mjs` as-is; everyone can copy `yaml-reader.mjs`). The relative import
    path to repo modules (`../../../../scripts/shared/...`) is **identical** for every
    extension, since all live at `.github/extensions/<name>/lib/`, so copies work unchanged.
 4. Write `renderer.mjs` (`renderHtml(instanceId)`) and wire `extension.mjs` exactly like
-   `sprite-review/extension.mjs`: resolve your data source, start one server per
+   `workflow/extension.mjs`: resolve your data source, start one server per
    instance with your `buildState` + route table, keep a per-instance `Map`, make `open`
    idempotent, and clean up in `onClose`. **Log via `session.log`, never `console.log`
    (stdout is JSON-RPC).**
-5. Add a drift test that calls `checkHarness()` (copy `sprite-review/tests/harness-drift.test.mjs`)
+5. Add a drift test that calls `checkHarness()` (copy `workflow/tests/harness-drift.test.mjs`)
    and append your `tests/*.test.mjs` glob to the `test:guards` script in `package.json`.
 
 > **REPO_ROOT trap (bites every slice).** In the CLI worktree runtime,
@@ -150,7 +159,7 @@ the workflow tool (Slice B) needs it heavily.
 > check. Derive the repo root from the file location instead: the ext lives at
 > `<root>/.github/extensions/<name>/extension.mjs`, so
 > `path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..','..','..')` (three `..`
-> hops) is the checkout the sidecar was launched from. See `sprite-review/extension.mjs`.
+> hops) is the checkout the sidecar was launched from. See `workflow/extension.mjs`.
 
 ## `sync.mjs`
 

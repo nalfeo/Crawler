@@ -612,8 +612,6 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         cooldownByAbilityId: new Map(),
         cooldownFramesByAbilityId: new Map(),
         appliedPassiveAbilityIds: new Set(),
-        activeAbilityGrantSources: new Map(),
-        passiveAbilityGrantSources: new Map(),
       } satisfies AbilityState;
       world.abilityStatesByEntity.set(playerEid, state);
     }

@@ -86,6 +86,11 @@ Created a production-ready sprite brief for the `thorn-gauntlets` Floor 2 equipm
 - Start by checking both artifact reachability and credential availability before attempting any local approval/generation steps in a cloud coding-agent session.
 - If this repo expects agents to finish art approvals from cloud sessions, add a GitHub-artifact mirror or a safe read-only artifact fetch path so the sprite-judge step can happen without direct Azure blob DNS access.
 
+### Opportunities for Future Improvement
+
+- Provide a safe read-only artifact mirror so cloud sessions can perform the sprite-judge eyeball
+  gate without direct Azure blob access.
+
 ## Files Changed
 
 - `briefs/items/thorn-gauntlets.yaml` — new authored brief for the thorn-gauntlets Floor 2 equipment icon

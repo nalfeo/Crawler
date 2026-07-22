@@ -11,10 +11,7 @@ import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import {
   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
-  abilityGrantSourceCategory,
-  type AbilityGrantSource,
   type AbilityGrantSourceId,
-  type AbilityState,
   type AbilityStateLike,
 } from '../shared/abilities.js';
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
@@ -23,11 +20,9 @@ import {
   mergeAchievementFactSnapshots,
   type AchievementFactSnapshot,
 } from '../shared/achievements.js';
+import { getAbilityDefinition } from './abilities/registry.js';
 import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
-import {
-  migrateAbilityStateToSourceTracking,
-  synchronizeAbilityPassives,
-} from './systems/abilitySystem.js';
+import { normalizeAbilityState, synchronizeAbilityPassives } from './systems/abilitySystem.js';
 
 interface SkillStateSnapshot {
   readonly level: number;
@@ -42,18 +37,9 @@ interface AbilityStateSnapshot {
   readonly passiveAbilityIds: readonly string[];
   readonly cooldownElapsedFramesByAbilityId: readonly (readonly [string, number])[];
   readonly cooldownFramesByAbilityId: readonly (readonly [string, number])[];
-  readonly appliedPassiveAbilityIds: readonly string[];
-  /** C2: source-tracking maps. Optional for backward-compat with old snapshots. */
-  readonly activeAbilityGrantSources?: readonly (readonly [
-    string,
-    readonly AbilityGrantSource[],
-  ])[];
-  readonly passiveAbilityGrantSources?: readonly (readonly [
-    string,
-    readonly AbilityGrantSource[],
-  ])[];
+  readonly appliedPassiveAbilityIds?: readonly string[];
   readonly grantOwnership?: {
-    readonly schemaVersion: typeof ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION;
+    readonly schemaVersion: string;
     readonly activeSourcesByAbilityId: readonly (readonly [
       string,
       readonly AbilityGrantSourceId[],
@@ -124,152 +110,60 @@ function snapshotAbilityState(
   frameCount: number,
 ): AbilityStateSnapshot | undefined {
   if (!state) return undefined;
-
-  // Strip equipment-sourced entries from the snapshot.  Equipment instance IDs
-  // are allocated per-world and are not stable across floor transitions; storing
-  // them would produce stale references after carryover restore.  Abilities
-  // whose *only* source was equipment are also dropped from the ID lists here —
-  // they will be re-granted when the carried-over equipment is re-equipped.
-  // Abilities with mixed sources (e.g. learned + equipment) survive with their
-  // non-equipment sources intact.
-  //
-  // TODO(C2→D): when equipment-ability wiring is fully implemented, persist a
-  // compact itemDef→abilityId manifest here and re-grant on restore so equipment
-  // abilities survive the transition without stale instanceId references.
-  const nonEquipmentSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
-    sources.filter((s) => s.kind !== 'equipment' && s.kind !== 'generated-equipment');
-  const hasNonEquipmentLegacySource = (kind: 'active' | 'passive', abilityId: string): boolean => {
-    const sources =
-      kind === 'active'
-        ? (state.activeAbilityGrantSources.get(abilityId) ?? [])
-        : (state.passiveAbilityGrantSources.get(abilityId) ?? []);
-    return sources.some(
-      (source) => source.kind !== 'equipment' && source.kind !== 'generated-equipment',
-    );
+  const normalized = normalizeAbilityState(state);
+  const filterOwnership = (
+    sourceMap: ReadonlyMap<string, ReadonlySet<AbilityGrantSourceId>>,
+  ): Map<string, Set<AbilityGrantSourceId>> => {
+    const filtered = new Map<string, Set<AbilityGrantSourceId>>();
+    for (const [abilityId, sources] of sourceMap) {
+      const retained = new Set(
+        [...sources].filter((sourceId) => !sourceId.startsWith('equipment:')),
+      );
+      if (retained.size > 0) filtered.set(abilityId, retained);
+    }
+    return filtered;
   };
-  const nonEquipmentSourceIds = (
-    kind: 'active' | 'passive',
-    abilityId: string,
-    sources: ReadonlySet<AbilityGrantSourceId> | undefined,
-  ): AbilityGrantSourceId[] =>
-    [...(sources ?? [])].filter((sourceId) => {
-      const category = abilityGrantSourceCategory(sourceId);
-      if (category === 'equipment') return false;
-      if (category === 'legacy') {
-        return hasNonEquipmentLegacySource(kind, abilityId);
-      }
-      return true;
-    });
-  const legacySourceFromOwnership = (
-    sourceId: AbilityGrantSourceId,
-  ): AbilityGrantSource | undefined => {
-    const category = abilityGrantSourceCategory(sourceId);
-    if (category === 'learned') {
-      return { kind: 'learned' };
-    }
-    if (category === 'skill') {
-      const [, skillId] = sourceId.split(':');
-      return skillId === undefined ? undefined : { kind: 'skill', skillId };
-    }
-    return undefined;
-  };
-
-  const filteredActiveSources = new Map<string, AbilityGrantSource[]>();
-  for (const [abilityId, sources] of state.activeAbilityGrantSources) {
-    const kept = nonEquipmentSources(sources);
-    if (kept.length > 0) filteredActiveSources.set(abilityId, kept);
-  }
-  const filteredPassiveSources = new Map<string, AbilityGrantSource[]>();
-  for (const [abilityId, sources] of state.passiveAbilityGrantSources) {
-    const kept = nonEquipmentSources(sources);
-    if (kept.length > 0) filteredPassiveSources.set(abilityId, kept);
-  }
-  const filteredOwnedActives = new Map<string, AbilityGrantSourceId[]>();
-  const ownedActiveEntries = state.grantOwnership?.activeSourcesByAbilityId ?? new Map();
-  for (const [abilityId, sources] of ownedActiveEntries) {
-    const kept = nonEquipmentSourceIds('active', abilityId, sources);
-    if (kept.length > 0) {
-      filteredOwnedActives.set(abilityId, kept);
-      if (!filteredActiveSources.has(abilityId)) {
-        const legacySources = kept
-          .map(legacySourceFromOwnership)
-          .filter((source): source is AbilityGrantSource => source !== undefined);
-        if (legacySources.length > 0) {
-          filteredActiveSources.set(abilityId, legacySources);
-        }
-      }
-    }
-  }
-  const filteredOwnedPassives = new Map<string, AbilityGrantSourceId[]>();
-  const ownedPassiveEntries = state.grantOwnership?.passiveSourcesByAbilityId ?? new Map();
-  for (const [abilityId, sources] of ownedPassiveEntries) {
-    const kept = nonEquipmentSourceIds('passive', abilityId, sources);
-    if (kept.length > 0) {
-      filteredOwnedPassives.set(abilityId, kept);
-      if (!filteredPassiveSources.has(abilityId)) {
-        const legacySources = kept
-          .map(legacySourceFromOwnership)
-          .filter((source): source is AbilityGrantSource => source !== undefined);
-        if (legacySources.length > 0) {
-          filteredPassiveSources.set(abilityId, legacySources);
-        }
-      }
-    }
-  }
-
-  // Drop equipment-only abilities from the canonical ID lists.
-  const equippedActiveAbilityIds = state.equippedActiveAbilityIds.filter(
-    (id: string) =>
-      filteredActiveSources.has(id) ||
-      filteredOwnedActives.has(id) ||
-      (!state.activeAbilityGrantSources.has(id) &&
-        !(state.grantOwnership?.activeSourcesByAbilityId.has(id) ?? false)),
+  const filteredActiveOwnership = filterOwnership(
+    normalized.grantOwnership.activeSourcesByAbilityId,
   );
-  const passiveAbilityIds = state.passiveAbilityIds.filter(
-    (id: string) =>
-      filteredPassiveSources.has(id) ||
-      filteredOwnedPassives.has(id) ||
-      (!state.passiveAbilityGrantSources.has(id) &&
-        !(state.grantOwnership?.passiveSourcesByAbilityId.has(id) ?? false)),
+  const filteredPassiveOwnership = filterOwnership(
+    normalized.grantOwnership.passiveSourcesByAbilityId,
   );
-  const retainedActiveAbilityIds = new Set(equippedActiveAbilityIds);
-
+  const retainedActiveIds = new Set(filteredActiveOwnership.keys());
+  const retainedPassiveIds = new Set(filteredPassiveOwnership.keys());
+  const snapshotSources = (
+    sourceMap: ReadonlyMap<string, ReadonlySet<AbilityGrantSourceId>>,
+  ): readonly (readonly [string, readonly AbilityGrantSourceId[]])[] =>
+    [...sourceMap]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([abilityId, sources]) => [abilityId, [...sources].sort()] as const);
   return {
-    learnedSpellIds: [...state.learnedSpellIds],
-    equippedActiveAbilityIds,
-    passiveAbilityIds,
-    cooldownElapsedFramesByAbilityId: [...state.cooldownByAbilityId]
-      .filter(([abilityId]) => retainedActiveAbilityIds.has(abilityId))
+    learnedSpellIds: [...normalized.learnedSpellIds],
+    equippedActiveAbilityIds: normalized.equippedActiveAbilityIds.filter((abilityId) =>
+      retainedActiveIds.has(abilityId),
+    ),
+    passiveAbilityIds: normalized.passiveAbilityIds.filter((abilityId) =>
+      retainedPassiveIds.has(abilityId),
+    ),
+    cooldownElapsedFramesByAbilityId: [...normalized.cooldownByAbilityId]
+      .filter(([abilityId]) => retainedActiveIds.has(abilityId))
       .map(
         ([abilityId, lastTriggerFrame]) =>
           [abilityId, Math.max(0, frameCount - lastTriggerFrame)] as const,
       ),
-    cooldownFramesByAbilityId: [...state.cooldownFramesByAbilityId].filter(([abilityId]) =>
-      retainedActiveAbilityIds.has(abilityId),
+    cooldownFramesByAbilityId: [...normalized.cooldownFramesByAbilityId].filter(([abilityId]) =>
+      retainedActiveIds.has(abilityId),
     ),
-    appliedPassiveAbilityIds: [],
-    activeAbilityGrantSources: [...filteredActiveSources].map(
-      ([abilityId, sources]) => [abilityId, [...sources]] as const,
-    ),
-    passiveAbilityGrantSources: [...filteredPassiveSources].map(
-      ([abilityId, sources]) => [abilityId, [...sources]] as const,
-    ),
-    grantOwnership: state.grantOwnership
-      ? {
-          schemaVersion: state.grantOwnership.schemaVersion,
-          activeSourcesByAbilityId: [...filteredOwnedActives].map(
-            ([abilityId, sources]) => [abilityId, [...sources]] as const,
-          ),
-          passiveSourcesByAbilityId: [...filteredOwnedPassives].map(
-            ([abilityId, sources]) => [abilityId, [...sources]] as const,
-          ),
-        }
-      : undefined,
+    grantOwnership: {
+      schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+      activeSourcesByAbilityId: snapshotSources(filteredActiveOwnership),
+      passiveSourcesByAbilityId: snapshotSources(filteredPassiveOwnership),
+    },
   };
 }
 
-function restoreAbilityState(snapshot: AbilityStateSnapshot, frameCount: number): AbilityState {
-  const restored: AbilityState = {
+function restoreAbilityState(snapshot: AbilityStateSnapshot, frameCount: number) {
+  const legacyState: AbilityStateLike = {
     learnedSpellIds: [...snapshot.learnedSpellIds],
     equippedActiveAbilityIds: [...snapshot.equippedActiveAbilityIds],
     passiveAbilityIds: [...snapshot.passiveAbilityIds],
@@ -279,38 +173,37 @@ function restoreAbilityState(snapshot: AbilityStateSnapshot, frameCount: number)
       ),
     ),
     cooldownFramesByAbilityId: new Map(snapshot.cooldownFramesByAbilityId),
-    appliedPassiveAbilityIds: new Set(snapshot.appliedPassiveAbilityIds),
-    activeAbilityGrantSources: snapshot.activeAbilityGrantSources
-      ? new Map(snapshot.activeAbilityGrantSources.map(([id, srcs]) => [id, [...srcs]]))
-      : new Map(),
-    passiveAbilityGrantSources: snapshot.passiveAbilityGrantSources
-      ? new Map(snapshot.passiveAbilityGrantSources.map(([id, srcs]) => [id, [...srcs]]))
-      : new Map(),
-    grantOwnership: snapshot.grantOwnership
-      ? {
-          schemaVersion: snapshot.grantOwnership.schemaVersion,
-          activeSourcesByAbilityId: new Map(
-            snapshot.grantOwnership.activeSourcesByAbilityId.map(([id, srcs]) => [
-              id,
-              new Set(srcs),
-            ]),
-          ),
-          passiveSourcesByAbilityId: new Map(
-            snapshot.grantOwnership.passiveSourcesByAbilityId.map(([id, srcs]) => [
-              id,
-              new Set(srcs),
-            ]),
-          ),
-        }
-      : undefined,
+    appliedPassiveAbilityIds: new Set(snapshot.appliedPassiveAbilityIds ?? []),
   };
-  if (restored.grantOwnership !== undefined) {
-    return restored;
-  }
-  // Back-fill source tracking for abilities restored from old snapshots that
-  // lacked the grant-source maps (backward-compat A1 contract migration).
-  migrateAbilityStateToSourceTracking(restored);
-  return restored;
+  const normalized =
+    snapshot.grantOwnership === undefined
+      ? normalizeAbilityState(legacyState)
+      : normalizeAbilityState({
+          ...legacyState,
+          grantOwnership: {
+            schemaVersion: snapshot.grantOwnership
+              .schemaVersion as typeof ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+            activeSourcesByAbilityId: new Map(
+              snapshot.grantOwnership.activeSourcesByAbilityId.map(([abilityId, sources]) => [
+                abilityId,
+                new Set(sources),
+              ]),
+            ),
+            passiveSourcesByAbilityId: new Map(
+              snapshot.grantOwnership.passiveSourcesByAbilityId.map(([abilityId, sources]) => [
+                abilityId,
+                new Set(sources),
+              ]),
+            ),
+          },
+        });
+  normalized.appliedPassiveAbilityIds = new Set(
+    [...normalized.appliedPassiveAbilityIds].filter((abilityId) => {
+      const def = getAbilityDefinition(abilityId);
+      return def?.kind === 'passive';
+    }),
+  );
+  return normalized;
 }
 
 function getModifierHolderIndex(modifier: StatModifierSnapshot): number | undefined {
@@ -344,6 +237,13 @@ function isPassiveAbilityModifier(modifier: StatModifierSnapshot): boolean {
   return modifier.sourceType === 'ability' && modifier.sourceId.split(':')[1] === 'passive';
 }
 
+function isCatalogBackedAbilityModifier(modifier: StatModifierSnapshot): boolean {
+  if (modifier.sourceType !== 'ability') return true;
+  const abilityId = modifier.sourceId.split(':')[0];
+  if (!abilityId) return true;
+  return getAbilityDefinition(abilityId) !== undefined;
+}
+
 function remapModifierHolder(
   modifier: StatModifierSnapshot,
   sourcePlayerEid: number,
@@ -372,30 +272,19 @@ export function capturePlayerCarryover(
     coreStatPoints[statId] = world.stores.coreStatPoints[statId][playerEid] ?? 0;
   }
 
-  const inventory = world.inventories.get(playerEid);
-  if ((inventory?.generatedEquipment?.length ?? 0) > 0) {
-    throw new Error(
-      'Generated equipment carryover is not supported until the B3 persistence slice lands',
-    );
-  }
-
   const equipment = getEquipmentState(world, playerEid);
   const equippedItemIds: string[] = [];
   const seenInstances = new Set<number>();
   if (equipment) {
     for (const slot of SLOT_REGISTRY) {
       const instanceId = equipment.equipped[slot.id];
-      if (instanceId == null) {
-        continue;
-      }
+      if (instanceId == null) continue;
       if (typeof instanceId !== 'number') {
         throw new Error(
           'Generated equipment carryover is not supported until the B3 persistence slice lands',
         );
       }
-      if (seenInstances.has(instanceId)) {
-        continue;
-      }
+      if (seenInstances.has(instanceId)) continue;
       const instance = equipment.instances.get(instanceId);
       if (!instance) {
         throw new Error(`Missing equipped instance ${instanceId} while capturing player carryover`);
@@ -405,6 +294,12 @@ export function capturePlayerCarryover(
     }
   }
 
+  const inventory = world.inventories.get(playerEid);
+  if ((inventory?.generatedEquipment?.length ?? 0) > 0) {
+    throw new Error(
+      'Generated equipment carryover is not supported until the B3 persistence slice lands',
+    );
+  }
   const abilityState = snapshotAbilityState(
     world.abilityStatesByEntity.get(playerEid),
     world.frameCount,
@@ -487,13 +382,15 @@ export function restorePlayerCarryover(
   const floorModifiers = world.statModifiers.filter((modifier) => modifier.sourceType === 'floor');
   world.statModifiers = [
     ...floorModifiers,
-    ...snapshot.persistentStatModifiers.map(({ expiresInFrames, ...modifier }) => ({
-      ...modifier,
-      sourceId: remapModifierHolder(modifier, snapshot.sourcePlayerEid, playerEid),
-      ...(expiresInFrames === undefined
-        ? {}
-        : { expiresFrame: world.frameCount + expiresInFrames }),
-    })),
+    ...snapshot.persistentStatModifiers
+      .filter(isCatalogBackedAbilityModifier)
+      .map(({ expiresInFrames, ...modifier }) => ({
+        ...modifier,
+        sourceId: remapModifierHolder(modifier, snapshot.sourcePlayerEid, playerEid),
+        ...(expiresInFrames === undefined
+          ? {}
+          : { expiresFrame: world.frameCount + expiresInFrames }),
+      })),
   ];
   statSystem(world);
 

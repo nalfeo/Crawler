@@ -67,3 +67,8 @@ No known blockers. Remaining work is PR hygiene / CI merge flow only.
 ### Mistakes Made
 
 - I initially let the renderer-jittered pool center participate in first-contact logic; that made kill-site pickup unreliable in the integration test until the pool origin was re-anchored to the actual death point.
+
+### Opportunities for Future Improvement
+
+- Keep expanding deterministic real-scene probes so rendering regressions are caught without
+  relying on one-off manual observations.

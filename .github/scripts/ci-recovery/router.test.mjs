@@ -7,15 +7,23 @@ import { parse } from 'yaml';
 import {
   collectPrNumbers,
   computeBackoffDelayMs,
+  computeDispatchBudget,
+  countOutstandingRecoveryRuns,
   eventPrNumbers,
+  GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  GLOBAL_TRAIN_DISPATCH_CAP,
   hasHealthyOwnerForSweep,
   hydrateRecoveryOwnership,
   isRepairWindowSweepEvent,
   isRetryableError,
+  listRecentOutstandingRunIds,
+  partitionDispatchable,
   recoveryStateFromComments,
   requestWithBackoff,
   recoveryTriggerForPr,
   isManagedCommentEvent,
+  waitForDispatchedRunsVisible,
+  waitForOutstandingCount,
 } from './router.mjs';
 import {
   automationProgressKey,
@@ -69,6 +77,7 @@ test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
     repository: 'nalfeo/Crawler',
     scheduledPulls,
     maxDispatchPerRun: 5,
+    now: new Date('1970-01-01T00:00:00Z'),
   });
 
   assert.deepEqual(numbers, [1, 2, 3, 4, 5]);
@@ -96,6 +105,7 @@ test('flag-off schedule sweeps prioritize PRs with train-owned labels before dis
     scheduledPulls,
     maxDispatchPerRun: 8,
     trainEnabled: false,
+    now: new Date('1970-01-01T00:00:00Z'),
   });
 
   assert.deepEqual(numbers, [99, 1, 2, 3, 4, 5, 6, 7]);
@@ -147,6 +157,7 @@ test('collectPrNumbers prioritizes flag-off PRs still carrying a train-owned lab
     repository: 'nalfeo/Crawler',
     scheduledPulls,
     maxDispatchPerRun: 5,
+    now: new Date('1970-01-01T00:00:00Z'),
   });
 
   assert.deepEqual(
@@ -176,6 +187,82 @@ test('collectPrNumbers keeps directly-triggered PRs ahead of the cap alongside t
   assert.equal(numbers.length, 3);
   assert.ok(numbers.includes(9), 'the directly-triggered PR must survive the cap');
   assert.ok(numbers.includes(1), 'the train-labeled PR must survive the cap');
+});
+
+test('flag-off sweeps rotate unowned PRs so later entries are eventually dispatchable', () => {
+  const scheduledPulls = Array.from({ length: 5 }, (_, index) => ({
+    number: 5 - index,
+    draft: false,
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  }));
+  const seen = new Set();
+
+  for (let sweep = 0; sweep < 5; sweep += 1) {
+    const ordered = collectPrNumbers({
+      payload: { repository: { default_branch: 'main' } },
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls,
+      maxDispatchPerRun: 8,
+      trainEnabled: false,
+      now: new Date(`2026-07-21T${String(sweep).padStart(2, '0')}:00:00Z`),
+    });
+    const { dispatchable } = partitionDispatchable(ordered, 2);
+    for (const prNumber of dispatchable) {
+      seen.add(prNumber);
+    }
+  }
+
+  assert.deepEqual(seen, new Set([1, 2, 3, 4, 5]));
+});
+
+test('flag-off sweeps keep owned PRs behind unowned PRs before the global budget slice', () => {
+  const scheduledPulls = [
+    {
+      number: 5,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 4,
+      draft: false,
+      labels: [{ name: 'ci-owner-pr-4' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 3,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2,
+      draft: false,
+      labels: [{ name: 'ci-owner-pr-2' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 1,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  const ordered = collectPrNumbers({
+    payload: { repository: { default_branch: 'main' } },
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    maxDispatchPerRun: 8,
+    trainEnabled: false,
+    now: new Date('2026-07-21T00:00:00Z'),
+  });
+
+  const { dispatchable } = partitionDispatchable(ordered, 2);
+  assert.deepEqual(dispatchable, [5, 3]);
 });
 
 test('train mode routes PR-scoped events only to their directly affected PR', () => {
@@ -777,11 +864,13 @@ test('train sweeps preserve synchronize only for the directly triggered PR', () 
   );
 });
 
-test('managed state, task, and train comments do not feed the recovery router', () => {
+test('managed recovery comments do not feed the recovery router', () => {
   for (const body of [
     '<!-- crawler-ci-state:v1 -->\nstate',
     '<!-- crawler-ci-task:v1 fingerprint=x -->\ntask',
     '<!-- crawler-merge-train:v1 -->\nstatus',
+    '<!-- crawler-review-request:v1 head=x reason=ready -->',
+    '<!-- crawler-review-conflict:v1 episode=x head=y base=z -->',
   ]) {
     assert.equal(isManagedCommentEvent({ comment: { body } }, 'issue_comment'), true);
   }
@@ -794,12 +883,14 @@ test('managed state, task, and train comments do not feed the recovery router', 
   );
 });
 
-test('managed state, task, and train comments are rejected by the workflow job guard', () => {
+test('managed recovery comments are rejected by the workflow job guard', () => {
   assert.equal(typeof routeJob.if, 'string');
   for (const marker of [
     '<!-- crawler-ci-state:v1 -->',
     '<!-- crawler-ci-task:v1',
     '<!-- crawler-merge-train:v1 -->',
+    '<!-- crawler-review-request:v1',
+    '<!-- crawler-review-conflict:v1',
   ]) {
     assert.ok(
       routeJob.if.includes(`!startsWith(github.event.comment.body, '${marker}')`),
@@ -812,18 +903,50 @@ test('router listens only for completed CI workflow runs', () => {
   assert.deepEqual(workflow.on.workflow_run.types, ['completed']);
 });
 
-test('router concurrency keeps latest-pending sweeps and isolates single-PR workflow events', () => {
-  assert.equal(routeJob.concurrency.queue, undefined);
-  assert.match(routeJob.concurrency.group, /crawler-ci-recovery-router-train/);
-  assert.match(
-    routeJob.concurrency.group,
-    /github\.event\.workflow_run\.pull_requests\[0\]\.number/,
+test('router concurrency serializes every event into one unconditional global group', () => {
+  // queue: max is required so GitHub actually queues every event under the
+  // shared group instead of its default "1 running + 1 pending, newest
+  // replaces pending" behavior, which would silently drop router
+  // invocations during a burst rather than serializing them. Both group
+  // and queue are now static (not conditional on MERGE_TRAIN_ENABLED): an
+  // earlier revision only unified the group in train mode, leaving the
+  // legacy flag-off path on per-PR groups where truly concurrent
+  // different-PR invocations could each read a stale outstanding-run count
+  // before either dispatch became visible. A static, unconditional group
+  // makes that race architecturally impossible in any mode.
+  assert.equal(
+    routeJob.concurrency.queue,
+    'max',
+    'queue must be an unconditional max, not gated on MERGE_TRAIN_ENABLED',
   );
-  assert.match(
-    routeJob.concurrency.group,
-    /!github\.event\.workflow_run\.pull_requests\[1\]\.number/,
+  const group = routeJob.concurrency.group;
+  assert.equal(
+    group,
+    'crawler-ci-recovery-router',
+    'concurrency group must be a static, unconditional string -- not a per-PR/per-sweep/train-gated expression',
   );
-  assert.equal(routeJob.concurrency['cancel-in-progress'].includes('queue: max'), false);
+});
+
+test('router concurrency cancel-in-progress is unconditionally false', () => {
+  // cancel-in-progress must never fire, in any mode, so every queued
+  // router event eventually runs instead of being dropped or a stale one
+  // cancelled; serialization (not cancellation) is what bounds
+  // concurrency, and the scheduled sweep is the backstop for
+  // deduplication instead of cancel-in-progress.
+  assert.equal(
+    routeJob.concurrency['cancel-in-progress'],
+    false,
+    'cancel-in-progress must be a static false, not a conditional expression',
+  );
+});
+
+test('router concurrency never combines queue: max with a cancel-in-progress: true condition (GitHub rejects that combination)', () => {
+  // GitHub Actions docs: "The combination of queue: max and
+  // cancel-in-progress: true is not allowed and will result in a workflow
+  // validation error." Both values are now static, so this is
+  // structurally guaranteed rather than conditionally guaranteed.
+  assert.equal(routeJob.concurrency['cancel-in-progress'], false);
+  assert.equal(routeJob.concurrency.queue, 'max');
 });
 
 test('isRetryableError only retries relevant HTTP errors', () => {
@@ -877,6 +1000,440 @@ test('requestWithBackoff stops immediately for non-retryable errors', async () =
     /Not Found/,
   );
   assert.equal(attempts, 1);
+});
+
+test('computeDispatchBudget caps outstanding recovery runs to GLOBAL_IDLE_TRAIN_DISPATCH_CAP when there is no active merge-train backlog', () => {
+  assert.equal(GLOBAL_IDLE_TRAIN_DISPATCH_CAP, 5);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 5);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 1 }), 4);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 5 }), 0);
+  assert.equal(
+    computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 25 }),
+    0,
+    'budget never goes negative when outstanding exceeds the idle cap',
+  );
+});
+
+test('computeDispatchBudget still applies the idle cap -- never Infinity -- when the merge-train feature itself is disabled or paused', () => {
+  // Regression for the parent-session correction: protecting runner
+  // capacity must not lapse specifically when the train is disabled --
+  // that is exactly the maintenance/rollback window operators need
+  // backpressure to keep working. computeDispatchBudget no longer takes a
+  // trainEnabled flag at all: callers determine trainQueueNonEmpty from
+  // live PR labels (see runFromEnv), which is naturally false when the
+  // train feature is off, so this collapses to the same idle-cap path
+  // above rather than an unbounded fallback.
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 5);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 5 }), 0);
+});
+
+test('computeDispatchBudget caps outstanding recovery runs to GLOBAL_TRAIN_DISPATCH_CAP whenever the merge-train backlog is non-empty, including with the train feature disabled', () => {
+  assert.equal(GLOBAL_TRAIN_DISPATCH_CAP, 5);
+  assert.equal(
+    computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 0 }),
+    5,
+    'a fully idle recovery workflow may dispatch up to the train cap',
+  );
+  assert.equal(
+    computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 1 }),
+    4,
+    'each outstanding run consumes one unit of the global budget',
+  );
+  assert.equal(
+    computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 25 }),
+    0,
+    'budget never goes negative when outstanding exceeds the cap',
+  );
+});
+
+test('partitionDispatchable sends everything when the budget is unbounded', () => {
+  const prNumbers = [1, 2, 3, 4, 5];
+  assert.deepEqual(partitionDispatchable(prNumbers, Infinity), {
+    dispatchable: prNumbers,
+    deferred: [],
+  });
+});
+
+test('partitionDispatchable defers PRs beyond the computed budget', () => {
+  const prNumbers = [10, 11, 12];
+  assert.deepEqual(partitionDispatchable(prNumbers, 1), {
+    dispatchable: [10],
+    deferred: [11, 12],
+  });
+  assert.deepEqual(partitionDispatchable(prNumbers, 0), {
+    dispatchable: [],
+    deferred: [10, 11, 12],
+  });
+});
+
+test('countOutstandingRecoveryRuns uses concurrent per-status total_count queries (O(statuses) requests)', async () => {
+  // The implementation must NOT paginate all runs -- the live CI Recovery
+  // workflow can accumulate tens of thousands of completed runs, and a full
+  // pagination at 100 runs/request would exhaust the Actions token quota and
+  // 10-minute job timeout. Instead it fires one concurrent request per status
+  // using the `total_count` field in the response, keeping request count fixed
+  // at O(len(statuses)).
+  const queriedStatuses = [];
+  const requestFn = async (_token, path) => {
+    const url = new URL(path, 'http://example.test');
+    const status = url.searchParams.get('status');
+    queriedStatuses.push(status);
+    const counts = { queued: 3, in_progress: 1, waiting: 2, requested: 0, pending: 1 };
+    return { data: { total_count: counts[status] ?? 0, workflow_runs: [] } };
+  };
+
+  const total = await countOutstandingRecoveryRuns(
+    'token',
+    'nalfeo',
+    'Crawler',
+    'ci-recovery.yml',
+    ['queued', 'in_progress', 'waiting', 'requested', 'pending'],
+    requestFn,
+  );
+
+  assert.equal(total, 7, 'must sum total_count across all queried statuses');
+  assert.deepEqual(
+    new Set(queriedStatuses),
+    new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']),
+    'must query each outstanding status exactly once',
+  );
+  assert.ok(
+    queriedStatuses.every((s) => s !== null),
+    'each request must carry a status= filter',
+  );
+  // Exactly one request per status (no pagination):
+  assert.equal(queriedStatuses.length, 5, 'must issue exactly one request per status');
+});
+
+test('countOutstandingRecoveryRuns counts pending runs by default', async () => {
+  // Regression guard: pending is a documented Actions run status; omitting
+  // it from the default status list would let a run in that state go
+  // uncounted and silently widen the outstanding-run gap.
+  const requestFn = async (_token, path) => {
+    const url = new URL(path, 'http://example.test');
+    const status = url.searchParams.get('status');
+    return { data: { total_count: status === 'pending' ? 1 : 0, workflow_runs: [] } };
+  };
+  const total = await countOutstandingRecoveryRuns(
+    'token',
+    'nalfeo',
+    'Crawler',
+    'ci-recovery.yml',
+    undefined,
+    requestFn,
+  );
+  assert.equal(total, 1, 'default OUTSTANDING_RUN_STATUSES must include pending');
+});
+
+test('listRecentOutstandingRunIds returns IDs of outstanding runs from first page only', async () => {
+  const requestFn = async () => ({
+    data: {
+      total_count: 5,
+      workflow_runs: [
+        { id: 1001, status: 'queued' },
+        { id: 1002, status: 'in_progress' },
+        { id: 1003, status: 'completed' },
+        { id: 1004, status: 'waiting' },
+        { id: 1005, status: 'success' },
+      ],
+    },
+  });
+  const ids = await listRecentOutstandingRunIds(
+    'token',
+    'nalfeo',
+    'Crawler',
+    'ci-recovery.yml',
+    ['queued', 'pending', 'in_progress', 'waiting', 'requested'],
+    requestFn,
+  );
+  assert.deepEqual(ids, new Set([1001, 1002, 1004]), 'must return only outstanding run IDs');
+});
+
+test('waitForDispatchedRunsVisible resolves when a newly dispatched run appears', async () => {
+  // Pre-dispatch: runs 1000 and 1001 were already outstanding.
+  const preDispatchIds = new Set([1000, 1001]);
+  let visibleIds = new Set([1000, 1001]); // new run not yet visible
+  let now = 0;
+  const sleeps = [];
+  const sleepFn = async (ms) => {
+    sleeps.push(ms);
+    now += ms;
+    // Newly dispatched run 1002 appears during the poll.
+    visibleIds = new Set([1000, 1001, 1002]);
+  };
+
+  const newCount = await waitForDispatchedRunsVisible(
+    'token',
+    'nalfeo',
+    'Crawler',
+    preDispatchIds,
+    1,
+    {
+      timeoutMs: 30,
+      pollIntervalMs: 10,
+      nowFn: () => now,
+      sleepFn,
+      listFn: async () => visibleIds,
+    },
+  );
+
+  assert.equal(newCount, 1);
+  assert.equal(sleeps.length, 1, 'must stop polling as soon as the new run is visible');
+});
+
+test('waitForDispatchedRunsVisible does not time out when a pre-existing run completes while waiting', async () => {
+  // Models the scenario the old waitForOutstandingCount would fail: invocation
+  // dispatches one run, but a pre-existing run completes right after dispatch.
+  // The aggregate outstanding count stays the same, but the new run IS visible.
+  const preDispatchIds = new Set([1000]); // one run was outstanding before dispatch
+  // Pre-existing run 1000 completed; new run 1001 appeared.
+  const visibleIds = new Set([1001]); // 1000 gone, 1001 new
+
+  const newCount = await waitForDispatchedRunsVisible(
+    'token',
+    'nalfeo',
+    'Crawler',
+    preDispatchIds,
+    1,
+    {
+      timeoutMs: 100,
+      pollIntervalMs: 10,
+      nowFn: () => 0,
+      sleepFn: async () => {},
+      listFn: async () => visibleIds,
+    },
+  );
+
+  assert.equal(newCount, 1, 'must detect the new run even though a pre-existing run completed');
+});
+
+test('waitForDispatchedRunsVisible rejects on timeout when no new runs ever appear', async () => {
+  const preDispatchIds = new Set([1000]);
+  let now = 0;
+  const sleeps = [];
+  await assert.rejects(
+    waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
+      timeoutMs: 10,
+      pollIntervalMs: 5,
+      nowFn: () => now,
+      sleepFn: async (ms) => {
+        sleeps.push(ms);
+        now += ms;
+      },
+      // Same IDs as pre-dispatch: no new run appeared.
+      listFn: async () => new Set([1000]),
+    }),
+    /Timed out waiting for 1 dispatched run\(s\) to become visible via Actions API/,
+  );
+  assert.deepEqual(sleeps, [5, 5], 'must keep the concurrency slot until timeout is exhausted');
+});
+
+test('waitForOutstandingCount observes a newly dispatched run before returning', async () => {
+  let visibleCount = 0;
+  let now = 0;
+  const countFn = async () => visibleCount;
+  const sleeps = [];
+  const sleepFn = async (ms) => {
+    sleeps.push(ms);
+    now += ms;
+    // Simulate the dispatch becoming visible mid-poll, the way GitHub's
+    // eventual consistency behaves in practice.
+    visibleCount = 1;
+  };
+
+  const observed = await waitForOutstandingCount('token', 'nalfeo', 'Crawler', 1, {
+    timeoutMs: 30,
+    pollIntervalMs: 10,
+    nowFn: () => now,
+    sleepFn,
+    countFn,
+  });
+
+  assert.equal(observed, 1);
+  assert.equal(sleeps.length, 1, 'must stop polling as soon as the expected count is observed');
+});
+
+test('waitForOutstandingCount holds the router slot until timeout, then rejects instead of silently succeeding', async () => {
+  let now = 0;
+  const sleeps = [];
+  await assert.rejects(
+    waitForOutstandingCount('token', 'nalfeo', 'Crawler', 1, {
+      timeoutMs: 10,
+      pollIntervalMs: 5,
+      nowFn: () => now,
+      sleepFn: async (ms) => {
+        sleeps.push(ms);
+        now += ms;
+      },
+      countFn: async () => 0,
+    }),
+    /Timed out waiting for dispatched run\(s\) to become visible via Actions API/,
+  );
+
+  assert.deepEqual(
+    sleeps,
+    [5, 5],
+    'must keep the concurrency slot until the timeout budget is exhausted',
+  );
+});
+
+test('serialized router invocations do not both under-count the same in-flight dispatch (TOCTOU close)', async () => {
+  // Models the exact race a plan reviewer flagged: invocation A dispatches
+  // under the train cap, then -- per runFromEnv -- must observe its own
+  // dispatch via waitForDispatchedRunsVisible before this invocation ends and
+  // the router's `queue: max` concurrency group releases the slot to
+  // invocation B. Without that wait, B could read a stale outstandingCount
+  // of 0 and dispatch a second run, breaching GLOBAL_TRAIN_DISPATCH_CAP.
+  const preexistingIds = Array.from({ length: GLOBAL_TRAIN_DISPATCH_CAP - 1 }, (_, i) => 900 + i);
+  const preDispatchIds = new Set(preexistingIds); // fills all but one slot before A dispatches
+  let apiVisibleIds = new Set(preexistingIds);
+  const sleepFn = async () => {
+    apiVisibleIds = new Set([...preexistingIds, 1001]); // A's dispatched run becomes visible during A's poll
+  };
+
+  // Invocation A: budget allows exactly one dispatch, taking the cap to its ceiling.
+  const budgetA = computeDispatchBudget({
+    trainQueueNonEmpty: true,
+    outstandingCount: preDispatchIds.size,
+  });
+  assert.equal(budgetA, 1, 'A may dispatch exactly one run to reach the cap');
+  const { dispatchable: dispatchableA } = partitionDispatchable([101], budgetA);
+  assert.deepEqual(dispatchableA, [101]);
+  await waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
+    timeoutMs: 30,
+    pollIntervalMs: 10,
+    nowFn: () => 0,
+    sleepFn,
+    listFn: async () => apiVisibleIds,
+  });
+
+  // Invocation B only starts once A's serialized slot is released, so it
+  // now reads the up-to-date, post-dispatch count.
+  const outstandingForB = apiVisibleIds.size;
+  const budgetB = computeDispatchBudget({
+    trainQueueNonEmpty: true,
+    outstandingCount: outstandingForB,
+  });
+  const { dispatchable: dispatchableB } = partitionDispatchable([102], budgetB);
+  assert.deepEqual(dispatchableB, [], 'B must defer -- the cap is already exhausted by A');
+});
+
+test('25 concurrent router-trigger events leave at most GLOBAL_TRAIN_DISPATCH_CAP CI Recovery runs outstanding while the train queue is non-empty', () => {
+  // Simulates the 2026-07-21 incident shape: 25 independently-triggered PR
+  // events all resolve to a router invocation wanting to dispatch its own
+  // PR while the merge train queue is non-empty. Each invocation must
+  // independently respect the same global cap.
+  const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
+  let outstandingCount = 0;
+  let totalDispatched = 0;
+
+  for (const prNumber of prNumbers) {
+    const budget = computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount,
+    });
+    const { dispatchable } = partitionDispatchable([prNumber], budget);
+    totalDispatched += dispatchable.length;
+    outstandingCount += dispatchable.length;
+    // Bound must hold after every single event in the burst, not just at
+    // the end -- this is the actual thundering-herd invariant.
+    assert.ok(
+      outstandingCount <= GLOBAL_TRAIN_DISPATCH_CAP,
+      `outstanding=${outstandingCount} exceeded cap=${GLOBAL_TRAIN_DISPATCH_CAP} after event for PR #${prNumber}`,
+    );
+  }
+
+  assert.equal(
+    totalDispatched,
+    5,
+    'exactly GLOBAL_TRAIN_DISPATCH_CAP dispatches should escape the burst',
+  );
+
+  // Once the one outstanding run completes, capacity frees up and the next
+  // event (or the 10-minute scheduled sweep re-evaluating the same PR list)
+  // can dispatch again -- eventual processing is preserved.
+  outstandingCount = 0;
+  const budgetAfterCompletion = computeDispatchBudget({
+    trainQueueNonEmpty: true,
+    outstandingCount,
+  });
+  assert.equal(budgetAfterCompletion, 5);
+});
+
+test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPATCH_CAP runs outstanding while the train feature is on but its queue is empty', () => {
+  // Same burst shape as the non-empty-queue case, but with no Merge Train
+  // Validation run to protect: budget relaxes from GLOBAL_TRAIN_DISPATCH_CAP
+  // to GLOBAL_IDLE_TRAIN_DISPATCH_CAP (both 5 as of the 2026-07-22 emergency
+  // raise) instead of going fully unbounded, per
+  // the measured capacity evidence (public repo, 20-job Actions concurrency
+  // limit; sweep-style jobs can still be running even with an empty queue).
+  const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
+  let outstandingCount = 0;
+  let totalDispatched = 0;
+
+  for (const prNumber of prNumbers) {
+    const budget = computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount,
+    });
+    const { dispatchable } = partitionDispatchable([prNumber], budget);
+    totalDispatched += dispatchable.length;
+    outstandingCount += dispatchable.length;
+    assert.ok(
+      outstandingCount <= GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      `outstanding=${outstandingCount} exceeded idle cap=${GLOBAL_IDLE_TRAIN_DISPATCH_CAP} after event for PR #${prNumber}`,
+    );
+  }
+
+  assert.equal(
+    totalDispatched,
+    5,
+    'exactly GLOBAL_IDLE_TRAIN_DISPATCH_CAP dispatches should escape the burst',
+  );
+});
+
+test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPATCH_CAP runs outstanding when the merge-train feature is disabled', () => {
+  // Regression for the parent-session correction: the 2026-07-21 herd could
+  // just as easily recur while the train feature is paused/disabled for
+  // maintenance -- exactly the incident-response window an operator sets
+  // MERGE_TRAIN_ENABLED=false or leans on ci-recovery-opt-out. Backpressure
+  // must not lapse there. computeDispatchBudget takes no trainEnabled input
+  // at all: this burst is driven purely by trainQueueNonEmpty=false (the
+  // natural state once the train feature is off -- no PR is being actively
+  // queued through it) and proves the same idle cap of 2 holds regardless.
+  //
+  // This sequential loop is now also an accurate model of real router
+  // behavior, not just a JS-level budget check: the workflow's concurrency
+  // group (see ci-recovery-router.yml and the 'router concurrency serializes
+  // every event into one unconditional global group' test) is a single
+  // static group applied to every event in every mode, so all 25 events in
+  // this burst would in practice run one invocation at a time, each reading
+  // the previous invocation's committed outstandingCount -- there is no
+  // window in which two of these 25 invocations observe the same stale
+  // count concurrently. The idle cap is 5 as of the 2026-07-22 emergency raise.
+  const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
+  let outstandingCount = 0;
+  let totalDispatched = 0;
+
+  for (const prNumber of prNumbers) {
+    const budget = computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount,
+    });
+    const { dispatchable } = partitionDispatchable([prNumber], budget);
+    totalDispatched += dispatchable.length;
+    outstandingCount += dispatchable.length;
+    assert.ok(
+      outstandingCount <= GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      `outstanding=${outstandingCount} exceeded idle cap=${GLOBAL_IDLE_TRAIN_DISPATCH_CAP} after event for PR #${prNumber} with the train feature disabled`,
+    );
+  }
+
+  assert.equal(
+    totalDispatched,
+    5,
+    'exactly GLOBAL_IDLE_TRAIN_DISPATCH_CAP dispatches should escape the burst even with the train feature disabled',
+  );
 });
 
 test('hydrateRecoveryOwnership stops after six dispatchable PRs in the resolved prefix', async () => {
