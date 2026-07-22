@@ -212,6 +212,19 @@ export function resolveAssetRequestSizeVariant(input: {
     : DEFAULT_SIZE_VARIANT;
 }
 
+/**
+ * Resolve the mob role for a parsed issue request.
+ * Returns `'boss'` when the name or brief indicates a boss enemy; `undefined`
+ * for all other requests (non-enemy types or ordinary enemies).
+ */
+export function resolveAssetRequestMobRole(input: {
+  readonly name: string;
+  readonly briefSentence: string;
+  readonly type?: string;
+}): 'boss' | undefined {
+  return isBossAssetRequest(input.name, input.briefSentence, input.type) ? 'boss' : undefined;
+}
+
 function isBossAssetRequest(name: string, briefSentence: string, type?: string): boolean {
   const normalizedType = type?.trim().toLowerCase();
   // Explicit non-enemy type always suppresses boss sizing.

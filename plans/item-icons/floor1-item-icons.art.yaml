@@ -74,7 +74,7 @@ assets:
       id: glistening-rat-tail
 
   - id: merchants-stained-charm
-    type: item
+    type: equipment
     label: Merchant's Stained Charm
     brief: >
       A tarnished bronze amulet pendant on a short chain, covered in

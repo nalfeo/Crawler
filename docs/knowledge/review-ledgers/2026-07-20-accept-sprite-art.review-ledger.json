@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "accept-sprite-art",
+  "task_title": "Accept and queue sprites from workflow canvas",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Compared sidecar atomic composition, extension composition, and CLI spawning. Adopted sidecar ownership after review: global mutex, open-issue dedupe, prepare reconciliation, token-gated canvas mutation, fake-first verification, createRequire YAML loading, and ADR. All nine concerns incorporated."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.6-terra",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 6,
+          "valid_count": 6,
+          "resolved_count": 6,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 4,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

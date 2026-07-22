@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { finalImageClickToAnchor, anchorMarkerPercent } from '../lib/anchor.mjs';
+import { finalImageClickToAnchor, anchorMarkerPercent, middleAnchor } from '../lib/anchor.mjs';
 
 const rect = (over = {}) => ({ left: 0, top: 0, width: 100, height: 100, ...over });
 
@@ -122,8 +122,17 @@ test('anchor round-trip: click → marker lands inside the clicked pixel band', 
     naturalWidth,
     naturalHeight,
   });
+
   const marker = anchorMarkerPercent({ ...anchor, naturalWidth, naturalHeight });
   // center-of-pixel must sit within [x/nat, (x+1)/nat] * 100
   assert.ok(marker.leftPct > (anchor.x / naturalWidth) * 100);
   assert.ok(marker.leftPct < ((anchor.x + 1) / naturalWidth) * 100);
+});
+
+test('middleAnchor uses floor-half coordinates for odd and even dimensions', () => {
+  assert.deepEqual(middleAnchor({ naturalWidth: 163, naturalHeight: 267 }), { x: 81, y: 133 });
+  assert.deepEqual(middleAnchor({ naturalWidth: 64, naturalHeight: 32 }), { x: 32, y: 16 });
+  assert.deepEqual(middleAnchor({ naturalWidth: 1, naturalHeight: 1 }), { x: 0, y: 0 });
+  assert.equal(middleAnchor({ naturalWidth: 0, naturalHeight: 32 }), null);
+  assert.equal(middleAnchor(null), null);
 });

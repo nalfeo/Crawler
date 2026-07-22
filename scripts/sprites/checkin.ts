@@ -46,6 +46,14 @@ export interface CheckinAsset {
   readonly briefId: string | null;
   /** Variant index, or null when unknown. */
   readonly variantIndex: number | null;
+  /**
+   * SHA-256 (hex) of the approved PNG's bytes, sourced from the manifest
+   * entry's `contentHash` (`approve.ts`). Optional so pre-existing issue
+   * payloads (filed before this field existed) remain parseable — a missing
+   * hash just means durable dedupe can't verify content equality for that
+   * asset and must fail closed (see `asset-issues.ts`).
+   */
+  readonly contentHash?: string;
 }
 
 /** Machine-readable payload embedded in the issue body for the consolidator. */
@@ -72,7 +80,20 @@ export interface AssetCheckinPlan {
   readonly paths: readonly string[];
 }
 
-export type CheckinErrorKind = 'ci-refused' | 'nothing-to-checkin' | 'git-failed' | 'gh-failed';
+export type CheckinErrorKind =
+  | 'ci-refused'
+  | 'nothing-to-checkin'
+  | 'git-failed'
+  | 'gh-failed'
+  /** Queued elsewhere at the SAME assetPath but with a DIFFERENT content hash. */
+  | 'content-conflict'
+  /** Queued at the SAME assetPath but either side's content hash is unrecorded
+   *  (a legacy issue or manifest entry filed before hashes existed) — equality
+   *  can never be established from a missing hash, so this fails closed. */
+  | 'ambiguous-queued-content'
+  /** Another check-in is already in progress in this repository (cross-process
+   *  file lock held). The caller should retry after a brief delay. */
+  | 'checkin-locked';
 
 export class CheckinError extends Error {
   constructor(
@@ -194,25 +215,58 @@ export type Exec = (
 export interface CheckinManifest {
   readonly entries?: Record<
     string,
-    { readonly assetPath?: string; readonly briefId?: string; readonly variantIndex?: number }
+    {
+      readonly assetPath?: string;
+      readonly briefId?: string;
+      readonly variantIndex?: number;
+      readonly contentHash?: string;
+    }
   >;
 }
 
 export interface CheckinRunnerDeps {
   /** Runs an external command (git/gh). */
   readonly exec: Exec;
-  /** Copy the live art surface from `srcRepoRoot` into the worktree `destRepoRoot`. */
-  readonly copyArtSurface: (srcRepoRoot: string, destRepoRoot: string) => Promise<void>;
+  /**
+   * Copy ONLY `assets`' PNGs (plus their manifest/catalog entries) from the
+   * live `srcRepoRoot` into the worktree `destRepoRoot`. Must NOT copy the
+   * full art surface — assets excluded from `assets` (e.g. already durably
+   * queued by another open issue) must be absent from the resulting branch
+   * diff so the branch content and the issue payload stay aligned.
+   */
+  readonly copyArtSurface: (
+    srcRepoRoot: string,
+    destRepoRoot: string,
+    assets: readonly CheckinAsset[],
+  ) => Promise<void>;
   /** Create + return an empty temp directory for the throwaway worktree. */
   readonly makeTempDir: () => Promise<string>;
   /** Remove a directory tree (best-effort cleanup). */
   readonly removeDir: (dir: string) => Promise<void>;
   /** Read the live manifest (to enrich assets). Defaults to empty on any error. */
   readonly readManifest?: () => Promise<CheckinManifest>;
+  /** Open asset-checkin issues keyed by asset path for durable queue deduplication. */
+  readonly listQueuedAssets?: () => Promise<ReadonlyMap<string, QueuedAssetCheckin>>;
   /** Env consulted for the CI refusal. Defaults to `process.env`. */
   readonly env?: NodeJS.ProcessEnv;
   /** Clock. Defaults to `() => new Date()`. */
   readonly now?: () => Date;
+  /**
+   * Acquire (and release) a cross-process lock for the entire check-in
+   * operation. Without this, two concurrent processes (e.g. a sidecar and a
+   * CLI) can both observe the same asset as un-queued, then both push
+   * a branch and file a tracking issue — producing duplicate `asset-checkin`
+   * issues. The lock serializes concurrent `runAssetCheckin` calls across
+   * processes: the second caller's `listQueuedAssets` reads the issue filed by
+   * the first and returns `nothing-to-checkin` (or `ambiguous-queued-content`)
+   * instead of publishing again.
+   *
+   * Defaults to a no-op passthrough. Production callers must supply a
+   * file-based implementation (see `createDefaultCheckinDeps` in
+   * `checkin-runtime.ts`). Tests that do not exercise concurrent execution
+   * can omit this field.
+   */
+  readonly withCrossProcessLock?: <T>(fn: () => Promise<T>) => Promise<T>;
 }
 
 export interface RunAssetCheckinOptions {
@@ -228,6 +282,153 @@ export interface AssetCheckinResult {
   readonly plan: AssetCheckinPlan;
 }
 
+export interface QueuedAssetCheckin {
+  readonly issueUrl: string;
+  readonly branch: string;
+  /**
+   * SHA-256 (hex) recorded in the issue payload for this asset, when the
+   * issue was filed after content hashes were added. Absent for legacy
+   * issues — callers doing hash-based reconciliation must fail closed
+   * (cannot establish equality) rather than assume a match.
+   */
+  readonly contentHash?: string;
+}
+
+export interface PreparedAssetCheckin {
+  readonly plan: AssetCheckinPlan;
+  readonly queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
+  readonly changedAssetCount: number;
+}
+
+/**
+ * Classification of one asset's content hash against whatever the durable
+ * queue records for the SAME `assetPath` (or `undefined` when nothing is
+ * queued there). A single, pure rule set shared by `prepareAssetCheckin`
+ * (batch check-in / preview) and the sidecar's atomic `/accept` route
+ * (single-variant reconciliation) so match/mismatch/legacy handling can never
+ * drift between the two callers:
+ *   - `'new'`             — no queued record at this path; proceed normally.
+ *   - `'duplicate'`        — queued AND both hashes are recorded AND equal;
+ *                            already durably queued with identical content.
+ *   - `'content-conflict'` — queued AND both hashes are recorded AND
+ *                            DIFFERENT; the same path is queued with
+ *                            genuinely different content and must not be
+ *                            silently dropped or silently re-queued.
+ *   - `'ambiguous'`        — queued but EITHER side's hash is unrecorded (a
+ *                            legacy issue filed before content hashes
+ *                            existed, or a legacy manifest entry that
+ *                            predates them). Equality can never be
+ *                            established from a missing hash, so this fails
+ *                            closed rather than guessing.
+ */
+export type QueuedContentReconciliation = 'new' | 'duplicate' | 'content-conflict' | 'ambiguous';
+
+export function reconcileQueuedContent(
+  queued: QueuedAssetCheckin | undefined,
+  contentHash: string | undefined,
+): QueuedContentReconciliation {
+  if (!queued) return 'new';
+  if (queued.contentHash === undefined || contentHash === undefined) return 'ambiguous';
+  return queued.contentHash === contentHash ? 'duplicate' : 'content-conflict';
+}
+
+function assertLocalCheckin(env: NodeJS.ProcessEnv): void {
+  if (env.CI !== undefined) {
+    throw new CheckinError(
+      'ci-refused',
+      'Per Constitutional §3, sprite check-in is local-only: it pushes approved ' +
+        'assets and files a GitHub issue. Run it on a dev box (npm run sprites:checkin).',
+    );
+  }
+}
+
+/**
+ * Resolve the exact unqueued batch that a check-in would publish.
+ *
+ * Open asset-checkin issue payloads are the durable queue record. Each
+ * changed asset is reconciled against it via `reconcileQueuedContent` (shared
+ * with the atomic `/accept` route) rather than a path-only filter: a queued
+ * path with the SAME content hash is deduped silently (the historical
+ * behavior), but a queued path with a DIFFERENT hash — or a legacy queued/
+ * manifest entry with no recorded hash at all — must never be silently
+ * dropped from (or silently re-added to) the batch. Both cases throw a typed
+ * `CheckinError` instead, so the caller (CLI, `/api/checkin`, and now
+ * `/api/checkin/prepare`) can surface a real conflict rather than quietly
+ * losing newly-approved content that happens to share a path with something
+ * already queued.
+ */
+export async function prepareAssetCheckin(
+  repoRoot: string,
+  deps: CheckinRunnerDeps,
+  options: RunAssetCheckinOptions = {},
+): Promise<PreparedAssetCheckin> {
+  assertLocalCheckin(deps.env ?? process.env);
+
+  const remote = options.remote ?? 'origin';
+  const baseBranch = options.baseBranch ?? 'main';
+  const now = deps.now ?? (() => new Date());
+
+  await git(deps.exec, repoRoot, ['fetch', remote, baseBranch]);
+
+  const manifest = deps.readManifest ? await deps.readManifest().catch(() => ({})) : {};
+  const changedAssets = await detectApprovedAssets(
+    deps.exec,
+    repoRoot,
+    remote,
+    baseBranch,
+    manifest,
+  );
+  const queuedAssets = deps.listQueuedAssets
+    ? await deps.listQueuedAssets()
+    : new Map<string, QueuedAssetCheckin>();
+
+  const assets: CheckinAsset[] = [];
+  for (const asset of changedAssets) {
+    const queued = queuedAssets.get(asset.assetPath);
+    const reconciliation = reconcileQueuedContent(queued, asset.contentHash);
+    if (reconciliation === 'new') {
+      assets.push(asset);
+      continue;
+    }
+    if (reconciliation === 'duplicate') {
+      // Already durably queued with identical content — dedupe silently,
+      // same as the historical path-only filter did unconditionally.
+      continue;
+    }
+    // 'content-conflict' / 'ambiguous' both require a queued record to
+    // compare against, so `queued` is guaranteed defined here.
+    const issueUrl = queued!.issueUrl;
+    if (reconciliation === 'content-conflict') {
+      throw new CheckinError(
+        'content-conflict',
+        `${asset.assetPath} is already queued (${issueUrl}) with different content. ` +
+          'Approve a different variant, or resolve the existing issue first.',
+      );
+    }
+    throw new CheckinError(
+      'ambiguous-queued-content',
+      `${asset.assetPath} is already queued (${issueUrl}) by an issue filed before content ` +
+        'hashes were recorded, so it cannot be verified against the current content. Resolve ' +
+        'the open issue manually before re-checking-in this asset.',
+    );
+  }
+
+  if (assets.length === 0) {
+    const detail =
+      changedAssets.length > 0
+        ? 'All approved art is already represented by an open asset-checkin issue.'
+        : `No approved art differs from ${remote}/${baseBranch}. Approve a sprite first ` +
+          '(npm run sprites:gallery), then re-run check-in.';
+    throw new CheckinError('nothing-to-checkin', detail);
+  }
+
+  return {
+    plan: planAssetCheckin({ assets, now: now(), baseBranch, slug: options.slug }),
+    queuedAssets,
+    changedAssetCount: changedAssets.length,
+  };
+}
+
 /**
  * Execute a check-in: cut a dedicated branch off the remote base, stage the
  * live art surface, commit, push (NO PR), and file the tracking issue. All side
@@ -238,69 +439,48 @@ export async function runAssetCheckin(
   deps: CheckinRunnerDeps,
   options: RunAssetCheckinOptions = {},
 ): Promise<AssetCheckinResult> {
-  const env = deps.env ?? process.env;
-  if (env.CI !== undefined) {
-    throw new CheckinError(
-      'ci-refused',
-      'Per Constitutional §3, sprite check-in is local-only: it pushes approved ' +
-        'assets and files a GitHub issue. Run it on a dev box (npm run sprites:checkin).',
-    );
-  }
-
   const remote = options.remote ?? 'origin';
-  const baseBranch = options.baseBranch ?? 'main';
-  const now = deps.now ?? (() => new Date());
+  const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
+  return withLock(async () => {
+    const { plan } = await prepareAssetCheckin(repoRoot, deps, options);
 
-  await git(deps.exec, repoRoot, ['fetch', remote, baseBranch]);
-
-  const manifest = deps.readManifest ? await deps.readManifest().catch(() => ({})) : {};
-  const assets = await detectApprovedAssets(deps.exec, repoRoot, remote, baseBranch, manifest);
-  if (assets.length === 0) {
-    throw new CheckinError(
-      'nothing-to-checkin',
-      `No approved art differs from ${remote}/${baseBranch}. Approve a sprite first ` +
-        '(npm run sprites:gallery), then re-run check-in.',
-    );
-  }
-
-  const plan = planAssetCheckin({ assets, now: now(), baseBranch, slug: options.slug });
-
-  const worktree = await deps.makeTempDir();
-  try {
-    await git(deps.exec, repoRoot, [
-      'worktree',
-      'add',
-      worktree,
-      '-b',
-      plan.branch,
-      `${remote}/${baseBranch}`,
-    ]);
-    await deps.copyArtSurface(repoRoot, worktree);
-    await git(deps.exec, worktree, ['add', '--', ...plan.paths]);
-    await git(deps.exec, worktree, ['commit', '--no-verify', '-m', plan.commitMessage]);
-    await git(deps.exec, worktree, ['push', '--no-verify', '-u', remote, plan.branch]);
-
-    // The branch is now on the remote. asset-pr consolidation discovers branches
-    // ONLY through their tracking issue, so a failed `gh issue create` would
-    // leave the branch orphaned (invisible to the consolidator, never cleaned by
-    // the worktree teardown below). Ensure the label exists first — a fresh repo
-    // has no `asset-checkin` label, which makes `gh issue create --label` fail —
-    // and delete the pushed branch if the issue still can't be filed.
-    let issueUrl: string;
+    const worktree = await deps.makeTempDir();
     try {
-      await ensureLabel(deps.exec, repoRoot, ASSET_CHECKIN_LABEL);
-      issueUrl = await createIssue(deps.exec, repoRoot, plan);
-    } catch (err) {
-      await git(deps.exec, repoRoot, ['push', remote, '--delete', plan.branch]).catch(() => {});
-      throw err;
+      await git(deps.exec, repoRoot, [
+        'worktree',
+        'add',
+        worktree,
+        '-b',
+        plan.branch,
+        `${remote}/${plan.baseBranch}`,
+      ]);
+      await deps.copyArtSurface(repoRoot, worktree, plan.assets);
+      await git(deps.exec, worktree, ['add', '--', ...plan.paths]);
+      await git(deps.exec, worktree, ['commit', '--no-verify', '-m', plan.commitMessage]);
+      await git(deps.exec, worktree, ['push', '--no-verify', '-u', remote, plan.branch]);
+
+      // The branch is now on the remote. asset-pr consolidation discovers branches
+      // ONLY through their tracking issue, so a failed `gh issue create` would
+      // leave the branch orphaned (invisible to the consolidator, never cleaned by
+      // the worktree teardown below). Ensure the label exists first — a fresh repo
+      // has no `asset-checkin` label, which makes `gh issue create --label` fail —
+      // and delete the pushed branch if the issue still can't be filed.
+      let issueUrl: string;
+      try {
+        await ensureLabel(deps.exec, repoRoot, ASSET_CHECKIN_LABEL);
+        issueUrl = await createIssue(deps.exec, repoRoot, plan);
+      } catch (err) {
+        await git(deps.exec, repoRoot, ['push', remote, '--delete', plan.branch]).catch(() => {});
+        throw err;
+      }
+      return { branch: plan.branch, issueUrl, plan };
+    } finally {
+      // Detach the throwaway worktree, then delete the dir. Best-effort: a failed
+      // cleanup must not mask a real error from the try block.
+      await git(deps.exec, repoRoot, ['worktree', 'remove', worktree, '--force']).catch(() => {});
+      await deps.removeDir(worktree).catch(() => {});
     }
-    return { branch: plan.branch, issueUrl, plan };
-  } finally {
-    // Detach the throwaway worktree, then delete the dir. Best-effort: a failed
-    // cleanup must not mask a real error from the try block.
-    await git(deps.exec, repoRoot, ['worktree', 'remove', worktree, '--force']).catch(() => {});
-    await deps.removeDir(worktree).catch(() => {});
-  }
+  });
 }
 
 /**
@@ -357,6 +537,7 @@ export async function detectApprovedAssets(
       manifestKey: match?.key ?? null,
       briefId: match?.briefId ?? null,
       variantIndex: match?.variantIndex ?? null,
+      ...(match?.contentHash !== undefined ? { contentHash: match.contentHash } : {}),
     });
   }
   return assets;
@@ -365,7 +546,12 @@ export async function detectApprovedAssets(
 function findManifestEntry(
   manifest: CheckinManifest,
   assetPath: string,
-): { key: string; briefId: string | null; variantIndex: number | null } | null {
+): {
+  key: string;
+  briefId: string | null;
+  variantIndex: number | null;
+  contentHash: string | undefined;
+} | null {
   const entries = manifest.entries ?? {};
   for (const [key, entry] of Object.entries(entries)) {
     if (entry.assetPath === assetPath) {
@@ -373,6 +559,7 @@ function findManifestEntry(
         key,
         briefId: entry.briefId ?? null,
         variantIndex: typeof entry.variantIndex === 'number' ? entry.variantIndex : null,
+        contentHash: typeof entry.contentHash === 'string' ? entry.contentHash : undefined,
       };
     }
   }
