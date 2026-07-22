@@ -11,6 +11,17 @@
     "path": "by-sha/f620633b944445d8b5db1efb015731d1b45cf142.json"
   },
   {
+    "commit": "f3521f30803d0ae56c48faa1e949c7feb1d31464",
+    "commitDate": "2026-07-22T15:36:10-07:00",
+    "commitSubject": "feat(abilities): track source-owned equipment grants (#1557)",
+    "capturedAt": "2026-07-22T23:54:18.998Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29964032761",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/f3521f30803d0ae56c48faa1e949c7feb1d31464.json"
+  },
+  {
     "commit": "d6218ff44a96a31ff896259c304926b303ca999e",
     "commitDate": "2026-07-22T09:12:10Z",
     "commitSubject": "feat(ci): gate Copilot re-reviews in reconciler (#1770)",
