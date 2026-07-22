@@ -260,8 +260,8 @@ export function makeRunKey(seed: number | string): string {
 }
 
 export function generatedEquipmentRunKeyFromSeed(seed: number): string {
-  if (!Number.isFinite(seed)) {
-    throw new Error(`Generated equipment run seed must be finite: ${seed}`);
+  if (!Number.isSafeInteger(seed)) {
+    throw new Error(`Generated equipment run seed must be a safe integer: ${seed}`);
   }
-  return `run-seed-${String(seed).replace('+', 'p')}`;
+  return makeRunKey(`run-seed-${seed}`);
 }

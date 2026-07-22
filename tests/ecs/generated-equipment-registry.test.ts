@@ -34,6 +34,7 @@ import {
   RARITY_EFFECT_BUDGET,
   ENHANCEMENT_MIN,
   ENHANCEMENT_MAX,
+  generatedEquipmentRunKeyFromSeed,
 } from '../../src/shared/generated-equipment-types.js';
 import type {
   GeneratedEquipmentInstanceV1,
@@ -235,6 +236,27 @@ describe('makeRunKey', () => {
 
   it('throws for empty result', () => {
     expect(() => makeRunKey(':::')).toThrow();
+  });
+});
+
+
+describe('generatedEquipmentRunKeyFromSeed', () => {
+  it('produces a validator-safe run key for safe integer seeds', () => {
+    const runKey = generatedEquipmentRunKeyFromSeed(42);
+    expect(runKey).toBe('run-seed-42');
+    expect(isValidGeneratedInstanceId(createInstanceId(runKey, 0))).toBe(true);
+  });
+
+  it('rejects non-integer seeds', () => {
+    expect(() => generatedEquipmentRunKeyFromSeed(1.5)).toThrow(
+      /Generated equipment run seed must be a safe integer/,
+    );
+  });
+
+  it('rejects unsafe integers', () => {
+    expect(() => generatedEquipmentRunKeyFromSeed(Number.MAX_SAFE_INTEGER + 1)).toThrow(
+      /Generated equipment run seed must be a safe integer/,
+    );
   });
 });
 
