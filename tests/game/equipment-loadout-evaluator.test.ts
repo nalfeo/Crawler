@@ -19,7 +19,12 @@ import {
   type EquipmentLoadoutSnapshot,
 } from '../../src/game/ai/equipment-loadout-evaluator.js';
 import { generateEquipmentInstance } from '../../src/game/generated-equipment-generator.js';
-import { type AbilityGrantSource } from '../../src/shared/abilities.js';
+import {
+  equipmentAbilityGrantSourceId,
+  learnedAbilityGrantSourceId,
+  skillAbilityGrantSourceId,
+  type AbilityGrantSourceId,
+} from '../../src/shared/abilities.js';
 import { WeaponType } from '../../src/shared/constants.js';
 import type { GeneratedEquipmentInstanceV1 } from '../../src/shared/generated-equipment-types.js';
 import type { PrimaryStatId, StatId } from '../../src/shared/stats.js';
@@ -98,20 +103,20 @@ function generated(
 }
 
 function sourcesFor(equipped: readonly GeneratedEquipmentInstanceV1[]): {
-  activeAbilityGrantSources: Map<string, AbilityGrantSource[]>;
-  passiveAbilityGrantSources: Map<string, AbilityGrantSource[]>;
+  activeAbilityGrantSources: Map<string, AbilityGrantSourceId[]>;
+  passiveAbilityGrantSources: Map<string, AbilityGrantSourceId[]>;
 } {
-  const activeAbilityGrantSources = new Map<string, AbilityGrantSource[]>();
-  const passiveAbilityGrantSources = new Map<string, AbilityGrantSource[]>();
+  const activeAbilityGrantSources = new Map<string, AbilityGrantSourceId[]>();
+  const passiveAbilityGrantSources = new Map<string, AbilityGrantSourceId[]>();
   for (const instance of equipped) {
     instance.frozen.abilityGrants.forEach((abilityId, effectOrdinal) => {
       const sources = activeAbilityGrantSources.get(abilityId) ?? [];
-      sources.push({ kind: 'generated-equipment', instanceId: instance.instanceId, effectOrdinal });
+      sources.push(equipmentAbilityGrantSourceId(instance.instanceId, effectOrdinal));
       activeAbilityGrantSources.set(abilityId, sources);
     });
     instance.frozen.passiveGrants.forEach((abilityId, effectOrdinal) => {
       const sources = passiveAbilityGrantSources.get(abilityId) ?? [];
-      sources.push({ kind: 'generated-equipment', instanceId: instance.instanceId, effectOrdinal });
+      sources.push(equipmentAbilityGrantSourceId(instance.instanceId, effectOrdinal));
       passiveAbilityGrantSources.set(abilityId, sources);
     });
   }
@@ -340,7 +345,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
   it('fractionally values a persistent activation then caps it at one applied modifier', () => {
     const current: EquipmentLoadoutSnapshot = {
       ...snapshot([]),
-      activeAbilityGrantSources: new Map([['battle-focus', [{ kind: 'learned' }]]]),
+      activeAbilityGrantSources: new Map([['battle-focus', [learnedAbilityGrantSourceId('battle-focus')]]]),
       equippedActiveAbilityIds: ['battle-focus'],
     };
     const helm = candidate(generated('iron-helm', 'erv-skill-trigger-rate'));
@@ -360,7 +365,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
   it('excludes runtime-inert stats from timed-buff value', () => {
     const current: EquipmentLoadoutSnapshot = {
       ...snapshot([]),
-      activeAbilityGrantSources: new Map([['haste', [{ kind: 'learned' }]]]),
+      activeAbilityGrantSources: new Map([['haste', [learnedAbilityGrantSourceId('haste')]]]),
       equippedActiveAbilityIds: ['haste'],
     };
     const result = evaluateEquipmentLoadoutCandidates({
@@ -391,7 +396,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
   it('does not value extra projectiles until runtime consumes projectileCount', () => {
     const current: EquipmentLoadoutSnapshot = {
       ...snapshot([]),
-      passiveAbilityGrantSources: new Map([['juggling-arsenal', [{ kind: 'learned' }]]]),
+      passiveAbilityGrantSources: new Map([['juggling-arsenal', [learnedAbilityGrantSourceId('juggling-arsenal')]]]),
     };
     const result = evaluateEquipmentLoadoutCandidates({
       ...inputShape([], [candidate(generated('throwing-knife', 'erv-extra-projectile-runtime'))]),
@@ -417,8 +422,8 @@ describe('equipment loadout expected-run-value evaluator', () => {
   });
 
   it('preserves learned and skill grant sources while evaluating generated equipment', () => {
-    const activeSources: AbilityGrantSource[] = [{ kind: 'learned' }];
-    const passiveSources: AbilityGrantSource[] = [{ kind: 'skill', skillId: 'unarmed' }];
+    const activeSources: AbilityGrantSourceId[] = [learnedAbilityGrantSourceId('fireball')];
+    const passiveSources: AbilityGrantSourceId[] = [skillAbilityGrantSourceId('unarmed', 0)];
     const current: EquipmentLoadoutSnapshot = {
       ...snapshot([]),
       activeAbilityGrantSources: new Map([['fireball', activeSources]]),
@@ -433,8 +438,8 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(result.ranked[0]?.currentScore.equippedActiveAbilityIds).toEqual(['fireball']);
     expect(result.ranked[0]?.nextScore.equippedActiveAbilityIds).toEqual(['fireball']);
     expect(result.ranked[0]?.nextScore.availablePassiveAbilityIds).toEqual(['veteran-instinct']);
-    expect(activeSources).toEqual([{ kind: 'learned' }]);
-    expect(passiveSources).toEqual([{ kind: 'skill', skillId: 'unarmed' }]);
+    expect(activeSources).toEqual([learnedAbilityGrantSourceId('fireball')]);
+    expect(passiveSources).toEqual([skillAbilityGrantSourceId('unarmed', 0)]);
   });
 
   it('removes equipment-kind sources when their generated instance is displaced', () => {
@@ -443,7 +448,7 @@ describe('equipment loadout expected-run-value evaluator', () => {
     const current: EquipmentLoadoutSnapshot = {
       ...snapshot([equipped]),
       activeAbilityGrantSources: new Map([
-        ['fireball', [{ kind: 'equipment', instanceId: equipped.instanceId }]],
+        ['fireball', [equipmentAbilityGrantSourceId(equipped.instanceId, 0)]],
       ]),
       equippedActiveAbilityIds: ['fireball'],
     };

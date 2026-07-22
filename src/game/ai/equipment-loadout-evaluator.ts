@@ -16,7 +16,11 @@ import {
   computeEncumbranceThresholds,
 } from '../../shared/encumbrance.js';
 import { isValidSlotId } from '../../shared/equipment-slots.js';
-import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityGrantSource } from '../../shared/abilities.js';
+import {
+  ACTIVE_ABILITY_SLOT_LIMIT,
+  equipmentAbilityGrantSourceId,
+  type AbilityGrantSourceId,
+} from '../../shared/abilities.js';
 import type {
   ActiveWeaponSnapshotV1,
   GeneratedEquipmentInstanceV1,
@@ -96,8 +100,8 @@ export interface EquipmentLoadoutSnapshot {
   readonly equipped: readonly GeneratedEquipmentInstanceV1[];
   readonly baseStats: Readonly<Partial<Record<StatId, number>>>;
   readonly coreStatPoints: Readonly<Partial<Record<PrimaryStatId, number>>>;
-  readonly activeAbilityGrantSources: ReadonlyMap<string, readonly AbilityGrantSource[]>;
-  readonly passiveAbilityGrantSources: ReadonlyMap<string, readonly AbilityGrantSource[]>;
+  readonly activeAbilityGrantSources: ReadonlyMap<string, readonly AbilityGrantSourceId[]>;
+  readonly passiveAbilityGrantSources: ReadonlyMap<string, readonly AbilityGrantSourceId[]>;
   readonly equippedActiveAbilityIds: readonly string[];
   readonly bodyWeightLb: number;
 }
@@ -156,8 +160,8 @@ export class EquipmentLoadoutEvaluationError extends Error {
 }
 
 type MutableOwnership = {
-  active: Map<string, AbilityGrantSource[]>;
-  passive: Map<string, AbilityGrantSource[]>;
+  active: Map<string, AbilityGrantSourceId[]>;
+  passive: Map<string, AbilityGrantSourceId[]>;
 };
 
 interface LoadoutScoringState {
@@ -313,31 +317,12 @@ function canonicalInstances(
   return [...byId.values()].sort((a, b) => a.instanceId.localeCompare(b.instanceId));
 }
 
-function sourceKey(source: AbilityGrantSource): string {
-  switch (source.kind) {
-    case 'learned':
-      return 'learned';
-    case 'skill':
-      return `skill:${source.skillId}`;
-    case 'equipment':
-      return `equipment:${source.instanceId}`;
-    case 'generated-equipment':
-      return `generated-equipment:${source.instanceId}:${source.effectOrdinal}`;
-  }
-}
-
-function cloneSource(source: AbilityGrantSource): AbilityGrantSource {
-  return { ...source };
-}
-
 function cloneSourceMap(
-  source: ReadonlyMap<string, readonly AbilityGrantSource[]>,
-): Map<string, AbilityGrantSource[]> {
-  const result = new Map<string, AbilityGrantSource[]>();
+  source: ReadonlyMap<string, readonly AbilityGrantSourceId[]>,
+): Map<string, AbilityGrantSourceId[]> {
+  const result = new Map<string, AbilityGrantSourceId[]>();
   for (const [abilityId, sources] of [...source.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const cloned = sources
-      .map(cloneSource)
-      .sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)));
+    const cloned = [...sources].sort((a, b) => a.localeCompare(b));
     if (cloned.length > 0) result.set(abilityId, cloned);
   }
   return result;
@@ -354,44 +339,31 @@ function removeEquipmentSources(
   ownership: MutableOwnership,
   removed: readonly GeneratedEquipmentInstanceV1[],
 ): void {
-  const removedIds = new Set<string | number>(removed.map((instance) => instance.instanceId));
+  const removedPrefixes = new Set<string>(
+    removed.map((instance) => `equipment:${instance.instanceId}:`),
+  );
   for (const sourceMap of [ownership.active, ownership.passive]) {
     for (const [abilityId, sources] of sourceMap) {
-      const retained = [...sources].filter(
-        (source) =>
-          (source.kind !== 'generated-equipment' && source.kind !== 'equipment') ||
-          !removedIds.has(source.instanceId),
+      const retained = sources.filter(
+        (source) => ![...removedPrefixes].some((prefix) => source.startsWith(prefix)),
       );
       if (retained.length === 0) sourceMap.delete(abilityId);
-      else
-        sourceMap.set(
-          abilityId,
-          retained.sort((a, b) => sourceKey(a).localeCompare(sourceKey(b))),
-        );
+      else sourceMap.set(abilityId, retained.sort((a, b) => a.localeCompare(b)));
     }
   }
 }
 
 function addGeneratedEquipmentSource(
-  sourceMap: Map<string, AbilityGrantSource[]>,
+  sourceMap: Map<string, AbilityGrantSourceId[]>,
   abilityId: string,
   instance: GeneratedEquipmentInstanceV1,
   effectOrdinal: number,
 ): void {
+  const sourceId = equipmentAbilityGrantSourceId(instance.instanceId, effectOrdinal);
   const sources = sourceMap.get(abilityId) ?? [];
-  const alreadyPresent = sources.some(
-    (source) =>
-      source.kind === 'generated-equipment' &&
-      source.instanceId === instance.instanceId &&
-      source.effectOrdinal === effectOrdinal,
-  );
-  if (alreadyPresent) return;
-  sources.push({
-    kind: 'generated-equipment',
-    instanceId: instance.instanceId,
-    effectOrdinal,
-  });
-  sources.sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)));
+  if (sources.includes(sourceId)) return;
+  sources.push(sourceId);
+  sources.sort((a, b) => a.localeCompare(b));
   sourceMap.set(abilityId, sources);
 }
 
