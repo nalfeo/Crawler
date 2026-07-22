@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "ai-sweep-recover-sha-propagation",
+  "task_title": "Fix GITHUB_SHA propagation in ai-sweep-recover.yml",
+  "estimated_apples": 2,
+  "stages": {}
+}
