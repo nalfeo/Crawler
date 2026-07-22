@@ -264,6 +264,7 @@ export async function loadRepositoryState(repository, signal) {
   const runResults = await Promise.allSettled(
     RUN_STATUSES.map((status) => listRunsForStatus(repository, status, signal)),
   );
+  signal?.throwIfAborted();
   const mergedRuns = mergeRunStatusResults(runResults);
   partialErrors.push(...mergedRuns.partialErrors);
   apiCalls += mergedRuns.apiCalls;

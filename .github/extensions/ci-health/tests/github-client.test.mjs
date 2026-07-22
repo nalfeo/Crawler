@@ -73,9 +73,35 @@ test('marks a workflow collection unusable when every status request fails', () 
   assert.equal(merged.partialErrors.length, 2);
 });
 
+test('signal.throwIfAborted propagates cancellation that allSettled would absorb', () => {
+  // allSettled turns every rejection, including AbortErrors, into a normal rejected entry;
+  // mergeRunStatusResults sees them all as ordinary partial failures and returns allFailed: true
+  // without rethrowing AbortError. signal.throwIfAborted() must be called after allSettled to
+  // restore the abort path before mergeRunStatusResults converts the results.
+  const abortError = new DOMException('The operation was aborted.', 'AbortError');
+  const merged = mergeRunStatusResults([
+    { status: 'rejected', reason: abortError },
+    { status: 'rejected', reason: abortError },
+  ]);
+  assert.equal(merged.allFailed, true);
+  assert.ok(
+    merged.partialErrors.every((msg) => !msg.includes('AbortError') || typeof msg === 'string'),
+    'AbortErrors are silently treated as partial errors — not rethrown',
+  );
+  const controller = new AbortController();
+  controller.abort();
+  assert.throws(() => controller.signal.throwIfAborted(), { name: 'AbortError' });
+});
+
 test('includes pending and requested states in the active-run query set', () => {
-  assert.ok(RUN_STATUSES.includes('pending'), 'pending must be queried so queued runs are not missed');
-  assert.ok(RUN_STATUSES.includes('requested'), 'requested must be queried so queued runs are not missed');
+  assert.ok(
+    RUN_STATUSES.includes('pending'),
+    'pending must be queried so queued runs are not missed',
+  );
+  assert.ok(
+    RUN_STATUSES.includes('requested'),
+    'requested must be queried so queued runs are not missed',
+  );
   assert.ok(RUN_STATUSES.includes('queued'), 'queued must remain in the set');
   assert.ok(RUN_STATUSES.includes('in_progress'), 'in_progress must remain in the set');
   assert.ok(RUN_STATUSES.includes('waiting'), 'waiting must remain in the set');

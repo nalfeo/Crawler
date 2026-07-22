@@ -350,7 +350,7 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
 
       const actions = snapshot.actions;
       replaceChildren('metrics',
-        metric('Visible hosted runners', actions.visibleHostedInProgress + ' / ' + actions.runnerCap, actions.occupancyScope, {
+        metric('Visible hosted jobs running', actions.visibleHostedInProgress + ' / ' + actions.runnerCap, actions.occupancyScope, {
           value: actions.utilizationPercent,
           tone: actions.utilizationPercent >= 100 ? 'danger' : actions.utilizationPercent >= 80 ? 'warning' : '',
         }),

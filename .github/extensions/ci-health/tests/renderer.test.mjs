@@ -10,9 +10,8 @@ test('uses app theme tokens and includes live state controls', () => {
   assert.match(html, /new EventSource/);
   assert.match(html, /\/api\/refresh/);
   assert.match(html, /Refresh every 30s/);
-  assert.match(html, /Visible hosted runners/);
+  assert.match(html, /Visible hosted jobs running/);
   assert.match(html, /active runs/);
-  assert.match(html, /hosted jobs running/);
 });
 
 test('restores the manual refresh control after a request failure', () => {
