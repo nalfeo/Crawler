@@ -67,7 +67,11 @@ describe('source-owned ability grants', () => {
 
     // battle-focus is kind: 'active', not 'spell' — must not enter learnedSpellIds.
     grantAbilitySources(world, player, [
-      { kind: 'active', abilityId: 'battle-focus', sourceId: learnedAbilityGrantSourceId('battle-focus') },
+      {
+        kind: 'active',
+        abilityId: 'battle-focus',
+        sourceId: learnedAbilityGrantSourceId('battle-focus'),
+      },
       { kind: 'active', abilityId: 'fireball', sourceId: learnedAbilityGrantSourceId('fireball') },
     ]);
 

@@ -188,12 +188,3 @@ export function isAbilityGrantSourceId(value: string): value is AbilityGrantSour
     LEGACY_SOURCE_PATTERN.test(value)
   );
 }
-
-export function abilityGrantSourceCategory(
-  sourceId: AbilityGrantSourceId,
-): 'learned' | 'skill' | 'equipment' | 'legacy' {
-  if (sourceId.startsWith('learned:')) return 'learned';
-  if (sourceId.startsWith('skill:')) return 'skill';
-  if (sourceId.startsWith('equipment:')) return 'equipment';
-  return 'legacy';
-}
