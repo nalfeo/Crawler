@@ -79,6 +79,7 @@ export function createRunViewCache() {
  *   isRevalidating: () => boolean,
  *   setRevalidating: (value: boolean) => void,
  *   deriveWriteKey?: (fresh: object) => string | null,
+ *   canWrite?: (key: string) => boolean,
  * }} args
  * @returns {Promise<object>} either the cached snapshot (`stale: true`),
  *   returned WITHOUT awaiting `liveFetch`, or the live result (`stale: false`)
@@ -104,6 +105,7 @@ export async function resolveCacheFirstState(args) {
     isRevalidating,
     setRevalidating,
     deriveWriteKey = () => key,
+    canWrite = () => true,
   } = args;
 
   const cached = key ? cache.get(key) : null;
@@ -117,7 +119,7 @@ export async function resolveCacheFirstState(args) {
       liveFetch()
         .then((fresh) => {
           const writeKey = deriveWriteKey(fresh);
-          if (writeKey) cache.set(writeKey, fresh);
+          if (writeKey && canWrite(writeKey)) cache.set(writeKey, fresh);
           if (isCurrent()) return onFresh(fresh);
           return undefined;
         })
@@ -134,7 +136,7 @@ export async function resolveCacheFirstState(args) {
   // network, and only for a target that has never been viewed before.
   const fresh = await liveFetch();
   const writeKey = deriveWriteKey(fresh);
-  if (writeKey) cache.set(writeKey, fresh);
+  if (writeKey && canWrite(writeKey)) cache.set(writeKey, fresh);
   return { ...fresh, stale: false };
 }
 

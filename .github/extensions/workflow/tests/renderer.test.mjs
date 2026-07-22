@@ -61,6 +61,17 @@ test('the client script wires SSE + run selection', () => {
   assert.match(html, /\/api\/select\?briefId=/);
 });
 
+test('successful embedded Postprocess applies patch one variant or the whole run in place', () => {
+  const html = renderHtml('x');
+  assert.match(html, /msg\.type === 'postprocess:applied'/);
+  assert.match(html, /function applyPostprocessPatch\(/);
+  assert.match(html, /patch\.scope === 'all'/);
+  assert.match(html, /data-workflow-candidates/);
+  assert.match(html, /data-variant-index/);
+  assert.match(html, /card\.replaceWith\(renderCandidateCard/);
+  assert.match(html, /section\.replaceWith\(renderCandidates/);
+});
+
 test('the client script exposes token-gated accept and visible queue states', () => {
   const html = renderHtml('x', 'secret-token');
   assert.match(html, /Accept & queue/);
@@ -344,7 +355,7 @@ test('a per-variant "Open in Post-process Debugger" control opens the embedded e
   );
   assert.doesNotMatch(html, /Copy link/);
   assert.doesNotMatch(html, /project:postprocess/);
-  assert.match(html, /renderPostprocessHandoff\(sel, c\.index\)/);
+  assert.match(html, /renderPostprocessHandoff\(sel, candidate\.index\)/);
 });
 
 test('opening the embedded Post-process Debugger reveals the persistent host, lazily creates ONE iframe seeded by query string, and retargets later opens via postMessage', () => {

@@ -145,6 +145,32 @@ test('a stale (late) completion updates the cache but never calls onFresh', asyn
   assert.equal(h.freshCalls.length, 0, 'onFresh must never fire for a superseded selection');
 });
 
+test('an invalidated background completion cannot overwrite a newer persisted-run snapshot', async () => {
+  const cache = createRunViewCache();
+  cache.set('brief::run-1', { candidates: ['seed'] });
+  const slow = deferred();
+  let epoch = 0;
+
+  await resolveCacheFirstState({
+    cache,
+    key: 'brief::run-1',
+    liveFetch: () => slow.promise,
+    isCurrent: () => false,
+    onFresh: () => {},
+    isRevalidating: () => false,
+    setRevalidating: () => {},
+    canWrite: () => epoch === 0,
+  });
+
+  epoch += 1;
+  cache.set('brief::run-1', { candidates: ['persisted-refresh'] });
+  slow.resolve({ candidates: ['pre-persist-revalidation'] });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(cache.get('brief::run-1'), { candidates: ['persisted-refresh'] });
+});
+
 test('a failed background revalidation is reported and never crashes the caller', async () => {
   const h = makeHarness();
   h.cache.set('brief::run-1', { candidates: ['seed'] });

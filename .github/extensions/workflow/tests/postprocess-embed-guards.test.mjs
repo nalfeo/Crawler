@@ -102,6 +102,9 @@ test('/postprocess/api/persist-postprocess enforces the FULL mutation guard chai
   assert.match(body, /buildPersistPostprocessPayload\(normalized\.args\)/);
   // Success bumps selectionVersion and re-seeds — same pattern as /api/select.
   assert.match(body, /pp\.selectionVersion \+= 1/);
+  assert.match(body, /refreshWorkflowAfterPostprocessPersist/);
+  assert.match(body, /result\.summary/);
+  assert.match(body, /workflowPatch/);
 });
 
 test('/postprocess/api/live-postprocess is origin-checked but NOT token-gated (non-persisting preview relay, matches the standalone canvas)', () => {

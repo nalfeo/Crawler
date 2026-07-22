@@ -100,6 +100,10 @@ import {
   applyFreshRevalidation,
 } from './lib/run-view-cache.mjs';
 import {
+  buildPostprocessParentPatch,
+  parentSelectionMatches,
+} from './lib/postprocess-parent-sync.mjs';
+import {
   briefFeedback,
   feedbackForRun,
   readFeedback,
@@ -200,12 +204,23 @@ const pendingStartups = new Map();
  * the full cache-first / background-revalidate contract this backs.
  */
 const runViewCache = createRunViewCache();
+const runViewEpochs = new Map();
 /** Most recently viewed run's key, used as the cache-first target for an
  * instance that has no explicit requested/selected run yet (a bare open). */
 let lastRunKey = null;
 
 function runViewKey(briefId, runId) {
   return briefId && runId ? `${briefId}::${runId}` : null;
+}
+
+function runViewEpoch(key) {
+  return key ? (runViewEpochs.get(key) ?? 0) : 0;
+}
+
+function invalidateRunView(key) {
+  if (!key) return;
+  runViewCache.delete(key);
+  runViewEpochs.set(key, runViewEpoch(key) + 1);
 }
 
 function acceptanceKey(briefId, runId, variantIndex) {
@@ -532,6 +547,8 @@ async function buildState(instanceId, { explicitSheet = null } = {}) {
   const targetBriefId = requestedSnapshot.briefId ?? priorSelectedSnapshot?.briefId ?? null;
   const targetRunId = requestedSnapshot.runId ?? priorSelectedSnapshot?.runId ?? null;
   const naturalKey = runViewKey(targetBriefId, targetRunId) ?? lastRunKey;
+  const epochKey = naturalKey;
+  const epochAtCall = runViewEpoch(epochKey);
   // An explicit sheet request forces the bypass key (null), which makes
   // `resolveCacheFirstState` treat this call as a cold miss: it awaits
   // `liveFetch` unconditionally instead of ever replaying a cached snapshot.
@@ -590,6 +607,7 @@ async function buildState(instanceId, { explicitSheet = null } = {}) {
     // key, never under the (possibly unrelated) guessed read key.
     deriveWriteKey: (fresh) =>
       runViewKey(fresh.selected?.briefId ?? null, fresh.selected?.runId ?? null),
+    canWrite: (writeKey) => writeKey !== epochKey || runViewEpoch(epochKey) === epochAtCall,
   });
 
   // Persist the run ACTUALLY resolved by this view as the "last viewed run"
@@ -632,6 +650,53 @@ async function forceLiveState(instanceId) {
   }
   entry.selected = view.selected ?? null;
   return composeState(entry, stat, { ...view, stale: false });
+}
+
+async function refreshWorkflowAfterPostprocessPersist(instanceId, args, persistedSummary) {
+  const entry = instances.get(instanceId);
+  if (!entry) return null;
+  const key = runViewKey(args.briefId, args.runId);
+  const cached = key ? runViewCache.get(key) : null;
+  invalidateRunView(key);
+  if (!parentSelectionMatches(entry.selected, args.briefId, args.runId)) return null;
+
+  const refreshVersion = ++entry.selectionVersion;
+  const priorSelected = entry.selected;
+  const stat = await getStatic(entry);
+  const view =
+    persistedSummary && typeof persistedSummary === 'object'
+      ? {
+          ...(cached ?? {}),
+          selected: priorSelected,
+          candidates: withSkipMessages(normalizeCandidates(persistedSummary)),
+          stale: false,
+          error: null,
+        }
+      : await liveBuildState(entry, stat, {
+          requested: { briefId: args.briefId, runId: args.runId },
+          priorSelected,
+        });
+  if (
+    view.error ||
+    !parentSelectionMatches(view.selected, args.briefId, args.runId) ||
+    entry.selectionVersion !== refreshVersion
+  ) {
+    return null;
+  }
+  if (key) {
+    runViewCache.set(key, view);
+    lastRunKey = key;
+  }
+  entry.selected = view.selected ?? null;
+  const state = composeState(entry, stat, { ...view, stale: false });
+  return buildPostprocessParentPatch({
+    briefId: args.briefId,
+    runId: args.runId,
+    mode: args.mode,
+    applyToAll: args.applyToAll,
+    variantIndex: args.variantIndex,
+    candidates: state.candidates,
+  });
 }
 
 async function acceptAndQueue(instanceId, briefId, runId, variantIndex) {
@@ -1398,7 +1463,18 @@ const jsonRoutes = [
         sheet: changedRun ? null : (pp.selected?.sheet ?? null),
       };
       pp.selectionVersion += 1;
-      return { json: { ok: true, state: await buildPostprocessState(instanceId) } };
+      const workflowPatch = await refreshWorkflowAfterPostprocessPersist(
+        instanceId,
+        normalized.args,
+        result.summary,
+      );
+      return {
+        json: {
+          ok: true,
+          state: await buildPostprocessState(instanceId),
+          workflowPatch,
+        },
+      };
     },
   },
   {

@@ -366,12 +366,49 @@ const CLIENT_SCRIPT = String.raw`
   }
   window.__workflowPostprocessReady = handlePostprocessReady;
 
+  function applyPostprocessPatch(patch) {
+    if (!lastState || !lastState.selected || !patch) return;
+    if (
+      patch.briefId !== lastState.selected.briefId ||
+      patch.runId !== lastState.selected.runId
+    ) return;
+    var replacements = Array.isArray(patch.candidates) ? patch.candidates : [];
+    if (patch.scope === 'all') {
+      lastState.candidates = replacements;
+    } else if (patch.scope === 'variant' && typeof patch.variantIndex === 'number') {
+      var replacement = replacements.find(function (candidate) {
+        return candidate && candidate.index === patch.variantIndex;
+      });
+      if (!replacement) return;
+      lastState.candidates = (lastState.candidates || []).map(function (candidate) {
+        return candidate && candidate.index === patch.variantIndex ? replacement : candidate;
+      });
+    } else {
+      return;
+    }
+    if (activeTab !== 'runs') return;
+    if (patch.scope === 'all') {
+      var section = document.querySelector('[data-workflow-candidates]');
+      if (section) section.replaceWith(renderCandidates(lastState));
+      return;
+    }
+    var card = document.querySelector('[data-variant-index="' + patch.variantIndex + '"]');
+    var candidate = (lastState.candidates || []).find(function (item) {
+      return item && item.index === patch.variantIndex;
+    });
+    if (card && candidate) {
+      card.replaceWith(renderCandidateCard(lastState, lastState.selected, candidate));
+    }
+  }
+
   window.addEventListener('message', function (ev) {
     if (!postprocessIframe || ev.source !== postprocessIframe.contentWindow) return;
     if (ev.origin !== window.location.origin) return;
     var msg = ev.data;
     if (msg && msg.type === 'postprocess:ready') {
       handlePostprocessReady(msg.context || null);
+    } else if (msg && msg.type === 'postprocess:applied') {
+      applyPostprocessPatch(msg.patch || null);
     }
   });
 
@@ -1294,10 +1331,41 @@ const CLIENT_SCRIPT = String.raw`
     return pill;
   }
 
+  function renderCandidateCard(state, sel, candidate) {
+    var status = candidateStatus(candidate);
+    var card = h('div', {
+      class: 'card',
+      'data-variant-index': String(candidate.index)
+    }, []);
+    card.appendChild(h('div', { class: 'between' }, [
+      h('strong', { text: 'Variant #' + candidate.index }),
+      h('span', { text: candidate.score + '/' + candidate.outOf, class: 'muted' })
+    ]));
+    card.appendChild(h('span', {
+      class: 'status-pill',
+      style: { color: STATUS_COLORS[status.kind] },
+      text: status.label
+    }));
+    card.appendChild(lifecyclePill(candidate));
+    var thumb = document.createElement('img');
+    thumb.className = 'thumb';
+    thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(candidate.index) + '.png');
+    thumb.alt = 'variant ' + candidate.index;
+    card.appendChild(thumb);
+    renderJudge(card, candidate, sel);
+    renderSensors(card, candidate, sel);
+    renderAcceptance(card, state, sel, candidate);
+    card.appendChild(renderPostprocessHandoff(sel, candidate.index));
+    return card;
+  }
+
   function renderCandidates(state) {
     var sel = state.selected;
     var cands = state.candidates || [];
-    var wrap = h('div', { style: { marginTop: '16px' } }, [
+    var wrap = h('div', {
+      style: { marginTop: '16px' },
+      'data-workflow-candidates': 'true'
+    }, [
       h('div', { class: 'section-title', text: 'Variants & pipeline traces (' + cands.length + ')' })
     ]);
     if (!sel || cands.length === 0) {
@@ -1306,25 +1374,7 @@ const CLIENT_SCRIPT = String.raw`
     }
     var grid = h('div', { class: 'cards' }, []);
     for (var i = 0; i < cands.length; i++) {
-      var c = cands[i];
-      var status = candidateStatus(c);
-      var card = h('div', { class: 'card' }, []);
-      card.appendChild(h('div', { class: 'between' }, [
-        h('strong', { text: 'Variant #' + c.index }),
-        h('span', { text: c.score + '/' + c.outOf, class: 'muted' })
-      ]));
-      card.appendChild(h('span', { class: 'status-pill', style: { color: STATUS_COLORS[status.kind] }, text: status.label }));
-      card.appendChild(lifecyclePill(c));
-      var thumb = document.createElement('img');
-      thumb.className = 'thumb';
-      thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(c.index) + '.png');
-      thumb.alt = 'variant ' + c.index;
-      card.appendChild(thumb);
-      renderJudge(card, c, sel);
-      renderSensors(card, c, sel);
-      renderAcceptance(card, state, sel, c);
-      card.appendChild(renderPostprocessHandoff(sel, c.index));
-      grid.appendChild(card);
+      grid.appendChild(renderCandidateCard(state, sel, cands[i]));
     }
     wrap.appendChild(grid);
     return wrap;
