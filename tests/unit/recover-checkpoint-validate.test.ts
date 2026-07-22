@@ -25,7 +25,8 @@ const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
  *     secondary-knob tuning, complete duplicate-free TRAIN row panels); and
  *   - `.github/workflows/ai-sweep-recover.yml`'s structure (SHA resolution,
  *     historical-commit checkout pinning, GITHUB_SHA env overrides,
- *     max-parallel: 8, job graph) parsed from the REAL YAML, not
+ *     queue-aware validate max-parallel wiring, job graph) parsed from the
+ *     REAL YAML, not
  *     re-implemented, so a future edit cannot silently regress the SHA-pinning
  *     this recovery depends on to pass sweep-eval.ts's own unchanged
  *     `assertSearchArtifactProvenance` gate.
@@ -656,10 +657,10 @@ describe('ai-sweep-recover.yml structure', () => {
     expect(result.stdout.trim()).not.toBe(dispatchSha);
   });
 
-  it('recover-validate matrix is capped at max-parallel: 8', () => {
+  it('recover-validate matrix uses the queue-aware max-parallel output', () => {
     const doc = loadRecoverWorkflow();
     const job = getJob(doc, 'recover-validate');
-    expect(job.strategy?.['max-parallel']).toBe(8);
+    expect(String(job.strategy?.['max-parallel'])).toContain('validate_max_parallel');
     expect(job.strategy?.['fail-fast']).toBe(false);
   });
 
