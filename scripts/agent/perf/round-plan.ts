@@ -847,6 +847,16 @@ export interface ResumeExpectedProvenance {
  * optimization than the requested tier. `expected.combo`/`expected.round`
  * close this gap: they are checked FIRST, before any other field, so a
  * mislabeled artifact fails fast with an unambiguous error.
+ *
+ * This same `expected.round` check ALSO doubles as the guard against an
+ * INFRA-INCOMPLETE round being mistaken for a genuinely-complete one:
+ * `applyRoundResult` deliberately does NOT advance `checkpoint.round` when
+ * some of that round's planned candidates never produced a shard (see its
+ * doc comment), so a `search-checkpoint-rN-*` artifact whose search never
+ * actually finished round N carries an internal `round` strictly LESS than
+ * N — failing this check and causing `resume-import`'s tier scan to fall
+ * back to the next-older (genuinely complete) tier, rather than silently
+ * validating partial round-N search state (found in review, 2026-07-22).
  */
 export function assertResumeCompatible(
   checkpoint: RoundCheckpoint,
@@ -1051,6 +1061,16 @@ export function normalizeResumedCheckpoint(
  * planned for this combo, so we must NOT infer convergence from that
  * silence. `'unknown'` always forces the infra-failure (no halve/converge)
  * path, regardless of `candidateShards.length`.
+ *
+ * The returned checkpoint's `round` field is likewise NOT advanced to this
+ * call's `round` argument when the round is infra-incomplete — it stays at
+ * whatever value it already had. `checkpoint.round` doubles as a
+ * proven-complete marker that cross-run resume strictly equality-checks
+ * against the artifact's filename-implied tier (`assertResumeCompatible`);
+ * see the `round:` field comment in the return statement below for the full
+ * rationale (found in review — an infra-incomplete round's checkpoint was
+ * otherwise silently accepted as a genuinely-complete `rN` tier by a resumed
+ * run, permanently abandoning that round's never-evaluated candidates).
  */
 export function applyRoundResult(
   checkpoint: RoundCheckpoint,
@@ -1168,7 +1188,34 @@ export function applyRoundResult(
 
   return {
     ...checkpoint,
-    round: Math.max(round, checkpoint.round),
+    // Do NOT advance `round` on an infra-incomplete round: `checkpoint.round`
+    // doubles as this checkpoint's PROVEN-complete tier — the exact value
+    // `assertResumeCompatible` strict-equality-checks against the artifact's
+    // filename-implied tier (`checkpoint.round !== expected.round`, see its
+    // COMBO/ROUND BINDING doc). Bumping it here even when some of this
+    // round's planned candidates never produced a shard would let a
+    // cross-run resume accept a `search-checkpoint-rN-*` artifact whose
+    // internal state never actually finished round N's search (bestConfigId/
+    // steps/converged were deliberately left at round N-1's values just
+    // above) — the missing candidates would then be silently abandoned
+    // forever: `planCandidates`'s `checkpoint.round >= round` resume-gate
+    // would treat round N as already done for any NEW dispatch requesting
+    // exactly `rounds=N` (see `resume-import` in ai-sweep.yml), so validation
+    // would run directly against round N's incomplete state without ever
+    // retrying the missing candidates. Leaving `round` at its prior
+    // (genuinely-complete) value instead makes THIS artifact fail
+    // `assertResumeCompatible`'s existing combo/round check for the `rN`
+    // slot it was uploaded under, so `resume-import`'s tier scan falls back
+    // to the next-older (still real) tier — reusing that mislabeling guard
+    // rather than adding a new field. Ordinary same-run progression is
+    // unaffected: every OTHER `checkpoint.round` use site is a `>=`
+    // comparison (never strict `===`), so a "round skips ahead" once a LATER
+    // round genuinely completes is harmless there, and `planCandidates`
+    // naturally re-offers the still-unevaluated neighbours (frozen
+    // best/steps mean the same neighbour set is recomputed, filtered only by
+    // what has actually been merged into `configs` so far) — found in
+    // review (2026-07-22).
+    round: infraIncomplete ? checkpoint.round : Math.max(round, checkpoint.round),
     bestConfigId: bestId,
     bestScore,
     steps,

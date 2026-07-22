@@ -105,7 +105,7 @@ new commit.
 ## Verification
 
 - `npx tsc --noEmit -p tsconfig.json` ✅ (0 errors)
-- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (180/180, after the 6th–12th fixes below)
+- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (183/183, after the 6th–13th fixes below)
 - `npm run verify:fast` ✅
 - `npm run verify:pr-prereqs` ✅
 
@@ -387,6 +387,61 @@ packageLockHash differ" test; and `normalizeResumedCheckpoint` gained 3 new
 tests (re-stamps `packageLockHash` alone; re-stamps both together; re-stamps
 — is NOT a no-op — when `packageLockHash` alone differs even though
 `workflowSha` matches). Test count: 175 → 180.
+
+A 13th bot-flagged bug surfaced after CI settled on `7d879083` (all 16 prior
+threads confirmed resolved or awaiting the async reconciler via GraphQL
+re-query first), at `round-plan.ts:1171`. `applyRoundResult`'s
+`infraIncomplete` guard correctly freezes `bestConfigId`/`bestScore`/`steps`/
+`converged` when some of a round's planned candidates never produced a shard
+(an infra failure — cancellation/timeout — not a genuine search dead-end), but
+its final return statement unconditionally advanced the checkpoint's `round`
+field to `Math.max(round, checkpoint.round)` regardless of `infraIncomplete`.
+This produced a "half-updated" checkpoint: search STATE correctly stayed
+frozen at the prior round's values, but the round LABEL falsely claimed the
+new round was complete.
+
+`checkpoint.round` is the only place `round-plan.ts` checks an EXACT (not
+`>=`) equality — `assertResumeCompatible`'s combo/round binding (the 10th
+fix, above) — and `ai-sweep.yml`'s `resume-import` job always
+uploads/renames artifacts as `search-checkpoint-rN-<combo>.json` based on the
+JOB's own hardcoded `--round N` flag, never the checkpoint's true
+completeness. So a NEW dispatch whose `rounds` input exactly matched an
+infra-incomplete checkpoint's (falsely-advanced) round would pass
+`assertResumeCompatible`'s check and resume/validate directly against
+permanently-incomplete round-N search data — the missing candidates would
+never be retried, since the resumed checkpoint is renamed to
+`search-checkpoint-init-*` and fed through round1..N's plan/select steps,
+each of which no-ops via the `checkpoint.round >= round` early-exit. (For
+`rounds > N` the extra round's own plan step is NOT gated at N, so
+`planCandidates` naturally retries the missing candidates there — the bug is
+narrower than "always broken": only the `rounds === N` exact-match resume
+case was silently unsafe.)
+
+Fixed with a one-line, minimal change:
+`round: infraIncomplete ? checkpoint.round : Math.max(round, checkpoint.round)`.
+This deliberately reuses the EXISTING `assertResumeCompatible` combo/round
+strict-equality mechanism rather than adding a new field — an
+infra-incomplete round's checkpoint now simply retains an OLDER `round`
+value, which will correctly mismatch its filename-implied tier on any future
+resume attempt, triggering the existing "artifact appears mislabeled"
+rejection and falling back to the next-older genuinely-complete tier per
+`resume-import`'s existing tier-scan loop. Manually traced single- and
+multi-round infra-incomplete chains (including 3 consecutive
+infra-incomplete rounds correctly self-healing all the way back to `init`).
+Docstring addenda added to both `applyRoundResult` and
+`assertResumeCompatible`'s COMBO/ROUND BINDING section, cross-referencing
+that this same check now also guards against infra-incomplete rounds, not
+just mislabeled artifacts.
+
+3 new tests in `sweep-round-plan.test.ts`: infra-incomplete round does NOT
+bump `checkpoint.round` (stays at prior value); a genuinely-complete round
+DOES advance `round` normally (control case proving the guard is targeted,
+not a general regression); and an end-to-end integration test proving an
+infra-incomplete round-2 checkpoint correctly fails
+`assertResumeCompatible` for the r2 tier it would be uploaded under while
+still validating cleanly against the r1 tier it genuinely completed —
+composing the 13th fix with the existing 10th-fix combo/round check. Test
+count: 180 → 183.
 
 ## Notes
 

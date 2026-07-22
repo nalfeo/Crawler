@@ -904,6 +904,71 @@ describe('applyRoundResult', () => {
     expect(updated.converged).toBe(false);
   });
 
+  it('does NOT advance `checkpoint.round` when the round is infra-incomplete (missing shards) — the round LABEL must stay at the last genuinely-complete tier', () => {
+    // Code-review finding (13th thread): the checkpoint's SEARCH STATE
+    // (bestConfigId/steps/converged) was already correctly frozen for an
+    // infra-incomplete round by the tests above, but the returned `round`
+    // field must ALSO stay at the prior value — otherwise a cross-run resume
+    // whose `rounds` input exactly matches this checkpoint's (falsely
+    // advanced) round would validate against permanently-incomplete search
+    // data. `checkpoint.round` starts at 0 (baseCheckpoint uses
+    // initCheckpoint); calling round 1 with an infra-incomplete result must
+    // leave `round` at 0, not bump it to 1.
+    const checkpoint = baseCheckpoint(500);
+    expect(checkpoint.round).toBe(0);
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, [], { plannedCount: 2 });
+    expect(updated.round).toBe(0); // NOT bumped to 1 — round 1 never actually completed
+  });
+
+  it('DOES advance `checkpoint.round` to the requested round on a genuinely complete round (control case proving the infra-incomplete guard is targeted, not a general round-advance regression)', () => {
+    const checkpoint = baseCheckpoint(500);
+    const worse: SweepConfig = { ...BASE, aggression: 1.5 };
+    const worseId = configId(worse);
+    const candidateShard = shard([row(worseId, 'sword', 1, 10)], { [worseId]: worse });
+    // 1 planned, 1 arrived — genuinely complete.
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, [candidateShard], { plannedCount: 1 });
+    expect(updated.round).toBe(1); // advances normally — no infra failure occurred
+  });
+
+  it('an infra-incomplete round-N checkpoint correctly fails assertResumeCompatible for the rN tier it was uploaded under, self-healing a resumed run back to the last genuinely-complete tier', () => {
+    // End-to-end proof that the 13th-thread fix and the existing 10th-thread
+    // combo/round binding compose correctly: round 2 fails to fully complete
+    // (an infra failure drops a shard), so the checkpoint that would be
+    // uploaded as `search-checkpoint-r2-<combo>.json` still internally
+    // reports round 1 (per the test above). A NEW dispatch requesting
+    // `rounds=2` must reject THIS artifact for the r2 slot — exactly the
+    // existing "mislabeled artifact" guard — so `resume-import`'s tier scan
+    // falls back to the genuinely-complete r1 (or earlier) artifact instead
+    // of silently validating incomplete round-2 search state.
+    let checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(150), undefined, {
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: false,
+    });
+    // Round 1 completes genuinely.
+    checkpoint = applyRoundResult(checkpoint, 1, KNOBS, []);
+    expect(checkpoint.round).toBe(1);
+    // Round 2 is infra-incomplete (a shard never arrived) — round must NOT advance.
+    checkpoint = applyRoundResult(checkpoint, 2, KNOBS, [], { plannedCount: 2 });
+    expect(checkpoint.round).toBe(1);
+
+    const expectedR2: ResumeExpectedProvenance = {
+      meta: { ...META },
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: false,
+      combo: LEGACY_COMBO_ID,
+      round: 2, // the tier this checkpoint was (mis)uploaded as search-checkpoint-r2-*
+    };
+    expect(() => assertResumeCompatible(checkpoint, expectedR2)).toThrow(
+      /checkpoint round 1 != expected round 2/,
+    );
+
+    // But it DOES validate cleanly against the tier it actually, genuinely completed.
+    const expectedR1: ResumeExpectedProvenance = { ...expectedR2, round: 1 };
+    expect(() => assertResumeCompatible(checkpoint, expectedR1)).not.toThrow();
+  });
+
   it('marks converged once a knob’s step has halved below its minStep across repeated non-improving rounds', () => {
     let checkpoint = baseCheckpoint(500);
     // Round 1: no improvement -> step 0.5 -> 0.25 (still >= minStep 0.25).
