@@ -9211,3 +9211,121 @@ test('untrusted marker comment does not suppress prior-reply hint', async (t) =>
     'task body must still include the original reviewer concern',
   );
 });
+
+// ---------------------------------------------------------------------------
+// Fix B (issue #1783): outdated-marker reply POST 422 handling
+// ---------------------------------------------------------------------------
+
+test('live reconcile continues and exits cleanly when outdated-marker reply POST returns 422', async (t) => {
+  // This is the exact failure mode that pinned PR #1231 for 12.7h:
+  // a dangling CI-PAT pending review causes POST /pulls/{n}/comments/{id}/replies
+  // to return 422 "user can only have one pending review per pull request".
+  // Before Fix B the unhandled throw crashed reconcile before release() could
+  // run, leaving the ci-owner lock frozen.  After the fix, reconcile must log
+  // the failure to stderr, skip injecting the synthetic marker, and exit 0.
+  const reviewCommentId = '5551234567';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    // 422: dangling pending review by the CI-PAT identity.
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      status: 422,
+      body: {
+        message: 'Validation Failed',
+        errors: [
+          {
+            resource: 'PullRequestReview',
+            code: 'invalid',
+            message: 'user_id can only have one pending review per pull request',
+          },
+        ],
+      },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-22T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-422-test',
+            isResolved: false,
+            isOutdated: true,
+            path: 'src/core/systems/some.ts',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-422-test',
+                  body: 'Suggestion from reviewer.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  // Reconcile must NOT crash — Fix B ensures the 422 is caught and logged.
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The failure must be logged to stderr so operators can detect it.
+  assert.match(
+    stderr,
+    /outdated-marker-reply-failed thread=thread-422-test status=422/,
+    'must log outdated-marker-reply failure with status=422 to stderr',
+  );
+
+  // Reconcile must log the skip for this thread.
+  assert.match(
+    stdout,
+    /skip outdated-marker thread=thread-422-test reason=reply-failed/,
+    'must log skip with reason=reply-failed when reply POST fails',
+  );
+
+  // The failed reply must NOT have triggered thread resolution
+  // (no synthetic trusted marker was injected).
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === 'thread-422-test',
+  );
+  assert.equal(
+    resolveCall,
+    undefined,
+    'thread must NOT be resolved when the marker reply failed (no trusted marker injected)',
+  );
+});

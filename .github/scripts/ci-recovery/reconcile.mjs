@@ -284,11 +284,15 @@ async function assertExpectedMetadataUnchangedOrThrow(phase) {
 }
 
 async function assertPrHeadUnchangedOrThrow(phase, expectedSha) {
-  const expected = String(expectedSha || '').trim().toLowerCase();
+  const expected = String(expectedSha || '')
+    .trim()
+    .toLowerCase();
   if (!expected) return;
   const livePullRequest = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`))
     .data;
-  const actual = String(livePullRequest?.head?.sha || '').trim().toLowerCase();
+  const actual = String(livePullRequest?.head?.sha || '')
+    .trim()
+    .toLowerCase();
   if (actual && actual === expected) return;
   throw new ExpectedMetadataChangedError(
     {
@@ -1151,11 +1155,30 @@ for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
   const markerBody = `✅ Addressed in ${headSha}: thread outdated — reviewed lines no longer present at this location`;
   if (live) {
     await assertExpectedMetadataUnchanged('post-outdated-marker');
-    await request(
-      pat,
-      `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
-      { method: 'POST', body: { body: markerBody } },
-    );
+    // Fix B (issue #1783): wrap in try/catch so a 422 "user can only have one
+    // pending review per pull request" (dangling CI-PAT pending review) or any
+    // other transient API error does not crash reconcile before release() runs,
+    // which would freeze the ci-owner lock indefinitely.  Marker posting is an
+    // auxiliary optimisation; the main resolution pass below still runs even if
+    // the reply could not be posted.
+    try {
+      await request(
+        pat,
+        `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
+        { method: 'POST', body: { body: markerBody } },
+      );
+    } catch (markerErr) {
+      const safeMsg = String(markerErr?.message || markerErr)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 300);
+      process.stderr.write(
+        `outdated-marker-reply-failed thread=${thread.id} status=${markerErr?.status ?? 'n/a'} err=${safeMsg}\n`,
+      );
+      // Skip injecting the synthetic marker comment so shouldResolveThread
+      // does not treat the failed post as a trusted resolution signal.
+      process.stdout.write(`skip outdated-marker thread=${thread.id} reason=reply-failed\n`);
+      continue;
+    }
   }
   // Inject the posted marker so shouldResolveThread succeeds in the resolution pass below.
   // authorAssociation is OWNER because CRAWLER_CI_PAT is the repository owner's token.
@@ -1359,14 +1382,10 @@ if (conflictEpisode) {
   const marker = conflictEpisodeMarker(conflictEpisode);
   if (live) {
     await assertExpectedMetadataUnchanged('conflict-episode-marker');
-    const created = await request(
-      pat,
-      `/repos/${owner}/${repo}/issues/${prNumber}/comments`,
-      {
-        method: 'POST',
-        body: { body: marker },
-      },
-    );
+    const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+      method: 'POST',
+      body: { body: marker },
+    });
     comments.push(created.data);
   }
   process.stdout.write(
@@ -1693,8 +1712,7 @@ const reviewDecision = shouldRequestReview({
   trigger,
   pr,
   hasMergeConflict,
-  requiredChecksPassing:
-    mergeTrainAdmissionChecks.length > 0 && waitingRequiredChecks.length === 0,
+  requiredChecksPassing: mergeTrainAdmissionChecks.length > 0 && waitingRequiredChecks.length === 0,
   hasInitialReviewEvidence: canBootstrapInitialReviewMarker,
   blockers: normalized,
   comments,
@@ -1710,7 +1728,9 @@ if (reviewDecision) {
   const markerHeadSha =
     reviewDecision.reason === 'ready' && !isInitialEventTrigger && copilotReviewedCommitSha
       ? copilotReviewedCommitSha
-      : String(pr.head.sha || '').trim().toLowerCase();
+      : String(pr.head.sha || '')
+          .trim()
+          .toLowerCase();
   const reviewDecisionHeadSha = markerHeadSha;
   const marker = reviewRequestMarker({
     headSha: markerHeadSha,

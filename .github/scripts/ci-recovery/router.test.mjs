@@ -14,10 +14,12 @@ import {
   GLOBAL_TRAIN_DISPATCH_CAP,
   hasHealthyOwnerForSweep,
   hydrateRecoveryOwnership,
+  identifyReapablePrs,
   isRepairWindowSweepEvent,
   isRetryableError,
   listRecentOutstandingRunIds,
   partitionDispatchable,
+  REAPER_LANE_CAP,
   recoveryStateFromComments,
   requestWithBackoff,
   recoveryTriggerForPr,
@@ -1515,4 +1517,110 @@ test('hydrateRecoveryOwnership stops after six dispatchable PRs in the resolved 
   assert.ok(hydrated[0].recoveryState !== undefined);
   assert.ok(hydrated[1].recoveryState !== undefined);
   assert.ok(hydrated[2].recoveryState !== undefined);
+});
+
+// ---------------------------------------------------------------------------
+// identifyReapablePrs (Fix A + C: lease-reaper GC, issue #1783)
+// ---------------------------------------------------------------------------
+
+test('identifyReapablePrs returns stale automation-owned PR numbers', () => {
+  // PR #10 is owned, hydrated, and automation state is 35 min old (past 30-min threshold).
+  const staleAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+  const stalePr = {
+    number: 10,
+    labels: [{ name: 'ci-owner-pr-10' }],
+    recoveryState: automationOwnerState(10, staleAt, 1),
+  };
+  // PR #11 is owned but fresh (5 min old — within threshold).
+  const freshAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const freshPr = {
+    number: 11,
+    labels: [{ name: 'ci-owner-pr-11' }],
+    recoveryState: automationOwnerState(11, freshAt, 1),
+  };
+  // PR #12 has no owner label at all.
+  const unownedPr = { number: 12, labels: [] };
+
+  const reapable = identifyReapablePrs([stalePr, freshPr, unownedPr]);
+  assert.deepEqual(reapable, [10], 'only the stale owned PR should be reapable');
+});
+
+test('identifyReapablePrs excludes shepherd-owned PRs', () => {
+  const staleAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const shepherdPr = {
+    number: 20,
+    labels: [{ name: 'ci-owner-pr-20' }],
+    recoveryState: makeState({
+      prNumber: 20,
+      headSha: 'head-20',
+      fingerprint: blockerFingerprint([]),
+      owner: 'shepherd',
+      status: 'active',
+      leaseId: 'test-lease-id',
+      blockers: [],
+      attempt: 0,
+      updatedAt: staleAt,
+    }),
+  };
+  const reapable = identifyReapablePrs([shepherdPr]);
+  assert.deepEqual(
+    reapable,
+    [],
+    'shepherd-owned PRs must never be reaped by the automation reaper',
+  );
+});
+
+test('identifyReapablePrs excludes unhydrated (no recoveryState) PRs', () => {
+  // An owned PR whose state comment was not loaded (recoveryState is undefined).
+  const unhydratedPr = {
+    number: 30,
+    labels: [{ name: 'ci-owner-pr-30' }],
+    // recoveryState is intentionally absent — not loaded yet.
+  };
+  const reapable = identifyReapablePrs([unhydratedPr]);
+  assert.deepEqual(reapable, [], 'unhydrated PRs must be skipped (state age is unknown)');
+});
+
+test('identifyReapablePrs respects REAPER_LANE_CAP when callers slice the result', () => {
+  // 5 stale PRs — the caller should slice to REAPER_LANE_CAP before dispatching.
+  const staleAt = new Date(Date.now() - 40 * 60 * 1000).toISOString();
+  const stalePrs = Array.from({ length: 5 }, (_, i) => ({
+    number: 100 + i,
+    labels: [{ name: `ci-owner-pr-${100 + i}` }],
+    recoveryState: automationOwnerState(100 + i, staleAt, 2),
+  }));
+  const reapable = identifyReapablePrs(stalePrs);
+  assert.equal(reapable.length, 5, 'all 5 stale PRs are eligible');
+  const dispatched = reapable.slice(0, REAPER_LANE_CAP);
+  assert.equal(
+    dispatched.length,
+    REAPER_LANE_CAP,
+    'caller must cap at REAPER_LANE_CAP to avoid overloading the runner pool',
+  );
+});
+
+test('identifyReapablePrs uses progressAt over updatedAt for age check when progressAt is present', () => {
+  // updatedAt is old (40 min) but progressAt is fresh (5 min).
+  // The reaper must use progressAt, so this PR should NOT be reapable.
+  const oldUpdatedAt = new Date(Date.now() - 40 * 60 * 1000).toISOString();
+  const freshProgressAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const fp = blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]);
+  const pr = {
+    number: 50,
+    labels: [{ name: 'ci-owner-pr-50' }],
+    recoveryState: makeState({
+      prNumber: 50,
+      headSha: 'head-50',
+      fingerprint: fp,
+      owner: 'automation',
+      status: 'dispatched',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      progressKey: automationProgressKey('head-50', fp),
+      progressAt: freshProgressAt,
+      updatedAt: oldUpdatedAt,
+    }),
+  };
+  const reapable = identifyReapablePrs([pr]);
+  assert.deepEqual(reapable, [], 'fresh progressAt must prevent reaping even if updatedAt is old');
 });

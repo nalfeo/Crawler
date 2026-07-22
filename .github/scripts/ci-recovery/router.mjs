@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
 import {
+  AUTOMATION_STALE_MINUTES,
   isHealthyRecoveryOwner,
   OWNER_LABEL_PREFIX,
   ownerLabel,
@@ -92,6 +93,11 @@ const TRAIN_OWNED_LABELS = new Set([
   VALIDATION_FAILED_LABEL,
 ]);
 const OWNERSHIP_HYDRATION_BATCH_SIZE = 6;
+// Reserved dispatch slots for the lease-reaper GC pass. These slots are
+// consumed on every scheduled sweep to release stale automation locks and
+// are intentionally NOT counted against computeDispatchBudget, so GC can
+// never be budget-starved to zero (Fix A / issue #1783).
+export const REAPER_LANE_CAP = 2;
 
 function parsePositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw ?? ''), 10);
@@ -396,6 +402,37 @@ export function hasHealthyOwnerForSweep(pullRequest, now = new Date()) {
     state: pullRequest.recoveryState,
     now,
   });
+}
+
+// Identifies automation-owned PRs whose state has been stale for longer than
+// AUTOMATION_STALE_MINUTES. These are candidates for the lease-reaper GC pass:
+// they hold ci-owner-pr-N locks with no active session backing them, and will
+// never be dispatched through the normal budget path because the budget stays
+// at zero while they are stuck.
+//
+// Only PRs whose recoveryState has been loaded (via hydrateRecoveryOwnership)
+// are evaluated; unhydrated PRs are skipped because the age cannot be checked
+// without reading the state comment.
+//
+// This implements Fix C (liveness binding) as part of Fix A (reaper lane):
+// any automation lock held past the TTL wall-clock ceiling is eligible for
+// release, making the TTL a hard upper bound on lock lifetime.
+export function identifyReapablePrs(scheduledPulls, now = new Date()) {
+  return scheduledPulls
+    .filter((pullRequest) => {
+      const owned = (pullRequest.labels || []).some((label) =>
+        String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
+      );
+      if (!owned) return false;
+      const state = pullRequest.recoveryState;
+      // Only act on loaded, automation-owned active states.
+      if (!state || state.owner !== 'automation') return false;
+      if (!['active', 'dispatched', 'escalated'].includes(state.status)) return false;
+      // Eligible when the last recorded progress is older than the stale threshold.
+      const progressAt = Date.parse(state.progressAt || state.updatedAt);
+      return now.getTime() - progressAt >= AUTOMATION_STALE_MINUTES * 60 * 1000;
+    })
+    .map((pr) => pr.number);
 }
 
 export async function hydrateRecoveryOwnership(
@@ -801,6 +838,57 @@ export async function runFromEnv(env = process.env) {
           }).length,
       },
     );
+  }
+
+  // Lease-reaper pass (Fix A / issue #1783): runs on every scheduled sweep
+  // OUTSIDE the dispatch budget. Hydrates owned PRs that have not been loaded
+  // yet (train-mode hydration above already covers the train path), then
+  // dispatches reconcile for any automation lock stale past AUTOMATION_STALE_MINUTES.
+  // This ensures GC is never budget-starved to zero: stale locks are released
+  // even when computeDispatchBudget() returns 0.
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+    // In non-train mode the owned PRs have not been hydrated yet.
+    if (!trainEnabled) {
+      const ownedForReaper = scheduledPulls.filter((pr) =>
+        (pr.labels || []).some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX)),
+      );
+      if (ownedForReaper.length > 0) {
+        const hydratedOwned = await hydrateRecoveryOwnership(ownedForReaper, (number) =>
+          requestWithBackoff(
+            () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+            { label: `reaper-load-state-${number}` },
+          ),
+        );
+        const patchByNumber = new Map(hydratedOwned.map((pr) => [pr.number, pr]));
+        scheduledPulls = scheduledPulls.map((pr) => patchByNumber.get(pr.number) ?? pr);
+      }
+    }
+
+    const reaperPrNumbers = identifyReapablePrs(scheduledPulls, new Date());
+    const reaperBatch = reaperPrNumbers.slice(0, REAPER_LANE_CAP);
+    for (const reaperPrNumber of reaperBatch) {
+      // Use a direct request() -- do NOT wrap in requestWithBackoff. Same
+      // rationale as the normal dispatch loop: non-idempotent POST, retries
+      // would create duplicate runs.
+      await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
+        method: 'POST',
+        body: {
+          ref: payload.repository?.default_branch || 'main',
+          inputs: {
+            operation: 'reconcile',
+            pr_number: String(reaperPrNumber),
+            trigger: 'lease-reaper',
+            lease_id: '',
+          },
+        },
+      });
+      process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=lease-reaper\n`);
+    }
+    if (reaperBatch.length > 0) {
+      process.stdout.write(
+        `reaper dispatched=${reaperBatch.length} pr_numbers=${reaperBatch.join(',')}\n`,
+      );
+    }
   }
 
   const prNumbers = collectPrNumbers({
