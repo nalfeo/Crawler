@@ -8,7 +8,7 @@ import {
 
 const candidates = [{ index: 0 }, { index: 1 }, { index: 2 }];
 
-test('variant scope carries only the affected candidate', () => {
+test('variant scope carries all candidates (reprocess clears every sibling judge map)', () => {
   assert.deepEqual(
     buildPostprocessParentPatch({
       briefId: 'brief',
@@ -23,7 +23,7 @@ test('variant scope carries only the affected candidate', () => {
       runId: 'run',
       scope: 'variant',
       variantIndex: 1,
-      candidates: [{ index: 1 }],
+      candidates,
     },
   );
 });

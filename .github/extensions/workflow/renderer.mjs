@@ -372,36 +372,40 @@ const CLIENT_SCRIPT = String.raw`
       patch.briefId !== lastState.selected.briefId ||
       patch.runId !== lastState.selected.runId
     ) return;
+    var isAll = patch.scope === 'all';
+    var isVariant = patch.scope === 'variant' && typeof patch.variantIndex === 'number';
+    if (!isAll && !isVariant) return;
     var replacements = Array.isArray(patch.candidates) ? patch.candidates : [];
-    if (patch.scope === 'all') {
-      lastState.candidates = replacements;
-    } else if (patch.scope === 'variant' && typeof patch.variantIndex === 'number') {
-      var replacement = replacements.find(function (candidate) {
-        return candidate && candidate.index === patch.variantIndex;
-      });
-      if (!replacement) return;
-      lastState.candidates = (lastState.candidates || []).map(function (candidate) {
-        return candidate && candidate.index === patch.variantIndex ? replacement : candidate;
-      });
-    } else {
-      return;
-    }
+    var patchTs = Date.now();
+    // Build an index of the current candidates so we can preserve the
+    // UI-owned feedback and lifecycle fields that composeState adds but that
+    // the persisted (bare) patch data does not carry.
+    var existingByIndex = {};
+    (lastState.candidates || []).forEach(function (c) {
+      if (c) existingByIndex[String(c.index)] = c;
+    });
+    lastState.candidates = replacements.map(function (r) {
+      if (!r) return r;
+      var existing = existingByIndex[String(r.index)];
+      var out = Object.assign({}, r);
+      if (existing) {
+        if (existing.feedback !== undefined) out.feedback = existing.feedback;
+        if (existing.lifecycle !== undefined) out.lifecycle = existing.lifecycle;
+      }
+      // Tag reprocessed-PNG variants with a cache-buster so the browser
+      // fetches the new image rather than reusing a cached stale thumbnail.
+      if (isAll || r.index === patch.variantIndex) out._patchTs = patchTs;
+      return out;
+    });
     lastState.stale = false;
     var staleBadge = document.querySelector('.stale-badge');
     if (staleBadge) staleBadge.remove();
     if (activeTab !== 'runs') return;
-    if (patch.scope === 'all') {
-      var section = document.querySelector('[data-workflow-candidates]');
-      if (section) section.replaceWith(renderCandidates(lastState));
-      return;
-    }
-    var card = document.querySelector('[data-variant-index="' + patch.variantIndex + '"]');
-    var candidate = (lastState.candidates || []).find(function (item) {
-      return item && item.index === patch.variantIndex;
-    });
-    if (card && candidate) {
-      card.replaceWith(renderCandidateCard(lastState, lastState.selected, candidate));
-    }
+    // Re-render the full candidates section: a variant-scoped reprocess also
+    // rebuilds every sibling's summary entry (clearing judge maps), so all
+    // cards need refreshing, not just the target card.
+    var section = document.querySelector('[data-workflow-candidates]');
+    if (section) section.replaceWith(renderCandidates(lastState));
   }
 
   window.addEventListener('message', function (ev) {
@@ -1352,7 +1356,8 @@ const CLIENT_SCRIPT = String.raw`
     card.appendChild(lifecyclePill(candidate));
     var thumb = document.createElement('img');
     thumb.className = 'thumb';
-    thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(candidate.index) + '.png');
+    thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(candidate.index) + '.png') +
+      (candidate._patchTs ? '&ts=' + candidate._patchTs : '');
     thumb.alt = 'variant ' + candidate.index;
     card.appendChild(thumb);
     renderJudge(card, candidate, sel);

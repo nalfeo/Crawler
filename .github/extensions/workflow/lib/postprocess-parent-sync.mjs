@@ -18,10 +18,10 @@ export function buildPostprocessParentPatch({
     runId,
     scope,
     variantIndex: scope === 'variant' ? variantIndex : null,
-    candidates:
-      scope === 'all'
-        ? allCandidates
-        : allCandidates.filter((candidate) => candidate?.index === variantIndex),
+    // Always include the full candidate list: repostprocessRun rebuilds every
+    // summary entry (clearing sibling judge maps) even for a variant-scoped
+    // reprocess, so all cards need the fresh data.
+    candidates: allCandidates,
   };
 }
 
