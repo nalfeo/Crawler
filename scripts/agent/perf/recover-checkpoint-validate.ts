@@ -22,12 +22,18 @@
  * reads `process.env.GITHUB_SHA` — the *current* job's env var, not whatever a
  * later `actions/checkout` step happens to check out. The recovery workflow
  * resolves the SOURCE run's exact `head_sha` via the GitHub API in
- * `recover-preflight`, then explicitly overrides `GITHUB_SHA` on every step
- * that invokes `sweep-eval.ts`/`aggregate-shards.ts` so `sweep-eval.ts`'s own
- * unchanged provenance gate passes. This validator's `expectedWorkflowSha`
- * check is a cheap, all-8-combos-at-once PRE-check for the same mismatch,
- * failing the whole recovery before any expensive validate compute runs,
- * rather than failing one matrix leg at a time deep inside `sweep-eval.ts`.
+ * `recover-preflight`, then assigns `GITHUB_SHA` inline at the exec boundary
+ * (immediately before each `npx tsx` invocation, e.g.
+ * `GITHUB_SHA="$RECOVER_HEAD_SHA" npx tsx ...`) on every step that invokes
+ * `sweep-eval.ts`/`aggregate-shards.ts`, so `sweep-eval.ts`'s own unchanged
+ * provenance gate passes. A step/job-level `env: GITHUB_SHA: ...` key does
+ * NOT work for this — GitHub Actions silently discards attempts to override
+ * reserved `GITHUB_*`/`RUNNER_*` default variables via `env:`, so the spawned
+ * child would still see the dispatching ref's SHA regardless of the YAML.
+ * This validator's `expectedWorkflowSha` check is a cheap, all-8-combos-at-once
+ * PRE-check for the same mismatch, failing the whole recovery before any
+ * expensive validate compute runs, rather than failing one matrix leg at a
+ * time deep inside `sweep-eval.ts`.
  *
  * This module never mutates or rewrites a checkpoint — it only reads and
  * reports. A checkpoint whose provenance doesn't match is REJECTED, never

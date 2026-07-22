@@ -180,7 +180,7 @@ jobs:
       # Fail-safe: runs when dependencies_touched is absent or not explicitly 'false'.
       - name: npm audit
         if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.dependencies_touched != 'false' && !cancelled()
-        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm audit --audit-level=high
+        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm run security:audit
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: Dependency allowlist
