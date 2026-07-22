@@ -99,8 +99,6 @@ export function shouldRequestReview({
 
   const headSha = normalized(pr?.head?.sha);
   const requests = reviewRequestMarkers(comments);
-  if (requests.some((request) => request.headSha === headSha)) return null;
-
   const normalRequests = requests.filter((request) => request.reason !== 'conflict-resolved');
   const initialTrigger = INITIAL_TRIGGERS.has(normalized(trigger));
   if (initialTrigger && normalRequests.length === 0) {
@@ -109,10 +107,10 @@ export function shouldRequestReview({
   if (hasMergeConflict || !requiredChecksPassing || (blockers || []).length > 0) {
     return null;
   }
-  if (normalRequests.length === 0) {
-    return hasInitialReviewEvidence ? { reason: 'ready', episode: null, requestReviewer: false } : null;
-  }
 
+  // Conflict-episode check runs before normal head-based deduplication so that a
+  // conflict-resolved review can fire even when the current head was already normally
+  // reviewed (the same head can carry a new unreviewed conflict episode).
   const episodes = conflictEpisodeMarkers(comments);
   const latestEpisode = episodes.at(-1);
   if (
@@ -128,6 +126,13 @@ export function shouldRequestReview({
       episode: latestEpisode.episode,
       requestReviewer: true,
     };
+  }
+
+  // Head-based deduplication applies only to normal (non-conflict) requests.
+  if (normalRequests.some((request) => request.headSha === headSha)) return null;
+
+  if (normalRequests.length === 0) {
+    return hasInitialReviewEvidence ? { reason: 'ready', episode: null, requestReviewer: false } : null;
   }
 
   if (normalRequests.length >= 3) return null;

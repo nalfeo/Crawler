@@ -1042,11 +1042,18 @@ if (mergeTrainEnabled && !pendingHumanApproval && shouldWaitForCiConflictOrder(p
 }
 
 const review = await listReviewThreads(readToken, owner, repo, prNumber);
-const hasInitialReviewEvidence = review.reviews.some((candidate) => {
+const initialReviewByCopilot = review.reviews.find((candidate) => {
   const login = String(candidate?.author?.login || '').toLowerCase();
   return login === String(copilotReviewerLogin).toLowerCase() && Boolean(candidate?.submittedAt);
 });
-const canBootstrapInitialReviewMarker = !state && hasInitialReviewEvidence;
+const hasInitialReviewEvidence = Boolean(initialReviewByCopilot);
+// SHA of the commit that was actually reviewed by Copilot; used when seeding the
+// bootstrap marker so that the current head is not incorrectly deduplicated.
+const copilotReviewedCommitSha = String(initialReviewByCopilot?.commit?.oid || '').toLowerCase();
+// Bootstrap whenever review evidence exists and managed markers are absent,
+// independent of recovery-state ownership. Already-reconciled PRs have state but
+// may still lack review-request markers at rollout time.
+const canBootstrapInitialReviewMarker = hasInitialReviewEvidence;
 const copilotAssigned = review.assignees.some((actor) =>
   ['copilot', 'copilot-swe-agent'].includes(String(actor.login || '').toLowerCase()),
 );
@@ -1693,9 +1700,20 @@ const reviewDecision = shouldRequestReview({
   comments,
 });
 if (reviewDecision) {
-  const reviewDecisionHeadSha = String(pr.head.sha || '').trim().toLowerCase();
+  // When bootstrapping an already-reviewed PR (reason=ready, not an initial publish event),
+  // record the actual reviewed commit SHA so that the current head is not prematurely
+  // deduplicated and can still receive a synchronize review.
+  const isInitialEventTrigger =
+    trigger === 'pull_request_target:opened' ||
+    trigger === 'pull_request_target:reopened' ||
+    trigger === 'pull_request_target:ready_for_review';
+  const markerHeadSha =
+    reviewDecision.reason === 'ready' && !isInitialEventTrigger && copilotReviewedCommitSha
+      ? copilotReviewedCommitSha
+      : String(pr.head.sha || '').trim().toLowerCase();
+  const reviewDecisionHeadSha = markerHeadSha;
   const marker = reviewRequestMarker({
-    headSha: pr.head.sha,
+    headSha: markerHeadSha,
     reason: reviewDecision.reason,
     episode: reviewDecision.episode,
   });

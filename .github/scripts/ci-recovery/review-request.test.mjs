@@ -110,6 +110,24 @@ test('rejects duplicate review requests for the same head', () => {
   );
 });
 
+test('allows a conflict review even when the current head was already normally reviewed', () => {
+  // Head H=HEADS[1] was synchronize-reviewed; a new conflict episode then arrived on
+  // that same head.  The conflict-resolved review must fire even though HEADS[1] already
+  // carries a normal request marker.
+  const episode = conflictEpisodeId({ headSha: HEADS[1], baseSha: BASES[0] });
+  assert.deepEqual(
+    decision({
+      currentPr: pr(HEADS[1]),
+      comments: [
+        requestComment(HEADS[0], 'ready'),
+        requestComment(HEADS[1], 'synchronize'),
+        conflictComment(HEADS[1], BASES[0]),
+      ],
+    }),
+    { reason: 'conflict-resolved', episode, requestReviewer: true },
+  );
+});
+
 test('fails closed while required checks are missing, pending, or failed', () => {
   const comments = [requestComment(HEADS[0], 'ready')];
   assert.equal(decision({ requiredChecksPassing: false, comments }), null);
