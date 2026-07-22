@@ -11,9 +11,9 @@ import {
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
+import { HUMAN_APPROVAL_LABEL } from '../merge-train/human-approval.mjs';
 import {
   BLOCKED_LABEL,
-  NOOP_LABEL,
   parseEnabledFlag,
   queueEntries,
   QUEUE_LABEL,
@@ -65,20 +65,29 @@ const MANAGED_COMMENT_MARKERS = [
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
-const FLAG_OFF_SWEEP_ROTATION_WINDOW_MS = 10 * 60 * 1000;
 const DEFAULT_OUTSTANDING_VISIBILITY_TIMEOUT_MS = 8 * 60 * 1000;
 const DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS = 5000;
-// Labels owned by merge-train automation that must be drained during
-// flag-off cleanup before legacy routing resumes normal operation. A PR that
-// still carries one of these after MERGE_TRAIN_ENABLED=false needs the
-// flag-off cleanup sweep in ci-recovery/reconcile.mjs to remove it before the
-// PR can return to legacy automation. See collectPrNumbers() below.
-const TRAIN_OWNED_LABELS = new Set([
-  QUEUE_LABEL,
-  BLOCKED_LABEL,
-  NOOP_LABEL,
-  VALIDATION_FAILED_LABEL,
+// Labels that indicate a PR is blocked by an external mechanism. These PRs
+// must not consume a scarce dispatch slot — they cannot make forward progress
+// through CI Recovery until the blocking condition is resolved externally.
+// The exclusion is unconditional: even a PR explicitly named by the triggering
+// event is excluded if it carries one of these labels.
+// NOTE: 'ci-conflict-order-wait' and 'ci-conflict-escalation' are defined in
+// .github/scripts/ci-conflict-coordinator/state.mjs, which is outside the
+// trusted execution boundary of router.mjs. Use inline literals here to avoid
+// expanding that boundary.
+export const DISPATCH_BLOCKED_LABEL_NAMES = new Set([
+  'ci-conflict-order-wait', // ci-conflict-coordinator/state.mjs ORDER_WAIT_LABEL
+  'ci-conflict-escalation', // ci-conflict-coordinator/state.mjs ESCALATION_LABEL
+  BLOCKED_LABEL, // 'merge-train-blocked'
+  VALIDATION_FAILED_LABEL, // 'merge-train-validation-failed'
+  HUMAN_APPROVAL_LABEL, // 'human-approval-required'
+  WAITING_LABEL, // 'ci-recovery-waiting'
 ]);
+// Labels that identify a PR as a CI infrastructure or improvement change.
+// CI-fix PRs are dispatched before general-purpose PRs in the schedule sweep
+// because landing them accelerates throughput for all other PRs.
+export const CI_FIX_LABEL_NAMES = new Set(['ci', 'ci-infra']);
 const OWNERSHIP_HYDRATION_BATCH_SIZE = 6;
 
 function parsePositiveInt(raw, fallback) {
@@ -88,17 +97,6 @@ function parsePositiveInt(raw, fallback) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function rotateList(values, rotation) {
-  if (values.length <= 1) {
-    return values;
-  }
-  const normalizedRotation = ((rotation % values.length) + values.length) % values.length;
-  if (normalizedRotation === 0) {
-    return values;
-  }
-  return [...values.slice(normalizedRotation), ...values.slice(0, normalizedRotation)];
 }
 
 export function parseRetryAfterMilliseconds(error) {
@@ -190,6 +188,20 @@ export async function requestWithBackoff(
   throw new Error(`exhausted retries for ${label}`);
 }
 
+// Returns true if the PR carries a CI infrastructure or improvement label,
+// making it eligible for tier-1 priority in the schedule sweep.
+export function isCiFixPr(pullRequest) {
+  return (pullRequest.labels || []).some((label) => CI_FIX_LABEL_NAMES.has(label.name));
+}
+
+// Returns true if the PR carries a label that indicates it is blocked by an
+// external mechanism and must not receive a CI Recovery dispatch slot.
+export function isDispatchBlocked(pullRequest) {
+  return (pullRequest.labels || []).some((label) =>
+    DISPATCH_BLOCKED_LABEL_NAMES.has(label.name),
+  );
+}
+
 export function collectPrNumbers({
   payload,
   eventName,
@@ -261,43 +273,22 @@ export function collectPrNumbers({
   }
   const directNumbers = eventPrNumbers(payload);
   const numbers = new Set(directNumbers);
-  // PRs still carrying a train-owned label after flag-off. These must not be
-  // starved by the dispatch cap below: the flag-off cleanup in
-  // ci-recovery/reconcile.mjs only runs for PRs it actually receives, so an
-  // unbounded backlog of newly-updated PRs could otherwise keep pushing an
-  // older, still-labeled PR past the cap on every sweep (never cleaned up).
-  const trainLabeledNumbers = new Set();
-  const waitingTransitionNumbers = new Set();
-  const ownedNumbers = new Set();
+  // Map from PR number → PR object, populated during the collection phase for
+  // schedule/workflow_dispatch sweeps so the ordering phase can read labels and
+  // created_at without a second loop.
+  const pullsByNumber = new Map();
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
     const normalizedRepo = repository.toLowerCase();
     for (const pullRequest of scheduledPulls) {
-      const directlyTriggered = directNumbers.has(pullRequest.number);
-      const waiting = (pullRequest.labels || []).some((label) => label.name === WAITING_LABEL);
-      const waitingTransition = (pullRequest.labels || []).some(
-        (label) => label.name === WAITING_TRANSITION_LABEL,
-      );
-      const owned = (pullRequest.labels || []).some((label) =>
-        String(label.name || '').startsWith('ci-owner-pr-'),
-      );
       if (
         !pullRequest.draft &&
-        (directlyTriggered || !waiting || owned || waitingTransition) &&
         pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
       ) {
         const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
         if (Number.isInteger(number) && number > 0) {
           numbers.add(number);
-          if (hasTrainOwnedLabel(pullRequest)) {
-            trainLabeledNumbers.add(number);
-          }
-          if (waitingTransition) {
-            waitingTransitionNumbers.add(number);
-          }
-          if (owned) {
-            ownedNumbers.add(number);
-          }
+          pullsByNumber.set(number, pullRequest);
         }
       }
     }
@@ -305,36 +296,43 @@ export function collectPrNumbers({
 
   const eligible = [...numbers];
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
-    // Prioritize PRs the event directly named plus any still carrying a
-    // train-owned label so the flag-off cleanup sweep completes for them
-    // before the cap is spent on unrelated recently-updated PRs.
-    const prioritized = eligible.filter(
-      (number) =>
-        directNumbers.has(number) ||
-        trainLabeledNumbers.has(number) ||
-        waitingTransitionNumbers.has(number),
-    );
-    const remaining = eligible.filter(
-      (number) =>
-        !directNumbers.has(number) &&
-        !trainLabeledNumbers.has(number) &&
-        !waitingTransitionNumbers.has(number),
-    );
-    // Keep already-owned PRs behind PRs that have not yet received an owner
-    // label, then rotate each bucket once per 10-minute sweep window. Without
-    // this, the later global budget slice in partitionDispatchable() keeps
-    // selecting the same updated-desc prefix in flag-off mode, and PRs later in
-    // the sweep can starve indefinitely.
-    const rotation =
-      Number.isFinite(now.getTime()) && now.getTime() > 0
-        ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
-        : 0;
-    const remainingUnowned = remaining.filter((number) => !ownedNumbers.has(number));
-    const remainingOwned = remaining.filter((number) => ownedNumbers.has(number));
+    // Step 1: Remove PRs blocked by external mechanisms. The exclusion is
+    // unconditional — it applies even to event-named PRs because a blocked PR
+    // cannot make forward progress through CI Recovery regardless of how the
+    // dispatch was triggered.
+    const unblocked = eligible.filter((number) => {
+      const pr = pullsByNumber.get(number);
+      return !pr || !isDispatchBlocked(pr);
+    });
+
+    // Step 2: Sort helper — oldest created_at first, PR number as stable
+    // tiebreaker so output is deterministic when timestamps are equal or absent.
+    function byAge(a, b) {
+      const timeA = Date.parse(pullsByNumber.get(a)?.created_at ?? '') || 0;
+      const timeB = Date.parse(pullsByNumber.get(b)?.created_at ?? '') || 0;
+      return timeA - timeB || a - b;
+    }
+
+    // Step 3: Partition into three ordered tiers.
+    // Tier 1 — PRs the triggering event explicitly named (highest priority).
+    const directTier = unblocked.filter((n) => directNumbers.has(n));
+    const rest = unblocked.filter((n) => !directNumbers.has(n));
+    // Tier 2 — CI infrastructure / improvement PRs, oldest-first. Landing
+    // these PRs accelerates throughput for all subsequent work.
+    const ciFixTier = rest.filter((n) => {
+      const pr = pullsByNumber.get(n);
+      return pr !== undefined && isCiFixPr(pr);
+    });
+    // Tier 3 — All remaining eligible PRs, oldest-first (global FIFO).
+    const generalTier = rest.filter((n) => {
+      const pr = pullsByNumber.get(n);
+      return pr === undefined || !isCiFixPr(pr);
+    });
+
     const ordered = [
-      ...prioritized,
-      ...rotateList(remainingUnowned, rotation),
-      ...rotateList(remainingOwned, rotation),
+      ...directTier.sort(byAge),
+      ...ciFixTier.sort(byAge),
+      ...generalTier.sort(byAge),
     ];
     return ordered.slice(0, maxDispatchPerRun);
   }
@@ -471,10 +469,6 @@ export function isRepairWindowSweepEvent({ payload, eventName, trainEnabled }) {
   const workflowRun = payload.workflow_run;
   const defaultBranch = payload.repository?.default_branch || 'main';
   return workflowRun?.name === 'CI' && workflowRun.head_branch === defaultBranch;
-}
-
-function hasTrainOwnedLabel(pullRequest) {
-  return (pullRequest.labels || []).some((label) => TRAIN_OWNED_LABELS.has(label.name));
 }
 
 export function eventPrNumbers(payload) {

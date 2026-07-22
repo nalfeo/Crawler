@@ -5,15 +5,19 @@ import test from 'node:test';
 import { parse } from 'yaml';
 
 import {
+  CI_FIX_LABEL_NAMES,
   collectPrNumbers,
   computeBackoffDelayMs,
   computeDispatchBudget,
   countOutstandingRecoveryRuns,
+  DISPATCH_BLOCKED_LABEL_NAMES,
   eventPrNumbers,
   GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
   GLOBAL_TRAIN_DISPATCH_CAP,
   hasHealthyOwnerForSweep,
   hydrateRecoveryOwnership,
+  isCiFixPr,
+  isDispatchBlocked,
   isRepairWindowSweepEvent,
   isRetryableError,
   listRecentOutstandingRunIds,
@@ -83,7 +87,7 @@ test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
   assert.deepEqual(numbers, [1, 2, 3, 4, 5]);
 });
 
-test('flag-off schedule sweeps prioritize PRs with train-owned labels before dispatch cap', () => {
+test('flag-off schedule sweeps exclude blocked-labeled PRs from dispatch', () => {
   const scheduledPulls = [
     ...Array.from({ length: 8 }, (_, index) => ({
       number: index + 1,
@@ -108,7 +112,8 @@ test('flag-off schedule sweeps prioritize PRs with train-owned labels before dis
     now: new Date('1970-01-01T00:00:00Z'),
   });
 
-  assert.deepEqual(numbers, [99, 1, 2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(numbers, [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.ok(!numbers.includes(99), 'merge-train-blocked PR must be excluded');
 });
 
 test('collectPrNumbers keeps event-scoped PR dispatch uncapped for non-schedule events', () => {
@@ -123,32 +128,81 @@ test('collectPrNumbers keeps event-scoped PR dispatch uncapped for non-schedule 
   assert.deepEqual(numbers, [42]);
 });
 
-test('collectPrNumbers prioritizes flag-off PRs still carrying a train-owned label over the cap', () => {
-  // 10 PRs, most-recently-updated first (as returned by sort=updated&direction=desc).
-  // #9 and #2 are old (near the back) but still carry stale train labels from
-  // before MERGE_TRAIN_ENABLED=false; they must not be starved by newer,
-  // unrelated PRs #10..#3 filling the whole 5-PR cap.
+test('flag-off schedule sweeps apply FIFO ordering and exclude blocked PRs within the cap', () => {
+  // 10 PRs: #9 carries merge-train-blocked (excluded) and #2 carries merge-train
+  // (not blocked). With oldest-first FIFO, the 5 oldest unblocked PRs are
+  // selected regardless of their position in the API response.
   const scheduledPulls = [
-    { number: 10, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    {
+      number: 10,
+      draft: false,
+      created_at: '2026-07-10T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
     {
       number: 9,
       draft: false,
+      created_at: '2026-07-09T00:00:00Z',
       head: { repo: { full_name: 'nalfeo/Crawler' } },
       labels: [{ name: 'merge-train-blocked' }],
     },
-    { number: 8, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
-    { number: 7, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
-    { number: 6, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
-    { number: 5, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
-    { number: 4, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
-    { number: 3, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    {
+      number: 8,
+      draft: false,
+      created_at: '2026-07-08T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
+    {
+      number: 7,
+      draft: false,
+      created_at: '2026-07-07T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
+    {
+      number: 6,
+      draft: false,
+      created_at: '2026-07-06T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
+    {
+      number: 5,
+      draft: false,
+      created_at: '2026-07-05T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
+    {
+      number: 4,
+      draft: false,
+      created_at: '2026-07-04T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
+    {
+      number: 3,
+      draft: false,
+      created_at: '2026-07-03T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
     {
       number: 2,
       draft: false,
+      created_at: '2026-07-02T00:00:00Z',
       head: { repo: { full_name: 'nalfeo/Crawler' } },
       labels: [{ name: 'merge-train' }],
     },
-    { number: 1, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    {
+      number: 1,
+      draft: false,
+      created_at: '2026-07-01T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
   ];
 
   const numbers = collectPrNumbers({
@@ -161,11 +215,11 @@ test('collectPrNumbers prioritizes flag-off PRs still carrying a train-owned lab
   });
 
   assert.deepEqual(
-    new Set(numbers),
-    new Set([9, 2, 10, 8, 7]),
-    'train-labeled PRs #9 and #2 must be dispatched even though they sort behind the cap on updated-desc order',
+    numbers,
+    [1, 2, 3, 4, 5],
+    'oldest 5 unblocked PRs selected; blocked PR #9 excluded; merge-train PR #2 is not blocked',
   );
-  assert.equal(numbers.length, 5);
+  assert.ok(!numbers.includes(9), 'merge-train-blocked PR #9 must be excluded');
 });
 
 test('collectPrNumbers keeps directly-triggered PRs ahead of the cap alongside train-labeled PRs', () => {
@@ -189,64 +243,103 @@ test('collectPrNumbers keeps directly-triggered PRs ahead of the cap alongside t
   assert.ok(numbers.includes(1), 'the train-labeled PR must survive the cap');
 });
 
-test('flag-off sweeps rotate unowned PRs so later entries are eventually dispatchable', () => {
-  const scheduledPulls = Array.from({ length: 5 }, (_, index) => ({
-    number: 5 - index,
-    draft: false,
-    labels: [],
-    head: { repo: { full_name: 'nalfeo/Crawler' } },
-  }));
-  const seen = new Set();
-
-  for (let sweep = 0; sweep < 5; sweep += 1) {
-    const ordered = collectPrNumbers({
-      payload: { repository: { default_branch: 'main' } },
-      eventName: 'schedule',
-      repository: 'nalfeo/Crawler',
-      scheduledPulls,
-      maxDispatchPerRun: 8,
-      trainEnabled: false,
-      now: new Date(`2026-07-21T${String(sweep).padStart(2, '0')}:00:00Z`),
-    });
-    const { dispatchable } = partitionDispatchable(ordered, 2);
-    for (const prNumber of dispatchable) {
-      seen.add(prNumber);
-    }
-  }
-
-  assert.deepEqual(seen, new Set([1, 2, 3, 4, 5]));
-});
-
-test('flag-off sweeps keep owned PRs behind unowned PRs before the global budget slice', () => {
+test('flag-off sweeps order PRs oldest-first (global FIFO) across sweeps', () => {
+  // 5 PRs with distinct creation timestamps, submitted in newest-first API order.
+  // Each sweep with budget=2 should pick the two oldest *remaining unowned* PRs.
+  // Because the set never shrinks (we're not modelling dispatch/completion here)
+  // the same two oldest PRs win every sweep — the key property is that the order
+  // is deterministic oldest-first rather than rotation-dependent.
   const scheduledPulls = [
     {
       number: 5,
       draft: false,
       labels: [],
+      created_at: '2026-07-05T00:00:00Z',
       head: { repo: { full_name: 'nalfeo/Crawler' } },
     },
     {
       number: 4,
       draft: false,
-      labels: [{ name: 'ci-owner-pr-4' }],
+      labels: [],
+      created_at: '2026-07-04T00:00:00Z',
       head: { repo: { full_name: 'nalfeo/Crawler' } },
     },
     {
       number: 3,
       draft: false,
       labels: [],
+      created_at: '2026-07-03T00:00:00Z',
       head: { repo: { full_name: 'nalfeo/Crawler' } },
     },
     {
       number: 2,
       draft: false,
-      labels: [{ name: 'ci-owner-pr-2' }],
+      labels: [],
+      created_at: '2026-07-02T00:00:00Z',
       head: { repo: { full_name: 'nalfeo/Crawler' } },
     },
     {
       number: 1,
       draft: false,
       labels: [],
+      created_at: '2026-07-01T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  const ordered = collectPrNumbers({
+    payload: { repository: { default_branch: 'main' } },
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    maxDispatchPerRun: 8,
+    trainEnabled: false,
+    now: new Date('2026-07-21T00:00:00Z'),
+  });
+
+  // Oldest-first regardless of API response order.
+  assert.deepEqual(ordered, [1, 2, 3, 4, 5]);
+
+  const { dispatchable } = partitionDispatchable(ordered, 2);
+  assert.deepEqual(dispatchable, [1, 2]);
+});
+
+test('flag-off sweeps sort by created_at regardless of ownership label', () => {
+  // Ownership label (ci-owner-pr-N) no longer affects ordering; only age does.
+  const scheduledPulls = [
+    {
+      number: 5,
+      draft: false,
+      labels: [],
+      created_at: '2026-07-05T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 4,
+      draft: false,
+      labels: [{ name: 'ci-owner-pr-4' }],
+      created_at: '2026-07-04T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 3,
+      draft: false,
+      labels: [],
+      created_at: '2026-07-03T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2,
+      draft: false,
+      labels: [{ name: 'ci-owner-pr-2' }],
+      created_at: '2026-07-02T00:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 1,
+      draft: false,
+      labels: [],
+      created_at: '2026-07-01T00:00:00Z',
       head: { repo: { full_name: 'nalfeo/Crawler' } },
     },
   ];
@@ -262,7 +355,234 @@ test('flag-off sweeps keep owned PRs behind unowned PRs before the global budget
   });
 
   const { dispatchable } = partitionDispatchable(ordered, 2);
-  assert.deepEqual(dispatchable, [5, 3]);
+  // Oldest PRs win, regardless of whether they carry an owner label.
+  assert.deepEqual(dispatchable, [1, 2]);
+});
+
+// ── New acceptance-criteria tests ────────────────────────────────────────────
+
+test('isCiFixPr returns true for ci and ci-infra labels, false otherwise', () => {
+  assert.equal(isCiFixPr({ labels: [{ name: 'ci' }] }), true);
+  assert.equal(isCiFixPr({ labels: [{ name: 'ci-infra' }] }), true);
+  assert.equal(isCiFixPr({ labels: [{ name: 'ci' }, { name: 'bug' }] }), true);
+  assert.equal(isCiFixPr({ labels: [{ name: 'bug' }] }), false);
+  assert.equal(isCiFixPr({ labels: [] }), false);
+  assert.equal(isCiFixPr({}), false);
+  // Classification is label-based, NOT title-heuristic.
+  assert.equal(isCiFixPr({ labels: [], title: 'fix(ci): improve pipeline' }), false);
+});
+
+test('CI_FIX_LABEL_NAMES contains exactly the expected labels', () => {
+  assert.ok(CI_FIX_LABEL_NAMES.has('ci'));
+  assert.ok(CI_FIX_LABEL_NAMES.has('ci-infra'));
+  assert.equal(CI_FIX_LABEL_NAMES.size, 2);
+});
+
+test('isDispatchBlocked returns true for every blocked label, false for allowed labels', () => {
+  for (const label of DISPATCH_BLOCKED_LABEL_NAMES) {
+    assert.equal(
+      isDispatchBlocked({ labels: [{ name: label }] }),
+      true,
+      `${label} must be a blocked label`,
+    );
+  }
+  assert.equal(isDispatchBlocked({ labels: [{ name: 'ci' }] }), false);
+  assert.equal(isDispatchBlocked({ labels: [{ name: 'merge-train' }] }), false);
+  assert.equal(isDispatchBlocked({ labels: [{ name: 'merge-train-noop' }] }), false);
+  assert.equal(isDispatchBlocked({ labels: [] }), false);
+  assert.equal(isDispatchBlocked({}), false);
+});
+
+test('DISPATCH_BLOCKED_LABEL_NAMES contains all required blocked labels', () => {
+  for (const required of [
+    'ci-conflict-order-wait',
+    'ci-conflict-escalation',
+    'merge-train-blocked',
+    'merge-train-validation-failed',
+    'human-approval-required',
+    'ci-recovery-waiting',
+  ]) {
+    assert.ok(DISPATCH_BLOCKED_LABEL_NAMES.has(required), `${required} must be in blocked set`);
+  }
+});
+
+test('flag-off schedule dispatches CI-fix PRs before normal PRs, both oldest-first', () => {
+  const scheduledPulls = [
+    {
+      number: 10,
+      draft: false,
+      created_at: '2026-07-10T00:00:00Z',
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 9,
+      draft: false,
+      created_at: '2026-07-09T00:00:00Z',
+      labels: [{ name: 'ci-infra' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 8,
+      draft: false,
+      created_at: '2026-07-08T00:00:00Z',
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 7,
+      draft: false,
+      created_at: '2026-07-07T00:00:00Z',
+      labels: [{ name: 'ci' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 6,
+      draft: false,
+      created_at: '2026-07-06T00:00:00Z',
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  const numbers = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    maxDispatchPerRun: 8,
+    now: new Date('2026-07-21T00:00:00Z'),
+  });
+
+  // CI-fix PRs (7 and 9) come before general PRs (6, 8, 10), each tier oldest-first.
+  assert.deepEqual(numbers, [7, 9, 6, 8, 10]);
+});
+
+test('flag-off schedule: blocked PRs excluded even when directly triggered by event', () => {
+  const blockedPr = {
+    number: 42,
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [{ name: 'human-approval-required' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const normalPr = {
+    number: 43,
+    draft: false,
+    created_at: '2026-07-02T00:00:00Z',
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+
+  // PR 42 is directly named by the event but carries human-approval-required.
+  const numbers = collectPrNumbers({
+    payload: { pull_request: { number: 42 } },
+    eventName: 'workflow_dispatch',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [blockedPr, normalPr],
+    maxDispatchPerRun: 8,
+  });
+
+  assert.ok(!numbers.includes(42), 'directly-triggered blocked PR must still be excluded');
+  assert.ok(numbers.includes(43), 'unblocked PR must be included');
+});
+
+test('flag-off schedule: ci-recovery-waiting PR excluded even when directly triggered', () => {
+  const waitingPr = {
+    number: 55,
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [{ name: 'ci-recovery-waiting' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+
+  const numbers = collectPrNumbers({
+    payload: { pull_request: { number: 55 } },
+    eventName: 'workflow_dispatch',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [waitingPr],
+    maxDispatchPerRun: 8,
+  });
+
+  assert.ok(!numbers.includes(55), 'ci-recovery-waiting PR must be excluded even if directly triggered');
+});
+
+test('flag-off schedule: all blocked label variants are excluded', () => {
+  const blockedLabels = [
+    'ci-conflict-order-wait',
+    'ci-conflict-escalation',
+    'merge-train-blocked',
+    'merge-train-validation-failed',
+    'human-approval-required',
+    'ci-recovery-waiting',
+  ];
+
+  for (const labelName of blockedLabels) {
+    const numbers = collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [
+        {
+          number: 1,
+          draft: false,
+          created_at: '2026-07-01T00:00:00Z',
+          labels: [{ name: labelName }],
+          head: { repo: { full_name: 'nalfeo/Crawler' } },
+        },
+        {
+          number: 2,
+          draft: false,
+          created_at: '2026-07-02T00:00:00Z',
+          labels: [],
+          head: { repo: { full_name: 'nalfeo/Crawler' } },
+        },
+      ],
+      maxDispatchPerRun: 8,
+    });
+
+    assert.ok(!numbers.includes(1), `PR with label "${labelName}" must be excluded`);
+    assert.ok(numbers.includes(2), 'normal PR must still be included');
+  }
+});
+
+test('flag-off schedule: CI-fix PRs are not identified by title text', () => {
+  // Verify label-based detection: a PR with a CI-sounding title but no ci/ci-infra
+  // label must NOT be classified as a CI-fix PR.
+  const titleOnlyPr = {
+    number: 1,
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [],
+    title: 'fix(ci): improve pipeline performance',
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const labeledCiPr = {
+    number: 2,
+    draft: false,
+    created_at: '2026-07-02T00:00:00Z',
+    labels: [{ name: 'ci' }],
+    title: 'some other change',
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const generalPr = {
+    number: 3,
+    draft: false,
+    created_at: '2026-07-03T00:00:00Z',
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+
+  const numbers = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [titleOnlyPr, labeledCiPr, generalPr],
+    maxDispatchPerRun: 8,
+  });
+
+  // labeledCiPr comes first (CI-fix tier), then title-only and general PRs oldest-first.
+  assert.deepEqual(numbers, [2, 1, 3]);
 });
 
 test('train mode routes PR-scoped events only to their directly affected PR', () => {
