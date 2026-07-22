@@ -1570,15 +1570,30 @@ test('identifyReapablePrs excludes shepherd-owned PRs', () => {
   );
 });
 
-test('identifyReapablePrs excludes unhydrated (no recoveryState) PRs', () => {
-  // An owned PR whose state comment was not loaded (recoveryState is undefined).
+test('identifyReapablePrs excludes unhydrated (no recoveryState and no recoveryStateUnreadable) PRs', () => {
+  // An owned PR whose state comment was not loaded (recoveryState is undefined
+  // and recoveryStateUnreadable is undefined).
   const unhydratedPr = {
     number: 30,
     labels: [{ name: 'ci-owner-pr-30' }],
-    // recoveryState is intentionally absent — not loaded yet.
+    // recoveryState and recoveryStateUnreadable are intentionally absent.
   };
   const reapable = identifyReapablePrs([unhydratedPr]);
   assert.deepEqual(reapable, [], 'unhydrated PRs must be skipped (state age is unknown)');
+});
+
+test('identifyReapablePrs includes PRs with unreadable recovery state', () => {
+  // An owned PR whose state comment could not be parsed (recoveryStateUnreadable is set).
+  // These hold a ci-owner lock but the reconciler can never make progress unless dispatched;
+  // they must be included in the reaper batch so the orphan cleanup path can run.
+  const unreadablePr = {
+    number: 31,
+    labels: [{ name: 'ci-owner-pr-31' }],
+    recoveryState: null,
+    recoveryStateUnreadable: 'HTTP 503: Service Unavailable',
+  };
+  const reapable = identifyReapablePrs([unreadablePr]);
+  assert.deepEqual(reapable, [31], 'PRs with unreadable state must be included in reaper batch');
 });
 
 test('identifyReapablePrs respects REAPER_LANE_CAP when callers slice the result', () => {
