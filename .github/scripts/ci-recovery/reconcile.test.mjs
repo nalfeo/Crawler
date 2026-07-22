@@ -9248,6 +9248,17 @@ test('live reconcile continues and exits cleanly when outdated-marker reply POST
     }),
     [`POST /graphql`]: (_url, parsed) => {
       const query = String(parsed?.query ?? '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
       if (query.includes('resolveReviewThread')) {
         return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
       }
@@ -9257,6 +9268,17 @@ test('live reconcile continues and exits cleanly when outdated-marker reply POST
             data: {
               enablePullRequestAutoMerge: {
                 pullRequest: { autoMergeRequest: { enabledAt: '2026-07-22T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
               },
             },
           },

@@ -6,16 +6,26 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "3 blocking concerns raised: (1) double-dispatch: reaper PRs not excluded from normal dispatch set - fixed by tracking reaperDispatchedSet and filtering prNumbers; (2) train-mode partial hydration: train hydration stops early at targetDispatchable, so reaper would miss some stale PRs - fixed by unifying hydration to cover both train-partial and non-train paths; (3) unreadable state skipped: PRs with recoveryStateUnreadable=true could hold locks indefinitely - fixed by including them in identifyReapablePrs. Plan_divergence=minor (no re-architecture, 3 detail fixes)."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-opus-4.8"
+          ],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     }
   }
 }
