@@ -84,8 +84,11 @@ async function run(seed: number, weapon: string, mode: AIPathingModeValue): Prom
   const ai = new BehaviorTreeAI({
     seed,
     pathingMode: mode,
-    retreatThreshold: mode === AIPathingMode.LEGACY ? 0.15 : undefined,
-    farmPullWeight: mode === AIPathingMode.LEGACY ? 0.07 : undefined,
+    // For the LEGACY control arm, override the promoted retreat/farm defaults so
+    // the comparison is true pre-promotion behaviour, not just a pathing swap.
+    // Keys are conditionally spread so the fused arm inherits its promoted defaults
+    // rather than receiving `undefined` (which would overwrite DEFAULT_CONFIG).
+    ...(mode === AIPathingMode.LEGACY ? { retreatThreshold: 0.15, farmPullWeight: 0.07 } : {}),
   });
   return runHeadless(ai, {
     seed,

@@ -433,11 +433,11 @@ describe('BehaviorTreeAI', () => {
     const player = spawnPlayer(world, 0, 0);
     // Enemy well within retreatDangerRadius (20ft) so a retreat starts.
     const enemy = spawnEnemy(world, 10, 0, 20);
-    // Drop the player to 5% HP, strictly below the production retreatThreshold
-    // (0.1, promoted 2026-07-21) so RETREAT triggers regardless of where that
-    // knob is currently tuned.
+    // Drop the player to 1% HP — below the minimum supported retreatThreshold
+    // (KNOB_RANGES min = 0.05), so RETREAT triggers no matter how the knob is
+    // tuned in the future.
     world.stores.health.max[player] = 100;
-    world.stores.health.current[player] = 5;
+    world.stores.health.current[player] = 1;
 
     // Pinned to LEGACY pathing: this test exercises the retreat-latch/ignore-set
     // mechanism specifically, which is orthogonal to the pathingMode A/B axis —
