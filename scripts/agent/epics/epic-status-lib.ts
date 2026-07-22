@@ -12,9 +12,24 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { z } from 'zod';
 
+type AjvCompatError = {
+  readonly dataPath?: string;
+  readonly instancePath?: string;
+  readonly message?: string;
+};
+
+type AjvCompatValidator = ((input: unknown) => boolean) & {
+  readonly errors?: readonly AjvCompatError[];
+};
+
+type AjvCompat = new (options?: Record<string, unknown>) => {
+  compile(schema: object): AjvCompatValidator;
+  addFormat?(name: string, format: true): void;
+};
+
 // ajv is a transitive dependency available at runtime; load it via createRequire so that
 // ESM module resolution does not require it to be a direct package.json entry.
-const Ajv = createRequire(import.meta.url)('ajv') as typeof import('ajv');
+const Ajv = createRequire(import.meta.url)('ajv') as AjvCompat;
 
 const SHA_PATTERN = /^[0-9a-f]{7,64}$/;
 const SHA40_PATTERN = /^[0-9a-f]{40}$/;
@@ -1184,12 +1199,13 @@ function validateCommittedSchema(
     const patched = JSON.parse(
       JSON.stringify(ajvCompatSchema).replace(/#\/\$defs\//g, '#/definitions/'),
     ) as object;
-    const ajv = new Ajv({ unknownFormats: 'ignore', schemaId: 'auto', allErrors: true });
+    const ajv = new Ajv({ allErrors: true });
+    ajv.addFormat?.('date-time', true);
     const validate = ajv.compile(patched);
     if (!validate(input)) {
       const messages = (validate.errors ?? [])
         .slice(0, 5)
-        .map((error) => `${error.dataPath || '.'}: ${error.message}`)
+        .map((error) => `${error.dataPath || error.instancePath || '.'}: ${error.message}`)
         .join('; ');
       result.errors.push({
         code: 'schema.manifest-invalid',
