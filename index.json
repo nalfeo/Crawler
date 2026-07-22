@@ -1,5 +1,16 @@
 [
   {
+    "commit": "443c19f73e81aa6ed920478a347ee558f8547b1e",
+    "commitDate": "2026-07-22T05:17:45Z",
+    "commitSubject": "fix(ci): propagate historical SHA into ai-sweep-recover.yml npx tsx children via exec-boundary assignment (#1761)",
+    "capturedAt": "2026-07-22T06:37:27.737Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29893877339",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/443c19f73e81aa6ed920478a347ee558f8547b1e.json"
+  },
+  {
     "commit": "bb580b03fb6db7167ee1dd924b7cc53370619f90",
     "commitDate": "2026-07-22T01:01:31Z",
     "commitSubject": "fix(deps): patch fast-uri to 3.1.4 for GHSA-v2hh-gcrm-f6hx (#1764)",
