@@ -143,11 +143,29 @@ export class AzureStorageQueue implements AssetQueue {
         continue;
       }
 
+      // Track the latest pop receipt in a mutable variable so renew() can
+      // update it after each extension and ack() always uses the current token.
+      let currentPopReceipt = msg.popReceipt;
+      // Renew at 75% of the visibility timeout to leave a 25% safety margin
+      // (e.g. 675 s for the default 900 s lease, giving 225 s headroom).
+      const renewIntervalMs = Math.floor(this.visibilityTimeout * 750);
       return {
         request,
         dequeueCount: msg.dequeueCount ?? 1,
+        renewIntervalMs,
+        renew: async () => {
+          const result = await this.client.updateMessage(
+            msg.messageId,
+            currentPopReceipt,
+            msg.messageText,
+            this.visibilityTimeout,
+          );
+          if (result.popReceipt) {
+            currentPopReceipt = result.popReceipt;
+          }
+        },
         ack: async () => {
-          await this.client.deleteMessage(msg.messageId, msg.popReceipt);
+          await this.client.deleteMessage(msg.messageId, currentPopReceipt);
         },
       };
     }

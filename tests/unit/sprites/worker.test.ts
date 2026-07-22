@@ -938,3 +938,252 @@ describe('sleep (abortable)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Renewal timer: visibility-lease extension while processing
+// ---------------------------------------------------------------------------
+
+describe('runWorker renewal timer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('calls renew() at configured interval while generating and not after done', async () => {
+    const renewIntervalMs = 1_000;
+    let renewCalls = 0;
+    let generationRelease!: () => void;
+
+    const renew = vi.fn(async () => {
+      renewCalls += 1;
+    });
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const request = makeRequest('iron-sword');
+
+    const msg: DequeuedMessage = {
+      request,
+      dequeueCount: 1,
+      renewIntervalMs,
+      renew,
+      ack,
+    };
+
+    mockGenerate.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          generationRelease = () => resolve(fakeSummaryResult as never);
+        }),
+    );
+
+    const controller = new AbortController();
+    const workerDone = runWorker({
+      queue: {
+        backend: 'noop',
+        async enqueue() {},
+        async dequeue() {
+          return msg;
+        },
+        async peek() {
+          return [];
+        },
+      },
+      store: makeStore(),
+      repoRoot,
+      provider: stubProvider,
+      pollIntervalMs: 0,
+      signal: controller.signal,
+      onStatus: (s) => {
+        if (s.type === 'done') controller.abort();
+      },
+    });
+
+    // Wait for generation to start
+    await vi.waitFor(() => expect(mockGenerate).toHaveBeenCalledOnce());
+
+    // Advance past two renewal intervals while generation is in-flight
+    await vi.advanceTimersByTimeAsync(renewIntervalMs * 2 + 50);
+    expect(renewCalls).toBeGreaterThanOrEqual(2);
+
+    // Release generation and let the worker finish
+    const renewBeforeDone = renewCalls;
+    generationRelease();
+    await workerDone;
+
+    // Renewal must stop after the work is done — no new calls after release
+    await vi.advanceTimersByTimeAsync(renewIntervalMs * 3);
+    expect(renewCalls).toBe(renewBeforeDone);
+    expect(ack).toHaveBeenCalledOnce();
+  });
+
+  it('does not start a renewal timer when msg.renew is absent', async () => {
+    mockGenerate.mockResolvedValueOnce(fakeSummaryResult as never);
+    const ack = vi.fn().mockResolvedValue(undefined);
+    // Message without renew (e.g. noop queue)
+    const msg: DequeuedMessage = {
+      request: makeRequest(),
+      dequeueCount: 1,
+      ack,
+    };
+    const controller = new AbortController();
+    await runWorker({
+      queue: {
+        backend: 'noop',
+        async enqueue() {},
+        async dequeue() {
+          return msg;
+        },
+        async peek() {
+          return [];
+        },
+      },
+      store: makeStore(),
+      repoRoot,
+      provider: stubProvider,
+      pollIntervalMs: 0,
+      signal: controller.signal,
+      onStatus: (s) => {
+        if (s.type === 'done') controller.abort();
+      },
+    });
+    expect(ack).toHaveBeenCalledOnce();
+    // No renewal means no extra async work — worker should complete cleanly
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Brief-name lock: same-name concurrency serialization
+// ---------------------------------------------------------------------------
+
+describe('runWorker brief-name lock', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('serializes two concurrent slots with the same canonical brief name', async () => {
+    // Two messages with the same briefId must not run at the same time.
+    const releases: Array<() => void> = [];
+    let maxConcurrent = 0;
+    let active = 0;
+    mockGenerate.mockImplementation(
+      () =>
+        new Promise<never>((resolve) => {
+          active += 1;
+          maxConcurrent = Math.max(maxConcurrent, active);
+          releases.push(() => {
+            active -= 1;
+            resolve(fakeSummaryResult as never);
+          });
+        }),
+    );
+
+    const sameNameRequest = makeRequest('collision-name');
+    const messages = [
+      makeMessage(sameNameRequest),
+      makeMessage(sameNameRequest),
+    ];
+    const queue: AssetQueue = {
+      backend: 'noop',
+      async enqueue() {},
+      async dequeue() {
+        return messages.shift() ?? null;
+      },
+      async peek() {
+        return [];
+      },
+    };
+
+    const controller = new AbortController();
+    const statuses: WorkerStatus[] = [];
+    const worker = runWorker({
+      queue,
+      store: makeStore(),
+      repoRoot,
+      provider: stubProvider,
+      concurrency: 2,
+      pollIntervalMs: 0,
+      signal: controller.signal,
+      onStatus: (s) => {
+        statuses.push(s);
+        if (statuses.filter((e) => e.type === 'done').length === 2) controller.abort();
+      },
+    });
+
+    // Wait for the first generation to start; the second slot must be blocked
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    // Only one may run at a time for the same name
+    expect(maxConcurrent).toBe(1);
+
+    releases[0]!();
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    expect(maxConcurrent).toBe(1);
+
+    releases[1]!();
+    await worker;
+    expect(maxConcurrent).toBe(1);
+  });
+
+  it('allows two concurrent slots with different canonical brief names', async () => {
+    const releases: Array<() => void> = [];
+    let maxConcurrent = 0;
+    let active = 0;
+    mockGenerate.mockImplementation(
+      () =>
+        new Promise<never>((resolve) => {
+          active += 1;
+          maxConcurrent = Math.max(maxConcurrent, active);
+          releases.push(() => {
+            active -= 1;
+            resolve(fakeSummaryResult as never);
+          });
+        }),
+    );
+
+    const messages = [
+      makeMessage(makeRequest('first-name')),
+      makeMessage(makeRequest('second-name')),
+    ];
+    const queue: AssetQueue = {
+      backend: 'noop',
+      async enqueue() {},
+      async dequeue() {
+        return messages.shift() ?? null;
+      },
+      async peek() {
+        return [];
+      },
+    };
+
+    const controller = new AbortController();
+    const statuses: WorkerStatus[] = [];
+    const worker = runWorker({
+      queue,
+      store: makeStore(),
+      repoRoot,
+      provider: stubProvider,
+      concurrency: 2,
+      pollIntervalMs: 0,
+      signal: controller.signal,
+      onStatus: (s) => {
+        statuses.push(s);
+        if (statuses.filter((e) => e.type === 'done').length === 2) controller.abort();
+      },
+    });
+
+    // Both slots should start concurrently since names differ
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    expect(maxConcurrent).toBe(2);
+
+    releases[0]!();
+    releases[1]!();
+    await worker;
+  });
+});
