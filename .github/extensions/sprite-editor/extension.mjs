@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { Buffer } from 'node:buffer';
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CanvasError, createCanvas, joinSession } from '@github/copilot-sdk/extension';
@@ -58,7 +58,13 @@ function readJsonFile(filePath) {
 }
 
 function writeJsonFile(filePath, value) {
-  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    renameSync(tempPath, filePath);
+  } finally {
+    rmSync(tempPath, { force: true });
+  }
 }
 
 function sha256Hex(value) {

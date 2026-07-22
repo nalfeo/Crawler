@@ -18,6 +18,7 @@
 import path from 'node:path';
 import process from 'node:process';
 
+import { briefDirectoryForType } from './brief-paths.js';
 import { createSynthProvider } from './provider/factory.js';
 import { SIZE_VARIANTS, type SizeVariant } from './size-variants.js';
 import {
@@ -192,13 +193,13 @@ async function main(): Promise<number> {
       `  1. Inspect each <name>-v<N>.yaml under ${path.relative(process.cwd(), result.outDir)}.\n`,
     );
     process.stdout.write(
-      `  2. Pick the best candidate and move it to briefs/draft/${result.type}s/${result.name}.yaml.\n`,
+      `  2. Pick the best candidate and move it to briefs/draft/${briefDirectoryForType(result.type)}/${result.name}.yaml.\n`,
     );
     process.stdout.write(
-      `  3. Run \`npm run sprites:run -- --brief briefs/draft/${result.type}s/${result.name}.yaml\` to validate.\n`,
+      `  3. Run \`npm run sprites:run -- --brief briefs/draft/${briefDirectoryForType(result.type)}/${result.name}.yaml\` to validate.\n`,
     );
     process.stdout.write(
-      `  4. Once a variant passes sensors, promote to briefs/${result.type}s/${result.name}.yaml.\n`,
+      `  4. Once a variant passes sensors, promote to briefs/${briefDirectoryForType(result.type)}/${result.name}.yaml.\n`,
     );
     return 0;
   } catch (err) {

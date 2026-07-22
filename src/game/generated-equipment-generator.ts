@@ -19,6 +19,7 @@ import type { EquipmentItemDef } from '../shared/equipment-types.js';
 import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { getFloor2WeaponWaveABase } from '../shared/data/floor2-weapon-bases.js';
+import type { SeededRandom } from '../shared/random.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 
 export type GeneratedEquipmentGeneratorErrorCode =
@@ -45,6 +46,13 @@ export interface GenerateEquipmentInstanceRequest {
   readonly itemLevel: number;
   readonly rarity: GeneratedEquipmentRarity;
   readonly enhancementLevel?: GeneratedEquipmentEnhancementLevel;
+}
+
+export interface GenerateEquipmentInstanceOptions {
+  /** Derived streams can generate content without perturbing the world gameplay stream. */
+  readonly rng?: SeededRandom;
+  /** Optional source-specific effect subset; omitted preserves the canonical full catalog. */
+  readonly allowedEffectKinds?: readonly GeneratedEquipmentEffectPayload['kind'][];
 }
 
 type GeneratedEquipmentTargetKind = 'weapon' | 'armor' | 'accessory';
@@ -293,12 +301,17 @@ function effectsAreCompatible(
 }
 
 function selectEffectDefinitions(
-  world: GameWorld,
+  rng: SeededRandom,
   base: ResolvedGeneratedEquipmentBase,
   budget: 0 | 1 | 2,
+  allowedEffectKinds?: readonly GeneratedEquipmentEffectPayload['kind'][],
 ): readonly GeneratedEquipmentEffectDefinition[] {
   if (budget === 0) return Object.freeze([]);
-  const legal = EFFECT_CATALOG.filter((effect) => effect.legalTargets.includes(base.targetKind));
+  const legal = EFFECT_CATALOG.filter(
+    (effect) =>
+      effect.legalTargets.includes(base.targetKind) &&
+      (allowedEffectKinds === undefined || allowedEffectKinds.includes(effect.payload.kind)),
+  );
   if (budget === 1) {
     const minor = legal.filter((effect) => effect.unitCost === 1);
     if (minor.length === 0) {
@@ -308,7 +321,7 @@ function selectEffectDefinitions(
         '$.effects',
       );
     }
-    return Object.freeze([minor[world.rng.nextInt(0, minor.length - 1)]!]);
+    return Object.freeze([minor[rng.nextInt(0, minor.length - 1)]!]);
   }
 
   const singleMajor = legal.filter((effect) => effect.unitCost === 2).map((effect) => [effect]);
@@ -332,8 +345,8 @@ function selectEffectDefinitions(
       '$.effects',
     );
   }
-  const shape = shapes[world.rng.nextInt(0, shapes.length - 1)]!;
-  return Object.freeze([...shape[world.rng.nextInt(0, shape.length - 1)]!]);
+  const shape = shapes[rng.nextInt(0, shapes.length - 1)]!;
+  return Object.freeze([...shape[rng.nextInt(0, shape.length - 1)]!]);
 }
 
 function materializeEffects(
@@ -371,6 +384,7 @@ function displayName(
 export function generateEquipmentInstance(
   world: GameWorld,
   request: GenerateEquipmentInstanceRequest,
+  options: GenerateEquipmentInstanceOptions = {},
 ): GeneratedEquipmentInstanceV1 {
   if (world.generatedEquipmentRegistry.runKey === null) {
     fail(
@@ -403,9 +417,10 @@ export function generateEquipmentInstance(
     resolvedBase.inherentValue * levelMultiplier * rarityMultiplier * enhancementMultiplier;
 
   const effectDefinitions = selectEffectDefinitions(
-    world,
+    options.rng ?? world.rng,
     resolvedBase,
     policy.rarityEffectUnits[rarity],
+    options.allowedEffectKinds,
   );
   const resolvedEffects = materializeEffects(effectDefinitions);
   const statBonuses: Partial<Record<StatId, number>> = {

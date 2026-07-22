@@ -84,3 +84,12 @@ Verified: `npm run verify:fast` — 1260 tests pass, all guards green.
   `anchor-opaque` (validates the brief anchor only). Note that `pickChosen`
   still prefers a derived anchor when derivation succeeds; `derive: false`
   changes the sensor gate, not the publication priority.
+
+### Mistakes Made
+
+- The initial brief assumptions did not distinguish sensor-gate behavior from publication anchor
+  preference clearly enough.
+
+### Opportunities for Future Improvement
+
+- Document diagonal-weapon anchor examples directly in the brief template.

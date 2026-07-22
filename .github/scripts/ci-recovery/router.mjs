@@ -28,7 +28,17 @@ const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
 // concurrency group (see ci-recovery-router.yml), this cap is what actually
 // bounds the number of CI Recovery runs competing with Merge Train
 // Validation for runners at any moment.
-export const GLOBAL_TRAIN_DISPATCH_CAP = 1;
+//
+// 2026-07-22 EMERGENCY raise 1 -> 5: CI Recovery is the merge train's SOLE
+// feeder (it drives PRs to convergence and applies the `merge-train` label),
+// so pinning it to 1 while the queue was non-empty meant a single slow PR
+// starved the train and froze throughput repo-wide. Raising to 5 lets
+// recovery converge several PRs per cycle and actually drain the backlog.
+// Runner-safety headroom now leans on #1770 (far less PR-head churn) and the
+// sweep-fencing work; the durable fix is a load-aware budget (see #1776) and
+// promoting these caps to runtime variables (see #1779) so a future incident
+// needs a knob-turn, not a code change + PR.
+export const GLOBAL_TRAIN_DISPATCH_CAP = 5;
 // Cap applied whenever there is no active merge-train backlog to protect --
 // the queue is empty, the train feature is enabled but idle, OR the train
 // feature is disabled/paused entirely. Measured capacity evidence
@@ -40,12 +50,14 @@ export const GLOBAL_TRAIN_DISPATCH_CAP = 1;
 // which is what starved Validation runners during the incident. Even with no
 // backlog to protect, sweep-style jobs can still be running (and can be
 // running whether or not the train feature itself is on), so dispatch is not
-// left fully unbounded here -- 2 preserves at least some runner headroom
-// instead of going back to effectively-unlimited (Infinity) dispatch. This
-// cap must remain in force during train maintenance/disablement too: that is
-// precisely when protecting shared runner capacity matters most, not a
-// window where backpressure can safely lapse.
-export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = 2;
+// left fully unbounded here -- 5 (emergency-raised from 2 on 2026-07-22 to
+// match GLOBAL_TRAIN_DISPATCH_CAP for throughput) preserves bounded runner
+// headroom instead of going back to effectively-unlimited (Infinity)
+// dispatch. This cap must remain in force during train
+// maintenance/disablement too: that is precisely when protecting shared
+// runner capacity matters most, not a window where backpressure can safely
+// lapse.
+export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = 5;
 // GitHub Actions run states that represent a run not yet finished: actively
 // running, waiting to be scheduled, or held by a concurrency group (queued
 // runs whose concurrency group is busy report as `waiting`). `pending` is
@@ -59,6 +71,8 @@ const MANAGED_COMMENT_MARKERS = [
   '<!-- crawler-ci-state:v1 -->',
   '<!-- crawler-ci-task:v1',
   '<!-- crawler-merge-train:v1 -->',
+  '<!-- crawler-review-request:v1',
+  '<!-- crawler-review-conflict:v1',
 ];
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;

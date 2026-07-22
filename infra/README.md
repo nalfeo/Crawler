@@ -90,6 +90,16 @@ SPRITES_ASSET_QUEUE=azure-queue               # 'noop' (default) | 'azure-queue'
 # AZURE_STORAGE_QUEUE_NAME=asset-requests
 # AZURE_STORAGE_QUEUE_VISIBILITY_TIMEOUT=900
 
+# ── Shared resource cache (ADR 0065) ────────────────────────────────────────
+# One content-addressable cache (npm `cacache`) fronts Azure Blob reads, shared
+# by every worktree/session on the machine. Defaults below need no changes.
+# CRAWLER_AZURE_CACHE=on                       # 'on' (default) | 'off' to disable caching
+# CRAWLER_AZURE_CACHE_DIR=                     # cache base dir; default $COPILOT_HOME/crawler/azure-resource-cache
+# CRAWLER_AZURE_CACHE_MAX_BYTES=5368709120     # unique-content LRU cap in bytes (default 5 GiB; 0 = unbounded)
+# CRAWLER_AZURE_OFFLINE=off                    # 'on'/'1' serves reads from cache only, never contacting Azure
+# Legacy aliases still honoured: SPRITES_AZURE_CACHE, SPRITES_AZURE_CACHE_DIR,
+# SPRITES_AZURE_CACHE_MAX_BYTES, SPRITES_AZURE_OFFLINE.
+
 # ── Azure AI Foundry (optional; ADR 0033) ──────────────────────────────────
 # Populated by `npm run setup:azure:foundry:env`. Values are set but the
 # SPRITES_*_PROVIDER=foundry selectors stay COMMENTED, so azure-openai remains

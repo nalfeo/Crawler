@@ -75,8 +75,6 @@ function makeLabAbilityState(): AbilityState {
     cooldownByAbilityId: new Map(),
     cooldownFramesByAbilityId: new Map(),
     appliedPassiveAbilityIds: new Set(),
-    activeAbilityGrantSources: new Map(equipped.map((id) => [id, [{ kind: 'learned' as const }]])),
-    passiveAbilityGrantSources: new Map(),
   };
 }
 
