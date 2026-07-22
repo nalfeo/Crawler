@@ -178,6 +178,7 @@ export function parseArgs(
 }
 
 export function helpText(): string {
+  const defaultPathingMode = DEFAULT_CONFIG.pathingMode;
   return `
 Headless AI Runner CLI
 
@@ -207,7 +208,7 @@ Options:
   --no-weapon-personas    Disable weapon personas for the legacy A/B control
   --merchant-weapon-purchase
                            Enable optional post-quest merchant weapon purchase
-  --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh | navmeshFused (default: legacy)
+  --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh | navmeshFused (default: ${defaultPathingMode})
   --decision-mode <mode>  AI decision A/B axis: legacy | slackAware (default: legacy)
   --help, -h              Show this help message
 

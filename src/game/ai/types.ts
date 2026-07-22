@@ -196,10 +196,9 @@ export interface AIConfig {
   /**
    * Weight of the opportunistic enemy-farm pull vector (drift toward the nearest
    * enemy during genuine idle wander). Kept separate from {@link collectPullWeight}
-   * and defaulting to 0 so re-enabling loot detours never silently re-enables
-   * enemy seeking — the latter biases the AI into enemy-dense zones and can blow
-   * the floor-clear time budget. Validate additional headless seeds before
-   * setting > 0.
+   * so loot-detour tuning never silently changes enemy seeking. Defaults to 0.12;
+   * higher values bias the AI into enemy-dense zones and can blow the floor-clear
+   * time budget. Validate additional headless seeds before setting higher values.
    */
   farmPullWeight?: number;
   /**
@@ -207,8 +206,9 @@ export interface AIConfig {
    * {@link AIPathingMode.RISK_REWARD_FUSED} — promoted from the AI Sweep
    * winner (2026-07-21, GitHub Actions run 29893475612: 294/300 vs the
    * legacy+legacy incumbent's 286/300). Pass
-   * {@link AIPathingMode.LEGACY} explicitly for the pre-promotion,
-   * byte-identical-to-original-main movement path.
+   * {@link AIPathingMode.LEGACY} explicitly for the pre-promotion movement path.
+   * Full pre-promotion config parity also requires `retreatThreshold: 0.15` and
+   * `farmPullWeight: 0.07`.
    */
   pathingMode?: AIPathingModeValue;
   /**

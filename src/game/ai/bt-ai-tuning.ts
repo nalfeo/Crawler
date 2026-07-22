@@ -42,7 +42,7 @@ const NAVMESH_FUSED_SEAM_WEIGHT = 2;
 // (98%; 98/100 each sword/bow/baseball-bat) vs the legacy+legacy incumbent's
 // 286/300 (retreatThreshold=0.15) — +8 wins, +2.6667pp, with 3 incumbent
 // win→loss flips allowed by the merged net-win promotion rule. See
-// docs/knowledge/handoffs/2026-07-21-ai-sweep-winner-promotion.md. Do NOT
+// docs/knowledge/handoffs/2026-07-22-promote-recovered-ai-sweep-winner.md. Do NOT
 // weaken these exact values to satisfy a test — fix the test instead.
 export const DEFAULT_CONFIG: Required<AIConfig> = {
   seed: 12345,
@@ -72,8 +72,9 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // A/B axis 1 (pathingMode) was promoted OFF LEGACY by the AI Sweep winner
   // above: RISK_REWARD_FUSED is now the production default. Axis 2
   // (decisionMode) stays LEGACY — the winner didn't change it. A caller can
-  // still opt back into byte-identical-to-pre-promotion behavior by passing
-  // pathingMode: AIPathingMode.LEGACY explicitly.
+  // still opt back into the pre-promotion movement path by passing
+  // pathingMode: AIPathingMode.LEGACY explicitly. Full pre-promotion parity also
+  // requires retreatThreshold: 0.15 and farmPullWeight: 0.07.
   pathingMode: AIPathingMode.RISK_REWARD_FUSED,
   decisionMode: AIDecisionMode.LEGACY,
   // Slice 4b tangential-seam term. The production weight (NAVMESH_FUSED_SEAM_WEIGHT
