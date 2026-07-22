@@ -187,7 +187,7 @@ interface GeneratedPhysicalOwner {
   readonly bundleId?: string;
 }
 
-function findGeneratedPhysicalOwners(
+export function findGeneratedPhysicalOwners(
   world: GameWorld,
   instanceKey: GeneratedEquipmentInstanceKey,
 ): GeneratedPhysicalOwner[] {

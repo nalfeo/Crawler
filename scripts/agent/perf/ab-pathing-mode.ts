@@ -15,8 +15,8 @@
  *      never weaken this gate (repo rule #12). The harness exits non-zero on any
  *      win→loss flip OR any aggregate win-rate regression.
  *
- * DEFAULT pathing stays LEGACY (byte-identical to main); this harness only
- * measures the opt-in RISK_REWARD_FUSED experiment.
+ * Runtime default pathing is now RISK_REWARD_FUSED; this harness compares that
+ * promoted mode against an explicit LEGACY control on the exact same runs.
  *
  * Run with (mirrors the ai:weapon-sweep / ai:ab-decision-mode tooling):
  *   npm run ai:ab-pathing-mode -- [--seeds 1-8] [--weapons sword,bow,baseball-bat] [--out path.json]
@@ -81,7 +81,15 @@ function parseArgs(argv: readonly string[]): Args {
 }
 
 async function run(seed: number, weapon: string, mode: AIPathingModeValue): Promise<RunStats> {
-  const ai = new BehaviorTreeAI({ seed, pathingMode: mode });
+  const ai = new BehaviorTreeAI({
+    seed,
+    pathingMode: mode,
+    // For the LEGACY control arm, override the promoted retreat/farm defaults so
+    // the comparison is true pre-promotion behaviour, not just a pathing swap.
+    // Keys are conditionally spread so the fused arm inherits its promoted defaults
+    // rather than receiving `undefined` (which would overwrite DEFAULT_CONFIG).
+    ...(mode === AIPathingMode.LEGACY ? { retreatThreshold: 0.15, farmPullWeight: 0.07 } : {}),
+  });
   return runHeadless(ai, {
     seed,
     maxFrames: MAX_FRAMES,
