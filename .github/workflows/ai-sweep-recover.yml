@@ -25,7 +25,7 @@
 #   round 3. `source_run_id` is parameterized only so a future analogous
 #   incident doesn't require editing this file — the BEHAVIOR stays round-2-only.
 #
-# WHY SHA-PINNING (checkout ref + GITHUB_SHA env override)
+# WHY SHA-PINNING (checkout ref + exec-boundary GITHUB_SHA assignment)
 #   `sweep-eval.ts --stage validate` (unchanged, reused as-is) already calls
 #   `assertSearchArtifactProvenance(search.meta, search.combo, {
 #   ...currentBuildFingerprint() })`, and `currentBuildFingerprint().workflowSha`
@@ -36,13 +36,30 @@
 #   commit in `recover-validate`/`recover-aggregate` (so `sweep-eval.ts`/
 #   `aggregate-shards.ts`/`gen-configs.ts` run as the code version that actually
 #   produced the checkpoints, and `./.github/actions/setup-node` installs the
-#   matching `package-lock.json`-pinned dependencies), AND (c) explicitly
-#   overrides `env: GITHUB_SHA` on every step invoking those scripts so
-#   `currentBuildFingerprint()` matches the recovered checkpoints' own stamped
-#   `workflowSha`. `recover-preflight` itself stays on the CURRENT/dispatched
-#   ref (no custom checkout `ref:`) because it must run the new
+#   matching `package-lock.json`-pinned dependencies), AND (c) assigns
+#   `GITHUB_SHA` inline at the exec boundary — right where each `run:` step
+#   spawns its `npx tsx` child (`GITHUB_SHA="$RECOVER_HEAD_SHA" npx tsx ...`)
+#   — so `currentBuildFingerprint()` matches the recovered checkpoints' own
+#   stamped `workflowSha`. `recover-preflight` itself stays on the CURRENT/
+#   dispatched ref (no custom checkout `ref:`) because it must run the new
 #   `recover-checkpoint-validate.ts` gate script, which does not exist at the
 #   historical commit.
+#
+#   IMPORTANT: a step/job-level `env: GITHUB_SHA: ...` key does NOT work here
+#   — GitHub Actions treats `GITHUB_*`/`RUNNER_*` as reserved default
+#   variables and silently discards any attempt to override them via `env:`
+#   (https://docs.github.com/en/actions/reference/workflows-and-actions/variables#default-environment-variables),
+#   re-injecting the dispatching ref's real SHA into every process it spawns
+#   for the step regardless of the YAML. That mismatch is exactly what broke
+#   run 29869238382: the log's step preamble showed the intended historical
+#   SHA, but the `npx tsx` child actually saw the dispatch SHA and failed
+#   `assertSearchArtifactProvenance`. Assigning `GITHUB_SHA` inline immediately
+#   before the command (`VAR="value" command`) is an ordinary shell operation
+#   performed by the already-running step process itself, not a runner-level
+#   env injection, so it is NOT subject to that restriction and reliably
+#   threads the historical SHA through to `currentBuildFingerprint()`. We
+#   still carry the historical SHA via a differently-named `RECOVER_HEAD_SHA`
+#   step env var (safe, non-reserved) and apply it at each exec boundary.
 #
 # ALL-OR-NOTHING
 #   `recover-preflight` downloads every `search-checkpoint-r2-*` artifact from
@@ -168,7 +185,8 @@ jobs:
   # One job per combo: validate that combo's recovered round-2 finalist + the
   # untuned incumbent control on the validation panel. Checks out the exact
   # historical commit (not current main) so sweep-eval.ts/gen-configs.ts run as
-  # the code version that produced the checkpoint, and overrides GITHUB_SHA so
+  # the code version that produced the checkpoint, and assigns GITHUB_SHA
+  # inline at the exec boundary (not via `env:` — see header comment) so
   # sweep-eval.ts's own unchanged provenance gate (currentBuildFingerprint())
   # matches the recovered checkpoint's stamped workflowSha.
   recover-validate:
@@ -200,7 +218,9 @@ jobs:
           VALIDATE_SEEDS: ${{ inputs.validate_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
-          GITHUB_SHA: ${{ needs.recover-preflight.outputs.head_sha }}
+          # Non-reserved name: `GITHUB_SHA` itself can't be set via `env:` (see
+          # header comment) — it's assigned inline at the exec boundary below.
+          RECOVER_HEAD_SHA: ${{ needs.recover-preflight.outputs.head_sha }}
         run: |
           set -euo pipefail
           CHECKPOINT="search-checkpoint-r2-$COMBO.json"
@@ -208,7 +228,10 @@ jobs:
             echo "::error::No recovered checkpoint found for combo $COMBO"
             exit 1
           fi
-          npx tsx scripts/agent/perf/sweep-eval.ts \
+          # Exec-boundary override: `GITHUB_SHA` can't be set via a step `env:`
+          # key (the runner discards it — see header comment), so it's assigned
+          # right here, immediately before the child process is spawned.
+          GITHUB_SHA="$RECOVER_HEAD_SHA" npx tsx scripts/agent/perf/sweep-eval.ts \
             --stage validate --combo "$COMBO" \
             --search-artifact "$CHECKPOINT" \
             --seeds "$VALIDATE_SEEDS" --weapons "$WEAPONS" \
@@ -250,13 +273,15 @@ jobs:
 
       - name: Build leaderboard
         env:
-          GITHUB_SHA: ${{ needs.recover-preflight.outputs.head_sha }}
+          # Non-reserved name: `GITHUB_SHA` itself can't be set via `env:` (see
+          # header comment) — it's assigned inline at each exec boundary below.
+          RECOVER_HEAD_SHA: ${{ needs.recover-preflight.outputs.head_sha }}
         run: |
           set -euo pipefail
           ls -la shards
-          BASE_ID=$(npx tsx scripts/agent/perf/gen-configs.ts --combo legacy+legacy | jq -r .baseId)
+          BASE_ID=$(GITHUB_SHA="$RECOVER_HEAD_SHA" npx tsx scripts/agent/perf/gen-configs.ts --combo legacy+legacy | jq -r .baseId)
           echo "Incumbent (untuned LEGACY/LEGACY) config id: $BASE_ID"
-          npx tsx scripts/agent/perf/aggregate-shards.ts shards/*.json \
+          GITHUB_SHA="$RECOVER_HEAD_SHA" npx tsx scripts/agent/perf/aggregate-shards.ts shards/*.json \
             --incumbent-combo legacy+legacy --incumbent-config "$BASE_ID" \
             --out leaderboard.json
 
