@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d6218ff44a96a31ff896259c304926b303ca999e",
+    "commitDate": "2026-07-22T09:12:10Z",
+    "commitSubject": "feat(ci): gate Copilot re-reviews in reconciler (#1770)",
+    "capturedAt": "2026-07-22T10:32:38.942Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29907729946",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/d6218ff44a96a31ff896259c304926b303ca999e.json"
+  },
+  {
     "commit": "443c19f73e81aa6ed920478a347ee558f8547b1e",
     "commitDate": "2026-07-22T05:17:45Z",
     "commitSubject": "fix(ci): propagate historical SHA into ai-sweep-recover.yml npx tsx children via exec-boundary assignment (#1761)",
