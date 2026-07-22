@@ -348,7 +348,11 @@ function removeEquipmentSources(
         (source) => ![...removedPrefixes].some((prefix) => source.startsWith(prefix)),
       );
       if (retained.length === 0) sourceMap.delete(abilityId);
-      else sourceMap.set(abilityId, retained.sort((a, b) => a.localeCompare(b)));
+      else
+        sourceMap.set(
+          abilityId,
+          retained.sort((a, b) => a.localeCompare(b)),
+        );
     }
   }
 }

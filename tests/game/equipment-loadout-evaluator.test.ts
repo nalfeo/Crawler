@@ -345,7 +345,9 @@ describe('equipment loadout expected-run-value evaluator', () => {
   it('fractionally values a persistent activation then caps it at one applied modifier', () => {
     const current: EquipmentLoadoutSnapshot = {
       ...snapshot([]),
-      activeAbilityGrantSources: new Map([['battle-focus', [learnedAbilityGrantSourceId('battle-focus')]]]),
+      activeAbilityGrantSources: new Map([
+        ['battle-focus', [learnedAbilityGrantSourceId('battle-focus')]],
+      ]),
       equippedActiveAbilityIds: ['battle-focus'],
     };
     const helm = candidate(generated('iron-helm', 'erv-skill-trigger-rate'));
@@ -396,7 +398,9 @@ describe('equipment loadout expected-run-value evaluator', () => {
   it('does not value extra projectiles until runtime consumes projectileCount', () => {
     const current: EquipmentLoadoutSnapshot = {
       ...snapshot([]),
-      passiveAbilityGrantSources: new Map([['juggling-arsenal', [learnedAbilityGrantSourceId('juggling-arsenal')]]]),
+      passiveAbilityGrantSources: new Map([
+        ['juggling-arsenal', [learnedAbilityGrantSourceId('juggling-arsenal')]],
+      ]),
     };
     const result = evaluateEquipmentLoadoutCandidates({
       ...inputShape([], [candidate(generated('throwing-knife', 'erv-extra-projectile-runtime'))]),
