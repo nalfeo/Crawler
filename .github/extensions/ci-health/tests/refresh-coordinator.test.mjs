@@ -87,3 +87,44 @@ test('closing aborts outstanding refresh work without leaking a rejection', asyn
   assert.equal(observedSignal.aborted, true);
   assert.equal(await refresh, null);
 });
+
+test('runs a forced follow-up refresh after a failing poll', async () => {
+  const resolvers = [];
+  const rejecters = [];
+  let calls = 0;
+  const errors = [];
+  const coordinator = createRefreshCoordinator({
+    intervalMs: 60_000,
+    load: () => {
+      calls += 1;
+      return new Promise((resolve, reject) => {
+        resolvers.push(resolve);
+        rejecters.push(reject);
+      });
+    },
+    onError: (message) => errors.push(message),
+  });
+  coordinator.subscribe();
+
+  const first = coordinator.refresh();
+  await turn();
+  const forced = coordinator.refresh(true);
+  assert.equal(calls, 1);
+
+  // Fail the first iteration; the forced follow-up must still run.
+  rejecters[0](new Error('network error'));
+  await turn();
+  assert.equal(calls, 2, 'second iteration must start after the first fails');
+
+  // Resolve the follow-up successfully.
+  resolvers[1]({ generation: 2 });
+
+  // Both callers receive the follow-up result; no rejection is propagated.
+  assert.deepEqual(await first, { generation: 2 });
+  assert.deepEqual(await forced, { generation: 2 });
+  assert.equal(errors.length, 1, 'onError must have been called once for the failing iteration');
+  assert.match(errors[0], /network error/);
+
+  coordinator.unsubscribe();
+  coordinator.close();
+});

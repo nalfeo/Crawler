@@ -159,7 +159,7 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
       </div>
       <a id="actions-link" target="_blank" rel="noreferrer">Open GitHub Actions</a>
     </div>
-    <div id="error" class="message danger" hidden></div>
+    <div id="error" class="message danger" role="alert" hidden></div>
     <div id="warnings" class="message warning" hidden></div>
     <section id="bottleneck" class="card bottleneck info">
       <strong>Loading CI state…</strong>

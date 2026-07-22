@@ -6,6 +6,7 @@ import {
   parseGitHubRepository,
   sanitizeErrorText,
   statusCountGapWarning,
+  RUN_STATUSES,
 } from '../lib/github-client.mjs';
 
 test('parses supported GitHub origin URL forms', () => {
@@ -70,4 +71,12 @@ test('marks a workflow collection unusable when every status request fails', () 
   );
   assert.equal(merged.allFailed, true);
   assert.equal(merged.partialErrors.length, 2);
+});
+
+test('includes pending and requested states in the active-run query set', () => {
+  assert.ok(RUN_STATUSES.includes('pending'), 'pending must be queried so queued runs are not missed');
+  assert.ok(RUN_STATUSES.includes('requested'), 'requested must be queried so queued runs are not missed');
+  assert.ok(RUN_STATUSES.includes('queued'), 'queued must remain in the set');
+  assert.ok(RUN_STATUSES.includes('in_progress'), 'in_progress must remain in the set');
+  assert.ok(RUN_STATUSES.includes('waiting'), 'waiting must remain in the set');
 });

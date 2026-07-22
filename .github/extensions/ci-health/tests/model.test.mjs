@@ -64,8 +64,19 @@ test('parses managed Merge Train comments and exposes missing, malformed, and du
     'malformed',
   );
   assert.equal(
+    parseTrainStatusComments([{ body: '<!-- crawler-merge-train:v1 -->\n- Position: 2oops' }])
+      .commentHealth,
+    'malformed',
+    'trailing non-digit characters must not be accepted by the position parser',
+  );
+  assert.equal(
     parseTrainStatusComments([statusComment(1), statusComment(1, 'ready')]).commentHealth,
     'duplicate',
+  );
+  assert.equal(
+    parseTrainStatusComments([], { fetchFailed: true }).commentHealth,
+    'unavailable',
+    'a failed comment fetch must report unavailable rather than missing',
   );
 });
 

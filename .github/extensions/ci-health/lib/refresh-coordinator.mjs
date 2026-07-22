@@ -32,9 +32,11 @@ export function createRefreshCoordinator({
   }
 
   async function runLoop() {
+    let lastError = null;
     do {
       followUpRequested = false;
       controller = new AbortController();
+      lastError = null;
       try {
         snapshot = await load(controller.signal);
         error = null;
@@ -43,11 +45,12 @@ export function createRefreshCoordinator({
         if (refreshError?.name === 'AbortError' && closed) return snapshot;
         error = refreshError instanceof Error ? refreshError.message : String(refreshError);
         onError?.(error);
-        throw refreshError;
+        lastError = refreshError;
       } finally {
         controller = null;
       }
     } while (followUpRequested && !closed && subscribers > 0);
+    if (lastError) throw lastError;
     return snapshot;
   }
 

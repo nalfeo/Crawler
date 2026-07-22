@@ -38,7 +38,16 @@ function stripCodeTicks(value) {
   return value.startsWith('`') && value.endsWith('`') ? value.slice(1, -1) : value;
 }
 
-export function parseTrainStatusComments(comments) {
+export function parseTrainStatusComments(comments, { fetchFailed = false } = {}) {
+  if (fetchFailed) {
+    return {
+      commentHealth: 'unavailable',
+      reportedPosition: null,
+      candidateSha: null,
+      state: 'unknown',
+      detail: 'Merge Train status comments could not be fetched.',
+    };
+  }
   const managed = (comments ?? [])
     .filter((comment) => hasLeadingMarker(comment.body, STATUS_MARKER))
     .sort(
@@ -62,7 +71,7 @@ export function parseTrainStatusComments(comments) {
   const candidateText = stripCodeTicks(statusField(body, 'Candidate'));
   const state = stripCodeTicks(statusField(body, 'State'));
   const detail = statusField(body, 'Detail');
-  const reportedPosition = Number.parseInt(positionText ?? '', 10);
+  const reportedPosition = /^\d+$/.test(positionText ?? '') ? Number(positionText) : NaN;
   const malformed =
     !Number.isInteger(reportedPosition) ||
     reportedPosition < 1 ||
@@ -108,6 +117,7 @@ export function buildTrainState({
   openPullRequests,
   recoveryPullRequests,
   commentsByPr,
+  commentFetchFailed = new Set(),
   repository,
 }) {
   const canonicalQueue = queueEntries(openPullRequests, repository);
@@ -115,7 +125,9 @@ export function buildTrainState({
   const activeNumbers = new Set(activeQueue.map((pullRequest) => pullRequest.number));
 
   const candidates = activeQueue.map((pullRequest, index) => {
-    const status = parseTrainStatusComments(commentsByPr.get(pullRequest.number) ?? []);
+    const status = parseTrainStatusComments(commentsByPr.get(pullRequest.number) ?? [], {
+      fetchFailed: commentFetchFailed.has(pullRequest.number),
+    });
     return {
       ...normalizePullRequest(pullRequest),
       position: index + 1,
@@ -146,7 +158,9 @@ export function buildTrainState({
     .map((pullRequest) => ({
       ...normalizePullRequest(pullRequest),
       state: pullRequestState(pullRequest),
-      status: parseTrainStatusComments(commentsByPr.get(pullRequest.number) ?? []),
+      status: parseTrainStatusComments(commentsByPr.get(pullRequest.number) ?? [], {
+        fetchFailed: commentFetchFailed.has(pullRequest.number),
+      }),
     }));
 
   const recoveryByNumber = new Map();

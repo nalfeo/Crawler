@@ -17,7 +17,7 @@ import {
 const execFileAsync = promisify(execFile);
 const MAX_BUFFER = 20 * 1024 * 1024;
 const MAX_ACTIVE_RUNS = 25;
-const RUN_STATUSES = ['queued', 'in_progress', 'waiting'];
+export const RUN_STATUSES = ['queued', 'in_progress', 'waiting', 'pending', 'requested'];
 const TRAIN_COMMENT_LABELS = new Set([
   QUEUE_LABEL,
   BLOCKED_LABEL,
@@ -231,6 +231,7 @@ export async function loadRepositoryState(repository, signal) {
     hasAnyLabel(pullRequest, TRAIN_COMMENT_LABELS),
   );
   const commentsByPr = new Map();
+  const commentFetchFailed = new Set();
   const commentResults = await mapWithConcurrency(commentsNeeded, 5, async (pullRequest) => {
     try {
       const result = await paginateArray(
@@ -241,11 +242,13 @@ export async function loadRepositoryState(repository, signal) {
       );
       return { number: pullRequest.number, ...result };
     } catch (error) {
+      if (error?.name === 'AbortError') throw error;
       return {
         number: pullRequest.number,
         values: [],
         apiCalls: 1,
         truncated: false,
+        fetchFailed: true,
         error: sanitizeErrorText(error?.message ?? error),
       };
     }
@@ -253,6 +256,7 @@ export async function loadRepositoryState(repository, signal) {
   for (const result of commentResults) {
     apiCalls += result.apiCalls;
     commentsByPr.set(result.number, result.values);
+    if (result.fetchFailed) commentFetchFailed.add(result.number);
     if (result.truncated) partialErrors.push(`Comments for PR #${result.number} were truncated.`);
     if (result.error) partialErrors.push(`Comments for PR #${result.number}: ${result.error}`);
   }
@@ -280,6 +284,7 @@ export async function loadRepositoryState(repository, signal) {
       apiCalls += 1;
       return { ...run, jobs: result.jobs, jobsTruncated: result.truncated };
     } catch (error) {
+      if (error?.name === 'AbortError') throw error;
       apiCalls += 1;
       return {
         ...run,
@@ -297,6 +302,7 @@ export async function loadRepositoryState(repository, signal) {
     ),
     recoveryPullRequests,
     commentsByPr,
+    commentFetchFailed,
     runs,
     activeRunsTruncated,
     partialErrors,
