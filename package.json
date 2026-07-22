@@ -85,7 +85,7 @@
     "setup:azure:env:force": "pwsh scripts/setup-azure-env.ps1 -IncludeStorage -Force",
     "setup:azure:foundry": "pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -IncludeFoundry",
     "setup:azure:foundry:env": "pwsh scripts/setup-azure-env.ps1 -IncludeStorage -IncludeFoundry",
-    "setup:azure:github": "pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -SyncGitHubSecrets",
+    "setup:azure:github": "pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -IncludeFoundry -SyncGitHubSecrets",
     "verify:fast": "bash scripts/agent/verify-fast.sh",
     "verify:flash": "vitest run --changed --project unit --reporter=dot",
     "scope": "bash scripts/agent/ci/local-scope.sh",

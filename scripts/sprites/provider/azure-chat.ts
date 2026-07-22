@@ -5,10 +5,8 @@
  * Same envelope conventions as `azure-openai.ts`:
  *
  *   - Constructor takes `fetch` so unit tests stub the network.
- *   - No retries here. The orchestrator owns retry policy and, for
- *     variation expansion specifically, the orchestrator chooses
- *     "swallow and degrade" over "retry" because the run can still
- *     succeed without the extra variations.
+ *   - Bounded transport retries cover rate limits, server failures, and
+ *     network failures before variation expansion degrades gracefully.
  *   - All failures surface as `TextProviderError` with a typed `kind`.
  *
  * Response parsing is deliberately permissive:
@@ -34,6 +32,11 @@ import {
   isTimeoutAbortError,
   providerTimeoutMessage,
 } from './fetch-timeout.js';
+import {
+  fetchWithProviderRetry,
+  parseRetryAfterMs,
+  type ProviderRetryOptions,
+} from './provider-retry.js';
 
 export interface AzureOpenAIChatProviderOptions {
   readonly endpoint: string;
@@ -52,6 +55,7 @@ export interface AzureOpenAIChatProviderOptions {
    * Aborts a hung variation-expansion call instead of stalling the run.
    */
   readonly timeoutMs?: number;
+  readonly retry?: ProviderRetryOptions;
 }
 
 interface ChatChoice {
@@ -72,6 +76,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
   private readonly maxTokens: number;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly retry: ProviderRetryOptions;
 
   constructor(opts: AzureOpenAIChatProviderOptions) {
     this.endpoint = stripTrailingSlash(opts.endpoint);
@@ -82,6 +87,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
     this.maxTokens = opts.maxTokens ?? 600;
     this.fetchImpl = opts.fetch ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
+    this.retry = opts.retry ?? {};
   }
 
   async expandVariations(request: ExpandVariationsRequest): Promise<ReadonlyArray<string>> {
@@ -101,15 +107,19 @@ export class AzureOpenAIChatProvider implements TextProvider {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(url, {
-        method: 'POST',
-        headers: {
-          'api-key': this.apiKey,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
+      response = await fetchWithProviderRetry(
+        () =>
+          this.fetchImpl(url, {
+            method: 'POST',
+            headers: {
+              'api-key': this.apiKey,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(this.timeoutMs),
+          }),
+        this.retry,
+      );
     } catch (err) {
       if (isTimeoutAbortError(err)) {
         throw new TextProviderError(
@@ -131,6 +141,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
       throw new TextProviderError(
         kind,
         `Azure chat returned ${response.status}: ${truncate(bodyText, 500)}`,
+        { retryAfterMs: parseRetryAfterMs(response.headers) },
       );
     }
 
@@ -147,7 +158,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
 
     if (payload.error) {
       throw new TextProviderError(
-        'provider-error',
+        'request-error',
         `Azure chat error ${payload.error.code ?? '<unknown>'}: ${payload.error.message ?? ''}`,
       );
     }
@@ -292,7 +303,8 @@ function stripTrailingSlash(s: string): string {
 function httpStatusToKind(status: number): TextProviderErrorKind {
   if (status === 401 || status === 403) return 'auth';
   if (status === 429) return 'rate-limit';
-  return 'provider-error';
+  if (status >= 500 && status < 600) return 'server-error';
+  return 'request-error';
 }
 
 async function safeText(response: Response): Promise<string> {

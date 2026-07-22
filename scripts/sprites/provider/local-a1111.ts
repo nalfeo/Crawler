@@ -116,19 +116,19 @@ export class LocalA1111ImageProvider implements ImageProvider {
   async generateSheet(request: GenerateSheetRequest): Promise<Buffer> {
     if (!LOCAL_A1111_SUPPORTED_TYPES.has(request.brief.type)) {
       throw new ProviderError(
-        'provider-error',
+        'request-error',
         `local-a1111 supports only ${Array.from(LOCAL_A1111_SUPPORTED_TYPES).join(', ')} briefs; got '${request.brief.type}'.`,
       );
     }
     if (!request.singleVariantPrompt) {
       throw new ProviderError(
-        'provider-error',
+        'request-error',
         'local-a1111 requires request.singleVariantPrompt (sheet prompts are incompatible with per-cell txt2img generation).',
       );
     }
     if (request.referencePngs.length > 0) {
       throw new ProviderError(
-        'provider-error',
+        'request-error',
         'local-a1111 does not consume reference images. Use a provider with reference-image support or disable references for this backend.',
       );
     }
@@ -321,7 +321,7 @@ export class LocalA1111ImageProvider implements ImageProvider {
     }
 
     if (payload.error) {
-      throw new ProviderError('provider-error', `A1111 error: ${payload.error}`);
+      throw new ProviderError('request-error', `A1111 error: ${payload.error}`);
     }
 
     const b64 = payload.images?.[0];
@@ -373,8 +373,8 @@ function roundDownToMultiple(value: number, multiple: number): number {
 function httpStatusToKind(status: number): ProviderErrorKind {
   if (status === 401 || status === 403) return 'auth';
   if (status === 429) return 'rate-limit';
-  if (status >= 500) return 'provider-error';
-  if (status >= 400) return 'provider-error';
+  if (status >= 500) return 'server-error';
+  if (status >= 400) return 'request-error';
   return 'network';
 }
 

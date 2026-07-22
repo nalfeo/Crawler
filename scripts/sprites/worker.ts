@@ -7,8 +7,9 @@
  * Failure handling (see {@link isPermanentFailure} / MAX_DEQUEUE_ATTEMPTS):
  *  - TRANSIENT failure below the retry cap → the message is left un-acked so
  *    the queue's visibility timeout re-surfaces it for a natural retry.
- *  - PERMANENT failure (a deterministic provider error — `auth`, `bad-grid`,
- *    `non-png`) OR once `dequeueCount` reaches MAX_DEQUEUE_ATTEMPTS → the
+ *  - PERMANENT failure (a deterministic provider error — `auth`,
+ *    `request-error`, `bad-grid`, `non-png`) OR once `dequeueCount` reaches
+ *    MAX_DEQUEUE_ATTEMPTS → the
  *    message is acked (dropped) so a deterministically-failing "poison"
  *    message cannot loop forever. For issue-requests a single failure comment
  *    is posted on the give-up path (at most once per message under normal
@@ -47,32 +48,16 @@ import { materializeBriefFromStore, mirrorBriefToStore } from './brief-durabilit
 const MAX_DEQUEUE_ATTEMPTS = 3;
 
 /**
- * Provider-error kinds that are DETERMINISTIC and therefore never worth
- * retrying at the worker level: a bad API key (`auth`), and grid/format
- * failures (`bad-grid`, `non-png`) which {@link generateSheetCore} has already
- * retried in-run before the error reached the worker. We duck-type on `kind`
- * (rather than `instanceof ProviderError`) so the same classification applies
- * to the synth / vision / text provider error families, which also surface an
- * `auth` kind. Nondeterministic kinds (`rate-limit`, `network`,
- * `provider-error`, synth `malformed`, or any plain `Error`) are intentionally
- * left to the {@link MAX_DEQUEUE_ATTEMPTS} cap so they still get bounded
- * natural retries.
- */
-/**
  * Kinds that are DETERMINISTIC and therefore never worth retrying at the worker
- * level: a bad API key (`auth`), grid/format failures (`bad-grid`, `non-png`)
- * which {@link generateSheetCore} has already retried in-run before the error
- * reached the worker, and a brief absent from BOTH disk and the store
- * (`brief-not-found`, see {@link BriefNotFoundError}) — no retry can make missing
- * bytes reappear. We duck-type on `kind` (rather than `instanceof ProviderError`)
- * so the same classification applies to the synth / vision / text provider error
- * families, which also surface an `auth` kind. Nondeterministic kinds
- * (`rate-limit`, `network`, `provider-error`, synth `malformed`, or any plain
- * `Error`) are intentionally left to the {@link MAX_DEQUEUE_ATTEMPTS} cap so they
- * still get bounded natural retries.
+ * level: authentication and rejected provider requests, grid/format failures
+ * which {@link generateSheetCore} has already retried in-run, and a brief
+ * absent from BOTH disk and the store. Transient kinds (`rate-limit`,
+ * `server-error`, `network`), malformed model output, and plain errors are left
+ * to the bounded natural-redelivery cap.
  */
 const PERMANENT_FAILURE_KINDS: ReadonlySet<string> = new Set([
   'auth',
+  'request-error',
   'bad-grid',
   'non-png',
   'brief-not-found',
@@ -123,6 +108,8 @@ export interface WorkerOptions {
    * Default: 5 000 ms.
    */
   readonly pollIntervalMs?: number;
+  /** Number of queue messages processed concurrently. Default: 1. */
+  readonly concurrency?: number;
   /**
    * AbortSignal for graceful shutdown. The worker exits after the current
    * message (if any) finishes processing. Set from a SIGINT/SIGTERM handler
@@ -174,6 +161,54 @@ export type WorkerStatus =
  *   5. On abort signal → finish the current message (if any) then exit.
  */
 export async function runWorker(options: WorkerOptions): Promise<void> {
+  const concurrency = options.concurrency ?? 1;
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error(`worker concurrency must be a positive integer, got ${concurrency}`);
+  }
+
+  const idleSlots = new Set<number>();
+  const poolAbort = new AbortController();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, poolAbort.signal])
+    : poolAbort.signal;
+  const reportStatus = (slotId: number, status: WorkerStatus): void => {
+    if (status.type === 'idle') {
+      idleSlots.add(slotId);
+      if (idleSlots.size === concurrency) {
+        idleSlots.clear();
+        options.onStatus?.(status);
+      }
+      return;
+    }
+    idleSlots.clear();
+    options.onStatus?.(status);
+  };
+
+  try {
+    const results = await Promise.allSettled(
+      Array.from({ length: concurrency }, (_, slotId) =>
+        runWorkerSlot({
+          ...options,
+          signal,
+          onStatus: (status) => reportStatus(slotId, status),
+        }).catch((error: unknown) => {
+          poolAbort.abort();
+          throw error;
+        }),
+      ),
+    );
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failure) {
+      throw failure.reason;
+    }
+  } finally {
+    options.onStatus?.({ type: 'stopping' });
+  }
+}
+
+async function runWorkerSlot(options: WorkerOptions): Promise<void> {
   const pollMs = options.pollIntervalMs ?? 5_000;
   const { queue, store, repoRoot, provider, signal, onStatus } = options;
 
@@ -343,8 +378,6 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
       };
     }
   }
-
-  onStatus?.({ type: 'stopping' });
 }
 
 /**

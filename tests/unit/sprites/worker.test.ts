@@ -442,6 +442,94 @@ describe('runWorker', () => {
     expect(ack).toHaveBeenCalledOnce();
     expect(mockIssuePipeline).not.toHaveBeenCalled();
   });
+
+  it('processes at most two messages concurrently without dequeuing a third', async () => {
+    let dequeueCalls = 0;
+    const messages = [
+      makeMessage(makeRequest('first')),
+      makeMessage(makeRequest('second')),
+      makeMessage(makeRequest('third')),
+    ];
+    const queue: AssetQueue = {
+      backend: 'noop',
+      async enqueue() {},
+      async dequeue() {
+        dequeueCalls += 1;
+        return messages.shift() ?? null;
+      },
+      async peek() {
+        return [];
+      },
+    };
+    const releases: Array<() => void> = [];
+    let active = 0;
+    let maxActive = 0;
+    mockGenerate.mockImplementation(
+      () =>
+        new Promise<never>((resolve) => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          releases.push(() => {
+            active -= 1;
+            resolve(fakeSummaryResult as never);
+          });
+        }),
+    );
+    const controller = new AbortController();
+    const statuses: WorkerStatus[] = [];
+    const worker = runWorker({
+      queue,
+      store: makeStore(),
+      repoRoot,
+      provider: stubProvider,
+      concurrency: 2,
+      pollIntervalMs: 0,
+      signal: controller.signal,
+      onStatus: (status) => {
+        statuses.push(status);
+        if (statuses.filter((entry) => entry.type === 'done').length === 3) {
+          controller.abort();
+        }
+      },
+    });
+
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    expect(dequeueCalls).toBe(2);
+    expect(maxActive).toBe(2);
+
+    releases[0]!();
+    await vi.waitFor(() => expect(releases).toHaveLength(3));
+    expect(dequeueCalls).toBe(3);
+    expect(maxActive).toBe(2);
+
+    releases[1]!();
+    releases[2]!();
+    await worker;
+    expect(statuses.filter((status) => status.type === 'stopping')).toHaveLength(1);
+  });
+
+  it('emits one idle event only after every slot observes an empty queue', async () => {
+    const controller = new AbortController();
+    const statuses: WorkerStatus[] = [];
+    await runWorker({
+      queue: makeQueue([]),
+      store: makeStore(),
+      repoRoot,
+      provider: stubProvider,
+      concurrency: 2,
+      pollIntervalMs: 0,
+      signal: controller.signal,
+      onStatus: (status) => {
+        statuses.push(status);
+        if (statuses.filter((entry) => entry.type === 'idle').length === 2) {
+          controller.abort();
+        }
+      },
+    });
+
+    expect(statuses.filter((status) => status.type === 'idle')).toHaveLength(2);
+    expect(statuses.filter((status) => status.type === 'stopping')).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -572,6 +660,25 @@ describe('runWorker failure handling (poison-message policy)', () => {
     expect(err.dropped).toBe(true);
   });
 
+  it('drops a deterministic request-error on the first delivery', async () => {
+    mockIssuePipeline.mockRejectedValue(
+      new ProviderError('request-error', 'content filter rejected this request'),
+    );
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const { queue, ack, deliveries } = makeResurfacingQueue(makeIssueRequest());
+
+    await drive({
+      queue,
+      comment,
+      issueJob: true,
+      abortOn: (status) => status.type === 'error' && status.dropped === true,
+    });
+
+    expect(deliveries()).toBe(1);
+    expect(ack).toHaveBeenCalledOnce();
+    expect(comment).toHaveBeenCalledOnce();
+  });
+
   it('leaves a transient issue-request un-acked and does not comment below the retry cap', async () => {
     mockIssuePipeline.mockRejectedValueOnce(new ProviderError('rate-limit', 'slow down'));
     const ack = vi.fn().mockResolvedValue(undefined);
@@ -583,6 +690,44 @@ describe('runWorker failure handling (poison-message policy)', () => {
     expect(ack).not.toHaveBeenCalled();
     expect(comment).not.toHaveBeenCalled();
     const err = statuses.find((s) => s.type === 'error') as Extract<
+      WorkerStatus,
+      { type: 'error' }
+    >;
+    expect(err.dropped).toBeUndefined();
+  });
+
+  it('keeps an unexpected provider-error transient below the retry cap', async () => {
+    mockIssuePipeline.mockRejectedValueOnce(
+      new ProviderError('provider-error', 'temporary storage write failed'),
+    );
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const queue = makeQueue([makeMessage(makeIssueRequest(), ack, 1), null]);
+
+    const statuses = await drive({ queue, comment, issueJob: true, abortOn: 'error' });
+
+    expect(ack).not.toHaveBeenCalled();
+    expect(comment).not.toHaveBeenCalled();
+    const err = statuses.find((status) => status.type === 'error') as Extract<
+      WorkerStatus,
+      { type: 'error' }
+    >;
+    expect(err.dropped).toBeUndefined();
+  });
+
+  it('keeps a server-error transient below the retry cap', async () => {
+    mockIssuePipeline.mockRejectedValueOnce(
+      new ProviderError('server-error', 'Foundry is temporarily unavailable'),
+    );
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const comment = vi.fn().mockResolvedValue(undefined);
+    const queue = makeQueue([makeMessage(makeIssueRequest(), ack, 1), null]);
+
+    const statuses = await drive({ queue, comment, issueJob: true, abortOn: 'error' });
+
+    expect(ack).not.toHaveBeenCalled();
+    expect(comment).not.toHaveBeenCalled();
+    const err = statuses.find((status) => status.type === 'error') as Extract<
       WorkerStatus,
       { type: 'error' }
     >;
