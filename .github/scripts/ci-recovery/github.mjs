@@ -160,6 +160,7 @@ export async function listReviewThreads(token, owner, repo, number, graphqlFn = 
               state
               submittedAt
               author { login }
+              commit { oid }
               comments(first: 1) {
                 nodes { body }
               }
