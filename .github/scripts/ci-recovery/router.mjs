@@ -21,13 +21,16 @@ import {
 } from '../merge-train/state.mjs';
 
 const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
-// Hard global cap on outstanding CI Recovery workflow runs while the merge
-// train queue is non-empty. This is intentionally independent of
-// CI_RECOVERY_MAX_DISPATCH_PER_RUN: that var caps dispatch *per router
-// invocation*, but with the router now serialized under a single
-// concurrency group (see ci-recovery-router.yml), this cap is what actually
-// bounds the number of CI Recovery runs competing with Merge Train
-// Validation for runners at any moment.
+// Default global cap on outstanding CI Recovery workflow runs while the merge
+// train queue is non-empty. Overridable at runtime via the
+// CI_GLOBAL_TRAIN_DISPATCH_CAP repo Actions variable -- no code change needed
+// during an incident. See docs/agent-os/policies/ci-config-knobs.md.
+//
+// This is intentionally independent of CI_RECOVERY_MAX_DISPATCH_PER_RUN:
+// that var caps dispatch *per router invocation*, but with the router now
+// serialized under a single concurrency group (see ci-recovery-router.yml),
+// this cap is what actually bounds the number of CI Recovery runs competing
+// with Merge Train Validation for runners at any moment.
 //
 // 2026-07-22 EMERGENCY raise 1 -> 5: CI Recovery is the merge train's SOLE
 // feeder (it drives PRs to convergence and applies the `merge-train` label),
@@ -35,25 +38,26 @@ const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
 // starved the train and froze throughput repo-wide. Raising to 5 lets
 // recovery converge several PRs per cycle and actually drain the backlog.
 // Runner-safety headroom now leans on #1770 (far less PR-head churn) and the
-// sweep-fencing work; the durable fix is a load-aware budget (see #1776) and
-// promoting these caps to runtime variables (see #1779) so a future incident
-// needs a knob-turn, not a code change + PR.
+// sweep-fencing work.
 export const GLOBAL_TRAIN_DISPATCH_CAP = 5;
-// Cap applied whenever there is no active merge-train backlog to protect --
-// the queue is empty, the train feature is enabled but idle, OR the train
-// feature is disabled/paused entirely. Measured capacity evidence
-// (2026-07-21 incident follow-up): this repo is public on GitHub Free
-// (standard-hosted concurrency limit: 20 concurrent jobs). Representative
-// peaks observed: a normal full PR CI run uses ~5 concurrent jobs;
-// uncontended Merge Train Validation runs alone peak at 7-9 concurrent jobs;
-// an active AI Sweep Eval run can spawn 200+ jobs and peak at ~19 concurrent,
-// which is what starved Validation runners during the incident. Even with no
-// backlog to protect, sweep-style jobs can still be running (and can be
-// running whether or not the train feature itself is on), so dispatch is not
-// left fully unbounded here -- 5 (emergency-raised from 2 on 2026-07-22 to
-// match GLOBAL_TRAIN_DISPATCH_CAP for throughput) preserves bounded runner
-// headroom instead of going back to effectively-unlimited (Infinity)
-// dispatch. This cap must remain in force during train
+// Default cap applied whenever there is no active merge-train backlog to
+// protect -- the queue is empty, the train feature is enabled but idle, OR
+// the train feature is disabled/paused entirely. Overridable at runtime via
+// CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP repo Actions variable. Safe range: 1-20.
+// See docs/agent-os/policies/ci-config-knobs.md for interaction details.
+//
+// Measured capacity evidence (2026-07-21 incident follow-up): this repo is
+// public on GitHub Free (standard-hosted concurrency limit: 20 concurrent
+// jobs). Representative peaks observed: a normal full PR CI run uses ~5
+// concurrent jobs; uncontended Merge Train Validation runs alone peak at 7-9
+// concurrent jobs; an active AI Sweep Eval run can spawn 200+ jobs and peak
+// at ~19 concurrent, which is what starved Validation runners during the
+// incident. Even with no backlog to protect, sweep-style jobs can still be
+// running (and can be running whether or not the train feature itself is on),
+// so dispatch is not left fully unbounded here -- 5 (emergency-raised from 2
+// on 2026-07-22 to match GLOBAL_TRAIN_DISPATCH_CAP for throughput) preserves
+// bounded runner headroom instead of going back to effectively-unlimited
+// (Infinity) dispatch. This cap must remain in force during train
 // maintenance/disablement too: that is precisely when protecting shared
 // runner capacity matters most, not a window where backpressure can safely
 // lapse.
@@ -622,9 +626,26 @@ export async function listRecentOutstandingRunIds(
 // (waitForOutstandingCount closing it) is the narrower one between a
 // dispatch and its own visibility via the Actions list-runs API within the
 // *same* serialized lineage -- see that function's comment.
-export function computeDispatchBudget({ trainQueueNonEmpty, outstandingCount }) {
-  const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
+export function computeDispatchBudget({
+  trainQueueNonEmpty,
+  outstandingCount,
+  trainCap = GLOBAL_TRAIN_DISPATCH_CAP,
+  idleCap = GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+}) {
+  const cap = trainQueueNonEmpty ? trainCap : idleCap;
   return Math.max(0, cap - outstandingCount);
+}
+
+// Resolves the runtime-overridable dispatch caps from the environment.
+// Both values default to their in-code constants when the env vars are absent
+// or malformed, so the hardcoded defaults serve as safe fallbacks.
+// Called by runFromEnv (this file) and reconcile.mjs so both dispatch sites
+// honour the same env-driven caps.
+export function resolveGlobalDispatchCaps(env = process.env) {
+  return {
+    trainCap: parsePositiveInt(env.CI_GLOBAL_TRAIN_DISPATCH_CAP, GLOBAL_TRAIN_DISPATCH_CAP),
+    idleCap: parsePositiveInt(env.CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP, GLOBAL_IDLE_TRAIN_DISPATCH_CAP),
+  };
 }
 
 // Splits the PRs collectPrNumbers deemed eligible into what this run may
@@ -739,6 +760,7 @@ export async function runFromEnv(env = process.env) {
     env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
     DEFAULT_MAX_DISPATCH_PER_RUN,
   );
+  const { trainCap, idleCap } = resolveGlobalDispatchCaps(env);
 
   if (!token || !owner || !repo || !eventPath) {
     throw new Error('Missing GITHUB_TOKEN, GITHUB_REPOSITORY, or GITHUB_EVENT_PATH');
@@ -826,10 +848,10 @@ export async function runFromEnv(env = process.env) {
   // and does not close.
   //
   // Best-effort cap: merge-train/reconcile.mjs's four dispatchRecovery() call
-  // sites now go through buildGatedDispatchRecovery (GLOBAL_TRAIN_DISPATCH_CAP),
-  // so both callers apply the same cap before dispatching. A narrow race window
-  // still exists between each caller's countOutstandingRecoveryRuns read and
-  // its POST, because the router's concurrency group serialises its own
+  // sites now go through buildGatedDispatchRecovery (trainCap), so both
+  // callers apply the same cap before dispatching. A narrow race window still
+  // exists between each caller's countOutstandingRecoveryRuns read and its
+  // POST, because the router's concurrency group serialises its own
   // invocations but cannot serialise against a concurrent reconcile.mjs run.
   // A durable reservation (e.g. a shared semaphore via repository variable) is
   // the required follow-up to close that gap completely.
@@ -838,6 +860,8 @@ export async function runFromEnv(env = process.env) {
   const dispatchBudget = computeDispatchBudget({
     trainQueueNonEmpty,
     outstandingCount,
+    trainCap,
+    idleCap,
   });
   const { dispatchable, deferred } = partitionDispatchable(prNumbers, dispatchBudget);
 
@@ -877,9 +901,9 @@ export async function runFromEnv(env = process.env) {
   }
 
   if (deferred.length > 0) {
-    const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
+    const cap = trainQueueNonEmpty ? trainCap : idleCap;
     process.stdout.write(
-      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${cap}\n`,
+      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} budget=${dispatchBudget} cap=${cap}\n`,
     );
   }
 

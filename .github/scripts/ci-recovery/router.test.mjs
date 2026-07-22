@@ -22,6 +22,7 @@ import {
   requestWithBackoff,
   recoveryTriggerForPr,
   isManagedCommentEvent,
+  resolveGlobalDispatchCaps,
   waitForDispatchedRunsVisible,
   waitForOutstandingCount,
 } from './router.mjs';
@@ -1044,6 +1045,60 @@ test('computeDispatchBudget caps outstanding recovery runs to GLOBAL_TRAIN_DISPA
     0,
     'budget never goes negative when outstanding exceeds the cap',
   );
+});
+
+test('computeDispatchBudget accepts explicit trainCap/idleCap overrides', () => {
+  // Verifies that the env-driven override path works end-to-end: both caps can
+  // be independently overridden and the function uses them rather than the
+  // module-level defaults.
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 0, trainCap: 3, idleCap: 10 }), 3);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0, trainCap: 3, idleCap: 10 }), 10);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 3, trainCap: 3, idleCap: 10 }), 0);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 7, trainCap: 3, idleCap: 10 }), 3);
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 10, trainCap: 3, idleCap: 10 }), 0);
+});
+
+test('resolveGlobalDispatchCaps falls back to hardcoded defaults when env vars are absent', () => {
+  assert.deepEqual(resolveGlobalDispatchCaps({}), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+});
+
+test('resolveGlobalDispatchCaps reads CI_GLOBAL_TRAIN_DISPATCH_CAP from env', () => {
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '10' }), {
+    trainCap: 10,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+});
+
+test('resolveGlobalDispatchCaps reads CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP from env', () => {
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '7' }), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: 7,
+  });
+});
+
+test('resolveGlobalDispatchCaps reads both caps independently from env', () => {
+  assert.deepEqual(
+    resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '8', CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '12' }),
+    { trainCap: 8, idleCap: 12 },
+  );
+});
+
+test('resolveGlobalDispatchCaps ignores non-positive and non-numeric env values', () => {
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: 'bad' }), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '0' }), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '-1' }), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
 });
 
 test('partitionDispatchable sends everything when the budget is unbounded', () => {
