@@ -70,10 +70,15 @@ export function conflictEpisodeId({ headSha, baseSha }) {
   return createHash('sha256').update(`${normalizedHead}:${normalizedBase}`).digest('hex');
 }
 
+function isSha(value) {
+  return new RegExp(`^${SHA_PATTERN}$`).test(normalized(value));
+}
+
 export function unrecordedConflictEpisode({ pr, hasMergeConflict, comments }) {
   if (!hasMergeConflict) return null;
   const headSha = normalized(pr?.head?.sha);
   const baseSha = normalized(pr?.base?.sha);
+  if (!isSha(headSha) || !isSha(baseSha)) return null;
   const episode = conflictEpisodeId({ headSha, baseSha });
   if (conflictEpisodeMarkers(comments).some((marker) => marker.episode === episode)) {
     return null;
@@ -88,6 +93,7 @@ export function shouldRequestReview({
   requiredChecksPassing,
   blockers,
   comments,
+  hasInitialReviewEvidence = false,
 }) {
   if (normalized(pr?.state) !== 'open' || pr?.draft) return null;
 
@@ -96,16 +102,15 @@ export function shouldRequestReview({
   if (requests.some((request) => request.headSha === headSha)) return null;
 
   const normalRequests = requests.filter((request) => request.reason !== 'conflict-resolved');
-  if (INITIAL_TRIGGERS.has(normalized(trigger)) && normalRequests.length === 0) {
+  const initialTrigger = INITIAL_TRIGGERS.has(normalized(trigger));
+  if (initialTrigger && normalRequests.length === 0) {
     return { reason: 'ready', episode: null, requestReviewer: false };
   }
-  if (
-    hasMergeConflict ||
-    !requiredChecksPassing ||
-    (blockers || []).length > 0 ||
-    normalRequests.length === 0
-  ) {
+  if (hasMergeConflict || !requiredChecksPassing || (blockers || []).length > 0) {
     return null;
+  }
+  if (normalRequests.length === 0) {
+    return hasInitialReviewEvidence ? { reason: 'ready', episode: null, requestReviewer: false } : null;
   }
 
   const episodes = conflictEpisodeMarkers(comments);
@@ -152,6 +157,13 @@ export async function executeReviewDecision({
     await requestReviewer();
     return markerComment;
   } catch (error) {
+    const status = Number(error?.status);
+    const ambiguousMutationOutcome =
+      error?.markerRollbackSafe !== true &&
+      (!Number.isFinite(status) || status === 408 || status === 409 || status === 429 || status >= 500);
+    if (ambiguousMutationOutcome) {
+      throw error;
+    }
     try {
       await deleteMarker(markerComment.id);
     } catch (rollbackError) {

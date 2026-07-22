@@ -40,6 +40,7 @@ const decision = ({
   currentPr = pr(),
   hasMergeConflict = false,
   requiredChecksPassing = true,
+  hasInitialReviewEvidence = false,
   blockers = [],
   comments = [],
 } = {}) =>
@@ -48,6 +49,7 @@ const decision = ({
     pr: currentPr,
     hasMergeConflict,
     requiredChecksPassing,
+    hasInitialReviewEvidence,
     blockers,
     comments,
   });
@@ -55,6 +57,16 @@ const decision = ({
 test('records the platform-owned initial publish review without requesting a duplicate', () => {
   assert.deepEqual(
     decision({ trigger: 'pull_request_target:ready_for_review' }),
+    { reason: 'ready', episode: null, requestReviewer: false },
+  );
+});
+
+test('records a recovery-ready marker when publish-review evidence exists without markers', () => {
+  assert.deepEqual(
+    decision({
+      trigger: 'schedule',
+      hasInitialReviewEvidence: true,
+    }),
     { reason: 'ready', episode: null, requestReviewer: false },
   );
 });
@@ -256,7 +268,7 @@ test('persists the marker before requesting review', async () => {
   assert.deepEqual(calls, ['marker', 'review']);
 });
 
-test('rolls back a marker when the reviewer request fails', async () => {
+test('rolls back a marker only for deterministic reviewer-request failures', async () => {
   const calls = [];
   await assert.rejects(
     executeReviewDecision({
@@ -269,10 +281,35 @@ test('rolls back a marker when the reviewer request fails', async () => {
       deleteMarker: async (id) => calls.push(`delete:${id}`),
       requestReviewer: async () => {
         calls.push('review');
-        throw new Error('review failed');
+        const error = new Error('review failed');
+        error.markerRollbackSafe = true;
+        throw error;
       },
     }),
     /review failed/,
   );
   assert.deepEqual(calls, ['marker', 'review', 'delete:42']);
+});
+
+test('keeps marker on ambiguous reviewer-request failures', async () => {
+  const calls = [];
+  await assert.rejects(
+    executeReviewDecision({
+      decision: { requestReviewer: true },
+      marker: 'marker',
+      createMarker: async () => {
+        calls.push('marker');
+        return { id: 42 };
+      },
+      deleteMarker: async (id) => calls.push(`delete:${id}`),
+      requestReviewer: async () => {
+        calls.push('review');
+        const error = new Error('ambiguous failure');
+        error.status = 502;
+        throw error;
+      },
+    }),
+    /ambiguous failure/,
+  );
+  assert.deepEqual(calls, ['marker', 'review']);
 });

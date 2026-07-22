@@ -271,6 +271,7 @@ class ExpectedMetadataChangedError extends Error {
     super(`PR metadata changed before ${phase}: ${rejection.reason}`);
     this.rejection = rejection;
     this.phase = phase;
+    this.markerRollbackSafe = true;
   }
 }
 
@@ -280,6 +281,23 @@ async function assertExpectedMetadataUnchangedOrThrow(phase) {
     .data;
   const rejection = expectedMetadataRejection(livePullRequest);
   if (rejection) throw new ExpectedMetadataChangedError(rejection, phase);
+}
+
+async function assertPrHeadUnchangedOrThrow(phase, expectedSha) {
+  const expected = String(expectedSha || '').trim().toLowerCase();
+  if (!expected) return;
+  const livePullRequest = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`))
+    .data;
+  const actual = String(livePullRequest?.head?.sha || '').trim().toLowerCase();
+  if (actual && actual === expected) return;
+  throw new ExpectedMetadataChangedError(
+    {
+      reason: 'head-sha-changed',
+      expected,
+      actual: actual || '(empty)',
+    },
+    phase,
+  );
 }
 const comments = await paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
 let approvalRejection = null;
@@ -1024,6 +1042,11 @@ if (mergeTrainEnabled && !pendingHumanApproval && shouldWaitForCiConflictOrder(p
 }
 
 const review = await listReviewThreads(readToken, owner, repo, prNumber);
+const hasInitialReviewEvidence = review.reviews.some((candidate) => {
+  const login = String(candidate?.author?.login || '').toLowerCase();
+  return login === String(copilotReviewerLogin).toLowerCase() && Boolean(candidate?.submittedAt);
+});
+const canBootstrapInitialReviewMarker = !state && hasInitialReviewEvidence;
 const copilotAssigned = review.assignees.some((actor) =>
   ['copilot', 'copilot-swe-agent'].includes(String(actor.login || '').toLowerCase()),
 );
@@ -1665,10 +1688,12 @@ const reviewDecision = shouldRequestReview({
   hasMergeConflict,
   requiredChecksPassing:
     mergeTrainAdmissionChecks.length > 0 && waitingRequiredChecks.length === 0,
+  hasInitialReviewEvidence: canBootstrapInitialReviewMarker,
   blockers: normalized,
   comments,
 });
 if (reviewDecision) {
+  const reviewDecisionHeadSha = String(pr.head.sha || '').trim().toLowerCase();
   const marker = reviewRequestMarker({
     headSha: pr.head.sha,
     reason: reviewDecision.reason,
@@ -1681,6 +1706,7 @@ if (reviewDecision) {
         decision: reviewDecision,
         marker,
         createMarker: async (body) => {
+          await assertPrHeadUnchangedOrThrow('review-request-marker', reviewDecisionHeadSha);
           const created = await request(
             pat,
             `/repos/${owner}/${repo}/issues/${prNumber}/comments`,
@@ -1697,6 +1723,7 @@ if (reviewDecision) {
           });
         },
         requestReviewer: async () => {
+          await assertPrHeadUnchangedOrThrow('copilot-review-request', reviewDecisionHeadSha);
           await assertExpectedMetadataUnchangedOrThrow('copilot-review-request');
           await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers`, {
             method: 'POST',
