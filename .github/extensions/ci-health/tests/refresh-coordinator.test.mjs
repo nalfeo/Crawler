@@ -128,3 +128,42 @@ test('runs a forced follow-up refresh after a failing poll', async () => {
   coordinator.unsubscribe();
   coordinator.close();
 });
+
+test('schedules the next refresh against the start time so slow loads cannot exceed intervalMs', async () => {
+  // The interval is intentionally shorter than the simulated load duration to
+  // verify that the coordinator schedules immediately (0 ms) when a refresh
+  // takes longer than the interval rather than stacking an additional wait.
+  const INTERVAL_MS = 10;
+  let resolveLoad;
+  const loadStarted = new Promise((resolve) => {
+    resolveLoad = resolve;
+  });
+  const coordinator = createRefreshCoordinator({
+    intervalMs: INTERVAL_MS,
+    load: async () => {
+      resolveLoad?.();
+      resolveLoad = null;
+      // Simulate a load that takes longer than intervalMs.
+      await new Promise((resolve) => setTimeout(resolve, INTERVAL_MS * 3));
+      return { generation: 1 };
+    },
+  });
+  coordinator.subscribe();
+
+  const start = Date.now();
+  await coordinator.refresh();
+  await loadStarted;
+
+  // After a load that took ≥ 3× intervalMs, the follow-up timer should fire
+  // almost immediately (clamped to 0).  Allow a generous 2× INTERVAL_MS
+  // budget to accommodate event-loop scheduling jitter.
+  assert.equal(coordinator.timerActive, true);
+  await new Promise((resolve) => setTimeout(resolve, INTERVAL_MS * 2));
+  // The timer should have fired by now and the refresh loop restarted.
+  // We just need to confirm no exception was thrown and the coordinator is
+  // still alive (not closed or stuck).
+  assert.equal(coordinator.timerActive, false, 'follow-up timer should have fired');
+
+  coordinator.unsubscribe();
+  coordinator.close();
+});

@@ -170,7 +170,16 @@ async function startServer(instanceId, token, sessionLogger) {
       else response.end();
     });
   });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve, reject) => {
+    server.once('error', (err) => {
+      server.removeAllListeners('error');
+      reject(err);
+    });
+    server.listen(0, '127.0.0.1', () => {
+      server.removeAllListeners('error');
+      resolve();
+    });
+  });
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
   return {
@@ -267,7 +276,8 @@ const session = await joinSession({
       open: async (ctx) => {
         const runnerCap = ctx.input?.runnerCap ?? DEFAULT_RUNNER_CAP;
         let instance = instances.get(ctx.instanceId);
-        if (!instance) {
+        const instanceWasNew = !instance;
+        if (instanceWasNew) {
           const contextController = new AbortController();
           let context;
           try {
@@ -288,7 +298,20 @@ const session = await joinSession({
         let entry = servers.get(ctx.instanceId);
         if (!entry) {
           const token = randomBytes(24).toString('hex');
-          entry = await startServer(ctx.instanceId, token, session);
+          try {
+            entry = await startServer(ctx.instanceId, token, session);
+          } catch (error) {
+            if (instanceWasNew) {
+              instances.delete(ctx.instanceId);
+              const coordinator = coordinators.get(instance.repository);
+              coordinator?.unsubscribe();
+              if (coordinator?.subscribers === 0) {
+                coordinator.close();
+                coordinators.delete(instance.repository);
+              }
+            }
+            throw new CanvasError('server_start_failed', errorMessage(error));
+          }
           servers.set(ctx.instanceId, entry);
         }
 

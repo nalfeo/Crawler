@@ -80,15 +80,40 @@ test('parses managed Merge Train comments and exposes missing, malformed, and du
   );
 });
 
+test('accepts position 0 as valid syntax for canonical blocked entries', () => {
+  // blockEntry() and deAdmitNoop() in reconcile.mjs write position: 0 and
+  // candidateSha: '' which renderStatus renders as `not built`.
+  const blockedComment = {
+    id: 1,
+    updated_at: '2026-07-21T00:00:01Z',
+    body: [
+      '<!-- crawler-merge-train:v1 -->',
+      '## Merge train',
+      '',
+      '- Position: 0',
+      '- Candidate: `not built`',
+      '- State: `blocked`',
+      '- Detail: Validation failed.',
+    ].join('\n'),
+  };
+  const parsed = parseTrainStatusComments([blockedComment]);
+  assert.equal(parsed.commentHealth, 'ok', 'position 0 must not be treated as malformed');
+  assert.equal(parsed.reportedPosition, 0);
+  assert.equal(parsed.state, 'blocked');
+  assert.equal(parsed.candidateSha, null, 'not-built candidate must map to null');
+});
+
 test('uses canonical FIFO eligibility while keeping blocked and recovery PRs visible', () => {
   const openPullRequests = [
     pullRequest(3),
     pullRequest(1),
+    // Canonical blockEntry() removes merge-train and adds merge-train-blocked.
     pullRequest(2, {
-      labels: [{ name: 'merge-train' }, { name: 'merge-train-blocked' }],
+      labels: [{ name: 'merge-train-blocked' }],
     }),
+    // ci-conflict-order-wait can appear with or without merge-train.
     pullRequest(4, {
-      labels: [{ name: 'merge-train' }, { name: 'ci-conflict-order-wait' }],
+      labels: [{ name: 'ci-conflict-order-wait' }],
     }),
     pullRequest(5, { labels: [{ name: 'ci-recovery-waiting' }] }),
     pullRequest(6, {
@@ -221,4 +246,28 @@ test('surfaces queued workflow runs before GitHub exposes their jobs', () => {
   assert.equal(snapshot.actions.queuedRunCount, 1);
   assert.equal(snapshot.actions.visibleHostedQueued, 0);
   assert.equal(snapshot.bottleneck.kind, 'workflow-queue');
+});
+
+test('includes a warning when job-list fetches fail for one or more runs', () => {
+  const actions = buildActionsState(
+    {
+      runs: [
+        {
+          id: 10,
+          name: 'CI',
+          status: 'in_progress',
+          jobs: [],
+          jobsError: 'API rate limited',
+        },
+      ],
+      activeRunsTruncated: 0,
+      partialErrors: [],
+    },
+    20,
+  );
+
+  assert.ok(
+    actions.warnings.some((w) => /job.*load|load.*job/i.test(w)),
+    `expected a job-load warning in: ${JSON.stringify(actions.warnings)}`,
+  );
 });

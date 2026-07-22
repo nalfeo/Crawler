@@ -2,7 +2,6 @@ import {
   BLOCKED_LABEL,
   CI_CONFLICT_ORDER_WAIT_LABEL,
   MAX_TRAIN_SIZE,
-  QUEUE_LABEL,
   RECOVERY_PENDING_LABEL,
   STATUS_MARKER,
   VALIDATION_FAILED_LABEL,
@@ -74,7 +73,7 @@ export function parseTrainStatusComments(comments, { fetchFailed = false } = {})
   const reportedPosition = /^\d+$/.test(positionText ?? '') ? Number(positionText) : NaN;
   const malformed =
     !Number.isInteger(reportedPosition) ||
-    reportedPosition < 1 ||
+    reportedPosition < 0 ||
     !candidateText ||
     !state ||
     !detail;
@@ -143,7 +142,6 @@ export function buildTrainState({
     .filter((pullRequest) => {
       const labels = labelNames(pullRequest);
       return (
-        labels.has(QUEUE_LABEL) &&
         !activeNumbers.has(pullRequest.number) &&
         (labels.has(BLOCKED_LABEL) ||
           labels.has(CI_CONFLICT_ORDER_WAIT_LABEL) ||
@@ -260,6 +258,9 @@ export function buildActionsState({ runs, activeRunsTruncated, partialErrors }, 
   }
   if (normalizedRuns.some((run) => run.jobsTruncated)) {
     warnings.push('One or more workflow job lists were truncated.');
+  }
+  if (normalizedRuns.some((run) => run.jobsError)) {
+    warnings.push('One or more workflow job lists could not be loaded; occupancy data is incomplete.');
   }
   warnings.push(...partialErrors);
   if (inProgress >= runnerCap) {

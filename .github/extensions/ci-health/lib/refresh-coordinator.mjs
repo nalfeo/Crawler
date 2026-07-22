@@ -21,14 +21,18 @@ export function createRefreshCoordinator({
     }
   }
 
-  function schedule() {
+  function scheduleAfter(delayMs) {
     clearTimer();
     if (closed || subscribers === 0) return;
     timer = setTimeout(() => {
       timer = null;
       void refresh().catch(() => {});
-    }, intervalMs);
+    }, delayMs);
     timer.unref?.();
+  }
+
+  function schedule() {
+    scheduleAfter(intervalMs);
   }
 
   async function runLoop() {
@@ -61,9 +65,11 @@ export function createRefreshCoordinator({
       return inFlight;
     }
     clearTimer();
+    const startMs = Date.now();
     inFlight = runLoop().finally(() => {
       inFlight = null;
-      schedule();
+      const elapsed = Date.now() - startMs;
+      scheduleAfter(Math.max(0, intervalMs - elapsed));
       onSettled?.();
     });
     return inFlight;
