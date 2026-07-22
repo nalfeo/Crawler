@@ -90,6 +90,21 @@ test('fails closed when severity is null', () => {
   );
 });
 
+test('does not suppress an excepted finding with malformed severity', () => {
+  const result = evaluateAudit(
+    report({
+      'fast-uri': { name: 'fast-uri', severity: null, via: [ADVISORY] },
+    }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(result.ignored, ['fast-uri']);
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['fast-uri'],
+  );
+});
+
 test('fails closed when severity is an array', () => {
   const result = evaluateAudit(
     report({ pkg: { name: 'pkg', severity: ['high'], via: [] } }),
