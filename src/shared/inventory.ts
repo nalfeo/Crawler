@@ -42,6 +42,8 @@ export interface InventoryBag {
   slots: InventorySlot[];
   /** Generated equipment stores identity references only; B1 owns full records. */
   generatedEquipment?: GeneratedEquipmentInventoryEntry[];
+  /** Optional generated-item cap. Omitted preserves the existing infinite-capacity bag. */
+  generatedEquipmentCapacity?: number;
 }
 
 export interface TabPreferences {
@@ -84,6 +86,22 @@ export function hasGeneratedEquipmentReference(
   instanceKey: GeneratedEquipmentInstanceKey,
 ): boolean {
   return (bag.generatedEquipment ?? []).some((entry) => entry.instanceKey === instanceKey);
+}
+
+/** Remaining exact-instance capacity; `Infinity` preserves the legacy unbounded bag. */
+export function getGeneratedEquipmentRemainingCapacity(bag: InventoryBag): number {
+  const capacity = bag.generatedEquipmentCapacity;
+  if (capacity === undefined) return Number.POSITIVE_INFINITY;
+  return Math.max(0, Math.floor(capacity) - (bag.generatedEquipment?.length ?? 0));
+}
+
+/** Whether the bag can accept the requested number of generated instances. */
+export function canAcceptGeneratedEquipment(bag: InventoryBag, quantity = 1): boolean {
+  return (
+    Number.isInteger(quantity) &&
+    quantity >= 0 &&
+    getGeneratedEquipmentRemainingCapacity(bag) >= quantity
+  );
 }
 
 /**

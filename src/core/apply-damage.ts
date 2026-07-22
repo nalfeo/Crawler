@@ -43,6 +43,12 @@ export interface DamageOptions {
   readonly sourceEid?: number;
   /** Render-only classification of the successful hit's delivery path. */
   readonly delivery?: CombatEvent['delivery'];
+  /**
+   * True when this damage was dealt by a player active ability (spell, etc.).
+   * Propagated to the emitted `CombatEvent.fromActiveAbility` flag so in-run
+   * harnesses can attribute ability DPS without a second RNG-divergent run.
+   */
+  readonly fromActiveAbility?: boolean;
 }
 
 /** Convenience: the fail-closed default options (never scales, never crits, environment-sourced). */
@@ -247,6 +253,7 @@ export function applyDamage(
     }
     event.targetRenderGeneration = world.entityRenderGeneration[target];
     if (options.delivery !== undefined) event.delivery = options.delivery;
+    if (options.fromActiveAbility === true) event.fromActiveAbility = true;
     world.combatEvents.push(event);
     if (options.sourceEid !== undefined && current - dealt <= 0) {
       world.lethalDamageSourceByTarget.set(target, options.sourceEid);
