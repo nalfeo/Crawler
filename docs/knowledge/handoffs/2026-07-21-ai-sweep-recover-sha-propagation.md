@@ -131,6 +131,16 @@ No review-harness stages required at this tier (ledger only). The secondary
 flaky-test fix above is a small, independently-scoped addition that doesn't
 change the tier.
 
+## Merge-train recovery note
+
+During CI recovery for this PR, the merge train bisected an earlier candidate that
+included a failing commit (`dd7ed697`, Advisory coverage red due to the flaky signal-
+lifecycle test) and applied the `merge-train-validation-failed` + `merge-train-blocked`
+labels. These labels are cleared by the CI Recovery reconciler on the next
+`:synchronize` (push) event, so they do **not** indicate a persistent code issue — they
+are housekeeping artifacts of the train's bisection and clear automatically once any
+commit is pushed and CI passes.
+
 ## Unresolved issues / follow-ups
 
 None. `ai-sweep.yml` and sweep/aggregation logic are unchanged by design.
