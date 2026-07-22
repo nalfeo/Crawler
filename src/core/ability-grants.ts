@@ -23,10 +23,7 @@ import {
 import type { GeneratedEquipmentInstanceId } from '../shared/generated-equipment-types.js';
 import type { GameWorld } from './world.js';
 
-export function getOrCreateAbilityStateForEntity(
-  world: GameWorld,
-  holderEid: number,
-): AbilityState {
+function getOrCreateAbilityStateForEntity(world: GameWorld, holderEid: number): AbilityState {
   const existing = world.abilityStatesByEntity.get(holderEid);
   if (existing !== undefined) return existing;
   const created = createEmptyAbilityState();

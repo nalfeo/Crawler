@@ -239,7 +239,6 @@ describe('makeRunKey', () => {
   });
 });
 
-
 describe('generatedEquipmentRunKeyFromSeed', () => {
   it('produces a validator-safe run key for safe integer seeds', () => {
     const runKey = generatedEquipmentRunKeyFromSeed(42);

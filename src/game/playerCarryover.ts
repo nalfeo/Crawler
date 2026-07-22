@@ -36,9 +36,9 @@ import {
 } from '../shared/generated-equipment-types.js';
 import { clearActiveWeaponDef } from '../core/active-weapon.js';
 
-export const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
+const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
 
-export class PlayerCarryoverSnapshotError extends Error {
+class PlayerCarryoverSnapshotError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'PlayerCarryoverSnapshotError';
