@@ -59,13 +59,7 @@ export type SetPieceSizingKind = 'exact' | 'themed';
  * reason about collision/interactivity without parsing sprites.
  */
 export type SetPiecePropKind =
-  | 'floor'
-  | 'wall'
-  | 'door'
-  | 'fixture'
-  | 'furniture'
-  | 'decoration'
-  | 'actor';
+  'floor' | 'wall' | 'door' | 'fixture' | 'furniture' | 'decoration' | 'actor';
 
 /** Default render order per prop kind (lower draws first / underneath). */
 export const PROP_KIND_Z: Readonly<Record<SetPiecePropKind, number>> = Object.freeze({

@@ -24,10 +24,7 @@ export const TERRITORY_OVERLAY_ALPHA = 0.42;
 
 /** Roles the tint helper knows how to color. */
 export type FamilyTintRole =
-  | RoomRole.TERRITORY
-  | RoomRole.BOSS_DEN
-  | RoomRole.SETTLEMENT
-  | RoomRole.RESOURCE_HEART;
+  RoomRole.TERRITORY | RoomRole.BOSS_DEN | RoomRole.SETTLEMENT | RoomRole.RESOURCE_HEART;
 
 /**
  * Look up a family by its index into `world.floorExtendedState?.familyState?.presentFamilies`.
