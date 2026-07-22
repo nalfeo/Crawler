@@ -775,33 +775,45 @@ export interface ResumeExpectedProvenance {
  * `resume_run_id`) is safe to continue in THIS run — must never silently
  * combine incompatible search state. Reuses {@link assertShardCompatible}'s
  * existing schemaVersion/floorId/budgetMs/maxFrames/stage/runnerOs/
- * nodeVersion/packageLockHash checks (the exact same guard intra-run
- * candidate shards must already pass), then adds checks that ONLY matter
+ * nodeVersion checks (the exact same guard intra-run candidate shards must
+ * already pass — `workflowSha`/`packageLockHash` are neutralized for THIS
+ * check specifically, see below), then adds checks that ONLY matter
  * ACROSS separate runs: within one run every job shares one checkout + one
  * runner image, so those fields can never differ — but a PRIOR run may have
  * used a different weapon list or TRAIN seed panel, silently making its
  * scores incomparable with this run's. Fails closed on the FIRST mismatch
  * found (never partially merges an incompatible checkpoint).
  *
- * `workflowSha` (`GITHUB_SHA` at run time — see `ShardMeta`) is deliberately
- * NEUTRALIZED before delegating to `assertShardCompatible` (by copying the
- * checkpoint's own `workflowSha` into the comparison object), rather than
- * checked for equality. It changes on every commit to the default branch,
- * including the commit that ships resume support itself, so an exact-match
- * check here would make it structurally impossible to EVER resume a prior
- * run once its workflow file has since been touched — permanently
- * defeating the one scenario (a runner-starvation cancellation motivating a
- * same-day resume) this feature exists for. Every OTHER field
- * `assertShardCompatible` checks — schemaVersion/floorId/budgetMs/maxFrames
- * (win-definition + eval parameters), stage, and runnerOs/nodeVersion/
- * packageLockHash (runtime + build/dependency provenance) — is still
- * genuinely enforced via that shared function, plus trainSeeds/weapons/
- * secondary (the actual search space, via `runInputs`) below. A source-level
- * game/eval logic change that isn't captured by any of those fields (e.g. a
- * scoring-formula edit that doesn't bump `schemaVersion`) is a pre-existing,
- * separately-tracked gap in `SHARD_SCHEMA_VERSION` hygiene, not something
- * `workflowSha` equality was actually able to catch either (an unrelated
- * commit anywhere in the repo also changes `GITHUB_SHA`).
+ * `workflowSha` (`GITHUB_SHA` at run time — see `ShardMeta`) and
+ * `packageLockHash` (a hash of the ENTIRE `package-lock.json`) are
+ * deliberately NEUTRALIZED before delegating to `assertShardCompatible` (by
+ * copying the checkpoint's own values for both fields into the comparison
+ * object), rather than checked for equality. Both drift on ORDINARY repo
+ * activity unrelated to the search itself: `workflowSha` changes on every
+ * commit to the default branch (including the commit that ships resume
+ * support itself), and `packageLockHash` changes on any dependency bump —
+ * even a purely transitive/dev-tooling one that never touches simulation
+ * code (e.g. run 29786216369's own lockfile differs from a later `main` by
+ * a `fast-uri` patch-version bump and a `brace-expansion` dev-marker
+ * change — routine Dependabot/npm churn, not a runtime-behavior change). An
+ * exact-match check on either would make it structurally impossible to EVER
+ * resume a prior run once the workflow file OR the lockfile has since been
+ * touched by anything — permanently defeating the one scenario (a
+ * runner-starvation cancellation motivating a same-day-or-later resume)
+ * this feature exists for. Every OTHER field `assertShardCompatible` checks
+ * — schemaVersion/floorId/budgetMs/maxFrames (win-definition + eval
+ * parameters), stage, and runnerOs/nodeVersion (runtime provenance) — is
+ * still genuinely enforced via that shared function, plus trainSeeds/
+ * weapons/secondary (the actual search space, via `runInputs`) below. A
+ * source-level game/eval logic change that isn't captured by any of those
+ * fields (e.g. a scoring-formula edit that doesn't bump `schemaVersion`, or
+ * a dependency bump that DOES change simulation determinism) is a
+ * pre-existing, separately-tracked gap in `SHARD_SCHEMA_VERSION` hygiene,
+ * not something `workflowSha`/`packageLockHash` equality was actually able
+ * to catch reliably either — an unrelated commit anywhere in the repo also
+ * changes `GITHUB_SHA`, and an unrelated dev-dependency bump also changes
+ * the lockfile hash, so neither field was a precise proxy for "did the
+ * ACTUAL simulation-affecting code change" in the first place.
  *
  * LEGACY FALLBACK (checkpoint has no recorded `runInputs`, e.g. a checkpoint
  * produced before cross-run resume support existed — such as cancelled run
@@ -855,10 +867,15 @@ export function assertResumeCompatible(
     );
   }
   // Reuse the shared shard-compatibility guard for every field EXCEPT
-  // workflowSha, which is neutralized by copying the checkpoint's own value
-  // into the expected-meta comparison object — see docstring above for why.
+  // workflowSha and packageLockHash, both neutralized by copying the
+  // checkpoint's own values into the expected-meta comparison object — see
+  // docstring above for why.
   assertShardCompatible(
-    { ...expected.meta, workflowSha: checkpoint.meta.workflowSha },
+    {
+      ...expected.meta,
+      workflowSha: checkpoint.meta.workflowSha,
+      packageLockHash: checkpoint.meta.packageLockHash,
+    },
     { meta: checkpoint.meta, configs: {}, rows: [] },
     contextLabel,
   );
@@ -952,32 +969,43 @@ export function assertResumeCompatible(
 }
 
 /**
- * Re-stamp an ACCEPTED cross-run resume checkpoint's `meta.workflowSha` to
- * THIS run's value. Call this ONLY after {@link assertResumeCompatible} has
- * already returned successfully for `checkpoint` against `expectedMeta` — it
- * performs no compatibility checks of its own.
+ * Re-stamp an ACCEPTED cross-run resume checkpoint's `meta.workflowSha` AND
+ * `meta.packageLockHash` to THIS run's values. Call this ONLY after
+ * {@link assertResumeCompatible} has already returned successfully for
+ * `checkpoint` against `expectedMeta` — it performs no compatibility checks
+ * of its own.
  *
- * `assertResumeCompatible` intentionally neutralizes `workflowSha` for the
+ * `assertResumeCompatible` intentionally neutralizes BOTH fields for the
  * compatibility CHECK itself (see its docstring) so a prior run's checkpoint
- * isn't rejected purely because the workflow file has since been touched.
- * But the checkpoint OBJECT must not keep carrying the PRIOR run's
- * `workflowSha` forward once accepted: every later round in THIS SAME run
+ * isn't rejected purely because the workflow file or the lockfile has since
+ * been touched. But the checkpoint OBJECT must not keep carrying the PRIOR
+ * run's values forward once accepted: every later round in THIS SAME run
  * compares shards against THIS run's `meta` via the ordinary (non-resume)
  * `assertShardCompatible` path — `applyRoundResult`'s round-N shard check and
- * `aggregate-shards.ts`'s validate-stage provenance check both do an exact
- * `workflowSha` `!==` comparison with no resume-awareness. Without this
- * re-stamp, an accepted resumed checkpoint would fail those checks one round
- * after import, silently defeating the whole feature for exactly the
- * artifacts it exists to recover.
+ * `aggregate-shards.ts`'s validate-stage provenance check both do exact
+ * `workflowSha`/`packageLockHash` `!==` comparisons with no resume-awareness.
+ * Without this re-stamp, an accepted resumed checkpoint would fail those
+ * checks one round after import, silently defeating the whole feature for
+ * exactly the artifacts it exists to recover.
  */
 export function normalizeResumedCheckpoint(
   checkpoint: RoundCheckpoint,
   expectedMeta: ShardMeta,
 ): RoundCheckpoint {
-  if (checkpoint.meta.workflowSha === expectedMeta.workflowSha) {
+  if (
+    checkpoint.meta.workflowSha === expectedMeta.workflowSha &&
+    checkpoint.meta.packageLockHash === expectedMeta.packageLockHash
+  ) {
     return checkpoint;
   }
-  return { ...checkpoint, meta: { ...checkpoint.meta, workflowSha: expectedMeta.workflowSha } };
+  return {
+    ...checkpoint,
+    meta: {
+      ...checkpoint.meta,
+      workflowSha: expectedMeta.workflowSha,
+      packageLockHash: expectedMeta.packageLockHash,
+    },
+  };
 }
 
 /**

@@ -105,7 +105,7 @@ new commit.
 ## Verification
 
 - `npx tsc --noEmit -p tsconfig.json` ✅ (0 errors)
-- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (175/175, after the 6th–11th fixes below)
+- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (180/180, after the 6th–12th fixes below)
 - `npm run verify:fast` ✅
 - `npm run verify:pr-prereqs` ✅
 
@@ -340,13 +340,62 @@ updated to match the renamed error message
 names which panel (own vs. incumbent) the duplicate was found in. Test count:
 171 → 175.
 
+A 12th bot-flagged bug surfaced after CI settled on `aba3aca6` (all 15 prior
+threads confirmed resolved via GraphQL, plus a distinct false alarm —
+`mergeStateStatus: BLOCKED` despite `mergeable: MERGEABLE` turned out to be a
+still-`in_progress` `copilot` check-run, not a merge-gate/thread issue):
+`assertResumeCompatible` neutralizes `workflowSha` before delegating to
+`assertShardCompatible` (copying the checkpoint's own value into the
+comparison object) so an exact-match on `GITHUB_SHA` can never permanently
+block resume once the workflow file has since changed — but `packageLockHash`
+(a hash of the ENTIRE `package-lock.json`) was still checked for strict
+equality via that same `assertShardCompatible` call. The bot confirmed the
+actual target run 29786216369's head commit used a lockfile that differs from
+this branch's by a routine `fast-uri` patch-version bump and a
+`brace-expansion` dev-marker change — both incidental transitive/dev
+dependency churn, not anything touching simulation/runtime code. Since ANY
+dependency bump anywhere in the repo changes the whole-file hash, this meant
+the resume feature, exactly as built, could **never actually resume the
+specific run it exists to recover** — it would always fail closed on
+`packageLockHash` and silently fall back fresh.
+
+Per rule #11 (never weaken an explicit human requirement — "reuse the
+existing strict provenance checks" — without asking first), this was
+escalated to the human directly with 4 options rather than unilaterally
+decided. The human selected: **neutralize `packageLockHash` the same way
+`workflowSha` already is** (informational only, not equality-gated) —
+accepting the identical trade-off already made for `workflowSha`. Fixed by
+extending the existing neutralization pattern in both places: (1)
+`assertResumeCompatible` now copies `checkpoint.meta.packageLockHash` into
+the comparison object alongside `workflowSha` before calling
+`assertShardCompatible`; (2) `normalizeResumedCheckpoint` (which re-stamps an
+ACCEPTED resumed checkpoint's `workflowSha` to the current run's value so
+later same-run checks in `applyRoundResult`/`aggregate-shards.ts` don't
+reject it) now ALSO re-stamps `packageLockHash` for the identical reason.
+Docstrings on both functions and the two `ai-sweep.yml` comment blocks
+describing the compatibility contract were updated to document
+`packageLockHash` as informational, matching `workflowSha`'s existing
+treatment, and to record the concrete fast-uri/brace-expansion example as the
+motivating case.
+
+6 tests updated/added in `sweep-round-plan.test.ts`: the pre-existing "throws
+on packageLockHash mismatch" test was converted to "does NOT throw" (mirroring
+the existing `workflowSha` test); a new "still fails closed... even when
+packageLockHash ALSO differs" test (mirrors the existing `workflowSha`
+equivalent); a new "still fails closed... even when BOTH workflowSha and
+packageLockHash differ" test; and `normalizeResumedCheckpoint` gained 3 new
+tests (re-stamps `packageLockHash` alone; re-stamps both together; re-stamps
+— is NOT a no-op — when `packageLockHash` alone differs even though
+`workflowSha` matches). Test count: 175 → 180.
+
 ## Notes
 
 - No stacking/rebasing of PR #1754 was attempted per the parent's explicit
   "do not stack" decision — this is a brand-new, small commit on top of the
   branch's current tip.
-- `workflowSha` remains informational-only in the provenance gate (already
-  fixed in the original feature) — the resuming workflow's own SHA always
-  differs from the run being resumed, by construction, once any change lands.
+- `workflowSha` AND `packageLockHash` are both informational-only in the
+  provenance gate (see the 12th fix above) — the resuming workflow's own SHA
+  and lockfile hash always differ from the run being resumed, by
+  construction, once any change lands anywhere in the repo.
 - The sweep was **not** dispatched. Parent session `5392703e-46a9-4d27-a466-3d0af0a09c72`
   will dispatch a resume against run 29786216369 once this PR merges.

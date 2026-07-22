@@ -72,9 +72,10 @@
 #   compatible checkpoint tier (r3 > r2 > r1 > init) as this run's round-0
 #   starting point instead of recomputing it — see `assertResumeCompatible` in
 #   round-plan.ts for the exact compatibility contract (schemaVersion, floorId,
-#   budgetMs, maxFrames, stage, runnerOs, nodeVersion, packageLockHash, TRAIN
-#   seeds, weapons, secondary — ANY mismatch fails that combo closed back to a
-#   fresh run, never a silent partial merge). Resume granularity is the WHOLE
+#   budgetMs, maxFrames, stage, runnerOs, nodeVersion, TRAIN seeds, weapons,
+#   secondary — ANY mismatch fails that combo closed back to a fresh run,
+#   never a silent partial merge; `workflowSha`/`packageLockHash` are
+#   informational only, see below). Resume granularity is the WHOLE
 #   latest completed round-tier per combo — it never salvages an individual
 #   incomplete candidate shard from a round that was still in-flight when the
 #   prior run was cancelled; that in-flight round is simply recomputed from
@@ -84,17 +85,22 @@
 #   not scheduling-identical (`baseline` still always waits on
 #   `resume-import`'s checkout/Node-setup/metadata step first).
 #
-#   `workflowSha` (`GITHUB_SHA` at record time) is deliberately EXCLUDED from
+#   `workflowSha` (`GITHUB_SHA` at record time) AND `packageLockHash` (a hash
+#   of the entire `package-lock.json`) are both deliberately EXCLUDED from
 #   this compatibility gate — see `assertResumeCompatible`'s docstring in
-#   round-plan.ts. It changes on every commit to the default branch, including
-#   the one that ships this feature, so treating it as a hard-equality
+#   round-plan.ts. `workflowSha` changes on every commit to the default
+#   branch, including the one that ships this feature, and `packageLockHash`
+#   changes on any dependency bump — even a purely transitive/dev-tooling one
+#   (run 29786216369's own lockfile differs from later `main` by a routine
+#   `fast-uri` patch bump and a `brace-expansion` dev-marker change, neither
+#   of which touches simulation code). Treating either as a hard-equality
 #   requirement would make it permanently impossible to ever resume a prior
-#   run once its workflow file has since been touched — defeating the exact
-#   scenario (resuming run 29786216369 after this PR merges) this feature
-#   exists for. What actually governs whether two runs' search results are
-#   comparable — schemaVersion/floorId/budgetMs/maxFrames, runnerOs/
-#   nodeVersion/packageLockHash, and trainSeeds/weapons/secondary — is still
-#   fully enforced and still fails closed on any mismatch.
+#   run once its workflow file OR its lockfile has since changed at all —
+#   defeating the exact scenario (resuming run 29786216369 after this PR
+#   merges) this feature exists for. What actually governs whether two runs'
+#   search results are comparable — schemaVersion/floorId/budgetMs/
+#   maxFrames, runnerOs/nodeVersion, and trainSeeds/weapons/secondary — is
+#   still fully enforced and still fails closed on any mismatch.
 #
 #   LEGACY CHECKPOINTS (pre-dating this feature, e.g. run 29786216369's) never
 #   recorded `runInputs` (trainSeeds/weapons/secondary). Rather than
@@ -253,9 +259,10 @@ jobs:
   # and, PER COMBO, walks tiers r3 > r2 > r1 > init picking the FIRST tier
   # whose checkpoint file exists AND passes `round-plan.ts --mode
   # resume-check` (schemaVersion/floorId/budgetMs/maxFrames/stage/runnerOs/
-  # nodeVersion/packageLockHash/TRAIN seeds/weapons/secondary — workflowSha is
-  # deliberately excluded, see the CROSS-RUN RESUME header above — see
-  # assertResumeCompatible); an INCOMPATIBLE tier does not stop the scan — it
+  # nodeVersion/TRAIN seeds/weapons/secondary — workflowSha AND
+  # packageLockHash are deliberately excluded, see the CROSS-RUN RESUME
+  # header above — see assertResumeCompatible); an INCOMPATIBLE tier does
+  # not stop the scan — it
   # keeps trying strictly-older tiers for that same combo before giving up.
   # A combo with no compatible tier at all falls back to a fresh run with a
   # visible `::warning::`/`::notice::` log line — never a silent merge of

@@ -1265,10 +1265,10 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
     expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/node-version/);
   });
 
-  it('throws on packageLockHash mismatch (dependencies changed since the prior run)', () => {
+  it('does NOT throw on packageLockHash mismatch — an incidental/transitive dependency bump (e.g. run 29786216369-vs-later-main lockfile drift) always differs once ANY dependency has since changed, so it is deliberately excluded from the gate (see docstring)', () => {
     const exp = expected();
     exp.meta = { ...exp.meta, packageLockHash: 'ffffffffffffffffffffffff' };
-    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/package-lock/);
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).not.toThrow();
   });
 
   it('does NOT throw on workflowSha mismatch — GITHUB_SHA always differs once the resuming workflow itself has changed, so it is deliberately excluded from the gate (see docstring)', () => {
@@ -1281,6 +1281,23 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
     const exp = expected();
     exp.meta = { ...exp.meta, workflowSha: 'ffffffffffffffffffffffffffffffff', floorId: 'floor2' };
     expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/floorId/);
+  });
+
+  it('still fails closed on a genuine incompatibility even when packageLockHash ALSO differs (packageLockHash exclusion does not widen the gate)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, packageLockHash: 'ffffffffffffffffffffffff', floorId: 'floor2' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/floorId/);
+  });
+
+  it('still fails closed on a genuine incompatibility even when BOTH workflowSha and packageLockHash differ (neither exclusion, together, widens the gate)', () => {
+    const exp = expected();
+    exp.meta = {
+      ...exp.meta,
+      workflowSha: 'ffffffffffffffffffffffffffffffff',
+      packageLockHash: 'ffffffffffffffffffffffff',
+      schemaVersion: SHARD_SCHEMA_VERSION + 1,
+    };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/schemaVersion/);
   });
 
   it('throws on trainSeeds mismatch (a different TRAIN panel makes scores incomparable)', () => {
@@ -1560,7 +1577,7 @@ describe('inferRunInputsFromCheckpoint (legacy checkpoint panel inference, unit-
   });
 });
 
-describe('normalizeResumedCheckpoint (re-stamp workflowSha on an ALREADY-accepted resume checkpoint)', () => {
+describe('normalizeResumedCheckpoint (re-stamp workflowSha + packageLockHash on an ALREADY-accepted resume checkpoint)', () => {
   it("re-stamps meta.workflowSha to the expected (current run) value when the checkpoint carries the PRIOR run's workflowSha", () => {
     const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
     expect(checkpoint.meta.workflowSha).toBe(META.workflowSha);
@@ -1568,16 +1585,62 @@ describe('normalizeResumedCheckpoint (re-stamp workflowSha on an ALREADY-accepte
     const normalized = normalizeResumedCheckpoint(checkpoint, expectedMeta);
     expect(normalized.meta.workflowSha).toBe('currentrunsha0000currentrunsha00');
     // Every other meta field and the rows/steps/combo must be unchanged --
-    // this is a workflowSha-only re-stamp, not a general meta rewrite.
+    // this is a workflowSha/packageLockHash-only re-stamp, not a general
+    // meta rewrite.
     expect(normalized.meta).toEqual({ ...checkpoint.meta, workflowSha: expectedMeta.workflowSha });
     expect(normalized.rows).toBe(checkpoint.rows);
     expect(normalized.steps).toBe(checkpoint.steps);
   });
 
-  it('is a no-op (returns the SAME object reference) when workflowSha already matches', () => {
+  it("re-stamps meta.packageLockHash to the expected (current run) value when the checkpoint carries the PRIOR run's packageLockHash", () => {
     const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
-    const expectedMeta: ShardMeta = { ...META, workflowSha: checkpoint.meta.workflowSha };
+    expect(checkpoint.meta.packageLockHash).toBe(META.packageLockHash);
+    const expectedMeta: ShardMeta = {
+      ...META,
+      packageLockHash: 'currentlockhash0000currentlock00',
+    };
+    const normalized = normalizeResumedCheckpoint(checkpoint, expectedMeta);
+    expect(normalized.meta.packageLockHash).toBe('currentlockhash0000currentlock00');
+    expect(normalized.meta).toEqual({
+      ...checkpoint.meta,
+      packageLockHash: expectedMeta.packageLockHash,
+    });
+    expect(normalized.rows).toBe(checkpoint.rows);
+    expect(normalized.steps).toBe(checkpoint.steps);
+  });
+
+  it('re-stamps BOTH workflowSha and packageLockHash together when both differ from the expected (current run) values', () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    const expectedMeta: ShardMeta = {
+      ...META,
+      workflowSha: 'currentrunsha0000currentrunsha00',
+      packageLockHash: 'currentlockhash0000currentlock00',
+    };
+    const normalized = normalizeResumedCheckpoint(checkpoint, expectedMeta);
+    expect(normalized.meta.workflowSha).toBe(expectedMeta.workflowSha);
+    expect(normalized.meta.packageLockHash).toBe(expectedMeta.packageLockHash);
+  });
+
+  it('is a no-op (returns the SAME object reference) when workflowSha AND packageLockHash already match', () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    const expectedMeta: ShardMeta = {
+      ...META,
+      workflowSha: checkpoint.meta.workflowSha,
+      packageLockHash: checkpoint.meta.packageLockHash,
+    };
     expect(normalizeResumedCheckpoint(checkpoint, expectedMeta)).toBe(checkpoint);
+  });
+
+  it('re-stamps (is NOT a no-op) when workflowSha matches but packageLockHash alone differs', () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    const expectedMeta: ShardMeta = {
+      ...META,
+      workflowSha: checkpoint.meta.workflowSha,
+      packageLockHash: 'currentlockhash0000currentlock00',
+    };
+    const normalized = normalizeResumedCheckpoint(checkpoint, expectedMeta);
+    expect(normalized).not.toBe(checkpoint);
+    expect(normalized.meta.packageLockHash).toBe('currentlockhash0000currentlock00');
   });
 });
 
