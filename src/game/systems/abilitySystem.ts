@@ -16,6 +16,7 @@ import {
 import { EffectiveStats, Enemy, Health, Player, Position } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import { applyCooldownReduction } from '../../shared/stats.js';
+import { weaponSkillPrerequisiteMatches } from '../../shared/weapon-skills.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
 import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
@@ -752,7 +753,11 @@ export function weaponPrerequisiteMet(
   const weaponDef = getActiveWeaponDef(world);
   if (weaponDef === undefined) return false;
 
-  return weaponDef.weaponClassSkillId === prereq || weaponDef.weaponTypeSkillId === prereq;
+  return weaponSkillPrerequisiteMatches(
+    prereq,
+    weaponDef.weaponClassSkillId,
+    weaponDef.weaponTypeSkillId,
+  );
 }
 
 function applyPassive(

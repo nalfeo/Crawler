@@ -13,7 +13,8 @@ import type { GameWorld } from './world.js';
 import { resolveCrit, resolveDodge } from './combat-rolls.js';
 import { DEFAULT_BLOOD_COLOR } from '../shared/constants.js';
 import { getBodyHalfWidth } from './physics-body.js';
-import { computeTypedPrimaryMultiplier, type DamageAffinity } from '../shared/stats.js';
+import type { DamageAffinity } from '../shared/stats.js';
+import { computePlayerScaledDamage } from './combat-math.js';
 import { FAIL_CLOSED_DAMAGE_META, type DamageOrigin } from './damage-meta.js';
 
 /**
@@ -208,14 +209,16 @@ export function applyDamage(
   if (options.origin === 'player' && !isPlayerTarget && hasComponent(world.ecs, target, Enemy)) {
     const player = query(world.ecs, [Player, EffectiveStats])[0];
     if (player !== undefined) {
-      const damageBonus = world.stores.effectiveStats.damageBonus[player] ?? 0;
-      const damagePercent = world.stores.effectiveStats.damagePercent[player] ?? 0;
-      let scaledAmount = Math.max(0, amount + damageBonus) * (1 + Math.max(0, damagePercent));
-      if (options.scaleWithPrimary) {
-        const strength = world.stores.effectiveStats.strength[player] ?? 0;
-        const intelligence = world.stores.effectiveStats.intelligence[player] ?? 0;
-        scaledAmount *= computeTypedPrimaryMultiplier(options.affinity, strength, intelligence);
-      }
+      const scaledAmount = computePlayerScaledDamage(
+        amount,
+        {
+          damageBonus: world.stores.effectiveStats.damageBonus[player] ?? 0,
+          damagePercent: world.stores.effectiveStats.damagePercent[player] ?? 0,
+          strength: world.stores.effectiveStats.strength[player] ?? 0,
+          intelligence: world.stores.effectiveStats.intelligence[player] ?? 0,
+        },
+        options,
+      );
       if (options.canCrit) {
         const critChance = world.stores.effectiveStats.critChance[player] ?? 0;
         const critMultiplier = world.stores.effectiveStats.critMultiplier[player] ?? 1;
