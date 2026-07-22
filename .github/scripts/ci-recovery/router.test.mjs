@@ -864,11 +864,13 @@ test('train sweeps preserve synchronize only for the directly triggered PR', () 
   );
 });
 
-test('managed state, task, and train comments do not feed the recovery router', () => {
+test('managed recovery comments do not feed the recovery router', () => {
   for (const body of [
     '<!-- crawler-ci-state:v1 -->\nstate',
     '<!-- crawler-ci-task:v1 fingerprint=x -->\ntask',
     '<!-- crawler-merge-train:v1 -->\nstatus',
+    '<!-- crawler-review-request:v1 head=x reason=ready -->',
+    '<!-- crawler-review-conflict:v1 episode=x head=y base=z -->',
   ]) {
     assert.equal(isManagedCommentEvent({ comment: { body } }, 'issue_comment'), true);
   }
@@ -881,12 +883,14 @@ test('managed state, task, and train comments do not feed the recovery router', 
   );
 });
 
-test('managed state, task, and train comments are rejected by the workflow job guard', () => {
+test('managed recovery comments are rejected by the workflow job guard', () => {
   assert.equal(typeof routeJob.if, 'string');
   for (const marker of [
     '<!-- crawler-ci-state:v1 -->',
     '<!-- crawler-ci-task:v1',
     '<!-- crawler-merge-train:v1 -->',
+    '<!-- crawler-review-request:v1',
+    '<!-- crawler-review-conflict:v1',
   ]) {
     assert.ok(
       routeJob.if.includes(`!startsWith(github.event.comment.body, '${marker}')`),
