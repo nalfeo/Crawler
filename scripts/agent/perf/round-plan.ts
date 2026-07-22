@@ -455,20 +455,36 @@ export function extractLegacyBaselineShard(checkpoint: RoundCheckpoint): ShardAr
  *   be used for this instead —
  *   {@link baseConfigForCombo} always sets every knob, secondary knobs
  *   included, to its SSOT default regardless of `secondary`.
- * - `trainSeeds`/`weapons`: derived from the checkpoint's own round-0
- *   baseline rows (`combo === checkpoint.incumbentCombo`, `configId ===
- *   checkpoint.incumbentConfigId` — the stable round-0 anchor, never
- *   reassigned after `initCheckpoint`, so this is safe to read at any later
- *   round) — but ONLY if those rows form a COMPLETE, DUPLICATE-FREE,
+ * - `trainSeeds`/`weapons`: derived from the checkpoint's OWN round-0 base
+ *   rows — `combo === checkpoint.combo`, `configId === configId(baseConfigForCombo(parseComboId(checkpoint.combo)))`
+ *   — the checkpoint's OWN canonical base config, deliberately NOT
+ *   `checkpoint.incumbentCombo`/`incumbentConfigId`. For a non-LEGACY combo
+ *   initialized with a `legacyBaseline`, those `incumbent*` fields point at
+ *   the SEPARATE LEGACY incumbent (see `initCheckpoint`'s "Incumbent for the
+ *   safety gate" branch), not this checkpoint's own search-space rows — a
+ *   malformed checkpoint whose own combo was evaluated on a narrow/wrong
+ *   panel (e.g. seeds 1-24) while carrying a rectangular LEGACY incumbent
+ *   panel (e.g. seeds 1-80) would otherwise have its OWN panel silently
+ *   inferred from the LEGACY incumbent's rows instead — accepting it as
+ *   1-80 and later mixing incomparable old (1-24) and new (1-80) candidate
+ *   totals. Only if those own-combo rows form a COMPLETE, DUPLICATE-FREE,
  *   RECTANGULAR (seed × weapon) panel: every (seed, weapon) pair appears
  *   EXACTLY once, and the row count exactly equals seeds×weapons. A sparse,
  *   duplicated, or ragged panel means this checkpoint's baseline was never a
  *   clean full sweep this function can safely characterize, so it throws
  *   rather than guess.
+ * - When a SEPARATE LEGACY incumbent panel is present (non-LEGACY combo +
+ *   `legacyBaseline`), it is ALSO derived (same complete/duplicate-free/
+ *   rectangular requirement) and compared EXACTLY against the checkpoint's
+ *   own panel — the two panels being anything other than identical means
+ *   the combo's search and its LEGACY safety-gate incumbent were evaluated
+ *   on different train spaces, so results between them are not comparable
+ *   and this checkpoint cannot be safely characterized as one train run.
  *
- * Fails closed (throws) on ANY of: no identifiable round-0 rows, a duplicate
- * (seed, weapon) pair, or a non-rectangular row count. Never returns a
- * partial/best-guess result.
+ * Fails closed (throws) on ANY of: no identifiable round-0 rows (own combo OR
+ * incumbent), a duplicate (seed, weapon) pair, a non-rectangular row count, or
+ * an own-vs-incumbent panel mismatch. Never returns a partial/best-guess
+ * result.
  */
 export function inferRunInputsFromCheckpoint(checkpoint: RoundCheckpoint): {
   trainSeeds: number[];
@@ -502,36 +518,87 @@ export function inferRunInputsFromCheckpoint(checkpoint: RoundCheckpoint): {
     );
   }
 
-  const rows = checkpoint.rows.filter(
-    (r) => r.combo === checkpoint.incumbentCombo && r.configId === checkpoint.incumbentConfigId,
-  );
-  if (rows.length === 0) {
-    throw new Error(
-      `${contextLabel}: no round-0 baseline rows found for incumbent config ` +
-        `'${checkpoint.incumbentConfigId.slice(0, 48)}' (combo '${checkpoint.incumbentCombo}') — cannot infer ` +
-        `trainSeeds/weapons for a checkpoint with no recorded runInputs.`,
-    );
-  }
-  const seen = new Set<string>();
-  for (const row of rows) {
-    const key = `${row.seed}\u0000${row.weapon}`;
-    if (seen.has(key)) {
+  // Derive a COMPLETE/DUPLICATE-FREE/RECTANGULAR (seed × weapon) panel from a
+  // set of rows, or throw. Shared by both the checkpoint's own panel and (when
+  // present) its separate LEGACY incumbent panel, so both are held to the
+  // identical proof requirement.
+  const derivePanel = (
+    rows: readonly RunRow[],
+    panelLabel: string,
+  ): { trainSeeds: number[]; weapons: string[] } => {
+    if (rows.length === 0) {
       throw new Error(
-        `${contextLabel}: duplicate baseline row for (seed=${row.seed}, weapon=${row.weapon}) — ` +
-          `cannot infer a rectangular panel from a checkpoint with duplicated rows.`,
+        `${contextLabel}: no round-0 baseline rows found for ${panelLabel} — cannot infer ` +
+          `trainSeeds/weapons for a checkpoint with no recorded runInputs.`,
       );
     }
-    seen.add(key);
-  }
-  const trainSeeds = [...new Set(rows.map((r) => r.seed))].sort((a, b) => a - b);
-  const weapons = [...new Set(rows.map((r) => r.weapon))].sort();
-  if (rows.length !== trainSeeds.length * weapons.length) {
-    throw new Error(
-      `${contextLabel}: ${rows.length} baseline row(s) do not form a complete rectangular panel of ` +
-        `${trainSeeds.length} seed(s) × ${weapons.length} weapon(s) (expected ${trainSeeds.length * weapons.length}) ` +
-        `— cannot infer trainSeeds/weapons from an incomplete/ragged panel.`,
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const key = `${row.seed}\u0000${row.weapon}`;
+      if (seen.has(key)) {
+        throw new Error(
+          `${contextLabel}: duplicate ${panelLabel} row for (seed=${row.seed}, weapon=${row.weapon}) — ` +
+            `cannot infer a rectangular panel from a checkpoint with duplicated rows.`,
+        );
+      }
+      seen.add(key);
+    }
+    const trainSeeds = [...new Set(rows.map((r) => r.seed))].sort((a, b) => a - b);
+    const weapons = [...new Set(rows.map((r) => r.weapon))].sort();
+    if (rows.length !== trainSeeds.length * weapons.length) {
+      throw new Error(
+        `${contextLabel}: ${rows.length} ${panelLabel} row(s) do not form a complete rectangular panel ` +
+          `of ${trainSeeds.length} seed(s) × ${weapons.length} weapon(s) (expected ` +
+          `${trainSeeds.length * weapons.length}) — cannot infer trainSeeds/weapons from an ` +
+          `incomplete/ragged panel.`,
+      );
+    }
+    return { trainSeeds, weapons };
+  };
+
+  // This checkpoint's OWN canonical round-0 base config id — NEVER
+  // `checkpoint.incumbentConfigId`, which for a non-LEGACY combo with a
+  // `legacyBaseline` names the separate LEGACY incumbent's config instead
+  // (see the docstring above).
+  const ownBaseConfigId = configId(baseConfigForCombo(parseComboId(checkpoint.combo)));
+  const ownRows = checkpoint.rows.filter(
+    (r) => r.combo === checkpoint.combo && r.configId === ownBaseConfigId,
+  );
+  const { trainSeeds, weapons } = derivePanel(
+    ownRows,
+    `own base config '${ownBaseConfigId.slice(0, 48)}' (combo '${checkpoint.combo}')`,
+  );
+
+  // A non-LEGACY combo initialized with a `legacyBaseline` carries a SEPARATE
+  // LEGACY incumbent panel (`incumbentCombo === LEGACY_COMBO_ID !== checkpoint.combo`).
+  // Prove it was evaluated on the IDENTICAL train panel as this checkpoint's
+  // own combo — otherwise the two are not comparable and this checkpoint's
+  // search space cannot be safely characterized as one train run.
+  if (checkpoint.incumbentCombo !== checkpoint.combo) {
+    const incumbentRows = checkpoint.rows.filter(
+      (r) => r.combo === checkpoint.incumbentCombo && r.configId === checkpoint.incumbentConfigId,
     );
+    const incumbentPanel = derivePanel(
+      incumbentRows,
+      `LEGACY incumbent config '${checkpoint.incumbentConfigId.slice(0, 48)}' (combo '${checkpoint.incumbentCombo}')`,
+    );
+    const sameSeeds =
+      incumbentPanel.trainSeeds.length === trainSeeds.length &&
+      incumbentPanel.trainSeeds.every((s, i) => s === trainSeeds[i]);
+    const sameWeapons =
+      incumbentPanel.weapons.length === weapons.length &&
+      incumbentPanel.weapons.every((w, i) => w === weapons[i]);
+    if (!sameSeeds || !sameWeapons) {
+      throw new Error(
+        `${contextLabel}: own combo's train panel (seeds [${trainSeeds.join(',')}], weapons ` +
+          `[${weapons.join(',')}]) does not match its LEGACY incumbent's train panel (seeds ` +
+          `[${incumbentPanel.trainSeeds.join(',')}], weapons [${incumbentPanel.weapons.join(',')}]) — ` +
+          `the combo's search and its safety-gate incumbent were evaluated on different train ` +
+          `spaces, so this checkpoint cannot be safely characterized as one train run.`,
+      );
+    }
   }
+
   return { trainSeeds, weapons, secondary };
 }
 

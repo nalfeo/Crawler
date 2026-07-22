@@ -105,7 +105,7 @@ new commit.
 ## Verification
 
 - `npx tsc --noEmit -p tsconfig.json` ✅ (0 errors)
-- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (171/171, after the 6th–10th fixes below)
+- `.\node_modules\.bin\vitest.cmd run tests/unit/ai-sweep-workflow.test.ts tests/unit/ai/sweep-round-plan.test.ts tests/unit/ai/sweep-eval-search-promotion.test.ts` ✅ (175/175, after the 6th–11th fixes below)
 - `npm run verify:fast` ✅
 - `npm run verify:pr-prereqs` ✅
 
@@ -295,6 +295,50 @@ fast on the combo error, not a confusing downstream one), plus a workflow-level
 test asserting the exhaustive tier→round `case` mapping and the `--combo
 "$COMBO" --round "$EXPECT_ROUND"` invocation shape are present in
 `ai-sweep.yml`. Test count: 167 → 171.
+
+An 11th bot-flagged bug surfaced after CI settled on `47e36d29` (all 14 prior
+threads confirmed resolved via GraphQL, but a brand-new thread appeared at
+`round-plan.ts:507`): `inferRunInputsFromCheckpoint` derived a legacy
+checkpoint's implicit TRAIN panel by filtering
+`checkpoint.rows` on `combo === checkpoint.incumbentCombo && configId ===
+checkpoint.incumbentConfigId`. For a checkpoint initialized WITHOUT a
+`legacyBaseline`, `incumbentCombo`/`incumbentConfigId` are the checkpoint's
+OWN combo/base-config — same thing. But `initCheckpoint`'s `legacyBaseline`
+branch (used for every non-LEGACY combo evaluated against the fixed LEGACY
+safety-gate incumbent) forcibly sets `incumbentCombo` to the LEGACY combo id
+and `incumbentConfigId` to the canonical LEGACY base config id — a
+**different** combo/config than the checkpoint's own. Inference was therefore
+deriving the checkpoint's own train panel from the SEPARATE LEGACY
+incumbent's rows, not the checkpoint's own combo's rows. A malformed
+checkpoint whose own combo was evaluated on a narrow/wrong panel (e.g. seeds
+1-24) while carrying a rectangular LEGACY incumbent panel (e.g. seeds 1-80)
+would have had its own panel silently inferred as 1-80 — accepting a
+resume that later mixes incomparable narrow (own) and wide (incumbent) totals.
+
+Fixed by deriving the checkpoint's OWN base config id independently —
+`configId(baseConfigForCombo(parseComboId(checkpoint.combo)))`, which
+`--stage search-baseline` always uses for round-0 base rows regardless of the
+combo — and filtering rows by `combo === checkpoint.combo && configId ===
+ownBaseConfigId`, never the `incumbent*` fields. The duplicate-check/
+rectangular-check logic was extracted into a shared `derivePanel(rows,
+panelLabel)` closure, reused for both the checkpoint's own panel and (when
+`checkpoint.incumbentCombo !== checkpoint.combo`, i.e. a `legacyBaseline` was
+supplied) its separate LEGACY incumbent panel — which is now ALSO derived and
+required to match the own-combo panel EXACTLY (same sorted trainSeeds, same
+sorted weapons), since a combo and its safety-gate incumbent evaluated on
+different train spaces are not comparable.
+
+4 new tests cover this in `sweep-round-plan.test.ts`: a non-LEGACY checkpoint
+with matching own/incumbent panels correctly infers from its OWN panel;
+seed-count mismatch between own and incumbent panels is rejected; same
+seed-count but different weapon-set mismatch is rejected; a ragged/
+non-rectangular OWN panel is rejected even when the incumbent's panel alone
+would otherwise be clean (proving the own-panel proof runs, not just the
+incumbent's). One pre-existing test's regex (`/duplicate baseline row/`) was
+updated to match the renamed error message
+(`/duplicate own base config .* row/`) since `derivePanel`'s error text now
+names which panel (own vs. incumbent) the duplicate was found in. Test count:
+171 → 175.
 
 ## Notes
 

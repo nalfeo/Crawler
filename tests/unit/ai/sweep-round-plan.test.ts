@@ -157,6 +157,51 @@ function legacyCheckpointWithPanel(seeds: number[], weapons: string[]): RoundChe
   return initCheckpoint(LEGACY_LEGACY, KNOBS, legacyPanelShard(seeds, weapons));
 }
 
+/** A complete, duplicate-free, rectangular (seed × weapon) shard for an
+ *  arbitrary (config, combo) pair — generalizes `legacyPanelShard` beyond the
+ *  canonical LEGACY base config, for building a non-LEGACY checkpoint's OWN
+ *  base panel (as distinct from its separate LEGACY incumbent panel). */
+function ownPanelShard(
+  cfg: SweepConfig,
+  cfgId: string,
+  comboIdStr: string,
+  seeds: number[],
+  weapons: string[],
+): ShardArtifact {
+  const rows: RunRow[] = [];
+  for (const s of seeds) {
+    for (const w of weapons) {
+      rows.push(row(cfgId, w, s, 100, true, comboIdStr));
+    }
+  }
+  return shard(rows, { [cfgId]: cfg });
+}
+
+/** A non-LEGACY (`navmeshFused+legacy`) legacy (pre-resume-support) checkpoint
+ *  — no `runInputs` — with a SEPARATE LEGACY incumbent (from
+ *  `legacyBaseline`). `ownSeeds`/`ownWeapons` and `legacySeeds`/`legacyWeapons`
+ *  are independently sized so mismatch-between-panels tests can construct a
+ *  deliberately malformed checkpoint (own combo evaluated on a narrower/wider
+ *  panel than its LEGACY safety-gate incumbent). */
+function nonLegacyCheckpointWithPanels(
+  ownSeeds: number[],
+  ownWeapons: string[],
+  legacySeeds: number[],
+  legacyWeapons: string[],
+): RoundCheckpoint {
+  const navmeshBase = baseConfigForCombo(NAVMESH_LEGACY);
+  const navmeshBaseId = configId(navmeshBase);
+  const ownShard = ownPanelShard(
+    navmeshBase,
+    navmeshBaseId,
+    NAVMESH_LEGACY_COMBO_ID,
+    ownSeeds,
+    ownWeapons,
+  );
+  const legacyShard = legacyPanelShard(legacySeeds, legacyWeapons);
+  return initCheckpoint(NAVMESH_LEGACY, KNOBS, ownShard, legacyShard);
+}
+
 describe('initCheckpoint', () => {
   it('builds a round-0 checkpoint seeded from the baseline shard', () => {
     const checkpoint = baseCheckpoint(150);
@@ -1357,7 +1402,7 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
       exp.trainSeeds = '1';
       exp.weapons = 'sword';
       expect(() => assertResumeCompatible(duplicateCheckpoint, exp)).toThrow(
-        /duplicate baseline row/,
+        /duplicate own base config .* row/,
       );
     });
 
@@ -1443,6 +1488,74 @@ describe('inferRunInputsFromCheckpoint (legacy checkpoint panel inference, unit-
     const checkpoint = initCheckpoint(LEGACY_LEGACY, partialSecondaryKnobs, baselineShard(150));
     expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
       /PARTIAL secondary-knobs key set/,
+    );
+  });
+
+  // A non-LEGACY combo initialized with a `legacyBaseline` carries a SEPARATE
+  // LEGACY incumbent (`incumbentCombo`/`incumbentConfigId` point at LEGACY,
+  // not the checkpoint's own combo — see `initCheckpoint`). Inference must
+  // derive the checkpoint's OWN train panel from its own combo's rows, never
+  // from the incumbent's — otherwise a malformed checkpoint whose own combo
+  // was evaluated on a narrower/wider panel than its LEGACY incumbent would
+  // silently inherit the WRONG (incumbent's) panel instead of its own.
+  it("infers a non-LEGACY checkpoint's trainSeeds/weapons from its OWN base panel, not its separate LEGACY incumbent's panel", () => {
+    const checkpoint = nonLegacyCheckpointWithPanels(
+      [1, 2, 3],
+      ['sword', 'bow'],
+      [1, 2, 3],
+      ['sword', 'bow'],
+    );
+    expect(inferRunInputsFromCheckpoint(checkpoint)).toEqual({
+      trainSeeds: [1, 2, 3],
+      weapons: ['bow', 'sword'],
+      secondary: false,
+    });
+  });
+
+  it("fails closed when a non-LEGACY checkpoint's own base panel does NOT match its separate LEGACY incumbent's panel — this is the exact gap that let a malformed checkpoint (own combo evaluated on a narrower/wider train space than its safety-gate incumbent) silently infer the WRONG panel from the incumbent instead of its own combo's rows", () => {
+    // Own combo evaluated on seeds 1-3 (kept small for test speed); LEGACY
+    // incumbent evaluated on a WIDER/different panel (seeds 1-4). Before the
+    // fix, inference read `checkpoint.incumbentCombo`/`incumbentConfigId`
+    // (the LEGACY rows) and would have silently returned the LEGACY panel
+    // (seeds 1-4) as if it were this combo's own train space.
+    const checkpoint = nonLegacyCheckpointWithPanels([1, 2, 3], ['sword'], [1, 2, 3, 4], ['sword']);
+    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
+      /own combo's train panel .* does not match its LEGACY incumbent's train panel/,
+    );
+  });
+
+  it("fails closed when a non-LEGACY checkpoint's own base panel and its LEGACY incumbent's panel have the same SEED count but different WEAPON sets", () => {
+    const checkpoint = nonLegacyCheckpointWithPanels(
+      [1, 2],
+      ['sword', 'bow'],
+      [1, 2],
+      ['sword', 'baseball-bat'],
+    );
+    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
+      /own combo's train panel .* does not match its LEGACY incumbent's train panel/,
+    );
+  });
+
+  it("still requires the OWN panel (not just the incumbent's) to be complete/duplicate-free/rectangular — a non-LEGACY checkpoint whose own combo's rows are ragged fails on its own panel before the incumbent panel is even derived", () => {
+    const navmeshBase = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    // Own combo: ragged (2 seeds x 2 weapons expected = 4 rows, but only 3 present).
+    const raggedOwnShard = shard(
+      [
+        row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID),
+        row(navmeshBaseId, 'bow', 1, 100, true, NAVMESH_LEGACY_COMBO_ID),
+        row(navmeshBaseId, 'sword', 2, 100, true, NAVMESH_LEGACY_COMBO_ID),
+      ],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const checkpoint = initCheckpoint(
+      NAVMESH_LEGACY,
+      KNOBS,
+      raggedOwnShard,
+      legacyPanelShard([1, 2], ['sword', 'bow']),
+    );
+    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
+      /do not form a complete rectangular panel/,
     );
   });
 });
