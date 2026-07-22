@@ -34,10 +34,27 @@ function setupPlayer() {
 describe('abilitySystem', () => {
   it('enforces max 10 active abilities equipped', () => {
     const { world, player } = setupPlayer();
-    const state = world.abilityStatesByEntity.get(player)!;
-    // Pre-fill slots directly to verify cap enforcement independently of catalog size.
-    state.equippedActiveAbilityIds = Array.from({ length: ACTIVE_ABILITY_SLOT_LIMIT }, (_, i) =>
-      i < ACTIVE_ABILITY_SLOT_LIMIT - 1 ? `ability-${i}` : 'battle-focus',
+    world.abilityStatesByEntity.set(player, {
+      learnedSpellIds: [],
+      equippedActiveAbilityIds: [
+        'battle-focus',
+        'heal',
+        'pulse-shield',
+        'magic-missile',
+        'frost-nova',
+        'bless',
+        'stoneskin',
+        'curse',
+        'vampiric-touch',
+        'haste',
+      ],
+      passiveAbilityIds: [],
+      cooldownByAbilityId: new Map(),
+      cooldownFramesByAbilityId: new Map(),
+      appliedPassiveAbilityIds: new Set(),
+    });
+    expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toHaveLength(
+      ACTIVE_ABILITY_SLOT_LIMIT,
     );
 
     expect(() => equipActiveAbility(world, player, 'fireball')).toThrow(/slot cap/i);
