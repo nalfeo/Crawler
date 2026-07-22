@@ -51,6 +51,14 @@ import {
   hasIntakeRequirementComment,
   reviewThreadPlanIssueNumbers,
 } from './issue-intake-lib.mjs';
+import {
+  conflictEpisodeMarker,
+  executeReviewDecision,
+  REVIEWER_LOGIN,
+  reviewRequestMarker,
+  shouldRequestReview,
+  unrecordedConflictEpisode,
+} from './review-request.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -67,6 +75,7 @@ const live = mode === 'live';
 const shouldMutate = shouldMutateRecoveryState(mode, operation);
 const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
+const copilotReviewerLogin = (process.env.COPILOT_REVIEWER_LOGIN || REVIEWER_LOGIN).trim();
 const now = new Date();
 // GitHub Actions populates GITHUB_SERVER_URL and GITHUB_RUN_ID automatically.
 // Outside of Actions (tests, local runs) these are absent; workflowRunUrl is null.
@@ -255,6 +264,22 @@ async function assertExpectedMetadataUnchanged(phase) {
     .data;
   const rejection = expectedMetadataRejection(livePullRequest);
   if (rejection) skipForExpectedMetadata(rejection, phase);
+}
+
+class ExpectedMetadataChangedError extends Error {
+  constructor(rejection, phase) {
+    super(`PR metadata changed before ${phase}: ${rejection.reason}`);
+    this.rejection = rejection;
+    this.phase = phase;
+  }
+}
+
+async function assertExpectedMetadataUnchangedOrThrow(phase) {
+  if (!expectedHeadSha) return;
+  const livePullRequest = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`))
+    .data;
+  const rejection = expectedMetadataRejection(livePullRequest);
+  if (rejection) throw new ExpectedMetadataChangedError(rejection, phase);
 }
 const comments = await paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
 let approvalRejection = null;
@@ -1299,6 +1324,25 @@ for (const thread of unresolvedThreads) {
 
 const blockers = [];
 const hasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
+const conflictEpisode = unrecordedConflictEpisode({ pr, hasMergeConflict, comments });
+if (conflictEpisode) {
+  const marker = conflictEpisodeMarker(conflictEpisode);
+  if (live) {
+    await assertExpectedMetadataUnchanged('conflict-episode-marker');
+    const created = await request(
+      pat,
+      `/repos/${owner}/${repo}/issues/${prNumber}/comments`,
+      {
+        method: 'POST',
+        body: { body: marker },
+      },
+    );
+    comments.push(created.data);
+  }
+  process.stdout.write(
+    `${live ? 'recorded' : 'would-record'} conflict episode pr=#${prNumber} episode=${conflictEpisode.episode}\n`,
+  );
+}
 const labels = new Set((pr.labels || []).map((label) => label.name));
 const trainBlocked = labels.has(BLOCKED_LABEL);
 let trainNoop = labels.has(NOOP_LABEL);
@@ -1615,6 +1659,62 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
 }
 
 const normalized = normalizeBlockers(blockers);
+const reviewDecision = shouldRequestReview({
+  trigger,
+  pr,
+  hasMergeConflict,
+  requiredChecksPassing:
+    mergeTrainAdmissionChecks.length > 0 && waitingRequiredChecks.length === 0,
+  blockers: normalized,
+  comments,
+});
+if (reviewDecision) {
+  const marker = reviewRequestMarker({
+    headSha: pr.head.sha,
+    reason: reviewDecision.reason,
+    episode: reviewDecision.episode,
+  });
+  if (live) {
+    await assertExpectedMetadataUnchanged('review-request-marker');
+    try {
+      await executeReviewDecision({
+        decision: reviewDecision,
+        marker,
+        createMarker: async (body) => {
+          const created = await request(
+            pat,
+            `/repos/${owner}/${repo}/issues/${prNumber}/comments`,
+            {
+              method: 'POST',
+              body: { body },
+            },
+          );
+          return created.data;
+        },
+        deleteMarker: async (commentId) => {
+          await request(pat, `/repos/${owner}/${repo}/issues/comments/${commentId}`, {
+            method: 'DELETE',
+          });
+        },
+        requestReviewer: async () => {
+          await assertExpectedMetadataUnchangedOrThrow('copilot-review-request');
+          await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers`, {
+            method: 'POST',
+            body: { reviewers: [copilotReviewerLogin] },
+          });
+        },
+      });
+    } catch (error) {
+      if (error instanceof ExpectedMetadataChangedError) {
+        skipForExpectedMetadata(error.rejection, error.phase);
+      }
+      throw error;
+    }
+  }
+  process.stdout.write(
+    `${live ? 'recorded' : 'would-record'} review reason=${reviewDecision.reason} pr=#${prNumber} head=${pr.head.sha}${reviewDecision.requestReviewer ? ` reviewer=${copilotReviewerLogin}` : ' reviewer=platform'}\n`,
+  );
+}
 const fingerprint =
   normalized.length === 0
     ? admissionFingerprint({
