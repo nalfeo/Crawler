@@ -302,6 +302,39 @@ describe('achievementSystem', () => {
     expect(facts.numberFacts.ratsKilled).toBe(0);
     expect(facts.numberFacts.slimesKilled).toBe(0);
   });
+
+  it('unlockAchievement fails closed (no throw) on a lootBox achievement when the generated-equipment registry has no run key', () => {
+    // Regression test: unlockAchievement's lootBox branch used to call
+    // resolveLootBoxRewardBundle unconditionally, which throws
+    // LootBoxRewardResolutionError('no-run-key', ...) whenever
+    // world.generatedEquipmentRegistry.runKey is null — crashing any world
+    // built without an explicit run key (a common, legitimate configuration
+    // for tests/labs unrelated to rewards) the moment it reached a Floor 1
+    // lootBox achievement like 'first-bonk'.
+    const world = createTestWorld({ seed: 42, generatedEquipmentRunKey: null });
+
+    expect(() => unlockAchievement(world, 'first-bonk')).not.toThrow();
+    expect(unlockAchievement(world, 'first-bonk')).toBe(false);
+    expect(world.achievements.unlockedIds.has('first-bonk')).toBe(false);
+    expect(world.lootBoxRewardBundles.has('first-bonk')).toBe(false);
+  });
+
+  it('unlockAchievement fails closed (no throw) on an equipment achievement when Floor 2 flags are enabled but the registry has no run key', () => {
+    // Mirrors the lootBox regression test above: getFloor2EquipmentRewardsAccess
+    // gates on floor + feature flags but not on the run key itself, so an
+    // equipment achievement could hit the identical
+    // RewardBundleResolutionError('no-run-key', ...) landmine if a world ever
+    // had the flags enabled without a configured run key.
+    const world = createTestWorld({ seed: 42, floor: 2, generatedEquipmentRunKey: null });
+    world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+    world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+    world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+
+    expect(() => unlockAchievement(world, 'floor2-field-kit')).not.toThrow();
+    expect(unlockAchievement(world, 'floor2-field-kit')).toBe(false);
+    expect(world.achievements.unlockedIds.has('floor2-field-kit')).toBe(false);
+    expect(world.generatedEquipmentRewardBundles.has('floor2-field-kit')).toBe(false);
+  });
 });
 
 describe('claimAchievementReward', () => {

@@ -37,6 +37,22 @@
           "resolved_count": 8,
           "clean": false,
           "notes": "Round 2a (round2-code-review, post round-1 fixes): 4 findings, all fixed in 5930cdf6f — (a) canonical gold/material-count equality was checked at claim-time (achievementRewards.ts) but not at carryover-restore time, allowing a tampered snapshot with wrong counts to be re-persisted; added matching validators in playerCarryover.ts. (b) the equipment reverse bundle-presence guard (every unlocked+unclaimed achievement must own a bundle) existed for lootBox bundles but not equipment bundles; added the mirror guard. (c) achievements-ui-lab did not exercise the new reward types; rewritten to cover lootBox+equipment presentation. (d) normalizePlayerCarryoverSnapshot used an unconditional '?? []' default for 4 generated-state array fields, silently coercing a tampered/missing snapshot into an empty-but-valid one instead of failing closed; fixed to only default when the field is genuinely absent from a well-formed legacy snapshot, and bumped GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION v1->v2 (2 legacy-compat findings accepted as documented risk in ADR 0070 rather than building backward-compat migration, which would itself violate the 'generation only at resolution' hard gate). Round 2b (round2-confirm-code-review + round2-multimodel-opus, reviewing the committed round-2a fixes independently): both reviewers converged on the SAME Major finding — the equipment reverse bundle-presence guard added in round 2a was unreachable when validateGeneratedCarryover took its early-return path (registry snapshot absent AND no generated references present), a fail-open gap for a snapshot tampered to strip both the bundle array and the registry simultaneously; fixed by extracting validateEquipmentBundlePresence(snapshot) into a standalone, registry-independent function and calling it unconditionally before the early-return gate (mirroring how the lootBox-side guard already ran unconditionally). Plus 2 Minor findings from round2-confirm-code-review: missing test coverage for (i) a forged live world.lootBoxRewardBundles claim-time rejection (equipment already had this coverage, lootBox didn't) and (ii) a mislabeled 'RNG isolation' unit test that only proved same-resolver idempotency, not actual cross-resolver (Floor1 lootBox vs Floor2 equipment) isolation. Both fixed with new regression tests; independently re-verified by round2-multimodel-gemini (CLEAN) and round2-multimodel-opus (all 7 prior fixes confirmed correct via code tracing, plus the converged Major finding)."
+        },
+        {
+          "round": 3,
+          "models": ["round3-final-code-review (code-review agent)"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "round3-final-code-review, reviewing the full branch diff after round-2 fixes were committed (c79f012d1), found a genuine, high-confidence NEW regression not caught by round-1/round-2 review or by verify:fast: the new Floor 1 lootBox branch in unlockAchievement (achievementSystem.ts) called resolveLootBoxRewardBundle unconditionally, which throws LootBoxRewardResolutionError('no-run-key', ...) (re-thrown, not swallowed) whenever world.generatedEquipmentRegistry.runKey is null — crashing any world reaching a Floor 1 lootBox achievement (e.g. 'quest-accepted') without a configured run key. Independently reproduced: 5 failing tests across 2 pre-existing files (floor1-spawners-pipeline.test.ts, fireball-pulse-shield-integration.test.ts) that build worlds via createGameWorld({ seed }) with no run key and drive real runSimulationStep. Two other reviewers on this same round (round3-multimodel-a/opus, round3-multimodel-b/gemini) reported CLEAN and missed this — see multi_model_review round 3. Fixed by adding a world.generatedEquipmentRegistry.runKey === null pre-check that returns false (fails closed, no throw) before calling the resolver, mirroring the equipment branch's existing feature-availability pre-check pattern. Full --project integration (24/187) and --project headless (24/148) suites re-run in full (not just changed-file selection) to confirm no further instance of this landmine shape remained."
+        },
+        {
+          "round": 4,
+          "models": ["round4-confirm-code-review (code-review agent)"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "round4-confirm-code-review, reviewing the round-3 fix specifically plus a fresh full-diff pass, confirmed the fix itself correct and complete and found no hard-gate violations, but surfaced 2 further findings, both fixed: (a) the equipment branch has the IDENTICAL latent landmine — getFloor2EquipmentRewardsAccess gates on floor + feature flags but never checks the run key, so a world with those flags enabled and no run key would hit the same uncaught RewardBundleResolutionError('no-run-key', ...) throw; no current call site combines that today so it wasn't an active regression, but it is the same bug shape directly adjacent in the same function this slice modified, so fixed with the identical pre-check. (b) the round-3 fix itself had zero direct test coverage at the unlockAchievement call-site level (only the resolver's own direct-call throw was covered); added 2 new regression tests in tests/game/achievement-system.test.ts proving unlockAchievement returns false without throwing and records neither an unlock nor a bundle for both the lootBox and equipment branches when the run key is null. Re-ran full --project integration (24/187 unchanged), targeted achievement-system.test.ts (12/12, including the 2 new tests), and full verify:fast (783 unit tests, up from 781) — all green. No further concerns; this round is genuinely CLEAN after the 2 fixes."
         }
       ]
     },
@@ -68,6 +84,18 @@
           "resolved_count": 1,
           "clean": true,
           "notes": "round2-multimodel-gemini: CLEAN — independently re-verified all round-2a fixes and every hard gate (Floor 1 gold+common-materials-only, Floor 2 tiered rarity bounds, monotonic build-affinity bias, floor isolation, deterministic replay, persisted bundles, no-partial-claim) against the full branch diff. round2-multimodel-opus: found the equipment reverse-guard early-return-bypass Major finding, converging exactly with code_review round 2b's finding (reported once there to avoid duplication; cross-referenced here). Adjudication: single confirmed defect, fixed via validateEquipmentBundlePresence extraction; both reviewers' remaining findings set is empty after the fix, confirmed by full verify:fast (663 tests) and targeted integration (39/39) + unit (23/23) re-runs."
+        },
+        {
+          "round": 3,
+          "models": [
+            "claude-opus-4.7 (round3-multimodel-a)",
+            "gemini-3.1-pro-preview (round3-multimodel-b)"
+          ],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Both round3-multimodel-a (opus) and round3-multimodel-b (gemini) independently reviewed the full branch diff after round-2 fixes were committed (c79f012d1) and reported CLEAN — no concerns, with detailed verification of every prior fix. Neither caught the lootBox run-key regression that the third, separately-run code_review agent (round3-final-code-review) found in the same round; recorded here for an honest account of the round's coverage gap rather than omitted. The regression and its fix are tracked under code_review round 3/4 (this stage's own scope — full-diff correctness across models — is otherwise unaffected: adjudication confirms no other concern from either model)."
         }
       ]
     }

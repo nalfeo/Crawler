@@ -237,6 +237,62 @@ Both are consistent with round 1's precedent (documented, not fixed) and with
 the game's current no-shipped-saves, solo-dev, pre-release posture — revisit
 if/when saves must survive across a public release boundary.
 
+### Fixed regression (round-3 confirmation review)
+
+A third confirmation round (three reviewers on the full branch diff) found a
+genuine, high-severity regression: the new Floor 1 `lootBox` branch in
+`unlockAchievement` (`src/game/systems/achievementSystem.ts`) called
+`resolveLootBoxRewardBundle` unconditionally, and that resolver throws
+`LootBoxRewardResolutionError('no-run-key', ...)` (re-thrown, not swallowed)
+whenever `world.generatedEquipmentRegistry.runKey === null`. Real gameplay
+entry points (`MainGameScene`, `headless-runner`) always derive a run key
+from the world seed, so this was invisible there — but any world built via
+`createGameWorld({ seed })` directly with no explicit
+`generatedEquipmentRunKey` (a common, legitimate configuration for many
+ECS/headless tests unrelated to rewards) now crashed the instant it reached a
+trivially-easy Floor 1 achievement like `quest-accepted`. This broke 2
+pre-existing integration test files outright and was a latent landmine for
+several more (headless spawner tests) that happened not to trigger it.
+
+**Fix**: the `lootBox` branch now checks `world.generatedEquipmentRegistry.runKey
+=== null` and returns `false` (fails closed, no unlock, no throw) _before_
+calling the resolver — mirroring the equipment branch's existing pattern of
+gating on feature availability
+(`getFloor2EquipmentRewardsAccess(world).kind !== 'enabled'`) before ever
+invoking its resolver. The resolver itself is unchanged and still throws on a
+direct call with no run key (a defense-in-depth invariant, still covered by
+`tests/unit/floor1-lootbox-reward-resolver.test.ts`) — only the achievement
+unlock call site now pre-checks.
+
+This is a **systemic** fix, not a per-test-file patch: it makes "no run key
+configured" a legitimate, silent "rewards unavailable for this world" state
+for the lootBox path, matching how the equipment path already treats its own
+unavailability conditions, rather than requiring every future test/lab world
+that might unlock a Floor 1 achievement to remember to configure a run key.
+Full `--project integration` (24 files/187 tests) and `--project headless`
+(24 files/148 tests) suites were re-run in full (not just changed-file
+selection) after the fix to confirm no other landmine of this shape remained.
+
+A follow-up (round-4) confirmation review then found the identical latent
+shape already present in the equipment branch: `getFloor2EquipmentRewardsAccess`
+gates on floor + feature flags but never checks the run key itself, so a world
+with those flags flipped true and no run key would hit the same uncaught
+`RewardBundleResolutionError('no-run-key', ...)` throw. No current call site
+combines "flags enabled" with "no run key" today, so this wasn't an active
+regression, but it is the exact same bug shape directly adjacent in the same
+function this slice modified — fixed with the identical pre-check pattern.
+Direct regression tests for both branches (`unlockAchievement` returns `false`
+without throwing, and does not record an unlock or a bundle, when the run key
+is null) were added to `tests/game/achievement-system.test.ts`.
+
+**Systemic recommendation (not implemented in this slice)**: `createGameWorld`
+(`src/core/world.ts`) has no default run key, unlike the test helper
+`createTestWorld` (`tests/helpers/world-factory.ts`), which already derives one
+from the seed by default. Consider giving `createGameWorld` the same default in
+a future slice to prevent this landmine shape from recurring for other
+resolver call sites; out of scope here since it is a broader architectural
+change beyond this slice's reward-content boundary.
+
 ### Deviation note
 
 The user's request described "rare unless canonical plan explicitly defines a
