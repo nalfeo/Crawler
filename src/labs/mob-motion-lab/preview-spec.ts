@@ -11,11 +11,7 @@ import {
   floor2EnemyPack,
   type EnemyArchetypeDef,
 } from '../../shared/enemy-packs.js';
-import {
-  mobLocomotionStyleForArchetype,
-  type MobLocomotionStyle,
-} from '../../shared/mob-motion.js';
-import type { MobSpriteOption } from './model.js';
+import type { MobLocomotionStyle, MobSpriteOption } from './model.js';
 
 export interface MobPreviewSpec {
   readonly archetypeId: string;
@@ -40,7 +36,39 @@ export interface ProjectileFrameSpec {
   readonly displayScale: number;
 }
 
+const FAMILY_MOVEMENT_STYLES: Readonly<Partial<Record<string, MobLocomotionStyle>>> = {
+  batfolk: 'hover',
+  faeries: 'hover',
+  toadkin: 'hop',
+  snailfolk: 'slither',
+  beetlefolk: 'stomp',
+  crabfolk: 'stomp',
+  molefolk: 'stomp',
+  pandas: 'stomp',
+};
+
+const ARCHETYPE_MOVEMENT_STYLES: Readonly<Partial<Record<string, MobLocomotionStyle>>> = {
+  slime: 'hop',
+  'cave-slime': 'hop',
+  'cave-bat-swarm': 'hover',
+  'glow-worm': 'slither',
+  'blind-cave-newt': 'slither',
+  'fungal-husk': 'stomp',
+};
+
 const PROJECTILE_RENDER_KIND = 'enemy_aoe_proj' as const;
+
+function locomotionStyleForArchetype(archetype: EnemyArchetypeDef): MobLocomotionStyle {
+  const explicit = ARCHETYPE_MOVEMENT_STYLES[archetype.id];
+  if (explicit) return explicit;
+
+  if (archetype.familyId) {
+    const familyStyle = FAMILY_MOVEMENT_STYLES[archetype.familyId];
+    if (familyStyle) return familyStyle;
+  }
+
+  return archetype.isBoss === true ? 'stomp' : 'stride';
+}
 
 function resolveMobPreviewSpec(
   archetype: EnemyArchetypeDef,
@@ -58,7 +86,7 @@ function resolveMobPreviewSpec(
     name: archetype.name,
     floorLabel,
     aiType: archetype.aiType,
-    movementStyle: mobLocomotionStyleForArchetype(archetype),
+    movementStyle: locomotionStyleForArchetype(archetype),
     hasProjectile,
     telegraphMs: hasProjectile ? ENEMY_PROJECTILE.TELEGRAPH_MS : 0,
   };

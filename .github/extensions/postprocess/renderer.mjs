@@ -781,6 +781,12 @@ const CLIENT_SCRIPT = String.raw`
         // rebuilds the authoring panel with a fresh, enabled Apply button.
         applyNote = { text: 'Saved \u2713', color: '#86efac' };
         render(resp.state);
+        if (EMBEDDED && resp.workflowPatch && window.parent !== window) {
+          window.parent.postMessage({
+            type: 'postprocess:applied',
+            patch: resp.workflowPatch
+          }, window.location.origin);
+        }
       } else {
         if (authoringApplyBtn) authoringApplyBtn.disabled = false;
         setApplyStatus('Failed: ' + ((resp && (resp.message || resp.reason)) || 'unknown'), '#fca5a5');

@@ -451,8 +451,9 @@ done <<<"$changed"
 sprite_pipeline_touched="$sprites_touched"
 
 # dependencies_touched: at least one changed file is a dependency manifest
-# (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json) or the
-# dependency-allowlist security script. Consumed by security-review.yml to gate
+# (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json), the
+# dependency-allowlist security script, or the npm-audit wrapper (which hosts
+# the temporary fast-uri exception). Consumed by security-review.yml to gate
 # npm audit and the dep-allowlist check.
 dependencies_touched=false
 while IFS= read -r file; do
@@ -461,6 +462,8 @@ while IFS= read -r file; do
     package.json | package-lock.json | yarn.lock | npm-shrinkwrap.json)
       dependencies_touched=true; break ;;
     scripts/agent/security/check-deps.ts)
+      dependencies_touched=true; break ;;
+    scripts/agent/security/npm-audit.mjs)
       dependencies_touched=true; break ;;
   esac
 done <<<"$changed"

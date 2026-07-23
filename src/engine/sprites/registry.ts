@@ -216,7 +216,7 @@ export const SPRITES: ReadonlyArray<SpriteDef> = [
     id: 'enemy.goblin',
     sheetKey: KENNEY_TINY_DUNGEON,
     frame: frameAt(TD_COLS, 1, 10),
-    note: 'Tiny Dungeon goblin (frame 121) — temp CC0 art.',
+    note: 'Tiny Dungeon ghost (frame 121) — temp CC0 art.',
   },
   {
     id: 'enemy.orc',

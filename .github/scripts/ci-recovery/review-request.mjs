@@ -181,6 +181,18 @@ export async function executeReviewDecision({
         `Copilot review request failed and marker ${markerComment.id} could not be rolled back`,
       );
     }
+    // A 422/403 means the reviewer login itself cannot be requested (e.g. it is not a
+    // collaborator on this repository) -- a deterministic, non-retryable rejection of an
+    // optional mutation, not a sign the PR/reconcile state is ambiguous. The marker has
+    // already been rolled back above, so swallow this failure instead of aborting the
+    // caller: requesting an optional reviewer must never block reconcile's state
+    // convergence, label attach, or thread reconciliation.
+    if (status === 422 || status === 403) {
+      process.stderr.write(
+        `review-request-skipped reason=reviewer-not-requestable status=${status}\n`,
+      );
+      return;
+    }
     throw error;
   }
 }

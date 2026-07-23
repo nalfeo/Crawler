@@ -1712,7 +1712,6 @@ if (reviewDecision) {
       : String(pr.head.sha || '')
           .trim()
           .toLowerCase();
-  const reviewDecisionHeadSha = markerHeadSha;
   const marker = reviewRequestMarker({
     headSha: markerHeadSha,
     reason: reviewDecision.reason,
@@ -1725,7 +1724,15 @@ if (reviewDecision) {
         decision: reviewDecision,
         marker,
         createMarker: async (body) => {
-          await assertPrHeadUnchangedOrThrow('review-request-marker', reviewDecisionHeadSha);
+          // Guard against a real same-pass race (a push landing between this
+          // reconcile's initial PR fetch and this mutation), not against the
+          // marker's dedup-oriented head. markerHeadSha intentionally pins
+          // the OLD reviewed commit when bootstrapping an already-reviewed-
+          // then-rebased PR, so it must never be used as the TOCTOU baseline
+          // here -- that would make this guard mismatch forever for any PR
+          // reviewed at a commit it has since advanced past (rebase /
+          // merge-main), permanently blocking admission.
+          await assertPrHeadUnchangedOrThrow('review-request-marker', pr.head.sha);
           const created = await request(
             pat,
             `/repos/${owner}/${repo}/issues/${prNumber}/comments`,
@@ -1742,7 +1749,14 @@ if (reviewDecision) {
           });
         },
         requestReviewer: async () => {
-          await assertPrHeadUnchangedOrThrow('copilot-review-request', reviewDecisionHeadSha);
+          // Same rationale as createMarker above: the TOCTOU baseline must be
+          // the reconcile's live operating head, not the dedup-oriented
+          // markerHeadSha. (Currently unreachable in practice --
+          // shouldRequestReview hardcodes requestReviewer:false whenever
+          // reason==='ready', the only case markerHeadSha can differ from
+          // pr.head.sha -- but kept consistent so this callback is not a
+          // latent trap if that invariant ever changes.)
+          await assertPrHeadUnchangedOrThrow('copilot-review-request', pr.head.sha);
           await assertExpectedMetadataUnchangedOrThrow('copilot-review-request');
           await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers`, {
             method: 'POST',

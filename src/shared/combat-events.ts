@@ -75,6 +75,13 @@ export interface CombatEvent {
   /** True when this hit critically struck (player-sourced damage only). */
   isCrit?: boolean;
   /**
+   * True when this damage was dealt by a player active ability (spell, etc.)
+   * rather than by a weapon or passive effect. Used for in-run source
+   * attribution — lets harnesses separate ability DPS from weapon/passive DPS
+   * without running a second RNG-divergent encounter.
+   */
+  fromActiveAbility?: boolean;
+  /**
    * Sprite variant id of the entity (mirrors the `Sprite.textureId` store) so
    * the renderer can resolve which corpse texture to cut up for a
    * `corpseExplode` event. 1 = rat, 2 = slime, otherwise the generic enemy.

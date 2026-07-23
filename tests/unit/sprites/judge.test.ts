@@ -4,7 +4,7 @@
  * Coverage:
  *   - CI refusal (Constitutional §3): explicit env injection so the
  *     real `process.env.CI` isn't required.
- *   - Happy path: all four evaluators score 5 → `passed: true`.
+ *   - Happy path: all three evaluators score 5 → `passed: true`.
  *   - Threshold rejection: any score < 3 → `passed: false` with the
  *     failing evaluator surfaced in `rejectedBy`.
  *   - Malformed provider response: extra/missing fields surface as
@@ -15,8 +15,6 @@
  *     is supplied; not written otherwise.
  *   - Images include the labelled candidate, readability composite, and
  *     references (capped at 3).
- *   - Fifth `theme_adherence` axis activates for floor OR theme addendum;
- *     absent when neither applies. Score <= 2 auto-rejects.
  *
  * The judge is provider-agnostic; we stub `VisionProvider` directly so
  * tests run without any HTTP machinery.
@@ -335,7 +333,6 @@ describe('judgeVariant — happy path', () => {
         readability: { score: 4, rationale: 'z' },
       },
     });
-
     await judgeVariant({
       processed: makeTinyPng(),
       referencePngs: [makeRefPng(), makeRefPng(), makeRefPng(), makeRefPng(), makeRefPng()],
@@ -900,75 +897,6 @@ describe('judgeVariant — malformed responses', () => {
         env: {},
       }),
     ).rejects.toMatchObject({ kind: 'malformed' });
-  });
-
-  it('throws JudgeError(malformed) when theme_adherence is missing but a floor or theme addendum applies', async () => {
-    const { provider } = stubProvider({
-      responseJson: {
-        design_language: { score: 5, rationale: 'a' },
-        reference_style_match: { score: 5, rationale: 'b' },
-        brief_match: { score: 5, rationale: 'c' },
-        readability: { score: 5, rationale: 'd' },
-        // theme_adherence deliberately omitted
-      },
-    });
-    await expect(
-      judgeVariant({
-        processed: makeTinyPng(),
-        referencePngs: [],
-        brief: makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
-        styleGuide: '',
-        provider,
-        variantIndex: 0,
-        env: {},
-      }),
-    ).rejects.toMatchObject({ name: 'JudgeError', kind: 'malformed' });
-  });
-
-  it('throws JudgeError(malformed) when theme_adherence is missing for a floor-only addendum (cave-slime)', async () => {
-    const { provider } = stubProvider({
-      responseJson: {
-        design_language: { score: 5, rationale: 'a' },
-        reference_style_match: { score: 5, rationale: 'b' },
-        brief_match: { score: 5, rationale: 'c' },
-        readability: { score: 5, rationale: 'd' },
-        // theme_adherence deliberately omitted — floor addendum means it is required
-      },
-    });
-    await expect(
-      judgeVariant({
-        processed: makeTinyPng(),
-        referencePngs: [],
-        brief: makeBrief({ type: 'enemy', name: 'cave-slime', floor: 2 }),
-        styleGuide: '',
-        provider,
-        variantIndex: 0,
-        env: {},
-      }),
-    ).rejects.toMatchObject({ name: 'JudgeError', kind: 'malformed' });
-  });
-
-  it('throws JudgeError(malformed) when theme_adherence is present but no addendum applies', async () => {
-    const { provider } = stubProvider({
-      responseJson: {
-        design_language: { score: 5, rationale: 'a' },
-        reference_style_match: { score: 5, rationale: 'b' },
-        brief_match: { score: 5, rationale: 'c' },
-        readability: { score: 5, rationale: 'd' },
-        theme_adherence: { score: 5, rationale: 'unrequested axis' },
-      },
-    });
-    await expect(
-      judgeVariant({
-        processed: makeTinyPng(),
-        referencePngs: [],
-        brief: makeBrief(),
-        styleGuide: '',
-        provider,
-        variantIndex: 0,
-        env: {},
-      }),
-    ).rejects.toMatchObject({ name: 'JudgeError', kind: 'malformed' });
   });
 
   it('propagates VisionProviderError unchanged (does not wrap)', async () => {

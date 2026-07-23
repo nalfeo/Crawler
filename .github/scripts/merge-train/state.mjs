@@ -148,28 +148,32 @@ export function admissionFingerprint({
   reviewThreads,
 }) {
   const checks = latestChecksByName(checkRuns);
+  // Semantic digest, not identity digest: only { name, status, conclusion }
+  // participate. The raw check-run `id` is intentionally excluded -- GitHub
+  // assigns a new id on every re-run even when the conclusion is unchanged,
+  // so hashing it made the fingerprint drift on benign check-run churn (a
+  // stale-but-still-green PR would flip from admissible to
+  // "CI recovery admission evidence is stale" for no semantic reason).
   const requiredChecks = requiredNames
     .map((name) => {
       const check = checks.get(name.toLowerCase());
       return {
         name: name.toLowerCase(),
-        id: Number(check?.id || 0),
         status: compact(check?.status),
         conclusion: compact(check?.conclusion),
       };
     })
     .sort((left, right) => left.name.localeCompare(right.name));
-  const threads = (reviewThreads || [])
-    .map((thread) => ({
-      id: compact(thread.id),
-      resolved: Boolean(thread.isResolved),
-      comments: (thread.comments?.nodes || []).map((comment) => ({
-        id: compact(comment.id),
-        body: String(comment.body || ''),
-        author: compact(comment.author?.login),
-      })),
-    }))
-    .sort((left, right) => left.id.localeCompare(right.id));
+  // Collapse review threads to a single unresolved count instead of hashing
+  // full thread/comment content. Lossless for both callers of this function:
+  // eligible() itself rejects on `threads.some(t => !t.isResolved)` BEFORE
+  // computing the fingerprint, and ci-recovery only persists a converged
+  // fingerprint when it has already confirmed zero unresolved threads -- so
+  // any unresolved thread is already a distinct blocker upstream, and a new
+  // reply/comment on an already-resolved thread carries no admission-relevant
+  // signal. Collapsing avoids fingerprint drift from thread content churn
+  // (new replies, edited bodies) that doesn't change admission eligibility.
+  const unresolvedThreadCount = (reviewThreads || []).filter((thread) => !thread.isResolved).length;
   return createHash('sha256')
     .update(
       JSON.stringify({
@@ -177,7 +181,7 @@ export function admissionFingerprint({
         title: compact(title),
         baseRef: compact(baseRef),
         requiredChecks,
-        threads,
+        unresolvedThreadCount,
       }),
     )
     .digest('hex');

@@ -48,6 +48,7 @@ import { isEnemyProjectileTelegraphActive } from '../../src/core/systems/enemyTe
 import {
   AINpcInteractionAction,
   AIProgressSuppressionSource,
+  AIPathingMode,
   AIState,
   type AIStateValue,
 } from '../../src/game/ai/types.js';
@@ -432,11 +433,16 @@ describe('BehaviorTreeAI', () => {
     const player = spawnPlayer(world, 0, 0);
     // Enemy well within retreatDangerRadius (20ft) so a retreat starts.
     const enemy = spawnEnemy(world, 10, 0, 20);
-    // Drop the player to 10% HP, below the 15% retreat threshold.
+    // Drop the player to 1% HP — below the minimum supported retreatThreshold
+    // (KNOB_RANGES min = 0.05), so RETREAT triggers no matter how the knob is
+    // tuned in the future.
     world.stores.health.max[player] = 100;
-    world.stores.health.current[player] = 10;
+    world.stores.health.current[player] = 1;
 
-    const ai = new BehaviorTreeAI({ seed: 7 });
+    // Pinned to LEGACY pathing: this test exercises the retreat-latch/ignore-set
+    // mechanism specifically, which is orthogonal to the pathingMode A/B axis —
+    // pinning keeps its geometry stable across future default-pathing promotions.
+    const ai = new BehaviorTreeAI({ seed: 7, pathingMode: AIPathingMode.LEGACY });
     const harness = ai as unknown as {
       retreating: boolean;
       retreatThreatEid: number | null;
@@ -2662,7 +2668,10 @@ describe('BehaviorTreeAI', () => {
     world.elapsedMs = 5000;
     setActiveWeapon(world, sword);
 
-    const ai = new BehaviorTreeAI({ seed: 42 });
+    // Pinned to LEGACY pathing: this test exercises dodge-vs-engagement blending
+    // specifically, which is orthogonal to the pathingMode A/B axis — pinning
+    // keeps its geometry stable across future default-pathing promotions.
+    const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.LEGACY });
     const input = createInputState();
     ai.poll(input, world);
     const decision = ai.getDecision();

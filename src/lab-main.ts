@@ -6,7 +6,6 @@ import { renderLaunchContextBanner } from './launch-context-banner.js';
 import type { LabCategory } from './labs/registry.js';
 
 const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
-  'combat-arena-lab': '/src/labs/combat-arena-lab/index.ts',
   'ai-runner': '/src/labs/ai-runner-lab/index.ts',
   'bt-viz': '/src/labs/bt-viz-lab/index.ts',
   'bt-exploration': '/src/labs/bt-exploration-lab/index.ts',
@@ -24,6 +23,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'lifetime-lab': '/src/labs/lifetime-lab/index.ts',
   'weapon-lab': '/src/labs/weapon-lab/index.ts',
   'equipment-lab': '/src/labs/equipment-lab/index.ts',
+  'equipment-balance-lab': '/src/labs/equipment-balance-lab/index.ts',
   'anchor-lab': '/src/labs/anchor-lab/index.ts',
   'stat-lab': '/src/labs/stat-lab/index.ts',
   'stats-lab': '/src/labs/stats-lab/index.ts',
@@ -55,7 +55,6 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'sprite-gallery': '/src/labs/sprite-gallery-lab/index.ts',
   'deathtimer-lab': '/src/labs/deathtimer-lab/index.ts',
   'corpsestep-lab': '/src/labs/corpsestep-lab/index.ts',
-  'bloody-footprints-lab': '/src/labs/bloodyfootprint-lab/index.ts',
   'hud-lab': '/src/labs/hud-lab/index.ts',
   'questwaypoints-lab': '/src/labs/questwaypoints-lab/index.ts',
   'ux-snapshot-lab': '/src/labs/ux-snapshot-lab/index.ts',
@@ -77,6 +76,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'floor2-settlement-lab': '/src/labs/floor2-settlement-lab/index.ts',
   'family-feud-lab': '/src/labs/family-feud-lab/index.ts',
   'hud-family-relationships-lab': '/src/labs/hud-family-relationships-lab/index.ts',
+  'combat-arena-lab': '/src/labs/combat-arena-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {

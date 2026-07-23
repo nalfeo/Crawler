@@ -34,7 +34,10 @@ import {
   createGeneratedEquipmentRegistry,
   type GeneratedEquipmentRegistry,
 } from './generated-equipment-registry.js';
-import type { GeneratedEquipmentGenerationPolicyV1 } from '../shared/generated-equipment-types.js';
+import type {
+  GeneratedEquipmentGenerationPolicyV1,
+  GeneratedEquipmentRewardBundleV1,
+} from '../shared/generated-equipment-types.js';
 import {
   Position,
   Velocity,
@@ -201,6 +204,8 @@ export interface GameWorld {
   inventories: Map<number, InventoryBag>;
   /** Authoritative generated-equipment records for this run. */
   generatedEquipmentRegistry: GeneratedEquipmentRegistry;
+  /** Unopened generated-equipment reward bundles keyed by achievement ID. */
+  generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
   /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
   statusEffectsByEntity: Map<number, StatusEffect[]>;
   /** Per-door lock configurations (eid → lock config). */
@@ -610,6 +615,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       runKey: options.generatedEquipmentRunKey,
       generationPolicy: options.generatedEquipmentGenerationPolicy,
     }),
+    generatedEquipmentRewardBundles: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
