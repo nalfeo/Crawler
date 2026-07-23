@@ -2,7 +2,7 @@
 
 ## Systems touched
 
-equipment, floor2
+inventory, weapons
 
 ## Summary
 
@@ -31,10 +31,15 @@ manual reconstruction was needed.
   only" and "applies Wave B display-name overrides only to runtime
   equipment defs...") and their now-unused imports
   (`readFileSync`, `FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES`,
-  `floor2EquipmentWaveBModule`). All other Wave B tests are untouched:
-  uniqueness checks, legacy `iron-greaves`/`iron-visor` name checks,
-  canonical `briefInput` metadata checks, and roster/runtime-key
-  coverage checks.
+  `floor2EquipmentWaveBModule`). Added a new regression guard test,
+  "keeps the Wave B display-name override table private and
+  runtime-local", asserting the table is not exported from either
+  `floor2-equipment-wave-b.ts` or `floor2-equipment-art.ts` under any of
+  its possible names — this locks in the reverted (correct) placement
+  without reintroducing the removed relocation-specific assertions. All
+  other Wave B tests are untouched: uniqueness checks, legacy
+  `iron-greaves`/`iron-visor` name checks, canonical `briefInput`
+  metadata checks, and roster/runtime-key coverage checks.
 - Removed `docs/knowledge/handoffs/2026-07-23-wave-b-display-name-authority-fix.md`
   and `docs/knowledge/review-ledgers/2026-07-23-wave-b-display-name-authority-fix.review-ledger.json`
   (the #1817-specific artifacts).
@@ -46,8 +51,10 @@ reverted files, confirmed via
 
 ## Verification run
 
-- `npx vitest run tests/unit/floor2-equipment-wave-b.test.ts` — 6/6 passed
-  (was 8 before the #1817 additions; now back to 6, matching pre-#1817 state).
+- `npx vitest run tests/unit/floor2-equipment-wave-b.test.ts` — 7/7 passed
+  (6 before #1817; #1817 added 2 more, bringing it to 8; this revert
+  removes those 2 and adds 1 new private/runtime-local regression guard
+  test, netting 7 — one more than the pre-#1817 baseline, by design).
 - `npm run verify:fast` — passed (typecheck, lint, physics/size/weight
   coverage checks all green).
 - `npm run verify:pr-prereqs` — passed after adding this handoff and a

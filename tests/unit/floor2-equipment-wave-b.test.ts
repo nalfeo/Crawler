@@ -19,6 +19,8 @@ import {
   FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS,
 } from '../../src/shared/data/floor2-equipment-wave-b.js';
 import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../src/shared/data/floor2-equipment-art.js';
+import * as floor2EquipmentArtModule from '../../src/shared/data/floor2-equipment-art.js';
+import * as floor2EquipmentWaveBModule from '../../src/shared/data/floor2-equipment-wave-b.js';
 import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../../src/shared/data/floor2-weapon-bases.js';
 import { createWeaponDef, WEAPON_DEF_DEFAULTS } from '../../src/shared/weapon-def-defaults.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
@@ -107,6 +109,21 @@ describe('Floor 2 equipment Wave B', () => {
     expect(getEquipmentDefForItem('feet.iron-greaves')?.name).toBe('Iron Legguards');
     expect(getEquipmentDefForItem('iron-visor')?.name).toBe('Iron Visor');
     expect(getEquipmentDefForItem('iron-greaves')?.name).toBe('Iron Greaves');
+  });
+
+  it('keeps the Wave B display-name override table private and runtime-local', () => {
+    // Regression guard: the override table must stay a module-private const
+    // inside floor2-equipment-wave-b.ts. It must never be exported from this
+    // module, and floor2-equipment-art.ts (the canonical art-manifest module)
+    // must never define, re-export, or otherwise expose it either.
+    expect(Object.keys(floor2EquipmentWaveBModule)).not.toContain('WAVE_B_DISPLAY_NAME_OVERRIDES');
+    expect(Object.keys(floor2EquipmentWaveBModule)).not.toContain(
+      'FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES',
+    );
+    expect(Object.keys(floor2EquipmentArtModule)).not.toContain(
+      'FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES',
+    );
+    expect(Object.keys(floor2EquipmentArtModule)).not.toContain('WAVE_B_DISPLAY_NAME_OVERRIDES');
   });
 
   it('covers every weapon family and every canonical paper-doll slot', () => {
