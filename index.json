@@ -1,5 +1,16 @@
 [
   {
+    "commit": "22fcfd8e91ae88c64dd131f3f68184e879a917fe",
+    "commitDate": "2026-07-23T20:02:54Z",
+    "commitSubject": "feat(achievements): reward content — Floor 1 gold+material loot boxes, Floor 2 tiered equipment (#1824)",
+    "capturedAt": "2026-07-23T21:22:25.441Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30041235477",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/22fcfd8e91ae88c64dd131f3f68184e879a917fe.json"
+  },
+  {
     "commit": "fa1497ca4a3fe413dc405717cce6b73a72c9964a",
     "commitDate": "2026-07-23T13:19:40Z",
     "commitSubject": "fix(equipment): relocate Wave B display-name override authority to floor2-equipment-art.ts (#1817)",
