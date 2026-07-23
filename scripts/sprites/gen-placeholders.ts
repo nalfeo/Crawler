@@ -525,8 +525,9 @@ export function run(options: RunOptions): { added: number; skipped: number } {
   }
 
   if (!dryRun && added > 0) {
-    // Sort keys for stable, reviewable diffs — mirrors approve.ts upsertManifest behaviour.
-    const sortedKeys = Object.keys(manifest.entries).sort();
+    // Sort keys with localeCompare for stable, reviewable diffs — mirrors
+    // approve.ts upsertManifest and must match check:sort-assets validator.
+    const sortedKeys = Object.keys(manifest.entries).sort((a, b) => a.localeCompare(b));
     const sortedEntries: Record<string, ManifestEntry> = {};
     for (const key of sortedKeys) {
       sortedEntries[key] = manifest.entries[key]!;

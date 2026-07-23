@@ -1,0 +1,40 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "address-merge-conflict-areas",
+  "task_title": "Address top 5 merge conflict hot spots",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Concern 1 (blocking): Existing conflict markers in 2026-06-30-mob-sprite-variants.md and 2026-07-02-asset-request-type-inference.md — resolved by cleaning both files. Concern 2: docs-update push trigger creates multiple automation PRs — accepted as known limitation; docs-update uses unique run-id branch per trigger and is idempotent; low frequency. Concern 3: sort rollout sequencing — already done in this PR as a single atomic commit. Concern 4: normalize-item-art-names.ts writes unsorted — fixed by adding sort step to applyPlanToData and updating tests."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

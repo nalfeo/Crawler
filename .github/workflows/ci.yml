@@ -217,6 +217,41 @@ jobs:
 
       # --- Blocking checks (fail-fast; each failure is clearly attributable) ---
 
+      # Conflict-marker guard: fail immediately if any tracked source file
+      # contains unresolved Git conflict markers (<<<<<<< / ======= / >>>>>>>).
+      # Runs on ALL PRs (including docs-only) because conflict markers in docs
+      # are just as broken. Does not need Node — pure shell.
+      - name: Conflict-marker guard
+        run: |
+          # Search tracked text files; exclude binary extensions and generated dirs.
+          bad=$(git grep -l $'^<<<<<<< \|^=======$\|^>>>>>>> ' -- \
+            ':(exclude)node_modules' \
+            ':(exclude)dist' \
+            ':(exclude)*.png' \
+            ':(exclude)*.jpg' \
+            ':(exclude)*.jpeg' \
+            ':(exclude)*.gif' \
+            ':(exclude)*.ico' \
+            ':(exclude)*.woff' \
+            ':(exclude)*.woff2' \
+            ':(exclude)*.ttf' \
+            ':(exclude)*.eot' \
+            ':(exclude)*.mp3' \
+            ':(exclude)*.ogg' \
+            ':(exclude)*.wav' \
+            ':(exclude)*.bin' \
+            ':(exclude)*.zip' \
+            2>/dev/null || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Unresolved Git conflict markers found in the following files:"
+            echo "$bad" | while IFS= read -r f; do echo "  $f"; done
+            echo ""
+            echo "Resolve the conflicts and re-push. The merge-conflict areas most"
+            echo "prone to conflicts are listed in docs/knowledge/handoffs/TEMPLATE.md."
+            exit 1
+          fi
+          echo "✅ No conflict markers found."
+
       # Run synchronously so a failing format check actually fails CI. These
       # were previously `npm run format:check &` plus a trailing `run: wait`
       # step; because each `run:` is a fresh shell, that `wait` reaped nothing
@@ -224,6 +259,13 @@ jobs:
       - name: Format check
         if: env.DOCS_ONLY != 'true'
         run: npm run format:check
+
+      # Asset sort guard: manifest.json and sprite-catalog.json must have
+      # entries in canonical sorted order so concurrent sprite PRs that add
+      # different entries do not produce line-based merge conflicts.
+      - name: Asset sort check
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:sort-assets
 
       - name: Lab gate check
         if: env.DOCS_ONLY != 'true'

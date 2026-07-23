@@ -228,7 +228,7 @@ describe('planConcept — collisions / idempotency', () => {
 // --- applyPlanToData -------------------------------------------------------
 
 describe('applyPlanToData — manifest', () => {
-  it('preserves key insertion order, rewrites the renamed entry, drops the placeholder', () => {
+  it('returns entries in canonical sorted order, rewrites the renamed entry, drops the placeholder', () => {
     const m = manifest({
       'other-a': real('other-a', 'other-a'),
       'iron-ore-v1-var-0': real('iron-ore-v1-var-0', 'iron-ore-v1', { facingDirection: 'right' }),
@@ -238,8 +238,9 @@ describe('applyPlanToData — manifest', () => {
     const plan = planMigration(m, [{ concept: 'iron-ore' }]);
     const next = applyPlanToData(m, [], plan);
 
-    // Renamed key occupies its original slot; placeholder removed.
-    expect(Object.keys(next.manifest.entries)).toEqual(['other-a', 'iron-ore-var-0', 'other-b']);
+    // Keys are sorted lexicographically (canonical order enforced by check:sort-assets).
+    // 'iron-ore-var-0' < 'other-a' < 'other-b', placeholder dropped.
+    expect(Object.keys(next.manifest.entries)).toEqual(['iron-ore-var-0', 'other-a', 'other-b']);
 
     const migrated = next.manifest.entries['iron-ore-var-0']!;
     expect(migrated.briefId).toBe('iron-ore');
@@ -257,7 +258,7 @@ describe('applyPlanToData — manifest', () => {
 });
 
 describe('applyPlanToData — catalog', () => {
-  it('repoints the renamed generated entry IN PLACE, preserving array + key order', () => {
+  it('repoints the renamed generated entry, returns catalog in canonical sorted order', () => {
     const m = manifest({
       'iron-ore-v1-var-0': real('iron-ore-v1-var-0', 'iron-ore-v1'),
       'iron-ore-placeholder': placeholder('iron-ore'),
@@ -282,11 +283,12 @@ describe('applyPlanToData — catalog', () => {
     });
     // Old id is gone.
     expect(next.catalog.find((r) => r.id === 'generated:iron-ore-v1-var-0')).toBeUndefined();
-    // ARRAY order is preserved (NOT re-sorted): each record keeps its slot.
+    // CANONICAL sort order: sheets first, then sprites sorted by id.
+    // sheet:generated-manifest < generated:iron-ore-var-0 < generated:zebra-var-0
     expect(next.catalog.map((r) => r.id)).toEqual([
-      'generated:zebra-var-0',
-      'generated:iron-ore-var-0',
       'sheet:generated-manifest',
+      'generated:iron-ore-var-0',
+      'generated:zebra-var-0',
     ]);
     // KEY order within the edited record is preserved (the migrated fields are
     // overwritten in place, not appended), so serialization stays churn-free.
@@ -303,11 +305,9 @@ describe('applyPlanToData — catalog', () => {
       'col',
       'row',
     ]);
-    // Untouched records pass through verbatim.
-    expect(next.catalog[0]).toEqual(zebra);
   });
 
-  it('removes a generated catalog entry for a retired key, order otherwise intact', () => {
+  it('removes a generated catalog entry for a retired key', () => {
     const m = manifest({
       'baseball-bat-v1-var-0': real('baseball-bat-v1-var-0', 'baseball-bat-v1'),
       'baseball-bat-v3-var-6': real('baseball-bat-v3-var-6', 'baseball-bat-v3'),
