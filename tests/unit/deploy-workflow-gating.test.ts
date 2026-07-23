@@ -119,4 +119,19 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
       'github.event.workflow_run.head_sha',
     );
   });
+
+  it('deploy job has a final latest-tip guard step before upload', () => {
+    const doc = loadDeployWorkflow();
+    const deploy = getJob(doc, 'deploy');
+    const steps = deploy.steps ?? [];
+    const guardIdx = steps.findIndex((s) => s.name === 'Final latest-tip guard');
+    const uploadIdx = steps.findIndex((s) => s.name === 'Upload artifact');
+    expect(guardIdx, 'deploy must have a "Final latest-tip guard" step').toBeGreaterThanOrEqual(0);
+    expect(uploadIdx, 'deploy must have an "Upload artifact" step').toBeGreaterThanOrEqual(0);
+    expect(guardIdx, 'guard step must run before upload').toBeLessThan(uploadIdx);
+
+    const guardScript = String(steps[guardIdx]?.run ?? '');
+    expect(guardScript).toContain('github.event.workflow_run.head_sha');
+    expect(guardScript).toContain('repos/${{ github.repository }}/commits/main');
+  });
 });

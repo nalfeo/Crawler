@@ -221,6 +221,24 @@ jobs:
             echo "{\"commit\":\"$PROD_SHA\",\"env\":\"prod\",\"builtAt\":\"$NOW\"}" > site/version.json
           fi
 
+      - name: Final latest-tip guard
+        # Second SHA check immediately before publishing: if another commit
+        # landed on main after the release-gate check passed but before we
+        # reach this step, abort so B's own run handles the publish. This
+        # prevents the residual race where A passes the gate, B lands, A
+        # completes its build, and both A and B end up deploying Pages.
+        # Skipped for manual workflow_dispatch (operator is intentional).
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_SHA="${{ github.event.workflow_run.head_sha }}"
+          MAIN_SHA=$(gh api "repos/${{ github.repository }}/commits/main" --jq '.sha' 2>/dev/null || true)
+          if [ -n "$MAIN_SHA" ] && [ "$RUN_SHA" != "$MAIN_SHA" ]; then
+            echo "::warning::Aborting publish: $RUN_SHA is no longer main tip (${MAIN_SHA} landed before upload). B's run will handle this release."
+            exit 1
+          fi
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
