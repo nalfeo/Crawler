@@ -215,9 +215,8 @@ they never edit the label or sticky comment directly. The lease ID is visible
 and is not a secret. Lease mutations remain live while automated reconciliation
 is in `dry-run`; repository write permission is the trust boundary.
 
-Heartbeat after meaningful activity and at least every 20 minutes. The lease is
-takeover-eligible after 30 minutes without activity, plus five minutes of
-queue-jitter grace.
+Heartbeat after meaningful activity and at least every 2 minutes. The lease is
+takeover-eligible after 5 minutes without an active session heartbeat.
 
 ## Failure handling
 

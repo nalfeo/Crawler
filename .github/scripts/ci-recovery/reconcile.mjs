@@ -45,6 +45,7 @@ import {
   requiresHumanApproval,
 } from '../merge-train/human-approval.mjs';
 import { fileLoopIncident } from './loop-incident-lib.mjs';
+import { createUnexpectedErrorHandler } from './unexpected-error.mjs';
 import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
@@ -109,6 +110,14 @@ const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace(
   '<sha>',
   POST_PUSH_HEAD_SHA_PLACEHOLDER,
 );
+let releaseUnexpectedOwnership = null;
+const reportUnexpectedError = createUnexpectedErrorHandler({
+  cleanup: () => releaseUnexpectedOwnership?.(),
+  writeError: (message) => process.stderr.write(`${message}\n`),
+});
+
+process.on('uncaughtException', reportUnexpectedError);
+process.on('unhandledRejection', reportUnexpectedError);
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -904,6 +913,18 @@ async function release(reason, nextState = null) {
   labelExists = false;
   return RELEASE_COMPLETED;
 }
+
+releaseUnexpectedOwnership = async () => {
+  if (!labelExists || !state || state.owner === 'none') return;
+  if (state.owner === 'shepherd' && state.leaseId !== leaseId) return;
+  try {
+    await release('unexpected-error');
+  } catch (cleanupError) {
+    throw new Error(`unexpected-error release failed: ${cleanupError.message}`, {
+      cause: cleanupError,
+    });
+  }
+};
 
 if (orphanedOwnershipArtifact) {
   process.stdout.write(`cleanup pr=#${prNumber} reason=orphaned-owner-label\n`);

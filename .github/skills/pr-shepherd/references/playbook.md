@@ -29,7 +29,7 @@ gh pr list --repo nalfeo/Crawler --state open `
 
 A PR is **in scope** when either no _active_ (non-archived) session is sitting
 on its `headRefName`, or the owning session has been idle for more than
-30 minutes. It must also have no unexpired `ci-owner-pr-N` shepherd lease and no
+5 minutes. It must also have no unexpired `ci-owner-pr-N` shepherd lease and no
 active CI-recovery task in the `<!-- crawler-ci-state:v1 -->` sticky comment.
 Cross-reference:
 
@@ -37,7 +37,7 @@ Cross-reference:
 - `get_session <id>` — an **archived** session reports `archived: true` and an
   empty `path`. Archived owner ⇒ the PR is in scope (take it over).
 - `get_session <id>` — use `updated_at` to compute idle time.
-  `now - updated_at > 30 minutes` ⇒ the PR is in scope (take it over).
+  `now - updated_at > 5 minutes` ⇒ the PR is in scope (take it over).
 - Confirm the branch is free in the real checkout before launching:
   `git -C C:\Users\nalfeo\.copilot\repos\Crawler worktree list`
 
@@ -66,7 +66,7 @@ gh pr view <n> --repo nalfeo/Crawler --comments
 ```
 
 Pass `$leaseId` in the child kickoff prompt. The child heartbeats after every
-meaningful action and at least every 20 minutes:
+meaningful action and at least every 2 minutes:
 
 ```powershell
 gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `
@@ -84,7 +84,7 @@ gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `
 
 Workflow-dispatch inputs are visible, so the lease ID is intentionally not a
 secret. Repository write permission is the trust boundary. A lease is
-takeover-eligible after 30 minutes without a heartbeat; the workflow adds five
+takeover-eligible after 5 minutes without a heartbeat; the workflow adds no
 minutes of queue-jitter grace before automated takeover.
 
 ### 3. Launch one shepherd per in-scope PR (in parallel)

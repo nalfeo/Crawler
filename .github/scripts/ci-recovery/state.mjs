@@ -5,8 +5,8 @@ export const STATE_DATA_PREFIX = '<!-- crawler-ci-state-data:';
 export const OWNER_LABEL_PREFIX = 'ci-owner-pr-';
 export const WAITING_LABEL = 'ci-recovery-waiting';
 export const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';
-export const DEFAULT_LEASE_TTL_MINUTES = 30;
-export const DEFAULT_LEASE_GRACE_MINUTES = 5;
+export const DEFAULT_LEASE_TTL_MINUTES = 5;
+export const DEFAULT_LEASE_GRACE_MINUTES = 0;
 export const AUTOMATION_STALE_MINUTES = 30;
 
 // A check-run named "merge-train" is only real promotion provenance when it
