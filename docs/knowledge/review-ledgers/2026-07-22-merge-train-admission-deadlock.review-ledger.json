@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-22",
+  "session_slug": "merge-train-admission-deadlock",
+  "task_title": "Fix merge-train admission deadlock (reviewed-then-rebased guard + fingerprint drift)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (gpt-5.4, high reasoning, rubber-duck agent, 257s/51+ tool calls verifying claims against actual source). Both vectors' root-cause diagnoses and primary fix designs CONFIRMED CORRECT; no alternative design substituted (Option 2 for Vector B -- extracting eligible()'s gate into a standalone function -- explicitly considered and rejected: the bug is entirely upstream in admissionFingerprint, not the gate expression). 2 blocking concerns, both resolved: (1) workflow-ordering bug -- plan had verify:pr-prereqs before writing the handoff file, but the pr-preflight guard requires a handoff to exist first; fixed by swapping step order (handoff now precedes verify:pr-prereqs) and reversing the todo_deps edge. (2) Vector A's regression test was under-discriminating (stdout-only assertions could pass even if an overzealous wrong fix changed BOTH the guard argument and the marker body to pr.head.sha, silently breaking the stale-marker dedup semantics); fixed by additionally asserting the POSTed review-request-marker comment body contains the literal STALE reviewed SHA (head=<STALE_SHA>) per reviewRequestMarker's serialization, while the reconcile still reaches 'queued merge-train' -- pinning both 'guard uses live head' and 'marker retains stale head' simultaneously. 3 non-blocking suggestions, all adopted: (3) Vector B's churn-stability test uses multiple required checks (ci + Security checks) with only one churning, not a single-check strawman; (4) added a second Vector A test proving the guard still correctly catches a GENUINE same-pass race (stateful mock returns a different head on the guard's live re-fetch than the pass's initial fetch) -- confirms the fix corrects WHICH baseline is used, not that it disables the guard's protective purpose; (5) the eligible()-gate-mirror test is framed as supplemental, not as closing the pre-existing zero-coverage gap for eligible() itself. CORROBORATION (post-implementation): a second, independently-commissioned gpt-5.4 rubber-duck plan review was run by the creating session (99a20107-fe5f-4078-a40f-a0b918d1e6ba) against the same plan, arriving after implementation/tests/PR were already complete. Verdict: approved_with_changes, plan_divergence=minor, with two 'required changes' that map exactly onto this review's blocking concern #2 and suggestion #4 above (marker-body vs. state-comment discrimination; a negative genuine-race test) -- both were independently reached and already implemented before the second review arrived. Reconciling the two reviews' classifications, 'convergent' was too generous a label given 2 blocking concerns existed; corrected to 'minor' to match the more precise, externally-corroborated classification. No code or test changes were needed as a result of the second review -- confirmed by direct re-read of ci-recovery/reconcile.test.mjs lines 2842-3020+."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "code-review agent (907s, 70+ tool calls) independently re-verified both fixes against the real diff and full surrounding file context (not just the plan description): confirmed pr.head.sha is fetched once and never reassigned, both assertPrHeadUnchangedOrThrow call sites now pass it, reviewDecisionHeadSha has zero remaining references, and the marker body still uses the preserved markerHeadSha (dedup semantics intact). Grepped for every admissionFingerprint call site (exactly 2: eligible() and ci-recovery's persistence call) and traced that both are structurally guaranteed zero unresolved threads before hashing, so collapsing reviewThreads to a count is lossless; also confirmed the fingerprint was never the CI-status gate itself (successfulChecks() gates that independently), so dropping check-run id cannot mask a real CI regression. Independently reproduced the red-then-green claim for all 4 new tests in a scratch detached worktree. Confirmed both new test files are pure insertions (0 lines removed) and the reconcile.test.mjs harness is a true black-box subprocess-against-mock-HTTP-server integration test, not over-mocked. Zero validated code concerns across all reviewer-persona categories (correctness/edge-cases, data flow/determinism, API/contracts, security/trust-boundaries, runtime wiring, regression coverage). The agent additionally flagged that this ledger's own code_review stage was still an unrecorded stub prior to this entry -- a valid process observation about ledger completeness, not a code defect; resolved by recording this round."
+        }
+      ]
+    }
+  }
+}

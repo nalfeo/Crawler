@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "pr1557-sourced-ability-grants-recovery",
+  "task_title": "Shepherd source-owned ability grants to merge",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted canonical shared generated-instance parsing across core and legacy creator paths; required identity regression to exercise the already-owned re-equip branch; required end-to-end legacy carryover restoration; retained a narrow compatibility patch without schema redesign."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "recovery_rounds": [
+        {
+          "round": 3,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Post-initial-review recovery: reviewer-identified fix for passive provenance (learned vs legacy)"
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Integration coverage concern addressed (not-applicable: generator effects pinned separately, seam covered by equipment-ability-grants tests, confirmed by two independent model passes)"
+        },
+        {
+          "round": 5,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final-head review at fe6ab36: clean"
+        }
+      ]
+    }
+  }
+}

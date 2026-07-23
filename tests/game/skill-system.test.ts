@@ -213,4 +213,41 @@ describe('skillSystem', () => {
       world.statModifiers.some((m) => m.sourceId === `swordsmanship:milestone:5:${player}`),
     ).toBe(true);
   });
+
+  it('grants level-5 passive owned by skillAbilityGrantSourceId and is idempotent', () => {
+    const { world, player } = setupPlayerWithSkillState('iron-skin');
+    // iron-skin level 5 grants 'stalwart-resolve' passive via SKILL_LEVEL5_ABILITY_GRANTS
+    world.skillUsageEvents.push({
+      holderEid: player,
+      skillId: 'iron-skin',
+      metric: 'damage_dealt',
+      amount: 450, // enough to reach level 5
+    });
+    skillSystem(world);
+
+    const abilityState = world.abilityStatesByEntity.get(player);
+    expect(abilityState).toBeDefined();
+    const ownership = abilityState!.grantOwnership;
+    expect(ownership).toBeDefined();
+
+    // The passive should be owned by the canonical skill-source ID.
+    const expectedSourceId = `skill:iron-skin:5`;
+    expect(ownership!.passiveSourcesByAbilityId.get('stalwart-resolve')).toEqual(
+      new Set([expectedSourceId]),
+    );
+    expect(abilityState!.passiveAbilityIds).toContain('stalwart-resolve');
+
+    // Running again must not add a second source entry (idempotent).
+    world.skillUsageEvents.push({
+      holderEid: player,
+      skillId: 'iron-skin',
+      metric: 'damage_dealt',
+      amount: 1,
+    });
+    skillSystem(world);
+
+    expect(ownership!.passiveSourcesByAbilityId.get('stalwart-resolve')).toEqual(
+      new Set([expectedSourceId]),
+    );
+  });
 });

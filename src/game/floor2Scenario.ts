@@ -963,6 +963,9 @@ export function initializeFloor2Scenario(
   initializeFloor2Settlement(world, {
     ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
+    ...(options?.playerCarryover
+      ? { effectivePlayerLevel: options.playerCarryover.playerLevel.level }
+      : {}),
   });
 
   if (!options?.playerCarryover) {

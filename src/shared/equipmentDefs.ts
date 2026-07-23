@@ -349,6 +349,16 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
 export const GEAR_ITEM_IDS: readonly string[] = GEAR_EQUIPMENT_DEFS.map((d) => d.id);
 
 /**
+ * Canonical generated-stock bases for the Floor 2 Quartermaster. Generated
+ * weapons and Rare bases stay out until their runtime equip contracts land.
+ */
+export const FLOOR2_QUARTERMASTER_GENERATED_BASE_IDS: readonly string[] = Object.freeze(
+  GEAR_EQUIPMENT_DEFS.filter((def) => def.rarity === 'common' || def.rarity === 'uncommon').map(
+    (def) => def.id,
+  ),
+);
+
+/**
  * Starter weapon id (from `WEAPON_DEFS`) → inventory item slug used by the
  * Floor 1 shop. Exported so `floorScenario.ts` (post-quest merchant stock)
  * consumes the same table the equipment loadout consumes — a single source

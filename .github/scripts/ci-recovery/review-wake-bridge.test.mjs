@@ -31,6 +31,7 @@ const protectedPaths = [
   '.github/scripts/ci-recovery/review-wake-bridge.mjs',
   '.github/scripts/ci-recovery/router.mjs',
   '.github/scripts/ci-recovery/reconcile.mjs',
+  '.github/scripts/ci-recovery/review-request.mjs',
   '.github/scripts/ci-recovery/loop-incident-lib.mjs',
   '.github/scripts/ci-recovery/github.mjs',
   '.github/scripts/ci-recovery/issue-intake-lib.mjs',
