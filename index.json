@@ -1,5 +1,16 @@
 [
   {
+    "commit": "812c6176b155c5ada451774a3c3f1ae5d0c45573",
+    "commitDate": "2026-07-23T21:45:31Z",
+    "commitSubject": "revert: keep Wave B display names runtime-local (#1830)",
+    "capturedAt": "2026-07-23T23:06:05.096Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30048120028",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/812c6176b155c5ada451774a3c3f1ae5d0c45573.json"
+  },
+  {
     "commit": "22fcfd8e91ae88c64dd131f3f68184e879a917fe",
     "commitDate": "2026-07-23T20:02:54Z",
     "commitSubject": "feat(achievements): reward content — Floor 1 gold+material loot boxes, Floor 2 tiered equipment (#1824)",
