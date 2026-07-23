@@ -51,6 +51,7 @@ export function evaluateAudit(report, { auditLevel = 'high', now = new Date() } 
   }
 
   const ignored = new Set();
+  const matchedExceptionKeys = new Set();
   let changed = true;
   while (changed) {
     changed = false;
@@ -60,9 +61,14 @@ export function evaluateAudit(report, { auditLevel = 'high', now = new Date() } 
         vulnerability.via.length > 0 &&
         vulnerability.via.every((via) => {
           if (typeof via === 'string') return ignored.has(via);
-          return AUDIT_EXCEPTIONS.some((exception) =>
-            matchesException(packageName, via, exception, now),
+          const exception = AUDIT_EXCEPTIONS.find((candidate) =>
+            matchesException(packageName, via, candidate, now),
           );
+          if (exception) {
+            matchedExceptionKeys.add(exception.url);
+            return true;
+          }
+          return false;
         });
       if (solelyExcepted) {
         ignored.add(packageName);
@@ -78,7 +84,10 @@ export function evaluateAudit(report, { auditLevel = 'high', now = new Date() } 
     if (ignored.has(vulnerability.name)) return false;
     return isAtOrAbove(vulnerability.severity, auditLevel);
   });
-  return { blocking, ignored: [...ignored].sort() };
+  const matchedExceptions = AUDIT_EXCEPTIONS.filter((exception) =>
+    matchedExceptionKeys.has(exception.url),
+  );
+  return { blocking, ignored: [...ignored].sort(), matchedExceptions };
 }
 
 function parseAuditLevel(args) {
@@ -111,11 +120,15 @@ function main() {
     throw new Error(`npm audit failed: ${report.error.summary ?? JSON.stringify(report.error)}`);
   }
 
-  const { blocking, ignored } = evaluateAudit(report, { auditLevel });
-  if (ignored.length > 0) {
-    const exception = AUDIT_EXCEPTIONS[0];
+  const { blocking, ignored, matchedExceptions } = evaluateAudit(report, { auditLevel });
+  if (ignored.length > 0 && matchedExceptions.length > 0) {
     process.stderr.write(
-      `Temporary audit exception through ${exception.expiresOn}: ${exception.url}\n` +
+      `${matchedExceptions
+        .map(
+          (exception) =>
+            `Temporary audit exception through ${exception.expiresOn}: ${exception.url}`,
+        )
+        .join('\n')}\n` +
         `Suppressed derived findings: ${ignored.join(', ')}\n`,
     );
   }
