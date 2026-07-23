@@ -15,13 +15,15 @@ const LAB_SEED = 7;
 // ONLY at unlock time and require a stable `generatedEquipmentRunKey` on the
 // world's equipment registry — mirroring how every real entry point
 // (MainGameScene, the headless runner) derives one from its world seed.
-// Without it, `unlockAchievement` throws `LootBoxRewardResolutionError` /
-// `RewardBundleResolutionError` for any lootBox/equipment achievement.
 function createLabWorld(): GameWorld {
   const world = createGameWorld({
     seed: LAB_SEED,
+    floor: 2,
     generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(LAB_SEED),
   });
+  world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+  world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+  world.floor2EquipmentFlags.floor2EquipmentRewards = true;
   // Claiming a reward (gold/materials/equipment) requires a Player entity
   // with an inventory bag — spawn one so every reward type can be opened.
   spawnPlayer(world, 0, 0);

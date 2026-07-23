@@ -174,8 +174,10 @@ identical resolved-bundle behavior.
   3-item bundle shape with no `tier` field; `restorePlayerCarryover` now
   fail-closed rejects any bundle missing a valid tier or holding other than
   exactly 1 instance. This is an intentional breaking change to the bundle
-  schema (still versioned `V1`; a real migration would need a `V2` schema
-  bump) — acceptable here because the game has no shipped saves yet.
+  schema, now explicitly version-bumped to
+  `floor2-equipment-reward-bundle/v2`, so pre-slice `v1` snapshots are
+  intentionally rejected by schema-version validation — acceptable here
+  because the game has no shipped saves yet.
 - `LOOT_BOX_GOLD_BY_TIER` / `LOOT_BOX_MATERIAL_COUNT_BY_TIER` numeric tables are
   a first-pass balance guess (not yet play-tested); tuning is expected as a
   follow-up and does not require an ADR (data-only change).

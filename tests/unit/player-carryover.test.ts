@@ -921,6 +921,10 @@ describe('player floor carryover', () => {
           'gei:v1:carryover-invalid-run:999' as GeneratedEquipmentInstanceKey,
         ],
       },
+      {
+        ...snapshot,
+        generatedInventoryInstanceKeys: null,
+      },
       // bundle.instanceKeys must be an array; a non-array value must fail closed.
       // Use a real, unlocked equipment achievement so validation reaches the
       // array guard rather than short-circuiting on the semantic checks.

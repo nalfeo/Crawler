@@ -43,13 +43,14 @@ but granted nothing.
 - `src/game/systems/achievementSystem.ts` — `unlockAchievement` now resolves
   the reward bundle (lootBox or equipment) at unlock time, atomically, with
   fail-closed pre-checks for both branches (see regression note below).
-- `src/game/achievementRewards.ts`, `src/game/playerCarryover.ts` — claim path
+- `src/core/systems/achievementRewards.ts`, `src/game/playerCarryover.ts` — claim path
   - save/load carryover validation for both reward types.
 - `src/shared/achievements.ts` — tier constants
   (`LOOT_BOX_GOLD_BY_TIER`, `LOOT_BOX_MATERIAL_COUNT_BY_TIER`,
-  `FLOOR1_COMMON_CRAFTING_MATERIALS`, `EQUIPMENT_REWARD_TIER_RARITIES`), schema
-  version bump `floor2-equipment-reward-bundle/v1` → `/v2`.
-- `src/labs/achievements-ui-lab.ts` (rewritten) — exercises both reward types.
+  `FLOOR1_COMMON_CRAFTING_MATERIALS`, `EQUIPMENT_REWARD_TIER_RARITIES`); plus
+  `src/shared/generated-equipment-types.ts` for schema version bump
+  `floor2-equipment-reward-bundle/v1` → `/v2`.
+- `src/labs/achievements-ui-lab/index.ts` (rewritten) — exercises both reward types.
 - Tests: `tests/unit/floor1-lootbox-reward-resolver.test.ts` (new),
   `tests/integration/floor2-reward-bundle-claim.integration.test.ts` (extended
   — 39 tests), `tests/game/achievement-system.test.ts` (extended — 12 tests).
