@@ -725,6 +725,70 @@ describe('player floor carryover', () => {
     );
   });
 
+  it('restores a "player-carryover/v1" snapshot missing generatedEquipmentRewardBundles', () => {
+    // Regression test: the round-1 absent-key default was only applied to
+    // bossChests, but generatedInventoryInstanceKeys, generatedEquippedInstanceKeys,
+    // and generatedEquipmentRewardBundles were *also* added to the
+    // "player-carryover/v1" shape without a schema-version bump (PR #1810), so
+    // a pre-existing snapshot missing any of them hit the same hard-fail via
+    // assertArray. Fixed by defaulting all four fields on true key-absence
+    // (multi-model code review, round 4).
+    const runKey = 'carryover-pre-bundles-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    expect(Array.isArray(serialized.generatedEquipmentRewardBundles)).toBe(true);
+    delete serialized.generatedEquipmentRewardBundles;
+    delete serialized.generatedInventoryInstanceKeys;
+    delete serialized.generatedEquippedInstanceKeys;
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).not.toThrow();
+    expect(destination.generatedEquipmentRewardBundles.size).toBe(0);
+  });
+
+  it('fails closed when a persisted boss chest entry is null', () => {
+    // Regression test: assertArray only checks Array.isArray, so a malformed
+    // array element (e.g. null) previously bypassed the fail-closed
+    // PlayerCarryoverSnapshotError system entirely and threw a native
+    // TypeError when the loop accessed `chest.familyId` (multi-model code
+    // review, round 4).
+    const runKey = 'carryover-null-chest-entry-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [null];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /Boss chest entry must be an object/,
+    );
+  });
+
+  it('fails closed when a persisted generated reward bundle entry is null', () => {
+    // Mirrors the boss-chest null-entry guard above for
+    // generatedEquipmentRewardBundles (multi-model code review, round 4).
+    const runKey = 'carryover-null-bundle-entry-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.generatedEquipmentRewardBundles = [null];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /Generated reward bundle entry must be an object/,
+    );
+  });
+
   it('retains independently owned grants after the last equipment source is removed', () => {
     const world = createTestWorld({
       seed: 42,

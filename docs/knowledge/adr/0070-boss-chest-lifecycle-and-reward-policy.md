@@ -135,13 +135,31 @@ in record`), so a present-but-invalid value still falls through to
    string, so a malformed record could still pass validation. Fixed by adding
    explicit `typeof` guards for both fields, mirroring the existing
    `achievementId` string guard on `generatedEquipmentRewardBundles`.
+   **Round 4 of multi-model review** (`gemini-3.1-pro-preview`) found two more
+   gaps in the same code region on a fresh full pass: (a) the round-1
+   absent-key default was only ever applied to `bossChests`, but
+   `generatedInventoryInstanceKeys`, `generatedEquippedInstanceKeys`, and
+   `generatedEquipmentRewardBundles` were _also_ added to the
+   `"player-carryover/v1"` shape without a schema-version bump, so a
+   pre-existing snapshot missing any of those three still hit the same
+   `Expected array at ...` hard-fail the round-1 fix was meant to prevent; and
+   (b) `assertArray` only checks `Array.isArray`, so a malformed array element
+   (e.g. `null`) in either `bossChests` or `generatedEquipmentRewardBundles`
+   bypassed the fail-closed `PlayerCarryoverSnapshotError` system entirely and
+   threw a native `TypeError` instead. Fixed by extending the absent-key
+   default to all four fields, and by adding an explicit object guard at the
+   top of both per-record validation loops.
    See `tests/unit/player-carryover.test.ts`'s
    `restores a "player-carryover/v1" snapshot captured before bossChests
 existed`,
    `still fails closed when a "player-carryover/v1" snapshot has an
 explicitly null bossChests`,
-   `fails closed when a persisted boss chest has a non-string familyId`, and
-   `fails closed when a persisted boss chest has a non-numeric createdAtMs`
+   `fails closed when a persisted boss chest has a non-string familyId`,
+   `fails closed when a persisted boss chest has a non-numeric createdAtMs`,
+   `restores a "player-carryover/v1" snapshot missing
+generatedEquipmentRewardBundles`,
+   `fails closed when a persisted boss chest entry is null`, and
+   `fails closed when a persisted generated reward bundle entry is null`
    regression tests.
 
 8. **Reserved id namespace.** Achievement ids and boss-chest ids share one

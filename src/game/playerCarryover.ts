@@ -354,16 +354,29 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     record.schemaVersion === PLAYER_CARRYOVER_SCHEMA_VERSION
       ? {
           ...(input as PlayerCarryoverSnapshot),
-          // `bossChests` was added to the "player-carryover/v1" shape without a
-          // schema-version bump (mirroring how `generatedEquipmentRewardBundles`
-          // was added in PR #1810), so a snapshot serialized before this field
-          // existed still matches this "current schema" branch but omits it.
-          // Default rather than hard-failing carryover restore for pre-existing
-          // saves (multi-model code review, round 1). Only default when the
-          // property is genuinely ABSENT — a present-but-malformed value (e.g.
-          // explicit `null`) must still fall through to `assertArray` below and
-          // fail closed, rather than being silently treated as "missing"
-          // (multi-model code review, round 2).
+          // Several array fields were added to the "player-carryover/v1" shape
+          // over time without a schema-version bump
+          // (`generatedInventoryInstanceKeys`/`generatedEquippedInstanceKeys`,
+          // `generatedEquipmentRewardBundles` in PR #1810, `bossChests` here),
+          // so a snapshot serialized before a given field existed still
+          // matches this "current schema" branch but omits it. Default rather
+          // than hard-failing carryover restore for pre-existing saves
+          // (multi-model code review, round 1 found this for `bossChests`;
+          // round 4 found the same gap was never applied to the other three
+          // fields). Only default when the property is genuinely ABSENT — a
+          // present-but-malformed value (e.g. explicit `null`) must still
+          // fall through to `assertArray` below and fail closed, rather than
+          // being silently treated as "missing" (multi-model code review,
+          // round 2).
+          generatedInventoryInstanceKeys: ('generatedInventoryInstanceKeys' in record
+            ? record.generatedInventoryInstanceKeys
+            : []) as PlayerCarryoverSnapshot['generatedInventoryInstanceKeys'],
+          generatedEquippedInstanceKeys: ('generatedEquippedInstanceKeys' in record
+            ? record.generatedEquippedInstanceKeys
+            : []) as PlayerCarryoverSnapshot['generatedEquippedInstanceKeys'],
+          generatedEquipmentRewardBundles: ('generatedEquipmentRewardBundles' in record
+            ? record.generatedEquipmentRewardBundles
+            : []) as PlayerCarryoverSnapshot['generatedEquipmentRewardBundles'],
           bossChests: ('bossChests' in record
             ? record.bossChests
             : []) as PlayerCarryoverSnapshot['bossChests'],
@@ -638,6 +651,13 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   // achievement lookups for those entries.
   const chestsByChestId = new Map<string, BossChestCarryoverEntry>();
   for (const chest of snapshot.bossChests) {
+    if (chest === null || typeof chest !== 'object') {
+      // `assertArray` only checks `Array.isArray`, so a malformed element
+      // (e.g. `null`) would otherwise throw a native `TypeError` when we
+      // access `chest.familyId` below instead of failing closed with our own
+      // error type (multi-model code review, round 4).
+      throw new PlayerCarryoverSnapshotError('Boss chest entry must be an object');
+    }
     if (typeof chest.familyId !== 'string' || chest.familyId.length === 0) {
       // Mirrors the achievementId string guard on generatedEquipmentRewardBundles
       // below. Without this, a non-string familyId (e.g. a number) can still
@@ -679,6 +699,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   const unlockedIds = new Set(snapshot.achievements.unlockedIds);
   const claimedIds = new Set(snapshot.achievements.claimedIds);
   for (const bundle of snapshot.generatedEquipmentRewardBundles) {
+    if (bundle === null || typeof bundle !== 'object') {
+      // Same fail-closed rationale as the boss-chest object guard above
+      // (multi-model code review, round 4).
+      throw new PlayerCarryoverSnapshotError('Generated reward bundle entry must be an object');
+    }
     if (bundle.schemaVersion !== GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION) {
       throw new PlayerCarryoverSnapshotError(
         `Unsupported generated reward bundle version: ${String(bundle.schemaVersion)}`,
