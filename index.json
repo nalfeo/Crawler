@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0bbfb2f44de2499aaa9495ea33c08b64ed441364",
+    "commitDate": "2026-07-23T10:36:00Z",
+    "commitSubject": "fix: address top 5 merge conflict hot spots (INDEX.md guidance, conflict-marker guard, asset sort enforcement) (#1806)",
+    "capturedAt": "2026-07-23T11:36:20.067Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30000385013",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/0bbfb2f44de2499aaa9495ea33c08b64ed441364.json"
+  },
+  {
     "commit": "30429fdbeba3baa8712f8ce4238d332bb490b247",
     "commitDate": "2026-07-23T09:59:44Z",
     "commitSubject": "test: address top 5 most critical UT coverage gaps (#1807)",
