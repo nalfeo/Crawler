@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9be0328ec740f47e19c460dca5cb863bd1632d56",
+    "commitDate": "2026-07-23T12:34:27Z",
+    "commitSubject": "feat(floor2): resolved equipment reward bundles at achievement unlock (#1810)",
+    "capturedAt": "2026-07-23T13:52:34.383Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30008131288",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/9be0328ec740f47e19c460dca5cb863bd1632d56.json"
+  },
+  {
     "commit": "0bbfb2f44de2499aaa9495ea33c08b64ed441364",
     "commitDate": "2026-07-23T10:36:00Z",
     "commitSubject": "fix: address top 5 merge conflict hot spots (INDEX.md guidance, conflict-marker guard, asset sort enforcement) (#1806)",
