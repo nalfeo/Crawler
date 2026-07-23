@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c7fa61877b7127b125029ce3e3ed33e3356d13e9",
+    "commitDate": "2026-07-23T07:56:11Z",
+    "commitSubject": "fix(ai): preserve combat spacing during focused hunts (#1231)",
+    "capturedAt": "2026-07-23T09:13:26.679Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29990121833",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/c7fa61877b7127b125029ce3e3ed33e3356d13e9.json"
+  },
+  {
     "commit": "b457875dd048e588f6d0d789cf3d374bd16e9009",
     "commitDate": "2026-07-23T07:39:49Z",
     "commitSubject": "fix(sprites): stop sprite-catalog serializer churn (route asset-pr writes through Prettier helper + gate catalog in format:check) (#1793)",
