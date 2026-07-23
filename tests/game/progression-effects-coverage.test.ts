@@ -8,11 +8,12 @@
  *  1. `stat_multiply` → adds a multiply stat modifier.
  *  2. `extra_projectile` → adds an additive projectileCount modifier.
  *  3. `aura` → adds a zero-value damage modifier (placeholder registration).
- *  4. Spell cases without `holderEid` → safely no-op (no error, no effect).
+ *  4. All 8 spell cases without `holderEid` → safely no-op (no error, no modifiers, no VFX).
  */
 import { describe, it, expect } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { applyCatalogEffect } from '../../src/game/systems/progressionEffects.js';
+import type { CatalogEffect } from '../../src/shared/progression-effects.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('applyCatalogEffect — stat_multiply', () => {
@@ -93,76 +94,96 @@ describe('applyCatalogEffect — aura (placeholder)', () => {
 });
 
 describe('applyCatalogEffect — spell cases with no holderEid are safe no-ops', () => {
-  const SPELL_CASES = [
+  // All 8 spell branches from the applyCatalogEffect switch, using the real CatalogEffect
+  // shapes with proper ScalableOutput { base, scalesWithIntelligence } values.
+  const SPELL_CASES: Array<{ id: string; effect: CatalogEffect }> = [
     {
       id: 'spell_fireball',
       effect: {
-        type: 'spell_fireball' as const,
+        type: 'spell_fireball',
         damage: { base: 10, scalesWithIntelligence: false },
-        radius: 2,
+        radiusTiles: { base: 2, scalesWithIntelligence: false },
       },
     },
     {
       id: 'spell_heal',
       effect: {
-        type: 'spell_heal' as const,
+        type: 'spell_heal',
         heal: { base: 20, scalesWithIntelligence: false },
       },
     },
     {
       id: 'spell_pulse_shield',
       effect: {
-        type: 'spell_pulse_shield' as const,
-        damage: { base: 10, scalesWithIntelligence: false },
-        radius: 2,
-        pushStrength: 1,
-        pushDurationMs: 200,
+        type: 'spell_pulse_shield',
+        knockbackForce: { base: 10, scalesWithIntelligence: false },
+        radiusTiles: { base: 2, scalesWithIntelligence: false },
       },
     },
     {
       id: 'spell_magic_missile',
       effect: {
-        type: 'spell_magic_missile' as const,
+        type: 'spell_magic_missile',
         damage: { base: 15, scalesWithIntelligence: false },
-        count: 1,
+        rangeTiles: { base: 5, scalesWithIntelligence: false },
       },
     },
     {
       id: 'spell_frost_nova',
       effect: {
-        type: 'spell_frost_nova' as const,
+        type: 'spell_frost_nova',
         damage: { base: 8, scalesWithIntelligence: false },
-        radius: 2,
-        slowFactor: 0.5,
-        slowDurationMs: 1000,
+        radiusTiles: { base: 2, scalesWithIntelligence: false },
+        slowMultiplier: { base: 0.5, scalesWithIntelligence: false },
+        slowDurationMs: { base: 1000, scalesWithIntelligence: false },
+      },
+    },
+    {
+      id: 'spell_timed_buff',
+      effect: {
+        type: 'spell_timed_buff',
+        durationFrames: { base: 120, scalesWithIntelligence: false },
+        modifiers: [{ stat: 'armor', op: 'add', value: 5 }],
+      },
+    },
+    {
+      id: 'spell_enemy_slow_burst',
+      effect: {
+        type: 'spell_enemy_slow_burst',
+        radiusTiles: { base: 3, scalesWithIntelligence: false },
+        slowMultiplier: { base: 0.5, scalesWithIntelligence: false },
+        slowDurationMs: { base: 1500, scalesWithIntelligence: false },
       },
     },
     {
       id: 'spell_life_drain',
       effect: {
-        type: 'spell_life_drain' as const,
+        type: 'spell_life_drain',
         damage: { base: 10, scalesWithIntelligence: false },
-        healPercent: 0.5,
+        rangeTiles: { base: 4, scalesWithIntelligence: false },
+        heal: { base: 5, scalesWithIntelligence: false },
       },
     },
-  ] as const;
+  ];
 
   for (const { id, effect } of SPELL_CASES) {
-    it(`does not throw and adds no stat modifiers when holderEid is absent for ${id}`, () => {
+    it(`does not throw and adds no stat modifiers or VFX when holderEid is absent for ${id}`, () => {
       const world = createTestWorld();
-      const before = world.statModifiers.length;
+      const beforeMods = world.statModifiers.length;
+      const beforeVfx = world.vfxEvents.length;
 
       expect(() =>
         applyCatalogEffect(world, {
           sourceType: 'ability',
           sourceId: `test:${id}:no-holder`,
-          effect: effect as never,
+          effect,
           // holderEid intentionally omitted
         }),
       ).not.toThrow();
 
-      // No new modifiers should have been added (spell effects are holder-scoped).
-      expect(world.statModifiers.length).toBe(before);
+      // No new modifiers or VFX should have been emitted (all spell effects are holder-scoped).
+      expect(world.statModifiers.length).toBe(beforeMods);
+      expect(world.vfxEvents.length).toBe(beforeVfx);
     });
   }
 });

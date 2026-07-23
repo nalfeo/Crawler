@@ -130,13 +130,12 @@ describe('skillSystem — milestone fires at levels 10 and 15', () => {
     });
     skillSystem(world);
 
-    expect(state.level).toBeGreaterThanOrEqual(10);
+    expect(state.level).toBe(10);
     expect(state.triggeredMilestones.has(10)).toBe(true);
 
     // The milestone effect (extra_projectile count:1) → projectileCount modifier.
     const milestoneSourceId = `swordsmanship:milestone:10:${player}`;
     const mod = world.statModifiers.find((m) => m.sourceId === milestoneSourceId);
-    expect(mod).toBeDefined();
     expect(mod!.stat).toBe('projectileCount');
     expect(mod!.value).toBe(1);
   });
@@ -154,7 +153,7 @@ describe('skillSystem — milestone fires at levels 10 and 15', () => {
     });
     skillSystem(world);
 
-    expect(state.level).toBeGreaterThanOrEqual(15);
+    expect(state.level).toBe(15);
     expect(state.triggeredMilestones.has(15)).toBe(true);
 
     const milestoneSourceId = `swordsmanship:milestone:15:${player}`;

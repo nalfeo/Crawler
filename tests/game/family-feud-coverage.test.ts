@@ -120,10 +120,10 @@ describe('familyFeudSystem — boss mob skip', () => {
 
     familyFeudSystem(world);
 
-    // Neutral boss → should get an idle or rival decision (not skipped).
+    // Neutral boss with no rival → should get an idle decision (not skipped).
     const decision = getFamilyAIDecision(world, bossMob);
     expect(decision).toBeDefined();
-    expect(['idle', 'rival-primary']).toContain(decision?.kind);
+    expect(decision?.kind).toBe('idle');
   });
 });
 
