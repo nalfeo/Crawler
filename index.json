@@ -11,6 +11,17 @@
     "path": "by-sha/52e9257767ab7ceb2404ab02d2916184515a705e.json"
   },
   {
+    "commit": "f7aafa431133b3ba83b3c32027d9e5f6555c1001",
+    "commitDate": "2026-07-22T16:35:27-07:00",
+    "commitSubject": "feat(ci): make broad sweep capacity queue-aware (#1769)",
+    "capturedAt": "2026-07-23T00:57:03.382Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29967139043",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/f7aafa431133b3ba83b3c32027d9e5f6555c1001.json"
+  },
+  {
     "commit": "ce547798e584ffe4fd0fedf96bf53f5984f3e4a4",
     "commitDate": "2026-07-22T16:22:48-07:00",
     "commitSubject": "feat(ai): add deterministic equipment loadout scoring (#1575)",
