@@ -179,7 +179,10 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
     const lock = new Promise<void>((resolve) => {
       release = resolve;
     });
-    briefLocks.set(key, prev.then(() => lock));
+    briefLocks.set(
+      key,
+      prev.then(() => lock),
+    );
     return prev.then(async () => {
       try {
         return await fn();
@@ -215,11 +218,14 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
   try {
     const results = await Promise.allSettled(
       Array.from({ length: concurrency }, (_, slotId) =>
-        runWorkerSlot({
-          ...options,
-          signal,
-          onStatus: (status) => reportStatus(slotId, status),
-        }, withBriefLock).catch((error: unknown) => {
+        runWorkerSlot(
+          {
+            ...options,
+            signal,
+            onStatus: (status) => reportStatus(slotId, status),
+          },
+          withBriefLock,
+        ).catch((error: unknown) => {
           poolAbort.abort();
           throw error;
         }),
@@ -270,8 +276,7 @@ async function runWorkerSlot(
     // Canonical key for the brief-name lock: two slots processing messages with
     // the same key (e.g. two issues normalizing to the same asset name) are
     // serialized so they cannot overwrite each other's intermediate artifacts.
-    const briefLockKey =
-      request.kind === 'issue-request' ? request.name : request.briefId;
+    const briefLockKey = request.kind === 'issue-request' ? request.name : request.briefId;
 
     // Self-rescheduling renewal timer: extends the Azure Queue visibility
     // timeout while this slot holds the message invisible. Cleared in the

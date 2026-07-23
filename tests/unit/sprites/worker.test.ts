@@ -1086,10 +1086,7 @@ describe('runWorker brief-name lock', () => {
     );
 
     const sameNameRequest = makeRequest('collision-name');
-    const messages = [
-      makeMessage(sameNameRequest),
-      makeMessage(sameNameRequest),
-    ];
+    const messages = [makeMessage(sameNameRequest), makeMessage(sameNameRequest)];
     const queue: AssetQueue = {
       backend: 'noop',
       async enqueue() {},
