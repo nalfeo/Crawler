@@ -22,6 +22,17 @@
     "path": "by-sha/22fcfd8e91ae88c64dd131f3f68184e879a917fe.json"
   },
   {
+    "commit": "f40d3fa8667056d95d3c90ec2e3b9355d883570f",
+    "commitDate": "2026-07-23T14:53:24-07:00",
+    "commitSubject": "fix(ci): reclaim stale automation lock on conflicted/train PRs before short-circuit (#1833)",
+    "capturedAt": "2026-07-23T23:09:31.152Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30048559238",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/f40d3fa8667056d95d3c90ec2e3b9355d883570f.json"
+  },
+  {
     "commit": "b4bb89b52229a62fd317173d3c835c29653b0025",
     "commitDate": "2026-07-23T13:25:42-07:00",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#1811)",
