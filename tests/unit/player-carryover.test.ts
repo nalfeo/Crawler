@@ -1077,4 +1077,204 @@ describe('player floor carryover', () => {
       }),
     );
   });
+
+  it('fails closed with PlayerCarryoverSnapshotError on malformed array-typed fields', () => {
+    const source = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+
+    const invalidInputs: readonly unknown[] = [
+      // Finding 3: playerSkills not an array
+      { ...snapshot, playerSkills: null },
+      { ...snapshot, playerSkills: {} },
+      // Finding 3: persistentStatModifiers not an array
+      { ...snapshot, persistentStatModifiers: null },
+      { ...snapshot, persistentStatModifiers: {} },
+      // Finding 1: achievements sub-fields not arrays
+      { ...snapshot, achievements: { ...snapshot.achievements, unlockedIds: 5 } },
+      { ...snapshot, achievements: { ...snapshot.achievements, unlockedIds: null } },
+      {
+        ...snapshot,
+        achievements: { ...snapshot.achievements, pendingUnlockIds: 'not-an-array' },
+      },
+      { ...snapshot, achievements: { ...snapshot.achievements, claimedIds: {} } },
+      // Finding 1: achievements itself is not a non-null object
+      { ...snapshot, achievements: null },
+      { ...snapshot, achievements: 'string' },
+      // Finding 2: inventorySlots element is null
+      { ...snapshot, inventorySlots: [null] },
+      // Finding 2: inventorySlots element has non-string itemId
+      { ...snapshot, inventorySlots: [{ itemId: 123, quantity: 1 }] },
+      // Finding 2: inventorySlots element missing/wrong quantity
+      { ...snapshot, inventorySlots: [{ itemId: 'sword', quantity: 'lots' }] },
+      // Finding 2: disabledEquipmentSlots element is not a string
+      { ...snapshot, disabledEquipmentSlots: [42] },
+      { ...snapshot, disabledEquipmentSlots: [null] },
+      // Finding 5: equippedItemIds element is not a string
+      { ...snapshot, equippedItemIds: [42] },
+      { ...snapshot, equippedItemIds: [null] },
+    ];
+
+    for (const invalid of invalidInputs) {
+      const destination = createTestWorld({ seed: 42, floor: 2 });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      destination.playerName = 'Unchanged';
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow(
+        /Expected|must be|must contain/i,
+      );
+      expect(destination.playerName).toBe('Unchanged');
+    }
+  });
+
+  it('fails closed with PlayerCarryoverSnapshotError on malformed ability grant-source entries', () => {
+    const source = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(source, 0, 0);
+    source.abilityStatesByEntity.set(player, {
+      learnedSpellIds: ['fireball'],
+      equippedActiveAbilityIds: ['fireball'],
+      passiveAbilityIds: [],
+      cooldownByAbilityId: new Map(),
+      cooldownFramesByAbilityId: new Map(),
+      appliedPassiveAbilityIds: new Set(),
+    });
+    const snapshot = capturePlayerCarryover(source, player);
+
+    const invalidInputs: readonly unknown[] = [
+      // Finding 4: null entry in activeAbilityGrantSources
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [null],
+          passiveAbilityGrantSources: [],
+        },
+      },
+      // Finding 4: non-array entry (not a tuple)
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: ['not-a-tuple'],
+          passiveAbilityGrantSources: [],
+        },
+      },
+      // Finding 4: null sources within an entry
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [['fireball', null]],
+          passiveAbilityGrantSources: [],
+        },
+      },
+      // Finding 4: null source object within the sources array
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [['fireball', [null]]],
+          passiveAbilityGrantSources: [],
+        },
+      },
+      // Finding 4: null entry in passiveAbilityGrantSources
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [],
+          passiveAbilityGrantSources: [null],
+        },
+      },
+      // Finding 4: null source in passive sources
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [],
+          passiveAbilityGrantSources: [['veteran-instinct', [null]]],
+        },
+      },
+    ];
+
+    for (const invalid of invalidInputs) {
+      const destination = createTestWorld({ seed: 42, floor: 2 });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      destination.playerName = 'Unchanged';
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow(
+        /Malformed/,
+      );
+      expect(destination.playerName).toBe('Unchanged');
+    }
+  });
+
+  it('fails closed with PlayerCarryoverSnapshotError on malformed grant-ownership source entries', () => {
+    const runKey = 'carryover-malformed-grant-ownership';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const equipped = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'armor.malformed-grant-ownership',
+        slots: ['head'],
+        grants: true,
+      }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, equipped.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        source,
+        sourcePlayer,
+        { kind: 'generated-instance', instanceKey: equipped.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    expect(snapshot.abilityState?.grantOwnership).toBeDefined();
+
+    const invalidInputs: readonly unknown[] = [
+      // Finding 4 (grantOwnership): null entry in activeSourcesByAbilityId
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          grantOwnership: {
+            ...snapshot.abilityState!.grantOwnership!,
+            activeSourcesByAbilityId: [null],
+          },
+        },
+      },
+      // Finding 4 (grantOwnership): non-array sources in an entry
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          grantOwnership: {
+            ...snapshot.abilityState!.grantOwnership!,
+            activeSourcesByAbilityId: [['magic-missile', null]],
+          },
+        },
+      },
+      // Finding 4 (grantOwnership): null entry in passiveSourcesByAbilityId
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          grantOwnership: {
+            ...snapshot.abilityState!.grantOwnership!,
+            passiveSourcesByAbilityId: [null],
+          },
+        },
+      },
+    ];
+
+    for (const invalid of invalidInputs) {
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      destination.playerName = 'Unchanged';
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow(
+        'Malformed grant ownership source entry',
+      );
+      expect(destination.playerName).toBe('Unchanged');
+    }
+  });
 });
