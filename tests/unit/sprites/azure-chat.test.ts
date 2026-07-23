@@ -51,6 +51,7 @@ const baseOptions = {
   deployment: 'gpt-4o-mini',
   apiKey: 'test-key',
   apiVersion: '2025-04-01-preview',
+  retry: { maxAttempts: 1 },
 };
 
 describe('AzureOpenAIChatProvider.expandVariations', () => {
@@ -196,14 +197,14 @@ describe('AzureOpenAIChatProvider.expandVariations', () => {
     });
   });
 
-  it('flags a structured error payload as provider-error even with HTTP 200', async () => {
+  it('flags a structured error payload as request-error even with HTTP 200', async () => {
     const stubFetch: typeof fetch = async () =>
       jsonResponse(200, { error: { code: 'content_filter', message: 'blocked' } });
     const provider = new AzureOpenAIChatProvider({ ...baseOptions, fetch: stubFetch });
 
     await expect(
       provider.expandVariations({ brief: makeBrief(), existing: [], count: 2 }),
-    ).rejects.toMatchObject({ name: 'TextProviderError', kind: 'provider-error' });
+    ).rejects.toMatchObject({ name: 'TextProviderError', kind: 'request-error' });
   });
 
   it('throws TextProviderError when choices[0].message.content is missing', async () => {

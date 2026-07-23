@@ -55,6 +55,7 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
       apiKey: 'test-key',
       apiVersion: '2025-04-01-preview',
       fetch: fetchImpl,
+      retry: { maxAttempts: 1 },
     });
 
   it('decodes a base64 PNG from data[0].b64_json and returns the buffer', async () => {
@@ -93,7 +94,8 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
   });
 
   it('classifies HTTP 429 as ProviderError(rate-limit)', async () => {
-    const stubFetch: typeof fetch = async () => new Response('slow down', { status: 429 });
+    const stubFetch: typeof fetch = async () =>
+      new Response('slow down', { status: 429, headers: { 'retry-after-ms': '250' } });
     await expect(
       provider(stubFetch).generateSheet({
         brief: makeBrief(),
@@ -101,10 +103,10 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
         referencePngs: [encodeSolidPng(2, 2)],
         variants: 9,
       }),
-    ).rejects.toMatchObject({ kind: 'rate-limit' });
+    ).rejects.toMatchObject({ kind: 'rate-limit', retryAfterMs: 250 });
   });
 
-  it('classifies HTTP 500 as ProviderError(provider-error)', async () => {
+  it('classifies HTTP 500 as ProviderError(server-error)', async () => {
     const stubFetch: typeof fetch = async () => new Response('boom', { status: 500 });
     await expect(
       provider(stubFetch).generateSheet({
@@ -113,7 +115,7 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
         referencePngs: [encodeSolidPng(2, 2)],
         variants: 9,
       }),
-    ).rejects.toMatchObject({ kind: 'provider-error' });
+    ).rejects.toMatchObject({ kind: 'server-error' });
   });
 
   it('classifies a thrown fetch as ProviderError(network)', async () => {
@@ -144,6 +146,7 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
       apiVersion: '2025-04-01-preview',
       timeoutMs: 1234,
       fetch: stubFetch,
+      retry: { maxAttempts: 1 },
     });
     await expect(
       timed.generateSheet({

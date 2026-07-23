@@ -11,6 +11,11 @@ import {
   isTimeoutAbortError,
   providerTimeoutMessage,
 } from './fetch-timeout.js';
+import {
+  fetchWithProviderRetry,
+  parseRetryAfterMs,
+  type ProviderRetryOptions,
+} from './provider-retry.js';
 
 export interface AzureOpenAIBriefSelectorProviderOptions {
   readonly endpoint: string;
@@ -19,6 +24,7 @@ export interface AzureOpenAIBriefSelectorProviderOptions {
   readonly apiVersion: string;
   readonly fetch?: typeof fetch;
   readonly timeoutMs?: number;
+  readonly retry?: ProviderRetryOptions;
 }
 
 export class AzureOpenAIBriefSelectorProvider implements BriefSelectorProvider {
@@ -28,6 +34,7 @@ export class AzureOpenAIBriefSelectorProvider implements BriefSelectorProvider {
   private readonly apiVersion: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly retry: ProviderRetryOptions;
 
   constructor(options: AzureOpenAIBriefSelectorProviderOptions) {
     this.endpoint = options.endpoint.endsWith('/')
@@ -38,6 +45,7 @@ export class AzureOpenAIBriefSelectorProvider implements BriefSelectorProvider {
     this.modelDeployment = options.deployment;
     this.fetchImpl = options.fetch ?? fetch;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
+    this.retry = options.retry ?? {};
   }
 
   async selectBrief(request: SelectBriefRequest): Promise<SelectBriefResult> {
@@ -46,20 +54,24 @@ export class AzureOpenAIBriefSelectorProvider implements BriefSelectorProvider {
       `/chat/completions?api-version=${encodeURIComponent(this.apiVersion)}`;
     let response: Response;
     try {
-      response = await this.fetchImpl(url, {
-        method: 'POST',
-        headers: { 'api-key': this.apiKey, 'content-type': 'application/json' },
-        signal: AbortSignal.timeout(this.timeoutMs),
-        body: JSON.stringify({
-          messages: [
-            { role: 'system', content: buildSystemPrompt(request.name, request.floor) },
-            { role: 'user', content: buildUserPrompt(request) },
-          ],
-          temperature: 0.2,
-          max_tokens: 400,
-          response_format: { type: 'json_object' },
-        }),
-      });
+      response = await fetchWithProviderRetry(
+        () =>
+          this.fetchImpl(url, {
+            method: 'POST',
+            headers: { 'api-key': this.apiKey, 'content-type': 'application/json' },
+            signal: AbortSignal.timeout(this.timeoutMs),
+            body: JSON.stringify({
+              messages: [
+                { role: 'system', content: buildSystemPrompt(request.name, request.floor) },
+                { role: 'user', content: buildUserPrompt(request) },
+              ],
+              temperature: 0.2,
+              max_tokens: 400,
+              response_format: { type: 'json_object' },
+            }),
+          }),
+        this.retry,
+      );
     } catch (err) {
       if (isTimeoutAbortError(err)) {
         throw new TextProviderError(
@@ -81,13 +93,23 @@ export class AzureOpenAIBriefSelectorProvider implements BriefSelectorProvider {
           ? 'auth'
           : response.status === 429
             ? 'rate-limit'
-            : 'provider-error',
+            : response.status >= 500
+              ? 'server-error'
+              : 'request-error',
         `Azure chat (brief-selector) returned ${response.status}: ${detail.slice(0, 300)}`,
+        { retryAfterMs: parseRetryAfterMs(response.headers) },
       );
     }
     const payload = (await response.json()) as {
       readonly choices?: ReadonlyArray<{ readonly message?: { readonly content?: string } }>;
+      readonly error?: { readonly code?: string; readonly message?: string };
     };
+    if (payload.error) {
+      throw new TextProviderError(
+        'request-error',
+        `Azure chat (brief-selector) error ${payload.error.code ?? '<unknown>'}: ${payload.error.message ?? ''}`,
+      );
+    }
     const content = payload.choices?.[0]?.message?.content;
     if (!content) {
       throw new TextProviderError(
