@@ -440,7 +440,7 @@ All slices MERGED
   ↓
 Producer checks: Parent PR ready for auto-merge?
   ├─ YES → Arm auto-merge, then release the owning session
-  └─ NO → Resolve merge blockers (conflicts, CI, etc.)
+  └─ NO → Arm auto-merge, release session — CI Recovery owns post-publication blockers
     ↓
 Parent PR merged
   ↓
@@ -537,10 +537,10 @@ Does Slice B depend on Slice A?
 ### Should this PR stay in draft or publish?
 
 ```
-CI passing?                          YES → continue
-Blocking questions or unclear spec? NO  → continue
-Gameplay escalation needed?         NO  → continue
-Review ledger valid for apple tier? YES → continue
+Required local pre-PR validation complete?  YES → continue
+Blocking questions or unclear spec?         NO  → continue
+Gameplay escalation needed?                 NO  → continue
+Review ledger valid for apple tier?         YES → continue
   ↓
 PUBLISH ready-for-review, leave handoff context, release session
 ```
