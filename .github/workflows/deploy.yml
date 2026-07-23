@@ -93,6 +93,12 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
+          # Pin to the released commit (the CI workflow_run head SHA), not the
+          # default github.sha -- on a workflow_run event github.sha may resolve
+          # to the current main tip if a newer commit landed between CI completing
+          # and this deploy job starting. Pinning ensures dev/beta builds and the
+          # version.json markers always reflect the exact commit that was tested.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -169,7 +175,7 @@ jobs:
 
       - name: Restore main branch
         if: steps.prod-tag.outputs.exists == 'true'
-        run: git checkout ${{ github.sha }} -- .
+        run: git checkout HEAD -- .
 
       - name: Guard - prod must NOT include lab.html or devtools.html
         if: steps.prod-tag.outputs.exists == 'true'
@@ -205,7 +211,7 @@ jobs:
       - name: Write version.json files
         run: |
           NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          HEAD_SHA=${{ github.sha }}
+          HEAD_SHA=${{ github.event.workflow_run.head_sha || github.sha }}
           PROD_SHA=${{ steps.prod-tag.outputs.sha || 'none' }}
 
           echo "{\"commit\":\"$HEAD_SHA\",\"env\":\"dev\",\"builtAt\":\"$NOW\"}" > site/dev/version.json

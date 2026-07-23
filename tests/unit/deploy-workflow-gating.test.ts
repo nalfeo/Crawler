@@ -37,7 +37,7 @@ interface WorkflowJob {
   if?: string;
   needs?: string | string[];
   outputs?: Record<string, string>;
-  steps?: Array<{ id?: string; name?: string; run?: string }>;
+  steps?: Array<{ id?: string; name?: string; run?: string; uses?: string; with?: Record<string, string | number | boolean> }>;
 }
 
 interface WorkflowDoc {
@@ -96,5 +96,27 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
     expect(script).toContain('github.event.workflow_run.head_sha');
     expect(script).toContain('repos/${{ github.repository }}/commits/main');
     expect(script).toContain('should_run=false');
+  });
+
+  it('deploy job checkout is pinned to workflow_run head SHA (not current github.sha)', () => {
+    const doc = loadDeployWorkflow();
+    const deploy = getJob(doc, 'deploy');
+    const checkoutStep = (deploy.steps ?? []).find((s) => s.uses?.startsWith('actions/checkout'));
+    expect(checkoutStep, 'deploy must have a checkout step').toBeDefined();
+    const ref = String(checkoutStep?.with?.ref ?? '');
+    expect(ref, 'deploy checkout must pin ref to RUN_SHA').toContain(
+      'github.event.workflow_run.head_sha',
+    );
+  });
+
+  it('baseline-sweep checkout is pinned to workflow_run head SHA', () => {
+    const doc = loadDeployWorkflow();
+    const sweep = getJob(doc, 'baseline-sweep');
+    const checkoutStep = (sweep.steps ?? []).find((s) => s.uses?.startsWith('actions/checkout'));
+    expect(checkoutStep, 'baseline-sweep must have a checkout step').toBeDefined();
+    const ref = String(checkoutStep?.with?.ref ?? '');
+    expect(ref, 'baseline-sweep checkout must pin ref to RUN_SHA').toContain(
+      'github.event.workflow_run.head_sha',
+    );
   });
 });
