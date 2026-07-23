@@ -460,6 +460,7 @@ export async function runHeadless(
   let combatStartFrame = 0;
   let damageDealt = 0;
   let damageTaken = 0;
+  const damageTakenBySource: Record<string, number> = {};
   // Real damage measurement: track each enemy's HP frame-to-frame.
   const enemyHpById = new Map<number, number>();
   let questsAccepted = 0;
@@ -741,18 +742,26 @@ export async function runHeadless(
       autoFloor2ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 
-      // Check win/loss conditions
+      // Check win/loss conditions — read HP before the guard so both early-exit
+      // paths can record the final frame's HP delta (otherwise the lethal frame
+      // is skipped and damageTaken under-counts on one-shot deaths).
+      const playerHealth = world.stores.health.current[playerEid] ?? 0;
       if (
         !hasComponent(world.ecs, playerEid, Player) ||
         !hasComponent(world.ecs, playerEid, Health)
       ) {
         outcome = 'death';
+        if (previousPlayerHealth > playerHealth) {
+          damageTaken += previousPlayerHealth - playerHealth;
+        }
         break;
       }
 
-      const playerHealth = world.stores.health.current[playerEid] ?? 0;
       if (playerHealth <= 0) {
         outcome = 'death';
+        if (previousPlayerHealth > playerHealth) {
+          damageTaken += previousPlayerHealth - playerHealth;
+        }
         break;
       }
 
@@ -853,6 +862,20 @@ export async function runHeadless(
       }
       for (let eventIndex = combatEventCursor; eventIndex < combatEvents.length; eventIndex += 1) {
         const event = combatEvents[eventIndex]!;
+        if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
+          // Prefer the pre-snapshotted stable archetype key over the EID lookup:
+          // sourceEid is best-effort (may reference a recycled entity). For
+          // projectile/AoE hits, sourceArchetypeKey is captured at spawn time;
+          // for direct melee hits it is resolved live at hit time.
+          const source =
+            event.sourceArchetypeKey ??
+            (event.sourceEid === undefined
+              ? 'unknown'
+              : (world.enemyAppearanceKeys.get(event.sourceEid) ??
+                world.floorScenario?.enemyArchetypes.get(event.sourceEid) ??
+                'unknown'));
+          damageTakenBySource[source] = (damageTakenBySource[source] ?? 0) + event.amount;
+        }
         if (event.type !== 'death' || event.targetType !== 'enemy') {
           continue;
         }
@@ -1012,6 +1035,30 @@ export async function runHeadless(
       }
     }
 
+    // Flush the final frame's combat events so the lethal hit is always attributed.
+    // When the run ends via death, `break` exits before the per-frame event-processing
+    // loop (lines 836–846), leaving the killing blow unattributed in damageTakenBySource.
+    // Processing remaining events here makes the attribution complete for all outcomes
+    // without risk of double-counting (on a normal exit combatEventCursor already points
+    // past the last processed event, so this loop is a no-op).
+    for (
+      let eventIndex = combatEventCursor;
+      eventIndex < world.combatEvents.length;
+      eventIndex += 1
+    ) {
+      const event = world.combatEvents[eventIndex]!;
+      if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
+        const source =
+          event.sourceArchetypeKey ??
+          (event.sourceEid === undefined
+            ? 'unknown'
+            : (world.enemyAppearanceKeys.get(event.sourceEid) ??
+              world.floorScenario?.enemyArchetypes.get(event.sourceEid) ??
+              'unknown'));
+        damageTakenBySource[source] = (damageTakenBySource[source] ?? 0) + event.amount;
+      }
+    }
+
     // If still in combat at end, add remaining time
     if (inCombat) {
       const combatDurationFrames = frameCount - combatStartFrame;
@@ -1042,6 +1089,7 @@ export async function runHeadless(
         engagementCount,
         damageDealt,
         damageTaken,
+        damageTakenBySource,
       },
       health: {
         minHealthPercent,
@@ -1123,6 +1171,7 @@ export async function runHeadless(
       engagementCount,
       damageDealt,
       damageTaken,
+      damageTakenBySource,
     },
     health: {
       minHealthPercent,
