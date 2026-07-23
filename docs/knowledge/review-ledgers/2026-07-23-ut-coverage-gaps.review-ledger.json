@@ -6,16 +6,26 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "1 blocking: missing spell_timed_buff+spell_enemy_slow_burst — fixed, using real CatalogEffect shapes for all 8 spell cases. 3 non-blocking: fake effect shapes (fixed to proper ScalableOutput fields), loose level assertions (fixed to exact toBe(10)/toBe(15)), boss idle assertion (tightened from array includes to exact toBe(idle))."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-opus-4.8"
+          ],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     }
   }
 }
