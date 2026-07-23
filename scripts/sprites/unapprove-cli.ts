@@ -98,9 +98,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
       process.stderr.write(`unapprove failed (${err.kind}): ${err.message}\n`);
       return err.kind === 'not-found' ? 2 : 3;
     }
-    process.stderr.write(
-      `unapprove failed: ${err instanceof Error ? err.message : String(err)}\n`,
-    );
+    process.stderr.write(`unapprove failed: ${err instanceof Error ? err.message : String(err)}\n`);
     return 1;
   }
 }
