@@ -11,39 +11,31 @@
       "concerns_count": 3,
       "resolved_count": 3,
       "plan_divergence": "minor",
-      "notes": "Review identified the need to align heartbeat documentation with the five-minute expiry, arm cleanup before awaited startup work, and cover cleanup failure/original-error preservation. The implementation adopted all three corrections."
+      "notes": "Separate-model plan review of the #1791 lock-hardening plan. Three concerns, all adopted: (1) the lease-threshold direction — a lock-HARDENING change must not 6x faster-expire the lease, so keep ADR-0058's 30-minute TTL + 5-minute grace rather than the 5-minute value some reviewer threads suggested (a genuine divergence from an early draft that had shortened it); (2) arm the pending-fence node id BEFORE the awaited startup work so a crash mid-acquire cleans the partial fence instead of leaking it until the orphaned-fence sweep; (3) preserve the original crash error while running fail-safe cleanup so cleanup never masks the crash. plan_divergence=minor: the threshold-direction correction reshaped one plan step but the overall approach held."
     },
     "code_review": {
-      "clean": true,
+      "clean": false,
       "rounds": [
         {
           "round": 1,
-          "models": [
-            "claude-sonnet-4.6"
-          ],
-          "concerns_count": 2,
-          "resolved_count": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
           "clean": false
         },
         {
           "round": 2,
-          "models": [
-            "claude-sonnet-4.6"
-          ],
-          "concerns_count": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 3,
           "resolved_count": 1,
           "clean": false
-        },
-        {
-          "round": 3,
-          "models": [
-            "claude-sonnet-4.6"
-          ],
-          "concerns_count": 0,
-          "resolved_count": 0,
-          "clean": true
         }
-      ]
+      ],
+      "escalated_to_human": {
+        "after_round": 2,
+        "reason": "Round 1 (claude-sonnet-4.6) surfaced 3 concerns, all fixed with proven-non-vacuous regression tests (commit 48ace4cfb). Round 2 (gpt-5.6-sol) surfaced 3 concerns: Finding 2(b) — a partial trust fence leaked on the clean-skip (process.exit(0)) metadata-move path in acquire() — was VALID and in-scope; fixed in a94231b15 with a proven-non-vacuous Bug 3b regression test. The other two are pre-existing architectural residuals that cannot be closed without a separate CAS/generation-token redesign, out of scope for this cleanup PR and not to be scope-crept in: (1) a micro-TOCTOU between the release-path ownership snapshot and its mutation, only reachable after a >30-min stall that the 30-min lease TTL already dominates; (2) an ambiguous POST response arriving before pendingFenceNodeId is assigned — universal to every POST, GitHub-side, already backstopped by the orphaned-fence sweep. Escalating to nalfeo to decide whether to open a follow-up CAS-redesign issue rather than looping a third round on intractable residuals (2-round cap reached).",
+        "unresolved_concerns": 2
+      }
     }
   }
 }
