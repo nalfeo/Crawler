@@ -98,6 +98,31 @@ describe('Floor 2 reward bundle — real unlock/claim pipeline (observe real art
     // Bundle is retained so the claim stays retryable.
     expect(world.generatedEquipmentRewardBundles.has(ACHIEVEMENT_ID)).toBe(true);
   });
+
+  it('claim fails closed (grantFailed) when the bag lacks capacity for all 3 items (atomic claim contract)', () => {
+    const { world, playerEid } = makeFloor2World('cap-fail-run');
+    expect(unlockAchievement(world, ACHIEVEMENT_ID)).toBe(true);
+    const bundle = world.generatedEquipmentRewardBundles.get(ACHIEVEMENT_ID)!;
+    const bundleKeys = [...bundle.instanceKeys];
+
+    // Force the bag to have capacity for only 2 generated-equipment items so the
+    // all-or-nothing validation fails before any mutation.
+    const bag = world.inventories.get(playerEid)!;
+    world.inventories.set(playerEid, { ...bag, generatedEquipmentCapacity: 2 });
+
+    const result = claimAchievementReward(world, ACHIEVEMENT_ID);
+    expect(result).toEqual({ ok: false, reason: 'grantFailed' });
+
+    // Achievement must remain unclaimed.
+    expect(isAchievementClaimed(world, ACHIEVEMENT_ID)).toBe(false);
+    // Bundle must be retained (claim stays retryable).
+    expect(world.generatedEquipmentRewardBundles.has(ACHIEVEMENT_ID)).toBe(true);
+    // No instance must have been transferred to the bag.
+    const bagAfter = world.inventories.get(playerEid)!;
+    for (const key of bundleKeys) {
+      expect(hasGeneratedEquipmentReference(bagAfter, key)).toBe(false);
+    }
+  });
 });
 
 describe('Floor 2 reward bundle — Floor 1 exclusion / equipment-free preservation', () => {

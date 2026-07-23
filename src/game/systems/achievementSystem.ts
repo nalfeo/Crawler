@@ -13,7 +13,10 @@ import {
   type AchievementUnlockRule,
 } from '../../shared/achievements.js';
 import { getFloor2EquipmentRewardsAccess } from '../../core/floor2-equipment-flags.js';
-import { resolveEquipmentRewardBundle } from '../floor2-reward-bundle-resolver.js';
+import {
+  RewardBundleResolutionError,
+  resolveEquipmentRewardBundle,
+} from '../floor2-reward-bundle-resolver.js';
 
 function highestSkillLevel(world: GameWorld): number {
   let maxLevel = 0;
@@ -160,7 +163,8 @@ export function unlockAchievement(
     }
     try {
       resolveEquipmentRewardBundle(world, achievementId, achievement.reward.bases);
-    } catch {
+    } catch (err) {
+      if (err instanceof RewardBundleResolutionError) throw err;
       return false;
     }
   }

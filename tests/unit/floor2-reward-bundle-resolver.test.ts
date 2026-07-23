@@ -118,10 +118,19 @@ describe('resolveEquipmentRewardBundle — structure and rarity contracts', () =
 });
 
 describe('resolveEquipmentRewardBundle — determinism and isolation', () => {
-  it('replays identical instance keys for the same run key + achievement + affinity', () => {
-    const a = resolveEquipmentRewardBundle(makeWorld('run-x'), 'ach', MIXED_BASES);
-    const b = resolveEquipmentRewardBundle(makeWorld('run-x'), 'ach', MIXED_BASES);
+  it('replays identical instance keys AND record content for the same run key + achievement + affinity', () => {
+    const worldA = makeWorld('run-x');
+    const worldB = makeWorld('run-x');
+    const a = resolveEquipmentRewardBundle(worldA, 'ach', MIXED_BASES);
+    const b = resolveEquipmentRewardBundle(worldB, 'ach', MIXED_BASES);
     expect(b.instanceKeys).toEqual(a.instanceKeys);
+    // Keys are deterministically `runKey + ordinal`, so equal keys alone do not
+    // prove equal base choices, effects, or frozen stats. Compare full records.
+    for (let i = 0; i < a.instanceKeys.length; i += 1) {
+      const recA = getGeneratedEquipmentInstance(worldA, a.instanceKeys[i]!);
+      const recB = getGeneratedEquipmentInstance(worldB, b.instanceKeys[i]!);
+      expect(recB).toEqual(recA);
+    }
   });
 
   it('produces distinct streams for different run keys', () => {
@@ -149,15 +158,25 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
   });
 
-  it('fails closed when a base carries an inherent non-armor stat bonus (Common contract)', () => {
+  it('fails closed with illegal-base when a base carries an inherent non-armor stat bonus (Common contract)', () => {
     const world = makeWorld();
-    // `dagger-pendant` / accessories with stat bonuses would violate the Common
-    // contract; use a base known to carry a non-armor stat bonus if available.
-    // Falls back to asserting the guard exists by feeding a bogus base.
-    expect(() =>
-      resolveEquipmentRewardBundle(world, 'ach', ['definitely-not-a-real-base']),
-    ).toThrow();
+    // `travelers-cloak` is a resolvable accessory with moveSpeed + dodgeChance
+    // stat bonuses (both non-armor), so the guard fires as 'illegal-base'
+    // rather than 'unknown-base'. The MIXED_BASES supply aligned + non-aligned
+    // pools so the partition check never fires first.
+    let err: unknown;
+    try {
+      resolveEquipmentRewardBundle(world, 'ach', [
+        ...MIXED_BASES,
+        'travelers-cloak',
+      ]);
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(RewardBundleResolutionError);
+    expect((err as RewardBundleResolutionError).code).toBe('illegal-base');
     expect(world.generatedEquipmentRewardBundles.size).toBe(0);
+    expect(listGeneratedEquipmentInstances(world).length).toBe(0);
   });
 
   it('fails closed with empty-aligned-pool when no base matches the player affinity', () => {
