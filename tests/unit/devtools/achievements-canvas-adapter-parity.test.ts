@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FLOOR1_ACHIEVEMENTS,
   ACHIEVEMENT_ART_BACKLOG,
+  buildAchievementArtBacklog,
   LOOT_BOX_TIERS,
 } from '../../../src/shared/achievements';
 
@@ -50,8 +51,12 @@ describe('achievements canvas adapter parity with src/shared/achievements', () =
     expect(data.achievements).toHaveLength(FLOOR1_ACHIEVEMENTS.length);
   });
 
-  it('derives an art backlog identical to ACHIEVEMENT_ART_BACKLOG', () => {
-    expect(data.artBacklog).toEqual(clone(ACHIEVEMENT_ART_BACKLOG));
+  it('derives an art backlog identical to the floor-1 slice of ACHIEVEMENT_ART_BACKLOG', () => {
+    // The adapter is floor-1-scoped (see `data.achievements` parity above), so it
+    // mirrors the backlog derived from FLOOR1_ACHIEVEMENTS. The full monolith
+    // backlog additionally covers floor-2 catalog entries the canvas does not read.
+    expect(data.artBacklog).toEqual(clone(buildAchievementArtBacklog(FLOOR1_ACHIEVEMENTS)));
+    expect(ACHIEVEMENT_ART_BACKLOG.length).toBeGreaterThanOrEqual(data.artBacklog.length);
   });
 
   it('persists overrides under the same localStorage key as the monolith', () => {

@@ -74,6 +74,17 @@ export type AchievementReward =
   | { readonly type: 'lootBox'; readonly tier: LootBoxTier }
   | { readonly type: 'item'; readonly itemId: string }
   | { readonly type: 'directorMessage'; readonly message: string }
+  | {
+      /**
+       * Floor 2 generated-equipment reward. Resolved ONCE at unlock into an
+       * immutable 3-item bundle (Common+Uncommon+Rare); `bases` is the authored
+       * candidate pool the resolver draws aligned/non-aligned picks from. It must
+       * span both magic and physical affinity so both pools are non-empty for any
+       * player build (the resolver fails closed otherwise).
+       */
+      readonly type: 'equipment';
+      readonly bases: readonly string[];
+    }
   | { readonly type: 'none' };
 
 export type AchievementUnlockRule =
@@ -165,6 +176,12 @@ const achievementRewardSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('directorMessage'),
       message: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('equipment'),
+      bases: z.array(z.string().min(1)).min(1),
     })
     .strict(),
   z
@@ -349,7 +366,47 @@ export function createAchievementCatalogRegistry(
 }
 
 export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achievements);
-export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, []);
+/**
+ * Minimal Floor 2 catalog: one equipment-reward achievement so the real
+ * unlock → resolve → claim path is exercisable in-game/headless. The reward
+ * `bases` span magic (`ember-wand`, `frost-crook`) and physical (`iron-cleaver`,
+ * `ashwood-bow`) Floor 2 weapon bases — all have empty inherent stat bonuses, so
+ * the Common item carries no non-armor stat bonus (rarity contract). `iconId` is
+ * a placeholder key; no art is generated or required to ship this slice.
+ */
+const FLOOR2_ACHIEVEMENT_DEFS: readonly unknown[] = [
+  {
+    id: 'floor2-field-kit',
+    floor: 2,
+    title: 'Floor 2 Field Kit',
+    popupText: 'New achievement: Floor 2 Field Kit!',
+    unlockCriteria: 'Defeat your first enemy on Floor 2.',
+    details:
+      'Unlock when you defeat your first enemy on Floor 2 to receive a starter equipment bundle.',
+    directorFlavor:
+      'The prop department scraped together a starter kit from the discount bin. Three pieces, wildly varying quality, exactly the kind of inventory-management busywork the audience adores. Try not to look directly at the Common one.',
+    iconId: 'achv-floor2-field-kit-placeholder',
+    difficulty: 'standard',
+    reward: {
+      type: 'equipment',
+      bases: [
+        'weapon.iron-cleaver',
+        'weapon.ashwood-bow',
+        'weapon.ember-wand',
+        'weapon.frost-crook',
+      ],
+    },
+    unlockRules: [
+      {
+        type: 'numberCompare',
+        fact: 'totalKills',
+        op: '>=',
+        value: 1,
+      },
+    ],
+  },
+];
+export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, FLOOR2_ACHIEVEMENT_DEFS);
 export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
   FLOOR1_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENT_CATALOG,
@@ -490,9 +547,11 @@ export function cloneAchievementFactSnapshot(
   };
 }
 
-function collectIconBacklogItems(): AchievementArtBacklogItem[] {
+function collectIconBacklogItems(
+  achievements: readonly AchievementDef[],
+): AchievementArtBacklogItem[] {
   const iconToAchievements = new Map<string, string[]>();
-  for (const achievement of ALL_ACHIEVEMENTS) {
+  for (const achievement of achievements) {
     const list = iconToAchievements.get(achievement.iconId);
     if (list) {
       list.push(achievement.id);
@@ -510,9 +569,11 @@ function collectIconBacklogItems(): AchievementArtBacklogItem[] {
   }));
 }
 
-function collectLootBoxBacklogItems(): AchievementArtBacklogItem[] {
+function collectLootBoxBacklogItems(
+  achievements: readonly AchievementDef[],
+): AchievementArtBacklogItem[] {
   const tierToAchievements = new Map<LootBoxTier, string[]>();
-  for (const achievement of ALL_ACHIEVEMENTS) {
+  for (const achievement of achievements) {
     if (achievement.reward.type !== 'lootBox') continue;
     const existing = tierToAchievements.get(achievement.reward.tier);
     if (existing) {
@@ -531,9 +592,19 @@ function collectLootBoxBacklogItems(): AchievementArtBacklogItem[] {
   }));
 }
 
-export const ACHIEVEMENT_ART_BACKLOG: readonly AchievementArtBacklogItem[] = [
-  ...collectIconBacklogItems(),
-  ...collectLootBoxBacklogItems(),
-];
+/**
+ * Derive the art backlog for a given achievement list. `ACHIEVEMENT_ART_BACKLOG`
+ * uses the full catalog (all floors); the floor-1-scoped devtools canvas adapter
+ * derives from `FLOOR1_ACHIEVEMENTS` only, so its parity guard reuses this with
+ * the floor-1 list.
+ */
+export function buildAchievementArtBacklog(
+  achievements: readonly AchievementDef[],
+): readonly AchievementArtBacklogItem[] {
+  return [...collectIconBacklogItems(achievements), ...collectLootBoxBacklogItems(achievements)];
+}
+
+export const ACHIEVEMENT_ART_BACKLOG: readonly AchievementArtBacklogItem[] =
+  buildAchievementArtBacklog(ALL_ACHIEVEMENTS);
 
 export const FLOOR1_ACHIEVEMENT_COUNT = FLOOR1_ACHIEVEMENTS.length;

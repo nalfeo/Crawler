@@ -1181,6 +1181,72 @@ function requireConfiguredRunKey(registry: GeneratedEquipmentRegistry): string {
   return registry.runKey;
 }
 
+export interface GeneratedEquipmentRegistryTransaction {
+  /**
+   * Scratch registry that shares the live run key / generation policy /
+   * fingerprint but is backed by an isolated CLONE of the live instance map.
+   * Generate against this; the live registry stays untouched until `commit()`.
+   */
+  readonly registry: GeneratedEquipmentRegistry;
+  /**
+   * Atomically publish the scratch state to the live registry. This is a single
+   * synchronous `WeakMap.set` that cannot throw, so a caller may mutate sibling
+   * world state immediately after in the same no-throw region for true
+   * all-or-nothing semantics. Throws (`invalid-payload`) if called twice.
+   */
+  commit(): void;
+}
+
+/**
+ * Begin an all-or-nothing generation transaction against the world's live
+ * generated-equipment registry.
+ *
+ * The returned `registry` is a distinct frozen object that shares the live
+ * registry's immutable identity (run key, generation policy + fingerprint) but
+ * is backed by a CLONE of the live instance map and `nextOrdinal`. Generate any
+ * number of instances against it — ordinals continue contiguously from the live
+ * count, preserving the contiguous-ordinal invariant that save/restore depends
+ * on. If any step throws, discard the transaction: the live registry is never
+ * mutated. On success, `commit()` swaps the live registry's backing state to the
+ * scratch state.
+ *
+ * Not safe against interleaved generation on the LIVE registry between creation
+ * and commit; the deterministic single-threaded sim never interleaves, which is
+ * why no locking is needed.
+ */
+export function createGeneratedEquipmentRegistryTransaction(
+  world: GeneratedEquipmentRegistryWorld,
+): GeneratedEquipmentRegistryTransaction {
+  const liveRegistry = world.generatedEquipmentRegistry;
+  const liveState = getRegistryState(liveRegistry);
+  requireConfiguredRunKey(liveRegistry);
+  const scratchRegistry: GeneratedEquipmentRegistry = Object.freeze({
+    runKey: liveRegistry.runKey,
+    generationPolicy: liveRegistry.generationPolicy,
+    generationPolicyFingerprint: liveRegistry.generationPolicyFingerprint,
+  });
+  const scratchState: RegistryState = {
+    instances: new Map(liveState.instances),
+    nextOrdinal: liveState.nextOrdinal,
+  };
+  registryStates.set(scratchRegistry, scratchState);
+  let committed = false;
+  return {
+    registry: scratchRegistry,
+    commit(): void {
+      if (committed) {
+        fail(
+          'invalid-payload',
+          'Generated equipment registry transaction already committed',
+          '$.registry.transaction',
+        );
+      }
+      committed = true;
+      registryStates.set(liveRegistry, scratchState);
+    },
+  };
+}
+
 export function createGeneratedEquipmentInstance(
   world: GeneratedEquipmentRegistryWorld,
   value: GeneratedEquipmentCreateInputV1,

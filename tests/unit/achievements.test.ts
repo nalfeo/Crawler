@@ -81,7 +81,7 @@ describe('floor1 achievements catalog', () => {
 
   it('looks up deterministic floor catalogs and gates current-run definitions by reached floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
-    expect(getAchievementCatalogForFloor(2)?.all).toEqual([]);
+    expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
 
     const floor2Catalog = createAchievementCatalog(2, [
       rawAchievement({
@@ -121,7 +121,9 @@ describe('floor1 achievements catalog', () => {
         createAchievementCatalog(1, []),
       ]),
     ).toThrow(/Duplicate achievement catalog/);
-    expect(ACHIEVEMENT_CATALOG_REGISTRY.byId.size).toBe(FLOOR1_ACHIEVEMENT_COUNT);
+    expect(ACHIEVEMENT_CATALOG_REGISTRY.byId.size).toBe(
+      FLOOR1_ACHIEVEMENT_COUNT + FLOOR2_ACHIEVEMENTS.length,
+    );
     expect(ALL_ACHIEVEMENTS).toEqual(
       ACHIEVEMENT_CATALOG_REGISTRY.catalogs.flatMap((catalog) => catalog.all),
     );

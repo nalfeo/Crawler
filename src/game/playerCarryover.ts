@@ -21,6 +21,7 @@ import {
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
 import {
   cloneAchievementFactSnapshot,
+  getAchievementById,
   mergeAchievementFactSnapshots,
   type AchievementFactSnapshot,
 } from '../shared/achievements.js';
@@ -594,6 +595,8 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   };
 
   const bundleIds = new Set<string>();
+  const unlockedIds = new Set(snapshot.achievements.unlockedIds);
+  const claimedIds = new Set(snapshot.achievements.claimedIds);
   for (const bundle of snapshot.generatedEquipmentRewardBundles) {
     if (bundle.schemaVersion !== GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION) {
       throw new PlayerCarryoverSnapshotError(
@@ -609,6 +612,26 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       );
     }
     bundleIds.add(bundle.achievementId);
+    // Semantic guard (fail-closed): a persisted bundle may only exist for a real
+    // equipment-reward achievement that is currently unlocked but not yet claimed.
+    // A claimed bundle was consumed (its instances transferred out), so it must
+    // not linger; a locked/unknown/non-equipment bundle is malformed state.
+    const bundleAchievement = getAchievementById(bundle.achievementId);
+    if (!bundleAchievement || bundleAchievement.reward.type !== 'equipment') {
+      throw new PlayerCarryoverSnapshotError(
+        `Reward bundle for non-equipment achievement: ${bundle.achievementId}`,
+      );
+    }
+    if (!unlockedIds.has(bundle.achievementId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Reward bundle for locked achievement: ${bundle.achievementId}`,
+      );
+    }
+    if (claimedIds.has(bundle.achievementId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Reward bundle persisted for already-claimed achievement: ${bundle.achievementId}`,
+      );
+    }
     assertArray(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
     assertUniqueStrings(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
     for (const key of bundle.instanceKeys) {
@@ -995,7 +1018,20 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
   if (snapshot.generatedEquipmentRegistry) {
     restoreGeneratedEquipmentRegistry(world, snapshot.generatedEquipmentRegistry);
   }
-  world.generatedEquipmentRewardBundles = new Map();
+  // Rebuild the reward-bundle map immediately after the registry restore and
+  // BEFORE any bag/equipped restore. Bundles are registry owners, so having them
+  // in place first keeps the single-owner invariant enforceable while bag and
+  // equipped instances are re-added.
+  world.generatedEquipmentRewardBundles = new Map(
+    snapshot.generatedEquipmentRewardBundles.map((bundle) => [
+      bundle.achievementId,
+      Object.freeze({
+        schemaVersion: bundle.schemaVersion,
+        achievementId: bundle.achievementId,
+        instanceKeys: Object.freeze([...bundle.instanceKeys]),
+      }),
+    ]),
+  );
 
   for (const itemId of snapshot.equippedItemIds) {
     const itemDef = getEquipmentDefForItem(itemId);
@@ -1044,17 +1080,6 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
   for (const slotId of snapshot.disabledEquipmentSlots) {
     equipment.disabledSlots.add(slotId);
   }
-
-  world.generatedEquipmentRewardBundles = new Map(
-    snapshot.generatedEquipmentRewardBundles.map((bundle) => [
-      bundle.achievementId,
-      Object.freeze({
-        schemaVersion: bundle.schemaVersion,
-        achievementId: bundle.achievementId,
-        instanceKeys: Object.freeze([...bundle.instanceKeys]),
-      }),
-    ]),
-  );
 
   statSystem(world);
   world.stores.health.current[playerEid] = snapshot.health.current;

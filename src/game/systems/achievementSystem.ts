@@ -12,6 +12,8 @@ import {
   type AchievementRulePhase,
   type AchievementUnlockRule,
 } from '../../shared/achievements.js';
+import { getFloor2EquipmentRewardsAccess } from '../../core/floor2-equipment-flags.js';
+import { resolveEquipmentRewardBundle } from '../floor2-reward-bundle-resolver.js';
 
 function highestSkillLevel(world: GameWorld): number {
   let maxLevel = 0;
@@ -146,6 +148,21 @@ export function unlockAchievement(
   const achievement = getAchievementById(achievementId, registry);
   if (!achievement || world.achievements.unlockedIds.has(achievementId)) {
     return false;
+  }
+
+  // Equipment rewards resolve their immutable bundle BEFORE the unlock mutation
+  // so the whole unlock is atomic: if the Floor 2 equipment economy is not
+  // enabled (e.g. Floor 1, which is equipment-free), or bundle resolution fails
+  // for any reason, we do NOT record the unlock (fail-closed).
+  if (achievement.reward.type === 'equipment') {
+    if (getFloor2EquipmentRewardsAccess(world).kind !== 'enabled') {
+      return false;
+    }
+    try {
+      resolveEquipmentRewardBundle(world, achievementId, achievement.reward.bases);
+    } catch {
+      return false;
+    }
   }
 
   world.achievements.unlockedIds.add(achievementId);
