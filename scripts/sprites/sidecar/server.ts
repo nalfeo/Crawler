@@ -795,7 +795,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       if (!briefId || !runId) continue;
       if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) continue;
       const fromPrefix = `${briefId}/${runId}/`;
-      const keys = await store.list(fromPrefix);
+      // Archive enumerates-then-copies-then-removes this exact key set — a
+      // stale (SWR fast-path) listing could leave newly-added files behind
+      // under the un-archived (original) location, so this MUST see an
+      // authoritative, freshly-listed result.
+      const keys = await store.list(fromPrefix, { authoritative: true });
       if (keys.length === 0) {
         skipped.push(raw);
         continue;
@@ -848,7 +852,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       if (!briefId || !runId) continue;
       if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) continue;
       const prefix = `${archive ? 'archive/' : ''}${briefId}/${runId}/`;
-      for (const key of await store.list(prefix)) {
+      // Delete enumerates-then-removes this exact key set — a stale listing
+      // could leave newly-added files behind, undermining "fully deleted".
+      for (const key of await store.list(prefix, { authoritative: true })) {
         await store.remove(key);
       }
       deleted.push(raw);
@@ -2763,7 +2769,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     let targetKeys: string[];
     try {
-      const allKeys = await store.list('');
+      // Clear-store enumerates-then-removes the filtered key set and reports
+      // deletedCount — a stale listing would under-report/under-clear, so
+      // this MUST see an authoritative, freshly-listed result.
+      const allKeys = await store.list('', { authoritative: true });
       targetKeys = [
         ...new Set(
           allKeys.filter((key) => {
@@ -2859,7 +2868,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         return { error: 'forbidden-path' };
       }
       const runPrefix = `${briefId}/${runId}/`;
-      const runKeys = await store.list(runPrefix);
+      // Delete enumerates-then-removes this exact key set (and the follow-up
+      // check below decides whether the brief dir is now empty) — both MUST
+      // see an authoritative, freshly-listed result so a stale listing can't
+      // leave newly-added files behind or wrongly judge the brief empty.
+      const runKeys = await store.list(runPrefix, { authoritative: true });
       if (runKeys.length === 0) {
         reply.code(404);
         return { error: 'run-not-found', briefId, runId };
@@ -2869,7 +2882,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       } else {
         await Promise.all(runKeys.map((key) => store.remove(key)));
       }
-      if ((await store.list(`${briefId}/`)).length === 0) {
+      if ((await store.list(`${briefId}/`, { authoritative: true })).length === 0) {
         await store.remove(briefId);
       }
 
