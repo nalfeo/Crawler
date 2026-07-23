@@ -1,5 +1,16 @@
 [
   {
+    "commit": "90918e40f63684d2a96afea9681b99157a86219a",
+    "commitDate": "2026-07-23T05:46:59Z",
+    "commitSubject": "feat(ci): load-aware CI Recovery dispatch budget (#1778)",
+    "capturedAt": "2026-07-23T07:07:25.051Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29983592505",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/90918e40f63684d2a96afea9681b99157a86219a.json"
+  },
+  {
     "commit": "f3d120a8186b30f60d60df5183a8cc0daa11b7a3",
     "commitDate": "2026-07-23T05:07:46Z",
     "commitSubject": "Throttle asset generation and route providers through Foundry (#1772)",
