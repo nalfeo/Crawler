@@ -326,10 +326,9 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       // a full 8-combo graduation run cannot saturate the account's concurrent runner
       // pool. Run 29786216369 fanned out 20 concurrent Round 3 eval jobs with 44
       // more queued before cancellation -- this cap must never silently regress.
-      expect(
-        String(job.strategy?.['max-parallel']),
-        `${evalJob} strategy.max-parallel`,
-      ).toContain('max_parallel');
+      expect(String(job.strategy?.['max-parallel']), `${evalJob} strategy.max-parallel`).toContain(
+        'max_parallel',
+      );
       expect(job.concurrency?.group).toContain('crawler-sweep-slot-');
       expect(job.concurrency?.group).toContain('sweepSlot');
       expect(job.strategy?.['fail-fast']).toBe(false);
@@ -858,9 +857,7 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       // Must be best-effort: a transient failure here must NOT block
       // current-run downstream jobs via resume-import conclusion='failure'.
       expect(tierUploadStep?.['continue-on-error']).toBe(true);
-      expect(tierUploadStep?.if).toContain(
-        "hashFiles('resumed/search-checkpoint-r*.json') != ''",
-      );
+      expect(tierUploadStep?.if).toContain("hashFiles('resumed/search-checkpoint-r*.json') != ''");
       expect(tierUploadStep?.with?.name).toBe('search-checkpoint-resumed');
       expect(tierUploadStep?.with?.path).toBe('resumed/search-checkpoint-r*.json');
     });
