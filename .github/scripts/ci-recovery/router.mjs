@@ -441,9 +441,14 @@ export function hasHealthyOwnerForSweep(pullRequest, now = new Date()) {
 // state here means hydration itself failed; the reconciler's orphan path will
 // handle it on the next successful hydration sweep.
 //
-// This implements Fix C (liveness binding) as part of Fix A (reaper lane):
-// any automation lock held past the TTL wall-clock ceiling is eligible for
-// release, making the TTL a hard upper bound on lock lifetime.
+// Together with the reaper-triggered release in reconcile.mjs (which carries
+// the attempt count forward and freezes progressAt instead of sliding it), this
+// makes the automation TTL a true wall-clock ceiling: a lock held past the
+// stale threshold stays eligible on every sweep until the bounded attempt
+// ceiling releases it. Liveness is intentionally NOT inferred from head-SHA
+// workflow runs -- unrelated CI / merge-train / sweep runs share the head SHA
+// and would yield false-live signals that could make a dead lock immortal
+// (adversarial plan review, 2026-07-22).
 export function identifyReapablePrs(scheduledPulls, now = new Date()) {
   return scheduledPulls
     .filter((pullRequest) => {
@@ -455,6 +460,14 @@ export function identifyReapablePrs(scheduledPulls, now = new Date()) {
       // Owner-labeled PR whose state was unreadable after hydration: always
       // eligible so the reconciler can run its orphan-cleanup path.
       if (pullRequest.recoveryStateUnreadable) return true;
+      // Hydrated but absent/malformed state (null -- distinct from an
+      // unhydrated `undefined`): the PR holds a ci-owner lock with no
+      // recoverable automation state. The reconciler's orphan-cleanup path
+      // releases it, but only if it is dispatched -- include it in the reaper
+      // batch. An unhydrated PR (recoveryState === undefined) is still skipped
+      // by the guard below: its age is unknown and the hydration pass retries
+      // it on the next sweep.
+      if (state === null) return true;
       // Only act on loaded, automation-owned active states.
       if (!state || state.owner !== 'automation') return false;
       if (!['active', 'dispatched', 'escalated'].includes(state.status)) return false;
@@ -463,6 +476,30 @@ export function identifyReapablePrs(scheduledPulls, now = new Date()) {
       return now.getTime() - progressAt >= AUTOMATION_STALE_MINUTES * 60 * 1000;
     })
     .map((pr) => pr.number);
+}
+
+// Selects the subset of reapable PRs to dispatch this sweep, rotating the
+// eligible list once per sweep window BEFORE applying REAPER_LANE_CAP. Without
+// rotation a fixed prefix would be taken every sweep, so when more than
+// REAPER_LANE_CAP locks are stale the tail could starve indefinitely.
+//
+// The rotation only distributes fairly if the underlying list has a STABLE
+// order across sweeps. The caller derives reaperPrNumbers from the
+// updated-desc pull list, whose order churns as reaping bumps a PR's
+// updated_at (a reaped PR jumps back to the front next sweep), which would
+// defeat the rotation and let tail locks starve. So sort by PR number
+// (ascending, stable and sweep-invariant) before rotating. Reuses the flag-off
+// sweep rotation window and rotateList helper already used by
+// collectPrNumbers/eligibleTrainRecoveryPulls. Accepts an injectable `now`
+// (like collectPrNumbers) so the fairness property is deterministically
+// testable.
+export function selectReaperBatch(reaperPrNumbers, now = new Date(), cap = REAPER_LANE_CAP) {
+  const rotation =
+    Number.isFinite(now.getTime()) && now.getTime() > 0
+      ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
+      : 0;
+  const stableList = [...reaperPrNumbers].sort((a, b) => a - b);
+  return rotateList(stableList, rotation).slice(0, cap);
 }
 
 export async function hydrateRecoveryOwnership(
@@ -901,8 +938,12 @@ export async function runFromEnv(env = process.env) {
       scheduledPulls = scheduledPulls.map((pr) => patchByNumber.get(pr.number) ?? pr);
     }
 
-    const reaperPrNumbers = identifyReapablePrs(scheduledPulls, new Date());
-    const reaperBatch = reaperPrNumbers.slice(0, REAPER_LANE_CAP);
+    const reaperNow = new Date();
+    const reaperPrNumbers = identifyReapablePrs(scheduledPulls, reaperNow);
+    // Rotate the eligible list once per sweep window before applying the cap
+    // (see selectReaperBatch) so the tail cannot starve when more than
+    // REAPER_LANE_CAP locks are stale.
+    const reaperBatch = selectReaperBatch(reaperPrNumbers, reaperNow);
     for (const reaperPrNumber of reaperBatch) {
       // Use a direct request() -- do NOT wrap in requestWithBackoff. Same
       // rationale as the normal dispatch loop: non-idempotent POST, retries

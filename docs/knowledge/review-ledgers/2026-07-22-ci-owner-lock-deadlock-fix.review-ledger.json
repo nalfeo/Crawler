@@ -3,27 +3,52 @@
   "date": "2026-07-22",
   "session_slug": "ci-owner-lock-deadlock-fix",
   "task_title": "Durable fix: prevent ci-owner lock deadlock (reaper lane + 422 crash fix + liveness TTL)",
-  "estimated_apples": 3,
+  "estimated_apples": 4,
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "gpt-5.4",
-      "concerns_count": 3,
-      "resolved_count": 3,
-      "plan_divergence": "minor",
-      "notes": "3 blocking concerns raised: (1) double-dispatch: reaper PRs not excluded from normal dispatch set - fixed by tracking reaperDispatchedSet and filtering prNumbers; (2) train-mode partial hydration: train hydration stops early at targetDispatchable, so reaper would miss some stale PRs - fixed by unifying hydration to cover both train-partial and non-train paths; (3) unreadable state skipped: PRs with recoveryStateUnreadable=true could hold locks indefinitely - fixed by including them in identifyReapablePrs. Plan_divergence=minor (no re-architecture, 3 detail fixes)."
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "major_fork",
+      "notes": "Option A re-scoped this from 3\uD83C\uDF4E to 4\uD83C\uDF4E and ran an ADVERSARIAL separate-model plan review that red-teamed the original liveness-binding design and enumerated three approaches: (1) infer session liveness from head workflow_runs (the originally-planned signal), (2) an actor/name-attributable copilot-swe-agent run signal, (3) no-run-inference: freeze progressAt on the lease-reaper stale-retry so the existing 2-attempt ceiling becomes a true wall-clock TTL. VERDICT = DIVERGENT (major_fork): approach (1) is UNSAFE because unrelated CI/merge-train/sweep runs AND the reaper's own reconcile dispatch share the head SHA, so any liveness inference reads true forever and makes the lock immortal (the exact deadlock being fixed); approach (2) has no reliable per-session attribution at reconcile time. Adopted approach (3). The 1 major concern (unsafe liveness inference) was resolved by re-architecting to the freeze-progressAt/attempt-carry design now implemented in reconcile.mjs."
     },
     "code_review": {
       "clean": true,
       "rounds": [
         {
           "round": 1,
-          "models": [
-            "claude-opus-4.8"
-          ],
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Dedicated deep code review of the full diff (reconcile.mjs freeze/attempt-carry path, router.mjs identifyReapablePrs predicate + selectReaperBatch, and the four new tests). Traced the freeze+attempt-carry to a guaranteed release within \u22643 sweeps, confirmed the null/undefined predicate ordering, and verified the new tests are non-vacuous. No concerns."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "adjudicator_model": "claude-opus-4.8",
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gemini-3.1-pro-preview"],
           "concerns_count": 1,
-          "resolved_count": 1,
-          "clean": true
+          "valid_count": 1,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "claude-opus-4.8: no significant issues. gemini-3.1-pro-preview: one HIGH finding \u2014 selectReaperBatch rotated the reapable list to prevent starvation, but the input order derives from GitHub's updated_at-desc pull feed which churns as reaping bumps a PR's updated_at, so rotating an unstable list breaks the cross-window fairness guarantee (tail PRs could starve) and the original test fed a static array so it passed vacuously. Adjudication (claude-opus-4.8): gemini's finding is VALID (Opus reviewed the test-as-written; Gemini correctly identified the real-world input is not static). Remedy: stable-sort by PR number before rotating so the batch is a pure function of the input SET plus the time window."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol", "claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Confirmation re-review of the stable-sort fix + strengthened test by two distinct models. Both confirm: the fix fully resolves the churn/starvation concern with no new bug (non-mutating spread, correct numeric comparator, empty/single-element safe), the added order-independence assertion (ascending vs shuffled vs descending yield the same batch for a fixed now) is genuine and load-bearing (verified it fails without the sort), and the runFromEnv call site is unchanged. No findings."
         }
       ]
     }

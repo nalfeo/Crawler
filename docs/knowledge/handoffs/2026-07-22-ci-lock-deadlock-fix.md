@@ -14,7 +14,12 @@ ci-policy
 
 ## Apples
 
-3🍎 estimated, 3🍎 actual. Full JSON summary: `docs/knowledge/metrics/apples/2026-07-22-ci-lock-deadlock-fix.json`.
+4🍎 estimated, 4🍎 actual. Full JSON summary: `docs/knowledge/metrics/apples/2026-07-23-ci-lock-deadlock-fix.json`.
+
+Re-scoped from the author's original 3🍎 to 4🍎 under the coordinator's **Option A** mandate:
+keep ownership and fully harden the reaper lane (adversarial plan review + multi-model review),
+rather than shipping the minimal 3-fix version. The 4🍎 review harness is recorded in
+`docs/knowledge/review-ledgers/2026-07-22-ci-owner-lock-deadlock-fix.review-ledger.json`.
 
 ## What Was Done
 
@@ -22,6 +27,7 @@ Fixed three independent root causes that combined to produce a CI-owner lock dea
 `ci-owner-pr-*` locks were held with no active Copilot session (two for 12.7h).
 
 **Fix A (lease-reaper lane — break budget-starvation deadlock):**
+
 - Added `identifyReapablePrs(scheduledPulls, now)` to `router.mjs`. Identifies automation-owned PRs
   with state older than `AUTOMATION_STALE_MINUTES` (30 min) _and_ owner-labeled PRs with
   `recoveryStateUnreadable` set.
@@ -36,21 +42,55 @@ Fixed three independent root causes that combined to produce a CI-owner lock dea
      `prNumbers` result after `collectPrNumbers()` — preventing double-dispatch.
 
 **Fix B (422 crash wedge — make release() unreachable-proof):**
+
 - Wrapped the `POST /pulls/{n}/comments/{id}/replies` call in `reconcile.mjs` (~line 1155) in
   try/catch. On 422 or any API error: logs to stderr, logs skip to stdout, and `continue`s. This
   prevents a dangling CI-PAT pending review from crashing reconcile before `release()` runs.
   The synthetic trusted marker is NOT injected on failure, so `shouldResolveThread` is not
   falsely triggered.
 
-**Fix C (liveness binding — TTL becomes a hard ceiling):**
-- Rides inside Fix A. The reaper's eligibility check uses `AUTOMATION_STALE_MINUTES` as a hard
-  wall-clock ceiling on how long an automation lock may be held without progress.
+**Fix C (TTL becomes a true wall-clock ceiling — adopted design; adversarial plan review = DIVERGENT):**
+
+- The **original** Fix C proposed a session-liveness signal: infer "session is live" from
+  `workflow_runs` on the PR head SHA and only hard-release when no live run exists. The
+  **adversarial plan review (rubber-duck, `gpt-5.6-sol`) REJECTED this as UNSAFE** (`plan_divergence:
+major_fork`): unrelated CI / merge-train / sweep runs — and the reaper's OWN reconcile dispatch —
+  share the head SHA, so the liveness check reads "live" forever → the lock becomes immortal (the exact
+  deadlock being fixed). No reliable, attributable per-session liveness signal exists at reconcile time.
+- **Adopted (no run-inference):** on the dedicated `trigger === 'lease-reaper'` GC dispatch, the
+  stale-automation `retry` else-branch in `reconcile.mjs` **FREEZES `progressAt`** (does not refresh it)
+  and **carries the `attempt` count** forward. The existing 2-attempt ceiling (`automationStallAction`,
+  `AUTOMATION_STALE_MINUTES`=30) therefore becomes a **true ~30-min wall-clock ceiling** instead of a
+  sliding window that resets on every reap. A dead lock is force-released within ≤3 sweeps regardless of
+  any liveness guess (fixes the immortal-lock bug); a legitimately-busy >30-min session is bounded by the
+  same ceiling — accepted as the safe default, since over-eviction is recoverable (fresh re-acquire)
+  whereas an immortal lock is not.
+
+**Reaper-lane hardening (Option A — 5 Copilot-reviewer findings, all fixed):**
+
+- **#1** (`reconcile.mjs`): the freeze-`progressAt` + carry-`attempt` behavior above.
+- **#2** (`router.mjs` `identifyReapablePrs`): hydrated `null` state (absent/malformed) is now reapable
+  (`if (state === null) return true;`), ordered after the `recoveryStateUnreadable` short-circuit;
+  `undefined` (unhydrated) still returns false.
+- **#3** (`router.mjs`): extracted a pure exported `selectReaperBatch(reaperPrNumbers, now, cap)` that
+  **stable-sorts by PR number** before `rotateList(...).slice(0, REAPER_LANE_CAP)`. The stable sort was a
+  distinct HIGH finding from the multi-model review (`gemini-3.1-pro-preview`): GitHub's `updated_at desc`
+  pull feed churns (a reap bumps a PR's `updated_at` to the front), so rotating the raw feed broke the
+  cross-window fairness/anti-starvation guarantee. Sorting first makes the batch a pure function of the
+  input SET + time window.
 
 **Tests added:**
-- `router.test.mjs`: 6 unit tests for `identifyReapablePrs` (stale detection, healthy skip,
-  shepherd skip, REAPER_LANE_CAP caller slicing, progressAt vs updatedAt priority, unreadable state included).
-- `reconcile.test.mjs`: 1 regression test — "live reconcile continues and exits cleanly when
-  outdated-marker reply POST returns 422".
+
+- `router.test.mjs`: unit tests for `identifyReapablePrs` (stale detection, healthy skip,
+  shepherd skip, REAPER_LANE_CAP caller slicing, progressAt vs updatedAt priority, unreadable state
+  included), plus reaper-hardening additions: hydrated-null-vs-undefined reapability (#2); a load-bearing
+  `selectReaperBatch` order-independence assertion + cross-window coverage (#3, verified to FAIL without
+  the stable sort, so non-vacuous); and a subprocess `runFromEnv` sweep test (#5) proving a
+  zero-budget `trigger:lease-reaper` dispatch fires for a stale PR and that the reaped PR is excluded
+  from the normal dispatch loop.
+- `reconcile.test.mjs`: the 422-marker-reply regression, plus a variant modeling an attached stale
+  automation owner that asserts the ownership fence is released/advanced after the 422 while exiting 0
+  (#4), and a lease-reaper freeze test proving `progressAt` is frozen + `attempt` incremented (#1).
 
 Observed in CI tooling context only (no runtime game changes). No `npm run dev` observation
 required — this is a CI-automation script change.
