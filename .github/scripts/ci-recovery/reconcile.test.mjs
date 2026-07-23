@@ -991,6 +991,117 @@ for (const attempt of [1, 2]) {
   });
 }
 
+// Regression (deadlock fix): the automation stale-lock GC lives AFTER the
+// merge-train-owned / ci-conflict-order-wait / hasMergeConflict short-circuits,
+// so a stale automation lease on a CONFLICTED PR could never reach it and its
+// ci-owner fence was stranded indefinitely (observed: #1759 held
+// ci-owner-pr-1759 ~37h even though the lease-reaper re-dispatched it every
+// sweep). The early conflict-reclaim must release the lock before those exits,
+// WITHOUT re-dispatching @copilot (that is the mergeable-PR ceiling path, which
+// the parameterized `stale automation attempt N` tests above cover and this
+// must not disturb).
+test('stale automation lock on a conflicted PR is reclaimed before the conflict short-circuit', async (t) => {
+  const fingerprint = blockerFingerprint([]);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 884,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: [],
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        mergeable: false,
+        mergeable_state: 'dirty',
+        labels: [{ name: LABEL }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 991 } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Lock released via the early conflict-reclaim path...
+  assert.match(
+    stdout,
+    /released stale automation lock pr=#42 reason=conflict-or-train-short-circuit/,
+  );
+  // ...and the ci-owner fence label is actually deleted, not merely logged.
+  assert.equal(repositoryLabelExists, false);
+  // Terminal state is owner:none/idle so a future run can re-acquire cleanly.
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState.owner, 'none');
+  assert.equal(finalState.status, 'idle');
+  assert.equal(finalState.trigger, 'stale-automation-conflict-reclaim');
+  // The reclaim must NOT re-dispatch @copilot (that is the mergeable ceiling path).
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'must not post an @copilot dispatch comment on a conflict reclaim',
+  );
+});
+
 test('stale-automation-exhausted in dry-run logs would-file message without creating an issue', async (t) => {
   const failedCheck = {
     id: 1,
