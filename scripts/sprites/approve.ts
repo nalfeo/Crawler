@@ -545,9 +545,10 @@ function upsertManifest(
     current = { version: MANIFEST_VERSION, entries: {} };
   }
 
-  // Stable key order: sort keys so multiple approvals don't shuffle the file.
+  // Stable key order: sort keys with localeCompare so multiple approvals don't
+  // shuffle the file and the order matches the check:sort-assets CI validator.
   const nextEntries: Record<string, ManifestEntry> = { ...current.entries, [entryKey]: entry };
-  const sortedKeys = Object.keys(nextEntries).sort();
+  const sortedKeys = Object.keys(nextEntries).sort((a, b) => a.localeCompare(b));
   const sorted: Record<string, ManifestEntry> = {};
   for (const key of sortedKeys) {
     sorted[key] = nextEntries[key]!;

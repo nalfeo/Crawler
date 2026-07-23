@@ -109,17 +109,18 @@ describe('mergeManifests', () => {
 });
 
 describe('mergeCatalogs', () => {
-  it('unions by id, preserving base order and appending new ids', () => {
+  it('unions by id and returns result in canonical sorted order', () => {
     const base: CatalogEntry[] = [
       { id: 'sheet:custom', kind: 'sheet' },
-      { id: 'generated:foo', label: 'foo' },
+      { id: 'generated:foo', kind: 'sprite', label: 'foo' },
     ];
     const overlay: CatalogEntry[] = [
-      { id: 'generated:foo', label: 'foo-updated' }, // overrides in place
-      { id: 'generated:bar', label: 'bar' }, // appended
+      { id: 'generated:foo', kind: 'sprite', label: 'foo-updated' }, // overrides
+      { id: 'generated:bar', kind: 'sprite', label: 'bar' }, // new entry
     ];
     const merged = mergeCatalogs(base, overlay);
-    expect(merged.map((e) => e.id)).toEqual(['sheet:custom', 'generated:foo', 'generated:bar']);
+    // sheet entries come first, then non-sheet sorted by id lexicographically
+    expect(merged.map((e) => e.id)).toEqual(['sheet:custom', 'generated:bar', 'generated:foo']);
     expect(merged.find((e) => e.id === 'generated:foo')!.label).toBe('foo-updated');
   });
 

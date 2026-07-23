@@ -68,6 +68,8 @@ export interface GeneratedManifest {
 /**
  * Union several manifests by entry key. Later overlays win on key collisions.
  * The result's `version` is the highest seen (defaulting to the base).
+ * Entry keys are sorted lexicographically so concurrent PRs produce
+ * non-overlapping line changes and git 3-way merge succeeds without conflicts.
  */
 export function mergeManifests(
   base: GeneratedManifest,
@@ -81,7 +83,11 @@ export function mergeManifests(
       entries[key] = entry;
     }
   }
-  return { version, entries };
+  // Sort keys so the output is in canonical order (matches check:sort-assets).
+  const sortedEntries = Object.fromEntries(
+    Object.entries(entries).sort(([a], [b]) => a.localeCompare(b)),
+  );
+  return { version, entries: sortedEntries };
 }
 
 /** One sprite-catalog entry (catalog is a JSON array keyed by `id`). */
@@ -91,24 +97,34 @@ export interface CatalogEntry {
 }
 
 /**
- * Union several catalog arrays by `id`. Base order is preserved; entries whose
- * id reappears in an overlay are replaced in place; brand-new ids are appended
- * in overlay order. Entries without a string `id` are dropped.
+ * Union several catalog arrays by `id`. Later overlays override earlier
+ * entries for the same id. Entries without a string `id` are dropped.
+ *
+ * The result is sorted in canonical order (sheet entries first, then by id
+ * lexicographically) so concurrent PRs produce non-overlapping line changes
+ * and git 3-way merge succeeds without conflicts.
  */
 export function mergeCatalogs(
   base: readonly CatalogEntry[],
   ...overlays: readonly (readonly CatalogEntry[])[]
 ): CatalogEntry[] {
-  const order: string[] = [];
   const byId = new Map<string, CatalogEntry>();
   const ingest = (entries: readonly CatalogEntry[]): void => {
     for (const entry of entries) {
       if (typeof entry.id !== 'string') continue;
-      if (!byId.has(entry.id)) order.push(entry.id);
       byId.set(entry.id, entry);
     }
   };
   ingest(base);
   for (const overlay of overlays) ingest(overlay);
-  return order.map((id) => byId.get(id)!);
+  const result = [...byId.values()];
+  // Sort: sheet entries first (kind="sheet"), then by id lexicographically.
+  // Matches check:sort-assets canonical order.
+  result.sort((a, b) => {
+    const aGroup = a.kind === 'sheet' ? 0 : 1;
+    const bGroup = b.kind === 'sheet' ? 0 : 1;
+    if (aGroup !== bGroup) return aGroup - bGroup;
+    return (a.id ?? '').localeCompare(b.id ?? '');
+  });
+  return result;
 }

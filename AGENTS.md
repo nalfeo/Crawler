@@ -108,6 +108,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Sprite check-in           | `npm run sprites:checkin`                 |
 | Sprite asset PR           | `npm run sprites:asset-pr`                |
 | Sprite normalize items    | `npm run sprites:normalize-item-art`      |
+| Sprite sort assets        | `npm run sprites:sort-assets`             |
 | Sprite gen placeholders   | `npm run sprites:gen-placeholders`        |
 | Sprite fetch gear icons   | `npm run sprites:fetch-gear-icons`        |
 | Sprite placeholder audit  | `npm run sprites:placeholder-audit`       |
@@ -123,6 +124,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Check physics defs sync   | `npm run check:physics-defs-sync`         |
 | Check size coverage       | `npm run check:size-coverage`             |
 | Check weight coverage     | `npm run check:weight-coverage`           |
+| Check asset sort order    | `npm run check:sort-assets`               |
 | Boss ability status       | `npm run boss-abilities:status`           |
 | Docs index                | `npm run docs:index`                      |
 | Visual review             | `npm run review:visual`                   |
@@ -224,7 +226,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 2. **Deterministic CI only**: No LLM-as-judge in CI. All gates are scripts with exit codes.
 3. **Never use Math.random()**: Use `SeededRandom` from `src/shared/random.ts`
 4. **Never use Date.now()**: Pass delta/frameCount as parameters
-5. **Handoff required for implementation sessions**: For sessions producing merge-intent changes, write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session. Include the `## Systems touched` field (comma-separated slugs from `docs/systems/README.md`) so the session shows up in `docs/knowledge/handoffs/INDEX.md`. It will be required by the pre-flight lint once the handoff tooling PR wires that in; treat as advisory until then.
+5. **Handoff required for implementation sessions**: For sessions producing merge-intent changes, write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session. Include the `## Systems touched` field (comma-separated slugs from `docs/systems/README.md`) so the session shows up in `docs/knowledge/handoffs/INDEX.md`. It will be required by the pre-flight lint once the handoff tooling PR wires that in; treat as advisory until then. **Do NOT run `npm run docs:index` to rebuild `INDEX.md` yourself** — CI rebuilds it automatically on every merge that adds a handoff file, and concurrent sessions rebuilding the same file is a primary source of merge conflicts.
 6. **ADR required**: Any decision affecting 2+ systems needs an ADR
 7. **Always fix test and infra failures**: Never skip, ignore, or document broken tests/lint/build issues as "preexisting" or "unrelated" and move on. Fix every failure you encounter, regardless of whether you caused it. There is no such thing as a pre-existing issue that is out of scope — cruft compounds and wastes future agent time.
 8. **Best-effort UT coverage progress**: As part of every fix/implementation, make a best effort to improve or preserve unit-test coverage in touched areas so work moves toward UT coverage goals.
