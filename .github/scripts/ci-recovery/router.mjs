@@ -41,18 +41,29 @@ export const VALIDATION_RESERVED_TRAIN_IDLE = 3;
 // caps the blast radius while still allowing meaningful parallel recovery.
 export const MAX_DISPATCH_BUDGET_TRAIN_BUSY = 5;
 export const MAX_DISPATCH_BUDGET_TRAIN_IDLE = 8;
-// Estimated concurrent runner jobs per in-progress AI Sweep run. Each
+// Estimated concurrent runner jobs per in-progress sweep run. Each
 // ai-sweep.yml / ai-sweep-recover.yml run fans its round-eval matrix into
-// many parallel jobs; 10 is a conservative mid-point of the 0–19 range
-// observed in production. Used only by runFromEnv to convert run counts into
-// estimated job counts before calling computeDispatchBudget.
+// many parallel jobs, and weapon-sweep.yml fans its weapon×shard matrix to
+// ~24 concurrent jobs; 10 is a conservative mid-point of the observed range.
+// Used only by runFromEnv to convert run counts into estimated job counts
+// before calling computeDispatchBudget.
 export const SWEEP_RUNNER_WEIGHT = 10;
 // Estimated concurrent runner jobs per active Merge Train Validation run.
 // merge-train-validate.yml runs 7-9 concurrent gate jobs at peak; 9 matches
 // VALIDATION_RESERVED_TRAIN_BUSY so the dynamic floor tracks measured load.
 export const VALIDATION_RUNNER_WEIGHT = 9;
 // Workflow files whose active run counts signal runner pressure to the budget.
-export const SWEEP_WORKFLOW_FILES = Object.freeze(['ai-sweep.yml', 'ai-sweep-recover.yml']);
+// weapon-sweep.yml joins the AI sweeps here: it also runs on the shared
+// standard-hosted pool and fans its weapon×shard matrix to ~24 concurrent
+// jobs, so an in-progress weapon sweep saturates runners exactly like an AI
+// sweep and must count toward the reserved-runner budget (otherwise the
+// budget reports zero sweep pressure during a weapon sweep and re-opens the
+// dispatch headroom this change exists to close).
+export const SWEEP_WORKFLOW_FILES = Object.freeze([
+  'ai-sweep.yml',
+  'ai-sweep-recover.yml',
+  'weapon-sweep.yml',
+]);
 export const VALIDATION_WORKFLOW_FILE = 'merge-train-validate.yml';
 // ── Legacy static caps (exported for reconcile.mjs buildGatedDispatchRecovery)
 // These are now derived from the load-aware MAX constants above (raised from
@@ -956,7 +967,7 @@ export async function runFromEnv(env = process.env) {
 
   if (deferred.length > 0) {
     process.stdout.write(
-      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} budget=${dispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
+      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${maxDispatchPerRun} budget=${dispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 
@@ -971,7 +982,7 @@ export async function runFromEnv(env = process.env) {
     scheduledPulls.length > prNumbers.length
   ) {
     process.stdout.write(
-      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} budget=${dispatchBudget} outstanding=${outstandingCount} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
+      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${dispatchBudget} outstanding=${outstandingCount} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 }

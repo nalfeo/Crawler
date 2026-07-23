@@ -27,6 +27,7 @@ import {
   recoveryTriggerForPr,
   RUNNER_CEILING,
   SWEEP_RUNNER_WEIGHT,
+  SWEEP_WORKFLOW_FILES,
   VALIDATION_RESERVED_TRAIN_BUSY,
   VALIDATION_RESERVED_TRAIN_IDLE,
   VALIDATION_RUNNER_WEIGHT,
@@ -1206,6 +1207,26 @@ test('countOutstandingWorkflowRuns queries a custom workflow file with a subset 
 });
 
 // ── Load-aware budget tests ───────────────────────────────────────────────────
+
+test('SWEEP_WORKFLOW_FILES counts every runner-saturating sweep workflow', () => {
+  // Regression guard for the weapon-sweep pressure gap: weapon-sweep.yml runs on
+  // the shared standard-hosted pool and fans its weapon×shard matrix to ~24
+  // concurrent jobs, so it must contribute to sweep pressure exactly like the AI
+  // sweeps. Omitting it lets an in-progress weapon sweep report zero sweep
+  // pressure and re-open the dispatch headroom this budget exists to reserve.
+  assert.ok(
+    SWEEP_WORKFLOW_FILES.includes('ai-sweep.yml'),
+    'ai-sweep.yml must be a measured sweep-pressure source',
+  );
+  assert.ok(
+    SWEEP_WORKFLOW_FILES.includes('ai-sweep-recover.yml'),
+    'ai-sweep-recover.yml must be a measured sweep-pressure source',
+  );
+  assert.ok(
+    SWEEP_WORKFLOW_FILES.includes('weapon-sweep.yml'),
+    'weapon-sweep.yml must be a measured sweep-pressure source',
+  );
+});
 
 test('computeDispatchBudget: idle scenario -- no sweeps, no validation, queue empty -- returns full MAX_IDLE budget', () => {
   // When runners are fully idle (no sweeps, no validation, no outstanding
