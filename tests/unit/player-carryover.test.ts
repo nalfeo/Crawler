@@ -679,6 +679,52 @@ describe('player floor carryover', () => {
     );
   });
 
+  it('fails closed when a persisted boss chest has a non-string familyId', () => {
+    // Regression test: familyId is interpolated into a template literal by
+    // createBossChestId, which silently coerces a non-string to a string, so
+    // a malformed numeric familyId can otherwise slip past the
+    // chestId-derivation equality check undetected (multi-model code review
+    // round 3).
+    const runKey = 'carryover-bad-familyid-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      { chestId: 'boss-chest:5', familyId: 5, state: 'available', createdAtMs: 0 },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /Boss chest requires a string familyId/,
+    );
+  });
+
+  it('fails closed when a persisted boss chest has a non-numeric createdAtMs', () => {
+    const runKey = 'carryover-bad-createdatms-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      {
+        chestId: 'boss-chest:goblin-warband',
+        familyId: 'goblin-warband',
+        state: 'available',
+        createdAtMs: undefined,
+      },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /invalid createdAtMs/,
+    );
+  });
+
   it('retains independently owned grants after the last equipment source is removed', () => {
     const world = createTestWorld({
       seed: 42,

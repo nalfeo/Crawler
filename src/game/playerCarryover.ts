@@ -638,6 +638,21 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   // achievement lookups for those entries.
   const chestsByChestId = new Map<string, BossChestCarryoverEntry>();
   for (const chest of snapshot.bossChests) {
+    if (typeof chest.familyId !== 'string' || chest.familyId.length === 0) {
+      // Mirrors the achievementId string guard on generatedEquipmentRewardBundles
+      // below. Without this, a non-string familyId (e.g. a number) can still
+      // pass the chestId-derivation check on the next line, because template
+      // literal interpolation silently coerces it to a string (multi-model
+      // code review, round 3).
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest requires a string familyId: ${String(chest.chestId)}`,
+      );
+    }
+    if (typeof chest.createdAtMs !== 'number' || !Number.isFinite(chest.createdAtMs)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest ${chest.chestId} has an invalid createdAtMs`,
+      );
+    }
     if (!BOSS_CHEST_STATES.includes(chest.state)) {
       throw new PlayerCarryoverSnapshotError(`Unknown boss chest state: ${String(chest.state)}`);
     }

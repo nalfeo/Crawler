@@ -127,12 +127,22 @@ carryover) across `src/core` and `src/game`, so it requires an ADR.
    silently bypassing `assertArray`'s fail-closed guard for a genuinely
    malformed value. Fixed by defaulting only on true key-absence (`'bossChests'
 in record`), so a present-but-invalid value still falls through to
-   `assertArray` and throws.
+   `assertArray` and throws. **Round 3 of multi-model review**
+   (`gemini-3.1-pro-preview`) found the per-record validation loop checked
+   `state` and derived `chestId` but never type-checked `familyId`/
+   `createdAtMs` — a numeric `familyId` silently passes the chestId-derivation
+   equality check because template-literal interpolation coerces it to a
+   string, so a malformed record could still pass validation. Fixed by adding
+   explicit `typeof` guards for both fields, mirroring the existing
+   `achievementId` string guard on `generatedEquipmentRewardBundles`.
    See `tests/unit/player-carryover.test.ts`'s
    `restores a "player-carryover/v1" snapshot captured before bossChests
-existed` and
+existed`,
    `still fails closed when a "player-carryover/v1" snapshot has an
-explicitly null bossChests` regression tests.
+explicitly null bossChests`,
+   `fails closed when a persisted boss chest has a non-string familyId`, and
+   `fails closed when a persisted boss chest has a non-numeric createdAtMs`
+   regression tests.
 
 8. **Reserved id namespace.** Achievement ids and boss-chest ids share one
    reward-bundle keyspace. `BOSS_CHEST_ID_PREFIX` (`'boss-chest:'`, defined in
