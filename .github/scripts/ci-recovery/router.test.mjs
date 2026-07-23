@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { once } from 'node:events';
+import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawn } from 'node:child_process';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { parse } from 'yaml';
 
@@ -15,12 +21,14 @@ import {
   GLOBAL_TRAIN_DISPATCH_CAP,
   hasHealthyOwnerForSweep,
   hydrateRecoveryOwnership,
+  identifyReapablePrs,
   isRepairWindowSweepEvent,
   isRetryableError,
   listRecentOutstandingRunIds,
   MAX_DISPATCH_BUDGET_TRAIN_BUSY,
   MAX_DISPATCH_BUDGET_TRAIN_IDLE,
   partitionDispatchable,
+  REAPER_LANE_CAP,
   recoveryStateFromComments,
   recoveryBacklogEntries,
   requestWithBackoff,
@@ -32,6 +40,7 @@ import {
   VALIDATION_RESERVED_TRAIN_IDLE,
   VALIDATION_RUNNER_WEIGHT,
   isManagedCommentEvent,
+  selectReaperBatch,
   waitForDispatchedRunsVisible,
   waitForOutstandingCount,
 } from './router.mjs';
@@ -1822,4 +1831,347 @@ test('hydrateRecoveryOwnership stops after six dispatchable PRs in the resolved 
   assert.ok(hydrated[0].recoveryState !== undefined);
   assert.ok(hydrated[1].recoveryState !== undefined);
   assert.ok(hydrated[2].recoveryState !== undefined);
+});
+
+// ---------------------------------------------------------------------------
+// identifyReapablePrs (Fix A + C: lease-reaper GC, issue #1783)
+// ---------------------------------------------------------------------------
+
+test('identifyReapablePrs returns stale automation-owned PR numbers', () => {
+  // PR #10 is owned, hydrated, and automation state is 35 min old (past 30-min threshold).
+  const staleAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+  const stalePr = {
+    number: 10,
+    labels: [{ name: 'ci-owner-pr-10' }],
+    recoveryState: automationOwnerState(10, staleAt, 1),
+  };
+  // PR #11 is owned but fresh (5 min old — within threshold).
+  const freshAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const freshPr = {
+    number: 11,
+    labels: [{ name: 'ci-owner-pr-11' }],
+    recoveryState: automationOwnerState(11, freshAt, 1),
+  };
+  // PR #12 has no owner label at all.
+  const unownedPr = { number: 12, labels: [] };
+
+  const reapable = identifyReapablePrs([stalePr, freshPr, unownedPr]);
+  assert.deepEqual(reapable, [10], 'only the stale owned PR should be reapable');
+});
+
+test('identifyReapablePrs excludes shepherd-owned PRs', () => {
+  const staleAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const shepherdPr = {
+    number: 20,
+    labels: [{ name: 'ci-owner-pr-20' }],
+    recoveryState: makeState({
+      prNumber: 20,
+      headSha: 'head-20',
+      fingerprint: blockerFingerprint([]),
+      owner: 'shepherd',
+      status: 'active',
+      leaseId: 'test-lease-id',
+      blockers: [],
+      attempt: 0,
+      updatedAt: staleAt,
+    }),
+  };
+  const reapable = identifyReapablePrs([shepherdPr]);
+  assert.deepEqual(
+    reapable,
+    [],
+    'shepherd-owned PRs must never be reaped by the automation reaper',
+  );
+});
+
+test('identifyReapablePrs excludes unhydrated (no recoveryState and no recoveryStateUnreadable) PRs', () => {
+  // An owned PR whose state comment was not loaded (recoveryState is undefined
+  // and recoveryStateUnreadable is undefined).
+  const unhydratedPr = {
+    number: 30,
+    labels: [{ name: 'ci-owner-pr-30' }],
+    // recoveryState and recoveryStateUnreadable are intentionally absent.
+  };
+  const reapable = identifyReapablePrs([unhydratedPr]);
+  assert.deepEqual(reapable, [], 'unhydrated PRs must be skipped (state age is unknown)');
+});
+
+test('identifyReapablePrs includes PRs with unreadable recovery state', () => {
+  // An owned PR whose state comment could not be parsed (recoveryStateUnreadable is set).
+  // These hold a ci-owner lock but the reconciler can never make progress unless dispatched;
+  // they must be included in the reaper batch so the orphan cleanup path can run.
+  const unreadablePr = {
+    number: 31,
+    labels: [{ name: 'ci-owner-pr-31' }],
+    recoveryState: null,
+    recoveryStateUnreadable: 'HTTP 503: Service Unavailable',
+  };
+  const reapable = identifyReapablePrs([unreadablePr]);
+  assert.deepEqual(reapable, [31], 'PRs with unreadable state must be included in reaper batch');
+});
+
+test('identifyReapablePrs respects REAPER_LANE_CAP when callers slice the result', () => {
+  // 5 stale PRs — the caller should slice to REAPER_LANE_CAP before dispatching.
+  const staleAt = new Date(Date.now() - 40 * 60 * 1000).toISOString();
+  const stalePrs = Array.from({ length: 5 }, (_, i) => ({
+    number: 100 + i,
+    labels: [{ name: `ci-owner-pr-${100 + i}` }],
+    recoveryState: automationOwnerState(100 + i, staleAt, 2),
+  }));
+  const reapable = identifyReapablePrs(stalePrs);
+  assert.equal(reapable.length, 5, 'all 5 stale PRs are eligible');
+  const dispatched = reapable.slice(0, REAPER_LANE_CAP);
+  assert.equal(
+    dispatched.length,
+    REAPER_LANE_CAP,
+    'caller must cap at REAPER_LANE_CAP to avoid overloading the runner pool',
+  );
+});
+
+test('identifyReapablePrs uses progressAt over updatedAt for age check when progressAt is present', () => {
+  // updatedAt is old (40 min) but progressAt is fresh (5 min).
+  // The reaper must use progressAt, so this PR should NOT be reapable.
+  const oldUpdatedAt = new Date(Date.now() - 40 * 60 * 1000).toISOString();
+  const freshProgressAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const fp = blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]);
+  const pr = {
+    number: 50,
+    labels: [{ name: 'ci-owner-pr-50' }],
+    recoveryState: makeState({
+      prNumber: 50,
+      headSha: 'head-50',
+      fingerprint: fp,
+      owner: 'automation',
+      status: 'dispatched',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      progressKey: automationProgressKey('head-50', fp),
+      progressAt: freshProgressAt,
+      updatedAt: oldUpdatedAt,
+    }),
+  };
+  const reapable = identifyReapablePrs([pr]);
+  assert.deepEqual(reapable, [], 'fresh progressAt must prevent reaping even if updatedAt is old');
+});
+
+// ---------------------------------------------------------------------------
+// Reaper-lane hardening (issue #1783 follow-up): finding #2 (hydrated-null
+// reapable), finding #3 (rotation-before-cap fairness), finding #5 (runFromEnv
+// zero-budget reaper dispatch + reaped-PR exclusion from the normal loop).
+// ---------------------------------------------------------------------------
+
+test('identifyReapablePrs distinguishes hydrated-null (reap) from unhydrated-undefined (skip)', () => {
+  // Distinct from the recoveryStateUnreadable case: here hydration SUCCEEDED
+  // but produced no parseable automation state (recoveryStateFromComments
+  // returned null), while recoveryStateUnreadable is absent. The PR still holds
+  // a ci-owner lock the reconciler must clean up, so it must be reaped. This
+  // exercises the `state === null` branch, which the unreadable-marker test
+  // short-circuits before reaching.
+  const nullStatePr = {
+    number: 40,
+    labels: [{ name: 'ci-owner-pr-40' }],
+    recoveryState: null,
+    // recoveryStateUnreadable intentionally absent (undefined).
+  };
+  // Owned but never hydrated (both fields absent) → age unknown → must be skipped.
+  const undefinedStatePr = {
+    number: 41,
+    labels: [{ name: 'ci-owner-pr-41' }],
+  };
+  const reapable = identifyReapablePrs([nullStatePr, undefinedStatePr]);
+  assert.deepEqual(
+    reapable,
+    [40],
+    'hydrated-null owned PR is reaped; unhydrated-undefined PR is skipped',
+  );
+});
+
+test('selectReaperBatch rotates eligible reapable PRs across sweep windows so none starve past the cap', () => {
+  // Two independent properties guarantee no stale lock starves past the cap:
+  //
+  // (1) ORDER-INDEPENDENCE (the load-bearing invariant): the caller derives the
+  //     reapable list from the updated-desc pull feed, whose order churns as
+  //     reaping bumps a PR's updated_at. If the batch depended on input order, a
+  //     freshly-reaped PR jumping to the front could keep getting re-picked
+  //     while the tail starves. selectReaperBatch sorts to a sweep-invariant
+  //     order first, so the same window always yields the same batch regardless
+  //     of how the input is ordered.
+  const now0 = new Date('2026-07-21T00:00:00Z');
+  const ascending = selectReaperBatch([1, 2, 3, 4, 5], now0);
+  const shuffled = selectReaperBatch([4, 1, 5, 3, 2], now0);
+  const descending = selectReaperBatch([5, 4, 3, 2, 1], now0);
+  assert.deepEqual(shuffled, ascending, 'batch must not depend on input ordering (churn-proof)');
+  assert.deepEqual(descending, ascending, 'batch must not depend on input ordering (churn-proof)');
+
+  // (2) CROSS-WINDOW COVERAGE: rotating once per 10-minute window before the cap
+  //     slice means every eligible lock enters the dispatched prefix within at
+  //     most `length` windows. Successive hours land in distinct windows.
+  const seen = new Set();
+  for (let sweep = 0; sweep < 5; sweep += 1) {
+    const now = new Date(`2026-07-21T0${sweep}:00:00Z`);
+    const batch = selectReaperBatch([1, 2, 3, 4, 5], now);
+    assert.equal(batch.length, REAPER_LANE_CAP, 'each sweep dispatches at most the cap');
+    for (const n of batch) seen.add(n);
+  }
+  assert.deepEqual(
+    seen,
+    new Set([1, 2, 3, 4, 5]),
+    'every stale lock is eventually reaped across successive windows (no starvation)',
+  );
+});
+
+const ROUTER_SCRIPT = fileURLToPath(new URL('./router.mjs', import.meta.url));
+
+// Minimal mock server for the runFromEnv subprocess integration test. Maps
+// "METHOD /path-without-query" (exact, else longest startsWith) to a handler
+// returning { status?, body? }. Unmatched routes return 200 {}.
+function startRouterMockServer(routes) {
+  return new Promise((resolve) => {
+    const server = createServer((req, res) => {
+      const method = req.method.toUpperCase();
+      let raw = '';
+      req.on('data', (chunk) => {
+        raw += chunk;
+      });
+      req.on('end', () => {
+        const parsed = raw ? JSON.parse(raw) : undefined;
+        const pathOnly = req.url.split('?')[0];
+        let handler = routes[`${method} ${pathOnly}`];
+        if (!handler) {
+          const entry = Object.entries(routes).find(([key]) => {
+            const space = key.indexOf(' ');
+            return key.slice(0, space) === method && pathOnly.startsWith(key.slice(space + 1));
+          });
+          handler = entry?.[1];
+        }
+        const result = (handler ? handler(req.url, parsed) : {}) ?? {};
+        res.writeHead(result.status ?? 200, { 'Content-Type': 'application/json' });
+        res.end(result.body !== undefined ? JSON.stringify(result.body) : '{}');
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+async function runRouterScript(port, env) {
+  const child = spawn(process.execPath, [ROUTER_SCRIPT], {
+    env: {
+      GITHUB_API_URL: `http://127.0.0.1:${port}`,
+      GITHUB_GRAPHQL_URL: `http://127.0.0.1:${port}/graphql`,
+      ...env,
+    },
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout?.on('data', (d) => {
+    stdout += d;
+  });
+  child.stderr?.on('data', (d) => {
+    stderr += d;
+  });
+  const [code] = await once(child, 'close');
+  return { code, stdout, stderr };
+}
+
+// Mirrors reconcile.test.mjs's assertSuccessfulExit: the shared spawn+HTTP mock
+// teardown trips a native libuv assertion on some Windows hosts (exit
+// 3221226505 + UV_HANDLE_CLOSING), unrelated to script logic. Real CI is Linux,
+// so this branch never applies there.
+function assertRouterExit(t, code, stderr) {
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING subprocess shutdown assertion');
+    return false;
+  }
+  assert.equal(code, 0, `expected exit 0; stderr: ${stderr}`);
+  return true;
+}
+
+test('runFromEnv dispatches the lease-reaper at zero budget and excludes the reaped PR from the normal loop', async (t) => {
+  const OWNER = 'test-owner';
+  const REPO = 'test-repo';
+  const TOKEN = 'x-test-token';
+  const staleAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+
+  // PR #10: owner-labeled with a stale automation lock. It is unhydrated in the
+  // list response, so the reaper hydrates it from its comments below; the state
+  // is 35 min old → reapable. It is ALSO normally eligible (owner-labeled), so
+  // without the reaperDispatchedSet exclusion the normal loop would target it.
+  const pr10 = {
+    number: 10,
+    draft: false,
+    labels: [{ name: 'ci-owner-pr-10' }],
+    head: { sha: 'head-10', repo: { full_name: `${OWNER}/${REPO}` } },
+  };
+  // PR #11: no owner label, normally eligible — proves the normal loop ran.
+  const pr11 = {
+    number: 11,
+    draft: false,
+    labels: [],
+    head: { sha: 'head-11', repo: { full_name: `${OWNER}/${REPO}` } },
+  };
+  const staleStateComment = {
+    id: 1,
+    body: renderStateComment(automationOwnerState(10, staleAt, 1)),
+  };
+
+  const dispatches = [];
+  const { server, port } = await startRouterMockServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pr10, pr11] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/10/comments`]: () => ({ body: [staleStateComment] }),
+    // High outstanding count → computeDispatchBudget === 0, so the normal loop
+    // dispatches nothing (all deferred). The reaper runs OUTSIDE this budget.
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/runs`]: () => ({
+      body: { total_count: 999, workflow_runs: [] },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
+      dispatches.push(body?.inputs ?? {});
+      return { status: 204 };
+    },
+  });
+  t.after(() => server.close());
+
+  const eventDir = await mkdtemp(join(tmpdir(), 'router-runfromenv-'));
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({ repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } }),
+  );
+  t.after(() => rm(eventDir, { recursive: true, force: true }));
+
+  const { code, stdout, stderr } = await runRouterScript(port, {
+    GITHUB_TOKEN: TOKEN,
+    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_PATH: eventPath,
+  });
+
+  if (!assertRouterExit(t, code, stderr)) return;
+
+  // (a) The reaper dispatched PR #10 despite the dispatch budget being 0.
+  const reaperDispatches = dispatches.filter((inputs) => inputs.trigger === 'lease-reaper');
+  assert.equal(
+    reaperDispatches.length,
+    1,
+    `exactly one zero-budget lease-reaper dispatch expected; stdout: ${stdout}`,
+  );
+  assert.equal(reaperDispatches[0].pr_number, '10', 'the stale owned PR is the reaped one');
+  assert.match(stdout, /reaper-dispatch pr=#10 trigger=lease-reaper/);
+
+  // (b) The reaped PR is excluded from the normal loop: no normal (non
+  // lease-reaper) dispatch targets #10, and the normal loop still considered
+  // #11 (deferred under the zero budget), proving reaperDispatchedSet removed
+  // only the reaped PR from the normal set.
+  const normalDispatchesFor10 = dispatches.filter(
+    (inputs) => inputs.pr_number === '10' && inputs.trigger !== 'lease-reaper',
+  );
+  assert.equal(
+    normalDispatchesFor10.length,
+    0,
+    'reaped PR must never be re-dispatched by the normal loop',
+  );
+  assert.match(
+    stdout,
+    /global backpressure applied deferred=1 pr_numbers=11 /,
+    `#11 must be deferred by the normal loop while #10 is excluded; stdout: ${stdout}`,
+  );
 });

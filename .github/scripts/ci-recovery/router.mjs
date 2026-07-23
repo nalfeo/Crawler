@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
 import {
+  AUTOMATION_STALE_MINUTES,
   isHealthyRecoveryOwner,
   OWNER_LABEL_PREFIX,
   ownerLabel,
@@ -105,6 +106,11 @@ const TRAIN_OWNED_LABELS = new Set([
   VALIDATION_FAILED_LABEL,
 ]);
 const OWNERSHIP_HYDRATION_BATCH_SIZE = 6;
+// Reserved dispatch slots for the lease-reaper GC pass. These slots are
+// consumed on every scheduled sweep to release stale automation locks and
+// are intentionally NOT counted against computeDispatchBudget, so GC can
+// never be budget-starved to zero (Fix A / issue #1783).
+export const REAPER_LANE_CAP = 2;
 
 function parsePositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw ?? ''), 10);
@@ -427,6 +433,86 @@ export function hasHealthyOwnerForSweep(pullRequest, now = new Date()) {
     state: pullRequest.recoveryState,
     now,
   });
+}
+
+// Identifies automation-owned PRs that are candidates for the lease-reaper GC
+// pass.  There are two categories:
+//
+//   1. Active automation state older than AUTOMATION_STALE_MINUTES: these hold
+//      ci-owner-pr-N locks with no active session.  They will never be reached
+//      by the normal dispatch path because the budget stays at zero while they
+//      are stuck.
+//
+//   2. Owner-labeled PRs whose state is unreadable (recoveryStateUnreadable is
+//      set) or null after hydration.  The reconciler already handles orphan
+//      cleanup for these, but it can only run if dispatched; under a zero budget
+//      they are similarly stuck.
+//
+// Note: PRs that are still not hydrated (recoveryState and recoveryStateUnreadable
+// both absent) are skipped — the reaper hydration pass below ensures all
+// owner-labeled PRs are hydrated before this function is called, so missing
+// state here means hydration itself failed; the reconciler's orphan path will
+// handle it on the next successful hydration sweep.
+//
+// Together with the reaper-triggered release in reconcile.mjs (which carries
+// the attempt count forward and freezes progressAt instead of sliding it), this
+// makes the automation TTL a true wall-clock ceiling: a lock held past the
+// stale threshold stays eligible on every sweep until the bounded attempt
+// ceiling releases it. Liveness is intentionally NOT inferred from head-SHA
+// workflow runs -- unrelated CI / merge-train / sweep runs share the head SHA
+// and would yield false-live signals that could make a dead lock immortal
+// (adversarial plan review, 2026-07-22).
+export function identifyReapablePrs(scheduledPulls, now = new Date()) {
+  return scheduledPulls
+    .filter((pullRequest) => {
+      const owned = (pullRequest.labels || []).some((label) =>
+        String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
+      );
+      if (!owned) return false;
+      const state = pullRequest.recoveryState;
+      // Owner-labeled PR whose state was unreadable after hydration: always
+      // eligible so the reconciler can run its orphan-cleanup path.
+      if (pullRequest.recoveryStateUnreadable) return true;
+      // Hydrated but absent/malformed state (null -- distinct from an
+      // unhydrated `undefined`): the PR holds a ci-owner lock with no
+      // recoverable automation state. The reconciler's orphan-cleanup path
+      // releases it, but only if it is dispatched -- include it in the reaper
+      // batch. An unhydrated PR (recoveryState === undefined) is still skipped
+      // by the guard below: its age is unknown and the hydration pass retries
+      // it on the next sweep.
+      if (state === null) return true;
+      // Only act on loaded, automation-owned active states.
+      if (!state || state.owner !== 'automation') return false;
+      if (!['active', 'dispatched', 'escalated'].includes(state.status)) return false;
+      // Eligible when the last recorded progress is older than the stale threshold.
+      const progressAt = Date.parse(state.progressAt || state.updatedAt);
+      return now.getTime() - progressAt >= AUTOMATION_STALE_MINUTES * 60 * 1000;
+    })
+    .map((pr) => pr.number);
+}
+
+// Selects the subset of reapable PRs to dispatch this sweep, rotating the
+// eligible list once per sweep window BEFORE applying REAPER_LANE_CAP. Without
+// rotation a fixed prefix would be taken every sweep, so when more than
+// REAPER_LANE_CAP locks are stale the tail could starve indefinitely.
+//
+// The rotation only distributes fairly if the underlying list has a STABLE
+// order across sweeps. The caller derives reaperPrNumbers from the
+// updated-desc pull list, whose order churns as reaping bumps a PR's
+// updated_at (a reaped PR jumps back to the front next sweep), which would
+// defeat the rotation and let tail locks starve. So sort by PR number
+// (ascending, stable and sweep-invariant) before rotating. Reuses the flag-off
+// sweep rotation window and rotateList helper already used by
+// collectPrNumbers/eligibleTrainRecoveryPulls. Accepts an injectable `now`
+// (like collectPrNumbers) so the fairness property is deterministically
+// testable.
+export function selectReaperBatch(reaperPrNumbers, now = new Date(), cap = REAPER_LANE_CAP) {
+  const rotation =
+    Number.isFinite(now.getTime()) && now.getTime() > 0
+      ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
+      : 0;
+  const stableList = [...reaperPrNumbers].sort((a, b) => a - b);
+  return rotateList(stableList, rotation).slice(0, cap);
 }
 
 export async function hydrateRecoveryOwnership(
@@ -870,7 +956,70 @@ export async function runFromEnv(env = process.env) {
     );
   }
 
-  const prNumbers = collectPrNumbers({
+  // Lease-reaper pass (Fix A / issue #1783): runs on every scheduled sweep
+  // OUTSIDE the dispatch budget. Ensures all owner-labeled PRs have been
+  // hydrated (train-mode hydration above may stop early at targetDispatchable;
+  // non-train mode does not hydrate at all), then dispatches reconcile for any
+  // stale automation lock. GC is therefore never budget-starved to zero.
+  //
+  // The reapered PR numbers are excluded from the normal prNumbers set below so
+  // a PR is never double-dispatched by both the reaper and the normal path in
+  // the same router run.
+  const reaperDispatchedSet = new Set();
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+    // Identify owner-labeled PRs still missing recoveryState (and not already
+    // marked as unreadable). This covers non-train mode (never hydrated) and
+    // train mode where hydration stopped early at targetDispatchable.
+    const unhydratedOwned = scheduledPulls.filter(
+      (pr) =>
+        (pr.labels || []).some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX)) &&
+        pr.recoveryState === undefined &&
+        pr.recoveryStateUnreadable === undefined,
+    );
+    if (unhydratedOwned.length > 0) {
+      const hydratedOwned = await hydrateRecoveryOwnership(unhydratedOwned, (number) =>
+        requestWithBackoff(
+          () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+          { label: `reaper-load-state-${number}` },
+        ),
+      );
+      const patchByNumber = new Map(hydratedOwned.map((pr) => [pr.number, pr]));
+      scheduledPulls = scheduledPulls.map((pr) => patchByNumber.get(pr.number) ?? pr);
+    }
+
+    const reaperNow = new Date();
+    const reaperPrNumbers = identifyReapablePrs(scheduledPulls, reaperNow);
+    // Rotate the eligible list once per sweep window before applying the cap
+    // (see selectReaperBatch) so the tail cannot starve when more than
+    // REAPER_LANE_CAP locks are stale.
+    const reaperBatch = selectReaperBatch(reaperPrNumbers, reaperNow);
+    for (const reaperPrNumber of reaperBatch) {
+      // Use a direct request() -- do NOT wrap in requestWithBackoff. Same
+      // rationale as the normal dispatch loop: non-idempotent POST, retries
+      // would create duplicate runs.
+      await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
+        method: 'POST',
+        body: {
+          ref: payload.repository?.default_branch || 'main',
+          inputs: {
+            operation: 'reconcile',
+            pr_number: String(reaperPrNumber),
+            trigger: 'lease-reaper',
+            lease_id: '',
+          },
+        },
+      });
+      reaperDispatchedSet.add(reaperPrNumber);
+      process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=lease-reaper\n`);
+    }
+    if (reaperBatch.length > 0) {
+      process.stdout.write(
+        `reaper dispatched=${reaperBatch.length} pr_numbers=${reaperBatch.join(',')}\n`,
+      );
+    }
+  }
+
+  let prNumbers = collectPrNumbers({
     payload,
     eventName,
     repository,
@@ -879,6 +1028,11 @@ export async function runFromEnv(env = process.env) {
     trainEnabled,
     now: new Date(),
   });
+  // Exclude PRs already dispatched by the reaper this run to prevent
+  // double-dispatch (fix for plan-review concern #1 / issue #1783).
+  if (reaperDispatchedSet.size > 0) {
+    prNumbers = prNumbers.filter((n) => !reaperDispatchedSet.has(n));
+  }
   const directlyTriggeredPrs = eventPrNumbers(payload);
 
   // Global backpressure applies unconditionally now -- independent of
