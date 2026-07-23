@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f3d120a8186b30f60d60df5183a8cc0daa11b7a3",
+    "commitDate": "2026-07-23T05:07:46Z",
+    "commitSubject": "Throttle asset generation and route providers through Foundry (#1772)",
+    "capturedAt": "2026-07-23T06:27:51.436Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29981810479",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/f3d120a8186b30f60d60df5183a8cc0daa11b7a3.json"
+  },
+  {
     "commit": "61540a452c5fcb9e6f0345546ad234595047a4c3",
     "commitDate": "2026-07-23T03:58:40Z",
     "commitSubject": "docs(agents): detach from published PRs by default (#1766)",
