@@ -402,7 +402,11 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   assertArray(ach.claimedIds, 'achievements.claimedIds');
   const abilityStateRaw: unknown = normalized.abilityState;
   if (abilityStateRaw !== undefined) {
-    if (typeof abilityStateRaw !== 'object' || abilityStateRaw === null || Array.isArray(abilityStateRaw)) {
+    if (
+      typeof abilityStateRaw !== 'object' ||
+      abilityStateRaw === null ||
+      Array.isArray(abilityStateRaw)
+    ) {
       throw new PlayerCarryoverSnapshotError('abilityState must be a non-null object');
     }
     const ast = abilityStateRaw as Record<string, unknown>;
@@ -424,8 +428,14 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
         }
       }
     };
-    validateGrantSourceEntries(ast.activeAbilityGrantSources, 'abilityState.activeAbilityGrantSources');
-    validateGrantSourceEntries(ast.passiveAbilityGrantSources, 'abilityState.passiveAbilityGrantSources');
+    validateGrantSourceEntries(
+      ast.activeAbilityGrantSources,
+      'abilityState.activeAbilityGrantSources',
+    );
+    validateGrantSourceEntries(
+      ast.passiveAbilityGrantSources,
+      'abilityState.passiveAbilityGrantSources',
+    );
   }
   return normalized;
 }
