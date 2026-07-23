@@ -11,6 +11,17 @@
     "path": "by-sha/8370b1a666046c0897dfa5bfdb3344fce4eb2087.json"
   },
   {
+    "commit": "28ec9a2962fddee6b9b98bc7ec39bb5fe11ec214",
+    "commitDate": "2026-07-22T20:23:16-07:00",
+    "commitSubject": "docs: annotate MERGE_TRAIN_MODE as deprecated/removed in two handoffs (#1788)",
+    "capturedAt": "2026-07-23T04:34:34.009Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29976893352",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/28ec9a2962fddee6b9b98bc7ec39bb5fe11ec214.json"
+  },
+  {
     "commit": "e319166676921181afb7b86e93b9ba782c172a29",
     "commitDate": "2026-07-22T17:08:26-07:00",
     "commitSubject": "chore(review-ledger): correct #1789 plan_divergence convergent->minor (#1790)",
