@@ -156,6 +156,154 @@ test('line-number drift does not change the blocker fingerprint', () => {
   assert.notEqual(normalizedBase.line, normalizedShifted.line);
 });
 
+test('check-run/workflow-run URL drift does not change the blocker fingerprint', () => {
+  // Regression (production incident, PR #1809, 2026-07-23): a `ci-failure` or
+  // `ci-retrigger` blocker's `url` is a check-run/workflow-run permalink that
+  // embeds a fresh run/job ID on every rerun of the SAME failing check (same
+  // name, same conclusion) -- including retries dispatched by this very
+  // automation. Including `url` in the fingerprint hash meant every retry
+  // cycle produced a NEW fingerprint even though nothing about the underlying
+  // blocker changed. `automationStallAction` reads a changed fingerprint as
+  // `'progressed'`, which resets the attempt counter and refreshes
+  // `progressAt` to now on every cycle -- so the stale-automation ceiling
+  // (attempt >= 2) and the lease-reaper takeover window could never be
+  // reached, producing an effectively immortal automation ownership lock
+  // (observed as a 10:09 / 10:44 / 11:29 UTC no-progress cycle with `attempt`
+  // pinned at 1 forever).
+  const base = {
+    kind: 'ci-failure',
+    id: 'copilot',
+    summary: 'copilot concluded failure.',
+    url: 'https://github.com/nalfeo/Crawler/actions/runs/3000042805/job/8918406660',
+  };
+  const rerun = {
+    ...base,
+    url: 'https://github.com/nalfeo/Crawler/actions/runs/3000099999/job/8918499999',
+  };
+  const noUrl = { ...base, url: undefined };
+
+  assert.equal(blockerFingerprint([base]), blockerFingerprint([rerun]));
+  assert.equal(blockerFingerprint([base]), blockerFingerprint([noUrl]));
+
+  // url must remain available for display metadata even though hashing ignores it.
+  const normalizedBase = normalizeBlockers([base])[0];
+  const normalizedRerun = normalizeBlockers([rerun])[0];
+  assert.equal(normalizedBase.url, base.url);
+  assert.equal(normalizedRerun.url, rerun.url);
+  assert.notEqual(normalizedBase.url, normalizedRerun.url);
+});
+
+test('ci-retrigger blocker URL drift (workflow-run rerun of a parked action_required check) does not change the fingerprint', () => {
+  // Plan-review follow-up: the fix must cover EVERY url-bearing blocker kind,
+  // not just `ci-failure`. `ci-retrigger` blockers (reconcile.mjs, action_required
+  // workflow runs parked on the same App identity) set `url: run.html_url` --
+  // a workflow-run permalink that also embeds a new run id on every rerun of
+  // the same parked check, with `id`/`summary` unchanged.
+  const base = {
+    kind: 'ci-retrigger',
+    id: 'action-required:build',
+    summary:
+      'build is parked in action_required because the commit was pushed by the same App identity. Push one commit under a different identity to retrigger CI.',
+    url: 'https://github.com/nalfeo/Crawler/actions/runs/4000000001',
+  };
+  const rerun = {
+    ...base,
+    url: 'https://github.com/nalfeo/Crawler/actions/runs/4000000002',
+  };
+
+  assert.equal(
+    blockerFingerprint([base]),
+    blockerFingerprint([rerun]),
+    'ci-retrigger fingerprint must be stable across a workflow-run rerun with only the url changed',
+  );
+  const normalizedRerun2 = normalizeBlockers([rerun])[0];
+  assert.equal(normalizedRerun2.url, rerun.url, 'url must still be preserved for display');
+});
+
+test('automationStallAction treats a same-fingerprint, different-url retry as wait/retry, never progressed', () => {
+  // Direct regression for the automation-liveness bug: a retry with only the
+  // check-run URL changed must climb the existing stale-retry ceiling
+  // (wait -> retry -> release) instead of being classified as 'progressed',
+  // which would reset the retry budget forever.
+  const blockersRun1 = [
+    {
+      kind: 'ci-failure',
+      id: 'copilot',
+      summary: 'copilot concluded failure.',
+      url: 'https://github.com/nalfeo/Crawler/actions/runs/1/job/1',
+    },
+  ];
+  const blockersRun2 = [
+    {
+      ...blockersRun1[0],
+      url: 'https://github.com/nalfeo/Crawler/actions/runs/2/job/2',
+    },
+  ];
+  const fingerprintRun1 = blockerFingerprint(blockersRun1);
+  const fingerprintRun2 = blockerFingerprint(blockersRun2);
+  assert.equal(
+    fingerprintRun1,
+    fingerprintRun2,
+    'fingerprint must be identical across reruns of the same check with a new url',
+  );
+
+  const headSha = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+  const now = new Date('2026-07-23T11:29:10.524Z');
+
+  // Cycle 1 (10:09 UTC equivalent): freshly dispatched, not yet stale.
+  const freshState = makeState({
+    prNumber: 1809,
+    headSha,
+    fingerprint: fingerprintRun1,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: blockersRun1,
+    attempt: 1,
+    progressKey: automationProgressKey(headSha, fingerprintRun1),
+    progressAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+    updatedAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+  });
+  assert.equal(
+    automationStallAction({ state: freshState, fingerprint: fingerprintRun2, now }),
+    'wait',
+    'a fresh, non-stale duplicate must wait even when the url-only blocker changed',
+  );
+
+  // Cycle 2 (10:44 UTC equivalent): stale by >30 min, attempt=1 -> retry.
+  const staleAttempt1State = makeState({
+    ...freshState,
+    prNumber: 1809,
+    headSha,
+    fingerprint: fingerprintRun1,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: blockersRun1,
+    attempt: 1,
+    progressKey: automationProgressKey(headSha, fingerprintRun1),
+    progressAt: new Date(now.getTime() - 35 * 60 * 1000).toISOString(),
+    updatedAt: new Date(now.getTime() - 35 * 60 * 1000).toISOString(),
+  });
+  assert.equal(
+    automationStallAction({ state: staleAttempt1State, fingerprint: fingerprintRun2, now }),
+    'retry',
+    'a stale duplicate at attempt=1 must retry, not progressed, when only the url changed',
+  );
+
+  // Cycle 3 (11:29 UTC equivalent): stale by >30 min, attempt=2 -> release
+  // (exhausted). This is the takeover-eligibility gate: a dead automation
+  // must become releasable within a bounded number of cycles instead of
+  // looping forever.
+  const staleAttempt2State = makeState({
+    ...staleAttempt1State,
+    attempt: 2,
+  });
+  assert.equal(
+    automationStallAction({ state: staleAttempt2State, fingerprint: fingerprintRun2, now }),
+    'release',
+    'after the retry ceiling, a same-fingerprint url-only change must release rather than loop forever',
+  );
+});
+
 test('review-thread blocker identity changes when comments change', () => {
   const baseThread = {
     id: 'thread-1',
