@@ -1,5 +1,16 @@
 [
   {
+    "commit": "90b4210b8018ce51ecc254da5890ebdf0f570a7e",
+    "commitDate": "2026-07-23T03:27:11Z",
+    "commitSubject": "fix(workflow): sync postprocess updates to variant cards (#1763)",
+    "capturedAt": "2026-07-23T04:46:52.769Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29977480027",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/90b4210b8018ce51ecc254da5890ebdf0f570a7e.json"
+  },
+  {
     "commit": "8370b1a666046c0897dfa5bfdb3344fce4eb2087",
     "commitDate": "2026-07-23T03:15:39Z",
     "commitSubject": "feat(equipment): add Floor 2 weapon Wave A (#1749)",
