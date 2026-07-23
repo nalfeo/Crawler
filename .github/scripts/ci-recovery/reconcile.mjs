@@ -335,6 +335,11 @@ let state = stateComments.length === 1 ? parseStateComment(stateComments[0].body
 const startupRepositoryLabel = await repositoryLabelSnapshot(labelName);
 let labelExists = startupRepositoryLabel.present;
 let ownerLabelNodeId = startupRepositoryLabel.nodeId;
+// Node id of a repository fence we created during acquire() but have NOT yet
+// backed with persisted owning state. While set, an unexpected crash must clean
+// exactly this incarnation (a partial acquisition) rather than bail and leak the
+// atomic lock until the next orphaned-fence sweep.
+let pendingFenceNodeId = null;
 const ownerLabelAttached = (pr.labels || []).some((label) => label.name === labelName);
 releaseUnexpectedOwnership = async () => {
   // Fail-safe cleanup after an unexpected crash: release ownership we currently
@@ -343,6 +348,16 @@ releaseUnexpectedOwnership = async () => {
   // this cleanup those guards RE-RAISE (instead of exiting 0) when the trust
   // fence has moved, so a moved fence keeps the crash fatal and leaves ownership
   // for reconciliation rather than mutating the replacement PR.
+  //
+  // Partial acquisition: the repository fence was created but owning state was
+  // never persisted, so the ownership checks below would bail and leak the atomic
+  // lock. Clean exactly the incarnation we created, by node id, before falling
+  // through to the owned-release path.
+  if (pendingFenceNodeId) {
+    fatalCleanupInProgress = true;
+    await cleanupPartialFence(pendingFenceNodeId);
+    return;
+  }
   if (operation === 'lease-release' || !labelExists || !state || state.owner === 'none') return;
   if (state.owner === 'shepherd' && state.leaseId !== leaseId) return;
   fatalCleanupInProgress = true;
@@ -490,6 +505,10 @@ async function acquire(
       },
     });
     ownerLabelNodeId = repositoryLabelNodeId(createdLabel.data);
+    // The atomic fence now exists on the repository but ownership is not yet
+    // persisted; arm partial-acquisition cleanup so a crash before the owning
+    // state write removes exactly this incarnation instead of leaking it.
+    pendingFenceNodeId = ownerLabelNodeId;
     await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
       method: 'POST',
       body: { labels: [labelName] },
@@ -513,6 +532,9 @@ async function acquire(
     }),
     { forceTimestamp: true },
   );
+  // Owning state is persisted: a later crash is now handled by the normal
+  // owned-release path, so disarm partial-acquisition cleanup.
+  pendingFenceNodeId = null;
   await completeWaitingExit(waitingTransition);
 }
 
@@ -663,6 +685,22 @@ async function removeRepositoryLabelById(nodeId) {
     `,
     { labelId: nodeId },
   );
+}
+
+async function cleanupPartialFence(nodeId) {
+  // Remove a repository fence created mid-acquire whose owning state was never
+  // persisted. Verify the live incarnation still matches the one we created
+  // before deleting, so a fresh owner that raced in after our crash keeps its
+  // lock; detach any PR attachment (404-safe) then delete our exact incarnation.
+  if (!shouldMutate) return;
+  const live = await repositoryLabelSnapshot(labelName);
+  if (!live.present || !nodeId || live.nodeId !== nodeId) {
+    process.stdout.write(`partial-acquire-fence-skip pr=#${prNumber} reason=incarnation-changed\n`);
+    return;
+  }
+  await removePrLabel(labelName);
+  await removeRepositoryLabelById(nodeId);
+  process.stdout.write(`partial-acquire-fence-cleanup pr=#${prNumber}\n`);
 }
 
 async function claimRepositoryLabelFence(reason) {
@@ -851,6 +889,24 @@ async function release(reason, nextState = null) {
   const waitingTransition = releasedState.status === 'waiting' ? false : await prepareWaitingExit();
   if (shouldMutate) {
     await assertExpectedMetadataUnchanged('release-label');
+    // Before mutating anything, confirm we still own the exact fence incarnation
+    // we are releasing. In normal reconcile the metadata guard above is a no-op
+    // (no EXPECTED_HEAD_SHA), so without this a lease taken over by a fresh owner
+    // — which recreated the same-named fence with a new node id and re-attached
+    // the PR label — would have its PR attachment detached (removePrLabel below),
+    // its state comment overwritten to owner:none (updateState), and its fence
+    // deleted. If the live incarnation differs from the one we acquired, a fresh
+    // owner exists: converge without touching its lock.
+    const ownedFence = await repositoryLabelSnapshot(labelName);
+    if (ownedFence.present && ownerLabelNodeId && ownedFence.nodeId !== ownerLabelNodeId) {
+      process.stdout.write(`release-skip pr=#${prNumber} reason=incarnation-changed\n`);
+      const facts = await fetchOwnershipFacts();
+      return preserveConvergedElsewhereState(
+        isConvergedElsewhereState(facts.state) ? facts.state : releasedState,
+        waitingTransition,
+        facts.labels,
+      );
+    }
     let needsPostReleaseCheck = false;
     try {
       // Track whether we expected the PR label to be attached before the DELETE.
@@ -928,9 +984,20 @@ async function release(reason, nextState = null) {
   await updateState(releasedState);
   await completeWaitingExit(waitingTransition);
   if (shouldMutate) {
-    await removeRepositoryLabel(labelName);
-    if (await repositoryLabelExists(labelName)) {
-      throw new Error(`PR #${prNumber} owner label was recreated during release`);
+    // Delete only the fence incarnation we own. In normal reconcile the
+    // release-label metadata guard above is a no-op (no EXPECTED_HEAD_SHA), so a
+    // blind by-name delete would steal a fresh owner's lock when our lease was
+    // taken over and the same-named fence recreated. Snapshot the live
+    // incarnation first: skip when it differs from ours, otherwise remove by name
+    // and keep the recreation assertion.
+    const liveFence = await repositoryLabelSnapshot(labelName);
+    if (liveFence.present && ownerLabelNodeId && liveFence.nodeId !== ownerLabelNodeId) {
+      process.stdout.write(`release-fence-skip pr=#${prNumber} reason=incarnation-changed\n`);
+    } else {
+      await removeRepositoryLabel(labelName);
+      if (await repositoryLabelExists(labelName)) {
+        throw new Error(`PR #${prNumber} owner label was recreated during release`);
+      }
     }
   }
   labelExists = false;
