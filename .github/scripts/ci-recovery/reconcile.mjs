@@ -45,6 +45,7 @@ import {
   requiresHumanApproval,
 } from '../merge-train/human-approval.mjs';
 import { fileLoopIncident } from './loop-incident-lib.mjs';
+import { createUnexpectedErrorHandler } from './unexpected-error.mjs';
 import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
@@ -109,6 +110,27 @@ const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace(
   '<sha>',
   POST_PUSH_HEAD_SHA_PLACEHOLDER,
 );
+let releaseUnexpectedOwnership = null;
+let fatalCleanupInProgress = false;
+// Node id of a repository fence created during acquire() but not yet backed by
+// persisted owning state. While set, an abandoned acquisition — an unexpected
+// crash OR a clean metadata-move skip (process.exit(0)) — must clean exactly this
+// incarnation rather than leak the atomic lock until the next orphaned-fence sweep.
+let pendingFenceNodeId = null;
+// True only while cleanupPartialFence() is deleting the incarnation we created and
+// have just re-verified by node id. The per-mutation metadata guards exist to avoid
+// mutating a REPLACEMENT PR's shared artifacts; deleting our own just-created fence
+// is safe regardless of a head/base move (a moved head is in fact WHY cleanup runs),
+// so those guards must not re-fire here — otherwise a clean-skip cleanup would either
+// recurse into skipForExpectedMetadata or abort midway and re-leak the fence.
+let cleaningPartialFence = false;
+const reportUnexpectedError = createUnexpectedErrorHandler({
+  cleanup: () => releaseUnexpectedOwnership?.(),
+  writeError: (message) => process.stderr.write(`${message}\n`),
+});
+
+process.on('uncaughtException', reportUnexpectedError);
+process.on('unhandledRejection', reportUnexpectedError);
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -230,7 +252,27 @@ function expectedMetadataRejection(candidate) {
   return null;
 }
 
-function skipForExpectedMetadata(rejection, phase = null) {
+async function skipForExpectedMetadata(rejection, phase = null) {
+  if (fatalCleanupInProgress) {
+    // During unexpected-error cleanup, a moved trust fence must stay fatal and
+    // leave ownership untouched for reconciliation — never mask the crash by
+    // exiting 0 from inside release(). Re-raise so the crash handler preserves
+    // the original error and a non-zero exit code.
+    process.stdout.write(
+      `unexpected-error-cleanup-skip pr=#${prNumber} reason=trusted-metadata-move detail=${rejection.reason}\n`,
+    );
+    throw new ExpectedMetadataChangedError(rejection, phase || 'unexpected-error-cleanup');
+  }
+  // A metadata move can abandon acquire() AFTER the atomic fence was created but
+  // BEFORE owning state was persisted (the 'state-comment' phase inside acquire's
+  // updateState). That abandon is a clean process.exit(0), so the uncaught-error
+  // handler never runs — clean up the partial fence here first, or it leaks until
+  // the next orphaned-fence sweep. cleanupPartialFence re-verifies the live
+  // incarnation, so it never touches a fresh owner's lock.
+  if (pendingFenceNodeId) {
+    await cleanupPartialFence(pendingFenceNodeId);
+    pendingFenceNodeId = null;
+  }
   const reason = phase ? `${rejection.reason}-before-mutation` : rejection.reason;
   const phaseField = phase ? ` phase=${phase}` : '';
   process.stdout.write(
@@ -246,7 +288,7 @@ function skipForExpectedMetadata(rejection, phase = null) {
 // EXPECTED_HEAD_SHA preserves normal manual/router behavior.
 if (expectedHeadSha) {
   const rejection = expectedMetadataRejection(pr);
-  if (rejection) skipForExpectedMetadata(rejection);
+  if (rejection) await skipForExpectedMetadata(rejection);
 }
 
 // The initial guard above only proves the metadata matched at the *start* of
@@ -259,11 +301,11 @@ if (expectedHeadSha) {
 // EXPECTED_HEAD_SHA (normal manual/router/scheduled/lease flows) is a no-op, so
 // those paths keep their exact prior behavior and make no extra API calls.
 async function assertExpectedMetadataUnchanged(phase) {
-  if (!expectedHeadSha) return;
+  if (!expectedHeadSha || cleaningPartialFence) return;
   const livePullRequest = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`))
     .data;
   const rejection = expectedMetadataRejection(livePullRequest);
-  if (rejection) skipForExpectedMetadata(rejection, phase);
+  if (rejection) await skipForExpectedMetadata(rejection, phase);
 }
 
 class ExpectedMetadataChangedError extends Error {
@@ -316,6 +358,28 @@ const startupRepositoryLabel = await repositoryLabelSnapshot(labelName);
 let labelExists = startupRepositoryLabel.present;
 let ownerLabelNodeId = startupRepositoryLabel.nodeId;
 const ownerLabelAttached = (pr.labels || []).some((label) => label.name === labelName);
+releaseUnexpectedOwnership = async () => {
+  // Fail-safe cleanup after an unexpected crash: release ownership we currently
+  // hold so a crash never leaks the lock. A review-wake dispatch is bound to one
+  // immutable head; release() runs its per-mutation metadata guards, and during
+  // this cleanup those guards RE-RAISE (instead of exiting 0) when the trust
+  // fence has moved, so a moved fence keeps the crash fatal and leaves ownership
+  // for reconciliation rather than mutating the replacement PR.
+  //
+  // Partial acquisition: the repository fence was created but owning state was
+  // never persisted, so the ownership checks below would bail and leak the atomic
+  // lock. Clean exactly the incarnation we created, by node id, before falling
+  // through to the owned-release path.
+  if (pendingFenceNodeId) {
+    fatalCleanupInProgress = true;
+    await cleanupPartialFence(pendingFenceNodeId);
+    return;
+  }
+  if (operation === 'lease-release' || !labelExists || !state || state.owner === 'none') return;
+  if (state.owner === 'shepherd' && state.leaseId !== leaseId) return;
+  fatalCleanupInProgress = true;
+  await release('unexpected-error');
+};
 const staleOwningState =
   !labelExists && state && state.owner !== 'none' && !['idle', 'waiting'].includes(state.status);
 const activeOwnershipState = state && state.owner !== 'none' && state.status !== 'idle';
@@ -458,6 +522,10 @@ async function acquire(
       },
     });
     ownerLabelNodeId = repositoryLabelNodeId(createdLabel.data);
+    // The atomic fence now exists on the repository but ownership is not yet
+    // persisted; arm partial-acquisition cleanup so a crash before the owning
+    // state write removes exactly this incarnation instead of leaking it.
+    pendingFenceNodeId = ownerLabelNodeId;
     await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
       method: 'POST',
       body: { labels: [labelName] },
@@ -481,6 +549,9 @@ async function acquire(
     }),
     { forceTimestamp: true },
   );
+  // Owning state is persisted: a later crash is now handled by the normal
+  // owned-release path, so disarm partial-acquisition cleanup.
+  pendingFenceNodeId = null;
   await completeWaitingExit(waitingTransition);
 }
 
@@ -631,6 +702,27 @@ async function removeRepositoryLabelById(nodeId) {
     `,
     { labelId: nodeId },
   );
+}
+
+async function cleanupPartialFence(nodeId) {
+  // Remove a repository fence created mid-acquire whose owning state was never
+  // persisted. Verify the live incarnation still matches the one we created
+  // before deleting, so a fresh owner that raced in after our crash keeps its
+  // lock; detach any PR attachment (404-safe) then delete our exact incarnation.
+  if (!shouldMutate) return;
+  const live = await repositoryLabelSnapshot(labelName);
+  if (!live.present || !nodeId || live.nodeId !== nodeId) {
+    process.stdout.write(`partial-acquire-fence-skip pr=#${prNumber} reason=incarnation-changed\n`);
+    return;
+  }
+  cleaningPartialFence = true;
+  try {
+    await removePrLabel(labelName);
+    await removeRepositoryLabelById(nodeId);
+  } finally {
+    cleaningPartialFence = false;
+  }
+  process.stdout.write(`partial-acquire-fence-cleanup pr=#${prNumber}\n`);
 }
 
 async function claimRepositoryLabelFence(reason) {
@@ -819,6 +911,24 @@ async function release(reason, nextState = null) {
   const waitingTransition = releasedState.status === 'waiting' ? false : await prepareWaitingExit();
   if (shouldMutate) {
     await assertExpectedMetadataUnchanged('release-label');
+    // Before mutating anything, confirm we still own the exact fence incarnation
+    // we are releasing. In normal reconcile the metadata guard above is a no-op
+    // (no EXPECTED_HEAD_SHA), so without this a lease taken over by a fresh owner
+    // — which recreated the same-named fence with a new node id and re-attached
+    // the PR label — would have its PR attachment detached (removePrLabel below),
+    // its state comment overwritten to owner:none (updateState), and its fence
+    // deleted. If the live incarnation differs from the one we acquired, a fresh
+    // owner exists: converge without touching its lock.
+    const ownedFence = await repositoryLabelSnapshot(labelName);
+    if (ownedFence.present && ownerLabelNodeId && ownedFence.nodeId !== ownerLabelNodeId) {
+      process.stdout.write(`release-skip pr=#${prNumber} reason=incarnation-changed\n`);
+      const facts = await fetchOwnershipFacts();
+      return preserveConvergedElsewhereState(
+        isConvergedElsewhereState(facts.state) ? facts.state : releasedState,
+        waitingTransition,
+        facts.labels,
+      );
+    }
     let needsPostReleaseCheck = false;
     try {
       // Track whether we expected the PR label to be attached before the DELETE.
@@ -896,9 +1006,20 @@ async function release(reason, nextState = null) {
   await updateState(releasedState);
   await completeWaitingExit(waitingTransition);
   if (shouldMutate) {
-    await removeRepositoryLabel(labelName);
-    if (await repositoryLabelExists(labelName)) {
-      throw new Error(`PR #${prNumber} owner label was recreated during release`);
+    // Delete only the fence incarnation we own. In normal reconcile the
+    // release-label metadata guard above is a no-op (no EXPECTED_HEAD_SHA), so a
+    // blind by-name delete would steal a fresh owner's lock when our lease was
+    // taken over and the same-named fence recreated. Snapshot the live
+    // incarnation first: skip when it differs from ours, otherwise remove by name
+    // and keep the recreation assertion.
+    const liveFence = await repositoryLabelSnapshot(labelName);
+    if (liveFence.present && ownerLabelNodeId && liveFence.nodeId !== ownerLabelNodeId) {
+      process.stdout.write(`release-fence-skip pr=#${prNumber} reason=incarnation-changed\n`);
+    } else {
+      await removeRepositoryLabel(labelName);
+      if (await repositoryLabelExists(labelName)) {
+        throw new Error(`PR #${prNumber} owner label was recreated during release`);
+      }
     }
   }
   labelExists = false;
@@ -913,7 +1034,48 @@ if (orphanedOwnershipArtifact) {
   // durable waiting marker (which must survive for ongoing admission waits).
   if (state && state.owner === 'none' && (state.status === 'idle' || state.status === 'waiting')) {
     if (shouldMutate) {
-      await removeRepositoryLabel(labelName);
+      // Terminal orphan cleanup must not act on the startup snapshot: a
+      // concurrent reconcile may have acquired the same label since. Re-fetch
+      // live ownership and only delete when both the terminal state and the
+      // repository-label incarnation are unchanged; otherwise a fresh owner
+      // appeared and this stale run must leave its lock alone. Delete the fence
+      // by node id so we can only ever remove the incarnation we verified.
+      const facts = await fetchOwnershipFacts();
+      // Skip only on a POSITIVELY-confirmed fresh owner: either the terminal
+      // orphan state we snapshotted at startup is gone (someone re-acquired), or
+      // the repository fence was deleted and recreated with a new node id. When no
+      // incarnation node id is available on either read we cannot prove a
+      // replacement, so the fresh ownership re-check above is authoritative and a
+      // genuinely-orphaned fence is still cleaned — never skip on a merely absent
+      // id, which would strand the orphan and never self-heal on later sweeps.
+      const ownershipChanged = !sameOwnership(facts.state, state);
+      const incarnationReplaced =
+        facts.repositoryLabelPresent &&
+        Boolean(ownerLabelNodeId) &&
+        Boolean(facts.repositoryLabelNodeId) &&
+        facts.repositoryLabelNodeId !== ownerLabelNodeId;
+      if (ownershipChanged || incarnationReplaced) {
+        process.stdout.write(
+          `orphaned-fence-cleanup-skip pr=#${prNumber} reason=ownership-changed status=${state.status}\n`,
+        );
+        process.exit(0);
+      }
+      if (facts.attached) {
+        await removePrLabel(labelName);
+      }
+      if (facts.repositoryLabelPresent) {
+        if (ownerLabelNodeId) {
+          // Delete the exact incarnation we verified so we can never remove a
+          // fence a fresh owner recreated after our re-check.
+          await removeRepositoryLabelById(ownerLabelNodeId);
+        } else {
+          // No node id to verify against: the fresh re-check above already
+          // confirmed ownership is unchanged, so a by-name delete of this
+          // confirmed-orphan fence is safe. Any owner racing into the residual
+          // window is backstopped by the orphaned-fence sweep.
+          await removeRepositoryLabel(labelName);
+        }
+      }
     }
     labelExists = false;
     process.stdout.write(`orphaned-fence-cleanup pr=#${prNumber} status=${state.status}\n`);
@@ -1785,7 +1947,7 @@ if (reviewDecision) {
       });
     } catch (error) {
       if (error instanceof ExpectedMetadataChangedError) {
-        skipForExpectedMetadata(error.rejection, error.phase);
+        await skipForExpectedMetadata(error.rejection, error.phase);
       }
       throw error;
     }

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "sprite-catalog-serializer-churn",
+  "task_title": "Route asset-pr catalog writes through Prettier helper + format:check gate",
+  "estimated_apples": 1,
+  "stages": {}
+}
