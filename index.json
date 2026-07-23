@@ -1,5 +1,16 @@
 [
   {
+    "commit": "06c22bea112e1d71c63a66fd9a49742e7a1f915e",
+    "commitDate": "2026-07-23T22:05:25Z",
+    "commitSubject": "fix(player-carryover): fail-closed validation for all array-typed snapshot fields (#1826)",
+    "capturedAt": "2026-07-23T23:15:19.920Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30049309323",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/06c22bea112e1d71c63a66fd9a49742e7a1f915e.json"
+  },
+  {
     "commit": "812c6176b155c5ada451774a3c3f1ae5d0c45573",
     "commitDate": "2026-07-23T21:45:31Z",
     "commitSubject": "revert: keep Wave B display names runtime-local (#1830)",
