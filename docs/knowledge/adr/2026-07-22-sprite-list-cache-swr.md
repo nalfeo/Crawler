@@ -76,7 +76,61 @@ refresh no longer reports'` (a 3-segment `summary.json` key) to
    `tests/unit/sprites/caching-run-store.test.ts`, directly exercising the
    fixed path.
 
-A required round-2 review is documented below once completed.
+2. **[Process, fixed]** An independent round-2 review re-verified the
+   round-1 fix (call order, `invalidateDerivedResources` semantics, test
+   determinism, and the epoch/dedup guards) and confirmed it was fully
+   correct — but caught that the fix existed only in the uncommitted working
+   tree, not `HEAD`. Committed as `86704f82f`.
+3. A third, fully independent review of the committed state returned zero
+   concerns across all categories (concurrency/determinism,
+   API/compatibility, security, runtime wiring, regression coverage, layer
+   boundaries). The code-review loop closed clean after 3 rounds.
+
+## Post-PR Automated Review
+
+After PR #1805 was opened, GitHub's automated `copilot-pull-request-reviewer`
+left 3 inline findings, all addressed in a follow-up commit:
+
+1. **[Correctness, fixed]** The background refresh's purge loop called
+   `this.cache.remove(blobCacheKey)` directly, without first bumping the
+   entry's mutation token the way the authoritative `remove()` path does.
+   `SharedResourceCache.get()` on a cache miss captures
+   `expectedMutationToken` **before** calling `inner.get()`, then only
+   commits the re-fetched bytes via `setIfAbsent(key, data, undefined,
+expectedMutationToken)` if the token is still current. Without the bump,
+   a `get()` for a key already in flight when the purge ran could still win
+   the race and resurrect the just-purged blob permanently (the purge's
+   `remove()` would run, then the stale `get()`'s delayed `setIfAbsent` would
+   silently repopulate it, and nothing would ever purge it again since the
+   remote no longer reports the key). Fixed by calling
+   `this.cache.bumpMutationToken(blobCacheKey)` immediately before
+   `this.cache.remove(blobCacheKey)` in the purge loop, mirroring `remove()`'s
+   exact sequencing.
+2. **[Correctness, fixed]** Four `server.ts` routes enumerate a `list()`
+   result and then act destructively on every key it contains: archive
+   (`/api/storage/runs/archive`), delete (`/api/storage/runs/delete`),
+   clear-store (`/api/workflow/store/clear`), and single-run delete
+   (`DELETE /api/runs/:briefId/:runId`, which lists twice — once for the
+   run's own keys, once to decide whether the parent brief directory is now
+   empty). Under the new fast path these could enumerate a stale snapshot,
+   silently leaving newly-added files un-archived/un-deleted or
+   under-reporting `deletedCount`. Fixed by adding an optional
+   `{ authoritative?: boolean }` second parameter to `RunStore.list()`
+   (`scripts/sprites/store/types.ts`); `CachingRunStore.list()` now gates its
+   fast path on `options?.authoritative !== true`, so passing
+   `{ authoritative: true }` always takes the existing blocking path
+   regardless of snapshot freshness. All 4 destructive routes (5 call sites)
+   were updated to pass it. Every other `list()` call site (the read-only
+   `GET /api/storage/runs` and `GET /api/runs/:briefId/:runId/sheets`
+   listings, the slice-map route, `hydrateRunDirForApproveFromStore`, and
+   `findLatestRunForBriefSince`) was deliberately left on the fast path — the
+   review's scope named exactly these 4 routes, and expanding further would
+   have re-blocked reads the whole ADR exists to make instant.
+3. **[Docs, fixed]** This ADR's Code Review section had a stale placeholder
+   sentence ("A required round-2 review is documented below once completed")
+   left over from an earlier draft, even though the ledger and handoff
+   already recorded all 3 code-review rounds as complete. Replaced with the
+   actual round-2/round-3 summary above.
 
 ## Context
 
@@ -137,6 +191,23 @@ check-in, generate, remove) immediately invalidates the fast path for the
 next `list()` call on that prefix — same-process read-your-writes coherence
 is fully preserved, identical to before this change.
 
+### Authoritative escape hatch for enumerate-then-act callers
+
+`RunStore.list()` gained an optional second parameter,
+`options?: { authoritative?: boolean }` (`scripts/sprites/store/types.ts`).
+Passing `{ authoritative: true }` forces `CachingRunStore.list()` to skip the
+fast path unconditionally and always take the blocking `inner.list()` path,
+regardless of snapshot freshness. This exists for the handful of `server.ts`
+routes that enumerate a `list()` result and then act destructively on every
+key returned (archive, delete, clear-store, single-run delete) — for those,
+a stale snapshot is not just "one refresh late," it is a correctness bug
+(a newly-added file surviving an "archive everything" call, or a wrong
+`deletedCount`). Every other call site (plain reads: run galleries, sheet
+listings, slice-map lookups) stays on the fast path, since serving a few
+seconds of staleness there is exactly the trade-off this ADR accepts.
+`AzureBlobRunStore` and `LocalRunStore` both ignore the option — they have no
+snapshot layer and are always authoritative already.
+
 ### Background refresh: dedup, error-swallowing, purge
 
 ```ts
@@ -165,10 +236,13 @@ private async refreshListSnapshot(prefix, snapshotKey, previousKeys): Promise<vo
   for (const removedKey of previousKeys) {
     if (!freshKeys.has(removedKey)) {
       // Order mirrors the authoritative remove() path: derived HTTP-route
-      // response caches first (fixed in code review — see below), then the
-      // blob-cache entry, then per-run brief/slice-map fingerprint caches.
+      // response caches first (fixed in code review), then the blob-cache
+      // entry — mutation-token bump BEFORE remove (fixed in the post-PR
+      // automated review, see below) — then per-run fingerprint caches.
       await this.invalidateDerivedResources(removedKey);
-      await this.cache.remove(`${BLOB_PREFIX}${removedKey}`);
+      const blobCacheKey = `${BLOB_PREFIX}${removedKey}`;
+      this.cache.bumpMutationToken(blobCacheKey);
+      await this.cache.remove(blobCacheKey);
       await this.removePerRunSnapshotOnRunRemoval(removedKey);
     }
   }
@@ -196,6 +270,15 @@ private async refreshListSnapshot(prefix, snapshotKey, previousKeys): Promise<vo
   if ever wrong in the other direction (a later `put()` simply repopulates),
   so snapshot-key correctness — the priority per the requirement — is never
   compromised by a partially-applied purge.
+- **The blob-cache purge bumps the mutation token before removing** (fixed in
+  the post-PR automated review, see below): `SharedResourceCache.get()`
+  captures a key's mutation token before an in-flight `inner.get()` and only
+  commits the result if the token is unchanged when it finishes. Without the
+  bump, a `get()` racing the purge could still win and resurrect the
+  just-purged blob with no future purge pass ever noticing (the diff is a
+  one-time `previousKeys` → `freshKeys` transition, not a standing
+  invariant). Bumping first, mirroring `remove()`'s own tail exactly, closes
+  that window.
 
 ## Consequences
 
@@ -295,7 +378,12 @@ private async refreshListSnapshot(prefix, snapshotKey, previousKeys): Promise<vo
   the base cache this ADR amends; only the "List snapshots" online-consult
   sentence is superseded, everything else remains authoritative.
 - `scripts/sprites/store/caching-store.ts` — implementation.
+- `scripts/sprites/store/types.ts` — the `RunStore.list()` interface and its
+  `ListOptions`/`authoritative` escape hatch.
+- `scripts/sprites/sidecar/server.ts` — the 4 destructive routes (5 call
+  sites) that pass `{ authoritative: true }`.
 - `tests/unit/sprites/caching-run-store.test.ts` — the `list snapshots`
   describe block covers the epoch-fresh fast path, dedup, error-swallowing,
-  and purge behavior; `tests/unit/sprites/sidecar-offline-cache.test.ts`
+  purge behavior (including the mutation-token-bump race), and the
+  `authoritative` bypass; `tests/unit/sprites/sidecar-offline-cache.test.ts`
   covers the (unchanged) offline hard-gate.

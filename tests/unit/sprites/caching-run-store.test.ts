@@ -314,6 +314,42 @@ class ShrinkingStore implements RunStore {
   }
 }
 
+/**
+ * Models an external Azure removal mid-flight: `list()` no longer reports a
+ * given key, but `get()` for that exact key still succeeds — the same
+ * "already in flight when the listing dropped it" window a real Azure
+ * LIST/GET inconsistency could produce. Used to prove the background purge's
+ * mutation-token bump (not `get()`'s own already-correct protocol) is what
+ * closes the resurrection race, by racing a `get()` against a purge.
+ */
+class StaleGetShrinkingStore implements RunStore {
+  readonly backend = 'azure-blob' as const;
+  constructor(
+    private readonly listedKeys: readonly string[],
+    private readonly staleGetKey: string,
+    private readonly staleGetBytes: Buffer,
+  ) {}
+  async put(): Promise<void> {
+    throw new Error('unused: put');
+  }
+  async get(key: string): Promise<Buffer> {
+    if (key === this.staleGetKey) return this.staleGetBytes;
+    throw new StoreNotFoundError(key);
+  }
+  async has(): Promise<boolean> {
+    return false;
+  }
+  async list(): Promise<readonly string[]> {
+    return this.listedKeys;
+  }
+  async remove(): Promise<void> {
+    throw new Error('unused: remove');
+  }
+  resolve(key: string): string {
+    return key;
+  }
+}
+
 const SHEET = 'iron-sword/run-abc/sheet-00.png';
 const RAW = 'iron-sword/run-abc/raw/00.png';
 const PROCESSED = 'iron-sword/run-abc/processed/00.png';
@@ -780,6 +816,114 @@ describe('list snapshots', () => {
     // survive — purging it here would hide a run the old (still epoch-fresh,
     // still-served) snapshot still points at.
     expect(await s.has(RAW)).toBe(true);
+  });
+
+  it('an authoritative list() blocks on inner.list even when a fresh snapshot exists', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.list('iron-sword/run-abc/'); // warm an epoch-fresh snapshot: [SHEET]
+
+    // Enumerate-then-act callers (server.ts's archive/delete/clear-store
+    // routes) pass { authoritative: true } because they need a
+    // guaranteed-fresh key set before acting — unlike the default fast path
+    // proven never to block in 'does not await inner.list before
+    // returning...' above, this call must genuinely await inner.list().
+    const gated = new GatedListStore([SHEET, RAW]); // "Azure" now also reports RAW
+    const s = new CachingRunStore({ inner: gated, cache }); // shares the warmed snapshot + epoch file
+
+    let resolved = false;
+    const authoritative = s.list('iron-sword/run-abc/', { authoritative: true }).then((keys) => {
+      resolved = true;
+      return keys;
+    });
+
+    // readSnapshot() performs genuine cacache disk I/O whose wall-clock
+    // completion time varies with disk/OS scheduling, so poll for the
+    // observable effect (inner.list reached) rather than assuming a fixed
+    // tick count settles it — same rationale as the waitUntil doc comment.
+    const reachedInner = await waitUntil(async () => gated.lists >= 1);
+    expect(reachedInner).toBe(true); // inner.list() was genuinely invoked, not skipped
+    expect(resolved).toBe(false); // ...and the call is genuinely blocked on it, not merely "also calling it"
+
+    gated.releaseGate();
+    await expect(authoritative).resolves.toEqual(expect.arrayContaining([SHEET, RAW]));
+    expect(resolved).toBe(true);
+  });
+
+  it('bumps the mutation token before purging so a get() racing the purge cannot resurrect the blob', async () => {
+    const staleBytes = Buffer.from('stale-raw-bytes');
+
+    // Write RAW directly to the inner store, bypassing the cache entirely —
+    // this leaves the blob-cache entry ABSENT so the upcoming get() below
+    // must take the read-through-fill path (a cache hit would short-circuit
+    // before ever touching setIfAbsent, defeating the race this test drives).
+    const rawInner = new (class implements RunStore {
+      readonly backend = 'azure-blob' as const;
+      async put(): Promise<void> {}
+      async get(key: string): Promise<Buffer> {
+        if (key === RAW) return staleBytes;
+        throw new StoreNotFoundError(key);
+      }
+      async has(): Promise<boolean> {
+        return true;
+      }
+      async list(): Promise<readonly string[]> {
+        return [SHEET, RAW];
+      }
+      async remove(): Promise<void> {}
+      resolve(key: string): string {
+        return key;
+      }
+    })();
+    const warmer = new CachingRunStore({ inner: rawInner, cache });
+    await warmer.list('iron-sword/run-abc/'); // warm an epoch-fresh snapshot: [SHEET, RAW]
+
+    // Gate setIfAbsent for RAW's blob-cache entry specifically, mirroring the
+    // precedent 'does not republish stale read-through data after a
+    // concurrent remove' test's exact override pattern — the gate sits
+    // BEFORE super.setIfAbsent() so no lock is held while paused.
+    let signalFillStarted!: () => void;
+    const fillStarted = new Promise<void>((resolve) => {
+      signalFillStarted = () => resolve();
+    });
+    let releaseFillGate!: () => void;
+    const fillGate = new Promise<void>((resolve) => {
+      releaseFillGate = () => resolve();
+    });
+    class BlockingCache extends SharedResourceCache {
+      override async setIfAbsent(
+        cacheKey: string,
+        data: Buffer,
+        metadata?: Record<string, unknown>,
+        expectedMutationToken?: string,
+      ): Promise<boolean> {
+        if (cacheKey === `blob:${RAW}`) {
+          signalFillStarted();
+          await fillGate;
+        }
+        return super.setIfAbsent(cacheKey, data, metadata, expectedMutationToken);
+      }
+    }
+    const blockingCache = new BlockingCache({ cacheDir, maxBytes: 0, log: noop });
+    const tokenBeforeGet = blockingCache.readMutationToken(`blob:${RAW}`);
+
+    // "Azure" no longer reports RAW — the background purge this triggers is
+    // what must bump the mutation token before removing the (already-absent)
+    // blob-cache entry, so the gated get() below can't resurrect it.
+    const staleGet = new StaleGetShrinkingStore([SHEET], RAW, staleBytes);
+    const s = new CachingRunStore({ inner: staleGet, cache: blockingCache });
+
+    const inflightGet = s.get(RAW); // starts the read-through-fill; will pause at the gate
+    await fillStarted;
+
+    await s.list('iron-sword/run-abc/'); // fast path: schedules the background purge
+    const bumped = await waitUntil(
+      async () => blockingCache.readMutationToken(`blob:${RAW}`) !== tokenBeforeGet,
+    );
+    expect(bumped).toBe(true); // the purge bumped the token BEFORE the gated get() could commit its write
+
+    releaseFillGate();
+    await expect(inflightGet).resolves.toEqual(staleBytes); // get() still returns the bytes it fetched...
+    expect(await s.has(RAW)).toBe(false); // ...but the bump correctly rejected its now-stale cache write
   });
 });
 

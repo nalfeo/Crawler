@@ -36,15 +36,22 @@
  *    original blocking path. The accepted trade-off: a run mutated by a writer
  *    that bypasses this cache entirely (so the shared epoch is never bumped)
  *    may appear one background-refresh late, in exchange for instant
- *    cross-process/worktree cold-open listings. The background refresh only
- *    purges (everything the authoritative `remove()` path would have
- *    cleared for a removed key — derived HTTP-route response caches, the
- *    blob-cache entry, and that run's derived brief/slice-map caches — for
- *    keys the remote no longer reports) AFTER its own snapshot rewrite is
- *    confirmed written — a failed best-effort write leaves the old snapshot
- *    and everything it pointed at untouched, so a still-served listing never
- *    points at already-evicted data. Offline calls return the warmed
- *    snapshot with zero remote reads.
+ *    cross-process/worktree cold-open listings. Callers that cannot tolerate
+ *    that staleness — any workflow that enumerates keys via `list` and then
+ *    acts on exactly that set, e.g. archive/delete/clear-store — MUST pass
+ *    `{ authoritative: true }` (see {@link ListOptions}) to unconditionally
+ *    skip the fast path and block on a fresh remote listing instead; the
+ *    result still refreshes the snapshot on success so later fast-path reads
+ *    benefit. The background refresh only purges (everything the
+ *    authoritative `remove()` path would have cleared for a removed key —
+ *    derived HTTP-route response caches, the blob-cache entry (mutation
+ *    token bumped first, exactly like `remove()`, so a concurrent read-through
+ *    fill racing the purge can't resurrect it), and that run's derived
+ *    brief/slice-map caches — for keys the remote no longer reports) AFTER
+ *    its own snapshot rewrite is confirmed written — a failed best-effort
+ *    write leaves the old snapshot and everything it pointed at untouched, so
+ *    a still-served listing never points at already-evicted data. Offline
+ *    calls return the warmed snapshot with zero remote reads.
  *  - **Offline mode**: when Azure is forced unavailable, reads are served
  *    entirely from the cache and the inner store is NEVER contacted, so a warmed
  *    worktree loads exact bytes and listings with zero Azure read operations.
@@ -55,7 +62,7 @@
 
 import { WORKFLOW_STATE_KEY } from '../sidecar/workflow-state.js';
 import type { SharedResourceCache } from './shared-cache.js';
-import { StoreNotFoundError, type RunStore } from './types.js';
+import { StoreNotFoundError, type ListOptions, type RunStore } from './types.js';
 
 /** cacache key prefixes keep blob artifacts and list snapshots in disjoint namespaces. */
 const BLOB_PREFIX = 'blob:';
@@ -223,7 +230,7 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     return this.inner.has(key);
   }
 
-  async list(prefix: string): Promise<readonly string[]> {
+  async list(prefix: string, options?: ListOptions): Promise<readonly string[]> {
     const snapshotKey = `${LIST_PREFIX}${prefix}`;
     const snapshot = await this.readSnapshot(snapshotKey);
 
@@ -238,8 +245,14 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     // the epoch first, so this only fires when nothing in THIS process has
     // invalidated the prefix since the snapshot was captured — the first-ever
     // load (no snapshot) and any post-mutation reload still take the blocking
-    // path below, unchanged.
-    if (snapshot !== null && snapshot.epoch === this.cache.readEpoch()) {
+    // path below, unchanged. Callers that need a guaranteed-fresh listing to
+    // enumerate-then-act (archive/delete/clear-store workflows) pass
+    // `{ authoritative: true }` to unconditionally skip this fast path.
+    if (
+      options?.authoritative !== true &&
+      snapshot !== null &&
+      snapshot.epoch === this.cache.readEpoch()
+    ) {
       this.scheduleListRefresh(prefix, snapshotKey, snapshot.keys);
       return snapshot.keys;
     }
@@ -375,7 +388,17 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
         // serving a stale `route/brief/<briefId>/<runId>` response forever
         // for a run Azure no longer reports.
         await this.invalidateDerivedResources(removedKey);
-        await this.cache.remove(`${BLOB_PREFIX}${removedKey}`);
+        const blobCacheKey = `${BLOB_PREFIX}${removedKey}`;
+        // Bump the mutation token BEFORE removing, mirroring remove()'s own
+        // tail exactly: a concurrent get() may have captured the pre-purge
+        // token and be mid-flight on inner.get() for this same key. Without
+        // the bump, that get()'s later setIfAbsent(..., expectedMutationToken)
+        // call would still match and could resurrect the just-purged blob
+        // into the cache with no future self-healing path (the diff-based
+        // purge only catches a key's one-time previousKeys→freshKeys
+        // transition, so it would never be reconsidered for removal again).
+        this.cache.bumpMutationToken(blobCacheKey);
+        await this.cache.remove(blobCacheKey);
         await this.removePerRunSnapshotOnRunRemoval(removedKey);
       }
     }
