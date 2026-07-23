@@ -47,7 +47,14 @@
  */
 
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { canonicalItemBriefId, itemArtIdentitySet } from '../../src/shared/item-sprites.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
@@ -62,12 +69,22 @@ export interface ApproveFs {
   readonly mkdirSync: typeof mkdirSync;
 }
 
+/** Extended fs subset that also supports file deletion, used by unapproveVariant. */
+export interface UnapproveFs extends ApproveFs {
+  readonly unlinkSync: typeof unlinkSync;
+}
+
 const DEFAULT_FS: ApproveFs = {
   existsSync,
   readFileSync,
   writeFileSync,
   copyFileSync,
   mkdirSync,
+};
+
+const DEFAULT_UNAPPROVE_FS: UnapproveFs = {
+  ...DEFAULT_FS,
+  unlinkSync,
 };
 
 /**
@@ -777,4 +794,142 @@ function padIndex(index: number): string {
 function toRepoRelativePosix(repoRoot: string, abs: string): string {
   const rel = path.relative(repoRoot, abs);
   return rel.split(path.sep).join('/');
+}
+
+/**
+ * Error thrown by `unapproveVariant` when the operation cannot proceed.
+ * Discriminated by `kind` so callers can translate to HTTP status / exit code.
+ */
+export class UnapproveError extends Error {
+  constructor(
+    public readonly kind: 'not-found' | 'manifest-invalid',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'UnapproveError';
+  }
+}
+
+export interface UnapproveVariantOptions {
+  /**
+   * Variant id (`<briefId>-var-<N>`), the manifest key to remove.
+   * Must match an entry key in `manifest.json` exactly.
+   */
+  readonly variantId: string;
+  /** Absolute path to `public/assets/generated/manifest.json`. */
+  readonly manifestPath: string;
+  /** Absolute path to `src/shared/data/sprite-catalog.json`. */
+  readonly catalogPath: string;
+  /** Absolute path to `public/assets/` (parent of `generated/`). */
+  readonly publicAssetsDir: string;
+  /**
+   * When true (default), also deletes the approved PNG from
+   * `publicAssetsDir/generated/<variantId>.png`. Set false to
+   * keep the asset on disk (e.g. for a dry-run preview).
+   */
+  readonly deleteAsset?: boolean;
+  /** Injected fs for tests. Defaults to `node:fs`. */
+  readonly fs?: UnapproveFs;
+}
+
+/**
+ * Evict one approved variant from the repo's checked-in art surface.
+ *
+ * This is the inverse of `approveVariant`. It removes the manifest entry,
+ * removes the catalog entry, and (by default) deletes the PNG from
+ * `public/assets/generated/`.
+ *
+ * Steps:
+ *   1. Load `manifest.json` and locate the entry for `variantId`.
+ *   2. Remove the entry and write the updated manifest back.
+ *   3. Remove the `generated:<variantId>` entry from `sprite-catalog.json`.
+ *   4. If `deleteAsset` is true (default), delete the PNG file.
+ *   5. Return the removed manifest entry.
+ *
+ * Throws `UnapproveError('not-found')` when `variantId` is absent from the
+ * manifest, or `UnapproveError('manifest-invalid')` for a corrupt manifest.
+ */
+export function unapproveVariant(options: UnapproveVariantOptions): ManifestEntry {
+  const deleteAsset = options.deleteAsset !== false;
+  const fs = options.fs ?? DEFAULT_UNAPPROVE_FS;
+
+  // 1. Load + validate the manifest.
+  if (!fs.existsSync(options.manifestPath)) {
+    throw new UnapproveError(
+      'not-found',
+      `Manifest not found — no approved sprites at: ${options.manifestPath}`,
+    );
+  }
+
+  let manifest: Manifest;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(options.manifestPath, 'utf8')) as Partial<Manifest>;
+    if (parsed.version !== MANIFEST_VERSION) {
+      throw new UnapproveError(
+        'manifest-invalid',
+        `Unsupported manifest version: ${String(parsed.version)} (expected ${MANIFEST_VERSION})`,
+      );
+    }
+    manifest = { version: MANIFEST_VERSION, entries: { ...(parsed.entries ?? {}) } };
+  } catch (err) {
+    if (err instanceof UnapproveError) throw err;
+    throw new UnapproveError(
+      'manifest-invalid',
+      `manifest.json is not parseable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // 2. Find the entry — throw if absent.
+  const entry = manifest.entries[options.variantId];
+  if (!entry) {
+    throw new UnapproveError(
+      'not-found',
+      `Variant "${options.variantId}" is not in the manifest and cannot be unapproved.`,
+    );
+  }
+
+  // 3. Remove from manifest and write back (stable key order preserved).
+  const nextEntries: Record<string, ManifestEntry> = { ...manifest.entries };
+  delete nextEntries[options.variantId];
+  const sortedKeys = Object.keys(nextEntries).sort();
+  const sorted: Record<string, ManifestEntry> = {};
+  for (const key of sortedKeys) {
+    sorted[key] = nextEntries[key]!;
+  }
+  const next: Manifest = { version: MANIFEST_VERSION, entries: sorted };
+  fs.writeFileSync(options.manifestPath, `${JSON.stringify(next, null, 2)}\n`);
+
+  // 4. Remove from catalog (best-effort — a corrupt/missing catalog must not
+  //    block the manifest eviction that already succeeded above).
+  if (fs.existsSync(options.catalogPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(options.catalogPath, 'utf8'));
+      const catalog: Array<Record<string, unknown>> = Array.isArray(raw) ? raw : [];
+      const catalogId = `generated:${options.variantId}`;
+      const filtered = catalog.filter((e) => e.id !== catalogId);
+      if (filtered.length !== catalog.length) {
+        fs.writeFileSync(options.catalogPath, `${JSON.stringify(filtered, null, 2)}\n`);
+        formatJsonFilesSync([options.catalogPath]);
+      }
+    } catch {
+      // Best-effort: don't block eviction if catalog is corrupt.
+    }
+  }
+
+  // 5. Delete the on-disk PNG when requested.
+  if (deleteAsset) {
+    const generatedDir = path.join(options.publicAssetsDir, 'generated');
+    const assetAbsPath = path.join(generatedDir, `${options.variantId}.png`);
+    // Safety guard: ensure the resolved path stays inside generated/ to prevent
+    // a variantId like `../../etc/passwd` from traversing outside the tree.
+    if (!path.resolve(assetAbsPath).startsWith(path.resolve(generatedDir) + path.sep)) {
+      // Skip deletion — manifest + catalog were already cleaned up above.
+      return entry;
+    }
+    if (fs.existsSync(assetAbsPath)) {
+      fs.unlinkSync(assetAbsPath);
+    }
+  }
+
+  return entry;
 }
