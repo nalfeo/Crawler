@@ -49,6 +49,7 @@ import { getItemById } from '../../shared/items.js';
 import {
   addGeneratedEquipmentReference,
   addItem,
+  canAcceptGeneratedEquipment,
   hasGeneratedEquipmentReference,
   hasItem,
   removeGeneratedEquipmentReference,
@@ -61,6 +62,7 @@ import type {
   GeneratedEquipmentInstanceKey,
   GeneratedEquipmentInstanceV1,
 } from '../../shared/generated-equipment-types.js';
+import { GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES } from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
 import {
   coreGrantGeneratedEquipmentActiveAbility,
@@ -875,6 +877,135 @@ export function addGeneratedEquipmentToBag(
     };
   }
   return { ok: true, entry: addGeneratedEquipmentReference(bag, instanceKey) };
+}
+
+export interface ClaimedRewardBundleEntry {
+  readonly instanceKey: GeneratedEquipmentInstanceKey;
+  readonly entry: GeneratedEquipmentInventoryEntry;
+}
+
+export type ClaimGeneratedEquipmentRewardBundleResult =
+  | { readonly ok: true; readonly granted: readonly ClaimedRewardBundleEntry[] }
+  | { readonly ok: false; readonly reason: EquipFailureReason };
+
+/**
+ * Atomically transfer ownership of a resolved reward bundle's instances from the
+ * bundle to an entity's bag.
+ *
+ * Reward bundles ARE registry owners (`findGeneratedPhysicalOwners` reports
+ * `container:'reward-bundle'`), so this cannot go through
+ * {@link addGeneratedEquipmentToBag} — that rejects any already-owned instance.
+ * Every destination is validated FIRST (bundle exists, bag exists, capacity for
+ * the whole bundle, each instance present in the registry, no intra-bundle
+ * duplicate, and the only physical owner of each instance is exactly this
+ * bundle). Only after all checks pass does it perform a no-throw commit: delete
+ * the bundle from the map, then add each bag reference. On any failure the world
+ * is untouched (fail-closed). Never invokes the generator, so it is safe on
+ * claim/load/presentation paths.
+ */
+export function claimGeneratedEquipmentRewardBundle(
+  world: GameWorld,
+  entity: number,
+  achievementId: string,
+): ClaimGeneratedEquipmentRewardBundleResult {
+  const bundle = world.generatedEquipmentRewardBundles.get(achievementId);
+  if (!bundle) {
+    return {
+      ok: false,
+      reason: { type: 'invalidDef', message: `No reward bundle for achievement: ${achievementId}` },
+    };
+  }
+  // Shape guard (fail-closed): a resolved bundle ALWAYS holds exactly one Common,
+  // one Uncommon, one Rare instance in that canonical order. Reject a malformed
+  // bundle (wrong count) BEFORE any mutation so a stale/injected empty or partial
+  // bundle can never be "claimed" as a success that consumes the reward for
+  // nothing. Per-index rarity is verified in the validation loop below.
+  if (bundle.instanceKeys.length !== GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES.length) {
+    return {
+      ok: false,
+      reason: {
+        type: 'invalidDef',
+        message: `Reward bundle has ${bundle.instanceKeys.length} instances, expected ${GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES.length}`,
+      },
+    };
+  }
+  const bag = world.inventories.get(entity);
+  if (!bag) {
+    return { ok: false, reason: { type: 'invalidDef', message: 'Entity has no inventory' } };
+  }
+  if (!canAcceptGeneratedEquipment(bag, bundle.instanceKeys.length)) {
+    return {
+      ok: false,
+      reason: {
+        type: 'invalidDef',
+        message: `Bag cannot accept ${bundle.instanceKeys.length} generated equipment items`,
+      },
+    };
+  }
+  const seen = new Set<GeneratedEquipmentInstanceKey>();
+  for (let index = 0; index < bundle.instanceKeys.length; index += 1) {
+    const instanceKey = bundle.instanceKeys[index]!;
+    if (seen.has(instanceKey)) {
+      return {
+        ok: false,
+        reason: ownershipConflict(
+          instanceKey,
+          `Duplicate instance in reward bundle: ${instanceKey}`,
+        ),
+      };
+    }
+    seen.add(instanceKey);
+    const instance = getGeneratedEquipmentInstance(world, instanceKey);
+    if (!instance) {
+      return {
+        ok: false,
+        reason: {
+          type: 'generatedInstanceNotFound',
+          instanceKey,
+          message: `Generated equipment instance not found: ${instanceKey}`,
+        },
+      };
+    }
+    const expectedRarity = GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES[index]!;
+    if (instance.rarity !== expectedRarity) {
+      return {
+        ok: false,
+        reason: {
+          type: 'invalidDef',
+          message: `Reward bundle instance ${index} has rarity ${instance.rarity}, expected ${expectedRarity}`,
+        },
+      };
+    }
+    if (hasGeneratedEquipmentReference(bag, instanceKey)) {
+      return {
+        ok: false,
+        reason: ownershipConflict(
+          instanceKey,
+          `Generated equipment already in bag: ${instanceKey}`,
+        ),
+      };
+    }
+    const foreignOwners = findGeneratedPhysicalOwners(world, instanceKey).filter(
+      (owner) => !(owner.container === 'reward-bundle' && owner.bundleId === achievementId),
+    );
+    if (foreignOwners.length > 0) {
+      return {
+        ok: false,
+        reason: ownershipConflict(
+          instanceKey,
+          `Reward bundle instance has a foreign owner: ${foreignOwners
+            .map((owner) => `${owner.container}:${owner.entity ?? owner.bundleId}`)
+            .join(', ')}`,
+        ),
+      };
+    }
+  }
+  world.generatedEquipmentRewardBundles.delete(achievementId);
+  const granted: ClaimedRewardBundleEntry[] = [];
+  for (const instanceKey of bundle.instanceKeys) {
+    granted.push({ instanceKey, entry: addGeneratedEquipmentReference(bag, instanceKey) });
+  }
+  return { ok: true, granted };
 }
 
 function equipGeneratedFromBag(

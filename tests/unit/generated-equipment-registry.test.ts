@@ -20,6 +20,7 @@ import {
   computeEquipmentFingerprint,
   createActiveWeaponSnapshotV1,
   createGeneratedEquipmentInstance,
+  createGeneratedEquipmentRegistryTransaction,
   generatedEquipmentInstanceKey,
   getGeneratedEquipmentInstance,
   hasGeneratedEquipmentInstance,
@@ -452,5 +453,74 @@ describe('generated equipment instance registry', () => {
     expect(createGeneratedEquipmentInstance(world, createInput()).instanceId).toBe(
       'gei:v1:run-grant-mismatch:0',
     );
+  });
+});
+
+describe('generated equipment registry transaction atomicity', () => {
+  it('scratch mutations are invisible on the live registry before commit', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-invisible' });
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+
+    // Generate one instance into the scratch registry.
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    const instance = createGeneratedEquipmentInstance(scratch, createInput('common'));
+
+    // The live registry must NOT see this instance yet.
+    expect(hasGeneratedEquipmentInstance(world, instance.instanceId)).toBe(false);
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(0);
+  });
+
+  it('a discarded (uncommitted) transaction leaves live instances and ordinals unchanged', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-discard' });
+    // One pre-existing live instance establishes the baseline.
+    const priorInstance = createGeneratedEquipmentInstance(world, createInput('uncommon'));
+    const liveCountBefore = listGeneratedEquipmentInstances(world).length;
+
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    createGeneratedEquipmentInstance(scratch, createInput('rare'));
+    // Never call txn.commit() — just discard the transaction.
+
+    // Live registry must be exactly as it was.
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(liveCountBefore);
+    expect(listGeneratedEquipmentInstances(world)[0]!.instanceId).toBe(priorInstance.instanceId);
+
+    // The next live-registry allocation must continue from the pre-txn ordinal
+    // (ordinal 1, since ordinal 0 is the prior instance).
+    const nextLive = createGeneratedEquipmentInstance(world, createInput('common'));
+    expect(nextLive.instanceId).toBe('gei:v1:txn-discard:1');
+  });
+
+  it('commit publishes scratch state: instances become visible on live registry', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-commit' });
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    const instance = createGeneratedEquipmentInstance(scratch, createInput('rare'));
+
+    // Before commit: invisible on live.
+    expect(hasGeneratedEquipmentInstance(world, instance.instanceId)).toBe(false);
+
+    txn.commit();
+
+    // After commit: visible on live.
+    expect(hasGeneratedEquipmentInstance(world, instance.instanceId)).toBe(true);
+    expect(getGeneratedEquipmentInstance(world, instance.instanceId)).toEqual(instance);
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(1);
+  });
+
+  it('a second commit is rejected with invalid-payload and leaves live state unchanged', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-double-commit' });
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    createGeneratedEquipmentInstance(scratch, createInput('common'));
+
+    txn.commit();
+    const countAfterFirstCommit = listGeneratedEquipmentInstances(world).length;
+
+    // The second commit must throw.
+    expectRegistryError(() => txn.commit(), 'invalid-payload');
+
+    // Live state must be unmodified by the failed second commit.
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(countAfterFirstCommit);
   });
 });

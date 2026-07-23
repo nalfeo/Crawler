@@ -18,6 +18,7 @@ import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import type { EquipmentItemDef } from '../shared/equipment-types.js';
 import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
+import { WeaponType } from '../shared/constants.js';
 import { getFloor2WeaponWaveABase } from '../shared/data/floor2-weapon-bases.js';
 import type { SeededRandom } from '../shared/random.js';
 import { getAbilityDefinition } from './abilities/registry.js';
@@ -288,6 +289,35 @@ export function getGeneratedEquipmentBaseV1(baseId: string): GeneratedEquipmentB
   return resolveGeneratedEquipmentBase(baseId).base;
 }
 
+export type GeneratedEquipmentBaseAffinity = 'magic' | 'physical' | 'neutral';
+
+/**
+ * Intrinsic build affinity of a generated-equipment base: `magic`/`physical` for
+ * weapon bases (by weapon type), `neutral` for non-weapon bases. Pure and
+ * registry-free — the reward-bundle resolver uses it to partition an
+ * achievement's authored candidate bases into aligned vs non-aligned pools for
+ * the current player build. Throws `unknown-base` for an unresolvable base id.
+ */
+export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEquipmentBaseAffinity {
+  const resolved = resolveGeneratedEquipmentBase(baseId);
+  if (resolved.weaponDef === null) return 'neutral';
+  return resolved.weaponDef.weaponType === WeaponType.MAGIC ? 'magic' : 'physical';
+}
+
+/**
+ * Whether a base carries any inherent NON-armor stat bonus. The reward-bundle
+ * resolver asserts this is `false` for every candidate base so the Common item
+ * (which spreads the base's inherent stat bonuses verbatim and is generated with
+ * zero effect units) satisfies the Common rarity contract: no non-armor stat
+ * bonus. Pure and registry-free.
+ */
+export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): boolean {
+  const resolved = resolveGeneratedEquipmentBase(baseId);
+  return Object.entries(resolved.equipmentDef.statBonuses).some(
+    ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+  );
+}
+
 function effectsAreCompatible(
   left: GeneratedEquipmentEffectDefinition,
   right: GeneratedEquipmentEffectDefinition,
@@ -381,8 +411,20 @@ function displayName(
   return enhancementLevel === 0 ? name : `${name} +${enhancementLevel}`;
 }
 
+/**
+ * Minimal world capability the generator needs: a configured registry to record
+ * the instance in and an RNG. Narrowed from {@link GameWorld} so callers can pass
+ * a registry-transaction scratch registry (`{ generatedEquipmentRegistry, rng }`)
+ * to generate into an isolated scratch registry without a full world. `GameWorld`
+ * remains assignable, so existing callers are unaffected.
+ */
+export interface GenerateEquipmentInstanceWorld {
+  readonly generatedEquipmentRegistry: GameWorld['generatedEquipmentRegistry'];
+  readonly rng: GameWorld['rng'];
+}
+
 export function generateEquipmentInstance(
-  world: GameWorld,
+  world: GenerateEquipmentInstanceWorld,
   request: GenerateEquipmentInstanceRequest,
   options: GenerateEquipmentInstanceOptions = {},
 ): GeneratedEquipmentInstanceV1 {

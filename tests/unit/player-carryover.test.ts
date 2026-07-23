@@ -526,9 +526,29 @@ describe('player floor carryover', () => {
       source,
       generatedEquipmentInput({ baseId: 'armor.generated-bag', slots: ['head'] }),
     );
-    const bundled = createGeneratedEquipmentInstance(
+    const bundledCommon = createGeneratedEquipmentInstance(
       source,
-      generatedEquipmentInput({ baseId: 'armor.generated-bundle', slots: ['feet'] }),
+      generatedEquipmentInput({
+        baseId: 'armor.generated-bundle',
+        slots: ['feet'],
+        rarity: 'common',
+      }),
+    );
+    const bundledUncommon = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'armor.generated-bundle',
+        slots: ['feet'],
+        rarity: 'uncommon',
+      }),
+    );
+    const bundledRare = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'armor.generated-bundle',
+        slots: ['feet'],
+        rarity: 'rare',
+      }),
     );
     expect(addGeneratedEquipmentToBag(source, player, equipped.instanceId).ok).toBe(true);
     expect(
@@ -540,10 +560,14 @@ describe('player floor carryover', () => {
       ).ok,
     ).toBe(true);
     expect(addGeneratedEquipmentToBag(source, player, bagged.instanceId).ok).toBe(true);
-    source.generatedEquipmentRewardBundles.set('carryover-reward', {
+    // A persisted reward bundle is only valid for a real, unlocked, unclaimed
+    // equipment-reward achievement and must hold exactly one Common/Uncommon/Rare
+    // instance in canonical order (fail-closed carryover contract).
+    source.achievements.unlockedIds.add('floor2-field-kit');
+    source.generatedEquipmentRewardBundles.set('floor2-field-kit', {
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
-      achievementId: 'carryover-reward',
-      instanceKeys: [bundled.instanceId],
+      achievementId: 'floor2-field-kit',
+      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
     });
 
     const snapshot = capturePlayerCarryover(source, player);
@@ -590,13 +614,13 @@ describe('player floor carryover', () => {
         .get(destinationPlayer)
         ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile'),
     ).toEqual(new Set([`equipment:${equipped.instanceId}:0`]));
-    expect(destination.generatedEquipmentRewardBundles.get('carryover-reward')).toEqual({
+    expect(destination.generatedEquipmentRewardBundles.get('floor2-field-kit')).toEqual({
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
-      achievementId: 'carryover-reward',
-      instanceKeys: [bundled.instanceId],
+      achievementId: 'floor2-field-kit',
+      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
     });
     expect(
-      Object.isFrozen(destination.generatedEquipmentRewardBundles.get('carryover-reward')),
+      Object.isFrozen(destination.generatedEquipmentRewardBundles.get('floor2-field-kit')),
     ).toBe(true);
 
     expect(unequip(destination, destinationPlayer, 'mainHand', { force: true }).ok).toBe(true);
@@ -882,13 +906,19 @@ describe('player floor carryover', () => {
           'gei:v1:carryover-invalid-run:999' as GeneratedEquipmentInstanceKey,
         ],
       },
-      // bundle.instanceKeys must be an array; a non-array value must fail closed
+      // bundle.instanceKeys must be an array; a non-array value must fail closed.
+      // Use a real, unlocked equipment achievement so validation reaches the
+      // array guard rather than short-circuiting on the semantic checks.
       {
         ...snapshot,
+        achievements: {
+          ...snapshot.achievements,
+          unlockedIds: [...snapshot.achievements.unlockedIds, 'floor2-field-kit'],
+        },
         generatedEquipmentRewardBundles: [
           {
             schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
-            achievementId: 'test-bundle',
+            achievementId: 'floor2-field-kit',
             instanceKeys: '',
           },
         ],

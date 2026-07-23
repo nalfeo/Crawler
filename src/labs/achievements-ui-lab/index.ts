@@ -25,6 +25,8 @@ function rewardText(reward: AchievementReward): string {
       return reward.itemId;
     case 'directorMessage':
       return 'message';
+    case 'equipment':
+      return 'equipment bundle';
     case 'none':
       return 'no reward';
   }
