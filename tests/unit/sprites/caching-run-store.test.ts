@@ -45,12 +45,13 @@ async function flushAsync(times = 20): Promise<void> {
  * A pure `setImmediate` loop (no real timer) does NOT reliably give that I/O
  * enough wall-clock time to complete: `setImmediate` callbacks fire as soon
  * as the event loop's check phase is reached, which can happen far faster
- * than pending libuv-threadpool fs work (cacache's `put`/`get.info`/`rm`)
- * settles — especially when many sprite test files run concurrently across
- * vitest's worker threads and contend for the same process-wide threadpool
- * (default `UV_THREADPOOL_SIZE=4`). Under that contention, all `maxAttempts`
- * ticks can elapse in microseconds of wall time while the real fs work is
- * still queued, which is exactly the ~50% CI flake this helper caused for
+ * than pending fs work (cacache's `put`/`get.info`/`rm`) settles — especially
+ * under sustained concurrent filesystem load, such as when CI's sharded
+ * `sprites` vitest project (`--shard=N/4`, fork-based pool) runs many sprite
+ * test files' processes concurrently against the same disk. Under that
+ * contention, all `maxAttempts` ticks can elapse in microseconds of wall time
+ * while the real fs work is still queued, which is exactly the ~50% CI flake
+ * this helper caused for
  * 'bumps the mutation token before purging so a get() racing the purge
  * cannot resurrect the blob' (main-health flake, see docs/knowledge/handoffs).
  * A real (short) delay between attempts gives genuinely elapsed wall-clock

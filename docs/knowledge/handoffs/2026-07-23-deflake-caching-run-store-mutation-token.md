@@ -32,13 +32,15 @@ its predicate by yielding one `setImmediate` macrotask turn between attempts
 check phase is reached — this does **not** correspond to real elapsed
 wall-clock time. The test's background stale-while-revalidate purge
 (`CachingRunStore.refreshListSnapshot`) does genuine filesystem I/O via
-`cacache` (get.info/put/rm, routed through Node's libuv threadpool). When many
-sprite test files run concurrently across vitest's 4 worker threads (as CI's
-sharded, full-suite `sprites` project run does) and contend for the same
-process-wide threadpool (`UV_THREADPOOL_SIZE=4` default), that fs work can
-take meaningfully longer in real time than the previous 500-iteration
-`setImmediate` loop actually let elapse (which was closer to microseconds of
-wall time, not the "up to 500 polls" the code implied). This is a genuine
+`cacache` (get.info/put/rm). The `sprites` vitest project runs under the
+default fork-based pool (it does not set `pool: 'threads'`), sharded 4 ways in
+CI's merge-train-validate job (`--shard=N/4`), so multiple sprite test files'
+fork processes contend for the same disk under real, sustained concurrent
+load. Under that load, the purge's fs work can take meaningfully longer in
+real time than the previous 500-iteration `setImmediate` loop actually let
+elapse — `setImmediate` ticks pass in microseconds regardless of pending disk
+I/O, so the loop's true "budget" was never really "up to 500 polls" of real
+time, just 500 near-instant event-loop turns. This is a genuine
 test-timing artifact, not an implementation bug: I read
 `CachingRunStore.refreshListSnapshot` in `scripts/sprites/store/caching-store.ts`
 and confirmed the mutation-token bump (`bumpMutationToken`, a synchronous
@@ -57,9 +59,11 @@ concurrent-worker load, without weakening or changing what the test asserts.
 Verified: ran the fixed test in isolation 10× (all pass), ran the full
 `tests/unit/sprites/caching-run-store.test.ts` file 10× (all pass), and ran
 the **entire** `sprites` vitest project (`npm run test:sprites`, 96 files /
-1446 tests, the same concurrent-worker-thread load pattern CI exercises) twice
-in a row — both full runs passed with zero failures. `npm run verify:fast`
-also passes.
+1446 tests) twice in a row under sustained concurrent filesystem load —
+both full runs passed with zero failures. (This local run is unsharded and
+uses the default fork pool, so it is not an exact replica of CI's
+`--shard=N/4` sprites job, but it produces the same class of concurrent
+disk contention the fix targets.) `npm run verify:fast` also passes.
 
 ## Key Decisions Made
 
@@ -70,10 +74,10 @@ also passes.
   race ahead of the token bump. Per rule #12/#11, changing the implementation
   or weakening the assertion was not on the table since this is a test-timing
   artifact, not a real correctness gap.
-- Applied the real-timer fix to the shared `waitUntil` helper (used by ~4
-  other tests in the same file with the identical polling pattern) rather
-  than special-casing only the failing test, since the same
-  event-loop-scheduling flaw applies to every caller.
+- Applied the real-timer fix to the shared `waitUntil` helper (called at 3
+  other sites in the same file — lines 734, 767, 942 — with the identical
+  polling pattern) rather than special-casing only the failing test, since
+  the same event-loop-scheduling flaw applies to every caller.
 - Declared 2🍎 (single test file, no runtime/gameplay behavior change,
   bounded scope) — no review-harness stages required at this tier; recorded a
   tier-only ledger per policy.
@@ -89,21 +93,26 @@ beyond the standard shepherd-to-merge loop.
 ### Lessons Learned
 
 - `setImmediate`-based polling loops in tests are **not** a reliable proxy for
-  "wait up to N turns" when the awaited work is genuine async fs I/O routed
-  through libuv's threadpool: `setImmediate` fires on the next event-loop
-  check phase regardless of whether pending threadpool work has completed, so
-  under concurrent load (many vitest worker threads sharing
-  `UV_THREADPOOL_SIZE=4`) a "500-iteration" poll loop can burn through its
-  entire budget in microseconds of real time while the awaited fs work is
-  still queued. When a test needs to observe an async fs-bound side effect,
-  poll with a real (even short, e.g. `node:timers/promises` `setTimeout`)
-  delay between attempts, not a bare `setImmediate`/microtask yield — the
-  budget (attempts × delay) must represent actual wall-clock time.
+  "wait up to N turns" when the awaited work is genuine async fs I/O:
+  `setImmediate` fires on the next event-loop check phase regardless of
+  whether the pending disk work has completed, so under sustained concurrent
+  filesystem load (multiple sprite test files' fork processes contending for
+  the same disk, as CI's sharded `sprites` project run produces) a
+  "500-iteration" poll loop can burn through its entire budget in
+  microseconds of real time while the awaited fs work is still queued. When a
+  test needs to observe an async fs-bound side effect, poll with a real (even
+  short, e.g. `node:timers/promises` `setTimeout`) delay between attempts,
+  not a bare `setImmediate`/microtask yield — the budget (attempts × delay)
+  must represent actual wall-clock time, and the loop must add real elapsed
+  time on each iteration rather than relying on event-loop scheduling alone.
 - Reproducing this flake required running the **entire** sprites vitest
-  project (not just the single test or file in isolation) to get the same
-  worker-thread/threadpool contention CI's sharded run produces; the failing
-  test alone passed 100% of isolated local runs, matching the task's evidence
-  that it's invisible until the full candidate sprite suite runs under load.
+  project (not just the single test or file in isolation) to produce
+  sustained concurrent filesystem load; the failing test alone passed 100%
+  of isolated local runs, matching the task's evidence that it's invisible
+  until the full candidate sprite suite runs under load. Note the local
+  unsharded run and CI's `--shard=N/4` run are not identical setups, but both
+  exercise the same underlying condition (multiple fork processes competing
+  for disk I/O).
 
 ### Mistakes Made
 
