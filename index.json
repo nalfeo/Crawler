@@ -1,5 +1,16 @@
 [
   {
+    "commit": "759022573c1baa0e1ee982058fa091b0ea0cd8e0",
+    "commitDate": "2026-07-23T06:27:11Z",
+    "commitSubject": "fix(sprites): stale-while-revalidate run listings for instant cross-worktree cold opens (#1805)",
+    "capturedAt": "2026-07-23T07:45:06.490Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29985534636",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/759022573c1baa0e1ee982058fa091b0ea0cd8e0.json"
+  },
+  {
     "commit": "90918e40f63684d2a96afea9681b99157a86219a",
     "commitDate": "2026-07-23T05:46:59Z",
     "commitSubject": "feat(ci): load-aware CI Recovery dispatch budget (#1778)",
