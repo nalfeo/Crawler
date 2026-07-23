@@ -2293,7 +2293,9 @@ describe('DELETE /api/manifest/:variantId', () => {
       catalogPath,
       env: {},
       // Stub out the durable queue check so tests don't exec `gh issue list`.
-      checkinDeps: { listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>() } as unknown as CheckinRunnerDeps,
+      checkinDeps: {
+        listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+      } as unknown as CheckinRunnerDeps,
     });
   });
 

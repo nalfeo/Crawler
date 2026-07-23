@@ -2021,7 +2021,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       const assetPath = `generated/${variantId}.png`;
       const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
       const listQueuedAssets =
-        checkinDeps.listQueuedAssets ?? (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+        checkinDeps.listQueuedAssets ??
+        (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
       let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
       try {
         queuedAssets = await listQueuedAssets();
