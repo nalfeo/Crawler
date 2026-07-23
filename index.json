@@ -11,6 +11,17 @@
     "path": "by-sha/65f8a0188424ccba6c2c17003199f7c262b13ab9.json"
   },
   {
+    "commit": "bc7e5603a87630cc39035241586153f64553691b",
+    "commitDate": "2026-07-22T16:04:38-07:00",
+    "commitSubject": "test(equipment): add aggregate DPS and distribution gates (#1577)",
+    "capturedAt": "2026-07-23T00:23:14.314Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29965611646",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/bc7e5603a87630cc39035241586153f64553691b.json"
+  },
+  {
     "commit": "f620633b944445d8b5db1efb015731d1b45cf142",
     "commitDate": "2026-07-22T15:43:59-07:00",
     "commitSubject": "fix: harden fast-uri audit exception — fail-closed on malformed severity, scope classifier, docs (#1774)",
