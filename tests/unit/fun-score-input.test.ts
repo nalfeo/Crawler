@@ -26,6 +26,7 @@ function makeRun(overrides: Partial<RunStats> = {}): RunStats {
       engagementCount: 6,
       damageDealt: 4200,
       damageTaken: 950,
+      damageTakenBySource: {},
     },
     health: {
       minHealthPercent: 0.15,

@@ -43,6 +43,7 @@ const baseOptions = {
   deployment: 'gpt-4o-vision',
   apiKey: 'test-key',
   apiVersion: '2025-04-01-preview',
+  retry: { maxAttempts: 1 },
 };
 
 function fakeRequest(): EvaluateRequest {
@@ -215,17 +216,17 @@ describe('AzureOpenAIVisionProvider.evaluate', () => {
     });
   });
 
-  it('flags a structured error payload as provider-error even with HTTP 200', async () => {
+  it('flags a structured error payload as request-error even with HTTP 200', async () => {
     const stubFetch: typeof fetch = async () =>
       jsonResponse(200, { error: { code: 'content_filter', message: 'blocked' } });
     const provider = new AzureOpenAIVisionProvider({ ...baseOptions, fetch: stubFetch });
     await expect(provider.evaluate(fakeRequest())).rejects.toBeInstanceOf(VisionProviderError);
     await expect(provider.evaluate(fakeRequest())).rejects.toMatchObject({
-      kind: 'provider-error',
+      kind: 'request-error',
     });
   });
 
-  it('does NOT retry on its own — caller owns retry policy', async () => {
+  it('honors an explicit single-attempt retry policy', async () => {
     let callCount = 0;
     const stubFetch: typeof fetch = async () => {
       callCount++;

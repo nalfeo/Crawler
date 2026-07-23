@@ -377,6 +377,24 @@ function validateDefinitions(definitions: readonly Floor2EquipmentArtDefinition[
 export const FLOOR2_EQUIPMENT_ART_DEFINITIONS = buildDefinitions();
 validateDefinitions(FLOOR2_EQUIPMENT_ART_DEFINITIONS);
 
+/**
+ * Frozen authority for Floor 2 Wave B display-name overrides.
+ *
+ * These two Wave B stable IDs (`head.iron-visor`, `feet.iron-greaves`) share a
+ * canonical manifest-derived display name with unrelated legacy Floor 1 items
+ * (`iron-visor`, `iron-greaves` in `src/shared/items.ts`). The overrides exist
+ * solely to keep Quartermaster-generated-base display names unique; they never
+ * touch the canonical art manifest or brief input names above. Wave B runtime
+ * definitions are the only consumer — this table must live here, in the
+ * canonical art manifest module, not in the Wave B runtime module itself.
+ */
+export const FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES: Readonly<
+  Partial<Record<Floor2EquipmentStableId, string>>
+> = Object.freeze({
+  'head.iron-visor': 'Iron Faceplate',
+  'feet.iron-greaves': 'Iron Legguards',
+});
+
 function buildProductionWaves(): readonly Floor2EquipmentProductionWave[] {
   const waves = new Map<string, Floor2EquipmentProductionWave>();
   for (const entry of FLOOR2_EQUIPMENT_ART_DEFINITIONS) {

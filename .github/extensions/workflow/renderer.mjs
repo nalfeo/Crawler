@@ -113,6 +113,10 @@ const STYLES = `
     background: rgba(14,116,144,0.28); color: #e0f2fe; font-weight: 700; }
   .accept-button:hover:not(:disabled) { background: rgba(14,116,144,0.48); }
   .accept-button:disabled { opacity: 0.65; cursor: default; }
+  .unapprove-button { width: 100%; margin-top: 4px; border-color: rgba(252,165,165,0.45);
+    background: rgba(127,29,29,0.18); color: #fecaca; font-weight: 600; font-size: 11px; }
+  .unapprove-button:hover:not(:disabled) { background: rgba(127,29,29,0.36); }
+  .unapprove-button:disabled { opacity: 0.65; cursor: default; }
   .accept-state { margin-top: 6px; padding: 7px 8px; border-radius: 6px; font-size: 11px; }
   .accept-state.queued { color: #bbf7d0; background: rgba(22,101,52,0.28);
     border: 1px solid rgba(134,239,172,0.35); }
@@ -121,6 +125,11 @@ const STYLES = `
   .accept-state.warn { color: #fde68a; background: rgba(120,53,15,0.4);
     border: 1px solid rgba(253,230,138,0.4); }
   .accept-state a { color: inherit; font-weight: 700; }
+  .unapprove-state { margin-top: 4px; padding: 6px 8px; border-radius: 6px; font-size: 11px; }
+  .unapprove-state.evicted { color: #fca5a5; background: rgba(127,29,29,0.22);
+    border: 1px solid rgba(252,165,165,0.3); }
+  .unapprove-state.error { color: #fecaca; background: rgba(127,29,29,0.34);
+    border: 1px solid rgba(252,165,165,0.35); }
   .axis { display: flex; justify-content: space-between; font-size: 11px; }
   .axis .lbl { font-weight: 600; }
   .rationale { font-size: 10px; color: #94a3b8; line-height: 1.35; }
@@ -366,12 +375,56 @@ const CLIENT_SCRIPT = String.raw`
   }
   window.__workflowPostprocessReady = handlePostprocessReady;
 
+  function applyPostprocessPatch(patch) {
+    if (!lastState || !lastState.selected || !patch) return;
+    if (
+      patch.briefId !== lastState.selected.briefId ||
+      patch.runId !== lastState.selected.runId
+    ) return;
+    var isAll = patch.scope === 'all';
+    var isVariant = patch.scope === 'variant' && typeof patch.variantIndex === 'number';
+    if (!isAll && !isVariant) return;
+    var replacements = Array.isArray(patch.candidates) ? patch.candidates : [];
+    var patchTs = Date.now();
+    // Build an index of the current candidates so we can preserve the
+    // UI-owned feedback and lifecycle fields that composeState adds but that
+    // the persisted (bare) patch data does not carry.
+    var existingByIndex = {};
+    (lastState.candidates || []).forEach(function (c) {
+      if (c) existingByIndex[String(c.index)] = c;
+    });
+    lastState.candidates = replacements.map(function (r) {
+      if (!r) return r;
+      var existing = existingByIndex[String(r.index)];
+      var out = Object.assign({}, r);
+      if (existing) {
+        if (existing.feedback !== undefined) out.feedback = existing.feedback;
+        if (existing.lifecycle !== undefined) out.lifecycle = existing.lifecycle;
+      }
+      // Tag reprocessed-PNG variants with a cache-buster so the browser
+      // fetches the new image rather than reusing a cached stale thumbnail.
+      if (isAll || r.index === patch.variantIndex) out._patchTs = patchTs;
+      return out;
+    });
+    lastState.stale = false;
+    var staleBadge = document.querySelector('.stale-badge');
+    if (staleBadge) staleBadge.remove();
+    if (activeTab !== 'runs') return;
+    // Re-render the full candidates section: a variant-scoped reprocess also
+    // rebuilds every sibling's summary entry (clearing judge maps), so all
+    // cards need refreshing, not just the target card.
+    var section = document.querySelector('[data-workflow-candidates]');
+    if (section) section.replaceWith(renderCandidates(lastState));
+  }
+
   window.addEventListener('message', function (ev) {
     if (!postprocessIframe || ev.source !== postprocessIframe.contentWindow) return;
     if (ev.origin !== window.location.origin) return;
     var msg = ev.data;
     if (msg && msg.type === 'postprocess:ready') {
       handlePostprocessReady(msg.context || null);
+    } else if (msg && msg.type === 'postprocess:applied') {
+      applyPostprocessPatch(msg.patch || null);
     }
   });
 
@@ -1223,6 +1276,50 @@ const CLIENT_SCRIPT = String.raw`
     });
   }
 
+  function variantIdFor(briefId, variantIndex) {
+    return briefId + '-var-' + variantIndex;
+  }
+
+  function unapproveVariant(manifestKey) {
+    if (!lastState) return;
+    var variantId = manifestKey;
+    lastState.unapproval = lastState.unapproval || {};
+    lastState.unapproval[variantId] = { state: 'unapproving' };
+    render(lastState);
+    setBusy(true, 'Unapproving variant…');
+    fetch('/api/unapprove', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-workflow-mutation-token': mutationToken
+      },
+      body: JSON.stringify({ variantId: variantId })
+    }).then(function (response) {
+      return response.text().then(function (text) {
+        var payload = null;
+        try { payload = text ? JSON.parse(text) : null; } catch (e) { payload = null; }
+        return { ok: response.ok, status: response.status, payload: payload };
+      });
+    }).then(function (result) {
+      if (!result.ok) {
+        var message = result.payload && result.payload.message
+          ? result.payload.message
+          : 'Unapprove failed with HTTP ' + result.status + '.';
+        throw new Error(message);
+      }
+      lastState.unapproval[variantId] = { state: 'evicted', entry: result.payload };
+      render(lastState);
+    }).catch(function (error) {
+      lastState.unapproval[variantId] = {
+        state: 'error',
+        message: error && error.message ? error.message : String(error)
+      };
+      render(lastState);
+    }).finally(function () {
+      setBusy(false);
+    });
+  }
+
   function renderAcceptance(card, state, sel, candidate) {
     var key = acceptanceKey(sel.briefId, sel.runId, candidate.index);
     var acceptance = state.acceptance && state.acceptance[key];
@@ -1284,6 +1381,42 @@ const CLIENT_SCRIPT = String.raw`
     });
     if (anyAccepting) button.disabled = true;
     card.appendChild(button);
+
+    // Show unapprove button for variants that are already accepted/staged or integrated.
+    if (lifecycleState === 'accepted-staged' || lifecycleState === 'integrated') {
+      // Use the exact manifest map key from the lifecycle, falling back to the
+      // reconstructed form only when the lifecycle hasn't propagated the key yet
+      // (e.g. a transient "queued this session" accepted-staged state where no
+      // manifest entry exists yet). The lifecycle.manifestKey is authoritative
+      // because approveVariant canonicalizes item brief IDs (e.g. 'flame-dagger-v2'
+      // → 'flame-dagger'), so rebuilding from sel.briefId produces the wrong key.
+      var variantId = (candidate.lifecycle && candidate.lifecycle.manifestKey)
+        || variantIdFor(sel.briefId, candidate.index);
+      var unapprovalEntry = state.unapproval && state.unapproval[variantId];
+      var anyUnapproving = !!(state.unapproval && Object.keys(state.unapproval).some(function (k) {
+        return state.unapproval[k] && state.unapproval[k].state === 'unapproving';
+      }));
+      if (unapprovalEntry && unapprovalEntry.state === 'evicted') {
+        card.appendChild(h('div', {
+          class: 'unapprove-state evicted',
+          text: 'Evicted from manifest.'
+        }));
+      } else if (unapprovalEntry && unapprovalEntry.state === 'error') {
+        card.appendChild(h('div', {
+          class: 'unapprove-state error',
+          text: unapprovalEntry.message || 'Unapprove failed.'
+        }));
+      }
+      var unapproving = unapprovalEntry && unapprovalEntry.state === 'unapproving';
+      var unapproveBtn = h('button', {
+        type: 'button',
+        class: 'unapprove-button',
+        text: unapproving ? 'Evicting…' : 'Evict / Unapprove',
+        onclick: function () { unapproveVariant(variantId); }
+      });
+      if (anyAccepting || anyUnapproving || unapproving) unapproveBtn.disabled = true;
+      card.appendChild(unapproveBtn);
+    }
   }
 
   function lifecyclePill(candidate) {
@@ -1294,10 +1427,42 @@ const CLIENT_SCRIPT = String.raw`
     return pill;
   }
 
+  function renderCandidateCard(state, sel, candidate) {
+    var status = candidateStatus(candidate);
+    var card = h('div', {
+      class: 'card',
+      'data-variant-index': String(candidate.index)
+    }, []);
+    card.appendChild(h('div', { class: 'between' }, [
+      h('strong', { text: 'Variant #' + candidate.index }),
+      h('span', { text: candidate.score + '/' + candidate.outOf, class: 'muted' })
+    ]));
+    card.appendChild(h('span', {
+      class: 'status-pill',
+      style: { color: STATUS_COLORS[status.kind] },
+      text: status.label
+    }));
+    card.appendChild(lifecyclePill(candidate));
+    var thumb = document.createElement('img');
+    thumb.className = 'thumb';
+    thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(candidate.index) + '.png') +
+      (candidate._patchTs ? '&ts=' + candidate._patchTs : '');
+    thumb.alt = 'variant ' + candidate.index;
+    card.appendChild(thumb);
+    renderJudge(card, candidate, sel);
+    renderSensors(card, candidate, sel);
+    renderAcceptance(card, state, sel, candidate);
+    card.appendChild(renderPostprocessHandoff(sel, candidate.index));
+    return card;
+  }
+
   function renderCandidates(state) {
     var sel = state.selected;
     var cands = state.candidates || [];
-    var wrap = h('div', { style: { marginTop: '16px' } }, [
+    var wrap = h('div', {
+      style: { marginTop: '16px' },
+      'data-workflow-candidates': 'true'
+    }, [
       h('div', { class: 'section-title', text: 'Variants & pipeline traces (' + cands.length + ')' })
     ]);
     if (!sel || cands.length === 0) {
@@ -1306,25 +1471,7 @@ const CLIENT_SCRIPT = String.raw`
     }
     var grid = h('div', { class: 'cards' }, []);
     for (var i = 0; i < cands.length; i++) {
-      var c = cands[i];
-      var status = candidateStatus(c);
-      var card = h('div', { class: 'card' }, []);
-      card.appendChild(h('div', { class: 'between' }, [
-        h('strong', { text: 'Variant #' + c.index }),
-        h('span', { text: c.score + '/' + c.outOf, class: 'muted' })
-      ]));
-      card.appendChild(h('span', { class: 'status-pill', style: { color: STATUS_COLORS[status.kind] }, text: status.label }));
-      card.appendChild(lifecyclePill(c));
-      var thumb = document.createElement('img');
-      thumb.className = 'thumb';
-      thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(c.index) + '.png');
-      thumb.alt = 'variant ' + c.index;
-      card.appendChild(thumb);
-      renderJudge(card, c, sel);
-      renderSensors(card, c, sel);
-      renderAcceptance(card, state, sel, c);
-      card.appendChild(renderPostprocessHandoff(sel, c.index));
-      grid.appendChild(card);
+      grid.appendChild(renderCandidateCard(state, sel, cands[i]));
     }
     wrap.appendChild(grid);
     return wrap;

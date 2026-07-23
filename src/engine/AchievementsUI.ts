@@ -69,6 +69,8 @@ function rewardLabel(reward: AchievementReward): string {
       return reward.itemId;
     case 'directorMessage':
       return 'message';
+    case 'equipment':
+      return 'equipment bundle';
     case 'none':
       return 'no reward';
   }
@@ -82,6 +84,8 @@ function rewardReveal(reward: AchievementReward): string {
       return `Opened: ${reward.itemId}`;
     case 'directorMessage':
       return `Director: ${reward.message}`;
+    case 'equipment':
+      return 'Opened: equipment bundle';
     case 'none':
       return 'No reward';
   }

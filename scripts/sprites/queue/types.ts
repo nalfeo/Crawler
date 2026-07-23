@@ -153,6 +153,23 @@ export interface DequeuedMessage {
    * backends that cannot track redelivery should report `1`.
    */
   readonly dequeueCount: number;
+  /**
+   * Extend the message's visibility timeout so it stays invisible to other
+   * consumers while this worker is still processing it. Backends that do not
+   * support renewal (e.g. the noop queue) may omit this method; the worker
+   * checks for its presence before starting the renewal timer.
+   *
+   * The implementation MUST update its internal pop-receipt reference after
+   * each call so the subsequent `ack()` uses the latest token.
+   */
+  renew?(): Promise<void>;
+  /**
+   * How often (ms) the worker should call `renew()` while processing this
+   * message. Implementations should set this to a fraction of the visibility
+   * timeout (e.g. 75%) to ensure the lease is renewed well before it expires.
+   * Absent when `renew` is not supported.
+   */
+  readonly renewIntervalMs?: number;
   ack(): Promise<void>;
 }
 

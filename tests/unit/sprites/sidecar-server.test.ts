@@ -2236,6 +2236,195 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
   });
 });
 
+describe('DELETE /api/manifest/:variantId', () => {
+  let root: string;
+  let runsDir: string;
+  let publicAssetsDir: string;
+  let manifestPath: string;
+  let catalogPath: string;
+  let app: FastifyInstance;
+  const briefId = 'iron-sword';
+
+  /** Write a manifest with one approved variant entry. */
+  function writeApprovedManifest(variantId: string = `${briefId}-var-1`): void {
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 1,
+        entries: {
+          [variantId]: {
+            briefId,
+            spriteName: variantId,
+            assetPath: `generated/${variantId}.png`,
+            approvedAt: '2026-06-08T15:30:00.000Z',
+            sourceRun: `generated/runs/${briefId}/run-01`,
+            variantIndex: 1,
+            anchor: null,
+            anchors: { hold: null, centerOfGravity: null },
+            sensorScore: '7/7',
+            judgeScore: '4',
+            type: null,
+          },
+        },
+      }),
+    );
+  }
+
+  /** Write a stub PNG at the generated asset path. */
+  function writeAsset(variantId: string = `${briefId}-var-1`): void {
+    const assetDir = path.join(publicAssetsDir, 'generated');
+    mkdirSync(assetDir, { recursive: true });
+    writeFileSync(path.join(assetDir, `${variantId}.png`), Buffer.from('PNG'));
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-unapprove-srv-'));
+    runsDir = path.join(root, 'runs');
+    publicAssetsDir = path.join(root, 'public', 'assets');
+    manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
+    catalogPath = path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json');
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      catalogPath,
+      env: {},
+      // Stub out the durable queue check so tests don't exec `gh issue list`.
+      checkinDeps: {
+        listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+      } as unknown as CheckinRunnerDeps,
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('removes manifest entry and PNG, returns removed entry', async () => {
+    const variantId = `${briefId}-var-1`;
+    writeApprovedManifest(variantId);
+    writeAsset(variantId);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.briefId).toBe(briefId);
+    expect(body.variantIndex).toBe(1);
+    expect(body.spriteName).toBe(variantId);
+
+    // Manifest entry gone.
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    expect(manifest.entries[variantId]).toBeUndefined();
+
+    // PNG deleted.
+    const assetAbs = path.join(publicAssetsDir, 'generated', `${variantId}.png`);
+    expect(existsSync(assetAbs)).toBe(false);
+  });
+
+  it('returns 404 when variantId is absent from the manifest', async () => {
+    writeApprovedManifest();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/nonexistent-var-99`,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('not-found');
+  });
+
+  it('returns 404 when the manifest does not exist', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${briefId}-var-1`,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('not-found');
+  });
+
+  it('returns 403 when CI is set', async () => {
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: { CI: 'true' },
+    });
+    writeApprovedManifest();
+    writeAsset();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${briefId}-var-1`,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('ci-refused');
+  });
+
+  it('returns 400 for a variantId containing path separators', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/..%2Fetc%2Fpasswd`,
+    });
+    // %2F is decoded by Fastify before reaching the handler → regex catches `/`
+    // and returns 400. If the framework normalizes the URL instead, it falls
+    // through to a 404. Either status means the eviction was blocked.
+    expect([400, 404]).toContain(res.statusCode);
+  });
+
+  it('returns 409 when the variant assetPath is already in the durable check-in queue', async () => {
+    const variantId = `${briefId}-var-1`;
+    const assetPath = `generated/${variantId}.png`;
+    writeApprovedManifest(variantId);
+    writeAsset(variantId);
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      catalogPath,
+      env: {},
+      checkinDeps: {
+        listQueuedAssets: () =>
+          Promise.resolve(
+            new Map([
+              [
+                assetPath,
+                {
+                  issueUrl: 'https://github.com/nalfeo/Crawler/issues/42',
+                  branch: 'assets/iron-sword',
+                },
+              ],
+            ]),
+          ),
+      } as unknown as CheckinRunnerDeps,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(409);
+    const body = res.json();
+    expect(body.error).toBe('queued-conflict');
+    expect(body.message).toContain('https://github.com/nalfeo/Crawler/issues/42');
+
+    // Manifest entry must NOT have been removed.
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    expect(manifest.entries[variantId]).toBeDefined();
+  });
+});
+
 describe('buildServer listen (binding)', () => {
   let root: string;
   let app: FastifyInstance;

@@ -22,14 +22,24 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
+  issues: read
 
 jobs:
   setup:
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       weapon_matrix: ${{ steps.parse.outputs.weapon_matrix }}
-      run_matrix: ${{ steps.parse.outputs.run_matrix }}
+      run_matrix: ${{ steps.budget.outputs.matrix }}
+      run_max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
+      - uses: actions/checkout@v4
       - name: Validate inputs and build matrix
         id: parse
         env:
@@ -84,11 +94,23 @@ jobs:
           done
           echo "run_matrix=$run_matrix" >> "$GITHUB_OUTPUT"
 
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.parse.outputs.run_matrix }}
+        run: node .github/scripts/sweep-budget.mjs
+
   weapon-sweep:
     needs: setup
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 300
     strategy:
+      max-parallel: ${{ fromJSON(needs.setup.outputs.run_max_parallel) }}
       matrix:
         include: ${{ fromJSON(needs.setup.outputs.run_matrix) }}
       fail-fast: false
@@ -122,36 +144,62 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  aggregate:
+  aggregate-budget:
     needs: [setup, weapon-sweep]
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.setup.outputs.weapon_matrix }}
+          MATRIX_KEY: weapon
+        run: node .github/scripts/sweep-budget.mjs
+
+  aggregate:
+    needs: [setup, weapon-sweep, aggregate-budget]
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.weapon.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: ${{ fromJSON(needs.aggregate-budget.outputs.max_parallel) }}
       matrix:
-        weapon: ${{ fromJSON(needs.setup.outputs.weapon_matrix) }}
+        weapon: ${{ fromJSON(needs.aggregate-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: weapon-sweep-shard-${{ matrix.weapon }}-*
+          pattern: weapon-sweep-shard-${{ matrix.weapon.weapon }}-*
           path: shards
           merge-multiple: true
 
-      - name: Aggregate ${{ matrix.weapon }} shards
+      - name: Aggregate ${{ matrix.weapon.weapon }} shards
         env:
           SEED_COUNT: ${{ inputs.seed_count }}
         run: |
           npx tsx scripts/agent/perf/merge-weapon-sweep-shards.ts \
             --inputs shards \
-            --weapon "${{ matrix.weapon }}" \
+            --weapon "${{ matrix.weapon.weapon }}" \
             --seed-count "$SEED_COUNT" \
-            --out "weapon-sweep-${{ matrix.weapon }}.json"
+            --out "weapon-sweep-${{ matrix.weapon.weapon }}.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: weapon-sweep-${{ matrix.weapon }}
-          path: weapon-sweep-${{ matrix.weapon }}.json
+          name: weapon-sweep-${{ matrix.weapon.weapon }}
+          path: weapon-sweep-${{ matrix.weapon.weapon }}.json
           if-no-files-found: error
           retention-days: 30

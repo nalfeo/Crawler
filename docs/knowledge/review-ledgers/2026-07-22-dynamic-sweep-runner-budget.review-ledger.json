@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-22",
+  "session_slug": "dynamic-sweep-runner-budget",
+  "task_title": "Dynamic sweep runner budget",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "major_fork",
+      "notes": "Initial independent max-parallel design was rejected: no race-safe collective cap, floor/cap conflict, incomplete recovery semantics, omitted control jobs, skip-wall risk, and incomplete permissions/trust model. Revised to ten global job-level concurrency tokens with queue:max, dynamic fair slot assignment, fail-closed budget probes, exact router-state reuse, and every sweep job governed. Recheck found one final undercount risk from collectPrNumbers repair-window truncation; resolved by planning a dedicated full eligible-backlog helper before dispatch-window slicing."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Added missing 10-minute timeouts to both Weapon Sweep budget-probe jobs and structural timeout coverage. Investigated the queue-depth concern; preserving the 200-candidate contract was correct because strategy.max-parallel gates matrix dispatch before concurrency-group admission."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Full post-fix recheck confirmed the timeout defect resolved, queue:max usage valid, max-parallel admission safe, and no remaining concerns."
+        }
+      ]
+    }
+  }
+}

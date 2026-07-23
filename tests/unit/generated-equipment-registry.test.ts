@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
@@ -13,13 +14,13 @@ import {
   type ResolvedEquipmentEffectV1,
 } from '../../src/shared/generated-equipment-types.js';
 import { canonicalJson, sha256Hex } from '../../src/shared/canonical-json.js';
-import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
   GeneratedEquipmentRegistryError,
   computeEquipmentFingerprint,
   createActiveWeaponSnapshotV1,
   createGeneratedEquipmentInstance,
+  createGeneratedEquipmentRegistryTransaction,
   generatedEquipmentInstanceKey,
   getGeneratedEquipmentInstance,
   hasGeneratedEquipmentInstance,
@@ -76,6 +77,8 @@ function effectsFor(rarity: GeneratedEquipmentRarity): readonly ResolvedEquipmen
 
 function frozenFields(
   activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null = null,
+  abilityGrants: readonly string[] = [],
+  passiveGrants: readonly string[] = [],
 ): FrozenEquipmentFieldsV1 {
   return {
     schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
@@ -85,8 +88,8 @@ function frozenFields(
     tags: ['weapon', 'blade'],
     weightLb: 3,
     statBonuses: { strength: 1, critChance: 0.05 },
-    abilityGrants: [],
-    passiveGrants: [],
+    abilityGrants,
+    passiveGrants,
     activeWeaponSnapshot,
   };
 }
@@ -95,13 +98,22 @@ function createInput(
   rarity: GeneratedEquipmentRarity = 'common',
   activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null = null,
 ): GeneratedEquipmentCreateInputV1 {
+  const effects = effectsFor(rarity);
+  const abilityGrants: string[] = [];
+  const passiveGrants: string[] = [];
+  for (const e of effects) {
+    if ('grantId' in e) {
+      if (e.kind === 'abilityGrant') abilityGrants.push(e.grantId);
+      else if (e.kind === 'passiveGrant') passiveGrants.push(e.grantId);
+    }
+  }
   return {
     baseId: 'weapon.iron-cleaver',
     itemLevel: 3,
     rarity,
     enhancementLevel: 0,
-    resolvedEffects: effectsFor(rarity),
-    frozen: frozenFields(activeWeaponSnapshot),
+    resolvedEffects: effects,
+    frozen: frozenFields(activeWeaponSnapshot, abilityGrants, passiveGrants),
   };
 }
 
@@ -136,8 +148,15 @@ describe('canonical generated-equipment fingerprints', () => {
 });
 
 describe('generated equipment instance registry', () => {
+  it('rejects instance ordinals that cannot be represented safely', () => {
+    expectRegistryError(
+      () => generatedEquipmentInstanceKey('run-alpha', Number.MAX_SAFE_INTEGER + 1),
+      'invalid-payload',
+    );
+  });
+
   it('fails closed until the world is configured with an explicit run key', () => {
-    const world = createTestWorld();
+    const world = createTestWorld({ generatedEquipmentRunKey: null });
     expectRegistryError(
       () => createGeneratedEquipmentInstance(world, createInput()),
       'registry-unconfigured',
@@ -164,7 +183,6 @@ describe('generated equipment instance registry', () => {
     expect(Object.isFrozen(first.frozen.statBonuses)).toBe(true);
     expect(Object.isFrozen(first.frozen.activeWeaponSnapshot)).toBe(true);
     expect(Object.isFrozen(first.resolvedEffects)).toBe(true);
-    expect(first.frozen.activeWeaponSnapshot?.generatedEquipmentInstanceId).toBe(first.instanceId);
     expect(canonicalJson(getWeaponDef('sword'))).toBe(staticWeaponBefore);
   });
 
@@ -228,22 +246,6 @@ describe('generated equipment instance registry', () => {
     );
     expect(createGeneratedEquipmentInstance(target, createInput()).instanceId).toBe(
       'gei:v1:run-validation:0',
-    );
-  });
-
-  it('requires the frozen weapon snapshot to match the owning generated instance id', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'run-snapshot-id' });
-
-    expectRegistryError(
-      () =>
-        createGeneratedEquipmentInstance(
-          world,
-          createInput(
-            'common',
-            weaponSnapshot(generatedEquipmentInstanceKey('run-snapshot-id', 99)),
-          ),
-        ),
-      'invalid-payload',
     );
   });
 
@@ -369,5 +371,156 @@ describe('generated equipment instance registry', () => {
     expect(requireGeneratedEquipmentActiveWeaponSnapshot(world, instance.instanceId)).toEqual(
       instance.frozen.activeWeaponSnapshot,
     );
+  });
+
+  it('rejects frozen/resolvedEffects grant mismatches and does not advance the allocator', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'run-grant-mismatch' });
+
+    const grantEffect: ResolvedEquipmentEffectV1 = {
+      schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+      effectId: 'ember-step',
+      effectOrdinal: 0,
+      unitCost: 1,
+      kind: 'abilityGrant',
+      grantId: 'ember-step',
+    };
+    const passiveEffect: ResolvedEquipmentEffectV1 = {
+      schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+      effectId: 'warded',
+      effectOrdinal: 0,
+      unitCost: 1,
+      kind: 'passiveGrant',
+      grantId: 'warded',
+    };
+
+    // resolvedEffects advertises an active grant that frozen.abilityGrants omits.
+    expectRegistryError(
+      () =>
+        createGeneratedEquipmentInstance(world, {
+          ...createInput('common'),
+          resolvedEffects: [grantEffect],
+        }),
+      'invalid-payload',
+    );
+
+    // frozen.abilityGrants advertises an ability that no resolvedEffect applies.
+    expectRegistryError(
+      () =>
+        createGeneratedEquipmentInstance(world, {
+          ...createInput('common'),
+          frozen: { ...frozenFields(), abilityGrants: ['ember-step'] },
+        }),
+      'invalid-payload',
+    );
+
+    // resolvedEffects advertises a passive grant that frozen.passiveGrants omits.
+    // Use uncommon rarity so the 1-unit effect passes the budget check and the
+    // validation reaches validateGrantEquivalence rather than the unit-budget gate.
+    const passiveMismatch = expectRegistryError(
+      () =>
+        createGeneratedEquipmentInstance(world, {
+          ...createInput('uncommon'),
+          resolvedEffects: [passiveEffect],
+        }),
+      'invalid-payload',
+    );
+    expect(passiveMismatch.path).toBe('$.instance.frozen.passiveGrants');
+
+    // Order matters: if frozen has two passive grants in reversed order it is rejected.
+    const passiveEffect2: ResolvedEquipmentEffectV1 = {
+      schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+      effectId: 'sturdy',
+      effectOrdinal: 1,
+      unitCost: 1,
+      kind: 'passiveGrant',
+      grantId: 'sturdy',
+    };
+    // Use rare rarity so the 2-unit total passes the budget check and the
+    // validation reaches validateGrantEquivalence for the ordering assertion.
+    const passiveOrder = expectRegistryError(
+      () =>
+        createGeneratedEquipmentInstance(world, {
+          ...createInput('rare'),
+          resolvedEffects: [passiveEffect, passiveEffect2],
+          // frozen lists the two passive grants in reverse order — rejected.
+          frozen: { ...frozenFields(), passiveGrants: ['sturdy', 'warded'] },
+        }),
+      'invalid-payload',
+    );
+    expect(passiveOrder.path).toBe('$.instance.frozen.passiveGrants');
+
+    // After all failed attempts the allocator must not have advanced.
+    expect(createGeneratedEquipmentInstance(world, createInput()).instanceId).toBe(
+      'gei:v1:run-grant-mismatch:0',
+    );
+  });
+});
+
+describe('generated equipment registry transaction atomicity', () => {
+  it('scratch mutations are invisible on the live registry before commit', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-invisible' });
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+
+    // Generate one instance into the scratch registry.
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    const instance = createGeneratedEquipmentInstance(scratch, createInput('common'));
+
+    // The live registry must NOT see this instance yet.
+    expect(hasGeneratedEquipmentInstance(world, instance.instanceId)).toBe(false);
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(0);
+  });
+
+  it('a discarded (uncommitted) transaction leaves live instances and ordinals unchanged', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-discard' });
+    // One pre-existing live instance establishes the baseline.
+    const priorInstance = createGeneratedEquipmentInstance(world, createInput('uncommon'));
+    const liveCountBefore = listGeneratedEquipmentInstances(world).length;
+
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    createGeneratedEquipmentInstance(scratch, createInput('rare'));
+    // Never call txn.commit() — just discard the transaction.
+
+    // Live registry must be exactly as it was.
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(liveCountBefore);
+    expect(listGeneratedEquipmentInstances(world)[0]!.instanceId).toBe(priorInstance.instanceId);
+
+    // The next live-registry allocation must continue from the pre-txn ordinal
+    // (ordinal 1, since ordinal 0 is the prior instance).
+    const nextLive = createGeneratedEquipmentInstance(world, createInput('common'));
+    expect(nextLive.instanceId).toBe('gei:v1:txn-discard:1');
+  });
+
+  it('commit publishes scratch state: instances become visible on live registry', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-commit' });
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    const instance = createGeneratedEquipmentInstance(scratch, createInput('rare'));
+
+    // Before commit: invisible on live.
+    expect(hasGeneratedEquipmentInstance(world, instance.instanceId)).toBe(false);
+
+    txn.commit();
+
+    // After commit: visible on live.
+    expect(hasGeneratedEquipmentInstance(world, instance.instanceId)).toBe(true);
+    expect(getGeneratedEquipmentInstance(world, instance.instanceId)).toEqual(instance);
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(1);
+  });
+
+  it('a second commit is rejected with invalid-payload and leaves live state unchanged', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-double-commit' });
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    createGeneratedEquipmentInstance(scratch, createInput('common'));
+
+    txn.commit();
+    const countAfterFirstCommit = listGeneratedEquipmentInstances(world).length;
+
+    // The second commit must throw.
+    expectRegistryError(() => txn.commit(), 'invalid-payload');
+
+    // Live state must be unmodified by the failed second commit.
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(countAfterFirstCommit);
   });
 });

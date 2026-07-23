@@ -40,7 +40,6 @@
       "maxInventorySize": 4,
       "entries": [
         { "itemId": "hammer", "weight": 2, "basePrice": 65 },
-        { "itemId": "sun-hammer", "weight": 1, "basePrice": 95 },
         { "itemId": "crossbow", "weight": 2, "basePrice": 75 },
         { "itemId": "bow", "weight": 2, "basePrice": 55 },
         { "itemId": "landmine", "weight": 1, "basePrice": 90 },

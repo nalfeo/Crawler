@@ -16,6 +16,11 @@ Take one or more open PRs from "open" to "squash-merged into `main`" without han
 
 This skill has two modes. Pick based on the request:
 
+- **Not the default publication path.** A normal implementation session releases
+  its ready-for-review PR immediately so CI Recovery can assign cloud Copilot.
+  Start a local Shepherd only when the human explicitly pre-declared local
+  ownership or when coordinating a later takeover after the original session
+  has released the branch.
 - **Refresh behavior (Coordinator shorthand):** if the user says 'refresh', treat it as: repoll open PRs, determine takeover-ready PRs, and immediately launch shepherd sessions for all in-scope PRs in that pass.
 
 - **Coordinator** — "shepherd the open PRs" / "run a shepherding loop". You orchestrate: discover in-scope PRs and launch one child session per PR in parallel, then relay results. **One PR = one child session, always.** Tackle _every_ PR through its own session — including merge-conflict resolution, rebases, and "quick" CI fixes. Do **not** fix PRs in the coordinator session yourself; never check out a PR branch or open a temp worktree to resolve a conflict locally. The only exception is when a child session has tried and genuinely cannot proceed — then take over directly. Resist the temptation to hand-fix the "easy" ones; consistency keeps the loop parallel and lets you keep coordinating.

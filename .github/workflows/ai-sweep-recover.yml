@@ -5,9 +5,9 @@
 #   Run 29786216369 completed all round-2 (`search-checkpoint-r2-*`) checkpoints
 #   for every combo, then was cancelled mid-round-3 when an uncapped round-eval
 #   matrix fanned out 20 concurrent jobs (44 more queued), starving the account's
-#   shared GitHub-hosted runner pool (root cause fixed on main: every matrix job
-#   in `ai-sweep.yml` is now capped at `max-parallel: 8`; see that workflow's
-#   header and `docs/knowledge/handoffs/2026-07-20-ai-sweep-round-eval-max-parallel.md`).
+#   shared GitHub-hosted runner pool (root cause fixed by the shared ten-slot,
+#   queue-aware sweep semaphore used by every broad-sweep job; see
+#   `ai-sweep.yml` and `.github/scripts/sweep-budget.mjs`).
 #   Round 2's finalists were fully computed but never validated before the run
 #   died. This workflow re-validates those already-computed finalists CROSS-RUN,
 #   reusing `sweep-eval.ts --stage validate` and `aggregate-shards.ts` UNCHANGED —
@@ -112,6 +112,8 @@ on:
 permissions:
   contents: read
   actions: read
+  pull-requests: read
+  issues: read
 
 jobs:
   # Resolves the source run's exact commit, downloads every round-2 checkpoint
@@ -121,11 +123,17 @@ jobs:
   # recover-checkpoint-validate.ts script.
   recover-preflight:
     name: Preflight (resolve source SHA + validate round-2 checkpoints)
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
       combos: ${{ steps.matrix.outputs.combos }}
       head_sha: ${{ steps.source.outputs.head_sha }}
+      validate_matrix: ${{ steps.budget.outputs.matrix }}
+      validate_max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -152,6 +160,14 @@ jobs:
           ALL=$(npx tsx scripts/agent/perf/gen-configs.ts | jq -c '[.combos[].id]')
           echo "SSOT combos: $ALL"
           echo "combos=$ALL" >> "$GITHUB_OUTPUT"
+
+      - name: Allocate queue-aware sweep slots for validation
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.matrix.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
 
       - name: Download round-2 checkpoints from source run
         uses: actions/download-artifact@v4
@@ -190,16 +206,20 @@ jobs:
   # sweep-eval.ts's own unchanged provenance gate (currentBuildFingerprint())
   # matches the recovered checkpoint's stamped workflowSha.
   recover-validate:
-    name: Validate ${{ matrix.combo }}
+    name: Validate ${{ matrix.combo.combo }}
     needs: recover-preflight
     if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.recover-preflight.outputs.validate_max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.recover-preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.recover-preflight.outputs.validate_matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -214,7 +234,7 @@ jobs:
 
       - name: Validate finalist + incumbent
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           VALIDATE_SEEDS: ${{ inputs.validate_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
@@ -240,7 +260,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: validate-${{ matrix.combo }}
+          name: validate-${{ matrix.combo.combo }}
           path: validate-*.json
           if-no-files-found: error
           retention-days: 7
@@ -255,6 +275,10 @@ jobs:
     name: Aggregate → leaderboard
     needs: [recover-preflight, recover-validate]
     if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

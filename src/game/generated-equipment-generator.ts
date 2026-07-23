@@ -18,6 +18,9 @@ import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import type { EquipmentItemDef } from '../shared/equipment-types.js';
 import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
+import { WeaponType } from '../shared/constants.js';
+import { getFloor2WeaponWaveABase } from '../shared/data/floor2-weapon-bases.js';
+import type { SeededRandom } from '../shared/random.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 
 export type GeneratedEquipmentGeneratorErrorCode =
@@ -44,6 +47,13 @@ export interface GenerateEquipmentInstanceRequest {
   readonly itemLevel: number;
   readonly rarity: GeneratedEquipmentRarity;
   readonly enhancementLevel?: GeneratedEquipmentEnhancementLevel;
+}
+
+export interface GenerateEquipmentInstanceOptions {
+  /** Derived streams can generate content without perturbing the world gameplay stream. */
+  readonly rng?: SeededRandom;
+  /** Optional source-specific effect subset; omitted preserves the canonical full catalog. */
+  readonly allowedEffectKinds?: readonly GeneratedEquipmentEffectPayload['kind'][];
 }
 
 type GeneratedEquipmentTargetKind = 'weapon' | 'armor' | 'accessory';
@@ -221,7 +231,8 @@ function baseTags(
 }
 
 function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipmentBase {
-  const equipmentDef = getEquipmentDefForItem(baseId);
+  const floor2WeaponBase = getFloor2WeaponWaveABase(baseId);
+  const equipmentDef = floor2WeaponBase?.equipmentDef ?? getEquipmentDefForItem(baseId);
   if (equipmentDef === undefined) {
     fail('unknown-base', `Unknown generated-equipment base ${baseId}`, '$.request.baseId');
   }
@@ -259,7 +270,7 @@ function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipme
     baseId: equipmentDef.id,
     template,
     displayName: equipmentDef.name,
-    artKey: equipmentDef.id,
+    artKey: floor2WeaponBase?.artKey ?? equipmentDef.artKey ?? equipmentDef.id,
     slots: [...equipmentDef.slots],
     tags: baseTags(equipmentDef, targetKind),
     weightLb: equipmentDef.weightLb,
@@ -278,6 +289,35 @@ export function getGeneratedEquipmentBaseV1(baseId: string): GeneratedEquipmentB
   return resolveGeneratedEquipmentBase(baseId).base;
 }
 
+export type GeneratedEquipmentBaseAffinity = 'magic' | 'physical' | 'neutral';
+
+/**
+ * Intrinsic build affinity of a generated-equipment base: `magic`/`physical` for
+ * weapon bases (by weapon type), `neutral` for non-weapon bases. Pure and
+ * registry-free — the reward-bundle resolver uses it to partition an
+ * achievement's authored candidate bases into aligned vs non-aligned pools for
+ * the current player build. Throws `unknown-base` for an unresolvable base id.
+ */
+export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEquipmentBaseAffinity {
+  const resolved = resolveGeneratedEquipmentBase(baseId);
+  if (resolved.weaponDef === null) return 'neutral';
+  return resolved.weaponDef.weaponType === WeaponType.MAGIC ? 'magic' : 'physical';
+}
+
+/**
+ * Whether a base carries any inherent NON-armor stat bonus. The reward-bundle
+ * resolver asserts this is `false` for every candidate base so the Common item
+ * (which spreads the base's inherent stat bonuses verbatim and is generated with
+ * zero effect units) satisfies the Common rarity contract: no non-armor stat
+ * bonus. Pure and registry-free.
+ */
+export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): boolean {
+  const resolved = resolveGeneratedEquipmentBase(baseId);
+  return Object.entries(resolved.equipmentDef.statBonuses).some(
+    ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+  );
+}
+
 function effectsAreCompatible(
   left: GeneratedEquipmentEffectDefinition,
   right: GeneratedEquipmentEffectDefinition,
@@ -291,12 +331,17 @@ function effectsAreCompatible(
 }
 
 function selectEffectDefinitions(
-  world: GameWorld,
+  rng: SeededRandom,
   base: ResolvedGeneratedEquipmentBase,
   budget: 0 | 1 | 2,
+  allowedEffectKinds?: readonly GeneratedEquipmentEffectPayload['kind'][],
 ): readonly GeneratedEquipmentEffectDefinition[] {
   if (budget === 0) return Object.freeze([]);
-  const legal = EFFECT_CATALOG.filter((effect) => effect.legalTargets.includes(base.targetKind));
+  const legal = EFFECT_CATALOG.filter(
+    (effect) =>
+      effect.legalTargets.includes(base.targetKind) &&
+      (allowedEffectKinds === undefined || allowedEffectKinds.includes(effect.payload.kind)),
+  );
   if (budget === 1) {
     const minor = legal.filter((effect) => effect.unitCost === 1);
     if (minor.length === 0) {
@@ -306,7 +351,7 @@ function selectEffectDefinitions(
         '$.effects',
       );
     }
-    return Object.freeze([minor[world.rng.nextInt(0, minor.length - 1)]!]);
+    return Object.freeze([minor[rng.nextInt(0, minor.length - 1)]!]);
   }
 
   const singleMajor = legal.filter((effect) => effect.unitCost === 2).map((effect) => [effect]);
@@ -330,8 +375,8 @@ function selectEffectDefinitions(
       '$.effects',
     );
   }
-  const shape = shapes[world.rng.nextInt(0, shapes.length - 1)]!;
-  return Object.freeze([...shape[world.rng.nextInt(0, shape.length - 1)]!]);
+  const shape = shapes[rng.nextInt(0, shapes.length - 1)]!;
+  return Object.freeze([...shape[rng.nextInt(0, shape.length - 1)]!]);
 }
 
 function materializeEffects(
@@ -366,9 +411,22 @@ function displayName(
   return enhancementLevel === 0 ? name : `${name} +${enhancementLevel}`;
 }
 
+/**
+ * Minimal world capability the generator needs: a configured registry to record
+ * the instance in and an RNG. Narrowed from {@link GameWorld} so callers can pass
+ * a registry-transaction scratch registry (`{ generatedEquipmentRegistry, rng }`)
+ * to generate into an isolated scratch registry without a full world. `GameWorld`
+ * remains assignable, so existing callers are unaffected.
+ */
+export interface GenerateEquipmentInstanceWorld {
+  readonly generatedEquipmentRegistry: GameWorld['generatedEquipmentRegistry'];
+  readonly rng: GameWorld['rng'];
+}
+
 export function generateEquipmentInstance(
-  world: GameWorld,
+  world: GenerateEquipmentInstanceWorld,
   request: GenerateEquipmentInstanceRequest,
+  options: GenerateEquipmentInstanceOptions = {},
 ): GeneratedEquipmentInstanceV1 {
   if (world.generatedEquipmentRegistry.runKey === null) {
     fail(
@@ -401,9 +459,10 @@ export function generateEquipmentInstance(
     resolvedBase.inherentValue * levelMultiplier * rarityMultiplier * enhancementMultiplier;
 
   const effectDefinitions = selectEffectDefinitions(
-    world,
+    options.rng ?? world.rng,
     resolvedBase,
     policy.rarityEffectUnits[rarity],
+    options.allowedEffectKinds,
   );
   const resolvedEffects = materializeEffects(effectDefinitions);
   const statBonuses: Partial<Record<StatId, number>> = {

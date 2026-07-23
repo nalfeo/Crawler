@@ -23,6 +23,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 
 - **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
 - **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
+- **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.
 - **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.
 - **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight (no review ledger/full PR paperwork). If a fix should land, spin a separate implementation child session/PR and run the normal full process there.
 - **Tooling-only ceremony is capped at 3🍎:** Work confined to developer/agent tooling, canvases, automation, or asset-pipeline tooling is estimated at no more than 3🍎 regardless of file count; the cap does not apply when runtime gameplay behavior or shipped game data changes.
@@ -42,7 +43,10 @@ The sole maintainer works best answering questions one at a time rather than wri
 For every pull request or diff review, follow the canonical exhaustive-review contract in
 `.github/instructions/review.instructions.md`. Adopt its Reviewer persona, complete every
 review category before responding, deduplicate by root cause, and return all validated
-findings in one pass.
+findings in one pass. Before commenting, read the complete prior review history; never
+reopen or repost a finding that has a prior `✅ Addressed in <sha>` or
+`✅ Not applicable:` response unless a later thread reply provides concrete evidence
+that the resolution failed.
 
 ## Critical Rules
 
@@ -51,7 +55,7 @@ findings in one pass.
 - No Phaser imports in `src/core/` — the bridge pattern keeps logic portable
 - Every new ECS system MUST have a lab in `src/labs/`
 - **Every `*System` exported from `src/core/**`/`src/game/**` MUST be wired into a real runtime pipeline** (`src/bootstrap/floor-main-scene-options.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts`) or added to the documented allowlist in `scripts/agent/health/orphaned-systems-lib.ts`. A green lab does NOT prove the real game calls the system — lab-only validation is insufficient for wiring/behavior changes; "observe before done" must name the real game or headless artifact. Enforced by `npm run check:wired-systems` (ADR 0039).
-- Write a handoff file before ending implementation sessions (merge-intent changes)
+- Write a handoff file before ending implementation sessions (merge-intent changes). **Do NOT run `npm run docs:index` to rebuild `docs/knowledge/handoffs/INDEX.md`** — CI rebuilds it automatically after each merge that adds a handoff. Concurrent agent sessions both rebuilding INDEX.md is a primary source of merge conflicts.
 - If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to commit a per-session guard-telemetry summary under `docs/knowledge/metrics/guard-telemetry/` (durable, contamination-filtered). The trimmed handoff template no longer carries a telemetry block — the committed summary file is the record.
 - **Apple complexity**: declare your 🍎–🍎🍎🍎🍎🍎 estimate before writing any code. For **≥3🍎 sessions**, run `npm run apples:record -- --session <slug> --estimated <n> --actual <n>` at handoff — the script writes the JSON and computes all derived fields. **1–2🍎 sessions do not need a file.** See `docs/agent-os/policies/complexity-policy.md`
 - **Apple-scaled review harness**: scale review to the apple estimate and record a **review ledger** before PR. **≥3🍎** → separate-model **plan review** **and** a **code-review loop until no concerns _or_ a 2-round cap then human escalation**; >3🍎 → the plan review must be **adversarial** (one reviewer enumerates ≥2 alternatives and argues against the chosen design) **and** **multi-model review** with adjudication (same 2-round-cap/escalation rule). Every plan review (≥3🍎) records a `plan_divergence` signal. 1–2🍎 require no review stages (plan-review floor raised 2🍎→3🍎 on 2026-07-07; dual-plan synthesis retired at 4–5🍎 on 2026-07-08, ADR 0051). Enforced by the `pr-review-ledger` guard (docs/art/deps-only diffs exempt). Use the `review-harness` skill; never weaken a stage to go green — escalate to a human instead. Canonical: `docs/agent-os/policies/review-harness-policy.md`.

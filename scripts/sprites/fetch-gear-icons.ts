@@ -196,8 +196,9 @@ export async function run(options: RunOptions): Promise<{ written: number }> {
   }
 
   if (!dryRun && written > 0) {
-    // Sort keys for stable, reviewable diffs — mirrors gen-placeholders.ts.
-    const sortedKeys = Object.keys(manifest.entries).sort();
+    // Sort keys with localeCompare for stable, reviewable diffs — mirrors
+    // approve.ts upsertManifest and must match check:sort-assets validator.
+    const sortedKeys = Object.keys(manifest.entries).sort((a, b) => a.localeCompare(b));
     const sortedEntries: Record<string, ManifestEntry> = {};
     for (const key of sortedKeys) {
       sortedEntries[key] = manifest.entries[key]!;

@@ -96,20 +96,27 @@ export type VisionProviderErrorKind =
   | 'auth'
   /** Rate-limited or quota exhausted. */
   | 'rate-limit'
+  /** Provider failed transiently after bounded in-process retries. */
+  | 'server-error'
+  /** Provider deterministically rejected the request or its content. */
+  | 'request-error'
   /** Network error talking to the provider. */
   | 'network'
   /** Provider returned a non-JSON / unparseable body. */
   | 'malformed'
-  /** Provider returned a structured error or non-2xx response. */
+  /** Unexpected provider failure that may be transient. */
   | 'provider-error';
 
 export class VisionProviderError extends Error {
   override readonly name = 'VisionProviderError';
+  readonly retryAfterMs: number | undefined;
+
   constructor(
     readonly kind: VisionProviderErrorKind,
     message: string,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; retryAfterMs?: number | undefined },
   ) {
-    super(message, options);
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
+    this.retryAfterMs = options?.retryAfterMs;
   }
 }

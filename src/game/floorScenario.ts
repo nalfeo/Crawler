@@ -2237,7 +2237,6 @@ function spawnFloor1SlimeRatBoss(world: GameWorld, playerX: number, playerY: num
     halfHeight: 0,
     shape: SHAPE_CIRCLE,
   });
-  setEnemyAppearanceKey(world, eid, 'slime-rat');
   // slimeRat quest boss is primarily a slime creature.
   setBloodColor(world, eid, BLOOD_COLOR_SLIME);
   setComponent(world.ecs, eid, Damage, { amount: 8 });

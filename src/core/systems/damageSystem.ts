@@ -19,6 +19,7 @@ import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
 import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
+import { computeArmorReducedDamage } from '../combat-math.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -82,13 +83,12 @@ function getDamageAmount(world: GameWorld, eid: number, fallbackAmount: number):
   return world.stores.damage.amount[eid] ?? 0;
 }
 
-/** Apply armor mitigation for player: damageTaken = max(1, incoming - armor) */
 function applyArmorReduction(world: GameWorld, player: number, rawDamage: number): number {
   if (!hasComponent(world.ecs, player, EffectiveStats)) {
     return rawDamage;
   }
   const armor = world.stores.effectiveStats.armor[player] ?? 0;
-  return Math.max(1, rawDamage - armor);
+  return computeArmorReducedDamage(rawDamage, armor);
 }
 
 /** Emit a throttled 'blocked' event (max one per invincibility window). */
@@ -260,6 +260,10 @@ function applyEnemyProjectileHit(
       sourceX: world.stores.position.x[projectile] ?? 0,
       sourceY: world.stores.position.y[projectile] ?? 0,
       sourceEid: projectileOwner !== -1 ? projectileOwner : projectile,
+      // Pass the archetype key snapshotted at projectile-spawn time so that
+      // attribution in apply-damage is correct even if the shooter has been
+      // reaped and its EID recycled before this hit occurs.
+      sourceArchetypeKey: world.enemyProjectileArchetypeKeys.get(projectile),
     },
   );
   hitTimestamps[player] = world.elapsedMs;

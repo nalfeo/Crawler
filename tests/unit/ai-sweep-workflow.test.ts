@@ -68,7 +68,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 interface WorkflowStrategy {
   'fail-fast'?: boolean;
-  'max-parallel'?: number;
+  'max-parallel'?: number | string;
   matrix?: Record<string, unknown>;
 }
 
@@ -80,6 +80,11 @@ interface WorkflowJob {
   'timeout-minutes'?: number;
   strategy?: WorkflowStrategy;
   outputs?: Record<string, string>;
+  concurrency?: {
+    group?: string;
+    'cancel-in-progress'?: boolean;
+    queue?: string;
+  };
   steps?: Array<{
     name?: string;
     run?: string;
@@ -162,13 +167,17 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(inputs.resume_run_id).toMatchObject({ type: 'string', default: '' });
   });
 
-  it('adds actions: read (still read-only) for cross-run artifact download, keeping contents: read unchanged', () => {
+  it('stays read-only with only the metadata permissions required by queue-aware admission and cross-run artifact download', () => {
     const doc = loadWorkflow();
     // actions: read is required by actions/download-artifact@v4's cross-run
-    // `run-id` support (resume-import job) -- it grants list/download of a
-    // PRIOR run's own already-uploaded artifacts only, no write/mutate
-    // capability, so this is still a read-only permissions block.
-    expect(doc.permissions).toEqual({ contents: 'read', actions: 'read' });
+    // `run-id` support (resume-import job). pull-requests/issues: read is
+    // required by the queue-aware sweep budget (sweep-budget.mjs).
+    expect(doc.permissions).toEqual({
+      contents: 'read',
+      actions: 'read',
+      'pull-requests': 'read',
+      issues: 'read',
+    });
   });
 
   it('preflight hard-caps rounds to the explicit bounded 0-3 DAG before any runner spins up', () => {
@@ -204,8 +213,9 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(String(baseline.strategy?.matrix?.combo)).toContain(
       'needs.resume-import.outputs.freshCombos',
     );
+    // checkpoint-init uses checkpoint-budget's matrix (fresh combos with sweepSlots)
     expect(String(checkpointInit.strategy?.matrix?.combo)).toContain(
-      'needs.resume-import.outputs.freshCombos',
+      'needs.checkpoint-budget.outputs.matrix',
     );
   });
 
@@ -307,19 +317,21 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(script).toContain('--cap 200');
     });
 
-    it(`${evalJob} is one independent matrix job per candidate, timed <=90min, capped at max-parallel:8 (shared-runner-pool protection)`, () => {
+    it(`${evalJob} is one independent matrix job per candidate, timed <=90min, with dynamic max-parallel concurrency cap (shared-runner-pool protection)`, () => {
       const doc = loadWorkflow();
       const job = getJob(doc, evalJob);
       expect(job.if).toContain(`needs.${candidatesJob}.outputs.hasCandidates == 'true'`);
       expect(job.strategy?.matrix).toBeDefined();
-      // max-parallel: 8 caps this round's candidate fan-out so a full
-      // 8-combo graduation run cannot saturate the account's entire
-      // GitHub-hosted concurrent-runner pool and starve unrelated repo-wide
-      // work (e.g. the shared merge-train queue's own validation jobs).
-      // Run 29786216369 fanned out 20 concurrent Round 3 eval jobs with 44
-      // more queued before it was manually cancelled -- this cap must never
-      // silently regress back to unbounded concurrency.
-      expect(job.strategy?.['max-parallel']).toBe(8);
+      // Dynamic max-parallel + sweep semaphore cap this round's candidate fan-out so
+      // a full 8-combo graduation run cannot saturate the account's concurrent runner
+      // pool. Run 29786216369 fanned out 20 concurrent Round 3 eval jobs with 44
+      // more queued before cancellation -- this cap must never silently regress.
+      expect(
+        String(job.strategy?.['max-parallel']),
+        `${evalJob} strategy.max-parallel`,
+      ).toContain('max_parallel');
+      expect(job.concurrency?.group).toContain('crawler-sweep-slot-');
+      expect(job.concurrency?.group).toContain('sweepSlot');
       expect(job.strategy?.['fail-fast']).toBe(false);
       const timeout = job['timeout-minutes'];
       expect(timeout).toBeDefined();
@@ -450,17 +462,12 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     }
   });
 
-  it('every matrix job in the workflow caps concurrency at max-parallel:8 (shared GitHub-hosted runner pool protection)', () => {
-    // Every fan-out matrix job -- baseline, checkpoint-init, round1-3 eval,
-    // round1-3 select, and validate -- must cap concurrency at the same
-    // max-parallel:8, so a full 8-combo graduation run can never saturate
-    // the account's entire concurrent-runner pool and starve unrelated
-    // repo-wide work (e.g. the shared merge-train queue's own validation
-    // jobs). round1-eval, round2-eval, and round3-eval previously had NO
-    // cap at all: run 29786216369 fanned out 20 concurrent Round 3 eval
-    // jobs with 44 more queued behind them before it was manually
-    // cancelled. This test guards every matrix job in the file at once so
-    // the cap cannot silently regress on any of them.
+  it('every matrix job in the workflow uses dynamic max-parallel plus global sweep semaphore slots', () => {
+    // Every fan-out matrix job must consume the dynamic share calculated at
+    // its batch boundary and one of the ten hard global semaphore tokens
+    // (crawler-sweep-slot-*). The dynamic share prevents runner saturation
+    // (run 29786216369 fanned out 20 concurrent Round 3 eval jobs with 44
+    // more queued before cancellation).
     const doc = loadWorkflow();
     const matrixJobNames = Object.entries(doc.jobs)
       .filter(([, job]) => (job as WorkflowJob).strategy?.matrix !== undefined)
@@ -480,21 +487,33 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     );
     for (const name of matrixJobNames) {
       const job = getJob(doc, name);
-      expect(job.strategy?.['max-parallel'], `job "${name}" strategy.max-parallel`).toBe(8);
+      expect(
+        String(job.strategy?.['max-parallel']),
+        `job "${name}" strategy.max-parallel`,
+      ).toContain('max_parallel');
+      expect(job.concurrency?.group, `job "${name}" concurrency.group`).toContain(
+        'crawler-sweep-slot-',
+      );
+      expect(job.concurrency?.group, `job "${name}" concurrency.group`).toContain('sweepSlot');
     }
   });
 
   describe('cross-run resume (resume_run_id, run 29786216369 runner-starvation fix)', () => {
-    it('every matrix/fan-out job strategy in the workflow is capped at max-parallel: 8 (no exceptions)', () => {
+    it('every matrix/fan-out job strategy in the workflow uses dynamic max-parallel (no uncapped eval rounds)', () => {
       // Exhaustive sweep, not a fixed job-name list -- a future job that adds
-      // a `strategy.matrix` without this cap must fail this test rather than
-      // silently reintroducing unrestricted concurrency (the exact failure
-      // mode that caused run 29786216369's runner-starvation cancellation).
+      // a `strategy.matrix` without a dynamic max-parallel cap must fail this
+      // test rather than silently reintroducing unrestricted concurrency (the
+      // exact failure mode that caused run 29786216369's runner-starvation
+      // cancellation). The dynamic share is computed by sweep-budget.mjs at
+      // each batch boundary so concurrency yields to CI/recovery backlog.
       const doc = loadWorkflow();
       const matrixJobs = Object.entries(doc.jobs).filter(([, job]) => job.strategy?.matrix);
       expect(matrixJobs.length).toBeGreaterThan(0);
       for (const [name, job] of matrixJobs) {
-        expect(job.strategy?.['max-parallel'], `job "${name}" strategy.max-parallel`).toBe(8);
+        expect(
+          String(job.strategy?.['max-parallel']),
+          `job "${name}" strategy.max-parallel`,
+        ).toContain('max_parallel');
       }
     });
 
@@ -505,6 +524,7 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(job.outputs?.freshCombos).toBeDefined();
       expect(job.outputs?.resumedCombos).toBeDefined();
       expect(job.outputs?.hasFreshCombos).toBeDefined();
+      expect(job.outputs?.freshCombosBudgetMatrix).toBeDefined();
       const script = allRunSteps(job);
       // Both outputs are ALWAYS written (unconditional echo to $GITHUB_OUTPUT)
       // regardless of the if/else branch taken -- a missing/empty output
@@ -513,6 +533,7 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(script).toContain('echo "freshCombos=$FRESH" >> "$GITHUB_OUTPUT"');
       expect(script).toContain('echo "resumedCombos=$RESUMED" >> "$GITHUB_OUTPUT"');
       expect(script).toContain('echo "hasFreshCombos=$HAS_FRESH" >> "$GITHUB_OUTPUT"');
+      expect(script).toContain('echo "freshCombosBudgetMatrix=');
     });
 
     it("baseline and checkpoint-init are guarded by hasFreshCombos so an all-combos-resumed run (freshCombos=[]) never hits GitHub Actions' hard-fail on an empty matrix array", () => {
@@ -675,6 +696,11 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
 
       const emitStep = steps[emitIdx];
       expect(emitStep?.if).toContain("inputs.resume_run_id != ''");
+      // CRITICAL: must also gate on resumedCombos != '[]' so an expired/invalid
+      // source run (where every combo fell back to fresh) does not produce a
+      // resume-lineage artifact claiming resume ancestry on what is actually a
+      // 100% fresh run (reviewer finding on ai-sweep.yml:406).
+      expect(emitStep?.if).toContain("steps.resume.outputs.resumedCombos != '[]'");
       expect(emitStep?.env).toMatchObject({ RESUME_RUN_ID: '${{ inputs.resume_run_id }}' });
       expect(emitStep?.run).toContain('--mode emit-resume-lineage');
       expect(emitStep?.run).toContain('--resume-run-id "$RESUME_RUN_ID"');
