@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b457875dd048e588f6d0d789cf3d374bd16e9009",
+    "commitDate": "2026-07-23T07:39:49Z",
+    "commitSubject": "fix(sprites): stop sprite-catalog serializer churn (route asset-pr writes through Prettier helper + gate catalog in format:check) (#1793)",
+    "capturedAt": "2026-07-23T09:05:48.978Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29989660166",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/b457875dd048e588f6d0d789cf3d374bd16e9009.json"
+  },
+  {
     "commit": "9429694e8274918bdacaa1eabf28f6451c132257",
     "commitDate": "2026-07-23T07:15:35Z",
     "commitSubject": "fix: prevent ci-owner lock deadlock (reaper lane + 422 crash fix + liveness TTL) (#1784)",
