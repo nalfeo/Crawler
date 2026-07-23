@@ -16,17 +16,33 @@
  * queue document (`workflow-state/queue.json`) — caching it read-through would
  * serve a stale concurrency token and break optimistic locking.
  *
- * Semantics (ADR 0065)
+ * Semantics (ADR 0065; list-snapshot semantics updated by
+ * docs/knowledge/adr/2026-07-22-sprite-list-cache-swr.md)
  * --------------------
  *  - **Blob artifacts**: cache-first `get`/`has`; write-through `put`
  *    (authoritative inner write first, THEN cache replace); `remove` invalidates
  *    the cache before the authoritative delete so a failed delete can never
  *    leave a stale hit. Same-process mutations stay coherent. Artifacts are NOT
  *    assumed immutable — a `put` replaces the cached key.
- *  - **List snapshots**: a successful online `list` refreshes a first-class,
- *    eviction-protected snapshot. Online calls still consult the remote so
- *    external Azure writers cannot leave a locally "fresh" snapshot stale.
- *    Offline calls return the warmed snapshot with zero remote reads.
+ *  - **List snapshots (stale-while-revalidate)**: when a warmed snapshot's
+ *    epoch matches the current list-invalidation epoch, `list` returns it
+ *    IMMEDIATELY — no remote round-trip — and schedules a deduped, best-effort
+ *    background refresh (`inner.list` + snapshot rewrite, guarded by the same
+ *    epoch-stable check the blocking path already used). A same-process `put`/
+ *    `remove` bumps the epoch first, so the very next `list` for that prefix
+ *    still blocks on the remote until it resyncs — same-process
+ *    read-your-writes coherence is preserved. Only a snapshot with NO epoch
+ *    match (never loaded, or invalidated by a same-process mutation) takes the
+ *    original blocking path. The accepted trade-off: a run mutated by a writer
+ *    that bypasses this cache entirely (so the shared epoch is never bumped)
+ *    may appear one background-refresh late, in exchange for instant
+ *    cross-process/worktree cold-open listings. The background refresh only
+ *    purges (blob-cache entries, and a removed run's derived brief/slice-map
+ *    caches, for keys the remote no longer reports) AFTER its own snapshot
+ *    rewrite is confirmed written — a failed best-effort write leaves the old
+ *    snapshot and its blobs untouched, so a still-served listing never points
+ *    at an already-evicted blob. Offline calls return the warmed snapshot with
+ *    zero remote reads.
  *  - **Offline mode**: when Azure is forced unavailable, reads are served
  *    entirely from the cache and the inner store is NEVER contacted, so a warmed
  *    worktree loads exact bytes and listings with zero Azure read operations.
@@ -56,6 +72,10 @@ export function isCacheableKey(key: string): boolean {
 interface ListSnapshot {
   readonly epoch: string;
   readonly keys: readonly string[];
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 export interface CachingRunStoreOptions {
@@ -107,6 +127,15 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
    * unboundedly in practice.
    */
   private readonly putInFlight = new Map<string, Promise<void>>();
+
+  /**
+   * Per-snapshot-key in-flight Promise: dedupes concurrent stale-while-
+   * revalidate background refreshes so a burst of `list()` calls against the
+   * same prefix triggers at most one `inner.list` per refresh window. Entries
+   * are removed once the refresh settles (see `scheduleListRefresh`), so this
+   * map is bounded by the number of distinct prefixes currently refreshing.
+   */
+  private readonly listRefreshInFlight = new Map<string, Promise<void>>();
 
   constructor(options: CachingRunStoreOptions) {
     this.inner = options.inner;
@@ -201,6 +230,18 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
       throw new StoreNotFoundError(`${LIST_PREFIX}${prefix} (offline, no snapshot)`);
     }
 
+    // Stale-while-revalidate fast path: an epoch-fresh warmed snapshot is
+    // returned immediately (no remote round-trip) while a deduped background
+    // refresh brings the snapshot up to date. A same-process put/remove bumps
+    // the epoch first, so this only fires when nothing in THIS process has
+    // invalidated the prefix since the snapshot was captured — the first-ever
+    // load (no snapshot) and any post-mutation reload still take the blocking
+    // path below, unchanged.
+    if (snapshot !== null && snapshot.epoch === this.cache.readEpoch()) {
+      this.scheduleListRefresh(prefix, snapshotKey, snapshot.keys);
+      return snapshot.keys;
+    }
+
     try {
       const epochBefore = this.cache.readEpoch();
       const keys = await this.inner.list(prefix);
@@ -254,6 +295,79 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
 
   async setIfAbsentCachedResource(key: string, data: Buffer): Promise<void> {
     await this.cache.setIfAbsent(`${DERIVED_PREFIX}${key}`, data);
+  }
+
+  /**
+   * Fire-and-forget background refresh for the stale-while-revalidate fast
+   * path in `list()`. Deduped per snapshot key so a burst of reads against the
+   * same prefix only triggers one `inner.list` call per refresh window; safe
+   * to call unconditionally from `list()` since it no-ops if a refresh for
+   * this key is already in flight.
+   */
+  private scheduleListRefresh(
+    prefix: string,
+    snapshotKey: string,
+    previousKeys: readonly string[],
+  ): void {
+    if (this.listRefreshInFlight.has(snapshotKey)) return;
+    const task = this.refreshListSnapshot(prefix, snapshotKey, previousKeys).catch(
+      (err: unknown) => {
+        // Never let a background refresh failure surface as an unhandled
+        // rejection or reject a caller — the caller already got the stale
+        // snapshot synchronously. Just log so the failure is observable.
+        this.cache.logOperational(`list refresh failed for ${snapshotKey}: ${errMsg(err)}`);
+      },
+    );
+    this.listRefreshInFlight.set(snapshotKey, task);
+    void task.finally(() => {
+      // Only evict if our promise is still current (a later refresh may have
+      // already replaced it after this one was scheduled).
+      if (this.listRefreshInFlight.get(snapshotKey) === task) {
+        this.listRefreshInFlight.delete(snapshotKey);
+      }
+    });
+  }
+
+  /**
+   * Performs the actual remote listing + snapshot rewrite for a background
+   * refresh, mirroring the epoch-stable guard the blocking path already used
+   * so a mutation racing the refresh can't publish an out-of-date snapshot.
+   * Also purges blob-cache entries (and, for a removed run's `summary.json`,
+   * that run's derived caches too) for keys the remote no longer reports
+   * ("cache purging" — best-effort; a later `put` self-heals if this ever
+   * misses).
+   *
+   * Purge only runs after a CONFIRMED snapshot rewrite (`cache.set` returned
+   * true). `set()` is best-effort and can fail (full disk, lock contention);
+   * purging blob entries whose only record of removal is a snapshot that
+   * never actually got written would leave the old (still epoch-fresh, still
+   * served) listing pointing at now-evicted blobs — the opposite of the
+   * "snapshot correctness first" priority this refresh exists for.
+   */
+  private async refreshListSnapshot(
+    prefix: string,
+    snapshotKey: string,
+    previousKeys: readonly string[],
+  ): Promise<void> {
+    const epochBefore = this.cache.readEpoch();
+    const keys = await this.inner.list(prefix);
+    const epochAfter = this.cache.readEpoch();
+    if (epochBefore !== epochAfter) return; // a same-process mutation raced us; it already invalidated
+    const snapshotWritten = await this.cache.set(
+      snapshotKey,
+      Buffer.from(JSON.stringify({ epoch: epochAfter, keys } satisfies ListSnapshot), 'utf8'),
+      { crawlerPinned: true },
+    );
+    if (!snapshotWritten) return; // best-effort write failed: leave the old snapshot/blobs alone
+    const freshKeys = new Set(keys);
+    for (const removedKey of previousKeys) {
+      if (!freshKeys.has(removedKey)) {
+        await this.cache.remove(`${BLOB_PREFIX}${removedKey}`);
+        // A removed run's summary.json also invalidates that run's derived
+        // brief/slice-map caches (mirrors the authoritative remove() path).
+        await this.removePerRunSnapshotOnRunRemoval(removedKey);
+      }
+    }
   }
 
   private async readSnapshot(snapshotKey: string): Promise<ListSnapshot | null> {

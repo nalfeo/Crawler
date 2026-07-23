@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "sprite-cache-swr",
+  "task_title": "Stale-while-revalidate listings for the shared Azure resource cache",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "4 concerns: (1) blocking - purge not gated on confirmed cache.set() write, fixed by capturing the boolean return and early-returning before purge; (2) non-blocking - unbounded inner.list() can pin the dedup slot forever, documented as an accepted/monitored risk in the ADR (mirrors a pre-existing hang risk in the old blocking path; a proper fix needs RunStore-wide AbortSignal plumbing, out of scope for 3 apples); (3) non-blocking - purge only cleared blob: entries not per-run derived caches, fixed by reusing the existing removePerRunSnapshotOnRunRemoval() helper in the purge loop; (4) non-blocking - no test proved a same-process mutation racing an in-flight background refresh prevents publishing stale data, added a dedicated race test using a GatedListStore + put() mid-flight."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

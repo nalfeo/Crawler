@@ -20,6 +20,38 @@ import { WORKFLOW_STATE_KEY } from '../../../scripts/sprites/sidecar/workflow-st
 
 const noop = (): void => {};
 
+/**
+ * Deterministically drains pending microtasks and one macrotask phase per
+ * iteration (real, but fast, local fs I/O has a chance to settle) without
+ * depending on wall-clock time. Used to let a fire-and-forget
+ * stale-while-revalidate background refresh complete before asserting on its
+ * effects. No `setTimeout`/real timers involved — `setImmediate` always fires
+ * deterministically once the current phase's callbacks have run.
+ */
+async function flushAsync(times = 20): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
+
+/**
+ * Polls `predicate`, yielding one macrotask turn between attempts, until it
+ * returns `true` or `maxAttempts` is exhausted. The SWR background refresh
+ * performs genuine filesystem I/O (a cache write plus, for purges, a cache
+ * remove) whose wall-clock completion time varies with disk/OS scheduling —
+ * a fixed `flushAsync` tick count is not a reliable bound for it. Polling an
+ * observable end-state (rather than assuming a tick count) keeps the wait
+ * both fast on the common case and robust on a slow filesystem, with no
+ * `Math.random`/`Date.now` and no real `setTimeout` delay.
+ */
+async function waitUntil(predicate: () => Promise<boolean>, maxAttempts = 500): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
+    if (await predicate()) return true;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  return false;
+}
+
 /** Counts every operation and delegates to a real inner store. */
 class CountingStore implements RunStore {
   readonly backend = 'azure-blob' as const;
@@ -211,6 +243,72 @@ class BothCommitRaceStore implements RunStore {
     this.values.delete(key);
   }
 
+  resolve(key: string): string {
+    return key;
+  }
+}
+
+/**
+ * A store whose list() call counts invocations and then pauses until the
+ * test manually releases a gate. Used to prove a background
+ * stale-while-revalidate refresh does not block the caller: if `list()`
+ * awaited this before returning, a test that never releases the gate would
+ * hang until timeout.
+ */
+class GatedListStore implements RunStore {
+  readonly backend = 'azure-blob' as const;
+  lists = 0;
+  private release: (() => void) | null = null;
+  private readonly gate: Promise<void>;
+  constructor(private readonly keys: readonly string[]) {
+    this.gate = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+  }
+  releaseGate(): void {
+    this.release?.();
+  }
+  async put(): Promise<void> {
+    throw new Error('unused: put');
+  }
+  async get(key: string): Promise<Buffer> {
+    throw new StoreNotFoundError(key);
+  }
+  async has(): Promise<boolean> {
+    throw new Error('unused: has');
+  }
+  async list(): Promise<readonly string[]> {
+    this.lists++;
+    await this.gate;
+    return this.keys;
+  }
+  async remove(): Promise<void> {
+    throw new Error('unused: remove');
+  }
+  resolve(key: string): string {
+    return key;
+  }
+}
+
+/** A store that reports fewer keys than a prior listing, modeling an external removal. */
+class ShrinkingStore implements RunStore {
+  readonly backend = 'azure-blob' as const;
+  constructor(private readonly keys: readonly string[]) {}
+  async put(): Promise<void> {
+    throw new Error('unused: put');
+  }
+  async get(key: string): Promise<Buffer> {
+    throw new StoreNotFoundError(key);
+  }
+  async has(): Promise<boolean> {
+    return false;
+  }
+  async list(): Promise<readonly string[]> {
+    return this.keys;
+  }
+  async remove(): Promise<void> {
+    throw new Error('unused: remove');
+  }
   resolve(key: string): string {
     return key;
   }
@@ -429,7 +527,7 @@ describe('workflow queue document bypasses the cache', () => {
 });
 
 describe('list snapshots', () => {
-  it('refreshes online listings so external writers cannot leave a fresh snapshot stale', async () => {
+  it('serves an epoch-fresh snapshot instantly and revalidates in the background (SWR)', async () => {
     await store.put(SHEET, Buffer.from('a'));
     await store.put(RAW, Buffer.from('b'));
     const first = await store.list('iron-sword/run-abc/');
@@ -437,7 +535,12 @@ describe('list snapshots', () => {
     const listsAfterWarm = inner.lists;
     const second = await store.list('iron-sword/run-abc/');
     expect(second).toEqual(first);
+    // The fast path returns the warmed snapshot without awaiting inner.list,
+    // but still schedules a background refresh (proved non-blocking by the
+    // dedicated 'does not await' test below) — so the counter still ticks up
+    // by exactly one via that fire-and-forget refresh.
     expect(inner.lists).toBe(listsAfterWarm + 1);
+    await flushAsync(); // let the background refresh settle before the next test
   });
 
   it('refreshes from inner after a mutation bumps the epoch', async () => {
@@ -465,7 +568,7 @@ describe('list snapshots', () => {
     const s = new CachingRunStore({ inner: throwing, cache });
     const keys = await s.list('iron-sword/run-abc/');
     expect(keys).toEqual(expect.arrayContaining([SHEET]));
-    expect(throwing.lists).toBe(1); // it tried the remote, then fell back
+    expect(throwing.lists).toBe(1); // the fire-and-forget background refresh attempted the remote once
   });
 
   it('rejects a known-stale snapshot when the online remote fails', async () => {
@@ -493,6 +596,153 @@ describe('list snapshots', () => {
     });
     expect(await offline.list('iron-sword/run-abc/')).toEqual(warmed);
     expect(offlineInner.lists).toBe(0);
+  });
+
+  it('does not await inner.list before returning when a fresh snapshot exists', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.list('iron-sword/run-abc/'); // warm an epoch-fresh snapshot
+
+    // The gate is never released during this await. If the fast path awaited
+    // inner.list() before resolving (the old blocking behavior), this call
+    // would hang until the test times out.
+    const gated = new GatedListStore([SHEET]);
+    const s = new CachingRunStore({ inner: gated, cache }); // shares the warmed snapshot on disk
+
+    const keys = await s.list('iron-sword/run-abc/');
+    expect(keys).toEqual(expect.arrayContaining([SHEET]));
+    expect(gated.lists).toBe(1); // the background refresh did start (fire-and-forget)
+
+    gated.releaseGate(); // let the still-pending background refresh finish cleanly
+    await flushAsync();
+  });
+
+  it('dedupes concurrent background refreshes so inner.list runs at most once per window', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.list('iron-sword/run-abc/'); // warm an epoch-fresh snapshot
+
+    const gated = new GatedListStore([SHEET]);
+    const s = new CachingRunStore({ inner: gated, cache });
+
+    const [a, b, c] = await Promise.all([
+      s.list('iron-sword/run-abc/'),
+      s.list('iron-sword/run-abc/'),
+      s.list('iron-sword/run-abc/'),
+    ]);
+    expect(a).toEqual(expect.arrayContaining([SHEET]));
+    expect(b).toEqual(a);
+    expect(c).toEqual(a);
+    expect(gated.lists).toBe(1); // 3 concurrent reads scheduled only ONE background refresh
+
+    gated.releaseGate();
+    await flushAsync();
+  });
+
+  it('swallows a background refresh error without rejecting the caller', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.list('iron-sword/run-abc/'); // warm an epoch-fresh snapshot
+
+    const logged: string[] = [];
+    const spyCache = new SharedResourceCache({ cacheDir, maxBytes: 0, log: (m) => logged.push(m) });
+    const throwing = new ThrowingStore();
+    const s = new CachingRunStore({ inner: throwing, cache: spyCache }); // shares the warmed snapshot on disk
+
+    const keys = await s.list('iron-sword/run-abc/'); // fast path: resolves instantly with the stale data
+    expect(keys).toEqual(expect.arrayContaining([SHEET]));
+
+    await flushAsync(); // let the background refresh fail and get swallowed
+    expect(throwing.lists).toBe(1); // it really was attempted
+    expect(logged.some((m) => m.includes('list refresh failed'))).toBe(true); // surfaced, not silently eaten
+  });
+
+  it('purges the blob cache entry for a key the background refresh no longer reports', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.put(RAW, Buffer.from('b'));
+    await store.list('iron-sword/run-abc/'); // warm: [SHEET, RAW]
+
+    const shrinking = new ShrinkingStore([SHEET]); // RAW is no longer reported by "Azure"
+    const s = new CachingRunStore({ inner: shrinking, cache }); // shares the warmed snapshot + blob cache
+
+    expect(await s.has(RAW)).toBe(true); // still blob-cached from the put() above
+
+    const first = await s.list('iron-sword/run-abc/'); // fast path: stale [SHEET, RAW] instantly
+    expect(first).toEqual(expect.arrayContaining([SHEET, RAW]));
+
+    // The background refresh performs real cache I/O (snapshot rewrite +
+    // blob purge); poll for its observable effect rather than assuming a
+    // fixed tick count settles it.
+    const purged = await waitUntil(async () => !(await s.has(RAW)));
+    expect(purged).toBe(true); // purged from the blob cache
+
+    const second = await s.list('iron-sword/run-abc/'); // snapshot now updated to [SHEET] only
+    expect(second).toEqual([SHEET]);
+  });
+
+  it('does not publish a stale refresh result when a mutation races the in-flight background list', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.list('iron-sword/run-abc/'); // warm an epoch-fresh snapshot: [SHEET]
+
+    const gated = new GatedListStore([SHEET]); // reports [SHEET] only once released
+    const s = new CachingRunStore({ inner: gated, cache }); // shares the warmed snapshot + epoch file
+
+    const fast = await s.list('iron-sword/run-abc/'); // fast path: instant, background refresh starts
+    expect(fast).toEqual([SHEET]);
+    expect(gated.lists).toBe(1); // the background inner.list() call has started and is now gated
+
+    // A same-process mutation races the still-in-flight background refresh —
+    // exactly the scenario the epoch-stable guard in refreshListSnapshot()
+    // exists for.
+    await store.put(RAW, Buffer.from('b')); // bumps the shared epoch to a new value
+
+    gated.releaseGate(); // let the now-stale-relative-to-the-mutation inner.list() resolve
+    await flushAsync();
+
+    // The raced refresh must NOT have overwritten the snapshot with its
+    // now-stale (RAW-less) result, and must NOT have purged RAW's freshly
+    // written blob-cache entry — either would silently hide the run that was
+    // just written while the refresh was in flight.
+    expect(await s.has(RAW)).toBe(true);
+
+    // Because the epoch moved past what the warmed snapshot recorded, the
+    // NEXT list() call must take the (unchanged) blocking slow path and
+    // re-fetch authoritatively — proving the raced result was discarded
+    // rather than published.
+    const next = await s.list('iron-sword/run-abc/');
+    expect(gated.lists).toBe(2); // a second, authoritative inner.list() call was made
+    expect(next).toEqual(expect.arrayContaining([SHEET]));
+  });
+
+  it('does not purge blob-cache entries when the background refresh snapshot write itself fails', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.put(RAW, Buffer.from('b'));
+    await store.list('iron-sword/run-abc/'); // warm: [SHEET, RAW]
+
+    // Simulates SharedResourceCache.set() failing for the snapshot write only
+    // (e.g. lock contention, disk pressure) while blob writes still succeed —
+    // 'list:' mirrors caching-store.ts's private LIST_PREFIX constant.
+    class SnapshotWriteFailingCache extends SharedResourceCache {
+      async set(
+        key: string,
+        data: Buffer,
+        metadata?: Record<string, unknown>,
+        expectedMutationToken?: string,
+      ): Promise<boolean> {
+        if (key.startsWith('list:')) return false;
+        return super.set(key, data, metadata, expectedMutationToken);
+      }
+    }
+    const failingCache = new SnapshotWriteFailingCache({ cacheDir, maxBytes: 0, log: noop });
+    const shrinking = new ShrinkingStore([SHEET]); // RAW no longer reported by "Azure"
+    const s = new CachingRunStore({ inner: shrinking, cache: failingCache }); // shares the disk snapshot + blobs
+
+    const first = await s.list('iron-sword/run-abc/'); // fast path: stale [SHEET, RAW] instantly
+    expect(first).toEqual(expect.arrayContaining([SHEET, RAW]));
+
+    await flushAsync(); // let the background refresh attempt (and fail) its snapshot rewrite
+
+    // The snapshot rewrite itself failed, so RAW's blob-cache entry must
+    // survive — purging it here would hide a run the old (still epoch-fresh,
+    // still-served) snapshot still points at.
+    expect(await s.has(RAW)).toBe(true);
   });
 });
 

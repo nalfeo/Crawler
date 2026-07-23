@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 139 ADR files — 100 numbered (0001–0066, with number reuse and gaps in this index — see below) + 39 date-prefixed
+- **Count:** 147 ADR files — 104 numbered (0001–0066, with number reuse and gaps in this index — see below) + 43 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -159,6 +159,8 @@ hundreds of inbound references.
 - [Sprite worker poison-message handling](0037-sprite-worker-poison-message-handling.md) — bounded failures (dequeueCount cap), permanent-drop, and comment-once to stop runaway retry loops and issue-comment spam.
 - [Asset-request briefs accept rich multi-sentence text](0038-asset-request-multi-sentence-brief.md) — relax the issue/marker brief contract so multi-sentence briefs enqueue.
 - [Raise Azure Storage Queue default visibility timeout to 900s](0041-raise-queue-visibility-timeout-default.md) — a 16-cell gpt-image-1 sheet outruns the old 300s window; 900s stops false "message does not exist" acks and needless regeneration.
+- [Shared Azure Resource Cache](0065-shared-azure-resource-cache.md) — one sidecar-authoritative, content-addressable, LRU-bounded cache replaces the bespoke sheet-only cache and four+ unbounded per-extension caches; cache-first blob reads and an offline hard-gate.
+- [Stale-while-revalidate listings for the shared Azure resource cache](2026-07-22-sprite-list-cache-swr.md) — `list()` now serves an epoch-fresh warmed snapshot instantly online, with a deduped background refresh/purge, closing the one read path ADR 0065 had left blocking on a live Azure round-trip.
 
 ### Rendering, HUD & VFX
 
