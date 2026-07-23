@@ -1,5 +1,16 @@
 [
   {
+    "commit": "52e9257767ab7ceb2404ab02d2916184515a705e",
+    "commitDate": "2026-07-22T16:52:04-07:00",
+    "commitSubject": "fix(ci): unjam merge-train admission deadlock (reviewed-then-rebased guard + fingerprint drift) (#1789)",
+    "capturedAt": "2026-07-23T00:54:46.979Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29967782483",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/52e9257767ab7ceb2404ab02d2916184515a705e.json"
+  },
+  {
     "commit": "ce547798e584ffe4fd0fedf96bf53f5984f3e4a4",
     "commitDate": "2026-07-22T16:22:48-07:00",
     "commitSubject": "feat(ai): add deterministic equipment loadout scoring (#1575)",
