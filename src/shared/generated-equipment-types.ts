@@ -13,6 +13,8 @@ export const GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION =
 export const GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION =
   'floor2-equipment-generation-policy/v1' as const;
 export const GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION = 'floor2-equipment-registry/v1' as const;
+export const GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION =
+  'floor2-equipment-reward-bundle/v1' as const;
 
 export type GeneratedEquipmentInstanceId = `gei:v1:${string}:${number}`;
 export type GeneratedEquipmentInstanceKey = GeneratedEquipmentInstanceId;
@@ -226,6 +228,12 @@ export interface GeneratedEquipmentRegistrySnapshotV1 {
   readonly instances: readonly GeneratedEquipmentInstanceV1[];
 }
 
+export interface GeneratedEquipmentRewardBundleV1 {
+  readonly schemaVersion: typeof GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION;
+  readonly achievementId: string;
+  readonly instanceKeys: readonly GeneratedEquipmentInstanceKey[];
+}
+
 const RUN_KEY_RE = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 const INSTANCE_ID_RE = /^gei:v1:([a-z0-9][a-z0-9._-]{0,127}):([0-9]+)$/;
 const FINGERPRINT_RE = /^sha256:[0-9a-f]{64}$/;
@@ -257,15 +265,6 @@ export function isValidFingerprintV1(value: string): value is EquipmentFingerpri
   return FINGERPRINT_RE.test(value);
 }
 
-export const GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION =
-  'floor2-equipment-reward-bundle/v1' as const;
-
-export interface GeneratedEquipmentRewardBundleV1 {
-  readonly schemaVersion: typeof GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION;
-  readonly achievementId: string;
-  readonly instanceKeys: readonly GeneratedEquipmentInstanceKey[];
-}
-
 export function makeRunKey(seed: number | string): string {
   const sanitized = String(seed)
     .toLowerCase()
@@ -280,8 +279,8 @@ export function makeRunKey(seed: number | string): string {
 }
 
 export function generatedEquipmentRunKeyFromSeed(seed: number): string {
-  if (!Number.isFinite(seed)) {
-    throw new Error(`Generated equipment run seed must be finite: ${seed}`);
+  if (!Number.isSafeInteger(seed)) {
+    throw new Error(`Generated equipment run seed must be a safe integer: ${seed}`);
   }
-  return `run-seed-${String(seed).replace('+', 'p')}`;
+  return makeRunKey(`run-seed-${seed}`);
 }

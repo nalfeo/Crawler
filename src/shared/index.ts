@@ -65,10 +65,13 @@ export {
   GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+  generatedEquipmentRunKeyFromSeed,
 } from './generated-equipment-types.js';
 export type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentInstanceKey,
+  EquipmentGrantSourceId,
   EquipmentFingerprintV1,
   GeneratedEquipmentRarity,
   GeneratedEquipmentEnhancementLevel,
@@ -84,6 +87,7 @@ export type {
   GeneratedEquipmentInstanceV1,
   GeneratedEquipmentCreateInputV1,
   GeneratedEquipmentRegistrySnapshotV1,
+  GeneratedEquipmentRewardBundleV1,
   ActiveWeaponCombatOverridesV1,
   ActiveWeaponSnapshotCreateInputV1,
   FrozenEquipmentFieldsCreateInputV1,

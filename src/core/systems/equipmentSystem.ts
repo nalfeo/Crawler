@@ -39,7 +39,11 @@ import { isInSafeContext } from '../safe-space.js';
 import { applyStatusEffect, clearStatusEffects, isValidSpec } from '../status-effects.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import type { WeaponDef } from '../../shared/weaponDefs.js';
-import { setActiveWeaponDef, clearActiveWeaponDef, getActiveWeaponDef } from '../active-weapon.js';
+import {
+  setActiveWeaponDef,
+  clearActiveWeaponDef,
+  getActiveWeaponSnapshot,
+} from '../active-weapon.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { getItemById } from '../../shared/items.js';
 import {
@@ -59,10 +63,10 @@ import type {
 } from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
 import {
-  grantGeneratedEquipmentActiveAbilityCore,
-  grantGeneratedEquipmentPassiveAbilityCore,
+  coreGrantGeneratedEquipmentActiveAbility,
+  coreGrantGeneratedEquipmentPassiveAbility,
   revokeEquipmentAbilityGrantsCore,
-} from './abilityGrantHelpers.js';
+} from '../ability-grants.js';
 
 // --- Side-map storage ---
 
@@ -217,50 +221,7 @@ function ownershipConflict(
 }
 
 function generatedWeaponDef(instance: GeneratedEquipmentInstanceV1): WeaponDef | undefined {
-  const snapshot = instance.frozen.activeWeaponSnapshot;
-  if (snapshot === null) return undefined;
-  const {
-    schemaVersion: _schemaVersion,
-    sourceWeaponDefId: _sourceWeaponDefId,
-    ...frozen
-  } = snapshot;
-  return Object.freeze({ ...frozen, id: instance.instanceId });
-}
-
-function activateGeneratedGrants(
-  world: GameWorld,
-  entity: number,
-  instance: GeneratedEquipmentInstanceV1,
-): void {
-  for (const effect of instance.resolvedEffects) {
-    if (!('kind' in effect)) continue;
-    const typedEffect = effect as { kind: string; grantId: string; effectOrdinal: number };
-    if (typedEffect.kind === 'abilityGrant') {
-      grantGeneratedEquipmentActiveAbilityCore(
-        world,
-        entity,
-        typedEffect.grantId,
-        instance.instanceId,
-        typedEffect.effectOrdinal,
-      );
-    } else if (typedEffect.kind === 'passiveGrant') {
-      grantGeneratedEquipmentPassiveAbilityCore(
-        world,
-        entity,
-        typedEffect.grantId,
-        instance.instanceId,
-        typedEffect.effectOrdinal,
-      );
-    }
-  }
-}
-
-function deactivateGeneratedGrants(
-  world: GameWorld,
-  entity: number,
-  instance: GeneratedEquipmentInstanceV1,
-): void {
-  revokeEquipmentAbilityGrantsCore(world, entity, instance.instanceId);
+  return instance.frozen.activeWeaponSnapshot ?? undefined;
 }
 
 function activateGeneratedEquipment(
@@ -268,7 +229,27 @@ function activateGeneratedEquipment(
   entity: number,
   instance: GeneratedEquipmentInstanceV1,
 ): void {
-  activateGeneratedGrants(world, entity, instance);
+  for (const effect of instance.resolvedEffects) {
+    if (!('kind' in effect)) continue;
+    if (effect.kind === 'abilityGrant') {
+      coreGrantGeneratedEquipmentActiveAbility(
+        world,
+        entity,
+        effect.grantId,
+        instance.instanceId,
+        effect.effectOrdinal,
+      );
+    } else if (effect.kind === 'passiveGrant') {
+      coreGrantGeneratedEquipmentPassiveAbility(
+        world,
+        entity,
+        effect.grantId,
+        instance.instanceId,
+        effect.effectOrdinal,
+      );
+    }
+  }
+
   const weaponDef = generatedWeaponDef(instance);
   if (weaponDef && hasComponent(world.ecs, entity, Player)) {
     setActiveWeaponDef(world, weaponDef);
@@ -282,11 +263,12 @@ function deactivateGeneratedEquipment(
 ): void {
   const generated = getGeneratedEquipmentInstance(world, instanceKey);
   if (!generated) throw new Error(`Generated equipment instance not found: ${instanceKey}`);
-  deactivateGeneratedGrants(world, entity, generated);
+  revokeEquipmentAbilityGrantsCore(world, entity, instanceKey);
+
   if (
     generated.frozen.activeWeaponSnapshot !== null &&
     hasComponent(world.ecs, entity, Player) &&
-    getActiveWeaponDef(world)?.id === instanceKey
+    getActiveWeaponSnapshot(world)?.generatedEquipmentInstanceId === instanceKey
   ) {
     clearActiveWeaponDef(world);
   }

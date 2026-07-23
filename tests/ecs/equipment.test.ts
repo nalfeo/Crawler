@@ -846,6 +846,20 @@ describe('generated equipment inventory transfers', () => {
     expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).toContain(
       'magic-missile',
     );
+    expect(world.abilityStatesByEntity.get(entity)?.activeAbilityGrantSources).toEqual(
+      new Map([
+        [
+          'magic-missile',
+          [
+            {
+              kind: 'generated-equipment',
+              instanceId: generated.instanceId,
+              effectOrdinal: 0,
+            },
+          ],
+        ],
+      ]),
+    );
     expect(
       world.abilityStatesByEntity
         .get(entity)
@@ -856,9 +870,46 @@ describe('generated equipment inventory transfers', () => {
     expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).not.toContain(
       'magic-missile',
     );
+    expect(world.abilityStatesByEntity.get(entity)?.activeAbilityGrantSources?.size).toBe(0);
     expect(
       world.abilityStatesByEntity.get(entity)?.grantOwnership?.activeSourcesByAbilityId?.size,
     ).toBe(0);
+  });
+
+  it('preserves ability cooldown state across generated equipment unequip/re-equip', () => {
+    const generated = createGeneratedTestEquipment(world, { abilityGrant: 'magic-missile' });
+    addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+
+    expect(
+      equipFromBag(world, entity, {
+        kind: 'generated-instance',
+        instanceKey: generated.instanceId,
+      }).ok,
+    ).toBe(true);
+
+    // Simulate using the ability by directly setting cooldown state (as abilitySystem does).
+    const stateAfterEquip = world.abilityStatesByEntity.get(entity)!;
+    stateAfterEquip.cooldownByAbilityId.set('magic-missile', 100);
+    stateAfterEquip.cooldownFramesByAbilityId.set('magic-missile', 180);
+
+    // Unequip: cooldown maps must be preserved (not deleted).
+    expect(unequip(world, entity, 'head').ok).toBe(true);
+    const stateAfterUnequip = world.abilityStatesByEntity.get(entity)!;
+    expect(stateAfterUnequip.cooldownByAbilityId.get('magic-missile')).toBe(100);
+    expect(stateAfterUnequip.cooldownFramesByAbilityId.get('magic-missile')).toBe(180);
+
+    // Re-equip: cooldown state from before unequip is still present — ability is not
+    // immediately ready just because the item was unequipped and re-equipped.
+    addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+    expect(
+      equipFromBag(world, entity, {
+        kind: 'generated-instance',
+        instanceKey: generated.instanceId,
+      }).ok,
+    ).toBe(true);
+    const stateAfterReEquip = world.abilityStatesByEntity.get(entity)!;
+    expect(stateAfterReEquip.cooldownByAbilityId.get('magic-missile')).toBe(100);
+    expect(stateAfterReEquip.cooldownFramesByAbilityId.get('magic-missile')).toBe(180);
   });
 
   it.each([
@@ -915,7 +966,7 @@ describe('equippable slot coverage', () => {
     }
   });
 
-  it('GEAR_ITEM_IDS covers 15 armor/accessory slots and excludes hands + neck', () => {
+  it('GEAR_ITEM_IDS covers the 15 non-hand, non-neck armor/accessory slots', () => {
     const gearSlots = new Set<string>();
     for (const id of GEAR_ITEM_IDS) {
       const def = getEquipmentDefForItem(id);

@@ -25,7 +25,7 @@ import {
   GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
   generatedEquipmentRunKeyFromSeed,
 } from '../../src/shared/generated-equipment-types.js';
-import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
+import { getActiveWeaponSnapshot } from '../../src/core/active-weapon.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 
 describe('Floor 1 to Floor 2 production transition', () => {
@@ -177,7 +177,7 @@ describe('Floor 1 to Floor 2 production transition', () => {
 
     expect(snapshotGeneratedEquipmentRegistry(floor2)).toEqual(floor1Registry);
     expect(getEquipmentState(floor2, floor2Player)?.equipped.mainHand).toBe(equipped.instanceId);
-    expect(getActiveWeaponDef(floor2)?.id).toBe(equipped.instanceId);
+    expect(getActiveWeaponSnapshot(floor2)).toEqual(equipped.frozen.activeWeaponSnapshot);
     expect(floor2.abilityStatesByEntity.get(floor2Player)?.equippedActiveAbilityIds).toContain(
       'magic-missile',
     );
