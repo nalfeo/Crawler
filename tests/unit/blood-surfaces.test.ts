@@ -44,6 +44,50 @@ describe('blood surface helpers', () => {
     expect(different.lobes).not.toEqual(left.lobes);
   });
 
+  it('scales initial pool size from enemy size', () => {
+    const smallEnemyPool = createBloodPoolSurface({
+      worldSeed: 42,
+      poolId: 11,
+      x: 0,
+      y: 0,
+      enemySizeFt: 1,
+      createdAtMs: 1000,
+    });
+    const largeEnemyPool = createBloodPoolSurface({
+      worldSeed: 42,
+      poolId: 11,
+      x: 0,
+      y: 0,
+      enemySizeFt: 4,
+      createdAtMs: 1000,
+    });
+    const getMaxLobeRadius = (pool: ReturnType<typeof createBloodPoolSurface>): number =>
+      Math.max(...pool.lobes.map((lobe) => Math.max(lobe.radiusXFt, lobe.radiusYFt)));
+
+    expect(getMaxLobeRadius(largeEnemyPool)).toBeGreaterThan(getMaxLobeRadius(smallEnemyPool));
+    expect(largeEnemyPool.contactRadiusFt).toBeGreaterThan(smallEnemyPool.contactRadiusFt);
+  });
+
+  it('varies lobe count and growth timing for irregular spread profiles', () => {
+    const pools = [1, 2, 3, 4].map((poolId) =>
+      createBloodPoolSurface({
+        worldSeed: 42,
+        poolId,
+        x: 0,
+        y: 0,
+        createdAtMs: 1000,
+      }),
+    );
+    const lobeCounts = new Set(pools.map((pool) => pool.lobes.length));
+    const growthSpreads = pools.map((pool) => {
+      const growAtValues = pool.lobes.map((lobe) => lobe.growAt);
+      return Math.max(...growAtValues) - Math.min(...growAtValues);
+    });
+
+    expect(lobeCounts.size).toBeGreaterThan(1);
+    expect(growthSpreads.some((spread) => spread > 0.35)).toBe(true);
+  });
+
   it('alternates footprint placement across the stride direction', () => {
     const left = createBloodFootprintSurface({
       worldSeed: 7,
