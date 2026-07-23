@@ -354,25 +354,30 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   // `assertArray` throw, bricking the load instead of gracefully treating an
   // absent field as "none persisted".
   const partial = record as Partial<PlayerCarryoverSnapshot>;
-  const readArrayField = <K extends keyof Pick<
-    PlayerCarryoverSnapshot,
+  type OptionalGeneratedArrayField =
     | 'generatedInventoryInstanceKeys'
     | 'generatedEquippedInstanceKeys'
     | 'generatedEquipmentRewardBundles'
-    | 'lootBoxRewardBundles'
-  >>(
-    key: K,
-  ): PlayerCarryoverSnapshot[K] | [] =>
-    Object.prototype.hasOwnProperty.call(record, key)
-      ? (partial[key] as PlayerCarryoverSnapshot[K])
-      : [];
+    | 'lootBoxRewardBundles';
+  const readArrayField = (key: OptionalGeneratedArrayField): unknown[] => {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) return [];
+    return partial[key] as unknown[];
+  };
   const normalized: PlayerCarryoverSnapshot = {
     ...legacy,
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
-    generatedInventoryInstanceKeys: readArrayField('generatedInventoryInstanceKeys'),
-    generatedEquippedInstanceKeys: readArrayField('generatedEquippedInstanceKeys'),
-    generatedEquipmentRewardBundles: readArrayField('generatedEquipmentRewardBundles'),
-    lootBoxRewardBundles: readArrayField('lootBoxRewardBundles'),
+    generatedInventoryInstanceKeys: readArrayField(
+      'generatedInventoryInstanceKeys',
+    ) as PlayerCarryoverSnapshot['generatedInventoryInstanceKeys'],
+    generatedEquippedInstanceKeys: readArrayField(
+      'generatedEquippedInstanceKeys',
+    ) as PlayerCarryoverSnapshot['generatedEquippedInstanceKeys'],
+    generatedEquipmentRewardBundles: readArrayField(
+      'generatedEquipmentRewardBundles',
+    ) as PlayerCarryoverSnapshot['generatedEquipmentRewardBundles'],
+    lootBoxRewardBundles: readArrayField(
+      'lootBoxRewardBundles',
+    ) as PlayerCarryoverSnapshot['lootBoxRewardBundles'],
   };
 
   assertArray(normalized.inventorySlots, 'inventorySlots');
