@@ -11,6 +11,17 @@
     "path": "by-sha/9be0328ec740f47e19c460dca5cb863bd1632d56.json"
   },
   {
+    "commit": "b72d9d8df2f639aba3b4086ce8ccd6fcd9e15bf4",
+    "commitDate": "2026-07-23T12:34:00Z",
+    "commitSubject": "feat(equipment): add Floor 2 equipment Wave B (#1809)",
+    "capturedAt": "2026-07-23T13:52:41.435Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30008232136",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/b72d9d8df2f639aba3b4086ce8ccd6fcd9e15bf4.json"
+  },
+  {
     "commit": "0bbfb2f44de2499aaa9495ea33c08b64ed441364",
     "commitDate": "2026-07-23T10:36:00Z",
     "commitSubject": "fix: address top 5 merge conflict hot spots (INDEX.md guidance, conflict-marker guard, asset sort enforcement) (#1806)",
