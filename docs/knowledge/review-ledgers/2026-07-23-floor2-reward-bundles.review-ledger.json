@@ -24,8 +24,16 @@
           "models": ["gpt-5.6-sol"],
           "concerns_count": 2,
           "resolved_count": 2,
-          "clean": true,
+          "clean": false,
           "notes": "Two Medium findings, both fixed in 29859b524. (A) A stale/tampered persisted bundle (empty, wrong count, or wrong per-index rarity) was neither rejected on carryover load nor on claim, so an empty bundle could be 'claimed' as success and permanently consume the reward -> added fail-closed exactly-3-instances-in-Common/Uncommon/Rare-order guards to BOTH playerCarryover.validateGeneratedCarryover and equipmentSystem.claimGeneratedEquipmentRewardBundle, using a new shared canonical-order constant. (B) A globally-valid non-default generation policy (per-rarity budget in [0,2]) could violate the reward rarity contract -> resolver now fails closed with illegal-effect-budget when the ambient policy exceeds {common:0,uncommon:1,rare:2}. Regression tests added for every guard; verify:fast + full integration project green."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-fix review over full branch diff (PR recovery session). Reviewer found no concerns. Additional recovery fixes also reviewed clean: re-throw RewardBundleResolutionError, strengthened determinism tests (compare instance records not just keys), illegal-base test uses resolvable travelers-cloak base, resolver routing affinity distribution test, registry transaction atomicity tests (4 cases), full-bag capacity claim failure test."
         }
       ]
     },
@@ -40,8 +48,17 @@
           "concerns_count": 1,
           "valid_count": 1,
           "resolved_count": 1,
-          "clean": true,
+          "clean": false,
           "notes": "Distinct-model reviewers over git diff 6162b732..HEAD. gemini-3.1-pro-preview: CLEAN, no findings. claude-sonnet-4.6: one High/CI-breaker — the new carryover semantic guard rejected the pre-existing integration test tests/integration/floor-transition-carryover.test.ts (synthetic single-instance bundle 'floor-transition-reward'); verify:fast missed it because it skips the integration project. Adjudication (claude-opus-4.8): valid CI-breaker AND, combined with the round-1 shape guard, the test bundle also violated the new exactly-3-instances contract. Fixed in 29859b524 by rebuilding it (and the analogous pre-existing unit carryover test) as a well-formed Common/Uncommon/Rare bundle under the real unlocked floor2-field-kit achievement, and extending the fixture with a rarity param. Re-ran the full integration project (163 tests) green to confirm no other guard-triggered breakage."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-code-review", "codeql-security-scan"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-fix multi-model review over full branch diff (PR recovery session). copilot-code-review: no findings. codeql-security-scan: 0 alerts on javascript/actions targets. Adjudication (claude-opus-4.8): both reviewers clean, no valid concerns remain. Recovery fixes also reviewed: re-throw typed RewardBundleResolutionError, strengthened test assertions, registry transaction atomicity coverage, capacity claim failure coverage."
         }
       ]
     }
