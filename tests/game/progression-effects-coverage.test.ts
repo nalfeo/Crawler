@@ -143,7 +143,7 @@ describe('applyCatalogEffect — spell cases with no holderEid are safe no-ops',
       effect: {
         type: 'spell_timed_buff',
         durationFrames: { base: 120, scalesWithIntelligence: false },
-        modifiers: [{ stat: 'armor', op: 'add', value: 5 }],
+        modifiers: [{ stat: 'armor', op: 'add', value: { base: 5, scalesWithIntelligence: false } }],
       },
     },
     {

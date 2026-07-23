@@ -16,11 +16,11 @@ Added 5 new test files targeting the known unit-test coverage gaps identified in
 |------|------------------------|-------|
 | `tests/ecs/knockback-system-flying.test.ts` | `knockbackSystem` Flying entity bounds clamping (~84.5% → higher) | 6 |
 | `tests/game/ability-system-error-codes.test.ts` | `abilitySystem` `unknown-ability` + `kind-mismatch` + `memorizeSpell` errors (~90.4% → higher) | 6 |
-| `tests/game/skill-system-branches.test.ts` | `skillSystem` v1 fallback, no-player edge, level-10/15 milestones | 8 |
+| `tests/game/skill-system-branches.test.ts` | `skillSystem` v1 fallback, no-player edge, level-10/15 milestones | 6 |
 | `tests/game/family-feud-coverage.test.ts` | `familyFeudSystem` boss skip, `getMobFamilyId` fallback, speed-only decision (~89.5% → higher) | 5 |
-| `tests/game/progression-effects-coverage.test.ts` | `progressionEffects.applyCatalogEffect` `stat_multiply`, `extra_projectile`, `aura`, all 8 spell no-holder no-ops | 14 |
+| `tests/game/progression-effects-coverage.test.ts` | `progressionEffects.applyCatalogEffect` `stat_multiply`, `extra_projectile`, `aura`, all 8 spell no-holder no-ops | 12 |
 
-**Total new tests: 39**
+**Total new tests: 35**
 
 ## Key decisions
 

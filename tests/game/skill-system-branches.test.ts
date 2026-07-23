@@ -182,7 +182,11 @@ describe('skillSystem — milestone fires at levels 10 and 15', () => {
     ).length;
     expect(countAfterFirst).toBe(1);
 
-    // Push one more point — should not re-fire.
+    // Manually rewind the level so the while-loop will try to re-enter level 10,
+    // while keeping triggeredMilestones={10} and usage >= threshold.
+    // This exercises the triggeredMilestones.has(level) === true branch directly.
+    state.level = 9;
+
     world.skillUsageEvents.push({
       holderEid: player,
       skillId: 'swordsmanship',
@@ -191,6 +195,7 @@ describe('skillSystem — milestone fires at levels 10 and 15', () => {
     });
     skillSystem(world);
 
+    // The guard should have blocked the re-fire; still exactly 1 modifier.
     const countAfterSecond = world.statModifiers.filter(
       (m) => m.sourceId === `swordsmanship:milestone:10:${player}`,
     ).length;

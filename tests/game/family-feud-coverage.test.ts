@@ -82,6 +82,7 @@ describe('familyFeudSystem — boss mob skip', () => {
           started: true,
           bossEid: bossMob,
           defeated: false,
+          displayName: 'Test Boss',
         },
       ],
     ]);
@@ -114,6 +115,7 @@ describe('familyFeudSystem — boss mob skip', () => {
           bossEid: bossMob,
           // Defeated → should NOT be skipped.
           defeated: true,
+          displayName: 'Test Boss',
         },
       ],
     ]);
