@@ -3,6 +3,7 @@ import {
   LootBoxRewardResolutionError,
   resolveLootBoxRewardBundle,
 } from '../../src/game/floor1-lootbox-reward-resolver.js';
+import { resolveEquipmentRewardBundle } from '../../src/game/floor2-reward-bundle-resolver.js';
 import {
   FLOOR1_COMMON_CRAFTING_MATERIALS,
   LOOT_BOX_GOLD_BY_TIER,
@@ -11,6 +12,15 @@ import {
   LOOT_BOX_TIERS,
 } from '../../src/shared/achievements.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+
+// Two physical + two magic weapon bases so aligned/non-aligned pools are both
+// non-empty for either player affinity — mirrors floor2-reward-bundle-resolver.test.ts.
+const MIXED_EQUIPMENT_BASES = [
+  'weapon.iron-cleaver',
+  'weapon.ashwood-bow',
+  'weapon.ember-wand',
+  'weapon.frost-crook',
+] as const;
 
 function makeWorld(runKey = 'lootbox-resolver-test') {
   return createTestWorld({ seed: 7, floor: 1, generatedEquipmentRunKey: runKey });
@@ -94,19 +104,25 @@ describe('resolveLootBoxRewardBundle — determinism and isolation', () => {
     expect(withResolve.rng.next()).toBe(withoutResolve.rng.next());
   });
 
-  it('is isolated from the Floor 2 equipment reward-bundle RNG substream (different key namespace)', () => {
-    // Same run key, same achievement id — only the resolver differs. If the
-    // two resolvers accidentally shared a derivation key, this would produce
-    // colliding/correlated material picks across independent test runs; the
-    // isolation is structural (distinct string prefixes in each resolver's
-    // hashStringToSeed input), verified here by confirming two independent
-    // resolves for two DIFFERENT achievement ids under the same run key never
-    // collide, matching the Floor 2 resolver's own per-achievement isolation
-    // contract.
+  it('is isolated from the Floor 2 equipment reward-bundle RNG substream (same run key + achievement id never collide)', () => {
+    // Resolve BOTH resolvers on the SAME world/run key/achievement id. If the
+    // two resolvers accidentally shared a derivation key (keyed only by run
+    // key + achievement id, with no resolver-specific prefix), resolving one
+    // after the other would perturb or invalidate the first result. Proving
+    // the lootBox bundle is untouched after an interleaved Floor 2 equipment
+    // resolve demonstrates the resolvers occupy disjoint RNG substreams.
     const world = makeWorld('cross-resolver-iso');
-    const a = resolveLootBoxRewardBundle(world, 'shared-id', 'rare');
-    const b = resolveLootBoxRewardBundle(world, 'shared-id', 'rare');
-    expect(b).toBe(a); // idempotent re-resolve, not a fresh roll
+    const lootBox = resolveLootBoxRewardBundle(world, 'shared-id', 'rare');
+    const equipment = resolveEquipmentRewardBundle(
+      world,
+      'shared-id',
+      MIXED_EQUIPMENT_BASES,
+      'tier2',
+    );
+    const lootBoxAfterEquipmentResolve = resolveLootBoxRewardBundle(world, 'shared-id', 'rare');
+    expect(lootBoxAfterEquipmentResolve).toBe(lootBox);
+    expect(equipment.achievementId).toBe('shared-id');
+    expect(equipment.tier).toBe('tier2');
   });
 });
 

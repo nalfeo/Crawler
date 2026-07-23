@@ -328,11 +328,16 @@ describe('Floor 2 reward bundle — stale/malformed carryover fails closed', () 
     const tampered = mutableClone(snapshot);
     tampered.generatedEquipmentRewardBundles[0]!.achievementId = 'first-bonk';
     tampered.achievements.unlockedIds = [...tampered.achievements.unlockedIds, 'first-bonk'];
-    // 'first-bonk' is a lootBox-reward achievement with no lootBox bundle in
-    // this snapshot; mark it claimed too so the (unrelated) reverse
-    // missing-lootBox-bundle guard doesn't fire first and mask the
-    // non-equipment guard this test targets.
-    tampered.achievements.claimedIds = [...tampered.achievements.claimedIds, 'first-bonk'];
+    // Re-pointing the bundle away from TIER1_ACHIEVEMENT_ID leaves it
+    // bundle-less; mark it (and 'first-bonk', a lootBox-reward achievement
+    // with no lootBox bundle in this snapshot) claimed too, so neither
+    // reverse missing-bundle guard fires first and masks the non-equipment
+    // guard this test targets.
+    tampered.achievements.claimedIds = [
+      ...tampered.achievements.claimedIds,
+      TIER1_ACHIEVEMENT_ID,
+      'first-bonk',
+    ];
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/non-equipment/);
   });
 
@@ -412,6 +417,23 @@ describe('Floor 2 reward bundle — stale/malformed carryover fails closed', () 
       /Missing generated equipment reward bundle for unlocked, unclaimed achievement/,
     );
   });
+
+  it('rejects a snapshot missing the bundle AND the registry for an unlocked, unclaimed equipment achievement', () => {
+    // Regression test for the early-return bypass found in round-2
+    // confirmation review: stripping the registry snapshot (not just the
+    // bundle array) used to take validateGeneratedCarryover's early-return
+    // path, skipping the reverse-presence guard entirely and letting the
+    // tampered snapshot restore "successfully".
+    const { dest, destPlayer, snapshot } = baseSnapshotWithBundle();
+    const tampered = mutableClone(snapshot);
+    tampered.generatedEquipmentRewardBundles = [];
+    tampered.generatedInventoryInstanceKeys = [];
+    tampered.generatedEquippedInstanceKeys = [];
+    tampered.generatedEquipmentRegistry = undefined;
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /Missing generated equipment reward bundle for unlocked, unclaimed achievement/,
+    );
+  });
 });
 
 describe('Floor 2 reward bundle — malformed live bundle claim fails closed', () => {
@@ -454,6 +476,48 @@ describe('Floor 2 reward bundle — malformed live bundle claim fails closed', (
     for (const key of tier3Bundle.instanceKeys) {
       expect(hasGeneratedEquipmentReference(bag, key)).toBe(false);
     }
+  });
+});
+
+describe('Floor 1 lootBox reward — malformed live bundle claim fails closed', () => {
+  it('claim rejects a live bundle with a forged (non-canonical) gold amount', () => {
+    const world = createTestWorld({ seed: 7, floor: 1 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    const goldBefore = world.playerGold;
+    expect(unlockAchievement(world, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(true);
+    const bundle = world.lootBoxRewardBundles.get(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)!;
+    world.lootBoxRewardBundles.set(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID, {
+      ...bundle,
+      gold: 999_999,
+    });
+    const result = claimAchievementReward(world, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID);
+    expect(result).toEqual({ ok: false, reason: 'grantFailed' });
+    expect(isAchievementClaimed(world, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(false);
+    // Bundle retained (retryable) and no gold leaked.
+    expect(world.lootBoxRewardBundles.has(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(true);
+    expect(world.playerGold).toBe(goldBefore);
+    const bag = world.inventories.get(playerEid)!;
+    for (const materialId of bundle.materials) {
+      expect(getItemCount(bag, materialId)).toBe(0);
+    }
+  });
+
+  it('claim rejects a live bundle with a forged (non-canonical) material count', () => {
+    const world = createTestWorld({ seed: 7, floor: 1 });
+    spawnPlayer(world, 0, 0);
+    const goldBefore = world.playerGold;
+    expect(unlockAchievement(world, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(true);
+    const bundle = world.lootBoxRewardBundles.get(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)!;
+    const [material] = FLOOR1_COMMON_CRAFTING_MATERIALS;
+    world.lootBoxRewardBundles.set(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID, {
+      ...bundle,
+      materials: Array.from({ length: 1000 }, () => material!),
+    });
+    const result = claimAchievementReward(world, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID);
+    expect(result).toEqual({ ok: false, reason: 'grantFailed' });
+    expect(isAchievementClaimed(world, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(false);
+    expect(world.lootBoxRewardBundles.has(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(true);
+    expect(world.playerGold).toBe(goldBefore);
   });
 });
 

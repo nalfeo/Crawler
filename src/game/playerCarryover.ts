@@ -494,6 +494,37 @@ function validateLootBoxRewardBundles(snapshot: PlayerCarryoverSnapshot): void {
   }
 }
 
+/**
+ * Reverse guard (fail-closed): every unlocked-but-unclaimed `equipment`
+ * achievement in the snapshot MUST have a corresponding persisted reward
+ * bundle. Only needs the achievements/bundle-id fields of the snapshot —
+ * NOT the generated-equipment registry — so, like
+ * {@link validateLootBoxRewardBundles}, it must run unconditionally,
+ * regardless of whether a registry snapshot is present. Running it only
+ * behind the registry-presence gate would let a snapshot with the registry
+ * AND the bundle both stripped restore "successfully" while leaving the
+ * achievement permanently unclaimable.
+ */
+function validateEquipmentBundlePresence(snapshot: PlayerCarryoverSnapshot): void {
+  const unlockedIds = new Set(snapshot.achievements.unlockedIds);
+  const claimedIds = new Set(snapshot.achievements.claimedIds);
+  const bundleIds = new Set(
+    snapshot.generatedEquipmentRewardBundles.map((bundle) => bundle.achievementId),
+  );
+  for (const achievement of ALL_ACHIEVEMENTS) {
+    if (
+      achievement.reward.type === 'equipment' &&
+      unlockedIds.has(achievement.id) &&
+      !claimedIds.has(achievement.id) &&
+      !bundleIds.has(achievement.id)
+    ) {
+      throw new PlayerCarryoverSnapshotError(
+        `Missing generated equipment reward bundle for unlocked, unclaimed achievement: ${achievement.id}`,
+      );
+    }
+  }
+}
+
 function validateGrantOwnership(
   abilityState: AbilityStateSnapshot | undefined,
   equippedInstances: readonly GeneratedEquipmentInstanceV1[],
@@ -659,6 +690,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   // validated unconditionally here, before the registry-presence gate below
   // (which only concerns equipment-registry-backed references).
   validateLootBoxRewardBundles(snapshot);
+  // Equipment-side mirror of the lootBox reverse guard above: must also run
+  // unconditionally, before the registry-presence gate, so a snapshot with
+  // BOTH the registry and the bundle stripped can't slip past it (see
+  // validateEquipmentBundlePresence doc comment).
+  validateEquipmentBundlePresence(snapshot);
   const hasGeneratedReferences =
     snapshot.generatedInventoryInstanceKeys.length > 0 ||
     snapshot.generatedEquippedInstanceKeys.length > 0 ||
@@ -810,24 +846,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       }
     });
   }
-
-  // Reverse guard (fail-closed): every unlocked-but-unclaimed equipment
-  // achievement in the snapshot MUST have a corresponding bundle — mirrors
-  // the lootBox reverse guard above. Without this, a snapshot with a bundle
-  // stripped out (accidentally or via tampering) would restore
-  // "successfully" but leave that achievement permanently unclaimable.
-  for (const achievement of ALL_ACHIEVEMENTS) {
-    if (
-      achievement.reward.type === 'equipment' &&
-      unlockedIds.has(achievement.id) &&
-      !claimedIds.has(achievement.id) &&
-      !bundleIds.has(achievement.id)
-    ) {
-      throw new PlayerCarryoverSnapshotError(
-        `Missing generated equipment reward bundle for unlocked, unclaimed achievement: ${achievement.id}`,
-      );
-    }
-  }
+  // Note: the reverse "every unlocked-unclaimed equipment achievement has a
+  // bundle" check now runs unconditionally near the top of this function via
+  // validateEquipmentBundlePresence(snapshot) — see its doc comment for why
+  // it can't live down here (this whole branch is skipped when the registry
+  // snapshot is absent).
 
   const occupiedSlots = new Map<EquipmentSlotId, string>();
   for (const itemId of snapshot.equippedItemIds) {

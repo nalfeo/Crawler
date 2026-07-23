@@ -1,0 +1,75 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "achievement-reward-content",
+  "task_title": "Achievement reward-content slice (Floor 1 gold+materials lootBoxes, Floor 2 tiered equipment via resolved-bundle APIs)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial round-1 review REJECTED the initial plan's RNG entropy source for Floor 1 lootBox materials: the draft generated materials inline at claim-time from world.seed, which (a) violates the 'generation only at resolution' hard gate reused from PR #1810's architecture and (b) is not deterministically replayable independent of claim ordering. Fixed by adding a dedicated floor1-lootbox-reward-resolver.ts that resolves the bundle (gold + materials) once at unlock-time using runKey-derived SeededRandom isolation (mirroring the Floor 2 equipment resolver pattern), storing it in world.lootBoxRewardBundles; claim only reads and grants the already-resolved bundle. Alternatives considered: (1) inline claim-time generation (rejected — violates resolve/claim separation), (2) reusing the Floor 2 equipment resolver's RNG substream directly for lootBox materials (rejected — would collide key-namespaces across floors, breaking floor isolation)."
+    },
+    "code_review": {
+      "completed": true,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol", "claude-opus-4.7", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Three parallel review agents over the initial implementation. (1) Blocking: gold was mutated onto the player before materials were granted in the lootBox claim path, so a mid-claim failure (e.g. full bag) left gold granted but materials not — violating atomic/exact-once claim; fixed by validating capacity for all grants before mutating any state, then committing gold+materials together. (2) Major: GeneratedEquipmentRewardBundle's tier field was declared optional (tier?), contradicting the fail-closed tier-bounds validators which assume tier is always present; made tier required. (3) Security review (out-of-scope by design, documented in ADR 0070): 2 pre-existing save-tampering concerns (forged claimedIds/unlockedIds arrays bypassing achievement gating entirely) predate this slice and are not caused by it; accepted as out-of-scope and documented rather than fixed here."
+        },
+        {
+          "round": 2,
+          "models": [
+            "gpt-5.6-sol (round2-code-review)",
+            "claude-opus-4.7 (round2-confirm-code-review, round2-multimodel-opus)"
+          ],
+          "concerns_count": 8,
+          "resolved_count": 8,
+          "clean": false,
+          "notes": "Round 2a (round2-code-review, post round-1 fixes): 4 findings, all fixed in 5930cdf6f — (a) canonical gold/material-count equality was checked at claim-time (achievementRewards.ts) but not at carryover-restore time, allowing a tampered snapshot with wrong counts to be re-persisted; added matching validators in playerCarryover.ts. (b) the equipment reverse bundle-presence guard (every unlocked+unclaimed achievement must own a bundle) existed for lootBox bundles but not equipment bundles; added the mirror guard. (c) achievements-ui-lab did not exercise the new reward types; rewritten to cover lootBox+equipment presentation. (d) normalizePlayerCarryoverSnapshot used an unconditional '?? []' default for 4 generated-state array fields, silently coercing a tampered/missing snapshot into an empty-but-valid one instead of failing closed; fixed to only default when the field is genuinely absent from a well-formed legacy snapshot, and bumped GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION v1->v2 (2 legacy-compat findings accepted as documented risk in ADR 0070 rather than building backward-compat migration, which would itself violate the 'generation only at resolution' hard gate). Round 2b (round2-confirm-code-review + round2-multimodel-opus, reviewing the committed round-2a fixes independently): both reviewers converged on the SAME Major finding — the equipment reverse bundle-presence guard added in round 2a was unreachable when validateGeneratedCarryover took its early-return path (registry snapshot absent AND no generated references present), a fail-open gap for a snapshot tampered to strip both the bundle array and the registry simultaneously; fixed by extracting validateEquipmentBundlePresence(snapshot) into a standalone, registry-independent function and calling it unconditionally before the early-return gate (mirroring how the lootBox-side guard already ran unconditionally). Plus 2 Minor findings from round2-confirm-code-review: missing test coverage for (i) a forged live world.lootBoxRewardBundles claim-time rejection (equipment already had this coverage, lootBox didn't) and (ii) a mislabeled 'RNG isolation' unit test that only proved same-resolver idempotency, not actual cross-resolver (Floor1 lootBox vs Floor2 equipment) isolation. Both fixed with new regression tests; independently re-verified by round2-multimodel-gemini (CLEAN) and round2-multimodel-opus (all 7 prior fixes confirmed correct via code tracing, plus the converged Major finding)."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "completed": true,
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.7",
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-opus-4.7 (multimodel-review-opus)",
+            "gemini-3.1-pro-preview (multimodel-review-gemini)"
+          ],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "multimodel-review-opus initially reported CLEAN but was later determined incorrect on re-check (missed the gold-before-materials atomicity issue already caught by code_review round 1). multimodel-review-gemini found 3 findings, adjudicated as valid and fixed alongside code_review round 1's findings: gold/material canonical-value checks, bidirectional bundle-presence reverse-checks, and the tier-required type fix (overlapping with code_review round 1 concerns; deduplicated under a single fix set in 5930cdf6f)."
+        },
+        {
+          "round": 2,
+          "models": [
+            "gemini-3.1-pro-preview (round2-multimodel-gemini)",
+            "claude-opus-4.7 (round2-multimodel-opus)"
+          ],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "round2-multimodel-gemini: CLEAN — independently re-verified all round-2a fixes and every hard gate (Floor 1 gold+common-materials-only, Floor 2 tiered rarity bounds, monotonic build-affinity bias, floor isolation, deterministic replay, persisted bundles, no-partial-claim) against the full branch diff. round2-multimodel-opus: found the equipment reverse-guard early-return-bypass Major finding, converging exactly with code_review round 2b's finding (reported once there to avoid duplication; cross-referenced here). Adjudication: single confirmed defect, fixed via validateEquipmentBundlePresence extraction; both reviewers' remaining findings set is empty after the fix, confirmed by full verify:fast (663 tests) and targeted integration (39/39) + unit (23/23) re-runs."
+        }
+      ]
+    }
+  }
+}
