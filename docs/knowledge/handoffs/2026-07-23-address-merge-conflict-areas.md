@@ -91,7 +91,8 @@ markers before they ship. Excludes binary and generated asset types
 | `.github/workflows/docs-update.yml` | Push trigger for `docs/knowledge/handoffs/2*.md` |
 | `.github/workflows/ci.yml` | `Conflict-marker guard` + `Asset sort check` steps |
 | `package.json` | `check:sort-assets`, `sprites:sort-assets` scripts |
-| `scripts/sprites/check-sort-assets.ts` | New CI validation script |
+| `scripts/sprites/check-sort-assets.ts` | New CI validation script (Prettier-formatted) |
 | `scripts/sprites/sort-assets.ts` | New fix-in-place script |
+| `tests/unit/sprites/check-sort-assets.test.ts` | 17 regression tests for validators (Prettier-formatted) |
 | `public/assets/generated/manifest.json` | One-time sort of all entry keys |
 | `src/shared/data/sprite-catalog.json` | One-time sort of all entries |
