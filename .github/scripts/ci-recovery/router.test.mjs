@@ -15,6 +15,7 @@ import {
   computeBackoffDelayMs,
   computeDispatchBudget,
   countOutstandingRecoveryRuns,
+  countOutstandingWorkflowRuns,
   eventPrNumbers,
   GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
   GLOBAL_TRAIN_DISPATCH_CAP,
@@ -24,12 +25,20 @@ import {
   isRepairWindowSweepEvent,
   isRetryableError,
   listRecentOutstandingRunIds,
+  MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+  MAX_DISPATCH_BUDGET_TRAIN_IDLE,
   partitionDispatchable,
   REAPER_LANE_CAP,
   recoveryStateFromComments,
   recoveryBacklogEntries,
   requestWithBackoff,
   recoveryTriggerForPr,
+  RUNNER_CEILING,
+  SWEEP_RUNNER_WEIGHT,
+  SWEEP_WORKFLOW_FILES,
+  VALIDATION_RESERVED_TRAIN_BUSY,
+  VALIDATION_RESERVED_TRAIN_IDLE,
+  VALIDATION_RUNNER_WEIGHT,
   isManagedCommentEvent,
   selectReaperBatch,
   waitForDispatchedRunsVisible,
@@ -1026,47 +1035,72 @@ test('requestWithBackoff stops immediately for non-retryable errors', async () =
   assert.equal(attempts, 1);
 });
 
-test('computeDispatchBudget caps outstanding recovery runs to GLOBAL_IDLE_TRAIN_DISPATCH_CAP when there is no active merge-train backlog', () => {
-  assert.equal(GLOBAL_IDLE_TRAIN_DISPATCH_CAP, 5);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 5);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 1 }), 4);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 5 }), 0);
+test('computeDispatchBudget returns MAX_DISPATCH_BUDGET_TRAIN_IDLE when the train queue is empty, no sweeps, no validation', () => {
+  assert.equal(GLOBAL_IDLE_TRAIN_DISPATCH_CAP, MAX_DISPATCH_BUDGET_TRAIN_IDLE);
+  assert.equal(MAX_DISPATCH_BUDGET_TRAIN_IDLE, 8);
+  // Baseline: no external pressure at all
+  assert.equal(
+    computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }),
+    MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+    'full idle budget when nothing is running',
+  );
+  // Contracting as outstanding recovery grows:
+  assert.equal(
+    computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 4 }),
+    MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+    'still at max because headroom (20-3-0-4=13) exceeds max',
+  );
+  // Once outstanding is large enough, headroom clamps the budget below max:
+  const largeOutstanding =
+    RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_IDLE - MAX_DISPATCH_BUDGET_TRAIN_IDLE + 1;
+  assert.equal(
+    computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: largeOutstanding }),
+    MAX_DISPATCH_BUDGET_TRAIN_IDLE - 1,
+  );
+  // Budget never goes negative when outstanding is very large:
   assert.equal(
     computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 25 }),
     0,
-    'budget never goes negative when outstanding exceeds the idle cap',
+    'budget never goes negative when outstanding exceeds ceiling',
   );
 });
 
-test('computeDispatchBudget still applies the idle cap -- never Infinity -- when the merge-train feature itself is disabled or paused', () => {
-  // Regression for the parent-session correction: protecting runner
-  // capacity must not lapse specifically when the train is disabled --
-  // that is exactly the maintenance/rollback window operators need
-  // backpressure to keep working. computeDispatchBudget no longer takes a
-  // trainEnabled flag at all: callers determine trainQueueNonEmpty from
-  // live PR labels (see runFromEnv), which is naturally false when the
-  // train feature is off, so this collapses to the same idle-cap path
-  // above rather than an unbounded fallback.
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 }), 5);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 5 }), 0);
+test('computeDispatchBudget never returns Infinity -- idle cap is always finite, including when the merge-train feature is disabled', () => {
+  // Regression: computeDispatchBudget must never open the budget to Infinity
+  // (the old pre-backpressure behaviour). Train disabled/paused collapses to
+  // trainQueueNonEmpty=false; this proves the same finite budget holds.
+  const budget = computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 });
+  assert.ok(Number.isFinite(budget), `budget must be finite but got ${budget}`);
+  assert.equal(budget, MAX_DISPATCH_BUDGET_TRAIN_IDLE);
+  assert.equal(
+    computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: RUNNER_CEILING }),
+    0,
+  );
 });
 
-test('computeDispatchBudget caps outstanding recovery runs to GLOBAL_TRAIN_DISPATCH_CAP whenever the merge-train backlog is non-empty, including with the train feature disabled', () => {
-  assert.equal(GLOBAL_TRAIN_DISPATCH_CAP, 5);
+test('computeDispatchBudget returns MAX_DISPATCH_BUDGET_TRAIN_BUSY when train queue is non-empty, no sweeps, no validation', () => {
+  assert.equal(GLOBAL_TRAIN_DISPATCH_CAP, MAX_DISPATCH_BUDGET_TRAIN_BUSY);
+  assert.equal(MAX_DISPATCH_BUDGET_TRAIN_BUSY, 5);
+  // Baseline: train is busy but no other pressure
   assert.equal(
     computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 0 }),
-    5,
-    'a fully idle recovery workflow may dispatch up to the train cap',
+    MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+    'full busy budget when headroom (20-9-0-0=11) exceeds max (5)',
   );
   assert.equal(
-    computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 1 }),
+    computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 6 }),
+    MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+    'still at max because headroom (20-9-0-6=5) exactly equals max',
+  );
+  assert.equal(
+    computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 7 }),
     4,
-    'each outstanding run consumes one unit of the global budget',
+    'budget contracts once headroom (20-9-0-7=4) falls below max',
   );
   assert.equal(
     computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 25 }),
     0,
-    'budget never goes negative when outstanding exceeds the cap',
+    'budget never goes negative when outstanding exceeds cap',
   );
 });
 
@@ -1147,6 +1181,273 @@ test('countOutstandingRecoveryRuns counts pending runs by default', async () => 
     requestFn,
   );
   assert.equal(total, 1, 'default OUTSTANDING_RUN_STATUSES must include pending');
+});
+
+test('countOutstandingWorkflowRuns queries a custom workflow file with a subset of statuses', async () => {
+  // Verifies the generic function works for any workflow file and accepts
+  // an arbitrary status subset (e.g. in_progress-only for sweep pressure).
+  const queriedPaths = [];
+  const requestFn = async (_token, path) => {
+    queriedPaths.push(path);
+    const url = new URL(path, 'http://example.test');
+    const status = url.searchParams.get('status');
+    return { data: { total_count: status === 'in_progress' ? 7 : 0, workflow_runs: [] } };
+  };
+
+  const total = await countOutstandingWorkflowRuns(
+    'token',
+    'nalfeo',
+    'Crawler',
+    'ai-sweep.yml',
+    ['in_progress'],
+    requestFn,
+  );
+
+  assert.equal(total, 7, 'must return the total_count for the requested status');
+  assert.equal(queriedPaths.length, 1, 'must issue exactly one request for one status');
+  assert.ok(
+    queriedPaths[0].includes('ai-sweep.yml'),
+    'request path must include the requested workflow file',
+  );
+  assert.ok(
+    queriedPaths[0].includes('status=in_progress'),
+    'request path must include the requested status',
+  );
+});
+
+// ── Load-aware budget tests ───────────────────────────────────────────────────
+
+test('SWEEP_WORKFLOW_FILES counts every runner-saturating sweep workflow', () => {
+  // Regression guard for the weapon-sweep pressure gap: weapon-sweep.yml runs on
+  // the shared standard-hosted pool and fans its weapon×shard matrix to ~24
+  // concurrent jobs, so it must contribute to sweep pressure exactly like the AI
+  // sweeps. Omitting it lets an in-progress weapon sweep report zero sweep
+  // pressure and re-open the dispatch headroom this budget exists to reserve.
+  assert.ok(
+    SWEEP_WORKFLOW_FILES.includes('ai-sweep.yml'),
+    'ai-sweep.yml must be a measured sweep-pressure source',
+  );
+  assert.ok(
+    SWEEP_WORKFLOW_FILES.includes('ai-sweep-recover.yml'),
+    'ai-sweep-recover.yml must be a measured sweep-pressure source',
+  );
+  assert.ok(
+    SWEEP_WORKFLOW_FILES.includes('weapon-sweep.yml'),
+    'weapon-sweep.yml must be a measured sweep-pressure source',
+  );
+});
+
+test('computeDispatchBudget: idle scenario -- no sweeps, no validation, queue empty -- returns full MAX_IDLE budget', () => {
+  // When runners are fully idle (no sweeps, no validation, no outstanding
+  // recovery), the budget should reach the idle max to drain the backlog fast.
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount: 0,
+      activeSweepJobs: 0,
+      activeValidationJobs: 0,
+    }),
+    MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+    'idle scenario: full budget available',
+  );
+  // Still at max when outstanding is well below the headroom threshold:
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount: 3,
+      activeSweepJobs: 0,
+      activeValidationJobs: 0,
+    }),
+    MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+    'still at max when headroom (20-3-0-3=14) exceeds MAX_IDLE (8)',
+  );
+});
+
+test('computeDispatchBudget: train-busy scenario -- no sweeps, no validation -- returns MAX_BUSY budget', () => {
+  // With an active train queue and no sweep or validation pressure, budget
+  // reaches MAX_BUSY (5) -- a dramatic improvement over the old static cap of 1.
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 0,
+      activeSweepJobs: 0,
+      activeValidationJobs: 0,
+    }),
+    MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+  );
+  // Budget contracts as outstanding recovery grows:
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 6,
+      activeSweepJobs: 0,
+      activeValidationJobs: 0,
+    }),
+    MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+    'still at max because headroom (20-9-0-6=5) equals MAX_BUSY',
+  );
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 7,
+      activeSweepJobs: 0,
+      activeValidationJobs: 0,
+    }),
+    4,
+    'budget contracts below max once headroom (20-9-0-7=4) < MAX_BUSY',
+  );
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_BUSY,
+    }),
+    0,
+    'budget reaches zero when outstanding fills all non-reserved slots',
+  );
+});
+
+test('computeDispatchBudget: sweep-saturated -- active sweep jobs contract the budget', () => {
+  // Simulates an in-progress AI Sweep consuming many runner jobs. Each
+  // active sweep run is multiplied by SWEEP_RUNNER_WEIGHT in runFromEnv
+  // before being passed here as activeSweepJobs.
+  const oneSweepRunEstimate = SWEEP_RUNNER_WEIGHT; // = 10
+
+  // One active sweep run, train idle:
+  // headroom = 20 - 3 - 10 - 0 = 7, budget = min(8, 7) = 7
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount: 0,
+      activeSweepJobs: oneSweepRunEstimate,
+    }),
+    RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_IDLE - oneSweepRunEstimate,
+    'sweep jobs reduce the idle budget proportionally',
+  );
+
+  // One active sweep run, train busy:
+  // headroom = 20 - 9 - 10 - 0 = 1, budget = min(5, 1) = 1
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 0,
+      activeSweepJobs: oneSweepRunEstimate,
+    }),
+    1,
+    'one active sweep run leaves only 1 slot of budget when train is busy',
+  );
+
+  // Sweep saturating the runner pool (beyond ceiling minus validation):
+  // headroom = 20 - 9 - 15 - 0 = -4 → budget = 0
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 0,
+      activeSweepJobs: 15,
+    }),
+    0,
+    'budget contracts to zero when sweep jobs saturate the runner pool',
+  );
+
+  // Budget never goes negative:
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 0,
+      activeSweepJobs: RUNNER_CEILING * 2,
+    }),
+    0,
+    'budget never goes negative regardless of sweep job count',
+  );
+});
+
+test('computeDispatchBudget: validation-in-flight -- active validation jobs dynamically floor the reservation', () => {
+  // When measured validation activity exceeds VALIDATION_RESERVED_TRAIN_BUSY,
+  // the reservation is raised to match (dynamic floor). This protects
+  // against unexpected validation concurrency spikes.
+
+  // Below static floor: reservation unchanged.
+  // activeValidationJobs=5 < VALIDATION_RESERVED_TRAIN_BUSY=9 → uses 9
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 0,
+      activeSweepJobs: 0,
+      activeValidationJobs: 5,
+    }),
+    MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+    'measured validation below static floor: reservation unchanged (9), budget at max',
+  );
+
+  // Exceeds static floor: reservation raised.
+  // activeValidationJobs=12 > VALIDATION_RESERVED_TRAIN_BUSY=9 → uses 12
+  // headroom = 20 - 12 - 0 - 0 = 8, budget = min(5, 8) = 5
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 0,
+      activeSweepJobs: 0,
+      activeValidationJobs: 12,
+    }),
+    MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+    'measured validation above static floor: reservation raised to 12, but budget still capped at MAX_BUSY',
+  );
+
+  // Extreme spike: validation using 18 jobs, train busy, 2 outstanding:
+  // headroom = 20 - 18 - 0 - 2 = 0, budget = 0
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 2,
+      activeSweepJobs: 0,
+      activeValidationJobs: 18,
+    }),
+    0,
+    'validation spike + existing outstanding exhausts budget entirely',
+  );
+});
+
+test('computeDispatchBudget: combined load -- sweep + validation + outstanding all contract the budget', () => {
+  // All three pressure signals active simultaneously (realistic production peak).
+  // Train busy: reserved = max(9, 5*VALIDATION_RUNNER_WEIGHT=45) = 45
+  // Wait -- VALIDATION_RUNNER_WEIGHT is a runFromEnv multiplier, not applied here.
+  // In the test, activeValidationJobs is already the estimated job count.
+  // active validation=8, active sweep=6, outstanding=2, train busy:
+  // headroom = 20 - max(9,8) - 6 - 2 = 20 - 9 - 6 - 2 = 3, budget = min(5,3) = 3
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 2,
+      activeSweepJobs: 6,
+      activeValidationJobs: 8,
+    }),
+    3,
+    'combined pressure: headroom=20-9-6-2=3, budget=min(5,3)=3',
+  );
+
+  // Fully saturated: sweep + validation + outstanding > ceiling minus floor
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 3,
+      activeSweepJobs: 5,
+      activeValidationJobs: 9,
+    }),
+    3,
+    'headroom = 20-max(9,9)-5-3=3, budget = min(5,3)=3',
+  );
+
+  // Train idle, some sweep pressure, no validation above floor:
+  // headroom = 20 - max(3,0) - 8 - 1 = 8, budget = min(8,8) = 8
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount: 1,
+      activeSweepJobs: 8,
+      activeValidationJobs: 0,
+    }),
+    MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+    'train idle + moderate sweep still allows full idle budget when headroom=8',
+  );
 });
 
 test('listRecentOutstandingRunIds returns IDs of outstanding runs from first page only', async () => {
@@ -1302,25 +1603,29 @@ test('waitForOutstandingCount holds the router slot until timeout, then rejects 
 });
 
 test('serialized router invocations do not both under-count the same in-flight dispatch (TOCTOU close)', async () => {
-  // Models the exact race a plan reviewer flagged: invocation A dispatches
-  // under the train cap, then -- per runFromEnv -- must observe its own
-  // dispatch via waitForDispatchedRunsVisible before this invocation ends and
-  // the router's `queue: max` concurrency group releases the slot to
-  // invocation B. Without that wait, B could read a stale outstandingCount
-  // of 0 and dispatch a second run, breaching GLOBAL_TRAIN_DISPATCH_CAP.
-  const preexistingIds = Array.from({ length: GLOBAL_TRAIN_DISPATCH_CAP - 1 }, (_, i) => 900 + i);
-  const preDispatchIds = new Set(preexistingIds); // fills all but one slot before A dispatches
-  let apiVisibleIds = new Set(preexistingIds);
+  // Models the TOCTOU race: invocation A dispatches when headroom is exactly 1,
+  // then must observe its own dispatch via waitForDispatchedRunsVisible before
+  // the router's `queue: max` concurrency group releases the slot to invocation B.
+  // Without that wait, B could read a stale outstandingCount (one less than the
+  // true count) and dispatch again, breaching the runner headroom ceiling.
+  // With the load-aware formula, this scenario is: outstanding=10 (one slot left
+  // of the train-busy headroom RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_BUSY = 11).
+  const startingOutstandingCount = RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_BUSY - 1; // = 10
+  const preDispatchIds = new Set(
+    Array.from({ length: startingOutstandingCount }, (_, i) => 1000 + i),
+  );
+  let apiVisibleIds = new Set(preDispatchIds);
   const sleepFn = async () => {
-    apiVisibleIds = new Set([...preexistingIds, 1001]); // A's dispatched run becomes visible during A's poll
+    // The newly dispatched run (1010) becomes visible during A's poll.
+    apiVisibleIds = new Set([...preDispatchIds, 1010]);
   };
 
-  // Invocation A: budget allows exactly one dispatch, taking the cap to its ceiling.
+  // Invocation A: exactly one slot of headroom left → budget = 1.
   const budgetA = computeDispatchBudget({
     trainQueueNonEmpty: true,
-    outstandingCount: preDispatchIds.size,
+    outstandingCount: startingOutstandingCount,
   });
-  assert.equal(budgetA, 1, 'A may dispatch exactly one run to reach the cap');
+  assert.equal(budgetA, 1, 'A should have exactly one slot of headroom');
   const { dispatchable: dispatchableA } = partitionDispatchable([101], budgetA);
   assert.deepEqual(dispatchableA, [101]);
   await waitForDispatchedRunsVisible('token', 'nalfeo', 'Crawler', preDispatchIds, 1, {
@@ -1332,21 +1637,29 @@ test('serialized router invocations do not both under-count the same in-flight d
   });
 
   // Invocation B only starts once A's serialized slot is released, so it
-  // now reads the up-to-date, post-dispatch count.
+  // now reads the up-to-date, post-dispatch count (10 pre-existing + 1 new = 11).
   const outstandingForB = apiVisibleIds.size;
+  assert.equal(outstandingForB, RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_BUSY);
   const budgetB = computeDispatchBudget({
     trainQueueNonEmpty: true,
     outstandingCount: outstandingForB,
   });
   const { dispatchable: dispatchableB } = partitionDispatchable([102], budgetB);
-  assert.deepEqual(dispatchableB, [], 'B must defer -- the cap is already exhausted by A');
+  assert.deepEqual(
+    dispatchableB,
+    [],
+    'B must defer -- runner headroom is fully exhausted after A dispatched',
+  );
 });
 
-test('25 concurrent router-trigger events leave at most GLOBAL_TRAIN_DISPATCH_CAP CI Recovery runs outstanding while the train queue is non-empty', () => {
+test('25 concurrent router-trigger events are bounded by runner headroom while the train queue is non-empty', () => {
   // Simulates the 2026-07-21 incident shape: 25 independently-triggered PR
-  // events all resolve to a router invocation wanting to dispatch its own
-  // PR while the merge train queue is non-empty. Each invocation must
-  // independently respect the same global cap.
+  // events all resolve to a router invocation wanting to dispatch its own PR
+  // while the merge train queue is non-empty. Because the router serialises
+  // invocations, each event reads the updated outstandingCount; with the
+  // load-aware formula this limits total dispatches to available headroom
+  // (RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_BUSY) rather than a static 1.
+  const headroomCap = RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_BUSY; // = 11
   const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
   let outstandingCount = 0;
   let totalDispatched = 0;
@@ -1359,38 +1672,34 @@ test('25 concurrent router-trigger events leave at most GLOBAL_TRAIN_DISPATCH_CA
     const { dispatchable } = partitionDispatchable([prNumber], budget);
     totalDispatched += dispatchable.length;
     outstandingCount += dispatchable.length;
-    // Bound must hold after every single event in the burst, not just at
-    // the end -- this is the actual thundering-herd invariant.
+    // Headroom invariant: outstanding must never exceed the ceiling minus
+    // the validation reservation.
     assert.ok(
-      outstandingCount <= GLOBAL_TRAIN_DISPATCH_CAP,
-      `outstanding=${outstandingCount} exceeded cap=${GLOBAL_TRAIN_DISPATCH_CAP} after event for PR #${prNumber}`,
+      outstandingCount <= headroomCap,
+      `outstanding=${outstandingCount} exceeded headroom cap=${headroomCap} after event for PR #${prNumber}`,
     );
   }
 
   assert.equal(
     totalDispatched,
-    5,
-    'exactly GLOBAL_TRAIN_DISPATCH_CAP dispatches should escape the burst',
+    headroomCap,
+    `exactly ${headroomCap} dispatches should escape the burst (one per free headroom slot)`,
   );
 
-  // Once the one outstanding run completes, capacity frees up and the next
-  // event (or the 10-minute scheduled sweep re-evaluating the same PR list)
-  // can dispatch again -- eventual processing is preserved.
+  // Once all outstanding runs complete, headroom is fully restored and the
+  // next sweep round can dispatch again.
   outstandingCount = 0;
   const budgetAfterCompletion = computeDispatchBudget({
     trainQueueNonEmpty: true,
     outstandingCount,
   });
-  assert.equal(budgetAfterCompletion, 5);
+  assert.equal(budgetAfterCompletion, MAX_DISPATCH_BUDGET_TRAIN_BUSY);
 });
 
-test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPATCH_CAP runs outstanding while the train feature is on but its queue is empty', () => {
-  // Same burst shape as the non-empty-queue case, but with no Merge Train
-  // Validation run to protect: budget relaxes from GLOBAL_TRAIN_DISPATCH_CAP
-  // to GLOBAL_IDLE_TRAIN_DISPATCH_CAP (both 5 as of the 2026-07-22 emergency
-  // raise) instead of going fully unbounded, per
-  // the measured capacity evidence (public repo, 20-job Actions concurrency
-  // limit; sweep-style jobs can still be running even with an empty queue).
+test('25 concurrent router-trigger events are bounded by runner headroom when the train queue is empty', () => {
+  // Same burst shape but with an empty train queue: validation reservation is
+  // smaller so more headroom is available, enabling faster backlog drain.
+  const headroomCap = RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_IDLE; // = 17
   const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
   let outstandingCount = 0;
   let totalDispatched = 0;
@@ -1404,37 +1713,20 @@ test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPAT
     totalDispatched += dispatchable.length;
     outstandingCount += dispatchable.length;
     assert.ok(
-      outstandingCount <= GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
-      `outstanding=${outstandingCount} exceeded idle cap=${GLOBAL_IDLE_TRAIN_DISPATCH_CAP} after event for PR #${prNumber}`,
+      outstandingCount <= headroomCap,
+      `outstanding=${outstandingCount} exceeded headroom cap=${headroomCap} after event for PR #${prNumber}`,
     );
   }
 
-  assert.equal(
-    totalDispatched,
-    5,
-    'exactly GLOBAL_IDLE_TRAIN_DISPATCH_CAP dispatches should escape the burst',
-  );
+  assert.equal(totalDispatched, headroomCap);
 });
 
-test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPATCH_CAP runs outstanding when the merge-train feature is disabled', () => {
-  // Regression for the parent-session correction: the 2026-07-21 herd could
-  // just as easily recur while the train feature is paused/disabled for
-  // maintenance -- exactly the incident-response window an operator sets
-  // MERGE_TRAIN_ENABLED=false or leans on ci-recovery-opt-out. Backpressure
-  // must not lapse there. computeDispatchBudget takes no trainEnabled input
-  // at all: this burst is driven purely by trainQueueNonEmpty=false (the
-  // natural state once the train feature is off -- no PR is being actively
-  // queued through it) and proves the same idle cap of 2 holds regardless.
-  //
-  // This sequential loop is now also an accurate model of real router
-  // behavior, not just a JS-level budget check: the workflow's concurrency
-  // group (see ci-recovery-router.yml and the 'router concurrency serializes
-  // every event into one unconditional global group' test) is a single
-  // static group applied to every event in every mode, so all 25 events in
-  // this burst would in practice run one invocation at a time, each reading
-  // the previous invocation's committed outstandingCount -- there is no
-  // window in which two of these 25 invocations observe the same stale
-  // count concurrently. The idle cap is 5 as of the 2026-07-22 emergency raise.
+test('25 concurrent router-trigger events are bounded by runner headroom when the merge-train feature is disabled', () => {
+  // Regression: backpressure must hold during train feature maintenance/rollback
+  // windows. computeDispatchBudget takes no trainEnabled flag; train disabled
+  // naturally sets trainQueueNonEmpty=false (no label activity) so the idle-
+  // headroom formula applies.
+  const headroomCap = RUNNER_CEILING - VALIDATION_RESERVED_TRAIN_IDLE; // = 17
   const prNumbers = Array.from({ length: 25 }, (_, index) => index + 1);
   let outstandingCount = 0;
   let totalDispatched = 0;
@@ -1448,15 +1740,15 @@ test('25 concurrent router-trigger events leave at most GLOBAL_IDLE_TRAIN_DISPAT
     totalDispatched += dispatchable.length;
     outstandingCount += dispatchable.length;
     assert.ok(
-      outstandingCount <= GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
-      `outstanding=${outstandingCount} exceeded idle cap=${GLOBAL_IDLE_TRAIN_DISPATCH_CAP} after event for PR #${prNumber} with the train feature disabled`,
+      outstandingCount <= headroomCap,
+      `outstanding=${outstandingCount} exceeded headroom cap=${headroomCap} after event for PR #${prNumber} (train disabled)`,
     );
   }
 
   assert.equal(
     totalDispatched,
-    5,
-    'exactly GLOBAL_IDLE_TRAIN_DISPATCH_CAP dispatches should escape the burst even with the train feature disabled',
+    headroomCap,
+    'exactly headroomCap dispatches should escape the burst even with the train feature disabled',
   );
 });
 
