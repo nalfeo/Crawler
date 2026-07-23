@@ -3,11 +3,7 @@ import { resolve } from 'node:path';
 import type { Brief } from './brief-schema.js';
 import { variantCount } from './brief-schema.js';
 import { resizeSpriteStrategy } from './size-variants.js';
-import {
-  CRAWLER_DESIGN_LANGUAGE,
-  designLanguageAddendaBlock,
-  floorContextBlock,
-} from './content-direction.js';
+import { CRAWLER_DESIGN_LANGUAGE, floorContextBlock } from './content-direction.js';
 import { resolveDesignLanguageAddenda } from './design-language-addenda.js';
 
 /**
@@ -83,6 +79,23 @@ export function extractPreamble(markdown: string): string {
 }
 
 /**
+ * Resolve floor/family design language addenda for a brief and return them
+ * as an array of prompt blocks (each prefixed with a blank line separator).
+ * Returns an empty array when no addenda apply (e.g. Floor 1 non-enemy sprites).
+ */
+function designLanguageAddendaBlocks(name: string, floor: number): string[] {
+  const addenda = resolveDesignLanguageAddenda(name, floor);
+  const blocks: string[] = [];
+  if (addenda.floor !== undefined) {
+    blocks.push('', `## World context\n${addenda.floor}`);
+  }
+  if (addenda.theme !== undefined) {
+    blocks.push('', `## Faction theme\n${addenda.theme}`);
+  }
+  return blocks;
+}
+
+/**
  * Build a prompt for a single-variant (non-sheet) generation.
  *
  * Phase 2 always uses sheet mode in the orchestrator, but the single-variant
@@ -92,12 +105,12 @@ export function extractPreamble(markdown: string): string {
  */
 export function buildPrompt(brief: Brief, styleGuide: string): string {
   const rules = typeRulesBlock(brief);
-  const addenda = designLanguageAddendaBlock(resolveDesignLanguageAddenda(brief.name, brief.floor));
+  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor);
   return [
     styleGuide,
     '',
     floorContextBlock(brief.floor),
-    ...(addenda ? ['', addenda] : []),
+    ...addenda,
     '',
     briefSubjectBlock(brief),
     '',
@@ -121,12 +134,12 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   const count = variants ?? variantCount(brief);
   const rules = typeRulesBlock(brief);
   const variationsBlock = thematicVariationsBlock(brief.variations);
-  const addenda = designLanguageAddendaBlock(resolveDesignLanguageAddenda(brief.name, brief.floor));
+  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor);
   return [
     styleGuide,
     '',
     floorContextBlock(brief.floor),
-    ...(addenda ? ['', addenda] : []),
+    ...addenda,
     '',
     briefSubjectBlock(brief),
     '',
@@ -270,18 +283,28 @@ function typeRulesBlock(brief: Brief): string | null {
   if (brief.type === 'enemy') {
     const { cellW, cellH } = cellDims(brief);
     const { loH, hiH } = sourceFootprint(brief);
-    const facing = brief.sensors.enemy?.facing ?? 'left';
+    const facing = brief.sensors.enemy?.facing ?? 'three-quarter';
     const facingLine =
       facing === 'front'
         ? '- Draw the mob facing straight forward toward the camera, not angled or in three-quarter view.'
-        : facing === 'left'
-          ? '- Draw the mob in profile facing left (body and head oriented toward the left edge of the frame). Keep the pose consistent across every variant on the sheet.'
-          : facing === 'right'
-            ? '- Draw the mob in profile facing right (body and head oriented toward the right edge of the frame). Keep the pose consistent across every variant on the sheet.'
-            : '- Keep the mob orientation consistent across every variant on the sheet.';
+        : facing === 'three-quarter'
+          ? '- Draw the mob generally toward the camera at a one-third-to-two-thirds turn. Never use a full side profile.'
+          : facing === 'left'
+            ? '- Draw the mob camera-facing at a one-third-to-two-thirds turn biased toward the left edge. Never use a full side profile. Keep the pose consistent across every variant on the sheet.'
+            : facing === 'right'
+              ? '- Draw the mob camera-facing at a one-third-to-two-thirds turn biased toward the right edge. Never use a full side profile. Keep the pose consistent across every variant on the sheet.'
+              : '- Keep the mob orientation consistent across every variant on the sheet.';
+    const bossLines =
+      brief.mobRole === 'boss'
+        ? [
+            '- **Boss scale:** make the boss substantially taller, wider, or larger in footprint than an ordinary mob. It must fill its large/tall/wide frame and read as visually dominant.',
+            '- Give the boss a distinctive threat silhouette and unmistakable visual hierarchy; do not render a normal enemy with extra accessories.',
+          ]
+        : [];
     return [
       '## Mob rules',
       facingLine,
+      ...bossLines,
       '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.',
       `- For upright/humanoid mobs, normalize the figure to read as roughly a full ${brief.size.height}px-tall in-game sprite (about ${loH}-${hiH} source pixels tall in a ${cellW}x${cellH} cell) while keeping natural proportions. Avoid elongated, extra-tall limb/torso stretch.`,
       '- Anchor and composition should read from the mob silhouette itself, centered around the body mass.',
@@ -303,7 +326,7 @@ function typeRulesBlock(brief: Brief): string | null {
     const breatheHi = Math.round((cellH - loH) / 2);
     return [
       '## Character rules',
-      '- Keep the character front-facing with readable facial features and clear eye line toward camera.',
+      '- Keep the character generally camera-facing at a one-third-to-two-thirds turn, with readable facial features and a clear eye line toward camera. Never use a full side profile.',
       `- **Height normalization:** default to a ${brief.size.height}px-tall final character read. In a ${cellW}×${cellH} source cell this is roughly ${loH}-${hiH} source pixels tall (top of head to sole of feet) with small top/bottom breathing room (about ${breatheLo}-${breatheHi} source pixels each). Keep proportions natural; do NOT stretch the body vertically to chase height, and do NOT center a tiny figure in a large empty box.`,
       '- **Facial detail:** face must have individually readable eyes (pupils, whites), a nose bridge, and a closed or slightly open mouth — each feature rendered with several source pixels per output pixel. No smeared blobs for a face.',
       '- **Hair readability:** preserve visible hair mass and hairline shape (braids/locs/twists/afro silhouette must be explicit). Do not collapse hair into a tiny cap, and do not blend hair into skin or background.',
@@ -324,6 +347,21 @@ function typeRulesBlock(brief: Brief): string | null {
       '## Item rules',
       '- Keep the item inanimate. Do not invent eyes, faces, mouths, limbs, expressions, mascot features, or creature anatomy unless the brief explicitly requests them.',
       '- Separate the object, fittings, fabric, and accents with distinct hues or value groups instead of a muddy single-family palette.',
+    ].join('\n');
+  }
+  if (brief.type === 'equipment') {
+    return [
+      '## Equipment rules',
+      '- Draw one isolated wearable or equippable object, centered like an inventory icon.',
+      '- Do not include a wearer, mannequin, hands, limbs, room, floor, or environmental scene.',
+      '- Keep the equipment inanimate and separate its materials with distinct hues or value groups.',
+    ].join('\n');
+  }
+  if (brief.type === 'prop') {
+    return [
+      '## Prop rules',
+      '- Draw one grounded world-space object with a readable base, top-down perspective, and an appropriate tile footprint.',
+      '- Do not present the prop as a floating inventory icon, item card, character, or multi-object scene.',
     ].join('\n');
   }
   return null;

@@ -15,6 +15,8 @@ import path from 'node:path';
 import {
   approveVariant,
   ApproveError,
+  unapproveVariant,
+  UnapproveError,
   MANIFEST_VERSION,
   type Manifest,
 } from '../../../scripts/sprites/approve.js';
@@ -86,6 +88,10 @@ function writeFakeRun(
     outOf: 7,
     passed: true,
     combinedPassed: true,
+    breakdown: [
+      { sensor: 'palette', ok: true },
+      { sensor: 'silhouette', ok: false, reason: 'too-small' },
+    ],
     derivedAnchor: derivedSet.has(index) ? { x: 4 + index, y: 12 } : null,
     derivedAnchors: {
       hold: derivedSet.has(index) ? { x: 4 + index, y: 12 } : null,
@@ -94,7 +100,12 @@ function writeFakeRun(
     judgeScorecard:
       judgeByIndex.has(index) === false
         ? null
-        : { passed: true, minScore: judgeByIndex.get(index)! },
+        : {
+            passed: true,
+            minScore: judgeByIndex.get(index)!,
+            designLanguage: { score: 4, rationale: 'Crawler-specific' },
+            briefMatch: { score: 5, rationale: 'Matches the brief' },
+          },
     judgeSkipReason: null,
   }));
 
@@ -187,6 +198,15 @@ describe('approveVariant', () => {
     expect(entry.anchor).toEqual({ x: 5, y: 12, source: 'derived' });
     expect(entry.sensorScore).toBe('7/7');
     expect(entry.judgeScore).toBe('4');
+    expect(entry.sensorBreakdown).toEqual([
+      { sensor: 'palette', ok: true },
+      { sensor: 'silhouette', ok: false, reason: 'too-small' },
+    ]);
+    expect(entry.judgeScorecard).toMatchObject({
+      minScore: 4,
+      designLanguage: { score: 4, rationale: 'Crawler-specific' },
+      briefMatch: { score: 5, rationale: 'Matches the brief' },
+    });
     expect(entry.approvedAt).toBe('2026-06-08T15:30:00.000Z');
     // sourceRun is repo-relative with forward slashes regardless of host OS.
     expect(entry.sourceRun).toBe(`generated/runs/${briefId}/2026-06-08T12-00-00-deadbeef`);
@@ -816,5 +836,332 @@ describe('approveVariant', () => {
       expect(entry.spriteName).toBe('angry-roomba-v2-var-0');
       expect(entry.assetPath).toBe('generated/angry-roomba-v2-var-0.png');
     });
+  });
+});
+
+describe('unapproveVariant', () => {
+  let repoRoot: string;
+  let publicAssetsDir: string;
+  let manifestPath: string;
+  let catalogPath: string;
+  const fixedNow = () => new Date('2026-06-08T15:30:00.000Z');
+
+  beforeEach(() => {
+    repoRoot = mkdtempSync(path.join(tmpdir(), 'crawler-unapprove-'));
+    publicAssetsDir = path.join(repoRoot, 'public', 'assets');
+    manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
+    catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
+  });
+
+  afterEach(() => {
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  function approveOne(briefId: string = 'iron-sword', variantIndex: number = 1): void {
+    const { runDir } = writeFakeRun(repoRoot, {
+      briefId,
+      variantIndices: [0, 1, 2],
+      chosenIndex: variantIndex,
+    });
+    approveVariant({
+      runDir,
+      variantIndex,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+  }
+
+  it('removes the manifest entry, catalog entry, and PNG on successful unapprove', () => {
+    approveOne();
+    const variantId = 'iron-sword-var-1';
+    const assetAbs = path.join(publicAssetsDir, 'generated', `${variantId}.png`);
+
+    expect(existsSync(assetAbs)).toBe(true);
+    const manifest = readManifest(manifestPath);
+    expect(manifest.entries[variantId]).toBeDefined();
+
+    const removed = unapproveVariant({
+      variantId,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+    });
+
+    // Returns the evicted entry.
+    expect(removed.briefId).toBe('iron-sword');
+    expect(removed.variantIndex).toBe(1);
+    expect(removed.spriteName).toBe(variantId);
+
+    // Manifest entry is gone.
+    const updatedManifest = readManifest(manifestPath);
+    expect(updatedManifest.entries[variantId]).toBeUndefined();
+    expect(Object.keys(updatedManifest.entries)).toHaveLength(0);
+
+    // PNG is deleted.
+    expect(existsSync(assetAbs)).toBe(false);
+
+    // Catalog entry is gone.
+    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as ReadonlyArray<{
+      id: string;
+    }>;
+    expect(catalog.find((e) => e.id === `generated:${variantId}`)).toBeUndefined();
+  });
+
+  it('preserves other manifest entries when one variant is unapproved', () => {
+    approveOne('iron-sword', 0);
+    approveOne('iron-sword', 2);
+    const manifest0 = readManifest(manifestPath);
+    expect(Object.keys(manifest0.entries).sort()).toEqual(['iron-sword-var-0', 'iron-sword-var-2']);
+
+    unapproveVariant({
+      variantId: 'iron-sword-var-0',
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+    });
+
+    const manifest1 = readManifest(manifestPath);
+    expect(Object.keys(manifest1.entries)).toEqual(['iron-sword-var-2']);
+  });
+
+  it('keeps PNG on disk when deleteAsset is false', () => {
+    approveOne();
+    const variantId = 'iron-sword-var-1';
+    const assetAbs = path.join(publicAssetsDir, 'generated', `${variantId}.png`);
+
+    unapproveVariant({
+      variantId,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      deleteAsset: false,
+    });
+
+    // Manifest entry gone, but PNG remains.
+    const updatedManifest = readManifest(manifestPath);
+    expect(updatedManifest.entries[variantId]).toBeUndefined();
+    expect(existsSync(assetAbs)).toBe(true);
+  });
+
+  it('throws not-found when manifest does not exist', () => {
+    expect(() =>
+      unapproveVariant({
+        variantId: 'iron-sword-var-1',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      }),
+    ).toThrowError(UnapproveError);
+    try {
+      unapproveVariant({
+        variantId: 'iron-sword-var-1',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('not-found');
+    }
+  });
+
+  it('throws not-found when the variantId is absent from the manifest', () => {
+    approveOne();
+    expect(() =>
+      unapproveVariant({
+        variantId: 'nonexistent-var-99',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      }),
+    ).toThrowError(UnapproveError);
+    try {
+      unapproveVariant({
+        variantId: 'nonexistent-var-99',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('not-found');
+    }
+  });
+
+  it('throws manifest-invalid for a corrupt manifest file', () => {
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(manifestPath, 'not json {{{{');
+    expect(() =>
+      unapproveVariant({
+        variantId: 'iron-sword-var-1',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      }),
+    ).toThrowError(UnapproveError);
+    try {
+      unapproveVariant({
+        variantId: 'iron-sword-var-1',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('manifest-invalid');
+    }
+  });
+
+  it('manifest entry is removed even when PNG is already absent', () => {
+    approveOne();
+    const variantId = 'iron-sword-var-1';
+    const assetAbs = path.join(publicAssetsDir, 'generated', `${variantId}.png`);
+    // Pre-delete the PNG to simulate a missing-but-approved scenario.
+    rmSync(assetAbs);
+
+    // Should not throw.
+    const removed = unapproveVariant({
+      variantId,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+    });
+    expect(removed.variantIndex).toBe(1);
+    const updatedManifest = readManifest(manifestPath);
+    expect(updatedManifest.entries[variantId]).toBeUndefined();
+  });
+
+  it('succeeds even when catalog does not exist', () => {
+    approveOne();
+    // Remove the catalog so unapprove must handle its absence gracefully.
+    rmSync(catalogPath, { force: true });
+
+    const removed = unapproveVariant({
+      variantId: 'iron-sword-var-1',
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+    });
+    expect(removed.variantIndex).toBe(1);
+    // Manifest entry removed regardless.
+    const updatedManifest = readManifest(manifestPath);
+    expect(updatedManifest.entries['iron-sword-var-1']).toBeUndefined();
+  });
+
+  it('manifest version mismatch throws manifest-invalid', () => {
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ version: 99, entries: { 'iron-sword-var-1': {} } }),
+    );
+    try {
+      unapproveVariant({
+        variantId: 'iron-sword-var-1',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('manifest-invalid');
+    }
+  });
+
+  it('entries: [] (array) throws manifest-invalid, not not-found', () => {
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(manifestPath, JSON.stringify({ version: 1, entries: [] }));
+    try {
+      unapproveVariant({
+        variantId: 'iron-sword-var-1',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('manifest-invalid');
+    }
+  });
+
+  it('entries: null throws manifest-invalid', () => {
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(manifestPath, JSON.stringify({ version: 1, entries: null }));
+    try {
+      unapproveVariant({
+        variantId: 'iron-sword-var-1',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('manifest-invalid');
+    }
+  });
+
+  it('__proto__ as variantId throws not-found (no prototype traversal)', () => {
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(manifestPath, JSON.stringify({ version: 1, entries: {} }));
+    try {
+      unapproveVariant({
+        variantId: '__proto__',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('not-found');
+    }
+  });
+
+  it('does not delete files outside generated/ when variantId contains path traversal', () => {
+    // Seed a manifest entry with a traversal-style key to simulate a malformed
+    // manifest. unapproveVariant must remove the manifest entry but NOT delete
+    // anything outside public/assets/generated/.
+    //
+    // From publicAssetsDir/generated, `../../../outside` resolves to
+    // <repoRoot>/outside.png (3 levels: generated → assets → public → repoRoot).
+    // Using only `../../outside` would target <repoRoot>/public/outside.png, which
+    // is a different path than where we place the sentinel — the guard would pass
+    // the test vacuously even if it were removed.
+    const traversalKey = '../../../outside';
+    const outsideFile = path.join(repoRoot, 'outside.png');
+    writeFileSync(outsideFile, Buffer.from('OUTSIDE'));
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 1,
+        entries: {
+          [traversalKey]: {
+            briefId: 'iron-sword',
+            spriteName: traversalKey,
+            assetPath: `generated/${traversalKey}.png`,
+            approvedAt: '2026-01-01T00:00:00.000Z',
+            sourceRun: 'generated/runs/iron-sword/run-01',
+            variantIndex: 0,
+            anchor: null,
+            anchors: { hold: null, centerOfGravity: null },
+            sensorScore: '7/7',
+            judgeScore: null,
+            type: null,
+          },
+        },
+      }),
+    );
+
+    // Should not throw but must NOT delete the outside file.
+    unapproveVariant({
+      variantId: traversalKey,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+    });
+
+    // The outside file is untouched.
+    expect(existsSync(outsideFile)).toBe(true);
+    // The manifest entry was removed.
+    const updatedManifest = readManifest(manifestPath);
+    expect(updatedManifest.entries[traversalKey]).toBeUndefined();
   });
 });

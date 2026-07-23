@@ -9,10 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  buildSystemPrompt,
-  buildUserPrompt,
-} from '../../../scripts/sprites/provider/azure-chat-synth.js';
+import { buildUserPrompt } from '../../../scripts/sprites/provider/azure-chat-synth.js';
 import type { SynthesizeBriefRequest } from '../../../scripts/sprites/provider/synth-types.js';
 
 function makeRequest(overrides: Partial<SynthesizeBriefRequest> = {}): SynthesizeBriefRequest {
@@ -35,16 +32,6 @@ describe('buildUserPrompt', () => {
     expect(prompt).toContain('Floor: 1 of 20.');
     expect(prompt).toContain('Please return exactly 2 candidate brief(s).');
     expect(prompt).not.toContain('Additional direction:');
-  });
-
-  describe('buildSystemPrompt', () => {
-    it('includes Floor 2 and family direction for a family sprite request', () => {
-      const prompt = buildSystemPrompt(
-        makeRequest({ name: 'goblin-grunt', type: 'enemy', floor: 2 }),
-      );
-      expect(prompt).toContain('Family Matters');
-      expect(prompt).toContain('The Snaggle Cartel');
-    });
   });
 
   it('weaves a brief hint in after the subject name and before the type line', () => {

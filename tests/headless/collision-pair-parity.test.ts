@@ -22,7 +22,7 @@
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
-import type { RunStats } from '../../src/game/ai/types.js';
+import { AIPathingMode, type RunStats } from '../../src/game/ai/types.js';
 
 const PARITY_MAX_FRAMES = 1500;
 
@@ -266,7 +266,12 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
 const PARITY_SEEDS = Object.keys(GOLDEN_FINGERPRINTS).map(Number);
 
 async function runSlice(seed: number): Promise<RunStats> {
-  const ai = new BehaviorTreeAI({ seed });
+  const ai = new BehaviorTreeAI({
+    seed,
+    pathingMode: AIPathingMode.LEGACY,
+    retreatThreshold: 0.15,
+    farmPullWeight: 0.07,
+  });
   return runHeadless(ai, {
     seed,
     maxFrames: PARITY_MAX_FRAMES,

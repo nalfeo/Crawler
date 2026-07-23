@@ -1,0 +1,82 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "floor-2-equipment-wave-b",
+  "task_title": "Floor 2 equipment content wave B",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Post-rebase adversarial review retained the preserved-chain recovery design. Alt A (fresh main branch plus cherry-picks) was rejected because it weakens direct provenance to authoritative ref 451ebb7b3266f74b093ed5aec970461660a150c7. Alt B (rebuild only the lost edits on main) was rejected because it risks omitting reviewed Wave B behavior. Alt C (broader shared overlay refactor) was rejected as out of scope. The plan added explicit squash ancestry checks, prohibited-path audits, direct quartermaster-name uniqueness coverage, 20-field default inheritance and override-precedence coverage, and post-fix validation. The branch reconciles onto current main 6162b732be934c736c702853c8b23d90f2b71aea with Wave A squash 8370b1a666046c0897dfa5bfdb3344fce4eb2087. Wave B remains the locked 25-weapon plus 20-non-weapon, 45-base overlay rather than a contiguous ordinal 26-70 partition."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

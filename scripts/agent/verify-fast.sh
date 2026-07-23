@@ -140,8 +140,10 @@ cleanup_parallel() {
   # Works because set -m gives every background job its own process group whose
   # PGID equals the job leader's PID.
   kill -- -"$TSC_PID" -"$ESLINT_PID" 2>/dev/null || true
-  # No blocking wait in the EXIT trap — the shell exits immediately after and
-  # the OS reaps any remaining children.
+  # Follow up with SIGKILL to guarantee immediate termination without waiting
+  # for SIGTERM handlers; this prevents descendants from surviving on loaded CI.
+  kill -KILL -- -"$TSC_PID" -"$ESLINT_PID" 2>/dev/null || true
+  # No blocking wait in the EXIT trap — the shell exits immediately after.
 }
 trap cleanup_parallel EXIT
 trap 'exit 130' INT

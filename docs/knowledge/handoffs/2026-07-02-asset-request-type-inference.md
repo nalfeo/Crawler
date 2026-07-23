@@ -57,12 +57,6 @@ Completed comprehensive asset-request type-inference feature with full validatio
 
 ### Source Code
 
-<<<<<<< Updated upstream
-
-=======
-
-> > > > > > > Stashed changes
-
 - `scripts/sprites/asset-request.ts` – Type validation in form/marker parse paths
 - `scripts/sprites/queue/types.ts` – Type validation in queue deserialization
 - `scripts/sprites/issue-pipeline.ts` – Type inference logic + interface fix
@@ -70,35 +64,17 @@ Completed comprehensive asset-request type-inference feature with full validatio
 
 ### Tests
 
-<<<<<<< Updated upstream
-
-=======
-
-> > > > > > > Stashed changes
-
 - `tests/unit/sprites/asset-request.test.ts` – New tests for form/marker type validation
 - `tests/unit/sprites/asset-queue.test.ts` – New tests for queue validation
 - `tests/unit/sprites/issue-pipeline.test.ts` – New tests for inference and explicit type
 
 ### Documentation
 
-<<<<<<< Updated upstream
-
-=======
-
-> > > > > > > Stashed changes
-
 - `docs/knowledge/review-ledgers/2026-07-02-asset-request-type-inference.review-ledger.json` – 2🍎 review ledger with plan_review and code_review stages
 
 ## Verification
 
 ### Unit Tests
-
-<<<<<<< Updated upstream
-
-=======
-
-> > > > > > > Stashed changes
 
 ```
 asset-request.test.ts: 8 tests (all passing)
@@ -109,22 +85,10 @@ Total: 28/28 passing
 
 ### Build & Type Checks
 
-<<<<<<< Updated upstream
-
-=======
-
-> > > > > > > Stashed changes
-
 - `npm run typecheck` – ✅ No TypeScript errors
 - `npm run verify:fast` – ✅ Passed (typecheck + lint + relevant unit tests)
 
 ### Review Harness
-
-<<<<<<< Updated upstream
-
-=======
-
-> > > > > > > Stashed changes
 
 - **Plan Review (gpt-5.4):** 4 concerns → 4 resolved
   1. Type validation missing in parse paths ✅

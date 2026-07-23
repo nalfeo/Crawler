@@ -30,8 +30,9 @@
  *   - On `bad-grid`, `non-png`: re-issue the same prompt up to maxAttempts
  *     because models occasionally drop a cell or emit a junk byte stream
  *     and the next attempt usually succeeds.
- *   - On `auth`: fail immediately. A wrong key won't fix itself.
- *   - On `network`, `rate-limit`, `provider-error`: fail and surface the kind.
+ *   - On `request-error`, `auth`: fail immediately; retries cannot fix the request.
+ *   - On `network`, `rate-limit`, `server-error`, or unexpected `provider-error`:
+ *     surface the kind so the queue worker can apply bounded redelivery.
  *
  * Everything here is impure (network + filesystem). The pure pieces it
  * composes (`loadBrief`, `buildSheetPrompt`, `sliceSheetFromBrief`) live in
@@ -103,6 +104,8 @@ export interface GenerateOneOptions {
    * NOT a candidate source — references are our own approved generated sprites.
    */
   readonly loadReferenceCandidates?: () => readonly ManifestEntry[];
+  /** Asset-level disliked annotation loader injection for reference hygiene. */
+  readonly loadDislikedReferenceNames?: () => ReadonlySet<string>;
   /**
    * Asset-existence check injection (tests). Defaults to `fs.existsSync`. Used
    * to pre-filter manifest entries to those whose PNG is actually on disk
@@ -196,6 +199,7 @@ export interface GenerateSheetCoreResult {
 }
 
 const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set(['bad-grid', 'non-png']);
+const ANNOTATION_PARSE_ATTEMPTS = 3;
 
 /**
  * Project a selected manifest entry into the auditable run-summary shape. The
@@ -218,6 +222,32 @@ function toReferenceSpriteRef(entry: ManifestEntry): ReferenceSpriteRef {
     judgeScore: entry.judgeScore ?? null,
     contentHash: entry.contentHash ?? null,
   };
+}
+
+function loadDislikedSpriteNamesFromAnnotations(annotationsPath: string): ReadonlySet<string> {
+  for (let attempt = 0; attempt < ANNOTATION_PARSE_ATTEMPTS; attempt += 1) {
+    try {
+      const raw = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
+        readonly sprites?: unknown;
+      };
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return new Set<string>();
+      const sprites = raw.sprites;
+      if (!sprites || typeof sprites !== 'object' || Array.isArray(sprites))
+        return new Set<string>();
+      const disliked = new Set<string>();
+      for (const [spriteName, note] of Object.entries(sprites as Record<string, unknown>)) {
+        if (!note || typeof note !== 'object' || Array.isArray(note)) continue;
+        if ((note as { readonly disliked?: unknown }).disliked === true) {
+          disliked.add(spriteName);
+        }
+      }
+      return disliked;
+    } catch {
+      // Concurrent sprite-editor writes can expose a transient truncated snapshot.
+      // Retry a bounded number of times, then fail-safe to an empty disliked set.
+    }
+  }
+  return new Set<string>();
 }
 
 export async function generateSheetCore(
@@ -281,6 +311,17 @@ export async function generateSheetCore(
       const manifest = parseGeneratedManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));
       return Object.values(manifest.entries);
     });
+  const loadDislikedReferenceNames =
+    options.loadDislikedReferenceNames ??
+    (() => {
+      const annotationsPath = path.join(
+        publicAssetsRoot,
+        'generated',
+        'sprite-editor-annotations.json',
+      );
+      if (!existsSync(annotationsPath)) return new Set<string>();
+      return loadDislikedSpriteNamesFromAnnotations(annotationsPath);
+    });
 
   let referencePngs: Buffer[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;
@@ -296,6 +337,7 @@ export async function generateSheetCore(
       briefType: brief.type,
       count: referenceCount,
       seed: referenceSelectorSeed(brief.name),
+      dislikedSpriteNames: loadDislikedReferenceNames(),
     });
     if (selection.selected.length === 0) {
       throw new Error(

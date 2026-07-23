@@ -19,12 +19,39 @@ import {
   parseCommittedBriefKeys,
   parseDraftBriefKeys,
   parseApprovedSprites,
+  listManifestApprovals,
   buildFloorArtPlanReport,
   normalizeAssetPath,
+  sourceRunMatchesRun,
   loadBacklog,
   STATUS_ORDER,
   ALL_STATUSES,
 } from '../lib/workflow-model.mjs';
+
+// ---- sourceRunMatchesRun (per-variant lifecycle provenance) ---------------
+
+test('sourceRunMatchesRun matches the exact trailing {briefId, runId} segments', () => {
+  assert.equal(sourceRunMatchesRun('goblin/run-1', 'goblin', 'run-1'), true);
+  assert.equal(
+    sourceRunMatchesRun('some/prefix/goblin/run-1', 'goblin', 'run-1'),
+    true,
+    'extra leading segments are ignored — only the trailing two matter',
+  );
+  assert.equal(
+    sourceRunMatchesRun('goblin\\run-1', 'goblin', 'run-1'),
+    true,
+    'backslash-separated (Windows-recorded) paths are normalized',
+  );
+});
+
+test('sourceRunMatchesRun rejects a different run, brief, malformed, or missing value', () => {
+  assert.equal(sourceRunMatchesRun('goblin/run-2', 'goblin', 'run-1'), false);
+  assert.equal(sourceRunMatchesRun('rat/run-1', 'goblin', 'run-1'), false);
+  assert.equal(sourceRunMatchesRun('placeholder', 'goblin', 'run-1'), false);
+  assert.equal(sourceRunMatchesRun('', 'goblin', 'run-1'), false);
+  assert.equal(sourceRunMatchesRun(null, 'goblin', 'run-1'), false);
+  assert.equal(sourceRunMatchesRun(undefined, 'goblin', 'run-1'), false);
+});
 
 // ---- pure helpers ---------------------------------------------------------
 
@@ -150,6 +177,30 @@ test('parseFloorArtPlans parses + sorts, rejecting malformed plans', () => {
   assert.equal(plans[0].assets.length, 2);
 });
 
+test('parseFloorArtPlans accepts equipment and prop asset types', () => {
+  const planYaml = [
+    'id: floor1-new-types',
+    'title: Floor 1 New Types',
+    'assets:',
+    '  - id: iron-chestplate',
+    '    type: equipment',
+    '    label: Iron Chestplate',
+    '    brief: equipment/iron-chestplate',
+    '    placeholderInUse: true',
+    '  - id: barrel',
+    '    type: prop',
+    '    label: Barrel',
+    '    brief: prop/barrel',
+    '    placeholderInUse: true',
+    '',
+  ].join('\n');
+  const plans = parseFloorArtPlans({ 'plans/a.art.yaml': planYaml });
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].assets.length, 2);
+  assert.equal(plans[0].assets[0].type, 'equipment');
+  assert.equal(plans[0].assets[1].type, 'prop');
+});
+
 test('parseCommittedBriefKeys / parseDraftBriefKeys split on the /draft/ path segment', () => {
   const raw = {
     'briefs/enemy-goblin.yaml': 'type: enemy\nname: goblin\n',
@@ -187,6 +238,55 @@ test('parseApprovedSprites skips placeholder entries and records existence', () 
   assert.ok(approved.has('goblin'));
   assert.equal(approved.get('goblin').exists, true);
   assert.ok(!approved.has('sword'), 'placeholder entry excluded');
+});
+
+test('listManifestApprovals keeps EVERY entry, even when several share a briefId (unlike parseApprovedSprites)', () => {
+  // Regression fixture: a real repo observation showed a briefId with TWO
+  // manifest entries (e.g. "iron-cleaver-v1-var-0" and "-var-5", both
+  // briefId "iron-cleaver-v1") — parseApprovedSprites collapses these to the
+  // LAST one (Map keyed by briefId), silently losing the other. The Workflow
+  // canvas's per-variant lifecycle needs to match against BOTH.
+  const manifest = {
+    version: 1,
+    entries: {
+      'iron-cleaver-v1-var-0': {
+        briefId: 'iron-cleaver-v1',
+        assetPath: 'generated/iron-cleaver-v1-var-0.png',
+        sourceRun: 'iron-cleaver-v1/run-1',
+        variantIndex: 0,
+      },
+      'iron-cleaver-v1-var-5': {
+        briefId: 'iron-cleaver-v1',
+        assetPath: 'generated/iron-cleaver-v1-var-5.png',
+        sourceRun: 'iron-cleaver-v1/run-1',
+        variantIndex: 5,
+      },
+      'weapon::sword': {
+        briefId: 'sword',
+        assetPath: 'generated/sword.png',
+        sourceRun: 'placeholder',
+        variantIndex: 0,
+      },
+    },
+  };
+  const approvals = listManifestApprovals(manifest, {
+    existingAssets: new Set(['generated/iron-cleaver-v1-var-0.png']),
+  });
+  assert.equal(approvals.length, 2, 'placeholder entry excluded; both real entries kept');
+  const var0 = approvals.find((a) => a.variantIndex === 0);
+  const var5 = approvals.find((a) => a.variantIndex === 5);
+  assert.equal(var0.briefId, 'iron-cleaver-v1');
+  assert.equal(var0.exists, true);
+  assert.equal(var5.briefId, 'iron-cleaver-v1');
+  assert.equal(var5.exists, false);
+
+  // Cross-check against the collapsing behavior this regression fixture is
+  // documenting, so a future refactor that "fixes" parseApprovedSprites
+  // doesn't silently make this comparison meaningless.
+  const collapsed = parseApprovedSprites(manifest, {
+    existingAssets: new Set(['generated/iron-cleaver-v1-var-0.png']),
+  });
+  assert.equal(collapsed.size, 1, 'parseApprovedSprites is keyed by briefId and only keeps one');
 });
 
 // ---- report: resolved vs unverified degrade -------------------------------
@@ -314,6 +414,13 @@ test('loadBacklog (registry available) resolves integration and collects promote
   assert.equal(backlog.promotedRunIds.has('placeholder'), false);
   // Totals cover every status bucket including the canvas-only one.
   for (const status of ALL_STATUSES) assert.ok(status in backlog.totals);
+  // manifestApprovals surfaces the raw manifest entries too (skipping the
+  // placeholder), independent of the plan-scoped reports/assets — this is
+  // what per-variant lifecycle falls back to for a manifest-approved variant
+  // with no corresponding art-plan asset.
+  assert.equal(backlog.manifestApprovals.length, 1);
+  assert.equal(backlog.manifestApprovals[0].briefId, 'goblin');
+  assert.equal(backlog.manifestApprovals[0].exists, true);
 });
 
 test('loadBacklog (registry unavailable) sets integrationResolved false + unverified', () => {
@@ -367,4 +474,27 @@ test('loadBacklog normalizes Windows-style sourceRun into the two-segment promot
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('listManifestApprovals includes mapKey — the exact manifest map key', () => {
+  // Regression fixture: approveVariant canonicalizes item brief IDs
+  // (flame-dagger-v2 → flame-dagger), so the manifest key is flame-dagger-var-1
+  // not flame-dagger-v2-var-1. listManifestApprovals must expose the real key.
+  const manifest = {
+    version: 1,
+    entries: {
+      'flame-dagger-var-1': {
+        briefId: 'flame-dagger',
+        assetPath: 'generated/flame-dagger-var-1.png',
+        sourceRun: 'flame-dagger/run-1',
+        variantIndex: 1,
+      },
+    },
+  };
+  const approvals = listManifestApprovals(manifest, {
+    existingAssets: new Set(['generated/flame-dagger-var-1.png']),
+  });
+  assert.equal(approvals.length, 1);
+  assert.equal(approvals[0].mapKey, 'flame-dagger-var-1');
+  assert.equal(approvals[0].briefId, 'flame-dagger');
 });

@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "embedded-postprocess-parity",
+  "task_title": "Restore embedded Postprocess parity",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Approved with changes. Resolved persistence contract, fresh-instance hydration proof, effective-pipeline validation, non-square ratio assertion, exact center formula, deterministic tooling-cap enforcement, and accessibility coverage before implementation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

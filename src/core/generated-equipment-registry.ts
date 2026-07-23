@@ -6,6 +6,7 @@ import {
   GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION,
+  parseGeneratedEquipmentInstanceId,
   type ActiveWeaponClassSkillTag,
   type ActiveWeaponCombatOverridesV1,
   type ActiveWeaponSnapshotCreateInputV1,
@@ -156,7 +157,6 @@ export const DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1 = deepFreeze(DEFAU
 const registryStates = new WeakMap<GeneratedEquipmentRegistry, RegistryState>();
 const RUN_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{64}$/;
-const GENERATED_EQUIPMENT_INSTANCE_ID_PATTERN = /^gei:v1:([a-z0-9][a-z0-9._-]{0,127}):([0-9]+)$/;
 
 function fail(code: GeneratedEquipmentRegistryErrorCode, message: string, path: string): never {
   throw new GeneratedEquipmentRegistryError(code, message, path);
@@ -252,12 +252,12 @@ function requireGeneratedEquipmentInstanceId(
   if (typeof value !== 'string') {
     fail('invalid-payload', 'Expected a generated equipment instance ID', path);
   }
-  const match = GENERATED_EQUIPMENT_INSTANCE_ID_PATTERN.exec(value);
-  if (!match) {
+  const parsed = parseGeneratedEquipmentInstanceId(value);
+  if (!parsed) {
     fail('invalid-payload', 'Expected gei:v1:<runKey>:<ordinal> instance ID', path);
   }
-  requireRunKey(match[1], `${path}.runKey`);
-  requireInteger(Number.parseInt(match[2] ?? '', 10), 0, `${path}.ordinal`);
+  requireRunKey(parsed.runKey, `${path}.runKey`);
+  requireInteger(parsed.ordinal, 0, `${path}.ordinal`);
   return value as GeneratedEquipmentInstanceId;
 }
 
@@ -805,6 +805,46 @@ function validateEffects(
   return Object.freeze(effects);
 }
 
+function requireArraysEqual(
+  actual: readonly string[],
+  expected: readonly string[],
+  path: string,
+): void {
+  if (actual.length !== expected.length || actual.some((id, index) => id !== expected[index])) {
+    fail(
+      'invalid-payload',
+      `Frozen grants must exactly match resolvedEffects grants; expected [${expected.join(
+        ', ',
+      )}] but received [${actual.join(', ')}]`,
+      path,
+    );
+  }
+}
+
+/**
+ * Enforces that the consumer-facing `frozen.abilityGrants` / `frozen.passiveGrants`
+ * arrays agree exactly (same ids, same order) with the `abilityGrant` /
+ * `passiveGrant` entries in `resolvedEffects`. Because different consumers read
+ * different authorities (equip gating reads `frozen.*Grants`; ability granting
+ * reads `resolvedEffects`), the two representations must be a single source of
+ * truth or a registry-valid instance could advertise grants it never applies at
+ * runtime (or vice versa).
+ */
+function validateGrantEquivalence(
+  effects: readonly ResolvedEquipmentEffectV1[],
+  frozen: FrozenEquipmentFieldsV1,
+  path: string,
+): void {
+  const effectAbilityGrants = effects.flatMap((effect) =>
+    'kind' in effect && effect.kind === 'abilityGrant' ? [effect.grantId] : [],
+  );
+  const effectPassiveGrants = effects.flatMap((effect) =>
+    'kind' in effect && effect.kind === 'passiveGrant' ? [effect.grantId] : [],
+  );
+  requireArraysEqual(frozen.abilityGrants, effectAbilityGrants, `${path}.frozen.abilityGrants`);
+  requireArraysEqual(frozen.passiveGrants, effectPassiveGrants, `${path}.frozen.passiveGrants`);
+}
+
 export function validateGeneratedEquipmentGenerationPolicyV1(
   value: unknown,
 ): GeneratedEquipmentGenerationPolicyV1 {
@@ -909,6 +949,9 @@ export function generatedEquipmentInstanceKey(
 ): GeneratedEquipmentInstanceId {
   const runKey = requireRunKey(runKeyValue, '$.runKey');
   const ordinal = requireInteger(ordinalValue, 0, '$.ordinal');
+  if (!Number.isSafeInteger(ordinal)) {
+    fail('invalid-payload', 'Expected a safe integer >= 0', '$.ordinal');
+  }
   return `gei:v1:${runKey}:${ordinal}`;
 }
 
@@ -1043,6 +1086,11 @@ export function validateGeneratedEquipmentInstanceV1(
     frozen: validateFrozenFields(record.frozen, `${path}.frozen`, expectedInstanceId),
     generation,
   });
+  validateGrantEquivalence(
+    instanceWithoutFingerprint.resolvedEffects,
+    instanceWithoutFingerprint.frozen,
+    path,
+  );
   const fingerprint = requireFingerprint(record.fingerprint, `${path}.fingerprint`);
   const expectedFingerprint = fingerprintContent(instanceWithoutFingerprint);
   if (fingerprint !== expectedFingerprint) {
@@ -1131,6 +1179,72 @@ function requireConfiguredRunKey(registry: GeneratedEquipmentRegistry): string {
     );
   }
   return registry.runKey;
+}
+
+export interface GeneratedEquipmentRegistryTransaction {
+  /**
+   * Scratch registry that shares the live run key / generation policy /
+   * fingerprint but is backed by an isolated CLONE of the live instance map.
+   * Generate against this; the live registry stays untouched until `commit()`.
+   */
+  readonly registry: GeneratedEquipmentRegistry;
+  /**
+   * Atomically publish the scratch state to the live registry. This is a single
+   * synchronous `WeakMap.set` that cannot throw, so a caller may mutate sibling
+   * world state immediately after in the same no-throw region for true
+   * all-or-nothing semantics. Throws (`invalid-payload`) if called twice.
+   */
+  commit(): void;
+}
+
+/**
+ * Begin an all-or-nothing generation transaction against the world's live
+ * generated-equipment registry.
+ *
+ * The returned `registry` is a distinct frozen object that shares the live
+ * registry's immutable identity (run key, generation policy + fingerprint) but
+ * is backed by a CLONE of the live instance map and `nextOrdinal`. Generate any
+ * number of instances against it — ordinals continue contiguously from the live
+ * count, preserving the contiguous-ordinal invariant that save/restore depends
+ * on. If any step throws, discard the transaction: the live registry is never
+ * mutated. On success, `commit()` swaps the live registry's backing state to the
+ * scratch state.
+ *
+ * Not safe against interleaved generation on the LIVE registry between creation
+ * and commit; the deterministic single-threaded sim never interleaves, which is
+ * why no locking is needed.
+ */
+export function createGeneratedEquipmentRegistryTransaction(
+  world: GeneratedEquipmentRegistryWorld,
+): GeneratedEquipmentRegistryTransaction {
+  const liveRegistry = world.generatedEquipmentRegistry;
+  const liveState = getRegistryState(liveRegistry);
+  requireConfiguredRunKey(liveRegistry);
+  const scratchRegistry: GeneratedEquipmentRegistry = Object.freeze({
+    runKey: liveRegistry.runKey,
+    generationPolicy: liveRegistry.generationPolicy,
+    generationPolicyFingerprint: liveRegistry.generationPolicyFingerprint,
+  });
+  const scratchState: RegistryState = {
+    instances: new Map(liveState.instances),
+    nextOrdinal: liveState.nextOrdinal,
+  };
+  registryStates.set(scratchRegistry, scratchState);
+  let committed = false;
+  return {
+    registry: scratchRegistry,
+    commit(): void {
+      if (committed) {
+        fail(
+          'invalid-payload',
+          'Generated equipment registry transaction already committed',
+          '$.registry.transaction',
+        );
+      }
+      committed = true;
+      registryStates.set(liveRegistry, scratchState);
+    },
+  };
 }
 
 export function createGeneratedEquipmentInstance(

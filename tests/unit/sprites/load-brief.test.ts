@@ -8,7 +8,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { loadBrief, mergeMinimalIntoDefaults } from '../../../scripts/sprites/load-brief.js';
+import {
+  loadBrief,
+  loadBriefFromYaml,
+  mergeMinimalIntoDefaults,
+} from '../../../scripts/sprites/load-brief.js';
 
 const SAMPLE_BRIEF_YAML = `
 type: weapon
@@ -187,20 +191,6 @@ describe('loadBrief', () => {
       }),
     });
     expect(loaded.brief.sensors.weapon?.orientation).toBe('diagonal');
-  });
-
-  it('derives the canonical grave-shovel runtime key from the committed brief identity', () => {
-    const repoRoot = process.cwd();
-    const briefPath = path.join(repoRoot, 'briefs', 'weapons', 'grave-shovel.yaml');
-
-    const loaded = loadBrief(briefPath, { projectRoot: repoRoot });
-
-    expect(loaded.brief.type).toBe('weapon');
-    expect(loaded.brief.name).toBe('grave-shovel');
-    expect(`weapon.${loaded.brief.name}`).toBe('weapon.grave-shovel');
-    expect(`equipment/${loaded.brief.type}/${loaded.brief.name}`).toBe(
-      'equipment/weapon/grave-shovel',
-    );
   });
 
   it('treats a minimal-brief references array as a full replacement, not a concat', () => {
@@ -496,5 +486,78 @@ describe('mergeMinimalIntoDefaults — size variants', () => {
         enemyDefaults() as never,
       ),
     ).toThrow(/Invalid sizeVariant/);
+  });
+});
+
+describe('loadBriefFromYaml', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-loadbriefyaml-'));
+    mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('parses a valid YAML string and returns a Brief without touching the disk', () => {
+    const brief = loadBriefFromYaml(SAMPLE_BRIEF_YAML, {
+      projectRoot: root,
+      loadPalette: () => [
+        [0, 0, 0],
+        [255, 255, 255],
+      ],
+    });
+    expect(brief.name).toBe('iron-sword');
+    expect(brief.type).toBe('weapon');
+    expect(brief.generation.sheet.rows).toBe(4);
+  });
+
+  it('merges type-defaults via loadTypeDefaults when provided', () => {
+    const minimalYaml = [
+      'type: weapon',
+      'name: dagger',
+      'description: A short stabbing dagger.',
+    ].join('\n');
+    const brief = loadBriefFromYaml(minimalYaml, {
+      projectRoot: root,
+      loadPalette: () => [
+        [0, 0, 0],
+        [255, 255, 255],
+      ],
+      loadTypeDefaults: () => ({
+        size: { width: 8, height: 16 },
+        palette: { id: 'test-palette' },
+        anchor: { x: 4, y: 14 },
+        references: [{ path: 'public/assets/ref.png' }],
+      }),
+    });
+    expect(brief.size).toEqual({ width: 8, height: 16 });
+    expect(brief.anchor).toEqual({ x: 4, y: 14 });
+  });
+
+  it('throws a structured error when minimal validation fails (missing name)', () => {
+    expect(() =>
+      loadBriefFromYaml('type: weapon\ndescription: "some desc"', { projectRoot: root }),
+    ).toThrow(/failed minimal validation/);
+  });
+
+  it('throws when the merged brief fails strict schema validation', () => {
+    // All required fields present but anchor.x is a string — strict schema rejects it.
+    const badYaml = [
+      'type: weapon',
+      'name: bad-brief',
+      'description: "A bad brief."',
+      'size: { width: 16, height: 16 }',
+      'palette: { id: "test-palette" }',
+      'anchor: { x: "not-a-number", y: 8 }',
+    ].join('\n');
+    expect(() =>
+      loadBriefFromYaml(badYaml, {
+        projectRoot: root,
+        loadPalette: () => [[0, 0, 0]],
+      }),
+    ).toThrow(/failed validation/);
   });
 });

@@ -2,17 +2,20 @@
  * Fastify-based sidecar for the sprite gallery lab.
  *
  * Responsibilities:
- *   - GET  /api/health                                                       — readiness probe
- *   - GET  /api/runs                                                         — list all runs
- *   - GET  /api/runs/:briefId/:runId                                         — full RunSummary JSON
- *   - GET  /api/runs/:briefId/:runId/sheets                                  — list source sheet PNGs
- *   - GET  /api/runs/:briefId/:runId/sheet/:filename                         — source sheet PNG bytes
- *   - GET  /api/runs/:briefId/:runId/processed/:filename                     — static-file from run dir
- *   - GET  /api/runs/:briefId/:runId/raw/:filename                           — raw (pre-pipeline) cell PNG
- *   - POST /api/runs/:briefId/:runId/postprocess                             — re-run PostProcess on the stored sheet
- *   - POST /api/runs/:briefId/:runId/judge                                   — re-run the VLM judge on stored variants
- *   - POST /api/runs/:briefId/:runId/approve                                 — approve a variant (mutating)
- *   - POST /api/checkin                                                       — publish approved art (branch + issue, no PR)
+ *   - GET    /api/health                                                       — readiness probe
+ *   - GET    /api/runs                                                         — list all runs
+ *   - GET    /api/runs/:briefId/:runId                                         — full RunSummary JSON
+ *   - GET    /api/runs/:briefId/:runId/sheets                                  — list source sheet PNGs
+ *   - GET    /api/runs/:briefId/:runId/sheet/:filename                         — source sheet PNG bytes
+ *   - GET    /api/runs/:briefId/:runId/processed/:filename                     — static-file from run dir
+ *   - GET    /api/runs/:briefId/:runId/raw/:filename                           — raw (pre-pipeline) cell PNG
+ *   - POST   /api/runs/:briefId/:runId/postprocess                             — re-run PostProcess on the stored sheet
+ *   - POST   /api/runs/:briefId/:runId/judge                                   — re-run the VLM judge on stored variants
+ *   - POST   /api/runs/:briefId/:runId/approve                                 — approve a variant (mutating)
+ *   - POST   /api/runs/:briefId/:runId/accept                                  — atomic approve + check-in (mutating; no browser Origin allowed)
+ *   - DELETE /api/manifest/:variantId                                          — unapprove/evict an approved variant (mutating)
+ *   - POST   /api/checkin                                                       — publish approved art (branch + issue, no PR; mutating; exact trusted browser origins only)
+ *   - POST   /api/checkin/prepare                                               — preview what /api/checkin would publish (read-only; browser-reachable)
  *
  * Security contract (spec §F8):
  *   - The HTTP server MUST bind to 127.0.0.1 only. Binding is the CLI's job
@@ -24,6 +27,19 @@
  *   - The approve route MUST refuse when `process.env.CI` is set
  *     (Constitutional §3 — no LLM-as-judge / no checked-in mutation from
  *     CI gates). Same pattern as `judge.ts`.
+ *   - The atomic accept route, POST /api/checkin, AND POST /api/checkin/prepare
+ *     apply an exact per-worktree trusted-origin check (ADR 0066 AMD-006):
+ *     loopback binding alone does not stop a browser-issued request — a
+ *     `text/plain` (or content-type-less) POST body needs no CORS preflight at
+ *     all, so any page could trigger a mutation (or repeated git fetch / gh
+ *     issue list calls) just by having the user's browser visit it. Requests
+ *     whose `Origin` header is present but NOT in `trustedMutationOrigins`
+ *     (the per-worktree gallery/lab/devtools origins supplied by the CLI) are
+ *     rejected with 403. Server-side callers (Node-based fetch, no Origin)
+ *     remain trusted unconditionally.
+ *   - /approve, /checkin, and /accept all run their mutating work through the
+ *     same process-wide `withCheckinMutationLock` so concurrent requests
+ *     never race the shared art surface or the durable check-in queue.
  *
  * No business logic lives here. The sidecar is a thin HTTP shell over file
  * IO — every meaningful piece is implemented (and unit-tested) in the
@@ -41,14 +57,31 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import { parse as parseYaml } from 'yaml';
-import { approveVariant, ApproveError, type ManifestEntry } from '../approve.js';
-import { runAssetCheckin, CheckinError } from '../checkin.js';
+import {
+  approveVariant,
+  ApproveError,
+  resolveVariantIdentity,
+  unapproveVariant,
+  UnapproveError,
+  type ManifestEntry,
+  type VariantIdentity,
+} from '../approve.js';
+import {
+  runAssetCheckin,
+  prepareAssetCheckin,
+  reconcileQueuedContent,
+  CheckinError,
+  type CheckinRunnerDeps,
+  type QueuedAssetCheckin,
+} from '../checkin.js';
 import { createDefaultCheckinDeps } from '../checkin-runtime.js';
 import { SPRITE_TYPES, type Brief } from '../brief-schema.js';
+import { briefDirectoryForType } from '../brief-paths.js';
 import { generateOne } from '../generate-one.js';
 import {
   DEFAULT_CATALOG_PATH,
@@ -67,7 +100,7 @@ import type { AssetQueue } from '../queue/types.js';
 import { computeSliceMap } from '../slice-sheet.js';
 import { loadStyleGuide } from '../build-prompt.js';
 import { loadRecordedReferencePngs } from '../load-reference-pngs.js';
-import type { PostprocessOptions } from '../postprocess.js';
+import { normalizeDisabledModules, type PostprocessOptions } from '../postprocess.js';
 import {
   removeManualAnchor,
   removeManualWeaponAnchor,
@@ -86,7 +119,7 @@ import {
 } from '../rerun.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
 import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
-import { loadBrief, type LoadedBrief } from '../load-brief.js';
+import { loadBrief, loadBriefFromYaml, type LoadedBrief } from '../load-brief.js';
 import {
   isRepoConfined,
   materializeBriefFromStore,
@@ -95,6 +128,7 @@ import {
 } from '../brief-durability.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { writeCatalogJson } from '../catalog-io.js';
+import { hasDerivedResourceCache } from '../store/caching-store.js';
 import { LocalRunStore } from '../store/local-store.js';
 import { StoreNotFoundError, type RunStore } from '../store/types.js';
 import { createWorkerController, type WorkerController } from './worker-controller.js';
@@ -103,6 +137,7 @@ import {
   type IssueIngesterController,
 } from './issue-ingester-controller.js';
 import { createGhAssetRequestIssueApi } from './asset-request-issue-api.js';
+import type { SidecarServiceControl } from './service-contract.js';
 import {
   WORKFLOW_STATE_KEY,
   computeStateEtag,
@@ -111,6 +146,94 @@ import {
   serializeWorkflowState,
   workflowBriefKey,
 } from './workflow-state.js';
+
+async function readCachedJson(store: RunStore, key: string): Promise<unknown | null> {
+  if (!hasDerivedResourceCache(store)) return null;
+  const bytes = await store.getCachedResource(key);
+  if (bytes === null) return null;
+  try {
+    return JSON.parse(bytes.toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function writeCachedJson(store: RunStore, key: string, value: unknown): Promise<void> {
+  if (!hasDerivedResourceCache(store)) return;
+  await store.setCachedResource(key, Buffer.from(JSON.stringify(value), 'utf8'));
+}
+
+async function writeCachedJsonIfAbsent(
+  store: RunStore,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  if (!hasDerivedResourceCache(store)) return;
+  await store.setIfAbsentCachedResource(key, Buffer.from(JSON.stringify(value), 'utf8'));
+}
+
+/**
+ * Cache key prefix for per-run immutable brief snapshots. Unlike path-level
+ * durable keys (`workflow-state/briefs/…`), per-run snapshots capture exactly
+ * the brief that was active when the run was generated. They survive global
+ * cache invalidation (their key sits outside the `route/` namespace) but are
+ * cleared when the run itself is deleted (CachingRunStore.remove removes them
+ * on `summary.json` deletion). See `server.ts` brief and slice-map routes.
+ */
+const PER_RUN_BRIEF_PREFIX = 'brief-snapshot';
+const PER_RUN_SLICE_MAP_FINGERPRINT_PREFIX = 'slice-map-fingerprint';
+
+/** Read the per-run brief snapshot bytes, or null if not yet stored. */
+async function readPerRunBrief(
+  store: RunStore,
+  briefId: string,
+  runId: string,
+): Promise<Buffer | null> {
+  if (!hasDerivedResourceCache(store)) return null;
+  return store.getCachedResource(`${PER_RUN_BRIEF_PREFIX}/${briefId}/${runId}`);
+}
+
+/**
+ * Persist the per-run brief snapshot using setIfAbsent so the first writer
+ * wins — the bytes are immutable once set (they capture the brief state at
+ * generation time). Concurrent writers safely converge on the same content.
+ */
+async function writePerRunBrief(
+  store: RunStore,
+  briefId: string,
+  runId: string,
+  yamlBytes: Buffer,
+): Promise<void> {
+  if (!hasDerivedResourceCache(store)) return;
+  await store.setIfAbsentCachedResource(`${PER_RUN_BRIEF_PREFIX}/${briefId}/${runId}`, yamlBytes);
+}
+
+async function readPerRunSliceMapFingerprint(
+  store: RunStore,
+  briefId: string,
+  runId: string,
+): Promise<string | null> {
+  if (!hasDerivedResourceCache(store)) return null;
+  const bytes = await store.getCachedResource(
+    `${PER_RUN_SLICE_MAP_FINGERPRINT_PREFIX}/${briefId}/${runId}`,
+  );
+  if (bytes === null) return null;
+  const value = bytes.toString('utf8').trim();
+  return value.length > 0 ? value : null;
+}
+
+async function writePerRunSliceMapFingerprint(
+  store: RunStore,
+  briefId: string,
+  runId: string,
+  fingerprint: string,
+): Promise<void> {
+  if (!hasDerivedResourceCache(store)) return;
+  await store.setIfAbsentCachedResource(
+    `${PER_RUN_SLICE_MAP_FINGERPRINT_PREFIX}/${briefId}/${runId}`,
+    Buffer.from(fingerprint, 'utf8'),
+  );
+}
 
 export interface SidecarDeps {
   /** Repository root — used in /api/health for operator visibility. */
@@ -166,6 +289,22 @@ export interface SidecarDeps {
    * enqueues issue-originated queue jobs with idempotent claims.
    */
   readonly issueIngester?: IssueIngesterController;
+  /**
+   * Check-in runner deps for `/api/checkin`, the atomic
+   * `/api/runs/:briefId/:runId/accept` route, and the unapprove/evict
+   * `DELETE /api/manifest/:variantId` endpoint. Defaults to
+   * `createDefaultCheckinDeps(repoRoot, env)`. Inject a fake in tests to
+   * assert the exact git/gh sequence without a real repo or network.
+   */
+  readonly checkinDeps?: CheckinRunnerDeps;
+  /**
+   * Exact browser origins allowed to invoke `/api/checkin`. Production passes
+   * only this worktree's deterministic lab/devtools origins. Omit to reject
+   * every browser-originated request; server-side callers send no Origin.
+   */
+  readonly trustedMutationOrigins?: readonly string[];
+  /** Optional managed-service provenance and authenticated shutdown hook. */
+  readonly service?: SidecarServiceControl;
 }
 
 export interface RunListEntry {
@@ -322,6 +461,161 @@ const ALLOWED_EXTENSIONS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Process-wide serialization for every route that mutates the shared art
+ * surface (`public/assets/generated/**`, `sprite-catalog.json`) or the
+ * durable check-in queue: `/approve`, `/checkin`, and the atomic `/accept`
+ * route all funnel their mutating work through this single chain so two
+ * concurrent requests — from any Fastify instance in this process — never
+ * race the same worktree, manifest write, or `gh issue create` call.
+ *
+ * A promise chain, not a counting semaphore: each link runs only after the
+ * previous one SETTLES (fulfilled or rejected), so one call's failure never
+ * poisons the queue for the next caller. Callers acquire the lock exactly
+ * once at their own route-handler boundary — nothing here calls another
+ * locked route internally — so there is no re-entrant nesting and thus no
+ * deadlock risk.
+ */
+let checkinMutationChain: Promise<void> = Promise.resolve();
+
+function withCheckinMutationLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = checkinMutationChain.then(fn, fn);
+  checkinMutationChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+/** Map an `approveVariant`/`resolveVariantIdentity` failure to an HTTP body, setting `reply`'s status code. */
+function mapApproveError(reply: FastifyReply, err: unknown): { error: string; message: string } {
+  if (err instanceof ApproveError) {
+    const status =
+      err.kind === 'variant-not-found' ||
+      err.kind === 'processed-missing' ||
+      err.kind === 'run-not-found'
+        ? 404
+        : err.kind === 'already-approved'
+          ? 409
+          : 500;
+    reply.code(status);
+    return { error: err.kind, message: err.message };
+  }
+  reply.code(500);
+  return { error: 'approve-failed', message: err instanceof Error ? err.message : String(err) };
+}
+
+/**
+ * Map a `CheckinError` (or unknown thrown value) from ANY check-in-shaped
+ * caller — `/api/checkin`, `/api/checkin/prepare`, the atomic `/accept`
+ * route's own check-in step, and its pre-/post-mutation queue-list
+ * reconciliation reads — to the SAME structured `{error, message}` body,
+ * setting `reply`'s status code. One shared mapper keeps the
+ * ci-refused/nothing-to-checkin/content-conflict/ambiguous/git-or-gh-failed
+ * status table from drifting between call sites; without it, a `CheckinError`
+ * thrown somewhere that forgot to catch it falls through to Fastify's
+ * generic (unstructured) 500 instead of this contract.
+ */
+function mapCheckinError(
+  reply: FastifyReply,
+  err: unknown,
+  fallbackError = 'checkin-failed',
+): { error: string; message: string } {
+  if (err instanceof CheckinError) {
+    const status =
+      err.kind === 'ci-refused'
+        ? 403
+        : err.kind === 'nothing-to-checkin' ||
+            err.kind === 'content-conflict' ||
+            err.kind === 'ambiguous-queued-content' ||
+            err.kind === 'checkin-locked'
+          ? 409
+          : 502; // git-failed / gh-failed
+    reply.code(status);
+    return { error: err.kind, message: err.message };
+  }
+  reply.code(500);
+  return { error: fallbackError, message: err instanceof Error ? err.message : String(err) };
+}
+
+/** Number of durably-queued assets that share `issueUrl` — the batch size of that check-in. */
+function countQueuedForIssue(
+  queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>,
+  issueUrl: string,
+): number {
+  let count = 0;
+  for (const entry of queuedAssets.values()) {
+    if (entry.issueUrl === issueUrl) count += 1;
+  }
+  return count;
+}
+
+/** Successful atomic-accept response shape (either freshly queued or reconciled against an existing queue entry). */
+interface AcceptedResponse {
+  readonly state: 'queued';
+  readonly existing: boolean;
+  readonly briefId: string;
+  readonly variantIndex: number;
+  readonly assetPath: string;
+  readonly issueUrl: string;
+  readonly assetCount: number;
+}
+
+/**
+ * Reconcile a variant's identity against the durable check-in queue BEFORE
+ * any mutation (ADR 0066 / concern #4): same content hash as the queued entry
+ * -> return the existing queued state; different hash -> 409 conflict; queued
+ * but the entry predates content hashes -> fail closed (409, ambiguous) since
+ * equality can't be established. Returns `undefined` when `identity.assetPath`
+ * isn't queued at all, so the caller should proceed with approve + check-in.
+ */
+function reconcileQueuedAsset(
+  reply: FastifyReply,
+  queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>,
+  identity: VariantIdentity,
+  variantIndex: number,
+): AcceptedResponse | { error: string; message: string } | undefined {
+  const queued = queuedAssets.get(identity.assetPath);
+  const reconciliation = reconcileQueuedContent(queued, identity.contentHash);
+  if (reconciliation === 'new') return undefined;
+
+  if (reconciliation === 'ambiguous') {
+    reply.code(409);
+    return {
+      error: 'ambiguous-queued-content',
+      message:
+        `${identity.assetPath} is already queued (${queued!.issueUrl}) by an issue filed ` +
+        'before content hashes were recorded, so it cannot be verified against the current ' +
+        'content. Resolve the open issue manually before re-accepting this variant.',
+    };
+  }
+  if (reconciliation === 'content-conflict') {
+    reply.code(409);
+    return {
+      error: 'content-conflict',
+      message:
+        `${identity.assetPath} is already queued (${queued!.issueUrl}) with different content. ` +
+        'Approve a different variant, or resolve the existing issue first.',
+    };
+  }
+  return {
+    state: 'queued',
+    existing: true,
+    briefId: identity.briefId,
+    variantIndex,
+    assetPath: identity.assetPath,
+    issueUrl: queued!.issueUrl,
+    assetCount: countQueuedForIssue(queuedAssets, queued!.issueUrl),
+  };
+}
+/**
+ * Version token for the slice-map cache key. Bump this constant whenever
+ * `computeSliceMap` logic or its response schema changes so a worktree with
+ * newer code never serves a response produced by an older algorithm from the
+ * shared cross-worktree cache.
+ */
+const SLICE_MAP_SCHEMA_VERSION = 'v1';
+
+/**
  * Build the Fastify instance. Does NOT call `.listen()` — that's the CLI's
  * job. Returning an unstarted instance keeps tests fast: they can use
  * `app.inject()` to fire requests through the router without ever opening
@@ -398,7 +692,23 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     queueBackend: queue.backend,
     worker: worker.status(),
     issueIngester: issueIngester.status(),
+    service: deps.service?.identity ?? null,
   }));
+
+  app.post('/api/service/shutdown', async (req, reply) => {
+    if (!deps.service) {
+      reply.code(404);
+      return { error: 'not-managed', message: 'This sprite sidecar is not manager-owned.' };
+    }
+    const token = req.headers['x-crawler-sidecar-token'];
+    if (token !== deps.service.shutdownToken) {
+      reply.code(403);
+      return { error: 'forbidden', message: 'Invalid managed-service shutdown token.' };
+    }
+    const instanceId = deps.service.identity.instanceId;
+    setImmediate(deps.service.requestShutdown);
+    return { ok: true, instanceId };
+  });
 
   app.get<{ Querystring: RunsQuery }>('/api/runs', async (req, reply) => {
     const promotedRaw = req.query.promoted;
@@ -489,7 +799,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       if (!briefId || !runId) continue;
       if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) continue;
       const fromPrefix = `${briefId}/${runId}/`;
-      const keys = await store.list(fromPrefix);
+      // Archive enumerates-then-copies-then-removes this exact key set — a
+      // stale (SWR fast-path) listing could leave newly-added files behind
+      // under the un-archived (original) location, so this MUST see an
+      // authoritative, freshly-listed result.
+      const keys = await store.list(fromPrefix, { authoritative: true });
       if (keys.length === 0) {
         skipped.push(raw);
         continue;
@@ -542,7 +856,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       if (!briefId || !runId) continue;
       if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) continue;
       const prefix = `${archive ? 'archive/' : ''}${briefId}/${runId}/`;
-      for (const key of await store.list(prefix)) {
+      // Delete enumerates-then-removes this exact key set — a stale listing
+      // could leave newly-added files behind, undermining "fully deleted".
+      for (const key of await store.list(prefix, { authoritative: true })) {
         await store.remove(key);
       }
       deleted.push(raw);
@@ -675,6 +991,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(403);
         return { error: 'forbidden-path' };
       }
+      const responseCacheKey = `route/brief/${briefId}/${runId}`;
+      const cachedResponse = await readCachedJson(store, responseCacheKey);
+      if (cachedResponse !== null) return cachedResponse;
+
       const summaryKey = `${briefId}/${runId}/summary.json`;
       if (!(await store.has(summaryKey))) {
         reply.code(404);
@@ -689,27 +1009,79 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
 
       let briefYaml: string | null = null;
+      // briefYamlBytes tracks the raw buffer so the per-run snapshot write
+      // reuses the already-fetched bytes without an extra encoding round-trip.
+      let briefYamlBytes: Buffer | null = null;
+      // briefIsCanonical is true when briefYaml comes from a durable or per-run
+      // snapshot (i.e. not a raw disk read) — it controls whether the assembled
+      // response is eligible to be written to the shared derived-resource cache.
+      let briefIsCanonical = false;
       if (typeof summary.briefPath === 'string' && summary.briefPath !== '') {
-        // Resolve brief path safely — must stay under repoRoot.
-        const resolved = path.isAbsolute(summary.briefPath)
-          ? summary.briefPath
-          : path.resolve(deps.repoRoot, summary.briefPath);
-        const rel = path.relative(deps.repoRoot, resolved);
-        if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-          try {
-            briefYaml = readFileSync(resolved, 'utf8');
-          } catch {
-            briefYaml = null;
+        // Check the per-run immutable snapshot first. It captures the brief
+        // bytes that were active when the run was generated, so it is immune
+        // to later edits of the brief file (the path-level durable key is a
+        // last-writer-wins mirror that would serve the wrong generation config
+        // for older runs after the brief is edited).
+        const perRunBytes = await readPerRunBrief(store, briefId, runId);
+        if (perRunBytes !== null) {
+          // Per-run snapshot already established — use it directly. The
+          // canonical brief is already persisted so no new snapshot write is
+          // needed; briefIsCanonical is set to indicate the response can be
+          // stored in the shared derived-resource cache.
+          briefYaml = perRunBytes.toString('utf8');
+          briefIsCanonical = true;
+        } else {
+          // Resolve brief path safely — must stay under repoRoot.
+          const resolved = path.isAbsolute(summary.briefPath)
+            ? summary.briefPath
+            : path.resolve(deps.repoRoot, summary.briefPath);
+          const rel = path.relative(deps.repoRoot, resolved);
+          if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+            const durableKey = workflowBriefKey(toRepoRelativePath(deps.repoRoot, resolved));
+            if (await store.has(durableKey)) {
+              try {
+                // Keep the Buffer directly — avoids a Buffer→string→Buffer
+                // round-trip when writing the per-run snapshot below.
+                briefYamlBytes = await store.get(durableKey);
+                briefYaml = briefYamlBytes.toString('utf8');
+                briefIsCanonical = true;
+              } catch {
+                briefYaml = null;
+                briefYamlBytes = null;
+              }
+            }
+            if (briefYaml === null) {
+              try {
+                // Read as Buffer so the same bytes are passed to
+                // writePerRunBrief without re-encoding.
+                briefYamlBytes = readFileSync(resolved);
+                briefYaml = briefYamlBytes.toString('utf8');
+              } catch {
+                briefYaml = null;
+                briefYamlBytes = null;
+              }
+            }
+            // Persist as the per-run immutable snapshot so future requests
+            // for this run always get the same brief regardless of later
+            // edits to the brief file.
+            if (briefYaml !== null && briefYamlBytes !== null) {
+              await writePerRunBrief(store, briefId, runId, briefYamlBytes);
+              briefIsCanonical = true;
+            }
           }
         }
       }
 
-      return {
+      const response = {
         briefId,
         runId,
         briefYaml,
         promptText: typeof summary.prompt === 'string' ? summary.prompt : null,
       };
+      if (briefYaml !== null && briefIsCanonical) {
+        await writeCachedJson(store, responseCacheKey, response);
+      }
+      return response;
     },
   );
 
@@ -770,6 +1142,27 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(403);
         return { error: 'forbidden-path' };
       }
+      const requestedSheet = req.query.sheet;
+      if (
+        typeof requestedSheet === 'string' &&
+        requestedSheet.length > 0 &&
+        !/^sheet-\d+\.png$/i.test(requestedSheet)
+      ) {
+        reply.code(415);
+        return { error: 'unsupported-sheet-filename', sheet: requestedSheet };
+      }
+
+      // ── Load summary + brief up-front for provenance-aware caching ──────────
+      // The cache key embeds a fingerprint of the brief's resolved generation
+      // config (post type-defaults merge) so a change to data/sprite-types or
+      // data/palettes that modifies emptyCells produces a different key and
+      // forces recomputation. Brief loading adds two small local file reads on
+      // the hot path; it is much cheaper than the PNG decode + slice computation.
+      //
+      // When the brief cannot be loaded (source tree absent in offline mode,
+      // invalid YAML, missing type-defaults), we fall back to the
+      // non-fingerprinted key so a warmed offline sidecar still serves the
+      // cached response without any source-tree inputs.
       const summaryKey = `${briefId}/${runId}/summary.json`;
       if (!(await store.has(summaryKey))) {
         reply.code(404);
@@ -794,18 +1187,143 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(403);
         return { error: 'forbidden-brief-path' };
       }
+      // Load the brief for fingerprinting and slice-map computation.
+      // Priority: (1) per-run immutable snapshot, (2) path-level durable key.
+      // Track whether a per-run snapshot already exists so we can persist one
+      // after a successful load when it doesn't (first warm of this run).
+      const perRunSnapshotBytes = hasDerivedResourceCache(store)
+        ? await readPerRunBrief(store, briefId, runId)
+        : null;
+      let durableBrief: Buffer | null = perRunSnapshotBytes;
+      if (durableBrief === null && hasDerivedResourceCache(store)) {
+        // Per-run snapshot not yet set — fall back to the path-level durable key
+        // (last-writer-wins mirror). Once we load the brief we will persist it
+        // as the per-run immutable snapshot so future requests are independent
+        // of further edits to the brief file.
+        const durableKey = workflowBriefKey(toRepoRelativePath(deps.repoRoot, resolved));
+        if (await store.has(durableKey)) {
+          try {
+            durableBrief = await store.get(durableKey);
+          } catch {
+            durableBrief = null;
+          }
+        }
+      }
       // Recover a wiped gitignored draft brief from the store before loading.
       await tryMaterialiseBrief(resolved);
-      // Pass `projectRoot` so loadBrief resolves palette / type-defaults against
-      // THIS repo (every other call site does; omitting it falls back to
-      // process.cwd()). A brief that still cannot load degrades to a brief-less
-      // slice map below instead of 500ing the debugger.
+      let durableBriefMatches = false;
+      if (durableBrief !== null) {
+        try {
+          durableBriefMatches = readFileSync(resolved).equals(durableBrief);
+        } catch {
+          durableBriefMatches = false;
+        }
+      }
+      // Load the fully-resolved Brief object for computeSliceMap and
+      // fingerprinting. Use the cached bytes when available so the fingerprint
+      // is based on the immutable generation config rather than whatever the
+      // worktree currently has on disk. Fall back to loading from disk when no
+      // cached bytes exist (first warm of this run).
+      // diskBytes captures the raw file content when we load from disk so the
+      // snapshot-write below can reuse it without a second readFileSync call.
       let brief: Brief | null;
+      let diskBytes: Buffer | null = null;
       try {
-        brief = loadBrief(resolved, { projectRoot: deps.repoRoot }).brief;
+        if (durableBrief !== null) {
+          // Parse from the cached YAML so type-defaults and palette are
+          // resolved consistently across worktrees for the same run.
+          brief = loadBriefFromYaml(durableBrief.toString('utf8'), {
+            projectRoot: deps.repoRoot,
+          });
+        } else {
+          // Read the file once and parse from the buffer; reuse the bytes for
+          // the per-run snapshot write below to avoid a second readFileSync.
+          diskBytes = readFileSync(resolved);
+          brief = loadBriefFromYaml(diskBytes.toString('utf8'), {
+            projectRoot: deps.repoRoot,
+          });
+        }
       } catch {
         brief = null;
       }
+      // Persist the per-run immutable snapshot on first successful load so that
+      // future requests for this run always use the same brief bytes, even after
+      // the brief file on disk is edited or the worktree is switched.
+      //
+      // Invariant: when brief !== null, snapshotBytes is always non-null.
+      // • If durableBrief !== null: brief was parsed from durableBrief → snapshotBytes = durableBrief.
+      // • If durableBrief === null: brief was parsed from diskBytes (readFileSync above). If
+      //   readFileSync threw, the catch sets brief = null, so we never reach this block. If it
+      //   succeeded, diskBytes is non-null → snapshotBytes = diskBytes.
+      if (brief !== null && perRunSnapshotBytes === null) {
+        const snapshotBytes = durableBrief ?? diskBytes;
+        // Defensive null check: per the invariant above snapshotBytes is always
+        // non-null when brief !== null, but we guard here to be safe against any
+        // future code changes that break that invariant.
+        if (snapshotBytes !== null) {
+          await writePerRunBrief(store, briefId, runId, snapshotBytes);
+        }
+      }
+
+      // Stable 16-hex fingerprint of the fully-resolved generation config.
+      // Captures the effect of type-defaults and palette on emptyCells: if
+      // those files change, the fingerprint changes, the fingerprinted key
+      // misses, and the response is recomputed with fresh inputs.
+      // The replacer sorts object keys at every depth for deterministic output
+      // regardless of property insertion order across Node.js versions or brief
+      // loading paths.
+      const briefGenFingerprint =
+        brief !== null
+          ? createHash('sha256')
+              .update(
+                JSON.stringify(brief.generation, (_key, val: unknown) => {
+                  if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+                    const sorted = Object.keys(val as object).sort();
+                    return Object.fromEntries(
+                      sorted.map((k) => [k, (val as Record<string, unknown>)[k]]),
+                    );
+                  }
+                  return val;
+                }),
+              )
+              .digest('hex')
+              .slice(0, 16)
+          : null;
+
+      // The route-based portion of the cache key: identifies the specific
+      // brief/run/sheet resource. Invalidation prefixes in
+      // CachingRunStore.invalidateDerivedResources() key on this prefix.
+      const routeCacheKey =
+        `route/slice-map/${briefId}/${runId}/` +
+        (typeof requestedSheet === 'string' && requestedSheet.length > 0
+          ? requestedSheet
+          : 'latest');
+      const storedPerRunFingerprint =
+        briefGenFingerprint === null
+          ? await readPerRunSliceMapFingerprint(store, briefId, runId)
+          : null;
+      const effectiveFingerprint = briefGenFingerprint ?? storedPerRunFingerprint;
+      // Per-run fallback key for source-less readers that still have no persisted
+      // fingerprint (legacy warmed runs). It is immutable (set-if-absent) so
+      // cross-worktree recomputes cannot overwrite the first warmed snapshot.
+      const perRunFallbackKey = `${routeCacheKey}:${SLICE_MAP_SCHEMA_VERSION}:run-snapshot`;
+      // Primary key: schema version + brief-generation fingerprint for full coherence.
+      // Fallback key: immutable per-run snapshot for offline reads where the brief
+      // fingerprint cannot be recomputed (source tree absent in a different worktree).
+      const responseCacheKey =
+        effectiveFingerprint !== null
+          ? `${routeCacheKey}:${SLICE_MAP_SCHEMA_VERSION}:${effectiveFingerprint}`
+          : perRunFallbackKey;
+
+      // Try the primary (fingerprinted+versioned) key first.
+      let cachedResponse = await readCachedJson(store, responseCacheKey);
+      // Offline fallback: no fingerprint could be loaded/recovered; try the
+      // immutable per-run key warmed by an online worktree.
+      if (cachedResponse === null && effectiveFingerprint === null) {
+        cachedResponse = await readCachedJson(store, perRunFallbackKey);
+      }
+      if (cachedResponse !== null) return cachedResponse;
+
       const runPrefix = `${briefId}/${runId}/`;
       const keys = await store.list(runPrefix);
       const sheetFiles = keys
@@ -816,13 +1334,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(404);
         return { error: 'sheet-not-found' };
       }
-      const requestedSheet = req.query.sheet;
       let sheetFile = sheetFiles[sheetFiles.length - 1]!;
       if (typeof requestedSheet === 'string' && requestedSheet.length > 0) {
-        if (!/^sheet-\d+\.png$/i.test(requestedSheet)) {
-          reply.code(415);
-          return { error: 'unsupported-sheet-filename', sheet: requestedSheet };
-        }
         if (!sheetFiles.includes(requestedSheet)) {
           reply.code(404);
           return { error: 'sheet-not-found', sheet: requestedSheet };
@@ -845,12 +1358,26 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         const sliceMap = brief
           ? computeSliceMap(sheetPng, { emptyCells: brief.generation.sheet.emptyCells })
           : computeSliceMap(sheetPng, {});
-        return {
+        const response = {
           ...sliceMap,
           sheetFile,
           algorithm: 'content-aware',
           emptyCellsApplied: brief !== null,
         };
+        // Only cache when the brief loaded successfully (brief !== null), so
+        // a brief-less response is never stored as the canonical snapshot.
+        // A per-run immutable brief snapshot is authoritative even when the
+        // current worktree file has changed since run generation.
+        const hasPerRunSnapshot = perRunSnapshotBytes !== null;
+        const briefProvenanceTrusted = hasPerRunSnapshot || durableBriefMatches;
+        if (briefProvenanceTrusted && brief !== null && briefGenFingerprint !== null) {
+          await Promise.all([
+            writeCachedJson(store, responseCacheKey, response),
+            writePerRunSliceMapFingerprint(store, briefId, runId, briefGenFingerprint),
+            writeCachedJsonIfAbsent(store, perRunFallbackKey, response),
+          ]);
+        }
+        return response;
       } catch (err) {
         reply.code(500);
         return { error: 'slice-failed', message: String(err) };
@@ -983,6 +1510,23 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       : null;
   };
 
+  const parsePostprocessOptions = (
+    value: unknown,
+    loaded: LoadedBrief,
+  ): PostprocessOptions | undefined => {
+    if (value === undefined) return undefined;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('body.options must be an object');
+    }
+    const raw = value as Record<string, unknown>;
+    return {
+      ...raw,
+      ...(raw.disabledModules !== undefined
+        ? { disabledModules: normalizeDisabledModules(raw.disabledModules, loaded.brief) }
+        : {}),
+    } as PostprocessOptions;
+  };
+
   const parseManualAnchorPayload = (
     value: unknown,
   ): { variantIndex: number; x: number; y: number; applyToAllVariants?: boolean } | null => {
@@ -1043,11 +1587,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   }>('/api/runs/:briefId/:runId/postprocess', async (req, reply) => {
     const { briefId, runId } = req.params;
     const body = (req.body ?? {}) as RunPostprocessBody;
-    const options =
-      typeof body.options === 'object' && body.options !== null
-        ? (body.options as PostprocessOptions)
-        : undefined;
-    const mode = parsePostprocessMode(body.mode, options !== undefined);
+    const mode = parsePostprocessMode(body.mode, body.options !== undefined);
     if (mode === null) {
       reply.code(400);
       return {
@@ -1106,6 +1646,16 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     if (!resolution.ok) {
       reply.code(resolution.status);
       return resolution.body;
+    }
+    let options: PostprocessOptions | undefined;
+    try {
+      options = parsePostprocessOptions(body.options, resolution.loaded);
+    } catch (error) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: error instanceof Error ? error.message : String(error),
+      };
     }
     try {
       let persistedManualAnchor: ManualAnchorOverride | null | undefined = undefined;
@@ -1379,64 +1929,332 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const catalogPath =
       deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
-    let hydrated: HydratedRunDir | null = null;
-    let entry: ManifestEntry;
-    try {
-      hydrated =
-        store.backend === 'local'
-          ? null
-          : await hydrateRunDirForApproveFromStore(store, briefId, runId, variantIndex);
-      const runDir = hydrated?.runDir ?? safeJoin(deps.runsDir, [briefId, runId]);
-      if (runDir === null) {
-        reply.code(403);
-        return { error: 'forbidden-path' };
-      }
-      entry = approveVariant({
-        runDir,
-        variantIndex,
-        manifestPath,
-        catalogPath,
-        publicAssetsDir,
-        repoRoot: deps.repoRoot,
-      });
-    } catch (err) {
-      if (err instanceof ApproveError) {
-        // variant-not-found / processed-missing -> 404 (resource missing).
-        // already-approved                      -> 409 (conflict; exact dup).
-        // summary-invalid / manifest-invalid    -> 500 (server-side data corruption).
-        // run-not-found                          -> 404.
-        let status: number;
-        if (
-          err.kind === 'variant-not-found' ||
-          err.kind === 'processed-missing' ||
-          err.kind === 'run-not-found'
-        ) {
-          status = 404;
-        } else if (err.kind === 'already-approved') {
-          status = 409;
-        } else {
-          status = 500;
+    // Serialized with /checkin and /accept (concern #5, ADR 0066): approve
+    // mutates the same manifest/catalog/PNG surface a concurrent check-in
+    // worktree operation reads, so both must run under the same process-wide
+    // lock. Acquired here, at the route boundary, not nested inside another
+    // locked call — avoids deadlock.
+    return withCheckinMutationLock(async () => {
+      let hydrated: HydratedRunDir | null = null;
+      let entry: ManifestEntry;
+      try {
+        hydrated =
+          store.backend === 'local'
+            ? null
+            : await hydrateRunDirForApproveFromStore(store, briefId, runId, variantIndex);
+        const runDir = hydrated?.runDir ?? safeJoin(deps.runsDir, [briefId, runId]);
+        if (runDir === null) {
+          reply.code(403);
+          return { error: 'forbidden-path' };
         }
-        reply.code(status);
-        return { error: err.kind, message: err.message };
+        entry = approveVariant({
+          runDir,
+          variantIndex,
+          manifestPath,
+          catalogPath,
+          publicAssetsDir,
+          repoRoot: deps.repoRoot,
+        });
+      } catch (err) {
+        if (err instanceof ApproveError) {
+          // variant-not-found / processed-missing -> 404 (resource missing).
+          // already-approved                      -> 409 (conflict; exact dup).
+          // summary-invalid / manifest-invalid    -> 500 (server-side data corruption).
+          // run-not-found                          -> 404.
+          let status: number;
+          if (
+            err.kind === 'variant-not-found' ||
+            err.kind === 'processed-missing' ||
+            err.kind === 'run-not-found'
+          ) {
+            status = 404;
+          } else if (err.kind === 'already-approved') {
+            status = 409;
+          } else {
+            status = 500;
+          }
+          reply.code(status);
+          return { error: err.kind, message: err.message };
+        }
+        reply.code(500);
+        return {
+          error: 'approve-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      } finally {
+        hydrated?.cleanup();
       }
-      reply.code(500);
+
+      return entry;
+    });
+  });
+
+  // DELETE /api/manifest/:variantId — evict a previously approved variant.
+  // Removes the entry from manifest.json, removes the catalog entry, and
+  // deletes the PNG from public/assets/generated/. Serialized under the
+  // same mutation lock as /approve and /checkin.
+  app.delete<{ Params: { variantId: string } }>('/api/manifest/:variantId', async (req, reply) => {
+    // Constitutional §3: same CI refusal as /approve.
+    const env = deps.env ?? process.env;
+    if (env.CI !== undefined) {
+      reply.code(403);
       return {
-        error: 'approve-failed',
-        message: err instanceof Error ? err.message : String(err),
+        error: 'ci-refused',
+        message:
+          'Per Constitutional §3, the sprite-pipeline unapprove endpoint is local-only. ' +
+          'It mutates checked-in assets under public/assets/generated/ and the manifest. ' +
+          'Run the gallery sidecar locally (npm run sprites:gallery) to unapprove.',
       };
-    } finally {
-      hydrated?.cleanup();
     }
 
-    return entry;
+    const { variantId } = req.params;
+    // Basic format check: must be a non-empty slug segment (no path separators).
+    if (!variantId || /[/\\]/.test(variantId)) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'variantId must be a single path segment' };
+    }
+
+    const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
+    const manifestPath =
+      deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+    const catalogPath =
+      deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
+
+    return withCheckinMutationLock(async () => {
+      // Pre-mutation queue check: if this variant's asset is already in the
+      // durable asset-checkin queue (an `assets/*` branch + open issue filed
+      // by /accept), evicting the local copy won't remove it from that
+      // pipeline. Reject with 409 so the caller can close the issue first.
+      const assetPath = `generated/${variantId}.png`;
+      const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
+      const listQueuedAssets =
+        checkinDeps.listQueuedAssets ??
+        (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+      let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
+      try {
+        queuedAssets = await listQueuedAssets();
+      } catch (err) {
+        return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
+      }
+      const queued = queuedAssets.get(assetPath);
+      if (queued) {
+        reply.code(409);
+        return {
+          error: 'queued-conflict',
+          message:
+            `${assetPath} is already queued for check-in (${queued.issueUrl}). ` +
+            'Close or retract that issue before evicting this variant to prevent it ' +
+            'from reappearing in the next asset PR.',
+        };
+      }
+
+      let entry: ManifestEntry;
+      try {
+        entry = unapproveVariant({
+          variantId,
+          manifestPath,
+          catalogPath,
+          publicAssetsDir,
+        });
+      } catch (err) {
+        if (err instanceof UnapproveError) {
+          reply.code(err.kind === 'not-found' ? 404 : 500);
+          return { error: err.kind, message: err.message };
+        }
+        reply.code(500);
+        return {
+          error: 'unapprove-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      return entry;
+    });
+  });
+
+  app.post<{
+    Params: { briefId: string; runId: string };
+    Body: { variantIndex?: unknown };
+  }>('/api/runs/:briefId/:runId/accept', async (req, reply) => {
+    // CSRF guard (concern #1, ADR 0066 CTX-005): this atomic operation
+    // approves AND files a GitHub issue in one shot, so binding to 127.0.0.1
+    // alone is not enough — modern browsers attach an Origin header to every
+    // non-GET request (same-origin or cross-origin), so ANY browser-issued
+    // request to this route is distinguishable from the trusted caller, the
+    // workflow canvas extension's Node-based `fetch` (which never sends
+    // Origin). Refuse outright rather than trying to allowlist origins here.
+    // /approve and /checkin (used by browser-based gallery UIs) are untouched.
+    const origin = req.headers.origin;
+    if (typeof origin === 'string') {
+      reply.code(403);
+      return {
+        error: 'forbidden-origin',
+        message: 'Direct browser requests are not allowed on this route.',
+      };
+    }
+
+    // Constitutional §3: same CI refusal as /approve and /checkin, checked
+    // before any approval work.
+    const env = deps.env ?? process.env;
+    if (env.CI !== undefined) {
+      reply.code(403);
+      return {
+        error: 'ci-refused',
+        message:
+          'Per Constitutional §3, the sprite-pipeline accept endpoint is local-only. ' +
+          'It approves checked-in assets and files a GitHub issue. ' +
+          'Run the gallery sidecar locally (npm run sprites:gallery) to accept.',
+      };
+    }
+
+    const { briefId, runId } = req.params;
+    if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
+      reply.code(403);
+      return { error: 'forbidden-path' };
+    }
+
+    const body = (req.body ?? {}) as { variantIndex?: unknown };
+    const variantIndex = body.variantIndex;
+    if (typeof variantIndex !== 'number' || !Number.isInteger(variantIndex) || variantIndex < 0) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'briefId, runId, and a non-negative integer variantIndex are required.',
+      };
+    }
+
+    const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
+    const manifestPath =
+      deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+    const catalogPath =
+      deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
+    const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
+    const listQueuedAssets =
+      checkinDeps.listQueuedAssets ??
+      (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+
+    // Serialized with /approve and /checkin (concern #5) — see
+    // withCheckinMutationLock's docstring for why this can't deadlock.
+    return withCheckinMutationLock(async () => {
+      let hydrated: HydratedRunDir | null = null;
+      try {
+        hydrated =
+          store.backend === 'local'
+            ? null
+            : await hydrateRunDirForApproveFromStore(store, briefId, runId, variantIndex);
+        const runDir = hydrated?.runDir ?? safeJoin(deps.runsDir, [briefId, runId]);
+        if (runDir === null) {
+          reply.code(403);
+          return { error: 'forbidden-path' };
+        }
+
+        let identity: VariantIdentity;
+        try {
+          identity = resolveVariantIdentity(runDir, variantIndex);
+        } catch (err) {
+          return mapApproveError(reply, err);
+        }
+
+        // Reconcile BEFORE mutating (concern #4): an already-queued assetPath
+        // short-circuits here — same content hash reports the existing queued
+        // state, a different hash (or an un-hashed legacy entry) refuses with
+        // 409 WITHOUT ever calling approveVariant/runAssetCheckin below. The
+        // queue-list read itself can fail (e.g. `gh issue list` erroring) —
+        // that must surface the SAME structured mapping as every other
+        // check-in failure, not an uncaught-rejection generic 500.
+        let queuedBefore: ReadonlyMap<string, QueuedAssetCheckin>;
+        try {
+          queuedBefore = await listQueuedAssets();
+        } catch (err) {
+          return mapCheckinError(reply, err);
+        }
+        const reconciledBefore = reconcileQueuedAsset(reply, queuedBefore, identity, variantIndex);
+        if (reconciledBefore !== undefined) {
+          return reconciledBefore;
+        }
+
+        try {
+          approveVariant({
+            runDir,
+            variantIndex,
+            manifestPath,
+            catalogPath,
+            publicAssetsDir,
+            repoRoot: deps.repoRoot,
+          });
+        } catch (err) {
+          // already-approved is a safe no-op here: approveVariant throws
+          // BEFORE writing anything when the identical content is already
+          // approved, so it's fine to fall through to check-in using the
+          // identity resolved above. Any other kind is a genuine failure.
+          if (!(err instanceof ApproveError) || err.kind !== 'already-approved') {
+            return mapApproveError(reply, err);
+          }
+        }
+
+        try {
+          const result = await runAssetCheckin(deps.repoRoot, checkinDeps, {});
+          return {
+            state: 'queued' as const,
+            existing: false,
+            briefId: identity.briefId,
+            variantIndex,
+            assetPath: identity.assetPath,
+            issueUrl: result.issueUrl,
+            assetCount: result.plan.assets.length,
+          } satisfies AcceptedResponse;
+        } catch (err) {
+          if (err instanceof CheckinError && err.kind === 'nothing-to-checkin') {
+            // Race: another request/process queued this exact asset between
+            // our pre-mutation check and now. Reconcile once more before
+            // reporting failure — and, same as the pre-mutation read above, a
+            // queue-list failure here must map to the SAME structured body
+            // instead of an uncaught-rejection generic 500.
+            let queuedAfter: ReadonlyMap<string, QueuedAssetCheckin>;
+            try {
+              queuedAfter = await listQueuedAssets();
+            } catch (listErr) {
+              return mapCheckinError(reply, listErr);
+            }
+            const reconciledAfter = reconcileQueuedAsset(
+              reply,
+              queuedAfter,
+              identity,
+              variantIndex,
+            );
+            if (reconciledAfter !== undefined) {
+              return reconciledAfter;
+            }
+          }
+          return mapCheckinError(reply, err);
+        }
+      } finally {
+        hydrated?.cleanup();
+      }
+    });
   });
 
   app.post<{ Body: { base?: unknown; remote?: unknown } }>(
     '/api/checkin/prepare',
     async (req, reply) => {
+      // CSRF guard (same policy as /api/checkin): prepareAssetCheckin runs
+      // `git fetch` and `gh issue list`, so a cross-origin POST could
+      // repeatedly trigger unbounded local/network work. Allow only the same
+      // exact per-worktree trusted origins as the mutating /api/checkin route;
+      // server-side callers (Node-based fetch, no Origin header) remain trusted.
+      const origin = req.headers.origin;
+      if (typeof origin === 'string' && !deps.trustedMutationOrigins?.includes(origin)) {
+        reply.code(403);
+        return {
+          error: 'forbidden-origin',
+          message: 'This browser origin is not allowed to trigger asset check-in preparation.',
+        };
+      }
+
       // Fast pre-flight check: detect what will be checked in WITHOUT pushing/filing issue.
       // This provides immediate feedback and allows the UI to show progress for the slow parts.
+      // Calls the SAME `prepareAssetCheckin`, with the SAME injected deps/options, that
+      // `/api/checkin` uses to actually execute — so preview and execution can never diverge
+      // (manifest enrichment, queued-content reconciliation, and error mapping included).
       const body = (req.body ?? {}) as { base?: unknown; remote?: unknown };
       const options: { baseBranch?: string; remote?: string } = {};
       if (typeof body.base === 'string' && body.base.trim() !== '') options.baseBranch = body.base;
@@ -1445,53 +2263,21 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
       try {
         const env = deps.env ?? process.env;
-        if (env.CI !== undefined) {
-          reply.code(403);
-          return { error: 'ci-refused', message: 'Check-in is disabled in CI (local-only).' };
-        }
-
-        const remote = options.remote ?? 'origin';
-        const baseBranch = options.baseBranch ?? 'main';
-
-        // Import and use detectApprovedAssets to see what would be checked in
-        const { detectApprovedAssets, planAssetCheckin } = await import('../checkin.js');
-        const defaultDeps = createDefaultCheckinDeps(deps.repoRoot, env);
-
-        // Detect approved assets without full operations (skip manifest enrichment in prepare for speed)
-        const assets = await detectApprovedAssets(
-          defaultDeps.exec,
-          deps.repoRoot,
-          remote,
-          baseBranch,
-          {},
-        );
-
-        if (assets.length === 0) {
-          reply.code(409);
-          return {
-            error: 'nothing-to-checkin',
-            message: `No approved art differs from ${remote}/${baseBranch}.`,
-          };
-        }
-
-        const plan = planAssetCheckin({ assets, now: new Date(), baseBranch });
-        const slug = plan.branch.startsWith('assets/')
-          ? plan.branch.slice('assets/'.length)
-          : plan.branch;
+        const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
+        const prepared = await prepareAssetCheckin(deps.repoRoot, checkinDeps, options);
+        const slug = prepared.plan.branch.startsWith('assets/')
+          ? prepared.plan.branch.slice('assets/'.length)
+          : prepared.plan.branch;
 
         return {
-          assetCount: assets.length,
-          branch: plan.branch,
+          assetCount: prepared.plan.assets.length,
+          branch: prepared.plan.branch,
           slug,
-          assets: plan.assets,
+          assets: prepared.plan.assets,
           estimatedDuration: 'Pushing: ~5s · Filing issue: ~3s',
         };
       } catch (err) {
-        reply.code(500);
-        return {
-          error: 'prepare-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
+        return mapCheckinError(reply, err, 'prepare-failed');
       }
     },
   );
@@ -1499,6 +2285,24 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   app.post<{ Body: { base?: unknown; remote?: unknown; slug?: unknown } }>(
     '/api/checkin',
     async (req, reply) => {
+      // CSRF guard (ADR 0066): this route
+      // MUTATES (pushes a branch, files a GitHub issue), and binding to
+      // 127.0.0.1 alone is not enough to protect it — a request with a
+      // `text/plain` (or content-type-less) body needs no CORS preflight at
+      // all, so ANY page, even a non-loopback one, could otherwise trigger a
+      // real check-in merely by having the user's browser visit it while the
+      // sidecar happens to be running locally. Browser calls are allowed only
+      // from the exact per-worktree gallery origins supplied by the CLI.
+      // Server-side callers remain trusted because they send no Origin.
+      const origin = req.headers.origin;
+      if (typeof origin === 'string' && !deps.trustedMutationOrigins?.includes(origin)) {
+        reply.code(403);
+        return {
+          error: 'forbidden-origin',
+          message: 'This browser origin is not allowed to publish sprite art.',
+        };
+      }
+
       // Check-in publishes locally-approved art as a remote branch + tracking
       // issue (NO PR). Like approve, it is local-only — `runAssetCheckin` refuses
       // when `env.CI` is set; we map that to 403 here for the e2e/gallery caller.
@@ -1509,34 +2313,27 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         options.remote = body.remote;
       if (typeof body.slug === 'string' && body.slug.trim() !== '') options.slug = body.slug;
 
-      try {
-        const env = deps.env ?? process.env;
-        const result = await runAssetCheckin(
-          deps.repoRoot,
-          createDefaultCheckinDeps(deps.repoRoot, env),
-          options,
-        );
-        return {
-          branch: result.branch,
-          issueUrl: result.issueUrl,
-          issueTitle: result.plan.issueTitle,
-          issueBody: result.plan.issueBody,
-          assets: result.plan.assets,
-        };
-      } catch (err) {
-        if (err instanceof CheckinError) {
-          // ci-refused -> 403, nothing-to-checkin -> 409, git/gh failures -> 502.
-          const status =
-            err.kind === 'ci-refused' ? 403 : err.kind === 'nothing-to-checkin' ? 409 : 502;
-          reply.code(status);
-          return { error: err.kind, message: err.message };
+      // Serialized with /approve and /accept (concern #5, ADR 0066) — see
+      // withCheckinMutationLock's docstring for why (and why this can't deadlock).
+      return withCheckinMutationLock(async () => {
+        try {
+          const env = deps.env ?? process.env;
+          const result = await runAssetCheckin(
+            deps.repoRoot,
+            deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env),
+            options,
+          );
+          return {
+            branch: result.branch,
+            issueUrl: result.issueUrl,
+            issueTitle: result.plan.issueTitle,
+            issueBody: result.plan.issueBody,
+            assets: result.plan.assets,
+          };
+        } catch (err) {
+          return mapCheckinError(reply, err);
         }
-        reply.code(500);
-        return {
-          error: 'checkin-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
+      });
     },
   );
 
@@ -1693,8 +2490,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     const destRel =
       target === 'draft'
-        ? path.join('briefs', 'draft', `${body.type}s`, `${body.name}.yaml`)
-        : path.join('briefs', `${body.type}s`, `${body.name}.yaml`);
+        ? path.join(
+            'briefs',
+            'draft',
+            briefDirectoryForType(body.type as Brief['type']),
+            `${body.name}.yaml`,
+          )
+        : path.join(
+            'briefs',
+            briefDirectoryForType(body.type as Brief['type']),
+            `${body.name}.yaml`,
+          );
     const destAbs = path.resolve(deps.repoRoot, destRel);
     mkdirSync(path.dirname(destAbs), { recursive: true });
     copyFileSync(sourceAbs, destAbs);
@@ -2049,7 +2855,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     let targetKeys: string[];
     try {
-      const allKeys = await store.list('');
+      // Clear-store enumerates-then-removes the filtered key set and reports
+      // deletedCount — a stale listing would under-report/under-clear, so
+      // this MUST see an authoritative, freshly-listed result.
+      const allKeys = await store.list('', { authoritative: true });
       targetKeys = [
         ...new Set(
           allKeys.filter((key) => {
@@ -2104,16 +2913,24 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       const loaded = loadBrief(briefPath, { projectRoot: deps.repoRoot });
       const { postprocessWithTrace } = await import('../postprocess.js');
       const rawPngBuffer = Buffer.from(body.rawPng, 'base64');
-      const traced = postprocessWithTrace(rawPngBuffer, loaded.brief, loaded.palette, {
-        ...(typeof body.options === 'object' && body.options !== null
-          ? (body.options as Record<string, unknown>)
-          : {}),
-      });
+      let options: PostprocessOptions | undefined;
+      try {
+        options = parsePostprocessOptions(body.options, loaded);
+      } catch (error) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+      const traced = postprocessWithTrace(rawPngBuffer, loaded.brief, loaded.palette, options);
       return {
         finalPng: traced.finalPng.toString('base64'),
         steps: traced.steps.map((step) => ({
           id: step.id,
           label: step.label,
+          moduleId: step.moduleId,
+          skipped: step.skipped,
           png: step.png.toString('base64'),
         })),
       };
@@ -2137,7 +2954,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         return { error: 'forbidden-path' };
       }
       const runPrefix = `${briefId}/${runId}/`;
-      const runKeys = await store.list(runPrefix);
+      // Delete enumerates-then-removes this exact key set (and the follow-up
+      // check below decides whether the brief dir is now empty) — both MUST
+      // see an authoritative, freshly-listed result so a stale listing can't
+      // leave newly-added files behind or wrongly judge the brief empty.
+      const runKeys = await store.list(runPrefix, { authoritative: true });
       if (runKeys.length === 0) {
         reply.code(404);
         return { error: 'run-not-found', briefId, runId };
@@ -2147,7 +2968,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       } else {
         await Promise.all(runKeys.map((key) => store.remove(key)));
       }
-      if ((await store.list(`${briefId}/`)).length === 0) {
+      if ((await store.list(`${briefId}/`, { authoritative: true })).length === 0) {
         await store.remove(briefId);
       }
 

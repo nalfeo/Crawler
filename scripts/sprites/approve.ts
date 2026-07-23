@@ -47,7 +47,14 @@
  */
 
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { canonicalItemBriefId, itemArtIdentitySet } from '../../src/shared/item-sprites.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
@@ -62,12 +69,22 @@ export interface ApproveFs {
   readonly mkdirSync: typeof mkdirSync;
 }
 
+/** Extended fs subset that also supports file deletion, used by unapproveVariant. */
+export interface UnapproveFs extends ApproveFs {
+  readonly unlinkSync: typeof unlinkSync;
+}
+
 const DEFAULT_FS: ApproveFs = {
   existsSync,
   readFileSync,
   writeFileSync,
   copyFileSync,
   mkdirSync,
+};
+
+const DEFAULT_UNAPPROVE_FS: UnapproveFs = {
+  ...DEFAULT_FS,
+  unlinkSync,
 };
 
 /**
@@ -109,9 +126,18 @@ export interface ManifestEntry {
   readonly sensorScore: string;
   /** Judge `minScore` as a string, or `null` if not judged. */
   readonly judgeScore: string | null;
+  /** Full deterministic sensor results retained for later calibration. */
+  readonly sensorBreakdown?: ReadonlyArray<{
+    readonly sensor: string;
+    readonly ok: boolean;
+    readonly reason?: string;
+    readonly pixels?: ReadonlyArray<unknown>;
+  }>;
+  /** Full per-axis VLM scorecard retained for later calibration. */
+  readonly judgeScorecard?: Readonly<Record<string, unknown>> | null;
   /**
-   * Canonical sprite type resolved from the brief (`weapon`/`enemy`/`item`/
-   * `tile`/`vfx`/`character`), or `null` when it couldn't be resolved. Written
+   * Canonical sprite type resolved from the brief, or `null` when it couldn't
+   * be resolved. Written
    * so the reference selector can favour same-type examples without re-reading
    * briefs (which are often deleted after approval).
    */
@@ -173,12 +199,20 @@ interface RunSummaryShape {
     readonly index?: number;
     readonly score?: number;
     readonly outOf?: number;
+    readonly breakdown?: ReadonlyArray<{
+      readonly sensor: string;
+      readonly ok: boolean;
+      readonly reason?: string;
+      readonly pixels?: ReadonlyArray<unknown>;
+    }>;
     readonly derivedAnchor?: { readonly x: number; readonly y: number } | null;
     readonly derivedAnchors?: {
       readonly hold?: { readonly x: number; readonly y: number } | null;
       readonly centerOfGravity?: { readonly x: number; readonly y: number } | null;
     } | null;
-    readonly judgeScorecard?: { readonly minScore?: number } | null;
+    readonly judgeScorecard?:
+      | (Readonly<Record<string, unknown>> & { readonly minScore?: number })
+      | null;
   }>;
   readonly postprocessOverrides?: {
     readonly profilePath?: string | null;
@@ -350,6 +384,8 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     anchors,
     sensorScore,
     judgeScore,
+    sensorBreakdown: candidate.breakdown,
+    judgeScorecard: candidate.judgeScorecard ?? null,
     type,
     contentHash,
     postprocessOverrideProfilePath: summary.postprocessOverrides?.profilePath ?? null,
@@ -362,6 +398,66 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   upsertManifest(fs, options.manifestPath, entry, variantId);
   upsertCatalog(fs, options.catalogPath, entry, variantId, entry.type);
   return entry;
+}
+
+/** Deterministic identity + content hash for one run variant, resolved WITHOUT mutating anything. */
+export interface VariantIdentity {
+  /** Canonical brief id (item-alias `-vN` stripped when applicable). */
+  readonly briefId: string;
+  /** `${briefId}-var-${variantIndex}` — the manifest/catalog key. */
+  readonly variantId: string;
+  /** `generated/${variantId}.png` — repo-relative-to-`public/assets/` path. */
+  readonly assetPath: string;
+  /** SHA-256 (hex) of the candidate's processed PNG bytes. */
+  readonly contentHash: string;
+}
+
+/**
+ * Resolve the canonical identity (briefId, variantId, assetPath) and content
+ * hash a variant WOULD get if approved right now — without copying the PNG or
+ * touching the manifest/catalog. Shares `approveVariant`'s validation (throws
+ * the same `ApproveError` kinds: `run-not-found`, `summary-invalid`,
+ * `variant-not-found`, `processed-missing`) so callers that need to reconcile
+ * against durable state BEFORE deciding whether to mutate (e.g. the sidecar's
+ * atomic accept route checking the check-in queue) can do so safely.
+ */
+export function resolveVariantIdentity(
+  runDir: string,
+  variantIndex: number,
+  fs: ApproveFs = DEFAULT_FS,
+): VariantIdentity {
+  const summaryPath = path.join(runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${runDir}`);
+  }
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const rawBriefId = summary.brief;
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+
+  const candidate = (summary.candidates ?? []).find((c) => c.index === variantIndex);
+  if (!candidate) {
+    throw new ApproveError(
+      'variant-not-found',
+      `Variant ${variantIndex} not in summary.json candidates ` +
+        `(have: ${(summary.candidates ?? []).map((c) => c.index).join(', ') || 'none'})`,
+    );
+  }
+
+  const padded = padIndex(variantIndex);
+  const processedPng = path.join(runDir, 'processed', `${padded}.png`);
+  if (!fs.existsSync(processedPng)) {
+    throw new ApproveError(
+      'processed-missing',
+      `Processed PNG not found for variant ${variantIndex}: ${processedPng}`,
+    );
+  }
+
+  const variantId = `${briefId}-var-${variantIndex}`;
+  const contentHash = createHash('sha256').update(fs.readFileSync(processedPng)).digest('hex');
+  return { briefId, variantId, assetPath: `generated/${variantId}.png`, contentHash };
 }
 
 function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {
@@ -466,9 +562,10 @@ function upsertManifest(
     current = { version: MANIFEST_VERSION, entries: {} };
   }
 
-  // Stable key order: sort keys so multiple approvals don't shuffle the file.
+  // Stable key order: sort keys with localeCompare so multiple approvals don't
+  // shuffle the file and the order matches the check:sort-assets CI validator.
   const nextEntries: Record<string, ManifestEntry> = { ...current.entries, [entryKey]: entry };
-  const sortedKeys = Object.keys(nextEntries).sort();
+  const sortedKeys = Object.keys(nextEntries).sort((a, b) => a.localeCompare(b));
   const sorted: Record<string, ManifestEntry> = {};
   for (const key of sortedKeys) {
     sorted[key] = nextEntries[key]!;
@@ -698,4 +795,158 @@ function padIndex(index: number): string {
 function toRepoRelativePosix(repoRoot: string, abs: string): string {
   const rel = path.relative(repoRoot, abs);
   return rel.split(path.sep).join('/');
+}
+
+/**
+ * Error thrown by `unapproveVariant` when the operation cannot proceed.
+ * Discriminated by `kind` so callers can translate to HTTP status / exit code.
+ */
+export class UnapproveError extends Error {
+  constructor(
+    public readonly kind: 'not-found' | 'manifest-invalid',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'UnapproveError';
+  }
+}
+
+export interface UnapproveVariantOptions {
+  /**
+   * Variant id (`<briefId>-var-<N>`), the manifest key to remove.
+   * Must match an entry key in `manifest.json` exactly.
+   */
+  readonly variantId: string;
+  /** Absolute path to `public/assets/generated/manifest.json`. */
+  readonly manifestPath: string;
+  /** Absolute path to `src/shared/data/sprite-catalog.json`. */
+  readonly catalogPath: string;
+  /** Absolute path to `public/assets/` (parent of `generated/`). */
+  readonly publicAssetsDir: string;
+  /**
+   * When true (default), also deletes the approved PNG from
+   * `publicAssetsDir/generated/<variantId>.png`. Set false to
+   * keep the asset on disk (e.g. for a dry-run preview).
+   */
+  readonly deleteAsset?: boolean;
+  /** Injected fs for tests. Defaults to `node:fs`. */
+  readonly fs?: UnapproveFs;
+}
+
+/**
+ * Evict one approved variant from the repo's checked-in art surface.
+ *
+ * This is the inverse of `approveVariant`. It removes the manifest entry,
+ * removes the catalog entry, and (by default) deletes the PNG from
+ * `public/assets/generated/`.
+ *
+ * Steps:
+ *   1. Load `manifest.json` and locate the entry for `variantId`.
+ *   2. Remove the entry and write the updated manifest back.
+ *   3. Remove the `generated:<variantId>` entry from `sprite-catalog.json`.
+ *   4. If `deleteAsset` is true (default), delete the PNG file.
+ *   5. Return the removed manifest entry.
+ *
+ * Throws `UnapproveError('not-found')` when `variantId` is absent from the
+ * manifest, or `UnapproveError('manifest-invalid')` for a corrupt manifest.
+ */
+export function unapproveVariant(options: UnapproveVariantOptions): ManifestEntry {
+  const deleteAsset = options.deleteAsset !== false;
+  const fs = options.fs ?? DEFAULT_UNAPPROVE_FS;
+
+  // 1. Load + validate the manifest.
+  if (!fs.existsSync(options.manifestPath)) {
+    throw new UnapproveError(
+      'not-found',
+      `Manifest not found — no approved sprites at: ${options.manifestPath}`,
+    );
+  }
+
+  let manifest: Manifest;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(options.manifestPath, 'utf8')) as Partial<Manifest>;
+    if (parsed.version !== MANIFEST_VERSION) {
+      throw new UnapproveError(
+        'manifest-invalid',
+        `Unsupported manifest version: ${String(parsed.version)} (expected ${MANIFEST_VERSION})`,
+      );
+    }
+    // Validate entries shape: must be a plain non-array object (or absent).
+    if (
+      parsed.entries !== undefined &&
+      (typeof parsed.entries !== 'object' ||
+        parsed.entries === null ||
+        Array.isArray(parsed.entries))
+    ) {
+      throw new UnapproveError(
+        'manifest-invalid',
+        `manifest.json has invalid entries field: expected a plain object`,
+      );
+    }
+    manifest = { version: MANIFEST_VERSION, entries: { ...(parsed.entries ?? {}) } };
+  } catch (err) {
+    if (err instanceof UnapproveError) throw err;
+    throw new UnapproveError(
+      'manifest-invalid',
+      `manifest.json is not parseable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // 2. Find the entry — use hasOwnProperty to avoid prototype-chain traversal
+  //    for keys like `__proto__` that would otherwise resolve through the object
+  //    prototype and produce a false 200 eviction.
+  const entry = Object.prototype.hasOwnProperty.call(manifest.entries, options.variantId)
+    ? manifest.entries[options.variantId]
+    : undefined;
+  if (!entry) {
+    throw new UnapproveError(
+      'not-found',
+      `Variant "${options.variantId}" is not in the manifest and cannot be unapproved.`,
+    );
+  }
+
+  // 3. Remove from manifest and write back (stable key order preserved).
+  const nextEntries: Record<string, ManifestEntry> = { ...manifest.entries };
+  delete nextEntries[options.variantId];
+  const sortedKeys = Object.keys(nextEntries).sort();
+  const sorted: Record<string, ManifestEntry> = {};
+  for (const key of sortedKeys) {
+    sorted[key] = nextEntries[key]!;
+  }
+  const next: Manifest = { version: MANIFEST_VERSION, entries: sorted };
+  fs.writeFileSync(options.manifestPath, `${JSON.stringify(next, null, 2)}\n`);
+
+  // 4. Remove from catalog (best-effort — a corrupt/missing catalog must not
+  //    block the manifest eviction that already succeeded above).
+  if (fs.existsSync(options.catalogPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(options.catalogPath, 'utf8'));
+      const catalog: Array<Record<string, unknown>> = Array.isArray(raw) ? raw : [];
+      const catalogId = `generated:${options.variantId}`;
+      const filtered = catalog.filter((e) => e.id !== catalogId);
+      if (filtered.length !== catalog.length) {
+        fs.writeFileSync(options.catalogPath, `${JSON.stringify(filtered, null, 2)}\n`);
+        formatJsonFilesSync([options.catalogPath]);
+      }
+    } catch {
+      // Best-effort: don't block eviction if catalog is corrupt.
+    }
+  }
+
+  // 5. Delete the on-disk PNG when requested.
+  if (deleteAsset) {
+    const generatedDir = path.join(options.publicAssetsDir, 'generated');
+    const assetAbsPath = path.join(generatedDir, `${options.variantId}.png`);
+    // Safety guard: ensure the resolved path stays inside generated/ to prevent
+    // a variantId like `../../etc/passwd` from traversing outside the tree.
+    if (!path.resolve(assetAbsPath).startsWith(path.resolve(generatedDir) + path.sep)) {
+      // Skip deletion — manifest + catalog were already cleaned up above.
+      return entry;
+    }
+    if (fs.existsSync(assetAbsPath)) {
+      fs.unlinkSync(assetAbsPath);
+    }
+  }
+
+  return entry;
 }

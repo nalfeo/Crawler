@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-22",
+  "session_slug": "temporary-fast-uri-downgrade",
+  "task_title": "Temporarily downgrade fast-uri for proxy compatibility",
+  "estimated_apples": 2,
+  "stages": {}
+}

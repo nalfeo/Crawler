@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "merge-sprite-review-workflow",
+  "task_title": "Merge Sprite Review into Workflow",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "plan_divergence": "minor",
+      "notes": "Base review: per-variant lifecycle provenance with unverified state; preserve feedback atomic/security contract; cached-first token-ordered revalidation; draft feedback confirmed explicitly; remove standalone last. Supplemental UX review: discriminated-union subjectType with legacy criterion normalization; feedback confirms patch local state without sheet rebuild; postprocess input adds exact sheet context; searchable native select; overlay redraw on preview/full-size toggle."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

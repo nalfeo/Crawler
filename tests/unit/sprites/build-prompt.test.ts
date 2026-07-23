@@ -84,40 +84,6 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/shocking\/wonderful apex/i);
   });
 
-  it('adds independent Floor 2 and family design language for known family sprites', () => {
-    const out = buildPrompt(
-      makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
-      FAKE_STYLE_GUIDE,
-    );
-    expect(out).toContain('## Floor design language');
-    expect(out).toContain('Family Matters');
-    expect(out).toContain('## Theme design language');
-    expect(out).toContain('The Snaggle Cartel');
-  });
-
-  it('states the theme > floor > Crawler design language conflict-resolution priority when family addenda are present', () => {
-    const out = buildPrompt(
-      makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
-      FAKE_STYLE_GUIDE,
-    );
-    expect(out).toContain('## Design language priority');
-    expect(out).toContain(
-      'theme design language > floor design language > general Crawler design language',
-    );
-    const priorityIdx = out.indexOf('## Design language priority');
-    expect(out.indexOf('## Floor design language')).toBeGreaterThan(priorityIdx);
-    expect(out.indexOf('## Theme design language')).toBeGreaterThan(priorityIdx);
-  });
-
-  it('adds the Floor 2 language without a family blurb for neutral enemies', () => {
-    const out = buildPrompt(
-      makeBrief({ type: 'enemy', name: 'cave-slime', floor: 2 }),
-      FAKE_STYLE_GUIDE,
-    );
-    expect(out).toContain('Family Matters');
-    expect(out).not.toContain('## Theme design language');
-  });
-
   it('keeps item briefs explicitly inanimate', () => {
     const out = buildPrompt(makeBrief({ type: 'item' }), FAKE_STYLE_GUIDE);
     expect(out).toMatch(/Keep the item inanimate/i);
@@ -151,25 +117,55 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/no spell effects/i);
   });
 
-  it('defaults enemy briefs to profile facing left when facing is omitted', () => {
+  it('defaults enemy briefs to a camera-facing three-quarter pose when facing is omitted', () => {
     const enemy = makeBrief({
       type: 'enemy',
       anchor: { x: 8, y: 8 },
       sensors: { anchor: { mode: 'center-of-mass' } } as Brief['sensors'],
     });
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
-    expect(out).toMatch(/profile facing left/i);
-    expect(out).not.toMatch(/profile facing right/i);
+    expect(out).toMatch(/one-third-to-two-thirds turn/i);
+    expect(out).toMatch(/Never use a full side profile/i);
   });
 
-  it('honors an explicit left-facing enemy brief', () => {
+  it('honors an explicit left bias without allowing a full side profile', () => {
     const enemy = makeBrief({
       type: 'enemy',
       anchor: { x: 8, y: 8 },
       sensors: { enemy: { facing: 'left' } } as Brief['sensors'],
     });
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
-    expect(out).toMatch(/profile facing left/i);
+    expect(out).toMatch(/turn biased toward the left edge/i);
+    expect(out).toMatch(/Never use a full side profile/i);
+  });
+
+  it('makes boss enemies large and visually dominant', () => {
+    const out = buildPrompt(
+      makeBrief({
+        type: 'enemy',
+        mobRole: 'boss',
+        size: { width: 64, height: 48 },
+        anchor: { x: 32, y: 47 },
+      }),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toMatch(/Boss scale/i);
+    expect(out).toMatch(/substantially taller, wider, or larger in footprint/i);
+    expect(out).toMatch(/visually dominant/i);
+  });
+
+  it('presents equipment as an isolated wearable icon', () => {
+    const out = buildPrompt(makeBrief({ type: 'equipment' }), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Equipment rules/i);
+    expect(out).toMatch(/one isolated wearable or equippable object/i);
+    expect(out).toMatch(/Do not include a wearer/i);
+  });
+
+  it('presents props as grounded world-space objects rather than inventory icons', () => {
+    const out = buildPrompt(makeBrief({ type: 'prop' }), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Prop rules/i);
+    expect(out).toMatch(/grounded world-space object/i);
+    expect(out).toMatch(/Do not present the prop as a floating inventory icon/i);
   });
 
   it('adds tile rules for tile briefs including exact output size', () => {
@@ -196,6 +192,8 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/Avoid drab monochrome outfits/i);
     expect(out).toMatch(/not only browns\/oranges/i);
     expect(out).toMatch(/hair and skin tones are clearly differentiated/i);
+    expect(out).toMatch(/one-third-to-two-thirds turn/i);
+    expect(out).toMatch(/Never use a full side profile/i);
   });
 
   it('includes per-variant constraints (no clipping, no text, high-contrast bg)', () => {
@@ -222,15 +220,6 @@ describe('buildSheetPrompt', () => {
   it('starts with the style preamble (hard constraint)', () => {
     const out = buildSheetPrompt(makeBrief(), FAKE_STYLE_GUIDE);
     expect(out.startsWith(FAKE_STYLE_GUIDE)).toBe(true);
-  });
-
-  it('adds Floor 2 and family design language to the primary sheet path', () => {
-    const out = buildSheetPrompt(
-      makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
-      FAKE_STYLE_GUIDE,
-    );
-    expect(out).toContain('Family Matters');
-    expect(out).toContain('The Snaggle Cartel');
   });
 
   it('asks for exactly the right variant count and grid shape', () => {

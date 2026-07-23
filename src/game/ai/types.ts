@@ -196,17 +196,19 @@ export interface AIConfig {
   /**
    * Weight of the opportunistic enemy-farm pull vector (drift toward the nearest
    * enemy during genuine idle wander). Kept separate from {@link collectPullWeight}
-   * and defaulting to 0 so re-enabling loot detours never silently re-enables
-   * enemy seeking — the latter biases the AI into enemy-dense zones and can blow
-   * the floor-clear time budget. Validate additional headless seeds before
-   * setting > 0.
+   * so loot-detour tuning never silently changes enemy seeking. Defaults to 0.12;
+   * higher values bias the AI into enemy-dense zones and can blow the floor-clear
+   * time budget. Validate additional headless seeds before setting higher values.
    */
   farmPullWeight?: number;
   /**
    * A/B axis 1: how a Track A goal becomes a heading. Defaults to
-   * {@link AIPathingMode.LEGACY} — with the default the movement path is
-   * byte-identical to main. {@link AIPathingMode.RISK_REWARD_FUSED} is
-   * selectable but currently IMPL-PENDING (delegates to legacy).
+   * {@link AIPathingMode.RISK_REWARD_FUSED} — promoted from the AI Sweep
+   * winner (2026-07-21, GitHub Actions run 29893475612: 294/300 vs the
+   * legacy+legacy incumbent's 286/300). Pass
+   * {@link AIPathingMode.LEGACY} explicitly for the pre-promotion movement path.
+   * Full pre-promotion config parity also requires `retreatThreshold: 0.15` and
+   * `farmPullWeight: 0.07`.
    */
   pathingMode?: AIPathingModeValue;
   /**
@@ -218,9 +220,10 @@ export interface AIConfig {
    * byte-identical to Slice 4a. This defaults to NAVMESH_FUSED_SEAM_WEIGHT (=2, the
    * human-adjudicated production weight), so an AI in NAVMESH_FUSED with no explicit
    * seamWeight runs the seam term at 2 — NOT off. The shipped game stays
-   * byte-identical to 4a because the default pathingMode is LEGACY and the call site
-   * forces seamWeight to 0 for every non-NAVMESH_FUSED mode, not because this
-   * defaults to 0. Ignored by every other pathing mode. Clamped to a finite value
+   * byte-identical to 4a because the default pathingMode is RISK_REWARD_FUSED
+   * (not NAVMESH_FUSED) and the call site forces seamWeight to 0 for every
+   * non-NAVMESH_FUSED mode, not because this defaults to 0. Ignored by every
+   * other pathing mode. Clamped to a finite value
    * ≥ 0 at construction; the production value is human-adjudicated via the two-stage
    * tuning sweep (`npm run ai:navmesh-seam-sweep`).
    */
@@ -288,6 +291,8 @@ export interface CombatMetrics {
   damageDealt: number;
   /** Total damage taken */
   damageTaken: number;
+  /** Actual post-mitigation player damage grouped by stable attacker identity. */
+  damageTakenBySource: Record<string, number>;
 }
 
 /**

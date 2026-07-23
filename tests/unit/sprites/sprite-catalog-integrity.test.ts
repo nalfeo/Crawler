@@ -10,9 +10,11 @@
  * ghost (frame 121)"` contradicting `description: "Tiny Dungeon goblin (frame
  * 121)"`. The fix is reflected in the test's pass condition.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { writeCatalogJson } from '../../../scripts/sprites/catalog-io.js';
 
 const CATALOG_PATH = path.join(process.cwd(), 'src', 'shared', 'data', 'sprite-catalog.json');
 
@@ -62,5 +64,28 @@ describe('sprite-catalog.json integrity', () => {
     }
 
     expect(conflicts).toEqual([]);
+  });
+
+  it('writeCatalogJson compacts short arrays — guards the writer contract (regression: #1124 / #1569)', async () => {
+    // The recurring bug: a catalog writer bypasses the shared catalog-io helper
+    // and re-serialises with a raw `JSON.stringify(…, 2)`, which expands every
+    // short `tags` array onto multiple lines — thousand-line whitespace churn on
+    // each batched asset PR (PR #1569 rewrote 1000+ lines this way). The helper's
+    // Prettier pass MUST collapse short primitive arrays back to a single line.
+    // This guards the writer CONTRACT (format:check guards the committed FILE, so
+    // together they catch both a helper regression and a caller that bypasses it).
+    // Write BESIDE the real catalog so the repo .prettierrc (printWidth 100)
+    // resolves identically to production writers.
+    const tmpPath = `${CATALOG_PATH}.${process.pid}.${randomBytes(6).toString('hex')}.writecheck.tmp`;
+    try {
+      await writeCatalogJson(tmpPath, [
+        { id: 'sprite:test', kind: 'sprite', tags: ['sheet', 'enemy', 'generated'] },
+      ]);
+      // Single-line compact form. A raw JSON.stringify(…, 2) would put each tag
+      // on its own line, so this substring would be absent.
+      expect(readFileSync(tmpPath, 'utf8')).toContain('"tags": ["sheet", "enemy", "generated"]');
+    } finally {
+      rmSync(tmpPath, { force: true });
+    }
   });
 });

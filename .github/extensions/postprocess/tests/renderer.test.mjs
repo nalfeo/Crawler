@@ -112,7 +112,12 @@ test('instanceId is HTML-escaped into the shell', () => {
 test('the anchor + confirm helpers are injected verbatim (no placeholder left)', () => {
   const html = renderHtml('x');
   assert.ok(!html.includes('__ANCHOR_FNS__'), 'anchor injection placeholder replaced');
-  for (const name of ['finalImageClickToAnchor', 'anchorMarkerPercent', 'isDestructivePersist']) {
+  for (const name of [
+    'finalImageClickToAnchor',
+    'anchorMarkerPercent',
+    'middleAnchor',
+    'isDestructivePersist',
+  ]) {
     assert.ok(html.includes('var ' + name + ' = function'), 'injected: ' + name);
   }
 });
@@ -131,11 +136,48 @@ test('the client wires the authoring / persist flow with parity controls', () =>
   assert.match(html, /Apply changes/);
   assert.match(html, /Reset to defaults/);
   assert.match(html, /Reset anchor/);
+  assert.match(html, /Set anchor to middle/);
   // local staging state machine (persist fires only on Apply)
   assert.match(html, /currentFacing/);
   assert.match(html, /currentScope/);
   assert.match(html, /currentAnchor/);
   assert.match(html, /pendingMode/);
+});
+
+test('pipeline controls are colocated and step images preserve natural aspect ratio', () => {
+  const html = renderHtml('x');
+  assert.match(html, /\.ba img \{ width: auto; height: auto; max-width: 160px; max-height: 160px;/);
+  assert.match(html, /meta\.moduleId === 'background-removal'.*makeTuningPanel/s);
+  assert.match(html, /\[label, wrap, makeAuthoringPanel\(state\)\]/);
+  assert.match(html, /text: meta\.skipped \? 'Run step' : 'Skip step'/);
+  assert.match(html, /disabledModules: Array\.from\(currentDisabledModules\)/);
+});
+
+test('slicer redraws after its card is mounted, including the warmed-image path', () => {
+  const html = renderHtml('x');
+  const mountAt = html.indexOf('app.replaceChildren(frag);');
+  const redrawAt = html.indexOf('redrawOverlay(state, token);', mountAt);
+  assert.ok(mountAt >= 0 && redrawAt > mountAt);
+  assert.match(html, /canvas\.style\.display = 'block';/);
+  assert.match(html, /overlayCanvas\.style\.display = 'block';/);
+});
+
+test('relocated native controls retain labels and keyboard activation semantics', () => {
+  const html = renderHtml('x');
+  for (const id of [
+    'postprocess-color-tolerance',
+    'postprocess-fringe-tolerance',
+    'postprocess-upscale-factor',
+    'postprocess-facing',
+    'postprocess-scope',
+    'postprocess-anchor-x',
+    'postprocess-anchor-y',
+  ]) {
+    assert.match(html, new RegExp("for: '" + id + "'"));
+    assert.match(html, new RegExp("id: '" + id + "'"));
+  }
+  assert.match(html, /h\('button', \{ type: 'button', text: 'Set anchor to middle' \}\)/);
+  assert.match(html, /h\('button', \{[\s\S]*class: 'skip'/);
 });
 
 test('destructive persists are confirm-guarded with the shared pure predicate', () => {
@@ -155,6 +197,14 @@ test('Apply changes is guarded against a double-submit (single POST in flight)',
   assert.match(html, /applyInFlight = false;/);
   assert.match(html, /authoringApplyBtn\.disabled = true;/);
   assert.match(html, /authoringApplyBtn\.disabled = false;/);
+});
+
+test('successful embedded Apply notifies the parent Workflow with its refresh patch', () => {
+  const html = renderHtml('x', '/postprocess', 'token');
+  assert.match(html, /resp\.workflowPatch/);
+  assert.match(html, /type: 'postprocess:applied'/);
+  assert.match(html, /window\.parent\.postMessage/);
+  assert.match(html, /window\.location\.origin/);
 });
 
 test('the final output image is clickable and draws the anchor marker', () => {

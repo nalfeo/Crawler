@@ -18,7 +18,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import process from 'node:process';
 
 // ---------------------------------------------------------------------------
@@ -119,8 +119,11 @@ export function resolveNodeBin({
   // `resolvedNpm || npmPath`: `defaultRealpathSync` always returns a non-empty
   // string (the original path on error), so the fallback only fires when a
   // test-injected `_realpathSync` returns null/undefined.
-  const npmDir = dirname(resolvedNpm || npmPath);
-  for (const candidate of [join(npmDir, 'node'), join(npmDir, 'node.exe')]) {
+  const npmDir = portableDirname(resolvedNpm || npmPath);
+  for (const candidate of [
+    joinWithOriginalSeparator(npmDir, 'node'),
+    joinWithOriginalSeparator(npmDir, 'node.exe'),
+  ]) {
     if (_existsSync(candidate)) return candidate;
   }
   return '';
@@ -194,4 +197,14 @@ function defaultRealpathSync(p) {
   } catch {
     return p;
   }
+}
+
+function portableDirname(filePath) {
+  const separatorIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  return separatorIndex < 0 ? '.' : filePath.slice(0, separatorIndex);
+}
+
+function joinWithOriginalSeparator(dir, name) {
+  const separator = dir.includes('\\') && !dir.includes('/') ? '\\' : '/';
+  return `${dir}${separator}${name}`;
 }

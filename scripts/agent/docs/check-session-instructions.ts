@@ -8,8 +8,10 @@
  *   1. give an upfront recommendation verdict (recommended / risky /
  *      not recommended) with a short reason
  *   2. write plans in session chat unless the human explicitly asks for a file
- *   3. default broad sweeps (>10 runs) to GitHub workflow infrastructure
- *   4. treat investigation-only sessions as lightweight and split landing fixes
+ *   3. detach from published PRs unless the human pre-declared local ownership
+ *   4. default broad sweeps (>10 runs) to GitHub workflow infrastructure
+ *   5. treat investigation-only sessions as lightweight and split landing fixes
+ *   6. cap tooling-only ceremony at 3 apples
  */
 
 import { readFileSync } from 'node:fs';
@@ -21,8 +23,10 @@ const DOCS = ['AGENTS.md', '.github/copilot-instructions.md'] as const;
 const REQUIRED_LINES = [
   '- **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.',
   '- **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.',
+  '- **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.',
   '- **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.',
   '- **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight (no review ledger/full PR paperwork). If a fix should land, spin a separate implementation child session/PR and run the normal full process there.',
+  '- **Tooling-only ceremony is capped at 3🍎:** Work confined to developer/agent tooling, canvases, automation, or asset-pipeline tooling is estimated at no more than 3🍎 regardless of file count; the cap does not apply when runtime gameplay behavior or shipped game data changes.',
 ] as const;
 
 async function main(): Promise<void> {

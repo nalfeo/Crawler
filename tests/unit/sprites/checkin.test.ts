@@ -14,6 +14,7 @@ import {
   CheckinError,
   detectApprovedAssets,
   planAssetCheckin,
+  prepareAssetCheckin,
   runAssetCheckin,
   type CheckinAsset,
   type Exec,
@@ -122,6 +123,254 @@ describe('runAssetCheckin', () => {
     await expect(runAssetCheckin('/repo', { ...baseDeps(), exec })).rejects.toMatchObject({
       kind: 'nothing-to-checkin',
     });
+  });
+
+  it('excludes (dedupes) an asset already queued with the SAME content hash (match)', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return {
+          stdout:
+            'public/assets/generated/skull-mace-var-2.png\n' +
+            'public/assets/generated/iron-sword-var-1.png\n',
+        };
+      }
+      return {};
+    });
+    const queued = new Map([
+      [
+        'generated/skull-mace-var-2.png',
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/41',
+          branch: 'assets/queued',
+          contentHash: 'hash-a',
+        },
+      ],
+    ]);
+
+    const prepared = await prepareAssetCheckin('/repo', {
+      ...baseDeps(),
+      exec,
+      listQueuedAssets: () => Promise.resolve(queued),
+      readManifest: () =>
+        Promise.resolve({
+          entries: {
+            'skull-mace-var-2': {
+              assetPath: 'generated/skull-mace-var-2.png',
+              contentHash: 'hash-a',
+            },
+          },
+        }),
+    });
+
+    expect(prepared.changedAssetCount).toBe(2);
+    expect(prepared.plan.assets.map((entry) => entry.assetPath)).toEqual([
+      'generated/iron-sword-var-1.png',
+    ]);
+  });
+
+  it('throws a typed content-conflict when the queued hash differs from the current content (mismatch)', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return {
+          stdout:
+            'public/assets/generated/skull-mace-var-2.png\n' +
+            'public/assets/generated/iron-sword-var-1.png\n',
+        };
+      }
+      return {};
+    });
+    const queued = new Map([
+      [
+        'generated/skull-mace-var-2.png',
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/41',
+          branch: 'assets/queued',
+          contentHash: 'old-hash',
+        },
+      ],
+    ]);
+
+    await expect(
+      prepareAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        listQueuedAssets: () => Promise.resolve(queued),
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'skull-mace-var-2': {
+                assetPath: 'generated/skull-mace-var-2.png',
+                contentHash: 'new-hash',
+              },
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({ kind: 'content-conflict' });
+  });
+
+  it('fails closed with an ambiguous conflict when the queued issue predates content hashes (legacy queued entry)', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      return {};
+    });
+    const queued = new Map([
+      [
+        'generated/skull-mace-var-2.png',
+        // No contentHash: a legacy issue filed before the field existed.
+        { issueUrl: 'https://github.com/nalfeo/Crawler/issues/41', branch: 'assets/queued' },
+      ],
+    ]);
+
+    await expect(
+      prepareAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        listQueuedAssets: () => Promise.resolve(queued),
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'skull-mace-var-2': {
+                assetPath: 'generated/skull-mace-var-2.png',
+                contentHash: 'new-hash',
+              },
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({ kind: 'ambiguous-queued-content' });
+  });
+
+  it('fails closed with an ambiguous conflict when the CURRENT asset has no recorded hash, even if the queue has one (legacy manifest entry)', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      return {};
+    });
+    const queued = new Map([
+      [
+        'generated/skull-mace-var-2.png',
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/41',
+          branch: 'assets/queued',
+          contentHash: 'queued-hash',
+        },
+      ],
+    ]);
+
+    // No readManifest override -> the changed asset has no contentHash.
+    await expect(
+      prepareAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        listQueuedAssets: () => Promise.resolve(queued),
+      }),
+    ).rejects.toMatchObject({ kind: 'ambiguous-queued-content' });
+  });
+
+  it('does not create another issue when every changed asset is already queued with matching content', async () => {
+    const { exec, calls } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      return {};
+    });
+
+    await expect(
+      runAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'skull-mace-var-2': {
+                assetPath: 'generated/skull-mace-var-2.png',
+                contentHash: 'hash-a',
+              },
+            },
+          }),
+        listQueuedAssets: () =>
+          Promise.resolve(
+            new Map([
+              [
+                'generated/skull-mace-var-2.png',
+                {
+                  issueUrl: 'https://github.com/nalfeo/Crawler/issues/41',
+                  branch: 'assets/queued',
+                  contentHash: 'hash-a',
+                },
+              ],
+            ]),
+          ),
+      }),
+    ).rejects.toMatchObject({
+      kind: 'nothing-to-checkin',
+      message: 'All approved art is already represented by an open asset-checkin issue.',
+    });
+    expect(calls.some((call) => call.command === 'gh' && call.args[0] === 'issue')).toBe(false);
+  });
+
+  it('passes ONLY the unqueued assets to copyArtSurface, excluding the already-queued PNG + its metadata', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return {
+          stdout:
+            'public/assets/generated/skull-mace-var-2.png\n' +
+            'public/assets/generated/iron-sword-var-1.png\n',
+        };
+      }
+      if (command === 'gh') {
+        return { stdout: 'https://github.com/nalfeo/Crawler/issues/42\n' };
+      }
+      return {};
+    });
+    const queued = new Map([
+      [
+        'generated/skull-mace-var-2.png',
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/41',
+          branch: 'assets/queued',
+          contentHash: 'hash-a',
+        },
+      ],
+    ]);
+    const copyArtSurfaceCalls: Array<{
+      src: string;
+      dest: string;
+      assets: readonly CheckinAsset[];
+    }> = [];
+
+    const result = await runAssetCheckin('/repo', {
+      ...baseDeps(),
+      exec,
+      readManifest: () =>
+        Promise.resolve({
+          entries: {
+            'skull-mace-var-2': {
+              assetPath: 'generated/skull-mace-var-2.png',
+              contentHash: 'hash-a',
+            },
+          },
+        }),
+      listQueuedAssets: () => Promise.resolve(queued),
+      copyArtSurface: (src, dest, assets) => {
+        copyArtSurfaceCalls.push({ src, dest, assets });
+        return Promise.resolve();
+      },
+    });
+
+    // The branch's copy MUST NOT include the already-queued asset — the
+    // branch diff and the filed issue payload must stay aligned (concern #2).
+    expect(copyArtSurfaceCalls).toHaveLength(1);
+    expect(copyArtSurfaceCalls[0]!.assets.map((a) => a.assetPath)).toEqual([
+      'generated/iron-sword-var-1.png',
+    ]);
+    expect(
+      copyArtSurfaceCalls[0]!.assets.some((a) => a.assetPath === 'generated/skull-mace-var-2.png'),
+    ).toBe(false);
+    // The filed issue's OWN payload agrees: only the unqueued asset is claimed.
+    expect(result.plan.assets.map((a) => a.assetPath)).toEqual(['generated/iron-sword-var-1.png']);
   });
 
   it('cuts a branch, pushes (no PR), and files the issue', async () => {

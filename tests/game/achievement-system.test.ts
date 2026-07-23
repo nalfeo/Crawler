@@ -19,6 +19,8 @@ import {
   createAchievementCatalogRegistry,
   createEmptyAchievementFactSnapshot,
   FLOOR1_ACHIEVEMENTS,
+  FLOOR1_COMMON_CRAFTING_MATERIALS,
+  LOOT_BOX_GOLD_BY_TIER,
   type AchievementDef,
 } from '../../src/shared/achievements.js';
 import {
@@ -300,19 +302,60 @@ describe('achievementSystem', () => {
     expect(facts.numberFacts.ratsKilled).toBe(0);
     expect(facts.numberFacts.slimesKilled).toBe(0);
   });
+
+  it('unlockAchievement fails closed (no throw) on a lootBox achievement when the generated-equipment registry has no run key', () => {
+    // Regression test: unlockAchievement's lootBox branch used to call
+    // resolveLootBoxRewardBundle unconditionally, which throws
+    // LootBoxRewardResolutionError('no-run-key', ...) whenever
+    // world.generatedEquipmentRegistry.runKey is null — crashing any world
+    // built without an explicit run key (a common, legitimate configuration
+    // for tests/labs unrelated to rewards) the moment it reached a Floor 1
+    // lootBox achievement like 'first-bonk'.
+    const world = createTestWorld({ seed: 42, generatedEquipmentRunKey: null });
+
+    expect(() => unlockAchievement(world, 'first-bonk')).not.toThrow();
+    expect(unlockAchievement(world, 'first-bonk')).toBe(false);
+    expect(world.achievements.unlockedIds.has('first-bonk')).toBe(false);
+    expect(world.lootBoxRewardBundles.has('first-bonk')).toBe(false);
+  });
+
+  it('unlockAchievement fails closed (no throw) on an equipment achievement when Floor 2 flags are enabled but the registry has no run key', () => {
+    // Mirrors the lootBox regression test above: getFloor2EquipmentRewardsAccess
+    // gates on floor + feature flags but not on the run key itself, so an
+    // equipment achievement could hit the identical
+    // RewardBundleResolutionError('no-run-key', ...) landmine if a world ever
+    // had the flags enabled without a configured run key.
+    const world = createTestWorld({ seed: 42, floor: 2, generatedEquipmentRunKey: null });
+    world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+    world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+    world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+
+    expect(() => unlockAchievement(world, 'floor2-field-kit')).not.toThrow();
+    expect(unlockAchievement(world, 'floor2-field-kit')).toBe(false);
+    expect(world.achievements.unlockedIds.has('floor2-field-kit')).toBe(false);
+    expect(world.generatedEquipmentRewardBundles.has('floor2-field-kit')).toBe(false);
+  });
 });
 
 describe('claimAchievementReward', () => {
-  it('opens an unlocked reward exactly once and reports the reward def', () => {
+  it('opens an unlocked lootBox reward exactly once, grants tier-scaled gold + materials', () => {
     const world = createTestWorld({ seed: 42 });
+    spawnPlayer(world, 0, 0);
     unlockAchievement(world, 'first-bonk');
 
     expect(isAchievementClaimed(world, 'first-bonk')).toBe(false);
+    const goldBefore = world.playerGold;
     const result = claimAchievementReward(world, 'first-bonk');
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.reward).toEqual({ type: 'lootBox', tier: 'trash' });
+      expect(result.grantedLootBox?.gold).toBe(LOOT_BOX_GOLD_BY_TIER.trash);
+      expect(result.grantedLootBox?.materials).toHaveLength(1);
+      for (const materialId of result.grantedLootBox?.materials ?? []) {
+        expect(FLOOR1_COMMON_CRAFTING_MATERIALS).toContain(materialId);
+      }
     }
+    expect(world.playerGold).toBe(goldBefore + LOOT_BOX_GOLD_BY_TIER.trash);
     expect(isAchievementClaimed(world, 'first-bonk')).toBe(true);
 
     const second = claimAchievementReward(world, 'first-bonk');

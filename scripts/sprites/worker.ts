@@ -7,8 +7,9 @@
  * Failure handling (see {@link isPermanentFailure} / MAX_DEQUEUE_ATTEMPTS):
  *  - TRANSIENT failure below the retry cap → the message is left un-acked so
  *    the queue's visibility timeout re-surfaces it for a natural retry.
- *  - PERMANENT failure (a deterministic provider error — `auth`, `bad-grid`,
- *    `non-png`) OR once `dequeueCount` reaches MAX_DEQUEUE_ATTEMPTS → the
+ *  - PERMANENT failure (a deterministic provider error — `auth`,
+ *    `request-error`, `bad-grid`, `non-png`) OR once `dequeueCount` reaches
+ *    MAX_DEQUEUE_ATTEMPTS → the
  *    message is acked (dropped) so a deterministically-failing "poison"
  *    message cannot loop forever. For issue-requests a single failure comment
  *    is posted on the give-up path (at most once per message under normal
@@ -47,32 +48,16 @@ import { materializeBriefFromStore, mirrorBriefToStore } from './brief-durabilit
 const MAX_DEQUEUE_ATTEMPTS = 3;
 
 /**
- * Provider-error kinds that are DETERMINISTIC and therefore never worth
- * retrying at the worker level: a bad API key (`auth`), and grid/format
- * failures (`bad-grid`, `non-png`) which {@link generateSheetCore} has already
- * retried in-run before the error reached the worker. We duck-type on `kind`
- * (rather than `instanceof ProviderError`) so the same classification applies
- * to the synth / vision / text provider error families, which also surface an
- * `auth` kind. Nondeterministic kinds (`rate-limit`, `network`,
- * `provider-error`, synth `malformed`, or any plain `Error`) are intentionally
- * left to the {@link MAX_DEQUEUE_ATTEMPTS} cap so they still get bounded
- * natural retries.
- */
-/**
  * Kinds that are DETERMINISTIC and therefore never worth retrying at the worker
- * level: a bad API key (`auth`), grid/format failures (`bad-grid`, `non-png`)
- * which {@link generateSheetCore} has already retried in-run before the error
- * reached the worker, and a brief absent from BOTH disk and the store
- * (`brief-not-found`, see {@link BriefNotFoundError}) — no retry can make missing
- * bytes reappear. We duck-type on `kind` (rather than `instanceof ProviderError`)
- * so the same classification applies to the synth / vision / text provider error
- * families, which also surface an `auth` kind. Nondeterministic kinds
- * (`rate-limit`, `network`, `provider-error`, synth `malformed`, or any plain
- * `Error`) are intentionally left to the {@link MAX_DEQUEUE_ATTEMPTS} cap so they
- * still get bounded natural retries.
+ * level: authentication and rejected provider requests, grid/format failures
+ * which {@link generateSheetCore} has already retried in-run, and a brief
+ * absent from BOTH disk and the store. Transient kinds (`rate-limit`,
+ * `server-error`, `network`), malformed model output, and plain errors are left
+ * to the bounded natural-redelivery cap.
  */
 const PERMANENT_FAILURE_KINDS: ReadonlySet<string> = new Set([
   'auth',
+  'request-error',
   'bad-grid',
   'non-png',
   'brief-not-found',
@@ -123,6 +108,8 @@ export interface WorkerOptions {
    * Default: 5 000 ms.
    */
   readonly pollIntervalMs?: number;
+  /** Number of queue messages processed concurrently. Default: 1. */
+  readonly concurrency?: number;
   /**
    * AbortSignal for graceful shutdown. The worker exits after the current
    * message (if any) finishes processing. Set from a SIGINT/SIGTERM handler
@@ -174,6 +161,91 @@ export type WorkerStatus =
  *   5. On abort signal → finish the current message (if any) then exit.
  */
 export async function runWorker(options: WorkerOptions): Promise<void> {
+  const concurrency = options.concurrency ?? 1;
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error(`worker concurrency must be a positive integer, got ${concurrency}`);
+  }
+
+  // Keyed lock: chains operations for the same canonical brief ID so two
+  // concurrent slots processing different messages with the same brief name
+  // are serialized. Different names run concurrently without blocking each
+  // other. Each slot waits on the tail of the in-flight promise for its key
+  // (if any), then replaces it with its own work; the map entry is cleared
+  // when the work completes or errors.
+  const briefLocks = new Map<string, Promise<void>>();
+  const withBriefLock = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    const prev = briefLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const lock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    briefLocks.set(
+      key,
+      prev.then(() => lock),
+    );
+    return prev.then(async () => {
+      try {
+        return await fn();
+      } finally {
+        release();
+        // Clean up the map entry only if it still points to the slot we just
+        // completed (another waiter may have chained on and replaced it).
+        if (briefLocks.get(key) === prev.then(() => lock)) {
+          briefLocks.delete(key);
+        }
+      }
+    });
+  };
+
+  const idleSlots = new Set<number>();
+  const poolAbort = new AbortController();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, poolAbort.signal])
+    : poolAbort.signal;
+  const reportStatus = (slotId: number, status: WorkerStatus): void => {
+    if (status.type === 'idle') {
+      idleSlots.add(slotId);
+      if (idleSlots.size === concurrency) {
+        idleSlots.clear();
+        options.onStatus?.(status);
+      }
+      return;
+    }
+    idleSlots.clear();
+    options.onStatus?.(status);
+  };
+
+  try {
+    const results = await Promise.allSettled(
+      Array.from({ length: concurrency }, (_, slotId) =>
+        runWorkerSlot(
+          {
+            ...options,
+            signal,
+            onStatus: (status) => reportStatus(slotId, status),
+          },
+          withBriefLock,
+        ).catch((error: unknown) => {
+          poolAbort.abort();
+          throw error;
+        }),
+      ),
+    );
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failure) {
+      throw failure.reason;
+    }
+  } finally {
+    options.onStatus?.({ type: 'stopping' });
+  }
+}
+
+async function runWorkerSlot(
+  options: WorkerOptions,
+  withBriefLock: <T>(key: string, fn: () => Promise<T>) => Promise<T>,
+): Promise<void> {
   const pollMs = options.pollIntervalMs ?? 5_000;
   const { queue, store, repoRoot, provider, signal, onStatus } = options;
 
@@ -201,37 +273,69 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
     }
     onStatus?.({ type: 'processing', briefId: describeRequest(request) });
 
+    // Canonical key for the brief-name lock: two slots processing messages with
+    // the same key (e.g. two issues normalizing to the same asset name) are
+    // serialized so they cannot overwrite each other's intermediate artifacts.
+    const briefLockKey = request.kind === 'issue-request' ? request.name : request.briefId;
+
+    // Self-rescheduling renewal timer: extends the Azure Queue visibility
+    // timeout while this slot holds the message invisible. Cleared in the
+    // finally block regardless of success, error, or lock wait time.
+    let renewActive = false;
+    let renewTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRenew = (): void => {
+      if (!renewActive || !msg.renew || !msg.renewIntervalMs) return;
+      renewTimer = setTimeout(() => {
+        if (!renewActive) return;
+        void msg.renew!()
+          .catch(() => {
+            // Best-effort: a renewal failure is not fatal. If the lease
+            // expires before the run finishes the ack will fail and the
+            // message resurfaces for a natural retry.
+          })
+          .finally(() => {
+            scheduleRenew();
+          });
+      }, msg.renewIntervalMs);
+    };
+    if (msg.renew && msg.renewIntervalMs) {
+      renewActive = true;
+      scheduleRenew();
+    }
+
     let result: { readonly summary: { readonly runId: string }; readonly summaryPath: string };
     try {
-      if (request.kind === 'issue-request') {
-        result = await runIssueRequest({
-          request,
-          options,
-          dequeueCount: msg.dequeueCount,
-        });
-      } else {
-        // Brief-path job. Give the brief path-level durability around the run:
-        // recover a wiped gitignored draft from the store, then mirror it back so
-        // even CLI-enqueued jobs survive a later checkpoint wipe (idempotent —
-        // same-key write). `materializeBriefFromStore` returns `false` ONLY when
-        // the brief is absent from BOTH disk and store — a PERMANENT failure (no
-        // retry can conjure missing bytes), surfaced as BriefNotFoundError so the
-        // poison message is dropped immediately. A TRANSIENT store/fs outage
-        // instead THROWS and propagates to the catch below, where it is retried
-        // (never mistaken for a missing brief and dropped).
-        const absBrief = path.resolve(repoRoot, request.briefPath);
-        if (!(await materializeBriefFromStore(store, repoRoot, absBrief))) {
-          throw new BriefNotFoundError(request.briefPath);
+      result = await withBriefLock(briefLockKey, async () => {
+        if (request.kind === 'issue-request') {
+          return runIssueRequest({
+            request,
+            options,
+            dequeueCount: msg.dequeueCount,
+          });
+        } else {
+          // Brief-path job. Give the brief path-level durability around the run:
+          // recover a wiped gitignored draft from the store, then mirror it back so
+          // even CLI-enqueued jobs survive a later checkpoint wipe (idempotent —
+          // same-key write). `materializeBriefFromStore` returns `false` ONLY when
+          // the brief is absent from BOTH disk and store — a PERMANENT failure (no
+          // retry can conjure missing bytes), surfaced as BriefNotFoundError so the
+          // poison message is dropped immediately. A TRANSIENT store/fs outage
+          // instead THROWS and propagates to the catch below, where it is retried
+          // (never mistaken for a missing brief and dropped).
+          const absBrief = path.resolve(repoRoot, request.briefPath);
+          if (!(await materializeBriefFromStore(store, repoRoot, absBrief))) {
+            throw new BriefNotFoundError(request.briefPath);
+          }
+          await mirrorBriefToStore(store, repoRoot, absBrief);
+          return generateOne({
+            briefPath: absBrief,
+            provider,
+            textProvider: options.textProvider ?? null,
+            repoRoot,
+            store,
+          });
         }
-        await mirrorBriefToStore(store, repoRoot, absBrief);
-        result = await generateOne({
-          briefPath: absBrief,
-          provider,
-          textProvider: options.textProvider ?? null,
-          repoRoot,
-          store,
-        });
-      }
+      });
     } catch (err) {
       // GENERATION failed. Ack failures are handled separately on the success
       // path below and can never reach this branch, so a run that SUCCEEDS but
@@ -278,6 +382,11 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
         onStatus?.({ type: 'error', briefId: describeRequest(request), error });
       }
       continue;
+    } finally {
+      // Always stop the renewal timer, regardless of success, error, or
+      // how long the brief-lock wait took.
+      renewActive = false;
+      clearTimeout(renewTimer);
     }
 
     // SUCCESS: ack OUTSIDE the generation try/catch so an ack failure is never
@@ -343,8 +452,6 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
       };
     }
   }
-
-  onStatus?.({ type: 'stopping' });
 }
 
 /**

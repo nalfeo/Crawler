@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -11,6 +12,9 @@ import type { RoundCheckpoint } from '../../scripts/agent/perf/round-plan.js';
 import type { RunRow } from '../../scripts/agent/perf/aggregate-shards.js';
 import { SHARD_SCHEMA_VERSION } from '../../scripts/agent/perf/aggregate-shards.js';
 import { enumerateCombos, comboId, LEGACY_COMBO_ID } from '../../scripts/agent/perf/gen-configs.js';
+import { bashEnv } from '../helpers/bash-script-path.js';
+
+const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 
 /**
  * Coverage for the VALIDATE-ONLY recovery of cancelled AI Sweep Eval run
@@ -21,7 +25,8 @@ import { enumerateCombos, comboId, LEGACY_COMBO_ID } from '../../scripts/agent/p
  *     secondary-knob tuning, complete duplicate-free TRAIN row panels); and
  *   - `.github/workflows/ai-sweep-recover.yml`'s structure (SHA resolution,
  *     historical-commit checkout pinning, GITHUB_SHA env overrides,
- *     max-parallel: 8, job graph) parsed from the REAL YAML, not
+ *     queue-aware validate max-parallel wiring, job graph) parsed from the
+ *     REAL YAML, not
  *     re-implemented, so a future edit cannot silently regress the SHA-pinning
  *     this recovery depends on to pass sweep-eval.ts's own unchanged
  *     `assertSearchArtifactProvenance` gate.
@@ -483,6 +488,7 @@ interface WorkflowJob {
   if?: string;
   'runs-on'?: string;
   'timeout-minutes'?: number;
+  env?: Record<string, string>;
   strategy?: WorkflowStrategy;
   outputs?: Record<string, string>;
   steps?: WorkflowStep[];
@@ -562,17 +568,99 @@ describe('ai-sweep-recover.yml structure', () => {
     }
   });
 
-  it('recover-validate overrides GITHUB_SHA on the sweep-eval.ts invocation step to match the historical commit', () => {
+  it('recover-validate never sets GITHUB_SHA via a step/job env: key (GitHub Actions silently discards overrides of reserved GITHUB_*/RUNNER_* variables, so a naive env: override never reaches the npx tsx child — this is exactly what broke run 29869238382)', () => {
+    const doc = loadRecoverWorkflow();
+    for (const jobName of ['recover-validate', 'recover-aggregate']) {
+      const job = getJob(doc, jobName);
+      expect(job.env?.GITHUB_SHA, `${jobName} job-level env.GITHUB_SHA`).toBeUndefined();
+      for (const step of allSteps(job)) {
+        expect(
+          step.env?.GITHUB_SHA,
+          `${jobName} step "${step.name}" env.GITHUB_SHA`,
+        ).toBeUndefined();
+      }
+    }
+  });
+
+  it('recover-validate and recover-aggregate both thread the historical SHA through a non-reserved RECOVER_HEAD_SHA env var to match the historical commit', () => {
+    const doc = loadRecoverWorkflow();
+    const expectedShaExpr = '${{ needs.recover-preflight.outputs.head_sha }}';
+
+    const validateJob = getJob(doc, 'recover-validate');
+    const validateStep = allSteps(validateJob).find((s) => s.run?.includes('sweep-eval.ts'));
+    expect(validateStep?.env?.RECOVER_HEAD_SHA).toBe(expectedShaExpr);
+
+    const aggregateJob = getJob(doc, 'recover-aggregate');
+    const aggregateStep = allSteps(aggregateJob).find((s) => s.run?.includes('gen-configs.ts'));
+    expect(aggregateStep?.env?.RECOVER_HEAD_SHA).toBe(expectedShaExpr);
+  });
+
+  it('recover-validate and recover-aggregate assign GITHUB_SHA inline at the exec boundary (immediately before each npx tsx invocation), not via env:', () => {
+    const doc = loadRecoverWorkflow();
+    const validateScript = allRunScript(getJob(doc, 'recover-validate'));
+    expect(validateScript).toMatch(
+      /GITHUB_SHA="\$RECOVER_HEAD_SHA"\s+npx tsx scripts\/agent\/perf\/sweep-eval\.ts/,
+    );
+
+    const aggregateScript = allRunScript(getJob(doc, 'recover-aggregate'));
+    expect(aggregateScript).toMatch(
+      /GITHUB_SHA="\$RECOVER_HEAD_SHA"\s+npx tsx scripts\/agent\/perf\/gen-configs\.ts/,
+    );
+    expect(aggregateScript).toMatch(
+      /GITHUB_SHA="\$RECOVER_HEAD_SHA"\s+npx tsx scripts\/agent\/perf\/aggregate-shards\.ts/,
+    );
+  });
+
+  it('EXECUTION regression: the exec-boundary GITHUB_SHA assignment extracted from the real workflow actually propagates the historical SHA into a spawned child process, even when the ambient job env carries a different (dispatch) GITHUB_SHA — proving the mechanism works, not merely that the YAML declares it', () => {
+    if (!hasBash) return; // environment without bash on PATH: structural coverage above still applies.
+
     const doc = loadRecoverWorkflow();
     const job = getJob(doc, 'recover-validate');
     const step = allSteps(job).find((s) => s.run?.includes('sweep-eval.ts'));
-    expect(step?.env?.GITHUB_SHA).toBe('${{ needs.recover-preflight.outputs.head_sha }}');
+    const runScript = step?.run ?? '';
+
+    // Extract the literal exec-boundary prefix (e.g. `GITHUB_SHA="$RECOVER_HEAD_SHA"`)
+    // used immediately before `npx tsx` in the REAL workflow file — not a
+    // hand-duplicated copy — so a future edit that regresses the idiom (e.g.
+    // reverting to a step-level env: key) fails this test.
+    const match = runScript.match(/(GITHUB_SHA="\$RECOVER_HEAD_SHA")\s+npx tsx/);
+    expect(
+      match,
+      'exec-boundary GITHUB_SHA assignment not found in recover-validate run script',
+    ).not.toBeNull();
+    const execBoundaryPrefix = match![1]!;
+
+    // Simulate exactly the failure mode observed in run 29869238382: the
+    // runner's ambient GITHUB_SHA is the dispatch SHA (different from the
+    // historical SHA we need). Stand in for `npx tsx sweep-eval.ts`'s
+    // `currentBuildFingerprint()` read with a minimal child process that
+    // reads process.env.GITHUB_SHA directly.
+    const dispatchSha = '4'.repeat(40);
+    const historicalSha = '1'.repeat(40);
+    // `printenv` is a standalone binary (not a shell builtin), so invoking it
+    // genuinely proves the override crosses a real process-exec boundary —
+    // exactly what `npx tsx` spawning the sweep-eval.ts child does — without
+    // depending on `node` being resolvable inside whichever `bash` is on PATH
+    // (e.g. the WSL interop shim, which has its own separate PATH/toolchain).
+    const probeScript = `${execBoundaryPrefix} printenv GITHUB_SHA`;
+
+    const result = spawnSync('bash', ['-c', probeScript], {
+      encoding: 'utf8',
+      env: bashEnv({
+        GITHUB_SHA: dispatchSha,
+        RECOVER_HEAD_SHA: historicalSha,
+      }),
+    });
+
+    expect(result.status, `probe script failed:\n${result.stderr}`).toBe(0);
+    expect(result.stdout.trim()).toBe(historicalSha);
+    expect(result.stdout.trim()).not.toBe(dispatchSha);
   });
 
-  it('recover-validate matrix is capped at max-parallel: 8', () => {
+  it('recover-validate matrix uses the queue-aware max-parallel output', () => {
     const doc = loadRecoverWorkflow();
     const job = getJob(doc, 'recover-validate');
-    expect(job.strategy?.['max-parallel']).toBe(8);
+    expect(String(job.strategy?.['max-parallel'])).toContain('validate_max_parallel');
     expect(job.strategy?.['fail-fast']).toBe(false);
   });
 

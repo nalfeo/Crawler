@@ -22,10 +22,23 @@ export function isTruthyEnv(value: string | undefined): boolean {
   );
 }
 
+export function parsePositiveIntegerEnv(
+  value: string | undefined,
+  defaultValue: number,
+  variableName: string,
+): number {
+  if (value === undefined || value.trim() === '') return defaultValue;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${variableName} must be a positive integer, got '${value}'`);
+  }
+  return parsed;
+}
+
 /**
  * Builds an onStatus wrapper that counts consecutive `idle` events and calls
  * `abort()` once `maxEmptyPolls` empty polls have been observed in a row. Any
- * `processing` event resets the counter so a drain run that hits intermittent
+ * non-idle work event resets the counter so a drain run that hits intermittent
  * work still processes it before exiting.
  *
  * The abort is fired exactly once, even if additional `idle` events arrive
@@ -47,7 +60,7 @@ export function createDrainOnStatus(options: {
         options.onDrain?.();
         options.abort();
       }
-    } else if (status.type === 'processing') {
+    } else if (status.type !== 'stopping') {
       idleCount = 0;
     }
     options.base(status);
