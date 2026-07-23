@@ -2039,6 +2039,106 @@ test('Bug 3: a crash mid-acquire cleans up the partial repository fence by node 
   );
 });
 
+test('Bug 3b: a metadata move at the state-comment phase cleans the armed partial fence on the clean-skip exit path', async (t) => {
+  // Round-2 reviewer Finding 2(b): on the review-wake path (EXPECTED_HEAD_SHA set)
+  // acquire() passes the 'acquire-label' metadata guard, then creates + ARMS the
+  // repository fence, attaches the PR label, and calls updateState() -> the
+  // 'state-comment' metadata guard. If the PR head moves in that window the guard
+  // fires skipForExpectedMetadata(), which exits 0 -- bypassing the
+  // uncaughtException handler that the crash path (Bug 3) relies on. Before the fix
+  // the armed fence + PR attachment leaked (owning state was never persisted) until
+  // the next orphaned-fence sweep. skipForExpectedMetadata() must now clean the
+  // pending fence on that clean-exit path too, exactly as the crash path does.
+  const movedHead = 'b'.repeat(40);
+  let fencePresent = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      // Head matches until the fence exists (opening fetch + the pre-fence
+      // 'acquire-label' guard both pass); once the fence is armed the next guard --
+      // 'state-comment' inside updateState -- observes the moved head and triggers
+      // the clean skip. The first POST-fence PR fetch IS the state-comment guard.
+      body: {
+        ...trustedReviewWakePr(),
+        mergeable: false,
+        mergeable_state: 'clean',
+        head: { ...trustedReviewWakePr().head, sha: fencePresent ? movedHead : HEAD_SHA },
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      fencePresent
+        ? { body: { name: LABEL, node_id: 'FENCE_partial' } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      // acquire() creates the fence here; arm the leak window (and move the head).
+      fencePresent = true;
+      return { body: { name: LABEL, node_id: 'FENCE_partial' } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 999 } }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  // A clean metadata-move skip exits 0; allow the known Windows exit-0 teardown flake.
+  if (!assertSuccessfulExit(t, code, stderr, stdout, true)) return;
+
+  // The skip fired at the state-comment phase (after the fence was armed), NOT at
+  // acquire-label (which passed on the pre-move head).
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=head-sha-moved-before-mutation phase=state-comment expected=${HEAD_SHA} actual=${movedHead}`,
+    ),
+    'the metadata move must trip the state-comment guard, after the fence is armed',
+  );
+  // The armed partial fence was cleaned on the clean-exit path (the fix).
+  assert.match(stdout, new RegExp(`partial-acquire-fence-cleanup pr=#${PR_NUM}`));
+  assert.doesNotMatch(stdout, /partial-acquire-fence-skip/);
+  // Cleanup detached the PR attachment and deleted our exact incarnation by node id.
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ),
+    'the clean-skip cleanup must detach the PR attachment',
+  );
+  assert.ok(
+    mutatingCalls.some((call) => call.method === 'GRAPHQL_MUTATION'),
+    'the clean-skip cleanup must delete the leaked fence by node id',
+  );
+  // Owning state was NEVER persisted: the state-comment write is the exact mutation
+  // the skip pre-empts, so a leaked fence would have had no owning state behind it.
+  assert.ok(
+    !mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    'the owning-state comment must never be written (the skip pre-empts it)',
+  );
+});
+
 test('PR #1208 partial cleanup converges when both owner-label deletes return 404', async (t) => {
   const stateComment = automationStateComment();
   const { server, port, mutatingCalls } = await startServer({

@@ -112,6 +112,18 @@ const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace(
 );
 let releaseUnexpectedOwnership = null;
 let fatalCleanupInProgress = false;
+// Node id of a repository fence created during acquire() but not yet backed by
+// persisted owning state. While set, an abandoned acquisition — an unexpected
+// crash OR a clean metadata-move skip (process.exit(0)) — must clean exactly this
+// incarnation rather than leak the atomic lock until the next orphaned-fence sweep.
+let pendingFenceNodeId = null;
+// True only while cleanupPartialFence() is deleting the incarnation we created and
+// have just re-verified by node id. The per-mutation metadata guards exist to avoid
+// mutating a REPLACEMENT PR's shared artifacts; deleting our own just-created fence
+// is safe regardless of a head/base move (a moved head is in fact WHY cleanup runs),
+// so those guards must not re-fire here — otherwise a clean-skip cleanup would either
+// recurse into skipForExpectedMetadata or abort midway and re-leak the fence.
+let cleaningPartialFence = false;
 const reportUnexpectedError = createUnexpectedErrorHandler({
   cleanup: () => releaseUnexpectedOwnership?.(),
   writeError: (message) => process.stderr.write(`${message}\n`),
@@ -240,7 +252,7 @@ function expectedMetadataRejection(candidate) {
   return null;
 }
 
-function skipForExpectedMetadata(rejection, phase = null) {
+async function skipForExpectedMetadata(rejection, phase = null) {
   if (fatalCleanupInProgress) {
     // During unexpected-error cleanup, a moved trust fence must stay fatal and
     // leave ownership untouched for reconciliation — never mask the crash by
@@ -250,6 +262,16 @@ function skipForExpectedMetadata(rejection, phase = null) {
       `unexpected-error-cleanup-skip pr=#${prNumber} reason=trusted-metadata-move detail=${rejection.reason}\n`,
     );
     throw new ExpectedMetadataChangedError(rejection, phase || 'unexpected-error-cleanup');
+  }
+  // A metadata move can abandon acquire() AFTER the atomic fence was created but
+  // BEFORE owning state was persisted (the 'state-comment' phase inside acquire's
+  // updateState). That abandon is a clean process.exit(0), so the uncaught-error
+  // handler never runs — clean up the partial fence here first, or it leaks until
+  // the next orphaned-fence sweep. cleanupPartialFence re-verifies the live
+  // incarnation, so it never touches a fresh owner's lock.
+  if (pendingFenceNodeId) {
+    await cleanupPartialFence(pendingFenceNodeId);
+    pendingFenceNodeId = null;
   }
   const reason = phase ? `${rejection.reason}-before-mutation` : rejection.reason;
   const phaseField = phase ? ` phase=${phase}` : '';
@@ -266,7 +288,7 @@ function skipForExpectedMetadata(rejection, phase = null) {
 // EXPECTED_HEAD_SHA preserves normal manual/router behavior.
 if (expectedHeadSha) {
   const rejection = expectedMetadataRejection(pr);
-  if (rejection) skipForExpectedMetadata(rejection);
+  if (rejection) await skipForExpectedMetadata(rejection);
 }
 
 // The initial guard above only proves the metadata matched at the *start* of
@@ -279,11 +301,11 @@ if (expectedHeadSha) {
 // EXPECTED_HEAD_SHA (normal manual/router/scheduled/lease flows) is a no-op, so
 // those paths keep their exact prior behavior and make no extra API calls.
 async function assertExpectedMetadataUnchanged(phase) {
-  if (!expectedHeadSha) return;
+  if (!expectedHeadSha || cleaningPartialFence) return;
   const livePullRequest = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`))
     .data;
   const rejection = expectedMetadataRejection(livePullRequest);
-  if (rejection) skipForExpectedMetadata(rejection, phase);
+  if (rejection) await skipForExpectedMetadata(rejection, phase);
 }
 
 class ExpectedMetadataChangedError extends Error {
@@ -335,11 +357,6 @@ let state = stateComments.length === 1 ? parseStateComment(stateComments[0].body
 const startupRepositoryLabel = await repositoryLabelSnapshot(labelName);
 let labelExists = startupRepositoryLabel.present;
 let ownerLabelNodeId = startupRepositoryLabel.nodeId;
-// Node id of a repository fence we created during acquire() but have NOT yet
-// backed with persisted owning state. While set, an unexpected crash must clean
-// exactly this incarnation (a partial acquisition) rather than bail and leak the
-// atomic lock until the next orphaned-fence sweep.
-let pendingFenceNodeId = null;
 const ownerLabelAttached = (pr.labels || []).some((label) => label.name === labelName);
 releaseUnexpectedOwnership = async () => {
   // Fail-safe cleanup after an unexpected crash: release ownership we currently
@@ -698,8 +715,13 @@ async function cleanupPartialFence(nodeId) {
     process.stdout.write(`partial-acquire-fence-skip pr=#${prNumber} reason=incarnation-changed\n`);
     return;
   }
-  await removePrLabel(labelName);
-  await removeRepositoryLabelById(nodeId);
+  cleaningPartialFence = true;
+  try {
+    await removePrLabel(labelName);
+    await removeRepositoryLabelById(nodeId);
+  } finally {
+    cleaningPartialFence = false;
+  }
   process.stdout.write(`partial-acquire-fence-cleanup pr=#${prNumber}\n`);
 }
 
@@ -1906,7 +1928,7 @@ if (reviewDecision) {
       });
     } catch (error) {
       if (error instanceof ExpectedMetadataChangedError) {
-        skipForExpectedMetadata(error.rejection, error.phase);
+        await skipForExpectedMetadata(error.rejection, error.phase);
       }
       throw error;
     }
