@@ -227,7 +227,7 @@ export function parseApprovedSprites(manifest, options) {
  * accepted variants generated from the same brief).
  * @param {unknown} manifest
  * @param {{ existingAssets: ReadonlySet<string> }} options
- * @returns {Array<{ briefId: string, assetPath: string, sourceRun: string, variantIndex: number, exists: boolean }>}
+ * @returns {Array<{ mapKey: string, briefId: string, assetPath: string, sourceRun: string, variantIndex: number, exists: boolean }>}
  */
 export function listManifestApprovals(manifest, options) {
   const parsed = generatedManifestSchema.safeParse(manifest);
@@ -236,6 +236,7 @@ export function listManifestApprovals(manifest, options) {
   for (const [mapKey, entry] of Object.entries(parsed.data.entries)) {
     if (entry.sourceRun === 'placeholder') continue;
     out.push({
+      mapKey,
       briefId: entry.briefId || mapKey,
       assetPath: entry.assetPath,
       sourceRun: entry.sourceRun,

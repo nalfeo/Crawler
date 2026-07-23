@@ -110,6 +110,15 @@ async function main(): Promise<void> {
   console.log(
     `  Damage Taken: ${stats.combat.damageTaken.toFixed(0)} (${(stats.combat.damageTaken / (stats.gameTimeMs / 1000)).toFixed(1)}/s)`,
   );
+  const damageSources = Object.entries(stats.combat.damageTakenBySource).sort(
+    ([aName, aDamage], [bName, bDamage]) => bDamage - aDamage || aName.localeCompare(bName),
+  );
+  if (damageSources.length > 0) {
+    console.log('  Damage Sources:');
+    for (const [source, damage] of damageSources) {
+      console.log(`    ${source}: ${damage.toFixed(1)}`);
+    }
+  }
   if (stats.weaponTelemetry) {
     const wt = stats.weaponTelemetry;
     console.log('');

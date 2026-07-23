@@ -109,4 +109,58 @@ describe('generated equipment registry properties', () => {
       ),
     );
   });
+
+  it('rejects instances whose frozen grants disagree with resolvedEffects grants', () => {
+    const grantEffect = {
+      schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+      effectId: 'grant-0',
+      effectOrdinal: 0,
+      unitCost: 1 as const,
+      kind: 'abilityGrant' as const,
+      grantId: 'fireball',
+    };
+
+    // resolvedEffects grants an ability, but the consumer-facing frozen arrays advertise nothing.
+    const resolvedHasGrantFrozenEmpty: GeneratedEquipmentCreateInputV1 = {
+      ...inputFor('uncommon', 1),
+      resolvedEffects: [grantEffect],
+    };
+    expect(() =>
+      createGeneratedEquipmentInstance(
+        createTestWorld({ generatedEquipmentRunKey: 'grant-run-a' }),
+        resolvedHasGrantFrozenEmpty,
+      ),
+    ).toThrow(/Frozen grants must exactly match resolvedEffects grants/);
+
+    // frozen advertises an ability grant that no resolvedEffect actually applies at runtime.
+    const frozenHasGrantResolvedEmpty: GeneratedEquipmentCreateInputV1 = {
+      ...inputFor('common', 1),
+      frozen: {
+        ...inputFor('common', 1).frozen,
+        abilityGrants: ['fireball'],
+      },
+    };
+    expect(() =>
+      createGeneratedEquipmentInstance(
+        createTestWorld({ generatedEquipmentRunKey: 'grant-run-b' }),
+        frozenHasGrantResolvedEmpty,
+      ),
+    ).toThrow(/Frozen grants must exactly match resolvedEffects grants/);
+
+    // matching frozen + resolvedEffects grants are accepted.
+    const matching: GeneratedEquipmentCreateInputV1 = {
+      ...inputFor('uncommon', 1),
+      resolvedEffects: [grantEffect],
+      frozen: {
+        ...inputFor('uncommon', 1).frozen,
+        abilityGrants: ['fireball'],
+      },
+    };
+    expect(() =>
+      createGeneratedEquipmentInstance(
+        createTestWorld({ generatedEquipmentRunKey: 'grant-run-c' }),
+        matching,
+      ),
+    ).not.toThrow();
+  });
 });

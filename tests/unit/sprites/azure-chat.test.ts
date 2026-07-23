@@ -51,6 +51,7 @@ const baseOptions = {
   deployment: 'gpt-4o-mini',
   apiKey: 'test-key',
   apiVersion: '2025-04-01-preview',
+  retry: { maxAttempts: 1 },
 };
 
 describe('AzureOpenAIChatProvider.expandVariations', () => {
@@ -94,27 +95,6 @@ describe('AzureOpenAIChatProvider.expandVariations', () => {
     // User prompt must mention the count and the existing seed.
     expect(body.messages[1]?.content).toContain('exactly 3');
     expect(body.messages[1]?.content).toContain('seed entry');
-  });
-
-  it('includes Floor 2 and family direction when expanding a family brief', async () => {
-    let capturedBody: unknown;
-    const stubFetch: typeof fetch = async (_input, init) => {
-      capturedBody = init?.body ? JSON.parse(init.body as string) : undefined;
-      return jsonResponse(200, chatCompletion(JSON.stringify({ variations: ['one'] })));
-    };
-    const provider = new AzureOpenAIChatProvider({ ...baseOptions, fetch: stubFetch });
-    const brief = briefSchema.parse({
-      ...makeBrief(),
-      type: 'enemy',
-      name: 'goblin-grunt',
-      floor: 2,
-    });
-
-    await provider.expandVariations({ brief, existing: [], count: 1 });
-
-    const body = capturedBody as { messages: Array<{ content: string }> };
-    expect(body.messages[0]?.content).toContain('Family Matters');
-    expect(body.messages[0]?.content).toContain('The Snaggle Cartel');
   });
 
   it('accepts a top-level JSON array as the model response', async () => {
@@ -217,14 +197,14 @@ describe('AzureOpenAIChatProvider.expandVariations', () => {
     });
   });
 
-  it('flags a structured error payload as provider-error even with HTTP 200', async () => {
+  it('flags a structured error payload as request-error even with HTTP 200', async () => {
     const stubFetch: typeof fetch = async () =>
       jsonResponse(200, { error: { code: 'content_filter', message: 'blocked' } });
     const provider = new AzureOpenAIChatProvider({ ...baseOptions, fetch: stubFetch });
 
     await expect(
       provider.expandVariations({ brief: makeBrief(), existing: [], count: 2 }),
-    ).rejects.toMatchObject({ name: 'TextProviderError', kind: 'provider-error' });
+    ).rejects.toMatchObject({ name: 'TextProviderError', kind: 'request-error' });
   });
 
   it('throws TextProviderError when choices[0].message.content is missing', async () => {

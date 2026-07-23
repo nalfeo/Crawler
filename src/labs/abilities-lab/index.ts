@@ -603,20 +603,19 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       return;
     }
 
-    let state = world.abilityStatesByEntity.get(playerEid);
-    if (!state) {
-      state = {
+    const existingState = world.abilityStatesByEntity.get(playerEid);
+    if (!existingState) {
+      const fresh: AbilityState = {
         learnedSpellIds: [],
         equippedActiveAbilityIds: [],
         passiveAbilityIds: [],
         cooldownByAbilityId: new Map(),
         cooldownFramesByAbilityId: new Map(),
         appliedPassiveAbilityIds: new Set(),
-        activeAbilityGrantSources: new Map(),
-        passiveAbilityGrantSources: new Map(),
-      } satisfies AbilityState;
-      world.abilityStatesByEntity.set(playerEid, state);
+      };
+      world.abilityStatesByEntity.set(playerEid, fresh);
     }
+    const state = world.abilityStatesByEntity.get(playerEid)!;
     const availableIds = [
       ...new Set([...state.equippedActiveAbilityIds, ...state.learnedSpellIds]),
     ];

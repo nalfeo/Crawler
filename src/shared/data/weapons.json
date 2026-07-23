@@ -1,50 +1,196 @@
 [
   {
-    "id": "sword"
+    "id": "sword",
+    "name": "Sword",
+    "weaponType": 0,
+    "baseDamage": 15,
+    "cooldownMs": 600,
+    "range": 5,
+    "aoeRadius": 5,
+    "durationMs": 200,
+    "swingArcDeg": 90,
+    "meleeStyle": 0,
+    "knockback": 0,
+    "pierce": 0
   },
   {
-    "id": "knife"
+    "id": "knife",
+    "name": "Knife",
+    "weaponType": 0,
+    "baseDamage": 8,
+    "cooldownMs": 300,
+    "range": 3.5,
+    "aoeRadius": 3.5,
+    "durationMs": 150,
+    "meleeStyle": 1,
+    "knockback": 0,
+    "pierce": 0
   },
   {
-    "id": "hammer"
+    "id": "hammer",
+    "name": "Hammer",
+    "weaponType": 0,
+    "baseDamage": 25,
+    "cooldownMs": 1000,
+    "range": 6,
+    "aoeRadius": 6,
+    "durationMs": 300,
+    "headRadius": 1.75,
+    "shaftDamageMult": 0.5,
+    "knockback": 4,
+    "pierce": 0
   },
   {
-    "id": "sun-hammer"
+    "id": "baseball-bat",
+    "name": "Baseball Bat",
+    "weaponType": 0,
+    "baseDamage": 20,
+    "cooldownMs": 900,
+    "range": 5.5,
+    "aoeRadius": 5.5,
+    "durationMs": 300,
+    "swingArcDeg": 120,
+    "headRadius": 1.75,
+    "shaftDamageMult": 0.4,
+    "knockback": 5,
+    "pierce": 0
   },
   {
-    "id": "baseball-bat"
+    "id": "pistol",
+    "name": "Pistol",
+    "weaponType": 1,
+    "baseDamage": 10,
+    "cooldownMs": 500,
+    "range": 40,
+    "projectileSpeed": 5.0,
+    "knockback": 0,
+    "pierce": 0
   },
   {
-    "id": "pistol"
+    "id": "bow",
+    "name": "Bow",
+    "weaponType": 1,
+    "baseDamage": 16,
+    "cooldownMs": 900,
+    "range": 44,
+    "projectileSpeed": 6.0,
+    "knockback": 0,
+    "pierce": 1
   },
   {
-    "id": "bow"
+    "id": "crossbow",
+    "name": "Crossbow",
+    "weaponType": 1,
+    "baseDamage": 18,
+    "cooldownMs": 1200,
+    "range": 50,
+    "projectileSpeed": 8.0,
+    "knockback": 0,
+    "pierce": 0
   },
   {
-    "id": "crossbow"
+    "id": "punch",
+    "name": "Punch",
+    "weaponType": 0,
+    "baseDamage": 8,
+    "cooldownMs": 200,
+    "range": 3,
+    "aoeRadius": 3,
+    "durationMs": 120,
+    "meleeStyle": 1,
+    "headRadius": 1.25,
+    "shaftDamageMult": 0,
+    "knockback": 2.5,
+    "pierce": 0
   },
   {
-    "id": "punch"
+    "id": "kick",
+    "name": "Kick",
+    "weaponType": 0,
+    "baseDamage": 7,
+    "cooldownMs": 400,
+    "range": 4,
+    "aoeRadius": 4,
+    "durationMs": 200,
+    "knockback": 0,
+    "pierce": 0
   },
   {
-    "id": "kick"
+    "id": "fireball",
+    "name": "Fireball",
+    "weaponType": 3,
+    "baseDamage": 8,
+    "cooldownMs": 800,
+    "range": 32,
+    "projectileSpeed": 4.0,
+    "aoeRadius": 6,
+    "knockback": 0,
+    "pierce": 0
   },
   {
-    "id": "fireball"
+    "id": "boomerang",
+    "name": "Boomerang",
+    "weaponType": 4,
+    "baseDamage": 10,
+    "cooldownMs": 900,
+    "range": 25,
+    "projectileSpeed": 5.0,
+    "returnSpeed": 4.0,
+    "maxRange": 25,
+    "knockback": 0,
+    "pierce": 0
   },
   {
-    "id": "boomerang"
+    "id": "throwing-knife",
+    "name": "Throwing Knife",
+    "weaponType": 4,
+    "baseDamage": 6,
+    "cooldownMs": 350,
+    "range": 19,
+    "projectileSpeed": 7.0,
+    "returnSpeed": 0,
+    "maxRange": 0,
+    "knockback": 0,
+    "pierce": 0
   },
   {
-    "id": "throwing-knife"
+    "id": "bowling-ball",
+    "name": "Bowling Ball",
+    "weaponType": 4,
+    "baseDamage": 18,
+    "cooldownMs": 1300,
+    "range": 280,
+    "projectileSpeed": 4.5,
+    "returnSpeed": 0,
+    "maxRange": 0,
+    "knockback": 0,
+    "pierce": 12,
+    "bounceCount": 6
   },
   {
-    "id": "bowling-ball"
+    "id": "laser",
+    "name": "Laser",
+    "weaponType": 5,
+    "baseDamage": 3,
+    "cooldownMs": 1500,
+    "range": 25,
+    "beamLength": 25,
+    "durationMs": 300,
+    "beamTickMs": 100,
+    "knockback": 0,
+    "pierce": 0
   },
   {
-    "id": "laser"
-  },
-  {
-    "id": "landmine"
+    "id": "landmine",
+    "name": "Landmine",
+    "weaponType": 6,
+    "baseDamage": 30,
+    "cooldownMs": 2000,
+    "range": 0,
+    "trapArmMs": 500,
+    "trapTriggerRadius": 4,
+    "trapExplosionRadius": 8,
+    "knockback": 0,
+    "pierce": 0
   }
 ]

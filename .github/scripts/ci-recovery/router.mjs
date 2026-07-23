@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
 import {
+  AUTOMATION_STALE_MINUTES,
   isHealthyRecoveryOwner,
   OWNER_LABEL_PREFIX,
   ownerLabel,
@@ -21,31 +22,56 @@ import {
 } from '../merge-train/state.mjs';
 
 const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
-// Hard global cap on outstanding CI Recovery workflow runs while the merge
-// train queue is non-empty. This is intentionally independent of
-// CI_RECOVERY_MAX_DISPATCH_PER_RUN: that var caps dispatch *per router
-// invocation*, but with the router now serialized under a single
-// concurrency group (see ci-recovery-router.yml), this cap is what actually
-// bounds the number of CI Recovery runs competing with Merge Train
-// Validation for runners at any moment.
-export const GLOBAL_TRAIN_DISPATCH_CAP = 1;
-// Cap applied whenever there is no active merge-train backlog to protect --
-// the queue is empty, the train feature is enabled but idle, OR the train
-// feature is disabled/paused entirely. Measured capacity evidence
-// (2026-07-21 incident follow-up): this repo is public on GitHub Free
-// (standard-hosted concurrency limit: 20 concurrent jobs). Representative
-// peaks observed: a normal full PR CI run uses ~5 concurrent jobs;
-// uncontended Merge Train Validation runs alone peak at 7-9 concurrent jobs;
-// an active AI Sweep Eval run can spawn 200+ jobs and peak at ~19 concurrent,
-// which is what starved Validation runners during the incident. Even with no
-// backlog to protect, sweep-style jobs can still be running (and can be
-// running whether or not the train feature itself is on), so dispatch is not
-// left fully unbounded here -- 2 preserves at least some runner headroom
-// instead of going back to effectively-unlimited (Infinity) dispatch. This
-// cap must remain in force during train maintenance/disablement too: that is
-// precisely when protecting shared runner capacity matters most, not a
-// window where backpressure can safely lapse.
-export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = 2;
+// ── Load-aware dispatch budget constants ─────────────────────────────────────
+// GitHub Free public repo: ~20 concurrent hosted-job ceiling (standard-hosted
+// runners). Measured peaks: normal PR CI ~5 concurrent jobs; uncontended Merge
+// Train Validation peaks at 7-9 concurrent jobs; a full AI Sweep Eval can fan
+// out to ~19 concurrent matrix jobs, which is what starved Validation runners
+// during the 2026-07-21 incident.
+export const RUNNER_CEILING = 20;
+// Runner slots to protect for Merge Train Validation when the queue is active.
+// 9 is the measured peak of concurrent validation jobs; using it as the floor
+// ensures recovery dispatch does not crowd out head-of-line validation.
+export const VALIDATION_RESERVED_TRAIN_BUSY = 9;
+// Smaller safety buffer when the train queue is empty / train feature is
+// disabled (no active Validation run to protect, but sweep jobs may still
+// be running).
+export const VALIDATION_RESERVED_TRAIN_IDLE = 3;
+// Upper bounds on the load-aware budget for each queue state. A full sweep
+// run fans to ~10–19 concurrent jobs; leaving a MAX of 5 (busy) or 8 (idle)
+// caps the blast radius while still allowing meaningful parallel recovery.
+export const MAX_DISPATCH_BUDGET_TRAIN_BUSY = 5;
+export const MAX_DISPATCH_BUDGET_TRAIN_IDLE = 8;
+// Estimated concurrent runner jobs per in-progress sweep run. Each
+// ai-sweep.yml / ai-sweep-recover.yml run fans its round-eval matrix into
+// many parallel jobs, and weapon-sweep.yml fans its weapon×shard matrix to
+// ~24 concurrent jobs; 10 is a conservative mid-point of the observed range.
+// Used only by runFromEnv to convert run counts into estimated job counts
+// before calling computeDispatchBudget.
+export const SWEEP_RUNNER_WEIGHT = 10;
+// Estimated concurrent runner jobs per active Merge Train Validation run.
+// merge-train-validate.yml runs 7-9 concurrent gate jobs at peak; 9 matches
+// VALIDATION_RESERVED_TRAIN_BUSY so the dynamic floor tracks measured load.
+export const VALIDATION_RUNNER_WEIGHT = 9;
+// Workflow files whose active run counts signal runner pressure to the budget.
+// weapon-sweep.yml joins the AI sweeps here: it also runs on the shared
+// standard-hosted pool and fans its weapon×shard matrix to ~24 concurrent
+// jobs, so an in-progress weapon sweep saturates runners exactly like an AI
+// sweep and must count toward the reserved-runner budget (otherwise the
+// budget reports zero sweep pressure during a weapon sweep and re-opens the
+// dispatch headroom this change exists to close).
+export const SWEEP_WORKFLOW_FILES = Object.freeze([
+  'ai-sweep.yml',
+  'ai-sweep-recover.yml',
+  'weapon-sweep.yml',
+]);
+export const VALIDATION_WORKFLOW_FILE = 'merge-train-validate.yml';
+// ── Legacy static caps (exported for reconcile.mjs buildGatedDispatchRecovery)
+// These are now derived from the load-aware MAX constants above (raised from
+// the previous 1/2). They act as a static ceiling for callers that cannot
+// measure live runner pressure (e.g. reconcile.mjs dispatch sites).
+export const GLOBAL_TRAIN_DISPATCH_CAP = MAX_DISPATCH_BUDGET_TRAIN_BUSY;
+export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = MAX_DISPATCH_BUDGET_TRAIN_IDLE;
 // GitHub Actions run states that represent a run not yet finished: actively
 // running, waiting to be scheduled, or held by a concurrency group (queued
 // runs whose concurrency group is busy report as `waiting`). `pending` is
@@ -89,6 +115,14 @@ export const DISPATCH_BLOCKED_LABEL_NAMES = new Set([
 // because landing them accelerates throughput for all other PRs.
 export const CI_FIX_LABEL_NAMES = new Set(['ci', 'ci-infra']);
 const OWNERSHIP_HYDRATION_BATCH_SIZE = 6;
+// Reserved dispatch slots for the lease-reaper GC pass. These slots are
+// consumed on every scheduled sweep to release stale automation locks and
+// are intentionally NOT counted against computeDispatchBudget, so GC can
+// never be budget-starved to zero (Fix A / issue #1783).
+export const REAPER_LANE_CAP = 2;
+// Sweep rotation window used by selectReaperBatch to cycle eligible reapable
+// PRs across windows so none starve past the lane cap.
+const FLAG_OFF_SWEEP_ROTATION_WINDOW_MS = 10 * 60 * 1000;
 
 function parsePositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw ?? ''), 10);
@@ -97,6 +131,17 @@ function parsePositiveInt(raw, fallback) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function rotateList(values, rotation) {
+  if (values.length <= 1) {
+    return values;
+  }
+  const normalizedRotation = ((rotation % values.length) + values.length) % values.length;
+  if (normalizedRotation === 0) {
+    return values;
+  }
+  return [...values.slice(normalizedRotation), ...values.slice(0, normalizedRotation)];
 }
 
 export function parseRetryAfterMilliseconds(error) {
@@ -218,31 +263,11 @@ export function collectPrNumbers({
       eventName,
       trainEnabled,
     });
-    const eligiblePulls = scheduledPulls
-      .filter((pullRequest) => {
-        const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
-        const labels = pullRequest.labels || [];
-        const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
-        const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
-        const waiting = labels.some((label) => label.name === WAITING_LABEL);
-        const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
-        const owned = labels.some((label) => String(label.name || '').startsWith('ci-owner-pr-'));
-        const shouldExcludeByLabels =
-          hasQueueLabel ||
-          (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
-        return (
-          pullRequest.state === 'open' &&
-          !pullRequest.draft &&
-          pullRequest.base?.ref === 'main' &&
-          pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
-          !shouldExcludeByLabels
-        );
-      })
-      .sort(
-        (left, right) =>
-          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-          left.number - right.number,
-      );
+    const eligiblePulls = eligibleTrainRecoveryPulls({
+      scheduledPulls,
+      repository,
+      directlyTriggeredPrs,
+    });
     const direct = eligiblePulls.filter((pullRequest) =>
       directlyTriggeredPrs.has(pullRequest.number),
     );
@@ -300,9 +325,19 @@ export function collectPrNumbers({
     // unconditional — it applies even to event-named PRs because a blocked PR
     // cannot make forward progress through CI Recovery regardless of how the
     // dispatch was triggered.
+    // Exception: a ci-recovery-waiting PR that also carries an active owner
+    // lease or an interrupted waiting-transition still needs to be dispatched
+    // for cleanup work. Only a genuinely-waiting PR (waiting label alone, no
+    // ownership, no interrupted transition) is excluded.
     const unblocked = eligible.filter((number) => {
       const pr = pullsByNumber.get(number);
-      return !pr || !isDispatchBlocked(pr);
+      if (!pr || !isDispatchBlocked(pr)) return true;
+      const labels = pr.labels || [];
+      const isWaiting = labels.some((l) => l.name === WAITING_LABEL);
+      if (!isWaiting) return false;
+      const hasOwner = labels.some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX));
+      const hasTransition = labels.some((l) => l.name === WAITING_TRANSITION_LABEL);
+      return hasOwner || hasTransition;
     });
 
     // Step 2: Sort helper — oldest created_at first, PR number as stable
@@ -337,6 +372,44 @@ export function collectPrNumbers({
     return ordered.slice(0, maxDispatchPerRun);
   }
   return eligible;
+}
+
+export function eligibleTrainRecoveryPulls({
+  scheduledPulls,
+  repository,
+  directlyTriggeredPrs = new Set(),
+}) {
+  return scheduledPulls
+    .filter((pullRequest) => {
+      const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
+      const labels = pullRequest.labels || [];
+      const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
+      const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
+      const waiting = labels.some((label) => label.name === WAITING_LABEL);
+      const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
+      const owned = labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX));
+      const shouldExcludeByLabels =
+        hasQueueLabel ||
+        (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
+      return (
+        pullRequest.state === 'open' &&
+        !pullRequest.draft &&
+        pullRequest.base?.ref === 'main' &&
+        pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+        !shouldExcludeByLabels
+      );
+    })
+    .sort(
+      (left, right) =>
+        new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+        left.number - right.number,
+    );
+}
+
+export function recoveryBacklogEntries(scheduledPulls, repository, now = new Date()) {
+  return eligibleTrainRecoveryPulls({ scheduledPulls, repository }).filter(
+    (pullRequest) => !hasHealthyOwnerForSweep(pullRequest, now),
+  );
 }
 
 export function recoveryStateFromComments(comments) {
@@ -382,6 +455,86 @@ export function hasHealthyOwnerForSweep(pullRequest, now = new Date()) {
     state: pullRequest.recoveryState,
     now,
   });
+}
+
+// Identifies automation-owned PRs that are candidates for the lease-reaper GC
+// pass.  There are two categories:
+//
+//   1. Active automation state older than AUTOMATION_STALE_MINUTES: these hold
+//      ci-owner-pr-N locks with no active session.  They will never be reached
+//      by the normal dispatch path because the budget stays at zero while they
+//      are stuck.
+//
+//   2. Owner-labeled PRs whose state is unreadable (recoveryStateUnreadable is
+//      set) or null after hydration.  The reconciler already handles orphan
+//      cleanup for these, but it can only run if dispatched; under a zero budget
+//      they are similarly stuck.
+//
+// Note: PRs that are still not hydrated (recoveryState and recoveryStateUnreadable
+// both absent) are skipped — the reaper hydration pass below ensures all
+// owner-labeled PRs are hydrated before this function is called, so missing
+// state here means hydration itself failed; the reconciler's orphan path will
+// handle it on the next successful hydration sweep.
+//
+// Together with the reaper-triggered release in reconcile.mjs (which carries
+// the attempt count forward and freezes progressAt instead of sliding it), this
+// makes the automation TTL a true wall-clock ceiling: a lock held past the
+// stale threshold stays eligible on every sweep until the bounded attempt
+// ceiling releases it. Liveness is intentionally NOT inferred from head-SHA
+// workflow runs -- unrelated CI / merge-train / sweep runs share the head SHA
+// and would yield false-live signals that could make a dead lock immortal
+// (adversarial plan review, 2026-07-22).
+export function identifyReapablePrs(scheduledPulls, now = new Date()) {
+  return scheduledPulls
+    .filter((pullRequest) => {
+      const owned = (pullRequest.labels || []).some((label) =>
+        String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
+      );
+      if (!owned) return false;
+      const state = pullRequest.recoveryState;
+      // Owner-labeled PR whose state was unreadable after hydration: always
+      // eligible so the reconciler can run its orphan-cleanup path.
+      if (pullRequest.recoveryStateUnreadable) return true;
+      // Hydrated but absent/malformed state (null -- distinct from an
+      // unhydrated `undefined`): the PR holds a ci-owner lock with no
+      // recoverable automation state. The reconciler's orphan-cleanup path
+      // releases it, but only if it is dispatched -- include it in the reaper
+      // batch. An unhydrated PR (recoveryState === undefined) is still skipped
+      // by the guard below: its age is unknown and the hydration pass retries
+      // it on the next sweep.
+      if (state === null) return true;
+      // Only act on loaded, automation-owned active states.
+      if (!state || state.owner !== 'automation') return false;
+      if (!['active', 'dispatched', 'escalated'].includes(state.status)) return false;
+      // Eligible when the last recorded progress is older than the stale threshold.
+      const progressAt = Date.parse(state.progressAt || state.updatedAt);
+      return now.getTime() - progressAt >= AUTOMATION_STALE_MINUTES * 60 * 1000;
+    })
+    .map((pr) => pr.number);
+}
+
+// Selects the subset of reapable PRs to dispatch this sweep, rotating the
+// eligible list once per sweep window BEFORE applying REAPER_LANE_CAP. Without
+// rotation a fixed prefix would be taken every sweep, so when more than
+// REAPER_LANE_CAP locks are stale the tail could starve indefinitely.
+//
+// The rotation only distributes fairly if the underlying list has a STABLE
+// order across sweeps. The caller derives reaperPrNumbers from the
+// updated-desc pull list, whose order churns as reaping bumps a PR's
+// updated_at (a reaped PR jumps back to the front next sweep), which would
+// defeat the rotation and let tail locks starve. So sort by PR number
+// (ascending, stable and sweep-invariant) before rotating. Reuses the flag-off
+// sweep rotation window and rotateList helper already used by
+// collectPrNumbers/eligibleTrainRecoveryPulls. Accepts an injectable `now`
+// (like collectPrNumbers) so the fairness property is deterministically
+// testable.
+export function selectReaperBatch(reaperPrNumbers, now = new Date(), cap = REAPER_LANE_CAP) {
+  const rotation =
+    Number.isFinite(now.getTime()) && now.getTime() > 0
+      ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
+      : 0;
+  const stableList = [...reaperPrNumbers].sort((a, b) => a - b);
+  return rotateList(stableList, rotation).slice(0, cap);
 }
 
 export async function hydrateRecoveryOwnership(
@@ -514,17 +667,17 @@ export function isManagedCommentEvent(payload, eventName) {
 //
 // Implementation: fires one concurrent `?status=<s>&per_page=1` request per
 // status and sums the `total_count` fields. This is O(len(statuses)) requests
-// (5 for the default set) rather than O(total_runs/100) for a full history
-// paginator -- critical because the CI Recovery workflow can accumulate tens
-// of thousands of completed runs. The minor TOCTOU window (a run could
-// transition between two queried statuses while the concurrent requests are
-// in-flight) is accepted as the price of keeping this call fast enough to
-// run inside a 10-minute job timeout with repeated visibility polls.
-export async function countOutstandingRecoveryRuns(
+// rather than O(total_runs/100) for a full history paginator -- critical
+// because the CI Recovery workflow can accumulate tens of thousands of
+// completed runs. The minor TOCTOU window (a run could transition between two
+// queried statuses while the concurrent requests are in-flight) is accepted as
+// the price of keeping this call fast enough to run inside a 10-minute job
+// timeout with repeated visibility polls.
+export async function countOutstandingWorkflowRuns(
   token,
   owner,
   repo,
-  workflowFile = 'ci-recovery.yml',
+  workflowFile,
   statuses = OUTSTANDING_RUN_STATUSES,
   requestFn = request,
 ) {
@@ -541,6 +694,20 @@ export async function countOutstandingRecoveryRuns(
     ),
   );
   return counts.reduce((sum, c) => sum + c, 0);
+}
+
+// Convenience wrapper for CI Recovery runs specifically.  Delegates to the
+// generic countOutstandingWorkflowRuns so callers that already import this
+// name do not need to change.
+export async function countOutstandingRecoveryRuns(
+  token,
+  owner,
+  repo,
+  workflowFile = 'ci-recovery.yml',
+  statuses = OUTSTANDING_RUN_STATUSES,
+  requestFn = request,
+) {
+  return countOutstandingWorkflowRuns(token, owner, repo, workflowFile, statuses, requestFn);
 }
 
 // Returns the IDs of currently outstanding runs from the first page of the
@@ -576,37 +743,59 @@ export async function listRecentOutstandingRunIds(
 }
 
 // How many more CI Recovery dispatches this router invocation may send.
-// While the merge train queue holds any PR, outstanding recovery runs are
-// hard-capped at GLOBAL_TRAIN_DISPATCH_CAP so Merge Train Validation is not
-// starved for runner capacity. Otherwise -- queue empty, train feature idle,
-// OR the train feature disabled/paused entirely -- dispatch is capped at the
-// looser GLOBAL_IDLE_TRAIN_DISPATCH_CAP rather than left unbounded (see that
-// constant's comment for the measured capacity evidence).
+//
+// Implements a load-aware budget that scales up when runners are idle and
+// contracts to protect Merge Train Validation + PR CI when the box is
+// saturated.  Formula:
+//
+//   budget = clamp(
+//     RUNNER_CEILING - validationReserved - activeSweepJobs - outstandingCount,
+//     0,
+//     maxBudget
+//   )
+//
+// Where:
+//   validationReserved  = VALIDATION_RESERVED_TRAIN_BUSY (9) when the train
+//                         queue is non-empty; VALIDATION_RESERVED_TRAIN_IDLE
+//                         (3) when idle.  The floor is raised to
+//                         activeValidationJobs when measured activity exceeds
+//                         the static constant (guards against unexpected spikes
+//                         in validation concurrency).
+//   activeSweepJobs     = estimated concurrent sweep jobs -- callers (e.g.
+//                         runFromEnv) multiply an in-progress sweep run count
+//                         by SWEEP_RUNNER_WEIGHT to get this value.  Passing 0
+//                         disables sweep-pressure contraction (safe default for
+//                         callers without sweep telemetry, e.g. reconcile.mjs).
+//   activeValidationJobs = estimated concurrent validation jobs -- callers
+//                         multiply active validation run count by
+//                         VALIDATION_RUNNER_WEIGHT.  Passed as 0 by callers
+//                         without validation telemetry.
+//   maxBudget           = MAX_DISPATCH_BUDGET_TRAIN_BUSY (5) when the train
+//                         queue is non-empty; MAX_DISPATCH_BUDGET_TRAIN_IDLE
+//                         (8) when idle -- a ceiling so that the budget never
+//                         fully opens even when runners look fully free.
 //
 // This budget is applied unconditionally, independent of MERGE_TRAIN_ENABLED:
 // disabling/pausing the train is precisely the scenario runner-capacity
-// protection must not lapse (2026-07-21 incident follow-up guidance), so
-// there is no "train off -> Infinity" branch here. `trainQueueNonEmpty` is
-// itself computed independent of the flag too (see runFromEnv) -- a stale
-// `merge-train` label surviving a flag-off still counts as backlog and gets
-// the stricter cap, which fails closed rather than open.
-//
-// The router's concurrency group (see ci-recovery-router.yml) is now an
-// unconditional single global group in every mode -- a second follow-up
-// correction that replaced the earlier per-mode group split, which left
-// legacy/flag-off invocations on per-PR groups where two different-PR
-// invocations could each read a stale outstanding count before either
-// dispatch became visible. With one global group active in all modes,
-// router invocations are always fully serialized, so this budget check is
-// no longer merely a live-but-racy API read: it is enforced against a
-// single invocation running at a time, closing that cross-PR race window.
-// The residual TOCTOU window this budget still relies on
-// (waitForOutstandingCount closing it) is the narrower one between a
-// dispatch and its own visibility via the Actions list-runs API within the
-// *same* serialized lineage -- see that function's comment.
-export function computeDispatchBudget({ trainQueueNonEmpty, outstandingCount }) {
-  const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
-  return Math.max(0, cap - outstandingCount);
+// protection must not lapse, so there is no "train off -> Infinity" branch.
+// `trainQueueNonEmpty` is computed independent of the flag too (see runFromEnv)
+// -- a stale `merge-train` label surviving a flag-off still counts as backlog
+// and gets the stricter reserved floor (fails closed rather than open).
+export function computeDispatchBudget({
+  trainQueueNonEmpty,
+  outstandingCount,
+  activeSweepJobs = 0,
+  activeValidationJobs = 0,
+}) {
+  const reservedFloor = trainQueueNonEmpty
+    ? VALIDATION_RESERVED_TRAIN_BUSY
+    : VALIDATION_RESERVED_TRAIN_IDLE;
+  const validationReserved = Math.max(reservedFloor, activeValidationJobs);
+  const maxBudget = trainQueueNonEmpty
+    ? MAX_DISPATCH_BUDGET_TRAIN_BUSY
+    : MAX_DISPATCH_BUDGET_TRAIN_IDLE;
+  const headroom = RUNNER_CEILING - validationReserved - activeSweepJobs - outstandingCount;
+  return Math.max(0, Math.min(maxBudget, headroom));
 }
 
 // Splits the PRs collectPrNumbers deemed eligible into what this run may
@@ -785,7 +974,70 @@ export async function runFromEnv(env = process.env) {
     );
   }
 
-  const prNumbers = collectPrNumbers({
+  // Lease-reaper pass (Fix A / issue #1783): runs on every scheduled sweep
+  // OUTSIDE the dispatch budget. Ensures all owner-labeled PRs have been
+  // hydrated (train-mode hydration above may stop early at targetDispatchable;
+  // non-train mode does not hydrate at all), then dispatches reconcile for any
+  // stale automation lock. GC is therefore never budget-starved to zero.
+  //
+  // The reapered PR numbers are excluded from the normal prNumbers set below so
+  // a PR is never double-dispatched by both the reaper and the normal path in
+  // the same router run.
+  const reaperDispatchedSet = new Set();
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+    // Identify owner-labeled PRs still missing recoveryState (and not already
+    // marked as unreadable). This covers non-train mode (never hydrated) and
+    // train mode where hydration stopped early at targetDispatchable.
+    const unhydratedOwned = scheduledPulls.filter(
+      (pr) =>
+        (pr.labels || []).some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX)) &&
+        pr.recoveryState === undefined &&
+        pr.recoveryStateUnreadable === undefined,
+    );
+    if (unhydratedOwned.length > 0) {
+      const hydratedOwned = await hydrateRecoveryOwnership(unhydratedOwned, (number) =>
+        requestWithBackoff(
+          () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+          { label: `reaper-load-state-${number}` },
+        ),
+      );
+      const patchByNumber = new Map(hydratedOwned.map((pr) => [pr.number, pr]));
+      scheduledPulls = scheduledPulls.map((pr) => patchByNumber.get(pr.number) ?? pr);
+    }
+
+    const reaperNow = new Date();
+    const reaperPrNumbers = identifyReapablePrs(scheduledPulls, reaperNow);
+    // Rotate the eligible list once per sweep window before applying the cap
+    // (see selectReaperBatch) so the tail cannot starve when more than
+    // REAPER_LANE_CAP locks are stale.
+    const reaperBatch = selectReaperBatch(reaperPrNumbers, reaperNow);
+    for (const reaperPrNumber of reaperBatch) {
+      // Use a direct request() -- do NOT wrap in requestWithBackoff. Same
+      // rationale as the normal dispatch loop: non-idempotent POST, retries
+      // would create duplicate runs.
+      await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
+        method: 'POST',
+        body: {
+          ref: payload.repository?.default_branch || 'main',
+          inputs: {
+            operation: 'reconcile',
+            pr_number: String(reaperPrNumber),
+            trigger: 'lease-reaper',
+            lease_id: '',
+          },
+        },
+      });
+      reaperDispatchedSet.add(reaperPrNumber);
+      process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=lease-reaper\n`);
+    }
+    if (reaperBatch.length > 0) {
+      process.stdout.write(
+        `reaper dispatched=${reaperBatch.length} pr_numbers=${reaperBatch.join(',')}\n`,
+      );
+    }
+  }
+
+  let prNumbers = collectPrNumbers({
     payload,
     eventName,
     repository,
@@ -794,6 +1046,11 @@ export async function runFromEnv(env = process.env) {
     trainEnabled,
     now: new Date(),
   });
+  // Exclude PRs already dispatched by the reaper this run to prevent
+  // double-dispatch (fix for plan-review concern #1 / issue #1783).
+  if (reaperDispatchedSet.size > 0) {
+    prNumbers = prNumbers.filter((n) => !reaperDispatchedSet.has(n));
+  }
   const directlyTriggeredPrs = eventPrNumbers(payload);
 
   // Global backpressure applies unconditionally now -- independent of
@@ -801,25 +1058,47 @@ export async function runFromEnv(env = process.env) {
   // while the train feature is paused/disabled (2026-07-21 incident
   // follow-up guidance). `trainQueueNonEmpty` is computed independent of the
   // flag too: a `merge-train` label surviving a flag-off still counts as
-  // backlog and gets the stricter cap (fail closed). The router's
+  // backlog and gets the stricter reserved floor (fail closed). The router's
   // concurrency group (see ci-recovery-router.yml) is a single unconditional
   // global group in every mode, so this budget is enforced against fully
   // serialized invocations -- see computeDispatchBudget for what that does
   // and does not close.
   //
   // Best-effort cap: merge-train/reconcile.mjs's four dispatchRecovery() call
-  // sites now go through buildGatedDispatchRecovery (GLOBAL_TRAIN_DISPATCH_CAP),
-  // so both callers apply the same cap before dispatching. A narrow race window
-  // still exists between each caller's countOutstandingRecoveryRuns read and
-  // its POST, because the router's concurrency group serialises its own
-  // invocations but cannot serialise against a concurrent reconcile.mjs run.
-  // A durable reservation (e.g. a shared semaphore via repository variable) is
-  // the required follow-up to close that gap completely.
+  // sites go through buildGatedDispatchRecovery (GLOBAL_TRAIN_DISPATCH_CAP),
+  // so both callers apply a cap before dispatching. A narrow race window still
+  // exists between each caller's countOutstandingRecoveryRuns read and its
+  // POST, because the router's concurrency group serialises its own invocations
+  // but cannot serialise against a concurrent reconcile.mjs run. A durable
+  // reservation (e.g. a shared semaphore via repository variable) is the
+  // required follow-up to close that gap completely.
   const trainQueueNonEmpty = queueEntries(scheduledPulls, repository).length > 0;
+
+  // Measure live runner pressure from in-progress sweep runs and all
+  // outstanding validation runs. Sweep runs are counted with 'in_progress'
+  // only because queued/waiting runs have not yet spawned their matrix jobs
+  // and therefore have not consumed any runner slots. Each in-progress sweep
+  // run is then weighted by SWEEP_RUNNER_WEIGHT to produce an estimated job
+  // count (a full ai-sweep.yml run fans to ~10–19 concurrent jobs). Validation
+  // runs use the full outstanding-status set so even a queued/waiting
+  // validation run contributes to the reserved floor.
+  const [activeSweepRunCount, activeValidationRunCount] = await Promise.all([
+    Promise.all(
+      SWEEP_WORKFLOW_FILES.map((f) =>
+        countOutstandingWorkflowRuns(token, owner, repo, f, ['in_progress']),
+      ),
+    ).then((counts) => counts.reduce((sum, c) => sum + c, 0)),
+    countOutstandingWorkflowRuns(token, owner, repo, VALIDATION_WORKFLOW_FILE),
+  ]);
+  const activeSweepJobs = activeSweepRunCount * SWEEP_RUNNER_WEIGHT;
+  const activeValidationJobs = activeValidationRunCount * VALIDATION_RUNNER_WEIGHT;
+
   const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
   const dispatchBudget = computeDispatchBudget({
     trainQueueNonEmpty,
     outstandingCount,
+    activeSweepJobs,
+    activeValidationJobs,
   });
   const { dispatchable, deferred } = partitionDispatchable(prNumbers, dispatchBudget);
 
@@ -859,9 +1138,8 @@ export async function runFromEnv(env = process.env) {
   }
 
   if (deferred.length > 0) {
-    const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
     process.stdout.write(
-      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${cap}\n`,
+      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${maxDispatchPerRun} budget=${dispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 
@@ -876,7 +1154,7 @@ export async function runFromEnv(env = process.env) {
     scheduledPulls.length > prNumbers.length
   ) {
     process.stdout.write(
-      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun}\n`,
+      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${dispatchBudget} outstanding=${outstandingCount} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 }

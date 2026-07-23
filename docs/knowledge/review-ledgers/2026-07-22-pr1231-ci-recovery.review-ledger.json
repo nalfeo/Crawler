@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-22",
+  "session_slug": "pr1231-ci-recovery",
+  "task_title": "PR #1231 CI recovery",
+  "estimated_apples": 2,
+  "stages": {}
+}

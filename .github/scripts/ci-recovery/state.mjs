@@ -128,7 +128,21 @@ export function blockerFingerprint(blockers) {
   // NOTE: `line` is display-only metadata. Diff-position lines drift whenever
   // surrounding code changes (e.g. INDEX regeneration), so it must not
   // participate in blocker identity hashing.
-  const fingerprintBlockers = normalized.map(({ line: _line, ...rest }) => rest);
+  //
+  // NOTE: `url` is also display-only metadata. A `ci-failure`/`ci-retrigger`
+  // blocker's `url` is a check-run/workflow-run permalink that embeds a fresh
+  // run/job ID on every rerun of the SAME failing check (same name, same
+  // conclusion) — including retries dispatched by this very automation.
+  // Hashing `url` therefore produced a NEW fingerprint on every retry cycle
+  // even when nothing about the underlying blocker changed, which
+  // `automationStallAction` (see below) reads as `'progressed'`: it resets the
+  // attempt counter to 0 and refreshes `progressAt` to now on every cycle, so
+  // the automation-stale ceiling (`attempt >= 2`) and lease-reaper takeover
+  // window can never be reached — an effectively immortal ownership lock.
+  // Observed in production on PR #1809 (10:09 / 10:44 / 11:29 UTC cycle): the
+  // persisted state's `attempt` stayed pinned at 1 forever because each retry
+  // was misclassified as new progress solely due to a new run URL.
+  const fingerprintBlockers = normalized.map(({ line: _line, url: _url, ...rest }) => rest);
   return createHash('sha256')
     .update(JSON.stringify({ blockers: fingerprintBlockers }))
     .digest('hex');
