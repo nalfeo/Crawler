@@ -69,7 +69,20 @@ carryover) across `src/core` and `src/game`, so it requires an ADR.
    _before_ `decapitated.add(familyId)` and the goal-flag/encounter mutations,
    so a thrown `RewardBundleResolutionError` leaves the family retryable next
    tick instead of permanently latching "defeated" with no chest and no way to
-   retry (surfaced by the adversarial plan review).
+   retry (surfaced by the adversarial plan review). `floor2Scenario.ts` has
+   **two** independent boss-defeat latch paths that both call
+   `decapitated.add`: the primary per-family combat-event loop, and a
+   secondary "victory sweep" inside `floor2VictorySystem` that bulk-latches
+   any remaining present families once all dens are unlocked and no living
+   boss entities remain (covers a boss entity despawning/recycling without a
+   normal `death` combat event). Code review round 1 found the secondary
+   path originally omitted the `spawnBossChestForDefeatedBoss` call entirely,
+   so a family latched only through that sweep would never get a chest. Both
+   paths now call `spawnBossChestForDefeatedBoss` before `decapitated.add`/
+   goal-flag mutations, and the call's own idempotency makes it safe to
+   invoke redundantly from either path for an already-chested family. See
+   `tests/unit/floor2-victory-system.test.ts`'s secondary-path regression
+   test.
 
 4. **Floor 2 equipment-economy gate, not the rewards gate.** Boss chests are
    gated on `getFloor2EquipmentEconomyAccess` (`floor2EquipmentEconomy`),

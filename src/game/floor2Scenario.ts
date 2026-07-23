@@ -735,6 +735,16 @@ export function floor2VictorySystem(world: GameWorld): void {
   const allBossEntitiesGone = livingBossFamilies.size === 0;
   if (!allBossesDead && allDensUnlocked && allBossEntitiesGone) {
     for (const familyId of presentFamilies) {
+      // Chest creation boundary (ADR 0070), mirrored from the primary
+      // combat-event path above: this is a second defeat-latch that fires
+      // when a family's boss ECS entity vanishes without a normal `death`
+      // combat event (e.g. all dens unlocked while the boss entity was
+      // otherwise despawned/recycled). Without this call such a family would
+      // be permanently latched "defeated" with no boss chest ever created.
+      // `spawnBossChestForDefeatedBoss` is idempotent (checks
+      // `world.bossChests.has(chestId)` first), so it is safe to call here
+      // even for families already chested via the primary path.
+      spawnBossChestForDefeatedBoss(world, familyId);
       decapitated.add(familyId);
       setGoalFlag(world, bossDefeatGoalId(familyId), true);
     }
