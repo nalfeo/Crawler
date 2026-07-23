@@ -298,49 +298,56 @@ export function collectPrNumbers({
   }
   const directNumbers = eventPrNumbers(payload);
   const numbers = new Set(directNumbers);
-  // Map from PR number → PR object, populated during the collection phase for
-  // schedule/workflow_dispatch sweeps so the ordering phase can read labels and
-  // created_at without a second loop.
+  // Map from PR number → PR object, populated for ALL events so that
+  // label-based blocked/ci-fix checks can work on any flag-off path,
+  // including direct events such as pull_request_target, issue_comment,
+  // and workflow_run.
   const pullsByNumber = new Map();
 
-  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
-    const normalizedRepo = repository.toLowerCase();
-    for (const pullRequest of scheduledPulls) {
-      if (
-        !pullRequest.draft &&
-        pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
-      ) {
-        const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
-        if (Number.isInteger(number) && number > 0) {
+  const normalizedRepo = repository.toLowerCase();
+  for (const pullRequest of scheduledPulls) {
+    if (
+      !pullRequest.draft &&
+      pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
+    ) {
+      const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
+      if (Number.isInteger(number) && number > 0) {
+        pullsByNumber.set(number, pullRequest);
+        if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
           numbers.add(number);
-          pullsByNumber.set(number, pullRequest);
         }
       }
     }
   }
 
   const eligible = [...numbers];
-  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
-    // Step 1: Remove PRs blocked by external mechanisms. The exclusion is
-    // unconditional — it applies even to event-named PRs because a blocked PR
-    // cannot make forward progress through CI Recovery regardless of how the
-    // dispatch was triggered.
-    // Exception: a ci-recovery-waiting PR that also carries an active owner
-    // lease or an interrupted waiting-transition still needs to be dispatched
-    // for cleanup work. Only a genuinely-waiting PR (waiting label alone, no
-    // ownership, no interrupted transition) is excluded.
-    const unblocked = eligible.filter((number) => {
-      const pr = pullsByNumber.get(number);
-      if (!pr || !isDispatchBlocked(pr)) return true;
-      const labels = pr.labels || [];
-      const isWaiting = labels.some((l) => l.name === WAITING_LABEL);
-      if (!isWaiting) return false;
-      const hasOwner = labels.some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX));
-      const hasTransition = labels.some((l) => l.name === WAITING_TRANSITION_LABEL);
-      return hasOwner || hasTransition;
-    });
 
-    // Step 2: Sort helper — oldest created_at first, PR number as stable
+  // Remove PRs blocked by external mechanisms for ALL flag-off paths.
+  // The exclusion is unconditional — it applies regardless of the triggering
+  // event (schedule, workflow_dispatch, pull_request_target, issue_comment,
+  // workflow_run, etc.) because a blocked PR cannot make forward progress
+  // through CI Recovery regardless of how the dispatch was triggered.
+  // Exception: a ci-recovery-waiting PR that also carries an active owner
+  // lease or an interrupted waiting-transition still needs to be dispatched
+  // for cleanup work. Only a genuinely-waiting PR (waiting label alone, no
+  // ownership, no interrupted transition) is excluded.
+  // Note: if a directly-triggered PR is not present in scheduledPulls (e.g.
+  // a just-opened PR not yet returned by the list API), pullsByNumber.get()
+  // returns undefined and the filter passes it through as unblocked — safe
+  // fallback behaviour that preserves the previous pass-through semantics.
+  const unblocked = eligible.filter((number) => {
+    const pr = pullsByNumber.get(number);
+    if (!pr || !isDispatchBlocked(pr)) return true;
+    const labels = pr.labels || [];
+    const isWaiting = labels.some((l) => l.name === WAITING_LABEL);
+    if (!isWaiting) return false;
+    const hasOwner = labels.some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX));
+    const hasTransition = labels.some((l) => l.name === WAITING_TRANSITION_LABEL);
+    return hasOwner || hasTransition;
+  });
+
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+    // Sort helper — oldest created_at first, PR number as stable
     // tiebreaker so output is deterministic when timestamps are equal or absent.
     function byAge(a, b) {
       const timeA = Date.parse(pullsByNumber.get(a)?.created_at ?? '') || 0;
@@ -348,7 +355,7 @@ export function collectPrNumbers({
       return timeA - timeB || a - b;
     }
 
-    // Step 3: Partition into three ordered tiers.
+    // Partition into three ordered tiers.
     // Tier 1 — PRs the triggering event explicitly named (highest priority).
     const directTier = unblocked.filter((n) => directNumbers.has(n));
     const rest = unblocked.filter((n) => !directNumbers.has(n));
@@ -371,7 +378,7 @@ export function collectPrNumbers({
     ];
     return ordered.slice(0, maxDispatchPerRun);
   }
-  return eligible;
+  return unblocked;
 }
 
 export function eligibleTrainRecoveryPulls({

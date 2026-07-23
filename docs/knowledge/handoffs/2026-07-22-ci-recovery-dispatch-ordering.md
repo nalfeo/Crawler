@@ -45,8 +45,18 @@ ci-recovery
 
 ## Verification run
 
-- `npm run test:guards` — 8 failures (all pre-existing; no new failures)
+- `node --test .github/scripts/ci-recovery/router.test.mjs` — 83/83 pass (80 existing + 3 new `pull_request_target` regression tests)
 - `node --check .github/scripts/ci-recovery/router.mjs` — syntax OK
+
+## Follow-up changes (post-initial-commit)
+
+- Extended `collectPrNumbers` to apply blocked-PR exclusion to **all** flag-off event
+  paths (not only `schedule`/`workflow_dispatch`). `pullsByNumber` is now populated
+  from `scheduledPulls` for every event type so that label-based checks work for
+  `pull_request_target`, `issue_comment`, `workflow_run`, etc. PRs absent from
+  `scheduledPulls` (e.g. just-opened) pass through as unblocked (safe fallback).
+- Added three `pull_request_target` regression tests covering: blocked exclusion,
+  unblocked pass-through, and absent-from-list pass-through.
 
 ## Unresolved / next steps
 

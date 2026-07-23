@@ -604,6 +604,72 @@ test('flag-off schedule: CI-fix PRs are not identified by title text', () => {
   assert.deepEqual(numbers, [2, 1, 3]);
 });
 
+test('flag-off pull_request_target: blocked PR excluded even when directly triggered', () => {
+  // Regression test for the reviewer concern: the blocked filter must apply
+  // to ALL flag-off event paths, not only schedule/workflow_dispatch.
+  // Uses pull_request_target (a real direct trigger event) where the PR
+  // carries a blocked label that is present in scheduledPulls.
+  const blockedPr = {
+    number: 42,
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [{ name: 'human-approval-required' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+
+  const numbers = collectPrNumbers({
+    payload: { pull_request: { number: 42 } },
+    eventName: 'pull_request_target',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [blockedPr],
+    maxDispatchPerRun: 8,
+  });
+
+  assert.ok(
+    !numbers.includes(42),
+    'pull_request_target: directly-triggered blocked PR must be excluded',
+  );
+});
+
+test('flag-off pull_request_target: unblocked PR is still dispatched', () => {
+  // Complement to the exclusion test: an unblocked directly-triggered PR on
+  // a pull_request_target event must pass through the filter unchanged.
+  const normalPr = {
+    number: 10,
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+
+  const numbers = collectPrNumbers({
+    payload: { pull_request: { number: 10 } },
+    eventName: 'pull_request_target',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [normalPr],
+    maxDispatchPerRun: 8,
+  });
+
+  assert.ok(numbers.includes(10), 'pull_request_target: unblocked PR must be dispatched');
+});
+
+test('flag-off pull_request_target: PR absent from scheduledPulls passes through as unblocked', () => {
+  // Safety fallback: a PR named by the event that is not yet in scheduledPulls
+  // (e.g. just opened) must still be dispatched rather than silently dropped.
+  const numbers = collectPrNumbers({
+    payload: { pull_request: { number: 99 } },
+    eventName: 'pull_request_target',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [],
+    maxDispatchPerRun: 8,
+  });
+
+  assert.ok(
+    numbers.includes(99),
+    'pull_request_target: PR not in scheduledPulls must pass through unblocked',
+  );
+});
+
 test('train mode routes PR-scoped events only to their directly affected PR', () => {
   const pulls = Array.from({ length: 9 }, (_, index) => ({
     number: index + 1,
