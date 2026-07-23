@@ -259,8 +259,13 @@ class GatedListStore implements RunStore {
   readonly backend = 'azure-blob' as const;
   lists = 0;
   private release: (() => void) | null = null;
+  private signalListStarted: (() => void) | null = null;
+  readonly firstListStarted: Promise<void>;
   private readonly gate: Promise<void>;
   constructor(private readonly keys: readonly string[]) {
+    this.firstListStarted = new Promise<void>((resolve) => {
+      this.signalListStarted = resolve;
+    });
     this.gate = new Promise<void>((resolve) => {
       this.release = resolve;
     });
@@ -279,6 +284,8 @@ class GatedListStore implements RunStore {
   }
   async list(): Promise<readonly string[]> {
     this.lists++;
+    this.signalListStarted?.();
+    this.signalListStarted = null;
     await this.gate;
     return this.keys;
   }
@@ -836,15 +843,13 @@ describe('list snapshots', () => {
       return keys;
     });
 
-    // readSnapshot() performs genuine cacache disk I/O whose wall-clock
-    // completion time varies with disk/OS scheduling, so poll for the
-    // observable effect (inner.list reached) rather than assuming a fixed
-    // tick count settles it — same rationale as the waitUntil doc comment.
-    const reachedInner = await waitUntil(async () => gated.lists >= 1);
-    expect(reachedInner).toBe(true); // inner.list() was genuinely invoked, not skipped
-    expect(resolved).toBe(false); // ...and the call is genuinely blocked on it, not merely "also calling it"
-
-    gated.releaseGate();
+    try {
+      await gated.firstListStarted;
+      expect(gated.lists).toBe(1); // inner.list() was genuinely invoked, not skipped
+      expect(resolved).toBe(false); // ...and the call is genuinely blocked on it, not merely "also calling it"
+    } finally {
+      gated.releaseGate();
+    }
     await expect(authoritative).resolves.toEqual(expect.arrayContaining([SHEET, RAW]));
     expect(resolved).toBe(true);
   });
