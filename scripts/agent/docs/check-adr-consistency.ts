@@ -16,21 +16,6 @@ const PATH_EXTS = ['.ts', '.md', '.json', '.yml', '.yaml', '.sh'];
 const ALLOWLIST = new Set<string>([
   // Runtime-generated coverage artifact produced by the Governor sweep.
   'coverage/balance-metrics.json',
-  // Planned-implementation paths referenced in ADRs for future slices.
-  // Remove each entry once the corresponding file is created.
-  'src/core/systems/manaSystem.ts', // ADR 0019 — wisdom/mana pool
-  'src/shared/mana.ts', // ADR 0019 — wisdom/mana pool
-  'src/labs/mana-lab/', // ADR 0019 — wisdom/mana pool
-  'core/systems/statSystem.ts', // ADR 2026-07-16 — primary-stat-system-overhaul
-  'game/systems/statsSystem.ts', // ADR 2026-07-16 — primary-stat-system-overhaul
-  'shared/stats.ts', // ADR 2026-07-16 — primary-stat-system-overhaul
-  'core/damage-meta.ts', // ADR 2026-07-16 — primary-stat-system-overhaul
-  'shared/mana.ts', // ADR 2026-07-16 — primary-stat-system-overhaul
-  'shared/encumbrance.ts', // ADR 2026-07-16 — primary-stat-system-overhaul
-  'core/encumbrance.ts', // ADR 2026-07-16 — primary-stat-system-overhaul
-  'game/ai/weapon-personas.ts', // ADR 2026-07-16 — primary-stat-system-overhaul
-  'game/abilities/registry.ts', // ADR 2026-07-16 — primary-stat-system-overhaul
-  'sidecar/server.ts', // ADR 2026-07-17 — weapon-anchor
 ]);
 
 function looksLikePath(s: string): boolean {

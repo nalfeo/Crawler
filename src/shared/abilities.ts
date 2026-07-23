@@ -188,3 +188,28 @@ export function isAbilityGrantSourceId(value: string): value is AbilityGrantSour
     LEGACY_SOURCE_PATTERN.test(value)
   );
 }
+
+/**
+ * Creates an empty `AbilityState` with no abilities and empty source-tracking
+ * maps. Exported for use by code outside `abilitySystem.ts` (e.g. tests,
+ * equipment bootstrap).
+ *
+ * @deprecated Prefer `createAbilityState()` from `abilitySystem.ts` for new
+ * call sites in the game layer. This export exists for backward compatibility.
+ */
+export function createEmptyAbilityState(): AbilityState {
+  return {
+    learnedSpellIds: [],
+    equippedActiveAbilityIds: [],
+    ownedActiveAbilityIds: [],
+    passiveAbilityIds: [],
+    cooldownByAbilityId: new Map(),
+    cooldownFramesByAbilityId: new Map(),
+    appliedPassiveAbilityIds: new Set(),
+    grantOwnership: {
+      schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+      activeSourcesByAbilityId: new Map(),
+      passiveSourcesByAbilityId: new Map(),
+    },
+  };
+}

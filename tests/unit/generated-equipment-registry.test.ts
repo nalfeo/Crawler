@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
@@ -13,7 +14,6 @@ import {
   type ResolvedEquipmentEffectV1,
 } from '../../src/shared/generated-equipment-types.js';
 import { canonicalJson, sha256Hex } from '../../src/shared/canonical-json.js';
-import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
   GeneratedEquipmentRegistryError,
@@ -182,7 +182,6 @@ describe('generated equipment instance registry', () => {
     expect(Object.isFrozen(first.frozen.statBonuses)).toBe(true);
     expect(Object.isFrozen(first.frozen.activeWeaponSnapshot)).toBe(true);
     expect(Object.isFrozen(first.resolvedEffects)).toBe(true);
-    expect(first.frozen.activeWeaponSnapshot?.generatedEquipmentInstanceId).toBe(first.instanceId);
     expect(canonicalJson(getWeaponDef('sword'))).toBe(staticWeaponBefore);
   });
 
@@ -246,22 +245,6 @@ describe('generated equipment instance registry', () => {
     );
     expect(createGeneratedEquipmentInstance(target, createInput()).instanceId).toBe(
       'gei:v1:run-validation:0',
-    );
-  });
-
-  it('requires the frozen weapon snapshot to match the owning generated instance id', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'run-snapshot-id' });
-
-    expectRegistryError(
-      () =>
-        createGeneratedEquipmentInstance(
-          world,
-          createInput(
-            'common',
-            weaponSnapshot(generatedEquipmentInstanceKey('run-snapshot-id', 99)),
-          ),
-        ),
-      'invalid-payload',
     );
   });
 

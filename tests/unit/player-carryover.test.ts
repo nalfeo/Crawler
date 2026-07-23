@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { addEntity } from 'bitecs';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import {
+  addGeneratedEquipmentToBag,
+  equip,
+  equipFromBag,
+  getEquipmentState,
+  unequip,
+} from '../../src/core/systems/equipmentSystem.js';
 import { addStatModifier } from '../../src/game/systems/statsSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
 import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
@@ -15,14 +21,23 @@ import {
 import {
   learnedAbilityGrantSourceId,
   skillAbilityGrantSourceId,
+  ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
 } from '../../src/shared/abilities.js';
 import {
   getEquipmentDefForStarterWeapon,
   MERCHANTS_CHARM_DEF,
 } from '../../src/shared/equipmentDefs.js';
-import { addGeneratedEquipmentReference } from '../../src/shared/inventory.js';
-import type { GeneratedEquipmentInstanceKey } from '../../src/shared/generated-equipment-types.js';
+import {
+  GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+  type GeneratedEquipmentInstanceKey,
+} from '../../src/shared/generated-equipment-types.js';
+import {
+  createGeneratedEquipmentInstance,
+  snapshotGeneratedEquipmentRegistry,
+} from '../../src/core/generated-equipment-registry.js';
+import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 
 describe('player floor carryover', () => {
   it('restores run-wide progression without copying the previous floor modifier', () => {
@@ -469,17 +484,238 @@ describe('player floor carryover', () => {
     expect(world.achievements.carriedRunFacts).toEqual(createEmptyAchievementFactSnapshot());
   });
 
-  it('fails closed instead of silently dropping generated bag ownership before B3', () => {
+  it('migrates an unversioned static snapshot without changing static carryover', () => {
     const source = createTestWorld({ seed: 42 });
     const player = spawnPlayer(source, 0, 0);
-    const bag = source.inventories.get(player)!;
-    const instanceKey = 'gei:v1:carryover-test:0' as GeneratedEquipmentInstanceKey;
-    addGeneratedEquipmentReference(bag, instanceKey);
-    const bagBefore = structuredClone(bag);
+    source.playerName = 'Legacy Static';
+    const current = capturePlayerCarryover(source, player);
+    const {
+      schemaVersion: _schemaVersion,
+      generatedInventoryInstanceKeys: _generatedInventoryInstanceKeys,
+      generatedEquippedInstanceKeys: _generatedEquippedInstanceKeys,
+      generatedEquipmentRegistry: _generatedEquipmentRegistry,
+      generatedEquipmentRewardBundles: _generatedEquipmentRewardBundles,
+      ...legacy
+    } = current;
+    const destination = createTestWorld({ seed: 42 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
 
-    expect(() => capturePlayerCarryover(source, player)).toThrow(
-      'Generated equipment carryover is not supported until the B3 persistence slice lands',
+    restorePlayerCarryover(destination, destinationPlayer, legacy);
+
+    expect(destination.playerName).toBe('Legacy Static');
+    expect(destination.inventories.get(destinationPlayer)).toEqual(source.inventories.get(player));
+  });
+
+  it('round-trips exact generated ownership, grants, bundles, and frozen weapon behavior', () => {
+    const runKey = 'carryover-generated-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const equipped = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'weapon.generated-carryover',
+        slots: ['mainHand'],
+        grants: true,
+        weapon: true,
+      }),
     );
-    expect(bag).toEqual(bagBefore);
+    const bagged = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({ baseId: 'armor.generated-bag', slots: ['head'] }),
+    );
+    const bundled = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({ baseId: 'armor.generated-bundle', slots: ['feet'] }),
+    );
+    expect(addGeneratedEquipmentToBag(source, player, equipped.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        source,
+        player,
+        { kind: 'generated-instance', instanceKey: equipped.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    expect(addGeneratedEquipmentToBag(source, player, bagged.instanceId).ok).toBe(true);
+    source.generatedEquipmentRewardBundles.set('carryover-reward', {
+      schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+      achievementId: 'carryover-reward',
+      instanceKeys: [bundled.instanceId],
+    });
+
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as unknown;
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, serialized);
+
+    expect(snapshotGeneratedEquipmentRegistry(destination)).toEqual(
+      snapshotGeneratedEquipmentRegistry(source),
+    );
+    expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toEqual([
+      { kind: 'generated-instance', instanceKey: bagged.instanceId },
+    ]);
+    expect(getEquipmentState(destination, destinationPlayer)?.equipped.mainHand).toBe(
+      equipped.instanceId,
+    );
+    const {
+      schemaVersion: _weaponSchemaVersion,
+      sourceWeaponDefId: _sourceWeaponDefId,
+      ...frozenWeapon
+    } = equipped.frozen.activeWeaponSnapshot!;
+    expect(getActiveWeaponDef(destination)).toEqual({
+      ...frozenWeapon,
+      id: equipped.instanceId,
+    });
+    expect(
+      destination.abilityStatesByEntity
+        .get(destinationPlayer)
+        ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile'),
+    ).toEqual(new Set([`equipment:${equipped.instanceId}:0`]));
+    expect(destination.generatedEquipmentRewardBundles.get('carryover-reward')).toEqual({
+      schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+      achievementId: 'carryover-reward',
+      instanceKeys: [bundled.instanceId],
+    });
+    expect(
+      Object.isFrozen(destination.generatedEquipmentRewardBundles.get('carryover-reward')),
+    ).toBe(true);
+
+    expect(unequip(destination, destinationPlayer, 'mainHand', { force: true }).ok).toBe(true);
+    expect(getActiveWeaponDef(destination)).toBeUndefined();
+    expect(
+      destination.abilityStatesByEntity.get(destinationPlayer)?.equippedActiveAbilityIds,
+    ).not.toContain('magic-missile');
+    expect(
+      destination.abilityStatesByEntity.get(destinationPlayer)?.passiveAbilityIds,
+    ).not.toContain('combat-flow');
+  });
+
+  it('retains independently owned grants after the last equipment source is removed', () => {
+    const world = createTestWorld({
+      seed: 42,
+      generatedEquipmentRunKey: 'carryover-retained-grant-run',
+    });
+    const player = spawnPlayer(world, 0, 0);
+    world.abilityStatesByEntity.set(player, {
+      learnedSpellIds: [],
+      equippedActiveAbilityIds: ['magic-missile'],
+      ownedActiveAbilityIds: ['magic-missile'],
+      passiveAbilityIds: [],
+      cooldownByAbilityId: new Map(),
+      cooldownFramesByAbilityId: new Map(),
+      appliedPassiveAbilityIds: new Set(),
+      grantOwnership: {
+        schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+        activeSourcesByAbilityId: new Map([['magic-missile', new Set(['learned:magic-missile'])]]),
+        passiveSourcesByAbilityId: new Map(),
+      },
+    });
+    const generated = createGeneratedEquipmentInstance(
+      world,
+      generatedEquipmentInput({ slots: ['head'], grants: true }),
+    );
+    expect(addGeneratedEquipmentToBag(world, player, generated.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        world,
+        player,
+        { kind: 'generated-instance', instanceKey: generated.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    // Both learned and generated-equipment sources are tracked
+    const sourcesAfterEquip = world.abilityStatesByEntity
+      .get(player)
+      ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile');
+    expect(sourcesAfterEquip?.has('learned:magic-missile')).toBe(true);
+    expect([...(sourcesAfterEquip ?? [])].some((s) => s.startsWith('equipment:'))).toBe(true);
+
+    expect(unequip(world, player, 'head', { force: true }).ok).toBe(true);
+    // The learned source remains, so the ability stays equipped
+    expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain(
+      'magic-missile',
+    );
+    // Only the generated-equipment source was removed; learned source remains
+    expect(
+      world.abilityStatesByEntity
+        .get(player)
+        ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile'),
+    ).toEqual(new Set(['learned:magic-missile']));
+  });
+
+  it('rejects a mismatched sourced-grant reference before mutation', () => {
+    const runKey = 'carryover-grant-mismatch-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({ slots: ['head'], grants: true }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        source,
+        sourcePlayer,
+        { kind: 'generated-instance', instanceKey: generated.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    // Corrupt the grantOwnership to reference a wrong effectOrdinal (99 instead of 0)
+    const mismatched = {
+      ...snapshot,
+      abilityState: {
+        ...snapshot.abilityState!,
+        grantOwnership: {
+          schemaVersion: snapshot.abilityState!.grantOwnership!.schemaVersion,
+          activeSourcesByAbilityId: [['magic-missile', [`equipment:${generated.instanceId}:99`]]],
+          passiveSourcesByAbilityId: [],
+        },
+      },
+    };
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    destination.playerName = 'Unchanged';
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, mismatched)).toThrow(
+      'Missing generated grant source',
+    );
+    expect(destination.playerName).toBe('Unchanged');
+  });
+
+  it('fails before mutation on invalid versions, duplicate owners, and dangling references', () => {
+    const runKey = 'carryover-invalid-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({ slots: ['head'] }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const invalidInputs: readonly unknown[] = [
+      { ...snapshot, schemaVersion: 'player-carryover/v999' },
+      {
+        ...snapshot,
+        generatedEquippedInstanceKeys: [generated.instanceId],
+      },
+      {
+        ...snapshot,
+        generatedInventoryInstanceKeys: [
+          'gei:v1:carryover-invalid-run:999' as GeneratedEquipmentInstanceKey,
+        ],
+      },
+    ];
+
+    for (const invalid of invalidInputs) {
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      destination.playerName = 'Unchanged';
+
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow();
+      expect(destination.playerName).toBe('Unchanged');
+      expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+    }
   });
 });
