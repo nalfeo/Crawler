@@ -27,6 +27,8 @@ export type EquipRequirement =
 export interface EquipmentItemDef {
   readonly id: string;
   readonly name: string;
+  /** Stable generated-equipment art key; omitted legacy defs fall back to their item id. */
+  readonly artKey?: string;
   readonly slots: readonly EquipmentSlotId[];
   readonly statBonuses: Partial<Readonly<Record<StatId, number>>>;
   readonly rarity: ItemRarity;

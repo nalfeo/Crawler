@@ -26,6 +26,7 @@ import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
 import { CORE_STAT_TO_SECONDARY, DEFAULT_BASE_STATS } from '../../src/shared/stats.js';
 import {
   getEquipmentDefForItem,
+  getCatalogEquippableItemIds,
   getEquippableItemIds,
   GEAR_ITEM_IDS,
   _registerEquipmentDefForTest,
@@ -40,7 +41,7 @@ import {
   getItemCount,
   type InventoryBag,
 } from '../../src/shared/inventory.js';
-import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
+import { ItemRarity, customTag, getItemById, type ItemDef } from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
@@ -955,6 +956,13 @@ describe('generated equipment inventory transfers', () => {
 // --- Equippable placeholder coverage across the paper-doll ---
 
 describe('equippable slot coverage', () => {
+  it('keeps static bag seeders limited to item-catalog equipment', () => {
+    const catalogEquipmentIds = getCatalogEquippableItemIds();
+    expect(catalogEquipmentIds.length).toBeGreaterThan(0);
+    expect(catalogEquipmentIds.every((itemId) => getItemById(itemId) !== undefined)).toBe(true);
+    expect(catalogEquipmentIds).not.toContain('weapon.venom-dirk');
+  });
+
   it('every paper-doll slot has at least one equippable item', () => {
     const covered = new Set<string>();
     for (const id of getEquippableItemIds()) {
