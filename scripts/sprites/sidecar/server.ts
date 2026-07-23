@@ -2,19 +2,20 @@
  * Fastify-based sidecar for the sprite gallery lab.
  *
  * Responsibilities:
- *   - GET  /api/health                                                       — readiness probe
- *   - GET  /api/runs                                                         — list all runs
- *   - GET  /api/runs/:briefId/:runId                                         — full RunSummary JSON
- *   - GET  /api/runs/:briefId/:runId/sheets                                  — list source sheet PNGs
- *   - GET  /api/runs/:briefId/:runId/sheet/:filename                         — source sheet PNG bytes
- *   - GET  /api/runs/:briefId/:runId/processed/:filename                     — static-file from run dir
- *   - GET  /api/runs/:briefId/:runId/raw/:filename                           — raw (pre-pipeline) cell PNG
- *   - POST /api/runs/:briefId/:runId/postprocess                             — re-run PostProcess on the stored sheet
- *   - POST /api/runs/:briefId/:runId/judge                                   — re-run the VLM judge on stored variants
- *   - POST /api/runs/:briefId/:runId/approve                                 — approve a variant (mutating)
- *   - POST /api/runs/:briefId/:runId/accept                                  — atomic approve + check-in (mutating; no browser Origin allowed)
- *   - POST /api/checkin                                                       — publish approved art (branch + issue, no PR; mutating; exact trusted browser origins only)
- *   - POST /api/checkin/prepare                                               — preview what /api/checkin would publish (read-only; browser-reachable)
+ *   - GET    /api/health                                                       — readiness probe
+ *   - GET    /api/runs                                                         — list all runs
+ *   - GET    /api/runs/:briefId/:runId                                         — full RunSummary JSON
+ *   - GET    /api/runs/:briefId/:runId/sheets                                  — list source sheet PNGs
+ *   - GET    /api/runs/:briefId/:runId/sheet/:filename                         — source sheet PNG bytes
+ *   - GET    /api/runs/:briefId/:runId/processed/:filename                     — static-file from run dir
+ *   - GET    /api/runs/:briefId/:runId/raw/:filename                           — raw (pre-pipeline) cell PNG
+ *   - POST   /api/runs/:briefId/:runId/postprocess                             — re-run PostProcess on the stored sheet
+ *   - POST   /api/runs/:briefId/:runId/judge                                   — re-run the VLM judge on stored variants
+ *   - POST   /api/runs/:briefId/:runId/approve                                 — approve a variant (mutating)
+ *   - POST   /api/runs/:briefId/:runId/accept                                  — atomic approve + check-in (mutating; no browser Origin allowed)
+ *   - DELETE /api/manifest/:variantId                                          — unapprove/evict an approved variant (mutating)
+ *   - POST   /api/checkin                                                       — publish approved art (branch + issue, no PR; mutating; exact trusted browser origins only)
+ *   - POST   /api/checkin/prepare                                               — preview what /api/checkin would publish (read-only; browser-reachable)
  *
  * Security contract (spec §F8):
  *   - The HTTP server MUST bind to 127.0.0.1 only. Binding is the CLI's job
@@ -65,6 +66,8 @@ import {
   approveVariant,
   ApproveError,
   resolveVariantIdentity,
+  unapproveVariant,
+  UnapproveError,
   type ManifestEntry,
   type VariantIdentity,
 } from '../approve.js';
@@ -287,8 +290,9 @@ export interface SidecarDeps {
    */
   readonly issueIngester?: IssueIngesterController;
   /**
-   * Check-in runner deps for `/api/checkin` and the atomic
-   * `/api/runs/:briefId/:runId/accept` route. Defaults to
+   * Check-in runner deps for `/api/checkin`, the atomic
+   * `/api/runs/:briefId/:runId/accept` route, and the unapprove/evict
+   * `DELETE /api/manifest/:variantId` endpoint. Defaults to
    * `createDefaultCheckinDeps(repoRoot, env)`. Inject a fake in tests to
    * assert the exact git/gh sequence without a real repo or network.
    */
@@ -1981,6 +1985,88 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         hydrated?.cleanup();
       }
 
+      return entry;
+    });
+  });
+
+  // DELETE /api/manifest/:variantId — evict a previously approved variant.
+  // Removes the entry from manifest.json, removes the catalog entry, and
+  // deletes the PNG from public/assets/generated/. Serialized under the
+  // same mutation lock as /approve and /checkin.
+  app.delete<{ Params: { variantId: string } }>('/api/manifest/:variantId', async (req, reply) => {
+    // Constitutional §3: same CI refusal as /approve.
+    const env = deps.env ?? process.env;
+    if (env.CI !== undefined) {
+      reply.code(403);
+      return {
+        error: 'ci-refused',
+        message:
+          'Per Constitutional §3, the sprite-pipeline unapprove endpoint is local-only. ' +
+          'It mutates checked-in assets under public/assets/generated/ and the manifest. ' +
+          'Run the gallery sidecar locally (npm run sprites:gallery) to unapprove.',
+      };
+    }
+
+    const { variantId } = req.params;
+    // Basic format check: must be a non-empty slug segment (no path separators).
+    if (!variantId || /[/\\]/.test(variantId)) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'variantId must be a single path segment' };
+    }
+
+    const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
+    const manifestPath =
+      deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+    const catalogPath =
+      deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
+
+    return withCheckinMutationLock(async () => {
+      // Pre-mutation queue check: if this variant's asset is already in the
+      // durable asset-checkin queue (an `assets/*` branch + open issue filed
+      // by /accept), evicting the local copy won't remove it from that
+      // pipeline. Reject with 409 so the caller can close the issue first.
+      const assetPath = `generated/${variantId}.png`;
+      const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
+      const listQueuedAssets =
+        checkinDeps.listQueuedAssets ??
+        (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+      let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
+      try {
+        queuedAssets = await listQueuedAssets();
+      } catch (err) {
+        return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
+      }
+      const queued = queuedAssets.get(assetPath);
+      if (queued) {
+        reply.code(409);
+        return {
+          error: 'queued-conflict',
+          message:
+            `${assetPath} is already queued for check-in (${queued.issueUrl}). ` +
+            'Close or retract that issue before evicting this variant to prevent it ' +
+            'from reappearing in the next asset PR.',
+        };
+      }
+
+      let entry: ManifestEntry;
+      try {
+        entry = unapproveVariant({
+          variantId,
+          manifestPath,
+          catalogPath,
+          publicAssetsDir,
+        });
+      } catch (err) {
+        if (err instanceof UnapproveError) {
+          reply.code(err.kind === 'not-found' ? 404 : 500);
+          return { error: err.kind, message: err.message };
+        }
+        reply.code(500);
+        return {
+          error: 'unapprove-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
       return entry;
     });
   });

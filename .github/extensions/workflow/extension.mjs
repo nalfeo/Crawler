@@ -168,6 +168,7 @@ let sessionRef = null;
  *   selected: { briefId: string, runId: string, sheet: string | null, briefPath: string | null } | null,
  *   mutationToken: string,
  *   acceptance: Map<string, object>,
+ *   unapproval: Map<string, object>,
  *   selectionVersion: number,
  *   revalidatingKeys: Set<string>,
  *   cache: null | {
@@ -496,6 +497,7 @@ function composeState(entry, stat, view) {
     sheetFeedback: sheetFeedbackValue,
     briefFeedback: briefFeedbackValue,
     acceptance: Object.fromEntries(entry.acceptance),
+    unapproval: Object.fromEntries(entry.unapproval),
     sidecarStartup: entry.sidecarStartup,
     stale: view.stale === true,
     error: view.error ?? null,
@@ -707,6 +709,30 @@ async function acceptAndQueue(instanceId, briefId, runId, variantIndex) {
     entry.acceptance.set(key, {
       state: 'error',
       code: typeof error?.code === 'string' ? error.code : 'accept-failed',
+      message: error?.message ?? String(error),
+    });
+    await entry.pushState?.(await buildState(instanceId));
+    throw error;
+  }
+}
+
+async function unapproveAndEvict(instanceId, variantId) {
+  const entry = instances.get(instanceId);
+  if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
+  entry.unapproval.set(variantId, { state: 'unapproving' });
+  await entry.pushState?.(await buildState(instanceId));
+  try {
+    const result = await entry.client.unapproveVariant(variantId);
+    entry.unapproval.set(variantId, { state: 'evicted', entry: result });
+    // Invalidate the run-view cache so the lifecycle pill reflects the removal
+    // on the next state build.
+    entry.cache = null;
+    await entry.pushState?.(await buildState(instanceId));
+    return result;
+  } catch (error) {
+    entry.unapproval.set(variantId, {
+      state: 'error',
+      code: typeof error?.code === 'string' ? error.code : 'unapprove-failed',
       message: error?.message ?? String(error),
     });
     await entry.pushState?.(await buildState(instanceId));
@@ -1167,6 +1193,54 @@ const jsonRoutes = [
     },
   },
   {
+    method: 'POST',
+    path: '/api/unapprove',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance-not-found' } };
+      if (!tokensMatch(req.headers['x-workflow-mutation-token'], entry.mutationToken)) {
+        return { status: 403, json: { error: 'forbidden', message: 'Invalid mutation token.' } };
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        const tooLarge =
+          error?.statusCode === 413 ||
+          error?.code === 'body-too-large' ||
+          error?.message === 'request body too large';
+        return {
+          status: tooLarge ? 413 : 400,
+          json: {
+            error: tooLarge ? 'body-too-large' : 'bad-request',
+            message: tooLarge ? error.message : 'Request body must be valid JSON.',
+          },
+        };
+      }
+      const { variantId } = body;
+      if (typeof variantId !== 'string' || variantId.length === 0 || /[/\\]/.test(variantId)) {
+        return {
+          status: 400,
+          json: {
+            error: 'bad-request',
+            message: 'variantId must be a non-empty string with no path separators.',
+          },
+        };
+      }
+      try {
+        return { json: await unapproveAndEvict(instanceId, variantId) };
+      } catch (error) {
+        return {
+          status: Number.isInteger(error?.status) ? error.status : 502,
+          json: {
+            error: typeof error?.code === 'string' ? error.code : 'unapprove-failed',
+            message: error?.message ?? String(error),
+          },
+        };
+      }
+    },
+  },
+  {
     // Explicit reload: invalidate the fs-static cache, force a LIVE (non
     // cache-first) rebuild, then push. The operator clicking Refresh expects an
     // actual re-probe, not a replayed snapshot.
@@ -1556,6 +1630,7 @@ async function startServerForInstance(ctx) {
     selected: null,
     mutationToken: randomBytes(24).toString('hex'),
     acceptance: new Map(),
+    unapproval: new Map(),
     selectionVersion: 0,
     revalidatingKeys: new Set(),
     cache: null,
@@ -1793,6 +1868,30 @@ const canvas = createCanvas({
         } catch (error) {
           throw new CanvasError(
             typeof error?.code === 'string' ? error.code : 'accept_failed',
+            error?.message ?? String(error),
+          );
+        }
+      },
+    },
+    {
+      name: 'unapprove_variant',
+      description:
+        'Evict a previously approved variant: removes its manifest entry, catalog entry, and generated PNG. Use variantId in the form `<briefId>-var-<variantIndex>` (e.g. `goblin-archer-var-0`).',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['variantId'],
+        properties: {
+          variantId: { type: 'string', description: 'Variant ID, e.g. goblin-archer-var-0' },
+        },
+      },
+      handler: async (ctx) => {
+        const { variantId } = ctx.input;
+        try {
+          return await unapproveAndEvict(ctx.instanceId, variantId);
+        } catch (error) {
+          throw new CanvasError(
+            typeof error?.code === 'string' ? error.code : 'unapprove_failed',
             error?.message ?? String(error),
           );
         }
