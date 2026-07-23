@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9429694e8274918bdacaa1eabf28f6451c132257",
+    "commitDate": "2026-07-23T07:15:35Z",
+    "commitSubject": "fix: prevent ci-owner lock deadlock (reaper lane + 422 crash fix + liveness TTL) (#1784)",
+    "capturedAt": "2026-07-23T08:33:52.716Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29988111222",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/9429694e8274918bdacaa1eabf28f6451c132257.json"
+  },
+  {
     "commit": "759022573c1baa0e1ee982058fa091b0ea0cd8e0",
     "commitDate": "2026-07-23T06:27:11Z",
     "commitSubject": "fix(sprites): stale-while-revalidate run listings for instant cross-worktree cold opens (#1805)",
