@@ -326,7 +326,17 @@ let labelExists = startupRepositoryLabel.present;
 let ownerLabelNodeId = startupRepositoryLabel.nodeId;
 const ownerLabelAttached = (pr.labels || []).some((label) => label.name === labelName);
 releaseUnexpectedOwnership = async () => {
-  if (operation === 'lease-release' || !labelExists || !state || state.owner === 'none') return;
+  // A review-wake dispatch is bound to one immutable head. If that trust fence
+  // moved, do not mutate ownership for the replacement PR; let reconciliation
+  // recover it under the new metadata while the original error remains fatal.
+  if (
+    operation === 'lease-release' ||
+    expectedHeadSha ||
+    !labelExists ||
+    !state ||
+    state.owner === 'none'
+  )
+    return;
   if (state.owner === 'shepherd' && state.leaseId !== leaseId) return;
   await release('unexpected-error');
 };
