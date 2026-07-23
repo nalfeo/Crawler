@@ -44,6 +44,40 @@ addressed before implementation was considered done:
 in-flight background list'` to
    `tests/unit/sprites/caching-run-store.test.ts`.
 
+## Code Review
+
+A separate-model code review (required at 🍎🍎🍎) returned one valid
+Medium-severity finding, otherwise clean across concurrency/determinism,
+API/compatibility, security, runtime wiring, regression coverage, and layer
+boundaries:
+
+1. **[Medium, fixed]** The purge loop called
+   `removePerRunSnapshotOnRunRemoval(removedKey)` (clears the per-run
+   `derived:brief-snapshot/...` / `derived:slice-map-fingerprint/...` caches)
+   but omitted `invalidateDerivedResources(removedKey)` (clears the cached
+   HTTP-route _response_ caches, `derived:route/brief/<briefId>/<runId>` and
+   `derived:route/slice-map/<briefId>/<runId>/...`) — unlike the authoritative
+   `remove()` path, which calls both. Concretely, `server.ts`'s route handlers
+   read those response caches via a cache-first fast path
+   (`readCachedJson`/`getCachedResource`) **before** ever reaching the
+   `store.has(summaryKey)` guard that would notice the run is gone, so an
+   externally-deleted run's cached brief/slice-map HTTP responses would keep
+   being served indefinitely after a background purge — the one purge target
+   that mattered for "stale response served to a client" was the one being
+   skipped. Fixed by adding `await this.invalidateDerivedResources(removedKey)`
+   as the first call inside the purge loop's removed-key branch, mirroring
+   `remove()`'s exact call order (derived-route caches → blob-cache entry →
+   per-run snapshot caches). The reviewer also flagged that the original purge
+   test used a 4-segment key (`raw/00.png`), which both purge helpers
+   correctly no-op on — so neither the gap nor the fix was exercised by any
+   test. Added
+   `'purges derived HTTP-route response caches for a run the background
+refresh no longer reports'` (a 3-segment `summary.json` key) to
+   `tests/unit/sprites/caching-run-store.test.ts`, directly exercising the
+   fixed path.
+
+A required round-2 review is documented below once completed.
+
 ## Context
 
 ADR 0065 made `CachingRunStore.get()` (blob bytes — sheets, images,
@@ -130,9 +164,11 @@ private async refreshListSnapshot(prefix, snapshotKey, previousKeys): Promise<vo
   const freshKeys = new Set(keys);
   for (const removedKey of previousKeys) {
     if (!freshKeys.has(removedKey)) {
+      // Order mirrors the authoritative remove() path: derived HTTP-route
+      // response caches first (fixed in code review — see below), then the
+      // blob-cache entry, then per-run brief/slice-map fingerprint caches.
+      await this.invalidateDerivedResources(removedKey);
       await this.cache.remove(`${BLOB_PREFIX}${removedKey}`);
-      // A removed run's summary.json also invalidates that run's derived
-      // brief/slice-map caches (mirrors the authoritative remove() path).
       await this.removePerRunSnapshotOnRunRemoval(removedKey);
     }
   }

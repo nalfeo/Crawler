@@ -37,12 +37,14 @@
  *    that bypasses this cache entirely (so the shared epoch is never bumped)
  *    may appear one background-refresh late, in exchange for instant
  *    cross-process/worktree cold-open listings. The background refresh only
- *    purges (blob-cache entries, and a removed run's derived brief/slice-map
- *    caches, for keys the remote no longer reports) AFTER its own snapshot
- *    rewrite is confirmed written — a failed best-effort write leaves the old
- *    snapshot and its blobs untouched, so a still-served listing never points
- *    at an already-evicted blob. Offline calls return the warmed snapshot with
- *    zero remote reads.
+ *    purges (everything the authoritative `remove()` path would have
+ *    cleared for a removed key — derived HTTP-route response caches, the
+ *    blob-cache entry, and that run's derived brief/slice-map caches — for
+ *    keys the remote no longer reports) AFTER its own snapshot rewrite is
+ *    confirmed written — a failed best-effort write leaves the old snapshot
+ *    and everything it pointed at untouched, so a still-served listing never
+ *    points at already-evicted data. Offline calls return the warmed
+ *    snapshot with zero remote reads.
  *  - **Offline mode**: when Azure is forced unavailable, reads are served
  *    entirely from the cache and the inner store is NEVER contacted, so a warmed
  *    worktree loads exact bytes and listings with zero Azure read operations.
@@ -332,16 +334,18 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
    * Performs the actual remote listing + snapshot rewrite for a background
    * refresh, mirroring the epoch-stable guard the blocking path already used
    * so a mutation racing the refresh can't publish an out-of-date snapshot.
-   * Also purges blob-cache entries (and, for a removed run's `summary.json`,
-   * that run's derived caches too) for keys the remote no longer reports
-   * ("cache purging" — best-effort; a later `put` self-heals if this ever
-   * misses).
+   * Also purges, for every key the remote no longer reports, everything the
+   * authoritative `remove()` path would have cleared: derived HTTP-route
+   * response caches (brief/slice-map JSON, via `invalidateDerivedResources`),
+   * the blob-cache entry, and that run's per-run brief-snapshot/
+   * slice-map-fingerprint caches ("cache purging" — best-effort; a later
+   * `put` self-heals if this ever misses).
    *
    * Purge only runs after a CONFIRMED snapshot rewrite (`cache.set` returned
    * true). `set()` is best-effort and can fail (full disk, lock contention);
-   * purging blob entries whose only record of removal is a snapshot that
-   * never actually got written would leave the old (still epoch-fresh, still
-   * served) listing pointing at now-evicted blobs — the opposite of the
+   * purging entries whose only record of removal is a snapshot that never
+   * actually got written would leave the old (still epoch-fresh, still
+   * served) listing pointing at now-evicted data — the opposite of the
    * "snapshot correctness first" priority this refresh exists for.
    */
   private async refreshListSnapshot(
@@ -362,9 +366,16 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     const freshKeys = new Set(keys);
     for (const removedKey of previousKeys) {
       if (!freshKeys.has(removedKey)) {
+        // Mirrors the authoritative remove() path so a run deleted by another
+        // process doesn't leave stale derived caches behind: cached HTTP route
+        // responses (brief/slice-map JSON) first, then the blob-cache entry,
+        // then that run's per-run brief-snapshot/slice-map-fingerprint caches.
+        // Without invalidateDerivedResources here, a route handler's
+        // cache-first fast path (server.ts getCachedResource) would keep
+        // serving a stale `route/brief/<briefId>/<runId>` response forever
+        // for a run Azure no longer reports.
+        await this.invalidateDerivedResources(removedKey);
         await this.cache.remove(`${BLOB_PREFIX}${removedKey}`);
-        // A removed run's summary.json also invalidates that run's derived
-        // brief/slice-map caches (mirrors the authoritative remove() path).
         await this.removePerRunSnapshotOnRunRemoval(removedKey);
       }
     }

@@ -677,6 +677,43 @@ describe('list snapshots', () => {
     expect(second).toEqual([SHEET]);
   });
 
+  it('purges derived HTTP-route response caches for a run the background refresh no longer reports', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.put(RAW, Buffer.from('b'));
+    await store.put(SUMMARY, Buffer.from('{}'));
+    await store.list('iron-sword/run-abc/'); // warm: [SHEET, RAW, SUMMARY]
+
+    const routePrefix = 'iron-sword/run-abc';
+    await store.setCachedResource(`route/brief/${routePrefix}`, Buffer.from('brief'));
+    await store.setCachedResource(`route/slice-map/${routePrefix}/latest`, Buffer.from('latest'));
+
+    // "Azure" no longer reports the run at all (summary.json is gone) — models
+    // an external delete of the whole run, the same scenario the authoritative
+    // remove() path already handles for a same-process caller. Without
+    // invalidateDerivedResources() in the purge loop, a route handler's
+    // cache-first fast path (server.ts getCachedResource) would keep serving
+    // this stale response forever, since it never re-checks store.has().
+    const shrinking = new ShrinkingStore([SHEET, RAW]);
+    const s = new CachingRunStore({ inner: shrinking, cache }); // shares the warmed snapshot + derived caches
+
+    const first = await s.list('iron-sword/run-abc/'); // fast path: stale listing still includes SUMMARY
+    expect(first).toEqual(expect.arrayContaining([SUMMARY]));
+
+    // invalidateDerivedResources() awaits its two removes sequentially (exact
+    // route/brief key, then a route/slice-map/ prefix sweep), so poll for
+    // BOTH together — checking them one after another would race the second
+    // remove's own in-flight I/O and could flake.
+    const purged = await waitUntil(async () => {
+      const brief = await s.getCachedResource(`route/brief/${routePrefix}`);
+      const sliceMap = await s.getCachedResource(`route/slice-map/${routePrefix}/latest`);
+      return brief === null && sliceMap === null;
+    });
+    expect(purged).toBe(true);
+
+    const second = await s.list('iron-sword/run-abc/'); // snapshot no longer reports the removed run
+    expect(second).not.toContain(SUMMARY);
+  });
+
   it('does not publish a stale refresh result when a mutation races the in-flight background list', async () => {
     await store.put(SHEET, Buffer.from('a'));
     await store.list('iron-sword/run-abc/'); // warm an epoch-fresh snapshot: [SHEET]
