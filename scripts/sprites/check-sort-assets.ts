@@ -134,8 +134,7 @@ function checkCatalog(): string[] {
 
 // Run as CLI only when invoked directly (not when imported by tests).
 const isMain =
-  process.argv[1] !== undefined &&
-  pathToFileURL(process.argv[1]).href === import.meta.url;
+  process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
 
 if (isMain) {
   const allErrors = [...checkManifest(), ...checkCatalog()];

@@ -143,10 +143,7 @@ describe('validateCatalogEntries', () => {
 
   it('handles entries with missing id (id defaults to empty string for comparison)', () => {
     // Entry with no id sorts at the beginning of its group (empty string < any)
-    const catalog: CatalogEntry[] = [
-      { id: '', kind: 'sprite' },
-      sprite('generated:alpha'),
-    ];
+    const catalog: CatalogEntry[] = [{ id: '', kind: 'sprite' }, sprite('generated:alpha')];
     expect(validateCatalogEntries(catalog)).toEqual([]);
   });
 
