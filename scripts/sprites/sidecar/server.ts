@@ -69,6 +69,11 @@ import {
   type VariantIdentity,
 } from '../approve.js';
 import {
+  runQueueCommit,
+  type QueueCommitResult,
+} from '../queue-commit.js';
+import { createDefaultQueueCommitDeps } from '../queue-commit-runtime.js';
+import {
   runAssetCheckin,
   prepareAssetCheckin,
   reconcileQueuedContent,
@@ -1975,7 +1980,34 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         hydrated?.cleanup();
       }
 
-      return entry;
+      // Durably persist the just-approved asset onto the remote assets/queue
+      // branch so the edit survives across sessions/worktrees/processes. This
+      // is best-effort: the local approve already succeeded, so a queue-commit
+      // failure is surfaced in the response (and logged) rather than rolling
+      // back the approval. The route already refuses on CI above, so the
+      // primitive's CI guard never fires here.
+      let queueCommit: QueueCommitResult | { status: 'failed'; error: string };
+      try {
+        queueCommit = await runQueueCommit(
+          deps.repoRoot,
+          [
+            {
+              assetPath: entry.assetPath,
+              manifestKey: entry.spriteName,
+              briefId: entry.briefId,
+              variantIndex: entry.variantIndex,
+            },
+          ],
+          createDefaultQueueCommitDeps(deps.repoRoot, env),
+          { message: `chore(assets): approve ${entry.spriteName}` },
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        req.log.warn(`queue-commit failed for ${entry.spriteName}: ${message}`);
+        queueCommit = { status: 'failed', error: message };
+      }
+
+      return { ...entry, queueCommit };
     });
   });
 

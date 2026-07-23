@@ -42,7 +42,7 @@ import {
 } from './asset-issues.js';
 import { writeCatalogJson } from './catalog-io.js';
 
-const realExec: Exec = (command, args, options) =>
+export const realExec: Exec = (command, args, options) =>
   new Promise<ExecResult>((resolve) => {
     execFile(
       command,
@@ -86,7 +86,7 @@ function readJsonSafe<T>(absPath: string, fallback: T): T {
  * asset-pr consolidator uses, so a selective per-branch delta composes
  * correctly regardless of processing order downstream.
  */
-async function copyArtSurface(
+export async function copyArtSurface(
   srcRepoRoot: string,
   destRepoRoot: string,
   assets: readonly CheckinAsset[],
@@ -290,7 +290,7 @@ const CHECKIN_LOCK_HEARTBEAT_MS = 10_000;
  * it and retries. This prevents a crashed process from permanently blocking
  * future check-ins without requiring manual file deletion.
  */
-function makeCheckinFileLock(repoRoot: string): <T>(fn: () => Promise<T>) => Promise<T> {
+export function makeCheckinFileLock(repoRoot: string): <T>(fn: () => Promise<T>) => Promise<T> {
   const hash = createHash('sha256').update(repoRoot).digest('hex').slice(0, 16);
   const lockDir = path.join(tmpdir(), `asset-checkin-${hash}.lockdir`);
 

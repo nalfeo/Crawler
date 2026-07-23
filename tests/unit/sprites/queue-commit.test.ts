@@ -1,0 +1,491 @@
+/**
+ * Tests for the queue-commit primitive (`runQueueCommit`).
+ *
+ * Two layers:
+ *   1. CONTROL-FLOW tests drive a fully-faked `exec` (recording commands) to
+ *      assert the branchy logic — CI refusal, path allowlist, no-op guard, the
+ *      exact git command sequence, plain (non-force) push, retry-on-rejection,
+ *      and retry exhaustion — with no real repo or network.
+ *   2. REAL-GIT tests run the primitive against a temp bare "origin" + live
+ *      clone to prove the load-bearing durability claims that a mock cannot:
+ *      the caller's branch/index/HEAD are never touched, a concurrent writer's
+ *      manifest entry survives a forced push-rejection retry (NO clobber),
+ *      binary PNGs round-trip byte-identical, and the queue branch carries only
+ *      the asset delta.
+ */
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { CheckinAsset, Exec, ExecResult } from '../../../scripts/sprites/checkin.js';
+import {
+  runQueueCommit,
+  type QueueCommitDeps,
+} from '../../../scripts/sprites/queue-commit.js';
+import { createDefaultQueueCommitDeps } from '../../../scripts/sprites/queue-commit-runtime.js';
+
+function asset(overrides: Partial<CheckinAsset> = {}): CheckinAsset {
+  return {
+    assetPath: 'generated/skull-mace-var-2.png',
+    manifestKey: 'skull-mace-var-2',
+    briefId: 'skull-mace',
+    variantIndex: 2,
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Layer 1: control-flow (faked exec)
+// ---------------------------------------------------------------------------
+
+function makeFakeExec(responder: (command: string, args: readonly string[]) => Partial<ExecResult>): {
+  exec: Exec;
+  calls: Array<{ command: string; args: string[]; cwd?: string }>;
+} {
+  const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+  const exec: Exec = (command, args, options) => {
+    calls.push({ command, args: [...args], cwd: options?.cwd });
+    return Promise.resolve({ stdout: '', stderr: '', code: 0, ...responder(command, args) });
+  };
+  return { exec, calls };
+}
+
+function controlDeps(exec: Exec, overrides: Partial<QueueCommitDeps> = {}): QueueCommitDeps {
+  return {
+    exec,
+    copyArtSurface: () => Promise.resolve(),
+    makeTempDir: () => Promise.resolve('/tmp/qc-xyz'),
+    removeDir: () => Promise.resolve(),
+    withCrossProcessLock: (fn) => fn(),
+    sleep: () => Promise.resolve(),
+    env: {} as NodeJS.ProcessEnv,
+    ...overrides,
+  };
+}
+
+/** Happy-path responder: branch absent, staged diff present, push accepted. */
+function happyResponder(_command: string, args: readonly string[]): Partial<ExecResult> {
+  if (args[0] === 'ls-remote') return { stdout: '' }; // queue branch absent
+  if (args[0] === 'diff') return { code: 1 }; // --cached --quiet: there IS a staged diff
+  if (args[0] === 'rev-parse') return { stdout: 'abc123def456\n' };
+  return {}; // fetch / worktree / add / commit / push / remove -> code 0
+}
+
+describe('runQueueCommit (control flow)', () => {
+  it('refuses to run under CI and makes no git calls', async () => {
+    const { exec, calls } = makeFakeExec(() => ({}));
+    await expect(
+      runQueueCommit('/repo', [asset()], controlDeps(exec, { env: { CI: 'true' } }), {
+        message: 'm',
+      }),
+    ).rejects.toMatchObject({ kind: 'ci-refused' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('rejects unsafe asset paths before touching git', async () => {
+    const { exec, calls } = makeFakeExec(() => ({}));
+    for (const bad of ['../evil.png', '/abs/evil.png', 'generated/../../etc.png', 'a\\b.png']) {
+      await expect(
+        runQueueCommit('/repo', [asset({ assetPath: bad })], controlDeps(exec), { message: 'm' }),
+      ).rejects.toMatchObject({ kind: 'invalid-asset-path' });
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('returns a no-op for an empty asset list without touching git', async () => {
+    const { exec, calls } = makeFakeExec(() => ({}));
+    const result = await runQueueCommit('/repo', [], controlDeps(exec), { message: 'm' });
+    expect(result).toEqual({ status: 'noop', branch: 'assets/queue', attempts: 0 });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('drives the expected git sequence and a PLAIN (non-force) push', async () => {
+    const { exec, calls } = makeFakeExec(happyResponder);
+    const copyCalls: Array<{ src: string; dest: string; assets: readonly CheckinAsset[] }> = [];
+    const result = await runQueueCommit(
+      '/repo',
+      [asset()],
+      controlDeps(exec, {
+        copyArtSurface: (src, dest, assets) => {
+          copyCalls.push({ src, dest, assets });
+          return Promise.resolve();
+        },
+      }),
+      { message: 'chore(assets): edit skull-mace-var-2' },
+    );
+
+    expect(result).toEqual({
+      status: 'committed',
+      branch: 'assets/queue',
+      commit: 'abc123def456',
+      attempts: 1,
+    });
+    // copyArtSurface unions the LIVE repo's entry onto the worktree checkout.
+    expect(copyCalls).toHaveLength(1);
+    expect(copyCalls[0]!.src).toBe('/repo');
+    expect(copyCalls[0]!.dest).toBe('/tmp/qc-xyz');
+
+    const line = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    expect(line[0]).toBe('git ls-remote --heads origin assets/queue');
+    expect(line.some((l) => l === 'git fetch --no-tags origin main')).toBe(true);
+    expect(line.some((l) => l === 'git worktree add /tmp/qc-xyz --detach FETCH_HEAD')).toBe(true);
+    expect(
+      line.some((l) => l === 'git add -- public/assets/generated src/shared/data/sprite-catalog.json'),
+    ).toBe(true);
+    expect(line.some((l) => l === 'git diff --cached --quiet')).toBe(true);
+    expect(line.some((l) => l.startsWith('git commit --no-verify -m'))).toBe(true);
+    expect(
+      line.some((l) => l === 'git push --no-verify origin abc123def456:refs/heads/assets/queue'),
+    ).toBe(true);
+    expect(line.some((l) => l.includes('worktree remove'))).toBe(true);
+    // The PUSH is never a force push — the CAS relies on plain
+    // fast-forward-only semantics (worktree remove --force is unrelated).
+    const pushLines = line.filter((l) => l.startsWith('git push'));
+    expect(pushLines).toHaveLength(1);
+    expect(pushLines[0]!.includes('--force')).toBe(false);
+  });
+
+  it('fetches the queue branch (not the base) when it already exists', async () => {
+    const { exec, calls } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: 'deadbeef\trefs/heads/assets/queue\n' };
+      if (args[0] === 'diff') return { code: 1 };
+      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      return {};
+    });
+    await runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' });
+    const line = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    expect(line.some((l) => l === 'git fetch --no-tags origin assets/queue')).toBe(true);
+    expect(line.some((l) => l === 'git fetch --no-tags origin main')).toBe(false);
+  });
+
+  it('returns a no-op (no commit/push) when nothing is staged', async () => {
+    const { exec, calls } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: '' };
+      if (args[0] === 'diff') return { code: 0 }; // nothing staged
+      return {};
+    });
+    const result = await runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' });
+    expect(result.status).toBe('noop');
+    const line = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    expect(line.some((l) => l.startsWith('git commit'))).toBe(false);
+    expect(line.some((l) => l.startsWith('git push'))).toBe(false);
+    // The worktree is still cleaned up on the no-op path.
+    expect(line.some((l) => l.includes('worktree remove'))).toBe(true);
+  });
+
+  it('retries after a non-fast-forward push rejection, then succeeds', async () => {
+    let pushCount = 0;
+    const { exec, calls } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: '' };
+      if (args[0] === 'diff') return { code: 1 };
+      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      if (args[0] === 'push') {
+        pushCount++;
+        return pushCount === 1 ? { code: 1, stderr: '! [rejected] (non-fast-forward)' } : { code: 0 };
+      }
+      return {};
+    });
+    const result = await runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' });
+    expect(result.status).toBe('committed');
+    expect(result.attempts).toBe(2);
+    // Two full fetch cycles => the union re-ran against the fresh tip.
+    expect(calls.filter((c) => c.args[0] === 'fetch')).toHaveLength(2);
+    expect(pushCount).toBe(2);
+  });
+
+  it('throws push-retries-exhausted when the branch keeps advancing', async () => {
+    const { exec } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: '' };
+      if (args[0] === 'diff') return { code: 1 };
+      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      if (args[0] === 'push') return { code: 1, stderr: 'non-fast-forward' };
+      return {};
+    });
+    await expect(
+      runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm', maxAttempts: 3 }),
+    ).rejects.toMatchObject({ kind: 'push-retries-exhausted' });
+  });
+
+  it('cleans up the worktree and surfaces git-failed when a git step fails', async () => {
+    const removed: string[] = [];
+    const { exec, calls } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: '' };
+      if (args[0] === 'commit') return { code: 1, stderr: 'commit boom' };
+      if (args[0] === 'diff') return { code: 1 };
+      return {};
+    });
+    await expect(
+      runQueueCommit(
+        '/repo',
+        [asset()],
+        controlDeps(exec, { removeDir: (d) => (removed.push(d), Promise.resolve()) }),
+        { message: 'm' },
+      ),
+    ).rejects.toMatchObject({ kind: 'git-failed' });
+    // finally: git worktree remove + removeDir both ran.
+    expect(calls.some((c) => c.args.includes('remove'))).toBe(true);
+    expect(removed).toEqual(['/tmp/qc-xyz']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Layer 2: real git (temp bare origin + live clone)
+// ---------------------------------------------------------------------------
+
+const GIT_TIMEOUT_MS = 30_000;
+const PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03, 0xfe, 0xdc, 0xba, 0x98,
+]);
+const PNG_BYTES_B = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+]);
+
+function gitSync(cwd: string, ...args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
+interface Repos {
+  root: string;
+  originDir: string;
+  liveDir: string;
+}
+
+/**
+ * Production deps, but with a CI-free env so the primitive does not (correctly)
+ * refuse under `process.env.CI`. These integration tests exercise the local
+ * dev-box path; the CI-refusal contract itself is covered by the control-flow
+ * suite above.
+ */
+function realGitDeps(liveDir: string): QueueCommitDeps {
+  const env = { ...process.env };
+  delete env.CI;
+  return createDefaultQueueCommitDeps(liveDir, env);
+}
+
+function toUrl(p: string): string {
+  return p.split(path.sep).join('/');
+}
+
+function manifestPath(repo: string): string {
+  return path.join(repo, 'public', 'assets', 'generated', 'manifest.json');
+}
+function catalogPath(repo: string): string {
+  return path.join(repo, 'src', 'shared', 'data', 'sprite-catalog.json');
+}
+
+function writeJson(file: string, value: unknown): void {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+function readJson<T>(file: string): T {
+  return JSON.parse(readFileSync(file, 'utf8')) as T;
+}
+
+function setupRepos(): Repos {
+  const root = mkdtempSync(path.join(tmpdir(), 'qc-git-'));
+  const originDir = path.join(root, 'origin.git');
+  const liveDir = path.join(root, 'live');
+  mkdirSync(originDir);
+  mkdirSync(liveDir);
+  gitSync(originDir, 'init', '--bare', '-b', 'main');
+  gitSync(liveDir, 'init', '-b', 'main');
+  gitSync(liveDir, 'config', 'user.email', 'test@example.com');
+  gitSync(liveDir, 'config', 'user.name', 'Queue Commit Test');
+  gitSync(liveDir, 'config', 'commit.gpgsign', 'false');
+  gitSync(liveDir, 'remote', 'add', 'origin', toUrl(originDir));
+  // Seed an asset-free base on main so the queue branch's diff is asset-only.
+  writeJson(manifestPath(liveDir), { version: 1, entries: {} });
+  writeJson(catalogPath(liveDir), []);
+  gitSync(liveDir, 'add', '-A');
+  gitSync(liveDir, 'commit', '-m', 'base');
+  gitSync(liveDir, 'push', 'origin', 'main');
+  return { root, originDir, liveDir };
+}
+
+/** Write an asset's PNG + manifest entry + catalog entry into the live working tree (uncommitted). */
+function stageAssetOnDisk(liveDir: string, key: string, png: Buffer): void {
+  const genDir = path.join(liveDir, 'public', 'assets', 'generated');
+  mkdirSync(genDir, { recursive: true });
+  writeFileSync(path.join(genDir, `${key}.png`), png);
+  const manifest = readJson<{ version: number; entries: Record<string, unknown> }>(
+    manifestPath(liveDir),
+  );
+  manifest.entries[key] = { assetPath: `generated/${key}.png`, spriteName: key };
+  writeJson(manifestPath(liveDir), manifest);
+  const catalog = readJson<Array<Record<string, unknown>>>(catalogPath(liveDir));
+  catalog.push({ id: `generated:${key}`, kind: 'sprite', assetPath: `generated/${key}.png` });
+  writeJson(catalogPath(liveDir), catalog);
+}
+
+/** Read the manifest committed on origin's assets/queue branch. */
+function queueManifest(liveDir: string): { version?: number; entries: Record<string, unknown> } {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+  const raw = gitSync(liveDir, 'show', 'FETCH_HEAD:public/assets/generated/manifest.json');
+  return JSON.parse(raw) as { version?: number; entries: Record<string, unknown> };
+}
+
+/** Out-of-band writer: add `key` to assets/queue and push it, simulating a concurrent writer. */
+function advanceQueueOutOfBand(liveDir: string, key: string, png: Buffer): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+  const wt = mkdtempSync(path.join(tmpdir(), 'qc-oob-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'FETCH_HEAD');
+    const genDir = path.join(wt, 'public', 'assets', 'generated');
+    mkdirSync(genDir, { recursive: true });
+    writeFileSync(path.join(genDir, `${key}.png`), png);
+    const mPath = path.join(wt, 'public', 'assets', 'generated', 'manifest.json');
+    const manifest = readJson<{ version: number; entries: Record<string, unknown> }>(mPath);
+    manifest.entries[key] = { assetPath: `generated/${key}.png`, spriteName: key };
+    writeJson(mPath, manifest);
+    gitSync(wt, 'add', '--', 'public/assets/generated');
+    gitSync(wt, 'commit', '--no-verify', '-m', `oob ${key}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
+describe('runQueueCommit (real git)', () => {
+  const cleanups: string[] = [];
+  afterEach(() => {
+    for (const dir of cleanups.splice(0)) {
+      for (let i = 0; i < 5; i++) {
+        try {
+          rmSync(dir, { recursive: true, force: true });
+          break;
+        } catch {
+          // Windows can briefly hold a just-removed worktree dir; retry.
+        }
+      }
+    }
+  });
+
+  it(
+    'creates the queue branch from main with only the asset delta and never touches the caller',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+
+      // Pre-existing staged + unstaged changes in the caller must survive intact.
+      writeFileSync(path.join(liveDir, 'unstaged-tracked.txt'), 'v1');
+      gitSync(liveDir, 'add', 'unstaged-tracked.txt');
+      gitSync(liveDir, 'commit', '-m', 'add tracked');
+      writeFileSync(path.join(liveDir, 'unstaged-tracked.txt'), 'DIRTY'); // unstaged edit
+      writeFileSync(path.join(liveDir, 'staged-new.txt'), 'staged');
+      gitSync(liveDir, 'add', 'staged-new.txt'); // staged addition
+
+      const headBefore = gitSync(liveDir, 'rev-parse', 'HEAD').trim();
+      const branchBefore = gitSync(liveDir, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+      const statusBefore = gitSync(liveDir, 'status', '--porcelain');
+
+      const result = await runQueueCommit(
+        liveDir,
+        [{ assetPath: 'generated/alpha.png', manifestKey: 'alpha', briefId: null, variantIndex: null }],
+        realGitDeps(liveDir),
+        { message: 'chore(assets): edit alpha' },
+      );
+
+      expect(result.status).toBe('committed');
+      expect(result.branch).toBe('assets/queue');
+      // Queue branch carries the asset entry...
+      const m = queueManifest(liveDir);
+      expect(m.entries.alpha).toBeDefined();
+      // ...and the PNG blob round-trips byte-identical.
+      const blob = execFileSync(
+        'git',
+        ['show', 'FETCH_HEAD:public/assets/generated/alpha.png'],
+        { cwd: liveDir, maxBuffer: 1 << 20 },
+      );
+      expect(Buffer.compare(blob, PNG_BYTES)).toBe(0);
+      // ...but NOT the caller's uncommitted files.
+      expect(() =>
+        gitSync(liveDir, 'cat-file', '-e', 'FETCH_HEAD:staged-new.txt'),
+      ).toThrow();
+
+      // Caller repo is byte-for-byte unchanged: HEAD, branch, and index/worktree.
+      expect(gitSync(liveDir, 'rev-parse', 'HEAD').trim()).toBe(headBefore);
+      expect(gitSync(liveDir, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(branchBefore);
+      expect(gitSync(liveDir, 'status', '--porcelain')).toBe(statusBefore);
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'is a no-op when the identical asset is already queued',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+      const deps = realGitDeps(liveDir);
+      const opts = {
+        message: 'chore(assets): edit alpha',
+      };
+      const first = await runQueueCommit(
+        liveDir,
+        [{ assetPath: 'generated/alpha.png', manifestKey: 'alpha', briefId: null, variantIndex: null }],
+        deps,
+        opts,
+      );
+      expect(first.status).toBe('committed');
+      const second = await runQueueCommit(
+        liveDir,
+        [{ assetPath: 'generated/alpha.png', manifestKey: 'alpha', briefId: null, variantIndex: null }],
+        deps,
+        opts,
+      );
+      expect(second.status).toBe('noop');
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'preserves a concurrent writer\'s entry across a forced push-rejection retry (no clobber)',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+
+      // Seed the queue with alpha.
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+      await runQueueCommit(
+        liveDir,
+        [{ assetPath: 'generated/alpha.png', manifestKey: 'alpha', briefId: null, variantIndex: null }],
+        realGitDeps(liveDir),
+        { message: 'edit alpha' },
+      );
+
+      // Now commit beta, but wrap exec so the FIRST push is preceded by an
+      // out-of-band writer advancing the queue with gamma. beta's push is then
+      // a non-fast-forward -> rejected -> retry re-fetches (alpha+gamma) and
+      // unions beta on top. If the retry clobbered, gamma would vanish.
+      stageAssetOnDisk(liveDir, 'beta', PNG_BYTES_B);
+      const base = realGitDeps(liveDir);
+      let advanced = false;
+      const wrappedExec: Exec = async (command, args, options) => {
+        if (command === 'git' && args[0] === 'push' && !advanced) {
+          advanced = true;
+          advanceQueueOutOfBand(liveDir, 'gamma', PNG_BYTES);
+        }
+        return base.exec(command, args, options);
+      };
+
+      const result = await runQueueCommit(
+        liveDir,
+        [{ assetPath: 'generated/beta.png', manifestKey: 'beta', briefId: null, variantIndex: null }],
+        { ...base, exec: wrappedExec },
+        { message: 'edit beta' },
+      );
+
+      expect(result.status).toBe('committed');
+      expect(result.attempts).toBe(2); // rejected once, succeeded on retry
+      const m = queueManifest(liveDir);
+      // All three entries coexist — the retry unioned, it did not clobber.
+      expect(Object.keys(m.entries).sort()).toEqual(['alpha', 'beta', 'gamma']);
+    },
+    GIT_TIMEOUT_MS,
+  );
+});

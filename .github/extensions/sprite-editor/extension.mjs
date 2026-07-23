@@ -20,6 +20,11 @@ const ANNOTATIONS_PATH = path.join(
   'sprite-editor-annotations.json',
 );
 const ASSETS_ROOT = path.join(REPO_ROOT, 'public', 'assets');
+// Durable queue-commit: `.mjs` cannot import TypeScript, so edits are persisted
+// to the remote assets/queue branch by spawning the tsx CLI (the same
+// `node <tsx-cli> <file.ts>` shape the sidecar launcher uses).
+const TSX_CLI = path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+const QUEUE_COMMIT_CLI = path.join(REPO_ROOT, 'scripts', 'sprites', 'queue-commit-cli.ts');
 const MAX_WRITE_BYTES = 6 * 1024 * 1024;
 const MAX_RESULTS = 500;
 const OPENCV_VENDOR_BASE = 'https://docs.opencv.org/4.13.0';
@@ -291,6 +296,51 @@ function execGit(args, encoding = 'utf8') {
   });
 }
 
+/**
+ * Durably persist an edited asset onto the remote `assets/queue` branch by
+ * spawning the tsx queue-commit CLI. Never throws: a durability failure must
+ * NOT lose the local edit that already succeeded on disk, so failures are
+ * returned as a status object the caller surfaces (and logs) instead. Exit 20
+ * from the CLI means the push was skipped on CI.
+ */
+async function queueCommitEditedAsset(assetPath, key) {
+  const result = await new Promise((resolve) => {
+    execFile(
+      process.execPath,
+      [
+        TSX_CLI,
+        QUEUE_COMMIT_CLI,
+        '--repo-root',
+        REPO_ROOT,
+        '--asset',
+        assetPath,
+        '--manifest-key',
+        key,
+        '--message',
+        `chore(assets): edit ${key}`,
+      ],
+      { cwd: REPO_ROOT, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
+      (error, stdout, stderr) => {
+        const code =
+          error && typeof error.code === 'number' ? error.code : error ? 1 : 0;
+        resolve({ code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
+      },
+    );
+  });
+  if (result.code === 0) {
+    try {
+      const lastLine = result.stdout.trim().split('\n').pop() || '{}';
+      return { status: 'ok', ...JSON.parse(lastLine) };
+    } catch {
+      return { status: 'ok' };
+    }
+  }
+  if (result.code === 20) return { status: 'skipped', reason: 'ci' };
+  const detail = (result.stderr || result.stdout || `exit ${result.code}`).trim();
+  console.warn(`[sprite-editor] queue-commit failed for ${key}: ${detail}`);
+  return { status: 'failed', error: detail };
+}
+
 function applyMetadataUpdate(payload, data, key) {
   const entry = data.manifest.entries?.[key];
   if (!entry) {
@@ -403,8 +453,16 @@ async function saveSprite(payload) {
     cache.manifest = null;
     cache.catalog = null;
     cache.annotations = null;
+    // Persist manifest/catalog/PNG edits to the durable assets/queue branch so
+    // anchor/metadata edits survive across sessions/worktrees/processes.
+    // Annotation-only saves (favorite/comment) are local curation and are NOT
+    // queued (the art surface did not change). Best-effort — never throws.
+    let queue = null;
+    if (hasMetadata || wrotePng) {
+      queue = await queueCommitEditedAsset(entry.assetPath, key);
+    }
     const fresh = loadData().summaryByKey.get(key);
-    return { ok: true, sprite: fresh ?? null };
+    return { ok: true, sprite: fresh ?? null, queue };
   } finally {
     cache.manifest = null;
     cache.catalog = null;
