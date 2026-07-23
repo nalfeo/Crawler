@@ -166,10 +166,7 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     // pools so the partition check never fires first.
     let err: unknown;
     try {
-      resolveEquipmentRewardBundle(world, 'ach', [
-        ...MIXED_BASES,
-        'travelers-cloak',
-      ]);
+      resolveEquipmentRewardBundle(world, 'ach', [...MIXED_BASES, 'travelers-cloak']);
     } catch (caught) {
       err = caught;
     }
