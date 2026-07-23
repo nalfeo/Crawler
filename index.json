@@ -1,5 +1,16 @@
 [
   {
+    "commit": "65f8a0188424ccba6c2c17003199f7c262b13ab9",
+    "commitDate": "2026-07-22T16:04:45-07:00",
+    "commitSubject": "feat: add deterministic Quartermaster stock purchasing (#1750)",
+    "capturedAt": "2026-07-23T00:13:08.624Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29965563220",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/65f8a0188424ccba6c2c17003199f7c262b13ab9.json"
+  },
+  {
     "commit": "f620633b944445d8b5db1efb015731d1b45cf142",
     "commitDate": "2026-07-22T15:43:59-07:00",
     "commitSubject": "fix: harden fast-uri audit exception — fail-closed on malformed severity, scope classifier, docs (#1774)",
