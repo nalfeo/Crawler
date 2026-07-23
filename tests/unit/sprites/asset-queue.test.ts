@@ -21,9 +21,10 @@ import {
 const azureSdkMock = vi.hoisted(() => {
   const receiveMessages = vi.fn(async () => ({ receivedMessageItems: [] as unknown[] }));
   const deleteMessage = vi.fn(async () => undefined);
-  const getQueueClient = vi.fn(() => ({ receiveMessages, deleteMessage }));
+  const updateMessage = vi.fn(async () => ({ popReceipt: 'renewed-pop-receipt' }));
+  const getQueueClient = vi.fn(() => ({ receiveMessages, deleteMessage, updateMessage }));
   const fromConnectionString = vi.fn(() => ({ getQueueClient }));
-  return { receiveMessages, deleteMessage, getQueueClient, fromConnectionString };
+  return { receiveMessages, deleteMessage, updateMessage, getQueueClient, fromConnectionString };
 });
 
 vi.mock('@azure/storage-queue', () => {
@@ -524,5 +525,82 @@ describe('AzureStorageQueue dequeue — invalid-size message handling', () => {
     expect(result).toBeNull();
     expect(azureSdkMock.deleteMessage).toHaveBeenCalledTimes(2);
     expect(azureSdkMock.receiveMessages).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('AzureStorageQueue renew()', () => {
+  const validMessageText = JSON.stringify({
+    kind: 'brief-path',
+    briefId: 'iron-sword',
+    briefPath: 'briefs/weapons/iron-sword.yaml',
+    requestedBy: 'test',
+    requestedAt: '2026-06-10T00:00:00.000Z',
+    priority: 'normal',
+  });
+
+  beforeEach(() => {
+    azureSdkMock.receiveMessages.mockClear();
+    azureSdkMock.deleteMessage.mockClear();
+    azureSdkMock.updateMessage.mockClear();
+  });
+
+  it('exposes renewIntervalMs at 75% of the visibility timeout', async () => {
+    azureSdkMock.receiveMessages.mockResolvedValueOnce({
+      receivedMessageItems: [
+        { messageId: 'msg-1', popReceipt: 'pop-1', messageText: validMessageText, dequeueCount: 1 },
+      ],
+    });
+    const q = AzureStorageQueue.fromOptions({
+      accountName: 'myaccount',
+      accountKey: 'dGVzdA==',
+      visibilityTimeout: 900,
+    });
+    const msg = await q.dequeue();
+    expect(msg).not.toBeNull();
+    // 75% of 900s in ms
+    expect(msg!.renewIntervalMs).toBe(675_000);
+  });
+
+  it('calls updateMessage with the current pop receipt and visibility timeout', async () => {
+    azureSdkMock.receiveMessages.mockResolvedValueOnce({
+      receivedMessageItems: [
+        { messageId: 'msg-2', popReceipt: 'pop-2', messageText: validMessageText, dequeueCount: 1 },
+      ],
+    });
+    const q = AzureStorageQueue.fromOptions({
+      accountName: 'myaccount',
+      accountKey: 'dGVzdA==',
+      visibilityTimeout: 900,
+    });
+    const msg = await q.dequeue();
+    expect(msg!.renew).toBeDefined();
+
+    await msg!.renew!();
+
+    expect(azureSdkMock.updateMessage).toHaveBeenCalledWith(
+      'msg-2',
+      'pop-2',
+      validMessageText,
+      900,
+    );
+  });
+
+  it('uses the updated pop receipt from renew() for the subsequent ack()', async () => {
+    azureSdkMock.receiveMessages.mockResolvedValueOnce({
+      receivedMessageItems: [
+        { messageId: 'msg-3', popReceipt: 'pop-3', messageText: validMessageText, dequeueCount: 1 },
+      ],
+    });
+    azureSdkMock.updateMessage.mockResolvedValueOnce({ popReceipt: 'renewed-pop-receipt' });
+    const q = AzureStorageQueue.fromOptions({
+      accountName: 'myaccount',
+      accountKey: 'dGVzdA==',
+    });
+    const msg = await q.dequeue();
+    await msg!.renew!();
+    await msg!.ack();
+
+    // ack must use the renewed pop receipt, not the original
+    expect(azureSdkMock.deleteMessage).toHaveBeenCalledWith('msg-3', 'renewed-pop-receipt');
   });
 });

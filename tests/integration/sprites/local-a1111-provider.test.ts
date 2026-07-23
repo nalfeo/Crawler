@@ -158,7 +158,7 @@ describe('LocalA1111ImageProvider', () => {
     }
 
     expect(error).not.toBeNull();
-    expect(error!.kind).toBe('provider-error');
+    expect(error!.kind).toBe('server-error');
     expect(error!.message).toContain('503');
   });
 
@@ -435,7 +435,7 @@ describe('LocalA1111ImageProvider', () => {
     });
 
     await expect(provider.generateSheet(request)).rejects.toMatchObject({
-      kind: 'provider-error',
+      kind: 'request-error',
     });
   });
 
@@ -458,7 +458,7 @@ describe('LocalA1111ImageProvider', () => {
     });
 
     await expect(provider.generateSheet(request)).rejects.toMatchObject({
-      kind: 'provider-error',
+      kind: 'request-error',
     });
   });
 

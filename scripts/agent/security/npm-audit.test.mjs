@@ -79,10 +79,9 @@ test('does not suppress a different advisory for fast-uri', () => {
 });
 
 test('fails closed when severity is null', () => {
-  const result = evaluateAudit(
-    report({ pkg: { name: 'pkg', severity: null, via: [] } }),
-    { now: ACTIVE_DATE },
-  );
+  const result = evaluateAudit(report({ pkg: { name: 'pkg', severity: null, via: [] } }), {
+    now: ACTIVE_DATE,
+  });
 
   assert.deepEqual(
     result.blocking.map((item) => item.name),
@@ -106,10 +105,9 @@ test('does not suppress an excepted finding with malformed severity', () => {
 });
 
 test('fails closed when severity is an array', () => {
-  const result = evaluateAudit(
-    report({ pkg: { name: 'pkg', severity: ['high'], via: [] } }),
-    { now: ACTIVE_DATE },
-  );
+  const result = evaluateAudit(report({ pkg: { name: 'pkg', severity: ['high'], via: [] } }), {
+    now: ACTIVE_DATE,
+  });
 
   assert.deepEqual(
     result.blocking.map((item) => item.name),
@@ -130,10 +128,7 @@ test('fails closed when severity is an unknown string', () => {
 });
 
 test('fails closed when severity is missing (undefined)', () => {
-  const result = evaluateAudit(
-    report({ pkg: { name: 'pkg', via: [] } }),
-    { now: ACTIVE_DATE },
-  );
+  const result = evaluateAudit(report({ pkg: { name: 'pkg', via: [] } }), { now: ACTIVE_DATE });
 
   assert.deepEqual(
     result.blocking.map((item) => item.name),

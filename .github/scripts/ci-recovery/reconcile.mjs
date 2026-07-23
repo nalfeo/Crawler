@@ -1155,11 +1155,30 @@ for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
   const markerBody = `✅ Addressed in ${headSha}: thread outdated — reviewed lines no longer present at this location`;
   if (live) {
     await assertExpectedMetadataUnchanged('post-outdated-marker');
-    await request(
-      pat,
-      `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
-      { method: 'POST', body: { body: markerBody } },
-    );
+    // Fix B (issue #1783): wrap in try/catch so a 422 "user can only have one
+    // pending review per pull request" (dangling CI-PAT pending review) or any
+    // other transient API error does not crash reconcile before release() runs,
+    // which would freeze the ci-owner lock indefinitely.  Marker posting is an
+    // auxiliary optimisation; the main resolution pass below still runs even if
+    // the reply could not be posted.
+    try {
+      await request(
+        pat,
+        `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
+        { method: 'POST', body: { body: markerBody } },
+      );
+    } catch (markerErr) {
+      const safeMsg = String(markerErr?.message || markerErr)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 300);
+      process.stderr.write(
+        `outdated-marker-reply-failed thread=${thread.id} status=${markerErr?.status ?? 'n/a'} err=${safeMsg}\n`,
+      );
+      // Skip injecting the synthetic marker comment so shouldResolveThread
+      // does not treat the failed post as a trusted resolution signal.
+      process.stdout.write(`skip outdated-marker thread=${thread.id} reason=reply-failed\n`);
+      continue;
+    }
   }
   // Inject the posted marker so shouldResolveThread succeeds in the resolution pass below.
   // authorAssociation is OWNER because CRAWLER_CI_PAT is the repository owner's token.
@@ -2045,6 +2064,23 @@ if (labelExists && isDuplicateDispatch(state, fingerprint)) {
     stopIfReleaseConvergedElsewhere(await release('blocker-progressed'));
   } else {
     dispatchAttemptBase = state?.attempt || 0;
+    // Lease-reaper GC pass: carry the attempt count forward AND freeze
+    // progressAt at its persisted value instead of refreshing it to `now`.
+    // The default (line above) refreshes progressAt on every dispatch, which
+    // slides the staleness window forward on each reap so a dead automation
+    // lock could survive many TTLs before the attempt>=2 ceiling releases it
+    // (Bug X). Freezing progressAt makes the window monotonic: the reaper keeps
+    // finding the lock stale on each sweep, the attempt count climbs to the
+    // existing exhaustion ceiling (see automationStallAction), and the lock is
+    // released within a bounded number of sweeps -- turning the TTL into a true
+    // wall-clock bound. Liveness is deliberately NOT inferred from head-SHA
+    // workflow runs: unrelated CI / merge-train / sweep runs (and the reaper's
+    // own reconcile run) share the PR head SHA and would produce false-live
+    // signals that make a dead lock immortal, re-introducing the very deadlock
+    // this fix targets (adversarial plan review, 2026-07-22).
+    if (trigger === 'lease-reaper') {
+      dispatchProgressAt = state?.progressAt || state?.updatedAt || dispatchProgressAt;
+    }
     stopIfReleaseConvergedElsewhere(await release('stale-automation-retry'));
   }
 }
