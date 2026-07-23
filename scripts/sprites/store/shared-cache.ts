@@ -577,6 +577,16 @@ export class SharedResourceCache {
     }
   }
 
+  /**
+   * Public passthrough to the configured logger for callers (e.g.
+   * `CachingRunStore`'s background list-refresh) that need to surface a
+   * swallowed error without a dedicated public accessor for `log` itself,
+   * which stays private to avoid confusion with this method's own name.
+   */
+  logOperational(message: string): void {
+    this.log(message);
+  }
+
   // ── access-recency markers ────────────────────────────────────────────────
 
   private markerPath(key: string): string {

@@ -9522,3 +9522,444 @@ test('untrusted marker comment does not suppress prior-reply hint', async (t) =>
     'task body must still include the original reviewer concern',
   );
 });
+
+// ---------------------------------------------------------------------------
+// Fix B (issue #1783): outdated-marker reply POST 422 handling
+// ---------------------------------------------------------------------------
+
+test('live reconcile continues and exits cleanly when outdated-marker reply POST returns 422', async (t) => {
+  // This is the exact failure mode that pinned PR #1231 for 12.7h:
+  // a dangling CI-PAT pending review causes POST /pulls/{n}/comments/{id}/replies
+  // to return 422 "user can only have one pending review per pull request".
+  // Before Fix B the unhandled throw crashed reconcile before release() could
+  // run, leaving the ci-owner lock frozen.  After the fix, reconcile must log
+  // the failure to stderr, skip injecting the synthetic marker, and exit 0.
+  const reviewCommentId = '5551234567';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    // 422: dangling pending review by the CI-PAT identity.
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      status: 422,
+      body: {
+        message: 'Validation Failed',
+        errors: [
+          {
+            resource: 'PullRequestReview',
+            code: 'invalid',
+            message: 'user_id can only have one pending review per pull request',
+          },
+        ],
+      },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-22T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-422-test',
+            isResolved: false,
+            isOutdated: true,
+            path: 'src/core/systems/some.ts',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-422-test',
+                  body: 'Suggestion from reviewer.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  // Reconcile must NOT crash — Fix B ensures the 422 is caught and logged.
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The failure must be logged to stderr so operators can detect it.
+  assert.match(
+    stderr,
+    /outdated-marker-reply-failed thread=thread-422-test status=422/,
+    'must log outdated-marker-reply failure with status=422 to stderr',
+  );
+
+  // Reconcile must log the skip for this thread.
+  assert.match(
+    stdout,
+    /skip outdated-marker thread=thread-422-test reason=reply-failed/,
+    'must log skip with reason=reply-failed when reply POST fails',
+  );
+
+  // The failed reply must NOT have triggered thread resolution
+  // (no synthetic trusted marker was injected).
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === 'thread-422-test',
+  );
+  assert.equal(
+    resolveCall,
+    undefined,
+    'thread must NOT be resolved when the marker reply failed (no trusted marker injected)',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Fix B regression hardening (review thread PRRT_kwDOSvo2Ms6TCmww): the 422
+// fixture above proves the reply POST failure is caught, but with basePr() it
+// carries NO ownership lock -- so it never exercised the reported failure mode:
+// continuing PAST the 422 to complete processing of an ATTACHED automation
+// fence. This variant models an attached, stale automation owner and asserts
+// the fence is advanced (never frozen) after the 422 while still exiting 0, so
+// the 12.7h frozen-lock regression cannot come back.
+// ---------------------------------------------------------------------------
+
+test('live reconcile advances an attached automation fence past an outdated-marker 422', async (t) => {
+  const reviewCommentId = '5559998887';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const blockers = [
+    {
+      kind: 'ci-failure',
+      id: 'ci',
+      summary: 'ci concluded failure.',
+      url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+    },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  // Exhausted (attempt=2) automation lock, stale by 40 minutes.
+  const staleProgressAt = new Date(Date.now() - 40 * 60 * 1000).toISOString();
+  const exhaustedState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers,
+    attempt: 2,
+    progressKey,
+    progressAt: staleProgressAt,
+    updatedAt: staleProgressAt,
+  });
+  const stateComment = { id: 902, body: renderStateComment(exhaustedState) };
+  const ciFailure = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  let finalStateBody = null;
+  let repoLabelDeleted = false;
+  const { server, port } = await startServer({
+    // Ownership fence is ATTACHED (label present on both the PR and the repo).
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repoLabelDeleted
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repoLabelDeleted = true;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      finalStateBody = body.body;
+      return { body: { id: stateComment.id } };
+    },
+    // The outdated-marker reply POST fails with the exact 422 that pinned #1231.
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      status: 422,
+      body: {
+        message: 'Validation Failed',
+        errors: [
+          {
+            resource: 'PullRequestReview',
+            code: 'invalid',
+            message: 'user_id can only have one pending review per pull request',
+          },
+        ],
+      },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-422-owned',
+            isResolved: false,
+            isOutdated: true,
+            path: 'src/core/systems/some.ts',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-422-owned',
+                  body: 'Suggestion from reviewer.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [ciFailure] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The 422 must have fired and been caught (Fix B).
+  assert.match(
+    stderr,
+    /outdated-marker-reply-failed thread=thread-422-owned status=422/,
+    'must catch and log the outdated-marker 422 for the attached-owner fixture',
+  );
+
+  // KEY REGRESSION (#1231): before Fix B the unhandled 422 threw before the
+  // owned PR could be processed, leaving the automation fence frozen for 12.7h.
+  // Now reconcile continues PAST the 422 and completes ownership processing --
+  // here the review thread is a NEW blocker, so the correct outcome is a fresh
+  // dispatch that ADVANCES the fence (never a crash, never a frozen lock).
+  assert.match(
+    stdout,
+    /assigned copilot pr=#42/,
+    'reconcile must complete ownership processing past the 422 (no crash mid-release)',
+  );
+  assert.ok(finalStateBody !== null, 'the ownership state comment must be advanced');
+  const written = parseStateComment(finalStateBody);
+  assert.equal(written.owner, 'automation', 'fence must remain tracked after a fresh dispatch');
+  // The fence MUST move forward: progressAt is refreshed, never frozen at the
+  // stale input value the dead lock was stuck on.
+  assert.ok(
+    Date.parse(written.progressAt) > Date.parse(staleProgressAt),
+    'progressAt must advance past the stale value (fence not frozen after the 422)',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Fix #1 (review thread PRRT_kwDOSvo2Ms6TCmv9): on the lease-reaper GC trigger,
+// the stale-automation retry path must CARRY the attempt count forward and
+// FREEZE progressAt at its persisted value instead of refreshing it to `now`.
+// Refreshing slid the staleness window forward on every reap so a dead lock
+// survived many TTLs; freezing it makes the window monotonic, so the existing
+// attempt>=2 ceiling becomes a true wall-clock bound. NO run-inference liveness
+// signal is used (adversarial plan review, 2026-07-22).
+// ---------------------------------------------------------------------------
+
+test('lease-reaper stale retry freezes progressAt and carries the attempt count', async (t) => {
+  const blockers = [
+    {
+      kind: 'ci-failure',
+      id: 'ci',
+      summary: 'ci concluded failure.',
+      url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+    },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  // Duplicate dispatch (same head + same blockers), attempt=1, stale by 35 min.
+  const frozenProgressAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+  const staleState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers,
+    attempt: 1,
+    progressKey,
+    progressAt: frozenProgressAt,
+    updatedAt: frozenProgressAt,
+  });
+  const stateComment = { id: 903, body: renderStateComment(staleState) };
+  const ciFailure = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  let repoLabelDeleted = false;
+  const capturedPatches = [];
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repoLabelDeleted
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repoLabelDeleted = true;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      capturedPatches.push(body);
+      return { body: { id: stateComment.id } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 904 } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [ciFailure] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'lease-reaper',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /assigned copilot pr=#42/);
+
+  // The retry release must stay on the stale-automation-retry path.
+  const releasePatch = capturedPatches.find(
+    (patch) => parseStateComment(patch.body)?.trigger === 'stale-automation-retry',
+  );
+  assert.ok(releasePatch, 'lease-reaper retry must release via stale-automation-retry');
+
+  // Final dispatched state: attempt carried+incremented to 2, progressAt FROZEN.
+  const finalPatch = capturedPatches.at(-1);
+  assert.ok(finalPatch, 'a final dispatched state PATCH must be issued');
+  const finalState = parseStateComment(finalPatch.body);
+  assert.equal(finalState?.attempt, 2, 'attempt must carry forward (1 -> 2)');
+  assert.equal(
+    finalState?.progressAt,
+    frozenProgressAt,
+    'lease-reaper retry must FREEZE progressAt at its persisted value, not refresh it to now',
+  );
+});
