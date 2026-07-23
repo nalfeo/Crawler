@@ -22,7 +22,7 @@ function makeWorld(runKey = 'boss-chest-core-test') {
 function makeChestedWorld(runKey?: string) {
   const world = makeWorld(runKey);
   const chestId = createBossChestId(FAMILY_ID);
-  resolveEquipmentRewardBundle(world, chestId, BASES);
+  resolveEquipmentRewardBundle(world, chestId, BASES, 'tier1');
   const created = createBossChestRecord(world, chestId, FAMILY_ID);
   return { world, chestId, created };
 }

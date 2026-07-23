@@ -19,6 +19,7 @@ import {
 } from '../core/systems/bossChestRewards.js';
 import { getFloor2EquipmentEconomyAccess } from '../core/floor2-equipment-flags.js';
 import { resolveEquipmentRewardBundle } from './floor2-reward-bundle-resolver.js';
+import type { EquipmentRewardTier } from '../shared/generated-equipment-types.js';
 import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../shared/data/floor2-weapon-bases.js';
 
 /**
@@ -38,6 +39,20 @@ import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../shared/data/floor2-weapon-base
  * affinity.
  */
 export const BOSS_CHEST_REWARD_BASE_IDS: readonly string[] = FLOOR2_WEAPON_WAVE_A_BASE_IDS;
+
+/**
+ * Boss chests always resolve at `tier1` — a 100% deterministic Common-rarity
+ * draw with zero RNG consumption (see {@link rollTierRarity} in
+ * `floor2-reward-bundle-resolver.ts`). This preserves this module's original
+ * "Common-rarity contract" design intent (deterministic, guaranteed, no
+ * non-armor stat bonus) under the tiered `resolveEquipmentRewardBundle`
+ * signature introduced by the achievement equipment-reward tier system (see
+ * ADR 0070 addendum). `validateGeneratedCarryover` (`playerCarryover.ts`)
+ * hardcodes this same expectation when restoring a persisted boss-chest
+ * bundle, since boss chests have no backing achievement to cross-check a
+ * tier against.
+ */
+const BOSS_CHEST_REWARD_TIER: EquipmentRewardTier = 'tier1';
 
 export type SpawnBossChestResult =
   | { readonly created: true; readonly chest: BossChestRecord }
@@ -81,7 +96,7 @@ export function spawnBossChestForDefeatedBoss(
     return { created: false, reason: 'economyDisabled' };
   }
 
-  resolveEquipmentRewardBundle(world, chestId, BOSS_CHEST_REWARD_BASE_IDS);
+  resolveEquipmentRewardBundle(world, chestId, BOSS_CHEST_REWARD_BASE_IDS, BOSS_CHEST_REWARD_TIER);
   const result = createBossChestRecord(world, chestId, familyId);
   if (!result.ok) {
     // Unreachable in practice: the bundle was just resolved above, so

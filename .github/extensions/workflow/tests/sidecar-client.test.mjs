@@ -20,6 +20,7 @@ import {
   sheetUrl,
   sliceMapUrl,
   acceptUrl,
+  deleteManifestUrl,
   runPostprocessUrl,
   candidateStatus,
   describeJudgeSkipReason,
@@ -85,6 +86,11 @@ test('run/sheet/slice-map url builders encode their path + query segments', () =
   // No sheet → bare slice-map endpoint (no query).
   assert.equal(sliceMapUrl(BASE, 'b', 'r'), `${BASE}/api/runs/b/r/slice-map`);
   assert.equal(acceptUrl(BASE, 'a b', 'r/1'), `${BASE}/api/runs/a%20b/r%2F1/accept`);
+  assert.equal(
+    deleteManifestUrl(BASE, 'goblin-archer-var-0'),
+    `${BASE}/api/manifest/goblin-archer-var-0`,
+  );
+  assert.equal(deleteManifestUrl(BASE, 'a b'), `${BASE}/api/manifest/a%20b`);
   // The embedded Postprocess Debugger (`/postprocess/*` under this canvas)
   // reuses THIS client, so it needs the persist-postprocess URL builder too —
   // kept 1:1 with `postprocess/lib/sidecar-client.mjs`'s own copy.
@@ -182,6 +188,58 @@ test('acceptVariant surfaces the sidecar error code and actionable message', asy
     () => client.acceptVariant('iron-sword', 'run-1', 1),
     (error) =>
       error.code === 'gh-failed' && error.status === 502 && /gh auth login/.test(error.message),
+  );
+});
+
+test('unapproveVariant sends DELETE to /api/manifest/:variantId and returns the evicted entry', async () => {
+  const calls = [];
+  const evicted = {
+    briefId: 'goblin-archer',
+    spriteName: 'goblin-archer-var-0',
+    assetPath: 'generated/goblin-archer-var-0.png',
+    approvedAt: '2026-01-01T00:00:00.000Z',
+    variantIndex: 0,
+  };
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return jsonResponse(evicted);
+    },
+  });
+
+  const result = await client.unapproveVariant('goblin-archer-var-0');
+
+  assert.equal(calls[0].url, `${BASE}/api/manifest/goblin-archer-var-0`);
+  assert.equal(calls[0].options.method, 'DELETE');
+  assert.deepEqual(result, evicted);
+});
+
+test('unapproveVariant surfaces the sidecar error code on 404 not-found', async () => {
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async () =>
+      jsonResponse(
+        { error: 'not-found', message: 'Variant "missing-var-0" is not in the manifest.' },
+        false,
+        404,
+      ),
+  });
+
+  await assert.rejects(
+    () => client.unapproveVariant('missing-var-0'),
+    (error) =>
+      error.code === 'not-found' &&
+      error.status === 404 &&
+      /not in the manifest/.test(error.message),
+  );
+});
+
+test('client.urls.deleteManifest is wired to the same builder', () => {
+  const client = createSidecarClient({ baseUrl: BASE, fetchImpl: async () => jsonResponse({}) });
+  assert.equal(
+    client.urls.deleteManifest('goblin-archer-var-0'),
+    deleteManifestUrl(BASE, 'goblin-archer-var-0'),
   );
 });
 

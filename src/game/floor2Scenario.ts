@@ -876,6 +876,12 @@ export function initializeFloor2Scenario(
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
+  // Floor 2 runtime owns the generated-equipment reward economy; enable the
+  // full dependency closure so Floor 2 achievement equipment rewards can
+  // resolve in shipped gameplay paths.
+  world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+  world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+  world.floor2EquipmentFlags.floor2EquipmentRewards = true;
   if (!options?.playerCarryover) {
     applyFloor2DirectStartPlayerState(world, playerEid);
     initializePlayerWeaponSkills(world, playerEid);

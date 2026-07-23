@@ -198,6 +198,16 @@ describe('initializeFloor2Scenario manifest validation', () => {
     ).toBe(MERCHANTS_CHARM_DEF.id);
   });
 
+  it('enables Floor 2 equipment reward flags during scenario initialization', () => {
+    const { world, playerEid } = createScenarioWorld();
+
+    initializeFloor2Scenario(world, playerEid);
+
+    expect(world.floor2EquipmentFlags.floor2EquipmentRegistry).toBe(true);
+    expect(world.floor2EquipmentFlags.floor2EquipmentCatalog).toBe(true);
+    expect(world.floor2EquipmentFlags.floor2EquipmentRewards).toBe(true);
+  });
+
   it('completes the starter quest the first time the player enters the settlement area', () => {
     const { world, playerEid } = createScenarioWorld();
     initializeFloor2Scenario(world, playerEid);

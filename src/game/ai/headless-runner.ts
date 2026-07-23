@@ -25,6 +25,7 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
+import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import {
   FLOOR2_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR2_TIMEOUT_GOAL_ID,
@@ -368,7 +369,13 @@ export async function runHeadless(
   }
 
   // Create world and spawn player
-  const world = createGameWorld({ seed: mergedConfig.seed });
+  // Mirrors MainGameScene: always derive a stable generated-equipment run key
+  // from the world seed, so resolve-at-unlock reward bundles (Floor 1
+  // lootBox + Floor 2 equipment) work identically in headless AI runs.
+  const world = createGameWorld({
+    seed: mergedConfig.seed,
+    generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(mergedConfig.seed),
+  });
   if (mergedConfig.floor2EquipmentFlags) {
     Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
   }

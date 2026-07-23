@@ -61,7 +61,7 @@ describe('spawnBossChestForDefeatedBoss — Floor 2 gating', () => {
     expect(world.bossChests.get(chestId)).toEqual(result.chest);
     const bundle = world.generatedEquipmentRewardBundles.get(chestId);
     expect(bundle).toBeDefined();
-    expect(bundle!.instanceKeys).toHaveLength(3);
+    expect(bundle!.instanceKeys).toHaveLength(1);
   });
 
   it('is idempotent — a second call for the same family is a no-op (alreadyExists)', () => {
@@ -78,7 +78,7 @@ describe('spawnBossChestForDefeatedBoss — Floor 2 gating', () => {
     expect([
       ...world.generatedEquipmentRewardBundles.get(createBossChestId(FAMILY_ID))!.instanceKeys,
     ]).toEqual(bundleKeysAfterFirst);
-    expect(listGeneratedEquipmentInstances(world).length).toBe(3);
+    expect(listGeneratedEquipmentInstances(world).length).toBe(1);
   });
 
   it('resolves deterministically for the same run key + family across worlds', () => {

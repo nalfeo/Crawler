@@ -131,7 +131,7 @@ describe('Boss chest lifecycle — real Floor 2 defeat pipeline (observe real ar
     expect(chest!.state).toBe('available');
     const bundle = world.generatedEquipmentRewardBundles.get(chestId);
     expect(bundle).toBeDefined();
-    expect(bundle!.instanceKeys).toHaveLength(3);
+    expect(bundle!.instanceKeys).toHaveLength(1);
   });
 
   it('does not create a chest for a boss family that has not died', () => {
@@ -159,7 +159,7 @@ describe('Boss chest lifecycle — open/acknowledge lifecycle ordering + duplica
     const openResult = openBossChest(world, chestId, playerEid);
     expect(openResult).toMatchObject({ ok: true, alreadyClaimed: false, state: 'revealed' });
     if (openResult.ok) {
-      expect(openResult.granted).toHaveLength(3);
+      expect(openResult.granted).toHaveLength(1);
     }
     expect(world.bossChests.get(chestId)!.state).toBe('revealed');
     // Atomic claim: never invokes the generator, so the registry's instance
@@ -225,7 +225,7 @@ describe('Boss chest lifecycle — atomic claim failure (retryable, no reward lo
     const bundleKeysBefore = [...world.generatedEquipmentRewardBundles.get(chestId)!.instanceKeys];
 
     const bag = world.inventories.get(playerEid)!;
-    world.inventories.set(playerEid, { ...bag, generatedEquipmentCapacity: 2 });
+    world.inventories.set(playerEid, { ...bag, generatedEquipmentCapacity: 0 });
 
     const failedOpen = openBossChest(world, chestId, playerEid);
     expect(failedOpen).toMatchObject({ ok: false, reason: 'grantFailed' });
@@ -291,7 +291,7 @@ describe('Boss chest lifecycle — save/load carryover', () => {
     const restoredBundle = dest.generatedEquipmentRewardBundles.get(chestId);
     expect(restoredBundle).toBeDefined();
     expect([...restoredBundle!.instanceKeys]).toEqual(bundleKeys);
-    expect(listGeneratedEquipmentInstances(dest).length).toBe(3);
+    expect(listGeneratedEquipmentInstances(dest).length).toBe(1);
 
     // The restored chest is openable on the destination world.
     const openResult = openBossChest(dest, chestId, destPlayer);

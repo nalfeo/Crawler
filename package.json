@@ -61,6 +61,7 @@
     "sprites:sidecar:ensure": "tsx scripts/sprites/sidecar/service-cli.ts ensure",
     "sprites:sidecar:stop": "tsx scripts/sprites/sidecar/service-cli.ts stop",
     "sprites:approve": "tsx scripts/sprites/approve-cli.ts",
+    "sprites:unapprove": "tsx scripts/sprites/unapprove-cli.ts",
     "sprites:checkin": "tsx scripts/sprites/checkin-cli.ts",
     "sprites:asset-pr": "tsx scripts/sprites/asset-pr-cli.ts",
     "sprites:synth": "tsx scripts/sprites/synth-cli.ts",

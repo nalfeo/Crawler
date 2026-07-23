@@ -53,6 +53,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Sprite run                | `npm run sprites:run`                     |
 | Sprite gallery            | `npm run sprites:gallery`                 |
 | Sprite approve            | `npm run sprites:approve`                 |
+| Sprite unapprove          | `npm run sprites:unapprove`               |
 | Sprite synth              | `npm run sprites:synth`                   |
 | Sprite batch              | `npm run sprites:batch`                   |
 | Sprite asset plan         | `npm run sprites:asset-plan`              |

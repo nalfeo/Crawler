@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "ci-recovery-lease-liveness",
+  "task_title": "CI Recovery: exclude url from blocker fingerprint",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Approved with changes (no blocking issues). Alt A (regex-normalize CI/workflow URLs instead of dropping) rejected: brittle across GitHub URL shapes, duplicates identity logic at each producer site. Alt B (per-kind semantic field whitelist) rejected: bigger refactor, not warranted for this incident (only justified if more volatile-field exceptions accumulate). Alt C (fix only in reconcile.mjs blocker construction) rejected: misses the ci-retrigger path and breaks the normalizeBlockers/fingerprint separation of display-vs-semantic metadata. Chosen: exclude url from blockerFingerprint centrally (same pattern as the existing line exclusion) -- divergence=minor (alternatives considered, none beat the chosen design, but follow-up coverage was added). Concern 1 (non-blocking): ci-retrigger kind was not directly regression-tested -- resolved by adding a dedicated ci-retrigger URL-drift fingerprint-stability test in state.test.mjs. Concern 2 (suggestion): integration tests did not assert the rewritten state carries the freshest live url for display -- resolved by adding an explicit assertion in the cycle-2/3 PR #1809 integration test that finalState.blockers[0].url reflects the latest live check-run url. No new correctness risk found (url is confirmed non-semantic for all present blocker kinds); no weakening of ownership safety, reaper ceilings, or trusted-workflow boundaries; no architecture change warranted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Single-model code review of full diff (state.mjs fix, state.test.mjs, reconcile.test.mjs). Verified all 125 reconcile.test.mjs tests + 43 state.test.mjs tests pass. No findings across correctness, data flow, API/compat, collision risk, security, wiring, performance, regression coverage, scope/apple estimate, or reviewer-persona categories. Change confirmed as exactly the declared 3-apple infra-only fix; reconcile.mjs untouched."
+        }
+      ]
+    }
+  }
+}

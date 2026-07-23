@@ -148,22 +148,6 @@ describe('Floor 1 to Floor 2 production transition', () => {
         rarity: 'common',
       }),
     );
-    const bundledUncommon = createGeneratedEquipmentInstance(
-      floor1,
-      generatedEquipmentInput({
-        baseId: 'armor.floor-transition-reward',
-        slots: ['feet'],
-        rarity: 'uncommon',
-      }),
-    );
-    const bundledRare = createGeneratedEquipmentInstance(
-      floor1,
-      generatedEquipmentInput({
-        baseId: 'armor.floor-transition-reward',
-        slots: ['feet'],
-        rarity: 'rare',
-      }),
-    );
     expect(addGeneratedEquipmentToBag(floor1, floor1Player, equipped.instanceId).ok).toBe(true);
     expect(
       equipFromBag(
@@ -174,13 +158,15 @@ describe('Floor 1 to Floor 2 production transition', () => {
       ).ok,
     ).toBe(true);
     // A persisted reward bundle is only valid for a real, unlocked-but-unclaimed
-    // equipment achievement and must hold exactly one Common/Uncommon/Rare
-    // instance in canonical order (fail-closed carryover contract).
+    // tier1 equipment achievement and must hold exactly one instance whose
+    // rarity is a member of that tier's allowed pool (fail-closed carryover
+    // contract — tier1 is common-only).
     floor1.achievements.unlockedIds.add('floor2-field-kit');
     floor1.generatedEquipmentRewardBundles.set('floor2-field-kit', {
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
       achievementId: 'floor2-field-kit',
-      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
+      tier: 'tier1',
+      instanceKeys: [bundledCommon.instanceId],
     });
     const floor1Registry = snapshotGeneratedEquipmentRegistry(floor1);
     const objective = floor1.floorScenario!.objective;
@@ -208,7 +194,8 @@ describe('Floor 1 to Floor 2 production transition', () => {
     expect(floor2.generatedEquipmentRewardBundles.get('floor2-field-kit')).toEqual({
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
       achievementId: 'floor2-field-kit',
-      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
+      tier: 'tier1',
+      instanceKeys: [bundledCommon.instanceId],
     });
     expect(floor2.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('active');
     expect(floor2.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(false);

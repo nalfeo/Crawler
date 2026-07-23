@@ -113,6 +113,10 @@ const STYLES = `
     background: rgba(14,116,144,0.28); color: #e0f2fe; font-weight: 700; }
   .accept-button:hover:not(:disabled) { background: rgba(14,116,144,0.48); }
   .accept-button:disabled { opacity: 0.65; cursor: default; }
+  .unapprove-button { width: 100%; margin-top: 4px; border-color: rgba(252,165,165,0.45);
+    background: rgba(127,29,29,0.18); color: #fecaca; font-weight: 600; font-size: 11px; }
+  .unapprove-button:hover:not(:disabled) { background: rgba(127,29,29,0.36); }
+  .unapprove-button:disabled { opacity: 0.65; cursor: default; }
   .accept-state { margin-top: 6px; padding: 7px 8px; border-radius: 6px; font-size: 11px; }
   .accept-state.queued { color: #bbf7d0; background: rgba(22,101,52,0.28);
     border: 1px solid rgba(134,239,172,0.35); }
@@ -121,6 +125,11 @@ const STYLES = `
   .accept-state.warn { color: #fde68a; background: rgba(120,53,15,0.4);
     border: 1px solid rgba(253,230,138,0.4); }
   .accept-state a { color: inherit; font-weight: 700; }
+  .unapprove-state { margin-top: 4px; padding: 6px 8px; border-radius: 6px; font-size: 11px; }
+  .unapprove-state.evicted { color: #fca5a5; background: rgba(127,29,29,0.22);
+    border: 1px solid rgba(252,165,165,0.3); }
+  .unapprove-state.error { color: #fecaca; background: rgba(127,29,29,0.34);
+    border: 1px solid rgba(252,165,165,0.35); }
   .axis { display: flex; justify-content: space-between; font-size: 11px; }
   .axis .lbl { font-weight: 600; }
   .rationale { font-size: 10px; color: #94a3b8; line-height: 1.35; }
@@ -1267,6 +1276,50 @@ const CLIENT_SCRIPT = String.raw`
     });
   }
 
+  function variantIdFor(briefId, variantIndex) {
+    return briefId + '-var-' + variantIndex;
+  }
+
+  function unapproveVariant(manifestKey) {
+    if (!lastState) return;
+    var variantId = manifestKey;
+    lastState.unapproval = lastState.unapproval || {};
+    lastState.unapproval[variantId] = { state: 'unapproving' };
+    render(lastState);
+    setBusy(true, 'Unapproving variant…');
+    fetch('/api/unapprove', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-workflow-mutation-token': mutationToken
+      },
+      body: JSON.stringify({ variantId: variantId })
+    }).then(function (response) {
+      return response.text().then(function (text) {
+        var payload = null;
+        try { payload = text ? JSON.parse(text) : null; } catch (e) { payload = null; }
+        return { ok: response.ok, status: response.status, payload: payload };
+      });
+    }).then(function (result) {
+      if (!result.ok) {
+        var message = result.payload && result.payload.message
+          ? result.payload.message
+          : 'Unapprove failed with HTTP ' + result.status + '.';
+        throw new Error(message);
+      }
+      lastState.unapproval[variantId] = { state: 'evicted', entry: result.payload };
+      render(lastState);
+    }).catch(function (error) {
+      lastState.unapproval[variantId] = {
+        state: 'error',
+        message: error && error.message ? error.message : String(error)
+      };
+      render(lastState);
+    }).finally(function () {
+      setBusy(false);
+    });
+  }
+
   function renderAcceptance(card, state, sel, candidate) {
     var key = acceptanceKey(sel.briefId, sel.runId, candidate.index);
     var acceptance = state.acceptance && state.acceptance[key];
@@ -1328,6 +1381,42 @@ const CLIENT_SCRIPT = String.raw`
     });
     if (anyAccepting) button.disabled = true;
     card.appendChild(button);
+
+    // Show unapprove button for variants that are already accepted/staged or integrated.
+    if (lifecycleState === 'accepted-staged' || lifecycleState === 'integrated') {
+      // Use the exact manifest map key from the lifecycle, falling back to the
+      // reconstructed form only when the lifecycle hasn't propagated the key yet
+      // (e.g. a transient "queued this session" accepted-staged state where no
+      // manifest entry exists yet). The lifecycle.manifestKey is authoritative
+      // because approveVariant canonicalizes item brief IDs (e.g. 'flame-dagger-v2'
+      // → 'flame-dagger'), so rebuilding from sel.briefId produces the wrong key.
+      var variantId = (candidate.lifecycle && candidate.lifecycle.manifestKey)
+        || variantIdFor(sel.briefId, candidate.index);
+      var unapprovalEntry = state.unapproval && state.unapproval[variantId];
+      var anyUnapproving = !!(state.unapproval && Object.keys(state.unapproval).some(function (k) {
+        return state.unapproval[k] && state.unapproval[k].state === 'unapproving';
+      }));
+      if (unapprovalEntry && unapprovalEntry.state === 'evicted') {
+        card.appendChild(h('div', {
+          class: 'unapprove-state evicted',
+          text: 'Evicted from manifest.'
+        }));
+      } else if (unapprovalEntry && unapprovalEntry.state === 'error') {
+        card.appendChild(h('div', {
+          class: 'unapprove-state error',
+          text: unapprovalEntry.message || 'Unapprove failed.'
+        }));
+      }
+      var unapproving = unapprovalEntry && unapprovalEntry.state === 'unapproving';
+      var unapproveBtn = h('button', {
+        type: 'button',
+        class: 'unapprove-button',
+        text: unapproving ? 'Evicting…' : 'Evict / Unapprove',
+        onclick: function () { unapproveVariant(variantId); }
+      });
+      if (anyAccepting || anyUnapproving || unapproving) unapproveBtn.disabled = true;
+      card.appendChild(unapproveBtn);
+    }
   }
 
   function lifecyclePill(candidate) {

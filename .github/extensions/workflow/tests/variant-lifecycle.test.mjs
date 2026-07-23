@@ -23,7 +23,7 @@ test('unaccepted: no manifest match and no in-session acceptance', () => {
     runId: 'run-1',
     variantIndex: 0,
   });
-  assert.deepEqual(result, { state: 'unaccepted', detail: null });
+  assert.deepEqual(result, { state: 'unaccepted', detail: null, manifestKey: null });
 });
 
 test('accepted-staged: no manifest match yet, but this session queued it', () => {
@@ -79,7 +79,7 @@ test('integrated: manifest selects the exact variant AND the asset is runtime-in
     runId: 'run-1',
     variantIndex: 2,
   });
-  assert.deepEqual(result, { state: 'integrated', detail: null });
+  assert.deepEqual(result, { state: 'integrated', detail: null, manifestKey: null });
 });
 
 test('never infers from "this run is promoted" alone: a DIFFERENT variant of the same run is unaccepted', () => {
@@ -285,4 +285,73 @@ test('findMatchingAsset returns null when no report/asset matches', () => {
     ),
     null,
   );
+});
+
+test('computeVariantLifecycle returns manifestKey from manifestApprovals.mapKey for canonicalized item briefs', () => {
+  // Regression fixture: approveVariant strips '-vN' from item briefs, so a run
+  // named 'flame-dagger-v2' produces manifest key 'flame-dagger-var-1', not
+  // 'flame-dagger-v2-var-1'. The lifecycle must carry the exact manifest key so
+  // the renderer can unapprove without reconstructing from the (wrong) run briefId.
+  const result = computeVariantLifecycle({
+    backlogReports: [],
+    manifestApprovals: [
+      {
+        mapKey: 'flame-dagger-var-1',
+        briefId: 'flame-dagger',
+        assetPath: 'generated/flame-dagger-var-1.png',
+        sourceRun: 'flame-dagger-v2/run-1',
+        variantIndex: 1,
+        exists: true,
+      },
+    ],
+    acceptanceEntry: null,
+    briefId: 'flame-dagger-v2',
+    runId: 'run-1',
+    variantIndex: 1,
+  });
+  assert.equal(result.state, 'accepted-staged');
+  assert.equal(result.manifestKey, 'flame-dagger-var-1');
+});
+
+test('computeVariantLifecycle derives manifestKey from assetPath when matched via backlog reports', () => {
+  const result = computeVariantLifecycle({
+    backlogReports: [
+      report([
+        {
+          briefId: 'flame-dagger',
+          variantIndex: 1,
+          assetPath: 'generated/flame-dagger-var-1.png',
+          sourceRun: 'flame-dagger-v2/run-1',
+          approvedAssetExists: true,
+          integrationState: 'integrated',
+        },
+      ]),
+    ],
+    acceptanceEntry: null,
+    briefId: 'flame-dagger-v2',
+    runId: 'run-1',
+    variantIndex: 1,
+  });
+  assert.equal(result.state, 'integrated');
+  assert.equal(result.manifestKey, 'flame-dagger-var-1');
+});
+
+test('computeVariantLifecycle returns manifestKey null when no manifest match (queued-only or unaccepted)', () => {
+  const queued = computeVariantLifecycle({
+    backlogReports: [],
+    acceptanceEntry: { state: 'queued' },
+    briefId: 'goblin',
+    runId: 'run-1',
+    variantIndex: 0,
+  });
+  assert.equal(queued.manifestKey, null);
+
+  const unaccepted = computeVariantLifecycle({
+    backlogReports: [],
+    acceptanceEntry: null,
+    briefId: 'goblin',
+    runId: 'run-1',
+    variantIndex: 0,
+  });
+  assert.equal(unaccepted.manifestKey, null);
 });

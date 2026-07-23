@@ -118,7 +118,12 @@ export function openBossChest(
   }
 
   chest.state = 'opening';
-  const grant = claimGeneratedEquipmentRewardBundle(world, entity, chestId);
+  // Boss chests always resolve at `tier1` (see `src/game/boss-chest-resolver.ts`
+  // `BOSS_CHEST_REWARD_TIER`) — a 100% deterministic Common-rarity draw. Pass
+  // it explicitly here so the claim path's tier cross-check (defense in
+  // depth against a tampered/stale bundle) has something to validate
+  // against, mirroring the achievement-claim call site.
+  const grant = claimGeneratedEquipmentRewardBundle(world, entity, chestId, 'tier1');
   if (!grant.ok) {
     // Fail-closed but retryable: revert to `available` so a transient failure
     // (e.g. bag full) never strands the chest or the reward.
