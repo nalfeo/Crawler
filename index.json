@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fa1497ca4a3fe413dc405717cce6b73a72c9964a",
+    "commitDate": "2026-07-23T13:19:40Z",
+    "commitSubject": "fix(equipment): relocate Wave B display-name override authority to floor2-equipment-art.ts (#1817)",
+    "capturedAt": "2026-07-23T14:32:49.451Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30011527763",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/fa1497ca4a3fe413dc405717cce6b73a72c9964a.json"
+  },
+  {
     "commit": "6d1ca7d46f1ec0653cd5bdd8627f4b808864ff43",
     "commitDate": "2026-07-23T12:51:42Z",
     "commitSubject": "Add sprite unapprove / eviction feature (#1795)",
