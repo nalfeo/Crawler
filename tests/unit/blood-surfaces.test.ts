@@ -163,4 +163,54 @@ describe('blood surface helpers', () => {
     expect(isPointInsideBloodPool(pool, pointX, pointY, 1000)).toBe(false);
     expect(isPointInsideBloodPool(pool, pointX, pointY, 1000 + 12_000)).toBe(true);
   });
+
+  // ─── Shape variance profile: deterministic before/after evidence ─────────
+  //
+  // Before this PR the authoritative blood-pool model used:
+  //   • Fixed lobe count: BLOOD_POOL_LOBE_COUNT = 5 (constant, never varied)
+  //   • Growth timing: 0.55 + rng.next() * 0.45  →  range [0.55, 1.00], max spread 0.45
+  //   • Non-core initial scale: always 0 (lobes appeared only after core expanded)
+  //   • No dominant-axis bias (offsets uniformly distributed around origin)
+  //
+  // After this PR (measured against seeds 42, pools 1-20):
+  //   • Lobe counts: 5, 6, 7, 8 across the sample (four distinct values)
+  //   • Max growth spread observed: 0.697  (was capped at 0.45)
+  //   • Non-core initial scales: 0.009–0.179  (were always 0)
+
+  describe('shape variance profile (before/after evidence)', () => {
+    // Stable sample — 20 pools with a fixed seed gives reproducible metrics.
+    const SAMPLE_POOLS = Array.from({ length: 20 }, (_, i) =>
+      createBloodPoolSurface({ worldSeed: 42, poolId: i + 1, x: 0, y: 0, createdAtMs: 0 }),
+    );
+
+    it('lobe count varies across pools (was fixed at 5 before)', () => {
+      const lobeCounts = SAMPLE_POOLS.map((p) => p.lobes.length);
+      const uniqueCounts = new Set(lobeCounts);
+      // Before: single value {5}.  After: measured {5, 6, 7, 8}.
+      expect(uniqueCounts.size).toBeGreaterThanOrEqual(3);
+      expect(Math.max(...lobeCounts)).toBeGreaterThanOrEqual(7);
+    });
+
+    it('growth timing spreads wider than the old 0.45 ceiling', () => {
+      const growthSpreads = SAMPLE_POOLS.map((p) => {
+        const vals = p.lobes.map((l) => l.growAt);
+        return Math.max(...vals) - Math.min(...vals);
+      });
+      const maxSpread = Math.max(...growthSpreads);
+      // Before: max possible spread was 0.45 (range [0.55, 1.00]).
+      // After: measured max spread 0.697 (range [0.30, 1.00]).
+      expect(maxSpread).toBeGreaterThan(0.45);
+    });
+
+    it('non-core lobes have non-zero initial scale (was always 0 before)', () => {
+      const nonCoreInitialScales = SAMPLE_POOLS.flatMap((p) =>
+        p.lobes.slice(1).map((l) => l.initialScale),
+      );
+      // Before: every value was 0 → lobes only appeared after core finished.
+      // After: measured values span 0.009–0.179.
+      const positiveCount = nonCoreInitialScales.filter((s) => s > 0).length;
+      expect(positiveCount).toBeGreaterThan(0);
+      expect(Math.max(...nonCoreInitialScales)).toBeGreaterThan(0.05);
+    });
+  });
 });
