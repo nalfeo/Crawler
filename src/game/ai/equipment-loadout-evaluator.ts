@@ -152,7 +152,7 @@ export interface EquipmentLoadoutEvaluationResult {
   readonly rejected: readonly RejectedEquipmentLoadoutCandidate[];
 }
 
-export class EquipmentLoadoutEvaluationError extends Error {
+class EquipmentLoadoutEvaluationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'EquipmentLoadoutEvaluationError';

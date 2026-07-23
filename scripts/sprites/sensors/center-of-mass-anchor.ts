@@ -12,7 +12,8 @@ import { gatherOpaquePixels, type RgbaImage, type SensorResult } from './common.
 export const ANCHOR_CENTER_OF_MASS_SENSOR = 'anchor-center-of-mass';
 
 export type CenterOfMassAnchorResult =
-  (SensorResult & { ok: true; anchor: { x: number; y: number } }) | (SensorResult & { ok: false });
+  | (SensorResult & { ok: true; anchor: { x: number; y: number } })
+  | (SensorResult & { ok: false });
 
 export function anchorCenterOfMass(image: RgbaImage): CenterOfMassAnchorResult {
   const opaque = gatherOpaquePixels(image);
