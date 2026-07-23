@@ -41,6 +41,52 @@ export const RARITY_EFFECT_BUDGET: Readonly<Record<GeneratedEquipmentRarity, num
  */
 export const GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES: readonly GeneratedEquipmentRarity[] =
   Object.freeze(['common', 'uncommon', 'rare']);
+
+/**
+ * Achievement equipment-reward tiers (Floor 2 reward-content slice). `tier1` is
+ * the lowest tier (unlocked earliest), `tier3` the highest currently defined.
+ * Each tier resolves to a SINGLE generated-equipment instance (not the legacy
+ * fixed 3-item Common+Uncommon+Rare bundle) whose rarity is drawn from
+ * {@link EQUIPMENT_REWARD_TIER_RARITIES}. No tier may ever draw `rare` — only a
+ * canonical higher tier (not yet defined) could unlock Rare-item drops.
+ */
+export const EQUIPMENT_REWARD_TIERS = ['tier1', 'tier2', 'tier3'] as const;
+export type EquipmentRewardTier = (typeof EQUIPMENT_REWARD_TIERS)[number];
+
+export function isEquipmentRewardTier(value: string): value is EquipmentRewardTier {
+  return (EQUIPMENT_REWARD_TIERS as readonly string[]).includes(value);
+}
+
+/**
+ * Per-tier allowed rarity pool, in weighted-draw order (index 0 is favored,
+ * see {@link EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS}). `tier1` is common-only.
+ * `tier2` and `tier3` share the same {common, uncommon} rarity SET (never
+ * rare) but differ in which rarity dominates — `tier2` favors common,
+ * `tier3` favors uncommon — so the effective build-affinity chance rises
+ * monotonically tier1 < tier2 < tier3 purely from the existing per-rarity
+ * affinity contract (Common 25% / Uncommon 50%), with no separate "tier bonus"
+ * needed. This directly reuses — never replaces — the canonical
+ * `REWARD_BUNDLE_AFFINITY_PROB` contract from the Floor 2 reward-bundle
+ * resolver.
+ */
+export const EQUIPMENT_REWARD_TIER_RARITIES: Readonly<
+  Record<EquipmentRewardTier, readonly GeneratedEquipmentRarity[]>
+> = Object.freeze({
+  tier1: Object.freeze(['common'] as const),
+  tier2: Object.freeze(['common', 'uncommon'] as const),
+  tier3: Object.freeze(['uncommon', 'common'] as const),
+});
+
+/**
+ * Weighted-draw probability for the FIRST-listed rarity in a tier's pool (see
+ * {@link EQUIPMENT_REWARD_TIER_RARITIES}); the remaining probability mass goes
+ * to the second-listed rarity, if any. `tier1` is deterministic (100% common,
+ * only one rarity in its pool). Documented assumption (not specified
+ * numerically by the design brief): a 75/25 split, matching the shape of the
+ * existing Common/Uncommon/Rare affinity contract.
+ */
+export const EQUIPMENT_REWARD_TIER_PRIMARY_RARITY_WEIGHT = 0.75;
+
 export const ENHANCEMENT_MIN = 0 as const;
 export const ENHANCEMENT_MAX = 5 as const;
 export const KNOWN_GENERATED_SCHEMA_VERSION = GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION;
@@ -241,6 +287,13 @@ export interface GeneratedEquipmentRegistrySnapshotV1 {
 export interface GeneratedEquipmentRewardBundleV1 {
   readonly schemaVersion: typeof GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION;
   readonly achievementId: string;
+  /**
+   * Tier the bundle was resolved for. Legacy (pre reward-content-slice) fixed
+   * 3-item bundles predate this field; `undefined` is treated by validators as
+   * the legacy fixed-3-rarity shape for back-compat, since no tiered bundle is
+   * ever resolved without one.
+   */
+  readonly tier?: EquipmentRewardTier;
   readonly instanceKeys: readonly GeneratedEquipmentInstanceKey[];
 }
 

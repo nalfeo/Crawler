@@ -11,9 +11,14 @@ import {
   resolveEquipmentRewardBundle,
   resolvePlayerBuildAffinity,
   rollAffinityAlignment,
+  rollTierRarity,
 } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
-import { GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION } from '../../src/shared/generated-equipment-types.js';
+import {
+  EQUIPMENT_REWARD_TIERS,
+  EQUIPMENT_REWARD_TIER_RARITIES,
+  GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+} from '../../src/shared/generated-equipment-types.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1 } from '../../src/core/generated-equipment-registry.js';
@@ -58,6 +63,34 @@ describe('alignmentFromRoll — exact threshold contract', () => {
   });
 });
 
+describe('rollTierRarity — per-tier rarity pool contract', () => {
+  it('tier1 is common-only and consumes zero RNG draws', () => {
+    const rng = new SeededRandom(999);
+    const peek = new SeededRandom(999);
+    expect(rollTierRarity(rng, 'tier1')).toBe('common');
+    // No draw was consumed by rollTierRarity — `rng` and `peek` must still be
+    // in lockstep on their very first `.next()` call.
+    expect(rng.next()).toBe(peek.next());
+  });
+
+  it('tier2/tier3 never draw rare and respect the tier pool order', () => {
+    for (const tier of ['tier2', 'tier3'] as const) {
+      const pool = EQUIPMENT_REWARD_TIER_RARITIES[tier];
+      expect(pool).not.toContain('rare');
+      const low = rollTierRarity(new SeededRandom(1), tier);
+      const high = rollTierRarity(new SeededRandom(2), tier);
+      expect(pool).toContain(low);
+      expect(pool).toContain(high);
+    }
+  });
+
+  it('no tier ever resolves rare', () => {
+    for (const tier of EQUIPMENT_REWARD_TIERS) {
+      expect(EQUIPMENT_REWARD_TIER_RARITIES[tier]).not.toContain('rare');
+    }
+  });
+});
+
 describe('resolvePlayerBuildAffinity', () => {
   it('defaults to physical when no weapon is active', () => {
     const world = makeWorld();
@@ -77,31 +110,39 @@ describe('resolvePlayerBuildAffinity', () => {
   });
 });
 
-describe('resolveEquipmentRewardBundle — structure and rarity contracts', () => {
-  it('always resolves a fixed 3-item Common+Uncommon+Rare bundle', () => {
+describe('resolveEquipmentRewardBundle — structure and tier rarity bounds', () => {
+  it('resolves exactly one instance, tagged with its tier', () => {
     const world = makeWorld();
-    const bundle = resolveEquipmentRewardBundle(world, 'floor2-field-kit', MIXED_BASES);
+    const bundle = resolveEquipmentRewardBundle(world, 'floor2-field-kit', MIXED_BASES, 'tier1');
     expect(bundle.schemaVersion).toBe(GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION);
     expect(bundle.achievementId).toBe('floor2-field-kit');
-    expect(bundle.instanceKeys).toHaveLength(3);
-    const rarities = bundle.instanceKeys.map(
-      (key) => getGeneratedEquipmentInstance(world, key)!.rarity,
-    );
-    expect(rarities).toEqual(['common', 'uncommon', 'rare']);
+    expect(bundle.tier).toBe('tier1');
+    expect(bundle.instanceKeys).toHaveLength(1);
+    const rarity = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!.rarity;
+    expect(EQUIPMENT_REWARD_TIER_RARITIES.tier1).toContain(rarity);
   });
 
-  it('honors rarity effect contracts (Common 0, Uncommon <=1, Rare <=2; Common no non-armor stat bonus)', () => {
+  it.each(EQUIPMENT_REWARD_TIERS)('%s never resolves a rarity outside its allowed pool', (tier) => {
+    for (let seed = 0; seed < 8; seed += 1) {
+      const world = createTestWorld({
+        seed,
+        floor: 2,
+        generatedEquipmentRunKey: `tier-bounds-${tier}-${seed}`,
+      });
+      const bundle = resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES, tier);
+      const rarity = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!.rarity;
+      expect(EQUIPMENT_REWARD_TIER_RARITIES[tier]).toContain(rarity);
+      expect(rarity).not.toBe('rare');
+    }
+  });
+
+  it('tier1 always yields Common with zero non-armor stat bonus and zero resolved effects', () => {
     const world = makeWorld();
-    const bundle = resolveEquipmentRewardBundle(world, 'a', MIXED_BASES);
-    const [common, uncommon, rare] = bundle.instanceKeys.map(
-      (key) => getGeneratedEquipmentInstance(world, key)!,
-    );
-    expect(common!.resolvedEffects).toHaveLength(0);
-    expect(uncommon!.resolvedEffects.length).toBeLessThanOrEqual(1);
-    expect(rare!.resolvedEffects.length).toBeLessThanOrEqual(2);
-    // Common weapon spreads only its base's (empty) inherent stat bonuses — no
-    // non-armor stat bonus.
-    const nonArmor = Object.entries(common!.frozen.statBonuses).filter(
+    const bundle = resolveEquipmentRewardBundle(world, 'a', MIXED_BASES, 'tier1');
+    const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+    expect(instance.rarity).toBe('common');
+    expect(instance.resolvedEffects).toHaveLength(0);
+    const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
       ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
     );
     expect(nonArmor).toHaveLength(0);
@@ -109,21 +150,22 @@ describe('resolveEquipmentRewardBundle — structure and rarity contracts', () =
 
   it('is idempotent — a second resolve returns the identical stored bundle without re-rolling', () => {
     const world = makeWorld();
-    const first = resolveEquipmentRewardBundle(world, 'a', MIXED_BASES);
+    const first = resolveEquipmentRewardBundle(world, 'a', MIXED_BASES, 'tier2');
     const countAfterFirst = listGeneratedEquipmentInstances(world).length;
-    const second = resolveEquipmentRewardBundle(world, 'a', MIXED_BASES);
+    const second = resolveEquipmentRewardBundle(world, 'a', MIXED_BASES, 'tier2');
     expect(second).toBe(first);
     expect(listGeneratedEquipmentInstances(world).length).toBe(countAfterFirst);
   });
 });
 
 describe('resolveEquipmentRewardBundle — determinism and isolation', () => {
-  it('replays identical instance keys AND record content for the same run key + achievement + affinity', () => {
+  it('replays identical instance keys AND record content for the same run key + achievement + tier', () => {
     const worldA = makeWorld('run-x');
     const worldB = makeWorld('run-x');
-    const a = resolveEquipmentRewardBundle(worldA, 'ach', MIXED_BASES);
-    const b = resolveEquipmentRewardBundle(worldB, 'ach', MIXED_BASES);
+    const a = resolveEquipmentRewardBundle(worldA, 'ach', MIXED_BASES, 'tier3');
+    const b = resolveEquipmentRewardBundle(worldB, 'ach', MIXED_BASES, 'tier3');
     expect(b.instanceKeys).toEqual(a.instanceKeys);
+    expect(b.tier).toBe(a.tier);
     // Keys are deterministically `runKey + ordinal`, so equal keys alone do not
     // prove equal base choices, effects, or frozen stats. Compare full records.
     for (let i = 0; i < a.instanceKeys.length; i += 1) {
@@ -134,15 +176,25 @@ describe('resolveEquipmentRewardBundle — determinism and isolation', () => {
   });
 
   it('produces distinct streams for different run keys', () => {
-    const a = resolveEquipmentRewardBundle(makeWorld('run-x'), 'ach', MIXED_BASES);
-    const b = resolveEquipmentRewardBundle(makeWorld('run-y'), 'ach', MIXED_BASES);
+    const a = resolveEquipmentRewardBundle(makeWorld('run-x'), 'ach', MIXED_BASES, 'tier2');
+    const b = resolveEquipmentRewardBundle(makeWorld('run-y'), 'ach', MIXED_BASES, 'tier2');
+    expect(b.instanceKeys).not.toEqual(a.instanceKeys);
+  });
+
+  it('produces distinct streams for different tiers on the same run key + achievement', () => {
+    // Same world (same run key) so the instance-ordinal counter actually
+    // advances between calls — two fresh worlds would both start at ordinal 0
+    // and trivially collide regardless of tier/achievement isolation.
+    const world = makeWorld('run-tier-iso');
+    const a = resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES, 'tier2');
+    const b = resolveEquipmentRewardBundle(world, 'ach2', MIXED_BASES, 'tier3');
     expect(b.instanceKeys).not.toEqual(a.instanceKeys);
   });
 
   it('does not consume the gameplay rng (zero contamination)', () => {
     const withResolve = makeWorld('contam');
     const withoutResolve = makeWorld('contam');
-    resolveEquipmentRewardBundle(withResolve, 'ach', MIXED_BASES);
+    resolveEquipmentRewardBundle(withResolve, 'ach', MIXED_BASES, 'tier2');
     // The next gameplay draw must match a world that never resolved a bundle.
     expect(withResolve.rng.next()).toBe(withoutResolve.rng.next());
   });
@@ -151,7 +203,7 @@ describe('resolveEquipmentRewardBundle — determinism and isolation', () => {
 describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
   it('throws no-run-key and leaves the world untouched when the registry is unconfigured', () => {
     const world = createTestWorld({ seed: 7, floor: 2 });
-    expect(() => resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES)).toThrow(
+    expect(() => resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES, 'tier1')).toThrow(
       RewardBundleResolutionError,
     );
     expect(world.generatedEquipmentRewardBundles.size).toBe(0);
@@ -166,7 +218,7 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     // pools so the partition check never fires first.
     let err: unknown;
     try {
-      resolveEquipmentRewardBundle(world, 'ach', [...MIXED_BASES, 'travelers-cloak']);
+      resolveEquipmentRewardBundle(world, 'ach', [...MIXED_BASES, 'travelers-cloak'], 'tier1');
     } catch (caught) {
       err = caught;
     }
@@ -182,7 +234,7 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     // Only physical bases → no magic-aligned candidate.
     let err: unknown;
     try {
-      resolveEquipmentRewardBundle(world, 'ach', [PHYSICAL_BASE_A, PHYSICAL_BASE_B]);
+      resolveEquipmentRewardBundle(world, 'ach', [PHYSICAL_BASE_A, PHYSICAL_BASE_B], 'tier1');
     } catch (caught) {
       err = caught;
     }
@@ -197,7 +249,7 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     setActiveWeapon(world, getWeaponDef('ember-wand')!); // magic
     let err: unknown;
     try {
-      resolveEquipmentRewardBundle(world, 'ach', [MAGIC_BASE_A, MAGIC_BASE_B]);
+      resolveEquipmentRewardBundle(world, 'ach', [MAGIC_BASE_A, MAGIC_BASE_B], 'tier1');
     } catch (caught) {
       err = caught;
     }
@@ -222,7 +274,7 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     });
     let err: unknown;
     try {
-      resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES);
+      resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES, 'tier1');
     } catch (caught) {
       err = caught;
     }

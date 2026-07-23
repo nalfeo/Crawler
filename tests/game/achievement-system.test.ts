@@ -19,6 +19,8 @@ import {
   createAchievementCatalogRegistry,
   createEmptyAchievementFactSnapshot,
   FLOOR1_ACHIEVEMENTS,
+  FLOOR1_COMMON_CRAFTING_MATERIALS,
+  LOOT_BOX_GOLD_BY_TIER,
   type AchievementDef,
 } from '../../src/shared/achievements.js';
 import {
@@ -303,16 +305,24 @@ describe('achievementSystem', () => {
 });
 
 describe('claimAchievementReward', () => {
-  it('opens an unlocked reward exactly once and reports the reward def', () => {
+  it('opens an unlocked lootBox reward exactly once, grants tier-scaled gold + materials', () => {
     const world = createTestWorld({ seed: 42 });
+    spawnPlayer(world, 0, 0);
     unlockAchievement(world, 'first-bonk');
 
     expect(isAchievementClaimed(world, 'first-bonk')).toBe(false);
+    const goldBefore = world.playerGold;
     const result = claimAchievementReward(world, 'first-bonk');
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.reward).toEqual({ type: 'lootBox', tier: 'trash' });
+      expect(result.grantedLootBox?.gold).toBe(LOOT_BOX_GOLD_BY_TIER.trash);
+      expect(result.grantedLootBox?.materials).toHaveLength(1);
+      for (const materialId of result.grantedLootBox?.materials ?? []) {
+        expect(FLOOR1_COMMON_CRAFTING_MATERIALS).toContain(materialId);
+      }
     }
+    expect(world.playerGold).toBe(goldBefore + LOOT_BOX_GOLD_BY_TIER.trash);
     expect(isAchievementClaimed(world, 'first-bonk')).toBe(true);
 
     const second = claimAchievementReward(world, 'first-bonk');

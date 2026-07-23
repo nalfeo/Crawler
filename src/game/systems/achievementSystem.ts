@@ -162,7 +162,12 @@ export function unlockAchievement(
       return false;
     }
     try {
-      resolveEquipmentRewardBundle(world, achievementId, achievement.reward.bases);
+      resolveEquipmentRewardBundle(
+        world,
+        achievementId,
+        achievement.reward.bases,
+        achievement.reward.tier,
+      );
     } catch (err) {
       if (err instanceof RewardBundleResolutionError) throw err;
       return false;

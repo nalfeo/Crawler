@@ -36,7 +36,8 @@ import {
 } from '../core/generated-equipment-registry.js';
 import {
   GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
-  GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES,
+  EQUIPMENT_REWARD_TIER_RARITIES,
+  isEquipmentRewardTier,
   type GeneratedEquipmentInstanceId,
   type GeneratedEquipmentInstanceKey,
   type GeneratedEquipmentInstanceV1,
@@ -633,25 +634,38 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
         `Reward bundle persisted for already-claimed achievement: ${bundle.achievementId}`,
       );
     }
-    assertArray(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
-    assertUniqueStrings(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
-    // Shape guard (fail-closed): a resolved bundle ALWAYS holds exactly one
-    // Common, one Uncommon, one Rare instance in that canonical order. A stale or
-    // malformed snapshot with the wrong count — or the wrong per-index rarity —
-    // must be rejected so it can never be restored and then "claimed" as an
-    // empty/partial success that silently consumes the reward.
-    if (bundle.instanceKeys.length !== GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES.length) {
+    // Tier guard (fail-closed): a resolved bundle always carries the tier it was
+    // resolved for, and that tier must match the achievement's own defined tier
+    // (defense in depth against a tampered/stale snapshot re-tiering a bundle).
+    if (bundle.tier === undefined || !isEquipmentRewardTier(bundle.tier)) {
       throw new PlayerCarryoverSnapshotError(
-        `Reward bundle ${bundle.achievementId} must contain exactly ${GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES.length} instances, got ${bundle.instanceKeys.length}`,
+        `Reward bundle ${bundle.achievementId} has an invalid or missing tier`,
       );
     }
-    bundle.instanceKeys.forEach((key, index) => {
+    if (bundleAchievement.reward.tier !== bundle.tier) {
+      throw new PlayerCarryoverSnapshotError(
+        `Reward bundle ${bundle.achievementId} tier ${bundle.tier} does not match achievement tier ${bundleAchievement.reward.tier}`,
+      );
+    }
+    assertArray(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
+    assertUniqueStrings(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
+    // Shape guard (fail-closed): a resolved tiered bundle ALWAYS holds exactly
+    // ONE instance whose rarity is a member of that tier's allowed pool. A
+    // stale or malformed snapshot with the wrong count — or an out-of-pool
+    // rarity — must be rejected so it can never be restored and then "claimed"
+    // as an empty/partial success that silently consumes the reward.
+    if (bundle.instanceKeys.length !== 1) {
+      throw new PlayerCarryoverSnapshotError(
+        `Reward bundle ${bundle.achievementId} must contain exactly 1 instance, got ${bundle.instanceKeys.length}`,
+      );
+    }
+    const allowedRarities = EQUIPMENT_REWARD_TIER_RARITIES[bundle.tier];
+    bundle.instanceKeys.forEach((key) => {
       claim(key, `reward-bundle:${bundle.achievementId}`);
       const instance = instancesByKey.get(key)!;
-      const expectedRarity = GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES[index]!;
-      if (instance.rarity !== expectedRarity) {
+      if (!allowedRarities.includes(instance.rarity)) {
         throw new PlayerCarryoverSnapshotError(
-          `Reward bundle ${bundle.achievementId} instance ${index} has rarity ${instance.rarity}, expected ${expectedRarity}`,
+          `Reward bundle ${bundle.achievementId} instance has rarity ${instance.rarity}, expected one of [${allowedRarities.join(', ')}] for tier ${bundle.tier}`,
         );
       }
     });
@@ -921,6 +935,7 @@ export function capturePlayerCarryover(
       (bundle) => ({
         schemaVersion: bundle.schemaVersion,
         achievementId: bundle.achievementId,
+        ...(bundle.tier !== undefined ? { tier: bundle.tier } : {}),
         instanceKeys: [...bundle.instanceKeys],
       }),
     ),
@@ -1046,6 +1061,7 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
       Object.freeze({
         schemaVersion: bundle.schemaVersion,
         achievementId: bundle.achievementId,
+        ...(bundle.tier !== undefined ? { tier: bundle.tier } : {}),
         instanceKeys: Object.freeze([...bundle.instanceKeys]),
       }),
     ]),

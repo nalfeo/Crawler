@@ -534,22 +534,6 @@ describe('player floor carryover', () => {
         rarity: 'common',
       }),
     );
-    const bundledUncommon = createGeneratedEquipmentInstance(
-      source,
-      generatedEquipmentInput({
-        baseId: 'armor.generated-bundle',
-        slots: ['feet'],
-        rarity: 'uncommon',
-      }),
-    );
-    const bundledRare = createGeneratedEquipmentInstance(
-      source,
-      generatedEquipmentInput({
-        baseId: 'armor.generated-bundle',
-        slots: ['feet'],
-        rarity: 'rare',
-      }),
-    );
     expect(addGeneratedEquipmentToBag(source, player, equipped.instanceId).ok).toBe(true);
     expect(
       equipFromBag(
@@ -561,13 +545,15 @@ describe('player floor carryover', () => {
     ).toBe(true);
     expect(addGeneratedEquipmentToBag(source, player, bagged.instanceId).ok).toBe(true);
     // A persisted reward bundle is only valid for a real, unlocked, unclaimed
-    // equipment-reward achievement and must hold exactly one Common/Uncommon/Rare
-    // instance in canonical order (fail-closed carryover contract).
+    // tier1 equipment-reward achievement and must hold exactly one instance
+    // whose rarity is a member of that tier's allowed pool (fail-closed
+    // carryover contract — tier1 is common-only).
     source.achievements.unlockedIds.add('floor2-field-kit');
     source.generatedEquipmentRewardBundles.set('floor2-field-kit', {
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
       achievementId: 'floor2-field-kit',
-      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
+      tier: 'tier1',
+      instanceKeys: [bundledCommon.instanceId],
     });
 
     const snapshot = capturePlayerCarryover(source, player);
@@ -617,7 +603,8 @@ describe('player floor carryover', () => {
     expect(destination.generatedEquipmentRewardBundles.get('floor2-field-kit')).toEqual({
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
       achievementId: 'floor2-field-kit',
-      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
+      tier: 'tier1',
+      instanceKeys: [bundledCommon.instanceId],
     });
     expect(
       Object.isFrozen(destination.generatedEquipmentRewardBundles.get('floor2-field-kit')),

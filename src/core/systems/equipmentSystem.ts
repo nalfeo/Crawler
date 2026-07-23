@@ -62,7 +62,7 @@ import type {
   GeneratedEquipmentInstanceKey,
   GeneratedEquipmentInstanceV1,
 } from '../../shared/generated-equipment-types.js';
-import { GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES } from '../../shared/generated-equipment-types.js';
+import { EQUIPMENT_REWARD_TIER_RARITIES } from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
 import {
   coreGrantGeneratedEquipmentActiveAbility,
@@ -915,17 +915,24 @@ export function claimGeneratedEquipmentRewardBundle(
       reason: { type: 'invalidDef', message: `No reward bundle for achievement: ${achievementId}` },
     };
   }
-  // Shape guard (fail-closed): a resolved bundle ALWAYS holds exactly one Common,
-  // one Uncommon, one Rare instance in that canonical order. Reject a malformed
-  // bundle (wrong count) BEFORE any mutation so a stale/injected empty or partial
+  // Shape guard (fail-closed): a resolved tiered bundle ALWAYS holds exactly
+  // ONE instance whose rarity is a member of that tier's allowed pool (see
+  // `EQUIPMENT_REWARD_TIER_RARITIES`). Reject a malformed bundle (wrong count
+  // or missing tier) BEFORE any mutation so a stale/injected empty or partial
   // bundle can never be "claimed" as a success that consumes the reward for
-  // nothing. Per-index rarity is verified in the validation loop below.
-  if (bundle.instanceKeys.length !== GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES.length) {
+  // nothing. Per-instance rarity is verified in the validation loop below.
+  if (bundle.tier === undefined) {
+    return {
+      ok: false,
+      reason: { type: 'invalidDef', message: 'Reward bundle is missing its tier' },
+    };
+  }
+  if (bundle.instanceKeys.length !== 1) {
     return {
       ok: false,
       reason: {
         type: 'invalidDef',
-        message: `Reward bundle has ${bundle.instanceKeys.length} instances, expected ${GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES.length}`,
+        message: `Reward bundle has ${bundle.instanceKeys.length} instances, expected 1`,
       },
     };
   }
@@ -966,13 +973,13 @@ export function claimGeneratedEquipmentRewardBundle(
         },
       };
     }
-    const expectedRarity = GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES[index]!;
-    if (instance.rarity !== expectedRarity) {
+    const expectedRarities = EQUIPMENT_REWARD_TIER_RARITIES[bundle.tier];
+    if (!expectedRarities.includes(instance.rarity)) {
       return {
         ok: false,
         reason: {
           type: 'invalidDef',
-          message: `Reward bundle instance ${index} has rarity ${instance.rarity}, expected ${expectedRarity}`,
+          message: `Reward bundle instance ${index} has rarity ${instance.rarity}, expected one of [${expectedRarities.join(', ')}] for tier ${bundle.tier}`,
         },
       };
     }
