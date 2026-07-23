@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   getGeneratedEquipmentBaseV1,
@@ -127,6 +128,14 @@ describe('Floor 2 equipment Wave B', () => {
       'FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES',
     );
     expect(Object.keys(floor2EquipmentWaveBModule)).not.toContain('WAVE_B_DISPLAY_NAME_OVERRIDES');
+
+    // Source-wiring guard: verify the Wave B runtime module consumes
+    // FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES and does not privately redefine
+    // the override literals. A private duplicate would bypass all export checks.
+    const waveBSource = readFileSync('src/shared/data/floor2-equipment-wave-b.ts', 'utf-8');
+    expect(waveBSource).toContain('FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES');
+    expect(waveBSource).not.toContain('Iron Faceplate');
+    expect(waveBSource).not.toContain('Iron Legguards');
   });
 
   it('applies Wave B display-name overrides only to runtime equipment defs, never to the canonical art manifest', () => {
