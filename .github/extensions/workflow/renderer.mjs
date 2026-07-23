@@ -1388,8 +1388,8 @@ const CLIENT_SCRIPT = String.raw`
       // reconstructed form only when the lifecycle hasn't propagated the key yet
       // (e.g. a transient "queued this session" accepted-staged state where no
       // manifest entry exists yet). The lifecycle.manifestKey is authoritative
-      // because approveVariant canonicalizes item brief IDs (e.g. `flame-dagger-v2`
-      // → `flame-dagger`), so rebuilding from sel.briefId produces the wrong key.
+      // because approveVariant canonicalizes item brief IDs (e.g. 'flame-dagger-v2'
+      // → 'flame-dagger'), so rebuilding from sel.briefId produces the wrong key.
       var variantId = (candidate.lifecycle && candidate.lifecycle.manifestKey)
         || variantIdFor(sel.briefId, candidate.index);
       var unapprovalEntry = state.unapproval && state.unapproval[variantId];
