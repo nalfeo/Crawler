@@ -11,6 +11,17 @@
     "path": "by-sha/8370b1a666046c0897dfa5bfdb3344fce4eb2087.json"
   },
   {
+    "commit": "afdbf2ffb2ca833bd240acd11cb8c15f548efa11",
+    "commitDate": "2026-07-23T03:15:23Z",
+    "commitSubject": "feat(equipment): B3 — persist generated-instance carryover across save/load and Floor 2 transition (#1661)",
+    "capturedAt": "2026-07-23T04:36:27.567Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29976985285",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/afdbf2ffb2ca833bd240acd11cb8c15f548efa11.json"
+  },
+  {
     "commit": "28ec9a2962fddee6b9b98bc7ec39bb5fe11ec214",
     "commitDate": "2026-07-22T20:23:16-07:00",
     "commitSubject": "docs: annotate MERGE_TRAIN_MODE as deprecated/removed in two handoffs (#1788)",
