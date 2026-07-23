@@ -23,17 +23,12 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 const MANIFEST_PATH = path.join('public', 'assets', 'generated', 'manifest.json');
 const CATALOG_PATH = path.join('src', 'shared', 'data', 'sprite-catalog.json');
 
-function fromRepo(rel: string): string {
-  // When invoked from any CWD, resolve relative to the repo root (two levels
-  // up from scripts/sprites/).
-  const here = new URL(import.meta.url).pathname;
-  const repoRoot = path.resolve(path.dirname(here), '..', '..');
-  return path.resolve(repoRoot, rel);
-}
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 interface ManifestShape {
   version: number;
@@ -48,7 +43,7 @@ interface CatalogEntry {
 
 function checkManifest(): string[] {
   const errors: string[] = [];
-  const absPath = fromRepo(MANIFEST_PATH);
+  const absPath = path.resolve(repoRoot, MANIFEST_PATH);
 
   let manifest: ManifestShape;
   try {
@@ -83,7 +78,7 @@ function checkManifest(): string[] {
 
 function checkCatalog(): string[] {
   const errors: string[] = [];
-  const absPath = fromRepo(CATALOG_PATH);
+  const absPath = path.resolve(repoRoot, CATALOG_PATH);
 
   let catalog: CatalogEntry[];
   try {

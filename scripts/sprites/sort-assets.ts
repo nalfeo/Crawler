@@ -20,14 +20,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 const apply = process.argv.includes('--apply');
 
-function fromRepo(rel: string): string {
-  const here = new URL(import.meta.url).pathname;
-  const repoRoot = path.resolve(path.dirname(here), '..', '..');
-  return path.resolve(repoRoot, rel);
-}
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // ---------------------------------------------------------------------------
 // manifest.json
@@ -36,7 +33,7 @@ function fromRepo(rel: string): string {
 const MANIFEST_PATH = path.join('public', 'assets', 'generated', 'manifest.json');
 
 function sortManifest(): void {
-  const absPath = fromRepo(MANIFEST_PATH);
+  const absPath = path.resolve(repoRoot, MANIFEST_PATH);
   const manifest = JSON.parse(readFileSync(absPath, 'utf8')) as {
     version: number;
     entries: Record<string, unknown>;
@@ -69,7 +66,7 @@ interface CatalogEntry {
 }
 
 function sortCatalog(): void {
-  const absPath = fromRepo(CATALOG_PATH);
+  const absPath = path.resolve(repoRoot, CATALOG_PATH);
   const catalog = JSON.parse(readFileSync(absPath, 'utf8')) as CatalogEntry[];
 
   catalog.sort((a, b) => {

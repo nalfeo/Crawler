@@ -79,11 +79,6 @@ Implemented multi-variant sprite selection and size scaling for mobs with genera
 ## Unresolved Issues
 
 None. All code review concerns addressed:
-<<<<<<< Updated upstream
-
-=======
-
-> > > > > > > Stashed changes
 
 - Baby slime double-scaling fixed (base weight extraction)
 - Missing 'slime-rat' appearance key removed (quest boss doesn't have generated variants yet)

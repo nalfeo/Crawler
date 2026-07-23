@@ -108,6 +108,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Sprite check-in           | `npm run sprites:checkin`                 |
 | Sprite asset PR           | `npm run sprites:asset-pr`                |
 | Sprite normalize items    | `npm run sprites:normalize-item-art`      |
+| Sprite sort assets        | `npm run sprites:sort-assets`             |
 | Sprite gen placeholders   | `npm run sprites:gen-placeholders`        |
 | Sprite fetch gear icons   | `npm run sprites:fetch-gear-icons`        |
 | Sprite placeholder audit  | `npm run sprites:placeholder-audit`       |
@@ -123,6 +124,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Check physics defs sync   | `npm run check:physics-defs-sync`         |
 | Check size coverage       | `npm run check:size-coverage`             |
 | Check weight coverage     | `npm run check:weight-coverage`           |
+| Check asset sort order    | `npm run check:sort-assets`               |
 | Boss ability status       | `npm run boss-abilities:status`           |
 | Docs index                | `npm run docs:index`                      |
 | Visual review             | `npm run review:visual`                   |
