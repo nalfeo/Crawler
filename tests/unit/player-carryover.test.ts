@@ -634,6 +634,29 @@ describe('player floor carryover', () => {
     ).not.toContain('combat-flow');
   });
 
+  it('restores a "player-carryover/v1" snapshot captured before bossChests existed', () => {
+    // Regression test: bossChests was added to the "player-carryover/v1" shape
+    // without a schema-version bump (same pattern PR #1810 used for
+    // generatedEquipmentRewardBundles). A snapshot serialized by a build
+    // before bossChests existed still carries schemaVersion "player-carryover/v1"
+    // and therefore matches the "current schema" branch of
+    // normalizePlayerCarryoverSnapshot — it must default the missing field to
+    // [] instead of hard-failing restore (multi-model code review round 1).
+    const runKey = 'carryover-pre-bosschest-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    expect(Array.isArray(serialized.bossChests)).toBe(true);
+    delete serialized.bossChests;
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).not.toThrow();
+    expect(destination.bossChests.size).toBe(0);
+  });
+
   it('retains independently owned grants after the last equipment source is removed', () => {
     const world = createTestWorld({
       seed: 42,

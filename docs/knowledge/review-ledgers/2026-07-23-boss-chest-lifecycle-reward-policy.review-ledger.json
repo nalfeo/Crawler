@@ -16,8 +16,23 @@
       "notes": "Adversarial review of ADR 0070 vs shipped code (rubber-duck, gpt-5.4, high effort). 3 alternatives argued against and rejected: (A) unified RewardSource abstraction spanning achievements+boss-chests -- rejected, premature generalization for one additional caller; (B) real ECS-entity chest + bossChestSystem -- rejected, no rendering/AI consumer exists yet per explicit scope exclusion; (C) defer opening state until async UX exists -- rejected, 4-state schema now avoids a future breaking migration. 7 concerns, all resolved: #1 (carryover not wired to a separate real save/load path) rejected with reasoning -- PlayerCarryoverSnapshot IS the only save/load mechanism in the codebase (confirmed via repo-wide grep), so the premise was false. #2 (ADR text stale vs shipped code: wrong base-pool constant name, wrong revealed-bundle-liveness claim, wrong drop/log claim) fixed -- ADR 0070 updated to match code exactly. #3 (no namespace guard against an achievement id colliding with the boss-chest: prefix) fixed -- added BOSS_CHEST_ID_PREFIX shared constant + createAchievementCatalog/parseAchievementCatalog validation guard throwing on collision, createBossChestId updated to consume the same constant, new unit test added. #4 (decapitated.add/goal-flag mutations ran before spawnBossChestForDefeatedBoss, so a resolver throw would permanently latch a boss as defeated with no chest and no retry) fixed -- reordered floor2Scenario.ts so chest spawn now runs first; all affected unit/integration/headless suites re-run and green. #5 (no production caller yet for openBossChest/acknowledgeBossChestReveal) accepted as explicit scope note -- presentation/UX wiring is out of scope per the original ask. #6 (BossChestRecord schema has no entity/location field) accepted as a documented future-extension note, no code change needed at this scope. #7 (getFloor2EquipmentEconomyAccess invalid/disabled collapse) rejected with reasoning -- identical to the existing unlockAchievement precedent (achievementSystem.ts), not a new gap introduced by this slice; fixing would require touching the achievement path too, out of scope."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,

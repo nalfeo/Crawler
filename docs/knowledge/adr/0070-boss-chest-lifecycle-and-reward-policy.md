@@ -110,7 +110,21 @@ carryover) across `src/core` and `src/game`, so it requires an ADR.
    grants instances — well before the record reaches `claimed`). Malformed or
    inconsistent records throw `PlayerCarryoverSnapshotError` and fail closed
    the restore entirely, matching every other structural guard in
-   `playerCarryover.ts` — there is no drop-and-log fallback.
+   `playerCarryover.ts` — there is no drop-and-log fallback. **Backward
+   compatibility for the field itself**: `bossChests` was added to the
+   `"player-carryover/v1"` shape without a schema-version bump (the same
+   pattern PR #1810 used for `generatedEquipmentRewardBundles`), so a snapshot
+   captured before this field existed still carries `schemaVersion:
+"player-carryover/v1"` and matches the "current schema" branch of
+   `normalizePlayerCarryoverSnapshot`. Multi-model code review (round 1, two
+   independent models) caught that this branch cast the input directly
+   without defaulting the new field, so restoring such a snapshot would throw
+   `Expected array at bossChests`. Fixed by defaulting `bossChests` to `[]`
+   in that branch when absent, so pre-existing saves restore cleanly with no
+   boss chests (correct, since no boss chest could have existed for them).
+   See `tests/unit/player-carryover.test.ts`'s
+   `restores a "player-carryover/v1" snapshot captured before bossChests
+existed` regression test.
 
 8. **Reserved id namespace.** Achievement ids and boss-chest ids share one
    reward-bundle keyspace. `BOSS_CHEST_ID_PREFIX` (`'boss-chest:'`, defined in
