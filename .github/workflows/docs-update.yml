@@ -1,8 +1,15 @@
 name: Docs Update Loop
 
 on:
+  # Rebuild INDEX.md whenever a new date-stamped handoff file lands on main.
+  # Matches 2026-*.md, 2027-*.md, etc. — never INDEX.md itself (preventing
+  # an infinite trigger loop).
+  push:
+    branches: [main]
+    paths:
+      - 'docs/knowledge/handoffs/2*.md'
   schedule:
-    # Mondays at 09:00 UTC
+    # Mondays at 09:00 UTC (catch-all for any drift)
     - cron: '0 9 * * 1'
   workflow_dispatch:
 
