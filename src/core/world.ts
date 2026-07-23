@@ -100,6 +100,7 @@ import type {
 import {
   createEmptyAchievementFactSnapshot,
   type AchievementFactSnapshot,
+  type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
 
 const logger = createLogger('core:world');
@@ -206,6 +207,12 @@ export interface GameWorld {
   generatedEquipmentRegistry: GeneratedEquipmentRegistry;
   /** Unopened generated-equipment reward bundles keyed by achievement ID. */
   generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
+  /**
+   * Unclaimed Floor 1 `lootBox` reward bundles keyed by achievement ID.
+   * Resolved once at unlock (see `resolveLootBoxRewardBundle`) and consumed
+   * read-only by `claimAchievementReward` — no RNG at claim/load/presentation.
+   */
+  lootBoxRewardBundles: Map<string, LootBoxRewardBundleV1>;
   /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
   statusEffectsByEntity: Map<number, StatusEffect[]>;
   /** Per-door lock configurations (eid → lock config). */
@@ -616,6 +623,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       generationPolicy: options.generatedEquipmentGenerationPolicy,
     }),
     generatedEquipmentRewardBundles: new Map(),
+    lootBoxRewardBundles: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
