@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { CachingRunStore, isCacheableKey } from '../../../scripts/sprites/store/caching-store.js';
 import { SharedResourceCache } from '../../../scripts/sprites/store/shared-cache.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
@@ -35,19 +36,36 @@ async function flushAsync(times = 20): Promise<void> {
 }
 
 /**
- * Polls `predicate`, yielding one macrotask turn between attempts, until it
+ * Polls `predicate`, waiting a short REAL delay between attempts, until it
  * returns `true` or `maxAttempts` is exhausted. The SWR background refresh
  * performs genuine filesystem I/O (a cache write plus, for purges, a cache
  * remove) whose wall-clock completion time varies with disk/OS scheduling —
- * a fixed `flushAsync` tick count is not a reliable bound for it. Polling an
- * observable end-state (rather than assuming a tick count) keeps the wait
- * both fast on the common case and robust on a slow filesystem, with no
- * `Math.random`/`Date.now` and no real `setTimeout` delay.
+ * a fixed `flushAsync` tick count is not a reliable bound for it.
+ *
+ * A pure `setImmediate` loop (no real timer) does NOT reliably give that I/O
+ * enough wall-clock time to complete: `setImmediate` callbacks fire as soon
+ * as the event loop's check phase is reached, which can happen far faster
+ * than pending libuv-threadpool fs work (cacache's `put`/`get.info`/`rm`)
+ * settles — especially when many sprite test files run concurrently across
+ * vitest's worker threads and contend for the same process-wide threadpool
+ * (default `UV_THREADPOOL_SIZE=4`). Under that contention, all `maxAttempts`
+ * ticks can elapse in microseconds of wall time while the real fs work is
+ * still queued, which is exactly the ~50% CI flake this helper caused for
+ * 'bumps the mutation token before purging so a get() racing the purge
+ * cannot resurrect the blob' (main-health flake, see docs/knowledge/handoffs).
+ * A real (short) delay between attempts gives genuinely elapsed wall-clock
+ * time for that queued work to drain, so the total real budget below
+ * (attempts × delay) actually bounds how long we wait — not just how many
+ * scheduler turns we burn through.
  */
-async function waitUntil(predicate: () => Promise<boolean>, maxAttempts = 500): Promise<boolean> {
+async function waitUntil(
+  predicate: () => Promise<boolean>,
+  maxAttempts = 500,
+  delayMs = 20,
+): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     if (await predicate()) return true;
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await delay(delayMs);
   }
   return false;
 }
