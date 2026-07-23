@@ -1,5 +1,16 @@
 [
   {
+    "commit": "8370b1a666046c0897dfa5bfdb3344fce4eb2087",
+    "commitDate": "2026-07-23T03:15:39Z",
+    "commitSubject": "feat(equipment): add Floor 2 weapon Wave A (#1749)",
+    "capturedAt": "2026-07-23T04:33:45.524Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29977092814",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/8370b1a666046c0897dfa5bfdb3344fce4eb2087.json"
+  },
+  {
     "commit": "e319166676921181afb7b86e93b9ba782c172a29",
     "commitDate": "2026-07-22T17:08:26-07:00",
     "commitSubject": "chore(review-ledger): correct #1789 plan_divergence convergent->minor (#1790)",
