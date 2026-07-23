@@ -6,6 +6,8 @@ import {
   type WeaponTypeValue,
 } from './constants.js';
 import type { WeaponClassSkillId, WeaponTypeSkillId } from './weapon-skills.js';
+import { FLOOR2_WEAPON_WAVE_A_BASES } from './data/floor2-weapon-bases.js';
+import { createWeaponDef } from './weapon-def-defaults.js';
 
 export interface WeaponDef {
   readonly id: string;
@@ -63,43 +65,8 @@ export interface WeaponDef {
   readonly weaponTypeSkillId: WeaponTypeSkillId;
 }
 
-function def(
-  partial: Partial<WeaponDef> &
-    Pick<
-      WeaponDef,
-      | 'id'
-      | 'name'
-      | 'weaponType'
-      | 'baseDamage'
-      | 'cooldownMs'
-      | 'weaponClassSkillId'
-      | 'weaponTypeSkillId'
-    >,
-): WeaponDef {
-  return {
-    range: 0,
-    projectileSpeed: 0,
-    aoeRadius: 0,
-    durationMs: 0,
-    beamTickMs: 0,
-    beamLength: 0,
-    trapArmMs: 0,
-    trapTriggerRadius: 0,
-    trapExplosionRadius: 0,
-    returnSpeed: 0,
-    maxRange: 0,
-    swingArcDeg: 360,
-    meleeStyle: MeleeStyle.SLASH,
-    headRadius: 0,
-    shaftDamageMult: 1.0,
-    knockback: 0,
-    pierce: 0,
-    bounceCount: 0,
-    goreFactor: 0.5,
-    baseAccuracy: 0.85,
-    ...partial,
-  };
-}
+/** @see createWeaponDef in weapon-def-defaults.ts (shared with Floor 2 Wave A bases) */
+const def = createWeaponDef;
 
 export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
   // --- Melee ---
@@ -386,6 +353,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       weaponTypeSkillId: 'spellcraft',
     }),
   ],
+  ...FLOOR2_WEAPON_WAVE_A_BASES.map(
+    (definition) => [definition.weaponDef.id, definition.weaponDef] as const,
+  ),
 ]);
 
 export function getWeaponDef(id: string): WeaponDef | undefined {

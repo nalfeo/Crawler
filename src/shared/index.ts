@@ -15,6 +15,15 @@ export type { InputState } from './input.js';
 export { SeededRandom } from './random.js';
 export { WEAPON_DEFS, getWeaponDef } from './weaponDefs.js';
 export type { WeaponDef } from './weaponDefs.js';
+export {
+  FLOOR2_WEAPON_WAVE_A_BASES,
+  FLOOR2_WEAPON_WAVE_A_BASE_IDS,
+  getFloor2WeaponWaveABase,
+} from './data/floor2-weapon-bases.js';
+export type {
+  Floor2WeaponBaseDefinition,
+  Floor2WeaponBaseFamily,
+} from './data/floor2-weapon-bases.js';
 export { MOB_DEFS, getMobDef } from './mobDefs.js';
 export type { MobDef } from './mobDefs.js';
 export { TILE_DEFS, getTileDef, getTilesByBiome } from './tileDefs.js';
