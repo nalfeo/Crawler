@@ -260,7 +260,9 @@ export function buildActionsState({ runs, activeRunsTruncated, partialErrors }, 
     warnings.push('One or more workflow job lists were truncated.');
   }
   if (normalizedRuns.some((run) => run.jobsError)) {
-    warnings.push('One or more workflow job lists could not be loaded; occupancy data is incomplete.');
+    warnings.push(
+      'One or more workflow job lists could not be loaded; occupancy data is incomplete.',
+    );
   }
   warnings.push(...partialErrors);
   if (inProgress >= runnerCap) {

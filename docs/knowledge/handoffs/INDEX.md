@@ -46,7 +46,7 @@ _…and 17 older, see `archive/`._
 - [2026-07-21-equipment-balance-gates-pr-recovery](2026-07-21-equipment-balance-gates-pr-recovery.md) — Handoff: PR #1577 recovery follow-up
 - [2026-07-21-pr1735-resume-revert-recovery](2026-07-21-pr1735-resume-revert-recovery.md) — Handoff — PR #1735 cross-run resume revert recovery
 - [2026-07-20-ai-sweep-net-win-promotion](2026-07-20-ai-sweep-net-win-promotion.md) — Replaced the "zero flips" hard-gate clause with a "strictly more total wins
-- [2026-07-19-ai-sweep-eval-parallel-rounds](2026-07-19-ai-sweep-eval-parallel-rounds.md) — Redesigned the search into a **checkpointed, matrix-parallel, bounded 1–3
+- [2026-07-19-ai-sweep-eval-parallel-rounds](2026-07-19-ai-sweep-eval-parallel-rounds.md) — Redesigned the search into a \*\*checkpointed, matrix-parallel, bounded 1–3
 - [2026-07-19-local-sweep-discovery-main-merge-recovery](2026-07-19-local-sweep-discovery-main-merge-recovery.md) — Fetched the latest `origin/main` and merged it into `nalfeo-local-sweep-discovery`.
 - [2026-07-18-equipment-balance-gates](2026-07-18-equipment-balance-gates.md) — Added a deterministic production-backed balance harness with five fixed build
 - [2026-07-16-cloud-sweep-viewer](2026-07-16-cloud-sweep-viewer.md) — Extended the project-scoped Sweep Results Viewer canvas to load weapon-sweep
@@ -371,7 +371,7 @@ _…and 78 older, see `archive/`._
 - [2026-07-01-pages-generated-sprite-basepath](2026-07-01-pages-generated-sprite-basepath.md) — Made generated sprite manifest and PNG URLs resolve against the Vite/GitHub Pages base path in `src/engine/generatedAssets/preload.ts`.
 - [2026-06-30-codex-repair-azure-bounce-gate](2026-06-30-codex-repair-azure-bounce-gate.md) — Three bundled features on this branch, plus review-harness hardening:
 - [2026-06-30-sidecar-shared-selector-deployment](2026-06-30-sidecar-shared-selector-deployment.md) — Handoff - sidecar shared selector deployment
-- [2026-06-29-azure-foundry-content-gen](2026-06-29-azure-foundry-content-gen.md) — Authored **ADR 0033 — Migrate Content Generation from Direct Azure OpenAI to
+- [2026-06-29-azure-foundry-content-gen](2026-06-29-azure-foundry-content-gen.md) — Authored \*\*ADR 0033 — Migrate Content Generation from Direct Azure OpenAI to
 - [2026-06-29-azure-openai-provider](2026-06-29-azure-openai-provider.md) — Added a third provider, **`azure`** (Azure OpenAI), to the codex-repair autonomous
 - [2026-06-29-azure-sheet-triage-controls](2026-06-29-azure-sheet-triage-controls.md) — Handoff: Azure sheet triage controls
 - [2026-06-29-azure-sidecar-policy-and-sprite-checkin](2026-06-29-azure-sidecar-policy-and-sprite-checkin.md) — Built and launched devtools/sidecar, then corrected sidecar launch behavior to Azure-first.
@@ -461,7 +461,7 @@ _…and 43 older, see `archive/`._
 - [2026-07-17-floor-2-epic-control-pr-recovery](2026-07-17-floor-2-epic-control-pr-recovery.md) — Recovered PR #1286's epic-control blockers without widening scope beyond the
 - [2026-07-11-stop-pre-pr-full-verify](2026-07-11-stop-pre-pr-full-verify.md) — Removed the unconditional instruction to run full `npm run verify` before committing or creating a PR. The top-level agent instructions, re…
 - [2026-07-09-sprite-editor-canvas-ux](2026-07-09-sprite-editor-canvas-ux.md) — 2026-07-09 - Sprite editor canvas UX upgrades
-- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built **on top of the existing pipeline i…
+- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built \*\*on top of the existing pipeline i…
 - [2026-07-05-session-plans-chat](2026-07-05-session-plans-chat.md) — Updated the top-level session instructions in `AGENTS.md` and `.github/copilot-instructions.md` so new sessions must explicitly say whether…
 
 ## docs-tooling

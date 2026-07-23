@@ -18,9 +18,7 @@
       "rounds": [
         {
           "round": 1,
-          "models": [
-            "claude-sonnet-5"
-          ],
+          "models": ["claude-sonnet-5"],
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true,
