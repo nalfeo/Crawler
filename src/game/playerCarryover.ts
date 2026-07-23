@@ -381,12 +381,100 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   };
 
   assertArray(normalized.inventorySlots, 'inventorySlots');
+  for (let i = 0; i < normalized.inventorySlots.length; i++) {
+    const slot: unknown = normalized.inventorySlots[i];
+    if (typeof slot !== 'object' || slot === null || Array.isArray(slot)) {
+      throw new PlayerCarryoverSnapshotError(`Expected object at inventorySlots[${i}]`);
+    }
+    const slotRecord = slot as Record<string, unknown>;
+    if (typeof slotRecord.itemId !== 'string' || slotRecord.itemId.length === 0) {
+      throw new PlayerCarryoverSnapshotError(
+        `Expected non-empty string at inventorySlots[${i}].itemId`,
+      );
+    }
+    if (typeof slotRecord.quantity !== 'number') {
+      throw new PlayerCarryoverSnapshotError(`Expected number at inventorySlots[${i}].quantity`);
+    }
+  }
   assertArray(normalized.equippedItemIds, 'equippedItemIds');
+  for (const itemId of normalized.equippedItemIds as readonly unknown[]) {
+    if (typeof itemId !== 'string') {
+      throw new PlayerCarryoverSnapshotError(`equippedItemIds must contain strings`);
+    }
+  }
   assertArray(normalized.generatedInventoryInstanceKeys, 'generatedInventoryInstanceKeys');
   assertArray(normalized.generatedEquippedInstanceKeys, 'generatedEquippedInstanceKeys');
   assertArray(normalized.generatedEquipmentRewardBundles, 'generatedEquipmentRewardBundles');
   assertArray(normalized.lootBoxRewardBundles, 'lootBoxRewardBundles');
   assertArray(normalized.disabledEquipmentSlots, 'disabledEquipmentSlots');
+  for (const slotId of normalized.disabledEquipmentSlots as readonly unknown[]) {
+    if (typeof slotId !== 'string') {
+      throw new PlayerCarryoverSnapshotError(`disabledEquipmentSlots must contain strings`);
+    }
+  }
+  assertArray(normalized.playerSkills, 'playerSkills');
+  for (let i = 0; i < (normalized.playerSkills as readonly unknown[]).length; i++) {
+    const entry: unknown = (normalized.playerSkills as readonly unknown[])[i];
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string') {
+      throw new PlayerCarryoverSnapshotError(`Expected [id, state] tuple at playerSkills[${i}]`);
+    }
+  }
+  assertArray(normalized.persistentStatModifiers, 'persistentStatModifiers');
+  for (let i = 0; i < (normalized.persistentStatModifiers as readonly unknown[]).length; i++) {
+    const entry: unknown = (normalized.persistentStatModifiers as readonly unknown[])[i];
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new PlayerCarryoverSnapshotError(`Expected object at persistentStatModifiers[${i}]`);
+    }
+  }
+  const achievementsRaw: unknown = normalized.achievements;
+  if (
+    typeof achievementsRaw !== 'object' ||
+    achievementsRaw === null ||
+    Array.isArray(achievementsRaw)
+  ) {
+    throw new PlayerCarryoverSnapshotError('achievements must be a non-null object');
+  }
+  const ach = achievementsRaw as Record<string, unknown>;
+  assertArray(ach.unlockedIds, 'achievements.unlockedIds');
+  assertArray(ach.pendingUnlockIds, 'achievements.pendingUnlockIds');
+  assertArray(ach.claimedIds, 'achievements.claimedIds');
+  const abilityStateRaw: unknown = normalized.abilityState;
+  if (abilityStateRaw !== undefined) {
+    if (
+      typeof abilityStateRaw !== 'object' ||
+      abilityStateRaw === null ||
+      Array.isArray(abilityStateRaw)
+    ) {
+      throw new PlayerCarryoverSnapshotError('abilityState must be a non-null object');
+    }
+    const ast = abilityStateRaw as Record<string, unknown>;
+    const validateGrantSourceEntries = (entries: unknown, field: string): void => {
+      if (entries === undefined || entries === null) return;
+      if (!Array.isArray(entries)) {
+        throw new PlayerCarryoverSnapshotError(`Expected array at ${field}`);
+      }
+      for (let i = 0; i < entries.length; i++) {
+        const entry: unknown = entries[i];
+        if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Array.isArray(entry[1])) {
+          throw new PlayerCarryoverSnapshotError(`Malformed ${field} entry at index ${i}`);
+        }
+        for (let j = 0; j < (entry[1] as unknown[]).length; j++) {
+          const src: unknown = (entry[1] as unknown[])[j];
+          if (typeof src !== 'object' || src === null) {
+            throw new PlayerCarryoverSnapshotError(`Malformed ${field} source at ${i}[${j}]`);
+          }
+        }
+      }
+    };
+    validateGrantSourceEntries(
+      ast.activeAbilityGrantSources,
+      'abilityState.activeAbilityGrantSources',
+    );
+    validateGrantSourceEntries(
+      ast.passiveAbilityGrantSources,
+      'abilityState.passiveAbilityGrantSources',
+    );
+  }
   return normalized;
 }
 
@@ -590,7 +678,15 @@ function validateGrantOwnership(
   const toSourcesMap = (
     entries: readonly (readonly [string, readonly AbilityGrantSourceId[]])[] | undefined,
   ): Map<string, Set<AbilityGrantSourceId>> =>
-    new Map((entries ?? []).map(([abilityId, sources]) => [abilityId, new Set(sources)]));
+    new Map(
+      (entries ?? []).map((entry) => {
+        if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Array.isArray(entry[1])) {
+          throw new PlayerCarryoverSnapshotError('Malformed grant ownership source entry');
+        }
+        const [abilityId, sources] = entry as [string, readonly AbilityGrantSourceId[]];
+        return [abilityId, new Set(sources)] as const;
+      }),
+    );
 
   const activeSourcesByAbilityId = toSourcesMap(
     abilityState?.grantOwnership?.activeSourcesByAbilityId,
@@ -925,11 +1021,20 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
     allowGeneratedEquipment: boolean,
   ): void => {
     if (!grantSources) return;
-    for (const [abilityId, sources] of grantSources) {
+    for (const entry of grantSources as readonly unknown[]) {
+      if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Array.isArray(entry[1])) {
+        throw new PlayerCarryoverSnapshotError(`Malformed ${field} entry`);
+      }
+      const abilityId = entry[0] as string;
+      const sources = entry[1] as readonly unknown[];
       for (const source of sources) {
+        if (typeof source !== 'object' || source === null) {
+          throw new PlayerCarryoverSnapshotError(`Malformed ${field} source for ${abilityId}`);
+        }
+        const typedSource = source as AbilityGrantSource;
         if (
-          source.kind === 'equipment' ||
-          (source.kind === 'generated-equipment' && !allowGeneratedEquipment)
+          typedSource.kind === 'equipment' ||
+          (typedSource.kind === 'generated-equipment' && !allowGeneratedEquipment)
         ) {
           throw new PlayerCarryoverSnapshotError(
             `Snapshot ${field} must not contain equipment source for ${abilityId}`,
@@ -944,33 +1049,44 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
     if (!grantSources) return;
     const equippedInstanceKeys = new Set(snapshot.generatedEquippedInstanceKeys);
     const seenGeneratedSources = new Set<string>();
-    for (const [abilityId, sources] of grantSources) {
+    for (const entry of grantSources as readonly unknown[]) {
+      if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Array.isArray(entry[1])) {
+        throw new PlayerCarryoverSnapshotError('Malformed activeAbilityGrantSources entry');
+      }
+      const abilityId = entry[0] as string;
+      const sources = entry[1] as readonly unknown[];
       for (const source of sources) {
-        if (source.kind !== 'generated-equipment') continue;
-        if (!equippedInstanceKeys.has(source.instanceId)) {
+        if (typeof source !== 'object' || source === null) {
           throw new PlayerCarryoverSnapshotError(
-            `Snapshot activeAbilityGrantSources has unequipped generated source for ${abilityId}: ${source.instanceId}`,
+            `Malformed activeAbilityGrantSources source for ${abilityId}`,
           );
         }
-        const instance = instancesByKey.get(source.instanceId);
+        const typedSource = source as AbilityGrantSource;
+        if (typedSource.kind !== 'generated-equipment') continue;
+        if (!equippedInstanceKeys.has(typedSource.instanceId)) {
+          throw new PlayerCarryoverSnapshotError(
+            `Snapshot activeAbilityGrantSources has unequipped generated source for ${abilityId}: ${typedSource.instanceId}`,
+          );
+        }
+        const instance = instancesByKey.get(typedSource.instanceId);
         if (!instance) {
           throw new PlayerCarryoverSnapshotError(
-            `Snapshot activeAbilityGrantSources has unknown generated source for ${abilityId}: ${source.instanceId}`,
+            `Snapshot activeAbilityGrantSources has unknown generated source for ${abilityId}: ${typedSource.instanceId}`,
           );
         }
-        if (!Number.isInteger(source.effectOrdinal) || source.effectOrdinal < 0) {
+        if (!Number.isInteger(typedSource.effectOrdinal) || typedSource.effectOrdinal < 0) {
           throw new PlayerCarryoverSnapshotError(
-            `Snapshot activeAbilityGrantSources has invalid generated source ordinal for ${abilityId}: ${String(source.effectOrdinal)}`,
+            `Snapshot activeAbilityGrantSources has invalid generated source ordinal for ${abilityId}: ${String(typedSource.effectOrdinal)}`,
           );
         }
-        const sourceKey = `${source.instanceId}:${source.effectOrdinal}`;
+        const sourceKey = `${typedSource.instanceId}:${typedSource.effectOrdinal}`;
         if (seenGeneratedSources.has(sourceKey)) {
           throw new PlayerCarryoverSnapshotError(
             `Snapshot activeAbilityGrantSources has duplicate generated source for ${abilityId}: ${sourceKey}`,
           );
         }
         seenGeneratedSources.add(sourceKey);
-        if (instance.frozen.abilityGrants[source.effectOrdinal] !== abilityId) {
+        if (instance.frozen.abilityGrants[typedSource.effectOrdinal] !== abilityId) {
           throw new PlayerCarryoverSnapshotError(
             `Snapshot activeAbilityGrantSources mismatches generated source for ${abilityId}: ${sourceKey}`,
           );
