@@ -94,7 +94,7 @@ describe('Floor 2 settlement · initialization', () => {
     _resetEmergentEventCache();
   });
 
-  it('spawns the Broker, a family defector, a guaranteed Quartermaster, and 1-2 non-QM shops inside the settlement cluster', () => {
+  it('spawns the Broker, a family defector, and 1-2 shops inside the settlement cluster', () => {
     const world = createTestWorld({ seed: 999 });
     world.floorMap = buildFloor2Map();
     const playerEid = spawnPlayer(world, 0, 0);
@@ -151,8 +151,6 @@ describe('Floor 2 settlement · initialization', () => {
       for (const item of shop.inventory) {
         expect(item.unitPrice).toBeGreaterThanOrEqual(1);
       }
-      // No shop in the random pool should be the Quartermaster.
-      expect(shop.archetypeId).not.toBe(QUARTERMASTER_ARCHETYPE_ID);
     }
 
     const elite = getFloor2FamilyEliteArchetype(snap.defectorFamilyId);

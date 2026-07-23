@@ -164,25 +164,6 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     weaponId: 'landmine',
     weightLb: 3,
   }),
-  // --- Floor 2 weapons ---
-  weapon({
-    id: 'sun-hammer',
-    name: 'Sun Hammer',
-    slots: ['mainHand', 'offHand'],
-    statBonuses: {},
-    rarity: 'rare',
-    weaponId: 'sun-hammer',
-    weightLb: 8,
-  }),
-  weapon({
-    id: 'ember-wand',
-    name: 'Ember Wand',
-    slots: ['mainHand'],
-    statBonuses: {},
-    rarity: 'rare',
-    weaponId: 'ember-wand',
-    weightLb: 1.5,
-  }),
 ];
 
 // ---------------------------------------------------------------------------
@@ -209,16 +190,6 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     weightLb: 5,
   },
   {
-    // Floor 2 batfolk headgear — lightweight membrane hood granting evasion
-    // and dexterity bonuses (armor +1, dexterity +2, dodgeChance +4%).
-    id: 'batfolk-hood',
-    name: 'Batfolk Hood',
-    slots: ['head'],
-    statBonuses: { armor: 1, dexterity: 2, dodgeChance: 0.04 },
-    rarity: 'uncommon',
-    weightLb: 1,
-  },
-  {
     id: 'iron-visor',
     name: 'Iron Visor',
     slots: ['face'],
@@ -241,14 +212,6 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     statBonuses: { armor: 4, constitution: 1 },
     rarity: 'uncommon',
     weightLb: 15,
-  },
-  {
-    id: 'runed-cuirass',
-    name: 'Runed Cuirass',
-    slots: ['chest'],
-    statBonuses: { armor: 6, intelligence: 2, constitution: 1 },
-    rarity: 'rare',
-    weightLb: 14,
   },
   {
     id: 'travelers-cloak',

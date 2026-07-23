@@ -366,12 +366,56 @@ const CLIENT_SCRIPT = String.raw`
   }
   window.__workflowPostprocessReady = handlePostprocessReady;
 
+  function applyPostprocessPatch(patch) {
+    if (!lastState || !lastState.selected || !patch) return;
+    if (
+      patch.briefId !== lastState.selected.briefId ||
+      patch.runId !== lastState.selected.runId
+    ) return;
+    var isAll = patch.scope === 'all';
+    var isVariant = patch.scope === 'variant' && typeof patch.variantIndex === 'number';
+    if (!isAll && !isVariant) return;
+    var replacements = Array.isArray(patch.candidates) ? patch.candidates : [];
+    var patchTs = Date.now();
+    // Build an index of the current candidates so we can preserve the
+    // UI-owned feedback and lifecycle fields that composeState adds but that
+    // the persisted (bare) patch data does not carry.
+    var existingByIndex = {};
+    (lastState.candidates || []).forEach(function (c) {
+      if (c) existingByIndex[String(c.index)] = c;
+    });
+    lastState.candidates = replacements.map(function (r) {
+      if (!r) return r;
+      var existing = existingByIndex[String(r.index)];
+      var out = Object.assign({}, r);
+      if (existing) {
+        if (existing.feedback !== undefined) out.feedback = existing.feedback;
+        if (existing.lifecycle !== undefined) out.lifecycle = existing.lifecycle;
+      }
+      // Tag reprocessed-PNG variants with a cache-buster so the browser
+      // fetches the new image rather than reusing a cached stale thumbnail.
+      if (isAll || r.index === patch.variantIndex) out._patchTs = patchTs;
+      return out;
+    });
+    lastState.stale = false;
+    var staleBadge = document.querySelector('.stale-badge');
+    if (staleBadge) staleBadge.remove();
+    if (activeTab !== 'runs') return;
+    // Re-render the full candidates section: a variant-scoped reprocess also
+    // rebuilds every sibling's summary entry (clearing judge maps), so all
+    // cards need refreshing, not just the target card.
+    var section = document.querySelector('[data-workflow-candidates]');
+    if (section) section.replaceWith(renderCandidates(lastState));
+  }
+
   window.addEventListener('message', function (ev) {
     if (!postprocessIframe || ev.source !== postprocessIframe.contentWindow) return;
     if (ev.origin !== window.location.origin) return;
     var msg = ev.data;
     if (msg && msg.type === 'postprocess:ready') {
       handlePostprocessReady(msg.context || null);
+    } else if (msg && msg.type === 'postprocess:applied') {
+      applyPostprocessPatch(msg.patch || null);
     }
   });
 
@@ -1294,10 +1338,42 @@ const CLIENT_SCRIPT = String.raw`
     return pill;
   }
 
+  function renderCandidateCard(state, sel, candidate) {
+    var status = candidateStatus(candidate);
+    var card = h('div', {
+      class: 'card',
+      'data-variant-index': String(candidate.index)
+    }, []);
+    card.appendChild(h('div', { class: 'between' }, [
+      h('strong', { text: 'Variant #' + candidate.index }),
+      h('span', { text: candidate.score + '/' + candidate.outOf, class: 'muted' })
+    ]));
+    card.appendChild(h('span', {
+      class: 'status-pill',
+      style: { color: STATUS_COLORS[status.kind] },
+      text: status.label
+    }));
+    card.appendChild(lifecyclePill(candidate));
+    var thumb = document.createElement('img');
+    thumb.className = 'thumb';
+    thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(candidate.index) + '.png') +
+      (candidate._patchTs ? '&ts=' + candidate._patchTs : '');
+    thumb.alt = 'variant ' + candidate.index;
+    card.appendChild(thumb);
+    renderJudge(card, candidate, sel);
+    renderSensors(card, candidate, sel);
+    renderAcceptance(card, state, sel, candidate);
+    card.appendChild(renderPostprocessHandoff(sel, candidate.index));
+    return card;
+  }
+
   function renderCandidates(state) {
     var sel = state.selected;
     var cands = state.candidates || [];
-    var wrap = h('div', { style: { marginTop: '16px' } }, [
+    var wrap = h('div', {
+      style: { marginTop: '16px' },
+      'data-workflow-candidates': 'true'
+    }, [
       h('div', { class: 'section-title', text: 'Variants & pipeline traces (' + cands.length + ')' })
     ]);
     if (!sel || cands.length === 0) {
@@ -1306,25 +1382,7 @@ const CLIENT_SCRIPT = String.raw`
     }
     var grid = h('div', { class: 'cards' }, []);
     for (var i = 0; i < cands.length; i++) {
-      var c = cands[i];
-      var status = candidateStatus(c);
-      var card = h('div', { class: 'card' }, []);
-      card.appendChild(h('div', { class: 'between' }, [
-        h('strong', { text: 'Variant #' + c.index }),
-        h('span', { text: c.score + '/' + c.outOf, class: 'muted' })
-      ]));
-      card.appendChild(h('span', { class: 'status-pill', style: { color: STATUS_COLORS[status.kind] }, text: status.label }));
-      card.appendChild(lifecyclePill(c));
-      var thumb = document.createElement('img');
-      thumb.className = 'thumb';
-      thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(c.index) + '.png');
-      thumb.alt = 'variant ' + c.index;
-      card.appendChild(thumb);
-      renderJudge(card, c, sel);
-      renderSensors(card, c, sel);
-      renderAcceptance(card, state, sel, c);
-      card.appendChild(renderPostprocessHandoff(sel, c.index));
-      grid.appendChild(card);
+      grid.appendChild(renderCandidateCard(state, sel, cands[i]));
     }
     wrap.appendChild(grid);
     return wrap;

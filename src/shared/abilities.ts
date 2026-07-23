@@ -32,7 +32,11 @@ export type Floor1BossRewardSpellId = (typeof FLOOR1_BOSS_REWARD_SPELL_IDS)[numb
 export const DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID: Floor1BossRewardSpellId = 'heal';
 
 export type AbilityTriggerKind =
-  'skill_usage' | 'enemy_cluster' | 'low_health' | 'low_health_crowded' | 'health_deficit_at_least';
+  | 'skill_usage'
+  | 'enemy_cluster'
+  | 'low_health'
+  | 'low_health_crowded'
+  | 'health_deficit_at_least';
 
 export type AbilityTriggerCondition =
   | {
@@ -197,15 +201,29 @@ export function isAbilityGrantSourceId(value: string): value is AbilityGrantSour
   );
 }
 
+/**
+ * Creates an empty `AbilityState` with no abilities and empty source-tracking
+ * maps. Exported for use by code outside `abilitySystem.ts` (e.g. tests,
+ * equipment bootstrap).
+ *
+ * @deprecated Prefer `createAbilityState()` from `abilitySystem.ts` for new
+ * call sites in the game layer. This export exists for backward compatibility.
+ */
 export function createEmptyAbilityState(): AbilityState {
   return {
     learnedSpellIds: [],
     equippedActiveAbilityIds: [],
+    ownedActiveAbilityIds: [],
     passiveAbilityIds: [],
     cooldownByAbilityId: new Map(),
     cooldownFramesByAbilityId: new Map(),
     appliedPassiveAbilityIds: new Set(),
     activeAbilityGrantSources: new Map(),
     passiveAbilityGrantSources: new Map(),
+    grantOwnership: {
+      schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+      activeSourcesByAbilityId: new Map(),
+      passiveSourcesByAbilityId: new Map(),
+    },
   };
 }

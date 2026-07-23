@@ -1,4 +1,5 @@
 import type { EquipmentSlotId } from '../../src/shared/equipment-slots.js';
+import { createActiveWeaponSnapshotInput } from '../../src/core/generated-equipment-registry.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
@@ -69,7 +70,7 @@ export function generatedEquipmentInput(options?: {
       statBonuses: { armor: 3 },
       abilityGrants: grants ? ['magic-missile'] : [],
       passiveGrants: grants ? ['combat-flow'] : [],
-      activeWeaponSnapshot: options?.weapon ? { weaponDefId: 'sword' } : null,
+      activeWeaponSnapshot: options?.weapon ? createActiveWeaponSnapshotInput('sword') : null,
     },
   };
 }

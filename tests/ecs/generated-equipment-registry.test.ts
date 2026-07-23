@@ -505,11 +505,13 @@ describe('validateInstanceStructure', () => {
   });
 
   it('rejects non-finite statBonus value', async () => {
-    const base = makeInstanceBase({
-      frozen: makeFrozen({ statBonuses: { armor: Infinity } }),
-    });
-    const fp = await computeFingerprint(base);
-    const bad: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
+    const validBase = makeInstanceBase();
+    const fp = await computeFingerprint(validBase);
+    const bad: GeneratedEquipmentInstanceV1 = {
+      ...validBase,
+      fingerprint: fp,
+      frozen: { ...validBase.frozen, statBonuses: { armor: Infinity } as Record<StatId, number> },
+    };
     expect(validateInstanceStructure(bad)).not.toBeNull();
   });
 

@@ -65,8 +65,8 @@ import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.j
 import {
   coreGrantGeneratedEquipmentActiveAbility,
   coreGrantGeneratedEquipmentPassiveAbility,
+  revokeEquipmentAbilityGrantsCore,
 } from '../ability-grants.js';
-import { type AbilityGrantSource } from '../../shared/abilities.js';
 
 // --- Side-map storage ---
 
@@ -181,7 +181,7 @@ export function resolveEquipmentInstance(
   return { instanceId, def: generatedEquipmentDef(generated) };
 }
 
-interface GeneratedPhysicalOwner {
+export interface GeneratedPhysicalOwner {
   readonly container: 'bag' | 'equipped' | 'reward-bundle';
   readonly entity?: number;
   readonly bundleId?: string;
@@ -229,24 +229,25 @@ function activateGeneratedEquipment(
   entity: number,
   instance: GeneratedEquipmentInstanceV1,
 ): void {
-  const { abilityGrants, passiveGrants } = instance.frozen;
-  for (let i = 0; i < abilityGrants.length; i++) {
-    coreGrantGeneratedEquipmentActiveAbility(
-      world,
-      entity,
-      abilityGrants[i]!,
-      instance.instanceId,
-      i,
-    );
-  }
-  for (let i = 0; i < passiveGrants.length; i++) {
-    coreGrantGeneratedEquipmentPassiveAbility(
-      world,
-      entity,
-      passiveGrants[i]!,
-      instance.instanceId,
-      i,
-    );
+  for (const effect of instance.resolvedEffects) {
+    if (!('kind' in effect)) continue;
+    if (effect.kind === 'abilityGrant') {
+      coreGrantGeneratedEquipmentActiveAbility(
+        world,
+        entity,
+        effect.grantId,
+        instance.instanceId,
+        effect.effectOrdinal,
+      );
+    } else if (effect.kind === 'passiveGrant') {
+      coreGrantGeneratedEquipmentPassiveAbility(
+        world,
+        entity,
+        effect.grantId,
+        instance.instanceId,
+        effect.effectOrdinal,
+      );
+    }
   }
 
   const weaponDef = generatedWeaponDef(instance);
@@ -262,53 +263,7 @@ function deactivateGeneratedEquipment(
 ): void {
   const generated = getGeneratedEquipmentInstance(world, instanceKey);
   if (!generated) throw new Error(`Generated equipment instance not found: ${instanceKey}`);
-  const state = world.abilityStatesByEntity.get(entity);
-  if (state) {
-    const activeSourceMap = state.activeAbilityGrantSources;
-    const passiveSourceMap = state.passiveAbilityGrantSources;
-    const isMatchingSource = (source: AbilityGrantSource): boolean =>
-      source.kind === 'generated-equipment' && source.instanceId === instanceKey;
-
-    if (activeSourceMap) {
-      for (const abilityId of [...activeSourceMap.keys()]) {
-        const sources = activeSourceMap.get(abilityId);
-        if (!sources) continue;
-        const remaining = sources.filter((source) => !isMatchingSource(source));
-        if (remaining.length === sources.length) continue;
-        if (remaining.length > 0) {
-          activeSourceMap.set(abilityId, remaining);
-        } else {
-          activeSourceMap.delete(abilityId);
-          const index = state.equippedActiveAbilityIds.indexOf(abilityId);
-          if (index >= 0) state.equippedActiveAbilityIds.splice(index, 1);
-        }
-      }
-    }
-
-    if (passiveSourceMap) {
-      for (const abilityId of [...passiveSourceMap.keys()]) {
-        const sources = passiveSourceMap.get(abilityId);
-        if (!sources) continue;
-        const remaining = sources.filter((source) => !isMatchingSource(source));
-        if (remaining.length === sources.length) continue;
-        if (remaining.length > 0) {
-          passiveSourceMap.set(abilityId, remaining);
-        } else {
-          passiveSourceMap.delete(abilityId);
-          const index = state.passiveAbilityIds.indexOf(abilityId);
-          if (index >= 0) state.passiveAbilityIds.splice(index, 1);
-          world.statModifiers = world.statModifiers.filter(
-            (modifier) =>
-              !(
-                modifier.sourceType === 'ability' &&
-                modifier.sourceId.startsWith(`${abilityId}:passive:${entity}:`)
-              ),
-          );
-          state.appliedPassiveAbilityIds.delete(abilityId);
-        }
-      }
-    }
-  }
+  revokeEquipmentAbilityGrantsCore(world, entity, instanceKey);
 
   if (
     generated.frozen.activeWeaponSnapshot !== null &&

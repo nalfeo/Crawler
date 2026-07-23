@@ -6,6 +6,8 @@ import {
   type WeaponTypeValue,
 } from './constants.js';
 import type { WeaponClassSkillId, WeaponTypeSkillId } from './weapon-skills.js';
+import { FLOOR2_WEAPON_WAVE_A_BASES } from './data/floor2-weapon-bases.js';
+import { createWeaponDef } from './weapon-def-defaults.js';
 
 export interface WeaponDef {
   readonly id: string;
@@ -63,43 +65,8 @@ export interface WeaponDef {
   readonly weaponTypeSkillId: WeaponTypeSkillId;
 }
 
-function def(
-  partial: Partial<WeaponDef> &
-    Pick<
-      WeaponDef,
-      | 'id'
-      | 'name'
-      | 'weaponType'
-      | 'baseDamage'
-      | 'cooldownMs'
-      | 'weaponClassSkillId'
-      | 'weaponTypeSkillId'
-    >,
-): WeaponDef {
-  return {
-    range: 0,
-    projectileSpeed: 0,
-    aoeRadius: 0,
-    durationMs: 0,
-    beamTickMs: 0,
-    beamLength: 0,
-    trapArmMs: 0,
-    trapTriggerRadius: 0,
-    trapExplosionRadius: 0,
-    returnSpeed: 0,
-    maxRange: 0,
-    swingArcDeg: 360,
-    meleeStyle: MeleeStyle.SLASH,
-    headRadius: 0,
-    shaftDamageMult: 1.0,
-    knockback: 0,
-    pierce: 0,
-    bounceCount: 0,
-    goreFactor: 0.5,
-    baseAccuracy: 0.85,
-    ...partial,
-  };
-}
+/** @see createWeaponDef in weapon-def-defaults.ts (shared with Floor 2 Wave A bases) */
+const def = createWeaponDef;
 
 export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
   // --- Melee ---
@@ -155,26 +122,6 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       knockback: 4,
       goreFactor: 0.15,
       baseAccuracy: 0.85,
-      weaponClassSkillId: 'smashing',
-      weaponTypeSkillId: 'hammer',
-    }),
-  ],
-  [
-    'sun-hammer',
-    def({
-      id: 'sun-hammer',
-      name: 'Sun Hammer',
-      weaponType: WeaponType.MELEE,
-      baseDamage: 35,
-      cooldownMs: 1100,
-      range: 6,
-      aoeRadius: 7,
-      durationMs: 350,
-      headRadius: 2.0,
-      shaftDamageMult: 0.5,
-      knockback: 5,
-      goreFactor: 0.2,
-      baseAccuracy: 0.82,
       weaponClassSkillId: 'smashing',
       weaponTypeSkillId: 'hammer',
     }),
@@ -294,29 +241,6 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
 
   // --- Magic ---
   [
-    'ember-wand',
-    def({
-      id: 'ember-wand',
-      name: 'Ember Wand',
-      weaponType: WeaponType.MAGIC,
-      baseDamage: 10,
-      cooldownMs: 700,
-      range: 36,
-      // Slightly faster than fireball (0.50) — the ember bolt is a tighter,
-      // more focused projectile with a smaller heat burst than fireball's wide
-      // blast, so it travels a little quicker. Still subsonic by dungeon
-      // standards; not a laser.
-      projectileSpeed: 0.55,
-      // Small splash on impact, but still notably tighter than fireball (6).
-      aoeRadius: 4,
-      goreFactor: 0.0,
-      pierce: 0,
-      baseAccuracy: 0.9,
-      weaponClassSkillId: 'arcane',
-      weaponTypeSkillId: 'spellcraft',
-    }),
-  ],
-  [
     'fireball',
     def({
       id: 'fireball',
@@ -429,6 +353,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       weaponTypeSkillId: 'spellcraft',
     }),
   ],
+  ...FLOOR2_WEAPON_WAVE_A_BASES.map(
+    (definition) => [definition.weaponDef.id, definition.weaponDef] as const,
+  ),
 ]);
 
 export function getWeaponDef(id: string): WeaponDef | undefined {

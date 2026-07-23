@@ -176,7 +176,7 @@ export interface Floor2SettlementSnapshot {
   readonly defectorAppearanceKey: string;
   /** Same-family fallback appearance key when preferred art is unavailable. */
   readonly defectorFallbackAppearanceKey: string;
-  /** Guaranteed Quartermaster shop instance, placed in addition to the seeded shops. */
+  /** Guaranteed Quartermaster shop instance. */
   readonly quartermasterShop: Floor2ShopInstance;
   /**
    * Generated common/uncommon equipment stock owned by the Quartermaster.

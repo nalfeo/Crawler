@@ -199,6 +199,14 @@ test('Apply changes is guarded against a double-submit (single POST in flight)',
   assert.match(html, /authoringApplyBtn\.disabled = false;/);
 });
 
+test('successful embedded Apply notifies the parent Workflow with its refresh patch', () => {
+  const html = renderHtml('x', '/postprocess', 'token');
+  assert.match(html, /resp\.workflowPatch/);
+  assert.match(html, /type: 'postprocess:applied'/);
+  assert.match(html, /window\.parent\.postMessage/);
+  assert.match(html, /window\.location\.origin/);
+});
+
 test('the final output image is clickable and draws the anchor marker', () => {
   const html = renderHtml('x');
   assert.match(html, /function redrawAnchorMarker\(/);

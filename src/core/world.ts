@@ -204,7 +204,7 @@ export interface GameWorld {
   inventories: Map<number, InventoryBag>;
   /** Authoritative generated-equipment records for this run. */
   generatedEquipmentRegistry: GeneratedEquipmentRegistry;
-  /** Unopened achievement rewards own generated instances by registry key only. */
+  /** Unopened generated-equipment reward bundles keyed by achievement ID. */
   generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
   /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
   statusEffectsByEntity: Map<number, StatusEffect[]>;

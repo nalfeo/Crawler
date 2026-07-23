@@ -20,6 +20,7 @@ import {
   normalizeAbilityState,
 } from '../../src/game/systems/abilitySystem.js';
 import {
+  ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
   learnedAbilityGrantSourceId,
   skillAbilityGrantSourceId,
 } from '../../src/shared/abilities.js';
@@ -584,6 +585,11 @@ describe('player floor carryover', () => {
         ],
       ]),
     );
+    expect(
+      destination.abilityStatesByEntity
+        .get(destinationPlayer)
+        ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile'),
+    ).toEqual(new Set([`equipment:${equipped.instanceId}:0`]));
     expect(destination.generatedEquipmentRewardBundles.get('carryover-reward')).toEqual({
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
       achievementId: 'carryover-reward',
@@ -601,6 +607,97 @@ describe('player floor carryover', () => {
     expect(
       destination.abilityStatesByEntity.get(destinationPlayer)?.passiveAbilityIds,
     ).not.toContain('combat-flow');
+  });
+
+  it('retains independently owned grants after the last equipment source is removed', () => {
+    const world = createTestWorld({
+      seed: 42,
+      generatedEquipmentRunKey: 'carryover-retained-grant-run',
+    });
+    const player = spawnPlayer(world, 0, 0);
+    world.abilityStatesByEntity.set(player, {
+      learnedSpellIds: [],
+      equippedActiveAbilityIds: ['magic-missile'],
+      ownedActiveAbilityIds: ['magic-missile'],
+      passiveAbilityIds: [],
+      cooldownByAbilityId: new Map(),
+      cooldownFramesByAbilityId: new Map(),
+      appliedPassiveAbilityIds: new Set(),
+      grantOwnership: {
+        schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+        activeSourcesByAbilityId: new Map([['magic-missile', new Set(['learned:magic-missile'])]]),
+        passiveSourcesByAbilityId: new Map(),
+      },
+    });
+    const generated = createGeneratedEquipmentInstance(
+      world,
+      generatedEquipmentInput({ slots: ['head'], grants: true }),
+    );
+    expect(addGeneratedEquipmentToBag(world, player, generated.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        world,
+        player,
+        { kind: 'generated-instance', instanceKey: generated.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    const sourcesAfterEquip = world.abilityStatesByEntity
+      .get(player)
+      ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile');
+    expect(sourcesAfterEquip?.has('learned:magic-missile')).toBe(true);
+    expect([...(sourcesAfterEquip ?? [])].some((source) => source.startsWith('equipment:'))).toBe(
+      true,
+    );
+
+    expect(unequip(world, player, 'head', { force: true }).ok).toBe(true);
+    expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain(
+      'magic-missile',
+    );
+    expect(
+      world.abilityStatesByEntity
+        .get(player)
+        ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile'),
+    ).toEqual(new Set(['learned:magic-missile']));
+  });
+
+  it('rejects a mismatched sourced-grant reference before mutation', () => {
+    const runKey = 'carryover-grant-mismatch-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({ slots: ['head'], grants: true }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        source,
+        sourcePlayer,
+        { kind: 'generated-instance', instanceKey: generated.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const mismatched = {
+      ...snapshot,
+      abilityState: {
+        ...snapshot.abilityState!,
+        grantOwnership: {
+          schemaVersion: snapshot.abilityState!.grantOwnership!.schemaVersion,
+          activeSourcesByAbilityId: [['magic-missile', [`equipment:${generated.instanceId}:99`]]],
+          passiveSourcesByAbilityId: [],
+        },
+      },
+    };
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    destination.playerName = 'Unchanged';
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, mismatched)).toThrow(
+      'Generated grant source mismatches magic-missile',
+    );
+    expect(destination.playerName).toBe('Unchanged');
   });
 
   it('preserves generated active abilities that were known-inactive before carryover replay', () => {

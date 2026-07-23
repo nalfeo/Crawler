@@ -15,13 +15,18 @@
  */
 
 import {
+  ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
   ACTIVE_ABILITY_SLOT_LIMIT,
+  equipmentAbilityGrantSourceId,
   type AbilityStateLike,
   createEmptyAbilityState,
   type AbilityGrantSource,
   type AbilityState,
 } from '../shared/abilities.js';
-import type { GeneratedEquipmentInstanceId } from '../shared/generated-equipment-types.js';
+import {
+  isValidGeneratedInstanceId,
+  type GeneratedEquipmentInstanceId,
+} from '../shared/generated-equipment-types.js';
 import type { GameWorld } from './world.js';
 
 function getOrCreateAbilityStateForEntity(world: GameWorld, holderEid: number): AbilityState {
@@ -30,12 +35,18 @@ function getOrCreateAbilityStateForEntity(world: GameWorld, holderEid: number): 
     const draft = existing as Partial<AbilityStateLike>;
     draft.learnedSpellIds ??= [];
     draft.equippedActiveAbilityIds ??= [];
+    draft.ownedActiveAbilityIds ??= [];
     draft.passiveAbilityIds ??= [];
     draft.cooldownByAbilityId ??= new Map();
     draft.cooldownFramesByAbilityId ??= new Map();
     draft.appliedPassiveAbilityIds ??= new Set();
     draft.activeAbilityGrantSources ??= new Map();
     draft.passiveAbilityGrantSources ??= new Map();
+    draft.grantOwnership ??= {
+      schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+      activeSourcesByAbilityId: new Map(),
+      passiveSourcesByAbilityId: new Map(),
+    };
     return draft as AbilityState;
   }
   const created = createEmptyAbilityState();
@@ -54,7 +65,15 @@ function addActiveGrantSource(
   const sources = sourceMap.get(abilityId);
   if (sources === undefined) {
     sourceMap.set(abilityId, [source]);
-  } else {
+  } else if (
+    !sources.some(
+      (existing) =>
+        existing.kind === 'generated-equipment' &&
+        source.kind === 'generated-equipment' &&
+        existing.instanceId === source.instanceId &&
+        existing.effectOrdinal === source.effectOrdinal,
+    )
+  ) {
     sources.push(source);
   }
 }
@@ -70,7 +89,15 @@ function addPassiveGrantSource(
   const sources = sourceMap.get(abilityId);
   if (sources === undefined) {
     sourceMap.set(abilityId, [source]);
-  } else {
+  } else if (
+    !sources.some(
+      (existing) =>
+        existing.kind === 'generated-equipment' &&
+        source.kind === 'generated-equipment' &&
+        existing.instanceId === source.instanceId &&
+        existing.effectOrdinal === source.effectOrdinal,
+    )
+  ) {
     sources.push(source);
   }
 }
@@ -94,33 +121,26 @@ export function coreGrantGeneratedEquipmentActiveAbility(
   if (!abilityId) throw new Error('abilityId must be a non-empty string');
   const state = getOrCreateAbilityStateForEntity(world, holderEid);
   const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
-  const activeSourceMap =
-    state.activeAbilityGrantSources ??
-    (state.activeAbilityGrantSources = new Map<string, AbilityGrantSource[]>());
-  // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
-  const existing = activeSourceMap.get(abilityId);
-  if (
-    existing?.some(
-      (s) =>
-        s.kind === 'generated-equipment' &&
-        s.instanceId === instanceId &&
-        s.effectOrdinal === effectOrdinal,
-    )
-  ) {
+  const sourceId = equipmentAbilityGrantSourceId(instanceId, effectOrdinal);
+  const ownership = state.grantOwnership!;
+  const ownedSources =
+    ownership.activeSourcesByAbilityId.get(abilityId) ?? new Set<typeof sourceId>();
+  if (ownedSources.has(sourceId)) {
     return;
   }
+  ownedSources.add(sourceId);
+  ownership.activeSourcesByAbilityId.set(abilityId, ownedSources);
+  addActiveGrantSource(state, abilityId, source);
+  if (!(state.ownedActiveAbilityIds ?? []).includes(abilityId)) {
+    (state.ownedActiveAbilityIds ??= []).push(abilityId);
+  }
   if (state.equippedActiveAbilityIds.includes(abilityId)) {
-    // Already equipped (from another source) — just track the new source.
-    addActiveGrantSource(state, abilityId, source);
     return;
   }
   if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
-    // Slot cap reached — record as known-inactive: source tracked, not equipped.
-    addActiveGrantSource(state, abilityId, source);
     return;
   }
   state.equippedActiveAbilityIds.push(abilityId);
-  addActiveGrantSource(state, abilityId, source);
 }
 
 /**
@@ -142,23 +162,94 @@ export function coreGrantGeneratedEquipmentPassiveAbility(
   if (!abilityId) throw new Error('abilityId must be a non-empty string');
   const state = getOrCreateAbilityStateForEntity(world, holderEid);
   const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
-  const passiveSourceMap =
-    state.passiveAbilityGrantSources ??
-    (state.passiveAbilityGrantSources = new Map<string, AbilityGrantSource[]>());
-  // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
-  const existing = passiveSourceMap.get(abilityId);
-  if (
-    existing?.some(
-      (s) =>
-        s.kind === 'generated-equipment' &&
-        s.instanceId === instanceId &&
-        s.effectOrdinal === effectOrdinal,
-    )
-  ) {
+  const sourceId = equipmentAbilityGrantSourceId(instanceId, effectOrdinal);
+  const ownership = state.grantOwnership!;
+  const ownedSources =
+    ownership.passiveSourcesByAbilityId.get(abilityId) ?? new Set<typeof sourceId>();
+  if (ownedSources.has(sourceId)) {
     return;
   }
+  ownedSources.add(sourceId);
+  ownership.passiveSourcesByAbilityId.set(abilityId, ownedSources);
   if (!state.passiveAbilityIds.includes(abilityId)) {
     state.passiveAbilityIds.push(abilityId);
   }
   addPassiveGrantSource(state, abilityId, source);
+}
+
+export function revokeEquipmentAbilityGrantsCore(
+  world: GameWorld,
+  holderEid: number,
+  instanceId: GeneratedEquipmentInstanceId,
+): void {
+  if (!isValidGeneratedInstanceId(instanceId)) {
+    throw new Error(`Invalid generated equipment instance ID: ${instanceId}`);
+  }
+  const state = world.abilityStatesByEntity.get(holderEid);
+  if (state === undefined) return;
+  const sourcePrefix = `equipment:${instanceId}:`;
+  const ownership = state.grantOwnership;
+
+  const activeSourceMap = state.activeAbilityGrantSources;
+  if (activeSourceMap !== undefined) {
+    for (const [abilityId, sources] of [...activeSourceMap]) {
+      const remaining = sources.filter(
+        (source) => source.kind !== 'generated-equipment' || source.instanceId !== instanceId,
+      );
+      if (remaining.length > 0) {
+        activeSourceMap.set(abilityId, remaining);
+      } else {
+        activeSourceMap.delete(abilityId);
+      }
+    }
+  }
+
+  const passiveSourceMap = state.passiveAbilityGrantSources;
+  if (passiveSourceMap !== undefined) {
+    for (const [abilityId, sources] of [...passiveSourceMap]) {
+      const remaining = sources.filter(
+        (source) => source.kind !== 'generated-equipment' || source.instanceId !== instanceId,
+      );
+      if (remaining.length > 0) {
+        passiveSourceMap.set(abilityId, remaining);
+      } else {
+        passiveSourceMap.delete(abilityId);
+      }
+    }
+  }
+
+  for (const [abilityId, sources] of [...(ownership?.activeSourcesByAbilityId ?? [])]) {
+    for (const sourceId of [...sources]) {
+      if (sourceId.startsWith(sourcePrefix)) {
+        sources.delete(sourceId);
+      }
+    }
+    if (sources.size > 0) continue;
+    ownership!.activeSourcesByAbilityId.delete(abilityId);
+    state.equippedActiveAbilityIds = state.equippedActiveAbilityIds.filter(
+      (id) => id !== abilityId,
+    );
+    state.ownedActiveAbilityIds = (state.ownedActiveAbilityIds ?? []).filter(
+      (id) => id !== abilityId,
+    );
+  }
+
+  for (const [abilityId, sources] of [...(ownership?.passiveSourcesByAbilityId ?? [])]) {
+    for (const sourceId of [...sources]) {
+      if (sourceId.startsWith(sourcePrefix)) {
+        sources.delete(sourceId);
+      }
+    }
+    if (sources.size > 0) continue;
+    ownership!.passiveSourcesByAbilityId.delete(abilityId);
+    state.passiveAbilityIds = state.passiveAbilityIds.filter((id) => id !== abilityId);
+    state.appliedPassiveAbilityIds.delete(abilityId);
+    world.statModifiers = world.statModifiers.filter(
+      (modifier) =>
+        !(
+          modifier.sourceType === 'ability' &&
+          modifier.sourceId.startsWith(`${abilityId}:passive:${holderEid}:`)
+        ),
+    );
+  }
 }
