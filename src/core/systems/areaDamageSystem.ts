@@ -30,6 +30,7 @@ export function clearAreaDamageHits(world: GameWorld, eid: number): void {
   if (worldHits !== undefined) {
     worldHits.delete(eid);
   }
+  world.enemyProjectileArchetypeKeys.delete(eid);
   pruneAttackEntity(world, eid);
 }
 
@@ -123,6 +124,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
           sourceX: x,
           sourceY: y,
           sourceEid: ownerEid >= 0 ? ownerEid : undefined,
+          sourceArchetypeKey: world.enemyProjectileArchetypeKeys.get(eid),
         },
       );
 

@@ -87,6 +87,27 @@ export interface CombatEvent {
    * `corpseExplode` event. 1 = rat, 2 = slime, otherwise the generic enemy.
    */
   spriteTextureId?: number;
+  /**
+   * Snapshot of the attacker's stable archetype identity. Set via one of two
+   * resolution paths inside `applyDamage`, depending on how the damage originates:
+   *
+   * - **Projectile / AoE sources** (delayed hits): captured at spawn time in
+   *   `spawnEnemyProjectile` or `spawnAoeProjectile` while the source entity is
+   *   still live, stored in `world.enemyProjectileArchetypeKeys`, and propagated
+   *   through the AoE explosion chain (`aoeOnImpactSystem` → `areaDamageSystem`).
+   *   The snapshot survives source removal and EID recycling. Passed to
+   *   `applyDamage` via `DamageOptions.sourceArchetypeKey` and preferred over any
+   *   live lookup.
+   *
+   * - **Immediate / contact hits**: `applyDamage` resolves the key from the
+   *   caller-supplied damage metadata by preferring
+   *   `DamageOptions.sourceArchetypeKey` when present, otherwise falling back to
+   *   the live `DamageOptions.sourceEid` lookup through
+   *   `world.enemyAppearanceKeys` then `world.floorScenario.enemyArchetypes`.
+   *
+   * Applies to player-targeted hit events only.
+   */
+  sourceArchetypeKey?: string;
   /** Stable spawned mob identity used to resolve generated-art families. */
   spriteAppearanceKey?: string;
   /** Spawn-time roll in [0, 1) used to pick a stable generated-art variant. */

@@ -42,6 +42,14 @@ export interface DamageOptions {
   readonly sourceX?: number;
   readonly sourceY?: number;
   readonly sourceEid?: number;
+  /**
+   * Stable archetype identity of the attacker, pre-snapshotted before any
+   * entity removal/EID-recycling can invalidate a live EID lookup. When
+   * provided, `applyDamage` propagates this directly into the emitted
+   * `CombatEvent.sourceArchetypeKey` without any further EID resolution.
+   * Preferred over deriving the key from `sourceEid` at impact time.
+   */
+  readonly sourceArchetypeKey?: string;
   /** Render-only classification of the successful hit's delivery path. */
   readonly delivery?: CombatEvent['delivery'];
   /**
@@ -253,6 +261,19 @@ export function applyDamage(
     if (options.sourceEid !== undefined) {
       event.sourceEid = options.sourceEid;
       event.sourceRenderGeneration = world.entityRenderGeneration[options.sourceEid];
+      // Prefer a pre-snapshotted key (from options.sourceArchetypeKey, captured
+      // at spawn time) over a live EID lookup. The live lookup is kept as the
+      // fallback for melee/instant-damage sources where the attacker is guaranteed
+      // live at hit time and no spawn-time snapshot is available.
+      if (isPlayerTarget) {
+        const sourceKey =
+          options.sourceArchetypeKey ??
+          world.enemyAppearanceKeys.get(options.sourceEid) ??
+          world.floorScenario?.enemyArchetypes.get(options.sourceEid);
+        if (sourceKey !== undefined) event.sourceArchetypeKey = sourceKey;
+      }
+    } else if (options.sourceArchetypeKey !== undefined && isPlayerTarget) {
+      event.sourceArchetypeKey = options.sourceArchetypeKey;
     }
     event.targetRenderGeneration = world.entityRenderGeneration[target];
     if (options.delivery !== undefined) event.delivery = options.delivery;

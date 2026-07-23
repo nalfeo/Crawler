@@ -41,11 +41,13 @@ feeder was starved 1-at-a-time exactly when the queue was filling.
 2. **New generic `countOutstandingWorkflowRuns`** — accepts any workflow file + status subset; `countOutstandingRecoveryRuns` now delegates to it.
 
 3. **Updated `computeDispatchBudget`** — new formula:
+
    ```
    validationReserved = max(VALIDATION_RESERVED_TRAIN_{BUSY|IDLE}, activeValidationJobs)
    headroom = RUNNER_CEILING − validationReserved − activeSweepJobs − outstandingCount
    budget = clamp(headroom, 0, MAX_DISPATCH_BUDGET_TRAIN_{BUSY|IDLE})
    ```
+
    New optional params `activeSweepJobs` and `activeValidationJobs` default to 0 for backward compat.
 
 4. **Updated `runFromEnv`** — measures in-progress sweep runs across `SWEEP_WORKFLOW_FILES` (× `SWEEP_RUNNER_WEIGHT`) and all outstanding validation runs (× `VALIDATION_RUNNER_WEIGHT`) in parallel, passes both to `computeDispatchBudget`.

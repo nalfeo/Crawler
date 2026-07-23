@@ -291,6 +291,8 @@ export interface CombatMetrics {
   damageDealt: number;
   /** Total damage taken */
   damageTaken: number;
+  /** Actual post-mitigation player damage grouped by stable attacker identity. */
+  damageTakenBySource: Record<string, number>;
 }
 
 /**

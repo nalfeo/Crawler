@@ -29,6 +29,14 @@ interface AoeSnapshot {
    * eligibility (e.g. a magic weapon's AoE-on-impact splash stays magic).
    */
   damageMeta: PersistedDamageMeta;
+  /**
+   * Archetype key of the enemy shooter, snapshotted from
+   * `world.enemyProjectileArchetypeKeys` before the projectile is destroyed.
+   * Carried through to the spawned explosion entity so `areaDamageSystem` can
+   * attribute AoE splash hits without relying on the (potentially-recycled)
+   * shooter EID.
+   */
+  sourceArchetypeKey: string | undefined;
 }
 
 const trackedSnapshots = new WeakMap<GameWorld, AoeSnapshot[]>();
@@ -67,6 +75,7 @@ export function aoeOnImpactPreDamage(world: GameWorld): void {
         world.attackWeaponSkillsByEntity.get(eid) ??
         (ownerEid >= 0 ? world.attackerWeaponSkills.get(ownerEid) : undefined),
       damageMeta: readDamageMeta(world, eid),
+      sourceArchetypeKey: world.enemyProjectileArchetypeKeys.get(eid),
     });
   }
 }
@@ -100,6 +109,12 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
         tagDamageMeta(world, explosionEid, snap.damageMeta);
         if (snap.skillIds !== undefined) {
           world.attackWeaponSkillsByEntity.set(explosionEid, snap.skillIds);
+        }
+        // Carry the shooter archetype key through to the explosion entity so
+        // areaDamageSystem can attribute AoE splash hits correctly even when
+        // the original shooter's EID has been recycled.
+        if (snap.sourceArchetypeKey !== undefined) {
+          world.enemyProjectileArchetypeKeys.set(explosionEid, snap.sourceArchetypeKey);
         }
       });
     }
