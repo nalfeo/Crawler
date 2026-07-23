@@ -260,13 +260,6 @@ export interface Floor2EquipmentProductionWave {
   readonly entries: readonly Floor2EquipmentArtDefinition[];
 }
 
-const FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES: Readonly<
-  Partial<Record<Floor2EquipmentStableId, string>>
-> = Object.freeze({
-  'head.iron-visor': 'Iron Faceplate',
-  'feet.iron-greaves': 'Iron Legguards',
-});
-
 function runtimeKeyForFloor2Equipment(
   stableId: Floor2EquipmentStableId,
 ): Floor2EquipmentRuntimeKey {
@@ -278,10 +271,6 @@ function runtimeKeyForFloor2Equipment(
 }
 
 function displayNameFor(stableId: Floor2EquipmentStableId): string {
-  const override = FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES[stableId];
-  if (override) {
-    return override;
-  }
   const slug = stableId.slice(stableId.indexOf('.') + 1);
   return slug.replace(/(^|-)([a-z])/g, (_match, separator: string, letter: string) => {
     return `${separator === '-' ? ' ' : ''}${letter.toUpperCase()}`;

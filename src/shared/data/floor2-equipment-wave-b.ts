@@ -74,6 +74,16 @@ const MANIFEST_BY_ID: ReadonlyMap<Floor2EquipmentStableId, Floor2EquipmentArtDef
   FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => [entry.stableId, entry]),
 );
 
+const WAVE_B_DISPLAY_NAME_OVERRIDES: Readonly<Partial<Record<Floor2EquipmentStableId, string>>> =
+  Object.freeze({
+    'head.iron-visor': 'Iron Faceplate',
+    'feet.iron-greaves': 'Iron Legguards',
+  });
+
+function waveBDisplayName(stableId: Floor2EquipmentStableId, fallback: string): string {
+  return WAVE_B_DISPLAY_NAME_OVERRIDES[stableId] ?? fallback;
+}
+
 function manifestEntry(stableId: Floor2EquipmentStableId): Floor2EquipmentArtDefinition {
   const entry = MANIFEST_BY_ID.get(stableId);
   if (!entry) {
@@ -494,7 +504,7 @@ export const FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS: readonly EquipmentItemDef[
     }
     return Object.freeze({
       id: input.stableId,
-      name: entry.briefInput.name,
+      name: waveBDisplayName(input.stableId, entry.briefInput.name),
       artKey: entry.runtimeKey,
       slots: input.slots,
       statBonuses: input.statBonuses,
