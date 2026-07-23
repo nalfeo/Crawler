@@ -166,7 +166,10 @@ describe('generated equipment instance registry', () => {
     const world = createTestWorld({ generatedEquipmentRunKey: 'run-alpha' });
     const staticWeaponBefore = canonicalJson(getWeaponDef('sword'));
 
-    const first = createGeneratedEquipmentInstance(world, createInput('common', weaponSnapshot(generatedEquipmentInstanceKey('run-alpha', 0))));
+    const first = createGeneratedEquipmentInstance(
+      world,
+      createInput('common', weaponSnapshot(generatedEquipmentInstanceKey('run-alpha', 0))),
+    );
     const second = createGeneratedEquipmentInstance(world, createInput('uncommon'));
 
     expect(first.instanceId).toBe('gei:v1:run-alpha:0');

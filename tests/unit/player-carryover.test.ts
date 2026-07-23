@@ -638,7 +638,9 @@ describe('player floor carryover', () => {
     );
     // Only the generated-equipment source was removed; learned source remains
     expect(
-      world.abilityStatesByEntity.get(player)?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile'),
+      world.abilityStatesByEntity
+        .get(player)
+        ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile'),
     ).toEqual(new Set(['learned:magic-missile']));
   });
 
@@ -667,9 +669,7 @@ describe('player floor carryover', () => {
         ...snapshot.abilityState!,
         grantOwnership: {
           schemaVersion: snapshot.abilityState!.grantOwnership!.schemaVersion,
-          activeSourcesByAbilityId: [
-            ['magic-missile', [`equipment:${generated.instanceId}:99`]],
-          ],
+          activeSourcesByAbilityId: [['magic-missile', [`equipment:${generated.instanceId}:99`]]],
           passiveSourcesByAbilityId: [],
         },
       },
