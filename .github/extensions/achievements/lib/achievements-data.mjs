@@ -210,7 +210,7 @@ export function parseAchievementCatalog(rawCatalog) {
     const achievement = removeUnlockCriteriaDuplication(entry);
     return {
       ...achievement,
-      scope: achievement.scope === 'current_run' ? 'current_run' : 'floor',
+      scope: achievement.scope ?? 'floor',
     };
   });
 }

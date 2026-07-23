@@ -20,6 +20,14 @@ import {
 const workflowPath = new URL('../workflows/pr-ready-reviewer-guard.yml', import.meta.url);
 const workflow = parse(await readFile(workflowPath, 'utf8'));
 
+test('reviewer guard does not run for new pushes or reconciler review requests', () => {
+  assert.deepEqual(workflow.on.pull_request_target.types, [
+    'opened',
+    'reopened',
+    'ready_for_review',
+  ]);
+});
+
 const REPOSITORY = 'nalfeo/Crawler';
 const HEAD_SHA = 'a'.repeat(40);
 const HEAD_BRANCH = 'copilot/fix-empty-draft';

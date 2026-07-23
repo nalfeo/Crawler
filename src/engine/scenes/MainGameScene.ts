@@ -23,6 +23,7 @@ import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
+import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
@@ -151,6 +152,8 @@ export interface MainGameSceneOptions {
    * built-in seed (42). Exposed so labs/harnesses can replay or randomize runs.
    */
   worldSeed?: number;
+  /** Immutable generated-equipment identity shared by every floor in this run. */
+  generatedEquipmentRunKey?: string;
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
@@ -603,7 +606,12 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.world = createGameWorld({ seed: this.options.worldSeed });
+    const worldSeed = this.options.worldSeed ?? 42;
+    this.world = createGameWorld({
+      seed: worldSeed,
+      generatedEquipmentRunKey:
+        this.options.generatedEquipmentRunKey ?? generatedEquipmentRunKeyFromSeed(worldSeed),
+    });
 
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
@@ -2336,22 +2344,26 @@ export class MainGameScene extends Phaser.Scene {
     if (!this.abilityLoadoutUI || !isInSafeContext(this.world) || this.abilityLoadoutUI.isOpen()) {
       return;
     }
-    let state = this.world.abilityStatesByEntity.get(this.playerEid);
-    if (!state) {
-      state = {
+    const existingState = this.world.abilityStatesByEntity.get(this.playerEid);
+    if (!existingState) {
+      const fresh: AbilityState = {
         learnedSpellIds: [],
         equippedActiveAbilityIds: [],
+        ownedActiveAbilityIds: [],
         passiveAbilityIds: [],
         cooldownByAbilityId: new Map(),
         cooldownFramesByAbilityId: new Map(),
         appliedPassiveAbilityIds: new Set(),
-        activeAbilityGrantSources: new Map(),
-        passiveAbilityGrantSources: new Map(),
-      } satisfies AbilityState;
-      this.world.abilityStatesByEntity.set(this.playerEid, state);
+      };
+      this.world.abilityStatesByEntity.set(this.playerEid, fresh);
     }
+    const state = this.world.abilityStatesByEntity.get(this.playerEid)!;
     const availableIds = [
-      ...new Set([...state.equippedActiveAbilityIds, ...state.learnedSpellIds]),
+      ...new Set([
+        ...state.equippedActiveAbilityIds,
+        ...state.learnedSpellIds,
+        ...(state.ownedActiveAbilityIds ?? []),
+      ]),
     ];
     if (availableIds.length === 0) {
       this.flashHint('No learned spells yet. Defeat the Slime Rat and claim a spellbook first.');

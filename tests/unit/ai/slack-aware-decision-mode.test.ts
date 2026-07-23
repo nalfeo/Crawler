@@ -2,8 +2,8 @@
  * SLACK_AWARE decision-mode (A/B axis 2) tests.
  *
  * Contract under test (the ONLY real behavior change in the harness):
- *   - Defaults are LEGACY for both A/B axes, so a default-constructed AI is
- *     byte-identical to main.
+ *   - The production defaults are pathing=RISK_REWARD_FUSED and
+ *     decision=LEGACY.
  *   - The SLACK_AWARE monotone filters (F1 optional-goal suppression, F2
  *     exit-commitment) are STRICT no-ops unless the AI is in SLACK_AWARE mode
  *     AND this frame's run plan is time-pressured. In LEGACY, or in SLACK_AWARE
@@ -82,8 +82,14 @@ describe('isRunPlanUrgent — pure gate math', () => {
 });
 
 describe('AI A/B axes — getters + defaults', () => {
-  it('defaults to LEGACY on both axes (byte-identity guarantee)', () => {
+  it('defaults to the production AI Sweep winner (pathing=riskRewardFused, decision=legacy)', () => {
     const ai = new BehaviorTreeAI({ seed: 42 });
+    expect(ai.getPathingMode()).toBe(AIPathingMode.RISK_REWARD_FUSED);
+    expect(ai.getDecisionMode()).toBe(AIDecisionMode.LEGACY);
+  });
+
+  it('echoes an explicit LEGACY pathing opt-in without changing the decision-mode default', () => {
+    const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.LEGACY });
     expect(ai.getPathingMode()).toBe(AIPathingMode.LEGACY);
     expect(ai.getDecisionMode()).toBe(AIDecisionMode.LEGACY);
   });

@@ -71,6 +71,7 @@ jobs:
           CI_RECOVERY_MODE: ${{ vars.CI_RECOVERY_MODE || 'dry-run' }}
           MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
           MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,Security checks' }}
+          COPILOT_REVIEWER_LOGIN: copilot-pull-request-reviewer
           PR_NUMBER: ${{ inputs.pr_number }}
           RECOVERY_OPERATION: ${{ inputs.operation }}
           RECOVERY_TRIGGER: ${{ inputs.trigger }}

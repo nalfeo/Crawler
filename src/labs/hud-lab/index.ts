@@ -9,7 +9,11 @@
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { GAME, FLOOR } from '../../shared/constants.js';
-import { FLOOR1_BOSS_REWARD_SPELL_IDS, type AbilityState } from '../../shared/abilities.js';
+import {
+  FLOOR1_BOSS_REWARD_SPELL_IDS,
+  createEmptyAbilityState,
+  type AbilityState,
+} from '../../shared/abilities.js';
 import { createHudUI } from '../../engine/HudUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnEnemy, spawnPlayer } from '../../core/index.js';
@@ -68,15 +72,15 @@ const LAB_BOSS_MAX_HP = 500;
  */
 function makeLabAbilityState(): AbilityState {
   const equipped = [...FLOOR1_BOSS_REWARD_SPELL_IDS];
+  const base = createEmptyAbilityState();
   return {
+    ...base,
     learnedSpellIds: [...equipped],
     equippedActiveAbilityIds: [...equipped],
     passiveAbilityIds: [],
     cooldownByAbilityId: new Map(),
     cooldownFramesByAbilityId: new Map(),
     appliedPassiveAbilityIds: new Set(),
-    activeAbilityGrantSources: new Map(equipped.map((id) => [id, [{ kind: 'learned' as const }]])),
-    passiveAbilityGrantSources: new Map(),
   };
 }
 

@@ -7,7 +7,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseArgs, defaultCLIArgs } from '../../../src/game/ai/headless-runner-cli-lib.js';
+import {
+  defaultCLIArgs,
+  helpText,
+  parseArgs,
+} from '../../../src/game/ai/headless-runner-cli-lib.js';
 import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 
 // parseArgs skips argv[0] (node) and argv[1] (script), matching process.argv.
@@ -16,11 +20,15 @@ function cli(...flags: string[]): ReturnType<typeof parseArgs> {
 }
 
 describe('headless-runner-cli parseArgs — A/B mode flags', () => {
-  it('defaults both A/B axes to LEGACY', () => {
+  it('defaults A/B axes to the production DEFAULT_CONFIG (pathing=riskRewardFused, decision=legacy)', () => {
     const args = cli();
-    expect(args.pathingMode).toBe(AIPathingMode.LEGACY);
+    expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
     expect(args.decisionMode).toBe(AIDecisionMode.LEGACY);
     expect(args).toEqual(defaultCLIArgs({}));
+  });
+
+  it('prints the current default pathing mode in help text', () => {
+    expect(helpText()).toContain(`(default: ${defaultCLIArgs({}).pathingMode})`);
   });
 
   it('parses a valid --decision-mode', () => {

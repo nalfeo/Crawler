@@ -97,27 +97,6 @@ describe('AzureOpenAIChatProvider.expandVariations', () => {
     expect(body.messages[1]?.content).toContain('seed entry');
   });
 
-  it('includes Floor 2 and family direction when expanding a family brief', async () => {
-    let capturedBody: unknown;
-    const stubFetch: typeof fetch = async (_input, init) => {
-      capturedBody = init?.body ? JSON.parse(init.body as string) : undefined;
-      return jsonResponse(200, chatCompletion(JSON.stringify({ variations: ['one'] })));
-    };
-    const provider = new AzureOpenAIChatProvider({ ...baseOptions, fetch: stubFetch });
-    const brief = briefSchema.parse({
-      ...makeBrief(),
-      type: 'enemy',
-      name: 'goblin-grunt',
-      floor: 2,
-    });
-
-    await provider.expandVariations({ brief, existing: [], count: 1 });
-
-    const body = capturedBody as { messages: Array<{ content: string }> };
-    expect(body.messages[0]?.content).toContain('Family Matters');
-    expect(body.messages[0]?.content).toContain('The Snaggle Cartel');
-  });
-
   it('accepts a top-level JSON array as the model response', async () => {
     const stubFetch: typeof fetch = async () =>
       jsonResponse(200, chatCompletion(JSON.stringify(['one', 'two'])));

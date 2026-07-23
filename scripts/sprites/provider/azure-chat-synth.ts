@@ -30,7 +30,6 @@ import type {
 import { SynthProviderError } from './synth-types.js';
 import { SPRITE_TYPES } from '../brief-schema.js';
 import { contentDirectionBlock } from '../content-direction.js';
-import { resolveDesignLanguageAddenda } from '../design-language-addenda.js';
 import {
   DEFAULT_PROVIDER_TIMEOUT_MS,
   isTimeoutAbortError,
@@ -196,7 +195,7 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
   const lines: string[] = [
     "You are Crawler's art director. Write concrete concept briefs for 256x256-source pixel-art sprites that resolve to readable game-scale art.",
     '',
-    contentDirectionBlock(request.floor, resolveDesignLanguageAddenda(request.name, request.floor)),
+    contentDirectionBlock(request.floor),
     '',
     'A strong brief names the pose, silhouette, orientation, proportions, materials, dominant colors by name, and one memorable contradiction. Use specific nouns and verbs instead of generic adjectives. Do not prescribe hex colors.',
     '',
