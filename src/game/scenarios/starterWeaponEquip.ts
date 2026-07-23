@@ -58,8 +58,6 @@ export function equipStarterOrFallback(
   let equipped = false;
   if (player !== undefined && equipmentDef !== undefined) {
     unequip(world, player, 'mainHand', { force: true });
-    // TODO(C2→D): call revokeEquipmentAbilityGrants(world, player, <instanceId>) after each
-    // unequip once equipment-ability wiring is implemented (see src/game/systems/abilitySystem.ts).
     unequip(world, player, 'offHand', { force: true });
     const result = equip(world, player, equipmentDef, { force: true });
     equipped = result.ok;

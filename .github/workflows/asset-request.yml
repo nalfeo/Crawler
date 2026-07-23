@@ -54,6 +54,7 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-worker
   cancel-in-progress: false
+  queue: single
 
 jobs:
   drain:
@@ -112,8 +113,8 @@ jobs:
           # JSON status printed to stdout is not enough context on its own.
           LOG_LEVEL: info
 
-          # No AZURE_OPENAI_* here on purpose: ingestion never talks to Azure
-          # OpenAI. `sprites:ingest-once` (createIssueIngesterController.pollOnce)
+          # No FOUNDRY_* here on purpose: ingestion never talks to Foundry.
+          # `sprites:ingest-once` (createIssueIngesterController.pollOnce)
           # only lists open issues and enqueues new ones — it never constructs a
           # provider, and createAssetQueue()/createRunStore() read only
           # SPRITES_* + AZURE_STORAGE_*. The brief-selector / image / vision
@@ -184,16 +185,20 @@ jobs:
           # E2E run.
           LOG_LEVEL: info
 
-          # Azure OpenAI (image + text providers).
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
-          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
-          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
-          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
-          AZURE_OPENAI_IMAGE_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_IMAGE_DEPLOYMENT }}
-          AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: >-
-            ${{ secrets.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT
-                || secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          # Azure AI Foundry (image, variation, synthesis, selector, and vision).
+          FOUNDRY_ENDPOINT: ${{ secrets.FOUNDRY_ENDPOINT }}
+          FOUNDRY_API_KEY: ${{ secrets.FOUNDRY_API_KEY }}
+          FOUNDRY_API_VERSION: ${{ secrets.FOUNDRY_API_VERSION }}
+          FOUNDRY_IMAGE_MODEL: ${{ secrets.FOUNDRY_IMAGE_MODEL }}
+          # The Foundry text deployment serves both variation expansion and
+          # synthesis; the selector deliberately uses its own smaller model.
+          FOUNDRY_TEXT_MODEL: ${{ secrets.FOUNDRY_TEXT_MODEL }}
+          FOUNDRY_VISION_MODEL: ${{ secrets.FOUNDRY_VISION_MODEL }}
+          FOUNDRY_BRIEF_SELECTOR_MODEL: ${{ secrets.FOUNDRY_BRIEF_SELECTOR_MODEL }}
+          SPRITES_PROVIDER: foundry
+          SPRITES_TEXT_PROVIDER: foundry
+          SPRITES_SYNTH_PROVIDER: foundry
+          SPRITES_VISION_PROVIDER: foundry
 
           # Azure Storage (queue + blob).
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
@@ -212,6 +217,7 @@ jobs:
           SPRITES_WORKER_DRAIN: 'true'
           SPRITES_WORKER_MAX_EMPTY_POLLS: '3'
           SPRITES_WORKER_POLL_MS: '5000'
+          SPRITES_WORKER_CONCURRENCY: '2'
 
           # ADR-0043 bypass for Constitutional §3. The asset-request worker is
           # the ONLY sanctioned CI caller of `synthesizeBrief` and `judgeVariant`.

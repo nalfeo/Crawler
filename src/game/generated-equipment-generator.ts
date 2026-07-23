@@ -18,6 +18,7 @@ import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import type { EquipmentItemDef } from '../shared/equipment-types.js';
 import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
+import { getFloor2WeaponWaveABase } from '../shared/data/floor2-weapon-bases.js';
 import type { SeededRandom } from '../shared/random.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 
@@ -229,7 +230,8 @@ function baseTags(
 }
 
 function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipmentBase {
-  const equipmentDef = getEquipmentDefForItem(baseId);
+  const floor2WeaponBase = getFloor2WeaponWaveABase(baseId);
+  const equipmentDef = floor2WeaponBase?.equipmentDef ?? getEquipmentDefForItem(baseId);
   if (equipmentDef === undefined) {
     fail('unknown-base', `Unknown generated-equipment base ${baseId}`, '$.request.baseId');
   }
@@ -267,7 +269,7 @@ function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipme
     baseId: equipmentDef.id,
     template,
     displayName: equipmentDef.name,
-    artKey: equipmentDef.id,
+    artKey: floor2WeaponBase?.artKey ?? equipmentDef.id,
     slots: [...equipmentDef.slots],
     tags: baseTags(equipmentDef, targetKind),
     weightLb: equipmentDef.weightLb,

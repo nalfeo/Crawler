@@ -18,6 +18,8 @@ Estimated: 3
 
 Actual: 3
 
+Follow-up parent synchronization: estimated 2, actual 2.
+
 ## What changed
 
 - Restored both the source-sheet canvas and canonical slicing overlay in the
@@ -37,6 +39,12 @@ Actual: 3
   `(floor(naturalWidth / 2), floor(naturalHeight / 2))`.
 - Documented and machine-checked the permanent three-apple ceremony cap for
   tooling-only changes.
+- Made successful embedded Apply operations refresh the parent Workflow
+  immediately: This variant replaces only its card, while All variants replaces
+  the complete candidate section.
+- Kept the embedded iframe and current run/variant selection intact across those
+  parent updates, and fenced pre-persist background cache writes so stale run
+  data cannot overwrite the refreshed candidate snapshot.
 
 ## Runtime observation
 
@@ -62,6 +70,15 @@ After reloading the real project extensions and opening
 - the temporary skip and anchor used for the persistence proof were then cleared
   and re-applied so the run was left in its original state.
 
+The parent-refresh follow-up was observed in the same real Workflow run:
+
+- This variant replaced only variant 0's card while all 16 cards, the selected
+  run, and the exact iframe DOM node remained intact.
+- All variants replaced the complete 16-card candidate section while the
+  selected run and exact iframe DOM node remained intact.
+- The final reloaded-extension pass repeated the variant-scoped proof against
+  the persisted-summary cache update path.
+
 After-state evidence:
 
 - `files/postprocess-after.png`
@@ -83,8 +100,11 @@ Ledger:
 
 - Postprocess renderer and anchor tests passed (23 tests).
 - Extension suites passed (136 tests).
+- Final Workflow + Postprocess extension suites passed (300 tests), including
+  scope-aware parent patches and the invalidated-revalidation race.
 - Sprite pipeline suites passed (113 tests).
 - `npm run verify:fast` passed after the final review fix (313 changed tests).
+- `npm run verify:fast` passed after the parent synchronization follow-up.
 - `npm run review:visual:deterministic` passed (20 tests).
 - Declared visual-review geometry reported four regions and zero deterministic
   blockers.

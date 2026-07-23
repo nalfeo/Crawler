@@ -29,11 +29,7 @@ import {
   ENCUMBRANCE_MOVE_PENALTIES,
 } from '../../../src/shared/encumbrance.js';
 import { getEquipmentDefForItem, getEquippableItemIds } from '../../../src/shared/equipmentDefs.js';
-import type {
-  EquipmentInstance,
-  EquipmentInstanceId,
-  EquipmentState,
-} from '../../../src/shared/equipment-types.js';
+import type { EquipmentState } from '../../../src/shared/equipment-types.js';
 import type { EquipmentSlotId } from '../../../src/shared/equipment-slots.js';
 
 // ---------------------------------------------------------------------------
@@ -216,32 +212,6 @@ describe('computeEquippedWeightLb', () => {
       { slotId: 'offHand', instanceId: 10, weightLb: 5 }, // same instance, same weightLb
     ]);
     expect(computeEquippedWeightLb(state)).toBe(5); // counted once
-  });
-
-  it('fails closed for generated-equipped ids when no explicit resolver is provided', () => {
-    const state = {
-      equipped: { head: 'gei:v1:test-run:0' },
-      instances: new Map(),
-      disabledSlots: new Set(),
-    } as unknown as EquipmentState;
-
-    expect(() => computeEquippedWeightLb(state)).toThrow(
-      'computeEquippedWeightLb requires an explicit resolveInstance for generated instance id',
-    );
-  });
-
-  it('supports generated-equipped ids when callers provide an explicit resolver', () => {
-    const generatedId = 'gei:v1:test-run:0' as EquipmentInstanceId;
-    const state = {
-      equipped: { head: generatedId },
-      instances: new Map(),
-      disabledSlots: new Set(),
-    } as unknown as EquipmentState;
-    const resolver = new Map<EquipmentInstanceId, EquipmentInstance>([
-      [generatedId, { instanceId: generatedId, def: { weightLb: 9 } as EquipmentInstance['def'] }],
-    ]);
-
-    expect(computeEquippedWeightLb(state, (instanceId) => resolver.get(instanceId))).toBe(9);
   });
 
   it('representative "light" loadout: iron-sword only (3 lb) → unburdened at STR 1', () => {

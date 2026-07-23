@@ -25,7 +25,7 @@ import {
 } from './state.mjs';
 import { admissionFingerprint, QUEUE_LABEL } from '../merge-train/state.mjs';
 import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './issue-intake-lib.mjs';
-import { REVIEW_REQUEST_MARKER } from './review-request.mjs';
+import { REVIEW_REQUEST_MARKER, reviewRequestMarker } from './review-request.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
@@ -2942,6 +2942,121 @@ test('reviewed-then-rebased PR still reaches admission, and its dedup marker sti
     stateCommentIndex < queueLabelIndex,
     'the state comment must be persisted before the queue label is attached',
   );
+});
+
+test('reconcile does not crash when the Copilot reviewer cannot be requested (422 not-a-collaborator)', async (t) => {
+  // Regression for a live merge-train outage: requesting the optional
+  // Copilot reviewer 422s when that login is not a repo collaborator.
+  // Before the fix, executeReviewDecision unconditionally re-threw this
+  // failure and reconcile crashed with exit 1 before ever writing the
+  // converged state comment or attaching the merge-train label -- so no PR
+  // whose review decision reached requestReviewer:true could ever be
+  // admitted (issue distinct from #1783/#1784, which cover the outdated-
+  // marker reply-path 422).
+  // A distinct, valid 40-hex-char SHA (STALE_REVIEWED_SHA is only 39 chars --
+  // fine for the free-form GraphQL `commit.oid` fixture elsewhere in this file,
+  // but a marker's headSha must satisfy the full SHA_PATTERN to be recognized).
+  const PRIOR_MARKER_HEAD_SHA = '2222333344445555666677778888999900001111';
+  const priorMarkerComment = {
+    id: 500,
+    body: reviewRequestMarker({ headSha: PRIOR_MARKER_HEAD_SHA, reason: 'ready' }),
+    author_association: 'OWNER',
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [priorMarkerComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    'POST /graphql': () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/requested_reviewers`]: () => ({
+      status: 422,
+      body: {
+        message:
+          'Reviews may only be requested from collaborators. One or more of the users or ' +
+          'teams you specified is not a collaborator of the test-owner/test-repo repository.',
+      },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/comments/999`]: () => ({ body: {} }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stderr,
+    /review-request-skipped reason=reviewer-not-requestable status=422/,
+    'expected the swallowed 422 to be logged, not silently dropped',
+  );
+  assert.match(
+    stdout,
+    /recorded review reason=synchronize pr=#42/,
+    'reconcile must still record the review decision even though the reviewer request 422d',
+  );
+  assert.match(
+    stdout,
+    /queued merge-train pr=#42/,
+    'reconcile must still reach admission and label the PR despite the optional reviewer-request 422',
+  );
+
+  const requestedReviewersCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/requested_reviewers`,
+  );
+  assert.ok(requestedReviewersCall, 'expected the reviewer-request call to have been attempted');
+
+  const stateCommentPost = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      !call.body.body.startsWith(REVIEW_REQUEST_MARKER),
+  );
+  assert.ok(
+    stateCommentPost,
+    'expected reconcile to still persist a converged state comment after the reviewer-request 422',
+  );
+
+  const queueLabelIndex = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+  );
+  assert.ok(queueLabelIndex >= 0, 'expected the PR to still be labeled for the merge train');
 });
 
 test('a genuine same-pass head change is still caught by the review-request guard', async (t) => {

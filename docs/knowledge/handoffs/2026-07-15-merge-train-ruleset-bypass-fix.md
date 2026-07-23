@@ -147,6 +147,11 @@ protection and onto a dedicated **repository ruleset** targeting
 - `MERGE_QUEUE_ENABLED`/`MERGE_TRAIN_MODE` repo variables were noted as
   possibly-stale/experimental but not touched — worth a follow-up sanity
   check so no inconsistent variable state is left behind.
+  _(2026-07-22 follow-up: `MERGE_TRAIN_MODE` was confirmed a deprecated
+  no-op — not read by any workflow or script repo-wide — and the stale repo
+  variable was deleted on 2026-07-22. `MERGE_QUEUE_ENABLED` remains live: it
+  is read by `.github/workflows/auto-rebase-prs.yml` (line 51) as a guard
+  that no-ops auto-rebase when the merge queue is enabled; do not remove it.)_
 - **GitHub's built-in Copilot PR reviewer** (`copilot-pull-request-reviewer`)
   left 8 findings on PR #1148 after it opened (in addition to the earlier
   claude-sonnet-4.6 code-review round): a missing-classic-protection (404)

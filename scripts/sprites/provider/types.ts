@@ -49,23 +49,30 @@ export type ProviderErrorKind =
   | 'auth'
   /** Rate-limited or quota exhausted. Caller may back off and retry. */
   | 'rate-limit'
+  /** Provider failed transiently after bounded in-process retries. */
+  | 'server-error'
+  /** Provider deterministically rejected the request or its content. */
+  | 'request-error'
   /** Network error talking to the provider. Caller may retry. */
   | 'network'
   /** Provider returned a non-PNG body or one that doesn't decode. */
   | 'non-png'
   /** Provider returned a sheet that doesn't match the requested grid. */
   | 'bad-grid'
-  /** Provider returned a structured error (5xx, content filter, etc.). */
+  /** Unexpected provider or pipeline failure that may be transient. */
   | 'provider-error';
 
 export class ProviderError extends Error {
   override readonly name = 'ProviderError';
+  readonly retryAfterMs: number | undefined;
+
   constructor(
     readonly kind: ProviderErrorKind,
     message: string,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; retryAfterMs?: number | undefined },
   ) {
-    super(message, options);
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
+    this.retryAfterMs = options?.retryAfterMs;
   }
 }
 
@@ -74,9 +81,8 @@ export class ProviderError extends Error {
  * laid out in a `rows x cols` grid matching the brief's `generation.sheet`.
  *
  * Implementations:
- * - DO NOT retry. The orchestrator owns the retry policy because the right
- *   recovery (sterner prompt, increased budget, fall back to single-mode)
- *   depends on the error kind.
+ * - MAY perform bounded transport retries for rate limits, server failures,
+ *   and network errors. Semantic retries remain the orchestrator's concern.
  * - DO throw `ProviderError` with a typed `kind` so the orchestrator can
  *   decide intelligently.
  */

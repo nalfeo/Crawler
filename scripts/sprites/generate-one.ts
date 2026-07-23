@@ -30,8 +30,9 @@
  *   - On `bad-grid`, `non-png`: re-issue the same prompt up to maxAttempts
  *     because models occasionally drop a cell or emit a junk byte stream
  *     and the next attempt usually succeeds.
- *   - On `auth`: fail immediately. A wrong key won't fix itself.
- *   - On `network`, `rate-limit`, `provider-error`: fail and surface the kind.
+ *   - On `request-error`, `auth`: fail immediately; retries cannot fix the request.
+ *   - On `network`, `rate-limit`, `server-error`, or unexpected `provider-error`:
+ *     surface the kind so the queue worker can apply bounded redelivery.
  *
  * Everything here is impure (network + filesystem). The pure pieces it
  * composes (`loadBrief`, `buildSheetPrompt`, `sliceSheetFromBrief`) live in

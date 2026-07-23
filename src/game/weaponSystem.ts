@@ -517,6 +517,20 @@ function fireRangedAttack(
 ): number {
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
+  if (def.bounceCount > 0) {
+    return spawnBouncingProjectile(
+      world,
+      px,
+      py,
+      dir.x * def.projectileSpeed,
+      dir.y * def.projectileSpeed,
+      def.baseDamage,
+      def.bounceCount,
+      def.pierce,
+      def.range,
+      player,
+    );
+  }
   return spawnProjectile(
     world,
     px,

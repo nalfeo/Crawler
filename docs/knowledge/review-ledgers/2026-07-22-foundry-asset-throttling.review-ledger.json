@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-22",
+  "session_slug": "foundry-asset-throttling",
+  "task_title": "Bound asset workflow concurrency and switch CI to Foundry",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Adopted pool-aware complete idle rounds, single stopping emission, typed Retry-After metadata, distinct retryable server-error kinds, shared adapter retry helper, explicit distinct selector/text Foundry deployments, stale-comment cleanup, and typecheck coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 split deterministic request-error from unexpected provider-error so transient storage and filesystem failures remain retryable, added direct worker coverage, and corrected taxonomy documentation. Round 2 added structured HTTP-200 error-envelope handling to the brief selector and direct proof that server-error remains transient. All five findings were resolved without weakening the runner, worker-concurrency, Foundry-routing, or retry requirements."
+    }
+  }
+}

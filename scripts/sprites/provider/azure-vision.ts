@@ -9,11 +9,8 @@
  * Conventions mirror `azure-openai.ts` and `azure-chat.ts`:
  *
  *   - Constructor takes `fetch` so unit tests stub the network.
- *   - No retries here — the caller (the orchestrator) decides whether a
- *     failed judge call is fatal or worth retrying. The judge itself is
- *     local-only and per-variant, so a retry loop would burn Azure credits
- *     silently; we surface every failure as a typed error and let the
- *     human inspect.
+ *   - Bounded transport retries cover rate limits, server failures, and
+ *     network failures. Malformed or rejected judge output is never retried.
  *   - All failures surface as `VisionProviderError` with a typed `kind`.
  *
  * The provider validates that the model returned a JSON object (parses
@@ -37,6 +34,11 @@ import {
   isTimeoutAbortError,
   providerTimeoutMessage,
 } from './fetch-timeout.js';
+import {
+  fetchWithProviderRetry,
+  parseRetryAfterMs,
+  type ProviderRetryOptions,
+} from './provider-retry.js';
 
 export interface AzureOpenAIVisionProviderOptions {
   readonly endpoint: string;
@@ -50,6 +52,7 @@ export interface AzureOpenAIVisionProviderOptions {
    * Aborts a hung judge call instead of blocking the run forever.
    */
   readonly timeoutMs?: number;
+  readonly retry?: ProviderRetryOptions;
 }
 
 interface ChatChoice {
@@ -73,6 +76,7 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
   private readonly apiVersion: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly retry: ProviderRetryOptions;
 
   constructor(opts: AzureOpenAIVisionProviderOptions) {
     this.endpoint = stripTrailingSlash(opts.endpoint);
@@ -81,6 +85,7 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
     this.apiVersion = opts.apiVersion;
     this.fetchImpl = opts.fetch ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
+    this.retry = opts.retry ?? {};
   }
 
   async evaluate(request: EvaluateRequest): Promise<EvaluateResponse> {
@@ -107,15 +112,19 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(url, {
-        method: 'POST',
-        headers: {
-          'api-key': this.apiKey,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
+      response = await fetchWithProviderRetry(
+        () =>
+          this.fetchImpl(url, {
+            method: 'POST',
+            headers: {
+              'api-key': this.apiKey,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(this.timeoutMs),
+          }),
+        this.retry,
+      );
     } catch (err) {
       if (isTimeoutAbortError(err)) {
         throw new VisionProviderError(
@@ -137,6 +146,7 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
       throw new VisionProviderError(
         kind,
         `Azure vision returned ${response.status}: ${truncate(bodyText, 500)}`,
+        { retryAfterMs: parseRetryAfterMs(response.headers) },
       );
     }
 
@@ -153,7 +163,7 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
 
     if (payload.error) {
       throw new VisionProviderError(
-        'provider-error',
+        'request-error',
         `Azure vision error ${payload.error.code ?? '<unknown>'}: ${payload.error.message ?? ''}`,
       );
     }
@@ -235,7 +245,8 @@ function stripTrailingSlash(s: string): string {
 function httpStatusToKind(status: number): VisionProviderErrorKind {
   if (status === 401 || status === 403) return 'auth';
   if (status === 429) return 'rate-limit';
-  return 'provider-error';
+  if (status >= 500 && status < 600) return 'server-error';
+  return 'request-error';
 }
 
 async function safeText(response: Response): Promise<string> {

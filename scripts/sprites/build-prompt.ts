@@ -3,11 +3,7 @@ import { resolve } from 'node:path';
 import type { Brief } from './brief-schema.js';
 import { variantCount } from './brief-schema.js';
 import { resizeSpriteStrategy } from './size-variants.js';
-import {
-  CRAWLER_DESIGN_LANGUAGE,
-  designLanguageAddendaBlock,
-  floorContextBlock,
-} from './content-direction.js';
+import { CRAWLER_DESIGN_LANGUAGE, floorContextBlock } from './content-direction.js';
 import { resolveDesignLanguageAddenda } from './design-language-addenda.js';
 
 /**
@@ -83,6 +79,23 @@ export function extractPreamble(markdown: string): string {
 }
 
 /**
+ * Resolve floor/family design language addenda for a brief and return them
+ * as an array of prompt blocks (each prefixed with a blank line separator).
+ * Returns an empty array when no addenda apply (e.g. Floor 1 non-enemy sprites).
+ */
+function designLanguageAddendaBlocks(name: string, floor: number): string[] {
+  const addenda = resolveDesignLanguageAddenda(name, floor);
+  const blocks: string[] = [];
+  if (addenda.floor !== undefined) {
+    blocks.push('', `## World context\n${addenda.floor}`);
+  }
+  if (addenda.theme !== undefined) {
+    blocks.push('', `## Faction theme\n${addenda.theme}`);
+  }
+  return blocks;
+}
+
+/**
  * Build a prompt for a single-variant (non-sheet) generation.
  *
  * Phase 2 always uses sheet mode in the orchestrator, but the single-variant
@@ -92,12 +105,12 @@ export function extractPreamble(markdown: string): string {
  */
 export function buildPrompt(brief: Brief, styleGuide: string): string {
   const rules = typeRulesBlock(brief);
-  const addenda = designLanguageAddendaBlock(resolveDesignLanguageAddenda(brief.name, brief.floor));
+  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor);
   return [
     styleGuide,
     '',
     floorContextBlock(brief.floor),
-    ...(addenda ? ['', addenda] : []),
+    ...addenda,
     '',
     briefSubjectBlock(brief),
     '',
@@ -121,12 +134,12 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   const count = variants ?? variantCount(brief);
   const rules = typeRulesBlock(brief);
   const variationsBlock = thematicVariationsBlock(brief.variations);
-  const addenda = designLanguageAddendaBlock(resolveDesignLanguageAddenda(brief.name, brief.floor));
+  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor);
   return [
     styleGuide,
     '',
     floorContextBlock(brief.floor),
-    ...(addenda ? ['', addenda] : []),
+    ...addenda,
     '',
     briefSubjectBlock(brief),
     '',

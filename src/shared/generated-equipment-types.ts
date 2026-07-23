@@ -257,6 +257,15 @@ export function isValidFingerprintV1(value: string): value is EquipmentFingerpri
   return FINGERPRINT_RE.test(value);
 }
 
+export const GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION =
+  'floor2-equipment-reward-bundle/v1' as const;
+
+export interface GeneratedEquipmentRewardBundleV1 {
+  readonly schemaVersion: typeof GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION;
+  readonly achievementId: string;
+  readonly instanceKeys: readonly GeneratedEquipmentInstanceKey[];
+}
+
 export function makeRunKey(seed: number | string): string {
   const sanitized = String(seed)
     .toLowerCase()
@@ -268,4 +277,11 @@ export function makeRunKey(seed: number | string): string {
     throw new Error(`makeRunKey: seed "${seed}" does not produce a valid run key`);
   }
   return key;
+}
+
+export function generatedEquipmentRunKeyFromSeed(seed: number): string {
+  if (!Number.isFinite(seed)) {
+    throw new Error(`Generated equipment run seed must be finite: ${seed}`);
+  }
+  return `run-seed-${String(seed).replace('+', 'p')}`;
 }
