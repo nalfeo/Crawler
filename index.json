@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6162b732be934c736c702853c8b23d90f2b71aea",
+    "commitDate": "2026-07-23T08:44:05Z",
+    "commitSubject": "feat(equipment): persist generated equipment across Floor 2 (#1564)",
+    "capturedAt": "2026-07-23T10:04:44.740Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29992845614",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/6162b732be934c736c702853c8b23d90f2b71aea.json"
+  },
+  {
     "commit": "c7fa61877b7127b125029ce3e3ed33e3356d13e9",
     "commitDate": "2026-07-23T07:56:11Z",
     "commitSubject": "fix(ai): preserve combat spacing during focused hunts (#1231)",
