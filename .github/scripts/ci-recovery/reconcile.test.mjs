@@ -10819,7 +10819,15 @@ test('same check rerun with only a new run URL still reaches the stale-retry cei
       stateComment.body = body.body;
       return { body: { id: stateComment.id } };
     },
-    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
+    // Stateful, like the preceding test's handler: if the release path
+    // unexpectedly recreates the repository label, this must flip
+    // `repositoryLabelExists` back to true so the final assertion below can
+    // actually observe (and fail on) an unwanted recreation, instead of
+    // trivially passing regardless of what the release path does.
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 953 } }),
     [`POST /graphql`]: (_url, body) => {
