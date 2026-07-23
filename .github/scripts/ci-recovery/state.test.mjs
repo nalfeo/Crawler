@@ -383,7 +383,7 @@ test('enforces ownership label and state consistency', () => {
   );
 });
 
-test('expires shepherd leases after five minutes without a heartbeat', () => {
+test('expires shepherd leases after TTL plus queue grace', () => {
   const state = makeState({
     prNumber: 42,
     headSha: 'abc',
@@ -395,8 +395,8 @@ test('expires shepherd leases after five minutes without a heartbeat', () => {
     updatedAt: '2026-07-11T12:00:00.000Z',
   });
 
-  assert.equal(isLeaseExpired(state, new Date('2026-07-11T12:04:59.000Z')), false);
-  assert.equal(isLeaseExpired(state, new Date('2026-07-11T12:05:01.000Z')), true);
+  assert.equal(isLeaseExpired(state, new Date('2026-07-11T12:34:59.000Z')), false);
+  assert.equal(isLeaseExpired(state, new Date('2026-07-11T12:35:01.000Z')), true);
   assert.equal(ownerLabel(42), 'ci-owner-pr-42');
 });
 
@@ -645,7 +645,7 @@ test('broad sweeps suppress only healthy consistent owners', () => {
     isHealthyRecoveryOwner({
       prNumber: 42,
       state: shepherd,
-      now: new Date('2026-07-17T12:04:59.000Z'),
+      now: new Date('2026-07-17T12:34:59.000Z'),
     }),
     true,
   );
@@ -653,7 +653,7 @@ test('broad sweeps suppress only healthy consistent owners', () => {
     isHealthyRecoveryOwner({
       prNumber: 42,
       state: shepherd,
-      now: new Date('2026-07-17T12:05:01.000Z'),
+      now: new Date('2026-07-17T12:35:01.000Z'),
     }),
     false,
   );

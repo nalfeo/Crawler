@@ -111,6 +111,7 @@ const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace(
   POST_PUSH_HEAD_SHA_PLACEHOLDER,
 );
 let releaseUnexpectedOwnership = null;
+let fatalCleanupInProgress = false;
 const reportUnexpectedError = createUnexpectedErrorHandler({
   cleanup: () => releaseUnexpectedOwnership?.(),
   writeError: (message) => process.stderr.write(`${message}\n`),
@@ -240,6 +241,16 @@ function expectedMetadataRejection(candidate) {
 }
 
 function skipForExpectedMetadata(rejection, phase = null) {
+  if (fatalCleanupInProgress) {
+    // During unexpected-error cleanup, a moved trust fence must stay fatal and
+    // leave ownership untouched for reconciliation — never mask the crash by
+    // exiting 0 from inside release(). Re-raise so the crash handler preserves
+    // the original error and a non-zero exit code.
+    process.stdout.write(
+      `unexpected-error-cleanup-skip pr=#${prNumber} reason=trusted-metadata-move detail=${rejection.reason}\n`,
+    );
+    throw new ExpectedMetadataChangedError(rejection, phase || 'unexpected-error-cleanup');
+  }
   const reason = phase ? `${rejection.reason}-before-mutation` : rejection.reason;
   const phaseField = phase ? ` phase=${phase}` : '';
   process.stdout.write(
@@ -326,18 +337,15 @@ let labelExists = startupRepositoryLabel.present;
 let ownerLabelNodeId = startupRepositoryLabel.nodeId;
 const ownerLabelAttached = (pr.labels || []).some((label) => label.name === labelName);
 releaseUnexpectedOwnership = async () => {
-  // A review-wake dispatch is bound to one immutable head. If that trust fence
-  // moved, do not mutate ownership for the replacement PR; let reconciliation
-  // recover it under the new metadata while the original error remains fatal.
-  if (
-    operation === 'lease-release' ||
-    expectedHeadSha ||
-    !labelExists ||
-    !state ||
-    state.owner === 'none'
-  )
-    return;
+  // Fail-safe cleanup after an unexpected crash: release ownership we currently
+  // hold so a crash never leaks the lock. A review-wake dispatch is bound to one
+  // immutable head; release() runs its per-mutation metadata guards, and during
+  // this cleanup those guards RE-RAISE (instead of exiting 0) when the trust
+  // fence has moved, so a moved fence keeps the crash fatal and leaves ownership
+  // for reconciliation rather than mutating the replacement PR.
+  if (operation === 'lease-release' || !labelExists || !state || state.owner === 'none') return;
   if (state.owner === 'shepherd' && state.leaseId !== leaseId) return;
+  fatalCleanupInProgress = true;
   await release('unexpected-error');
 };
 const staleOwningState =
@@ -937,10 +945,29 @@ if (orphanedOwnershipArtifact) {
   // durable waiting marker (which must survive for ongoing admission waits).
   if (state && state.owner === 'none' && (state.status === 'idle' || state.status === 'waiting')) {
     if (shouldMutate) {
-      if (ownerLabelAttached) {
+      // Terminal orphan cleanup must not act on the startup snapshot: a
+      // concurrent reconcile may have acquired the same label since. Re-fetch
+      // live ownership and only delete when both the terminal state and the
+      // repository-label incarnation are unchanged; otherwise a fresh owner
+      // appeared and this stale run must leave its lock alone. Delete the fence
+      // by node id so we can only ever remove the incarnation we verified.
+      const facts = await fetchOwnershipFacts();
+      const ownershipUnchanged = sameOwnership(facts.state, state);
+      const incarnationUnchanged =
+        !facts.repositoryLabelPresent ||
+        Boolean(ownerLabelNodeId && facts.repositoryLabelNodeId === ownerLabelNodeId);
+      if (!ownershipUnchanged || !incarnationUnchanged) {
+        process.stdout.write(
+          `orphaned-fence-cleanup-skip pr=#${prNumber} reason=ownership-changed status=${state.status}\n`,
+        );
+        process.exit(0);
+      }
+      if (facts.attached) {
         await removePrLabel(labelName);
       }
-      await removeRepositoryLabel(labelName);
+      if (facts.repositoryLabelPresent && ownerLabelNodeId) {
+        await removeRepositoryLabelById(ownerLabelNodeId);
+      }
     }
     labelExists = false;
     process.stdout.write(`orphaned-fence-cleanup pr=#${prNumber} status=${state.status}\n`);

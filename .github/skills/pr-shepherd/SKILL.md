@@ -46,14 +46,14 @@ This skill has two modes. Pick based on the request:
 2. **Read state:** `gh pr view <n> --json state,mergeStateStatus,mergeable,reviewDecision,headRefName,isDraft` + `gh pr checks <n>`.
 3. **Preflight locally** (persona: **Producer**, declare a 🍎 apple estimate first): `bash scripts/agent/preflight.sh`, then `npm run verify:fast`.
 4. **Diagnose every failing/cancelled check before concluding anything.** `gh pr checks <n>` mislabels `CANCELLED` as `fail`. Confirm with `gh run list --branch <branch>` → `gh run view <run-id> --log-failed`. Distinguish a real failure from a concurrency/timing artifact (see playbook §Diagnose).
-5. **Fix real failures** with a surgical commit on the PR branch. Add/repair unit coverage in touched areas. Re-run `npm run verify:fast` and `bash scripts/agent/lab-gate-check.sh`. Heartbeat the lease after each meaningful activity and at least every 2 minutes; it drops automatically after 5 minutes without an active session heartbeat.
+5. **Fix real failures** with a surgical commit on the PR branch. Add/repair unit coverage in touched areas. Re-run `npm run verify:fast` and `bash scripts/agent/lab-gate-check.sh`. Heartbeat the lease after each meaningful activity and at least every 20 minutes.
 6. **Resolve review threads:** read inline comments, address actionable ones in code, then reply to + resolve each thread (conversation-resolution gate).
-7. **Release the lease, then arm auto-merge:** only after blockers are clear, dispatch `operation=lease-release`, verify release, then run `gh pr merge <n> --auto --squash`. If `BLOCKED`, diagnose the actual cause — not "review required". If you stop without handing off active work, release the lease; abandoned leases become takeover-eligible after 5 minutes without a heartbeat.
+7. **Release the lease, then arm auto-merge:** only after blockers are clear, dispatch `operation=lease-release`, verify release, then run `gh pr merge <n> --auto --squash`. If `BLOCKED`, diagnose the actual cause — not "review required". If you stop without handing off active work, release the lease; abandoned leases become takeover-eligible after 30 minutes plus queue grace.
 8. **Confirm + record:** verify `state=MERGED`, write a handoff in `docs/knowledge/handoffs/`, and (for **≥3🍎** sessions) score apples via `npm run apples:record`. 1–2🍎 sessions do not require an apples JSON. Commit with a conventional message + the `Co-authored-by: Copilot` trailer. Report the final merge commit.
 
 ## Scope & worktree rules (Mode A)
 
-- **In scope = open PR with no active CI-recovery/shepherd lease and no active session on its head branch, or with an owner session idle for >5 minutes.** The GitHub-native sticky state/owner label is authoritative for workflow ownership; session metadata remains an additional worktree-safety check.
+- **In scope = open PR with no active CI-recovery/shepherd lease and no active session on its head branch, or with an owner session idle for >30 minutes.** The GitHub-native sticky state/owner label is authoritative for workflow ownership; session metadata remains an additional worktree-safety check.
 - **Never `open_pr_session` on a branch already checked out in another live worktree** — it conflicts. Resolve by owner state:
   - Owner **active and recently updated** (<=30m) → delegate via `send_session_message` (pass the actionable review comments + CI run IDs). Do not touch its worktree.
   - Owner **active but idle >30m** → take over: open a PR shepherd session and continue directly.

@@ -182,7 +182,8 @@ produces workflows that "run green" but do nothing.
 - A task fingerprint hashes the latest head SHA and complete normalized blocker
   set. The same fingerprint is never dispatched twice.
 - Shepherd leases are acquired, heartbeated, and released through the same
-  workflow. They become takeover-eligible after 5 minutes without activity.
+  workflow. They become takeover-eligible after 30 minutes without activity,
+  plus five minutes of queue-jitter grace.
 - `CI_RECOVERY_MODE` defaults to `dry-run`; set it to `live` only after shadow
   output and a disposable-PR smoke test are clean.
 - See ADR `docs/knowledge/adr/0058-github-native-ci-recovery-ownership.md`.
