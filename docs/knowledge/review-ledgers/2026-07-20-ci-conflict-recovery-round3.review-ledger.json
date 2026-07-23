@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "ci-conflict-recovery-round3",
+  "task_title": "Recover CI conflict coordinator PR from reviewer findings (round 3)",
+  "estimated_apples": 2,
+  "stages": {}
+}

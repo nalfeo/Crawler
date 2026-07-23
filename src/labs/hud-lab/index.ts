@@ -77,7 +77,10 @@ function makeLabAbilityState(): AbilityState {
     ...base,
     learnedSpellIds: [...equipped],
     equippedActiveAbilityIds: [...equipped],
-    activeAbilityGrantSources: new Map(equipped.map((id) => [id, [{ kind: 'learned' as const }]])),
+    passiveAbilityIds: [],
+    cooldownByAbilityId: new Map(),
+    cooldownFramesByAbilityId: new Map(),
+    appliedPassiveAbilityIds: new Set(),
   };
 }
 

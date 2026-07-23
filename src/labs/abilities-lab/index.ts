@@ -44,7 +44,7 @@ import {
   type AbilityDefinition,
 } from '../../game/index.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
-import { ACTIVE_ABILITY_SLOT_LIMIT, createEmptyAbilityState } from '../../shared/abilities.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { MapConfig } from '../../shared/map-types.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
@@ -603,11 +603,19 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       return;
     }
 
-    let state = world.abilityStatesByEntity.get(playerEid);
-    if (!state) {
-      state = createEmptyAbilityState();
-      world.abilityStatesByEntity.set(playerEid, state);
+    const existingState = world.abilityStatesByEntity.get(playerEid);
+    if (!existingState) {
+      const fresh: AbilityState = {
+        learnedSpellIds: [],
+        equippedActiveAbilityIds: [],
+        passiveAbilityIds: [],
+        cooldownByAbilityId: new Map(),
+        cooldownFramesByAbilityId: new Map(),
+        appliedPassiveAbilityIds: new Set(),
+      };
+      world.abilityStatesByEntity.set(playerEid, fresh);
     }
+    const state = world.abilityStatesByEntity.get(playerEid)!;
     const availableIds = [
       ...new Set([...state.equippedActiveAbilityIds, ...state.learnedSpellIds]),
     ];

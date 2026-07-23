@@ -17,13 +17,15 @@
  */
 
 import { readdirSync, readFileSync, existsSync, lstatSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse } from 'yaml';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // lib -> workflow -> extensions -> .github -> repo root
 export const DEFAULT_REPO_ROOT = path.resolve(HERE, '..', '..', '..', '..');
+const requireFromRepo = createRequire(path.join(DEFAULT_REPO_ROOT, 'package.json'));
+const { parse } = requireFromRepo('yaml');
 
 /** Recursively collect files under `dir` whose basename matches `matcher`. */
 function walkFiles(dir, matcher, acc) {

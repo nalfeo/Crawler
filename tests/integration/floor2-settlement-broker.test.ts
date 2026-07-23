@@ -41,6 +41,8 @@ import { runSimulationStep as runHeadlessStep } from '../../src/game/ai/simulati
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { purchaseQuartermasterOffer } from '../../src/core/quartermaster-purchase.js';
+import { getGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
 
 const WIDTH = 120;
 const HEIGHT = 90;
@@ -95,8 +97,11 @@ describe('Floor 2 settlement · initialization', () => {
   it('spawns the Broker, a family defector, and 1-2 shops inside the settlement cluster', () => {
     const world = createTestWorld({ seed: 999 });
     world.floorMap = buildFloor2Map();
-    spawnPlayer(world, 0, 0);
+    const playerEid = spawnPlayer(world, 0, 0);
     world.floor = 2;
+    world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+    world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+    world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
     seedSettlementFamilyState(world);
 
     const snap = initializeFloor2Settlement(world, { shopCount: 2 });
@@ -105,6 +110,40 @@ describe('Floor 2 settlement · initialization', () => {
     expect(presentFamilies).toContain(snap.defectorFamilyId as FamilyId);
     expect(snap.settlementRoomIds.length).toBeGreaterThanOrEqual(2);
     expect(snap.settlementRoomIds.length).toBeLessThanOrEqual(3);
+
+    // Guaranteed Quartermaster.
+    expect(snap.quartermasterShop.archetypeId).toBe(QUARTERMASTER_ARCHETYPE_ID);
+    expect(snap.quartermasterShop.npcEid).toBeGreaterThan(0);
+    expect(snap.quartermasterShop.inventory.length).toBeGreaterThan(0);
+    for (const item of snap.quartermasterShop.inventory) {
+      expect(item.unitPrice).toBeGreaterThanOrEqual(1);
+    }
+    expect(snap.quartermasterStock).toBeDefined();
+    const quartermasterStock = snap.quartermasterStock!;
+    expect(quartermasterStock.offers.length).toBeGreaterThanOrEqual(3);
+    expect(quartermasterStock.offers.length).toBeLessThanOrEqual(4);
+    const generatedOffer = quartermasterStock.offers[0]!;
+    const generatedInstance = getGeneratedEquipmentInstance(world, generatedOffer.instanceId);
+    expect(generatedInstance).toBeDefined();
+    world.playerGold = generatedOffer.unitPrice;
+    expect(
+      purchaseQuartermasterOffer(world, playerEid, {
+        stockId: quartermasterStock.stockId,
+        offerId: generatedOffer.offerId,
+        quantity: 1,
+      }),
+    ).toEqual({
+      ok: true,
+      instanceId: generatedOffer.instanceId,
+      goldSpent: generatedOffer.unitPrice,
+      remainingGold: 0,
+    });
+    expect(world.inventories.get(playerEid)?.generatedEquipment).toEqual([
+      { kind: 'generated-instance', instanceKey: generatedOffer.instanceId },
+    ]);
+    expect(getGeneratedEquipmentInstance(world, generatedOffer.instanceId)).toBe(generatedInstance);
+
+    // Non-Quartermaster shops (1–2 seeded).
     expect(snap.shops.length).toBe(2);
     for (const shop of snap.shops) {
       expect(shop.npcEid).toBeGreaterThan(0);
@@ -305,6 +344,40 @@ describe('Floor 2 settlement · initialization', () => {
     expect(world.floorMap.tileMap.flags).toEqual(tileMapFlagsBefore);
     expect(world.floorExtendedState?.settlement).toBeUndefined();
     expect(world.npcs.size).toBe(0);
+  });
+
+  it('fails before any RNG or world mutation when economy is enabled with an invalid dependency closure', () => {
+    const world = createTestWorld({ seed: 999 });
+    world.floorMap = buildFloor2Map();
+    spawnPlayer(world, 0, 0);
+    world.floor = 2;
+    seedSettlementFamilyState(world);
+
+    // Enable economy but omit the required catalog dependency — invalid closure.
+    world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+    world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+    // floor2EquipmentCatalog left false.
+
+    const settlementRooms = world.floorMap.roomGraph.getRoomsByRole(RoomRole.SETTLEMENT);
+    const rolesBefore = settlementRooms.map((room) => room.role);
+    const doorCountBefore = query(world.ecs, [DoorState]).length;
+
+    // Use a control world to verify world.rng is not consumed before the throw.
+    const control = createTestWorld({ seed: 999 });
+
+    expect(() => initializeFloor2Settlement(world, { shopCount: 2 })).toThrowError(
+      'floor2EquipmentEconomy requires floor2EquipmentRegistry and floor2EquipmentCatalog',
+    );
+
+    // No NPCs spawned, no settlement snapshot written.
+    expect(world.floorExtendedState?.settlement).toBeUndefined();
+    expect(world.npcs.size).toBe(0);
+    // No door entities created.
+    expect(query(world.ecs, [DoorState])).toHaveLength(doorCountBefore);
+    // Settlement room roles unmodified.
+    expect(settlementRooms.map((room) => room.role)).toEqual(rolesBefore);
+    // world.rng was not advanced — next value matches an untouched control world.
+    expect(world.rng.next()).toBe(control.rng.next());
   });
 });
 

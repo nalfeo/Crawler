@@ -11,13 +11,13 @@
  */
 
 import {
+  ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
   ACTIVE_ABILITY_SLOT_LIMIT,
-  type AbilityGrantSource,
+  equipmentAbilityGrantSourceId,
   type AbilityState,
 } from '../../shared/abilities.js';
 import type { GameWorld } from '../world.js';
 import type { GeneratedEquipmentInstanceId } from '../../shared/generated-equipment-types.js';
-import type { EquipmentInstanceId } from '../../shared/equipment-types.js';
 
 function getOrCreateAbilityStateCore(world: GameWorld, holderEid: number): AbilityState {
   const existing = world.abilityStatesByEntity.get(holderEid);
@@ -25,41 +25,19 @@ function getOrCreateAbilityStateCore(world: GameWorld, holderEid: number): Abili
   const created: AbilityState = {
     learnedSpellIds: [],
     equippedActiveAbilityIds: [],
+    ownedActiveAbilityIds: [],
     passiveAbilityIds: [],
     cooldownByAbilityId: new Map(),
     cooldownFramesByAbilityId: new Map(),
     appliedPassiveAbilityIds: new Set(),
-    activeAbilityGrantSources: new Map(),
-    passiveAbilityGrantSources: new Map(),
+    grantOwnership: {
+      schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+      activeSourcesByAbilityId: new Map(),
+      passiveSourcesByAbilityId: new Map(),
+    },
   };
   world.abilityStatesByEntity.set(holderEid, created);
   return created;
-}
-
-function addActiveGrantSource(
-  state: AbilityState,
-  abilityId: string,
-  source: AbilityGrantSource,
-): void {
-  const sources = state.activeAbilityGrantSources.get(abilityId);
-  if (sources === undefined) {
-    state.activeAbilityGrantSources.set(abilityId, [source]);
-  } else {
-    sources.push(source);
-  }
-}
-
-function addPassiveGrantSource(
-  state: AbilityState,
-  abilityId: string,
-  source: AbilityGrantSource,
-): void {
-  const sources = state.passiveAbilityGrantSources.get(abilityId);
-  if (sources === undefined) {
-    state.passiveAbilityGrantSources.set(abilityId, [source]);
-  } else {
-    sources.push(source);
-  }
 }
 
 /**
@@ -74,28 +52,28 @@ export function grantGeneratedEquipmentActiveAbilityCore(
   effectOrdinal: number,
 ): void {
   const state = getOrCreateAbilityStateCore(world, holderEid);
-  const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
-  const existing = state.activeAbilityGrantSources.get(abilityId);
-  if (
-    existing?.some(
-      (s) =>
-        s.kind === 'generated-equipment' &&
-        s.instanceId === instanceId &&
-        s.effectOrdinal === effectOrdinal,
-    )
-  ) {
+  const ownership = (state.grantOwnership ??= {
+    schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+    activeSourcesByAbilityId: new Map(),
+    passiveSourcesByAbilityId: new Map(),
+  });
+  const sourceId = equipmentAbilityGrantSourceId(instanceId, effectOrdinal);
+  let sources = ownership.activeSourcesByAbilityId.get(abilityId);
+  if (sources === undefined) {
+    sources = new Set();
+    ownership.activeSourcesByAbilityId.set(abilityId, sources);
+  } else if (sources.has(sourceId)) {
     return;
   }
-  if (state.equippedActiveAbilityIds.includes(abilityId)) {
-    addActiveGrantSource(state, abilityId, source);
-    return;
+  sources.add(sourceId);
+  if (!state.equippedActiveAbilityIds.includes(abilityId)) {
+    if (state.equippedActiveAbilityIds.length < ACTIVE_ABILITY_SLOT_LIMIT) {
+      state.equippedActiveAbilityIds.push(abilityId);
+    }
   }
-  if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
-    addActiveGrantSource(state, abilityId, source);
-    return;
+  if (!(state.ownedActiveAbilityIds ?? []).includes(abilityId)) {
+    (state.ownedActiveAbilityIds ??= []).push(abilityId);
   }
-  state.equippedActiveAbilityIds.push(abilityId);
-  addActiveGrantSource(state, abilityId, source);
 }
 
 /**
@@ -110,64 +88,73 @@ export function grantGeneratedEquipmentPassiveAbilityCore(
   effectOrdinal: number,
 ): void {
   const state = getOrCreateAbilityStateCore(world, holderEid);
-  const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
-  const existing = state.passiveAbilityGrantSources.get(abilityId);
-  if (
-    existing?.some(
-      (s) =>
-        s.kind === 'generated-equipment' &&
-        s.instanceId === instanceId &&
-        s.effectOrdinal === effectOrdinal,
-    )
-  ) {
+  const ownership = (state.grantOwnership ??= {
+    schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+    activeSourcesByAbilityId: new Map(),
+    passiveSourcesByAbilityId: new Map(),
+  });
+  const sourceId = equipmentAbilityGrantSourceId(instanceId, effectOrdinal);
+  let sources = ownership.passiveSourcesByAbilityId.get(abilityId);
+  if (sources === undefined) {
+    sources = new Set();
+    ownership.passiveSourcesByAbilityId.set(abilityId, sources);
+  } else if (sources.has(sourceId)) {
     return;
   }
+  sources.add(sourceId);
   if (!state.passiveAbilityIds.includes(abilityId)) {
     state.passiveAbilityIds.push(abilityId);
   }
-  addPassiveGrantSource(state, abilityId, source);
 }
 
 /**
- * Revoke all ability grants (active and passive) from a specific equipment instance.
+ * Revoke all ability grants (active and passive) from a specific generated equipment instance.
  * Idempotent: calling with an instanceId that has no matching grants is a no-op.
  */
 export function revokeEquipmentAbilityGrantsCore(
   world: GameWorld,
   holderEid: number,
-  instanceId: EquipmentInstanceId | GeneratedEquipmentInstanceId,
+  instanceId: GeneratedEquipmentInstanceId,
 ): void {
   const state = world.abilityStatesByEntity.get(holderEid);
   if (state === undefined) return;
+  const ownership = state.grantOwnership;
+  if (ownership === undefined) return;
 
-  const isMatchingSource = (s: AbilityGrantSource): boolean =>
-    (s.kind === 'equipment' || s.kind === 'generated-equipment') && s.instanceId === instanceId;
+  const instancePrefix = `equipment:${instanceId}:`;
+  const isMatchingSource = (s: string): boolean => s.startsWith(instancePrefix);
 
-  for (const abilityId of [...state.activeAbilityGrantSources.keys()]) {
-    const sources = state.activeAbilityGrantSources.get(abilityId);
+  for (const abilityId of [...ownership.activeSourcesByAbilityId.keys()]) {
+    const sources = ownership.activeSourcesByAbilityId.get(abilityId);
     if (sources === undefined) continue;
-    const remaining = sources.filter((s) => !isMatchingSource(s));
-    if (remaining.length === sources.length) continue;
-    if (remaining.length > 0) {
-      state.activeAbilityGrantSources.set(abilityId, remaining);
-    } else {
-      state.activeAbilityGrantSources.delete(abilityId);
+    const sizeBefore = sources.size;
+    for (const s of [...sources]) {
+      if (isMatchingSource(s)) sources.delete(s);
+    }
+    if (sources.size === sizeBefore) continue;
+    if (sources.size === 0) {
+      ownership.activeSourcesByAbilityId.delete(abilityId);
       const idx = state.equippedActiveAbilityIds.indexOf(abilityId);
       if (idx !== -1) {
         state.equippedActiveAbilityIds.splice(idx, 1);
       }
+      const ownedIdx = (state.ownedActiveAbilityIds ?? []).indexOf(abilityId);
+      if (ownedIdx !== -1) {
+        state.ownedActiveAbilityIds!.splice(ownedIdx, 1);
+      }
     }
   }
 
-  for (const abilityId of [...state.passiveAbilityGrantSources.keys()]) {
-    const sources = state.passiveAbilityGrantSources.get(abilityId);
+  for (const abilityId of [...ownership.passiveSourcesByAbilityId.keys()]) {
+    const sources = ownership.passiveSourcesByAbilityId.get(abilityId);
     if (sources === undefined) continue;
-    const remaining = sources.filter((s) => !isMatchingSource(s));
-    if (remaining.length === sources.length) continue;
-    if (remaining.length > 0) {
-      state.passiveAbilityGrantSources.set(abilityId, remaining);
-    } else {
-      state.passiveAbilityGrantSources.delete(abilityId);
+    const sizeBefore = sources.size;
+    for (const s of [...sources]) {
+      if (isMatchingSource(s)) sources.delete(s);
+    }
+    if (sources.size === sizeBefore) continue;
+    if (sources.size === 0) {
+      ownership.passiveSourcesByAbilityId.delete(abilityId);
       const idx = state.passiveAbilityIds.indexOf(abilityId);
       if (idx !== -1) {
         state.passiveAbilityIds.splice(idx, 1);

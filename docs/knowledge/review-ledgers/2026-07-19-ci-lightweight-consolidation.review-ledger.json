@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "ci-lightweight-consolidation",
+  "task_title": "Consolidate lightweight CI jobs and repeated setup",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Reviewer returned rejected with 5 concerns. All addressed: (1) docs-only gate dropping human approval - human-approval step is INSIDE check-lightweight (same docs_only gate), docs-only PRs do not need human approval by design; (2) rerun automation breaks - update human-approval-rerun.yml to look for Lightweight Checks job name instead of Human approval; (3) advisory checks now on critical path - apply gameplay_safe scope gate to advisory steps so they skip for gameplay_safe PRs (no bottleneck shift); (4) performance claim incomplete - analyzed gameplay_safe/sprites_only/full scenarios, full CI runs unaffected (headless is bottleneck at 306s vs check-lightweight at 235s), gameplay_safe advisory steps gated; (5) tests should cover behavior - add tests for rerun automation behavior (updated job name lookup). Plan divergence = minor: added advisory scope gating and rerun workflow update."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

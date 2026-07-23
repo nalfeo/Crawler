@@ -39,9 +39,59 @@ export const DEFAULT_BACKGROUND_TWEAKS = Object.freeze({
 /** Max squared tolerance = 255² · 3 (three 8-bit channels). Monolith parity. */
 export const MAX_BACKGROUND_TOLERANCE_SQ = 255 * 255 * 3;
 
+/** Canonical module IDs accepted from the browser mutation surface. */
+export const CANONICAL_POSTPROCESS_MODULE_IDS = Object.freeze([
+  'background-removal',
+  'enclosed-regions',
+  'transparent-trim',
+  'resize',
+  'background-rekey',
+  'speckle-cleanup',
+  'palette-quantize',
+  'alpha-threshold',
+  'trim-and-fit',
+]);
+
+/**
+ * Validate and canonicalize module IDs at the extension trust boundary.
+ * The sidecar performs the stronger effective-pipeline validation for the
+ * selected brief before executing or persisting the request.
+ * @param {unknown} value
+ * @returns {string[]|null}
+ */
+export function normalizeDisabledModuleIds(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) return null;
+  const requested = new Set(value);
+  if ([...requested].some((id) => !CANONICAL_POSTPROCESS_MODULE_IDS.includes(id))) return null;
+  return CANONICAL_POSTPROCESS_MODULE_IDS.filter((id) => requested.has(id));
+}
+
 /** Two-digit zero-padded variant index (monolith `String(i).padStart(2,'0')`). */
 export function padVariant(index) {
   return String(index).padStart(2, '0');
+}
+
+/**
+ * Collect the sorted, unique variant indices from a run summary's candidates.
+ * Extracted (not duplicated) so both the standalone Postprocess canvas AND the
+ * embedded `/postprocess/*` surface under the Sprite Generation Workflow canvas
+ * build the exact same variant-picker list from the same run summary shape.
+ * @param {unknown} summary
+ * @returns {number[]}
+ */
+export function collectVariantIndices(summary) {
+  const candidates =
+    summary && typeof summary === 'object' && Array.isArray(summary.candidates)
+      ? summary.candidates
+      : [];
+  const seen = new Set();
+  for (const c of candidates) {
+    if (c && typeof c === 'object' && typeof c.index === 'number' && c.index >= 0) {
+      seen.add(c.index);
+    }
+  }
+  return [...seen].sort((a, b) => a - b);
 }
 
 /**
@@ -61,7 +111,7 @@ export function clampTolerance(value, fallback = 0) {
  * a usable `file`. Mirrors the monolith filter + label fallback
  * (`label ?? id ?? file`).
  * @param {unknown} raw
- * @returns {{profile:string|null, sourceRunId:string|null, steps:Array<{id:string|null,label:string,file:string}>}}
+ * @returns {{profile:string|null, sourceRunId:string|null, steps:Array<{id:string|null,label:string,file:string,moduleId:string|null,skipped:boolean}>}}
  */
 export function normalizePipelineManifest(raw) {
   const empty = { profile: null, sourceRunId: null, steps: [] };
@@ -74,7 +124,17 @@ export function normalizePipelineManifest(raw) {
     const id = typeof step.id === 'string' && step.id.length > 0 ? step.id : null;
     const label =
       typeof step.label === 'string' && step.label.length > 0 ? step.label : (id ?? step.file);
-    steps.push({ id, label, file: step.file });
+    steps.push({
+      id,
+      label,
+      file: step.file,
+      moduleId:
+        typeof step.moduleId === 'string' &&
+        CANONICAL_POSTPROCESS_MODULE_IDS.includes(step.moduleId)
+          ? step.moduleId
+          : null,
+      skipped: step.skipped === true,
+    });
   }
   return {
     profile: typeof raw.profile === 'string' && raw.profile.length > 0 ? raw.profile : null,
@@ -103,6 +163,19 @@ export function extractAppliedBackgroundTweaks(summary) {
   const { colorToleranceSq, fringeToleranceSq } = bg;
   if (typeof colorToleranceSq !== 'number' || typeof fringeToleranceSq !== 'number') return null;
   return { colorToleranceSq, fringeToleranceSq };
+}
+
+/**
+ * Extract the canonical run-global disabled-module set from persisted options.
+ * Malformed legacy data is ignored rather than leaking untrusted IDs into the UI.
+ * @param {unknown} summary
+ * @returns {string[]}
+ */
+export function extractAppliedDisabledModules(summary) {
+  if (!summary || typeof summary !== 'object') return [];
+  const options = summary.postprocessOverrides?.options;
+  if (!options || typeof options !== 'object') return [];
+  return normalizeDisabledModuleIds(options.disabledModules) ?? [];
 }
 
 /**
@@ -207,6 +280,10 @@ export function normalizePersistRequest(body) {
     Number(body.fringeToleranceSq),
     DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
   );
+  const disabledModules = normalizeDisabledModuleIds(body.disabledModules);
+  if (disabledModules === null) {
+    return { ok: false, error: 'disabledModules must contain only canonical module IDs' };
+  }
   return {
     ok: true,
     args: {
@@ -220,6 +297,7 @@ export function normalizePersistRequest(body) {
       manualAnchor,
       colorToleranceSq,
       fringeToleranceSq,
+      disabledModules,
     },
   };
 }
@@ -247,6 +325,7 @@ export function buildPersistPostprocessPayload(args) {
     fringeToleranceSq,
     manualAnchorClear,
     manualAnchor,
+    disabledModules,
   } = args;
   const payload = {
     mode: 'replace',
@@ -261,6 +340,7 @@ export function buildPersistPostprocessPayload(args) {
           DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
         ),
       },
+      disabledModules: normalizeDisabledModuleIds(disabledModules) ?? [],
     },
     facing: {
       variantIndex,
@@ -308,7 +388,7 @@ export function createPostprocessClient(deps) {
    * returned as `{ ok:false, reason, message }` so the client can degrade to the
    * pre-baked pipeline.
    * @param {{briefId:string, runId:string, rawPngBase64:string, options?:object}} args
-   * @returns {Promise<{ok:true, finalPng:string, steps:Array<{id:string|null,label:string,png:string}>}|{ok:false, reason:string, message:string, status?:number|null}>}
+   * @returns {Promise<{ok:true, finalPng:string, steps:Array<{id:string|null,label:string,png:string,moduleId:string|null,skipped:boolean}>}|{ok:false, reason:string, message:string, status?:number|null}>}
    */
   async function relayLivePostprocess(args) {
     const { briefId, runId, rawPngBase64, options } = args || {};
@@ -387,6 +467,12 @@ export function createPostprocessClient(deps) {
                   ? s.id
                   : '',
             png: s.png,
+            moduleId:
+              typeof s.moduleId === 'string' &&
+              CANONICAL_POSTPROCESS_MODULE_IDS.includes(s.moduleId)
+                ? s.moduleId
+                : null,
+            skipped: s.skipped === true,
           }))
       : [];
     return { ok: true, finalPng, steps };

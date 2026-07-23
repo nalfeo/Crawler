@@ -145,8 +145,13 @@ function rowFacts(row: RunRow): string {
  * active time (manufacturing an official win for ANY victory regardless of real
  * clear time). The schema-version guard proves the field is EXPECTED at this
  * version; this proves it is PRESENT and SANE. Throws on the first violation.
+ *
+ * Exported so any consumer that injects externally-loaded rows OUTSIDE
+ * {@link mergeShards}' fan-in guard (e.g. `sweep-eval.ts`'s `--legacy-baseline`
+ * artifact for the legacy `--stage search` path) can apply the same per-row
+ * validation before trusting those rows.
  */
-function assertRowSafeRoomInRange(row: RunRow): void {
+export function assertRowSafeRoomInRange(row: RunRow): void {
   const label = rowKey(row).split('\u0000').join('/');
   if (!Number.isFinite(row.gameTimeMs) || row.gameTimeMs < 0) {
     throw new Error(
@@ -182,12 +187,26 @@ function assertRowSafeRoomInRange(row: RunRow): void {
  *
  * @param meta     the artifact's recorded provenance (absent on a legacy artifact)
  * @param combo    the combo the artifact was produced for (`SearchArtifact.combo`)
- * @param expected the current runner's calibration the artifact must match
+ * @param expected the current runner's calibration the artifact must match — schema/
+ *   stage/floor/budget/frames/combo PLUS the current-build fingerprint
+ *   (runnerOs/nodeVersion/packageLockHash/workflowSha) so a schema/floor/budget-
+ *   matching artifact from a DIFFERENT code or runtime build (e.g. a stale
+ *   `--legacy-baseline` produced before a scoring-logic change landed) is still
+ *   rejected, mirroring {@link mergeShards}' per-shard build-fingerprint checks.
  */
 export function assertSearchArtifactProvenance(
   meta: ShardMeta | undefined,
   combo: string | undefined,
-  expected: { combo: string; floorId: string; budgetMs: number; maxFrames: number },
+  expected: {
+    combo: string;
+    floorId: string;
+    budgetMs: number;
+    maxFrames: number;
+    runnerOs: string;
+    nodeVersion: string;
+    packageLockHash: string;
+    workflowSha: string;
+  },
 ): void {
   if (!meta) {
     throw new Error(
@@ -229,6 +248,35 @@ export function assertSearchArtifactProvenance(
     throw new Error(
       `Search artifact combo '${combo}' != requested '${expected.combo}'; ` +
         `this finalist belongs to a different combo.`,
+    );
+  }
+  // Build-fingerprint checks — mirror mergeShards' per-shard guards so an
+  // artifact whose schema/floor/budget/frames happen to match, but whose rows
+  // were produced by a different code revision or runtime, is still rejected
+  // rather than silently trusted as a comparable incumbent/finalist.
+  if (meta.runnerOs !== expected.runnerOs) {
+    throw new Error(
+      `Search artifact runner-OS '${meta.runnerOs}' != current '${expected.runnerOs}'; ` +
+        `the finalist/baseline was produced on a different runner.`,
+    );
+  }
+  if (meta.nodeVersion !== expected.nodeVersion) {
+    throw new Error(
+      `Search artifact node-version '${meta.nodeVersion}' != current '${expected.nodeVersion}'; ` +
+        `the finalist/baseline was produced under a different Node runtime.`,
+    );
+  }
+  if (meta.packageLockHash !== expected.packageLockHash) {
+    throw new Error(
+      `Search artifact package-lock '${meta.packageLockHash}' != current ` +
+        `'${expected.packageLockHash}'; the finalist/baseline was produced against different ` +
+        `dependencies.`,
+    );
+  }
+  if (meta.workflowSha !== expected.workflowSha) {
+    throw new Error(
+      `Search artifact workflow-sha '${meta.workflowSha}' != current '${expected.workflowSha}'; ` +
+        `the finalist/baseline was produced by a different code revision and is not comparable.`,
     );
   }
 }
@@ -421,10 +469,19 @@ export interface LeaderboardRow {
   meanGold: number;
   meanMinHealthPercent: number;
   perWeaponWins: Record<string, { wins: number; runs: number }>;
-  /** Paired win→loss flips vs the LEGACY incumbent (null if no incumbent or self). */
+  /** Paired win→loss flips vs the LEGACY incumbent (null if no incumbent or self).
+   *  Informational only — no longer a hard gate, see {@link selectQualifiedWinner}. */
   flipsVsIncumbent: number | null;
   /** Aggregate win-rate delta vs the incumbent (null if no incumbent or self). */
   winRateDeltaVsIncumbent: number | null;
+  /** Candidate's total wins minus the incumbent's total wins (null if no
+   *  incumbent, self, or the groups cover different weapon/seed panels).
+   *  Positive means the candidate has strictly MORE total wins than the
+   *  incumbent — the hard gate {@link selectQualifiedWinner} now uses in place
+   *  of the old zero-flips requirement, per the human-approved net-win promotion
+   *  rule: a candidate may flip incumbent wins into losses as long as its
+   *  absolute total wins strictly increase over the incumbent's. */
+  winsVsIncumbentDelta: number | null;
   isIncumbent: boolean;
 }
 
@@ -437,7 +494,14 @@ function groupKey(combo: string, configId: string): string {
 }
 
 export interface BuildLeaderboardOptions {
-  /** The LEGACY incumbent to compute flips/delta against, e.g. `legacy+legacy`. */
+  /** The LEGACY incumbent to compute flips/delta against, e.g. `legacy+legacy`.
+   *  NOTE: this identifies exactly ONE incumbent (comboKey + configId) for the
+   *  whole call. `winsVsIncumbentDelta`/`flipsVsIncumbent`/`winRateDeltaVsIncumbent`
+   *  are only meaningful when every row passed in shares that same fixed
+   *  validation panel / incumbent context. Batching rows from multiple
+   *  checkpoints or combos that each declare a DIFFERENT incumbent into a
+   *  single `buildLeaderboard()` call is unsupported and would silently
+   *  compare candidates against the wrong incumbent's win count. */
   incumbentCombo?: string;
   incumbentConfigId?: string;
   configs?: Record<string, SweepConfig>;
@@ -448,8 +512,9 @@ export interface BuildLeaderboardOptions {
 
 /**
  * Build one leaderboard row per (combo, configId), recomputing all totals from
- * the per-run rows. Flips + win-rate delta are computed against the incumbent
- * group when one is supplied and identifiable.
+ * the per-run rows. Flips + win-rate delta + `winsVsIncumbentDelta` are
+ * computed against the incumbent group when one is supplied and identifiable
+ * (see {@link BuildLeaderboardOptions} — single-incumbent-per-call only).
  */
 export function buildLeaderboard(
   rows: readonly RunRow[],
@@ -488,6 +553,8 @@ export function buildLeaderboard(
     incumbentRows.length > 0
       ? incumbentRows.filter((r) => isWin(r)).length / incumbentRows.length
       : null;
+  const incumbentWins =
+    incumbentRows.length > 0 ? incumbentRows.filter((r) => isWin(r)).length : null;
 
   const leaderboard: LeaderboardRow[] = [];
   for (const [key, groupRows] of groups) {
@@ -507,6 +574,7 @@ export function buildLeaderboard(
     const isIncumbent = key === incumbentKey;
     let flipsVsIncumbent: number | null = null;
     let winRateDeltaVsIncumbent: number | null = null;
+    let winsVsIncumbentDelta: number | null = null;
     if (incumbentKey && !isIncumbent && incumbentWinByCell.size > 0) {
       let flips = 0;
       for (const row of groupRows) {
@@ -518,6 +586,26 @@ export function buildLeaderboard(
       flipsVsIncumbent = flips;
       if (incumbentWinRate !== null) {
         winRateDeltaVsIncumbent = wins / runs - incumbentWinRate;
+      }
+      if (incumbentWins !== null) {
+        // Only compute a meaningful delta when the candidate and incumbent were
+        // evaluated on an identical (weapon, seed) panel.  Extra or missing
+        // cells would inflate/deflate the raw win count and make the comparison
+        // meaningless, so leave winsVsIncumbentDelta null for mismatched panels.
+        // We also require each group to contain exactly one row per cell so that
+        // duplicate rows (which would inflate wins/runs for a group without
+        // changing the unique-cell count) cannot corrupt the comparison.
+        const candidateCells = new Set(groupRows.map((r) => `${r.weapon}\u0000${r.seed}`));
+        const noDuplicateCandidateCells = candidateCells.size === groupRows.length;
+        const noDuplicateIncumbentCells = incumbentWinByCell.size === incumbentRows.length;
+        const panelsMatch =
+          noDuplicateCandidateCells &&
+          noDuplicateIncumbentCells &&
+          candidateCells.size === incumbentWinByCell.size &&
+          groupRows.every((r) => incumbentWinByCell.has(`${r.weapon}\u0000${r.seed}`));
+        if (panelsMatch) {
+          winsVsIncumbentDelta = wins - incumbentWins;
+        }
       }
     }
 
@@ -537,6 +625,7 @@ export function buildLeaderboard(
       perWeaponWins,
       flipsVsIncumbent,
       winRateDeltaVsIncumbent,
+      winsVsIncumbentDelta,
       isIncumbent,
     });
   }
@@ -552,6 +641,13 @@ export function sortByComposite(rows: readonly LeaderboardRow[]): LeaderboardRow
  * Win-count-first lexicographic order (the win-rate-first project philosophy):
  * more wins → fewer flips vs incumbent → faster mean clear → more xp → more gold.
  * A time-bonus artifact can't crown a fewer-wins config here (see plan concern 2).
+ *
+ * DIAGNOSTIC ONLY: this ordering (and the `winnersDiverge` flag it feeds) is
+ * surfaced for human visibility when the composite-score winner and this
+ * lexicographic winner disagree. It is NOT the promotion gate — `flipsVsIncumbent`
+ * here is used purely as a display tie-break, not a qualification requirement.
+ * The actual hard gate is {@link selectQualifiedWinner} (win-rate floor +
+ * strictly-more-total-wins-than-incumbent via `winsVsIncumbentDelta`).
  */
 export function sortByLexicographic(rows: readonly LeaderboardRow[]): LeaderboardRow[] {
   return [...rows].sort((a, b) => {
@@ -582,7 +678,8 @@ export interface QualifiedSelection {
   /** The selected candidate, or null when nothing met the hard safety gate. */
   winner: LeaderboardRow | null;
   /** Every non-incumbent candidate that passed BOTH the win-rate floor and the
-   *  zero-flips-vs-incumbent hard gate, best-first (see tie-break order). */
+   *  strictly-more-total-wins-than-incumbent hard gate, best-first (see
+   *  tie-break order). */
   qualifying: LeaderboardRow[];
   /** Non-null only when the single highest-composite-score candidate overall
    *  was disqualified by the hard gate -- i.e. a naive score-only ranking
@@ -592,20 +689,26 @@ export interface QualifiedSelection {
 
 /**
  * Approved qualification order for promoting a search/graduation candidate
- * over the LEGACY incumbent: (1) >=90% official win rate AND (2) zero
- * win->loss flips vs the incumbent are a HARD gate -- a candidate failing
- * EITHER is disqualified regardless of composite score. Among qualifiers,
- * rank by (3) highest composite score (Sigma), tie-broken by (4) faster mean
- * clear time on wins, then (5) higher mean minimum HP%, then (6) higher mean
- * XP, then (7) higher mean gold.
+ * over the LEGACY incumbent: (1) >=90% official win rate AND (2) the
+ * candidate's absolute total wins strictly EXCEED the incumbent's total wins
+ * are a HARD gate -- a candidate failing EITHER is disqualified regardless of
+ * composite score. Win→loss flips vs the incumbent are ALLOWED as long as the
+ * candidate's total wins still strictly increase (human-approved net-win
+ * promotion rule, superseding the prior zero-flips requirement). Among
+ * qualifiers, rank by (3) highest composite score (Sigma), tie-broken by (4)
+ * faster mean clear time on wins, then (5) higher mean minimum HP%, then (6)
+ * higher mean XP, then (7) higher mean gold.
  *
- * This is the fix for the GH run 29597840666 failure mode: both
+ * This gate exists because of the GH run 29597840666 failure mode: both
  * riskRewardFused+legacy and slackAware+legacy out-scored the incumbent
- * (97.3% vs 95.3% wins) but each had 5 win->loss flips vs the incumbent -- a
- * hard-gate violation that pure composite-score (or even win-rate) ranking
- * never caught. `buildLeaderboard`'s `flipsVsIncumbent` column exists so this
- * gate can enforce that safety contract directly, ahead of any score
- * comparison.
+ * (97.3% vs 95.3% wins) but each had 5 win->loss flips vs the incumbent. The
+ * hard-gate check used to reject any nonzero flip count outright; the
+ * human-approved fix instead compares absolute total wins: 292/300 (candidate)
+ * strictly exceeds 286/300 (incumbent), so the flips are tolerated and the
+ * candidate now qualifies. `buildLeaderboard`'s `winsVsIncumbentDelta` column
+ * exists so this gate can enforce that contract directly, ahead of any score
+ * comparison. `flipsVsIncumbent` remains informational (surfaced in the
+ * leaderboard) but is no longer part of the hard gate.
  */
 export function selectQualifiedWinner(
   rows: readonly LeaderboardRow[],
@@ -621,10 +724,16 @@ export function selectQualifiedWinner(
     };
   }
 
-  // Hard gate: flipsVsIncumbent must be EXACTLY 0 -- `null` (no incumbent
-  // identifiable) must never be treated as "zero flips".
+  // Hard gate: winsVsIncumbentDelta must be STRICTLY POSITIVE (candidate's
+  // total wins strictly exceed the incumbent's) -- `null` (no incumbent
+  // identifiable) must never be treated as "qualifies". Flips are no longer
+  // gated directly; a candidate may flip incumbent wins into losses as long
+  // as its absolute total wins still strictly increase overall.
   const qualifying = candidates
-    .filter((r) => r.flipsVsIncumbent === 0 && r.winRate >= minWinRate)
+    .filter(
+      (r) =>
+        r.winsVsIncumbentDelta !== null && r.winsVsIncumbentDelta > 0 && r.winRate >= minWinRate,
+    )
     .sort((a, b) => {
       if (a.totalScore !== b.totalScore) return a.totalScore > b.totalScore ? -1 : 1;
       const aTime = a.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
@@ -644,7 +753,7 @@ export function selectQualifiedWinner(
       qualifying: [],
       reason:
         `No candidate met the hard gate (>=${(minWinRate * 100).toFixed(0)}% win rate AND ` +
-        `zero flips vs incumbent) among ${candidates.length} candidate(s).`,
+        `strictly more total wins than the incumbent) among ${candidates.length} candidate(s).`,
     };
   }
 
@@ -655,7 +764,7 @@ export function selectQualifiedWinner(
     topIsDisqualified && topOverall.totalScore > winner.totalScore
       ? `${topOverall.combo} scored higher (totalScore=${topOverall.totalScore}) but was ` +
         `disqualified by the hard safety gate (winRate=${(topOverall.winRate * 100).toFixed(1)}%, ` +
-        `flipsVsIncumbent=${topOverall.flipsVsIncumbent ?? 'unknown'}).`
+        `winsVsIncumbentDelta=${topOverall.winsVsIncumbentDelta ?? 'unknown'}).`
       : null;
 
   return { winner, qualifying, reason };
@@ -798,18 +907,20 @@ export function renderMarkdown(result: AggregateResult): string {
     );
   });
 
-  // Approved qualification order (>=90% wins AND zero flips, then score) —
-  // surfaced separately from the raw composite ranking above so a human
-  // never mistakes the top composite-score row for the safe recommendation.
+  // Approved qualification order (>=90% wins AND strictly more total wins
+  // than the incumbent, then score) — surfaced separately from the raw
+  // composite ranking above so a human never mistakes the top composite-score
+  // row for the safe recommendation.
   const selection = selectQualifiedWinner(result.byComposite);
   lines.push('');
   lines.push('### Qualified winner (safety-gated recommendation)');
   lines.push('');
   if (selection.winner) {
+    const delta = selection.winner.winsVsIncumbentDelta;
     lines.push(
       `✅ **\`${selection.winner.combo}\`** qualifies (win rate ` +
-        `${(selection.winner.winRate * 100).toFixed(1)}%, zero flips vs incumbent, ` +
-        `Σscore ${selection.winner.totalScore.toExponential(3)}).`,
+        `${(selection.winner.winRate * 100).toFixed(1)}%, ${delta !== null ? `+${delta}` : '?'} ` +
+        `wins vs incumbent, Σscore ${selection.winner.totalScore.toExponential(3)}).`,
     );
   } else {
     lines.push('🚫 **No candidate qualifies.**');

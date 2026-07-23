@@ -6,8 +6,9 @@ import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
 import { applyCatalogEffect } from './progressionEffects.js';
-import { grantPassiveAbility, queueAbilityTrigger } from './abilitySystem.js';
+import { grantAbilitySources, queueAbilityTrigger } from './abilitySystem.js';
 import { SKILL_LEVEL5_ABILITY_GRANTS } from '../abilities/registry.js';
+import { skillAbilityGrantSourceId } from '../../shared/abilities.js';
 
 /**
  * Processes skill usage events each frame.
@@ -87,7 +88,13 @@ export function skillSystem(world: GameWorld): void {
           if (abilityId !== undefined) {
             const targetEid = event.holderEid ?? query(world.ecs, [Player])[0];
             if (targetEid !== undefined) {
-              grantPassiveAbility(world, targetEid, abilityId);
+              grantAbilitySources(world, targetEid, [
+                {
+                  kind: 'passive',
+                  abilityId,
+                  sourceId: skillAbilityGrantSourceId(def.id, state.level),
+                },
+              ]);
             }
           }
         }

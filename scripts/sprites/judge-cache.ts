@@ -10,6 +10,7 @@
  * Cache key (sha256) combines:
  *   - modelDeployment       — different model => different verdict
  *   - promptTemplateVersion — bump when the system prompt changes
+ *   - rendered prompts      — conditional rubric branches (type/mobRole/etc)
  *   - variant PNG bytes     — any pixel-level change invalidates
  *   - reference PNG bytes   — re-anchoring style invalidates
  *   - brief match prompt    — brief.prompt drives `brief_match`
@@ -60,12 +61,18 @@ export interface JudgeCacheKeyInputs {
   readonly modelDeployment: string;
   /** Bump this constant in `judge.ts` whenever the system prompt structure changes. */
   readonly promptTemplateVersion: string;
+  /** Fully-rendered system prompt (all conditional rubric branches included). */
+  readonly systemInstructions: string;
+  /** Fully-rendered user prompt (all conditional rubric branches included). */
+  readonly userPrompt: string;
   readonly variantPng: Buffer;
   readonly referencePngs: ReadonlyArray<Buffer>;
   /** `brief.prompt` — drives the `brief_match` evaluator. */
   readonly briefMatchInstructions: string;
   /** Dungeon depth changes the expected design-language intensity. */
   readonly floor: number;
+  /** Optional floor/theme direction changes the design-language rubric. */
+  readonly designLanguageAddenda: string;
 }
 
 export interface JudgeCacheOptions {
@@ -123,10 +130,16 @@ export class JudgeCache {
     hash.update(inputs.modelDeployment);
     hash.update('\ntemplate:');
     hash.update(inputs.promptTemplateVersion);
+    hash.update('\nsystem-prompt:');
+    hash.update(inputs.systemInstructions);
+    hash.update('\nuser-prompt:');
+    hash.update(inputs.userPrompt);
     hash.update('\nbrief-prompt:');
     hash.update(inputs.briefMatchInstructions);
     hash.update('\nfloor:');
     hash.update(String(inputs.floor));
+    hash.update('\ndesign-language-addenda:');
+    hash.update(inputs.designLanguageAddenda);
     hash.update('\nvariant-png:');
     hash.update(inputs.variantPng);
     hash.update('\nreferences:');

@@ -20,9 +20,12 @@ import { describe, expect, it } from 'vitest';
  *   - the monolithic `search` job must be gone (replaced by baseline +
  *     checkpoint-init + an explicit bounded round1-3 DAG);
  *   - every round's candidate-eval matrix job must be independently timed at
- *     <=90 minutes (the hard timing gate), with NO `max-parallel` cap (so
- *     GitHub schedules maximum concurrency rather than an artificial
- *     bottleneck);
+ *     <=90 minutes (the hard timing gate), with queue-aware `max-parallel`
+ *     wiring plus the shared `crawler-sweep-slot-*` semaphore preventing an
+ *     eval round from saturating the account's entire GitHub-hosted
+ *     concurrent-runner pool and starving the shared merge-train queue's own
+ *     validation jobs repo-wide (run 29786216369 previously fanned out 20
+ *     concurrent jobs with 44 more queued);
  *   - every round-select (checkpoint fold-in) job must be gated with
  *     `!cancelled()` so a `fail-fast:false` partial candidate failure upstream
  *     never causes the checkpoint-persistence step itself to be skipped --
@@ -53,7 +56,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 interface WorkflowStrategy {
   'fail-fast'?: boolean;
-  'max-parallel'?: number;
+  'max-parallel'?: number | string;
   matrix?: Record<string, unknown>;
 }
 
@@ -65,6 +68,11 @@ interface WorkflowJob {
   'timeout-minutes'?: number;
   strategy?: WorkflowStrategy;
   outputs?: Record<string, string>;
+  concurrency?: {
+    group?: string;
+    'cancel-in-progress'?: boolean;
+    queue?: string;
+  };
   steps?: Array<{ name?: string; run?: string; uses?: string; with?: Record<string, unknown> }>;
 }
 
@@ -133,9 +141,14 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(inputs.secondary).toMatchObject({ type: 'boolean', default: false });
   });
 
-  it('stays read-only (contents: read) with no elevated default permissions', () => {
+  it('stays read-only with only the metadata permissions required by queue-aware admission', () => {
     const doc = loadWorkflow();
-    expect(doc.permissions).toEqual({ contents: 'read' });
+    expect(doc.permissions).toEqual({
+      contents: 'read',
+      actions: 'read',
+      'pull-requests': 'read',
+      issues: 'read',
+    });
   });
 
   it('preflight hard-caps rounds to the explicit bounded 0-3 DAG before any runner spins up', () => {
@@ -205,15 +218,20 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(script).toContain('--cap 200');
     });
 
-    it(`${evalJob} is one independent matrix job per candidate, timed <=90min, with unrestricted concurrency`, () => {
+    it(`${evalJob} is one independent matrix job per candidate, timed <=90min, and dynamically capped`, () => {
       const doc = loadWorkflow();
       const job = getJob(doc, evalJob);
       expect(job.if).toContain(`needs.${candidatesJob}.outputs.hasCandidates == 'true'`);
       expect(job.strategy?.matrix).toBeDefined();
-      // No max-parallel cap: let GitHub's real concurrent-runner ceiling be
-      // the only limiter, so a combo's candidates get scheduled as promptly
-      // as the account allows (see workflow header "residual limitation").
-      expect(job.strategy?.['max-parallel']).toBeUndefined();
+      // Dynamic max-parallel and the global slot token cap this candidate
+      // fan-out so a full graduation run cannot saturate the account's entire
+      // runner pool or starve unrelated repo-wide work.
+      // Run 29786216369 fanned out 20 concurrent Round 3 eval jobs with 44
+      // more queued before it was manually cancelled -- this cap must never
+      // silently regress back to unbounded concurrency.
+      expect(String(job.strategy?.['max-parallel'])).toContain('max_parallel');
+      expect(job.concurrency?.group).toContain('crawler-sweep-slot-');
+      expect(job.concurrency?.group).toContain('sweepSlot');
       expect(job.strategy?.['fail-fast']).toBe(false);
       const timeout = job['timeout-minutes'];
       expect(timeout).toBeDefined();
@@ -341,6 +359,55 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     for (const n of ROUND_NUMBERS) {
       const candidatesScript = allRunSteps(getJob(doc, `round${n}-candidates`));
       expect(candidatesScript).toContain('--cap 200');
+    }
+  });
+
+  it('every matrix job uses dynamic max-parallel plus one of the global sweep semaphore slots', () => {
+    // Every fan-out matrix job must consume the dynamic share calculated at
+    // its batch boundary and one of the ten hard global semaphore tokens.
+    const doc = loadWorkflow();
+    const matrixJobNames = Object.entries(doc.jobs)
+      .filter(([, job]) => (job as WorkflowJob).strategy?.matrix !== undefined)
+      .map(([name]) => name);
+    expect(matrixJobNames.sort()).toEqual(
+      [
+        'baseline',
+        'checkpoint-init',
+        'round1-eval',
+        'round1-select',
+        'round2-eval',
+        'round2-select',
+        'round3-eval',
+        'round3-select',
+        'validate',
+      ].sort(),
+    );
+    for (const name of matrixJobNames) {
+      const job = getJob(doc, name);
+      expect(
+        String(job.strategy?.['max-parallel']),
+        `job "${name}" strategy.max-parallel`,
+      ).toContain('max_parallel');
+      expect(job.concurrency?.group, `job "${name}" concurrency.group`).toContain(
+        'crawler-sweep-slot-',
+      );
+      expect(job.concurrency?.group, `job "${name}" concurrency.group`).toContain('sweepSlot');
+      expect(job.concurrency?.['cancel-in-progress']).toBe(false);
+      expect(job.concurrency?.queue).toBe('max');
+    }
+  });
+
+  it('governs every control job with slot zero and preserves every queued invocation', () => {
+    const doc = loadWorkflow();
+    for (const [name, job] of Object.entries(doc.jobs)) {
+      expect(job.concurrency, `job "${name}" concurrency`).toBeDefined();
+      expect(job.concurrency?.['cancel-in-progress']).toBe(false);
+      expect(job.concurrency?.queue).toBe('max');
+      if (job.strategy?.matrix === undefined) {
+        expect(job.concurrency?.group, `job "${name}" concurrency.group`).toBe(
+          'crawler-sweep-slot-0',
+        );
+      }
     }
   });
 });

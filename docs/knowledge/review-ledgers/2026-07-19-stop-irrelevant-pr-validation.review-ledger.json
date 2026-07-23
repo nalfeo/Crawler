@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "stop-irrelevant-pr-validation",
+  "task_title": "Epic: Stop irrelevant PR validation (foundation: #1688, #1689, #1696, partial #1697/#1698)",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Blocking: concurrency collision (fixed), visual_touched public/pkg-lock (fixed), sim_touched derivation (fixed to independent), npm audit removal unsafe (kept with dependency gate). Non-blocking: coverage drift, E2E splitting. Architecture: wave-ordered PRs preferred (acknowledged; single PR per user mandate). All blocking concerns resolved before implementation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "One medium finding: src/engine/* and src/labs/* incorrectly in sim_touched safe list — headless tests import from both surfaces. Fixed by removing those entries; engine/labs changes now produce sim_touched=true. All other areas (fail-closed defaults, concurrency groups, YAML syntax, merge-gate compatibility, security gating) checked clean."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Final-head review raised three concerns. Adjudication validated one: package-lock.json could change resolved runtime/test dependencies while skipping simulation and coverage gates. Removed it from gameplay_safe, sim_touched, and coverage_touched safe lists and updated regression cases. The coverage fetch-depth and duplicate npm-audit concerns were rejected with source/policy evidence. After merging current main, Claude Sonnet 4.6 re-reviewed the resolved overlap and found no remaining defects in the five-flag contract, fail-closed classification, non-PR backstops, or aggregate merge-gate semantics."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-luna", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "valid_count": 1,
+          "clean": true,
+          "notes": "Both models identified same HIGH finding: src/labs/** incorrectly in visual_touched safe list. E2E tests import from labs (hud-lab, ui-probe-lab, main-scene-probe-lab, abilities-lab, hud-family-relationships-lab). Fixed by removing src/labs/* from visual_touched safe list and updating test cases. Both models confirmed all other areas clean."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "resolved_count": 1,
+          "valid_count": 1,
+          "clean": true,
+          "notes": "Final-head fan-out and clean re-review produced five raw concerns. GPT-5.4 adjudication validated only the package-lock fail-open classification; it was fixed and both scope suites plus verify:fast passed. Fetch-depth, duplicate audit, unused output, and pre-existing guard-exemption suggestions were rejected as non-defects or outside this PR's change. After the current-main merge, Claude Opus 4.8 with GPT-5.6 Sol cross-validation reviewed nine new threads: fail-safe sprite flags, workflow-policy coverage, the handoff, and PR description were corrected; four findings were deterministically assigned to the separately estimated open #1697/#1698 slices rather than this foundation PR. A final Claude Sonnet 4.6 thread pass validated and fixed five additional defects: cross-surface rename endpoint loss, two missing-output dependency gates, downstream Security skip on classifier failure, and an inaccurate sim_touched comment. A follow-up Claude Sonnet 4.6 pass fixed missing-output polarity in the E2E and advisory-audit consumers, updated their deterministic policy tests, and narrowed this ledger's task title to the reviewed foundation scope."
+        }
+      ]
+    }
+  }
+}

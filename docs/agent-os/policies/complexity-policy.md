@@ -20,6 +20,15 @@ Give agents a shared, honest vocabulary for estimating task size. The goal is **
 
 A hello kitty is the planning unit for a session. A session that ships 1 hello kitty has delivered meaningful, coherent work. Two hello kitties is an excellent session. Track them in the handoff file.
 
+### Tooling-only ceremony cap
+
+Work confined to developer/agent tooling, canvases, automation, or asset-pipeline
+tooling is estimated at **no more than 3🍎**, regardless of file count. This is a
+ceremony cap, not permission to skip tests or split an incoherent change: a
+3🍎 tooling change still receives the separate-model plan review and code-review
+loop required by the review harness. The cap does not apply when the change
+alters runtime gameplay behavior or shipped game data.
+
 ---
 
 ## Codebase Examples

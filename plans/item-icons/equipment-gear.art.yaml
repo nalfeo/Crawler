@@ -2,8 +2,18 @@ id: item-icons-equipment-gear
 title: 'Item Icons — Equipment Gear'
 summary: 'Placeholder wearable-gear icons covering every non-weapon, non-neck paper-doll slot (head, face, shoulders, chest, back, belt, legs, feet, gloves, arms, wrists, rings). These render the InventoryUI/EquipmentUI text fallback today; each needs real authored pixel art generated via the sprite pipeline when provider access is available.'
 assets:
+  - id: alchemist-goggles
+    type: equipment
+    label: 'Alchemist Goggles'
+    briefId: alchemist-goggles
+    brief: 'Alchemist Goggles — see briefs/items/alchemist-goggles.yaml for the authored Floor 2 dual-lens equipment-icon brief.'
+    placeholderInUse: true
+    integration:
+      kind: item-catalog
+      id: alchemist-goggles
+
   - id: iron-helm
-    type: item
+    type: equipment
     label: 'Iron Helm'
     brief: 'Iron Helm — a single centered small object icon with a clear, readable silhouette on a transparent background. A dented pot-like helm with eyeholes. Surprisingly reassuring.'
     placeholderInUse: true
@@ -12,7 +22,7 @@ assets:
       id: iron-helm
 
   - id: iron-visor
-    type: item
+    type: equipment
     label: 'Iron Visor'
     brief: 'Iron Visor — a single centered small object icon with a clear, readable silhouette on a transparent background. A slitted iron faceplate. You see less, you flinch less.'
     placeholderInUse: true
@@ -21,7 +31,7 @@ assets:
       id: iron-visor
 
   - id: steel-pauldrons
-    type: item
+    type: equipment
     label: 'Steel Pauldrons'
     brief: 'Steel Pauldrons — a single centered small object icon with a clear, readable silhouette on a transparent background. Broad layered shoulder plates. Makes doorways a gamble.'
     placeholderInUse: true
@@ -30,7 +40,7 @@ assets:
       id: steel-pauldrons
 
   - id: iron-breastplate
-    type: item
+    type: equipment
     label: 'Iron Breastplate'
     brief: 'Iron Breastplate — a single centered small object icon with a clear, readable silhouette on a transparent background. A heavy, honest chest plate protecting the vitals.'
     placeholderInUse: true
@@ -38,8 +48,17 @@ assets:
       kind: sprite-registry
       id: iron-breastplate
 
+  - id: runed-cuirass
+    type: equipment
+    label: 'Runed Cuirass'
+    brief: 'Runed Cuirass — a single centered chest-armor icon with a clear, readable silhouette on a transparent background. Dark-metal breastplate with glowing arcane runes etched into the plate. Floor 2 rare gear with a bold electric-blue rune glow.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: runed-cuirass
+
   - id: travelers-cloak
-    type: item
+    type: equipment
     label: "Traveler's Cloak"
     brief: "Traveler's Cloak — a single centered small object icon with a clear, readable silhouette on a transparent background. A frayed hooded cloak, quick on the feet."
     placeholderInUse: true
@@ -48,7 +67,7 @@ assets:
       id: travelers-cloak
 
   - id: sturdy-belt
-    type: item
+    type: equipment
     label: 'Sturdy Belt'
     brief: 'Sturdy Belt — a single centered small object icon with a clear, readable silhouette on a transparent background. A thick leather belt with a heavy buckle that steadies the nerves.'
     placeholderInUse: true
@@ -57,7 +76,7 @@ assets:
       id: sturdy-belt
 
   - id: iron-greaves
-    type: item
+    type: equipment
     label: 'Iron Greaves'
     brief: 'Iron Greaves — a single centered small object icon with a clear, readable silhouette on a transparent background. A pair of iron shin plates that have met many shins.'
     placeholderInUse: true
@@ -66,7 +85,7 @@ assets:
       id: iron-greaves
 
   - id: leather-boots
-    type: item
+    type: equipment
     label: 'Leather Boots'
     brief: 'Leather Boots — a single centered small object icon with a clear, readable silhouette on a transparent background. Well-worn quiet boots. Good for sprinting away.'
     placeholderInUse: true
@@ -75,7 +94,7 @@ assets:
       id: leather-boots
 
   - id: leather-gloves
-    type: item
+    type: equipment
     label: 'Leather Gloves'
     brief: 'Leather Gloves — a single centered small object icon with a clear, readable silhouette on a transparent background. A pair of supple leather gloves for a faster swing.'
     placeholderInUse: true
@@ -84,7 +103,7 @@ assets:
       id: leather-gloves
 
   - id: bronze-vambrace
-    type: item
+    type: equipment
     label: 'Bronze Vambrace'
     brief: 'Bronze Vambrace — a single centered small object icon with a clear, readable silhouette on a transparent background. A single left-arm bronze guard, green with age.'
     placeholderInUse: true
@@ -93,7 +112,7 @@ assets:
       id: bronze-vambrace
 
   - id: iron-armguard
-    type: item
+    type: equipment
     label: 'Iron Armguard'
     brief: 'Iron Armguard — a single centered small object icon with a clear, readable silhouette on a transparent background. A single right-arm iron plate that adds bite to a blow.'
     placeholderInUse: true
@@ -102,7 +121,7 @@ assets:
       id: iron-armguard
 
   - id: leather-bracer
-    type: item
+    type: equipment
     label: 'Leather Bracer'
     brief: 'Leather Bracer — a single centered small object icon with a clear, readable silhouette on a transparent background. A snug wrist wrap that helps you slip a hit.'
     placeholderInUse: true
@@ -111,7 +130,7 @@ assets:
       id: leather-bracer
 
   - id: beaded-bracelet
-    type: item
+    type: equipment
     label: 'Beaded Bracelet'
     brief: 'Beaded Bracelet — a single centered small object icon with a clear, readable silhouette on a transparent background. A string of lucky beads that rattle before a crit.'
     placeholderInUse: true
@@ -120,7 +139,7 @@ assets:
       id: beaded-bracelet
 
   - id: band-of-fortune
-    type: item
+    type: equipment
     label: 'Band of Fortune'
     brief: 'Band of Fortune — a single centered small object icon with a clear, readable silhouette on a transparent background. A left-hand ring humming with dumb luck.'
     placeholderInUse: true
@@ -129,10 +148,28 @@ assets:
       id: band-of-fortune
 
   - id: signet-of-focus
-    type: item
+    type: equipment
     label: 'Signet of Focus'
     brief: 'Signet of Focus — a single centered small object icon with a clear, readable silhouette on a transparent background. A right-hand signet ring that sharpens the mind.'
     placeholderInUse: true
     integration:
       kind: sprite-registry
       id: signet-of-focus
+
+  - id: batfolk-hood
+    type: equipment
+    label: 'Batfolk Hood'
+    brief: 'Batfolk Hood — a single centered headgear icon on a transparent background. Dark membrane-like hood with twin bat-ear protrusions, Floor 2 batfolk craftsmanship. Charcoal or midnight-purple coloring with tarnished metal accent rivets. Silhouette reads clearly as a bat-eared helmet hood at small scale.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: batfolk-hood
+
+  - id: surveyor-map
+    type: equipment
+    label: 'Surveyor Map'
+    brief: 'Surveyor Map — a single centered small object icon with a clear, readable silhouette on a transparent background. A battered folded map square with a leather strap, brown ink grid pattern on yellowed parchment, cracked wax compass-rose seal. Floor 2 accessory equipment icon for runtime key equipment/accessory/surveyor-map.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: surveyor-map

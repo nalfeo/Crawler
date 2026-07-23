@@ -117,25 +117,55 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/no spell effects/i);
   });
 
-  it('defaults enemy briefs to profile facing left when facing is omitted', () => {
+  it('defaults enemy briefs to a camera-facing three-quarter pose when facing is omitted', () => {
     const enemy = makeBrief({
       type: 'enemy',
       anchor: { x: 8, y: 8 },
       sensors: { anchor: { mode: 'center-of-mass' } } as Brief['sensors'],
     });
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
-    expect(out).toMatch(/profile facing left/i);
-    expect(out).not.toMatch(/profile facing right/i);
+    expect(out).toMatch(/one-third-to-two-thirds turn/i);
+    expect(out).toMatch(/Never use a full side profile/i);
   });
 
-  it('honors an explicit left-facing enemy brief', () => {
+  it('honors an explicit left bias without allowing a full side profile', () => {
     const enemy = makeBrief({
       type: 'enemy',
       anchor: { x: 8, y: 8 },
       sensors: { enemy: { facing: 'left' } } as Brief['sensors'],
     });
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
-    expect(out).toMatch(/profile facing left/i);
+    expect(out).toMatch(/turn biased toward the left edge/i);
+    expect(out).toMatch(/Never use a full side profile/i);
+  });
+
+  it('makes boss enemies large and visually dominant', () => {
+    const out = buildPrompt(
+      makeBrief({
+        type: 'enemy',
+        mobRole: 'boss',
+        size: { width: 64, height: 48 },
+        anchor: { x: 32, y: 47 },
+      }),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toMatch(/Boss scale/i);
+    expect(out).toMatch(/substantially taller, wider, or larger in footprint/i);
+    expect(out).toMatch(/visually dominant/i);
+  });
+
+  it('presents equipment as an isolated wearable icon', () => {
+    const out = buildPrompt(makeBrief({ type: 'equipment' }), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Equipment rules/i);
+    expect(out).toMatch(/one isolated wearable or equippable object/i);
+    expect(out).toMatch(/Do not include a wearer/i);
+  });
+
+  it('presents props as grounded world-space objects rather than inventory icons', () => {
+    const out = buildPrompt(makeBrief({ type: 'prop' }), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Prop rules/i);
+    expect(out).toMatch(/grounded world-space object/i);
+    expect(out).toMatch(/Do not present the prop as a floating inventory icon/i);
   });
 
   it('adds tile rules for tile briefs including exact output size', () => {
@@ -162,6 +192,8 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/Avoid drab monochrome outfits/i);
     expect(out).toMatch(/not only browns\/oranges/i);
     expect(out).toMatch(/hair and skin tones are clearly differentiated/i);
+    expect(out).toMatch(/one-third-to-two-thirds turn/i);
+    expect(out).toMatch(/Never use a full side profile/i);
   });
 
   it('includes per-variant constraints (no clipping, no text, high-contrast bg)', () => {

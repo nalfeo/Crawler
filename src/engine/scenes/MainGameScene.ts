@@ -22,7 +22,7 @@ import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-dep
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
-import { ACTIVE_ABILITY_SLOT_LIMIT, createEmptyAbilityState } from '../../shared/abilities.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
@@ -2344,13 +2344,26 @@ export class MainGameScene extends Phaser.Scene {
     if (!this.abilityLoadoutUI || !isInSafeContext(this.world) || this.abilityLoadoutUI.isOpen()) {
       return;
     }
-    let state = this.world.abilityStatesByEntity.get(this.playerEid);
-    if (!state) {
-      state = createEmptyAbilityState();
-      this.world.abilityStatesByEntity.set(this.playerEid, state);
+    const existingState = this.world.abilityStatesByEntity.get(this.playerEid);
+    if (!existingState) {
+      const fresh: AbilityState = {
+        learnedSpellIds: [],
+        equippedActiveAbilityIds: [],
+        ownedActiveAbilityIds: [],
+        passiveAbilityIds: [],
+        cooldownByAbilityId: new Map(),
+        cooldownFramesByAbilityId: new Map(),
+        appliedPassiveAbilityIds: new Set(),
+      };
+      this.world.abilityStatesByEntity.set(this.playerEid, fresh);
     }
+    const state = this.world.abilityStatesByEntity.get(this.playerEid)!;
     const availableIds = [
-      ...new Set([...state.equippedActiveAbilityIds, ...state.learnedSpellIds]),
+      ...new Set([
+        ...state.equippedActiveAbilityIds,
+        ...state.learnedSpellIds,
+        ...(state.ownedActiveAbilityIds ?? []),
+      ]),
     ];
     if (availableIds.length === 0) {
       this.flashHint('No learned spells yet. Defeat the Slime Rat and claim a spellbook first.');

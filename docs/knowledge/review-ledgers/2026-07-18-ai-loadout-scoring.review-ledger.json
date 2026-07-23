@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ai-loadout-scoring",
+  "task_title": "Build deterministic AI equipment loadout scoring",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Refined without architectural fork: split legal transition construction from ERV scoring; added purchase cost, deterministic remaining encounter fixtures, and committed config; corrected tie-break to score then fingerprint then instance ID; removed disabled-slot rejection because runtime currently treats disabledSlots as inert; made next-minus-current the sole additive target with reconciled diagnostics; defined exact C2 ownership DTO semantics; expanded production-formula parity to accuracy, offense/crit, armor, cadence, and ability cooldown. Kept 3 apples by one pure module plus focused tests and narrow helper extraction only where no production seam exists; D1 compile repair is two type-predicate edits required by preflight."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

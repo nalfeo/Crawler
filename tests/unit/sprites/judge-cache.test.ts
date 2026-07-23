@@ -59,10 +59,13 @@ function baseInputs() {
   return {
     modelDeployment: 'gpt-4o-vision',
     promptTemplateVersion: 'v1',
+    systemInstructions: 'System rubric for enemy normal.',
+    userPrompt: 'Judge this enemy normal candidate.',
     variantPng: Buffer.from([1, 2, 3, 4, 5]),
     referencePngs: [Buffer.from([10, 11, 12]), Buffer.from([20, 21, 22])],
     briefMatchInstructions: 'A vertical iron sword.',
     floor: 1,
+    designLanguageAddenda: '',
   };
 }
 
@@ -136,6 +139,25 @@ describe('JudgeCache.computeKey', () => {
   it('distinguishes identical inputs judged at different floors', () => {
     const a = cache.computeKey({ ...baseInputs(), floor: 1 });
     const b = cache.computeKey({ ...baseInputs(), floor: 20 });
+    expect(a).not.toBe(b);
+  });
+
+  it('distinguishes different floor or theme addenda', () => {
+    const a = cache.computeKey(baseInputs());
+    const b = cache.computeKey({
+      ...baseInputs(),
+      designLanguageAddenda: 'A family-specific visual direction.',
+    });
+    expect(a).not.toBe(b);
+  });
+
+  it('distinguishes different rendered prompt contracts', () => {
+    const a = cache.computeKey(baseInputs());
+    const b = cache.computeKey({
+      ...baseInputs(),
+      systemInstructions: 'System rubric for enemy boss (requires boss_presence).',
+      userPrompt: 'Judge this boss enemy candidate.',
+    });
     expect(a).not.toBe(b);
   });
 });

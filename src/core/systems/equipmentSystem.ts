@@ -177,13 +177,13 @@ export function resolveEquipmentInstance(
   return { instanceId, def: generatedEquipmentDef(generated) };
 }
 
-interface GeneratedPhysicalOwner {
+export interface GeneratedPhysicalOwner {
   readonly container: 'bag' | 'equipped' | 'reward-bundle';
   readonly entity?: number;
   readonly bundleId?: string;
 }
 
-function findGeneratedPhysicalOwners(
+export function findGeneratedPhysicalOwners(
   world: GameWorld,
   instanceKey: GeneratedEquipmentInstanceKey,
 ): GeneratedPhysicalOwner[] {

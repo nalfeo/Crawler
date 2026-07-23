@@ -15,20 +15,71 @@ import {
   BLOCKED_LABEL,
   NOOP_LABEL,
   parseEnabledFlag,
+  queueEntries,
   QUEUE_LABEL,
   VALIDATION_FAILED_LABEL,
 } from '../merge-train/state.mjs';
 
 const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
+// Hard global cap on outstanding CI Recovery workflow runs while the merge
+// train queue is non-empty. This is intentionally independent of
+// CI_RECOVERY_MAX_DISPATCH_PER_RUN: that var caps dispatch *per router
+// invocation*, but with the router now serialized under a single
+// concurrency group (see ci-recovery-router.yml), this cap is what actually
+// bounds the number of CI Recovery runs competing with Merge Train
+// Validation for runners at any moment.
+//
+// 2026-07-22 EMERGENCY raise 1 -> 5: CI Recovery is the merge train's SOLE
+// feeder (it drives PRs to convergence and applies the `merge-train` label),
+// so pinning it to 1 while the queue was non-empty meant a single slow PR
+// starved the train and froze throughput repo-wide. Raising to 5 lets
+// recovery converge several PRs per cycle and actually drain the backlog.
+// Runner-safety headroom now leans on #1770 (far less PR-head churn) and the
+// sweep-fencing work; the durable fix is a load-aware budget (see #1776) and
+// promoting these caps to runtime variables (see #1779) so a future incident
+// needs a knob-turn, not a code change + PR.
+export const GLOBAL_TRAIN_DISPATCH_CAP = 5;
+// Cap applied whenever there is no active merge-train backlog to protect --
+// the queue is empty, the train feature is enabled but idle, OR the train
+// feature is disabled/paused entirely. Measured capacity evidence
+// (2026-07-21 incident follow-up): this repo is public on GitHub Free
+// (standard-hosted concurrency limit: 20 concurrent jobs). Representative
+// peaks observed: a normal full PR CI run uses ~5 concurrent jobs;
+// uncontended Merge Train Validation runs alone peak at 7-9 concurrent jobs;
+// an active AI Sweep Eval run can spawn 200+ jobs and peak at ~19 concurrent,
+// which is what starved Validation runners during the incident. Even with no
+// backlog to protect, sweep-style jobs can still be running (and can be
+// running whether or not the train feature itself is on), so dispatch is not
+// left fully unbounded here -- 5 (emergency-raised from 2 on 2026-07-22 to
+// match GLOBAL_TRAIN_DISPATCH_CAP for throughput) preserves bounded runner
+// headroom instead of going back to effectively-unlimited (Infinity)
+// dispatch. This cap must remain in force during train
+// maintenance/disablement too: that is precisely when protecting shared
+// runner capacity matters most, not a window where backpressure can safely
+// lapse.
+export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = 5;
+// GitHub Actions run states that represent a run not yet finished: actively
+// running, waiting to be scheduled, or held by a concurrency group (queued
+// runs whose concurrency group is busy report as `waiting`). `pending` is
+// included even though the router itself never produces it, because it is a
+// documented Actions run status and omitting it would let a run in that
+// state go uncounted, silently widening the outstanding-run gap this cap
+// exists to close.
+const OUTSTANDING_RUN_STATUSES = ['queued', 'pending', 'in_progress', 'waiting', 'requested'];
 const REPAIR_WINDOW_SIZE = 6;
 const MANAGED_COMMENT_MARKERS = [
   '<!-- crawler-ci-state:v1 -->',
   '<!-- crawler-ci-task:v1',
   '<!-- crawler-merge-train:v1 -->',
+  '<!-- crawler-review-request:v1',
+  '<!-- crawler-review-conflict:v1',
 ];
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
+const FLAG_OFF_SWEEP_ROTATION_WINDOW_MS = 10 * 60 * 1000;
+const DEFAULT_OUTSTANDING_VISIBILITY_TIMEOUT_MS = 8 * 60 * 1000;
+const DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS = 5000;
 // Labels owned by merge-train automation that must be drained during
 // flag-off cleanup before legacy routing resumes normal operation. A PR that
 // still carries one of these after MERGE_TRAIN_ENABLED=false needs the
@@ -49,6 +100,17 @@ function parsePositiveInt(raw, fallback) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function rotateList(values, rotation) {
+  if (values.length <= 1) {
+    return values;
+  }
+  const normalizedRotation = ((rotation % values.length) + values.length) % values.length;
+  if (normalizedRotation === 0) {
+    return values;
+  }
+  return [...values.slice(normalizedRotation), ...values.slice(0, normalizedRotation)];
 }
 
 export function parseRetryAfterMilliseconds(error) {
@@ -156,31 +218,11 @@ export function collectPrNumbers({
       eventName,
       trainEnabled,
     });
-    const eligiblePulls = scheduledPulls
-      .filter((pullRequest) => {
-        const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
-        const labels = pullRequest.labels || [];
-        const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
-        const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
-        const waiting = labels.some((label) => label.name === WAITING_LABEL);
-        const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
-        const owned = labels.some((label) => String(label.name || '').startsWith('ci-owner-pr-'));
-        const shouldExcludeByLabels =
-          hasQueueLabel ||
-          (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
-        return (
-          pullRequest.state === 'open' &&
-          !pullRequest.draft &&
-          pullRequest.base?.ref === 'main' &&
-          pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
-          !shouldExcludeByLabels
-        );
-      })
-      .sort(
-        (left, right) =>
-          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-          left.number - right.number,
-      );
+    const eligiblePulls = eligibleTrainRecoveryPulls({
+      scheduledPulls,
+      repository,
+      directlyTriggeredPrs,
+    });
     const direct = eligiblePulls.filter((pullRequest) =>
       directlyTriggeredPrs.has(pullRequest.number),
     );
@@ -218,6 +260,7 @@ export function collectPrNumbers({
   // older, still-labeled PR past the cap on every sweep (never cleaned up).
   const trainLabeledNumbers = new Set();
   const waitingTransitionNumbers = new Set();
+  const ownedNumbers = new Set();
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
     const normalizedRepo = repository.toLowerCase();
@@ -244,16 +287,16 @@ export function collectPrNumbers({
           if (waitingTransition) {
             waitingTransitionNumbers.add(number);
           }
+          if (owned) {
+            ownedNumbers.add(number);
+          }
         }
       }
     }
   }
 
   const eligible = [...numbers];
-  if (
-    (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
-    eligible.length > maxDispatchPerRun
-  ) {
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
     // Prioritize PRs the event directly named plus any still carrying a
     // train-owned label so the flag-off cleanup sweep completes for them
     // before the cap is spent on unrelated recently-updated PRs.
@@ -269,9 +312,63 @@ export function collectPrNumbers({
         !trainLabeledNumbers.has(number) &&
         !waitingTransitionNumbers.has(number),
     );
-    return [...prioritized, ...remaining].slice(0, maxDispatchPerRun);
+    // Keep already-owned PRs behind PRs that have not yet received an owner
+    // label, then rotate each bucket once per 10-minute sweep window. Without
+    // this, the later global budget slice in partitionDispatchable() keeps
+    // selecting the same updated-desc prefix in flag-off mode, and PRs later in
+    // the sweep can starve indefinitely.
+    const rotation =
+      Number.isFinite(now.getTime()) && now.getTime() > 0
+        ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
+        : 0;
+    const remainingUnowned = remaining.filter((number) => !ownedNumbers.has(number));
+    const remainingOwned = remaining.filter((number) => ownedNumbers.has(number));
+    const ordered = [
+      ...prioritized,
+      ...rotateList(remainingUnowned, rotation),
+      ...rotateList(remainingOwned, rotation),
+    ];
+    return ordered.slice(0, maxDispatchPerRun);
   }
   return eligible;
+}
+
+export function eligibleTrainRecoveryPulls({
+  scheduledPulls,
+  repository,
+  directlyTriggeredPrs = new Set(),
+}) {
+  return scheduledPulls
+    .filter((pullRequest) => {
+      const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
+      const labels = pullRequest.labels || [];
+      const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
+      const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
+      const waiting = labels.some((label) => label.name === WAITING_LABEL);
+      const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
+      const owned = labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX));
+      const shouldExcludeByLabels =
+        hasQueueLabel ||
+        (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
+      return (
+        pullRequest.state === 'open' &&
+        !pullRequest.draft &&
+        pullRequest.base?.ref === 'main' &&
+        pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+        !shouldExcludeByLabels
+      );
+    })
+    .sort(
+      (left, right) =>
+        new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+        left.number - right.number,
+    );
+}
+
+export function recoveryBacklogEntries(scheduledPulls, repository, now = new Date()) {
+  return eligibleTrainRecoveryPulls({ scheduledPulls, repository }).filter(
+    (pullRequest) => !hasHealthyOwnerForSweep(pullRequest, now),
+  );
 }
 
 export function recoveryStateFromComments(comments) {
@@ -445,6 +542,209 @@ export function isManagedCommentEvent(payload, eventName) {
   return MANAGED_COMMENT_MARKERS.some((marker) => body.startsWith(marker));
 }
 
+// Total number of `workflowFile` runs currently outstanding (not yet
+// completed) across every status that represents unfinished work,
+// including runs held `waiting`/`requested` behind a concurrency group --
+// those still occupy a dispatch slot even though a runner hasn't picked
+// them up yet.
+//
+// Implementation: fires one concurrent `?status=<s>&per_page=1` request per
+// status and sums the `total_count` fields. This is O(len(statuses)) requests
+// (5 for the default set) rather than O(total_runs/100) for a full history
+// paginator -- critical because the CI Recovery workflow can accumulate tens
+// of thousands of completed runs. The minor TOCTOU window (a run could
+// transition between two queried statuses while the concurrent requests are
+// in-flight) is accepted as the price of keeping this call fast enough to
+// run inside a 10-minute job timeout with repeated visibility polls.
+export async function countOutstandingRecoveryRuns(
+  token,
+  owner,
+  repo,
+  workflowFile = 'ci-recovery.yml',
+  statuses = OUTSTANDING_RUN_STATUSES,
+  requestFn = request,
+) {
+  const counts = await Promise.all(
+    statuses.map((status) =>
+      requestWithBackoff(
+        () =>
+          requestFn(
+            token,
+            `/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?status=${encodeURIComponent(status)}&per_page=1`,
+          ),
+        { label: `list-runs-count-${workflowFile}-${status}` },
+      ).then(({ data }) => data?.total_count ?? 0),
+    ),
+  );
+  return counts.reduce((sum, c) => sum + c, 0);
+}
+
+// Returns the IDs of currently outstanding runs from the first page of the
+// workflow run history (up to 100 most-recent runs). Used by runFromEnv to
+// build a pre-dispatch snapshot so waitForDispatchedRunsVisible can
+// distinguish newly created runs from pre-existing outstanding ones.
+//
+// Restricting to the first page is safe here because GitHub orders workflow
+// runs by created_at descending, so newly dispatched runs always appear at
+// the top. The only risk of missing a pre-existing outstanding run is if
+// there are >100 outstanding runs simultaneously, which well exceeds any
+// realistic level at this repo's scale.
+export async function listRecentOutstandingRunIds(
+  token,
+  owner,
+  repo,
+  workflowFile = 'ci-recovery.yml',
+  statuses = OUTSTANDING_RUN_STATUSES,
+  requestFn = request,
+) {
+  const { data } = await requestWithBackoff(
+    () =>
+      requestFn(
+        token,
+        `/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?per_page=100`,
+      ),
+    { label: `list-runs-recent-${workflowFile}` },
+  );
+  const outstandingStatuses = new Set(statuses);
+  return new Set(
+    (data?.workflow_runs || []).filter((r) => outstandingStatuses.has(r.status)).map((r) => r.id),
+  );
+}
+
+// How many more CI Recovery dispatches this router invocation may send.
+// While the merge train queue holds any PR, outstanding recovery runs are
+// hard-capped at GLOBAL_TRAIN_DISPATCH_CAP so Merge Train Validation is not
+// starved for runner capacity. Otherwise -- queue empty, train feature idle,
+// OR the train feature disabled/paused entirely -- dispatch is capped at the
+// looser GLOBAL_IDLE_TRAIN_DISPATCH_CAP rather than left unbounded (see that
+// constant's comment for the measured capacity evidence).
+//
+// This budget is applied unconditionally, independent of MERGE_TRAIN_ENABLED:
+// disabling/pausing the train is precisely the scenario runner-capacity
+// protection must not lapse (2026-07-21 incident follow-up guidance), so
+// there is no "train off -> Infinity" branch here. `trainQueueNonEmpty` is
+// itself computed independent of the flag too (see runFromEnv) -- a stale
+// `merge-train` label surviving a flag-off still counts as backlog and gets
+// the stricter cap, which fails closed rather than open.
+//
+// The router's concurrency group (see ci-recovery-router.yml) is now an
+// unconditional single global group in every mode -- a second follow-up
+// correction that replaced the earlier per-mode group split, which left
+// legacy/flag-off invocations on per-PR groups where two different-PR
+// invocations could each read a stale outstanding count before either
+// dispatch became visible. With one global group active in all modes,
+// router invocations are always fully serialized, so this budget check is
+// no longer merely a live-but-racy API read: it is enforced against a
+// single invocation running at a time, closing that cross-PR race window.
+// The residual TOCTOU window this budget still relies on
+// (waitForOutstandingCount closing it) is the narrower one between a
+// dispatch and its own visibility via the Actions list-runs API within the
+// *same* serialized lineage -- see that function's comment.
+export function computeDispatchBudget({ trainQueueNonEmpty, outstandingCount }) {
+  const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
+  return Math.max(0, cap - outstandingCount);
+}
+
+// Splits the PRs collectPrNumbers deemed eligible into what this run may
+// actually dispatch now versus what must wait. Deferred PRs are not lost:
+// the next scheduled sweep (every 10 minutes) re-evaluates ownership and
+// picks up any PR still lacking a healthy recovery owner, guaranteeing
+// eventual processing once capacity frees up.
+export function partitionDispatchable(prNumbers, budget) {
+  if (budget === Infinity) {
+    return { dispatchable: prNumbers, deferred: [] };
+  }
+  return {
+    dispatchable: prNumbers.slice(0, budget),
+    deferred: prNumbers.slice(budget),
+  };
+}
+
+// Closes the TOCTOU window between "dispatch a recovery run" and "that run
+// becomes visible to the Actions list-runs API". The router concurrency
+// group (see ci-recovery-router.yml) serializes invocations, but only for
+// the duration each invocation is running: if this run finishes and frees
+// its slot before the dispatch it just made shows up in the API, the *next*
+// serialized invocation can read a stale outstanding count and dispatch again,
+// breaching the global cap.
+//
+// This function accepts a pre-dispatch snapshot of outstanding run IDs and
+// polls until `count` NEW runs (IDs not in `preDispatchIds`) appear. Using
+// pre-dispatch IDs rather than an aggregate minimum count correctly handles
+// the case where pre-existing outstanding runs complete while we are waiting:
+// those completions lower the aggregate count but do not affect the new-run
+// tally, so the wait converges correctly regardless of concurrent completions.
+//
+// The router holds its concurrency slot until either the new runs become
+// visible or a long timeout expires, at which point it fails closed (throws)
+// rather than silently succeeding. That means the residual race now requires
+// Actions list-runs visibility to lag for nearly the whole workflow timeout,
+// not just a couple of quick polls; fully closing it still needs a durable
+// reservation the next invocation can observe.
+export async function waitForDispatchedRunsVisible(
+  token,
+  owner,
+  repo,
+  preDispatchIds,
+  count,
+  {
+    timeoutMs = DEFAULT_OUTSTANDING_VISIBILITY_TIMEOUT_MS,
+    pollIntervalMs = DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS,
+    nowFn = () => Date.now(),
+    sleepFn = sleep,
+    listFn = (t, o, r) => listRecentOutstandingRunIds(t, o, r),
+  } = {},
+) {
+  const deadline = nowFn() + timeoutMs;
+  while (true) {
+    const currentIds = await listFn(token, owner, repo);
+    const newCount = [...currentIds].filter((id) => !preDispatchIds.has(id)).length;
+    if (newCount >= count) {
+      return newCount;
+    }
+    const remainingMs = deadline - nowFn();
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Timed out waiting for ${count} dispatched run(s) to become visible via Actions API observed_new=${newCount} timeout_ms=${timeoutMs}`,
+      );
+    }
+    await sleepFn(Math.min(pollIntervalMs, remainingMs));
+  }
+}
+
+// Kept for backward compatibility. New callers should use
+// waitForDispatchedRunsVisible, which accepts pre-dispatch run IDs to avoid
+// false timeouts when pre-existing outstanding runs complete while waiting.
+export async function waitForOutstandingCount(
+  token,
+  owner,
+  repo,
+  expectedMinimum,
+  {
+    timeoutMs = DEFAULT_OUTSTANDING_VISIBILITY_TIMEOUT_MS,
+    pollIntervalMs = DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS,
+    nowFn = () => Date.now(),
+    sleepFn = sleep,
+    countFn = countOutstandingRecoveryRuns,
+  } = {},
+) {
+  let lastObserved = 0;
+  const deadline = nowFn() + timeoutMs;
+  while (true) {
+    lastObserved = await countFn(token, owner, repo);
+    if (lastObserved >= expectedMinimum) {
+      return lastObserved;
+    }
+    const remainingMs = deadline - nowFn();
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Timed out waiting for dispatched run(s) to become visible via Actions API observed=${lastObserved} expected>=${expectedMinimum} timeout_ms=${timeoutMs}`,
+      );
+    }
+    await sleepFn(Math.min(pollIntervalMs, remainingMs));
+  }
+}
+
 export async function runFromEnv(env = process.env) {
   const token = env.GITHUB_TOKEN;
   const repository = env.GITHUB_REPOSITORY || '';
@@ -470,50 +770,55 @@ export async function runFromEnv(env = process.env) {
   const dispatchTrigger =
     payload.action && !trigger.includes(':') ? `${trigger}:${payload.action}` : trigger;
 
-  let scheduledPulls = [];
-  if (trainEnabled || eventName === 'schedule' || eventName === 'workflow_dispatch') {
-    scheduledPulls = await requestWithBackoff(
-      () =>
-        paginate(
-          token,
-          `/repos/${owner}/${repo}/pulls?state=open&base=main&sort=updated&direction=desc`,
+  // Always fetched now (previously only for schedule/workflow_dispatch or
+  // train-enabled events): the global backpressure check below needs to
+  // determine merge-train backlog state consistently on every invocation,
+  // including direct per-PR events with the train feature disabled, so that
+  // runner-capacity protection does not lapse whenever the train is paused.
+  // This does not change collectPrNumbers' own routing semantics -- it still
+  // only consults scheduledPulls for schedule/workflow_dispatch events or
+  // when trainEnabled is true, exactly as before.
+  let scheduledPulls = await requestWithBackoff(
+    () =>
+      paginate(
+        token,
+        `/repos/${owner}/${repo}/pulls?state=open&base=main&sort=updated&direction=desc`,
+      ),
+    { label: 'list-open-prs' },
+  );
+  if (
+    trainEnabled &&
+    isRepairWindowSweepEvent({
+      payload,
+      eventName,
+      trainEnabled,
+    })
+  ) {
+    // Snapshot the reference time before hydration so the age-ordering and
+    // "healthy owner" checks inside the callback all share the same clock.
+    const hydrateNow = new Date();
+    scheduledPulls = await hydrateRecoveryOwnership(
+      scheduledPulls,
+      (number) =>
+        requestWithBackoff(
+          () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+          { label: `load-owner-state-${number}` },
         ),
-      { label: 'list-open-prs' },
+      OWNERSHIP_HYDRATION_BATCH_SIZE,
+      {
+        targetDispatchable: REPAIR_WINDOW_SIZE,
+        countDispatchable: (resolvedPulls) =>
+          collectPrNumbers({
+            payload: {},
+            eventName: 'workflow_dispatch',
+            repository,
+            scheduledPulls: resolvedPulls,
+            maxDispatchPerRun: REPAIR_WINDOW_SIZE,
+            trainEnabled: true,
+            now: hydrateNow,
+          }).length,
+      },
     );
-    if (
-      trainEnabled &&
-      isRepairWindowSweepEvent({
-        payload,
-        eventName,
-        trainEnabled,
-      })
-    ) {
-      // Snapshot the reference time before hydration so the age-ordering and
-      // "healthy owner" checks inside the callback all share the same clock.
-      const hydrateNow = new Date();
-      scheduledPulls = await hydrateRecoveryOwnership(
-        scheduledPulls,
-        (number) =>
-          requestWithBackoff(
-            () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
-            { label: `load-owner-state-${number}` },
-          ),
-        OWNERSHIP_HYDRATION_BATCH_SIZE,
-        {
-          targetDispatchable: REPAIR_WINDOW_SIZE,
-          countDispatchable: (resolvedPulls) =>
-            collectPrNumbers({
-              payload: {},
-              eventName: 'workflow_dispatch',
-              repository,
-              scheduledPulls: resolvedPulls,
-              maxDispatchPerRun: REPAIR_WINDOW_SIZE,
-              trainEnabled: true,
-              now: hydrateNow,
-            }).length,
-        },
-      );
-    }
   }
 
   const prNumbers = collectPrNumbers({
@@ -527,7 +832,41 @@ export async function runFromEnv(env = process.env) {
   });
   const directlyTriggeredPrs = eventPrNumbers(payload);
 
-  for (const prNumber of prNumbers) {
+  // Global backpressure applies unconditionally now -- independent of
+  // MERGE_TRAIN_ENABLED -- because runner-capacity protection must hold even
+  // while the train feature is paused/disabled (2026-07-21 incident
+  // follow-up guidance). `trainQueueNonEmpty` is computed independent of the
+  // flag too: a `merge-train` label surviving a flag-off still counts as
+  // backlog and gets the stricter cap (fail closed). The router's
+  // concurrency group (see ci-recovery-router.yml) is a single unconditional
+  // global group in every mode, so this budget is enforced against fully
+  // serialized invocations -- see computeDispatchBudget for what that does
+  // and does not close.
+  //
+  // Best-effort cap: merge-train/reconcile.mjs's four dispatchRecovery() call
+  // sites now go through buildGatedDispatchRecovery (GLOBAL_TRAIN_DISPATCH_CAP),
+  // so both callers apply the same cap before dispatching. A narrow race window
+  // still exists between each caller's countOutstandingRecoveryRuns read and
+  // its POST, because the router's concurrency group serialises its own
+  // invocations but cannot serialise against a concurrent reconcile.mjs run.
+  // A durable reservation (e.g. a shared semaphore via repository variable) is
+  // the required follow-up to close that gap completely.
+  const trainQueueNonEmpty = queueEntries(scheduledPulls, repository).length > 0;
+  const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
+  const dispatchBudget = computeDispatchBudget({
+    trainQueueNonEmpty,
+    outstandingCount,
+  });
+  const { dispatchable, deferred } = partitionDispatchable(prNumbers, dispatchBudget);
+
+  // Capture pre-dispatch outstanding run IDs so waitForDispatchedRunsVisible
+  // below can identify newly appeared runs rather than relying on an aggregate
+  // count that would break if pre-existing runs complete while we are
+  // dispatching (they would lower the aggregate, preventing convergence).
+  const preDispatchIds =
+    dispatchable.length > 0 ? await listRecentOutstandingRunIds(token, owner, repo) : new Set();
+
+  for (const prNumber of dispatchable) {
     const prTrigger = recoveryTriggerForPr({
       trainEnabled,
       directlyTriggeredPrs,
@@ -535,33 +874,45 @@ export async function runFromEnv(env = process.env) {
       eventName,
       dispatchTrigger,
     });
-    await requestWithBackoff(
-      () =>
-        request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
-          method: 'POST',
-          body: {
-            ref: payload.repository?.default_branch || 'main',
-            inputs: {
-              operation: 'reconcile',
-              pr_number: String(prNumber),
-              trigger: prTrigger,
-              lease_id: '',
-            },
-          },
-        }),
-      { label: `dispatch-pr-${prNumber}` },
-    );
+    // Use a direct request() -- do NOT wrap in requestWithBackoff. The
+    // workflow_dispatch POST is non-idempotent: if GitHub accepts the first
+    // request but the response is lost or returns an ambiguous 5xx, retrying
+    // would create a second run, immediately violating the global cap. The
+    // 10-minute scheduled sweep retries failed dispatches instead.
+    await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
+      method: 'POST',
+      body: {
+        ref: payload.repository?.default_branch || 'main',
+        inputs: {
+          operation: 'reconcile',
+          pr_number: String(prNumber),
+          trigger: prTrigger,
+          lease_id: '',
+        },
+      },
+    });
     process.stdout.write(`dispatched pr=#${prNumber} trigger=${prTrigger}\n`);
   }
 
-  if (prNumbers.length === 0) {
+  if (deferred.length > 0) {
+    const cap = trainQueueNonEmpty ? GLOBAL_TRAIN_DISPATCH_CAP : GLOBAL_IDLE_TRAIN_DISPATCH_CAP;
+    process.stdout.write(
+      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${cap}\n`,
+    );
+  }
+
+  if (dispatchable.length > 0) {
+    await waitForDispatchedRunsVisible(token, owner, repo, preDispatchIds, dispatchable.length);
+  }
+
+  if (dispatchable.length === 0 && deferred.length === 0) {
     process.stdout.write(`no eligible PR found for ${eventName}\n`);
   } else if (
     (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
     scheduledPulls.length > prNumbers.length
   ) {
     process.stdout.write(
-      `dispatch cap applied sent=${prNumbers.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun}\n`,
+      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun}\n`,
     );
   }
 }
