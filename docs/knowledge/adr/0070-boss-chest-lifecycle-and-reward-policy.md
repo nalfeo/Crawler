@@ -122,9 +122,17 @@ carryover) across `src/core` and `src/game`, so it requires an ADR.
    `Expected array at bossChests`. Fixed by defaulting `bossChests` to `[]`
    in that branch when absent, so pre-existing saves restore cleanly with no
    boss chests (correct, since no boss chest could have existed for them).
+   **Round 2 of multi-model review** (`gpt-5.3-codex`) caught that the initial
+   `?? []` default treated an explicitly-present `null` the same as "absent",
+   silently bypassing `assertArray`'s fail-closed guard for a genuinely
+   malformed value. Fixed by defaulting only on true key-absence (`'bossChests'
+in record`), so a present-but-invalid value still falls through to
+   `assertArray` and throws.
    See `tests/unit/player-carryover.test.ts`'s
    `restores a "player-carryover/v1" snapshot captured before bossChests
-existed` regression test.
+existed` and
+   `still fails closed when a "player-carryover/v1" snapshot has an
+explicitly null bossChests` regression tests.
 
 8. **Reserved id namespace.** Achievement ids and boss-chest ids share one
    reward-bundle keyspace. `BOSS_CHEST_ID_PREFIX` (`'boss-chest:'`, defined in

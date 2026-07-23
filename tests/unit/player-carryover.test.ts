@@ -657,6 +657,28 @@ describe('player floor carryover', () => {
     expect(destination.bossChests.size).toBe(0);
   });
 
+  it('still fails closed when a "player-carryover/v1" snapshot has an explicitly null bossChests', () => {
+    // Regression test: the absent-field default must not swallow a
+    // present-but-malformed value. Setting bossChests to null (rather than
+    // omitting the key entirely) must still hit the assertArray guard and
+    // throw, matching every other structural field (multi-model code review
+    // round 2 — the initial `?? []` default treated null the same as
+    // "missing" and silently accepted it).
+    const runKey = 'carryover-null-bosschest-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = null;
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /Expected array at bossChests/,
+    );
+  });
+
   it('retains independently owned grants after the last equipment source is removed', () => {
     const world = createTestWorld({
       seed: 42,

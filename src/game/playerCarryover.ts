@@ -359,8 +359,14 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
           // was added in PR #1810), so a snapshot serialized before this field
           // existed still matches this "current schema" branch but omits it.
           // Default rather than hard-failing carryover restore for pre-existing
-          // saves (multi-model code review, round 1).
-          bossChests: (record as Partial<PlayerCarryoverSnapshot>).bossChests ?? [],
+          // saves (multi-model code review, round 1). Only default when the
+          // property is genuinely ABSENT — a present-but-malformed value (e.g.
+          // explicit `null`) must still fall through to `assertArray` below and
+          // fail closed, rather than being silently treated as "missing"
+          // (multi-model code review, round 2).
+          bossChests: ('bossChests' in record
+            ? record.bossChests
+            : []) as PlayerCarryoverSnapshot['bossChests'],
         }
       : ({
           ...legacy,
