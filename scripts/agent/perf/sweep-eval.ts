@@ -627,7 +627,7 @@ export function currentBuildFingerprint(): Pick<
   };
 }
 
-function buildMeta(stage: string, floorId: string): ShardMeta {
+export function buildMeta(stage: string, floorId: string): ShardMeta {
   return {
     schemaVersion: SHARD_SCHEMA_VERSION,
     budgetMs: FLOOR1_TIME_BUDGET_MS,
@@ -642,6 +642,23 @@ type SearchArtifact = ShardArtifact & { combo: string; bestConfigId: string };
 
 type Stage = 'search' | 'search-baseline' | 'search-eval' | 'validate';
 const STAGES: readonly Stage[] = ['search', 'search-baseline', 'search-eval', 'validate'];
+
+/**
+ * `meta.stage` value stamped onto every standalone-config shard (both
+ * `--stage search-baseline` and `--stage search-eval`) via {@link evalStandalone},
+ * AND `parseArgs`'s default `--stage` (consumed by `--print-meta`). Naming this
+ * ONE constant instead of two independent `'search'` literals is deliberate:
+ * `round-plan.ts`'s `assertResumeCompatible` strictly compares `meta.stage`
+ * between a resumed checkpoint (whose `meta` is `baseline.meta`, i.e. this
+ * value) and `--print-meta`'s output (also this value, when no explicit
+ * `--stage` is passed) — see `ai-sweep.yml`'s "Compute this run's expected
+ * provenance" step, which calls `sweep-eval.ts --print-meta` with no `--stage`
+ * flag. If these two call sites ever used independent literals, a future edit
+ * to one without the other would silently reject every cross-run resume
+ * checkpoint on the `stage` axis. See `sweep-eval-search-promotion.test.ts`'s
+ * `STANDALONE_SHARD_STAGE` regression test.
+ */
+export const STANDALONE_SHARD_STAGE: Stage = 'search';
 
 interface CliArgs {
   stage: Stage;
@@ -659,11 +676,17 @@ interface CliArgs {
   includeIncumbent: boolean;
   legacyBaseline: string | null;
   out: string | null;
+  /** Print this runner's `ShardMeta` calibration (schemaVersion/budget/frames/
+   *  runner/node/package-lock/workflow-sha) as JSON and exit — no combo/eval
+   *  work performed. Used by the ai-sweep.yml cross-run `resume_run_id` path
+   *  to compute "this run's expected provenance" for `round-plan.ts --mode
+   *  resume-check`, without duplicating `buildMeta`'s field list anywhere else. */
+  printMeta: boolean;
 }
 
 function parseArgs(argv: readonly string[]): CliArgs {
   const args: CliArgs = {
-    stage: 'search',
+    stage: STANDALONE_SHARD_STAGE,
     combo: null,
     configId: null,
     configJson: null,
@@ -678,6 +701,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     includeIncumbent: true,
     legacyBaseline: null,
     out: null,
+    printMeta: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -728,9 +752,11 @@ function parseArgs(argv: readonly string[]): CliArgs {
     } else if (arg === '--out' && next) {
       args.out = next;
       i++;
+    } else if (arg === '--print-meta') {
+      args.printMeta = true;
     }
   }
-  if (!args.combo) {
+  if (!args.combo && !args.printMeta) {
     throw new Error('--combo is required (e.g. --combo legacy+legacy)');
   }
   if (args.stage === 'search-eval' && (!args.configId || !args.configJson)) {
@@ -776,6 +802,14 @@ async function evalStandalone(
 
 async function main(argv: readonly string[]): Promise<void> {
   const args = parseArgs(argv);
+  if (args.printMeta) {
+    // No combo/eval work — just this runner's calibration, reusing the exact
+    // same buildMeta() every other stage stamps onto its shards, so there is
+    // zero duplicated schemaVersion/budget/frame/runner/node/lock/sha logic
+    // for the resume-import job to drift from.
+    console.log(JSON.stringify(buildMeta(args.stage, args.floorId), null, 2));
+    return;
+  }
   const combo = parseComboId(args.combo!);
   const start = Date.now();
 
@@ -813,11 +847,13 @@ async function main(argv: readonly string[]): Promise<void> {
     console.log(
       `🔎 SEARCH-BASELINE ${comboId(combo)} · ${id.slice(0, 48)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers}`,
     );
-    // meta.stage is intentionally set to 'search' for both search-baseline and
-    // search-eval shards: the `validate` stage and `initCheckpoint`/`applyRoundResult`
-    // consume them identically, and the stage field does not distinguish baseline vs
-    // candidate in either code path. The invoked CLI stage ('search-baseline' /
-    // 'search-eval') is logged to stdout above for human debugging instead.
+    // meta.stage is intentionally STANDALONE_SHARD_STAGE for both search-baseline
+    // and search-eval shards: the `validate` stage and `initCheckpoint`/
+    // `applyRoundResult` consume them identically, and the stage field does not
+    // distinguish baseline vs candidate in either code path. The invoked CLI
+    // stage ('search-baseline' / 'search-eval') is logged to stdout above for
+    // human debugging instead. See STANDALONE_SHARD_STAGE's docstring for why
+    // this must stay the same literal `--print-meta`'s default `--stage` uses.
     const artifact = await evalStandalone(
       comboId(combo),
       id,
@@ -828,7 +864,7 @@ async function main(argv: readonly string[]): Promise<void> {
         workers: args.workers,
         floorId: args.floorId,
       },
-      'search',
+      STANDALONE_SHARD_STAGE,
     );
     emit(artifact, args.out);
     console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${artifact.rows.length} runs`);
@@ -841,8 +877,8 @@ async function main(argv: readonly string[]): Promise<void> {
     console.log(
       `🔎 SEARCH-EVAL ${comboId(combo)} · ${id.slice(0, 48)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers}`,
     );
-    // meta.stage is intentionally 'search' for both search-baseline and search-eval
-    // shards — see note in the search-baseline branch above.
+    // meta.stage is intentionally STANDALONE_SHARD_STAGE for both search-baseline
+    // and search-eval shards — see note in the search-baseline branch above.
     const artifact = await evalStandalone(
       comboId(combo),
       id,
@@ -853,7 +889,7 @@ async function main(argv: readonly string[]): Promise<void> {
         workers: args.workers,
         floorId: args.floorId,
       },
-      'search',
+      STANDALONE_SHARD_STAGE,
     );
     emit(artifact, args.out);
     console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${artifact.rows.length} runs`);
