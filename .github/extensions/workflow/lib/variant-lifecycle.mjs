@@ -114,7 +114,11 @@ export function computeVariantLifecycle({
         ? assetPath.slice('generated/'.length, -'.png'.length)
         : null;
     if (!matched.approvedAssetExists) {
-      return { state: 'unverified', detail: 'Approved asset file is missing on disk.', manifestKey };
+      return {
+        state: 'unverified',
+        detail: 'Approved asset file is missing on disk.',
+        manifestKey,
+      };
     }
     if (matched.integrationState === 'unverified') {
       return {
@@ -144,7 +148,11 @@ export function computeVariantLifecycle({
     // provide it (e.g. older call sites that pre-date this field).
     const manifestKey = manifestOnly.mapKey ?? null;
     if (!manifestOnly.exists) {
-      return { state: 'unverified', detail: 'Approved asset file is missing on disk.', manifestKey };
+      return {
+        state: 'unverified',
+        detail: 'Approved asset file is missing on disk.',
+        manifestKey,
+      };
     }
     return {
       state: 'accepted-staged',

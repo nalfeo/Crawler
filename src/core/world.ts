@@ -38,6 +38,7 @@ import type {
   GeneratedEquipmentGenerationPolicyV1,
   GeneratedEquipmentRewardBundleV1,
 } from '../shared/generated-equipment-types.js';
+import type { BossChestRecord } from './systems/bossChestRewards.js';
 import {
   Position,
   Velocity,
@@ -207,6 +208,8 @@ export interface GameWorld {
   generatedEquipmentRegistry: GeneratedEquipmentRegistry;
   /** Unopened generated-equipment reward bundles keyed by achievement ID. */
   generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
+  /** Boss chest lifecycle records keyed by chest ID (`boss-chest:<familyId>`). */
+  bossChests: Map<string, BossChestRecord>;
   /**
    * Unclaimed Floor 1 `lootBox` reward bundles keyed by achievement ID.
    * Resolved once at unlock (see `resolveLootBoxRewardBundle`) and consumed
@@ -623,6 +626,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       generationPolicy: options.generatedEquipmentGenerationPolicy,
     }),
     generatedEquipmentRewardBundles: new Map(),
+    bossChests: new Map(),
     lootBoxRewardBundles: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
