@@ -290,8 +290,9 @@ export interface SidecarDeps {
    */
   readonly issueIngester?: IssueIngesterController;
   /**
-   * Check-in runner deps for `/api/checkin` and the atomic
-   * `/api/runs/:briefId/:runId/accept` route. Defaults to
+   * Check-in runner deps for `/api/checkin`, the atomic
+   * `/api/runs/:briefId/:runId/accept` route, and the unapprove/evict
+   * `DELETE /api/manifest/:variantId` endpoint. Defaults to
    * `createDefaultCheckinDeps(repoRoot, env)`. Inject a fake in tests to
    * assert the exact git/gh sequence without a real repo or network.
    */
