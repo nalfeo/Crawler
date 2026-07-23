@@ -23,76 +23,56 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const MANIFEST_PATH = path.join('public', 'assets', 'generated', 'manifest.json');
 const CATALOG_PATH = path.join('src', 'shared', 'data', 'sprite-catalog.json');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-interface ManifestShape {
+export interface ManifestShape {
   version: number;
   entries: Record<string, unknown>;
 }
 
-interface CatalogEntry {
+export interface CatalogEntry {
   id: string;
   kind: string;
   [key: string]: unknown;
 }
 
-function checkManifest(): string[] {
-  const errors: string[] = [];
-  const absPath = path.resolve(repoRoot, MANIFEST_PATH);
-
-  let manifest: ManifestShape;
-  try {
-    manifest = JSON.parse(readFileSync(absPath, 'utf8')) as ManifestShape;
-  } catch {
-    errors.push(`Cannot parse ${MANIFEST_PATH}`);
-    return errors;
-  }
-
-  if (!manifest.entries || typeof manifest.entries !== 'object') {
-    errors.push(`${MANIFEST_PATH}: missing "entries" object`);
-    return errors;
-  }
-
-  const keys = Object.keys(manifest.entries);
+/**
+ * Pure validator: checks that manifest entry keys are in lexicographic order.
+ * Returns an array of human-readable error strings (empty = valid).
+ *
+ * @param keys   Ordered array of manifest entry keys to validate.
+ * @param label  File label used in error messages (defaults to MANIFEST_PATH).
+ */
+export function validateManifestKeys(keys: string[], label = MANIFEST_PATH): string[] {
   for (let i = 1; i < keys.length; i++) {
     const prev = keys[i - 1]!;
     const curr = keys[i]!;
     if (prev.localeCompare(curr) > 0) {
-      errors.push(
-        `${MANIFEST_PATH}: entry keys out of order at position ${i}: ` +
+      return [
+        `${label}: entry keys out of order at position ${i}: ` +
           `"${prev}" should come after "${curr}". ` +
           `Run \`npx tsx scripts/sprites/sort-assets.ts --apply\` to fix.`,
-      );
-      // Report first violation only to keep output readable.
-      break;
+      ];
     }
   }
-
-  return errors;
+  return [];
 }
 
-function checkCatalog(): string[] {
-  const errors: string[] = [];
-  const absPath = path.resolve(repoRoot, CATALOG_PATH);
-
-  let catalog: CatalogEntry[];
-  try {
-    const raw = JSON.parse(readFileSync(absPath, 'utf8'));
-    if (!Array.isArray(raw)) {
-      errors.push(`${CATALOG_PATH}: expected a JSON array`);
-      return errors;
-    }
-    catalog = raw as CatalogEntry[];
-  } catch {
-    errors.push(`Cannot parse ${CATALOG_PATH}`);
-    return errors;
-  }
-
+/**
+ * Pure validator: checks that catalog entries are in canonical order.
+ * Canonical: sheet entries (kind="sheet") come first, then non-sheet entries,
+ * sorted lexicographically by id within each group.
+ * Returns an array of human-readable error strings (empty = valid).
+ *
+ * @param catalog  Array of catalog entries to validate.
+ * @param label    File label used in error messages (defaults to CATALOG_PATH).
+ */
+export function validateCatalogEntries(catalog: CatalogEntry[], label = CATALOG_PATH): string[] {
   function sortKey(entry: CatalogEntry): [number, string] {
     return [entry.kind === 'sheet' ? 0 : 1, entry.id ?? ''];
   }
@@ -104,27 +84,70 @@ function checkCatalog(): string[] {
     const [currGroup, currId] = sortKey(curr);
     const cmp = prevGroup !== currGroup ? prevGroup - currGroup : prevId.localeCompare(currId);
     if (cmp > 0) {
-      errors.push(
-        `${CATALOG_PATH}: entries out of order at index ${i}: ` +
+      return [
+        `${label}: entries out of order at index ${i}: ` +
           `"${prevId}" (kind=${prev.kind}) should come after "${currId}" (kind=${curr.kind}). ` +
           `Run \`npx tsx scripts/sprites/sort-assets.ts --apply\` to fix.`,
-      );
-      break;
+      ];
     }
   }
+  return [];
+}
 
+function checkManifest(): string[] {
+  const errors: string[] = [];
+  const absPath = path.resolve(repoRoot, MANIFEST_PATH);
+
+  let manifest: ManifestShape;
+  try {
+    manifest = JSON.parse(readFileSync(absPath, 'utf8')) as ManifestShape;
+  } catch {
+    return [`Cannot parse ${MANIFEST_PATH}`];
+  }
+
+  if (!manifest.entries || typeof manifest.entries !== 'object') {
+    return [`${MANIFEST_PATH}: missing "entries" object`];
+  }
+
+  errors.push(...validateManifestKeys(Object.keys(manifest.entries)));
   return errors;
 }
 
-const allErrors = [...checkManifest(), ...checkCatalog()];
+function checkCatalog(): string[] {
+  const errors: string[] = [];
+  const absPath = path.resolve(repoRoot, CATALOG_PATH);
 
-if (allErrors.length > 0) {
-  console.error('\n❌ Asset sort check failed:\n');
-  for (const err of allErrors) {
-    console.error(`  ${err}`);
+  let catalog: CatalogEntry[];
+  try {
+    const raw = JSON.parse(readFileSync(absPath, 'utf8'));
+    if (!Array.isArray(raw)) {
+      return [`${CATALOG_PATH}: expected a JSON array`];
+    }
+    catalog = raw as CatalogEntry[];
+  } catch {
+    return [`Cannot parse ${CATALOG_PATH}`];
   }
-  console.error('');
-  process.exit(1);
-} else {
-  console.log('✅ manifest.json and sprite-catalog.json are correctly sorted.');
+
+  errors.push(...validateCatalogEntries(catalog));
+  return errors;
+}
+
+// Run as CLI only when invoked directly (not when imported by tests).
+const isMain =
+  process.argv[1] !== undefined &&
+  pathToFileURL(process.argv[1]).href === import.meta.url;
+
+if (isMain) {
+  const allErrors = [...checkManifest(), ...checkCatalog()];
+
+  if (allErrors.length > 0) {
+    console.error('\n❌ Asset sort check failed:\n');
+    for (const err of allErrors) {
+      console.error(`  ${err}`);
+    }
+    console.error('');
+    process.exit(1);
+  } else {
+    console.log('✅ manifest.json and sprite-catalog.json are correctly sorted.');
+  }
 }

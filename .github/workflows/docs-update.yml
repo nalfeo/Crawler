@@ -101,7 +101,7 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
-          branch: automation/docs-update-${{ github.run_id }}
+          branch: automation/docs-update
           title: 'chore: archive handoffs, rebuild system index, promote mistakes'
           commit-message: 'chore: archive handoffs, rebuild system index, promote mistakes'
           # Restrict staging to the docs artifacts these steps mutate so the PR

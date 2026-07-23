@@ -17,10 +17,11 @@
  *   - scripts/sprites/approve.ts > upsertCatalog
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { writeCatalogJson } from './catalog-io.js';
 
 const apply = process.argv.includes('--apply');
 
@@ -32,7 +33,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 
 const MANIFEST_PATH = path.join('public', 'assets', 'generated', 'manifest.json');
 
-function sortManifest(): void {
+async function sortManifest(): Promise<void> {
   const absPath = path.resolve(repoRoot, MANIFEST_PATH);
   const manifest = JSON.parse(readFileSync(absPath, 'utf8')) as {
     version: number;
@@ -44,9 +45,10 @@ function sortManifest(): void {
     Object.entries(manifest.entries).sort(([a], [b]) => a.localeCompare(b)),
   );
 
-  const out = JSON.stringify(sorted, null, 2) + '\n';
   if (apply) {
-    writeFileSync(absPath, out);
+    // Write through the canonical formatter so the result exactly matches
+    // what approve.ts / checkin-runtime.ts produce (Prettier-formatted JSON).
+    await writeCatalogJson(absPath, sorted);
     console.log(`✅ Sorted ${MANIFEST_PATH}`);
   } else {
     console.log(`[dry-run] Would sort entries in ${MANIFEST_PATH}`);
@@ -65,7 +67,7 @@ interface CatalogEntry {
   [key: string]: unknown;
 }
 
-function sortCatalog(): void {
+async function sortCatalog(): Promise<void> {
   const absPath = path.resolve(repoRoot, CATALOG_PATH);
   const catalog = JSON.parse(readFileSync(absPath, 'utf8')) as CatalogEntry[];
 
@@ -76,17 +78,18 @@ function sortCatalog(): void {
     return (a.id ?? '').localeCompare(b.id ?? '');
   });
 
-  const out = JSON.stringify(catalog, null, 2) + '\n';
   if (apply) {
-    writeFileSync(absPath, out);
+    // Use the canonical catalog writer so tags arrays are Prettier-compacted
+    // (same format as approve.ts), preventing churn on subsequent writes.
+    await writeCatalogJson(absPath, catalog);
     console.log(`✅ Sorted ${CATALOG_PATH}`);
   } else {
     console.log(`[dry-run] Would sort entries in ${CATALOG_PATH}`);
   }
 }
 
-sortManifest();
-sortCatalog();
+await sortManifest();
+await sortCatalog();
 
 if (!apply) {
   console.log('\nRe-run with --apply to write changes.');
