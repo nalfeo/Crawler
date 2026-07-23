@@ -1041,11 +1041,20 @@ if (orphanedOwnershipArtifact) {
       // appeared and this stale run must leave its lock alone. Delete the fence
       // by node id so we can only ever remove the incarnation we verified.
       const facts = await fetchOwnershipFacts();
-      const ownershipUnchanged = sameOwnership(facts.state, state);
-      const incarnationUnchanged =
-        !facts.repositoryLabelPresent ||
-        Boolean(ownerLabelNodeId && facts.repositoryLabelNodeId === ownerLabelNodeId);
-      if (!ownershipUnchanged || !incarnationUnchanged) {
+      // Skip only on a POSITIVELY-confirmed fresh owner: either the terminal
+      // orphan state we snapshotted at startup is gone (someone re-acquired), or
+      // the repository fence was deleted and recreated with a new node id. When no
+      // incarnation node id is available on either read we cannot prove a
+      // replacement, so the fresh ownership re-check above is authoritative and a
+      // genuinely-orphaned fence is still cleaned — never skip on a merely absent
+      // id, which would strand the orphan and never self-heal on later sweeps.
+      const ownershipChanged = !sameOwnership(facts.state, state);
+      const incarnationReplaced =
+        facts.repositoryLabelPresent &&
+        Boolean(ownerLabelNodeId) &&
+        Boolean(facts.repositoryLabelNodeId) &&
+        facts.repositoryLabelNodeId !== ownerLabelNodeId;
+      if (ownershipChanged || incarnationReplaced) {
         process.stdout.write(
           `orphaned-fence-cleanup-skip pr=#${prNumber} reason=ownership-changed status=${state.status}\n`,
         );
@@ -1054,8 +1063,18 @@ if (orphanedOwnershipArtifact) {
       if (facts.attached) {
         await removePrLabel(labelName);
       }
-      if (facts.repositoryLabelPresent && ownerLabelNodeId) {
-        await removeRepositoryLabelById(ownerLabelNodeId);
+      if (facts.repositoryLabelPresent) {
+        if (ownerLabelNodeId) {
+          // Delete the exact incarnation we verified so we can never remove a
+          // fence a fresh owner recreated after our re-check.
+          await removeRepositoryLabelById(ownerLabelNodeId);
+        } else {
+          // No node id to verify against: the fresh re-check above already
+          // confirmed ownership is unchanged, so a by-name delete of this
+          // confirmed-orphan fence is safe. Any owner racing into the residual
+          // window is backstopped by the orphaned-fence sweep.
+          await removeRepositoryLabel(labelName);
+        }
       }
     }
     labelExists = false;
