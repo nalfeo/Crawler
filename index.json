@@ -11,6 +11,17 @@
     "path": "by-sha/22fcfd8e91ae88c64dd131f3f68184e879a917fe.json"
   },
   {
+    "commit": "b4bb89b52229a62fd317173d3c835c29653b0025",
+    "commitDate": "2026-07-23T13:25:42-07:00",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#1811)",
+    "capturedAt": "2026-07-23T21:33:21.417Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30042090807",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/b4bb89b52229a62fd317173d3c835c29653b0025.json"
+  },
+  {
     "commit": "fa1497ca4a3fe413dc405717cce6b73a72c9964a",
     "commitDate": "2026-07-23T13:19:40Z",
     "commitSubject": "fix(equipment): relocate Wave B display-name override authority to floor2-equipment-art.ts (#1817)",
