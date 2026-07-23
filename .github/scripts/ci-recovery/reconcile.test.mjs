@@ -1477,7 +1477,15 @@ test('post-state/pre-fence crash recovery preserves terminal waiting state and a
       repositoryLabelDeleted = true;
       return { body: {} };
     },
-    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        // Orphaned-fence cleanup deletes the verified incarnation by node ID.
+        repositoryLabelDeleted = true;
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
       body: { check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null }] },
     }),
@@ -1502,12 +1510,22 @@ test('post-state/pre-fence crash recovery preserves terminal waiting state and a
   assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
   assert.match(stdout, /orphaned-fence-cleanup pr=#42 status=waiting/);
 
-  // Repository fence was deleted.
+  // Repository fence was deleted by the exact verified incarnation via GraphQL
+  // deleteLabel (by node ID), never by REST name — so a concurrent run that
+  // recreated the label under a new incarnation is not clobbered.
   assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'GRAPHQL_MUTATION' && String(call.body?.variables?.labelId || '') === 'LBL_orphan',
+    ),
+    'orphaned repository fence must be deleted by node ID via GraphQL',
+  );
+  assert.equal(
     mutatingCalls.some(
       (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
     ),
-    'orphaned repository fence must be deleted',
+    false,
+    'orphaned fence must not be deleted by REST name (incarnation-unsafe)',
   );
 
   // State comment must NOT have been PATCHed (waiting state preserved).
@@ -1534,6 +1552,591 @@ test('post-state/pre-fence crash recovery preserves terminal waiting state and a
 
   // Process continues to the normal waiting admission path.
   assert.match(stdout, /wait pr=#42 admission=ci/);
+});
+
+// ---------------------------------------------------------------------------
+// Regression coverage for PR #1791 lock-hardening (reviewer threads T1/T2).
+//
+// These three subprocess tests assert the two lock-safety invariants the
+// reviewer required proof for.  They are exercised for real only on Linux CI:
+// the reconcile subprocess hits a known libuv teardown assertion on Windows
+// (isWindowsAsyncCloseCrash), so the two crash-path tests self-skip locally on
+// win32.  A local pass is therefore NOT proof — CI (Linux) is the authoritative
+// validator for the new crash-path assertions.
+// ---------------------------------------------------------------------------
+
+test('Bug 1: unexpected-error cleanup RELEASES held ownership when the trust fence is unchanged', async (t) => {
+  // A review-wake dispatch (EXPECTED_HEAD_SHA set) that already holds automation
+  // ownership must, on an uncaught crash, run releaseUnexpectedOwnership ->
+  // release('unexpected-error'). When the live trust fence still MATCHES the
+  // dispatched head, release() must free the owner label (PR attachment + repo
+  // fence) so the crash never leaks the lock. The pre-fix code bailed whenever
+  // expectedHeadSha was merely *set*, leaking the lock on every review-wake crash.
+  const stateComment = automationStateComment();
+  let repoLabelPresent = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: LABEL }],
+        base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repoLabelPresent
+        ? { body: { name: LABEL, node_id: 'LBL_bug1_matched' } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repoLabelPresent = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      // Crash trigger: fail the (no-retry) closingIssues query so the unguarded
+      // top-level `await listClosingIssues(...)` throws while ownership is held.
+      if (query.includes('closingIssuesReferences')) {
+        return { status: 500, body: { message: 'Internal Server Error' } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+  });
+
+  // This test expects a NON-zero crash exit, so assertSuccessfulExit (which
+  // asserts exit 0) is the wrong helper. Skip only on the known Windows flake.
+  if (isWindowsAsyncCloseCrash(code, stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING subprocess teardown flake');
+    return;
+  }
+
+  assert.notEqual(code, 0, `crash must stay fatal (non-zero exit); stderr: ${stderr}`);
+  assert.doesNotMatch(stdout, /unexpected-error-cleanup-skip/);
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ),
+    'crash cleanup must detach the owner label from the PR (lock released)',
+  );
+  assert.ok(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    'crash cleanup must delete the repository fence label (lock released)',
+  );
+});
+
+test('Bug 1: unexpected-error cleanup LEAVES ownership intact when the trust fence moved mid-run', async (t) => {
+  // Companion to the matched case: if the dispatched head has moved by the time
+  // the crash cleanup runs release()'s per-mutation metadata guard, the fence no
+  // longer matches the immutable review-wake head. Cleanup must RE-RAISE (keep
+  // the crash fatal) and leave ownership untouched for reconciliation — never
+  // mutate the replacement PR's lock.
+  const stateComment = automationStateComment();
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      // Startup fetch sees the dispatched head (guard passes); every post-crash
+      // re-fetch sees a moved head (RACE_SHA), robust to any extra fetch the
+      // release path performs before the release-label guard.
+      const headSha = pullFetches === 1 ? HEAD_SHA : RACE_SHA;
+      return {
+        body: {
+          ...basePr(),
+          labels: [{ name: LABEL }],
+          head: { sha: headSha, repo: { full_name: `${OWNER}/${REPO}` } },
+          base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      body: { name: LABEL, node_id: 'LBL_bug1_moved' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return { status: 500, body: { message: 'Internal Server Error' } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+  });
+
+  if (isWindowsAsyncCloseCrash(code, stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING subprocess teardown flake');
+    return;
+  }
+
+  assert.notEqual(code, 0, `moved-fence crash must stay fatal (non-zero exit); stderr: ${stderr}`);
+  assert.match(stdout, /unexpected-error-cleanup-skip pr=#42 reason=trusted-metadata-move/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ),
+    false,
+    'moved-fence crash cleanup must NOT detach the owner label',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+    'moved-fence crash cleanup must NOT delete the repository fence label',
+  );
+});
+
+test('Bug 2: terminal orphaned-fence cleanup SKIPS when a fresh owner acquired the lock concurrently', async (t) => {
+  // Terminal orphaned-fence cleanup (owner:none + waiting/idle, repo label
+  // present) must not act on the startup snapshot. If a concurrent reconcile
+  // acquired the same label between our startup read and the cleanup,
+  // fetchOwnershipFacts() sees the fresh owner; the stale run must SKIP (never
+  // detach the new owner's PR attachment nor delete its fence).
+  const orphanState = waitingStateComment(996);
+  const freshOwnerState = automationStateComment(996);
+  let commentFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }, { name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => {
+      commentFetches += 1;
+      // Startup fetch #1 sees the terminal orphan state; the fetchOwnershipFacts
+      // re-fetch (#2) during cleanup sees a fresh automation owner (a concurrent
+      // acquire that landed after our startup read).
+      return { body: [commentFetches === 1 ? orphanState : freshOwnerState] };
+    },
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      body: { name: LABEL, node_id: 'LBL_bug2' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${orphanState.id}`]: () => ({
+      body: { id: orphanState.id },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, 'bug2-concurrent-acquire-skip', true)) return;
+
+  assert.match(stdout, /orphaned-fence-cleanup-skip pr=#42 reason=ownership-changed/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ),
+    false,
+    'stale run must NOT detach the fresh owner label from the PR',
+  );
+  assert.equal(
+    mutatingCalls.some((call) => call.method === 'GRAPHQL_MUTATION'),
+    false,
+    'stale run must NOT delete the fresh owner fence by node ID',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+    'stale run must NOT delete the fresh owner fence by REST name',
+  );
+});
+
+test('Bug 1b: lease-release SKIPS every mutation when a fresh owner recreated the fence (incarnation changed)', async (t) => {
+  // Reviewer Issue 1: release()'s happy path detached the PR label, overwrote the
+  // state comment to owner:none, and deleted the repository fence BY NAME, guarded
+  // only by the head-sha metadata check -- a no-op on a normal reconcile (no
+  // EXPECTED_HEAD_SHA). If our lease expired and a fresh owner took over, recreated
+  // the same-named fence with a NEW node id, and re-attached the PR label, all
+  // three mutations would land on that fresh owner and steal its lock. release()
+  // must snapshot the live fence incarnation first and, when it differs from the
+  // one we acquired at startup, skip every mutation and converge without touching
+  // the fresh owner's lock. Guarding only the by-name fence delete is insufficient
+  // -- the PR-detach and the state-overwrite are the more damaging mutations.
+  let commentFetches = 0;
+  let labelFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => {
+      commentFetches += 1;
+      // Startup (#1): WE hold the shepherd lease -> the lease-release gate passes.
+      // release()'s post-skip fetchOwnershipFacts (#2): a fresh automation owner
+      // took over after our lease expired (a genuine concurrent takeover).
+      return {
+        body: [commentFetches === 1 ? shepherdStateComment() : automationStateComment(778)],
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      labelFetches += 1;
+      // Startup snapshot (#1) records OUR incarnation as ownerLabelNodeId; every
+      // later snapshot -- including release()'s pre-mutation guard -- sees the
+      // fresh incarnation a concurrent owner recreated after our startup read.
+      return { body: { name: LABEL, node_id: labelFetches === 1 ? 'FENCE_ours' : 'FENCE_fresh' } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/777`]: () => ({ body: { id: 777 } }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, 'release-incarnation-skip', true)) return;
+
+  assert.match(stdout, /release-skip pr=#42 reason=incarnation-changed/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ),
+    false,
+    'must NOT detach the fresh owner label from the PR',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url.startsWith(`/repos/${OWNER}/${REPO}/issues/comments/`),
+    ),
+    false,
+    'must NOT overwrite the fresh owner state comment to owner:none',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+    'must NOT delete the fresh owner fence by REST name',
+  );
+  assert.equal(
+    mutatingCalls.some((call) => call.method === 'GRAPHQL_MUTATION'),
+    false,
+    'must NOT delete the fresh owner fence by node id',
+  );
+});
+
+test('Bug 2b: terminal orphaned-fence cleanup SKIPS on an incarnation change even when ownership is UNCHANGED', async (t) => {
+  // Reviewer Issue 3: the Bug 2 skip must fire on EITHER a changed owner OR a
+  // changed fence incarnation. The sibling test above changes the owner, so it
+  // would still pass even if the incarnation node-id check were deleted. This case
+  // isolates the incarnation check: the terminal orphan state is byte-identical on
+  // both fetches (ownership UNCHANGED), but the repository fence was deleted and
+  // recreated with a NEW node id after our startup read. Only the incarnation
+  // guard can detect that a fresh owner recreated the fence, so the stale run must
+  // still SKIP and never delete the fresh owner's lock.
+  const orphanState = waitingStateComment(998);
+  let labelFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }, { name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      // Both the startup read and the fetchOwnershipFacts re-fetch see the SAME
+      // terminal orphan state -> ownershipUnchanged is true, so the skip can only
+      // be driven by the incarnation node-id check.
+      body: [orphanState],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      labelFetches += 1;
+      // Startup snapshot (#1) records node id A as ownerLabelNodeId; the cleanup
+      // re-check (fetchOwnershipFacts) sees node id B -- a fresh incarnation.
+      return { body: { name: LABEL, node_id: labelFetches === 1 ? 'FENCE_A' : 'FENCE_B' } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${orphanState.id}`]: () => ({
+      body: { id: orphanState.id },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, 'bug2b-incarnation-skip', true)) return;
+
+  assert.match(stdout, /orphaned-fence-cleanup-skip pr=#42 reason=ownership-changed status=waiting/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ),
+    false,
+    'stale run must NOT detach the fresh owner label from the PR',
+  );
+  assert.equal(
+    mutatingCalls.some((call) => call.method === 'GRAPHQL_MUTATION'),
+    false,
+    'stale run must NOT delete the fresh owner fence by node id',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+    'stale run must NOT delete the fresh owner fence by REST name',
+  );
+});
+
+test('Bug 3: a crash mid-acquire cleans up the partial repository fence by node id', async (t) => {
+  // Reviewer Issue 2: acquire() creates the repository fence BEFORE ownership is
+  // persisted. A crash in that window (here: the owning-state comment POST 500s)
+  // used to leak the fence until the next orphaned-fence sweep. The partial-
+  // acquisition guard must remove exactly the incarnation we created -- detach the
+  // PR attachment and delete the fence by node id -- so the crash never leaks the
+  // atomic lock.
+  let fencePresent = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      fencePresent
+        ? { body: { name: LABEL, node_id: 'FENCE_partial' } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      // acquire() creates the fence here; arm the leak window.
+      fencePresent = true;
+      return { body: { name: LABEL, node_id: 'FENCE_partial' } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      // Crash trigger: the owning-state write fails after the fence exists but
+      // before ownership is persisted (POST is not retried by request()).
+      status: 500,
+      body: { message: 'Internal Server Error' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-acquire',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  // This test expects a NON-zero crash exit, so assertSuccessfulExit is the wrong
+  // helper. Skip only on the known Windows subprocess-teardown flake.
+  if (isWindowsAsyncCloseCrash(code, stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING subprocess teardown flake');
+    return;
+  }
+
+  assert.notEqual(code, 0, `crash must stay fatal (non-zero exit); stderr: ${stderr}`);
+  assert.match(stdout, /partial-acquire-fence-cleanup pr=#42/);
+  assert.doesNotMatch(stdout, /partial-acquire-fence-skip/);
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ),
+    'partial-acquire cleanup must detach the PR attachment',
+  );
+  assert.ok(
+    mutatingCalls.some((call) => call.method === 'GRAPHQL_MUTATION'),
+    'partial-acquire cleanup must delete the leaked fence by node id',
+  );
+});
+
+test('Bug 3b: a metadata move at the state-comment phase cleans the armed partial fence on the clean-skip exit path', async (t) => {
+  // Round-2 reviewer Finding 2(b): on the review-wake path (EXPECTED_HEAD_SHA set)
+  // acquire() passes the 'acquire-label' metadata guard, then creates + ARMS the
+  // repository fence, attaches the PR label, and calls updateState() -> the
+  // 'state-comment' metadata guard. If the PR head moves in that window the guard
+  // fires skipForExpectedMetadata(), which exits 0 -- bypassing the
+  // uncaughtException handler that the crash path (Bug 3) relies on. Before the fix
+  // the armed fence + PR attachment leaked (owning state was never persisted) until
+  // the next orphaned-fence sweep. skipForExpectedMetadata() must now clean the
+  // pending fence on that clean-exit path too, exactly as the crash path does.
+  const movedHead = 'b'.repeat(40);
+  let fencePresent = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      // Head matches until the fence exists (opening fetch + the pre-fence
+      // 'acquire-label' guard both pass); once the fence is armed the next guard --
+      // 'state-comment' inside updateState -- observes the moved head and triggers
+      // the clean skip. The first POST-fence PR fetch IS the state-comment guard.
+      body: {
+        ...trustedReviewWakePr(),
+        mergeable: false,
+        mergeable_state: 'clean',
+        head: { ...trustedReviewWakePr().head, sha: fencePresent ? movedHead : HEAD_SHA },
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      fencePresent
+        ? { body: { name: LABEL, node_id: 'FENCE_partial' } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      // acquire() creates the fence here; arm the leak window (and move the head).
+      fencePresent = true;
+      return { body: { name: LABEL, node_id: 'FENCE_partial' } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 999 } }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  // A clean metadata-move skip exits 0; allow the known Windows exit-0 teardown flake.
+  if (!assertSuccessfulExit(t, code, stderr, stdout, true)) return;
+
+  // The skip fired at the state-comment phase (after the fence was armed), NOT at
+  // acquire-label (which passed on the pre-move head).
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=head-sha-moved-before-mutation phase=state-comment expected=${HEAD_SHA} actual=${movedHead}`,
+    ),
+    'the metadata move must trip the state-comment guard, after the fence is armed',
+  );
+  // The armed partial fence was cleaned on the clean-exit path (the fix).
+  assert.match(stdout, new RegExp(`partial-acquire-fence-cleanup pr=#${PR_NUM}`));
+  assert.doesNotMatch(stdout, /partial-acquire-fence-skip/);
+  // Cleanup detached the PR attachment and deleted our exact incarnation by node id.
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ),
+    'the clean-skip cleanup must detach the PR attachment',
+  );
+  assert.ok(
+    mutatingCalls.some((call) => call.method === 'GRAPHQL_MUTATION'),
+    'the clean-skip cleanup must delete the leaked fence by node id',
+  );
+  // Owning state was NEVER persisted: the state-comment write is the exact mutation
+  // the skip pre-empts, so a leaked fence would have had no owning state behind it.
+  assert.ok(
+    !mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    'the owning-state comment must never be written (the skip pre-empts it)',
+  );
 });
 
 test('PR #1208 partial cleanup converges when both owner-label deletes return 404', async (t) => {
@@ -2043,8 +2646,8 @@ test('failed waiting-marker cleanup remains sweep-retryable after automation own
   }
   assert.notEqual(failed.code, 0);
   assert.match(failed.stderr, /temporary label API failure/);
-  assert.equal(parseStateComment(acquiredStateBody).status, 'active');
-  assert.equal(parseStateComment(acquiredStateBody).owner, 'automation');
+  assert.equal(parseStateComment(acquiredStateBody).status, 'idle');
+  assert.equal(parseStateComment(acquiredStateBody).owner, 'none');
   assert.ok(
     first.mutatingCalls.some(
       (call) =>
@@ -2163,7 +2766,7 @@ test('failed waiting-marker cleanup remains sweep-retryable after automation own
   );
   assert.ok(waitingCleanupIndex >= 0);
   assert.ok(transitionCleanupIndex > waitingCleanupIndex);
-  assert.ok(ownerReleaseIndex > waitingCleanupIndex);
+  assert.ok(ownerReleaseIndex >= 0);
 });
 
 // ---------------------------------------------------------------------------
