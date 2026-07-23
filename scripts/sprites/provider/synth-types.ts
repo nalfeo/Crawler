@@ -68,17 +68,22 @@ export interface SynthProvider {
 export type SynthProviderErrorKind =
   | 'auth'
   | 'rate-limit'
+  | 'server-error'
+  | 'request-error'
   | 'network'
   | 'malformed'
   | 'provider-error';
 
 export class SynthProviderError extends Error {
   override readonly name = 'SynthProviderError';
+  readonly retryAfterMs: number | undefined;
+
   constructor(
     readonly kind: SynthProviderErrorKind,
     message: string,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; retryAfterMs?: number | undefined },
   ) {
-    super(message, options);
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
+    this.retryAfterMs = options?.retryAfterMs;
   }
 }

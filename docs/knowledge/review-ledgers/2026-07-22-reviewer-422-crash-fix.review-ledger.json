@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-22",
+  "session_slug": "reviewer-422-crash-fix",
+  "task_title": "Stop reconcile crashing on Copilot reviewer 422",
+  "estimated_apples": 2,
+  "stages": {}
+}

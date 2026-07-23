@@ -39,7 +39,7 @@ interface Slice {
     | 'PENDING'
     | 'SPAWNED'
     | 'IN_PROGRESS'
-    | 'PUBLISHED_WATCHED'
+    | 'PUBLISHED_DETACHED'
     | 'MERGED'
     | 'BLOCKED_UPSTREAM'
     | 'BLOCKED_ON_APPROVAL'
@@ -57,7 +57,7 @@ interface OrchestrationState {
   triage_type: string;
   slices: Slice[];
   overall_progress: number;
-  shepherd_interventions: number;
+  cloud_recovery_handoffs: number;
   blockers: string[];
 }
 
@@ -70,7 +70,7 @@ interface ProducerEvent {
     | 'force_publish_requested'
     | 'pr_published'
     | 'auto_merge_armed'
-    | 'shepherd_watch_requested'
+    | 'session_released'
     | 'force_publish_failed';
   feature?: string;
   pr_number?: number;
@@ -113,7 +113,7 @@ function isOrchestrationState(value: unknown): value is OrchestrationState {
     Array.isArray(candidate.slices) &&
     candidate.slices.every((slice) => isSlice(slice)) &&
     typeof candidate.overall_progress === 'number' &&
-    typeof candidate.shepherd_interventions === 'number' &&
+    typeof candidate.cloud_recovery_handoffs === 'number' &&
     Array.isArray(candidate.blockers)
   );
 }
@@ -316,7 +316,7 @@ function handleStatus(): void {
 
     const statusIcons: Record<string, string> = {
       MERGED: '🟢',
-      PUBLISHED_WATCHED: '🟡',
+      PUBLISHED_DETACHED: '🟡',
       IN_PROGRESS: '🟡',
       BLOCKED_UPSTREAM: '🔵',
       BLOCKED_ON_APPROVAL: '🟡',
@@ -651,7 +651,7 @@ function handleDecompose(request: string): void {
     triage_type: 'FEATURE',
     slices: initialSlices,
     overall_progress: 0,
-    shepherd_interventions: 0,
+    cloud_recovery_handoffs: 0,
     blockers: result.escalations,
   };
   appendJsonlLine(ORCHESTRATION_FILE, state);
@@ -673,7 +673,7 @@ function handleDecompose(request: string): void {
 
 /**
  * Command: --force-publish
- * Publish a draft PR immediately, arm auto-merge, and request Shepherd watch.
+ * Publish a draft PR immediately, arm auto-merge, and release the owning session.
  */
 function handleForcePublish(prNumberText: string): void {
   const prNumber = Number(prNumberText);
@@ -769,19 +769,19 @@ function handleForcePublish(prNumberText: string): void {
     details: headRef ? { branch: headRef } : undefined,
   } satisfies ProducerEvent);
 
-  // Producer documents Shepherd handoff immediately after publication/arming.
+  // Record session release — CI Recovery will assign cloud Copilot for any blockers.
   appendJsonlLine(ORCHESTRATION_FILE, {
     schema: 'producer-orchestration-event/v1',
     timestamp: new Date().toISOString(),
     session_id: sessionId,
-    event: 'shepherd_watch_requested',
+    event: 'session_released',
     pr_number: prNumber,
     details: {
-      mode: 'reactive',
-      note: 'Invoke pr-shepherd skill immediately in watch-only mode.',
+      mode: 'cloud_recovery',
+      note: 'Session released; CI Recovery assigns cloud Copilot for post-publication blockers.',
     },
   } satisfies ProducerEvent);
-  console.log('🐑 Shepherd handoff requested (reactive watch mode).\n');
+  console.log('☁️ Session released — CI Recovery will assign cloud Copilot for any blockers.\n');
 }
 
 /**

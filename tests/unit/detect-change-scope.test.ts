@@ -864,6 +864,11 @@ const cases: Case[] = [
     files: ['scripts/agent/security/check-deps.ts'],
     expected: F(false, false, false, false, false, false, false, false, false, false, false, true),
   },
+  {
+    name: 'npm-audit wrapper → dependencies_touched',
+    files: ['scripts/agent/security/npm-audit.mjs'],
+    expected: F(false, false, false, false, false, false, false, false, false, false, false, true),
+  },
   // Security-impact surfaces: ai_code_touched.
   {
     name: 'AI source file → ai_code_touched',

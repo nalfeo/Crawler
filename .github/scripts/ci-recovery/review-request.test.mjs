@@ -55,10 +55,11 @@ const decision = ({
   });
 
 test('records the platform-owned initial publish review without requesting a duplicate', () => {
-  assert.deepEqual(
-    decision({ trigger: 'pull_request_target:ready_for_review' }),
-    { reason: 'ready', episode: null, requestReviewer: false },
-  );
+  assert.deepEqual(decision({ trigger: 'pull_request_target:ready_for_review' }), {
+    reason: 'ready',
+    episode: null,
+    requestReviewer: false,
+  });
 });
 
 test('records a recovery-ready marker when publish-review evidence exists without markers', () => {
@@ -79,7 +80,10 @@ test('allows two normal CI-green re-reviews after the publish review', () => {
     requestReviewer: true,
   });
   assert.deepEqual(
-    decision({ currentPr: pr(HEADS[2]), comments: [initial, requestComment(HEADS[1], 'synchronize')] }),
+    decision({
+      currentPr: pr(HEADS[2]),
+      comments: [initial, requestComment(HEADS[1], 'synchronize')],
+    }),
     { reason: 'synchronize', episode: null, requestReviewer: true },
   );
 });
@@ -101,10 +105,7 @@ test('rejects a fourth normal review', () => {
 test('rejects duplicate review requests for the same head', () => {
   assert.equal(
     decision({
-      comments: [
-        requestComment(HEADS[0], 'ready'),
-        requestComment(HEADS[1], 'synchronize'),
-      ],
+      comments: [requestComment(HEADS[0], 'ready'), requestComment(HEADS[1], 'synchronize')],
     }),
     null,
   );
@@ -243,10 +244,7 @@ test('records each head/base conflict identity only once', () => {
 });
 
 test('does not spend the episode review while the same-run conflict is still active', () => {
-  const comments = [
-    requestComment(HEADS[0], 'ready'),
-    conflictComment(HEADS[1], BASES[0]),
-  ];
+  const comments = [requestComment(HEADS[0], 'ready'), conflictComment(HEADS[1], BASES[0])];
   assert.equal(
     decision({
       currentPr: {
@@ -330,4 +328,79 @@ test('keeps marker on ambiguous reviewer-request failures', async () => {
     /ambiguous failure/,
   );
   assert.deepEqual(calls, ['marker', 'review']);
+});
+
+test('swallows a 422 reviewer-not-a-collaborator failure after rolling back the marker', async () => {
+  const calls = [];
+  const result = await executeReviewDecision({
+    decision: { requestReviewer: true },
+    marker: 'marker',
+    createMarker: async () => {
+      calls.push('marker');
+      return { id: 42 };
+    },
+    deleteMarker: async (id) => calls.push(`delete:${id}`),
+    requestReviewer: async () => {
+      calls.push('review');
+      const error = new Error(
+        'GitHub POST /repos/nalfeo/Crawler/pulls/1/requested_reviewers failed (422): ' +
+          'Reviews may only be requested from collaborators.',
+      );
+      error.status = 422;
+      throw error;
+    },
+  });
+  // Must not throw -- an optional review request must never abort reconcile.
+  assert.equal(result, undefined);
+  assert.deepEqual(calls, ['marker', 'review', 'delete:42']);
+});
+
+test('swallows a 403 reviewer-request failure after rolling back the marker', async () => {
+  const calls = [];
+  await executeReviewDecision({
+    decision: { requestReviewer: true },
+    marker: 'marker',
+    createMarker: async () => {
+      calls.push('marker');
+      return { id: 42 };
+    },
+    deleteMarker: async (id) => calls.push(`delete:${id}`),
+    requestReviewer: async () => {
+      calls.push('review');
+      const error = new Error('Forbidden');
+      error.status = 403;
+      throw error;
+    },
+  });
+  assert.deepEqual(calls, ['marker', 'review', 'delete:42']);
+});
+
+test('still raises an AggregateError when a 422 failure cannot have its marker rolled back', async () => {
+  const calls = [];
+  await assert.rejects(
+    executeReviewDecision({
+      decision: { requestReviewer: true },
+      marker: 'marker',
+      createMarker: async () => {
+        calls.push('marker');
+        return { id: 42 };
+      },
+      deleteMarker: async () => {
+        calls.push('delete-failed');
+        throw new Error('delete failed');
+      },
+      requestReviewer: async () => {
+        calls.push('review');
+        const error = new Error('not a collaborator');
+        error.status = 422;
+        throw error;
+      },
+    }),
+    (err) => {
+      assert.ok(err instanceof AggregateError);
+      assert.match(err.message, /could not be rolled back/);
+      return true;
+    },
+  );
+  assert.deepEqual(calls, ['marker', 'review', 'delete-failed']);
 });

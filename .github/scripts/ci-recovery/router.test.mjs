@@ -22,6 +22,7 @@ import {
   MAX_DISPATCH_BUDGET_TRAIN_IDLE,
   partitionDispatchable,
   recoveryStateFromComments,
+  recoveryBacklogEntries,
   requestWithBackoff,
   recoveryTriggerForPr,
   RUNNER_CEILING,
@@ -408,6 +409,20 @@ test('train undirected sweeps select at most the six oldest eligible PRs', () =>
     }),
     [1, 2, 3, 4, 5, 6],
   );
+});
+
+test('recovery backlog classification is not truncated to the six-PR dispatch window', () => {
+  const pulls = Array.from({ length: 12 }, (_, index) => ({
+    number: index + 1,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [],
+  }));
+
+  assert.equal(recoveryBacklogEntries(pulls, 'nalfeo/Crawler').length, 12);
 });
 
 test('train PR-less default-branch CI sweeps preserve owner slots without redispatching them', () => {
@@ -1045,10 +1060,7 @@ test('computeDispatchBudget never returns Infinity -- idle cap is always finite,
   // (the old pre-backpressure behaviour). Train disabled/paused collapses to
   // trainQueueNonEmpty=false; this proves the same finite budget holds.
   const budget = computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0 });
-  assert.ok(
-    Number.isFinite(budget),
-    `budget must be finite but got ${budget}`,
-  );
+  assert.ok(Number.isFinite(budget), `budget must be finite but got ${budget}`);
   assert.equal(budget, MAX_DISPATCH_BUDGET_TRAIN_IDLE);
   assert.equal(
     computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: RUNNER_CEILING }),
