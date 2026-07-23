@@ -14,8 +14,31 @@
       "notes": "4 concerns: (1) blocking - purge not gated on confirmed cache.set() write, fixed by capturing the boolean return and early-returning before purge; (2) non-blocking - unbounded inner.list() can pin the dedup slot forever, documented as an accepted/monitored risk in the ADR (mirrors a pre-existing hang risk in the old blocking path; a proper fix needs RunStore-wide AbortSignal plumbing, out of scope for 3 apples); (3) non-blocking - purge only cleared blob: entries not per-run derived caches, fixed by reusing the existing removePerRunSnapshotOnRunRemoval() helper in the purge loop; (4) non-blocking - no test proved a same-process mutation racing an in-flight background refresh prevents publishing stale data, added a dedicated race test using a GatedListStore + put() mid-flight."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "R1: purge loop omitted invalidateDerivedResources(removedKey) vs authoritative remove() path, leaving stale HTTP-route response caches (derived:route/brief/..., derived:route/slice-map/...) served indefinitely for externally-removed runs; fixed by adding the missing call + a companion 3-segment-key test. R2: independently verified R1 fix correctness (call order, invalidateDerivedResources semantics, test determinism, epoch/dedup guards) and found it fully correct, but caught that the fix existed only in the uncommitted working tree, not HEAD; committed (86704f82f). R3: full independent re-review of the committed state found zero concerns across all categories."
     }
   }
 }
