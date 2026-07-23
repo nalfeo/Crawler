@@ -132,7 +132,7 @@ describe('Floor 2 Quartermaster generated stock', () => {
   });
 
   it('does not auto-enable the equipment economy or configure the registry by default', () => {
-    const world = createTestWorld({ seed: 42, floor: 2 });
+    const world = createTestWorld({ seed: 42, floor: 2, generatedEquipmentRunKey: null });
 
     expect(createInitialFloor2QuartermasterStock(world)).toBeUndefined();
     expect(world.generatedEquipmentRegistry.runKey).toBeNull();
@@ -140,7 +140,7 @@ describe('Floor 2 Quartermaster generated stock', () => {
   });
 
   it('returns undefined and does not mutate the registry when economy flags are set on a non-Floor-2 world', () => {
-    const world = createTestWorld({ seed: 42, floor: 1 });
+    const world = createTestWorld({ seed: 42, floor: 1, generatedEquipmentRunKey: null });
     enableQuartermasterEconomy(world);
 
     expect(createInitialFloor2QuartermasterStock(world)).toBeUndefined();
@@ -149,7 +149,7 @@ describe('Floor 2 Quartermaster generated stock', () => {
   });
 
   it('rejects an enabled economy without its registry/catalog dependency closure', () => {
-    const world = createTestWorld({ seed: 42, floor: 2 });
+    const world = createTestWorld({ seed: 42, floor: 2, generatedEquipmentRunKey: null });
     world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
 
     expect(() => createInitialFloor2QuartermasterStock(world)).toThrow(

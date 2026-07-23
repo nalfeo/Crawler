@@ -1,8 +1,10 @@
 import {
   GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES,
+  EQUIPMENT_REWARD_TIER_RARITIES,
+  EQUIPMENT_REWARD_TIER_PRIMARY_RARITY_WEIGHT,
   RARITY_EFFECT_BUDGET,
-  type GeneratedEquipmentInstanceKey,
+  type EquipmentRewardTier,
   type GeneratedEquipmentRarity,
   type GeneratedEquipmentRewardBundleV1,
 } from '../shared/generated-equipment-types.js';
@@ -27,9 +29,12 @@ export const REWARD_BUNDLE_RESOLVER_VERSION = 'v1';
 export type RewardBundleBuildAffinity = 'magic' | 'physical';
 
 /**
- * The three rarities every resolved bundle always contains, in canonical order.
- * A bundle is NEVER empty (Alternative-1 design: fixed 3-item bundle with
- * conditional per-rarity affinity alignment).
+ * The three generated-equipment rarities the affinity-alignment contract
+ * ({@link REWARD_BUNDLE_AFFINITY_PROB}) is defined over. A single tiered
+ * bundle resolves exactly ONE of these rarities (per its tier's allowed pool,
+ * see {@link EQUIPMENT_REWARD_TIER_RARITIES}) — this constant is retained for
+ * the affinity-probability contract and threshold tests, not to imply every
+ * bundle contains all three.
  */
 export const REWARD_BUNDLE_RARITIES: readonly GeneratedEquipmentRarity[] =
   GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES;
@@ -121,15 +126,35 @@ function substreamRng(
 }
 
 /**
- * Resolve an achievement's equipment reward into an immutable 3-item bundle
- * (Common + Uncommon + Rare) and store it in `world.generatedEquipmentRewardBundles`
- * keyed by `achievementId`.
+ * Weighted rarity pick for a tier's allowed rarity pool. The first entry in
+ * {@link EQUIPMENT_REWARD_TIER_RARITIES} is favored at
+ * {@link EQUIPMENT_REWARD_TIER_PRIMARY_RARITY_WEIGHT}; a single-entry pool
+ * (tier1) always resolves to that one rarity with zero RNG consumption, so
+ * tier1 stays fully deterministic even before the RNG substream is touched.
+ */
+export function rollTierRarity(
+  rng: SeededRandom,
+  tier: EquipmentRewardTier,
+): GeneratedEquipmentRarity {
+  const pool = EQUIPMENT_REWARD_TIER_RARITIES[tier];
+  if (pool.length === 1) return pool[0]!;
+  const roll = rng.next();
+  return roll < EQUIPMENT_REWARD_TIER_PRIMARY_RARITY_WEIGHT ? pool[0]! : pool[1]!;
+}
+
+/**
+ * Resolve an achievement's equipment reward into an immutable, tier-scoped,
+ * single-item bundle and store it in `world.generatedEquipmentRewardBundles`
+ * keyed by `achievementId`. The item's rarity is drawn from
+ * {@link EQUIPMENT_REWARD_TIER_RARITIES}`[tier]` (see {@link rollTierRarity});
+ * `tier1` is common-only, `tier2`/`tier3` share {common, uncommon} but differ in
+ * which rarity is favored — no tier ever draws `rare`.
  *
  * Determinism & isolation:
  * - Every random decision uses a bundle-specific {@link SeededRandom} derived
  *   from the run key + achievement id + rarity + decision (no `world.rng`
  *   consumption → zero contamination of the gameplay stream). Replaying the same
- *   run key + achievement + player affinity yields identical instances.
+ *   run key + achievement + player affinity + tier yields an identical instance.
  * - Player level and build affinity are snapshotted once up front.
  *
  * Atomicity & fail-closed:
@@ -144,6 +169,7 @@ export function resolveEquipmentRewardBundle(
   world: GameWorld,
   achievementId: string,
   bases: readonly string[],
+  tier: EquipmentRewardTier,
 ): GeneratedEquipmentRewardBundleV1 {
   const existing = world.generatedEquipmentRewardBundles.get(achievementId);
   if (existing !== undefined) return existing;
@@ -157,23 +183,18 @@ export function resolveEquipmentRewardBundle(
   }
 
   // Enforce the reward rarity contract structurally against the ambient
-  // generation policy. The generator draws each rarity's effect count from
-  // `policy.rarityEffectUnits`, which is only validated to be in [0, 2] per
-  // rarity — a legal-but-non-default policy (e.g. Common 1, Uncommon 2) would
-  // silently produce a Common with a non-armor stat or an Uncommon with two
-  // effects, violating "Common: no non-armor stat bonus / Uncommon: at most one
-  // minor boost / Rare: up to two". Fail closed unless the policy budget is
-  // within the reward contract (the shipped default {0,1,2} always passes).
+  // generation policy, scoped to the rarities this tier can actually draw
+  // (never `rare` for tier1/tier2/tier3). See the fixed-3-item resolver's
+  // original comment for why this guard exists — a legal-but-non-default
+  // policy could otherwise silently violate the reward contract.
   const effectUnits = world.generatedEquipmentRegistry.generationPolicy.rarityEffectUnits;
-  if (
-    effectUnits.common > RARITY_EFFECT_BUDGET.common ||
-    effectUnits.uncommon > RARITY_EFFECT_BUDGET.uncommon ||
-    effectUnits.rare > RARITY_EFFECT_BUDGET.rare
-  ) {
-    throw new RewardBundleResolutionError(
-      'illegal-effect-budget',
-      `Registry effect-unit budget {common:${effectUnits.common}, uncommon:${effectUnits.uncommon}, rare:${effectUnits.rare}} exceeds the reward rarity contract {common:${RARITY_EFFECT_BUDGET.common}, uncommon:${RARITY_EFFECT_BUDGET.uncommon}, rare:${RARITY_EFFECT_BUDGET.rare}}`,
-    );
+  for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
+    if (effectUnits[rarity] > RARITY_EFFECT_BUDGET[rarity]) {
+      throw new RewardBundleResolutionError(
+        'illegal-effect-budget',
+        `Registry effect-unit budget for ${rarity} (${effectUnits[rarity]}) exceeds the reward rarity contract (${RARITY_EFFECT_BUDGET[rarity]}) for tier ${tier}`,
+      );
+    }
   }
 
   // Enforce the Common rarity contract structurally: the Common item spreads its
@@ -206,32 +227,32 @@ export function resolveEquipmentRewardBundle(
 
   const itemLevel = Math.max(1, Math.floor(world.playerLevel.level));
 
-  const transaction = createGeneratedEquipmentRegistryTransaction(world);
-  const instanceKeys: GeneratedEquipmentInstanceKey[] = [];
-  for (const rarity of REWARD_BUNDLE_RARITIES) {
-    const aligns = rollAffinityAlignment(
-      substreamRng(runKey, achievementId, rarity, 'alignment'),
-      rarity,
-    );
-    const pool = aligns ? aligned : nonAligned;
-    const baseRng = substreamRng(runKey, achievementId, rarity, 'base');
-    const baseId = pool[baseRng.nextInt(0, pool.length - 1)]!;
-    const effectsRng = substreamRng(runKey, achievementId, rarity, 'effects');
-    const instance = generateEquipmentInstance(
-      { generatedEquipmentRegistry: transaction.registry, rng: effectsRng },
-      { baseId, itemLevel, rarity },
-      { rng: effectsRng, allowedEffectKinds: ['stat'] },
-    );
-    instanceKeys.push(instance.instanceId);
-  }
+  const rarityRng = substreamRng(runKey, achievementId, tier, 'tier-rarity');
+  const rarity = rollTierRarity(rarityRng, tier);
 
-  // All three generated successfully — publish the registry state, then record
-  // the bundle. Both are no-throw so the pair is effectively atomic.
+  const transaction = createGeneratedEquipmentRegistryTransaction(world);
+  const aligns = rollAffinityAlignment(
+    substreamRng(runKey, achievementId, rarity, 'alignment'),
+    rarity,
+  );
+  const pool = aligns ? aligned : nonAligned;
+  const baseRng = substreamRng(runKey, achievementId, rarity, 'base');
+  const baseId = pool[baseRng.nextInt(0, pool.length - 1)]!;
+  const effectsRng = substreamRng(runKey, achievementId, rarity, 'effects');
+  const instance = generateEquipmentInstance(
+    { generatedEquipmentRegistry: transaction.registry, rng: effectsRng },
+    { baseId, itemLevel, rarity },
+    { rng: effectsRng, allowedEffectKinds: ['stat'] },
+  );
+
+  // Generated successfully — publish the registry state, then record the
+  // bundle. Both are no-throw so the pair is effectively atomic.
   transaction.commit();
   const bundle: GeneratedEquipmentRewardBundleV1 = Object.freeze({
     schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
     achievementId,
-    instanceKeys: Object.freeze(instanceKeys),
+    tier,
+    instanceKeys: Object.freeze([instance.instanceId]),
   });
   world.generatedEquipmentRewardBundles.set(achievementId, bundle);
   return bundle;

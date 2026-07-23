@@ -156,7 +156,7 @@ describe('generated equipment instance registry', () => {
   });
 
   it('fails closed until the world is configured with an explicit run key', () => {
-    const world = createTestWorld();
+    const world = createTestWorld({ generatedEquipmentRunKey: null });
     expectRegistryError(
       () => createGeneratedEquipmentInstance(world, createInput()),
       'registry-unconfigured',

@@ -17,6 +17,10 @@ import {
   RewardBundleResolutionError,
   resolveEquipmentRewardBundle,
 } from '../floor2-reward-bundle-resolver.js';
+import {
+  LootBoxRewardResolutionError,
+  resolveLootBoxRewardBundle,
+} from '../floor1-lootbox-reward-resolver.js';
 
 function highestSkillLevel(world: GameWorld): number {
   let maxLevel = 0;
@@ -158,13 +162,53 @@ export function unlockAchievement(
   // enabled (e.g. Floor 1, which is equipment-free), or bundle resolution fails
   // for any reason, we do NOT record the unlock (fail-closed).
   if (achievement.reward.type === 'equipment') {
-    if (getFloor2EquipmentRewardsAccess(world).kind !== 'enabled') {
+    // getFloor2EquipmentRewardsAccess gates on floor + feature flags, but does
+    // NOT itself check whether the generated-equipment registry has a run key
+    // configured. A world could (in principle) have those flags enabled yet
+    // still have no run key, which would otherwise hit the same "uncaught
+    // throw from an unconfigured registry" landmine that the lootBox branch
+    // below guards against explicitly — so mirror that guard here too.
+    if (
+      getFloor2EquipmentRewardsAccess(world).kind !== 'enabled' ||
+      world.generatedEquipmentRegistry.runKey === null
+    ) {
       return false;
     }
     try {
-      resolveEquipmentRewardBundle(world, achievementId, achievement.reward.bases);
+      resolveEquipmentRewardBundle(
+        world,
+        achievementId,
+        achievement.reward.bases,
+        achievement.reward.tier,
+      );
     } catch (err) {
       if (err instanceof RewardBundleResolutionError) throw err;
+      return false;
+    }
+  } else if (achievement.reward.type === 'lootBox') {
+    // Floor 1 lootBox rewards resolve their immutable gold+materials bundle
+    // BEFORE the unlock mutation too, mirroring the equipment path exactly —
+    // generation happens ONLY here, never at claim, load, or presentation.
+    //
+    // Mirroring the equipment branch's feature-availability pre-check above:
+    // a world whose generated-equipment registry has no run key configured
+    // has never opted into resolved-bundle generation at all (e.g. many
+    // pre-existing ECS/headless test worlds built directly via
+    // createGameWorld({ seed }) with no run key, which is a legitimate,
+    // common configuration for tests unrelated to rewards). Treat that as
+    // "reward resolution unavailable for this world" and fail closed here —
+    // WITHOUT throwing — rather than letting the resolver's internal
+    // no-run-key guard (a defense-in-depth invariant for callers that DO
+    // expect a configured registry) turn every such world's real simulation
+    // step into an uncaught crash the moment a trivial Floor 1 achievement
+    // like 'quest-accepted' unlocks.
+    if (world.generatedEquipmentRegistry.runKey === null) {
+      return false;
+    }
+    try {
+      resolveLootBoxRewardBundle(world, achievementId, achievement.reward.tier);
+    } catch (err) {
+      if (err instanceof LootBoxRewardResolutionError) throw err;
       return false;
     }
   }

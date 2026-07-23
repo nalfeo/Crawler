@@ -397,6 +397,33 @@ describe('player floor carryover', () => {
     ).toBe(false);
   });
 
+  it('normalizes a current-schema snapshot missing the generated-state array fields to empty arrays', () => {
+    // Simulates a pre-existing snapshot saved before generated-equipment /
+    // loot-box carryover fields were introduced: same schemaVersion, but the
+    // newer array fields are entirely absent from the record (not just
+    // empty). Restoring it must default them to [] rather than crash.
+    const source = createTestWorld({ seed: 91 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const fullSnapshot = capturePlayerCarryover(source, sourcePlayer);
+    const {
+      generatedInventoryInstanceKeys: _keys,
+      generatedEquippedInstanceKeys: _equipped,
+      generatedEquipmentRewardBundles: _rewardBundles,
+      lootBoxRewardBundles: _lootBoxBundles,
+      ...snapshotMissingGeneratedFields
+    } = fullSnapshot;
+
+    const destination = createTestWorld({ seed: 91 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() =>
+      restorePlayerCarryover(destination, destinationPlayer, snapshotMissingGeneratedFields),
+    ).not.toThrow();
+    expect(destination.generatedEquipmentRewardBundles.size).toBe(0);
+    expect(destination.lootBoxRewardBundles.size).toBe(0);
+    expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+  });
+
   it('rejects unsupported ownership snapshot versions explicitly', () => {
     const source = createTestWorld({ seed: 27 });
     const sourcePlayer = spawnPlayer(source, 0, 0);
@@ -498,6 +525,7 @@ describe('player floor carryover', () => {
       generatedEquippedInstanceKeys: _generatedEquippedInstanceKeys,
       generatedEquipmentRegistry: _generatedEquipmentRegistry,
       generatedEquipmentRewardBundles: _generatedEquipmentRewardBundles,
+      lootBoxRewardBundles: _lootBoxRewardBundles,
       ...legacy
     } = current;
     const destination = createTestWorld({ seed: 42 });
@@ -534,22 +562,6 @@ describe('player floor carryover', () => {
         rarity: 'common',
       }),
     );
-    const bundledUncommon = createGeneratedEquipmentInstance(
-      source,
-      generatedEquipmentInput({
-        baseId: 'armor.generated-bundle',
-        slots: ['feet'],
-        rarity: 'uncommon',
-      }),
-    );
-    const bundledRare = createGeneratedEquipmentInstance(
-      source,
-      generatedEquipmentInput({
-        baseId: 'armor.generated-bundle',
-        slots: ['feet'],
-        rarity: 'rare',
-      }),
-    );
     expect(addGeneratedEquipmentToBag(source, player, equipped.instanceId).ok).toBe(true);
     expect(
       equipFromBag(
@@ -561,13 +573,15 @@ describe('player floor carryover', () => {
     ).toBe(true);
     expect(addGeneratedEquipmentToBag(source, player, bagged.instanceId).ok).toBe(true);
     // A persisted reward bundle is only valid for a real, unlocked, unclaimed
-    // equipment-reward achievement and must hold exactly one Common/Uncommon/Rare
-    // instance in canonical order (fail-closed carryover contract).
+    // tier1 equipment-reward achievement and must hold exactly one instance
+    // whose rarity is a member of that tier's allowed pool (fail-closed
+    // carryover contract — tier1 is common-only).
     source.achievements.unlockedIds.add('floor2-field-kit');
     source.generatedEquipmentRewardBundles.set('floor2-field-kit', {
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
       achievementId: 'floor2-field-kit',
-      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
+      tier: 'tier1',
+      instanceKeys: [bundledCommon.instanceId],
     });
 
     const snapshot = capturePlayerCarryover(source, player);
@@ -617,7 +631,8 @@ describe('player floor carryover', () => {
     expect(destination.generatedEquipmentRewardBundles.get('floor2-field-kit')).toEqual({
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
       achievementId: 'floor2-field-kit',
-      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
+      tier: 'tier1',
+      instanceKeys: [bundledCommon.instanceId],
     });
     expect(
       Object.isFrozen(destination.generatedEquipmentRewardBundles.get('floor2-field-kit')),
@@ -905,6 +920,10 @@ describe('player floor carryover', () => {
         generatedInventoryInstanceKeys: [
           'gei:v1:carryover-invalid-run:999' as GeneratedEquipmentInstanceKey,
         ],
+      },
+      {
+        ...snapshot,
+        generatedInventoryInstanceKeys: null,
       },
       // bundle.instanceKeys must be an array; a non-array value must fail closed.
       // Use a real, unlocked equipment achievement so validation reaches the
