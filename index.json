@@ -1,5 +1,16 @@
 [
   {
+    "commit": "61540a452c5fcb9e6f0345546ad234595047a4c3",
+    "commitDate": "2026-07-23T03:58:40Z",
+    "commitSubject": "docs(agents): detach from published PRs by default (#1766)",
+    "capturedAt": "2026-07-23T05:15:54.371Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29978833505",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/61540a452c5fcb9e6f0345546ad234595047a4c3.json"
+  },
+  {
     "commit": "bb4ead3a3b5c46847bac7a302478a0d02cd93de9",
     "commitDate": "2026-07-23T03:38:25Z",
     "commitSubject": "feat(ci): add live CI Health dashboard (#1762)",
