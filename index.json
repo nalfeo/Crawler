@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ce547798e584ffe4fd0fedf96bf53f5984f3e4a4",
+    "commitDate": "2026-07-22T16:22:48-07:00",
+    "commitSubject": "feat(ai): add deterministic equipment loadout scoring (#1575)",
+    "capturedAt": "2026-07-23T00:40:26.827Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29966490674",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/ce547798e584ffe4fd0fedf96bf53f5984f3e4a4.json"
+  },
+  {
     "commit": "d514d02a5fc8e366fcc60367e8ccbb50251ef250",
     "commitDate": "2026-07-22T16:04:52-07:00",
     "commitSubject": "feat(ai): promote recovered AI Sweep winner to runtime default (#1768)",
