@@ -333,19 +333,16 @@ export function planMigration(
 /**
  * Apply a plan to the manifest + catalog data structures, returning fresh copies.
  *
- * Both collections **preserve their original on-disk order** so a real migration
- * produces a minimal diff (only the migrated entries change):
- *   - Manifest: keys keep their insertion order; a renamed key occupies its
- *     original slot; retired keys are dropped.
- *   - Catalog: records keep their array order; a renamed `generated:*` sprite
- *     record is edited *in place* (only id/label/description/spriteId/assetPath),
- *     which — via object spread over the raw record — keeps every other field in
- *     its original key position; retired records are dropped. We intentionally do
- *     NOT re-sort and do NOT round-trip through the zod schema, either of which
- *     would reorder untouched records and cause wholesale serialization churn.
+ * The collections are returned in canonical sorted order:
+ *   - Manifest: entry keys sorted lexicographically (required by `check:sort-assets`).
+ *   - Catalog: sheets first (kind="sheet"), then by id within each kind group.
  *
- * (`sprites:sync-catalog --check` is not a required gate and is pre-existing red
- *  on the committed catalog, so matching its sort order is not a goal here.)
+ * Renamed entries may shift alphabetical position — this is intentional and
+ * necessary to keep the file sortable for future conflict-free merges.
+ *
+ * (Pre-2026-07-23: the function preserved insertion order to minimise diff
+ *  churn. The `check:sort-assets` CI gate now enforces canonical order, so
+ *  sort-after-apply is the correct default.)
  */
 export function applyPlanToData(
   manifest: GeneratedManifest,
@@ -371,7 +368,11 @@ export function applyPlanToData(
       nextEntries[key] = entry;
     }
   }
-  const nextManifest: GeneratedManifest = { ...manifest, entries: nextEntries };
+  // Sort manifest entries lexicographically (canonical order enforced by check:sort-assets).
+  const sortedEntries: Record<string, ManifestEntry> = Object.fromEntries(
+    Object.entries(nextEntries).sort(([a], [b]) => a.localeCompare(b)),
+  );
+  const nextManifest: GeneratedManifest = { ...manifest, entries: sortedEntries };
 
   // --- catalog: repoint renamed generated entries in place, drop retired ---
   const catalogRenameById = new Map<string, RenameOp>(
@@ -398,6 +399,15 @@ export function applyPlanToData(
       nextCatalog.push(record);
     }
   }
+
+  // Sort catalog: sheets first (kind="sheet"), then by id — canonical order
+  // enforced by check:sort-assets.
+  nextCatalog.sort((a, b) => {
+    const aGroup = a.kind === 'sheet' ? 0 : 1;
+    const bGroup = b.kind === 'sheet' ? 0 : 1;
+    if (aGroup !== bGroup) return aGroup - bGroup;
+    return (a.id ?? '').localeCompare(b.id ?? '');
+  });
 
   return { manifest: nextManifest, catalog: nextCatalog };
 }

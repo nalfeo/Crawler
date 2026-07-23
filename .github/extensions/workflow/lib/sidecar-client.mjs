@@ -131,6 +131,10 @@ export function acceptUrl(baseUrl, briefId, runId) {
   return `${runSummaryUrl(baseUrl, briefId, runId)}/accept`;
 }
 
+export function deleteManifestUrl(baseUrl, variantId) {
+  return `${baseUrl}/api/manifest/${enc(variantId)}`;
+}
+
 // ---------------------------------------------------------------------------
 // Normalizers (pure). Ported verbatim from the DevTools monolith so the canvas
 // shows exactly the same numbers, labels, and verdicts.
@@ -504,6 +508,38 @@ export function createSidecarClient(options) {
   }
 
   /**
+   * Evict a previously approved variant via `DELETE /api/manifest/:variantId`.
+   * Removes the manifest entry, catalog entry, and on-disk PNG. Returns the
+   * removed manifest entry on success; throws with `.code` and `.status` on any
+   * non-2xx sidecar response (mirrors `deleteApprovedVariant` in
+   * `src/devtools/sprite-approval-api.ts`).
+   * @param {string} variantId  e.g. `goblin-archer-var-0`
+   */
+  async function unapproveVariant(variantId) {
+    const response = await fetchImpl(deleteManifestUrl(baseUrl, variantId), {
+      method: 'DELETE',
+      cache: 'no-store',
+    });
+    let payload = null;
+    try {
+      payload = await readJson(response);
+    } catch {
+      payload = null;
+    }
+    if (!response.ok) {
+      const message =
+        typeof payload?.message === 'string'
+          ? payload.message
+          : `Sprite unapprove failed (${response.status} ${response.statusText})`;
+      const error = new Error(message);
+      error.code = typeof payload?.error === 'string' ? payload.error : `http-${response.status}`;
+      error.status = response.status;
+      throw error;
+    }
+    return payload;
+  }
+
+  /**
    * Repo-aware health probe. Returns `up` only when the sidecar answers AND its
    * `repoRoot` matches this workspace; `wrong-repo` when it answers for a
    * different checkout; `down` on any network/HTTP failure.
@@ -563,6 +599,7 @@ export function createSidecarClient(options) {
     fetchSheets,
     fetchSliceMap,
     acceptVariant,
+    unapproveVariant,
     probeHealth,
     urls: {
       health: () => healthUrl(baseUrl),
@@ -574,6 +611,7 @@ export function createSidecarClient(options) {
       raw: (b, r, f) => rawUrl(baseUrl, b, r, f),
       sliceMap: (b, r, s) => sliceMapUrl(baseUrl, b, r, s),
       accept: (b, r) => acceptUrl(baseUrl, b, r),
+      deleteManifest: (v) => deleteManifestUrl(baseUrl, v),
       runPostprocess: (b, r) => runPostprocessUrl(baseUrl, b, r),
     },
   };

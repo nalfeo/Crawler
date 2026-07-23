@@ -34,7 +34,9 @@ function trustedComment(comment) {
 function parseTrustedComments(comments, pattern, project) {
   return (comments || []).flatMap((comment) => {
     if (!trustedComment(comment)) return [];
-    const match = String(comment?.body || '').trim().match(pattern);
+    const match = String(comment?.body || '')
+      .trim()
+      .match(pattern);
     return match ? [project(match)] : [];
   });
 }
@@ -44,10 +46,7 @@ export function reviewRequestMarkers(comments) {
     headSha: match[1],
     reason: match[2],
     episode: match[3] || null,
-  })).filter(
-    (marker) =>
-      (marker.reason === 'conflict-resolved') === Boolean(marker.episode),
-  );
+  })).filter((marker) => (marker.reason === 'conflict-resolved') === Boolean(marker.episode));
 }
 
 export function conflictEpisodeMarkers(comments) {
@@ -117,8 +116,7 @@ export function shouldRequestReview({
     latestEpisode &&
     !requests.some(
       (request) =>
-        request.reason === 'conflict-resolved' &&
-        request.episode === latestEpisode.episode,
+        request.reason === 'conflict-resolved' && request.episode === latestEpisode.episode,
     )
   ) {
     return {
@@ -132,7 +130,9 @@ export function shouldRequestReview({
   if (normalRequests.some((request) => request.headSha === headSha)) return null;
 
   if (normalRequests.length === 0) {
-    return hasInitialReviewEvidence ? { reason: 'ready', episode: null, requestReviewer: false } : null;
+    return hasInitialReviewEvidence
+      ? { reason: 'ready', episode: null, requestReviewer: false }
+      : null;
   }
 
   if (normalRequests.length >= 3) return null;
@@ -165,7 +165,11 @@ export async function executeReviewDecision({
     const status = Number(error?.status);
     const ambiguousMutationOutcome =
       error?.markerRollbackSafe !== true &&
-      (!Number.isFinite(status) || status === 408 || status === 409 || status === 429 || status >= 500);
+      (!Number.isFinite(status) ||
+        status === 408 ||
+        status === 409 ||
+        status === 429 ||
+        status >= 500);
     if (ambiguousMutationOutcome) {
       throw error;
     }
@@ -176,6 +180,18 @@ export async function executeReviewDecision({
         [error, rollbackError],
         `Copilot review request failed and marker ${markerComment.id} could not be rolled back`,
       );
+    }
+    // A 422/403 means the reviewer login itself cannot be requested (e.g. it is not a
+    // collaborator on this repository) -- a deterministic, non-retryable rejection of an
+    // optional mutation, not a sign the PR/reconcile state is ambiguous. The marker has
+    // already been rolled back above, so swallow this failure instead of aborting the
+    // caller: requesting an optional reviewer must never block reconcile's state
+    // convergence, label attach, or thread reconciliation.
+    if (status === 422 || status === 403) {
+      process.stderr.write(
+        `review-request-skipped reason=reviewer-not-requestable status=${status}\n`,
+      );
+      return;
     }
     throw error;
   }

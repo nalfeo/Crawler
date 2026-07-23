@@ -25,6 +25,7 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
+import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import {
   FLOOR2_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR2_TIMEOUT_GOAL_ID,
@@ -129,6 +130,12 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
+   * Explicit Floor 2 equipment rollout configuration. Omitted preserves the
+   * world defaults (all disabled); dependency closure is validated by each
+   * enabled consumer before it mutates state.
+   */
+  floor2EquipmentFlags?: Partial<GameWorld['floor2EquipmentFlags']>;
+  /**
    * Start the run at this player character level (applies XP and unspent stat
    * points to match). Level 1 (default) is a normal run with no boost.
    * Supports any positive level; clamped to ≥1.
@@ -170,7 +177,10 @@ export interface HeadlessRunnerConfig {
 }
 
 const DEFAULT_CONFIG: Required<
-  Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent' | 'forceWeaponId' | 'onFinish'>
+  Omit<
+    HeadlessRunnerConfig,
+    'simulationOptions' | 'recordEvent' | 'forceWeaponId' | 'onFinish' | 'floor2EquipmentFlags'
+  >
 > = {
   seed: 12345,
   maxFrames: 100_000, // ~27 min at 60 FPS
@@ -359,7 +369,16 @@ export async function runHeadless(
   }
 
   // Create world and spawn player
-  const world = createGameWorld({ seed: mergedConfig.seed });
+  // Mirrors MainGameScene: always derive a stable generated-equipment run key
+  // from the world seed, so resolve-at-unlock reward bundles (Floor 1
+  // lootBox + Floor 2 equipment) work identically in headless AI runs.
+  const world = createGameWorld({
+    seed: mergedConfig.seed,
+    generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(mergedConfig.seed),
+  });
+  if (mergedConfig.floor2EquipmentFlags) {
+    Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
+  }
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
   configureMerchantWeaponPurchase(world, mergedConfig.merchantWeaponPurchase);
   if (mergedConfig.recordWeaponTelemetry) {
@@ -370,10 +389,17 @@ export async function runHeadless(
     mergedConfig.enemyDamageMultiplier,
   );
 
+  // Apply the intended player level BEFORE scenario configuration so that any
+  // settlement or stock generation that reads world.playerLevel during
+  // configureWorld (e.g. Floor 2 Quartermaster stock) sees the correct level.
+  // applyStartPlayerLevel is raise-only, so scenario-internal level overrides
+  // (e.g. applyFloor2DirectStartPlayerState) are no-ops when the requested
+  // level is already >= the baseline they would set.
+  applyStartPlayerLevel(world, mergedConfig.startPlayerLevel);
+
   // Initialize selected scenario (map/objective/NPC wiring).
   const scenario = getScenarioDefinition(mergedConfig.floorId);
   scenario.configureWorld(world, playerEid);
-  applyStartPlayerLevel(world, mergedConfig.startPlayerLevel);
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
   // Select starter weapon when the scenario exposes a loadout phase.
@@ -441,6 +467,7 @@ export async function runHeadless(
   let combatStartFrame = 0;
   let damageDealt = 0;
   let damageTaken = 0;
+  const damageTakenBySource: Record<string, number> = {};
   // Real damage measurement: track each enemy's HP frame-to-frame.
   const enemyHpById = new Map<number, number>();
   let questsAccepted = 0;
@@ -722,18 +749,26 @@ export async function runHeadless(
       autoFloor2ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 
-      // Check win/loss conditions
+      // Check win/loss conditions — read HP before the guard so both early-exit
+      // paths can record the final frame's HP delta (otherwise the lethal frame
+      // is skipped and damageTaken under-counts on one-shot deaths).
+      const playerHealth = world.stores.health.current[playerEid] ?? 0;
       if (
         !hasComponent(world.ecs, playerEid, Player) ||
         !hasComponent(world.ecs, playerEid, Health)
       ) {
         outcome = 'death';
+        if (previousPlayerHealth > playerHealth) {
+          damageTaken += previousPlayerHealth - playerHealth;
+        }
         break;
       }
 
-      const playerHealth = world.stores.health.current[playerEid] ?? 0;
       if (playerHealth <= 0) {
         outcome = 'death';
+        if (previousPlayerHealth > playerHealth) {
+          damageTaken += previousPlayerHealth - playerHealth;
+        }
         break;
       }
 
@@ -834,6 +869,20 @@ export async function runHeadless(
       }
       for (let eventIndex = combatEventCursor; eventIndex < combatEvents.length; eventIndex += 1) {
         const event = combatEvents[eventIndex]!;
+        if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
+          // Prefer the pre-snapshotted stable archetype key over the EID lookup:
+          // sourceEid is best-effort (may reference a recycled entity). For
+          // projectile/AoE hits, sourceArchetypeKey is captured at spawn time;
+          // for direct melee hits it is resolved live at hit time.
+          const source =
+            event.sourceArchetypeKey ??
+            (event.sourceEid === undefined
+              ? 'unknown'
+              : (world.enemyAppearanceKeys.get(event.sourceEid) ??
+                world.floorScenario?.enemyArchetypes.get(event.sourceEid) ??
+                'unknown'));
+          damageTakenBySource[source] = (damageTakenBySource[source] ?? 0) + event.amount;
+        }
         if (event.type !== 'death' || event.targetType !== 'enemy') {
           continue;
         }
@@ -993,6 +1042,30 @@ export async function runHeadless(
       }
     }
 
+    // Flush the final frame's combat events so the lethal hit is always attributed.
+    // When the run ends via death, `break` exits before the per-frame event-processing
+    // loop (lines 836–846), leaving the killing blow unattributed in damageTakenBySource.
+    // Processing remaining events here makes the attribution complete for all outcomes
+    // without risk of double-counting (on a normal exit combatEventCursor already points
+    // past the last processed event, so this loop is a no-op).
+    for (
+      let eventIndex = combatEventCursor;
+      eventIndex < world.combatEvents.length;
+      eventIndex += 1
+    ) {
+      const event = world.combatEvents[eventIndex]!;
+      if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
+        const source =
+          event.sourceArchetypeKey ??
+          (event.sourceEid === undefined
+            ? 'unknown'
+            : (world.enemyAppearanceKeys.get(event.sourceEid) ??
+              world.floorScenario?.enemyArchetypes.get(event.sourceEid) ??
+              'unknown'));
+        damageTakenBySource[source] = (damageTakenBySource[source] ?? 0) + event.amount;
+      }
+    }
+
     // If still in combat at end, add remaining time
     if (inCombat) {
       const combatDurationFrames = frameCount - combatStartFrame;
@@ -1023,6 +1096,7 @@ export async function runHeadless(
         engagementCount,
         damageDealt,
         damageTaken,
+        damageTakenBySource,
       },
       health: {
         minHealthPercent,
@@ -1104,6 +1178,7 @@ export async function runHeadless(
       engagementCount,
       damageDealt,
       damageTaken,
+      damageTakenBySource,
     },
     health: {
       minHealthPercent,

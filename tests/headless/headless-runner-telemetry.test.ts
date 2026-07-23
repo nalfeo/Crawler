@@ -142,6 +142,63 @@ describe('headless runner AI telemetry', () => {
     expect(stats.floor2Progression?.hunt.engageTimeMs).toBeGreaterThanOrEqual(0);
     expect(stats.floor2Progression?.hunt.engageRatio).toBeGreaterThanOrEqual(0);
     expect(stats.floor2Progression?.hunt.engageRatio).toBeLessThanOrEqual(1);
+    const attributedDamage = Object.values(stats.combat.damageTakenBySource).reduce(
+      (total, damage) => total + damage,
+      0,
+    );
+    expect(attributedDamage).toBeGreaterThan(0);
+    // damageTakenBySource sums per-hit event amounts; damageTaken uses per-frame HP-delta
+    // tracking. They can legitimately diverge when HP is restored within a frame
+    // (level-up max-HP sync, healing effects). Allow up to 10% of total damage taken
+    // or 1 HP as tolerance, whichever is greater, to keep the check meaningful
+    // without requiring near-exact equality across different run conditions.
+    // toBeLessThanOrEqual is used (not toBeLessThan) so an exact boundary match does
+    // not cause a spurious failure.
+    expect(Math.abs(attributedDamage - stats.combat.damageTaken)).toBeLessThanOrEqual(
+      Math.max(1, stats.combat.damageTaken * 0.1),
+    );
+  });
+
+  it('attributes the lethal hit via the terminal flush when the run ends in death', async () => {
+    // Use a very high enemy damage multiplier to guarantee the player dies
+    // quickly (within a few seconds of encountering the first enemy).
+    // This forces the break-on-death path (lines 726–739) and exercises the
+    // post-loop combat-event flush that captures the killing blow.
+    //
+    // The tight assertion: bucket total must equal the sum of every player-hit
+    // event in world.combatEvents captured by onFinish. world.combatEvents is
+    // never drained during headless runs, so onFinish sees all events including
+    // those processed by the terminal flush. If the flush is absent, the lethal
+    // hit remains in world.combatEvents but is missing from damageTakenBySource,
+    // so totalEventDamage > attributedDamage and the check fails — even when
+    // earlier non-lethal hits already satisfy weaker > 0 / named-source checks.
+    let totalEventDamage = 0;
+
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      maxFrames: 7_200, // 2-minute safety cap
+      maxWallTimeMs: 60_000,
+      enemyDamageMultiplier: 999,
+      onFinish: (world) => {
+        for (const event of world.combatEvents) {
+          if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
+            totalEventDamage += event.amount;
+          }
+        }
+      },
+    });
+
+    expect(stats.outcome).toBe('death');
+    expect(totalEventDamage).toBeGreaterThan(0);
+
+    const attributedDamage = Object.values(stats.combat.damageTakenBySource).reduce(
+      (total, damage) => total + damage,
+      0,
+    );
+    // The bucket total must match the ground-truth event sum exactly. Any
+    // omitted event (e.g. a missing terminal flush) causes attributedDamage to
+    // be strictly less than totalEventDamage.
+    expect(attributedDamage).toBe(totalEventDamage);
   });
 });
 

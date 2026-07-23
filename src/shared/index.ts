@@ -15,6 +15,15 @@ export type { InputState } from './input.js';
 export { SeededRandom } from './random.js';
 export { WEAPON_DEFS, getWeaponDef } from './weaponDefs.js';
 export type { WeaponDef } from './weaponDefs.js';
+export {
+  FLOOR2_WEAPON_WAVE_A_BASES,
+  FLOOR2_WEAPON_WAVE_A_BASE_IDS,
+  getFloor2WeaponWaveABase,
+} from './data/floor2-weapon-bases.js';
+export type {
+  Floor2WeaponBaseDefinition,
+  Floor2WeaponBaseFamily,
+} from './data/floor2-weapon-bases.js';
 export { MOB_DEFS, getMobDef } from './mobDefs.js';
 export type { MobDef } from './mobDefs.js';
 export { TILE_DEFS, getTileDef, getTilesByBiome } from './tileDefs.js';
@@ -56,28 +65,29 @@ export {
   GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+  generatedEquipmentRunKeyFromSeed,
 } from './generated-equipment-types.js';
 export type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentInstanceKey,
+  EquipmentGrantSourceId,
   EquipmentFingerprintV1,
-  ActiveWeaponClassSkillTag,
   GeneratedEquipmentRarity,
   GeneratedEquipmentEnhancementLevel,
   GeneratedEquipmentEffectUnitCost,
-  ActiveWeaponSnapshotSkillTag,
   GeneratedEquipmentBaseV1,
   ResolvedEquipmentStatEffectV1,
   ResolvedEquipmentGrantEffectV1,
   ResolvedEquipmentEffectV1,
   ActiveWeaponSnapshotV1,
-  ActiveWeaponTypeSkillTag,
   FrozenEquipmentFieldsV1,
   GeneratedEquipmentGenerationPolicyV1,
   GeneratedEquipmentGenerationV1,
   GeneratedEquipmentInstanceV1,
   GeneratedEquipmentCreateInputV1,
   GeneratedEquipmentRegistrySnapshotV1,
+  GeneratedEquipmentRewardBundleV1,
   ActiveWeaponCombatOverridesV1,
   ActiveWeaponSnapshotCreateInputV1,
   FrozenEquipmentFieldsCreateInputV1,

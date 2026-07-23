@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "sprite-unapprove-eviction",
+  "task_title": "Add sprite unapprove / eviction feature (CLI, sidecar route, client API)",
+  "estimated_apples": 2,
+  "stages": {}
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-21",
+  "session_slug": "quartermaster-stock-purchasing",
+  "task_title": "Floor 2 Quartermaster stock and atomic purchasing",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A generate-on-purchase rejected because it makes displayed stock non-authoritative and shifts exact identity to click time. Alt B dedicated ECS subsystem rejected because stock is floor-lifecycle state, not per-frame behavior. Alt C optimistic snapshot/rollback rejected because fully precomputed immutable commit state is simpler and cannot expose partial writes. Adopted derived RNG injection and parity tests; first-class epoch stock owner with stale-offer IDs; exported player-owner query; quantity-one exact offers; non-weapon stat-only common/uncommon catalog until generated weapons/grants are equippable; explicit infinite-bag capacity predicate; one shared eligibility/utility projection; deterministic pricing; initial floor-load restock plus monotonic idempotent epoch API; and failure/property/integration coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

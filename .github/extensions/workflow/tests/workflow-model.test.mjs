@@ -475,3 +475,26 @@ test('loadBacklog normalizes Windows-style sourceRun into the two-segment promot
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('listManifestApprovals includes mapKey — the exact manifest map key', () => {
+  // Regression fixture: approveVariant canonicalizes item brief IDs
+  // (flame-dagger-v2 → flame-dagger), so the manifest key is flame-dagger-var-1
+  // not flame-dagger-v2-var-1. listManifestApprovals must expose the real key.
+  const manifest = {
+    version: 1,
+    entries: {
+      'flame-dagger-var-1': {
+        briefId: 'flame-dagger',
+        assetPath: 'generated/flame-dagger-var-1.png',
+        sourceRun: 'flame-dagger/run-1',
+        variantIndex: 1,
+      },
+    },
+  };
+  const approvals = listManifestApprovals(manifest, {
+    existingAssets: new Set(['generated/flame-dagger-var-1.png']),
+  });
+  assert.equal(approvals.length, 1);
+  assert.equal(approvals[0].mapKey, 'flame-dagger-var-1');
+  assert.equal(approvals[0].briefId, 'flame-dagger');
+});

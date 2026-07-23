@@ -1,0 +1,66 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "floor2-reward-bundles",
+  "task_title": "Floor 2 achievement resolved reward-bundles (resolve/claim)",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial review forked the design. (1 blocking) affinity=Alt1 fixed 3-item bundle (Common+Uncommon+Rare), per-rarity independent alignment roll at exact 25/50/75 via a pure helper testable at thresholds; Reading A rejected (9.375% empty + not directly testable). (2 blocking) atomic bundle->bag ownership TRANSFER, not addGeneratedEquipmentToBag (bundles are owners, would always conflict). (3 blocking) prebuild everything then no-throw commit for registry+bundle. (4 major) private registry transaction with live-state clone + atomic swap, NOT public initialOrdinal (would violate restore's empty-registry/contiguous-ordinal invariant). (5 major) capacity-validated validate-then-commit claim. (6 major) carryover bundle-map moved to immediately after registry restore, before bag/equipped. (7 major) carryover semantic validation: achievement exists + reward.type==='equipment'. (8 major) curate reward bases so Common has no non-armor statBonus; budget-driven Uncommon(1)/Rare(2); no global-policy/DPS-gate change. (9 major) fail-closed unlock when Floor2 economy access.kind!=='enabled'; reuse existing bundle (idempotent). (10 minor) per-rarity RNG substreams w/ resolver version; narrowed generator world type; canonical WeaponType.MAGIC?magic:physical affinity; UI equipment-reward presentation + claim result exposes resolved items."
+    },
+    "code_review": {
+      "completed": true,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Two Medium findings, both fixed in 29859b524. (A) A stale/tampered persisted bundle (empty, wrong count, or wrong per-index rarity) was neither rejected on carryover load nor on claim, so an empty bundle could be 'claimed' as success and permanently consume the reward -> added fail-closed exactly-3-instances-in-Common/Uncommon/Rare-order guards to BOTH playerCarryover.validateGeneratedCarryover and equipmentSystem.claimGeneratedEquipmentRewardBundle, using a new shared canonical-order constant. (B) A globally-valid non-default generation policy (per-rarity budget in [0,2]) could violate the reward rarity contract -> resolver now fails closed with illegal-effect-budget when the ambient policy exceeds {common:0,uncommon:1,rare:2}. Regression tests added for every guard; verify:fast + full integration project green."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-fix review over full branch diff (PR recovery session). Reviewer found no concerns. Additional recovery fixes also reviewed clean: re-throw RewardBundleResolutionError, strengthened determinism tests (compare instance records not just keys), illegal-base test uses resolvable travelers-cloak base, resolver routing affinity distribution test, registry transaction atomicity tests (4 cases), full-bag capacity claim failure test."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "completed": true,
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Distinct-model reviewers over git diff 6162b732..HEAD. gemini-3.1-pro-preview: CLEAN, no findings. claude-sonnet-4.6: one High/CI-breaker — the new carryover semantic guard rejected the pre-existing integration test tests/integration/floor-transition-carryover.test.ts (synthetic single-instance bundle 'floor-transition-reward'); verify:fast missed it because it skips the integration project. Adjudication (claude-opus-4.8): valid CI-breaker AND, combined with the round-1 shape guard, the test bundle also violated the new exactly-3-instances contract. Fixed in 29859b524 by rebuilding it (and the analogous pre-existing unit carryover test) as a well-formed Common/Uncommon/Rare bundle under the real unlocked floor2-field-kit achievement, and extending the fixture with a rarity param. Re-ran the full integration project (163 tests) green to confirm no other guard-triggered breakage."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-code-review", "codeql-security-scan"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-fix multi-model review over full branch diff (PR recovery session). copilot-code-review: no findings. codeql-security-scan: 0 alerts on javascript/actions targets. Adjudication (claude-opus-4.8): both reviewers clean, no valid concerns remain. Recovery fixes also reviewed: re-throw typed RewardBundleResolutionError, strengthened test assertions, registry transaction atomicity coverage, capacity claim failure coverage."
+        }
+      ]
+    }
+  }
+}

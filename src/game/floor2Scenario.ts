@@ -853,6 +853,12 @@ export function initializeFloor2Scenario(
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
+  // Floor 2 runtime owns the generated-equipment reward economy; enable the
+  // full dependency closure so Floor 2 achievement equipment rewards can
+  // resolve in shipped gameplay paths.
+  world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+  world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+  world.floor2EquipmentFlags.floor2EquipmentRewards = true;
   if (!options?.playerCarryover) {
     applyFloor2DirectStartPlayerState(world, playerEid);
     initializePlayerWeaponSkills(world, playerEid);
@@ -963,6 +969,9 @@ export function initializeFloor2Scenario(
   initializeFloor2Settlement(world, {
     ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
+    ...(options?.playerCarryover
+      ? { effectivePlayerLevel: options.playerCarryover.playerLevel.level }
+      : {}),
   });
 
   if (!options?.playerCarryover) {
@@ -1084,8 +1093,6 @@ function applyFloor2DirectStartPlayerState(world: GameWorld, playerEid: number):
   statSystem(world);
 
   unequip(world, playerEid, 'neck', { force: true });
-  // TODO(C2→D): call revokeEquipmentAbilityGrants(world, playerEid, <instanceId>) after
-  // unequip once equipment-ability wiring is implemented (see src/game/systems/abilitySystem.ts).
   equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
 }
 

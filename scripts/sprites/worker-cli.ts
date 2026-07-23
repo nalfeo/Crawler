@@ -17,6 +17,7 @@
  * | SPRITES_RUN_STORE                 | local           | `local` or `azure-blob`                              |
  * | SPRITES_PROVIDER                  | azure-openai    | Image provider                                       |
  * | SPRITES_WORKER_POLL_MS            | 5000            | Poll interval in ms when queue is empty              |
+ * | SPRITES_WORKER_CONCURRENCY         | 1               | Queue requests processed concurrently                |
  * | SPRITES_WORKER_DRAIN              | (unset)         | When truthy, exit after N consecutive empty polls    |
  * | SPRITES_WORKER_MAX_EMPTY_POLLS    | 3               | N for drain-mode (only used when DRAIN is truthy)    |
  * | AZURE_STORAGE_ACCOUNT             | —               | Required for Azure queue / blob                      |
@@ -63,7 +64,12 @@ import { runWorker } from './worker.js';
 import type { WorkerStatus } from './worker.js';
 import { createLogger } from '../../src/shared/logger.js';
 import { createGhAssetRequestIssueApi } from './sidecar/asset-request-issue-api.js';
-import { createDrainOnStatus, isTruthyEnv, resolveDrainExitCode } from './worker-cli-lib.js';
+import {
+  createDrainOnStatus,
+  isTruthyEnv,
+  parsePositiveIntegerEnv,
+  resolveDrainExitCode,
+} from './worker-cli-lib.js';
 
 const logger = createLogger('infra:sprites:worker');
 
@@ -79,6 +85,11 @@ const drainMode = isTruthyEnv(process.env['SPRITES_WORKER_DRAIN']);
 const maxEmptyPolls = process.env['SPRITES_WORKER_MAX_EMPTY_POLLS']
   ? Number(process.env['SPRITES_WORKER_MAX_EMPTY_POLLS'])
   : 3;
+const concurrency = parsePositiveIntegerEnv(
+  process.env['SPRITES_WORKER_CONCURRENCY'],
+  1,
+  'SPRITES_WORKER_CONCURRENCY',
+);
 
 // Graceful shutdown on SIGINT / SIGTERM.
 const abortController = new AbortController();
@@ -137,7 +148,7 @@ async function main(): Promise<number> {
   const issueApi = createGhAssetRequestIssueApi(repoRoot);
 
   logger.info(
-    `worker started (queue=${queue.backend}, store=${store.backend}, pollMs=${pollMs}${
+    `worker started (queue=${queue.backend}, store=${store.backend}, pollMs=${pollMs}, concurrency=${concurrency}${
       drainMode ? `, drain=true, maxEmptyPolls=${maxEmptyPolls}` : ''
     })`,
   );
@@ -153,6 +164,7 @@ async function main(): Promise<number> {
     visionProvider,
     issueApi,
     pollIntervalMs: pollMs,
+    concurrency,
     signal: abortController.signal,
     onStatus,
   });

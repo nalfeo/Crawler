@@ -587,7 +587,6 @@ interface LootTarget extends WorldTarget {
 interface ProgressTarget extends WorldTarget {
   reason: string;
   npcInteraction: AINpcInteractionIntent | null;
-  engagementStyle: 'standard' | 'focused';
 }
 
 function floor1GoalIdForNpcInteraction(action: AINpcInteractionActionValue | null): string | null {
@@ -1758,10 +1757,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         // non-enemy entities (gold piles, NPCs) keep the direct-approach path.
         const enemyTarget = this.progressTargetAsEnemy(ctx.world, target, ctx.playerX, ctx.playerY);
         if (enemyTarget) {
-          const plan =
-            target.engagementStyle === 'focused'
-              ? this.planFocusedMeleeEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget)
-              : this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget);
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget);
           this.decision.state = AIState.ENGAGE;
           this.decision.targetEid = enemyTarget.eid;
           this.decision.targetX = plan.targetX;
@@ -2711,9 +2707,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * toward the nearest enemy cluster so auto-fire starts sooner.
    *
    * Decoupled from the loot detour: it writes its own `this.farmPullX/Y` blended
-   * with {@link AIConfig.farmPullWeight} (default 0 = dormant). This keeps enemy
-   * seeking OFF unless explicitly enabled, so turning loot detours back on never
-   * silently re-introduces the over-engagement that blew the floor-clear budget.
+   * with {@link AIConfig.farmPullWeight} (default 0.12 = active). Enemy seeking
+   * is ON by default since the 2026-07-22 promotion; pass `farmPullWeight: 0` to
+   * suppress it. Higher values add more bias toward nearby enemies during wander.
    *
    * Critically: it only fires while moving (EXPLORE with a heading) and only
    * pulls toward enemies inside a forward cone ({@link FARM_FORWARD_DOT_MIN}
@@ -3585,7 +3581,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // follow layer deflects it) — the recast query stays pure; danger/reward is a
     // FOLLOW-time layer only. For LEGACY/RISK_REWARD_FUSED/NAVMESH, usePureNavmesh ===
     // the old `useNavmesh` and useFused is unchanged, so those three stay byte-identical.
-    // DEFAULT is LEGACY.
+    // DEFAULT is RISK_REWARD_FUSED (promoted 2026-07-21 from the AI Sweep winner).
     const usesNavmeshRoute =
       this.config.pathingMode === AIPathingMode.NAVMESH ||
       this.config.pathingMode === AIPathingMode.NAVMESH_FUSED;
@@ -6428,7 +6424,6 @@ export class BehaviorTreeAI implements AIInputProvider {
           playerY,
           `Clearing the ${familyId} territory while hunting den progress`,
           territoryEnemy.eid,
-          'focused',
         )
       : null;
 
@@ -6442,7 +6437,6 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerY,
             `Advancing ${familyId} den unlock (${activeView.current}/${activeView.target})`,
             familyEnemy.eid,
-            'focused',
           );
         }
         return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
@@ -6468,7 +6462,6 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerY,
             `Searching the ${familyId} territory for the unlock drop`,
             familyEnemy.eid,
-            'focused',
           );
         }
         return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
@@ -6498,7 +6491,6 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerY,
             `Working the ${familyId} den unlock`,
             familyEnemy.eid,
-            'focused',
           );
         }
         return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
@@ -7341,7 +7333,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     reason: string,
     eid: number = -1,
-    engagementStyle: ProgressTarget['engagementStyle'] = 'standard',
   ): ProgressTarget {
     return {
       eid,
@@ -7350,7 +7341,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       distance: Math.hypot(x - playerX, y - playerY),
       reason,
       npcInteraction: null,
-      engagementStyle,
     };
   }
 
@@ -7403,7 +7393,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       y: approach.y,
       distance: Math.hypot(approach.x - playerX, approach.y - playerY),
       reason,
-      engagementStyle: 'standard',
       npcInteraction: {
         npcEid,
         action: interactionAction,
@@ -7959,23 +7948,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX: playerX + deltaX * scale,
       targetY: playerY + deltaY * scale,
       reason: `Closing to melee range (${reachFt.toFixed(1)}ft) from ${target.distance.toFixed(1)}ft`,
-    };
-  }
-
-  private planFocusedMeleeEngagement(
-    world: GameWorld,
-    playerX: number,
-    playerY: number,
-    target: WorldTarget,
-  ): { targetX: number; targetY: number; reason: string } {
-    const weapon = getActiveWeapon(world);
-    if (!weapon || weapon.weaponType !== WeaponType.MELEE) {
-      return this.planEngagement(world, playerX, playerY, target);
-    }
-    return {
-      targetX: target.x,
-      targetY: target.y,
-      reason: `Pressing the hunt target at ${target.distance.toFixed(1)}ft`,
     };
   }
 

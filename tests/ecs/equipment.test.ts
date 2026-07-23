@@ -26,6 +26,7 @@ import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
 import { CORE_STAT_TO_SECONDARY, DEFAULT_BASE_STATS } from '../../src/shared/stats.js';
 import {
   getEquipmentDefForItem,
+  getCatalogEquippableItemIds,
   getEquippableItemIds,
   GEAR_ITEM_IDS,
   _registerEquipmentDefForTest,
@@ -40,7 +41,7 @@ import {
   getItemCount,
   type InventoryBag,
 } from '../../src/shared/inventory.js';
-import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
+import { ItemRarity, customTag, getItemById, type ItemDef } from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
@@ -833,17 +834,92 @@ describe('generated equipment inventory transfers', () => {
     expect(getEquipmentState(world, entity)!.equipped).toEqual(equippedBefore);
   });
 
+  it('tracks and removes generated ability grants by exact equipment source', () => {
+    const generated = createGeneratedTestEquipment(world, { abilityGrant: 'magic-missile' });
+    addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+
+    const equipped = equipFromBag(world, entity, {
+      kind: 'generated-instance',
+      instanceKey: generated.instanceId,
+    });
+
+    expect(equipped.ok).toBe(true);
+    expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).toContain(
+      'magic-missile',
+    );
+    expect(world.abilityStatesByEntity.get(entity)?.activeAbilityGrantSources).toEqual(
+      new Map([
+        [
+          'magic-missile',
+          [
+            {
+              kind: 'generated-equipment',
+              instanceId: generated.instanceId,
+              effectOrdinal: 0,
+            },
+          ],
+        ],
+      ]),
+    );
+    expect(
+      world.abilityStatesByEntity
+        .get(entity)
+        ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile'),
+    ).toEqual(new Set([`equipment:${generated.instanceId}:0`]));
+
+    expect(unequip(world, entity, 'head').ok).toBe(true);
+    expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).not.toContain(
+      'magic-missile',
+    );
+    expect(world.abilityStatesByEntity.get(entity)?.activeAbilityGrantSources?.size).toBe(0);
+    expect(
+      world.abilityStatesByEntity.get(entity)?.grantOwnership?.activeSourcesByAbilityId?.size,
+    ).toBe(0);
+  });
+
+  it('preserves ability cooldown state across generated equipment unequip/re-equip', () => {
+    const generated = createGeneratedTestEquipment(world, { abilityGrant: 'magic-missile' });
+    addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+
+    expect(
+      equipFromBag(world, entity, {
+        kind: 'generated-instance',
+        instanceKey: generated.instanceId,
+      }).ok,
+    ).toBe(true);
+
+    // Simulate using the ability by directly setting cooldown state (as abilitySystem does).
+    const stateAfterEquip = world.abilityStatesByEntity.get(entity)!;
+    stateAfterEquip.cooldownByAbilityId.set('magic-missile', 100);
+    stateAfterEquip.cooldownFramesByAbilityId.set('magic-missile', 180);
+
+    // Unequip: cooldown maps must be preserved (not deleted).
+    expect(unequip(world, entity, 'head').ok).toBe(true);
+    const stateAfterUnequip = world.abilityStatesByEntity.get(entity)!;
+    expect(stateAfterUnequip.cooldownByAbilityId.get('magic-missile')).toBe(100);
+    expect(stateAfterUnequip.cooldownFramesByAbilityId.get('magic-missile')).toBe(180);
+
+    // Re-equip: cooldown state from before unequip is still present — ability is not
+    // immediately ready just because the item was unequipped and re-equipped.
+    addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+    expect(
+      equipFromBag(world, entity, {
+        kind: 'generated-instance',
+        instanceKey: generated.instanceId,
+      }).ok,
+    ).toBe(true);
+    const stateAfterReEquip = world.abilityStatesByEntity.get(entity)!;
+    expect(stateAfterReEquip.cooldownByAbilityId.get('magic-missile')).toBe(100);
+    expect(stateAfterReEquip.cooldownFramesByAbilityId.get('magic-missile')).toBe(180);
+  });
+
   it.each([
     ['missing registry key', 'missing'],
     ['unsafe context', 'unsafe'],
     ['duplicate bag ownership', 'duplicate'],
     ['cross-entity ownership', 'cross-entity'],
-    ['unsupported generated grants', 'unsupported'],
   ] as const)('rejects %s without changing bag, slots, or effective stats', (_name, scenario) => {
-    const generated =
-      scenario === 'unsupported'
-        ? createGeneratedTestEquipment(world, { abilityGrant: 'future-ability' })
-        : createGeneratedTestEquipment(world);
+    const generated = createGeneratedTestEquipment(world);
     const entry = { kind: 'generated-instance' as const, instanceKey: generated.instanceId };
 
     if (scenario === 'missing') {
@@ -880,6 +956,13 @@ describe('generated equipment inventory transfers', () => {
 // --- Equippable placeholder coverage across the paper-doll ---
 
 describe('equippable slot coverage', () => {
+  it('keeps static bag seeders limited to item-catalog equipment', () => {
+    const catalogEquipmentIds = getCatalogEquippableItemIds();
+    expect(catalogEquipmentIds.length).toBeGreaterThan(0);
+    expect(catalogEquipmentIds.every((itemId) => getItemById(itemId) !== undefined)).toBe(true);
+    expect(catalogEquipmentIds).not.toContain('weapon.venom-dirk');
+  });
+
   it('every paper-doll slot has at least one equippable item', () => {
     const covered = new Set<string>();
     for (const id of getEquippableItemIds()) {
@@ -891,14 +974,14 @@ describe('equippable slot coverage', () => {
     }
   });
 
-  it('GEAR_ITEM_IDS covers 17 armor/accessory slots and excludes hands + neck', () => {
+  it('GEAR_ITEM_IDS covers the 15 non-hand, non-neck armor/accessory slots', () => {
     const gearSlots = new Set<string>();
     for (const id of GEAR_ITEM_IDS) {
       const def = getEquipmentDefForItem(id);
       expect(def, `gear id ${id} has no equipment def`).toBeDefined();
       for (const slotId of def!.slots) gearSlots.add(slotId);
     }
-    expect(GEAR_ITEM_IDS).toHaveLength(17);
+    expect(GEAR_ITEM_IDS).toHaveLength(15);
     expect(gearSlots.has('mainHand')).toBe(false);
     expect(gearSlots.has('offHand')).toBe(false);
     expect(gearSlots.has('neck')).toBe(false);
