@@ -20,10 +20,17 @@ import {
 } from '../shared/abilities.js';
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
 import {
+  ALL_ACHIEVEMENTS,
   cloneAchievementFactSnapshot,
   getAchievementById,
   mergeAchievementFactSnapshots,
+  isLootBoxTier,
+  FLOOR1_COMMON_CRAFTING_MATERIALS,
+  LOOT_BOX_GOLD_BY_TIER,
+  LOOT_BOX_MATERIAL_COUNT_BY_TIER,
+  LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION,
   type AchievementFactSnapshot,
+  type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
@@ -117,6 +124,7 @@ export interface PlayerCarryoverSnapshot {
   readonly generatedEquippedInstanceKeys: readonly GeneratedEquipmentInstanceKey[];
   readonly generatedEquipmentRegistry?: GeneratedEquipmentRegistrySnapshotV1;
   readonly generatedEquipmentRewardBundles: readonly GeneratedEquipmentRewardBundleV1[];
+  readonly lootBoxRewardBundles: readonly LootBoxRewardBundleV1[];
   readonly disabledEquipmentSlots: readonly EquipmentSlotId[];
   readonly playerSkills: readonly (readonly [string, SkillStateSnapshot])[];
   readonly abilityState?: AbilityStateSnapshot;
@@ -137,6 +145,7 @@ type LegacyPlayerCarryoverSnapshot = Omit<
   | 'generatedEquippedInstanceKeys'
   | 'generatedEquipmentRegistry'
   | 'generatedEquipmentRewardBundles'
+  | 'lootBoxRewardBundles'
 >;
 
 function snapshotSkillState(state: SkillState): SkillStateSnapshot {
@@ -325,7 +334,8 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     ('generatedEquipmentRegistry' in record ||
       'generatedInventoryInstanceKeys' in record ||
       'generatedEquippedInstanceKeys' in record ||
-      'generatedEquipmentRewardBundles' in record)
+      'generatedEquipmentRewardBundles' in record ||
+      'lootBoxRewardBundles' in record)
   ) {
     throw new PlayerCarryoverSnapshotError(
       'Unversioned player carryover cannot contain generated equipment state',
@@ -333,22 +343,32 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   }
 
   const legacy = record as unknown as LegacyPlayerCarryoverSnapshot;
-  const normalized =
-    record.schemaVersion === PLAYER_CARRYOVER_SCHEMA_VERSION
-      ? (input as PlayerCarryoverSnapshot)
-      : ({
-          ...legacy,
-          schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
-          generatedInventoryInstanceKeys: [],
-          generatedEquippedInstanceKeys: [],
-          generatedEquipmentRewardBundles: [],
-        } satisfies PlayerCarryoverSnapshot);
+  // ALWAYS default the generated-equipment/lootBox array fields when absent,
+  // regardless of which schema-version branch this snapshot takes. These
+  // fields were each added to the CURRENT schema version's shape after that
+  // version string was first shipped (rather than via a version bump), so a
+  // snapshot already carrying `schemaVersion === PLAYER_CARRYOVER_SCHEMA_VERSION`
+  // can still legitimately predate a given field. Reading `input as
+  // PlayerCarryoverSnapshot` directly on that "fast path" (as the previous
+  // implementation did) would leave such a field `undefined` and make
+  // `assertArray` throw, bricking the load instead of gracefully treating an
+  // absent field as "none persisted".
+  const partial = record as Partial<PlayerCarryoverSnapshot>;
+  const normalized: PlayerCarryoverSnapshot = {
+    ...legacy,
+    schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
+    generatedInventoryInstanceKeys: partial.generatedInventoryInstanceKeys ?? [],
+    generatedEquippedInstanceKeys: partial.generatedEquippedInstanceKeys ?? [],
+    generatedEquipmentRewardBundles: partial.generatedEquipmentRewardBundles ?? [],
+    lootBoxRewardBundles: partial.lootBoxRewardBundles ?? [],
+  };
 
   assertArray(normalized.inventorySlots, 'inventorySlots');
   assertArray(normalized.equippedItemIds, 'equippedItemIds');
   assertArray(normalized.generatedInventoryInstanceKeys, 'generatedInventoryInstanceKeys');
   assertArray(normalized.generatedEquippedInstanceKeys, 'generatedEquippedInstanceKeys');
   assertArray(normalized.generatedEquipmentRewardBundles, 'generatedEquipmentRewardBundles');
+  assertArray(normalized.lootBoxRewardBundles, 'lootBoxRewardBundles');
   assertArray(normalized.disabledEquipmentSlots, 'disabledEquipmentSlots');
   return normalized;
 }
@@ -356,6 +376,122 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
 interface ValidatedGeneratedCarryover {
   readonly snapshot: PlayerCarryoverSnapshot;
   readonly instancesByKey: ReadonlyMap<GeneratedEquipmentInstanceKey, GeneratedEquipmentInstanceV1>;
+}
+
+/**
+ * Validates Floor 1 `lootBox` reward bundles in a carryover snapshot.
+ * Independent of the generated-equipment registry machinery — lootBox
+ * bundles reference no generated-equipment instances, just gold + catalog
+ * material ids — so this runs unconditionally, regardless of whether a
+ * registry snapshot is present in the same carryover.
+ */
+function validateLootBoxRewardBundles(snapshot: PlayerCarryoverSnapshot): void {
+  const bundleIds = new Set<string>();
+  const unlockedIds = new Set(snapshot.achievements.unlockedIds);
+  const claimedIds = new Set(snapshot.achievements.claimedIds);
+  for (const bundle of snapshot.lootBoxRewardBundles) {
+    if (bundle.schemaVersion !== LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION) {
+      throw new PlayerCarryoverSnapshotError(
+        `Unsupported loot box reward bundle version: ${String(bundle.schemaVersion)}`,
+      );
+    }
+    if (typeof bundle.achievementId !== 'string' || bundle.achievementId.length === 0) {
+      throw new PlayerCarryoverSnapshotError('Loot box reward bundle requires an achievement id');
+    }
+    if (bundleIds.has(bundle.achievementId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Duplicate loot box reward bundle: ${bundle.achievementId}`,
+      );
+    }
+    bundleIds.add(bundle.achievementId);
+    // Semantic guard (fail-closed): a persisted bundle may only exist for a
+    // real lootBox-reward achievement that is currently unlocked but not yet
+    // claimed — mirrors the equipment reward-bundle guard.
+    const bundleAchievement = getAchievementById(bundle.achievementId);
+    if (!bundleAchievement || bundleAchievement.reward.type !== 'lootBox') {
+      throw new PlayerCarryoverSnapshotError(
+        `Loot box reward bundle for non-lootBox achievement: ${bundle.achievementId}`,
+      );
+    }
+    if (!unlockedIds.has(bundle.achievementId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Loot box reward bundle for locked achievement: ${bundle.achievementId}`,
+      );
+    }
+    if (claimedIds.has(bundle.achievementId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Loot box reward bundle persisted for already-claimed achievement: ${bundle.achievementId}`,
+      );
+    }
+    // Tier guard (fail-closed): a resolved bundle's tier must be a real
+    // LootBoxTier AND match the achievement's own defined tier (defense in
+    // depth against a tampered/stale snapshot re-tiering a bundle).
+    if (!isLootBoxTier(bundle.tier)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Loot box reward bundle ${bundle.achievementId} has an invalid or missing tier`,
+      );
+    }
+    if (bundleAchievement.reward.tier !== bundle.tier) {
+      throw new PlayerCarryoverSnapshotError(
+        `Loot box reward bundle ${bundle.achievementId} tier ${bundle.tier} does not match achievement tier ${bundleAchievement.reward.tier}`,
+      );
+    }
+    if (!Number.isFinite(bundle.gold) || bundle.gold < 0) {
+      throw new PlayerCarryoverSnapshotError(
+        `Loot box reward bundle ${bundle.achievementId} has an invalid gold amount`,
+      );
+    }
+    // Canonical value guard (fail-closed): gold must be EXACTLY the amount
+    // the tier contract defines — not merely "any finite non-negative
+    // number" — so a tampered snapshot can never inflate the gold a bundle
+    // will grant on claim (e.g. forging a `trash`-tier bundle with
+    // `gold: 999999`).
+    if (bundle.gold !== LOOT_BOX_GOLD_BY_TIER[bundle.tier]) {
+      throw new PlayerCarryoverSnapshotError(
+        `Loot box reward bundle ${bundle.achievementId} has gold ${bundle.gold}, expected ${LOOT_BOX_GOLD_BY_TIER[bundle.tier]} for tier ${bundle.tier}`,
+      );
+    }
+    // Content guard (fail-closed, structural hard gate): every material must
+    // be a real Floor 1 common-crafting-material item — NEVER equipment,
+    // NEVER above Common rarity — so a tampered/stale snapshot can never
+    // smuggle an illegal item id into a restored bundle.
+    assertArray(bundle.materials, `lootBoxRewardBundles.${bundle.achievementId}.materials`);
+    for (const itemId of bundle.materials) {
+      if (typeof itemId !== 'string' || !FLOOR1_COMMON_CRAFTING_MATERIALS.includes(itemId)) {
+        throw new PlayerCarryoverSnapshotError(
+          `Loot box reward bundle ${bundle.achievementId} has an invalid material item id: ${String(itemId)}`,
+        );
+      }
+    }
+    // Canonical value guard (fail-closed): the material COUNT must be
+    // EXACTLY what the tier contract defines — not merely "any number of
+    // valid material ids" — so a tampered snapshot can never inflate the
+    // quantity of materials a bundle will grant on claim (e.g. forging a
+    // `trash`-tier bundle with 1000 valid-but-excessive materials).
+    if (bundle.materials.length !== LOOT_BOX_MATERIAL_COUNT_BY_TIER[bundle.tier]) {
+      throw new PlayerCarryoverSnapshotError(
+        `Loot box reward bundle ${bundle.achievementId} has ${bundle.materials.length} materials, expected ${LOOT_BOX_MATERIAL_COUNT_BY_TIER[bundle.tier]} for tier ${bundle.tier}`,
+      );
+    }
+  }
+  // Reverse guard (fail-closed): every unlocked-but-unclaimed lootBox
+  // achievement in the snapshot MUST have a corresponding bundle. Without
+  // this, a snapshot with a bundle stripped out (accidentally or via
+  // tampering) would restore "successfully" but leave that achievement
+  // permanently unclaimable (`grantFailed` forever, since bundles are only
+  // ever resolved once, at unlock).
+  for (const achievement of ALL_ACHIEVEMENTS) {
+    if (
+      achievement.reward.type === 'lootBox' &&
+      unlockedIds.has(achievement.id) &&
+      !claimedIds.has(achievement.id) &&
+      !bundleIds.has(achievement.id)
+    ) {
+      throw new PlayerCarryoverSnapshotError(
+        `Missing loot box reward bundle for unlocked, unclaimed achievement: ${achievement.id}`,
+      );
+    }
+  }
 }
 
 function validateGrantOwnership(
@@ -519,6 +655,10 @@ function validateGrantOwnership(
 
 function validateGeneratedCarryover(world: GameWorld, input: unknown): ValidatedGeneratedCarryover {
   const snapshot = normalizePlayerCarryoverSnapshot(input);
+  // lootBox bundles reference no generated-equipment instances, so they are
+  // validated unconditionally here, before the registry-presence gate below
+  // (which only concerns equipment-registry-backed references).
+  validateLootBoxRewardBundles(snapshot);
   const hasGeneratedReferences =
     snapshot.generatedInventoryInstanceKeys.length > 0 ||
     snapshot.generatedEquippedInstanceKeys.length > 0 ||
@@ -637,7 +777,7 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
     // Tier guard (fail-closed): a resolved bundle always carries the tier it was
     // resolved for, and that tier must match the achievement's own defined tier
     // (defense in depth against a tampered/stale snapshot re-tiering a bundle).
-    if (bundle.tier === undefined || !isEquipmentRewardTier(bundle.tier)) {
+    if (!isEquipmentRewardTier(bundle.tier)) {
       throw new PlayerCarryoverSnapshotError(
         `Reward bundle ${bundle.achievementId} has an invalid or missing tier`,
       );
@@ -669,6 +809,24 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
         );
       }
     });
+  }
+
+  // Reverse guard (fail-closed): every unlocked-but-unclaimed equipment
+  // achievement in the snapshot MUST have a corresponding bundle — mirrors
+  // the lootBox reverse guard above. Without this, a snapshot with a bundle
+  // stripped out (accidentally or via tampering) would restore
+  // "successfully" but leave that achievement permanently unclaimable.
+  for (const achievement of ALL_ACHIEVEMENTS) {
+    if (
+      achievement.reward.type === 'equipment' &&
+      unlockedIds.has(achievement.id) &&
+      !claimedIds.has(achievement.id) &&
+      !bundleIds.has(achievement.id)
+    ) {
+      throw new PlayerCarryoverSnapshotError(
+        `Missing generated equipment reward bundle for unlocked, unclaimed achievement: ${achievement.id}`,
+      );
+    }
   }
 
   const occupiedSlots = new Map<EquipmentSlotId, string>();
@@ -935,10 +1093,17 @@ export function capturePlayerCarryover(
       (bundle) => ({
         schemaVersion: bundle.schemaVersion,
         achievementId: bundle.achievementId,
-        ...(bundle.tier !== undefined ? { tier: bundle.tier } : {}),
+        tier: bundle.tier,
         instanceKeys: [...bundle.instanceKeys],
       }),
     ),
+    lootBoxRewardBundles: [...world.lootBoxRewardBundles.values()].map((bundle) => ({
+      schemaVersion: bundle.schemaVersion,
+      achievementId: bundle.achievementId,
+      tier: bundle.tier,
+      gold: bundle.gold,
+      materials: [...bundle.materials],
+    })),
     disabledEquipmentSlots: equipment ? [...equipment.disabledSlots] : [],
     playerSkills: [...world.playerSkills].map(([id, state]) => [id, snapshotSkillState(state)]),
     ...(abilityState ? { abilityState } : {}),
@@ -1061,8 +1226,22 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
       Object.freeze({
         schemaVersion: bundle.schemaVersion,
         achievementId: bundle.achievementId,
-        ...(bundle.tier !== undefined ? { tier: bundle.tier } : {}),
+        tier: bundle.tier,
         instanceKeys: Object.freeze([...bundle.instanceKeys]),
+      }),
+    ]),
+  );
+  // lootBox bundles reference no generated-equipment instances, so they can
+  // be restored independently of the registry restore above.
+  world.lootBoxRewardBundles = new Map(
+    snapshot.lootBoxRewardBundles.map((bundle) => [
+      bundle.achievementId,
+      Object.freeze({
+        schemaVersion: bundle.schemaVersion,
+        achievementId: bundle.achievementId,
+        tier: bundle.tier,
+        gold: bundle.gold,
+        materials: Object.freeze([...bundle.materials]),
       }),
     ]),
   );

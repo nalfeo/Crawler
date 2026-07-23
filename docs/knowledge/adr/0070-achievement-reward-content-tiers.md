@@ -81,37 +81,50 @@ instances" to "exactly 1 instance whose rarity is a member of the bundle's
 tier's allowed pool" and "bundle tier matches the achievement's own defined
 tier" (defense in depth against a tampered/stale snapshot re-tiering a bundle).
 
-### 2. Floor 1: real `lootBox` claim-time granting (gold + common materials only)
+### 2. Floor 1: `lootBox` reward — resolve-at-unlock, grant-at-claim (gold + common materials only)
 
 Floor 1's `lootBox` achievement reward variant already existed structurally
 (carries only a `LootBoxTier`, a **distinct** enum from `EquipmentRewardTier` —
 `trash`/`common`/`uncommon`/`rare`/`epic`/`legendary`/`divine` — with no
 equipment fields whatsoever, so a Floor 1 box is _structurally_ incapable of
 granting equipment) but `claimAchievementReward` treated it as reveal-only. This
-slice adds real granting for `lootBox`, claim-time only:
+slice adds real granting for `lootBox`, mirroring the Floor 2 equipment
+resolve/claim split **exactly** (see the reversed Alternative #3 below for why
+an earlier claim-time-only design was rejected mid-review):
 
-- `LOOT_BOX_GOLD_BY_TIER`: monotonically increasing gold table (10 / 25 / 50 /
-  100 / 200 / 400 / 800 across the 7 `LootBoxTier`s), granted directly to
-  `world.playerGold`.
-- `LOOT_BOX_MATERIAL_COUNT_BY_TIER`: monotonically increasing material-count
-  table (1 / 2 / 3 / 4 / 5 / 6 / 8), each slot drawn (with replacement) from
-  `FLOOR1_COMMON_CRAFTING_MATERIALS` — a catalog-derived list of common-rarity
-  crafting components only (no equipment, no rare materials).
-- Materials are drawn from a dedicated `SeededRandom` keyed on
-  `lootbox-grant:v1:<world.seed>:<achievementId>:materials` — never
-  `world.rng` — so replaying the same run seed + achievement always grants
-  identical materials and claiming a box never contaminates the gameplay RNG
-  stream (mirrors the ADR 0069 affinity-roll isolation pattern).
-- Grants are validated fail-closed **before** any mutation (player entity
-  exists, bag exists, material pool non-empty); gold + materials are then
-  applied synchronously in one pass, followed by marking claimed — so no
-  partial grant is ever observable and the claim stays exactly-once /
+- **Resolution (unlock time only)** — `resolveLootBoxRewardBundle` (new
+  `src/game/floor1-lootbox-reward-resolver.ts`) runs from `unlockAchievement`
+  the moment a `lootBox` achievement unlocks, symmetric with
+  `resolveEquipmentRewardBundle`'s Floor 2 call in the same function. It
+  computes gold (`LOOT_BOX_GOLD_BY_TIER`: monotonically increasing 10 / 25 /
+  50 / 100 / 200 / 400 / 800 across the 7 `LootBoxTier`s) and draws
+  `LOOT_BOX_MATERIAL_COUNT_BY_TIER` materials (1 / 2 / 3 / 4 / 5 / 6 / 8, with
+  replacement) from `FLOOR1_COMMON_CRAFTING_MATERIALS` — a catalog-derived list
+  of common-rarity crafting components only (no equipment, no rare
+  materials) — then freezes the result into a `LootBoxRewardBundleV1` and
+  persists it in `world.lootBoxRewardBundles` keyed by `achievementId`,
+  idempotently (re-resolving an already-resolved achievement returns the
+  existing bundle unchanged, never re-rolls).
+- The material roll uses a dedicated `SeededRandom` keyed on
+  `lootbox-grant:v1:<runKey>:<achievementId>:materials`, where `runKey` is
+  `world.generatedEquipmentRegistry.runKey` — the same stable per-run
+  identifier Floor 2's resolver uses, **not** `world.seed` directly and never
+  `world.rng` — so replaying the same run always resolves identical materials
+  and neither reward path ever contaminates the shared gameplay RNG stream.
+  Resolution fails closed (`LootBoxRewardResolutionError`) if the registry has
+  no run key configured or the material pool is empty.
+- **Claiming (claim time only)** — `claimAchievementReward`'s `lootBox` branch
+  performs **zero RNG**: it reads the already-persisted bundle from
+  `world.lootBoxRewardBundles`, applies its exact gold + materials in one
+  synchronous pass (validated fail-closed beforehand — player entity exists,
+  bag exists), then marks claimed and deletes the bundle from the pending map
+  — so no partial grant is ever observable and the claim stays exactly-once /
   idempotent (a second claim returns `alreadyClaimed`).
 
 Floor 1's 100 real achievements were already migrated to `lootBox`/
 `directorMessage` reward types in a prior session (verified: 0 remaining
 `item`/`equipment` reward types on Floor 1) — this slice's job was only to make
-the `lootBox` claim path actually grant instead of reveal-only.
+the `lootBox` reward actually resolve and grant instead of doing nothing.
 
 ### 3. Floor 2: three new tier-driven demo achievements
 
@@ -119,6 +132,24 @@ Added `floor2-field-kit` (tier1, unlocks on first Floor 2 kill),
 `floor2-second-wind` (tier2, 10 kills), and `floor2-veteran-cast` (tier3, 30
 kills) as the reference tier ladder. These replace the single ADR 0069 demo
 achievement that exercised the old fixed 3-item bundle.
+
+### 4. Real production gap found in review: headless AI runner never set a run key
+
+Mid-review, the plan review flagged (and implementation confirmed via a real
+crash) that `runHeadless` (`src/game/ai/headless-runner.ts`) built its world
+via `createGameWorld({ seed: mergedConfig.seed })` with **no**
+`generatedEquipmentRunKey` — unlike `MainGameScene`, which always derives one
+via `this.options.generatedEquipmentRunKey ?? generatedEquipmentRunKeyFromSeed(worldSeed)`.
+Once Floor 1 achievements resolve-at-unlock (this slice) instead of doing
+nothing, any headless AI run (sweeps, `check-size-coverage`, weapon sweeps,
+`ai:headless`) that unlocked a `lootBox` achievement crashed with
+`LootBoxRewardResolutionError: registry has no run key`. This was a
+**pre-existing** gap in the headless runner (Floor 2 equipment rewards had the
+same latent exposure, just never exercised because no headless scenario had
+unlocked a Floor 2 tiered achievement before now) — fixed by making
+`runHeadless` derive `generatedEquipmentRunKeyFromSeed(mergedConfig.seed)` the
+same way `MainGameScene` does, so headless and interactive play now share
+identical resolved-bundle behavior.
 
 ## Consequences
 
@@ -149,6 +180,63 @@ achievement that exercised the old fixed 3-item bundle.
   a first-pass balance guess (not yet play-tested); tuning is expected as a
   follow-up and does not require an ADR (data-only change).
 
+### Accepted risk (security review, out of scope)
+
+A dedicated security review pass surfaced two pre-existing save-tampering
+concerns, both judged **out of scope** for this slice and accepted as risk
+rather than fixed:
+
+1. **`claimedAchievementIds` removal replay** — a hand-edited save that strips
+   an achievement id out of the claimed-ids set (while leaving the resolved
+   bundle in place) could re-claim a reward. This is symmetric with ADR 0069's
+   existing exposure for equipment bundles and is not made worse by this
+   slice.
+2. **Equipment bundle forgery via fingerprint bypass** — a save editor with
+   knowledge of the bundle schema could hand-craft a `tier`/rarity combination
+   that the client-side validator accepts as internally consistent.
+
+Both require local save-file tampering (no network/multiplayer trust
+boundary is crossed) and match the game's existing security posture for
+client-authoritative saves generally — building anti-cheat/save-integrity
+infrastructure (signing, server-side validation) is a separate, larger
+initiative and not warranted for this slice. Revisit if/when the game adds a
+server-trusted save path.
+
+### Accepted risk (round-2 multi-model review, out of scope)
+
+A second review round (parallel code-review + two multi-model reviews) surfaced
+two further legacy-compatibility findings, both judged **out of scope** for
+this slice and accepted as risk (documented, not fixed) rather than building
+backward-compat migration code — building a load/claim-time migration path
+would itself violate this slice's own hard gate ("generation only at
+resolution, never claim/load/presentation"):
+
+1. **Equipment bundle schema-shape break, now an honest failure.** This slice
+   bumps `GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION` from
+   `floor2-equipment-reward-bundle/v1` to `/v2` specifically so that any
+   pre-existing (same-session, pre-merge) 3-instance/no-`tier` bundle now fails
+   fast with an explicit "unsupported version" error at the very first
+   per-bundle check, instead of falling through to a confusing
+   instance-count/tier-missing structural error deeper in validation. No
+   shipped save ever held a `/v1` bundle (this repo has no release yet), so
+   the bump is a zero-risk, message-clarity-only change — not a real data
+   migration.
+2. **Legacy unlocked-but-unclaimed `lootBox` achievements become permanently
+   unclaimable.** Before this slice, `lootBox`-reward achievements were
+   reveal-only (no resolved bundle was ever created at unlock). The new
+   fail-closed reverse-check in `validateLootBoxRewardBundles` requires every
+   unlocked+unclaimed `lootBox` achievement to have a matching persisted
+   bundle; a save carrying such an achievement from before this slice merged
+   would now fail to restore. As with (1), this only affects same-session,
+   pre-release saves and there is no live player base to protect. If a real
+   backfill is ever needed, it must happen entirely within `unlockAchievement`
+   (the one true resolution point), never as a load-time or claim-time
+   migration shim.
+
+Both are consistent with round 1's precedent (documented, not fixed) and with
+the game's current no-shipped-saves, solo-dev, pre-release posture — revisit
+if/when saves must survive across a public release boundary.
+
 ### Deviation note
 
 The user's request described "rare unless canonical plan explicitly defines a
@@ -170,8 +258,19 @@ includes `rare`. Adding a Rare-capable tier is deferred to a future slice.
    which rarity a tier is more likely to draw, so no second probability axis is
    needed.
 3. **Grant Floor 1 lootBox rewards at unlock time (mirroring Floor 2
-   equipment)** — rejected: the hard gate requires generation only at
-   resolution and grants only at claim; unlocking a Floor 1 achievement without
-   claiming it must not silently deposit gold/materials, since claim is the
-   player-facing "open the box" action and must remain exactly-once and
-   player-initiated.
+   equipment fully, including the mutation)** — initially adopted in an early
+   draft of this slice, then **rejected during plan review**, then
+   **re-adopted in revised form**: the review correctly flagged that the
+   original implementation rolled Floor 1 materials at **claim** time keyed
+   on `world.seed`, which both used the wrong entropy source (not the stable
+   `runKey`) and — more fundamentally — violated the hard gate "generation
+   only at resolution, never at claim/load/presentation." The fix is **not**
+   to grant gold/materials at unlock (that would let an unclaimed achievement
+   silently deposit rewards, breaking claim's exactly-once/player-initiated
+   contract) but to split resolution from granting exactly as Floor 2 already
+   does: `resolveLootBoxRewardBundle` computes and persists the immutable
+   bundle at unlock (resolution), while `claimAchievementReward` only reads
+   and applies that pre-resolved bundle at claim (granting) — zero RNG at
+   claim time, matching Floor 2's `resolveEquipmentRewardBundle` /
+   `claimGeneratedEquipmentRewardBundle` split precisely. This is the design
+   actually shipped; see Decision §2.

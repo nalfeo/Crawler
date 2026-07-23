@@ -14,7 +14,7 @@ export const GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION =
   'floor2-equipment-generation-policy/v1' as const;
 export const GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION = 'floor2-equipment-registry/v1' as const;
 export const GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION =
-  'floor2-equipment-reward-bundle/v1' as const;
+  'floor2-equipment-reward-bundle/v2' as const;
 
 export type GeneratedEquipmentInstanceId = `gei:v1:${string}:${number}`;
 export type GeneratedEquipmentInstanceKey = GeneratedEquipmentInstanceId;
@@ -287,13 +287,8 @@ export interface GeneratedEquipmentRegistrySnapshotV1 {
 export interface GeneratedEquipmentRewardBundleV1 {
   readonly schemaVersion: typeof GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION;
   readonly achievementId: string;
-  /**
-   * Tier the bundle was resolved for. Legacy (pre reward-content-slice) fixed
-   * 3-item bundles predate this field; `undefined` is treated by validators as
-   * the legacy fixed-3-rarity shape for back-compat, since no tiered bundle is
-   * ever resolved without one.
-   */
-  readonly tier?: EquipmentRewardTier;
+  /** Tier the bundle was resolved for. Every bundle is tiered — required. */
+  readonly tier: EquipmentRewardTier;
   readonly instanceKeys: readonly GeneratedEquipmentInstanceKey[];
 }
 

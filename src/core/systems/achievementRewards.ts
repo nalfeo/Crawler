@@ -3,10 +3,13 @@
  *
  * Lives in core so both the engine panel and game systems can drive claims
  * without crossing layer boundaries. Opening a reward marks it claimed and
- * surfaces the reward def for display. `equipment` rewards additionally
- * transfer a pre-resolved bundle; `lootBox` rewards additionally grant gold +
- * common crafting materials. Grants happen ONLY at claim time — never at
- * unlock, load, or presentation.
+ * surfaces the reward def for display. `equipment` and `lootBox` rewards
+ * additionally transfer a pre-resolved bundle's contents (equipment
+ * instances, or gold + common crafting materials, respectively) into the
+ * player's bag/gold — both bundles were resolved ONCE at unlock time (see
+ * `resolveEquipmentRewardBundle` / `resolveLootBoxRewardBundle`). Claiming
+ * NEVER rolls any RNG itself — generation happens only at unlock (resolution),
+ * never at claim, load, or presentation.
  */
 import { query } from 'bitecs';
 import { Player } from '../components.js';
@@ -20,17 +23,10 @@ import {
   type AchievementReward,
 } from '../../shared/achievements.js';
 import { addItem } from '../../shared/inventory.js';
-import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import {
   claimGeneratedEquipmentRewardBundle,
   type ClaimedRewardBundleEntry,
 } from './equipmentSystem.js';
-
-/**
- * Versioned so a future change to the loot-box grant algorithm produces a
- * distinct, non-colliding RNG stream even for the same run seed + achievement.
- */
-const LOOT_BOX_GRANT_VERSION = 'v1';
 
 export interface GrantedLootBox {
   readonly gold: number;
@@ -57,26 +53,6 @@ export function isAchievementClaimed(world: GameWorld, achievementId: string): b
 }
 
 /**
- * Deterministically pick `count` materials (with replacement) from
- * {@link FLOOR1_COMMON_CRAFTING_MATERIALS} for a lootBox grant. Derived from
- * `world.seed` + `achievementId` (never `world.rng`), so replaying the same
- * run seed + achievement always grants the identical materials, and the
- * gameplay RNG stream is never contaminated by a reward-claim UI action.
- */
-function rollLootBoxMaterials(world: GameWorld, achievementId: string, count: number): string[] {
-  const rng = new SeededRandom(
-    hashStringToSeed(
-      `lootbox-grant:${LOOT_BOX_GRANT_VERSION}:${world.seed}:${achievementId}:materials`,
-    ),
-  );
-  const materials: string[] = [];
-  for (let i = 0; i < count; i += 1) {
-    materials.push(rng.pick(FLOOR1_COMMON_CRAFTING_MATERIALS));
-  }
-  return materials;
-}
-
-/**
  * Open the reward for an unlocked achievement.
  *
  * For `directorMessage`/`item`/`none` rewards this is reveal-only: it marks the
@@ -84,9 +60,11 @@ function rollLootBoxMaterials(world: GameWorld, achievementId: string, count: nu
  * rewards it additionally transfers the pre-resolved reward bundle's instances
  * into the player's bag via {@link claimGeneratedEquipmentRewardBundle} — it
  * NEVER invokes the generator (the bundle was resolved once at unlock time).
- * For `lootBox` rewards (Floor 1 only) it grants gold (scaled by tier) plus a
- * tier-scaled count of common crafting materials — structurally NEVER
- * equipment, since the `lootBox` reward variant carries no equipment fields.
+ * For `lootBox` rewards (Floor 1 only) it reads the pre-resolved bundle from
+ * `world.lootBoxRewardBundles` and applies its exact gold (scaled by tier)
+ * plus common crafting materials — structurally NEVER equipment, since the
+ * `lootBox` reward variant carries no equipment fields, and never re-rolled
+ * (the bundle was resolved once at unlock time, mirroring equipment).
  *
  * All grants are validated fail-closed BEFORE any mutation: if a grant cannot
  * complete atomically the achievement is not marked claimed (`grantFailed`),
@@ -116,7 +94,12 @@ export function claimAchievementReward(
     if (playerEid === undefined) {
       return { ok: false, reason: 'grantFailed' };
     }
-    const grant = claimGeneratedEquipmentRewardBundle(world, playerEid, achievementId);
+    const grant = claimGeneratedEquipmentRewardBundle(
+      world,
+      playerEid,
+      achievementId,
+      achievement.reward.tier,
+    );
     if (!grant.ok) {
       return { ok: false, reason: 'grantFailed' };
     }
@@ -133,25 +116,53 @@ export function claimAchievementReward(
     if (!bag) {
       return { ok: false, reason: 'grantFailed' };
     }
-    const { tier } = achievement.reward;
-    const gold = LOOT_BOX_GOLD_BY_TIER[tier];
-    const materialCount = LOOT_BOX_MATERIAL_COUNT_BY_TIER[tier];
-    // Fail closed BEFORE mutating anything: the material pool must be
-    // non-empty (structurally guaranteed by FLOOR1_COMMON_CRAFTING_MATERIALS
-    // being derived from the catalog, but re-checked here so a future catalog
-    // edit that empties the pool fails the claim instead of throwing mid-grant).
-    if (FLOOR1_COMMON_CRAFTING_MATERIALS.length === 0) {
+    const bundle = world.lootBoxRewardBundles.get(achievementId);
+    if (!bundle) {
       return { ok: false, reason: 'grantFailed' };
     }
-    const materials = rollLootBoxMaterials(world, achievementId, materialCount);
-    // Apply the grant: gold then materials, then mark claimed — all in one
-    // synchronous pass so no other code can observe a partially-granted state.
-    world.playerGold += gold;
-    for (const itemId of materials) {
+    // Tier cross-check (fail-closed, defense in depth): the bundle's own tier
+    // must match the achievement definition's CURRENT declared tier at claim
+    // time, mirroring the same check `claimGeneratedEquipmentRewardBundle`
+    // performs for equipment bundles — so a bundle resolved under a
+    // stale/edited catalog tier can never be claimed under a different tier's
+    // contract.
+    if (bundle.tier !== achievement.reward.tier) {
+      return { ok: false, reason: 'grantFailed' };
+    }
+    // Content guard (fail-closed, defense in depth, BEFORE any mutation): a
+    // freshly-resolved bundle always carries the canonical per-tier gold and
+    // material count with catalog-valid material ids (see
+    // `resolveLootBoxRewardBundle`), but the LIVE bundle in `world.lootBoxRewardBundles`
+    // is never re-validated against that canonical shape after resolution —
+    // mirroring `claimGeneratedEquipmentRewardBundle`'s validate-then-commit
+    // ordering, verify every field here so a corrupted/forged live bundle can
+    // never leak partial gold/materials or throw mid-mutation (which would
+    // otherwise leave gold or some materials granted while the achievement
+    // stays unclaimed and the bundle already deleted).
+    if (bundle.gold !== LOOT_BOX_GOLD_BY_TIER[bundle.tier]) {
+      return { ok: false, reason: 'grantFailed' };
+    }
+    if (bundle.materials.length !== LOOT_BOX_MATERIAL_COUNT_BY_TIER[bundle.tier]) {
+      return { ok: false, reason: 'grantFailed' };
+    }
+    for (const itemId of bundle.materials) {
+      if (!FLOOR1_COMMON_CRAFTING_MATERIALS.includes(itemId)) {
+        return { ok: false, reason: 'grantFailed' };
+      }
+    }
+    // All validation passed — commit atomically. Consume the bundle first so
+    // no other code can observe a partially-granted state.
+    world.lootBoxRewardBundles.delete(achievementId);
+    world.playerGold += bundle.gold;
+    for (const itemId of bundle.materials) {
       addItem(bag, itemId, 1);
     }
     world.achievements.claimedIds.add(achievementId);
-    return { ok: true, reward: achievement.reward, grantedLootBox: { gold, materials } };
+    return {
+      ok: true,
+      reward: achievement.reward,
+      grantedLootBox: { gold: bundle.gold, materials: bundle.materials },
+    };
   }
 
   world.achievements.claimedIds.add(achievementId);

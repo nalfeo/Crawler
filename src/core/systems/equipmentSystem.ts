@@ -62,7 +62,10 @@ import type {
   GeneratedEquipmentInstanceKey,
   GeneratedEquipmentInstanceV1,
 } from '../../shared/generated-equipment-types.js';
-import { EQUIPMENT_REWARD_TIER_RARITIES } from '../../shared/generated-equipment-types.js';
+import {
+  EQUIPMENT_REWARD_TIER_RARITIES,
+  type EquipmentRewardTier,
+} from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
 import {
   coreGrantGeneratedEquipmentActiveAbility,
@@ -898,15 +901,18 @@ export type ClaimGeneratedEquipmentRewardBundleResult =
  * Every destination is validated FIRST (bundle exists, bag exists, capacity for
  * the whole bundle, each instance present in the registry, no intra-bundle
  * duplicate, and the only physical owner of each instance is exactly this
- * bundle). Only after all checks pass does it perform a no-throw commit: delete
- * the bundle from the map, then add each bag reference. On any failure the world
- * is untouched (fail-closed). Never invokes the generator, so it is safe on
- * claim/load/presentation paths.
+ * bundle). `expectedTier` must match the bundle's own tier — a defense-in-depth
+ * cross-check against the achievement's CURRENT declared tier, mirroring the
+ * same check the carryover restore validator performs. Only after all checks
+ * pass does it perform a no-throw commit: delete the bundle from the map, then
+ * add each bag reference. On any failure the world is untouched (fail-closed).
+ * Never invokes the generator, so it is safe on claim/load/presentation paths.
  */
 export function claimGeneratedEquipmentRewardBundle(
   world: GameWorld,
   entity: number,
   achievementId: string,
+  expectedTier: EquipmentRewardTier,
 ): ClaimGeneratedEquipmentRewardBundleResult {
   const bundle = world.generatedEquipmentRewardBundles.get(achievementId);
   if (!bundle) {
@@ -915,18 +921,26 @@ export function claimGeneratedEquipmentRewardBundle(
       reason: { type: 'invalidDef', message: `No reward bundle for achievement: ${achievementId}` },
     };
   }
-  // Shape guard (fail-closed): a resolved tiered bundle ALWAYS holds exactly
-  // ONE instance whose rarity is a member of that tier's allowed pool (see
-  // `EQUIPMENT_REWARD_TIER_RARITIES`). Reject a malformed bundle (wrong count
-  // or missing tier) BEFORE any mutation so a stale/injected empty or partial
-  // bundle can never be "claimed" as a success that consumes the reward for
-  // nothing. Per-instance rarity is verified in the validation loop below.
-  if (bundle.tier === undefined) {
+  // Tier cross-check (fail-closed, defense in depth): the bundle's own tier
+  // must match the achievement definition's CURRENT declared tier at claim
+  // time — the same check the carryover restore validator already performs —
+  // so a bundle resolved under a stale/edited catalog tier can never be
+  // claimed under a different tier's contract.
+  if (bundle.tier !== expectedTier) {
     return {
       ok: false,
-      reason: { type: 'invalidDef', message: 'Reward bundle is missing its tier' },
+      reason: {
+        type: 'invalidDef',
+        message: `Reward bundle tier ${bundle.tier} does not match expected tier ${expectedTier}`,
+      },
     };
   }
+  // Shape guard (fail-closed): a resolved tiered bundle ALWAYS holds exactly
+  // ONE instance whose rarity is a member of that tier's allowed pool (see
+  // `EQUIPMENT_REWARD_TIER_RARITIES`). Reject a malformed bundle (wrong count)
+  // BEFORE any mutation so a stale/injected empty or partial bundle can never
+  // be "claimed" as a success that consumes the reward for nothing. Per-instance
+  // rarity is verified in the validation loop below.
   if (bundle.instanceKeys.length !== 1) {
     return {
       ok: false,

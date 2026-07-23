@@ -202,7 +202,7 @@ describe('resolveEquipmentRewardBundle — determinism and isolation', () => {
 
 describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
   it('throws no-run-key and leaves the world untouched when the registry is unconfigured', () => {
-    const world = createTestWorld({ seed: 7, floor: 2 });
+    const world = createTestWorld({ seed: 7, floor: 2, generatedEquipmentRunKey: null });
     expect(() => resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES, 'tier1')).toThrow(
       RewardBundleResolutionError,
     );

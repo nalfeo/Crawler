@@ -17,6 +17,10 @@ import {
   RewardBundleResolutionError,
   resolveEquipmentRewardBundle,
 } from '../floor2-reward-bundle-resolver.js';
+import {
+  LootBoxRewardResolutionError,
+  resolveLootBoxRewardBundle,
+} from '../floor1-lootbox-reward-resolver.js';
 
 function highestSkillLevel(world: GameWorld): number {
   let maxLevel = 0;
@@ -170,6 +174,16 @@ export function unlockAchievement(
       );
     } catch (err) {
       if (err instanceof RewardBundleResolutionError) throw err;
+      return false;
+    }
+  } else if (achievement.reward.type === 'lootBox') {
+    // Floor 1 lootBox rewards resolve their immutable gold+materials bundle
+    // BEFORE the unlock mutation too, mirroring the equipment path exactly —
+    // generation happens ONLY here, never at claim, load, or presentation.
+    try {
+      resolveLootBoxRewardBundle(world, achievementId, achievement.reward.tier);
+    } catch (err) {
+      if (err instanceof LootBoxRewardResolutionError) throw err;
       return false;
     }
   }

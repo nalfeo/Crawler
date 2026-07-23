@@ -328,6 +328,11 @@ describe('Floor 2 reward bundle — stale/malformed carryover fails closed', () 
     const tampered = mutableClone(snapshot);
     tampered.generatedEquipmentRewardBundles[0]!.achievementId = 'first-bonk';
     tampered.achievements.unlockedIds = [...tampered.achievements.unlockedIds, 'first-bonk'];
+    // 'first-bonk' is a lootBox-reward achievement with no lootBox bundle in
+    // this snapshot; mark it claimed too so the (unrelated) reverse
+    // missing-lootBox-bundle guard doesn't fire first and mask the
+    // non-equipment guard this test targets.
+    tampered.achievements.claimedIds = [...tampered.achievements.claimedIds, 'first-bonk'];
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/non-equipment/);
   });
 
@@ -396,6 +401,17 @@ describe('Floor 2 reward bundle — stale/malformed carryover fails closed', () 
       'reward-bundle/v999';
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow();
   });
+
+  it('rejects a snapshot missing the bundle for an unlocked, unclaimed equipment achievement', () => {
+    const { dest, destPlayer, snapshot } = baseSnapshotWithBundle();
+    const tampered = mutableClone(snapshot);
+    // Strip the bundle out entirely — the achievement stays unlocked and
+    // unclaimed, but has no way to ever be claimed under this snapshot.
+    tampered.generatedEquipmentRewardBundles = [];
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /Missing generated equipment reward bundle for unlocked, unclaimed achievement/,
+    );
+  });
 });
 
 describe('Floor 2 reward bundle — malformed live bundle claim fails closed', () => {
@@ -438,5 +454,201 @@ describe('Floor 2 reward bundle — malformed live bundle claim fails closed', (
     for (const key of tier3Bundle.instanceKeys) {
       expect(hasGeneratedEquipmentReference(bag, key)).toBe(false);
     }
+  });
+});
+
+describe('Floor 1 lootBox reward bundle — save/load carryover', () => {
+  it('round-trips an unclaimed lootBox bundle without re-resolving (load never invokes the resolver)', () => {
+    const source = createTestWorld({
+      seed: 7,
+      floor: 1,
+      generatedEquipmentRunKey: 'lootbox-carry',
+    });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    expect(unlockAchievement(source, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(true);
+    const resolved = source.lootBoxRewardBundles.get(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)!;
+    expect(resolved).toBeDefined();
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    expect(snapshot.lootBoxRewardBundles).toHaveLength(1);
+
+    const dest = createTestWorld({
+      seed: 999,
+      floor: 1,
+      generatedEquipmentRunKey: 'lootbox-carry',
+    });
+    const destPlayer = spawnPlayer(dest, 0, 0);
+    restorePlayerCarryover(dest, destPlayer, snapshot);
+
+    const restored = dest.lootBoxRewardBundles.get(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID);
+    expect(restored).toBeDefined();
+    // Restored verbatim from the snapshot (a different seed/world would have
+    // resolved different content had the resolver re-run) — proves load
+    // never re-invokes the resolver.
+    expect(restored).toEqual(resolved);
+    expect(dest.achievements.unlockedIds.has(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(true);
+
+    // The restored bundle is claimable on the destination world.
+    const result = claimAchievementReward(dest, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID);
+    expect(result.ok).toBe(true);
+  });
+
+  it('a claimed lootBox achievement carries over with no lingering bundle', () => {
+    const source = createTestWorld({
+      seed: 7,
+      floor: 1,
+      generatedEquipmentRunKey: 'lootbox-carry-claimed',
+    });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    expect(unlockAchievement(source, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(true);
+    expect(claimAchievementReward(source, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID).ok).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    expect(snapshot.lootBoxRewardBundles).toHaveLength(0);
+
+    const dest = createTestWorld({
+      seed: 999,
+      floor: 1,
+      generatedEquipmentRunKey: 'lootbox-carry-claimed',
+    });
+    const destPlayer = spawnPlayer(dest, 0, 0);
+    restorePlayerCarryover(dest, destPlayer, snapshot);
+
+    expect(dest.lootBoxRewardBundles.has(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(false);
+    expect(dest.achievements.claimedIds.has(FLOOR1_LOOT_BOX_ACHIEVEMENT_ID)).toBe(true);
+  });
+});
+
+describe('Floor 1 lootBox reward bundle — stale/malformed carryover fails closed', () => {
+  function baseLootBoxSnapshot(): {
+    dest: GameWorld;
+    destPlayer: number;
+    snapshot: ReturnType<typeof capturePlayerCarryover>;
+  } {
+    const lootWorld = createTestWorld({ seed: 7, floor: 1 });
+    const lootPlayer = spawnPlayer(lootWorld, 0, 0);
+    unlockAchievement(lootWorld, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID);
+    const snapshot = capturePlayerCarryover(lootWorld, lootPlayer);
+    const dest = createTestWorld({ seed: 5, floor: 1 });
+    const destPlayer = spawnPlayer(dest, 0, 0);
+    return { dest, destPlayer, snapshot };
+  }
+
+  it('rejects a lootBox bundle whose achievement is not unlocked', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    tampered.achievements.unlockedIds = tampered.achievements.unlockedIds.filter(
+      (id) => id !== FLOOR1_LOOT_BOX_ACHIEVEMENT_ID,
+    );
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/locked achievement/);
+  });
+
+  it('rejects a lootBox bundle whose achievement is already claimed', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    tampered.achievements.claimedIds = [
+      ...tampered.achievements.claimedIds,
+      FLOOR1_LOOT_BOX_ACHIEVEMENT_ID,
+    ];
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/already-claimed/);
+  });
+
+  it('rejects a lootBox bundle for a non-lootBox achievement', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    tampered.lootBoxRewardBundles[0]!.achievementId = TIER1_ACHIEVEMENT_ID;
+    tampered.achievements.unlockedIds = [
+      ...tampered.achievements.unlockedIds,
+      TIER1_ACHIEVEMENT_ID,
+    ];
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/non-lootBox/);
+  });
+
+  it('rejects a lootBox bundle with an invalid/missing tier', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    (tampered.lootBoxRewardBundles[0] as { tier: string }).tier = 'super-rare';
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /invalid or missing tier/,
+    );
+  });
+
+  it("rejects a lootBox bundle whose persisted tier does not match the achievement's defined tier", () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    const actualTier = tampered.lootBoxRewardBundles[0]!.tier;
+    const otherTier = actualTier === 'trash' ? 'common' : 'trash';
+    (tampered.lootBoxRewardBundles[0] as { tier: string }).tier = otherTier;
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /does not match achievement tier/,
+    );
+  });
+
+  it('rejects a lootBox bundle with a negative gold amount', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    tampered.lootBoxRewardBundles[0]!.gold = -1;
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/invalid gold amount/);
+  });
+
+  it('rejects a lootBox bundle with a material id outside the Floor 1 common-crafting-material pool', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    tampered.lootBoxRewardBundles[0]!.materials = ['floor2-field-kit'];
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /invalid material item id/,
+    );
+  });
+
+  it('rejects a duplicate lootBox bundle for the same achievement', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    tampered.lootBoxRewardBundles = [
+      tampered.lootBoxRewardBundles[0]!,
+      { ...tampered.lootBoxRewardBundles[0]! },
+    ];
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /Duplicate loot box reward bundle/,
+    );
+  });
+
+  it('rejects a lootBox bundle with an unsupported schema version', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    (tampered.lootBoxRewardBundles[0] as { schemaVersion: string }).schemaVersion =
+      'loot-box-reward-bundle/v999';
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow();
+  });
+
+  it('rejects a lootBox bundle with forged (non-canonical) gold for its tier', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    tampered.lootBoxRewardBundles[0]!.gold = 999_999;
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /expected .* for tier/,
+    );
+  });
+
+  it('rejects a lootBox bundle with a forged (non-canonical) material count for its tier', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    const tier = tampered.lootBoxRewardBundles[0]!.tier;
+    const [material] = FLOOR1_COMMON_CRAFTING_MATERIALS;
+    tampered.lootBoxRewardBundles[0]!.materials = Array.from({ length: 1000 }, () => material!);
+    expect(tampered.lootBoxRewardBundles[0]!.materials.length).not.toBe(
+      LOOT_BOX_MATERIAL_COUNT_BY_TIER[tier],
+    );
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /expected .* for tier/,
+    );
+  });
+
+  it('rejects a snapshot missing the bundle for an unlocked, unclaimed lootBox achievement', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    // Strip the bundle out entirely — the achievement stays unlocked and
+    // unclaimed, but has no way to ever be claimed under this snapshot.
+    tampered.lootBoxRewardBundles = [];
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /Missing loot box reward bundle for unlocked, unclaimed achievement/,
+    );
   });
 });

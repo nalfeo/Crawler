@@ -397,6 +397,33 @@ describe('player floor carryover', () => {
     ).toBe(false);
   });
 
+  it('normalizes a current-schema snapshot missing the generated-state array fields to empty arrays', () => {
+    // Simulates a pre-existing snapshot saved before generated-equipment /
+    // loot-box carryover fields were introduced: same schemaVersion, but the
+    // newer array fields are entirely absent from the record (not just
+    // empty). Restoring it must default them to [] rather than crash.
+    const source = createTestWorld({ seed: 91 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const fullSnapshot = capturePlayerCarryover(source, sourcePlayer);
+    const {
+      generatedInventoryInstanceKeys: _keys,
+      generatedEquippedInstanceKeys: _equipped,
+      generatedEquipmentRewardBundles: _rewardBundles,
+      lootBoxRewardBundles: _lootBoxBundles,
+      ...snapshotMissingGeneratedFields
+    } = fullSnapshot;
+
+    const destination = createTestWorld({ seed: 91 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() =>
+      restorePlayerCarryover(destination, destinationPlayer, snapshotMissingGeneratedFields),
+    ).not.toThrow();
+    expect(destination.generatedEquipmentRewardBundles.size).toBe(0);
+    expect(destination.lootBoxRewardBundles.size).toBe(0);
+    expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+  });
+
   it('rejects unsupported ownership snapshot versions explicitly', () => {
     const source = createTestWorld({ seed: 27 });
     const sourcePlayer = spawnPlayer(source, 0, 0);
@@ -498,6 +525,7 @@ describe('player floor carryover', () => {
       generatedEquippedInstanceKeys: _generatedEquippedInstanceKeys,
       generatedEquipmentRegistry: _generatedEquipmentRegistry,
       generatedEquipmentRewardBundles: _generatedEquipmentRewardBundles,
+      lootBoxRewardBundles: _lootBoxRewardBundles,
       ...legacy
     } = current;
     const destination = createTestWorld({ seed: 42 });

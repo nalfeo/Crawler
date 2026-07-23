@@ -1,14 +1,32 @@
 import GUI from 'lil-gui';
-import { createGameWorld, type GameWorld } from '../../core/index.js';
+import { createGameWorld, spawnPlayer, type GameWorld } from '../../core/index.js';
 import {
   claimAchievementReward,
   isAchievementClaimed,
 } from '../../core/systems/achievementRewards.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { ALL_ACHIEVEMENTS, type AchievementReward } from '../../shared/achievements.js';
+import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 const LAB_SEED = 7;
+
+// Both `lootBox` (Floor 1) and `equipment` (Floor 2) reward bundles resolve
+// ONLY at unlock time and require a stable `generatedEquipmentRunKey` on the
+// world's equipment registry — mirroring how every real entry point
+// (MainGameScene, the headless runner) derives one from its world seed.
+// Without it, `unlockAchievement` throws `LootBoxRewardResolutionError` /
+// `RewardBundleResolutionError` for any lootBox/equipment achievement.
+function createLabWorld(): GameWorld {
+  const world = createGameWorld({
+    seed: LAB_SEED,
+    generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(LAB_SEED),
+  });
+  // Claiming a reward (gold/materials/equipment) requires a Player entity
+  // with an inventory bag — spawn one so every reward type can be opened.
+  spawnPlayer(world, 0, 0);
+  return world;
+}
 
 const DIFFICULTY_COLORS: Record<string, string> = {
   basic: '#9ca3af',
@@ -34,7 +52,7 @@ function rewardText(reward: AchievementReward): string {
 
 function createAchievementsUiLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as HTMLElement & { __labGui?: GUI }).__labGui;
-  let world: GameWorld = createGameWorld({ seed: LAB_SEED });
+  let world: GameWorld = createLabWorld();
 
   const root = document.createElement('div');
   root.style.cssText =
@@ -96,7 +114,7 @@ function createAchievementsUiLab(canvasHost: HTMLElement, controls: HTMLElement)
     f.add(
       {
         reset: () => {
-          world = createGameWorld({ seed: LAB_SEED });
+          world = createLabWorld();
           render();
         },
       },

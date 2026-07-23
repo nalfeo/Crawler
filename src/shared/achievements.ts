@@ -21,6 +21,10 @@ export const LOOT_BOX_TIERS = [
 
 export type LootBoxTier = (typeof LOOT_BOX_TIERS)[number];
 
+export function isLootBoxTier(value: string): value is LootBoxTier {
+  return (LOOT_BOX_TIERS as readonly string[]).includes(value);
+}
+
 /**
  * Floor 1 achievement loot-box gold grant, monotonically increasing by tier.
  * Floor 1 loot boxes NEVER contain equipment (structurally guaranteed — the
@@ -73,6 +77,25 @@ export const FLOOR1_COMMON_CRAFTING_MATERIALS: readonly string[] = Object.freeze
     (item) => item.rarity === ItemRarity.Common && item.tags.includes('Materials'),
   ).map((item) => item.id),
 );
+
+/** Schema version for {@link LootBoxRewardBundleV1}. */
+export const LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION = 'lootbox-reward-bundle/v1' as const;
+
+/**
+ * A Floor 1 `lootBox` achievement reward's content, resolved ONCE at unlock
+ * time and persisted until claimed (mirrors the Floor 2
+ * `GeneratedEquipmentRewardBundleV1` pattern: generation happens only at
+ * resolution — unlock — never at claim, load, or presentation). `gold` and
+ * `materials` are the exact grant a later claim will apply verbatim, with no
+ * further RNG involved.
+ */
+export interface LootBoxRewardBundleV1 {
+  readonly schemaVersion: typeof LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION;
+  readonly achievementId: string;
+  readonly tier: LootBoxTier;
+  readonly gold: number;
+  readonly materials: readonly string[];
+}
 
 export const ACHIEVEMENT_DIFFICULTIES = ['basic', 'standard', 'hard', 'brutal'] as const;
 export type AchievementDifficulty = (typeof ACHIEVEMENT_DIFFICULTIES)[number];
