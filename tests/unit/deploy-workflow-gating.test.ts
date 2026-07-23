@@ -36,6 +36,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 interface WorkflowJob {
   if?: string;
   needs?: string | string[];
+  outputs?: Record<string, string>;
+  steps?: Array<{ id?: string; name?: string; run?: string }>;
 }
 
 interface WorkflowDoc {
@@ -54,8 +56,9 @@ function getJob(doc: WorkflowDoc, name: string): WorkflowJob {
 }
 
 describe('deploy.yml job gating (scheduled CI must not run a live deploy or sweep)', () => {
-  it('parses deploy.yml and finds both jobs', () => {
+  it('parses deploy.yml and finds release-gate, deploy, and baseline-sweep jobs', () => {
     const doc = loadDeployWorkflow();
+    expect(doc.jobs['release-gate']).toBeDefined();
     expect(doc.jobs.deploy).toBeDefined();
     expect(doc.jobs['baseline-sweep']).toBeDefined();
   });
@@ -71,14 +74,27 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
     const doc = loadDeployWorkflow();
     for (const jobName of ['deploy', 'baseline-sweep']) {
       const condition = String(getJob(doc, jobName).if);
+      expect(condition, jobName).toContain("needs.release-gate.outputs.should_run == 'true'");
       expect(condition, jobName).toContain("github.event_name == 'workflow_dispatch'");
       expect(condition, jobName).toContain("github.event.workflow_run.conclusion == 'success'");
       expect(condition, jobName).toContain("github.event.workflow_run.event == 'push'");
     }
   });
 
-  it('keeps baseline-sweep depending on deploy (needs:), even though needs: alone is not a sufficient gate', () => {
+  it('keeps baseline-sweep depending on both release-gate and deploy jobs', () => {
     const doc = loadDeployWorkflow();
-    expect(getJob(doc, 'baseline-sweep').needs).toBe('deploy');
+    expect(getJob(doc, 'baseline-sweep').needs).toEqual(['release-gate', 'deploy']);
+  });
+
+  it('resolves stale workflow_run releases via release-gate output', () => {
+    const doc = loadDeployWorkflow();
+    const gate = getJob(doc, 'release-gate');
+    const gateStep = (gate.steps ?? []).find((step) => step.id === 'gate');
+    const script = String(gateStep?.run ?? '');
+
+    expect(gate.outputs?.should_run).toContain('steps.gate.outputs.should_run');
+    expect(script).toContain('github.event.workflow_run.head_sha');
+    expect(script).toContain('repos/${{ github.repository }}/commits/main');
+    expect(script).toContain('should_run=false');
   });
 });

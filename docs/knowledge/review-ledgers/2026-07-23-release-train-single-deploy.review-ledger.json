@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "release-train-single-deploy",
+  "task_title": "Run deploy/sweep once per train merger",
+  "estimated_apples": 2,
+  "stages": {}
+}
