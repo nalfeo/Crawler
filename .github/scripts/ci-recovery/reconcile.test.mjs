@@ -2043,8 +2043,8 @@ test('failed waiting-marker cleanup remains sweep-retryable after automation own
   }
   assert.notEqual(failed.code, 0);
   assert.match(failed.stderr, /temporary label API failure/);
-  assert.equal(parseStateComment(acquiredStateBody).status, 'active');
-  assert.equal(parseStateComment(acquiredStateBody).owner, 'automation');
+  assert.equal(parseStateComment(acquiredStateBody).status, 'idle');
+  assert.equal(parseStateComment(acquiredStateBody).owner, 'none');
   assert.ok(
     first.mutatingCalls.some(
       (call) =>

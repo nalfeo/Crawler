@@ -325,6 +325,11 @@ const startupRepositoryLabel = await repositoryLabelSnapshot(labelName);
 let labelExists = startupRepositoryLabel.present;
 let ownerLabelNodeId = startupRepositoryLabel.nodeId;
 const ownerLabelAttached = (pr.labels || []).some((label) => label.name === labelName);
+releaseUnexpectedOwnership = async () => {
+  if (operation === 'lease-release' || !labelExists || !state || state.owner === 'none') return;
+  if (state.owner === 'shepherd' && state.leaseId !== leaseId) return;
+  await release('unexpected-error');
+};
 const staleOwningState =
   !labelExists && state && state.owner !== 'none' && !['idle', 'waiting'].includes(state.status);
 const activeOwnershipState = state && state.owner !== 'none' && state.status !== 'idle';
@@ -914,18 +919,6 @@ async function release(reason, nextState = null) {
   return RELEASE_COMPLETED;
 }
 
-releaseUnexpectedOwnership = async () => {
-  if (!labelExists || !state || state.owner === 'none') return;
-  if (state.owner === 'shepherd' && state.leaseId !== leaseId) return;
-  try {
-    await release('unexpected-error');
-  } catch (cleanupError) {
-    throw new Error(`unexpected-error release failed: ${cleanupError.message}`, {
-      cause: cleanupError,
-    });
-  }
-};
-
 if (orphanedOwnershipArtifact) {
   process.stdout.write(`cleanup pr=#${prNumber} reason=orphaned-owner-label\n`);
   // Guard: if the state is already terminal (owner:none, status idle or waiting) a prior
@@ -934,6 +927,9 @@ if (orphanedOwnershipArtifact) {
   // durable waiting marker (which must survive for ongoing admission waits).
   if (state && state.owner === 'none' && (state.status === 'idle' || state.status === 'waiting')) {
     if (shouldMutate) {
+      if (ownerLabelAttached) {
+        await removePrLabel(labelName);
+      }
       await removeRepositoryLabel(labelName);
     }
     labelExists = false;

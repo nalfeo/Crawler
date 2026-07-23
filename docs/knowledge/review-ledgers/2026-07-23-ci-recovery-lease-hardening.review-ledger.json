@@ -6,12 +6,12 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Review identified the need to align heartbeat documentation with the five-minute expiry, arm cleanup before awaited startup work, and cover cleanup failure/original-error preservation. The implementation adopted all three corrections."
     },
     "code_review": {
       "clean": false,

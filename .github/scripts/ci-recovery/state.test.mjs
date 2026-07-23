@@ -645,7 +645,7 @@ test('broad sweeps suppress only healthy consistent owners', () => {
     isHealthyRecoveryOwner({
       prNumber: 42,
       state: shepherd,
-      now: new Date('2026-07-17T12:34:59.000Z'),
+      now: new Date('2026-07-17T12:04:59.000Z'),
     }),
     true,
   );
@@ -653,7 +653,7 @@ test('broad sweeps suppress only healthy consistent owners', () => {
     isHealthyRecoveryOwner({
       prNumber: 42,
       state: shepherd,
-      now: new Date('2026-07-17T12:35:01.000Z'),
+      now: new Date('2026-07-17T12:05:01.000Z'),
     }),
     false,
   );
