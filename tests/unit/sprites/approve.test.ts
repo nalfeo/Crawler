@@ -1066,11 +1066,65 @@ describe('unapproveVariant', () => {
     }
   });
 
+  it('entries: [] (array) throws manifest-invalid, not not-found', () => {
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(manifestPath, JSON.stringify({ version: 1, entries: [] }));
+    try {
+      unapproveVariant({
+        variantId: 'iron-sword-var-1',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('manifest-invalid');
+    }
+  });
+
+  it('entries: null throws manifest-invalid', () => {
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(manifestPath, JSON.stringify({ version: 1, entries: null }));
+    try {
+      unapproveVariant({
+        variantId: 'iron-sword-var-1',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('manifest-invalid');
+    }
+  });
+
+  it('__proto__ as variantId throws not-found (no prototype traversal)', () => {
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    writeFileSync(manifestPath, JSON.stringify({ version: 1, entries: {} }));
+    try {
+      unapproveVariant({
+        variantId: '__proto__',
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('not-found');
+    }
+  });
+
   it('does not delete files outside generated/ when variantId contains path traversal', () => {
     // Seed a manifest entry with a traversal-style key to simulate a malformed
     // manifest. unapproveVariant must remove the manifest entry but NOT delete
     // anything outside public/assets/generated/.
-    const traversalKey = '../../outside';
+    //
+    // From publicAssetsDir/generated, `../../../outside` resolves to
+    // <repoRoot>/outside.png (3 levels: generated → assets → public → repoRoot).
+    // Using only `../../outside` would target <repoRoot>/public/outside.png, which
+    // is a different path than where we place the sentinel — the guard would pass
+    // the test vacuously even if it were removed.
+    const traversalKey = '../../../outside';
     const outsideFile = path.join(repoRoot, 'outside.png');
     writeFileSync(outsideFile, Buffer.from('OUTSIDE'));
     mkdirSync(path.dirname(manifestPath), { recursive: true });

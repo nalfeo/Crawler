@@ -870,6 +870,18 @@ export function unapproveVariant(options: UnapproveVariantOptions): ManifestEntr
         `Unsupported manifest version: ${String(parsed.version)} (expected ${MANIFEST_VERSION})`,
       );
     }
+    // Validate entries shape: must be a plain non-array object (or absent).
+    if (
+      parsed.entries !== undefined &&
+      (typeof parsed.entries !== 'object' ||
+        parsed.entries === null ||
+        Array.isArray(parsed.entries))
+    ) {
+      throw new UnapproveError(
+        'manifest-invalid',
+        `manifest.json has invalid entries field: expected a plain object`,
+      );
+    }
     manifest = { version: MANIFEST_VERSION, entries: { ...(parsed.entries ?? {}) } };
   } catch (err) {
     if (err instanceof UnapproveError) throw err;
@@ -879,8 +891,12 @@ export function unapproveVariant(options: UnapproveVariantOptions): ManifestEntr
     );
   }
 
-  // 2. Find the entry — throw if absent.
-  const entry = manifest.entries[options.variantId];
+  // 2. Find the entry — use hasOwnProperty to avoid prototype-chain traversal
+  //    for keys like `__proto__` that would otherwise resolve through the object
+  //    prototype and produce a false 200 eviction.
+  const entry = Object.prototype.hasOwnProperty.call(manifest.entries, options.variantId)
+    ? manifest.entries[options.variantId]
+    : undefined;
   if (!entry) {
     throw new UnapproveError(
       'not-found',
