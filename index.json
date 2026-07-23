@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d514d02a5fc8e366fcc60367e8ccbb50251ef250",
+    "commitDate": "2026-07-22T16:04:52-07:00",
+    "commitSubject": "feat(ai): promote recovered AI Sweep winner to runtime default (#1768)",
+    "capturedAt": "2026-07-23T00:26:03.216Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29965672672",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/d514d02a5fc8e366fcc60367e8ccbb50251ef250.json"
+  },
+  {
     "commit": "65f8a0188424ccba6c2c17003199f7c262b13ab9",
     "commitDate": "2026-07-22T16:04:45-07:00",
     "commitSubject": "feat: add deterministic Quartermaster stock purchasing (#1750)",
