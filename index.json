@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b19713d83c872c69d00ace68c12ad0fe7d1e4669",
+    "commitDate": "2026-07-23T22:17:46Z",
+    "commitSubject": "feat(floor2): boss chest lifecycle + boss reward-policy (#1823)",
+    "capturedAt": "2026-07-23T23:21:07.313Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30050016906",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/b19713d83c872c69d00ace68c12ad0fe7d1e4669.json"
+  },
+  {
     "commit": "06c22bea112e1d71c63a66fd9a49742e7a1f915e",
     "commitDate": "2026-07-23T22:05:25Z",
     "commitSubject": "fix(player-carryover): fail-closed validation for all array-typed snapshot fields (#1826)",
