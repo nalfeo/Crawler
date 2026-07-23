@@ -45,9 +45,7 @@ describe('applyCatalogEffect — stat_multiply', () => {
       expiresFrame: 999,
     });
 
-    const modifier = world.statModifiers.find(
-      (m) => m.sourceId === 'test:stat_multiply_expires',
-    );
+    const modifier = world.statModifiers.find((m) => m.sourceId === 'test:stat_multiply_expires');
     expect(modifier).toBeDefined();
     expect(modifier!.expiresFrame).toBe(999);
     expect(modifier!.op).toBe('multiply');
@@ -143,7 +141,9 @@ describe('applyCatalogEffect — spell cases with no holderEid are safe no-ops',
       effect: {
         type: 'spell_timed_buff',
         durationFrames: { base: 120, scalesWithIntelligence: false },
-        modifiers: [{ stat: 'armor', op: 'add', value: { base: 5, scalesWithIntelligence: false } }],
+        modifiers: [
+          { stat: 'armor', op: 'add', value: { base: 5, scalesWithIntelligence: false } },
+        ],
       },
     },
     {
