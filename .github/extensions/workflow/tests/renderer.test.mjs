@@ -61,6 +61,35 @@ test('the client script wires SSE + run selection', () => {
   assert.match(html, /\/api\/select\?briefId=/);
 });
 
+test('successful embedded Postprocess applies patch and re-renders all candidate cards', () => {
+  const html = renderHtml('x');
+  assert.match(html, /msg\.type === 'postprocess:applied'/);
+  assert.match(html, /function applyPostprocessPatch\(/);
+  assert.match(html, /patch\.scope === 'all'/);
+  assert.match(html, /data-workflow-candidates/);
+  assert.match(html, /data-variant-index/);
+  // Both scopes now re-render the full candidates section so sibling cards
+  // reflect cleared judge maps from the re-run postprocess step.
+  assert.match(html, /section\.replaceWith\(renderCandidates/);
+  assert.match(html, /lastState\.stale = false/);
+  assert.match(html, /staleBadge\.remove\(\)/);
+  // Processed image URLs include a cache-buster on patched variants so the
+  // browser fetches the new PNG rather than reusing a stale cached thumbnail.
+  assert.match(html, /_patchTs/);
+  assert.match(html, /candidate\._patchTs/);
+});
+
+test('applyPostprocessPatch preserves UI-owned feedback and lifecycle fields from existing candidates', () => {
+  const html = renderHtml('x');
+  // Must build an index of existing candidates to preserve feedback/lifecycle
+  assert.match(html, /existingByIndex/);
+  assert.match(html, /existing\.feedback/);
+  assert.match(html, /existing\.lifecycle/);
+  // The merge must not silently drop fields the composeState layer adds
+  assert.match(html, /out\.feedback = existing\.feedback/);
+  assert.match(html, /out\.lifecycle = existing\.lifecycle/);
+});
+
 test('the client script exposes token-gated accept and visible queue states', () => {
   const html = renderHtml('x', 'secret-token');
   assert.match(html, /Accept & queue/);
@@ -344,7 +373,7 @@ test('a per-variant "Open in Post-process Debugger" control opens the embedded e
   );
   assert.doesNotMatch(html, /Copy link/);
   assert.doesNotMatch(html, /project:postprocess/);
-  assert.match(html, /renderPostprocessHandoff\(sel, c\.index\)/);
+  assert.match(html, /renderPostprocessHandoff\(sel, candidate\.index\)/);
 });
 
 test('opening the embedded Post-process Debugger reveals the persistent host, lazily creates ONE iframe seeded by query string, and retargets later opens via postMessage', () => {

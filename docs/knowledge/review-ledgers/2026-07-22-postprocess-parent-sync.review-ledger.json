@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-22",
+  "session_slug": "postprocess-parent-sync",
+  "task_title": "Synchronize Postprocess updates to Workflow cards",
+  "estimated_apples": 2,
+  "stages": {}
+}

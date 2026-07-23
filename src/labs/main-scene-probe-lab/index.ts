@@ -50,6 +50,7 @@ import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
+import { createAbilityState } from '../../game/systems/abilitySystem.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -580,22 +581,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.featureUnlocks.spells = true;
       world.achievements.unlockedIds.add('first-bonk');
       if (eid >= 0) {
-        const state = world.abilityStatesByEntity.get(eid) ?? {
-          learnedSpellIds: [] as string[],
-          equippedActiveAbilityIds: [] as string[],
-          passiveAbilityIds: [] as string[],
-          cooldownByAbilityId: new Map<string, number>(),
-          cooldownFramesByAbilityId: new Map<string, number>(),
-          appliedPassiveAbilityIds: new Set<string>(),
-          activeAbilityGrantSources: new Map<
-            string,
-            import('../../shared/abilities.js').AbilityGrantSource[]
-          >(),
-          passiveAbilityGrantSources: new Map<
-            string,
-            import('../../shared/abilities.js').AbilityGrantSource[]
-          >(),
-        };
+        const state = world.abilityStatesByEntity.get(eid) ?? createAbilityState();
         if (state.learnedSpellIds.length === 0 && state.equippedActiveAbilityIds.length === 0) {
           state.learnedSpellIds = ['fireball'];
         }

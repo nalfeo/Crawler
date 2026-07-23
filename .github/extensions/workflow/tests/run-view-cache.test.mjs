@@ -145,6 +145,38 @@ test('a stale (late) completion updates the cache but never calls onFresh', asyn
   assert.equal(h.freshCalls.length, 0, 'onFresh must never fire for a superseded selection');
 });
 
+test('an invalidated actual write key blocks both cache writes and fresh notifications', async () => {
+  const cache = createRunViewCache();
+  cache.set('guessed::run-1', { candidates: ['seed'] });
+  const slow = deferred();
+  const isEpochCurrent = cache.captureFence();
+  const freshCalls = [];
+
+  await resolveCacheFirstState({
+    cache,
+    key: 'guessed::run-1',
+    liveFetch: () => slow.promise,
+    isCurrent: () => true,
+    onFresh: (fresh) => freshCalls.push(fresh),
+    isRevalidating: () => false,
+    setRevalidating: () => {},
+    deriveWriteKey: (fresh) => `${fresh.selected.briefId}::${fresh.selected.runId}`,
+    canWrite: isEpochCurrent,
+  });
+
+  cache.invalidate('actual::run-9');
+  cache.set('actual::run-9', { candidates: ['persisted-refresh'] });
+  slow.resolve({
+    selected: { briefId: 'actual', runId: 'run-9' },
+    candidates: ['pre-persist-revalidation'],
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(cache.get('actual::run-9'), { candidates: ['persisted-refresh'] });
+  assert.deepEqual(freshCalls, []);
+});
+
 test('a failed background revalidation is reported and never crashes the caller', async () => {
   const h = makeHarness();
   h.cache.set('brief::run-1', { candidates: ['seed'] });

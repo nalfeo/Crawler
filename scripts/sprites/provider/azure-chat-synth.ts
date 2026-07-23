@@ -8,7 +8,8 @@
  *
  * Conventions match `azure-chat.ts`:
  *   - `fetch` is injectable for tests.
- *   - No retries; the orchestrator owns retry policy.
+ *   - Bounded transport retries cover rate limits, server failures, and
+ *     network failures; semantic retries remain with the orchestrator.
  *   - HTTP / payload errors surface as `SynthProviderError` with a
  *     typed `kind`.
  *
@@ -29,12 +30,16 @@ import type {
 import { SynthProviderError } from './synth-types.js';
 import { SPRITE_TYPES } from '../brief-schema.js';
 import { contentDirectionBlock } from '../content-direction.js';
-import { resolveDesignLanguageAddenda } from '../design-language-addenda.js';
 import {
   DEFAULT_PROVIDER_TIMEOUT_MS,
   isTimeoutAbortError,
   providerTimeoutMessage,
 } from './fetch-timeout.js';
+import {
+  fetchWithProviderRetry,
+  parseRetryAfterMs,
+  type ProviderRetryOptions,
+} from './provider-retry.js';
 
 export interface AzureOpenAISynthProviderOptions {
   readonly endpoint: string;
@@ -63,6 +68,7 @@ export interface AzureOpenAISynthProviderOptions {
    * Aborts a hung synthesis call instead of leaving `sprites:synth` to hang.
    */
   readonly timeoutMs?: number;
+  readonly retry?: ProviderRetryOptions;
 }
 
 interface ChatChoice {
@@ -83,6 +89,7 @@ export class AzureOpenAISynthProvider implements SynthProvider {
   private readonly maxTokens: number;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly retry: ProviderRetryOptions;
   readonly providerLabel: string;
 
   constructor(opts: AzureOpenAISynthProviderOptions) {
@@ -94,6 +101,7 @@ export class AzureOpenAISynthProvider implements SynthProvider {
     this.maxTokens = opts.maxTokens ?? 1500;
     this.fetchImpl = opts.fetch ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
+    this.retry = opts.retry ?? {};
     this.providerLabel = `${opts.providerLabelPrefix ?? 'azure-openai'}:${opts.deployment}`;
   }
 
@@ -114,15 +122,19 @@ export class AzureOpenAISynthProvider implements SynthProvider {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(url, {
-        method: 'POST',
-        headers: {
-          'api-key': this.apiKey,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
+      response = await fetchWithProviderRetry(
+        () =>
+          this.fetchImpl(url, {
+            method: 'POST',
+            headers: {
+              'api-key': this.apiKey,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(this.timeoutMs),
+          }),
+        this.retry,
+      );
     } catch (err) {
       if (isTimeoutAbortError(err)) {
         throw new SynthProviderError(
@@ -144,6 +156,7 @@ export class AzureOpenAISynthProvider implements SynthProvider {
       throw new SynthProviderError(
         kind,
         `Azure chat (synthesis) returned ${response.status}: ${truncate(bodyText, 500)}`,
+        { retryAfterMs: parseRetryAfterMs(response.headers) },
       );
     }
 
@@ -160,7 +173,7 @@ export class AzureOpenAISynthProvider implements SynthProvider {
 
     if (payload.error) {
       throw new SynthProviderError(
-        'provider-error',
+        'request-error',
         `Azure chat (synthesis) error ${payload.error.code ?? '<unknown>'}: ${payload.error.message ?? ''}`,
       );
     }
@@ -182,7 +195,7 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
   const lines: string[] = [
     "You are Crawler's art director. Write concrete concept briefs for 256x256-source pixel-art sprites that resolve to readable game-scale art.",
     '',
-    contentDirectionBlock(request.floor, resolveDesignLanguageAddenda(request.name, request.floor)),
+    contentDirectionBlock(request.floor),
     '',
     'A strong brief names the pose, silhouette, orientation, proportions, materials, dominant colors by name, and one memorable contradiction. Use specific nouns and verbs instead of generic adjectives. Do not prescribe hex colors.',
     '',
@@ -365,7 +378,8 @@ function stripTrailingSlash(s: string): string {
 function httpStatusToKind(status: number): SynthProviderErrorKind {
   if (status === 401 || status === 403) return 'auth';
   if (status === 429) return 'rate-limit';
-  return 'provider-error';
+  if (status >= 500 && status < 600) return 'server-error';
+  return 'request-error';
 }
 
 async function safeText(response: Response): Promise<string> {

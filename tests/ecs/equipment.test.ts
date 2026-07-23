@@ -833,17 +833,41 @@ describe('generated equipment inventory transfers', () => {
     expect(getEquipmentState(world, entity)!.equipped).toEqual(equippedBefore);
   });
 
+  it('tracks and removes generated ability grants by exact equipment source', () => {
+    const generated = createGeneratedTestEquipment(world, { abilityGrant: 'magic-missile' });
+    addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+
+    const equipped = equipFromBag(world, entity, {
+      kind: 'generated-instance',
+      instanceKey: generated.instanceId,
+    });
+
+    expect(equipped.ok).toBe(true);
+    expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).toContain(
+      'magic-missile',
+    );
+    expect(
+      world.abilityStatesByEntity
+        .get(entity)
+        ?.grantOwnership?.activeSourcesByAbilityId?.get('magic-missile'),
+    ).toEqual(new Set([`equipment:${generated.instanceId}:0`]));
+
+    expect(unequip(world, entity, 'head').ok).toBe(true);
+    expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).not.toContain(
+      'magic-missile',
+    );
+    expect(
+      world.abilityStatesByEntity.get(entity)?.grantOwnership?.activeSourcesByAbilityId?.size,
+    ).toBe(0);
+  });
+
   it.each([
     ['missing registry key', 'missing'],
     ['unsafe context', 'unsafe'],
     ['duplicate bag ownership', 'duplicate'],
     ['cross-entity ownership', 'cross-entity'],
-    ['unsupported generated grants', 'unsupported'],
   ] as const)('rejects %s without changing bag, slots, or effective stats', (_name, scenario) => {
-    const generated =
-      scenario === 'unsupported'
-        ? createGeneratedTestEquipment(world, { abilityGrant: 'future-ability' })
-        : createGeneratedTestEquipment(world);
+    const generated = createGeneratedTestEquipment(world);
     const entry = { kind: 'generated-instance' as const, instanceKey: generated.instanceId };
 
     if (scenario === 'missing') {
@@ -891,14 +915,14 @@ describe('equippable slot coverage', () => {
     }
   });
 
-  it('GEAR_ITEM_IDS covers 17 armor/accessory slots and excludes hands + neck', () => {
+  it('GEAR_ITEM_IDS covers 15 armor/accessory slots and excludes hands + neck', () => {
     const gearSlots = new Set<string>();
     for (const id of GEAR_ITEM_IDS) {
       const def = getEquipmentDefForItem(id);
       expect(def, `gear id ${id} has no equipment def`).toBeDefined();
       for (const slotId of def!.slots) gearSlots.add(slotId);
     }
-    expect(GEAR_ITEM_IDS).toHaveLength(17);
+    expect(GEAR_ITEM_IDS).toHaveLength(15);
     expect(gearSlots.has('mainHand')).toBe(false);
     expect(gearSlots.has('offHand')).toBe(false);
     expect(gearSlots.has('neck')).toBe(false);

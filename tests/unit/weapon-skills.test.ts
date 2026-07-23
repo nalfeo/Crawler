@@ -6,6 +6,7 @@ import {
   WEAPON_TYPE_SKILL_IDS,
   CLASS_SKILL_THRESHOLDS,
   TYPE_SKILL_THRESHOLDS,
+  weaponSkillPrerequisiteMatches,
 } from '../../src/shared/weapon-skills.js';
 
 describe('isWeaponClassSkillId', () => {
@@ -70,5 +71,16 @@ describe('TYPE_SKILL_THRESHOLDS', () => {
   it('type thresholds are lower than class thresholds (faster leveling)', () => {
     // First threshold for types is lower than for classes
     expect(TYPE_SKILL_THRESHOLDS[0]).toBeLessThan(CLASS_SKILL_THRESHOLDS[0]!);
+  });
+});
+
+describe('weaponSkillPrerequisiteMatches', () => {
+  it('matches either the weapon class or weapon type prerequisite', () => {
+    expect(weaponSkillPrerequisiteMatches('ranged', 'ranged', 'pistol')).toBe(true);
+    expect(weaponSkillPrerequisiteMatches('pistol', 'ranged', 'pistol')).toBe(true);
+  });
+
+  it('rejects a prerequisite absent from both weapon skill identities', () => {
+    expect(weaponSkillPrerequisiteMatches('spellcraft', 'ranged', 'pistol')).toBe(false);
   });
 });

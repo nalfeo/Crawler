@@ -963,6 +963,9 @@ export function initializeFloor2Scenario(
   initializeFloor2Settlement(world, {
     ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
+    ...(options?.playerCarryover
+      ? { effectivePlayerLevel: options.playerCarryover.playerLevel.level }
+      : {}),
   });
 
   if (!options?.playerCarryover) {
@@ -1084,8 +1087,6 @@ function applyFloor2DirectStartPlayerState(world: GameWorld, playerEid: number):
   statSystem(world);
 
   unequip(world, playerEid, 'neck', { force: true });
-  // TODO(C2→D): call revokeEquipmentAbilityGrants(world, playerEid, <instanceId>) after
-  // unequip once equipment-ability wiring is implemented (see src/game/systems/abilitySystem.ts).
   equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
 }
 

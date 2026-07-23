@@ -49,10 +49,14 @@
  *   set: (key: string, value: unknown) => void,
  *   delete: (key: string) => void,
  *   has: (key: string) => boolean,
+ *   invalidate: (key: string | null) => void,
+ *   captureFence: () => (key: string | null) => boolean,
  * }}
  */
 export function createRunViewCache() {
   const store = new Map();
+  const epochs = new Map();
+  const epoch = (key) => (key ? (epochs.get(key) ?? 0) : 0);
   return {
     get: (key) => (store.has(key) ? store.get(key) : null),
     set: (key, value) => {
@@ -62,6 +66,15 @@ export function createRunViewCache() {
       store.delete(key);
     },
     has: (key) => store.has(key),
+    invalidate: (key) => {
+      if (!key) return;
+      store.delete(key);
+      epochs.set(key, epoch(key) + 1);
+    },
+    captureFence: () => {
+      const snapshot = new Map(epochs);
+      return (key) => !key || epoch(key) === (snapshot.get(key) ?? 0);
+    },
   };
 }
 
@@ -79,6 +92,7 @@ export function createRunViewCache() {
  *   isRevalidating: () => boolean,
  *   setRevalidating: (value: boolean) => void,
  *   deriveWriteKey?: (fresh: object) => string | null,
+ *   canWrite?: (key: string) => boolean,
  * }} args
  * @returns {Promise<object>} either the cached snapshot (`stale: true`),
  *   returned WITHOUT awaiting `liveFetch`, or the live result (`stale: false`)
@@ -104,6 +118,7 @@ export async function resolveCacheFirstState(args) {
     isRevalidating,
     setRevalidating,
     deriveWriteKey = () => key,
+    canWrite = () => true,
   } = args;
 
   const cached = key ? cache.get(key) : null;
@@ -117,8 +132,9 @@ export async function resolveCacheFirstState(args) {
       liveFetch()
         .then((fresh) => {
           const writeKey = deriveWriteKey(fresh);
-          if (writeKey) cache.set(writeKey, fresh);
-          if (isCurrent()) return onFresh(fresh);
+          const mayCommit = !writeKey || canWrite(writeKey);
+          if (writeKey && mayCommit) cache.set(writeKey, fresh);
+          if (mayCommit && isCurrent()) return onFresh(fresh);
           return undefined;
         })
         .catch((err) => onRevalidateError?.(err))
@@ -134,7 +150,7 @@ export async function resolveCacheFirstState(args) {
   // network, and only for a target that has never been viewed before.
   const fresh = await liveFetch();
   const writeKey = deriveWriteKey(fresh);
-  if (writeKey) cache.set(writeKey, fresh);
+  if (writeKey && canWrite(writeKey)) cache.set(writeKey, fresh);
   return { ...fresh, stale: false };
 }
 

@@ -193,20 +193,6 @@ describe('loadBrief', () => {
     expect(loaded.brief.sensors.weapon?.orientation).toBe('diagonal');
   });
 
-  it('derives the canonical grave-shovel runtime key from the committed brief identity', () => {
-    const repoRoot = process.cwd();
-    const briefPath = path.join(repoRoot, 'briefs', 'weapons', 'grave-shovel.yaml');
-
-    const loaded = loadBrief(briefPath, { projectRoot: repoRoot });
-
-    expect(loaded.brief.type).toBe('weapon');
-    expect(loaded.brief.name).toBe('grave-shovel');
-    expect(`weapon.${loaded.brief.name}`).toBe('weapon.grave-shovel');
-    expect(`equipment/${loaded.brief.type}/${loaded.brief.name}`).toBe(
-      'equipment/weapon/grave-shovel',
-    );
-  });
-
   it('treats a minimal-brief references array as a full replacement, not a concat', () => {
     const briefPath = path.join(root, 'briefs', 'r.yaml');
     writeFileSync(

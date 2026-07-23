@@ -44,6 +44,10 @@
   draft the ADR before the implementation it governs.
 - Hand each slice off with the adopted persona's quality bar in mind, then verify
   the seams between slices (imports, layer boundaries, registration points).
+- Unless the human explicitly pre-declared that a PR should remain local, publish
+  it ready for review with complete handoff context and end the owning session
+  immediately. CI Recovery and cloud Copilot own post-publication blockers; do
+  not keep the local session active while waiting for CI, reviews, or assignment.
 
 ## Quality Criteria
 

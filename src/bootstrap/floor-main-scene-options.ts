@@ -84,6 +84,7 @@ export function createFloorMainSceneOptions(
           return {
             ...createFloorMainSceneOptions('floor2', { playerCarryover }),
             worldSeed: world.seed,
+            generatedEquipmentRunKey: playerCarryover.generatedEquipmentRegistry?.runKey,
           };
         }
       : undefined,

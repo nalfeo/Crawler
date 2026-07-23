@@ -9,9 +9,8 @@
  *
  * - Constructor takes `fetch` so unit tests can stub the network without
  *   monkey-patching globals.
- * - No retry / backoff in this layer. The orchestrator owns retries because
- *   the right recovery depends on the failure mode (sterner prompt for
- *   bad-grid, exponential backoff for rate-limit, fail-fast for auth).
+ * - Bounded transport retries stay in this layer; semantic retries such as a
+ *   sterner prompt for a bad grid remain the orchestrator's responsibility.
  * - Uses Node 22's native FormData + Blob — no `form-data` package needed.
  *   If we ever drop to <18 we'll need a polyfill.
  *
@@ -31,6 +30,11 @@ import {
   isTimeoutAbortError,
   providerTimeoutMessage,
 } from './fetch-timeout.js';
+import {
+  fetchWithProviderRetry,
+  parseRetryAfterMs,
+  type ProviderRetryOptions,
+} from './provider-retry.js';
 
 export interface AzureOpenAIImageProviderOptions {
   readonly endpoint: string;
@@ -48,6 +52,7 @@ export interface AzureOpenAIImageProviderOptions {
    * hung Azure call can't block the generate pipeline indefinitely.
    */
   readonly timeoutMs?: number;
+  readonly retry?: ProviderRetryOptions;
 }
 
 interface AzureImagesResponse {
@@ -62,6 +67,7 @@ export class AzureOpenAIImageProvider implements ImageProvider {
   private readonly apiVersion: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly retry: ProviderRetryOptions;
 
   constructor(opts: AzureOpenAIImageProviderOptions) {
     this.endpoint = stripTrailingSlash(opts.endpoint);
@@ -70,6 +76,7 @@ export class AzureOpenAIImageProvider implements ImageProvider {
     this.apiVersion = opts.apiVersion;
     this.fetchImpl = opts.fetch ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
+    this.retry = opts.retry ?? {};
   }
 
   async generateSheet(request: GenerateSheetRequest): Promise<Buffer> {
@@ -96,12 +103,16 @@ export class AzureOpenAIImageProvider implements ImageProvider {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(url, {
-        method: 'POST',
-        headers: { 'api-key': this.apiKey },
-        body: form,
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
+      response = await fetchWithProviderRetry(
+        () =>
+          this.fetchImpl(url, {
+            method: 'POST',
+            headers: { 'api-key': this.apiKey },
+            body: form,
+            signal: AbortSignal.timeout(this.timeoutMs),
+          }),
+        this.retry,
+      );
     } catch (err) {
       if (isTimeoutAbortError(err)) {
         throw new ProviderError(
@@ -121,6 +132,7 @@ export class AzureOpenAIImageProvider implements ImageProvider {
       throw new ProviderError(
         kind,
         `Azure images/edits returned ${response.status}: ${truncate(bodyText, 500)}`,
+        { retryAfterMs: parseRetryAfterMs(response.headers) },
       );
     }
 
@@ -138,7 +150,7 @@ export class AzureOpenAIImageProvider implements ImageProvider {
 
     if (payload.error) {
       throw new ProviderError(
-        'provider-error',
+        'request-error',
         `Azure error ${payload.error.code ?? '<unknown>'}: ${payload.error.message ?? ''}`,
       );
     }
@@ -178,8 +190,8 @@ function stripTrailingSlash(s: string): string {
 function httpStatusToKind(status: number): ProviderErrorKind {
   if (status === 401 || status === 403) return 'auth';
   if (status === 429) return 'rate-limit';
-  if (status >= 500 && status < 600) return 'provider-error';
-  return 'provider-error';
+  if (status >= 500 && status < 600) return 'server-error';
+  return 'request-error';
 }
 
 async function safeText(response: Response): Promise<string> {

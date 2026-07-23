@@ -57,6 +57,14 @@ export function isWeaponTypeSkillId(id: string): id is WeaponTypeSkillId {
   return (WEAPON_TYPE_SKILL_IDS as readonly string[]).includes(id);
 }
 
+export function weaponSkillPrerequisiteMatches(
+  prerequisite: WeaponSkillId,
+  weaponClassSkillId: WeaponClassSkillId,
+  weaponTypeSkillId: WeaponTypeSkillId,
+): boolean {
+  return weaponClassSkillId === prerequisite || weaponTypeSkillId === prerequisite;
+}
+
 /**
  * Usage thresholds for weapon CLASS skills (damage focus, slow leveling).
  * Target: level 2 by end of floor 1 (~200 weapon fires).
