@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6d1ca7d46f1ec0653cd5bdd8627f4b808864ff43",
+    "commitDate": "2026-07-23T12:51:42Z",
+    "commitSubject": "Add sprite unapprove / eviction feature (#1795)",
+    "capturedAt": "2026-07-23T14:10:19.057Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30009491279",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/6d1ca7d46f1ec0653cd5bdd8627f4b808864ff43.json"
+  },
+  {
     "commit": "9be0328ec740f47e19c460dca5cb863bd1632d56",
     "commitDate": "2026-07-23T12:34:27Z",
     "commitSubject": "feat(floor2): resolved equipment reward bundles at achievement unlock (#1810)",
