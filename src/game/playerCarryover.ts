@@ -375,7 +375,19 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     }
   }
   assertArray(normalized.playerSkills, 'playerSkills');
+  for (let i = 0; i < (normalized.playerSkills as readonly unknown[]).length; i++) {
+    const entry: unknown = (normalized.playerSkills as readonly unknown[])[i];
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string') {
+      throw new PlayerCarryoverSnapshotError(`Expected [id, state] tuple at playerSkills[${i}]`);
+    }
+  }
   assertArray(normalized.persistentStatModifiers, 'persistentStatModifiers');
+  for (let i = 0; i < (normalized.persistentStatModifiers as readonly unknown[]).length; i++) {
+    const entry: unknown = (normalized.persistentStatModifiers as readonly unknown[])[i];
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new PlayerCarryoverSnapshotError(`Expected object at persistentStatModifiers[${i}]`);
+    }
+  }
   const achievementsRaw: unknown = normalized.achievements;
   if (
     typeof achievementsRaw !== 'object' ||
@@ -388,6 +400,33 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   assertArray(ach.unlockedIds, 'achievements.unlockedIds');
   assertArray(ach.pendingUnlockIds, 'achievements.pendingUnlockIds');
   assertArray(ach.claimedIds, 'achievements.claimedIds');
+  const abilityStateRaw: unknown = normalized.abilityState;
+  if (abilityStateRaw !== undefined) {
+    if (typeof abilityStateRaw !== 'object' || abilityStateRaw === null || Array.isArray(abilityStateRaw)) {
+      throw new PlayerCarryoverSnapshotError('abilityState must be a non-null object');
+    }
+    const ast = abilityStateRaw as Record<string, unknown>;
+    const validateGrantSourceEntries = (entries: unknown, field: string): void => {
+      if (entries === undefined || entries === null) return;
+      if (!Array.isArray(entries)) {
+        throw new PlayerCarryoverSnapshotError(`Expected array at ${field}`);
+      }
+      for (let i = 0; i < entries.length; i++) {
+        const entry: unknown = entries[i];
+        if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Array.isArray(entry[1])) {
+          throw new PlayerCarryoverSnapshotError(`Malformed ${field} entry at index ${i}`);
+        }
+        for (let j = 0; j < (entry[1] as unknown[]).length; j++) {
+          const src: unknown = (entry[1] as unknown[])[j];
+          if (typeof src !== 'object' || src === null) {
+            throw new PlayerCarryoverSnapshotError(`Malformed ${field} source at ${i}[${j}]`);
+          }
+        }
+      }
+    };
+    validateGrantSourceEntries(ast.activeAbilityGrantSources, 'abilityState.activeAbilityGrantSources');
+    validateGrantSourceEntries(ast.passiveAbilityGrantSources, 'abilityState.passiveAbilityGrantSources');
+  }
   return normalized;
 }
 
