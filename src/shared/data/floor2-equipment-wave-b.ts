@@ -2,6 +2,7 @@ import { MeleeStyle, WeaponType } from '../constants.js';
 import type { EquipmentSlotId } from '../equipment-slots.js';
 import type { EquipmentItemDef, ItemRarity } from '../equipment-types.js';
 import type { WeaponDef } from '../weaponDefs.js';
+import { WEAPON_DEF_DEFAULTS } from '../weapon-def-defaults.js';
 import {
   FLOOR2_EQUIPMENT_ART_DEFINITIONS,
   type Floor2EquipmentArtDefinition,
@@ -113,26 +114,7 @@ function combatProfile(
     >,
 ): CombatProfile {
   return {
-    range: 0,
-    projectileSpeed: 0,
-    aoeRadius: 0,
-    durationMs: 0,
-    beamTickMs: 0,
-    beamLength: 0,
-    trapArmMs: 0,
-    trapTriggerRadius: 0,
-    trapExplosionRadius: 0,
-    returnSpeed: 0,
-    maxRange: 0,
-    swingArcDeg: 360,
-    meleeStyle: MeleeStyle.SLASH,
-    headRadius: 0,
-    shaftDamageMult: 1,
-    knockback: 0,
-    pierce: 0,
-    bounceCount: 0,
-    goreFactor: 0.5,
-    baseAccuracy: 0.85,
+    ...WEAPON_DEF_DEFAULTS,
     ...partial,
   };
 }

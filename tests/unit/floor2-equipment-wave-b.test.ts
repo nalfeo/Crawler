@@ -3,8 +3,13 @@ import {
   getGeneratedEquipmentBaseV1,
   generateEquipmentInstance,
 } from '../../src/game/generated-equipment-generator.js';
+import { WeaponType } from '../../src/shared/constants.js';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
-import { getEquipmentDefForItem, getEquippableItemIds } from '../../src/shared/equipmentDefs.js';
+import {
+  FLOOR2_QUARTERMASTER_GENERATED_BASE_IDS,
+  getEquipmentDefForItem,
+  getEquippableItemIds,
+} from '../../src/shared/equipmentDefs.js';
 import {
   FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS,
   FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS,
@@ -14,37 +19,12 @@ import {
   FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS,
 } from '../../src/shared/data/floor2-equipment-wave-b.js';
 import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../src/shared/data/floor2-equipment-art.js';
+import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../../src/shared/data/floor2-weapon-bases.js';
+import { createWeaponDef, WEAPON_DEF_DEFAULTS } from '../../src/shared/weapon-def-defaults.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const LEGAL_RARITIES = ['common', 'uncommon', 'rare'] as const;
-const COORDINATED_WAVE_A_WEAPON_IDS = [
-  'weapon.iron-cleaver',
-  'weapon.bone-saw',
-  'weapon.dueling-saber',
-  'weapon.war-pick',
-  'weapon.butcher-hook',
-  'weapon.rune-axe',
-  'weapon.chain-flail',
-  'weapon.stone-maul',
-  'weapon.sun-hammer',
-  'weapon.quarterstaff',
-  'weapon.blood-lance',
-  'weapon.grave-shovel',
-  'weapon.ashwood-bow',
-  'weapon.hand-crossbow',
-  'weapon.storm-sling',
-  'weapon.musketeer-rifle',
-  'weapon.cog-pistol',
-  'weapon.throwing-knives',
-  'weapon.twin-katar',
-  'weapon.ember-wand',
-  'weapon.frost-crook',
-  'weapon.alchemist-sprayer',
-  'weapon.thorn-whip',
-  'weapon.sawblade-launcher',
-  'weapon.oil-lantern',
-] as const;
 
 describe('Floor 2 equipment Wave B', () => {
   it('complements the coordinated Wave A roster in deterministic manifest order', () => {
@@ -54,7 +34,7 @@ describe('Floor 2 equipment Wave B', () => {
     const manifestWeaponIds = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter(
       (entry) => entry.category === 'weapon',
     ).map((entry) => entry.stableId);
-    const waveAIds = new Set<string>(COORDINATED_WAVE_A_WEAPON_IDS);
+    const waveAIds = new Set<string>(FLOOR2_WEAPON_WAVE_A_BASE_IDS);
     expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS).toEqual(
       manifestWeaponIds.filter((stableId) => !waveAIds.has(stableId)),
     );
@@ -67,7 +47,7 @@ describe('Floor 2 equipment Wave B', () => {
       [],
     );
     expect(
-      new Set([...COORDINATED_WAVE_A_WEAPON_IDS, ...FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS]),
+      new Set([...FLOOR2_WEAPON_WAVE_A_BASE_IDS, ...FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS]),
     ).toEqual(new Set(manifestWeaponIds));
     expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_DEFS.map((def) => def.id)).toEqual(
       FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS,
@@ -77,6 +57,56 @@ describe('Floor 2 equipment Wave B', () => {
     );
     expect(new Set(FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS).size).toBe(45);
     expect(getEquippableItemIds().length).toBeGreaterThanOrEqual(70);
+  });
+
+  it('inherits the frozen shared weapon defaults while preserving explicit overrides', () => {
+    expect(Object.isFrozen(WEAPON_DEF_DEFAULTS)).toBe(true);
+    expect(Object.keys(WEAPON_DEF_DEFAULTS)).toHaveLength(20);
+
+    const explicit = createWeaponDef({
+      id: 'shared-default-regression',
+      name: 'Shared Default Regression',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 1,
+      cooldownMs: 2,
+      range: 3,
+      baseAccuracy: 0.99,
+      weaponClassSkillId: 'slashing',
+      weaponTypeSkillId: 'sword',
+    });
+    expect(explicit).toEqual({
+      ...WEAPON_DEF_DEFAULTS,
+      id: 'shared-default-regression',
+      name: 'Shared Default Regression',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 1,
+      cooldownMs: 2,
+      range: 3,
+      baseAccuracy: 0.99,
+      weaponClassSkillId: 'slashing',
+      weaponTypeSkillId: 'sword',
+    });
+
+    expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_DEFS[0]).toMatchObject({
+      id: 'weapon.venom-dirk',
+      bounceCount: WEAPON_DEF_DEFAULTS.bounceCount,
+      trapArmMs: WEAPON_DEF_DEFAULTS.trapArmMs,
+      range: 5,
+      baseAccuracy: 0.88,
+    });
+  });
+
+  it('keeps all quartermaster generated-base display names unique', () => {
+    const displayNames = FLOOR2_QUARTERMASTER_GENERATED_BASE_IDS.map((stableId) => {
+      const definition = getEquipmentDefForItem(stableId);
+      expect(definition, stableId).toBeDefined();
+      return definition?.name;
+    });
+    expect(new Set(displayNames).size).toBe(displayNames.length);
+    expect(getEquipmentDefForItem('head.iron-visor')?.name).toBe('Iron Faceplate');
+    expect(getEquipmentDefForItem('feet.iron-greaves')?.name).toBe('Iron Legguards');
+    expect(getEquipmentDefForItem('iron-visor')?.name).toBe('Iron Visor');
+    expect(getEquipmentDefForItem('iron-greaves')?.name).toBe('Iron Greaves');
   });
 
   it('covers every weapon family and every canonical paper-doll slot', () => {
