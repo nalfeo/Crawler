@@ -7,6 +7,17 @@
 import { z } from 'zod';
 import floor1Achievements from './data/achievements.floor1.json';
 
+/**
+ * Reserved prefix for the boss-chest reward-bundle keyspace (ADR 0070). Boss
+ * chests reuse achievements' generated-equipment-reward-bundle keyspace
+ * (`world.generatedEquipmentRewardBundles`, keyed by achievement id OR
+ * `boss-chest:<familyId>`), so an achievement id that happened to collide with
+ * this prefix would alias two independent reward sources onto one bundle
+ * entry. Achievement ids are content-authored (`src/shared/data/achievements*.json`),
+ * so this is validated at catalog-load time rather than left to chance.
+ */
+export const BOSS_CHEST_ID_PREFIX = 'boss-chest:';
+
 export const LOOT_BOX_TIERS = [
   'trash',
   'common',
@@ -305,9 +316,28 @@ function validateCurrentRunFactCompatibility(catalog: readonly AchievementDef[])
   }
 }
 
+/**
+ * Validate that no achievement id collides with the boss-chest reward-bundle
+ * keyspace (ADR 0070's adversarial plan review, concern #3 — achievements and
+ * boss chests share one string-keyed reward-bundle map, so an authored
+ * achievement id starting with the reserved `boss-chest:` prefix would alias
+ * two independent reward sources onto one bundle entry). Throws on the first
+ * violation; accepts an empty array like {@link validateCurrentRunFactCompatibility}.
+ */
+function validateNoReservedIdCollision(catalog: readonly AchievementDef[]): void {
+  for (const achievement of catalog) {
+    if (achievement.id.startsWith(BOSS_CHEST_ID_PREFIX)) {
+      throw new Error(
+        `Achievement id "${achievement.id}" collides with the reserved boss-chest reward-bundle prefix "${BOSS_CHEST_ID_PREFIX}"`,
+      );
+    }
+  }
+}
+
 export function parseAchievementCatalog(rawCatalog: unknown): readonly AchievementDef[] {
   const catalog = achievementCatalogSchema.parse(rawCatalog);
   validateCurrentRunFactCompatibility(catalog);
+  validateNoReservedIdCollision(catalog);
   return catalog.map(removeUnlockCriteriaDuplication);
 }
 
@@ -317,6 +347,7 @@ export function createAchievementCatalog(
 ): AchievementCatalog {
   const parsed = possiblyEmptyAchievementCatalogSchema.parse(rawCatalog);
   validateCurrentRunFactCompatibility(parsed);
+  validateNoReservedIdCollision(parsed);
   const all = parsed.map(removeUnlockCriteriaDuplication);
   const seenIds = new Set<string>();
   for (const achievement of all) {

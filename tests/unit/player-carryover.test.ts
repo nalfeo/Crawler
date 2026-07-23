@@ -498,6 +498,7 @@ describe('player floor carryover', () => {
       generatedEquippedInstanceKeys: _generatedEquippedInstanceKeys,
       generatedEquipmentRegistry: _generatedEquipmentRegistry,
       generatedEquipmentRewardBundles: _generatedEquipmentRewardBundles,
+      bossChests: _bossChests,
       ...legacy
     } = current;
     const destination = createTestWorld({ seed: 42 });

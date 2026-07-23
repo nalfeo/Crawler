@@ -44,6 +44,7 @@ import {
   type GeneratedEquipmentRewardBundleV1,
 } from '../shared/generated-equipment-types.js';
 import { clearActiveWeaponDef } from '../core/active-weapon.js';
+import { createBossChestId, type BossChestState } from '../core/systems/bossChestRewards.js';
 
 const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
 
@@ -93,6 +94,20 @@ interface StatModifierSnapshot extends Omit<StatModifier, 'expiresFrame'> {
   readonly expiresInFrames?: number;
 }
 
+const BOSS_CHEST_STATES: readonly BossChestState[] = [
+  'available',
+  'opening',
+  'revealed',
+  'claimed',
+];
+
+export interface BossChestCarryoverEntry {
+  readonly chestId: string;
+  readonly familyId: string;
+  readonly state: BossChestState;
+  readonly createdAtMs: number;
+}
+
 export interface PlayerCarryoverSnapshot {
   readonly schemaVersion: typeof PLAYER_CARRYOVER_SCHEMA_VERSION;
   readonly sourcePlayerEid: number;
@@ -116,6 +131,7 @@ export interface PlayerCarryoverSnapshot {
   readonly generatedEquippedInstanceKeys: readonly GeneratedEquipmentInstanceKey[];
   readonly generatedEquipmentRegistry?: GeneratedEquipmentRegistrySnapshotV1;
   readonly generatedEquipmentRewardBundles: readonly GeneratedEquipmentRewardBundleV1[];
+  readonly bossChests: readonly BossChestCarryoverEntry[];
   readonly disabledEquipmentSlots: readonly EquipmentSlotId[];
   readonly playerSkills: readonly (readonly [string, SkillStateSnapshot])[];
   readonly abilityState?: AbilityStateSnapshot;
@@ -136,6 +152,7 @@ type LegacyPlayerCarryoverSnapshot = Omit<
   | 'generatedEquippedInstanceKeys'
   | 'generatedEquipmentRegistry'
   | 'generatedEquipmentRewardBundles'
+  | 'bossChests'
 >;
 
 function snapshotSkillState(state: SkillState): SkillStateSnapshot {
@@ -324,7 +341,8 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     ('generatedEquipmentRegistry' in record ||
       'generatedInventoryInstanceKeys' in record ||
       'generatedEquippedInstanceKeys' in record ||
-      'generatedEquipmentRewardBundles' in record)
+      'generatedEquipmentRewardBundles' in record ||
+      'bossChests' in record)
   ) {
     throw new PlayerCarryoverSnapshotError(
       'Unversioned player carryover cannot contain generated equipment state',
@@ -341,6 +359,7 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
           generatedInventoryInstanceKeys: [],
           generatedEquippedInstanceKeys: [],
           generatedEquipmentRewardBundles: [],
+          bossChests: [],
         } satisfies PlayerCarryoverSnapshot);
 
   assertArray(normalized.inventorySlots, 'inventorySlots');
@@ -348,6 +367,7 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   assertArray(normalized.generatedInventoryInstanceKeys, 'generatedInventoryInstanceKeys');
   assertArray(normalized.generatedEquippedInstanceKeys, 'generatedEquippedInstanceKeys');
   assertArray(normalized.generatedEquipmentRewardBundles, 'generatedEquipmentRewardBundles');
+  assertArray(normalized.bossChests, 'bossChests');
   assertArray(normalized.disabledEquipmentSlots, 'disabledEquipmentSlots');
   return normalized;
 }
@@ -521,7 +541,8 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   const hasGeneratedReferences =
     snapshot.generatedInventoryInstanceKeys.length > 0 ||
     snapshot.generatedEquippedInstanceKeys.length > 0 ||
-    snapshot.generatedEquipmentRewardBundles.length > 0;
+    snapshot.generatedEquipmentRewardBundles.length > 0 ||
+    snapshot.bossChests.length > 0;
 
   if (!snapshot.generatedEquipmentRegistry) {
     if (hasGeneratedReferences) {
@@ -595,6 +616,35 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
     }
   };
 
+  // Boss chests share the generated-equipment reward bundle map with
+  // achievements (keyed by `boss-chest:<familyId>` — see ADR 0070) instead of
+  // an achievement id, so their structural validation runs first and the
+  // bundle loop below branches on chest-record membership rather than
+  // achievement lookups for those entries.
+  const chestsByChestId = new Map<string, BossChestCarryoverEntry>();
+  for (const chest of snapshot.bossChests) {
+    if (!BOSS_CHEST_STATES.includes(chest.state)) {
+      throw new PlayerCarryoverSnapshotError(`Unknown boss chest state: ${String(chest.state)}`);
+    }
+    if (chest.state === 'opening') {
+      // 'opening' is a transient in-transaction state that must never survive
+      // a synchronous claim call; persisting it implies an interrupted
+      // transaction or corruption, so fail closed rather than resume it.
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest persisted mid-transaction (state=opening): ${chest.chestId}`,
+      );
+    }
+    if (chest.chestId !== createBossChestId(chest.familyId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest id ${chest.chestId} does not match family ${chest.familyId}`,
+      );
+    }
+    if (chestsByChestId.has(chest.chestId)) {
+      throw new PlayerCarryoverSnapshotError(`Duplicate boss chest: ${chest.chestId}`);
+    }
+    chestsByChestId.set(chest.chestId, chest);
+  }
+
   const bundleIds = new Set<string>();
   const unlockedIds = new Set(snapshot.achievements.unlockedIds);
   const claimedIds = new Set(snapshot.achievements.claimedIds);
@@ -613,25 +663,39 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       );
     }
     bundleIds.add(bundle.achievementId);
-    // Semantic guard (fail-closed): a persisted bundle may only exist for a real
-    // equipment-reward achievement that is currently unlocked but not yet claimed.
-    // A claimed bundle was consumed (its instances transferred out), so it must
-    // not linger; a locked/unknown/non-equipment bundle is malformed state.
-    const bundleAchievement = getAchievementById(bundle.achievementId);
-    if (!bundleAchievement || bundleAchievement.reward.type !== 'equipment') {
-      throw new PlayerCarryoverSnapshotError(
-        `Reward bundle for non-equipment achievement: ${bundle.achievementId}`,
-      );
-    }
-    if (!unlockedIds.has(bundle.achievementId)) {
-      throw new PlayerCarryoverSnapshotError(
-        `Reward bundle for locked achievement: ${bundle.achievementId}`,
-      );
-    }
-    if (claimedIds.has(bundle.achievementId)) {
-      throw new PlayerCarryoverSnapshotError(
-        `Reward bundle persisted for already-claimed achievement: ${bundle.achievementId}`,
-      );
+    const bossChest = chestsByChestId.get(bundle.achievementId);
+    if (bossChest) {
+      // Semantic guard (fail-closed): a persisted boss-chest bundle may only
+      // exist while its chest record is still 'available' — a successful
+      // openBossChest deletes the bundle the moment it grants the instances
+      // to the bag, so 'revealed' and 'claimed' chests must never have a
+      // lingering bundle (not just 'claimed' — see claimGeneratedEquipmentRewardBundle).
+      if (bossChest.state !== 'available') {
+        throw new PlayerCarryoverSnapshotError(
+          `Reward bundle persisted for already-opened boss chest: ${bundle.achievementId}`,
+        );
+      }
+    } else {
+      // Semantic guard (fail-closed): a persisted bundle may only exist for a real
+      // equipment-reward achievement that is currently unlocked but not yet claimed.
+      // A claimed bundle was consumed (its instances transferred out), so it must
+      // not linger; a locked/unknown/non-equipment bundle is malformed state.
+      const bundleAchievement = getAchievementById(bundle.achievementId);
+      if (!bundleAchievement || bundleAchievement.reward.type !== 'equipment') {
+        throw new PlayerCarryoverSnapshotError(
+          `Reward bundle for non-equipment achievement: ${bundle.achievementId}`,
+        );
+      }
+      if (!unlockedIds.has(bundle.achievementId)) {
+        throw new PlayerCarryoverSnapshotError(
+          `Reward bundle for locked achievement: ${bundle.achievementId}`,
+        );
+      }
+      if (claimedIds.has(bundle.achievementId)) {
+        throw new PlayerCarryoverSnapshotError(
+          `Reward bundle persisted for already-claimed achievement: ${bundle.achievementId}`,
+        );
+      }
     }
     assertArray(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
     assertUniqueStrings(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
@@ -655,6 +719,19 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
         );
       }
     });
+  }
+
+  // Bidirectional consistency (fail-closed): an 'available' boss chest must
+  // still have its live reward bundle (it hasn't been generated-and-lost),
+  // while 'revealed'/'claimed' chests must not — the branch above already
+  // rejects a lingering bundle for either of those states, so only the
+  // forward direction (available ⇒ has bundle) needs checking here.
+  for (const chest of chestsByChestId.values()) {
+    if (chest.state === 'available' && !bundleIds.has(chest.chestId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest ${chest.chestId} is missing its reward bundle`,
+      );
+    }
   }
 
   const occupiedSlots = new Map<EquipmentSlotId, string>();
@@ -924,6 +1001,12 @@ export function capturePlayerCarryover(
         instanceKeys: [...bundle.instanceKeys],
       }),
     ),
+    bossChests: [...world.bossChests.values()].map((chest) => ({
+      chestId: chest.chestId,
+      familyId: chest.familyId,
+      state: chest.state,
+      createdAtMs: chest.createdAtMs,
+    })),
     disabledEquipmentSlots: equipment ? [...equipment.disabledSlots] : [],
     playerSkills: [...world.playerSkills].map(([id, state]) => [id, snapshotSkillState(state)]),
     ...(abilityState ? { abilityState } : {}),
@@ -1048,6 +1131,20 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
         achievementId: bundle.achievementId,
         instanceKeys: Object.freeze([...bundle.instanceKeys]),
       }),
+    ]),
+  );
+  // Rebuild boss chest lifecycle records after the bundle map so any
+  // non-claimed chest's bundle is already present, keeping the pair
+  // consistent for the very next openBossChest call.
+  world.bossChests = new Map(
+    snapshot.bossChests.map((chest) => [
+      chest.chestId,
+      {
+        chestId: chest.chestId,
+        familyId: chest.familyId,
+        state: chest.state,
+        createdAtMs: chest.createdAtMs,
+      },
     ]),
   );
 

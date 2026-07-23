@@ -85,6 +85,7 @@ import {
 } from '../shared/data/den-unlock-archetypes.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import { initializeFloor2Settlement } from './floor2Settlement.js';
+import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { equip, initializeBaseStats, unequip } from '../core/systems/equipmentSystem.js';
@@ -653,6 +654,18 @@ export function floor2ObjectiveTick(world: GameWorld): void {
       continue;
     }
     if (decapitated.has(familyId)) continue;
+
+    // Chest creation boundary (ADR 0070): resolves the family's boss-chest
+    // reward bundle and registers its lifecycle record BEFORE the boss is
+    // latched as defeated below. `spawnBossChestForDefeatedBoss` can throw a
+    // `RewardBundleResolutionError` on a genuine config/catalog integrity bug
+    // (fail-closed per ADR 0070 §6); ordering it first means such a throw
+    // leaves `decapitated`/goal flags untouched, so this family stays
+    // retryable on the next tick instead of being permanently latched as
+    // "defeated" with no chest ever created. No-op (never throws) on Floor 1
+    // (structurally unreachable here anyway), with the economy flag
+    // disabled, or on re-entry for an already-chested family.
+    spawnBossChestForDefeatedBoss(world, familyId);
 
     decapitated.add(familyId);
     setGoalFlag(world, bossDefeatGoalId(familyId), true);

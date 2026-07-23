@@ -121,6 +121,12 @@ describe('floor1 achievements catalog', () => {
         createAchievementCatalog(1, []),
       ]),
     ).toThrow(/Duplicate achievement catalog/);
+    expect(() =>
+      createAchievementCatalog(2, [rawAchievement({ id: 'boss-chest:goblin-clan' })]),
+    ).toThrow(/collides with the reserved boss-chest reward-bundle prefix/);
+    expect(() =>
+      parseAchievementCatalog([rawAchievement({ id: 'boss-chest:goblin-clan' })]),
+    ).toThrow(/collides with the reserved boss-chest reward-bundle prefix/);
     expect(ACHIEVEMENT_CATALOG_REGISTRY.byId.size).toBe(
       FLOOR1_ACHIEVEMENT_COUNT + FLOOR2_ACHIEVEMENTS.length,
     );

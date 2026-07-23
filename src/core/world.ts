@@ -38,6 +38,7 @@ import type {
   GeneratedEquipmentGenerationPolicyV1,
   GeneratedEquipmentRewardBundleV1,
 } from '../shared/generated-equipment-types.js';
+import type { BossChestRecord } from './systems/bossChestRewards.js';
 import {
   Position,
   Velocity,
@@ -206,6 +207,8 @@ export interface GameWorld {
   generatedEquipmentRegistry: GeneratedEquipmentRegistry;
   /** Unopened generated-equipment reward bundles keyed by achievement ID. */
   generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
+  /** Boss chest lifecycle records keyed by chest ID (`boss-chest:<familyId>`). */
+  bossChests: Map<string, BossChestRecord>;
   /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
   statusEffectsByEntity: Map<number, StatusEffect[]>;
   /** Per-door lock configurations (eid → lock config). */
@@ -616,6 +619,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       generationPolicy: options.generatedEquipmentGenerationPolicy,
     }),
     generatedEquipmentRewardBundles: new Map(),
+    bossChests: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
