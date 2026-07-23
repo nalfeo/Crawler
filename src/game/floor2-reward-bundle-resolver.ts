@@ -1,5 +1,7 @@
 import {
   GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES,
+  RARITY_EFFECT_BUDGET,
   type GeneratedEquipmentInstanceKey,
   type GeneratedEquipmentRarity,
   type GeneratedEquipmentRewardBundleV1,
@@ -29,11 +31,8 @@ export type RewardBundleBuildAffinity = 'magic' | 'physical';
  * A bundle is NEVER empty (Alternative-1 design: fixed 3-item bundle with
  * conditional per-rarity affinity alignment).
  */
-export const REWARD_BUNDLE_RARITIES: readonly GeneratedEquipmentRarity[] = Object.freeze([
-  'common',
-  'uncommon',
-  'rare',
-]);
+export const REWARD_BUNDLE_RARITIES: readonly GeneratedEquipmentRarity[] =
+  GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES;
 
 /**
  * Per-rarity probability that a rarity's item is drawn from the affinity-ALIGNED
@@ -49,7 +48,12 @@ export const REWARD_BUNDLE_AFFINITY_PROB: Readonly<Record<GeneratedEquipmentRari
 
 export class RewardBundleResolutionError extends Error {
   constructor(
-    readonly code: 'no-run-key' | 'empty-aligned-pool' | 'empty-nonaligned-pool' | 'illegal-base',
+    readonly code:
+      | 'no-run-key'
+      | 'empty-aligned-pool'
+      | 'empty-nonaligned-pool'
+      | 'illegal-base'
+      | 'illegal-effect-budget',
     message: string,
   ) {
     super(message);
@@ -149,6 +153,26 @@ export function resolveEquipmentRewardBundle(
     throw new RewardBundleResolutionError(
       'no-run-key',
       `Cannot resolve reward bundle for ${achievementId}: registry has no run key`,
+    );
+  }
+
+  // Enforce the reward rarity contract structurally against the ambient
+  // generation policy. The generator draws each rarity's effect count from
+  // `policy.rarityEffectUnits`, which is only validated to be in [0, 2] per
+  // rarity — a legal-but-non-default policy (e.g. Common 1, Uncommon 2) would
+  // silently produce a Common with a non-armor stat or an Uncommon with two
+  // effects, violating "Common: no non-armor stat bonus / Uncommon: at most one
+  // minor boost / Rare: up to two". Fail closed unless the policy budget is
+  // within the reward contract (the shipped default {0,1,2} always passes).
+  const effectUnits = world.generatedEquipmentRegistry.generationPolicy.rarityEffectUnits;
+  if (
+    effectUnits.common > RARITY_EFFECT_BUDGET.common ||
+    effectUnits.uncommon > RARITY_EFFECT_BUDGET.uncommon ||
+    effectUnits.rare > RARITY_EFFECT_BUDGET.rare
+  ) {
+    throw new RewardBundleResolutionError(
+      'illegal-effect-budget',
+      `Registry effect-unit budget {common:${effectUnits.common}, uncommon:${effectUnits.uncommon}, rare:${effectUnits.rare}} exceeds the reward rarity contract {common:${RARITY_EFFECT_BUDGET.common}, uncommon:${RARITY_EFFECT_BUDGET.uncommon}, rare:${RARITY_EFFECT_BUDGET.rare}}`,
     );
   }
 

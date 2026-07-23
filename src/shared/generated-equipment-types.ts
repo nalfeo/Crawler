@@ -31,6 +31,16 @@ export const RARITY_EFFECT_BUDGET: Readonly<Record<GeneratedEquipmentRarity, num
   uncommon: 1,
   rare: 2,
 } as const;
+/**
+ * Canonical rarity sequence of every resolved Floor 2 equipment reward bundle:
+ * exactly one Common, one Uncommon, one Rare, in this order. A persisted, loaded,
+ * or claimed bundle whose instances do not match this shape (wrong count or wrong
+ * per-index rarity) is malformed and MUST fail closed. Shared so the game-layer
+ * resolver/carryover and the core-layer claim path all validate against one
+ * source of truth (the core layer cannot import the game-layer resolver).
+ */
+export const GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES: readonly GeneratedEquipmentRarity[] =
+  Object.freeze(['common', 'uncommon', 'rare']);
 export const ENHANCEMENT_MIN = 0 as const;
 export const ENHANCEMENT_MAX = 5 as const;
 export const KNOWN_GENERATED_SCHEMA_VERSION = GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION;

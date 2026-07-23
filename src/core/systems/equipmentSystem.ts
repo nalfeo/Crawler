@@ -62,6 +62,7 @@ import type {
   GeneratedEquipmentInstanceKey,
   GeneratedEquipmentInstanceV1,
 } from '../../shared/generated-equipment-types.js';
+import { GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES } from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
 import {
   coreGrantGeneratedEquipmentActiveAbility,
@@ -914,6 +915,20 @@ export function claimGeneratedEquipmentRewardBundle(
       reason: { type: 'invalidDef', message: `No reward bundle for achievement: ${achievementId}` },
     };
   }
+  // Shape guard (fail-closed): a resolved bundle ALWAYS holds exactly one Common,
+  // one Uncommon, one Rare instance in that canonical order. Reject a malformed
+  // bundle (wrong count) BEFORE any mutation so a stale/injected empty or partial
+  // bundle can never be "claimed" as a success that consumes the reward for
+  // nothing. Per-index rarity is verified in the validation loop below.
+  if (bundle.instanceKeys.length !== GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES.length) {
+    return {
+      ok: false,
+      reason: {
+        type: 'invalidDef',
+        message: `Reward bundle has ${bundle.instanceKeys.length} instances, expected ${GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES.length}`,
+      },
+    };
+  }
   const bag = world.inventories.get(entity);
   if (!bag) {
     return { ok: false, reason: { type: 'invalidDef', message: 'Entity has no inventory' } };
@@ -928,7 +943,8 @@ export function claimGeneratedEquipmentRewardBundle(
     };
   }
   const seen = new Set<GeneratedEquipmentInstanceKey>();
-  for (const instanceKey of bundle.instanceKeys) {
+  for (let index = 0; index < bundle.instanceKeys.length; index += 1) {
+    const instanceKey = bundle.instanceKeys[index]!;
     if (seen.has(instanceKey)) {
       return {
         ok: false,
@@ -939,13 +955,24 @@ export function claimGeneratedEquipmentRewardBundle(
       };
     }
     seen.add(instanceKey);
-    if (!getGeneratedEquipmentInstance(world, instanceKey)) {
+    const instance = getGeneratedEquipmentInstance(world, instanceKey);
+    if (!instance) {
       return {
         ok: false,
         reason: {
           type: 'generatedInstanceNotFound',
           instanceKey,
           message: `Generated equipment instance not found: ${instanceKey}`,
+        },
+      };
+    }
+    const expectedRarity = GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES[index]!;
+    if (instance.rarity !== expectedRarity) {
+      return {
+        ok: false,
+        reason: {
+          type: 'invalidDef',
+          message: `Reward bundle instance ${index} has rarity ${instance.rarity}, expected ${expectedRarity}`,
         },
       };
     }

@@ -16,6 +16,7 @@ import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import { GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION } from '../../src/shared/generated-equipment-types.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1 } from '../../src/core/generated-equipment-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 // Two physical + two magic weapon bases so aligned/non-aligned pools are both
@@ -186,6 +187,31 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     }
     expect(err).toBeInstanceOf(RewardBundleResolutionError);
     expect((err as RewardBundleResolutionError).code).toBe('empty-nonaligned-pool');
+    expect(world.generatedEquipmentRewardBundles.size).toBe(0);
+    expect(listGeneratedEquipmentInstances(world).length).toBe(0);
+  });
+
+  it('fails closed with illegal-effect-budget when the ambient policy exceeds the reward contract', () => {
+    // A globally-valid generation policy (per-rarity budget in [0,2]) can still
+    // violate the reward rarity contract (Common 0 / Uncommon ≤1 / Rare ≤2). The
+    // resolver must fail closed rather than mint a contract-breaking bundle.
+    const world = createTestWorld({
+      seed: 7,
+      floor: 2,
+      generatedEquipmentRunKey: 'reward-bundle-test',
+      generatedEquipmentGenerationPolicy: {
+        ...DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
+        rarityEffectUnits: { common: 1, uncommon: 2, rare: 2 },
+      },
+    });
+    let err: unknown;
+    try {
+      resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES);
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(RewardBundleResolutionError);
+    expect((err as RewardBundleResolutionError).code).toBe('illegal-effect-budget');
     expect(world.generatedEquipmentRewardBundles.size).toBe(0);
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
   });

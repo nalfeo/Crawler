@@ -140,9 +140,29 @@ describe('Floor 1 to Floor 2 production transition', () => {
         weapon: true,
       }),
     );
-    const bundled = createGeneratedEquipmentInstance(
+    const bundledCommon = createGeneratedEquipmentInstance(
       floor1,
-      generatedEquipmentInput({ baseId: 'armor.floor-transition-reward', slots: ['feet'] }),
+      generatedEquipmentInput({
+        baseId: 'armor.floor-transition-reward',
+        slots: ['feet'],
+        rarity: 'common',
+      }),
+    );
+    const bundledUncommon = createGeneratedEquipmentInstance(
+      floor1,
+      generatedEquipmentInput({
+        baseId: 'armor.floor-transition-reward',
+        slots: ['feet'],
+        rarity: 'uncommon',
+      }),
+    );
+    const bundledRare = createGeneratedEquipmentInstance(
+      floor1,
+      generatedEquipmentInput({
+        baseId: 'armor.floor-transition-reward',
+        slots: ['feet'],
+        rarity: 'rare',
+      }),
     );
     expect(addGeneratedEquipmentToBag(floor1, floor1Player, equipped.instanceId).ok).toBe(true);
     expect(
@@ -153,10 +173,14 @@ describe('Floor 1 to Floor 2 production transition', () => {
         { force: true },
       ).ok,
     ).toBe(true);
-    floor1.generatedEquipmentRewardBundles.set('floor-transition-reward', {
+    // A persisted reward bundle is only valid for a real, unlocked-but-unclaimed
+    // equipment achievement and must hold exactly one Common/Uncommon/Rare
+    // instance in canonical order (fail-closed carryover contract).
+    floor1.achievements.unlockedIds.add('floor2-field-kit');
+    floor1.generatedEquipmentRewardBundles.set('floor2-field-kit', {
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
-      achievementId: 'floor-transition-reward',
-      instanceKeys: [bundled.instanceId],
+      achievementId: 'floor2-field-kit',
+      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
     });
     const floor1Registry = snapshotGeneratedEquipmentRegistry(floor1);
     const objective = floor1.floorScenario!.objective;
@@ -181,10 +205,10 @@ describe('Floor 1 to Floor 2 production transition', () => {
     expect(floor2.abilityStatesByEntity.get(floor2Player)?.equippedActiveAbilityIds).toContain(
       'magic-missile',
     );
-    expect(floor2.generatedEquipmentRewardBundles.get('floor-transition-reward')).toEqual({
+    expect(floor2.generatedEquipmentRewardBundles.get('floor2-field-kit')).toEqual({
       schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
-      achievementId: 'floor-transition-reward',
-      instanceKeys: [bundled.instanceId],
+      achievementId: 'floor2-field-kit',
+      instanceKeys: [bundledCommon.instanceId, bundledUncommon.instanceId, bundledRare.instanceId],
     });
     expect(floor2.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('active');
     expect(floor2.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(false);

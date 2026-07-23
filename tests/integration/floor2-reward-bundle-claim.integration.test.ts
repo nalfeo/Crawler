@@ -212,8 +212,30 @@ describe('Floor 2 reward bundle — stale/malformed carryover fails closed', () 
   it('rejects a bundle with a dangling instance key', () => {
     const { dest, destPlayer, snapshot } = baseSnapshotWithBundle();
     const tampered = mutableClone(snapshot);
-    tampered.generatedEquipmentRewardBundles[0]!.instanceKeys = ['gei:v1:malformed:9999'];
+    // Keep the canonical 3-instance shape but point the last key at a
+    // non-existent instance so the dangling-reference guard (not the length
+    // guard) is what rejects it.
+    const keys = [...tampered.generatedEquipmentRewardBundles[0]!.instanceKeys];
+    keys[keys.length - 1] = 'gei:v1:malformed:9999';
+    tampered.generatedEquipmentRewardBundles[0]!.instanceKeys = keys;
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/Dangling/);
+  });
+
+  it('rejects a bundle with the wrong instance count', () => {
+    const { dest, destPlayer, snapshot } = baseSnapshotWithBundle();
+    const tampered = mutableClone(snapshot);
+    tampered.generatedEquipmentRewardBundles[0]!.instanceKeys =
+      tampered.generatedEquipmentRewardBundles[0]!.instanceKeys.slice(0, 2);
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/exactly 3 instances/);
+  });
+
+  it('rejects a bundle whose instances are out of canonical rarity order', () => {
+    const { dest, destPlayer, snapshot } = baseSnapshotWithBundle();
+    const tampered = mutableClone(snapshot);
+    tampered.generatedEquipmentRewardBundles[0]!.instanceKeys = [
+      ...tampered.generatedEquipmentRewardBundles[0]!.instanceKeys,
+    ].reverse();
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/expected common/);
   });
 
   it('rejects a bundle with an unsupported schema version', () => {
@@ -222,5 +244,43 @@ describe('Floor 2 reward bundle — stale/malformed carryover fails closed', () 
     (tampered.generatedEquipmentRewardBundles[0] as { schemaVersion: string }).schemaVersion =
       'reward-bundle/v999';
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow();
+  });
+});
+
+describe('Floor 2 reward bundle — malformed live bundle claim fails closed', () => {
+  it('claim rejects a live bundle with the wrong instance count (no claim, no grant)', () => {
+    const { world, playerEid } = makeFloor2World('claim-badlen');
+    expect(unlockAchievement(world, ACHIEVEMENT_ID)).toBe(true);
+    const bundle = world.generatedEquipmentRewardBundles.get(ACHIEVEMENT_ID)!;
+    const firstKey = bundle.instanceKeys[0]!;
+    world.generatedEquipmentRewardBundles.set(ACHIEVEMENT_ID, {
+      ...bundle,
+      instanceKeys: [firstKey],
+    });
+    const result = claimAchievementReward(world, ACHIEVEMENT_ID);
+    expect(result.ok).toBe(false);
+    expect(isAchievementClaimed(world, ACHIEVEMENT_ID)).toBe(false);
+    // Bundle retained (retryable) and nothing leaked into the bag.
+    expect(world.generatedEquipmentRewardBundles.has(ACHIEVEMENT_ID)).toBe(true);
+    const bag = world.inventories.get(playerEid)!;
+    expect(hasGeneratedEquipmentReference(bag, firstKey)).toBe(false);
+  });
+
+  it('claim rejects a live bundle whose instances are out of canonical rarity order', () => {
+    const { world, playerEid } = makeFloor2World('claim-badorder');
+    expect(unlockAchievement(world, ACHIEVEMENT_ID)).toBe(true);
+    const bundle = world.generatedEquipmentRewardBundles.get(ACHIEVEMENT_ID)!;
+    world.generatedEquipmentRewardBundles.set(ACHIEVEMENT_ID, {
+      ...bundle,
+      instanceKeys: [...bundle.instanceKeys].reverse(),
+    });
+    const result = claimAchievementReward(world, ACHIEVEMENT_ID);
+    expect(result.ok).toBe(false);
+    expect(isAchievementClaimed(world, ACHIEVEMENT_ID)).toBe(false);
+    expect(world.generatedEquipmentRewardBundles.has(ACHIEVEMENT_ID)).toBe(true);
+    const bag = world.inventories.get(playerEid)!;
+    for (const key of bundle.instanceKeys) {
+      expect(hasGeneratedEquipmentReference(bag, key)).toBe(false);
+    }
   });
 });

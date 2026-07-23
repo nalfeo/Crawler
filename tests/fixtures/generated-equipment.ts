@@ -3,7 +3,10 @@ import { createActiveWeaponSnapshotInput } from '../../src/core/generated-equipm
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+  RARITY_EFFECT_BUDGET,
   type GeneratedEquipmentCreateInputV1,
+  type GeneratedEquipmentRarity,
+  type ResolvedEquipmentEffectV1,
 } from '../../src/shared/generated-equipment-types.js';
 import type { GenerateEquipmentInstanceRequest } from '../../src/game/generated-equipment-generator.js';
 
@@ -33,33 +36,52 @@ export function generatedEquipmentInput(options?: {
   readonly slots?: readonly EquipmentSlotId[];
   readonly grants?: boolean;
   readonly weapon?: boolean;
+  readonly rarity?: GeneratedEquipmentRarity;
 }): GeneratedEquipmentCreateInputV1 {
   const grants = options?.grants ?? false;
+  const rarity = options?.rarity ?? (grants ? 'rare' : 'common');
+  // The registry validator requires effect units to match RARITY_EFFECT_BUDGET
+  // exactly (common 0 / uncommon 1 / rare 2). The `grants` path keeps its
+  // ability/passive grant effects (2 units == rare); otherwise emit the exact
+  // number of minor stat effects the chosen rarity demands.
+  const resolvedEffects: readonly ResolvedEquipmentEffectV1[] = grants
+    ? [
+        {
+          schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+          effectId: 'carryover-magic-missile',
+          effectOrdinal: 0,
+          unitCost: 1,
+          kind: 'abilityGrant',
+          grantId: 'magic-missile',
+        },
+        {
+          schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+          effectId: 'carryover-combat-flow',
+          effectOrdinal: 1,
+          unitCost: 1,
+          kind: 'passiveGrant',
+          grantId: 'combat-flow',
+        },
+      ]
+    : Array.from(
+        { length: RARITY_EFFECT_BUDGET[rarity] },
+        (_unused, index): ResolvedEquipmentEffectV1 => ({
+          schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+          effectId: `carryover-stat-${index}`,
+          effectOrdinal: index,
+          unitCost: 1,
+          kind: 'stat',
+          stat: 'armor',
+          operation: 'add',
+          value: 1,
+        }),
+      );
   return {
     baseId: options?.baseId ?? 'armor.carryover-test',
     itemLevel: 3,
-    rarity: grants ? 'rare' : 'common',
+    rarity,
     enhancementLevel: 0,
-    resolvedEffects: grants
-      ? [
-          {
-            schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
-            effectId: 'carryover-magic-missile',
-            effectOrdinal: 0,
-            unitCost: 1,
-            kind: 'abilityGrant',
-            grantId: 'magic-missile',
-          },
-          {
-            schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
-            effectId: 'carryover-combat-flow',
-            effectOrdinal: 1,
-            unitCost: 1,
-            kind: 'passiveGrant',
-            grantId: 'combat-flow',
-          },
-        ]
-      : [],
+    resolvedEffects,
     frozen: {
       schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
       displayName: 'Carryover Test Equipment',
