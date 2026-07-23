@@ -78,7 +78,7 @@ defeat path). `npm run check:wired-systems` passes.
 — validates as a complete 5-apple ledger:
 
 - **Adversarial plan review**: 7/7 concerns resolved, `adversarial: true`,
-  2 alternatives considered.
+  3 alternatives considered.
 - **Code-review loop**: round 1 found 1 High bug (fixed), round 2 clean.
 - **Multi-model review**: 5 rounds (codex + gemini, some rounds also
   sonnet/security), each round found real bugs in

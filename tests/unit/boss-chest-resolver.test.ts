@@ -38,6 +38,17 @@ describe('spawnBossChestForDefeatedBoss — Floor 2 gating', () => {
     expect(world.generatedEquipmentRewardBundles.size).toBe(0);
   });
 
+  it('throws on an invalid dependency closure (economy flag on, registry/catalog missing)', () => {
+    const world = createTestWorld({ seed: 1, floor: 2, generatedEquipmentRunKey: RUN_KEY });
+    // Enable only the top-level flag; leave registry+catalog false → 'invalid'.
+    world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+    expect(() => spawnBossChestForDefeatedBoss(world, FAMILY_ID)).toThrow(
+      'floor2EquipmentEconomy requires floor2EquipmentRegistry and floor2EquipmentCatalog',
+    );
+    expect(world.bossChests.size).toBe(0);
+    expect(world.generatedEquipmentRewardBundles.size).toBe(0);
+  });
+
   it('creates a deterministic chest with a resolved bundle when the economy is enabled', () => {
     const world = createTestWorld({ seed: 1, floor: 2, generatedEquipmentRunKey: RUN_KEY });
     enableFloor2Economy(world);

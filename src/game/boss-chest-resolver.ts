@@ -73,7 +73,11 @@ export function spawnBossChestForDefeatedBoss(
   if (world.bossChests.has(chestId)) {
     return { created: false, reason: 'alreadyExists' };
   }
-  if (getFloor2EquipmentEconomyAccess(world).kind !== 'enabled') {
+  const access = getFloor2EquipmentEconomyAccess(world);
+  if (access.kind === 'invalid') {
+    throw new Error(access.message);
+  }
+  if (access.kind !== 'enabled') {
     return { created: false, reason: 'economyDisabled' };
   }
 
