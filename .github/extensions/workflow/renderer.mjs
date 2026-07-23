@@ -1280,9 +1280,9 @@ const CLIENT_SCRIPT = String.raw`
     return briefId + '-var-' + variantIndex;
   }
 
-  function unapproveVariant(briefId, variantIndex) {
+  function unapproveVariant(manifestKey) {
     if (!lastState) return;
-    var variantId = variantIdFor(briefId, variantIndex);
+    var variantId = manifestKey;
     lastState.unapproval = lastState.unapproval || {};
     lastState.unapproval[variantId] = { state: 'unapproving' };
     render(lastState);
@@ -1384,7 +1384,14 @@ const CLIENT_SCRIPT = String.raw`
 
     // Show unapprove button for variants that are already accepted/staged or integrated.
     if (lifecycleState === 'accepted-staged' || lifecycleState === 'integrated') {
-      var variantId = variantIdFor(sel.briefId, candidate.index);
+      // Use the exact manifest map key from the lifecycle, falling back to the
+      // reconstructed form only when the lifecycle hasn't propagated the key yet
+      // (e.g. a transient "queued this session" accepted-staged state where no
+      // manifest entry exists yet). The lifecycle.manifestKey is authoritative
+      // because approveVariant canonicalizes item brief IDs (e.g. `flame-dagger-v2`
+      // → `flame-dagger`), so rebuilding from sel.briefId produces the wrong key.
+      var variantId = (candidate.lifecycle && candidate.lifecycle.manifestKey)
+        || variantIdFor(sel.briefId, candidate.index);
       var unapprovalEntry = state.unapproval && state.unapproval[variantId];
       var anyUnapproving = !!(state.unapproval && Object.keys(state.unapproval).some(function (k) {
         return state.unapproval[k] && state.unapproval[k].state === 'unapproving';
@@ -1405,7 +1412,7 @@ const CLIENT_SCRIPT = String.raw`
         type: 'button',
         class: 'unapprove-button',
         text: unapproving ? 'Evicting…' : 'Evict / Unapprove',
-        onclick: function () { unapproveVariant(sel.briefId, candidate.index); }
+        onclick: function () { unapproveVariant(variantId); }
       });
       if (anyAccepting || anyUnapproving || unapproving) unapproveBtn.disabled = true;
       card.appendChild(unapproveBtn);

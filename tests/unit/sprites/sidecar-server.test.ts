@@ -2292,6 +2292,8 @@ describe('DELETE /api/manifest/:variantId', () => {
       manifestPath,
       catalogPath,
       env: {},
+      // Stub out the durable queue check so tests don't exec `gh issue list`.
+      checkinDeps: { listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>() } as CheckinRunnerDeps,
     });
   });
 
@@ -2373,6 +2375,51 @@ describe('DELETE /api/manifest/:variantId', () => {
     // and returns 400. If the framework normalizes the URL instead, it falls
     // through to a 404. Either status means the eviction was blocked.
     expect([400, 404]).toContain(res.statusCode);
+  });
+
+  it('returns 409 when the variant assetPath is already in the durable check-in queue', async () => {
+    const variantId = `${briefId}-var-1`;
+    const assetPath = `generated/${variantId}.png`;
+    writeApprovedManifest(variantId);
+    writeAsset(variantId);
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      catalogPath,
+      env: {},
+      checkinDeps: {
+        listQueuedAssets: () =>
+          Promise.resolve(
+            new Map([
+              [
+                assetPath,
+                {
+                  issueUrl: 'https://github.com/nalfeo/Crawler/issues/42',
+                  branch: 'assets/iron-sword',
+                },
+              ],
+            ]),
+          ),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(409);
+    const body = res.json();
+    expect(body.error).toBe('queued-conflict');
+    expect(body.message).toContain('https://github.com/nalfeo/Crawler/issues/42');
+
+    // Manifest entry must NOT have been removed.
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    expect(manifest.entries[variantId]).toBeDefined();
   });
 });
 

@@ -2014,6 +2014,32 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
     return withCheckinMutationLock(async () => {
+      // Pre-mutation queue check: if this variant's asset is already in the
+      // durable asset-checkin queue (an `assets/*` branch + open issue filed
+      // by /accept), evicting the local copy won't remove it from that
+      // pipeline. Reject with 409 so the caller can close the issue first.
+      const assetPath = `generated/${variantId}.png`;
+      const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
+      const listQueuedAssets =
+        checkinDeps.listQueuedAssets ?? (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+      let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
+      try {
+        queuedAssets = await listQueuedAssets();
+      } catch (err) {
+        return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
+      }
+      const queued = queuedAssets.get(assetPath);
+      if (queued) {
+        reply.code(409);
+        return {
+          error: 'queued-conflict',
+          message:
+            `${assetPath} is already queued for check-in (${queued.issueUrl}). ` +
+            'Close or retract that issue before evicting this variant to prevent it ' +
+            'from reappearing in the next asset PR.',
+        };
+      }
+
       let entry: ManifestEntry;
       try {
         entry = unapproveVariant({
