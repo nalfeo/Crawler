@@ -405,7 +405,11 @@ function setupRepos(): Repos {
 }
 
 /** Push an art commit onto origin's assets/queue branch (built from origin/main). */
-function seedQueueWithArt(liveDir: string, keys: readonly string[]): void {
+function seedQueueWithArt(
+  liveDir: string,
+  keys: readonly string[],
+  queueBranch = 'assets/queue',
+): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-'));
   try {
@@ -427,7 +431,39 @@ function seedQueueWithArt(liveDir: string, keys: readonly string[]): void {
     gitSync(wt, 'add', '--', 'public/assets/generated', 'src/shared/data/sprite-catalog.json');
     gitSync(wt, 'commit', '--no-verify', '-m', `queue art: ${keys.join(', ')}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
-    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${queueBranch}`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Push an art commit DIRECTLY onto origin/main (simulates the legacy asset-PR
+ * flow that lands art without going through the queue branch).
+ */
+function addArtDirectlyToMain(liveDir: string, keys: readonly string[]): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-main-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+    const genDir = path.join(wt, 'public', 'assets', 'generated');
+    mkdirSync(genDir, { recursive: true });
+    const mPath = path.join(wt, 'public', 'assets', 'generated', 'manifest.json');
+    const cPath = path.join(wt, 'src', 'shared', 'data', 'sprite-catalog.json');
+    const manifest = readJson<{ version: number; entries: Record<string, unknown> }>(mPath);
+    const catalog = readJson<Array<Record<string, unknown>>>(cPath);
+    for (const key of keys) {
+      writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+      manifest.entries[key] = { assetPath: `generated/${key}.png`, spriteName: key };
+      catalog.push({ id: `generated:${key}`, kind: 'sprite', assetPath: `generated/${key}.png` });
+    }
+    writeJson(mPath, manifest);
+    writeJson(cPath, catalog);
+    gitSync(wt, 'add', '--', 'public/assets/generated', 'src/shared/data/sprite-catalog.json');
+    gitSync(wt, 'commit', '--no-verify', '-m', `direct-to-main art: ${keys.join(', ')}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/main`);
   } finally {
     gitSync(liveDir, 'worktree', 'remove', '--force', wt);
     rmSync(wt, { recursive: true, force: true });
@@ -469,6 +505,8 @@ interface FakePr {
   body: string;
   autoMerge: boolean;
   isCrossRepository: boolean;
+  /** The SHA passed to `--match-head-commit` when arming auto-merge. */
+  matchHeadCommit?: string;
 }
 
 /** In-memory `gh` PR store. `failCreateWhenExists` simulates the create-race. */
@@ -592,6 +630,7 @@ class FakeGh {
       const pr = this.prs.find((p) => p.number === number);
       if (!pr) return err(`no PR ${number}`);
       pr.autoMerge = true;
+      pr.matchHeadCommit = flags['match-head-commit'];
       return ok();
     }
     return err(`unexpected gh pr ${sub}`);
@@ -688,6 +727,10 @@ describe('runReconcile (real git)', () => {
     expect(gh.prs[0]!.autoMerge).toBe(true);
     expect(gh.prs[0]!.head).toBe('assets/promote');
     expect(gh.prs[0]!.base).toBe('main');
+    // --match-head-commit is a load-bearing TOCTOU defense: assert it is the
+    // exact promotion commit SHA, not an empty/wrong value.
+    expect(gh.prs[0]!.matchHeadCommit).toBe(first.promoteCommit);
+    expect(first.promoteCommit).toMatch(/^[0-9a-f]{40}$/);
 
     // Re-run with the SAME pending art (PR not yet merged): must reuse PR #1.
     const second = await runReconcile(liveDir, realDeps(gh));
@@ -794,5 +837,67 @@ describe('runReconcile (real git)', () => {
     const ours = gh.prs.find((p) => p.number === result.prNumber)!;
     expect(ours.isCrossRepository).toBe(false);
     expect(ours.autoMerge).toBe(true);
+  });
+
+  it('(g) PR body uses the resolved branch names (not hardcoded defaults)', async () => {
+    // Regression: buildPrContent used to hardcode `assets/queue`, `main`, and
+    // `assets/promote` even when non-default options were passed. Using
+    // --queue-branch / --promote-branch / --base would then publish wrong metadata.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    // Seed art onto a custom queue branch name.
+    seedQueueWithArt(liveDir, ['skull-mace-var-2'], 'custom/queue');
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh), {
+      queueBranch: 'custom/queue',
+      promoteBranch: 'custom/promote',
+      baseBranch: 'main',
+    });
+    expect(result.status).toBe('pr-open');
+    const body = gh.prs[0]!.body;
+    // Resolved branch names appear in the body.
+    expect(body).toContain('`custom/queue`');
+    expect(body).toContain('`custom/promote`');
+    // Hardcoded defaults must NOT appear (they would be wrong metadata).
+    expect(body).not.toContain('`assets/queue`');
+    expect(body).not.toContain('`assets/promote`');
+  });
+
+  it('(h) preserves art on main that was never committed to the queue branch', async () => {
+    // Regression for whole-surface checkout revert: a sprite that reached main
+    // via an independent flow (legacy asset-PR) — and was therefore ABSENT from
+    // the queue branch — must NOT be deleted when the reconciler promotes queue
+    // art. The promotion commit should only touch paths queue positively added.
+    //
+    // Scenario: queue is created first, then art is added directly to main
+    // (simulating the legacy asset-PR flow). Queue never absorbs that main
+    // change, so the PNG is in main but absent from queue.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+
+    // 1. Seed the queue FIRST (based on the empty main).
+    //    Queue ends up with queue-added-sprite.png only.
+    seedQueueWithArt(liveDir, ['queue-added-sprite']);
+
+    // 2. AFTER queue is created, push art DIRECTLY to main (legacy asset-PR).
+    //    Queue does NOT have this asset; main-only-sprite.png is absent from queue.
+    addArtDirectlyToMain(liveDir, ['main-only-sprite']);
+
+    const gh = new FakeGh();
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+
+    // Fetch the promotion branch and verify what changed vs the (now-updated) main.
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main', 'assets/promote');
+    const diff = gitSync(liveDir, 'diff', '--name-only', 'origin/main', 'origin/assets/promote')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    // Only queue-added paths should appear in the promote→main diff.
+    expect(diff.some((p) => p.includes('queue-added-sprite'))).toBe(true);
+    // The main-only asset must NOT be deleted (must NOT appear in the diff at all).
+    expect(diff.some((p) => p.includes('main-only-sprite'))).toBe(false);
   });
 });

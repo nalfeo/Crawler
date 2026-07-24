@@ -198,7 +198,10 @@ export function isArtSurfacePath(p: string): boolean {
  * correct fail-closed response: the reconciler must only ever land art on
  * `main` via the PAT.
  */
-export function assertArtSurfaceOnly(changedPaths: readonly string[]): readonly string[] {
+export function assertArtSurfaceOnly(
+  changedPaths: readonly string[],
+  baseBranch = DEFAULT_BASE_BRANCH,
+): readonly string[] {
   const offenders = changedPaths.filter((p) => !isArtSurfacePath(p));
   if (offenders.length > 0) {
     throw new ReconcileError(
@@ -206,7 +209,7 @@ export function assertArtSurfaceOnly(changedPaths: readonly string[]): readonly 
       `Refusing to arm auto-merge: the promotion diff touches ${offenders.length} path(s) ` +
         `outside the art-surface allowlist (${ASSET_SURFACE_PATHS.join(', ')}): ` +
         `${offenders.join(', ')}. This should be impossible by construction; refusing ` +
-        `to land a non-art change on ${DEFAULT_BASE_BRANCH} and escalating.`,
+        `to land a non-art change on ${baseBranch} and escalating.`,
     );
   }
   return changedPaths;
@@ -240,7 +243,7 @@ const ALLOWED_DST_MODES = new Set([
  * --no-renames -c core.quotePath=false` (vs the worktree HEAD == origin/main)
  * `stdout`.
  */
-export function assertArtSurfaceModes(rawStdout: string): void {
+export function assertArtSurfaceModes(rawStdout: string, baseBranch = DEFAULT_BASE_BRANCH): void {
   for (const raw of rawStdout.split('\n')) {
     const line = raw.replace(/\r$/, '');
     if (line === '' || !line.startsWith(':')) continue;
@@ -268,7 +271,7 @@ export function assertArtSurfaceModes(rawStdout: string): void {
         'untrusted-diff',
         `Refusing to arm auto-merge: staged raw diff touches a non-art path "${path}". ` +
           `This should be impossible by construction; refusing to land it on ` +
-          `${DEFAULT_BASE_BRANCH} and escalating.`,
+          `${baseBranch} and escalating.`,
       );
     }
     if (dstMode === undefined || !ALLOWED_DST_MODES.has(dstMode)) {
@@ -277,7 +280,7 @@ export function assertArtSurfaceModes(rawStdout: string): void {
         `Refusing to arm auto-merge: art path "${path}" has a non-regular-file ` +
           `destination mode ${dstMode ?? '?'} (status ${status}). Symlinks, gitlinks, ` +
           `and executables are refused — only plain art files may land on ` +
-          `${DEFAULT_BASE_BRANCH}. Escalating.`,
+          `${baseBranch}. Escalating.`,
       );
     }
   }
@@ -288,19 +291,22 @@ function buildPrContent(
   changedPaths: readonly string[],
   promoteCommit: string,
   now: Date,
+  queueBranch: string,
+  promoteBranch: string,
+  baseBranch: string,
 ): { title: string; body: string } {
   const iso = now.toISOString();
   const count = changedPaths.length;
   const title = `chore(assets): reconcile queued sprite edits (${count} art path${count === 1 ? '' : 's'})`;
   const list = changedPaths.map((p) => `- \`${p}\``).join('\n');
   const body = [
-    'Automated art-only reconciliation of the durable `assets/queue` branch into',
-    '`main` (durable sprite-edit persistence, PR2).',
+    `Automated art-only reconciliation of the durable \`${queueBranch}\` branch into`,
+    `\`${baseBranch}\` (durable sprite-edit persistence, PR2).`,
     '',
-    `- Promotion branch: \`${DEFAULT_PROMOTE_BRANCH}\` @ \`${promoteCommit}\``,
+    `- Promotion branch: \`${promoteBranch}\` @ \`${promoteCommit}\``,
     `- Batched at: ${iso}`,
     '- Diff is art-surface-only **by construction** (harvested onto current',
-    '  `main`); the trust-boundary guard re-validated it before arming auto-merge.',
+    `  \`${baseBranch}\`); the trust-boundary guard re-validated it before arming auto-merge.`,
     '',
     '### Changed art-surface paths',
     '',
@@ -443,9 +449,15 @@ export async function runReconcile(
     //    the merge-base of main and queue is still pre-squash, so a three-dot
     //    diff would still show the already-landed art forever (PR reopens in a
     //    loop). Two-dot correctly reports "queue's art already in main" ⇒ noop.
+    //    --diff-filter=AM limits to Added/Modified paths: files present on main
+    //    but ABSENT from queue (D = deleted-in-queue) are skipped deliberately —
+    //    they are art that reached main via an independent flow (e.g. the legacy
+    //    asset-PR) that queue never saw; promoting a D would revert them, which
+    //    is a data-loss bug. We only promote what queue positively contributes.
     const delta = await mustGit(deps.exec, repoRoot, [
       'diff',
       '--name-only',
+      '--diff-filter=AM',
       baseRef,
       queueRef,
       '--',
@@ -470,14 +482,13 @@ export async function runReconcile(
       await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
 
       // Overlay ONLY the art surface from the queue tip. `git checkout <ref> --
-      // <paths>` is a whole-surface harvest of queue's already-unioned art: it
-      // takes queue's manifest/catalog/PNGs verbatim (queue is the art source of
-      // truth; PR1 already unioned concurrent edits when committing to it), and
-      // the fixed path allowlist means nothing outside the art surface can be
-      // pulled in. (This is why `copyArtSurface` — a per-asset union needing a
-      // discrete asset list + materialized src — is not used here.)
-      await mustGit(deps.exec, worktree, ['checkout', queueRef, '--', ...ASSET_SURFACE_PATHS]);
-      await mustGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
+      // <specific-paths>` takes exactly those paths from queue (all of which the
+      // --diff-filter=AM above guarantees exist in queueRef — no D/deleted paths
+      // are in the list), leaving everything else in main's worktree untouched.
+      // This prevents reverting art that reached main via an independent flow
+      // (e.g. the legacy asset-PR) without ever being committed to the queue.
+      await mustGit(deps.exec, worktree, ['checkout', queueRef, '--', ...queueVsMainArt]);
+      await mustGit(deps.exec, worktree, ['add', '--', ...queueVsMainArt]);
 
       // No-op guard: if nothing staged, main already carries identical art bytes
       // (the two-dot path delta can list paths whose CONTENT is unchanged after
@@ -493,7 +504,7 @@ export async function runReconcile(
 
       // 5. TRUST-BOUNDARY GUARD (defense-in-depth). Refuse + escalate on ANY
       //    non-art path before we commit/push/arm.
-      assertArtSurfaceOnly(changedPaths);
+      assertArtSurfaceOnly(changedPaths, baseBranch);
 
       // 5b. MODE-AWARE guard: `--name-only` cannot see a tree-entry TYPE change
       //     (file → symlink/gitlink/executable) at an allowlisted path, which
@@ -508,7 +519,7 @@ export async function runReconcile(
         '--raw',
         '--no-renames',
       ]);
-      assertArtSurfaceModes(stagedRaw);
+      assertArtSurfaceModes(stagedRaw, baseBranch);
 
       // Deterministic commit message (injected clock).
       const message =
@@ -562,7 +573,14 @@ export async function runReconcile(
     }
 
     // 7. Open or update the ONE promote → main PR (idempotent; never duplicate).
-    const { title, body } = buildPrContent(changedPaths, promoteCommit, deps.now());
+    const { title, body } = buildPrContent(
+      changedPaths,
+      promoteCommit,
+      deps.now(),
+      queueBranch,
+      promoteBranch,
+      baseBranch,
+    );
     const existing = await findOpenPromotePr(deps.exec, repoRoot, repo, promoteBranch, baseBranch);
     let prNumber: number;
     let created: boolean;
