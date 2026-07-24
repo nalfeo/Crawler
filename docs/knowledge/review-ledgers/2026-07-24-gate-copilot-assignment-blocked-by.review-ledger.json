@@ -1,0 +1,48 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "gate-copilot-assignment-blocked-by",
+  "task_title": "Gate Copilot issue-assignment on blocked_by + auto-assign unblocked dependents",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "minor",
+      "notes": "",
+      "models": [
+        "gpt-5.4"
+      ],
+      "summary": "Rubber-duck (gpt-5.4, high effort) reviewed the blocked_by gate + auto-unblock-sweep design (wrapper functions around runIssueIntake vs. gating inside runIssueIntake directly). Verdict: approved_with_changes. Affirmed the wrapper approach (intakeOpenedIssue/intakeUnblockedDependents) over gating inside runIssueIntake, since the closed-issue sweep needs per-dependent branching and error isolation that a single gated function cannot provide. Raised two non-blocking concerns: (1) kickoff-comment idempotency is read-then-write, not atomic, under concurrent unblock sweeps; (2) unblock path trusted a stale snapshot state/repository.full_name from the blocking payload without a final liveness check before assignment. Concern 2 was addressed by adding a live issueState===OPEN guard inside runIssueIntake (throws IssueNoLongerOpenError otherwise). Concern 1 (comment double-post race) was accepted as a known, low-probability, non-data-corrupting risk -- documented in the handoff -- since GitHub issue comment posting has no compare-and-swap primitive to make it atomic without introducing a separate lock resource.",
+      "alternatives_considered": 1
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "summary": "3 findings: (1-medium) getBlockedByDependencies/getBlockingDependents silently coerced non-array API responses to [], violating the fail-loud contract; (2-low) the race-condition throw from runIssueIntake when an issue closed mid-sweep was recorded as an error (process.exitCode=1) instead of a benign skip; (3-low) both dependency fetches used a single request() call with per_page=100, silently truncating >100-entry dependency lists. All 3 fixed: switched both fetchers to delegate to the existing paginate() helper (fail-loud + full pagination in one change), and introduced an exported IssueNoLongerOpenError class so intakeUnblockedDependents can special-case the race as {assigned:false,reason} instead of {error}."
+        },
+        {
+          "round": 2,
+          "models": [
+            "claude-opus-4.7"
+          ],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "summary": "Independent fresh pass confirmed all 3 round-1 fixes correctly implemented and wired (paginate imported/threaded through both library functions and all call sites, test mocks updated to mock paginate(token,path) instead of request). No new issues found across correctness, security, determinism, wiring, and regression-coverage categories."
+        }
+      ],
+      "completed": true
+    }
+  }
+}

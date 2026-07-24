@@ -2,7 +2,7 @@ name: Issue Copilot Intake
 
 on:
   issues:
-    types: [opened]
+    types: [opened, closed]
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Assign Copilot and post instruction kickoff
+      - name: Assign Copilot on intake and on dependency unblock
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           ISSUE_OWNER: nalfeo
