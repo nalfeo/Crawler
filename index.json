@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c5cd05e578eb43dd3563b7629c06deaa56a24a6c",
+    "commitDate": "2026-07-24T22:09:01Z",
+    "commitSubject": "Lock CI-recovery capacity/prioritization invariants and add runtime dispatch-cap knobs (#1861)",
+    "capturedAt": "2026-07-24T23:10:06.206Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30130667538",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/c5cd05e578eb43dd3563b7629c06deaa56a24a6c.json"
+  },
+  {
     "commit": "431c32dac0ed253d1d9fddc1bb0503a9f6709004",
     "commitDate": "2026-07-24T21:17:59Z",
     "commitSubject": "fix(ci): gate Copilot assignment on blocked_by dependencies (#1895)",
