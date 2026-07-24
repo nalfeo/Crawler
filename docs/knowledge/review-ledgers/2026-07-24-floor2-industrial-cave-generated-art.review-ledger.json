@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "floor2-industrial-cave-generated-art",
+  "task_title": "Floor 2 industrial-cave generated terrain pack + crenellation fix + engine wiring",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck review (gpt-5.4). 3 blocking + 5 non-blocking concerns, all confirmed TRUE and addressed. B1 pack doorSet PNGs are not runtime-wired (engine door path resolveDoorRenderMode uses the global tile-door-v1-var-0 texture; the pack resolver resolveDoorPoolVariant is only referenced by gen/lab/tests) -> narrowed scope, documented the doorSet as not-yet-consumed, filed a follow-up issue rather than adding unapproved engine door-wiring. B2 the committed manifest (runtime source of truth via terrain-pack-registry) had zero test coverage because every build test validates the in-memory procedural builder -> added tests/unit/sprites/terrain-pack-committed.test.ts which loads the committed manifest and shipped PNGs from disk. B3 a file mtime is not proof the crenellation fix is in the shipped art -> the committed-pack test asserts the SHIPPED atlas meets the 188/188 (100%) authored edge-compatibility floor, a durable geometry guard. NB4 build CLI contract awkward -> env-guarded the procedural writer (preview-dir alternative rejected to avoid builder/test churn). NB5 BootScene preload wiring ungated -> added a source-assertion guard to boot-scene-generated-sprite-gate.test.ts. NB6 the 99.5 percent metric was a weak proxy -> replaced by the 100 percent committed edge-compat floor plus the real 11509-wall render count. NB7 corridorCount=0 -> documented (the cave seed emits no corridor tiles; corridorPool ships for future seeds). NB8 provenance kind is coarse -> explicit honest derivationNote, now guarded by the committed-pack test. 3 alternatives (preview-output builder, byte-reproducible source compositor, lazy per-floor loading) were enumerated and rejected with grounded reasons; the reviewer concluded no redesign was warranted."
+    },
+    "code_review": {
+      "completed": true,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1: 4 parallel reviewers (claude-sonnet-4.6, gpt-5.3-codex, gemini-3.1-pro-preview code review + an independent security-review pass). gemini + security clean; codex 2 Medium, sonnet 1 Medium = 3 distinct findings, all adjudicated valid and fixed in 27005a947 (1: overwrite-guard truthiness bypass clobbered shipped art; 2: boot-scene preload regex false-passed if the call drifted into create(); 3: committed-pack test comment overstated cardinal-edge sampling as general crenellation proof + had no direct anti-crenellation assertion). Round 2: both re-reviewers (claude-sonnet-4.6, gpt-5.3-codex) confirmed all 3 fixes correct+complete with no new regressions -> clean."
+    },
+    "multi_model_review": {
+      "completed": true,
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Adjudicated by claude-opus-4.8. Round 1 spanned 4 reviewers across 3 distinct code-review models plus an independent security-review pass (clean: no secrets, gen/ untracked, 13 PNGs valid, no path traversal/SSRF/injection). The adjudicator classified all 3 findings valid/in-scope and delegated the fixes. Round 2 used 2 distinct models (claude-sonnet-4.6, gpt-5.3-codex), both clean; resolved_count >= valid_count each round; 2-round loop terminated clean (no human escalation needed)."
+    }
+  }
+}
