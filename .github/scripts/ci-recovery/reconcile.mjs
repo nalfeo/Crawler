@@ -61,7 +61,7 @@ import {
   shouldRequestReview,
   unrecordedConflictEpisode,
 } from './review-request.mjs';
-import { evaluatePhase, formatLifecycleOutcome } from './pr-lifecycle.mjs';
+import { evaluatePhase, formatLifecycleOutcome, LIFECYCLE_MARKER, parseLifecycleComment } from './pr-lifecycle.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -2036,6 +2036,27 @@ if (live && retroactivePlanIssueNumbers.size > 0) {
 // repairing, queued, ordering, merging, done, quarantined, or abandoned, and
 // emits an explicit acted-vs-no-op signal so a disabled/dry-run sweep is never
 // indistinguishable from a completed action.
+//
+// Parse the existing lifecycle comment (if any) so evaluatePhase() knows the
+// current declared phase — this feeds the QUARANTINED/ABANDONED non-blocking
+// check (D11) so the evaluator doesn't incorrectly compute QUEUED for a
+// quarantined PR with green checks.
+let currentLifecyclePhase = null;
+{
+  const lifecycleComment = comments.find(
+    (comment) =>
+      typeof comment.body === 'string' && comment.body.includes(LIFECYCLE_MARKER),
+  );
+  if (lifecycleComment) {
+    try {
+      const record = parseLifecycleComment(lifecycleComment.body);
+      currentLifecyclePhase = record?.phase ?? null;
+    } catch {
+      // Malformed lifecycle comment — treat as no phase; log and continue.
+      process.stdout.write(`lifecycle-comment-parse-error pr=#${prNumber}\n`);
+    }
+  }
+}
 const lifecyclePrFacts = {
   state: pr.state,
   draft: pr.draft,
@@ -2046,7 +2067,7 @@ const lifecyclePrFacts = {
   reviewThreads: review.threads,
   reviews: review.reviews || [],
   humanApprovalDisposition: approvalRejection,
-  lifecyclePhase: null,
+  lifecyclePhase: currentLifecyclePhase,
 };
 const lifecycleEvaluation = evaluatePhase(lifecyclePrFacts, {}, {});
 process.stdout.write(

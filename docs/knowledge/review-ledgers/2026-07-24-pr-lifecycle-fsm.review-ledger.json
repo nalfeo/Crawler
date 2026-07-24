@@ -1,0 +1,49 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "pr-lifecycle-fsm",
+  "task_title": "One authoritative PR-lifecycle state machine (Issue #1851, D1/D5/D9/D11)",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "reviewer_model": "claude-sonnet-4.6",
+      "plan_divergence": "major_fork",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "Adversarial plan review. Three alternatives enumerated: A=full rewrite, B=dual-registry, C=thin overlay. C chosen. A and B argued against: A risks breaking 618 tests; B creates synchronization bugs worse than current three-writer topology. Found 3 blocking+1 non-blocking: (1) evaluatePhase never called in production; (2) eligible() still had fingerprint gate; (3) reconcile.mjs never imported pr-lifecycle.mjs; (4) coordinator used applyLifecycleDecision with raw labels. All 4 resolved. Plan divergence: major_fork."
+    },
+    "code_review": {
+      "completed": true,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "clean": true,
+          "concerns_count": 8,
+          "resolved_count": 8,
+          "notes": "8 findings resolved: (1) applyLifecycleDecision never called - fixed; (2) D11 bypassed lifecyclePhase=null - fixed with lifecycle comment parsing; (3) ORDERING label conflict - fixed; (4) evaluateAdmission schema mismatch - fixed; (5) force-push no-op stale - fixed; (6) coordinator selectCoordination deferred to Issue 8; (7) empty train/cluster state - improved with comment parsing; (8) LIFECYCLE_MARKER missing from imports - fixed."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "completed": true,
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-4.6",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "clean": true,
+          "concerns_count": 8,
+          "valid_count": 8,
+          "resolved_count": 8,
+          "notes": "All 8 findings valid. GPT-sol and gemini-pro largely concordant (3 HIGH findings identical). All resolved in Round 1. Coordinator whoMustLandFirst() wiring deferred to Issue 8 - adjudicator assessed acceptable since no PR reaches quarantined without Issue 8 transitions."
+        }
+      ]
+    }
+  }
+}

@@ -120,10 +120,12 @@ export function unsatisfiedChecksFromRuns(checkRuns, requiredNames = DEFAULT_REQ
  * @param {string} prFacts.state - 'open' | 'closed' | 'merged'
  * @param {boolean} prFacts.draft
  * @param {boolean} [prFacts.mergeable] - true when GitHub API says PR is mergeable
+ * @param {boolean} [prFacts.hasMergeConflict] - true when PR has a merge conflict
  * @param {object[]} [prFacts.checkRuns] - check runs with {name, status, conclusion}
  * @param {object[]} [prFacts.reviewThreads] - review threads with {isResolved}
  * @param {object[]} [prFacts.reviews] - reviews, for hasSubstantiveCopilotReview
  * @param {string[]} [prFacts.requiredChecks] - required check names
+ * @param {string|null} [prFacts.humanApprovalDisposition] - non-null means approval pending
  * @returns {{ eligible: boolean, reasons: string[] }}
  */
 export function evaluateAdmission(prFacts, config = {}) {
@@ -131,11 +133,13 @@ export function evaluateAdmission(prFacts, config = {}) {
     state,
     draft,
     mergeable,
+    hasMergeConflict = false,
     checkRuns = [],
     reviewThreads = [],
     reviews = [],
     requiredChecks = config.requiredChecks || DEFAULT_REQUIRED_CHECKS,
     lifecyclePhase = null,
+    humanApprovalDisposition = null,
   } = prFacts || {};
 
   const reasons = [];
@@ -146,7 +150,9 @@ export function evaluateAdmission(prFacts, config = {}) {
 
   if (state !== 'open') reasons.push('pr-not-open');
   if (draft) reasons.push('pr-is-draft');
-  if (mergeable === false) reasons.push('not-mergeable');
+  // Accept either the GitHub API mergeable=false or a hasMergeConflict flag
+  // (used when the caller already computed the conflict state from mergeable_state).
+  if (mergeable === false || hasMergeConflict === true) reasons.push('not-mergeable');
 
   reasons.push(
     ...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks), reviews),
@@ -154,6 +160,8 @@ export function evaluateAdmission(prFacts, config = {}) {
 
   const unresolvedCount = (reviewThreads || []).filter((thread) => !thread.isResolved).length;
   if (unresolvedCount > 0) reasons.push(`unresolved-threads:${unresolvedCount}`);
+
+  if (humanApprovalDisposition) reasons.push('human-approval-pending');
 
   return { eligible: reasons.length === 0, reasons };
 }

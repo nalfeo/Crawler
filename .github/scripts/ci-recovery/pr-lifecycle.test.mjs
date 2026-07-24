@@ -348,3 +348,72 @@ test('formatRawLabelOutcome: no-op and acted variants', () => {
     'coordinator acted: pr=#42 label=ci-conflict-order-wait',
   );
 });
+
+test('D11 integration: isAdmissible rejects quarantined phase parsed from lifecycle comment', () => {
+  // This validates the full D11 path: a lifecycle comment written by
+  // applyLifecycleDecision can be parsed and fed into isAdmissible() to
+  // structurally reject a quarantined PR — no label combination needed.
+  const record = {
+    phase: PHASE.QUARANTINED,
+    prNumber: 9000,
+    headSha: HEAD,
+    baseRef: 'main',
+    reason: 'manual-quarantine',
+    updatedAt: '2026-07-24T00:00:00Z',
+  };
+  const commentBody = renderLifecycleComment(record);
+  const parsed = parseLifecycleComment(commentBody);
+  assert.equal(parsed?.phase, PHASE.QUARANTINED);
+
+  // Now feed the parsed phase into isAdmissible — even a fully green PR must fail.
+  const admission = isAdmissible(
+    greenPrFacts({ prNumber: 9000, lifecyclePhase: parsed.phase }),
+  );
+  assert.deepEqual(admission, {
+    eligible: false,
+    reasons: ['lifecycle-phase:quarantined'],
+  });
+});
+
+test('D11 integration: isAdmissible passes when no lifecycle comment exists (backwards compat)', () => {
+  // Pre-Issue-8 PRs have no lifecycle comment. lifecyclePhase=null must not block.
+  const admission = isAdmissible(greenPrFacts({ lifecyclePhase: null }));
+  assert.deepEqual(admission, { eligible: true, reasons: [] });
+});
+
+test('applyLifecycleDecision: force-push in same phase updates lifecycle comment (issue #5 fix)', async () => {
+  // A force-push that stays in the same phase (e.g., QUEUED → QUEUED after rebase)
+  // must still update the lifecycle comment so the comment's headSha stays current.
+  const comments = [];
+  const outcome = await applyLifecycleDecision({
+    prNumber: 42,
+    currentPhase: PHASE.QUEUED,
+    currentHeadSha: 'old-head',
+    targetPhase: PHASE.QUEUED,
+    headSha: 'new-head-after-force-push',
+    mode: 'live',
+    writeComment: (_, body) => comments.push(body),
+    addLabel: () => {},
+    removeLabel: () => {},
+  });
+  assert.equal(outcome.acted, true);
+  assert.equal(outcome.noOp, false);
+  assert.equal(comments.length, 1, 'lifecycle comment must be written on force-push');
+  assert.ok(String(comments[0]).includes('new-head-after-force-push'), 'comment must contain new headSha');
+});
+
+test('applyLifecycleDecision: same phase + same headSha is still a no-op', async () => {
+  const outcome = await applyLifecycleDecision({
+    prNumber: 42,
+    currentPhase: PHASE.QUEUED,
+    currentHeadSha: HEAD,
+    targetPhase: PHASE.QUEUED,
+    headSha: HEAD,
+    mode: 'live',
+    writeComment: () => assert.fail('must not write'),
+    addLabel: () => assert.fail('must not write'),
+    removeLabel: () => assert.fail('must not write'),
+  });
+  assert.equal(outcome.acted, false);
+  assert.equal(outcome.noOp, true);
+});

@@ -64,6 +64,7 @@ import {
 } from './state.mjs';
 import { humanApprovalRejection } from './human-approval.mjs';
 import { countOutstandingRecoveryRuns, resolveGlobalDispatchCaps } from '../ci-recovery/router.mjs';
+import { LIFECYCLE_MARKER, parseLifecycleComment } from '../ci-recovery/pr-lifecycle.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -214,6 +215,25 @@ async function eligible(pr) {
     ownerLogin: owner,
   });
 
+  // D11 fix (Issue #1851): read the authoritative lifecycle phase so quarantined/abandoned
+  // PRs are structurally rejected before entering the train, regardless of their labels.
+  // If no lifecycle comment exists yet (pre-Issue-8 PRs), lifecyclePhase stays null and
+  // the check is a no-op — harmless since no PR has been transitioned to quarantined yet.
+  let lifecyclePhase = null;
+  const lifecycleCommentBody = comments.find(
+    (comment) =>
+      typeof comment.body === 'string' && comment.body.includes(LIFECYCLE_MARKER),
+  );
+  if (lifecycleCommentBody) {
+    try {
+      const record = parseLifecycleComment(lifecycleCommentBody.body);
+      lifecyclePhase = record?.phase ?? null;
+    } catch {
+      // Malformed lifecycle comment — treat as no phase; log but don't throw.
+      process.stdout.write(`lifecycle-comment-parse-error pr=#${pr.number}\n`);
+    }
+  }
+
   // D1 fix (Issue #1851): evaluate admission from current live facts — no
   // state-comment fingerprint required. A green, mergeable, non-draft PR with
   // resolved threads and a substantive Copilot review is always admissible
@@ -229,7 +249,7 @@ async function eligible(pr) {
     reviewThreads: review.threads,
     reviews: review.reviews || [],
     humanApprovalDisposition: approvalRejection,
-    lifecyclePhase: null,
+    lifecyclePhase,
   };
   const admission = isAdmissible(prFacts, requiredAdmissionChecks);
   if (!admission.eligible) {

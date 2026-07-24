@@ -30,10 +30,17 @@ export const PHASE = { ...LIFECYCLE_PHASES };
 
 // The single label that encodes each phase. The lifecycle owner is the only
 // writer of these; every other machine reads them.
+//
+// NOTE: PHASE.ORDERING maps to 'ci-lifecycle-ordering', NOT 'ci-conflict-order-wait'.
+// The conflict-coordinator uses 'ci-conflict-order-wait' (ORDER_WAIT_LABEL) as its
+// own fence label; that is a coordinator sub-phase signal written via applyRawLabelDecision.
+// Using different labels prevents two-writer conflicts where the coordinator removes
+// ORDER_WAIT_LABEL without the lifecycle FSM knowing — the lifecycle comment would
+// then disagree with the actual label state.
 export const PHASE_LABELS = {
   [PHASE.REPAIRING]: 'ci-recovery-waiting',
   [PHASE.QUEUED]: 'merge-train',
-  [PHASE.ORDERING]: 'ci-conflict-order-wait',
+  [PHASE.ORDERING]: 'ci-lifecycle-ordering',
   [PHASE.MERGING]: 'merge-train',
   [PHASE.DONE]: 'merge-train-landed',
   [PHASE.QUARANTINED]: 'ci-lifecycle-quarantined',
@@ -240,10 +247,15 @@ export function parseLifecycleComment(body) {
  * A successful no-op never shares an indistinguishable "success" signal with a
  * completed action, so a disabled/dry-run sweep can never look like a completed
  * action (D-class: "green means two things").
+ *
+ * No-op requires phase AND headSha to match the current record. A force-push that
+ * keeps the same phase must still update the lifecycle comment to reflect the new
+ * head SHA, so it is treated as acted, not no-op.
  */
 export async function applyLifecycleDecision({
   prNumber,
   currentPhase,
+  currentHeadSha = null,
   targetPhase,
   blockReason = null,
   headSha,
@@ -253,7 +265,13 @@ export async function applyLifecycleDecision({
   removeLabel,
   now = new Date(),
 }) {
-  if (currentPhase === targetPhase) {
+  // True no-op: same phase AND (head SHA matches or caller didn't provide current head SHA).
+  // A force-push that stays in the same phase must still update the lifecycle comment;
+  // callers that know the current head SHA should pass it as currentHeadSha to enable this.
+  const samePhase = currentPhase === targetPhase;
+  const headShaChanged =
+    currentHeadSha != null && compact(currentHeadSha) !== compact(headSha);
+  if (samePhase && !headShaChanged) {
     return { acted: false, noOp: true, phase: currentPhase, reason: 'already-in-phase' };
   }
 
@@ -279,7 +297,7 @@ export async function applyLifecycleDecision({
   if (previousLabel && previousLabel !== nextLabel && typeof removeLabel === 'function') {
     await removeLabel(prNumber, previousLabel);
   }
-  if (nextLabel && typeof addLabel === 'function') {
+  if (nextLabel && typeof addLabel === 'function' && (!samePhase || headShaChanged)) {
     await addLabel(prNumber, nextLabel);
   }
   if (record && typeof writeComment === 'function') {
