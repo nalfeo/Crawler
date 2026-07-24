@@ -1,0 +1,115 @@
+{
+  "schema": "ci-conflict-coordinator-characterization/v1",
+  "verdict_fixtures": [
+    {
+      "id": "CC01",
+      "dClass": "D9",
+      "kind": "clusterPullRequests",
+      "input": {
+        "minimumSize": 2,
+        "pulls": [
+          {
+            "number": 10,
+            "state": "open",
+            "draft": false,
+            "ciFiles": [
+              ".github/workflows/ci.yml"
+            ]
+          },
+          {
+            "number": 11,
+            "state": "open",
+            "draft": false,
+            "ciFiles": [
+              ".github/workflows/ci.yml"
+            ]
+          },
+          {
+            "number": 20,
+            "state": "open",
+            "draft": false,
+            "ciFiles": []
+          }
+        ]
+      },
+      "expected": {
+        "clusterCount": 1,
+        "clusterMembers": [
+          10,
+          11
+        ]
+      }
+    },
+    {
+      "id": "CC02",
+      "dClass": "D9",
+      "kind": "selectCoordination",
+      "input": {
+        "rankedPulls": [
+          {
+            "number": 10,
+            "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "number": 11,
+            "headSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "proofs": [
+          {
+            "number": 10,
+            "status": "applied"
+          },
+          {
+            "number": 11,
+            "status": "superseded"
+          }
+        ]
+      },
+      "expected": {
+        "leader": 10,
+        "active": 10,
+        "ordered": [
+          10
+        ],
+        "duplicates": [
+          11
+        ]
+      }
+    },
+    {
+      "id": "CC03",
+      "dClass": "D10",
+      "kind": "shouldDispatchActiveSlot",
+      "input": {
+        "prNumber": 10,
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "recoveryState": null,
+        "priorDispatchKey": "k1",
+        "nextKey": "k2",
+        "lastDispatchAt": null,
+        "now": "2026-01-01T00:00:00.000Z"
+      },
+      "expected": {
+        "dispatch": true
+      }
+    },
+    {
+      "id": "CC04",
+      "dClass": "D10",
+      "kind": "shouldDispatchActiveSlot",
+      "input": {
+        "prNumber": 10,
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "recoveryState": null,
+        "priorDispatchKey": "k1",
+        "nextKey": "k1",
+        "lastDispatchAt": "2026-01-01T00:00:00.000Z",
+        "now": "2026-01-01T00:10:00.000Z"
+      },
+      "expected": {
+        "dispatch": false
+      }
+    }
+  ]
+}
