@@ -1,0 +1,52 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "ai-settlement-maintenance-planner",
+  "task_title": "AI settlement maintenance planner",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck review of the settlement-maintenance planner plan (APPROVE WITH CHANGES). 2 blocking + 2 non-blocking issues, all resolved: (1) renamed EQUIPMENT_ACTION_CAP to EQUIPMENT_LOOP_CANDIDATE_CAP since it bounds candidates evaluated per-visit, not total mutations; (2) implemented defer-then-retry-once for achievement/boss-chest claims so a bag-full grantFailed can retry after the equipment loop frees bag capacity in the same visit (new regression test proves this); (3, non-blocking, accepted as a documented tradeoff) path-dependent affinity weights across equipment-loop iterations; (4, non-blocking) a single failed purchase/equip previously aborted the whole equipment loop via 'exhausted', fixed with a this-visit blacklist-and-continue pattern in runEquipmentLoop plus a new regression test proving a failed candidate does not block a later positive-utility candidate. 2 alternatives enumerated and argued against: (a) a full combinatorial loadout search across all bag/shop candidates — rejected as not cheaply bounded/deterministic enough for a per-tick AI system; (b) LLM-driven purchase/equip decisions — rejected outright, the project bans LLM-as-judge/non-deterministic control for runtime AI systems."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.7"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "1 Critical finding: claimed isInSafeContext (RoomRole.SAFE only) never passes for a real Floor 2 settlement room (generated as RoomRole.SETTLEMENT), so equips/purchases would never execute live, with gold spent before the equip failed. Investigated via a corrected probe (the original probe read a stale local floorMap reference instead of re-reading world.floorMap, which initializeFloor2Scenario regenerates internally) and confirmed a FALSE POSITIVE as originally raised: prepareSettlementMapAndPlacement retags the settlement room(s) RoomRole.SETTLEMENT -> RoomRole.SAFE during the real initializeFloor2Scenario boot sequence, before the player can ever reach the settlement. Converted the probe into a permanent regression test (tests/game/settlement-maintenance-planner-safe-context.test.ts) proving both the retagging and a full end-to-end equip through the real boot path. Also found and fixed a genuine related low-severity lab-only gap: settlement-maintenance-planner-lab never called safeRoomSystem(world), so world.playerInSafeRoom was never set and the lab's Run Planner button silently no-oped even standing in a real SAFE room."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5 (self-adjudicated in-session with full context of all 4 raw reports)",
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6",
+            "gpt-5.3-codex",
+            "gemini-3.1-pro-preview",
+            "gpt-5.4 (security)"
+          ],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "gemini-3.1-pro-preview (code-review): clean, no issues, independently re-verified the safe-context false-positive resolution and the lab fix. gpt-5.4 (security-review): no security vulnerabilities found (duplicate-claim/double-spend, affordability/capacity bypass, direct-mutation, determinism all reviewed). claude-sonnet-4.6 (code-review): 1 valid finding -- committed ledger scaffold still empty/invalid per `review:ledger -- validate` (expected at time of review; resolved by completing this ledger). gpt-5.3-codex (code-review): 1 valid-at-time-of-review finding -- a just-added regression test for the blacklist-and-continue fix hard-coded which of two shop offers would rank top, which was wrong for the actual utility scores (boots outranked helm, not the reverse) and failed reliably. Resolved by rewriting the test's assertions to be order-agnostic: it now locates whichever offer failed via the recorded skip decision and asserts the OTHER offer was purchased+equipped, regardless of ranking direction; re-priced both offers to 5g so cost does not dominate the utility comparison. Verified: tsc --noEmit clean, full planner test suite 18/18 passing, npm run verify:fast passed cleanly after the fix."
+        }
+      ]
+    }
+  }
+}
