@@ -1,0 +1,672 @@
+/**
+ * Reconcile-queue: the hourly acceptance path that lands durable sprite edits
+ * accumulated on the long-lived `assets/queue` branch back into `main`.
+ *
+ * Why this exists (PR2 of the durable-asset-queue feature): PR1's queue-commit
+ * primitive makes every approve/edit/revert instantly durable on the remote
+ * `assets/queue` branch, but nothing integrates that branch into the shipped
+ * game on `main`. This reconciler is the automated cron that opens/updates ONE
+ * art-only PR and arms auto-merge, so queued edits reach `main` on a cadence.
+ *
+ * Architecture (chosen over a direct `assets/queue → main` PR after an
+ * adversarial plan review flagged a head-drift TOCTOU — see
+ * `docs/knowledge/adr/2026-07-24-sprite-queue-reconciler.md`):
+ *
+ *   `assets/queue` is a HIGH-CHURN, mutable ref (it takes every editor save), so
+ *   arming auto-merge directly on it is unsafe: a save that lands in the merge
+ *   window would ride the armed merge without ever passing the guard. Instead,
+ *   each cycle we HARVEST queue's art surface onto CURRENT `origin/main` in a
+ *   throwaway detached worktree, commit, and force-update a SOLE-WRITER,
+ *   bot-owned promotion branch (`assets/promote`). The PR is `assets/promote →
+ *   main`; auto-merge is armed on THAT. Because:
+ *     - the reconciler is the only writer of `assets/promote` (single CI
+ *       `concurrency:` lane) and only ever force-updates it to a commit it just
+ *       built + guard-validated, and
+ *     - the promotion commit is built directly ON current `origin/main` by
+ *       overlaying only the art-surface allowlist,
+ *   an untrusted push to `assets/queue` can never ride the armed merge, and the
+ *   promotion diff is art-surface-only BY CONSTRUCTION (two-dot == three-dot
+ *   since merge-base(main, promote) == main, so the guarded diff is exactly what
+ *   the squash-merge lands). The trust boundary is enforced on the diff CONTENT
+ *   the reconciler produces, not on any author identity.
+ *
+ * The trust-boundary guard re-validates the staged diff as DEFENSE-IN-DEPTH: if
+ * it ever observes a path outside the art surface (which should be impossible by
+ * construction — a path-escape or bug), it REFUSES to push/arm and escalates
+ * rather than landing a non-art change to `main` via the PAT.
+ *
+ * `assets/queue` is DELIBERATELY never reset here. It churns during the ~1h
+ * cycle; resetting it to `main` post-merge would silently drop edits that landed
+ * after the harvest snapshot — the exact loss vector this feature eliminates.
+ * The no-op condition (queue's art already present in main) makes an explicit
+ * reset unnecessary: once editing stops, the delta goes to zero and the
+ * reconciler no-ops. (Deferred tidy-up is PR3.)
+ *
+ * This module is PURE (IO-free): every effect is driven through injected `deps`
+ * (an exec runner + temp-dir/lock hooks + an injected `now`), so it is unit
+ * tested against a real temp git repo with a mocked `gh`, fully deterministic
+ * (no `Date.now()` / `Math.random()`).
+ *
+ * Unlike the queue-commit primitive, this reconciler does NOT refuse under `CI`
+ * — running in CI (the hourly workflow) is the entire point of PR2.
+ */
+
+import { ASSET_SURFACE_PATHS, type Exec } from './checkin.js';
+
+/** How the reconcile cycle resolved. */
+export type ReconcileStatus = 'noop' | 'pr-open';
+
+export class ReconcileError extends Error {
+  constructor(
+    readonly kind: 'git-failed' | 'gh-failed' | 'untrusted-diff' | 'invalid-state',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ReconcileError';
+  }
+}
+
+export interface ReconcileResult {
+  readonly status: ReconcileStatus;
+  /** Promotion branch the PR is opened from. */
+  readonly promoteBranch: string;
+  /** Open PR number when `status === 'pr-open'`. */
+  readonly prNumber?: number;
+  /** True when this cycle CREATED the PR (vs. updated an existing open one). */
+  readonly created?: boolean;
+  /** True once `gh pr merge --auto --squash` was armed. */
+  readonly armed?: boolean;
+  /** The promotion commit SHA force-pushed to the promote branch. */
+  readonly promoteCommit?: string;
+  /** Art-surface paths that differ between queue and main (the batch). */
+  readonly changedPaths?: readonly string[];
+}
+
+export interface ReconcileDeps {
+  /** Runs an external command (git + gh). */
+  readonly exec: Exec;
+  /** Create + return an empty temp directory for the throwaway worktree. */
+  readonly makeTempDir: () => Promise<string>;
+  /** Remove a directory tree (best-effort cleanup). */
+  readonly removeDir: (dir: string) => Promise<void>;
+  /**
+   * Acquire + release a cross-process lock spanning the cycle's git work.
+   * Reuses the SAME repo-keyed check-in file lock the queue-commit primitive
+   * holds, so a reconcile cycle and a concurrent dev-box queue-commit never race
+   * on fetch/worktree/ref operations in the same clone. Defaults to a no-op
+   * passthrough. NOTE: this is a same-clone lock only; cross-RUNNER serialization
+   * (two GitHub Actions runners) is provided by the workflow's `concurrency:`.
+   */
+  readonly withCrossProcessLock?: <T>(fn: () => Promise<T>) => Promise<T>;
+  /** Injected clock for the PR body timestamp. Keeps the core deterministic. */
+  readonly now: () => Date;
+  /** Env (unused for CI-refusal — reconciler runs in CI by design). */
+  readonly env?: NodeJS.ProcessEnv;
+}
+
+export interface ReconcileOptions {
+  /** Remote name. Defaults to `origin`. */
+  readonly remote?: string;
+  /** The persistent, high-churn source queue branch. Defaults to `assets/queue`. */
+  readonly queueBranch?: string;
+  /** The sole-writer promotion branch the PR is opened from. Defaults to `assets/promote`. */
+  readonly promoteBranch?: string;
+  /** Integration branch. Defaults to `main`. */
+  readonly baseBranch?: string;
+  /** `owner/repo` for `gh --repo`. Defaults to `gh`'s inferred repo when omitted. */
+  readonly repo?: string;
+}
+
+const DEFAULT_REMOTE = 'origin';
+const DEFAULT_QUEUE_BRANCH = 'assets/queue';
+const DEFAULT_PROMOTE_BRANCH = 'assets/promote';
+const DEFAULT_BASE_BRANCH = 'main';
+
+/** git args that write to a specific worktree/cwd. */
+async function runGit(
+  exec: Exec,
+  cwd: string,
+  args: readonly string[],
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  return exec('git', args, { cwd });
+}
+
+/** Throwing git: raises `ReconcileError('git-failed')` on a non-zero exit. */
+async function mustGit(exec: Exec, cwd: string, args: readonly string[]): Promise<string> {
+  const result = await runGit(exec, cwd, args);
+  if (result.code !== 0) {
+    throw new ReconcileError(
+      'git-failed',
+      `git ${args.join(' ')} failed (exit ${result.code}): ${result.stderr || result.stdout}`,
+    );
+  }
+  return result.stdout;
+}
+
+/** Throwing gh: raises `ReconcileError('gh-failed')` on a non-zero exit. */
+async function mustGh(exec: Exec, cwd: string, args: readonly string[]): Promise<string> {
+  const result = await exec('gh', args, { cwd });
+  if (result.code !== 0) {
+    throw new ReconcileError(
+      'gh-failed',
+      `gh ${args.join(' ')} failed (exit ${result.code}): ${result.stderr || result.stdout}`,
+    );
+  }
+  return result.stdout;
+}
+
+/**
+ * Is `p` inside the art-surface allowlist? A path is trusted iff it is exactly
+ * `src/shared/data/sprite-catalog.json` OR lives under `public/assets/generated/`.
+ * Matches `detect-art-only.sh` (and PR1's `ASSET_SURFACE_PATHS`) EXACTLY so the
+ * guard and the CI art-only classifier agree by construction — a promote→main
+ * diff the guard accepts is precisely one `ci.yml` classifies `art_only=true`.
+ *
+ * Path handling is strict: reject absolute paths, backslashes, and any `.`/`..`
+ * segment so a crafted entry can never escape the allowlist via traversal.
+ */
+export function isArtSurfacePath(p: string): boolean {
+  if (typeof p !== 'string' || p.trim() === '') return false;
+  if (p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.includes('\\')) return false;
+  const segments = p.split('/');
+  if (segments.some((s) => s === '' || s === '.' || s === '..')) return false;
+  for (const surface of ASSET_SURFACE_PATHS) {
+    // A surface entry is a single file (e.g. the catalog JSON) or a directory
+    // (e.g. `public/assets/generated`). File entries match EXACTLY; directory
+    // entries match DESCENDANTS ONLY. Never accept a bare directory path as
+    // art: `git diff --name-only` reports the root path when a tree entry
+    // changes type, so exact-matching `public/assets/generated` would let a
+    // queue tip that replaces the whole directory with a file/symlink slip past
+    // the guard. Requiring a descendant closes that type-change escape.
+    if (surface.endsWith('.json')) {
+      if (p === surface) return true;
+    } else if (p.startsWith(`${surface}/`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Trust-boundary guard (security-critical, defense-in-depth). Given the set of
+ * paths a promotion commit changes vs `main`, throw `untrusted-diff` unless
+ * EVERY path is in the art-surface allowlist. Returns the (validated) paths.
+ *
+ * By construction the promotion commit only overlays the art surface, so this
+ * should never reject — a rejection means a path-escape or bug produced a
+ * non-art path, in which case REFUSING to push/arm (and escalating) is the
+ * correct fail-closed response: the reconciler must only ever land art on
+ * `main` via the PAT.
+ */
+export function assertArtSurfaceOnly(changedPaths: readonly string[]): readonly string[] {
+  const offenders = changedPaths.filter((p) => !isArtSurfacePath(p));
+  if (offenders.length > 0) {
+    throw new ReconcileError(
+      'untrusted-diff',
+      `Refusing to arm auto-merge: the promotion diff touches ${offenders.length} path(s) ` +
+        `outside the art-surface allowlist (${ASSET_SURFACE_PATHS.join(', ')}): ` +
+        `${offenders.join(', ')}. This should be impossible by construction; refusing ` +
+        `to land a non-art change on ${DEFAULT_BASE_BRANCH} and escalating.`,
+    );
+  }
+  return changedPaths;
+}
+
+/** Split porcelain `--name-only` output into a trimmed, non-empty path list. */
+function parseNameOnly(stdout: string): string[] {
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+}
+
+/** Destination tree-entry modes the reconciler will allow onto `main`. */
+const ALLOWED_DST_MODES = new Set([
+  '100644', // regular non-executable file (PNG / manifest.json / catalog.json)
+  '000000', // deletion (removes art only — can never inject code)
+]);
+
+/**
+ * Mode-aware trust-boundary guard (security-critical, defense-in-depth).
+ *
+ * `git diff --name-only` reports only pathnames, so a tree-entry TYPE change at
+ * an allowlisted path — e.g. `public/assets/generated/manifest.json` turned into
+ * a symlink (mode 120000) or a submodule/gitlink (160000), or a PNG made
+ * executable (100755) — passes a path-only allowlist check yet would land a
+ * non-blob / non-art entry on `main`. This inspects the staged **raw** diff and
+ * refuses any changed entry whose DESTINATION mode is not a plain regular file
+ * (a pure deletion is allowed — it can only remove art, never inject code), in
+ * addition to re-enforcing the path allowlist. Parse a `git diff --cached --raw
+ * --no-renames -c core.quotePath=false` (vs the worktree HEAD == origin/main)
+ * `stdout`.
+ */
+export function assertArtSurfaceModes(rawStdout: string): void {
+  for (const raw of rawStdout.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    if (line === '' || !line.startsWith(':')) continue;
+    // Format (no -z, renames disabled): `:<srcMode> <dstMode> <srcSha> <dstSha> <status>\t<path>`
+    const tabIdx = line.indexOf('\t');
+    if (tabIdx < 0) {
+      throw new ReconcileError(
+        'untrusted-diff',
+        `Refusing to arm auto-merge: unparseable staged raw-diff line "${line}".`,
+      );
+    }
+    const fields = line.slice(1, tabIdx).trim().split(/\s+/);
+    const dstMode = fields[1];
+    const status = fields[4] ?? '?';
+    // A rename/copy would emit two tab-separated paths; renames are disabled, so
+    // take the last tab field as the (destination) path defensively.
+    const path =
+      line
+        .slice(tabIdx + 1)
+        .split('\t')
+        .pop()
+        ?.trim() ?? '';
+    if (path === '' || !isArtSurfacePath(path)) {
+      throw new ReconcileError(
+        'untrusted-diff',
+        `Refusing to arm auto-merge: staged raw diff touches a non-art path "${path}". ` +
+          `This should be impossible by construction; refusing to land it on ` +
+          `${DEFAULT_BASE_BRANCH} and escalating.`,
+      );
+    }
+    if (dstMode === undefined || !ALLOWED_DST_MODES.has(dstMode)) {
+      throw new ReconcileError(
+        'untrusted-diff',
+        `Refusing to arm auto-merge: art path "${path}" has a non-regular-file ` +
+          `destination mode ${dstMode ?? '?'} (status ${status}). Symlinks, gitlinks, ` +
+          `and executables are refused — only plain art files may land on ` +
+          `${DEFAULT_BASE_BRANCH}. Escalating.`,
+      );
+    }
+  }
+}
+
+/** Build the (deterministic) PR title + body for the current batch. */
+function buildPrContent(
+  changedPaths: readonly string[],
+  promoteCommit: string,
+  now: Date,
+): { title: string; body: string } {
+  const iso = now.toISOString();
+  const count = changedPaths.length;
+  const title = `chore(assets): reconcile queued sprite edits (${count} art path${count === 1 ? '' : 's'})`;
+  const list = changedPaths.map((p) => `- \`${p}\``).join('\n');
+  const body = [
+    'Automated art-only reconciliation of the durable `assets/queue` branch into',
+    '`main` (durable sprite-edit persistence, PR2).',
+    '',
+    `- Promotion branch: \`${DEFAULT_PROMOTE_BRANCH}\` @ \`${promoteCommit}\``,
+    `- Batched at: ${iso}`,
+    '- Diff is art-surface-only **by construction** (harvested onto current',
+    '  `main`); the trust-boundary guard re-validated it before arming auto-merge.',
+    '',
+    '### Changed art-surface paths',
+    '',
+    list,
+    '',
+    '<sub>Opened by the hourly sprite-queue reconciler',
+    '(`scripts/sprites/reconcile-queue.ts`). See',
+    'ADR `2026-07-24-sprite-queue-reconciler`.</sub>',
+    '',
+  ].join('\n');
+  return { title, body };
+}
+
+/** Common `gh` args that pin `--repo` when supplied. */
+function repoArgs(repo: string | undefined): string[] {
+  return repo ? ['--repo', repo] : [];
+}
+
+/**
+ * Find the single open PR for `promoteBranch → baseBranch` **in the base repo**.
+ * Returns its number, or null when none is open.
+ *
+ * SECURITY: `gh pr list --head <branch>` filters by branch NAME only — it cannot
+ * scope the head to the base repository, so a fork PR whose head branch is also
+ * named `assets/promote` would otherwise be matched, edited, and armed for
+ * `--auto --squash` on a foreign (unguarded) diff. We therefore request
+ * `isCrossRepository` + `headRefName` and DISCARD any cross-repository PR (and
+ * any whose head branch name does not exactly match), so only a same-repo
+ * `assets/promote → main` PR — the one the reconciler itself owns — is ever
+ * reused/armed.
+ */
+async function findOpenPromotePr(
+  exec: Exec,
+  cwd: string,
+  repo: string | undefined,
+  promoteBranch: string,
+  baseBranch: string,
+): Promise<number | null> {
+  const out = await mustGh(exec, cwd, [
+    'pr',
+    'list',
+    ...repoArgs(repo),
+    '--head',
+    promoteBranch,
+    '--base',
+    baseBranch,
+    '--state',
+    'open',
+    '--json',
+    'number,headRefName,isCrossRepository',
+    '--limit',
+    '100',
+  ]);
+  let parsed: Array<{ number?: number; headRefName?: string; isCrossRepository?: boolean }>;
+  try {
+    parsed = JSON.parse(out.trim() || '[]') as Array<{
+      number?: number;
+      headRefName?: string;
+      isCrossRepository?: boolean;
+    }>;
+  } catch (err) {
+    throw new ReconcileError(
+      'gh-failed',
+      `Could not parse gh pr list JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const numbers = parsed
+    .filter((p) => p.isCrossRepository !== true && p.headRefName === promoteBranch)
+    .map((p) => p.number)
+    .filter((n): n is number => typeof n === 'number');
+  // Deterministic: pick the lowest-numbered open PR if (unexpectedly) more than
+  // one exists, so re-runs converge on the same PR instead of flapping.
+  numbers.sort((a, b) => a - b);
+  return numbers.length > 0 ? numbers[0]! : null;
+}
+
+/**
+ * Run one reconcile cycle. See the module doc for the full architecture.
+ * Never mutates any local working branch/index/HEAD (all work happens in a
+ * throwaway detached worktree); the only remote mutation is a force-update of
+ * the sole-writer promotion branch + PR open/edit/arm.
+ */
+export async function runReconcile(
+  repoRoot: string,
+  deps: ReconcileDeps,
+  options: ReconcileOptions = {},
+): Promise<ReconcileResult> {
+  const remote = options.remote ?? DEFAULT_REMOTE;
+  const queueBranch = options.queueBranch ?? DEFAULT_QUEUE_BRANCH;
+  const promoteBranch = options.promoteBranch ?? DEFAULT_PROMOTE_BRANCH;
+  const baseBranch = options.baseBranch ?? DEFAULT_BASE_BRANCH;
+  const repo = options.repo;
+  const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
+
+  return withLock(async () => {
+    // 1. Cold start: if the queue branch does not exist yet, there is nothing to
+    //    reconcile. `ls-remote` cleanly distinguishes "absent" (empty stdout)
+    //    from a real network/auth error (non-zero exit).
+    const lsr = await runGit(deps.exec, repoRoot, ['ls-remote', '--heads', remote, queueBranch]);
+    if (lsr.code !== 0) {
+      throw new ReconcileError(
+        'git-failed',
+        `git ls-remote --heads ${remote} ${queueBranch} failed (exit ${lsr.code}): ${
+          lsr.stderr || lsr.stdout
+        }`,
+      );
+    }
+    if (lsr.stdout.trim() === '') {
+      return { status: 'noop', promoteBranch };
+    }
+
+    // 2. Fetch the branches we compare/branch from. The promote branch may not
+    //    exist yet (first run), so probe it before adding it to the fetch set.
+    const promoteLsr = await runGit(deps.exec, repoRoot, [
+      'ls-remote',
+      '--heads',
+      remote,
+      promoteBranch,
+    ]);
+    if (promoteLsr.code !== 0) {
+      throw new ReconcileError(
+        'git-failed',
+        `git ls-remote --heads ${remote} ${promoteBranch} failed (exit ${promoteLsr.code}): ${
+          promoteLsr.stderr || promoteLsr.stdout
+        }`,
+      );
+    }
+    const promoteExists = promoteLsr.stdout.trim() !== '';
+    const fetchRefs = [queueBranch, baseBranch];
+    if (promoteExists) fetchRefs.push(promoteBranch);
+    await mustGit(deps.exec, repoRoot, ['fetch', '--no-tags', remote, ...fetchRefs]);
+
+    const queueRef = `${remote}/${queueBranch}`;
+    const baseRef = `${remote}/${baseBranch}`;
+    const promoteRef = promoteExists ? `${remote}/${promoteBranch}` : null;
+
+    // 3. Do-we-act detection: TWO-DOT, art-surface-restricted comparison. Two-dot
+    //    (direct tree compare of the two tips, not merge-base three-dot) is
+    //    REQUIRED here: after a promote PR squash-merges, main gains the art but
+    //    the merge-base of main and queue is still pre-squash, so a three-dot
+    //    diff would still show the already-landed art forever (PR reopens in a
+    //    loop). Two-dot correctly reports "queue's art already in main" ⇒ noop.
+    const delta = await mustGit(deps.exec, repoRoot, [
+      'diff',
+      '--name-only',
+      baseRef,
+      queueRef,
+      '--',
+      ...ASSET_SURFACE_PATHS,
+    ]);
+    const queueVsMainArt = parseNameOnly(delta);
+    if (queueVsMainArt.length === 0) {
+      // Queue's art surface already matches main (steady state after a merge, or
+      // no pending edits). Deliberately DO NOT reset assets/queue (data-loss
+      // trap): it keeps accumulating and the next non-empty delta re-harvests.
+      return { status: 'noop', promoteBranch };
+    }
+
+    // 4. Harvest queue's art surface onto CURRENT main in a throwaway worktree.
+    const worktree = await deps.makeTempDir();
+    let promoteCommit: string;
+    let changedPaths: readonly string[];
+    try {
+      // Detached checkout of current main; we push the promote ref by refspec and
+      // never check the promote branch out by name, so there is no
+      // "branch already checked out" clash with the caller's worktree.
+      await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
+
+      // Overlay ONLY the art surface from the queue tip. `git checkout <ref> --
+      // <paths>` is a whole-surface harvest of queue's already-unioned art: it
+      // takes queue's manifest/catalog/PNGs verbatim (queue is the art source of
+      // truth; PR1 already unioned concurrent edits when committing to it), and
+      // the fixed path allowlist means nothing outside the art surface can be
+      // pulled in. (This is why `copyArtSurface` — a per-asset union needing a
+      // discrete asset list + materialized src — is not used here.)
+      await mustGit(deps.exec, worktree, ['checkout', queueRef, '--', ...ASSET_SURFACE_PATHS]);
+      await mustGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
+
+      // No-op guard: if nothing staged, main already carries identical art bytes
+      // (the two-dot path delta can list paths whose CONTENT is unchanged after
+      // normalization — e.g. line-ending or ordering — so re-check post-add).
+      const staged = await runGit(deps.exec, worktree, ['diff', '--cached', '--quiet']);
+      if (staged.code === 0) {
+        return { status: 'noop', promoteBranch };
+      }
+
+      // The authoritative set of paths this promotion will change vs main.
+      const stagedNames = await mustGit(deps.exec, worktree, ['diff', '--cached', '--name-only']);
+      changedPaths = parseNameOnly(stagedNames);
+
+      // 5. TRUST-BOUNDARY GUARD (defense-in-depth). Refuse + escalate on ANY
+      //    non-art path before we commit/push/arm.
+      assertArtSurfaceOnly(changedPaths);
+
+      // 5b. MODE-AWARE guard: `--name-only` cannot see a tree-entry TYPE change
+      //     (file → symlink/gitlink/executable) at an allowlisted path, which
+      //     would land a non-blob entry on main. Inspect the staged raw diff and
+      //     refuse any non-regular-file destination mode. `--no-renames` +
+      //     `core.quotePath=false` keep the output deterministic and unescaped.
+      const stagedRaw = await mustGit(deps.exec, worktree, [
+        '-c',
+        'core.quotePath=false',
+        'diff',
+        '--cached',
+        '--raw',
+        '--no-renames',
+      ]);
+      assertArtSurfaceModes(stagedRaw);
+
+      // Deterministic commit message (injected clock).
+      const message =
+        `chore(assets): reconcile queued sprite edits\n\n` +
+        `Art-surface harvest of ${queueBranch} onto ${baseBranch} ` +
+        `(${changedPaths.length} path(s)).`;
+      await mustGit(deps.exec, worktree, ['commit', '--no-verify', '-m', message]);
+      promoteCommit = (await mustGit(deps.exec, worktree, ['rev-parse', 'HEAD'])).trim();
+
+      // 6. Publish the promotion commit to the sole-writer promote branch.
+      //    - First creation (ref absent): a PLAIN push — there is nothing to
+      //      clobber, and it fails loudly if the ref raced into existence.
+      //    - Update (ref present): `--force-with-lease` with an EXPLICIT expected
+      //      OID (the tip we fetched) makes the force-update a safe
+      //      compare-and-swap. The reconciler is the ONLY writer (workflow
+      //      `concurrency:` single lane), so a lease miss means an unexpected
+      //      concurrent writer — fail loudly rather than clobber.
+      if (promoteExists) {
+        const expected = promoteRef
+          ? (await mustGit(deps.exec, repoRoot, ['rev-parse', promoteRef])).trim()
+          : '';
+        await mustGit(deps.exec, repoRoot, [
+          'push',
+          '--no-verify',
+          `--force-with-lease=refs/heads/${promoteBranch}:${expected}`,
+          remote,
+          `${promoteCommit}:refs/heads/${promoteBranch}`,
+        ]);
+      } else {
+        await mustGit(deps.exec, repoRoot, [
+          'push',
+          '--no-verify',
+          remote,
+          `${promoteCommit}:refs/heads/${promoteBranch}`,
+        ]);
+      }
+    } finally {
+      // Cleanup must never mask the primary result/error. `deps.removeDir` may
+      // throw synchronously (rmSync + Windows EPERM on a transiently-locked
+      // worktree dir), so wrap both cleanup calls.
+      try {
+        await runGit(deps.exec, repoRoot, ['worktree', 'remove', worktree, '--force']);
+      } catch {
+        /* best-effort */
+      }
+      try {
+        await deps.removeDir(worktree);
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    // 7. Open or update the ONE promote → main PR (idempotent; never duplicate).
+    const { title, body } = buildPrContent(changedPaths, promoteCommit, deps.now());
+    const existing = await findOpenPromotePr(deps.exec, repoRoot, repo, promoteBranch, baseBranch);
+    let prNumber: number;
+    let created: boolean;
+    if (existing === null) {
+      // Create. Handle the create-race (a concurrent run or a manual dispatch
+      // opened it between our list and create) by re-querying and reusing.
+      const createResult = await deps.exec(
+        'gh',
+        [
+          'pr',
+          'create',
+          ...repoArgs(repo),
+          '--head',
+          promoteBranch,
+          '--base',
+          baseBranch,
+          '--title',
+          title,
+          '--body',
+          body,
+        ],
+        { cwd: repoRoot },
+      );
+      if (createResult.code === 0) {
+        const reQueried = await findOpenPromotePr(
+          deps.exec,
+          repoRoot,
+          repo,
+          promoteBranch,
+          baseBranch,
+        );
+        if (reQueried === null) {
+          throw new ReconcileError(
+            'gh-failed',
+            `gh pr create reported success but no open ${promoteBranch} → ${baseBranch} PR was found.`,
+          );
+        }
+        prNumber = reQueried;
+        created = true;
+      } else {
+        // Create failed — most commonly because a PR already exists (race). Fall
+        // back to re-query + reuse; only if there is STILL no open PR is this a
+        // real failure.
+        const reQueried = await findOpenPromotePr(
+          deps.exec,
+          repoRoot,
+          repo,
+          promoteBranch,
+          baseBranch,
+        );
+        if (reQueried === null) {
+          throw new ReconcileError(
+            'gh-failed',
+            `gh pr create failed (exit ${createResult.code}) and no open PR exists: ${
+              createResult.stderr || createResult.stdout
+            }`,
+          );
+        }
+        prNumber = reQueried;
+        created = false;
+      }
+    } else {
+      // Update the existing open PR's title/body to describe the current batch.
+      await mustGh(deps.exec, repoRoot, [
+        'pr',
+        'edit',
+        String(existing),
+        ...repoArgs(repo),
+        '--title',
+        title,
+        '--body',
+        body,
+      ]);
+      prNumber = existing;
+      created = false;
+    }
+
+    // 8. Arm auto-merge (squash). Idempotent: re-arming an already-armed PR is a
+    //    no-op on GitHub's side. `--match-head-commit <promoteCommit>` makes the
+    //    arm ABORT if the promote head SHA has drifted since we pushed it —
+    //    arm-time drift defense. NOTE: this validates only at ARM time, not at
+    //    the eventual merge; full merge-time protection requires a branch ruleset
+    //    restricting `assets/promote` pushes to the reconciler identity (see the
+    //    ADR Risks section). The sole-writer promote branch + single concurrency
+    //    lane is the primary guarantee here.
+    await mustGh(deps.exec, repoRoot, [
+      'pr',
+      'merge',
+      String(prNumber),
+      ...repoArgs(repo),
+      '--auto',
+      '--squash',
+      '--match-head-commit',
+      promoteCommit,
+    ]);
+
+    return {
+      status: 'pr-open',
+      promoteBranch,
+      prNumber,
+      created,
+      armed: true,
+      promoteCommit,
+      changedPaths,
+    };
+  });
+}
