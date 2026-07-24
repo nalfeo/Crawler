@@ -59,4 +59,17 @@ describe('BootScene generated sprite preload gate', () => {
   it('starts the main game from the manifest-fetch failure path', () => {
     expect(source).toMatch(/catch \(err\) \{[\s\S]*?this\.startMainGame\(\);[\s\S]*?\}/);
   });
+
+  // Render-fix linchpin: terrain-pack textures must be queued in preload() so
+  // they are resident before MainGameScene bakes terrain. Without this call a
+  // pack-using floor (Floor 2 → industrial-cave) silently falls through the
+  // renderer's textures.exists() guard to the legacy tileset and renders ZERO
+  // pack tiles. `preloadTerrainPacks` itself is covered by
+  // terrain-pack-visuals.test.ts; this guards that BootScene actually invokes it.
+  it('queues terrain-pack textures in preload() (Floor 2 pack render fix)', () => {
+    expect(source).toMatch(
+      /import \{[\s\S]*?preloadTerrainPacks[\s\S]*?\} from '\.\.\/sprites\/terrain-pack-visuals\.js';/,
+    );
+    expect(source).toMatch(/preload\(\)[\s\S]*?preloadTerrainPacks\(this\.load\)/);
+  });
 });

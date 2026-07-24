@@ -67,6 +67,7 @@ export function createFloorMainSceneOptions(
   const floor1Callbacks = floorId === 'floor1';
   return {
     floorId,
+    terrainPackId: manifest.terrainPackId,
     lightingConfig: { ambient: manifest.lighting.ambient },
     configureWorld: (world: GameWorld, playerEid: number) =>
       scenario.configureWorld(world, playerEid, initializationOptions),

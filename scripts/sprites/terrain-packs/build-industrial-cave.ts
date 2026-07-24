@@ -1,20 +1,24 @@
 /**
  * Deterministic build script for the authored "industrial-cave" terrain pack.
  *
- * Produces (all original, procedurally-generated art — no external assets):
+ * Produces the deterministic PROCEDURAL PLACEHOLDER art (all original — no
+ * external assets):
  *   - A 512x384 (8x6 grid, 64px cells) wall autotile atlas covering all 47
  *     canonical blob47 masks, composed from a 20-quadrant kit.
  *   - 4 floor-pool variants + 4 corridor-pool variants (64x64 each).
  *   - 4 door images: open/closed x horizontal/vertical (64x64 each).
  *   - The pack manifest JSON consumed by `src/shared/terrain-pack-registry.ts`.
  *
+ * IMPORTANT: the industrial-cave art that actually SHIPS is Azure gpt-image-1
+ * generated + composed over these procedural silhouettes (see the committed
+ * manifest provenance + session handoff), NOT the placeholder this script
+ * writes. `writeIndustrialCavePack` is therefore GUARDED so `terrain-packs:build`
+ * will not silently overwrite the shipped art. The pure `buildIndustrialCavePack`
+ * builder below is unchanged and still exercised by the deterministic-build tests.
+ *
  * Usage:
  *   npx tsx scripts/sprites/terrain-packs/build-industrial-cave.ts
  *   npm run terrain-packs:build          (builds both packs)
- *
- * Running this script is what "commits" the generated PNGs + manifest to the
- * repo — re-running it with no source changes MUST reproduce byte-identical
- * output (verified by `tests/unit/sprites/terrain-pack-build.test.ts`).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -126,11 +130,14 @@ export function buildIndustrialCavePack(): IndustrialCaveBuildResult {
     name: 'Industrial Cave',
     provenance: {
       kind: 'authored',
-      author: 'Crawler agent (procedural build script)',
+      author: 'Crawler agent (procedural placeholder build script)',
       derivationNote:
-        'Generated deterministically by scripts/sprites/terrain-packs/build-industrial-cave.ts ' +
-        'from an original 20-quadrant geometric kit (no external art); ' +
-        'rerunning the script reproduces byte-identical output.',
+        'Procedural PLACEHOLDER geometry generated deterministically by ' +
+        'scripts/sprites/terrain-packs/build-industrial-cave.ts from an original ' +
+        '20-quadrant blob47 kit (no external art); rerunning reproduces byte-identical ' +
+        'placeholder output. NOTE: the shipped industrial-cave art is Azure gpt-image-1 ' +
+        'generated (see the committed manifest provenance); this writer is guarded so it ' +
+        'will not overwrite that art.',
     },
     wallAutotile: {
       imagePath: atlasRelPath,
@@ -150,6 +157,19 @@ export function buildIndustrialCavePack(): IndustrialCaveBuildResult {
 
 /** Write the pack's PNGs to `public/` and its manifest JSON to `src/shared/data/terrain-packs/`. */
 export function writeIndustrialCavePack(repoRoot: string): void {
+  // The SHIPPED industrial-cave art is Azure gpt-image-1 generated + composed over
+  // these procedural blob47 silhouettes (see the committed manifest provenance +
+  // session handoff), NOT the procedural placeholder this script produces. Writing
+  // the placeholder would silently overwrite the generated art and revert the
+  // manifest provenance. Refuse unless explicitly forced (i.e. intentionally
+  // regenerating the procedural placeholder).
+  if (!process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE) {
+    console.warn(
+      '[industrial-cave] SKIPPED procedural write — shipped art is Azure gpt-image-1 generated. ' +
+        'Set TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE=1 to overwrite it with the procedural placeholder.',
+    );
+    return;
+  }
   const { manifest, files } = buildIndustrialCavePack();
   for (const file of files) {
     const outPath = path.join(repoRoot, 'public', ...file.relativePath.split('/'));

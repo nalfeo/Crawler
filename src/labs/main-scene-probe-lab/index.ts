@@ -168,6 +168,9 @@ interface MainSceneInternals {
     generatedCount: number;
     spriteCount: number;
     colorCount: number;
+    packWallCount: number;
+    packFloorCount: number;
+    packCorridorCount: number;
   };
   getDoorRenderSummary(): {
     closedGeneratedCount: number;
@@ -336,6 +339,16 @@ export interface TerrainRenderSummary {
   readonly spriteCount: number;
   /** Tiles drawn as a solid-color fill (no texture at all). */
   readonly colorCount: number;
+  /**
+   * WALL tiles stamped from a terrain-pack blob47 atlas frame. Non-zero only
+   * when the floor manifest wires a `terrainPackId` (Floor 2 → `industrial-cave`);
+   * the deterministic seam proving the pack renders in the REAL booted scene.
+   */
+  readonly packWallCount: number;
+  /** FLOOR tiles stamped from a terrain-pack `floorPool` variant. */
+  readonly packFloorCount: number;
+  /** CORRIDOR tiles stamped from a terrain-pack `corridorPool` variant. */
+  readonly packCorridorCount: number;
 }
 
 /**
@@ -1016,6 +1029,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         generatedCount: summary?.generatedCount ?? 0,
         spriteCount: summary?.spriteCount ?? 0,
         colorCount: summary?.colorCount ?? 0,
+        packWallCount: summary?.packWallCount ?? 0,
+        packFloorCount: summary?.packFloorCount ?? 0,
+        packCorridorCount: summary?.packCorridorCount ?? 0,
       };
     },
 
