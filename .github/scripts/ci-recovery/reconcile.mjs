@@ -1220,6 +1220,45 @@ if (
     ((pr.labels || []).some((label) => label.name === QUEUE_LABEL) ||
       shouldWaitForCiConflictOrder(pr.labels));
   if (automationLeaseStale && (prHasMergeConflict || trainShortCircuits)) {
+    // Regression fix (#1886, 2026-07-24): when the automation retry budget is
+    // exhausted (attempt >= 2, same head/fingerprint), release ATOMICALLY with a
+    // deduplicated loop incident so the failure is visible to an investigation
+    // agent. Without this, the short-circuit exit bypassed the stale-exhaustion
+    // incident path entirely, leaving exhausted locked PRs without a filed incident.
+    const stallAttempt = state.progressKey ? (state.attempt ?? 0) : 0;
+    if (stallAttempt >= 2) {
+      const exhaustedFingerprint = state.fingerprint || '';
+      if (live) {
+        try {
+          const loopResult = await fileLoopIncident({
+            request,
+            paginate,
+            token: pat,
+            owner,
+            repo,
+            prNumber,
+            headSha: pr.head.sha,
+            blockerFingerprint: exhaustedFingerprint,
+            blockers: state.blockers || [],
+            attempt: state.attempt ?? 0,
+            workflowRunUrl,
+            now,
+          });
+          process.stdout.write(
+            `loop-incident pr=#${prNumber} issue=#${loopResult.issueNumber} action=${loopResult.action} reason=conflict-or-train-short-circuit\n`,
+          );
+        } catch (err) {
+          const safeMsg = String(err.message || err)
+            .replace(/[\r\n]/g, ' ')
+            .slice(0, 500);
+          process.stderr.write(`loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`);
+        }
+      } else {
+        process.stdout.write(
+          `dry-run would-file-loop-incident pr=#${prNumber} fingerprint=${exhaustedFingerprint} reason=conflict-or-train-short-circuit\n`,
+        );
+      }
+    }
     stopIfReleaseConvergedElsewhere(await release('stale-automation-conflict-reclaim'));
     process.stdout.write(
       `released stale automation lock pr=#${prNumber} reason=conflict-or-train-short-circuit\n`,

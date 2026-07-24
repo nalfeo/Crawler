@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 149 ADR files — 106 numbered (0001–0071, with number reuse and gaps in this index — see below) + 43 date-prefixed
+- **Count:** 150 ADR files — 107 numbered (0001–0072, with number reuse and gaps in this index — see below) + 43 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -156,7 +156,8 @@ hundreds of inbound references.
 - [Generate stores the raw sheet only (Option B)](0024-generate-stores-raw-sheet-only.md)
 - [Devtools sprite workflow — 7-stage restructure](0025-workflow-7-stage-restructure.md)
 - [Multi-variant generated sprites](0028-generated-sprite-variants.md) — identity, selection, approval, and check-in.
-- [Migrate content generation to Azure AI Foundry](0033-azure-foundry-content-generation.md) — broaden model access behind the existing provider seam.
+- [Migrate content generation to Azure AI Foundry](0033-azure-foundry-content-generation.md) — **Superseded by ADR 0072.**
+- [Retire Foundry — Standardize Asset Pipeline on Azure OpenAI](0072-retire-foundry-standardize-azure-openai.md) — removes the dead `foundry` provider backend; `SUPPORTED_BACKENDS` is now `['azure-openai', 'local-a1111']`.
 - [Sprite worker poison-message handling](0037-sprite-worker-poison-message-handling.md) — bounded failures (dequeueCount cap), permanent-drop, and comment-once to stop runaway retry loops and issue-comment spam.
 - [Asset-request briefs accept rich multi-sentence text](0038-asset-request-multi-sentence-brief.md) — relax the issue/marker brief contract so multi-sentence briefs enqueue.
 - [Raise Azure Storage Queue default visibility timeout to 900s](0041-raise-queue-visibility-timeout-default.md) — a 16-cell gpt-image-1 sheet outruns the old 300s window; 900s stops false "message does not exist" acks and needless regeneration.
@@ -289,3 +290,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0066 | [Unique Equipment Schema, Acquisition, and Duplicate Policy](0066-unique-equipment-schema-and-acquisition.md)                                      | Accepted                 | 2026-07-19 |
 | 0068 | [Generator-Only Floor 2 Equipment Catalog Boundary](0068-generator-only-floor2-equipment-catalog-boundary.md)                                      | Accepted                 | 2026-07-22 |
 | 0071 | [Floor 3 — Companion League (commander / auto-battler floor)](0071-floor3-companion-league.md)                                                     | Proposed                 | 2026-07-24 |
+| 0072 | [Retire Foundry — Standardize Asset Pipeline on Azure OpenAI](0072-retire-foundry-standardize-azure-openai.md)                                     | Accepted                 | 2026-07-24 |

@@ -1102,9 +1102,131 @@ test('stale automation lock on a conflicted PR is reclaimed before the conflict 
   );
 });
 
+// Regression fixture for #1886 (2026-07-24): exhausted conflict short-circuit must file
+// a loop incident. Previously the conflict short-circuit path exited WITHOUT filing an
+// incident even after attempt >= 2, leaving no actionable escalation for the broken PR.
+test('exhausted stale automation lock on conflicted PR files loop incident before conflict-reclaim release', async (t) => {
+  const fingerprint = blockerFingerprint([]);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 884,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: [],
+        attempt: 2,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  let loopIncidentIssueCreated = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        mergeable: false,
+        mergeable_state: 'dirty',
+        labels: [{ name: LABEL }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 991 } }),
+    // Loop incident label creation (idempotent — success or 422).
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      status: 422,
+      body: { message: 'Validation Failed' },
+    }),
+    // Loop incident issue list (no existing incident).
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    // Loop incident issue creation.
+    [`POST /repos/${OWNER}/${REPO}/issues`]: () => {
+      loopIncidentIssueCreated = true;
+      return { body: { number: 999, html_url: `https://github.com/${OWNER}/${REPO}/issues/999` } };
+    },
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Lock still released via the conflict-reclaim path.
+  assert.match(
+    stdout,
+    /released stale automation lock pr=#42 reason=conflict-or-train-short-circuit/,
+  );
+  assert.equal(repositoryLabelExists, false);
+  // A loop incident must have been filed before the release.
+  assert.match(
+    stdout,
+    /loop-incident pr=#42 issue=#999 action=created reason=conflict-or-train-short-circuit/,
+    'must log loop-incident creation on exhausted conflict short-circuit',
+  );
+  assert.equal(
+    loopIncidentIssueCreated,
+    true,
+    'must create the loop incident issue when attempt >= 2 on a conflicted PR',
+  );
+  // The reclaim must still NOT re-dispatch @copilot.
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'must not post an @copilot dispatch comment on an exhausted conflict reclaim',
+  );
+});
+
 test('stale-automation-exhausted in dry-run logs would-file message without creating an issue', async (t) => {
   const failedCheck = {
-    id: 1,
     name: 'ci',
     status: 'completed',
     conclusion: 'failure',

@@ -8,11 +8,7 @@
     (`if ($MyInvocation.InvocationName -ne '.')`) means provisioning does NOT
     run, so we get the pure functions without touching Azure. Asserts every
     branch of Resolve-ResourceAction / Test-IsPersistentResource /
-    Assert-NotBlocked, plus the shared Azure AI Foundry catalog helpers
-    (Get-FoundryDeploymentPlan / Format-FoundryEnvBlock / Get-FoundrySecretNames,
-    dot-sourced transitively via azure-foundry-plan.ps1) and the
-    setup-azure-env.ps1 FOUNDRY_* secret-sync contract. Exits non-zero on any
-    failure.
+    Assert-NotBlocked. Exits non-zero on any failure.
 
 .EXAMPLE
     pwsh -NoProfile -File scripts/setup-azure-resources.tests.ps1
@@ -89,85 +85,6 @@ foreach ($ok in @('create', 'skip', 'recreate')) {
     catch { $threwOk = $true }
     Assert-True (-not $threwOk) "Assert-NotBlocked silent on '$ok'"
 }
-
-# ── Get-FoundryDeploymentPlan (ADR 0033, shared azure-foundry-plan.ps1) ──────
-# The plan functions are dot-sourced transitively (setup-azure-resources.ps1
-# dot-sources azure-foundry-plan.ps1); re-import explicitly so this section is
-# self-contained regardless of source order.
-. (Join-Path $PSScriptRoot 'azure-foundry-plan.ps1')
-
-$plan = Get-FoundryDeploymentPlan
-
-# Text + Vision share the gpt-4o deployment, so the catalog is THREE deployments.
-Assert-Equal 3 (@($plan.Deployments).Count) 'starter catalog -> 3 unique deployments'
-$aliases = @($plan.Deployments | ForEach-Object { $_.Alias })
-Assert-True ($aliases -contains 'gpt-image-1') 'deployments include gpt-image-1'
-Assert-True ($aliases -contains 'gpt-4o') 'deployments include gpt-4o'
-Assert-True ($aliases -contains 'gpt-4o-mini') 'deployments include gpt-4o-mini'
-Assert-Equal 1 (@($aliases | Where-Object { $_ -eq 'gpt-4o' }).Count) 'gpt-4o deployment is deduped to one entry'
-Assert-True (@($plan.Deployments | Where-Object { $_.Format -ne 'OpenAI' }).Count -eq 0) 'every deployment is OpenAI-format'
-
-# Env map: FOUNDRY_*_MODEL -> deployment alias, one entry per role.
-Assert-Equal 4 ($plan.Env.Count) 'env map exposes 4 FOUNDRY_*_MODEL vars'
-Assert-Equal 'gpt-image-1' ($plan.Env['FOUNDRY_IMAGE_MODEL']) 'image alias'
-Assert-Equal 'gpt-4o' ($plan.Env['FOUNDRY_TEXT_MODEL']) 'text alias'
-Assert-Equal 'gpt-4o' ($plan.Env['FOUNDRY_VISION_MODEL']) 'vision alias (shares text deployment)'
-Assert-Equal 'gpt-4o-mini' ($plan.Env['FOUNDRY_BRIEF_SELECTOR_MODEL']) 'brief-selector alias'
-# Mirrors the factory invariant: selector must differ from text.
-Assert-True ($plan.Env['FOUNDRY_TEXT_MODEL'] -ne $plan.Env['FOUNDRY_BRIEF_SELECTOR_MODEL']) 'text alias != selector alias'
-
-# Guard 1: text alias == selector alias must throw (factory rejects that pair).
-$badRoles = @(
-    [pscustomobject]@{ Role = 'Text'; EnvVar = 'FOUNDRY_TEXT_MODEL'; Alias = 'gpt-4o'; ModelName = 'gpt-4o'; ModelVersion = '2024-11-20' }
-    [pscustomobject]@{ Role = 'Selector'; EnvVar = 'FOUNDRY_BRIEF_SELECTOR_MODEL'; Alias = 'gpt-4o'; ModelName = 'gpt-4o'; ModelVersion = '2024-11-20' }
-)
-$threw = $false
-try { Get-FoundryDeploymentPlan -Roles $badRoles } catch { $threw = $true }
-Assert-True $threw 'Get-FoundryDeploymentPlan throws when text alias == selector alias'
-
-# Guard 2: one alias mapped to conflicting model/version must throw (silent drift).
-$conflictRoles = @(
-    [pscustomobject]@{ Role = 'Image'; EnvVar = 'FOUNDRY_IMAGE_MODEL'; Alias = 'dup'; ModelName = 'gpt-image-1'; ModelVersion = 'latest' }
-    [pscustomobject]@{ Role = 'Text'; EnvVar = 'FOUNDRY_TEXT_MODEL'; Alias = 'dup'; ModelName = 'gpt-4o'; ModelVersion = '2024-11-20' }
-)
-$threwConflict = $false
-try { Get-FoundryDeploymentPlan -Roles $conflictRoles } catch { $threwConflict = $true }
-Assert-True $threwConflict 'Get-FoundryDeploymentPlan throws on conflicting alias -> model mapping'
-
-# ── Format-FoundryEnvBlock ──────────────────────────────────────────────────
-
-$block = Format-FoundryEnvBlock -Endpoint 'https://foundry.example/' -ApiKey 'SECRET' -ApiVersion '2025-04-01-preview' -EnvMap $plan.Env
-Assert-True ($block -match 'FOUNDRY_ENDPOINT=https://foundry\.example/') 'env block writes the endpoint'
-Assert-True ($block -match 'FOUNDRY_API_KEY=SECRET') 'env block writes the api key'
-Assert-True ($block -match 'FOUNDRY_TEXT_MODEL=gpt-4o(\r?\n)') 'env block writes text alias'
-Assert-True ($block -match 'FOUNDRY_BRIEF_SELECTOR_MODEL=gpt-4o-mini') 'env block writes selector alias'
-# Selectors stay COMMENTED so azure-openai remains the default (ADR 0033).
-Assert-True ($block -match '#\s*SPRITES_PROVIDER=foundry') 'SPRITES_PROVIDER selector is commented out'
-# \w* (not \w+) so this also catches an uncommented bare SPRITES_PROVIDER=foundry
-# (the image selector), not only the *_PROVIDER variants.
-Assert-True (-not ($block -match '(?m)^SPRITES_\w*PROVIDER=foundry')) 'no selector is written uncommented'
-
-# ── Get-FoundrySecretNames + setup-azure-env.ps1 contract ───────────────────
-
-$secretNames = @(Get-FoundrySecretNames)
-Assert-Equal 7 ($secretNames.Count) 'Get-FoundrySecretNames returns 7 keys'
-foreach ($expected in @('FOUNDRY_ENDPOINT', 'FOUNDRY_API_KEY', 'FOUNDRY_API_VERSION', 'FOUNDRY_IMAGE_MODEL', 'FOUNDRY_TEXT_MODEL', 'FOUNDRY_VISION_MODEL', 'FOUNDRY_BRIEF_SELECTOR_MODEL')) {
-    Assert-True ($secretNames -contains $expected) "Get-FoundrySecretNames includes $expected"
-}
-
-# Contract: setup-azure-env.ps1 drives its FOUNDRY_* secret sync off the shared
-# helpers and wires a value for every declared secret name. Guards the exact
-# regression class (env-writer / secret-list drift) flagged in plan review.
-$envScript = Get-Content (Join-Path $PSScriptRoot 'setup-azure-env.ps1') -Raw
-Assert-True ($envScript -match 'Get-FoundrySecretNames') 'env script drives sync loop via Get-FoundrySecretNames'
-Assert-True ($envScript -match 'Format-FoundryEnvBlock') 'env script renders .env.local via Format-FoundryEnvBlock'
-foreach ($name in $secretNames) {
-    Assert-True ($envScript -match ("(?m)^\s*" + [regex]::Escape($name) + "\s*=")) "env script wires a value for secret $name"
-}
-
-# ── Foundry resources are protected by default ──────────────────────────────
-Assert-True (Test-IsPersistentResource -Name 'aif-crawler-nalfeo' -PersistentNames $PersistentResourceNames) 'Foundry account is persistent by default'
-Assert-True (Test-IsPersistentResource -Name 'rg-crawler-foundry' -PersistentNames $PersistentResourceNames) 'Foundry resource group is persistent by default'
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 

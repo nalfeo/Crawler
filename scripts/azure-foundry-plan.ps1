@@ -1,4 +1,8 @@
 <#
+# ARCHIVED — ADR 0072 retired the Azure AI Foundry (ADR 0033) provider backend.
+# This file is kept for reference only; it is no longer dot-sourced by any
+# active setup script. Do not add new callers.
+#
 .SYNOPSIS
     Single source of truth for the Azure AI Foundry starter catalog (ADR 0033).
 
