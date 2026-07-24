@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "pr1784-merge-train-recovery",
+  "task_title": "Recover PR 1784 merge-train validation",
+  "estimated_apples": 2,
+  "apples_rescored_from": 3,
+  "rescore_reason": "The kickoff estimate assumed a broader PR-recovery loop, but the actual diff collapsed to one test-only synchronization fix in tests/unit/sprites/caching-run-store.test.ts plus the required handoff/ledger artifacts. That completed scope is honestly a 2-apple change.",
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Resolved plan-review concerns by explicitly keeping the 3-apple ledger/code-review flow, treating tests/unit/sprites/caching-run-store.test.ts as the minimum verification unit because GatedListStore is shared, preserving the authoritative unresolved/resolved/freshness assertions, and documenting the current sandbox vitest install limitation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

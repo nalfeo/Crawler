@@ -3,6 +3,7 @@ import type { WorkerStatus } from '../../../scripts/sprites/worker.js';
 import {
   createDrainOnStatus,
   isTruthyEnv,
+  parsePositiveIntegerEnv,
   resolveDrainExitCode,
 } from '../../../scripts/sprites/worker-cli-lib.js';
 
@@ -24,6 +25,19 @@ describe('isTruthyEnv', () => {
     expect(isTruthyEnv('FALSE')).toBe(false);
     expect(isTruthyEnv('no')).toBe(false);
     expect(isTruthyEnv('off')).toBe(false);
+  });
+});
+
+describe('parsePositiveIntegerEnv', () => {
+  it('uses the default for an unset or blank value', () => {
+    expect(parsePositiveIntegerEnv(undefined, 1, 'TEST_VALUE')).toBe(1);
+    expect(parsePositiveIntegerEnv('   ', 2, 'TEST_VALUE')).toBe(2);
+  });
+
+  it('accepts a positive integer and rejects invalid concurrency', () => {
+    expect(parsePositiveIntegerEnv('2', 1, 'TEST_VALUE')).toBe(2);
+    expect(() => parsePositiveIntegerEnv('0', 1, 'TEST_VALUE')).toThrow(/TEST_VALUE/);
+    expect(() => parsePositiveIntegerEnv('1.5', 1, 'TEST_VALUE')).toThrow(/TEST_VALUE/);
   });
 });
 

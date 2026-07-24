@@ -117,11 +117,11 @@ export interface KnobRange {
  */
 export const KNOB_RANGES: readonly KnobRange[] = [
   { key: 'aggression', min: 0, max: 2, step: 0.5, minStep: 0.25 }, // SSOT 1
-  { key: 'retreatThreshold', min: 0.05, max: 0.4, step: 0.05, minStep: 0.025 }, // SSOT 0.15
+  { key: 'retreatThreshold', min: 0.05, max: 0.4, step: 0.05, minStep: 0.025 }, // SSOT 0.1
   { key: 'dodgeWeight', min: 0, max: 0.75, step: 0.125, minStep: 0.0625 }, // SSOT 0.25
   { key: 'rangedSafeDistance', min: 8, max: 40, step: 6, minStep: 3 }, // SSOT 15
   { key: 'collectPullWeight', min: 0, max: 1, step: 0.15, minStep: 0.075 }, // SSOT 0.5
-  { key: 'farmPullWeight', min: 0, max: 0.3, step: 0.05, minStep: 0.025 }, // SSOT 0.07
+  { key: 'farmPullWeight', min: 0, max: 0.3, step: 0.05, minStep: 0.025 }, // SSOT 0.12
   { key: 'scanRadius', min: 25, max: 100, step: 15, minStep: 7.5 }, // SSOT 50 (secondary)
   { key: 'retreatDangerRadius', min: 10, max: 60, step: 10, minStep: 5 }, // SSOT 20 (secondary)
   { key: 'opportunisticGrabRadius', min: 8, max: 40, step: 6, minStep: 3 }, // SSOT 18 (secondary)

@@ -1,17 +1,59 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
 import { test } from 'node:test';
+import { fileURLToPath, URL } from 'node:url';
 import { evaluateAudit } from './npm-audit.mjs';
 
 const ACTIVE_DATE = new Date('2026-07-22T00:00:00Z');
+const SCRIPT = fileURLToPath(new URL('./npm-audit.mjs', import.meta.url));
 const ADVISORY = {
   source: 1124064,
   url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
+  severity: 'high',
+};
+const FIND_MY_WAY_ADVISORY = {
+  source: 1124273,
+  url: 'https://github.com/advisories/GHSA-c96f-x56v-gq3h',
   severity: 'high',
 };
 
 function report(vulnerabilities) {
   return { auditReportVersion: 2, vulnerabilities };
 }
+
+test('reports every matched exception in the success diagnostic', (t) => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
+  t.after(() => rmSync(tempDir, { recursive: true, force: true }));
+  const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
+  writeFileSync(
+    fakeNpmCli,
+    `process.stdout.write(JSON.stringify(${JSON.stringify(
+      report({
+        'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
+        fastify: { name: 'fastify', severity: 'high', via: ['fast-uri'] },
+      }),
+    )}));`,
+  );
+
+  const result = spawnSync(process.execPath, [SCRIPT, '--audit-level=high'], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      npm_execpath: fakeNpmCli,
+    },
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(
+    result.stderr,
+    /Temporary audit exception through 2026-07-29: https:\/\/github\.com\/advisories\/GHSA-v2hh-gcrm-f6hx/,
+  );
+  assert.match(result.stderr, /Suppressed derived findings: fast-uri, fastify/);
+});
 
 test('suppresses the exact fast-uri advisory and findings derived solely from it', () => {
   const result = evaluateAudit(
@@ -25,6 +67,7 @@ test('suppresses the exact fast-uri advisory and findings derived solely from it
 
   assert.deepEqual(result.blocking, []);
   assert.deepEqual(result.ignored, ['ajv', 'fast-uri', 'fastify']);
+  assert.deepEqual(result.matchedExceptions.map((item) => item.packageName), ['fast-uri']);
 });
 
 test('fails closed for a mixed dependency chain', () => {
@@ -38,6 +81,7 @@ test('fails closed for a mixed dependency chain', () => {
   );
 
   assert.deepEqual(result.ignored, ['fast-uri']);
+  assert.deepEqual(result.matchedExceptions.map((item) => item.packageName), ['fast-uri']);
   assert.deepEqual(
     result.blocking.map((item) => item.name),
     ['ajv'],
@@ -53,6 +97,7 @@ test('fails closed after the exception expires', () => {
   );
 
   assert.deepEqual(result.ignored, []);
+  assert.deepEqual(result.matchedExceptions, []);
   assert.deepEqual(
     result.blocking.map((item) => item.name),
     ['fast-uri'],
@@ -72,8 +117,84 @@ test('does not suppress a different advisory for fast-uri', () => {
   );
 
   assert.deepEqual(result.ignored, []);
+  assert.deepEqual(result.matchedExceptions, []);
   assert.deepEqual(
     result.blocking.map((item) => item.name),
     ['fast-uri'],
+  );
+});
+
+test('does not suppress find-my-way once the exception is removed', () => {
+  const result = evaluateAudit(
+    report({
+      'find-my-way': { name: 'find-my-way', severity: 'high', via: [FIND_MY_WAY_ADVISORY] },
+      fastify: { name: 'fastify', severity: 'high', via: ['find-my-way'] },
+    }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(result.ignored, []);
+  assert.deepEqual(result.matchedExceptions, []);
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['find-my-way', 'fastify'],
+  );
+});
+
+test('fails closed when severity is null', () => {
+  const result = evaluateAudit(report({ pkg: { name: 'pkg', severity: null, via: [] } }), {
+    now: ACTIVE_DATE,
+  });
+
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['pkg'],
+  );
+});
+
+test('does not suppress an excepted finding with malformed severity', () => {
+  const result = evaluateAudit(
+    report({
+      'fast-uri': { name: 'fast-uri', severity: null, via: [ADVISORY] },
+    }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(result.ignored, ['fast-uri']);
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['fast-uri'],
+  );
+});
+
+test('fails closed when severity is an array', () => {
+  const result = evaluateAudit(report({ pkg: { name: 'pkg', severity: ['high'], via: [] } }), {
+    now: ACTIVE_DATE,
+  });
+
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['pkg'],
+  );
+});
+
+test('fails closed when severity is an unknown string', () => {
+  const result = evaluateAudit(
+    report({ pkg: { name: 'pkg', severity: 'unknown-level', via: [] } }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['pkg'],
+  );
+});
+
+test('fails closed when severity is missing (undefined)', () => {
+  const result = evaluateAudit(report({ pkg: { name: 'pkg', via: [] } }), { now: ACTIVE_DATE });
+
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['pkg'],
   );
 });

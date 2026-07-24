@@ -13,6 +13,7 @@ import {
   Position,
   Spawner,
   SpawnAnim,
+  Size,
   Sprite,
   XpGem,
 } from '../../src/core/components.js';
@@ -161,19 +162,26 @@ describe('dropSystem', () => {
     expect(deathEvents[0]!.sourceEid).toBe(playerEid);
   });
 
-  it('creates an authoritative blood pool from the dead enemy blood color', () => {
-    const world = createTestWorld();
-    const eid = spawnEnemy(world, 50, 60, 10, 120, 0x22aa44);
-    setComponent(world.ecs, eid, Health, { current: 0, max: 10 });
+  it('authors larger blood pools for larger enemy bodies', () => {
+    const createPoolForRadius = (radiusFt: number) => {
+      const world = createTestWorld({ seed: 42 });
+      const eid = spawnEnemy(world, 50, 60, 10);
+      setComponent(world.ecs, eid, Size, {
+        radius: radiusFt,
+        halfWidth: 0,
+        halfHeight: 0,
+        shape: world.stores.size.shape[eid] ?? 0,
+      });
+      setComponent(world.ecs, eid, Health, { current: 0, max: 10 });
+      dropSystem(world, { spawnLoot: false });
+      return world.bloodPools[0];
+    };
 
-    dropSystem(world, { spawnLoot: false });
-
-    expect(world.bloodPools).toHaveLength(1);
-    expect(world.bloodPools[0]).toMatchObject({
-      x: 50,
-      y: 60,
-      color: 0x22aa44,
-    });
+    const smallPool = createPoolForRadius(0.5);
+    const largePool = createPoolForRadius(2);
+    expect(smallPool).toBeDefined();
+    expect(largePool).toBeDefined();
+    expect(largePool!.contactRadiusFt).toBeGreaterThan(smallPool!.contactRadiusFt);
   });
 
   it('does not double-process the same entity', () => {

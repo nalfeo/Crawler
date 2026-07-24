@@ -38,12 +38,18 @@ import type {
 import { isInSafeContext } from '../safe-space.js';
 import { applyStatusEffect, clearStatusEffects, isValidSpec } from '../status-effects.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
-import { setActiveWeaponDef, clearActiveWeaponDef } from '../active-weapon.js';
+import type { WeaponDef } from '../../shared/weaponDefs.js';
+import {
+  setActiveWeaponDef,
+  clearActiveWeaponDef,
+  getActiveWeaponSnapshot,
+} from '../active-weapon.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { getItemById } from '../../shared/items.js';
 import {
   addGeneratedEquipmentReference,
   addItem,
+  canAcceptGeneratedEquipment,
   hasGeneratedEquipmentReference,
   hasItem,
   removeGeneratedEquipmentReference,
@@ -56,7 +62,16 @@ import type {
   GeneratedEquipmentInstanceKey,
   GeneratedEquipmentInstanceV1,
 } from '../../shared/generated-equipment-types.js';
+import {
+  EQUIPMENT_REWARD_TIER_RARITIES,
+  type EquipmentRewardTier,
+} from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
+import {
+  coreGrantGeneratedEquipmentActiveAbility,
+  coreGrantGeneratedEquipmentPassiveAbility,
+  revokeEquipmentAbilityGrantsCore,
+} from '../ability-grants.js';
 
 // --- Side-map storage ---
 
@@ -171,12 +186,13 @@ export function resolveEquipmentInstance(
   return { instanceId, def: generatedEquipmentDef(generated) };
 }
 
-interface GeneratedPhysicalOwner {
-  readonly container: 'bag' | 'equipped';
-  readonly entity: number;
+export interface GeneratedPhysicalOwner {
+  readonly container: 'bag' | 'equipped' | 'reward-bundle';
+  readonly entity?: number;
+  readonly bundleId?: string;
 }
 
-function findGeneratedPhysicalOwners(
+export function findGeneratedPhysicalOwners(
   world: GameWorld,
   instanceKey: GeneratedEquipmentInstanceKey,
 ): GeneratedPhysicalOwner[] {
@@ -192,6 +208,13 @@ function findGeneratedPhysicalOwners(
       owners.push({ container: 'equipped', entity });
     }
   }
+  for (const [bundleId, bundle] of world.generatedEquipmentRewardBundles) {
+    for (const bundleKey of bundle.instanceKeys) {
+      if (bundleKey === instanceKey) {
+        owners.push({ container: 'reward-bundle', bundleId });
+      }
+    }
+  }
   return owners;
 }
 
@@ -202,22 +225,58 @@ function ownershipConflict(
   return { type: 'generatedOwnershipConflict', instanceKey, message };
 }
 
-function generatedContentFailure(
+function generatedWeaponDef(instance: GeneratedEquipmentInstanceV1): WeaponDef | undefined {
+  return instance.frozen.activeWeaponSnapshot ?? undefined;
+}
+
+function activateGeneratedEquipment(
+  world: GameWorld,
+  entity: number,
   instance: GeneratedEquipmentInstanceV1,
-): EquipFailureReason | undefined {
-  if (
-    instance.frozen.activeWeaponSnapshot !== null ||
-    instance.frozen.abilityGrants.length > 0 ||
-    instance.frozen.passiveGrants.length > 0
-  ) {
-    return {
-      type: 'unsupportedGeneratedContent',
-      instanceKey: instance.instanceId,
-      message:
-        'B2 cannot equip generated weapon snapshots or ability/passive grants before their owning slices land',
-    };
+): void {
+  for (const effect of instance.resolvedEffects) {
+    if (!('kind' in effect)) continue;
+    if (effect.kind === 'abilityGrant') {
+      coreGrantGeneratedEquipmentActiveAbility(
+        world,
+        entity,
+        effect.grantId,
+        instance.instanceId,
+        effect.effectOrdinal,
+      );
+    } else if (effect.kind === 'passiveGrant') {
+      coreGrantGeneratedEquipmentPassiveAbility(
+        world,
+        entity,
+        effect.grantId,
+        instance.instanceId,
+        effect.effectOrdinal,
+      );
+    }
   }
-  return undefined;
+
+  const weaponDef = generatedWeaponDef(instance);
+  if (weaponDef && hasComponent(world.ecs, entity, Player)) {
+    setActiveWeaponDef(world, weaponDef);
+  }
+}
+
+function deactivateGeneratedEquipment(
+  world: GameWorld,
+  entity: number,
+  instanceKey: GeneratedEquipmentInstanceKey,
+): void {
+  const generated = getGeneratedEquipmentInstance(world, instanceKey);
+  if (!generated) throw new Error(`Generated equipment instance not found: ${instanceKey}`);
+  revokeEquipmentAbilityGrantsCore(world, entity, instanceKey);
+
+  if (
+    generated.frozen.activeWeaponSnapshot !== null &&
+    hasComponent(world.ecs, entity, Player) &&
+    getActiveWeaponSnapshot(world)?.generatedEquipmentInstanceId === instanceKey
+  ) {
+    clearActiveWeaponDef(world);
+  }
 }
 
 interface PreparedDisplacedInstance {
@@ -302,6 +361,7 @@ function movePreparedDisplacedToBag(
       addItem(bag, instance.def.id, 1);
       entries.push(staticInventoryEntry(instance.def));
     } else {
+      deactivateGeneratedEquipment(world, entity, instanceId);
       entries.push(addGeneratedEquipmentReference(bag, instanceId));
     }
     clearStatusEffects(
@@ -310,7 +370,11 @@ function movePreparedDisplacedToBag(
       (effect) =>
         effect.sourceType === 'equipment' && effect.sourceId === equipmentSourceId(instanceId),
     );
-    if (instance.def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    if (
+      typeof instanceId === 'number' &&
+      instance.def.weaponId !== undefined &&
+      hasComponent(world.ecs, entity, Player)
+    ) {
       clearActiveWeaponDef(world);
     }
   }
@@ -732,6 +796,8 @@ export function unequip(
   }
   if (typeof instId === 'number') {
     state.instances.delete(instId);
+  } else {
+    deactivateGeneratedEquipment(world, entity, instId);
   }
 
   // Remove only the status effects this specific equipment instance granted.
@@ -744,7 +810,11 @@ export function unequip(
   // Weapon-typed equipment: clear the active weapon when the player unequips
   // it. Non-player entities silently skip this (equipment is entity-agnostic
   // in principle; only the player has an active weapon today).
-  if (instance.def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+  if (
+    typeof instId === 'number' &&
+    instance.def.weaponId !== undefined &&
+    hasComponent(world.ecs, entity, Player)
+  ) {
     clearActiveWeaponDef(world);
   }
 
@@ -804,12 +874,159 @@ export function addGeneratedEquipmentToBag(
       reason: ownershipConflict(
         instanceKey,
         `Generated equipment already has an owner: ${owners
-          .map((owner) => `${owner.container}:${owner.entity}`)
+          .map((owner) => `${owner.container}:${owner.entity ?? owner.bundleId}`)
           .join(', ')}`,
       ),
     };
   }
   return { ok: true, entry: addGeneratedEquipmentReference(bag, instanceKey) };
+}
+
+export interface ClaimedRewardBundleEntry {
+  readonly instanceKey: GeneratedEquipmentInstanceKey;
+  readonly entry: GeneratedEquipmentInventoryEntry;
+}
+
+export type ClaimGeneratedEquipmentRewardBundleResult =
+  | { readonly ok: true; readonly granted: readonly ClaimedRewardBundleEntry[] }
+  | { readonly ok: false; readonly reason: EquipFailureReason };
+
+/**
+ * Atomically transfer ownership of a resolved reward bundle's instances from the
+ * bundle to an entity's bag.
+ *
+ * Reward bundles ARE registry owners (`findGeneratedPhysicalOwners` reports
+ * `container:'reward-bundle'`), so this cannot go through
+ * {@link addGeneratedEquipmentToBag} — that rejects any already-owned instance.
+ * Every destination is validated FIRST (bundle exists, bag exists, capacity for
+ * the whole bundle, each instance present in the registry, no intra-bundle
+ * duplicate, and the only physical owner of each instance is exactly this
+ * bundle). `expectedTier` must match the bundle's own tier — a defense-in-depth
+ * cross-check against the achievement's CURRENT declared tier, mirroring the
+ * same check the carryover restore validator performs. Only after all checks
+ * pass does it perform a no-throw commit: delete the bundle from the map, then
+ * add each bag reference. On any failure the world is untouched (fail-closed).
+ * Never invokes the generator, so it is safe on claim/load/presentation paths.
+ */
+export function claimGeneratedEquipmentRewardBundle(
+  world: GameWorld,
+  entity: number,
+  achievementId: string,
+  expectedTier: EquipmentRewardTier,
+): ClaimGeneratedEquipmentRewardBundleResult {
+  const bundle = world.generatedEquipmentRewardBundles.get(achievementId);
+  if (!bundle) {
+    return {
+      ok: false,
+      reason: { type: 'invalidDef', message: `No reward bundle for achievement: ${achievementId}` },
+    };
+  }
+  // Tier cross-check (fail-closed, defense in depth): the bundle's own tier
+  // must match the achievement definition's CURRENT declared tier at claim
+  // time — the same check the carryover restore validator already performs —
+  // so a bundle resolved under a stale/edited catalog tier can never be
+  // claimed under a different tier's contract.
+  if (bundle.tier !== expectedTier) {
+    return {
+      ok: false,
+      reason: {
+        type: 'invalidDef',
+        message: `Reward bundle tier ${bundle.tier} does not match expected tier ${expectedTier}`,
+      },
+    };
+  }
+  // Shape guard (fail-closed): a resolved tiered bundle ALWAYS holds exactly
+  // ONE instance whose rarity is a member of that tier's allowed pool (see
+  // `EQUIPMENT_REWARD_TIER_RARITIES`). Reject a malformed bundle (wrong count)
+  // BEFORE any mutation so a stale/injected empty or partial bundle can never
+  // be "claimed" as a success that consumes the reward for nothing. Per-instance
+  // rarity is verified in the validation loop below.
+  if (bundle.instanceKeys.length !== 1) {
+    return {
+      ok: false,
+      reason: {
+        type: 'invalidDef',
+        message: `Reward bundle has ${bundle.instanceKeys.length} instances, expected 1`,
+      },
+    };
+  }
+  const bag = world.inventories.get(entity);
+  if (!bag) {
+    return { ok: false, reason: { type: 'invalidDef', message: 'Entity has no inventory' } };
+  }
+  if (!canAcceptGeneratedEquipment(bag, bundle.instanceKeys.length)) {
+    return {
+      ok: false,
+      reason: {
+        type: 'invalidDef',
+        message: `Bag cannot accept ${bundle.instanceKeys.length} generated equipment items`,
+      },
+    };
+  }
+  const seen = new Set<GeneratedEquipmentInstanceKey>();
+  for (let index = 0; index < bundle.instanceKeys.length; index += 1) {
+    const instanceKey = bundle.instanceKeys[index]!;
+    if (seen.has(instanceKey)) {
+      return {
+        ok: false,
+        reason: ownershipConflict(
+          instanceKey,
+          `Duplicate instance in reward bundle: ${instanceKey}`,
+        ),
+      };
+    }
+    seen.add(instanceKey);
+    const instance = getGeneratedEquipmentInstance(world, instanceKey);
+    if (!instance) {
+      return {
+        ok: false,
+        reason: {
+          type: 'generatedInstanceNotFound',
+          instanceKey,
+          message: `Generated equipment instance not found: ${instanceKey}`,
+        },
+      };
+    }
+    const expectedRarities = EQUIPMENT_REWARD_TIER_RARITIES[bundle.tier];
+    if (!expectedRarities.includes(instance.rarity)) {
+      return {
+        ok: false,
+        reason: {
+          type: 'invalidDef',
+          message: `Reward bundle instance ${index} has rarity ${instance.rarity}, expected one of [${expectedRarities.join(', ')}] for tier ${bundle.tier}`,
+        },
+      };
+    }
+    if (hasGeneratedEquipmentReference(bag, instanceKey)) {
+      return {
+        ok: false,
+        reason: ownershipConflict(
+          instanceKey,
+          `Generated equipment already in bag: ${instanceKey}`,
+        ),
+      };
+    }
+    const foreignOwners = findGeneratedPhysicalOwners(world, instanceKey).filter(
+      (owner) => !(owner.container === 'reward-bundle' && owner.bundleId === achievementId),
+    );
+    if (foreignOwners.length > 0) {
+      return {
+        ok: false,
+        reason: ownershipConflict(
+          instanceKey,
+          `Reward bundle instance has a foreign owner: ${foreignOwners
+            .map((owner) => `${owner.container}:${owner.entity ?? owner.bundleId}`)
+            .join(', ')}`,
+        ),
+      };
+    }
+  }
+  world.generatedEquipmentRewardBundles.delete(achievementId);
+  const granted: ClaimedRewardBundleEntry[] = [];
+  for (const instanceKey of bundle.instanceKeys) {
+    granted.push({ instanceKey, entry: addGeneratedEquipmentReference(bag, instanceKey) });
+  }
+  return { ok: true, granted };
 }
 
 function equipGeneratedFromBag(
@@ -858,9 +1075,6 @@ function equipGeneratedFromBag(
       reasons: [ownershipConflict(instanceKey, 'Generated equipment does not have one bag owner')],
     };
   }
-  const unsupported = generatedContentFailure(generated);
-  if (unsupported) return { ok: false, reasons: [unsupported] };
-
   const def = generatedEquipmentDef(generated);
   const infeasible = swapEquipFailureReasons(world, entity, def);
   if (infeasible.length > 0) return { ok: false, reasons: infeasible };
@@ -886,6 +1100,7 @@ function equipGeneratedFromBag(
   for (const slotId of def.slots) {
     state.equipped[slotId] = instanceKey;
   }
+  activateGeneratedEquipment(world, entity, generated);
   recomputeEffectiveStats(world, entity);
 
   return {

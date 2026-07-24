@@ -34,7 +34,11 @@ import {
   createGeneratedEquipmentRegistry,
   type GeneratedEquipmentRegistry,
 } from './generated-equipment-registry.js';
-import type { GeneratedEquipmentGenerationPolicyV1 } from '../shared/generated-equipment-types.js';
+import type {
+  GeneratedEquipmentGenerationPolicyV1,
+  GeneratedEquipmentRewardBundleV1,
+} from '../shared/generated-equipment-types.js';
+import type { BossChestRecord } from './systems/bossChestRewards.js';
 import {
   Position,
   Velocity,
@@ -97,7 +101,9 @@ import type {
 import {
   createEmptyAchievementFactSnapshot,
   type AchievementFactSnapshot,
+  type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
+import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
 
 const logger = createLogger('core:world');
 
@@ -201,6 +207,16 @@ export interface GameWorld {
   inventories: Map<number, InventoryBag>;
   /** Authoritative generated-equipment records for this run. */
   generatedEquipmentRegistry: GeneratedEquipmentRegistry;
+  /** Unopened generated-equipment reward bundles keyed by achievement ID. */
+  generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
+  /** Boss chest lifecycle records keyed by chest ID (`boss-chest:<familyId>`). */
+  bossChests: Map<string, BossChestRecord>;
+  /**
+   * Unclaimed Floor 1 `lootBox` reward bundles keyed by achievement ID.
+   * Resolved once at unlock (see `resolveLootBoxRewardBundle`) and consumed
+   * read-only by `claimAchievementReward` — no RNG at claim/load/presentation.
+   */
+  lootBoxRewardBundles: Map<string, LootBoxRewardBundleV1>;
   /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
   statusEffectsByEntity: Map<number, StatusEffect[]>;
   /** Per-door lock configurations (eid → lock config). */
@@ -372,6 +388,28 @@ export interface GameWorld {
    */
   enemyAppearanceKeys: Map<number, string>;
   /**
+   * Archetype-key snapshot for enemy projectile and AoE explosion entities,
+   * keyed by entity EID. Covers two entity phases:
+   *
+   * - **In-flight projectiles**: populated in `spawnEnemyProjectile` and
+   *   `spawnAoeProjectile` while the shooter is still live. `damageSystem` reads
+   *   the entry and passes it as `DamageOptions.sourceArchetypeKey` so
+   *   `apply-damage` emits a stable attribution even after shooter death or EID
+   *   recycling.
+   *
+   * - **AoE explosion entities**: `aoeOnImpactSystem` copies the projectile's
+   *   entry onto the spawned explosion EID (`aoeOnImpactPostDamage`);
+   *   `areaDamageSystem` reads it for the splash-hit attribution and then deletes
+   *   it via `clearAreaDamageHits`.
+   *
+   * Entries are explicitly managed: `clearEntityStores` deletes the entry on
+   * every entity removal or EID recycle, and each enemy-projectile/AoE spawn sets
+   * a fresh entry when the owner archetype is known. This ensures neither
+   * `damageSystem` nor `areaDamageSystem` ever reads a stale snapshot from a
+   * previous occupant of the same EID.
+   */
+  enemyProjectileArchetypeKeys: Map<number, string>;
+  /**
    * Generated sprite registry sourced from the approved-sprite manifest. Set by
    * the engine layer (PhaserBridge) when the registry loads or changes, and used
    * by game-layer helpers (see `getEntityNormalizedWeaponAnchor`) to resolve
@@ -418,6 +456,17 @@ export interface GameWorld {
     pendingUnlockIds: string[];
     /** Achievement IDs whose reward has been opened/claimed this run. */
     claimedIds: Set<string>;
+    /**
+     * Resolved `lootBox`/`equipment` reward snapshots waiting to be
+     * shown/acknowledged by the reward-opening presentation UI, keyed by
+     * achievement id. Populated by `claimAchievementReward` (atomically, at
+     * the same time as the grant) and consumed by
+     * `acknowledgeAchievementRewardPresentation` once the UI sequence
+     * finishes/skips to the end. Surviving reload lets a mid-sequence
+     * interruption resume exactly where it left off without re-granting
+     * anything.
+     */
+    pendingPresentations: Map<string, ResolvedRewardPresentation>;
     /** Aggregate facts from completed floors only; the active floor stays live. */
     carriedRunFacts: AchievementFactSnapshot;
   };
@@ -588,6 +637,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       runKey: options.generatedEquipmentRunKey,
       generationPolicy: options.generatedEquipmentGenerationPolicy,
     }),
+    generatedEquipmentRewardBundles: new Map(),
+    bossChests: new Map(),
+    lootBoxRewardBundles: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
@@ -618,6 +670,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     npcs: new Map(),
     setPieceProps: [],
     enemyAppearanceKeys: new Map(),
+    enemyProjectileArchetypeKeys: new Map(),
     generatedSpriteRegistry: null,
     entityWeaponAnchors: new Map(),
     questLog: new Map(),
@@ -631,6 +684,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       unlockedIds: new Set(),
       pendingUnlockIds: [],
       claimedIds: new Set(),
+      pendingPresentations: new Map(),
       carriedRunFacts: createEmptyAchievementFactSnapshot(),
     },
     debugFlags: {

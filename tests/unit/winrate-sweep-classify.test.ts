@@ -26,6 +26,7 @@ function makeStats(overrides: {
       engagementCount: 0,
       damageDealt: 0,
       damageTaken: 0,
+      damageTakenBySource: {},
     },
     health: {
       minHealthPercent: 1,

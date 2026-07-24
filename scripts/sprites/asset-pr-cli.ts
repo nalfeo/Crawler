@@ -12,7 +12,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +21,7 @@ import {
   type AssetPrRunnerDeps,
   type AssetPrOptions,
 } from './asset-pr.js';
+import { writeCatalogJson } from './catalog-io.js';
 import type { Exec, ExecResult } from './checkin.js';
 
 const realExec: Exec = (command, args, options) =>
@@ -66,10 +67,12 @@ function makeDeps(): AssetPrRunnerDeps {
     },
     readJson: <T>(absPath: string) =>
       Promise.resolve(JSON.parse(readFileSync(absPath, 'utf8')) as T),
-    writeJson: (absPath, value) => {
-      writeFileSync(absPath, `${JSON.stringify(value, null, 2)}\n`);
-      return Promise.resolve();
-    },
+    // Route through the shared catalog-io helper so the merged manifest +
+    // catalog land Prettier-formatted (short arrays inlined), identical to
+    // every other catalog writer. A raw `JSON.stringify(…, 2)` here re-expands
+    // every `tags` array and produces thousand-line whitespace churn on each
+    // batch PR (regressed the #1124 fix — see catalog-io.ts).
+    writeJson: (absPath, value) => writeCatalogJson(absPath, value),
     joinPath: (...segments) => path.join(...segments),
   };
 }

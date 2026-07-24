@@ -181,7 +181,7 @@ describe('deterministic generated equipment', () => {
   });
 
   it('fails before allocation or random draws for invalid requests', () => {
-    const unconfigured = createTestWorld({ seed: 42 });
+    const unconfigured = createTestWorld({ seed: 42, generatedEquipmentRunKey: null });
     const configured = createTestWorld({
       seed: 42,
       generatedEquipmentRunKey: 'generator-errors',

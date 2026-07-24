@@ -1,0 +1,43 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "floor-2-weapon-wave-a",
+  "task_title": "Floor 2 weapon content wave A",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "major_fork",
+      "notes": "Rejected direct equipmentDefs registration. Adopted a generator-only Wave A base catalog/adapter so stable base IDs and canonical runtime art keys coexist without inventory-enumeration leakage; legacy slug lookup remains fallback-compatible. The explicit 25-ID allowlist records all mappings and preexisting concepts, tests separately preserve the 50-ID manifest and 25-ID wave distribution, art-key scope is persistence/validation only, and representative production-pipeline fixtures supplement the existing constitutional DPS gate."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

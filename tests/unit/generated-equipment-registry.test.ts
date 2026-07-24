@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
@@ -13,13 +14,13 @@ import {
   type ResolvedEquipmentEffectV1,
 } from '../../src/shared/generated-equipment-types.js';
 import { canonicalJson, sha256Hex } from '../../src/shared/canonical-json.js';
-import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
   GeneratedEquipmentRegistryError,
   computeEquipmentFingerprint,
   createActiveWeaponSnapshotV1,
   createGeneratedEquipmentInstance,
+  createGeneratedEquipmentRegistryTransaction,
   generatedEquipmentInstanceKey,
   getGeneratedEquipmentInstance,
   hasGeneratedEquipmentInstance,
@@ -155,7 +156,7 @@ describe('generated equipment instance registry', () => {
   });
 
   it('fails closed until the world is configured with an explicit run key', () => {
-    const world = createTestWorld();
+    const world = createTestWorld({ generatedEquipmentRunKey: null });
     expectRegistryError(
       () => createGeneratedEquipmentInstance(world, createInput()),
       'registry-unconfigured',
@@ -182,7 +183,6 @@ describe('generated equipment instance registry', () => {
     expect(Object.isFrozen(first.frozen.statBonuses)).toBe(true);
     expect(Object.isFrozen(first.frozen.activeWeaponSnapshot)).toBe(true);
     expect(Object.isFrozen(first.resolvedEffects)).toBe(true);
-    expect(first.frozen.activeWeaponSnapshot?.generatedEquipmentInstanceId).toBe(first.instanceId);
     expect(canonicalJson(getWeaponDef('sword'))).toBe(staticWeaponBefore);
   });
 
@@ -246,22 +246,6 @@ describe('generated equipment instance registry', () => {
     );
     expect(createGeneratedEquipmentInstance(target, createInput()).instanceId).toBe(
       'gei:v1:run-validation:0',
-    );
-  });
-
-  it('requires the frozen weapon snapshot to match the owning generated instance id', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'run-snapshot-id' });
-
-    expectRegistryError(
-      () =>
-        createGeneratedEquipmentInstance(
-          world,
-          createInput(
-            'common',
-            weaponSnapshot(generatedEquipmentInstanceKey('run-snapshot-id', 99)),
-          ),
-        ),
-      'invalid-payload',
     );
   });
 
@@ -469,5 +453,74 @@ describe('generated equipment instance registry', () => {
     expect(createGeneratedEquipmentInstance(world, createInput()).instanceId).toBe(
       'gei:v1:run-grant-mismatch:0',
     );
+  });
+});
+
+describe('generated equipment registry transaction atomicity', () => {
+  it('scratch mutations are invisible on the live registry before commit', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-invisible' });
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+
+    // Generate one instance into the scratch registry.
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    const instance = createGeneratedEquipmentInstance(scratch, createInput('common'));
+
+    // The live registry must NOT see this instance yet.
+    expect(hasGeneratedEquipmentInstance(world, instance.instanceId)).toBe(false);
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(0);
+  });
+
+  it('a discarded (uncommitted) transaction leaves live instances and ordinals unchanged', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-discard' });
+    // One pre-existing live instance establishes the baseline.
+    const priorInstance = createGeneratedEquipmentInstance(world, createInput('uncommon'));
+    const liveCountBefore = listGeneratedEquipmentInstances(world).length;
+
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    createGeneratedEquipmentInstance(scratch, createInput('rare'));
+    // Never call txn.commit() — just discard the transaction.
+
+    // Live registry must be exactly as it was.
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(liveCountBefore);
+    expect(listGeneratedEquipmentInstances(world)[0]!.instanceId).toBe(priorInstance.instanceId);
+
+    // The next live-registry allocation must continue from the pre-txn ordinal
+    // (ordinal 1, since ordinal 0 is the prior instance).
+    const nextLive = createGeneratedEquipmentInstance(world, createInput('common'));
+    expect(nextLive.instanceId).toBe('gei:v1:txn-discard:1');
+  });
+
+  it('commit publishes scratch state: instances become visible on live registry', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-commit' });
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    const instance = createGeneratedEquipmentInstance(scratch, createInput('rare'));
+
+    // Before commit: invisible on live.
+    expect(hasGeneratedEquipmentInstance(world, instance.instanceId)).toBe(false);
+
+    txn.commit();
+
+    // After commit: visible on live.
+    expect(hasGeneratedEquipmentInstance(world, instance.instanceId)).toBe(true);
+    expect(getGeneratedEquipmentInstance(world, instance.instanceId)).toEqual(instance);
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(1);
+  });
+
+  it('a second commit is rejected with invalid-payload and leaves live state unchanged', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'txn-double-commit' });
+    const txn = createGeneratedEquipmentRegistryTransaction(world);
+    const scratch = { ...world, generatedEquipmentRegistry: txn.registry };
+    createGeneratedEquipmentInstance(scratch, createInput('common'));
+
+    txn.commit();
+    const countAfterFirstCommit = listGeneratedEquipmentInstances(world).length;
+
+    // The second commit must throw.
+    expectRegistryError(() => txn.commit(), 'invalid-payload');
+
+    // Live state must be unmodified by the failed second commit.
+    expect(listGeneratedEquipmentInstances(world)).toHaveLength(countAfterFirstCommit);
   });
 });

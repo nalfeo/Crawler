@@ -269,6 +269,66 @@ export async function postApprove(
   return (await response.json()) as ApproveResponse;
 }
 
+/**
+ * The manifest entry returned by a successful unapprove/eviction request.
+ * Mirrors `ManifestEntry` from `approve.ts` — the removed entry is returned
+ * so callers can display what was evicted without a follow-up fetch.
+ */
+export interface UnapproveResponse {
+  readonly briefId: string;
+  readonly spriteName: string;
+  readonly assetPath: string;
+  readonly approvedAt: string;
+  readonly variantIndex: number;
+}
+
+/**
+ * Error thrown by `deleteApprovedVariant` for a non-2xx sidecar response.
+ * Carries the HTTP `status` and machine-readable `errorCode` (the sidecar's
+ * `error` field, e.g. `not-found`) so callers can branch on error type.
+ */
+export class UnapproveRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly errorCode: string | null,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'UnapproveRequestError';
+  }
+}
+
+/**
+ * Evicts a previously approved variant via
+ * `DELETE /api/manifest/:variantId`. Removes the manifest entry, catalog
+ * entry, and on-disk PNG. Returns the removed manifest entry on success,
+ * and throws `UnapproveRequestError` on any non-2xx sidecar response.
+ */
+export async function deleteApprovedVariant(
+  variantId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<UnapproveResponse> {
+  const url = `${SIDECAR_BASE}/api/manifest/${encodeURIComponent(variantId)}`;
+  const response = await fetcher(url, { method: 'DELETE' });
+  if (!response.ok) {
+    let detail = '';
+    let errorCode: string | null = null;
+    try {
+      const body = (await response.json()) as ApproveErrorBody;
+      detail = body.message ?? body.error ?? '';
+      errorCode = body.error ?? null;
+    } catch {
+      // Body wasn't JSON; fall through with status text only.
+    }
+    throw new UnapproveRequestError(
+      response.status,
+      errorCode,
+      `unapprove failed (${response.status}): ${detail || response.statusText}`,
+    );
+  }
+  return (await response.json()) as UnapproveResponse;
+}
+
 /** Sidecar confirmation for a single-run delete. */
 export interface DeleteRunResponse {
   /** The `briefId/runId` key the sidecar removed. */

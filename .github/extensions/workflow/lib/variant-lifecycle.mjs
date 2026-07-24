@@ -44,7 +44,11 @@ import { sourceRunMatchesRun } from './workflow-model.mjs';
 export function findMatchingAsset(reports, briefId, runId, variantIndex) {
   for (const report of reports ?? []) {
     for (const asset of report.assets ?? []) {
-      if (asset.briefId !== briefId) continue;
+      // Skip the briefId equality check: approveVariant canonicalizes item brief
+      // IDs (e.g. `flame-dagger-v2` → `flame-dagger`), so asset.briefId may
+      // differ from the caller's raw run briefId. The sourceRun path check below
+      // encodes the original run directory (using the raw briefId), so it is
+      // sufficient to uniquely identify the run without a duplicate briefId guard.
       if (asset.variantIndex !== variantIndex) continue;
       if (!sourceRunMatchesRun(asset.sourceRun, briefId, runId)) continue;
       return asset;
@@ -61,7 +65,11 @@ export function findMatchingAsset(reports, briefId, runId, variantIndex) {
  */
 export function findMatchingManifestApproval(manifestApprovals, briefId, runId, variantIndex) {
   for (const approval of manifestApprovals ?? []) {
-    if (approval.briefId !== briefId) continue;
+    // Skip the briefId equality check: approveVariant canonicalizes item brief
+    // IDs (e.g. `flame-dagger-v2` → `flame-dagger`), so approval.briefId in
+    // the manifest may differ from the caller's raw run briefId. The sourceRun
+    // path encodes the original run directory and is sufficient to identify the
+    // match without a separate briefId guard.
     if (approval.variantIndex !== variantIndex) continue;
     if (!sourceRunMatchesRun(approval.sourceRun, briefId, runId)) continue;
     return approval;
@@ -83,7 +91,7 @@ export function findMatchingManifestApproval(manifestApprovals, briefId, runId, 
  *   runId: string,
  *   variantIndex: number,
  * }} args
- * @returns {{ state: 'unaccepted'|'accepted-staged'|'integrated'|'unverified', detail: string | null }}
+ * @returns {{ state: 'unaccepted'|'accepted-staged'|'integrated'|'unverified', detail: string | null, manifestKey: string | null }}
  */
 export function computeVariantLifecycle({
   backlogReports,
@@ -95,22 +103,37 @@ export function computeVariantLifecycle({
 }) {
   const matched = findMatchingAsset(backlogReports, briefId, runId, variantIndex);
   if (matched) {
+    // Derive the canonical manifest key from the asset's assetPath
+    // (e.g. "generated/flame-dagger-var-1.png" → "flame-dagger-var-1").
+    // This is authoritative: approveVariant writes assetPath as
+    // `generated/${manifestKey}.png`, so reversing it always gives the
+    // exact key even when approveVariant canonicalized the briefId.
+    const assetPath = matched.assetPath ?? null;
+    const manifestKey =
+      assetPath && assetPath.startsWith('generated/') && assetPath.endsWith('.png')
+        ? assetPath.slice('generated/'.length, -'.png'.length)
+        : null;
     if (!matched.approvedAssetExists) {
-      return { state: 'unverified', detail: 'Approved asset file is missing on disk.' };
+      return {
+        state: 'unverified',
+        detail: 'Approved asset file is missing on disk.',
+        manifestKey,
+      };
     }
     if (matched.integrationState === 'unverified') {
       return {
         state: 'unverified',
         detail: 'Sprite/item registry could not be loaded to confirm runtime integration.',
+        manifestKey,
       };
     }
     if (matched.integrationState === 'integrated') {
-      return { state: 'integrated', detail: null };
+      return { state: 'integrated', detail: null, manifestKey };
     }
     // 'missing' (declared integration target not found) or 'not-applicable'
     // (no integration target declared) — approved/selected but not confirmed
     // wired into a runtime registry/catalog.
-    return { state: 'accepted-staged', detail: null };
+    return { state: 'accepted-staged', detail: null, manifestKey };
   }
 
   const manifestOnly = findMatchingManifestApproval(
@@ -120,13 +143,22 @@ export function computeVariantLifecycle({
     variantIndex,
   );
   if (manifestOnly) {
+    // mapKey is the authoritative manifest map key carried through from
+    // listManifestApprovals. Fall back to null when the caller does not
+    // provide it (e.g. older call sites that pre-date this field).
+    const manifestKey = manifestOnly.mapKey ?? null;
     if (!manifestOnly.exists) {
-      return { state: 'unverified', detail: 'Approved asset file is missing on disk.' };
+      return {
+        state: 'unverified',
+        detail: 'Approved asset file is missing on disk.',
+        manifestKey,
+      };
     }
     return {
       state: 'accepted-staged',
       detail:
         'Approved in the generated manifest but has no art-plan asset to confirm runtime integration against.',
+      manifestKey,
     };
   }
 
@@ -134,7 +166,8 @@ export function computeVariantLifecycle({
     return {
       state: 'accepted-staged',
       detail: 'Queued for check-in this session; not yet reflected in the generated manifest.',
+      manifestKey: null,
     };
   }
-  return { state: 'unaccepted', detail: null };
+  return { state: 'unaccepted', detail: null, manifestKey: null };
 }

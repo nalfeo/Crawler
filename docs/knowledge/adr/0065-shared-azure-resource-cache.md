@@ -4,6 +4,13 @@
 
 Accepted
 
+> **Partially superseded (2026-07-22):** the "List snapshots" bullet's
+> "online calls still refresh from Azure" behavior is replaced by an
+> epoch-gated stale-while-revalidate fast path — see
+> [`2026-07-22-sprite-list-cache-swr.md`](2026-07-22-sprite-list-cache-swr.md).
+> Every other decision in this ADR (namespacing, blob-artifact semantics,
+> LRU, offline mode) remains authoritative and unchanged.
+
 ## Date
 
 2026-07-20

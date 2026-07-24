@@ -8,6 +8,7 @@
 import { AIDecisionMode, AIPathingMode } from './types.js';
 import type { AIDecisionModeValue, AIPathingModeValue } from './types.js';
 import { ENEMY_PROJECTILE } from '../../shared/constants.js';
+import { DEFAULT_CONFIG } from './bt-ai-tuning.js';
 
 export interface CLIArgs {
   seed: number;
@@ -56,8 +57,11 @@ export function defaultCLIArgs(
     startPlayerLevel: 1,
     weaponTelemetry: false,
     weaponPersonas: true,
-    pathingMode: AIPathingMode.LEGACY,
-    decisionMode: AIDecisionMode.LEGACY,
+    // Kept in sync with the game-runtime DEFAULT_CONFIG (bt-ai-tuning.ts) so the
+    // manual `npm run ai:headless` CLI matches production unless a caller
+    // explicitly passes --pathing-mode/--decision-mode.
+    pathingMode: DEFAULT_CONFIG.pathingMode,
+    decisionMode: DEFAULT_CONFIG.decisionMode,
     merchantWeaponPurchase:
       env.AI_MERCHANT_WEAPON_PURCHASE === '1' ||
       env.AI_MERCHANT_WEAPON_PURCHASE?.toLowerCase() === 'true',
@@ -174,6 +178,7 @@ export function parseArgs(
 }
 
 export function helpText(): string {
+  const defaultPathingMode = DEFAULT_CONFIG.pathingMode;
   return `
 Headless AI Runner CLI
 
@@ -203,7 +208,7 @@ Options:
   --no-weapon-personas    Disable weapon personas for the legacy A/B control
   --merchant-weapon-purchase
                            Enable optional post-quest merchant weapon purchase
-  --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh | navmeshFused (default: legacy)
+  --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh | navmeshFused (default: ${defaultPathingMode})
   --decision-mode <mode>  AI decision A/B axis: legacy | slackAware (default: legacy)
   --help, -h              Show this help message
 

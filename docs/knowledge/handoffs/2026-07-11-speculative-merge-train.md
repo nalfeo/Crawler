@@ -61,7 +61,8 @@ ci-policy
 ## What's Next / Blockers
 
 - Merge with `MERGE_TRAIN_MODE` unset (`off`), then follow
-  `docs/guides/merge-train.md`.
+  `docs/guides/merge-train.md`. _(deprecated no-op — repo variable deleted
+  2026-07-22; not read by any workflow or script.)_
 - Run dry-run mode with two manually labeled disposable PRs.
 - Configure `merge-train` as required and grant only the repository App branch
   protection bypass before live mode.

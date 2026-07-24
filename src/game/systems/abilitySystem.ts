@@ -16,6 +16,7 @@ import {
 import { EffectiveStats, Enemy, Health, Player, Position } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import { applyCooldownReduction } from '../../shared/stats.js';
+import { weaponSkillPrerequisiteMatches } from '../../shared/weapon-skills.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
 import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
@@ -67,6 +68,8 @@ export function createAbilityState(): AbilityState {
     cooldownByAbilityId: new Map(),
     cooldownFramesByAbilityId: new Map(),
     appliedPassiveAbilityIds: new Set(),
+    activeAbilityGrantSources: new Map(),
+    passiveAbilityGrantSources: new Map(),
     grantOwnership: emptyGrantOwnership(),
   };
 }
@@ -226,6 +229,18 @@ export function normalizeAbilityState(state: AbilityStateLike): AbilityState {
     cooldownByAbilityId: new Map(state.cooldownByAbilityId),
     cooldownFramesByAbilityId: new Map(state.cooldownFramesByAbilityId),
     appliedPassiveAbilityIds: new Set(state.appliedPassiveAbilityIds),
+    activeAbilityGrantSources: new Map(
+      [...(state.activeAbilityGrantSources ?? new Map())].map(([abilityId, sources]) => [
+        abilityId,
+        [...sources],
+      ]),
+    ),
+    passiveAbilityGrantSources: new Map(
+      [...(state.passiveAbilityGrantSources ?? new Map())].map(([abilityId, sources]) => [
+        abilityId,
+        [...sources],
+      ]),
+    ),
     grantOwnership: emptyGrantOwnership(),
   };
 
@@ -306,6 +321,8 @@ function installAbilityState(
   existing.cooldownByAbilityId = state.cooldownByAbilityId;
   existing.cooldownFramesByAbilityId = state.cooldownFramesByAbilityId;
   existing.appliedPassiveAbilityIds = state.appliedPassiveAbilityIds;
+  existing.activeAbilityGrantSources = state.activeAbilityGrantSources;
+  existing.passiveAbilityGrantSources = state.passiveAbilityGrantSources;
   existing.grantOwnership = state.grantOwnership;
   world.abilityStatesByEntity.set(holderEid, existing);
   return existing as AbilityState;
@@ -752,7 +769,11 @@ export function weaponPrerequisiteMet(
   const weaponDef = getActiveWeaponDef(world);
   if (weaponDef === undefined) return false;
 
-  return weaponDef.weaponClassSkillId === prereq || weaponDef.weaponTypeSkillId === prereq;
+  return weaponSkillPrerequisiteMatches(
+    prereq,
+    weaponDef.weaponClassSkillId,
+    weaponDef.weaponTypeSkillId,
+  );
 }
 
 function applyPassive(

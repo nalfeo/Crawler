@@ -49,20 +49,78 @@
 #
 #   RESIDUAL LIMITATION (documented, not hidden): the <=90-minute bound is
 #   proven at the PER-COMBO PER-ROUND grain (the grain this task's hard gate
-#   asks for) — one combo's ~12 primary-knob candidates. round-eval's matrix
-#   is capped at `max-parallel: 8` (same cap as baseline/checkpoint-init/
-#   round-select/validate) so a FULL 8-combo × 3-round graduation run cannot
-#   saturate the account's entire GitHub-hosted concurrent-runner pool and
-#   starve unrelated repo-wide work (e.g. the shared merge-train queue's own
-#   validation jobs) — see run 29786216369, which fanned out 20 concurrent
-#   Round 3 eval jobs with 44 more queued behind them before it was manually
-#   cancelled. A FULL 8-combo × 3-round graduation run's aggregate wall-clock
-#   now additionally depends on this repo-level concurrency cap (8 candidates
-#   in flight at a time per round, per combo-fan), since all combos' round-eval
-#   candidates share one flat matrix per round. This is a materially better
+#   asks for) — one combo's ~12 primary-knob candidates. Every sweep job now
+#   acquires one of ten repository-global semaphore slots, while each matrix
+#   recalculates its fair queue-aware share at the preceding batch boundary.
+#   This prevents a FULL 8-combo × 3-round graduation run from saturating the
+#   account's entire runner pool and yields future batches to CI/recovery
+#   backlog — see run 29786216369, which fanned out 20 concurrent Round 3 eval
+#   jobs with 44 more queued before cancellation. A full run's aggregate wall
+#   time now depends on the dynamically available sweep share. This is a better
 #   bound than the old design (which had NO per-round parallelism at all) but
 #   is not independently proven to keep the FULL 8-combo scope under 90
-#   minutes when the cap is the binding constraint.
+#   minutes when the dynamic share is the binding constraint.
+#
+# CROSS-RUN RESUME (`resume_run_id`, 2026 runner-starvation fix)
+#   A manually-cancelled run's immutable per-round checkpoint artifacts
+#   (`search-checkpoint-init/r1/r2/r3-<combo>`) survive for their
+#   `retention-days: 7` window even after cancellation — GitHub Actions never
+#   deletes already-uploaded artifacts of a cancelled run. Setting
+#   `resume_run_id` to that prior run's numeric ID makes the new `resume-import`
+#   job download those artifacts cross-run (`actions/download-artifact@v4`'s
+#   `run-id`/`github-token` inputs) and, PER COMBO, adopt the latest
+#   compatible checkpoint tier (r3 > r2 > r1 > init) as this run's round-0
+#   starting point instead of recomputing it — see `assertResumeCompatible` in
+#   round-plan.ts for the exact compatibility contract (schemaVersion, floorId,
+#   budgetMs, maxFrames, stage, runnerOs, nodeVersion, TRAIN seeds, weapons,
+#   secondary — ANY mismatch fails that combo closed back to a fresh run,
+#   never a silent partial merge; `workflowSha`/`packageLockHash` are
+#   informational only, see below). Resume granularity is the WHOLE
+#   latest completed round-tier per combo — it never salvages an individual
+#   incomplete candidate shard from a round that was still in-flight when the
+#   prior run was cancelled; that in-flight round is simply recomputed from
+#   its last completed tier. Default `resume_run_id: ''` (blank) skips
+#   `resume-import`'s downloads entirely, giving a 100% fresh run for every
+#   combo — the same combo set/search semantics as before this feature, though
+#   not scheduling-identical (`baseline` still always waits on
+#   `resume-import`'s checkout/Node-setup/metadata step first).
+#
+#   `workflowSha` (`GITHUB_SHA` at record time) AND `packageLockHash` (a hash
+#   of the entire `package-lock.json`) are both deliberately EXCLUDED from
+#   this compatibility gate — see `assertResumeCompatible`'s docstring in
+#   round-plan.ts. `workflowSha` changes on every commit to the default
+#   branch, including the one that ships this feature, and `packageLockHash`
+#   changes on any dependency bump — even a purely transitive/dev-tooling one
+#   (run 29786216369's own lockfile differs from later `main` by a routine
+#   `fast-uri` patch bump and a `brace-expansion` dev-marker change, neither
+#   of which touches simulation code). Treating either as a hard-equality
+#   requirement would make it permanently impossible to ever resume a prior
+#   run once its workflow file OR its lockfile has since changed at all —
+#   defeating the exact scenario (resuming run 29786216369 after this PR
+#   merges) this feature exists for. What actually governs whether two runs'
+#   search results are comparable — schemaVersion/floorId/budgetMs/
+#   maxFrames, runnerOs/nodeVersion, and trainSeeds/weapons/secondary — is
+#   still fully enforced and still fails closed on any mismatch.
+#
+#   LEGACY CHECKPOINTS (pre-dating this feature, e.g. run 29786216369's) never
+#   recorded `runInputs` (trainSeeds/weapons/secondary). Rather than
+#   unconditionally rejecting them, `assertResumeCompatible` infers those
+#   values from the checkpoint's OWN round-0 baseline rows via
+#   `inferRunInputsFromCheckpoint` — requiring a complete, duplicate-free,
+#   rectangular seed×weapon panel, and a provable `secondary` signal from the
+#   checkpoint's recorded search steps — then compares that inferred
+#   trainSeeds/weapons/secondary EXACTLY against this run's requested inputs.
+#   An incomplete/duplicate/non-rectangular panel or an unprovable `secondary`
+#   fails that combo closed, same as any other incompatibility. Modern
+#   checkpoints (post-feature, `runInputs` present) are unaffected and keep
+#   the original strict raw-string equality. If `legacy+legacy` is itself
+#   cross-run resumed this run, `resume-import` also derives a
+#   `search-baseline-legacy+legacy` shard straight from the resumed
+#   checkpoint's own round-0 rows (`extractLegacyBaselineShard`) and uploads
+#   it under the SAME artifact name `checkpoint-init`'s existing
+#   download-by-pattern step already looks for — so non-LEGACY combos'
+#   in-search LEGACY-incumbent net-win gate is never silently narrowed just
+#   because legacy+legacy happened to be resumed rather than fresh this run.
 #
 # HOW TO RUN (staged, per the plan)
 #   - Cheap screen / calibration (DEFAULTS): rounds=2, train 1-24, validate 1-40.
@@ -113,10 +171,17 @@ on:
         description: 'Also tune the secondary knobs (retreatDangerRadius, scanRadius, opportunisticGrabRadius)'
         type: boolean
         default: false
+      resume_run_id:
+        description: 'Prior AI Sweep Eval run ID to resume compatible checkpoints from (e.g. a run cancelled by runner starvation). Blank (default) = fresh run, no cross-run import.'
+        type: string
+        default: ''
 
 # Read-only: checkout + artifact up/download need nothing more. No default flip here.
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
+  issues: read
 
 jobs:
   # Derive the combo matrix from the SSOT generator (not hard-coded here), validate
@@ -125,10 +190,16 @@ jobs:
   # explicit bounded 1-3 round DAG this workflow implements.
   preflight:
     name: Preflight (derive + cap combo matrix)
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       combos: ${{ steps.matrix.outputs.combos }}
+      baseline_matrix: ${{ steps.budget.outputs.matrix }}
+      baseline_max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -176,26 +247,329 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate queue-aware sweep slots for baseline
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.matrix.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  # Cross-run resume (`resume_run_id`). ALWAYS runs and ALWAYS emits well-formed
+  # `freshCombos`/`resumedCombos`/`hasFreshCombos` outputs — even on the default
+  # blank input — so `baseline`/`checkpoint-init`'s `fromJSON(...)` matrix source
+  # never sees an empty/missing output (which would crash the workflow, not
+  # just skip resume) and their `if:` guards never see a missing string. Blank
+  # `resume_run_id` (default): `freshCombos` = every combo from preflight,
+  # `resumedCombos` = `[]`, `hasFreshCombos` = `'true'` — the fresh combo set
+  # and search semantics are unchanged from this workflow's pre-resume-support
+  # behavior (NOT scheduling-identical: `baseline` now always waits on this
+  # `resume-import` job's checkout/Node-setup/metadata step, even on the
+  # blank/default path). Non-blank: downloads the
+  # prior run's immutable per-round checkpoint artifacts (cross-run
+  # `download-artifact@v4`, gated `continue-on-error` so a missing/expired
+  # prior run degrades to "nothing importable" rather than failing this job)
+  # and, PER COMBO, walks tiers r3 > r2 > r1 > init picking the FIRST tier
+  # whose checkpoint file exists AND passes `round-plan.ts --mode
+  # resume-check` (schemaVersion/floorId/budgetMs/maxFrames/stage/runnerOs/
+  # nodeVersion/TRAIN seeds/weapons/secondary — workflowSha AND
+  # packageLockHash are deliberately excluded, see the CROSS-RUN RESUME
+  # header above — see assertResumeCompatible); an INCOMPATIBLE tier does
+  # not stop the scan — it
+  # keeps trying strictly-older tiers for that same combo before giving up.
+  # A combo with no compatible tier at all falls back to a fresh run with a
+  # visible `::warning::`/`::notice::` log line — never a silent merge of
+  # mismatched search state. `hasFreshCombos` (`'true'`/`'false'`) exists
+  # because GitHub Actions hard-FAILS a job whose matrix source array is
+  # empty (`fromJSON('[]')`), rather than skipping it — an all-combos-resumed
+  # run would otherwise crash `baseline`/`checkpoint-init` instead of simply
+  # running zero legs for them. Resume granularity is the whole latest
+  # completed round-tier per combo; it does not salvage individual in-flight
+  # candidate shards from a round that was still running when the prior run
+  # was cancelled (see header comment).
+  resume-import:
+    name: Resume import (cross-run checkpoint recovery)
+    needs: preflight
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      freshCombos: ${{ steps.resume.outputs.freshCombos }}
+      resumedCombos: ${{ steps.resume.outputs.resumedCombos }}
+      hasFreshCombos: ${{ steps.resume.outputs.hasFreshCombos }}
+      freshCombosBudgetMatrix: ${{ steps.resume.outputs.freshCombosBudgetMatrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Compute this run's expected provenance (schema/floor/budget/frames/runner/node/lock/sha)
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/sweep-eval.ts --print-meta > current-meta.json
+          cat current-meta.json
+
+      - name: Download prior run's checkpoint artifacts (cross-run resume)
+        if: ${{ inputs.resume_run_id != '' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.resume_run_id }}
+          pattern: search-checkpoint-*
+          merge-multiple: true
+          path: prior-checkpoints
+
+      - name: Select latest compatible checkpoint per combo (r3 > r2 > r1 > init, bounded by rounds)
+        id: resume
+        env:
+          COMBOS: ${{ needs.preflight.outputs.combos }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          ROUNDS: ${{ inputs.rounds }}
+          TRAIN_SEEDS: ${{ inputs.train_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          SECONDARY: ${{ inputs.secondary }}
+          BASELINE_MATRIX: ${{ needs.preflight.outputs.baseline_matrix }}
+        run: |
+          set -euo pipefail
+          mkdir -p resumed prior-checkpoints
+          FRESH='[]'
+          RESUMED='[]'
+          SECONDARY_FLAG=""
+          if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--expect-secondary"; fi
+          # Bound the tier scan by THIS run's requested `rounds` — a prior
+          # run's r3/r2 checkpoint reflects MORE optimization than a
+          # rounds=1 dispatch asked for; importing it would silently skip
+          # straight to a later round's state while validation still
+          # consumes it, performing more search than requested (found in
+          # plan review). Only tiers at or below the requested round are
+          # ever eligible; `init` (round 0) is always eligible since it
+          # predates any round-DAG tuning.
+          case "$ROUNDS" in
+            3) TIERS="r3 r2 r1 init" ;;
+            2) TIERS="r2 r1 init" ;;
+            1) TIERS="r1 init" ;;
+            *) TIERS="init" ;;
+          esac
+          if [ -z "$RESUME_RUN_ID" ]; then
+            echo "resume_run_id is blank — fresh run for every combo (default, unchanged behavior)."
+            FRESH="$COMBOS"
+          else
+            for COMBO in $(jq -r '.[]' <<< "$COMBOS"); do
+              FOUND=""
+              for r in $TIERS; do
+                f="prior-checkpoints/search-checkpoint-${r}-${COMBO}.json"
+                if [ -f "$f" ]; then
+                  # Map the tier name to the exact round number a checkpoint
+                  # FILE for that tier must carry — bind the combo/round
+                  # SLOT being filled, not just its filename, so a mislabeled
+                  # artifact (wrong combo, or more/less completed optimization
+                  # than this tier) is rejected by assertResumeCompatible
+                  # rather than silently trusted (found in review).
+                  case "$r" in
+                    r3) EXPECT_ROUND=3 ;;
+                    r2) EXPECT_ROUND=2 ;;
+                    r1) EXPECT_ROUND=1 ;;
+                    init) EXPECT_ROUND=0 ;;
+                  esac
+                  echo "[$COMBO] latest prior checkpoint tier available (<=rounds=$ROUNDS): $r ($f)"
+                  if npx tsx scripts/agent/perf/round-plan.ts --mode resume-check \
+                       --checkpoint "$f" --expect-meta current-meta.json \
+                       --combo "$COMBO" --round "$EXPECT_ROUND" \
+                       --expect-train-seeds "$TRAIN_SEEDS" --expect-weapons "$WEAPONS" $SECONDARY_FLAG \
+                       --out "resumed/search-checkpoint-init-${COMBO}.json"; then
+                    FOUND="$r"
+                    break
+                  else
+                    echo "::warning::[$COMBO] prior run $RESUME_RUN_ID's $r checkpoint is INCOMPATIBLE with this run — trying an older tier before falling back to a fresh run."
+                    # Deliberately NOT breaking here: an incompatible r3 shard
+                    # must not block trying r2/r1/init — an older tier may
+                    # still be compatible (e.g. only the newest round used a
+                    # differing train-seeds/weapons input), so keep scanning
+                    # strictly-older tiers for this combo.
+                  fi
+                fi
+              done
+              if [ -n "$FOUND" ]; then
+                RESUMED=$(jq -c --arg c "$COMBO" '. + [$c]' <<< "$RESUMED")
+                # Preserve the accepted checkpoint under its ORIGINAL tier
+                # name so a future run pointing `resume_run_id` at THIS run
+                # can discover it via the `search-checkpoint-*` download
+                # pattern (chained resume). `init`-tier resumes (round=0)
+                # already have the correct name; only r1/r2/r3 need a copy.
+                if [ "$FOUND" != "init" ]; then
+                  cp "resumed/search-checkpoint-init-${COMBO}.json" \
+                     "resumed/search-checkpoint-${FOUND}-${COMBO}.json"
+                fi
+              else
+                echo "::notice::[$COMBO] no compatible prior checkpoint found in run $RESUME_RUN_ID (within rounds=$ROUNDS bound) — running fresh."
+                FRESH=$(jq -c --arg c "$COMBO" '. + [$c]' <<< "$FRESH")
+              fi
+            done
+          fi
+          echo "Fresh combos:   $FRESH"
+          echo "Resumed combos: $RESUMED"
+          HAS_FRESH="true"
+          if [ "$(jq 'length' <<< "$FRESH")" -eq 0 ]; then HAS_FRESH="false"; fi
+          # Filter the budget-allocated baseline matrix to only fresh combos so
+          # `baseline` can use sweepSlots while skipping resumed combos.
+          FRESH_BUDGET_MATRIX=$(jq -c --argjson fresh "$FRESH"             '[.[] | select(.combo | IN($fresh[]))]' <<< "$BASELINE_MATRIX")
+          echo "freshCombos=$FRESH" >> "$GITHUB_OUTPUT"
+          echo "resumedCombos=$RESUMED" >> "$GITHUB_OUTPUT"
+          echo "hasFreshCombos=$HAS_FRESH" >> "$GITHUB_OUTPUT"
+          echo "freshCombosBudgetMatrix=$FRESH_BUDGET_MATRIX" >> "$GITHUB_OUTPUT"
+
+      - name: Emit sweep-lineage payload from resume_run_id (viewer lineage contract)
+        # Additive viewer contract only: uses the already-requested resume input,
+        # writes EXACTLY {schemaVersion:1,kind:'resume',sourceRunId:<positive int>}
+        # when the input is a positive integer, and otherwise emits nothing so
+        # existing resume-import semantics remain unchanged.
+        if: ${{ inputs.resume_run_id != '' && steps.resume.outputs.resumedCombos != '[]' }}
+        env:
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/round-plan.ts --mode emit-resume-lineage \
+            --resume-run-id "$RESUME_RUN_ID" \
+            --out "sweep-lineage.json"
+
+      - name: Upload sweep-lineage artifact (only when emitted)
+        if: ${{ hashFiles('sweep-lineage.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-lineage
+          path: sweep-lineage.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Derive legacy+legacy baseline shard from its resumed checkpoint (closes non-LEGACY incumbent gap)
+        # If legacy+legacy was itself cross-run RESUMED this run, it is
+        # excluded from freshCombos, so the `baseline` job (fresh-only) never
+        # produces a fresh `search-baseline-legacy+legacy` shard this run.
+        # Without this step, EVERY non-LEGACY combo's `checkpoint-init` would
+        # silently fall back to its own base as the in-search incumbent
+        # instead of hard-requiring the real LEGACY baseline — narrowing the
+        # net-win safety net purely because legacy+legacy happened to be
+        # resumed rather than fresh. Deriving it straight from the resumed
+        # checkpoint's own round-0 rows (additive-only across rounds — see
+        # `extractLegacyBaselineShard`'s docstring) and uploading it under
+        # the SAME artifact name (`search-baseline-legacy+legacy`) — with the
+        # SAME local filename convention (`baseline-legacy+legacy.json`) the
+        # `baseline` job's own upload uses — that `checkpoint-init`'s existing
+        # download-by-pattern step already looks for closes this gap with NO
+        # change to that step. Deliberately NOT `continue-on-error`: a
+        # resumed legacy+legacy checkpoint has ALREADY passed `resume-check`
+        # (a complete, duplicate-free, rectangular baseline panel is
+        # required there too), so extraction failing here would mean this
+        # step's own invariant is broken — silently falling back to the
+        # narrowed per-combo incumbent gate in that case would reintroduce
+        # the exact safety-net gap this step exists to close (found in
+        # review). Failing the job hard instead — combined with
+        # `baseline`/`checkpoint-init` both gating on
+        # `needs.resume-import.result == 'success'` — stops the run loudly
+        # rather than silently narrowing it.
+        if: ${{ contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy') }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/round-plan.ts --mode extract-legacy-baseline \
+            --checkpoint "resumed/search-checkpoint-init-legacy+legacy.json" \
+            --out "baseline-legacy+legacy.json"
+
+      - name: Upload derived legacy+legacy baseline shard (only when legacy+legacy was resumed)
+        if: ${{ contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-baseline-legacy+legacy
+          path: baseline-legacy+legacy.json
+          if-no-files-found: error
+          retention-days: 7
+
+      # Deliberately the LAST step in this job (after the legacy+legacy
+      # baseline derivation/upload above), not the first. Without
+      # `continue-on-error`, a step failure stops every later step in the
+      # SAME job from running at all — so if this ran earlier and the
+      # legacy-baseline derivation/upload later failed, `resumed-checkpoints`
+      # would already be uploaded and durably available, while
+      # `resume-import`'s own job conclusion was 'failure'. `round1`,
+      # `round1-select`, and `validate` all gate on `!cancelled()` (not
+      # `needs.resume-import.result == 'success'` — see their own comments
+      # for why), so they would still download and continue from that
+      # partial bundle: every resumed combo EXCEPT `legacy+legacy` would look
+      # fully valid, silently reintroducing the narrowed-incumbent safety-net
+      # gap this whole feature exists to close (found in review). Ordering
+      # this upload last makes the bundle's existence depend on the WHOLE
+      # job's success — if any earlier step in this job fails, this step
+      # never runs, `resumed-checkpoints` is never created this run, and
+      # every downstream consumer's pattern-based download simply finds
+      # nothing (this action does not fail on a zero-match pattern) rather
+      # than a half-complete resume.
+      - name: Upload resumed checkpoints bundle (only if any combo was actually resumed)
+        if: ${{ hashFiles('resumed/*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: resumed-checkpoints
+          path: resumed/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # Upload tier-named checkpoints under a `search-checkpoint-*`
+      # discoverable artifact name so that a future run pointing
+      # `resume_run_id` at THIS run's ID can re-import them in its own
+      # `resume-import` job (chained resume). The prior download step at
+      # line 303 uses `pattern: search-checkpoint-*`; the `resumed-checkpoints`
+      # artifact (uploaded above) does NOT match that pattern, so without
+      # this step, cancelling THIS run after `resume-import` but before the
+      # `select` jobs reproduce the imported tiers would leave NOTHING for
+      # the next run to resume from. The tier-named copies were already
+      # written to `resumed/` by the "Select" step above. Uses
+      # `continue-on-error: true` because: (a) this is best-effort for
+      # FUTURE runs and cannot affect THIS run's downstream jobs, and (b)
+      # the current run's `baseline`/`checkpoint-init` gates on
+      # `needs.resume-import.result == 'success'` — a hard failure here
+      # would misleadingly block CURRENT-run downstream jobs even though
+      # they have everything they need via `resumed-checkpoints` above.
+      - name: Upload resumed tier checkpoints for chained resume (search-checkpoint-* discoverable)
+        if: ${{ hashFiles('resumed/search-checkpoint-r*.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-checkpoint-resumed
+          path: resumed/search-checkpoint-r*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # One job per combo: evaluate ONLY the SSOT base config on TRAIN seeds. This
+  # replaces the old flat `search` job's implicit round-0 evaluation with an
+  # explicit, independently-timed stage (see header for the timing rationale).
+
+
   # One job per combo: evaluate ONLY the SSOT base config on TRAIN seeds. This
   # replaces the old flat `search` job's implicit round-0 evaluation with an
   # explicit, independently-timed stage (see header for the timing rationale).
   baseline:
-    name: Baseline ${{ matrix.combo }}
-    needs: preflight
+    name: Baseline ${{ matrix.combo.combo }}
+    needs: [preflight, resume-import]
+    if: ${{ needs.resume-import.result == 'success' && needs.resume-import.outputs.hasFreshCombos == 'true' }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.preflight.outputs.baseline_max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.resume-import.outputs.freshCombosBudgetMatrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
       - name: Evaluate SSOT base config (TRAIN panel)
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           TRAIN_SEEDS: ${{ inputs.train_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
@@ -209,7 +583,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-baseline-${{ matrix.combo }}
+          name: search-baseline-${{ matrix.combo.combo }}
           path: baseline-*.json
           if-no-files-found: error
           retention-days: 7
@@ -218,9 +592,32 @@ jobs:
   # select jobs upload immutable per-round checkpoint artifacts (search-checkpoint-r1-*,
   # etc.) rather than overwriting a single artifact, so `validate` can always find
   # the last successfully-uploaded round even if a later upload failed.
+  checkpoint-budget:
+    name: Allocate checkpoint-init sweep slots
+    needs: [preflight, baseline, resume-import]
+    if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.resume-import.outputs.freshCombos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
   checkpoint-init:
-    name: Checkpoint init ${{ matrix.combo }}
-    needs: [preflight, baseline]
+    name: Checkpoint init ${{ matrix.combo.combo }}
+    needs: [preflight, baseline, checkpoint-budget, resume-import]
     # if: !cancelled() — `baseline` is a fail-fast:false MATRIX job, so the
     # job-level `needs.baseline` conclusion is 'failure' if even ONE combo's
     # leg failed, even though every other combo's baseline artifact uploaded
@@ -234,14 +631,18 @@ jobs:
     # user-initiated cancellation, which would keep burning runner minutes on
     # every downstream round-select/validate/aggregate job the user just
     # asked to stop (found in multi-model review, gemini-3.1-pro-preview).
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.resume-import.result == 'success' && needs.resume-import.outputs.hasFreshCombos == 'true' }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.checkpoint-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.checkpoint-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -249,7 +650,7 @@ jobs:
       - name: Download this combo's baseline shard
         uses: actions/download-artifact@v4
         with:
-          name: search-baseline-${{ matrix.combo }}
+          name: search-baseline-${{ matrix.combo.combo }}
 
       - name: Download legacy+legacy baseline shard (optional — provides the LEGACY incumbent for the non-LEGACY combo net-win comparison)
         uses: actions/download-artifact@v4
@@ -260,8 +661,10 @@ jobs:
 
       - name: Build round-0 checkpoint
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           SECONDARY: ${{ inputs.secondary }}
+          TRAIN_SEEDS: ${{ inputs.train_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
         run: |
           set -euo pipefail
           SECONDARY_FLAG=""
@@ -284,11 +687,12 @@ jobs:
           fi
           npx tsx scripts/agent/perf/round-plan.ts \
             --mode init --combo "$COMBO" --baseline "baseline-$COMBO.json" $SECONDARY_FLAG $LEGACY_BASELINE_FLAG \
+            --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
             --out "search-checkpoint-init-$COMBO.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-init-${{ matrix.combo }}
+          name: search-checkpoint-init-${{ matrix.combo.combo }}
           path: search-checkpoint-init-*.json
           if-no-files-found: error
           retention-days: 7
@@ -302,6 +706,10 @@ jobs:
   round1-candidates:
     name: Round 1 — plan candidates
     needs: checkpoint-init
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # if: !cancelled() — `checkpoint-init` is a fail-fast:false MATRIX job; one
@@ -318,7 +726,8 @@ jobs:
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 1 }}
     outputs:
       hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
-      matrix: ${{ steps.plan.outputs.matrix }}
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -327,6 +736,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: search-checkpoint-init-*
+          merge-multiple: true
+          path: checkpoints
+
+      - name: Download any resumed combos' imported checkpoints (cross-run resume, if any)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: resumed-checkpoints
           merge-multiple: true
           path: checkpoints
 
@@ -349,6 +765,13 @@ jobs:
             echo 'MTRX_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Allocate queue-aware sweep slots for round 1 eval
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.plan.outputs.matrix }}
+        run: node .github/scripts/sweep-budget.mjs
+
       - uses: actions/upload-artifact@v4
         with:
           name: round1-candidates
@@ -360,17 +783,21 @@ jobs:
     name: Round 1 eval ${{ matrix.candidate.combo }}
     needs: round1-candidates
     if: needs.round1-candidates.outputs.hasCandidates == 'true'
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.candidate.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
-      # round-select/validate, so a full 8-combo round can't saturate the
-      # account's entire concurrent-runner pool and starve unrelated
-      # repo-wide work (e.g. the shared merge-train queue) — see run
-      # 29786216369, which fanned out 20 concurrent Round 3 eval jobs with
-      # 44 more queued before it was manually cancelled.
-      max-parallel: 8
+      # Queue-aware max-parallel comes from sweep-budget.mjs, while the shared
+      # crawler-sweep-slot-* semaphore still hard-caps all broad sweeps at ten
+      # repo-global slots so a large eval round cannot starve unrelated work
+      # (e.g. the shared merge-train queue) — see run 29786216369, which
+      # fanned out 20 concurrent Round 3 eval jobs with 44 more queued before
+      # it was manually cancelled.
+      max-parallel: ${{ fromJSON(needs.round1-candidates.outputs.max_parallel) }}
       matrix:
         candidate: ${{ fromJSON(needs.round1-candidates.outputs.matrix) }}
     steps:
@@ -420,25 +847,71 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  round1-select:
-    name: Round 1 select ${{ matrix.combo }}
+  round1-select-budget:
+    name: Allocate round 1 select sweep slots
     needs: [preflight, checkpoint-init, round1-candidates, round1-eval]
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 1 }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.preflight.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  round1-select:
+    name: Round 1 select ${{ matrix.combo.combo }}
+    needs: [preflight, checkpoint-init, round1-candidates, round1-eval, round1-select-budget]
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 1 }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.round1-select-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.round1-select-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Download this combo's init checkpoint
+      - name: Download this combo's init checkpoint (fresh path)
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-init-${{ matrix.combo }}
+          pattern: search-checkpoint-init-${{ matrix.combo.combo }}
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Download resumed combos' imported checkpoints (resumed path, if any)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: resumed-checkpoints
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Assert this combo's init checkpoint is present (fresh XOR resumed — never neither)
+        env:
+          COMBO: ${{ matrix.combo.combo }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "search-checkpoint-init-$COMBO.json" ]; then
+            echo "::error::[$COMBO] no init checkpoint found from EITHER the fresh checkpoint-init job OR a resumed-checkpoints bundle." >&2
+            exit 1
+          fi
 
       - name: Download round 1's candidate plan (to know this combo's PLANNED count)
         uses: actions/download-artifact@v4
@@ -450,14 +923,14 @@ jobs:
       - name: Download this combo's round-1 shards (if any)
         uses: actions/download-artifact@v4
         with:
-          pattern: round1-shard-${{ matrix.combo }}-*
+          pattern: round1-shard-${{ matrix.combo.combo }}-*
           merge-multiple: true
           path: shards
           if-no-artifact-found: warn
 
       - name: Fold round 1 into checkpoint
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           SECONDARY: ${{ inputs.secondary }}
         run: |
           set -euo pipefail
@@ -482,7 +955,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-r1-${{ matrix.combo }}
+          name: search-checkpoint-r1-${{ matrix.combo.combo }}
           path: search-checkpoint-r1-*.json
           if-no-files-found: error
           retention-days: 7
@@ -493,12 +966,17 @@ jobs:
   round2-candidates:
     name: Round 2 — plan candidates
     needs: round1-select
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 2 }}
     outputs:
       hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
-      matrix: ${{ steps.plan.outputs.matrix }}
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -529,6 +1007,13 @@ jobs:
             echo 'MTRX_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Allocate queue-aware sweep slots for round 2 eval
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.plan.outputs.matrix }}
+        run: node .github/scripts/sweep-budget.mjs
+
       - uses: actions/upload-artifact@v4
         with:
           name: round2-candidates
@@ -540,14 +1025,19 @@ jobs:
     name: Round 2 eval ${{ matrix.candidate.combo }}
     needs: round2-candidates
     if: needs.round2-candidates.outputs.hasCandidates == 'true'
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.candidate.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
-      # round-select/validate — see round1-eval's identical comment for why
-      # (run 29786216369 saturated the account's concurrent-runner pool).
-      max-parallel: 8
+      # Queue-aware max-parallel comes from sweep-budget.mjs, while the shared
+      # crawler-sweep-slot-* semaphore still hard-caps all broad sweeps at ten
+      # repo-global slots — see round1-eval's identical comment for why (run
+      # 29786216369 saturated the account's concurrent-runner pool).
+      max-parallel: ${{ fromJSON(needs.round2-candidates.outputs.max_parallel) }}
       matrix:
         candidate: ${{ fromJSON(needs.round2-candidates.outputs.matrix) }}
     steps:
@@ -591,17 +1081,44 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  round2-select:
-    name: Round 2 select ${{ matrix.combo }}
+  round2-select-budget:
+    name: Allocate round 2 select sweep slots
     needs: [preflight, round1-select, round2-candidates, round2-eval]
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 2 }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.preflight.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  round2-select:
+    name: Round 2 select ${{ matrix.combo.combo }}
+    needs: [preflight, round1-select, round2-candidates, round2-eval, round2-select-budget]
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 2 }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.round2-select-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.round2-select-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -609,7 +1126,7 @@ jobs:
       - name: Download this combo's round-1 checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-r1-${{ matrix.combo }}
+          name: search-checkpoint-r1-${{ matrix.combo.combo }}
 
       - name: Download round 2's candidate plan (to know this combo's PLANNED count)
         uses: actions/download-artifact@v4
@@ -621,14 +1138,14 @@ jobs:
       - name: Download this combo's round-2 shards (if any)
         uses: actions/download-artifact@v4
         with:
-          pattern: round2-shard-${{ matrix.combo }}-*
+          pattern: round2-shard-${{ matrix.combo.combo }}-*
           merge-multiple: true
           path: shards
           if-no-artifact-found: warn
 
       - name: Fold round 2 into checkpoint
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           SECONDARY: ${{ inputs.secondary }}
         run: |
           set -euo pipefail
@@ -647,7 +1164,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-r2-${{ matrix.combo }}
+          name: search-checkpoint-r2-${{ matrix.combo.combo }}
           path: search-checkpoint-r2-*.json
           if-no-files-found: error
           retention-days: 7
@@ -659,12 +1176,17 @@ jobs:
   round3-candidates:
     name: Round 3 — plan candidates
     needs: round2-select
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 3 }}
     outputs:
       hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
-      matrix: ${{ steps.plan.outputs.matrix }}
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -695,6 +1217,13 @@ jobs:
             echo 'MTRX_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Allocate queue-aware sweep slots for round 3 eval
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ steps.plan.outputs.matrix }}
+        run: node .github/scripts/sweep-budget.mjs
+
       - uses: actions/upload-artifact@v4
         with:
           name: round3-candidates
@@ -706,14 +1235,19 @@ jobs:
     name: Round 3 eval ${{ matrix.candidate.combo }}
     needs: round3-candidates
     if: needs.round3-candidates.outputs.hasCandidates == 'true'
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.candidate.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      # Capped at the same max-parallel:8 used by baseline/checkpoint-init/
-      # round-select/validate — see round1-eval's identical comment for why
-      # (run 29786216369 saturated the account's concurrent-runner pool).
-      max-parallel: 8
+      # Queue-aware max-parallel comes from sweep-budget.mjs, while the shared
+      # crawler-sweep-slot-* semaphore still hard-caps all broad sweeps at ten
+      # repo-global slots — see round1-eval's identical comment for why (run
+      # 29786216369 saturated the account's concurrent-runner pool).
+      max-parallel: ${{ fromJSON(needs.round3-candidates.outputs.max_parallel) }}
       matrix:
         candidate: ${{ fromJSON(needs.round3-candidates.outputs.matrix) }}
     steps:
@@ -757,17 +1291,44 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  round3-select:
-    name: Round 3 select ${{ matrix.combo }}
+  round3-select-budget:
+    name: Allocate round 3 select sweep slots
     needs: [preflight, round2-select, round3-candidates, round3-eval]
     if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 3 }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.preflight.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  round3-select:
+    name: Round 3 select ${{ matrix.combo.combo }}
+    needs: [preflight, round2-select, round3-candidates, round3-eval, round3-select-budget]
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 3 }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.round3-select-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.round3-select-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -775,7 +1336,7 @@ jobs:
       - name: Download this combo's round-2 checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-r2-${{ matrix.combo }}
+          name: search-checkpoint-r2-${{ matrix.combo.combo }}
 
       - name: Download round 3's candidate plan (to know this combo's PLANNED count)
         uses: actions/download-artifact@v4
@@ -787,14 +1348,14 @@ jobs:
       - name: Download this combo's round-3 shards (if any)
         uses: actions/download-artifact@v4
         with:
-          pattern: round3-shard-${{ matrix.combo }}-*
+          pattern: round3-shard-${{ matrix.combo.combo }}-*
           merge-multiple: true
           path: shards
           if-no-artifact-found: warn
 
       - name: Fold round 3 into checkpoint
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           SECONDARY: ${{ inputs.secondary }}
         run: |
           set -euo pipefail
@@ -813,7 +1374,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-r3-${{ matrix.combo }}
+          name: search-checkpoint-r3-${{ matrix.combo.combo }}
           path: search-checkpoint-r3-*.json
           if-no-files-found: error
           retention-days: 7
@@ -829,17 +1390,45 @@ jobs:
   # skipped or partially-failed round-select job upstream never silently skips
   # validation of whatever the search DID manage to produce, while a manual
   # workflow cancellation still stops validation (unlike `always()`).
-  validate:
-    name: Validate ${{ matrix.combo }}
+  validate-budget:
+    name: Allocate validate sweep slots
     needs: [preflight, checkpoint-init, round1-select, round2-select, round3-select]
     if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.budget.outputs.matrix }}
+      max_parallel: ${{ steps.budget.outputs.max_parallel }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Allocate queue-aware sweep slots
+        id: budget
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_JSON: ${{ needs.preflight.outputs.combos }}
+          MATRIX_KEY: combo
+        run: node .github/scripts/sweep-budget.mjs
+
+  validate:
+    name: Validate ${{ matrix.combo.combo }}
+    needs:
+      [preflight, checkpoint-init, round1-select, round2-select, round3-select, validate-budget, resume-import]
+    if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ fromJSON(needs.validate-budget.outputs.max_parallel) }}
       matrix:
-        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+        combo: ${{ fromJSON(needs.validate-budget.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -847,12 +1436,22 @@ jobs:
       - name: Download all available checkpoints for this combo (immutable per-round artifacts)
         uses: actions/download-artifact@v4
         with:
-          pattern: search-checkpoint-*-${{ matrix.combo }}
+          pattern: search-checkpoint-*-${{ matrix.combo.combo }}
           merge-multiple: true
+
+      - name: Download this combo's imported checkpoint (resumed path, rounds=0 edge case)
+        # rounds=0 skips round1-select entirely, so a RESUMED combo would otherwise have
+        # NO local checkpoint file at all — its only copy lives inside the
+        # resumed-checkpoints bundle uploaded by resume-import.
+        uses: actions/download-artifact@v4
+        with:
+          pattern: resumed-checkpoints
+          merge-multiple: true
+        continue-on-error: true
 
       - name: Validate finalist + incumbent
         env:
-          COMBO: ${{ matrix.combo }}
+          COMBO: ${{ matrix.combo.combo }}
           VALIDATE_SEEDS: ${{ inputs.validate_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
@@ -881,7 +1480,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: validate-${{ matrix.combo }}
+          name: validate-${{ matrix.combo.combo }}
           path: validate-*.json
           if-no-files-found: error
           retention-days: 7
@@ -902,6 +1501,10 @@ jobs:
     name: Aggregate → leaderboard
     needs: validate
     if: ${{ !cancelled() }}
+    concurrency:
+      group: crawler-sweep-slot-0
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

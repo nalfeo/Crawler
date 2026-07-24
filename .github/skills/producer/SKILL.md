@@ -7,12 +7,12 @@ description: >-
   "triage a request", "decompose a feature", "run the producer", "orchestrate
   slices", "force-publish a PR", or when kicking off any multi-system feature
   work. Covers request classification, persona-mapped slice decomposition,
-  dependency grouping, force-publish + auto-merge arming, and Shepherd handoff.
+  dependency grouping, force-publish + auto-merge arming, and release-first cloud handoff.
 ---
 
 # Producer Skill
 
-Mandatory kickoff handler for all sessions. Triages feature requests, clarifies scope, detects game-design decisions, and delegates slices to specialist personas. Publishes PRs eagerly and invokes Shepherd immediately for reactive watch.
+Mandatory kickoff handler for all sessions. Triages feature requests, clarifies scope, detects game-design decisions, and delegates slices to specialist personas. Publishes PRs eagerly, then releases their sessions so CI Recovery can assign cloud Copilot.
 
 ## Invocation
 
@@ -286,7 +286,7 @@ For each slice:
 3. **Track slice state:**
    - SPAWNED (session opening)
    - IN_PROGRESS (session active, code being written)
-   - PUBLISHED_WATCHED (PR live, Shepherd watching)
+   - PUBLISHED_DETACHED (PR live, owning session released)
    - MERGED (PR merged to main)
    - BLOCKED_UPSTREAM (waiting for dependency)
    - BLOCKED_ON_APPROVAL (waiting for human gate)
@@ -297,40 +297,41 @@ For each slice:
 
 ---
 
-### Phase 5: EAGER PUBLICATION & SHEPHERD WATCH
+### Phase 5: EAGER PUBLICATION & RELEASE-FIRST CLOUD HANDOFF
 
 **Publication Criteria:**
 
-Publish PR from draft as soon as ALL of:
+Publish a ready-for-review PR as soon as ALL of:
 
-- ✅ CI passing (typecheck, lint, tests)
+- ✅ Required local pre-PR validation is complete
 - ✅ No blocking questions (spec is clear)
 - ✅ No gameplay escalation (no design approval needed)
 - ✅ No vague specs (implementation matches intent)
 
 **Do NOT keep in draft waiting for:**
 
+- CI completion
 - Review completion
-- Approval
+- Cloud Copilot assignment
 - Auto-merge conditions
 
 **Publication Workflow:**
 
 ```
-Slice PR created (draft)
-  ↓ [Session runs, code lands]
-  ↓
-CI passes
+Session completes implementation + required local validation
   ↓
 Producer checks: Blocking questions or gameplay escal.?
-  ├─ YES → Keep draft, escalate to human
-  └─ NO → Publish immediately
+  ├─ YES → Escalate before publication
+  └─ NO → Create ready-for-review PR immediately
          ↓
-         gh pr ready <pr>
+         create_pull_request(..., draft: false)
          ↓
-         Log: "PR #1227 published"
+         Leave complete PR body + handoff context
          ↓
-         Invoke Shepherd (see Phase 5b)
+         End/release the owning session
+         ↓
+         CI Recovery assigns cloud Copilot for blockers
+         (event-driven, with a 10-minute scheduled backstop)
 ```
 
 **Example output:**
@@ -340,51 +341,33 @@ Producer checks: Blocking questions or gameplay escal.?
 
 Slice: C (Systems Engineer)
 PR: #1227
-Status: PUBLISHED_WATCHED
+Status: PUBLISHED_DETACHED
 
 ⏱️  Timeline:
   Started: 10 min ago
-  First CI: 7 min ago
   Published: now
-  Expected merge: 30-45 min
+  Local ownership released: now
 
-🐑 Shepherd: ✅ Watching (reactive mode)
-   Auto-merge armed: yes
+☁️ Cloud handoff: awaiting CI Recovery
+   Takeover target: within one 10-minute reconciliation cycle
 ```
 
 ---
 
-### Phase 5b: SHEPHERD REACTIVE WATCH
+### Phase 5b: CLOUD OWNERSHIP CONTRACT
 
-**Invoke Shepherd immediately upon publication (do NOT wait):**
-
-```typescript
-shepherd.watchPR({
-  pr_number: slice_pr.number,
-  session_id: slice_session_id,
-  slice_name: slice_name,
-  mode: 'reactive', // event-driven, not polling
-  auto_merge_eligible: slice_pr.ci_passing && !slice_pr.has_human_gates,
-});
-```
-
-**Shepherd's responsibilities:**
-
-- **Arm auto-merge if eligible** (upfront, do not wait for approval)
-- **Watch for blocker events:**
-  - CI failure → diagnose + retry or file issue
-  - Review thread open → address if agent-authored
-  - Approval timeout (2+ hours) → escalate or ping
-  - Merge ready but not auto-merged → force merge
-- **Monitor rework loops** (3+ force-pushes in 30 min) → alert Producer
-- **Report status** on demand (`npm run producer -- --shepherd-status --pr 1227`)
-
-**Shepherd does NOT:**
-
-- Proactively poll or check every 5 minutes (reactive only)
-- Force-approve or override gates
-- Make design decisions
-- Intervene until a blocker occurs
+- **Release comes first.** An active CLI/cloud session on the head branch can
+  prevent a new Copilot assignment, so never wait for cloud confirmation before
+  ending the publishing session.
+- **Default exception:** keep the session local only when the human explicitly
+  requested that before PR publication. Do not infer the exception from task
+  complexity, CI state, review activity, or convenience.
+- **Takeover signal:** CI Recovery posts the exact blocker task, assigns
+  `copilot-swe-agent`, and records automation ownership. The event-driven router
+  runs on PR/review/CI changes; its scheduled backstop runs every 10 minutes.
+- **Failure signal:** if a blocker-bearing PR remains unclaimed after one
+  scheduled cycle, surface the unowned PR instead of silently reviving the
+  original local session.
 
 ---
 
@@ -432,8 +415,8 @@ SLICE PROGRESS
     Status: MERGED | PR #1226 | Time: 22 min
 
 🟡 Slice C: Systems Engineer (Physics)
-    Status: PUBLISHED_WATCHED | PR #1227 | Time: 28 min
-    CI: ✓ | Shepherd: ✅ watching
+    Status: PUBLISHED_DETACHED | PR #1227 | Time: 28 min
+    Cloud handoff: awaiting CI Recovery
 
 🔵 Slice D: Game Designer (Balance)
     Status: BLOCKED_UPSTREAM | Waiting for: C
@@ -441,7 +424,7 @@ SLICE PROGRESS
 
 NEXT ACTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⏱️  Waiting for Slice C review → Shepherd watching
+⏱️  Waiting for Slice C cloud recovery/merge
 ⏱️  Slice D will auto-start once C merged
 ⏱️  Parent PR will auto-merge once all slices converge
 ```
@@ -456,8 +439,8 @@ All slices merged → Parent PR merges:
 All slices MERGED
   ↓
 Producer checks: Parent PR ready for auto-merge?
-  ├─ YES → Arm auto-merge, let Shepherd enforce
-  └─ NO → Resolve merge blockers (conflicts, CI, etc.)
+  ├─ YES → Arm auto-merge, then release the owning session
+  └─ NO → Arm auto-merge, release session — CI Recovery owns post-publication blockers
     ↓
 Parent PR merged
   ↓
@@ -465,7 +448,7 @@ Output final handoff:
   ├─ Total wall time
   ├─ Parallelism win (time if serial vs. actual)
   ├─ Rework loops (force-push count)
-  ├─ Blockers encountered (and how Shepherd handled them)
+  ├─ Blockers encountered (and how cloud recovery handled them)
   └─ Lessons learned (for harness improvement)
   ↓
 File harness-learning issue if blocker repeated
@@ -523,7 +506,7 @@ Manually override publication criteria (use with caution).
 
 ```bash
 npm run producer -- --force-publish --pr 1227
-# Result: PR published from draft, Shepherd invoked
+# Result: PR published ready-for-review, owning session released
 ```
 
 ---
@@ -554,12 +537,12 @@ Does Slice B depend on Slice A?
 ### Should this PR stay in draft or publish?
 
 ```
-CI passing?                          YES → continue
-Blocking questions or unclear spec? NO  → continue
-Gameplay escalation needed?         NO  → continue
-Review ledger valid for apple tier? YES → continue
+Required local pre-PR validation complete?  YES → continue
+Blocking questions or unclear spec?         NO  → continue
+Gameplay escalation needed?                 NO  → continue
+Review ledger valid for apple tier?         YES → continue
   ↓
-PUBLISH from draft, invoke Shepherd
+PUBLISH ready-for-review, leave handoff context, release session
 ```
 
 ---
@@ -570,8 +553,9 @@ PUBLISH from draft, invoke Shepherd
 - **Refuse scope creep:** If decomposition balloons to >8 slices or >12🍎, escalate.
 - **Respect gameplay gates:** If any slice touches game-design, require human review.
 - **One coordinating handoff:** Single handoff per orchestration, linking all slices.
-- **Shepherd knows when to back off:** Reactive watch only; never force-approve.
-- **Never publish with blocking questions:** Keep PR in draft until clarified.
+- **Release-first cloud handoff:** Do not wait for cloud assignment before ending the publishing session.
+- **Local ownership is explicit-only:** Keep a published PR local only when the human requested it before publication.
+- **Never publish with blocking questions:** Clarify or escalate before creating the ready-for-review PR.
 
 ---
 
@@ -601,7 +585,7 @@ Producer writes to:
   ],
   "overall_progress": 0.6,
   "parallelism_win_minutes": 15,
-  "shepherd_interventions": 0,
+  "cloud_recovery_interventions": 0,
   "blockers": []
 }
 ```
@@ -611,7 +595,7 @@ Producer writes to:
 - Links all child sessions
 - Documents game-design gates
 - Records apple score + actuals
-- Lists blockers and how Shepherd handled them
+- Lists blockers and how cloud recovery handled them
 - Captures lessons learned
 
 ---

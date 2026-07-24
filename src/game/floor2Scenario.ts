@@ -85,6 +85,7 @@ import {
 } from '../shared/data/den-unlock-archetypes.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import { initializeFloor2Settlement } from './floor2Settlement.js';
+import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { equip, initializeBaseStats, unequip } from '../core/systems/equipmentSystem.js';
@@ -654,6 +655,18 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     }
     if (decapitated.has(familyId)) continue;
 
+    // Chest creation boundary (ADR 0070): resolves the family's boss-chest
+    // reward bundle and registers its lifecycle record BEFORE the boss is
+    // latched as defeated below. `spawnBossChestForDefeatedBoss` can throw a
+    // `RewardBundleResolutionError` on a genuine config/catalog integrity bug
+    // (fail-closed per ADR 0070 §6); ordering it first means such a throw
+    // leaves `decapitated`/goal flags untouched, so this family stays
+    // retryable on the next tick instead of being permanently latched as
+    // "defeated" with no chest ever created. No-op (never throws) on Floor 1
+    // (structurally unreachable here anyway), with the economy flag
+    // disabled, or on re-entry for an already-chested family.
+    spawnBossChestForDefeatedBoss(world, familyId);
+
     decapitated.add(familyId);
     setGoalFlag(world, bossDefeatGoalId(familyId), true);
     const encounter = floor2State.bossEncounters?.get(familyId);
@@ -722,6 +735,16 @@ export function floor2VictorySystem(world: GameWorld): void {
   const allBossEntitiesGone = livingBossFamilies.size === 0;
   if (!allBossesDead && allDensUnlocked && allBossEntitiesGone) {
     for (const familyId of presentFamilies) {
+      // Chest creation boundary (ADR 0070), mirrored from the primary
+      // combat-event path above: this is a second defeat-latch that fires
+      // when a family's boss ECS entity vanishes without a normal `death`
+      // combat event (e.g. all dens unlocked while the boss entity was
+      // otherwise despawned/recycled). Without this call such a family would
+      // be permanently latched "defeated" with no boss chest ever created.
+      // `spawnBossChestForDefeatedBoss` is idempotent (checks
+      // `world.bossChests.has(chestId)` first), so it is safe to call here
+      // even for families already chested via the primary path.
+      spawnBossChestForDefeatedBoss(world, familyId);
       decapitated.add(familyId);
       setGoalFlag(world, bossDefeatGoalId(familyId), true);
     }
@@ -853,6 +876,12 @@ export function initializeFloor2Scenario(
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
+  // Floor 2 runtime owns the generated-equipment reward economy; enable the
+  // full dependency closure so Floor 2 achievement equipment rewards can
+  // resolve in shipped gameplay paths.
+  world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+  world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+  world.floor2EquipmentFlags.floor2EquipmentRewards = true;
   if (!options?.playerCarryover) {
     applyFloor2DirectStartPlayerState(world, playerEid);
     initializePlayerWeaponSkills(world, playerEid);
@@ -963,6 +992,9 @@ export function initializeFloor2Scenario(
   initializeFloor2Settlement(world, {
     ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
+    ...(options?.playerCarryover
+      ? { effectivePlayerLevel: options.playerCarryover.playerLevel.level }
+      : {}),
   });
 
   if (!options?.playerCarryover) {
@@ -1084,8 +1116,6 @@ function applyFloor2DirectStartPlayerState(world: GameWorld, playerEid: number):
   statSystem(world);
 
   unequip(world, playerEid, 'neck', { force: true });
-  // TODO(C2→D): call revokeEquipmentAbilityGrants(world, playerEid, <instanceId>) after
-  // unequip once equipment-ability wiring is implemented (see src/game/systems/abilitySystem.ts).
   equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
 }
 
