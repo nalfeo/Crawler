@@ -75,13 +75,13 @@ export function isCloudEnv(env: EnvMap): boolean {
 
 /**
  * True when the image provider is the Azure OpenAI path (the default). When the
- * operator opts into `SPRITES_PROVIDER=foundry`, the image provider reads its own
- * `FOUNDRY_*` connection instead — which the Azure env bootstrap cannot write —
- * so we must NOT demand (or try to bootstrap) `AZURE_OPENAI_*` on that path.
+ * operator uses `SPRITES_PROVIDER=local-a1111`, the image provider reads its
+ * own connection config — which the Azure env bootstrap cannot write — so we
+ * must NOT demand (or try to bootstrap) `AZURE_OPENAI_*` on that path.
  */
 export function imageProviderIsAzureOpenAi(env: EnvMap): boolean {
   const which = (env['SPRITES_PROVIDER'] ?? '').trim().toLowerCase() || 'azure-openai';
-  return which !== 'foundry';
+  return which !== 'local-a1111';
 }
 
 function normalizeSelector(raw: string | undefined, fallback: string): string {

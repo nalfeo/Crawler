@@ -28,11 +28,6 @@ const BASE_ENV = {
   AZURE_OPENAI_API_KEY: 'k',
 } as const;
 
-const FOUNDRY_ENV = {
-  FOUNDRY_ENDPOINT: 'https://example.services.ai.azure.com',
-  FOUNDRY_API_KEY: 'fk',
-} as const;
-
 afterEach(() => {
   __resetChatDeploymentFallbackWarnings();
 });
@@ -132,70 +127,6 @@ describe('createSynthProvider — chat deployment fallback', () => {
   });
 });
 
-describe('foundry backend (ADR 0033)', () => {
-  it('createImageProvider builds from FOUNDRY_* when SPRITES_PROVIDER=foundry', () => {
-    const p = createImageProvider({
-      env: { ...FOUNDRY_ENV, SPRITES_PROVIDER: 'foundry', FOUNDRY_IMAGE_MODEL: 'FLUX.1' },
-    });
-    expect(p).not.toBeNull();
-  });
-
-  it('createImageProvider throws when foundry connection is incomplete', () => {
-    expect(() =>
-      createImageProvider({ env: { SPRITES_PROVIDER: 'foundry', FOUNDRY_IMAGE_MODEL: 'FLUX.1' } }),
-    ).toThrow(/FOUNDRY_ENDPOINT/);
-  });
-
-  it('createTextProvider builds a foundry chat provider when FOUNDRY_TEXT_MODEL is set', () => {
-    const p = createTextProvider({
-      env: {
-        ...FOUNDRY_ENV,
-        SPRITES_TEXT_PROVIDER: 'foundry',
-        FOUNDRY_TEXT_MODEL: 'Llama-3.3-70B',
-      },
-    });
-    expect(p).not.toBeNull();
-  });
-
-  it('createTextProvider returns null when foundry text model is unconfigured', () => {
-    expect(
-      createTextProvider({ env: { ...FOUNDRY_ENV, SPRITES_TEXT_PROVIDER: 'foundry' } }),
-    ).toBeNull();
-  });
-
-  it('createVisionProvider returns null when foundry vision model is unconfigured', () => {
-    expect(
-      createVisionProvider({ env: { ...FOUNDRY_ENV, SPRITES_VISION_PROVIDER: 'foundry' } }),
-    ).toBeNull();
-  });
-
-  it('createSynthProvider labels candidates with the foundry prefix', () => {
-    const p = createSynthProvider({
-      env: { ...FOUNDRY_ENV, SPRITES_SYNTH_PROVIDER: 'foundry', FOUNDRY_TEXT_MODEL: 'Mistral' },
-    });
-    expect(p.providerLabel).toBe('foundry:Mistral');
-  });
-
-  it('createBriefSelectorProvider throws when selector model equals synth model', () => {
-    expect(() =>
-      createBriefSelectorProvider({
-        env: {
-          ...FOUNDRY_ENV,
-          SPRITES_SYNTH_PROVIDER: 'foundry',
-          FOUNDRY_TEXT_MODEL: 'same',
-          FOUNDRY_BRIEF_SELECTOR_MODEL: 'same',
-        },
-      }),
-    ).toThrow(/must differ/);
-  });
-
-  it('rejects an unknown backend value', () => {
-    expect(() => createImageProvider({ env: { SPRITES_PROVIDER: 'bedrock' } })).toThrow(
-      /Unknown SPRITES_PROVIDER/,
-    );
-  });
-});
-
 describe('local-a1111 backend', () => {
   it('createImageProvider builds when SPRITES_PROVIDER=local-a1111 and LOCAL_A1111_MODEL is set', () => {
     const p = createImageProvider({
@@ -211,40 +142,23 @@ describe('local-a1111 backend', () => {
   });
 });
 
-describe('foundry starter catalog (setup-azure-env.ps1 contract)', () => {
-  // Uses the FOUNDRY_* aliases that scripts/azure-foundry-plan.ps1 emits and
-  // setup-azure-env.ps1 writes to .env.local for the provisioned starter
-  // catalog. Aliases are the /openai/deployments/{alias} path segments, so the
-  // gpt-4o deployment is shared by text + vision, and the brief selector uses a
-  // distinct gpt-4o-mini deployment. NOTE: the emitted .env.local leaves every
-  // SPRITES_*_PROVIDER=foundry selector COMMENTED (azure-openai stays default);
-  // here they are set uncommented on purpose so the factory actually constructs
-  // the foundry providers. If the provisioning plan ever drifts from what the
-  // factory can consume, this contract test fails.
-  const STARTER_FOUNDRY_ENV = {
-    FOUNDRY_ENDPOINT: 'https://aif-crawler-nalfeo.services.ai.azure.com',
-    FOUNDRY_API_KEY: 'fk',
-    FOUNDRY_API_VERSION: '2025-04-01-preview',
-    FOUNDRY_IMAGE_MODEL: 'gpt-image-1',
-    FOUNDRY_TEXT_MODEL: 'gpt-4o',
-    FOUNDRY_VISION_MODEL: 'gpt-4o',
-    FOUNDRY_BRIEF_SELECTOR_MODEL: 'gpt-4o-mini',
-    SPRITES_PROVIDER: 'foundry',
-    SPRITES_TEXT_PROVIDER: 'foundry',
-    SPRITES_SYNTH_PROVIDER: 'foundry',
-    SPRITES_VISION_PROVIDER: 'foundry',
-  } as const;
-
-  it('builds all four providers from the provisioned starter env', () => {
-    expect(createImageProvider({ env: STARTER_FOUNDRY_ENV })).not.toBeNull();
-    expect(createTextProvider({ env: STARTER_FOUNDRY_ENV })).not.toBeNull();
-    expect(createVisionProvider({ env: STARTER_FOUNDRY_ENV })).not.toBeNull();
-    // selector (gpt-4o-mini) differs from text (gpt-4o) -> must NOT throw.
-    expect(createBriefSelectorProvider({ env: STARTER_FOUNDRY_ENV })).not.toBeNull();
+describe('unknown backend rejection', () => {
+  it('rejects an unknown SPRITES_PROVIDER value', () => {
+    expect(() => createImageProvider({ env: { SPRITES_PROVIDER: 'bedrock' } })).toThrow(
+      /Unknown SPRITES_PROVIDER/,
+    );
   });
 
-  it('labels synth candidates with the shared gpt-4o deployment', () => {
-    const p = createSynthProvider({ env: STARTER_FOUNDRY_ENV });
-    expect(p.providerLabel).toBe('foundry:gpt-4o');
+  it('rejects an unknown SPRITES_TEXT_PROVIDER value', () => {
+    expect(() => createTextProvider({ env: { SPRITES_TEXT_PROVIDER: 'foundry' } })).toThrow(
+      /Unknown SPRITES_TEXT_PROVIDER/,
+    );
+  });
+
+  it('rejects an unknown SPRITES_VISION_PROVIDER value', () => {
+    expect(() => createVisionProvider({ env: { SPRITES_VISION_PROVIDER: 'foundry' } })).toThrow(
+      /Unknown SPRITES_VISION_PROVIDER/,
+    );
   });
 });
+

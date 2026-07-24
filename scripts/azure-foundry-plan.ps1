@@ -1,9 +1,18 @@
 <#
 .SYNOPSIS
-    Single source of truth for the Azure AI Foundry starter catalog (ADR 0033).
+    [ARCHIVED — ADR 0072] Azure AI Foundry starter catalog helpers (ADR 0033).
 
 .DESCRIPTION
-    Pure, paramless, side-effect-free helpers shared by three callers:
+    ARCHIVED: The foundry backend was retired in ADR 0072. The aif-crawler-nalfeo
+    Foundry resource has zero deployments and no obtainable quota. The asset
+    pipeline standardized on the azure-openai backend.
+
+    This file is kept for reference and to allow the existing
+    setup-azure-resources.tests.ps1 assertions to continue to pass during the
+    transition period. The functions it defines are no longer called by
+    setup-azure-env.ps1 or setup-azure-resources.ps1.
+
+    Original description: Pure, paramless, side-effect-free helpers shared by three callers:
       - setup-azure-resources.ps1 (provisions the deployments),
       - setup-azure-env.ps1       (writes .env.local + GitHub secrets),
       - setup-azure-resources.tests.ps1 (dependency-free unit tests).

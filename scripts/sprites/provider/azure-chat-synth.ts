@@ -58,9 +58,9 @@ export interface AzureOpenAISynthProviderOptions {
   /** Injectable fetch implementation; defaults to global fetch. */
   readonly fetch?: typeof fetch;
   /**
-   * Provenance prefix for {@link providerLabel}. Defaults to `azure-openai`;
-   * the factory passes `foundry` when wiring an Azure AI Foundry backend so a
-   * candidate's recorded label reflects which catalog produced it.
+   * Provenance prefix for {@link providerLabel}. Defaults to `azure-openai`.
+   * Override when routing through an alternate backend so the candidate's
+   * recorded label reflects which catalog produced it.
    */
   readonly providerLabelPrefix?: string;
   /**

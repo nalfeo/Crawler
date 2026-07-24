@@ -2,9 +2,13 @@
 
 ## Status
 
-Accepted (2026-07-03) — delivered incrementally; see **Migration Phases**.
-Phase 1 and the Phase 2 groundwork are implemented; the Phase 2 default flip and
-Phases 3–4 remain tracked follow-ups.
+**Superseded** by [ADR 0072 — Retire Foundry Backend, Standardize on Azure OpenAI](0072-retire-foundry-standardize-azure-openai.md) (2026-07-24).
+
+The Foundry migration was not pursued: `aif-crawler-nalfeo` has zero deployments,
+no quota was obtainable, and the parallel foundry code path caused active CI 400
+failures. The asset pipeline standardizes on the direct `azure-openai` backend.
+
+---
 
 ## Date
 
