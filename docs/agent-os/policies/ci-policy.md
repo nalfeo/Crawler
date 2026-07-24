@@ -1,5 +1,10 @@
 # CI Policy
 
+> **CI knobs reference**: [`docs/agent-os/policies/ci-config-knobs.md`](./ci-config-knobs.md) — canonical
+> list of every runtime-tweakable CI variable, its default, valid range, effect, and interactions.
+> All operationally-meaningful CI behavior is adjustable via repo Actions variables; no code change
+> required during incidents.
+
 ## Core Principles
 
 - All CI gates are deterministic. No LLM-as-judge checks are allowed.

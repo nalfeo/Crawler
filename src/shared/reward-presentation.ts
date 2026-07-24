@@ -74,8 +74,7 @@ export function highestGeneratedEquipmentRarity(
 }
 
 /** Four discrete excitement buckets driving visual intensity in the renderer. */
-export const REWARD_EXCITEMENT_BUCKETS = ['modest', 'notable', 'exciting', 'legendary'] as const;
-export type RewardExcitementBucket = (typeof REWARD_EXCITEMENT_BUCKETS)[number];
+export type RewardExcitementBucket = 'modest' | 'notable' | 'exciting' | 'legendary';
 
 /**
  * Deterministic excitement result. `tierWeight`/`rarityWeight` are exposed
@@ -113,6 +112,17 @@ const EQUIPMENT_RARITY_WEIGHT: Readonly<Record<GeneratedEquipmentRarity, number>
   uncommon: 0.5,
   rare: 1,
 };
+
+/**
+ * 0..1 rarity weight for a single granted equipment instance, using the exact
+ * same table `computeEquipmentExcitement` averages into its score — the
+ * single source of truth so a later per-item consumer (e.g. the audio-cue
+ * escalation reducer) stays numerically consistent with the visual bucket
+ * instead of re-deriving its own rarity scale.
+ */
+export function equipmentRarityWeight(rarity: GeneratedEquipmentRarity): number {
+  return EQUIPMENT_RARITY_WEIGHT[rarity];
+}
 
 function bucketFromScore(score: number): RewardExcitementBucket {
   if (score >= 0.75) return 'legendary';

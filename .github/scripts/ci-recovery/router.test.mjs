@@ -60,6 +60,22 @@ const workflowPath = new URL('../../workflows/ci-recovery-router.yml', import.me
 const workflow = parse(await readFile(workflowPath, 'utf8'));
 const routeJob = workflow.jobs.route;
 
+function pickInvariantDispatchCaps(resolved) {
+  return {
+    maxBudgetTrainBusy: resolved.maxBudgetTrainBusy,
+    maxBudgetTrainIdle: resolved.maxBudgetTrainIdle,
+    globalTrainDispatchCap: resolved.globalTrainDispatchCap,
+    maxDispatchPerRun: resolved.maxDispatchPerRun,
+  };
+}
+
+function pickLegacyDispatchCaps(resolved) {
+  return {
+    trainCap: resolved.trainCap,
+    idleCap: resolved.idleCap,
+  };
+}
+
 function makeError(status, message, headerMap = {}) {
   const error = new Error(message);
   error.status = status;
@@ -1477,19 +1493,21 @@ test('computeDispatchBudget returns MAX_DISPATCH_BUDGET_TRAIN_IDLE when the trai
 });
 
 test('resolveGlobalDispatchCaps enforces positive-int parsing with invariant defaults (5/8/5/8)', () => {
-  assert.deepEqual(resolveGlobalDispatchCaps({}), {
+  assert.deepEqual(pickInvariantDispatchCaps(resolveGlobalDispatchCaps({})), {
     maxBudgetTrainBusy: 5,
     maxBudgetTrainIdle: 8,
     globalTrainDispatchCap: 5,
     maxDispatchPerRun: 8,
   });
   assert.deepEqual(
-    resolveGlobalDispatchCaps({
+    pickInvariantDispatchCaps(
+      resolveGlobalDispatchCaps({
       CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: ' 7 ',
       CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '9',
       CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '3',
       CI_RECOVERY_MAX_DISPATCH_PER_RUN: '11',
-    }),
+      }),
+    ),
     {
       maxBudgetTrainBusy: 7,
       maxBudgetTrainIdle: 9,
@@ -1498,12 +1516,14 @@ test('resolveGlobalDispatchCaps enforces positive-int parsing with invariant def
     },
   );
   assert.deepEqual(
-    resolveGlobalDispatchCaps({
+    pickInvariantDispatchCaps(
+      resolveGlobalDispatchCaps({
       CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '7garbage',
       CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '1.5',
       CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '1e2',
       CI_RECOVERY_MAX_DISPATCH_PER_RUN: '9007199254740993',
-    }),
+      }),
+    ),
     {
       maxBudgetTrainBusy: 5,
       maxBudgetTrainIdle: 8,
@@ -1512,12 +1532,14 @@ test('resolveGlobalDispatchCaps enforces positive-int parsing with invariant def
     },
   );
   assert.deepEqual(
-    resolveGlobalDispatchCaps({
+    pickInvariantDispatchCaps(
+      resolveGlobalDispatchCaps({
       CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '0',
       CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '-1',
       CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: 'nope',
       CI_RECOVERY_MAX_DISPATCH_PER_RUN: '',
-    }),
+      }),
+    ),
     {
       maxBudgetTrainBusy: 5,
       maxBudgetTrainIdle: 8,
@@ -1563,6 +1585,157 @@ test('computeDispatchBudget returns MAX_DISPATCH_BUDGET_TRAIN_BUSY when train qu
     computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 25 }),
     0,
     'budget never goes negative when outstanding exceeds cap',
+  );
+});
+
+test('computeDispatchBudget accepts explicit trainCap/idleCap overrides', () => {
+  // Verifies that the env-driven override path works end-to-end: both caps can
+  // be independently overridden and the function uses them rather than the
+  // module-level defaults.
+  // headroom=20-9-0-0=11, min(trainCap=3, 11)=3 (not default max 5)
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 0, trainCap: 3, idleCap: 10 }), 3);
+  // headroom=20-3-0-0=17, min(idleCap=10, 17)=10 (not default max 8)
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0, trainCap: 3, idleCap: 10 }), 10);
+  // headroom=20-9-0-3=8, min(trainCap=3, 8)=3 (outstanding reduces headroom, not the cap)
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 3, trainCap: 3, idleCap: 10 }), 3);
+  // headroom=20-3-0-7=10, min(idleCap=10, 10)=10
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 7, trainCap: 3, idleCap: 10 }), 10);
+  // headroom=20-3-0-10=7, min(idleCap=10, 7)=7 (headroom-capped below idleCap)
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 10, trainCap: 3, idleCap: 10 }), 7);
+  // headroom=20-9-0-11=0, budget floors at 0
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 11, trainCap: 3, idleCap: 10 }), 0);
+});
+
+test('resolveGlobalDispatchCaps falls back to hardcoded defaults when env vars are absent', () => {
+  assert.deepEqual(pickLegacyDispatchCaps(resolveGlobalDispatchCaps({})), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+});
+
+test('resolveGlobalDispatchCaps reads CI_GLOBAL_TRAIN_DISPATCH_CAP from env', () => {
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '10' })),
+    {
+    trainCap: 10,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    },
+  );
+});
+
+test('resolveGlobalDispatchCaps reads CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP from env', () => {
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '7' })),
+    {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: 7,
+    },
+  );
+});
+
+test('resolveGlobalDispatchCaps reads both caps independently from env', () => {
+  assert.deepEqual(
+    pickLegacyDispatchCaps(
+    resolveGlobalDispatchCaps({
+      CI_GLOBAL_TRAIN_DISPATCH_CAP: '8',
+      CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '12',
+    }),
+    ),
+    { trainCap: 8, idleCap: 12 },
+  );
+});
+
+test('resolveGlobalDispatchCaps ignores non-positive and non-numeric env values', () => {
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: 'bad' })),
+    {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    },
+  );
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '0' })),
+    {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    },
+  );
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '-1' })),
+    {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    },
+  );
+});
+
+test('resolveGlobalDispatchCaps: strict parse rejects trailing non-digit chars (e.g. "10oops")', () => {
+  // Number.parseInt("10oops") = 10, which would silently accept a malformed value.
+  // parseClampedPositiveInt requires purely-digit strings to prevent operator typos
+  // from silently accepting a partial value.
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '10oops' })),
+    {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    },
+  );
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '5bad' })),
+    {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    },
+  );
+});
+
+test('resolveGlobalDispatchCaps: out-of-range values are clamped to runner-safety ceilings', () => {
+  // Train cap documented safe max = 10 (ci-config-knobs.md).
+  // Values above are clamped rather than rejected so the operator gets bounded
+  // protection instead of a silent fallback that could be lower than intended.
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '999' })),
+    {
+    trainCap: 10,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    },
+  );
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '11' })),
+    {
+    trainCap: 10,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    },
+  );
+  // Idle cap documented safe max = 20 (ci-config-knobs.md).
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '999' })),
+    {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: 20,
+    },
+  );
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '21' })),
+    {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: 20,
+    },
+  );
+  // Values at the max boundary pass through unchanged.
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '10' })),
+    {
+    trainCap: 10,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    },
+  );
+  assert.deepEqual(
+    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '20' })),
+    {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: 20,
+    },
   );
 });
 

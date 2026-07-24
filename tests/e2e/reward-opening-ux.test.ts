@@ -50,6 +50,26 @@ async function newPage(browser: Browser): Promise<{ context: BrowserContext; pag
   return { context, page };
 }
 
+/**
+ * Drive an already-open reward-opening overlay forward, one item-reveal
+ * duration at a time, until it reaches `summary`. Mirrors the tick loop used
+ * by the pre-existing "visits every phase in order" test — `tick()` only
+ * fires one `onItemRevealed`/phase-transition step per call near a boundary,
+ * so a single oversized tick can land exactly on the last revealed item
+ * without also completing the revealing→summary transition in the same call.
+ */
+async function advanceRewardOpeningToSummary(page: Page, itemCount: number): Promise<void> {
+  await mainSceneProbe.tickRewardOpening(page, 1_000);
+  for (let i = 0; i < itemCount + 2; i += 1) {
+    const state = await mainSceneProbe.getRewardOpeningState(page);
+    if (state.phase === 'summary') return;
+    await mainSceneProbe.tickRewardOpening(page, DEFAULT_PER_ITEM_REVEAL_MS);
+  }
+  await waitForRewardOpeningState(page, (s) => s.phase === 'summary', {
+    label: 'summary phase',
+  });
+}
+
 describe('real reward-opening UX (achievement path)', () => {
   let browser: Browser;
 
@@ -323,6 +343,211 @@ describe('real reward-opening UX (achievement path)', () => {
         state.conversationOpen,
         'E pressed during the reward overlay must not fire after close',
       ).toBe(false);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+/**
+ * Deterministic e2e coverage proving the reward-opening audio hooks are
+ * REALLY wired into `MainGameScene` (not just the pure `reward-audio-cues.ts`
+ * decision functions, already exhaustively unit-tested). Observes the ordered
+ * `SynthCueSpec` log actually dispatched to the real `AudioCueEngine` via
+ * `mainSceneProbe.getRewardAudioCueLog()` — see
+ * `MainGameScene.rewardAudioCueLog` / `createRewardAudioCueLoggingEngine`.
+ */
+describe('real reward-opening audio cues (achievement path)', () => {
+  let browser: Browser;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  it('dispatches cues in anticipation → reveal → summary → close order with no reveal cues on immediate skip', async () => {
+    const { context, page } = await newPage(browser);
+    try {
+      await mainSceneProbe.claimAchievementReward(page, TRASH_TIER_ACHIEVEMENT_ID);
+      await waitForRewardOpeningState(page, (s) => s.open, { label: 'overlay to open' });
+
+      let log = await mainSceneProbe.getRewardAudioCueLog(page);
+      expect(log.map((entry) => entry.label)).toEqual(['reward:anticipation']);
+
+      // Skip straight from anticipation: the sequence jumps directly to
+      // 'summary' (never through 'revealing'), but the skip path
+      // architecturally suppresses the phase-change hook for that
+      // transition (`RewardOpeningUI.handleSkip()` calls
+      // `render({ suppressPhaseChangeHook: true })`), so 'reward:summary'
+      // is NEVER logged for a skip — it is not merely inaudible, it is
+      // never even scheduled (adversarial plan review finding: relying on
+      // same-JS-tick `AudioContext.currentTime` cancellation timing was
+      // correct but fragile/non-obvious). 'reward:skip' fires instead, as
+      // the sole audible "skip acknowledged" whoosh. No
+      // 'reward:item-revealed'/'reward:rarity-escalation' cues should ever have fired,
+      // proving the audio hooks track the REAL reveal loop, not a fixed
+      // per-item cue independent of it.
+      await mainSceneProbe.skipRewardOpening(page);
+      await waitForRewardOpeningState(page, (s) => s.phase === 'summary', {
+        label: 'skip to land on summary',
+      });
+      log = await mainSceneProbe.getRewardAudioCueLog(page);
+      expect(log.map((entry) => entry.label)).toEqual(['reward:anticipation', 'reward:skip']);
+      expect(log.some((entry) => entry.label === 'reward:item-revealed')).toBe(false);
+      expect(log.some((entry) => entry.label === 'reward:rarity-escalation')).toBe(false);
+      expect(log.some((entry) => entry.label === 'reward:summary')).toBe(false);
+
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+      await waitForRewardOpeningState(page, (s) => !s.open, { label: 'overlay to close' });
+      log = await mainSceneProbe.getRewardAudioCueLog(page);
+      expect(log.map((entry) => entry.label)).toEqual([
+        'reward:anticipation',
+        'reward:skip',
+        'reward:close',
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('dispatches one reveal cue per item, in forward reveal order, when never skipped', async () => {
+    const { context, page } = await newPage(browser);
+    try {
+      await mainSceneProbe.claimAchievementReward(page, TRASH_TIER_ACHIEVEMENT_ID);
+      const anticipation = await waitForRewardOpeningState(page, (s) => s.open, {
+        label: 'overlay to open',
+      });
+      expect(anticipation.total).toBe(2);
+
+      await advanceRewardOpeningToSummary(page, anticipation.total);
+
+      const log = await mainSceneProbe.getRewardAudioCueLog(page);
+      const labels = log.map((entry) => entry.label);
+      // Exactly one reveal cue per item, all BEFORE the summary cue, with
+      // anticipation strictly first.
+      expect(labels[0]).toBe('reward:anticipation');
+      expect(labels.filter((label) => label === 'reward:item-revealed')).toHaveLength(
+        anticipation.total,
+      );
+      expect(labels.at(-1)).toBe('reward:summary');
+      expect(labels.indexOf('reward:summary')).toBeGreaterThan(
+        labels.lastIndexOf('reward:item-revealed'),
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('scales reveal-cue intensity (gain) with box tier, matching the visual excitement bucket', async () => {
+    const { context, page } = await newPage(browser);
+    try {
+      await mainSceneProbe.claimAchievementReward(page, TRASH_TIER_ACHIEVEMENT_ID);
+      const trash = await waitForRewardOpeningState(page, (s) => s.open, {
+        label: 'trash-tier overlay to open',
+      });
+      expect(trash.bucket).toBe('modest');
+      await advanceRewardOpeningToSummary(page, trash.total);
+      const trashLog = await mainSceneProbe.getRewardAudioCueLog(page);
+      const trashRevealGain = Math.max(
+        ...trashLog.filter((e) => e.label === 'reward:item-revealed').map((e) => e.gain),
+      );
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+      await waitForRewardOpeningState(page, (s) => !s.open, { label: 'trash overlay to close' });
+      await mainSceneProbe.clearRewardAudioCueLog(page);
+
+      await mainSceneProbe.claimAchievementReward(page, RARE_TIER_ACHIEVEMENT_ID);
+      const rare = await waitForRewardOpeningState(page, (s) => s.open, {
+        label: 'rare-tier overlay to open',
+      });
+      expect(rare.bucket).toBe('exciting');
+      await advanceRewardOpeningToSummary(page, rare.total);
+      const rareLog = await mainSceneProbe.getRewardAudioCueLog(page);
+      const rareRevealGain = Math.max(
+        ...rareLog.filter((e) => e.label === 'reward:item-revealed').map((e) => e.gain),
+      );
+
+      // Same axis the visual bucket already proves (rare 'exciting' >
+      // trash 'modest') must show up in the synthesized reveal-cue gain too —
+      // excitement scales audio and visuals consistently from the same
+      // underlying tier score.
+      expect(rareRevealGain).toBeGreaterThan(trashRevealGain);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('scales anticipation-cue duration/gain down under reduced motion, never to zero', async () => {
+    const { context: normalContext, page: normalPage } = await newPage(browser);
+    const reducedContext = await browser.newContext({ reducedMotion: 'reduce' });
+    const reducedPage = await reducedContext.newPage();
+    try {
+      await loadMainSceneProbeLab(reducedPage);
+
+      await mainSceneProbe.claimAchievementReward(normalPage, RARE_TIER_ACHIEVEMENT_ID);
+      await waitForRewardOpeningState(normalPage, (s) => s.open, { label: 'normal overlay open' });
+      const normalLog = await mainSceneProbe.getRewardAudioCueLog(normalPage);
+      const normalAnticipation = normalLog.find((e) => e.label === 'reward:anticipation');
+      expect(normalAnticipation).toBeDefined();
+
+      await mainSceneProbe.claimAchievementReward(reducedPage, RARE_TIER_ACHIEVEMENT_ID);
+      await waitForRewardOpeningState(reducedPage, (s) => s.open, {
+        label: 'reduced-motion overlay open',
+      });
+      const reducedLog = await mainSceneProbe.getRewardAudioCueLog(reducedPage);
+      const reducedAnticipation = reducedLog.find((e) => e.label === 'reward:anticipation');
+      expect(reducedAnticipation).toBeDefined();
+
+      expect(reducedAnticipation!.durationMs).toBeLessThan(normalAnticipation!.durationMs);
+      expect(reducedAnticipation!.gain).toBeLessThan(normalAnticipation!.gain);
+      // Reduced-intensity mixing quiets/shortens cues, it never silences them.
+      expect(reducedAnticipation!.durationMs).toBeGreaterThan(0);
+      expect(reducedAnticipation!.gain).toBeGreaterThan(0);
+    } finally {
+      await normalContext.close();
+      await reducedContext.close();
+    }
+  });
+
+  it('does not leak cues across a closed session into the next reward presentation', async () => {
+    const { context, page } = await newPage(browser);
+    try {
+      await mainSceneProbe.claimAchievementReward(page, TRASH_TIER_ACHIEVEMENT_ID);
+      await waitForRewardOpeningState(page, (s) => s.open, { label: 'first overlay open' });
+      await mainSceneProbe.skipRewardOpening(page);
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+      await waitForRewardOpeningState(page, (s) => !s.open, { label: 'first overlay closed' });
+
+      const firstLog = await mainSceneProbe.getRewardAudioCueLog(page);
+      expect(firstLog.map((e) => e.label)).toEqual([
+        'reward:anticipation',
+        'reward:skip',
+        'reward:close',
+      ]);
+
+      // A fresh open() defensively calls stopAll() but does NOT clear the
+      // log itself (the log is a pure observation surface, not part of
+      // playback) — the probe clears it explicitly between scenarios so a
+      // second, real reward presentation starts from a clean, unambiguous
+      // anticipation cue with nothing bleeding over from the first.
+      await mainSceneProbe.clearRewardAudioCueLog(page);
+      await mainSceneProbe.claimAchievementReward(page, RARE_TIER_ACHIEVEMENT_ID);
+      await waitForRewardOpeningState(page, (s) => s.open, { label: 'second overlay open' });
+      const secondLog = await mainSceneProbe.getRewardAudioCueLog(page);
+      expect(secondLog.map((e) => e.label)).toEqual(['reward:anticipation']);
+
+      await mainSceneProbe.skipRewardOpening(page);
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+      await waitForRewardOpeningState(page, (s) => !s.open, { label: 'second overlay closed' });
+      // Duplicate acknowledge/skip after close must never replay a close/skip
+      // cue — the real hooks only fire on an ACTUAL phase/visibility change.
+      const afterDuplicateLen = (await mainSceneProbe.getRewardAudioCueLog(page)).length;
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+      await mainSceneProbe.skipRewardOpening(page);
+      const stillSameLen = (await mainSceneProbe.getRewardAudioCueLog(page)).length;
+      expect(stillSameLen).toBe(afterDuplicateLen);
     } finally {
       await context.close();
     }

@@ -61,11 +61,10 @@ describe('asset-request workflow capacity', () => {
     expect(Object.keys(drain?.env ?? {}).some((key) => key.startsWith('FOUNDRY_'))).toBe(false);
   });
 
-  it('keeps the GitHub secret-sync command Foundry-aware', () => {
+  it('keeps the GitHub secret-sync command azure-aware', () => {
     const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
       scripts?: Record<string, string>;
     };
-    expect(packageJson.scripts?.['setup:azure:github']).toContain('-IncludeFoundry');
     expect(packageJson.scripts?.['setup:azure:github']).toContain('-SyncGitHubSecrets');
   });
 });

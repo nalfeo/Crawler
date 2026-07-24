@@ -1,36 +1,177 @@
-# CI Recovery capacity + prioritization knobs (invariant baseline)
+# CI Configuration Knobs
 
-This policy consolidates the runtime-tunable dispatch-cap knobs and the
-must-preserve CI-recovery invariants locked by regression tests.
+Canonical reference for every runtime-tweakable CI knob across the CI Recovery,
+Merge Train, and CI Conflict Coordinator automation.
 
-## Runtime knobs (router)
+**Operational rule**: no behavior-shaping value requires a code change + PR to adjust.
+All operationally-meaningful knobs are settable via GitHub Actions repository variables
+(Settings → Secrets and variables → Actions → Variables) with safe in-code defaults.
 
-These repository variables are read by
-`.github/workflows/ci-recovery-router.yml` and resolved in
-`.github/scripts/ci-recovery/router.mjs` via `resolveGlobalDispatchCaps(env)`.
-They intentionally scope to the **router admission path**; reconcile-side
-`buildGatedDispatchRecovery` continues to use the static safety export
-`GLOBAL_TRAIN_DISPATCH_CAP`.
+> See also: [`docs/guides/ci-recovery.md`](../../guides/ci-recovery.md),
+> [`docs/guides/merge-train.md`](../../guides/merge-train.md)
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY` | `5` | Max load-aware dispatch budget while merge-train queue is non-empty. |
-| `CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE` | `8` | Max load-aware dispatch budget while merge-train queue is empty. |
-| `CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP` | `5` | Additional hard clamp for train-busy dispatch budget. |
-| `CI_RECOVERY_MAX_DISPATCH_PER_RUN` | `8` | Pre-budget admission slice limit for schedule/workflow_dispatch sweeps. |
+---
 
-Invalid / non-positive values fail closed to defaults.
+## Runtime-tweakable knobs
+
+### Dispatch caps (CI Recovery ↔ Merge Train backpressure)
+
+`resolveGlobalDispatchCaps(env)` in `.github/scripts/ci-recovery/router.mjs` resolves
+both the already-landed legacy dispatch-cap variables and this PR's narrower
+capacity/prioritization knobs. Reconcile-side gated dispatch still consumes the
+resolved legacy `trainCap`; router admission additionally honors the load-aware
+budget and global-clamp fields below.
+
+| Variable | Default | Safe range | Scope | Effect |
+|---|---|---|---|---|
+| `CI_GLOBAL_TRAIN_DISPATCH_CAP` | `5` | 1–10 | Router + Reconcile | Legacy train-busy dispatch cap. Preserved for runtime tuning and still consumed by Merge Train via `resolveGlobalDispatchCaps(process.env)`. |
+| `CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP` | `8` | 1–20 | Router only | Legacy idle dispatch cap when the merge-train queue is empty / disabled. |
+| `CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY` | `5` | positive integer | Router only | Max **load-aware dispatch budget** while the merge-train queue is non-empty. When unset, the router falls back to `CI_GLOBAL_TRAIN_DISPATCH_CAP`. |
+| `CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE` | `8` | positive integer | Router only | Max **load-aware dispatch budget** while the merge-train queue is empty. When unset, the router falls back to `CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP`. |
+| `CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP` | `5` | positive integer | Router only | Additional hard clamp applied after the train-busy budget is computed. When unset, the router falls back to `CI_GLOBAL_TRAIN_DISPATCH_CAP`. |
+| `CI_RECOVERY_MAX_DISPATCH_PER_RUN` | `8` | positive integer | Router only | Max number of CI Recovery dispatches in a **single router invocation** before the live global-budget check. |
+
+**Critical interaction — dispatch-cap selection (mutually exclusive branches)**:
+
+```
+train queue non-empty?
+  YES → budget cap = CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY (fallback CI_GLOBAL_TRAIN_DISPATCH_CAP)
+         global clamp = CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP   (fallback CI_GLOBAL_TRAIN_DISPATCH_CAP)
+  NO  → budget cap = CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE (fallback CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP)
+
+effective budget = min(budget cap, RUNNER_CEILING − validationReserved − activeSweepJobs − outstandingCount)
+train-busy final  = min(effective budget, global clamp)
+dispatch limit    = min(CI_RECOVERY_MAX_DISPATCH_PER_RUN, train-busy final or effective budget)
+```
+
+The router resolves the new `CI_RECOVERY_*` knobs with strict fail-closed parsing:
+invalid, empty, non-positive, unsafe, or partially-numeric values fall back to
+safe defaults. The legacy `CI_GLOBAL_*` caps remain range-clamped so reconcile and
+router keep honoring the already-landed runtime dispatch-cap controls.
+
+**Log line**: when backpressure defers PRs, the router emits:
+```
+global backpressure applied deferred=N pr_numbers=... outstanding=K cap=C budget=B ...
+```
+`budget` is the effective post-budget / post-clamp capacity for this invocation.
+
+---
+
+### CI Recovery behavior
+
+| Variable | Default | Effect | Scope |
+|---|---|---|---|
+| `CI_RECOVERY_MODE` | `dry-run` | `dry-run` logs without mutating; `live` enables all mutations (auto-merge, thread replies, label changes, task dispatch). Set to `live` after validating dry-run output. | `ci-recovery.yml` |
+| `MERGE_TRAIN_ENABLED` | `false` | When `true`, CI Recovery works up to 6 oldest non-ready PRs, enqueues converged immutable heads for the train, and switches auto-rebase to train-aware mode. When `false`, legacy auto-merge and blanket rebase behavior applies. | Router, Reconcile, CI, Auto-rebase |
+| `MERGE_TRAIN_ADMISSION_CHECKS` | `ci,Security checks` | Comma-separated list of check names that must be green before a PR is admitted to the merge train. | `ci-recovery.yml`, `merge-train.yml`, `ci-conflict-coordinator.yml` |
+| `CI_CONFLICT_REOPEN_RETRY_DELAY_MS` | `500` | Base delay in milliseconds between PR-reopen retry attempts in the CI Conflict Coordinator. | `ci-conflict-coordinator.yml` |
+| `GITHUB_REQUEST_RETRY_DELAY_MS` | `1000` | Base delay in milliseconds for GitHub API request retries in `ci-recovery/github.mjs`. Applies to all rate-limit and transient-error retries. | `ci-recovery/github.mjs` (direct env read, no workflow wiring required) |
+
+---
+
+### Merge train / auto-rebase
+
+| Variable | Default | Effect | Scope |
+|---|---|---|---|
+| `MERGE_QUEUE_ENABLED` | _(unset / falsy)_ | When truthy, allows `auto-rebase-prs.yml` to run even if `MERGE_TRAIN_ENABLED` is false (legacy GitHub Merge Queue mode). **Keep unset** unless explicitly using GitHub's native merge queue. | `auto-rebase-prs.yml` |
+
+---
 
 ## Must-preserve invariants
 
-The redesign must preserve these behaviors; deleting any mechanism must fail at
-least one regression test:
+The CI-recovery redesign must preserve these behaviors; deleting any mechanism
+must fail at least one deterministic regression test.
 
-1. Load-aware dispatch budget caps (`5/8`, global train clamp `5`, default
-   per-run admission `8`).
-2. Review-round throttle (one Copilot review run per PR conflict/head episode).
-3. Per-PR concurrency (parallel across PRs, serialized within a PR).
-4. `expected_head_sha` fail-closed binding.
-5. CI-fix-first + blocked-PR exclusion + global FIFO admission.
-6. Superseded-run cancellation + impact-gated CI dispatch.
-7. Thundering-herd backpressure and queue-aware sweep behavior.
+1. **Load-aware dispatch budget caps** — train-busy `5`, train-idle `8`, train-busy global clamp `5`, and default per-run admission `8` stay pinned as explicit baselines unless a deliberate policy change updates both code and tests.
+2. **Review-round throttle** — exactly one Copilot review run per PR conflict/head episode.
+3. **Per-PR concurrency** — parallel across PRs, serialized within a PR.
+4. **`expected_head_sha` fail-closed binding** — reconcile aborts before mutation on head drift.
+5. **CI-fix-first + blocked-PR exclusion + global FIFO admission** — CI-fix work lands first, blocked PRs consume no slots, and flag-off sweeps stay globally oldest-first.
+6. **Superseded-run cancellation + impact-gated CI dispatch** — PR workflow cancellation remains scoped correctly and heavyweight CI dispatch stays fail-closed on impact gating.
+7. **Thundering-herd backpressure and queue-aware sweep behavior** — router invocations serialize globally, sweeps respect runner pressure, and queue-aware sweep budget protections remain intact.
+
+---
+
+## Vestigial / deprecated knobs
+
+| Variable | Status | Action required |
+|---|---|---|
+| `MERGE_TRAIN_MODE` | **Vestigial — read by zero code.** The repo variable may still exist. | Delete this repo variable from Settings → Secrets and variables → Actions → Variables. No code references it; the variable is a misleading phantom. |
+
+---
+
+## Structural constants (not operationally tweakable)
+
+These are hardcoded in the CI scripts and are intentionally not env-driven. They
+are listed here for completeness and so that reviewers can distinguish "this value
+is deliberately fixed" from "this value was missed."
+
+| Constant | File | Value | Rationale |
+|---|---|---|---|
+| `REPAIR_WINDOW_SIZE` | `router.mjs` | `6` | Max PRs included in a repair-window sweep. Matches the 6-PR merge train batch size. |
+| `OWNERSHIP_HYDRATION_BATCH_SIZE` | `router.mjs` | `6` | GitHub API concurrency for ownership hydration. |
+| `DEFAULT_RETRY_MAX_ATTEMPTS` | `router.mjs` | `6` | Max retries for rate-limit / transient API failures. |
+| `DEFAULT_RETRY_BASE_DELAY_MS` | `router.mjs` | `1000` | Retry back-off base delay. |
+| `DEFAULT_RETRY_MAX_DELAY_MS` | `router.mjs` | `30000` | Retry back-off ceiling. |
+| `FLAG_OFF_SWEEP_ROTATION_WINDOW_MS` | `router.mjs` | `600000` (10 min) | Rotation window for flag-off sweep ordering. |
+| `DEFAULT_OUTSTANDING_VISIBILITY_TIMEOUT_MS` | `router.mjs` | `480000` (8 min) | Timeout for post-dispatch run-visibility wait. |
+| `DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS` | `router.mjs` | `5000` | Poll interval for run-visibility wait. |
+| `RUNNER_CEILING` | `router.mjs` | `20` | GitHub Free standard-hosted concurrency ceiling. Changing requires evidence from capacity measurements. |
+| `VALIDATION_RESERVED_TRAIN_BUSY` | `router.mjs` | `9` | Runner slots reserved for Merge Train Validation when the queue is non-empty. |
+| `VALIDATION_RESERVED_TRAIN_IDLE` | `router.mjs` | `3` | Reserved slots when queue empty / train off. |
+| `SWEEP_RUNNER_WEIGHT` | `router.mjs` | `10` | Estimated concurrent jobs per active AI Sweep Eval run. |
+| `VALIDATION_RUNNER_WEIGHT` | `router.mjs` | `9` | Estimated concurrent jobs per active Validation run. |
+| `REAPER_LANE_CAP` | `router.mjs` | `2` | Max PRs per reaper sweep window. |
+| `TRAIN_CAP_MAX` | `router.mjs` | `10` | Enforced runner-safety ceiling for `CI_GLOBAL_TRAIN_DISPATCH_CAP`. Values above are silently clamped. |
+| `IDLE_CAP_MAX` | `router.mjs` | `20` | Enforced runner-safety ceiling for `CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP`. Values above are silently clamped. |
+| `MIN_CLUSTER_SIZE` | `ci-conflict-coordinator/state.mjs` | `3` | Minimum PR count for a conflict-coordination cluster. |
+| `MAX_OVERLAP_FILES` | `ci-conflict-coordinator/state.mjs` | `20` | Max overlap files stored/shown per cluster (GitHub comment size cap). |
+| `DISPATCH_LEASE_MS` | `ci-conflict-coordinator/state.mjs` | `1800000` (30 min) | How long a coordinator dispatch lease is considered live. |
+| `REBASE_FAILURE_MAX_ATTEMPTS` | `ci-recovery/reconcile.mjs` | `3` | Max rebase-failure retries. |
+| `REBASE_FAILURE_BASE_BACKOFF_MS` | `ci-recovery/reconcile.mjs` | `60000` | Rebase-failure back-off base. |
+| `REBASE_FAILURE_MAX_BACKOFF_MS` | `ci-recovery/reconcile.mjs` | `600000` | Rebase-failure back-off ceiling. |
+| `RELEASE_HANDOFF_ATTEMPTS` | `ci-recovery/reconcile.mjs` | `3` | Max handoff-retry attempts. |
+| `RELEASE_HANDOFF_DELAY_MS` | `ci-recovery/reconcile.mjs` | `100` | Delay between handoff-retry attempts. |
+| `MAX_REOPEN_ATTEMPTS` | `ci-conflict-coordinator/reconcile.mjs` | `3` | Max PR-reopen attempts (function-scope; not caught by the file-scope guard). |
+| `MAX_RETRY_ATTEMPTS` | `ci-recovery/github.mjs` | `2` | Max GitHub API request retries. |
+| `DEFAULT_LEASE_TTL_MINUTES` | `ci-recovery/state.mjs` | `30` | Automation lease time-to-live. |
+| `DEFAULT_LEASE_GRACE_MINUTES` | `ci-recovery/state.mjs` | `5` | Grace period after lease expiry. |
+| `AUTOMATION_STALE_MINUTES` | `ci-recovery/state.mjs` | `30` | Age after which an automation comment is considered stale. |
+| `RECOVERY_PLAN_CHECKLIST_MAX_ITEMS` | `ci-recovery/issue-intake-lib.mjs` | `20` | Max items in a recovery plan checklist. |
+| `RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH` | `ci-recovery/issue-intake-lib.mjs` | `500` | Max character length per checklist item. |
+| `MAIN_HEALTH_PUSH_RUN_LOOKBACK` | `merge-train/reconcile.mjs` | `5` | How many recent push-triggered CI runs to inspect when checking main-branch health. |
+| `MAX_TRAIN_SIZE` | `merge-train/state.mjs` | `6` | Merge train batch size. |
+| `CANDIDATE_VALIDATION_STALE_MS` | `merge-train/state.mjs` | `2400000` (40 min) | Age after which a validation result is considered stale. |
+| `GITHUB_ACTIONS_APP_ID` | `merge-train/protection-lib.mjs` | `15368` | Fixed GitHub Actions App ID (immutable). |
+| `PAGE_SIZE` | `merge-train/check-runs.mjs` | `100` | GitHub API pagination page size. |
+| `MAX_PAGES` | `merge-train/check-runs.mjs` | `100` | Max pages to fetch. |
+| `MAX_TRUSTED_APP_CHECK_SUITES` | `merge-train/check-runs.mjs` | `10` | Max check suites per trusted app. |
+| `EXIT_API_FAILURE` | `merge-train/resolve-landed-pr.mjs` | `3` | Exit code for API failure (structural; not a behavior knob). |
+| `ASSOCIATED_PULLS_PER_PAGE` | `merge-train/resolve-landed-pr.mjs` | `100` | GitHub API page size for associated pulls. |
+| `COPILOT_CLOUD_AGENT_WORKFLOW_ID` | `pr-ready-reviewer-guard.mjs` | `288998107` | Fixed Copilot cloud agent workflow ID (immutable). |
+| `EMPTY_DRAFT_REPAIR_GRACE_MS` | `pr-ready-reviewer-guard.mjs` | `300000` (5 min) | Grace period for empty-draft repair. |
+| `WORKFLOW_RUNS_PAGE_SIZE` | `pr-ready-reviewer-guard.mjs` | `100` | Page size for workflow runs API. |
+| `WORKFLOW_RUNS_MAX_PAGES` | `pr-ready-reviewer-guard.mjs` | `10` | Max pages to fetch for workflow runs. |
+| `SWEEP_POOL_SIZE` | `sweep-budget.mjs` | `10` | Max concurrent sweep runs in the pool. |
+| `ACCOUNT_RUNNER_LIMIT` | `sweep-budget.mjs` | `20` | GitHub Free account-level runner concurrency limit. |
+
+---
+
+## Deterministic guard
+
+`tests/unit/ci-knobs-guard.test.ts` enforces this doc stays current. It:
+
+1. Scans `.github/scripts/ci-recovery/router.mjs`, `.github/scripts/merge-train/reconcile.mjs`,
+   and `.github/scripts/ci-conflict-coordinator/reconcile.mjs` for file-scope numeric constant
+   declarations (`const NAME = <number>`).
+2. Requires each to appear in either the **operationally-tweakable** registry or the
+   **structural constants** allowlist above.
+3. Fails CI if a new behavior-shaping constant is added without a doc entry.
+4. Anchors the named regression suites that pin the must-preserve invariants above.
+
+To add a new knob:
+- If operationally tweakable: add a `process.env.YOUR_VAR` read in the script, wire
+  `${{ vars.YOUR_VAR || 'default' }}` in the relevant workflow YAML, and add a row to the
+  runtime-tweakable table above.
+- If structural: add a row to the structural constants table above.
+- Then update the allowlist in `tests/unit/ci-knobs-guard.test.ts`.

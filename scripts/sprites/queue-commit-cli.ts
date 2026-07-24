@@ -33,7 +33,7 @@ interface ParsedArgs {
   readonly message: string;
 }
 
-function parseArgs(argv: readonly string[]): ParsedArgs {
+export function parseArgs(argv: readonly string[]): ParsedArgs {
   let repoRoot: string | undefined;
   let message: string | undefined;
   const assets: CheckinAsset[] = [];
@@ -70,6 +70,15 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   if (repoRoot === undefined) throw new Error('Missing required --repo-root');
   if (message === undefined) throw new Error('Missing required --message');
   if (assets.length === 0) throw new Error('At least one --asset is required');
+  const orphan = assets.find((a) => a.manifestKey === null);
+  if (orphan) {
+    throw new Error(
+      `--asset ${orphan.assetPath} is missing its paired --manifest-key. Every --asset ` +
+        `must be immediately followed by its --manifest-key so the authoritative ` +
+        `manifest/catalog entry is queued alongside the PNG; without it copyArtSurface ` +
+        `queues an orphan image with no manifest/catalog entry.`,
+    );
+  }
   return { repoRoot, assets, message };
 }
 

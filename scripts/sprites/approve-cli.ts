@@ -17,7 +17,7 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { approveVariant, ApproveError } from './approve.js';
+import { approveVariant, ApproveError, loadApprovedEntry, type ManifestEntry } from './approve.js';
 import { runQueueCommit } from './queue-commit.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 
@@ -109,28 +109,63 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
     : path.join(repoRoot, parsed.runDir);
 
   try {
-    const entry = approveVariant({
-      runDir,
-      variantIndex: parsed.variantIndex,
-      manifestPath,
-      catalogPath,
-      publicAssetsDir,
-      repoRoot,
-    });
-    process.stdout.write(
-      `Approved ${entry.briefId} variant ${entry.variantIndex}\n` +
-        `  asset: ${entry.assetPath}\n` +
-        `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
-        `  source: ${entry.sourceRun}\n` +
-        `  sensors: ${entry.sensorScore}${entry.judgeScore !== null ? ` · judge ${entry.judgeScore}` : ''}\n`,
-    );
+    let entry: ManifestEntry;
+    let alreadyApproved = false;
+    try {
+      entry = approveVariant({
+        runDir,
+        variantIndex: parsed.variantIndex,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+      });
+      process.stdout.write(
+        `Approved ${entry.briefId} variant ${entry.variantIndex}\n` +
+          `  asset: ${entry.assetPath}\n` +
+          `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
+          `  source: ${entry.sourceRun}\n` +
+          `  sensors: ${entry.sensorScore}${entry.judgeScore !== null ? ` · judge ${entry.judgeScore}` : ''}\n`,
+      );
+    } catch (err) {
+      // An exact-duplicate re-approve is NOT a terminal failure for durability:
+      // the entry already exists in the manifest, but its earlier best-effort
+      // queue-commit may never have landed on assets/queue. Load the stored
+      // entry and fall through to the SAME queue-commit block below so re-running
+      // the approve genuinely RETRIES the durable push — which is exactly what the
+      // failure warning tells the operator to do. Before this the CLI exited here,
+      // never reaching queue-commit, so that advice was false (concern #6).
+      if (err instanceof ApproveError && err.kind === 'already-approved') {
+        const existing = loadApprovedEntry({
+          runDir,
+          variantIndex: parsed.variantIndex,
+          manifestPath,
+        });
+        if (!existing) {
+          // No stored entry to retry against — nothing to make durable; keep the
+          // original already-approved error + exit code.
+          process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
+          return exitCodeForError(err.kind);
+        }
+        entry = existing;
+        alreadyApproved = true;
+        process.stdout.write(
+          `Already approved ${entry.briefId} variant ${entry.variantIndex} \u2014 retrying durable queue-commit\n` +
+            `  asset: ${entry.assetPath}\n`,
+        );
+      } else {
+        throw err;
+      }
+    }
 
     // Durably persist the approved asset onto the remote assets/queue branch so
     // the approval survives across sessions/worktrees/processes. Skipped on CI:
     // this CLI is operator-driven and (unlike the sidecar) intentionally still
     // approves locally under CI, so we only skip the remote push there. A
     // queue-commit failure is a loud warning, not a hard failure — the local
-    // approve already succeeded and the hourly reconciler is the backstop.
+    // approve already succeeded and the hourly reconciler is the backstop. Runs
+    // for both a fresh approve and an already-approved retry so the warning's
+    // "re-run the approve (which retries queue-commit)" advice is truthful (#6).
     if (process.env.CI === undefined) {
       try {
         const result = await runQueueCommit(
@@ -153,10 +188,17 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
         );
       } catch (err) {
         process.stderr.write(
-          `⚠ queue-commit failed (approval is local-only until reconciled): ` +
+          `⚠ queue-commit failed — this approval is LOCAL-ONLY and is NOT yet safe across ` +
+            `worktrees/sessions. The hourly reconciler only sees commits already on ` +
+            `assets/queue, so it CANNOT recover a push that never reached the branch. Re-run ` +
+            `the approve (which retries queue-commit) before discarding this worktree: ` +
             `${err instanceof Error ? err.message : String(err)}\n`,
         );
       }
+    } else if (alreadyApproved) {
+      // On CI we skip the remote push (see above); make the no-op explicit so an
+      // already-approved retry does not look like it silently did nothing.
+      process.stdout.write(`  queued: skipped on CI (already approved)\n`);
     }
     return 0;
   } catch (err) {

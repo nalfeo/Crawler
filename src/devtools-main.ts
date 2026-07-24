@@ -62,6 +62,7 @@ import {
   candidateStatus,
   clearQueue as queueClear,
   createEmptyQueue,
+  applyMetadataTagResult,
   approvedItemPatch,
   describeGenerationProgress,
   describeJudgeSkipReason,
@@ -3942,11 +3943,25 @@ function render(): void {
         '#fcd34d',
       );
     } else if (item.metadataSummary && item.stage === 'done') {
-      setWorkflowStatus(item.metadataSummary, '#bef264');
+      setWorkflowStatus(
+        item.metadataSummary,
+        item.queueDurability === 'failed'
+          ? '#fca5a5'
+          : item.queueDurability === 'ok'
+            ? '#bef264'
+            : '#fcd34d',
+      );
     } else if (item.checkinSummary && item.stage === 'checked-in') {
       setWorkflowStatus(item.checkinSummary, '#86efac');
     } else if (item.approvalSummary && item.stage === 'approved') {
-      setWorkflowStatus(item.approvalSummary, '#bef264');
+      setWorkflowStatus(
+        item.approvalSummary,
+        item.queueDurability === 'failed'
+          ? '#fca5a5'
+          : item.queueDurability === 'ok'
+            ? '#bef264'
+            : '#fcd34d',
+      );
     } else if (nextAction) {
       setWorkflowStatus(`Next: ${nextAction}`, '#cbd5e1');
     }
@@ -4826,6 +4841,7 @@ function render(): void {
           const patch = approvedItemPatch({
             briefId: run.briefId,
             variantIndex: candidate.index,
+            alreadyApproved: approved.alreadyApproved,
             assetPath: approved.assetPath,
             sensorScore: approved.sensorScore,
             judgeScore: approved.judgeScore,
@@ -7887,6 +7903,12 @@ function render(): void {
         changedCount: number;
         processedCount: number;
         rejectedCount: number;
+        skippedCount?: number;
+        queueCommit?:
+          | { status: 'committed' | 'noop'; branch: string; commit?: string; attempts: number }
+          | { status: 'failed'; error: string }
+          | { status: 'skipped'; reason: string }
+          | null;
       }>(`${SIDECAR_BASE}/api/workflow/metadata`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -7896,17 +7918,31 @@ function render(): void {
           minScore: 70,
         }),
       });
-      const summaryText = `Tagged via ${result.provider}: processed=${result.processedCount}, changed=${result.changedCount}, rejected=${result.rejectedCount}`;
-      queueState = queueUpdateItem(queueState, item.id, {
-        stage: 'done',
-        metadataSummary: summaryText,
-        approvalSummary: null,
-        lastError: null,
+      // The Tag step runs its OWN durable queue-commit (#1); it — not the earlier
+      // approve push — decides whether this item is safe across worktrees. A
+      // failed push bakes a warning into metadataSummary (so it survives
+      // recompute's re-render) and keeps queueDurability red; a null/skipped
+      // result preserves the item's prior durability instead of fabricating a
+      // green "ready to use" the tag never earned (#1c/#7). See applyMetadataTagResult.
+      const { patch, banner } = applyMetadataTagResult({
+        provider: result.provider,
+        processedCount: result.processedCount,
+        changedCount: result.changedCount,
+        rejectedCount: result.rejectedCount,
+        queueStatus: result.queueCommit?.status ?? null,
+        queueCommitError:
+          result.queueCommit?.status === 'failed' ? result.queueCommit.error : undefined,
+        previousDurability: item.queueDurability ?? null,
       });
+      queueState = queueUpdateItem(queueState, item.id, patch);
       writeQueueState();
       renderQueue();
       renderWorkflowSelection();
-      setWorkflowStatus(`${summaryText}. Sprite is in the catalog and ready to use.`, '#bef264');
+      // Thin passthrough: applyMetadataTagResult bundled the patch + banner into one
+      // tested transition. The banner color/text is gated on the HONEST post-merge
+      // durability (patch.queueDurability), so a null/skipped re-queue that INHERITS
+      // a prior 'failed' stays red instead of flashing green "ready to use" (#1c/#7).
+      setWorkflowStatus(banner.message, banner.color);
       void recompute();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

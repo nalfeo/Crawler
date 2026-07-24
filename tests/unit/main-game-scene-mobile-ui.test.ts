@@ -108,7 +108,7 @@ describe('HUD panel UX consistency', () => {
   });
 
   it('reward-opening visibility changes clear queued keyboard latches, including boss chests', () => {
-    expect(source).toContain('onVisibilityChange: () => {');
+    expect(source).toContain('onVisibilityChange: (open) => {');
     expect(source).toContain('this.clearPendingInteractionInput();');
     expect(source).toContain('this.keyBossChests,');
   });
