@@ -336,11 +336,6 @@ export function createRewardOpeningUI(
     }
   }
 
-  function itemCountFor(p: ResolvedRewardPresentation): number {
-    if (p.kind === 'lootBox') return 1;
-    return Math.max(1, p.instanceKeys.length);
-  }
-
   function close(): void {
     world = null;
     presentation = null;
@@ -404,7 +399,14 @@ export function createRewardOpeningUI(
         presentation.kind === 'lootBox'
           ? lootBoxRevealItems(presentation)
           : equipmentRevealItems(world, presentation);
-      sequenceState = createRewardOpeningState(itemCountFor(presentation), {
+      // Drive the sequence's itemCount from the ACTUAL number of reveal
+      // items (gold + each distinct material stack for lootBox, or each
+      // equipment instance) rather than a hardcoded/instanceKeys-only count,
+      // so the per-item incremental reveal genuinely matches what's
+      // rendered — a lootBox with materials previously always reported
+      // itemCount=1 regardless of how many items it actually revealed
+      // (round-2 code review).
+      sequenceState = createRewardOpeningState(Math.max(1, revealItems.length), {
         reducedMotion: params.reducedMotion,
       });
       lastRenderedPhase = null;

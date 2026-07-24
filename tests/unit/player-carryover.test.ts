@@ -740,6 +740,34 @@ describe('player floor carryover', () => {
     );
   });
 
+  it.each(['revealed', 'claimed'] as const)(
+    'fails closed when a persisted boss chest is "%s" but has no revealedGrant',
+    (state) => {
+      // Regression test: `revealedGrant` is only ever populated on the real
+      // available->revealed transition (openBossChest) and is never cleared
+      // on revealed->claimed (acknowledgeBossChestReveal), so a persisted
+      // "revealed"/"claimed" chest missing it can only be tampered/corrupt
+      // data. Without this check, such a chest would silently pass
+      // validation and then get stuck: every UI/resume path requires
+      // revealedGrant to present or acknowledge it (round-2 code review).
+      const runKey = `carryover-missing-revealedgrant-${state}-run`;
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const snapshot = capturePlayerCarryover(source, player);
+      const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+      serialized.bossChests = [
+        { chestId: 'boss-chest:goblin-warband', familyId: 'goblin-warband', state, createdAtMs: 0 },
+      ];
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+        /has no revealedGrant/,
+      );
+    },
+  );
+
   it('restores a "player-carryover/v1" snapshot missing generatedEquipmentRewardBundles', () => {
     // Regression test: the round-1 absent-key default was only applied to
     // bossChests, but generatedInventoryInstanceKeys, generatedEquippedInstanceKeys,

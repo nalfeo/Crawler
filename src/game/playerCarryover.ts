@@ -1132,6 +1132,16 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
           `Boss chest ${chest.chestId} has a revealedGrant while still in state "available"`,
         );
       }
+    } else if (chest.state === 'revealed' || chest.state === 'claimed') {
+      // The inverse of the check above: `revealedGrant` is populated on the
+      // same transition that sets state to 'revealed' (see `openBossChest`)
+      // and is never cleared on the revealed->claimed transition (see
+      // `acknowledgeBossChestReveal`), so a persisted 'revealed'/'claimed'
+      // chest missing it is impossible from real gameplay — fail closed
+      // rather than resume/present it (multi-model code review, round 2).
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest ${chest.chestId} is in state "${chest.state}" but has no revealedGrant`,
+      );
     }
     if (chestsByChestId.has(chest.chestId)) {
       throw new PlayerCarryoverSnapshotError(`Duplicate boss chest: ${chest.chestId}`);

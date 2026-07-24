@@ -35,6 +35,7 @@ import {
   mainSceneProbe,
   waitForRewardOpeningState,
 } from './helpers/main-scene-probe.js';
+import { DEFAULT_PER_ITEM_REVEAL_MS } from '../../src/shared/reward-opening-sequence.js';
 
 /** Trash-tier achievement (lowest `LOOT_BOX_TIERS` rung) — modest bucket. */
 const TRASH_TIER_ACHIEVEMENT_ID = 'first-bonk';
@@ -83,12 +84,26 @@ describe('real reward-opening UX (achievement path)', () => {
       );
       expect(['revealing', 'summary']).toContain(revealing.phase);
 
-      // Tick through every remaining item reveal (DEFAULT_PER_ITEM_REVEAL_MS
-      // per item) plus headroom, then confirm summary is reached with full
-      // reveal progress — never jumping straight from anticipation to summary.
+      // Tick through every remaining item reveal one item-duration at a time
+      // (never in one big jump) so we can prove the round-2 code-review fix
+      // in the REAL game path, not just the pure state machine's unit tests:
+      // every item must be observably revealed (phase 'revealing' with
+      // revealed === total) for at least one frame before summary appears —
+      // previously the sequence could jump straight from a partial reveal to
+      // 'summary' in the same tick that first computed the full count, so no
+      // caller ever saw the fully-revealed 'revealing' frame.
+      let sawFullRevealBeforeSummary = false;
       for (let i = 0; i < revealing.total + 2; i += 1) {
-        await mainSceneProbe.tickRewardOpening(page, 1_000);
+        await mainSceneProbe.tickRewardOpening(page, DEFAULT_PER_ITEM_REVEAL_MS);
+        const afterTick = await mainSceneProbe.getRewardOpeningState(page);
+        if (afterTick.phase === 'revealing' && afterTick.revealed === afterTick.total) {
+          sawFullRevealBeforeSummary = true;
+        }
+        if (afterTick.phase === 'summary') {
+          break;
+        }
       }
+      expect(sawFullRevealBeforeSummary).toBe(true);
       const summary = await waitForRewardOpeningState(page, (s) => s.phase === 'summary', {
         label: 'reward-opening summary phase',
       });

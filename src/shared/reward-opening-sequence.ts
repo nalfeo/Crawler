@@ -118,7 +118,16 @@ export function tick(state: RewardOpeningState, deltaMs: number): RewardOpeningS
     return withPhase(state, 'revealing', { revealedCount, elapsedInPhaseMs: 0 });
   }
 
-  // state.phase === 'revealing'
+  // state.phase === 'revealing'. Transitioning to 'summary' only happens
+  // here, on a tick where the INCOMING state already has every item
+  // revealed — never within the same tick that first computes a full
+  // revealedCount. This guarantees at least one observable/renderable frame
+  // with `phase: 'revealing'` and `revealedCount === itemCount` (every item
+  // visibly shown) before the summary appears, instead of jumping straight
+  // from 0-revealed to summary in a single tick (round-2 code review: for
+  // every currently-shipped reward, itemCount is small enough that a naive
+  // "transition as soon as computed count reaches itemCount" check fired on
+  // the very first revealing tick, so no item was ever rendered).
   if (state.revealedCount >= state.itemCount) {
     return withPhase(state, 'summary', { revealedCount: state.itemCount });
   }
@@ -128,9 +137,6 @@ export function tick(state: RewardOpeningState, deltaMs: number): RewardOpeningS
       ? state.itemCount
       : Math.floor(elapsed / state.config.perItemRevealMs),
   );
-  if (revealedCount >= state.itemCount) {
-    return withPhase(state, 'summary', { revealedCount: state.itemCount });
-  }
   return { ...state, elapsedInPhaseMs: elapsed, revealedCount };
 }
 

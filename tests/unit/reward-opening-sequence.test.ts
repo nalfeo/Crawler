@@ -48,12 +48,21 @@ describe('reward-opening-sequence (pure phase reducer)', () => {
     expect(state.phase).toBe('revealing');
     expect(state.revealedCount).toBe(1);
 
-    // Second (final) item reveals -> summary.
+    // Second (final) item reveals: stays in `revealing` for at least one
+    // more observable/renderable tick with every item shown, rather than
+    // jumping straight to `summary` in the same tick that first computes a
+    // full revealedCount (round-2 code review regression test).
     state = tick(state, DEFAULT_PER_ITEM_REVEAL_MS);
+    expect(state.phase).toBe('revealing');
+    expect(state.revealedCount).toBe(2);
+    expect(revealProgress(state)).toBe(1);
+
+    // Only the NEXT tick (with all items already revealed) transitions to
+    // summary.
+    state = tick(state, 1);
     phasesSeen.push(state.phase);
     expect(state.phase).toBe('summary');
     expect(state.revealedCount).toBe(2);
-    expect(revealProgress(state)).toBe(1);
 
     // Summary never advances by time alone.
     const beforeAck = state;
@@ -79,6 +88,39 @@ describe('reward-opening-sequence (pure phase reducer)', () => {
 
     state = tick(state, 1);
     expect(state.revealedCount).toBe(1);
+  });
+
+  it('a single-item reward is observably revealed for at least one tick before summary appears (round-2 code review regression)', () => {
+    // itemCount=1 covers every currently-shipped reward (a single equipment
+    // instance, or a lootBox's combined gold+materials reveal treated as
+    // one beat) — this is the exact case where the naive "transition as
+    // soon as revealedCount reaches itemCount" bug meant the item was NEVER
+    // rendered: `revealing` was entered with revealedCount 0, and the very
+    // next tick both computed revealedCount=1 AND transitioned to
+    // `summary` in that same call, so no caller ever observed
+    // `{ phase: 'revealing', revealedCount: 1 }`.
+    let state = createRewardOpeningState(1);
+    state = tick(state, DEFAULT_ANTICIPATION_MS);
+    expect(state.phase).toBe('revealing');
+    expect(state.revealedCount).toBe(0);
+
+    state = tick(state, DEFAULT_PER_ITEM_REVEAL_MS);
+    expect(state.phase).toBe('revealing');
+    expect(state.revealedCount).toBe(1);
+
+    state = tick(state, 1);
+    expect(state.phase).toBe('summary');
+    expect(state.revealedCount).toBe(1);
+  });
+
+  it('reduced motion with a single item is also observably revealed for one tick before summary (round-2 code review regression)', () => {
+    let state = createRewardOpeningState(1, { reducedMotion: true });
+    state = tick(state, REDUCED_MOTION_ANTICIPATION_MS);
+    expect(state.phase).toBe('revealing');
+    expect(state.revealedCount).toBe(1);
+
+    state = tick(state, 1);
+    expect(state.phase).toBe('summary');
   });
 
   it('skip() jumps straight to summary with every item revealed, from any earlier phase', () => {
