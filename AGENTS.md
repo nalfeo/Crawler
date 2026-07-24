@@ -210,6 +210,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 | Architecture overview     | `docs/architecture.md`                                                                       |
 | Agent personas            | `docs/agent-os/personas/*.md`                                                                |
 | Policies                  | `docs/agent-os/policies/*.md`                                                                |
+| **CI knobs reference**    | `docs/agent-os/policies/ci-config-knobs.md` — all runtime-tweakable CI variables, defaults, valid ranges, and interactions |
 | Architecture decisions    | `docs/knowledge/adr/*.md`                                                                    |
 | Specs                     | `.specify/specs/*.md`                                                                        |
 | Game design               | `docs/knowledge/game-design/*.md`                                                            |
