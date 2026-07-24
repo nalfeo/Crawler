@@ -21,7 +21,7 @@ function loadFixture() {
 
 test('merge-train characterization fixtures are tagged and deterministic', () => {
   const fixture = loadFixture();
-  assert.equal(fixture.verdict_fixtures.length, 6);
+  assert.equal(fixture.verdict_fixtures.length, 11);
   for (const entry of fixture.verdict_fixtures) {
     assert.match(entry.id, /^MT\d{2}$/);
     assert.match(entry.dClass, /^D([1-9]|10)$/);
@@ -63,7 +63,14 @@ test('merge-train fixture verdicts match current pure-function behavior', () => 
     if (entry.kind === 'planPrefixPromotion') {
       const plan = planPrefixPromotion(entry.input.states);
       assert.equal(plan.action, entry.expected.action, entry.id);
-      assert.equal(plan.greenPrefixLength, entry.expected.greenPrefixLength, entry.id);
+      // Only assert greenPrefixLength and firstFailure when the fixture declares them,
+      // so noop/wait/validate entries don't require fields they don't have.
+      if (entry.expected.greenPrefixLength !== undefined) {
+        assert.equal(plan.greenPrefixLength, entry.expected.greenPrefixLength, entry.id);
+      }
+      if (entry.expected.firstFailure !== undefined) {
+        assert.equal(plan.firstFailure, entry.expected.firstFailure, entry.id);
+      }
       continue;
     }
     if (entry.kind === 'unsatisfiedChecks') {

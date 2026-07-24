@@ -37,25 +37,61 @@ test('characterization fixture pins exactly 34 reconcile decision points with D-
   }
 });
 
+// Fallback evidence patterns for verdicts that do not appear verbatim in test
+// bodies (e.g. because the test asserts on HTTP calls rather than log keywords).
+// Each entry is tried in order; the first regex match against the test body wins.
+const VERDICT_FALLBACK_PATTERNS = {
+  skip: [/notEqual.*code/, /fails.closed/, /doesNotMatch/, /merge.conflict/],
+  release: [/DELETE/, /idle/, /reacquire/],
+  'fail-closed': [/fail.closed/, /mutatingCalls.*\[\]/],
+  annotate: [/doesNotMatch.*resolv/s, /recovery hint/],
+  retry: [/retry/, /retries/, /attempt/],
+};
+
+/** Extract the source block from `test('name', ...)` to the next top-level test. */
+function extractTestBody(source, testName) {
+  const escaped = testName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const start = source.search(new RegExp(`^test\\('${escaped}'`, 'm'));
+  if (start === -1) return null;
+  const rest = source.slice(start);
+  const nextTest = rest.search(/^test\(/m);
+  return nextTest > 0 ? rest.slice(0, nextTest) : rest;
+}
+
 test('characterization fixture coverage points resolve to concrete existing reconcile tests', () => {
   const fixture = loadFixture();
   const reconcileSource = readFileSync(RECONCILE_TEST_PATH, 'utf8');
   const reviewRequestSource = readFileSync(REVIEW_REQUEST_TEST_PATH, 'utf8');
 
   for (const decision of fixture.decision_points) {
-    const matches = [reconcileSource, reviewRequestSource].filter(
-      (source) =>
-        source.includes(`test('${decision.coverageBy}'`) ||
-        source.includes(`test(\"${decision.coverageBy}\"`),
+    const sources = [reconcileSource, reviewRequestSource];
+    const source = sources.find(
+      (s) =>
+        s.includes(`test('${decision.coverageBy}'`) ||
+        s.includes(`test("${decision.coverageBy}"`),
     );
-    assert.ok(matches.length >= 1, `missing coverage test: ${decision.coverageBy}`);
+    assert.ok(source != null, `missing coverage test: ${decision.coverageBy}`);
+
+    // Also verify the test body contains evidence of the expected verdict so
+    // that a behavior change (e.g. release → skip) is not silently masked.
+    const body = extractTestBody(source, decision.coverageBy);
+    assert.ok(body != null, `could not extract body for: ${decision.coverageBy}`);
+
+    const verdict = decision.verdict;
+    const fallbacks = VERDICT_FALLBACK_PATTERNS[verdict] ?? [];
+    const patterns = [new RegExp(verdict, 'i'), ...fallbacks];
+    const hasEvidence = patterns.some((re) => re.test(body));
+    assert.ok(
+      hasEvidence,
+      `verdict '${verdict}' has no evidence in test body for ${decision.id}: ${decision.coverageBy}`,
+    );
   }
 });
 
 test('lease-transition fixture matrix remains deterministic and offline', () => {
   const fixture = loadFixture();
   for (const entry of fixture.lease_transition_fixtures) {
-    const state = { ...entry.state };
+    const state = entry.state ? { ...entry.state } : null;
     if (entry.expected.isLeaseExpired !== undefined) {
       assert.equal(
         isLeaseExpired(state, new Date('2026-01-01T00:00:00.000Z')),

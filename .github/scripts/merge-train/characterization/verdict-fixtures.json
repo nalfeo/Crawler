@@ -181,6 +181,76 @@
           "Security checks"
         ]
       }
+    },
+    {
+      "id": "MT07",
+      "dClass": "D1",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": []
+      },
+      "expected": {
+        "action": "noop"
+      }
+    },
+    {
+      "id": "MT08",
+      "dClass": "D8",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "pending"
+        ]
+      },
+      "expected": {
+        "action": "wait",
+        "firstFailure": -1
+      }
+    },
+    {
+      "id": "MT09",
+      "dClass": "D8",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "missing"
+        ]
+      },
+      "expected": {
+        "action": "validate",
+        "firstFailure": -1
+      }
+    },
+    {
+      "id": "MT10",
+      "dClass": "D8",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "missing",
+          "failure",
+          "failure"
+        ]
+      },
+      "expected": {
+        "action": "validate",
+        "firstFailure": 2
+      }
+    },
+    {
+      "id": "MT11",
+      "dClass": "D8",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "pending",
+          "failure"
+        ]
+      },
+      "expected": {
+        "action": "wait",
+        "firstFailure": 1
+      }
     }
   ]
 }

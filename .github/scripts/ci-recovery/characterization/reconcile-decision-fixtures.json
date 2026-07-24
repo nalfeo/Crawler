@@ -265,7 +265,29 @@
       }
     },
     {
-      "name": "automation duplicate dispatch",
+      "name": "isLeaseExpired is false for automation owner (only shepherd leases expire)",
+      "state": {
+        "owner": "automation",
+        "status": "active",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      "expected": {
+        "isLeaseExpired": false
+      }
+    },
+    {
+      "name": "isLeaseExpired is false for none owner",
+      "state": {
+        "owner": "none",
+        "status": "idle",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      "expected": {
+        "isLeaseExpired": false
+      }
+    },
+    {
+      "name": "automation duplicate dispatch — status active",
       "state": {
         "owner": "automation",
         "status": "active",
@@ -275,6 +297,124 @@
       "fingerprint": "fp-a",
       "expected": {
         "isDuplicateDispatch": true
+      }
+    },
+    {
+      "name": "automation duplicate dispatch — status dispatched",
+      "state": {
+        "owner": "automation",
+        "status": "dispatched",
+        "fingerprint": "fp-a",
+        "updatedAt": "2099-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-a",
+      "expected": {
+        "isDuplicateDispatch": true
+      }
+    },
+    {
+      "name": "automation duplicate dispatch — status escalated",
+      "state": {
+        "owner": "automation",
+        "status": "escalated",
+        "fingerprint": "fp-a",
+        "updatedAt": "2099-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-a",
+      "expected": {
+        "isDuplicateDispatch": true
+      }
+    },
+    {
+      "name": "not a duplicate dispatch — fingerprint mismatch",
+      "state": {
+        "owner": "automation",
+        "status": "active",
+        "fingerprint": "fp-a",
+        "updatedAt": "2099-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-b",
+      "expected": {
+        "isDuplicateDispatch": false
+      }
+    },
+    {
+      "name": "not a duplicate dispatch — shepherd owner",
+      "state": {
+        "owner": "shepherd",
+        "status": "active",
+        "fingerprint": "fp-a",
+        "updatedAt": "2099-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-a",
+      "expected": {
+        "isDuplicateDispatch": false
+      }
+    },
+    {
+      "name": "not a duplicate dispatch — idle status",
+      "state": {
+        "owner": "automation",
+        "status": "idle",
+        "fingerprint": "fp-a",
+        "updatedAt": "2099-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-a",
+      "expected": {
+        "isDuplicateDispatch": false
+      }
+    },
+    {
+      "name": "automationStallAction new — null state",
+      "state": null,
+      "fingerprint": "fp-a",
+      "expected": {
+        "stallAction": "new"
+      }
+    },
+    {
+      "name": "automationStallAction new — non-automation owner",
+      "state": {
+        "owner": "shepherd",
+        "status": "active",
+        "fingerprint": "fp-a",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-a",
+      "expected": {
+        "stallAction": "new"
+      }
+    },
+    {
+      "name": "automationStallAction progressed — fingerprint changed",
+      "state": {
+        "owner": "automation",
+        "status": "active",
+        "fingerprint": "fp-old",
+        "attempt": 1,
+        "progressKey": "k",
+        "progressAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-new",
+      "expected": {
+        "stallAction": "progressed"
+      }
+    },
+    {
+      "name": "automationStallAction wait — within stale window (dispatched status)",
+      "state": {
+        "owner": "automation",
+        "status": "dispatched",
+        "fingerprint": "fp-a",
+        "attempt": 1,
+        "progressKey": "k",
+        "progressAt": "2099-01-01T00:00:00.000Z",
+        "updatedAt": "2099-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-a",
+      "expected": {
+        "stallAction": "wait"
       }
     },
     {
