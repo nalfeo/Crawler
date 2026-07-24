@@ -26,6 +26,7 @@ export const PROTECTED_WORKFLOW_PATHS = new Set([
   '.github/scripts/ci-recovery/review-wake-bridge.mjs',
   '.github/scripts/ci-recovery/router.mjs',
   '.github/scripts/ci-recovery/reconcile.mjs',
+  '.github/scripts/ci-recovery/pr-lifecycle.mjs',
   '.github/scripts/ci-recovery/review-request.mjs',
   '.github/scripts/ci-recovery/loop-incident-lib.mjs',
   '.github/scripts/ci-recovery/github.mjs',
@@ -33,6 +34,7 @@ export const PROTECTED_WORKFLOW_PATHS = new Set([
   '.github/scripts/ci-recovery/state.mjs',
   '.github/scripts/ci-recovery/approval.mjs',
   '.github/scripts/ci-recovery/unexpected-error.mjs',
+  '.github/scripts/ci-conflict-coordinator/state.mjs',
   '.github/scripts/merge-train/state.mjs',
   '.github/scripts/merge-train/human-approval.mjs',
 ]);

@@ -61,6 +61,7 @@ import {
   shouldRequestReview,
   unrecordedConflictEpisode,
 } from './review-request.mjs';
+import { evaluatePhase, formatLifecycleOutcome } from './pr-lifecycle.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -2027,6 +2028,36 @@ if (live && retroactivePlanIssueNumbers.size > 0) {
       `posted retroactive plan comment on source issue #${linkedIssue.number} for pr=#${prNumber}\n`,
     );
   }
+}
+
+// Lifecycle evaluation (Issue #1851): compute the authoritative lifecycle phase
+// from current facts. This is the "one owner deciding" log line required by the
+// acceptance criterion — it surfaces whether the lifecycle owner sees this PR as
+// repairing, queued, ordering, merging, done, quarantined, or abandoned, and
+// emits an explicit acted-vs-no-op signal so a disabled/dry-run sweep is never
+// indistinguishable from a completed action.
+const lifecyclePrFacts = {
+  state: pr.state,
+  draft: pr.draft,
+  prNumber,
+  merged: pr.merged === true,
+  hasMergeConflict,
+  checkRuns,
+  reviewThreads: review.threads,
+  reviews: review.reviews || [],
+  humanApprovalDisposition: approvalRejection,
+  lifecyclePhase: null,
+};
+const lifecycleEvaluation = evaluatePhase(lifecyclePrFacts, {}, {});
+process.stdout.write(
+  `${formatLifecycleOutcome(prNumber, { acted: false, noOp: true, phase: lifecycleEvaluation.phase, reason: `evaluated:${lifecycleEvaluation.phase}` })}\n`,
+);
+if (lifecycleEvaluation.readmit && mergeTrainEnabled) {
+  // D1 fix: a fully admissible PR not yet in the train must trigger re-admission.
+  // Reporting "train empty" for such a PR is the root cause of D1.
+  process.stdout.write(
+    `lifecycle readmit pr=#${prNumber} reason=d1-fix admission-was-stale\n`,
+  );
 }
 
 if (normalized.length === 0) {

@@ -9,6 +9,7 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
+import { applyRawLabelDecision, formatRawLabelOutcome } from '../ci-recovery/pr-lifecycle.mjs';
 import {
   parseEnabledFlag,
   resolveAdmissionChecks,
@@ -100,7 +101,7 @@ async function ensureLabel(name, color, description) {
   }
 }
 
-async function addLabel(pull, name) {
+async function githubAddLabel(pull, name) {
   if (pull.labelNames.has(name)) return;
   await request(token, `/repos/${owner}/${repo}/issues/${pull.number}/labels`, {
     method: 'POST',
@@ -109,7 +110,7 @@ async function addLabel(pull, name) {
   pull.labelNames.add(name);
 }
 
-async function removeLabel(pull, name) {
+async function githubRemoveLabel(pull, name) {
   if (!pull.labelNames.has(name)) return;
   try {
     await request(
@@ -121,6 +122,33 @@ async function removeLabel(pull, name) {
     if (error.status !== 404) throw error;
   }
   pull.labelNames.delete(name);
+}
+
+// The coordinator never writes phase labels on its own authority. Every
+// coordinator-label mutation is expressed as a raw-label decision descriptor
+// (applyRawLabelDecision) logged with an explicit acted-vs-no-op signal.
+// Coordinator fence labels (COORDINATED_LABEL, LEADER_LABEL, ORDER_WAIT_LABEL,
+// ESCALATION_LABEL) are sub-phase signals, not lifecycle phase transitions; they
+// do not update the lifecycle comment so the lifecycle record remains coherent.
+async function applyCoordinatorLabel(pull, name, desired, reason = 'coordination') {
+  const outcome = await applyRawLabelDecision({
+    prNumber: pull.number,
+    label: name,
+    desired,
+    currentlyPresent: pull.labelNames.has(name),
+    addLabel: () => githubAddLabel(pull, name),
+    removeLabel: () => githubRemoveLabel(pull, name),
+  });
+  process.stdout.write(`${formatRawLabelOutcome(pull.number, outcome)} action=${reason}\n`);
+  return outcome;
+}
+
+function addLabel(pull, name) {
+  return applyCoordinatorLabel(pull, name, true);
+}
+
+function removeLabel(pull, name) {
+  return applyCoordinatorLabel(pull, name, false);
 }
 
 async function disableAutoMerge(pull) {

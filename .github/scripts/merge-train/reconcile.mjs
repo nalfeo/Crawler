@@ -42,6 +42,7 @@ import {
   candidateFingerprint,
   candidateRef,
   hasLeadingMarker,
+  isAdmissible,
   LANDED_LABEL,
   LANDED_MARKER,
   MAX_TRAIN_SIZE,
@@ -203,13 +204,7 @@ async function updateStatus(prNumber, status) {
 
 async function eligible(pr) {
   const runs = await checkRuns(pr.head.sha);
-  if (!successfulChecks(runs, requiredAdmissionChecks)) {
-    return { ok: false, reason: `waiting for ${requiredAdmissionChecks.join(', ')}` };
-  }
   const review = await listReviewThreads(token, owner, repo, pr.number);
-  if (review.threads.some((thread) => !thread.isResolved)) {
-    return { ok: false, reason: 'unresolved review threads' };
-  }
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
   const closingIssues = await listClosingIssues(token, owner, repo, pr.number);
   const approvalRejection = humanApprovalRejection({
@@ -218,31 +213,29 @@ async function eligible(pr) {
     comments,
     ownerLogin: owner,
   });
-  if (approvalRejection) {
-    return { ok: false, reason: approvalRejection };
-  }
-  const stateComments = comments.filter((comment) =>
-    hasLeadingMarker(comment.body, RECOVERY_STATE_MARKER),
-  );
-  if (stateComments.length !== 1) {
-    return {
-      ok: false,
-      reason: `expected one CI recovery state comment, found ${stateComments.length}`,
-    };
-  }
-  const state = parseStateComment(stateComments[0].body);
-  const fingerprint = admissionFingerprint({
-    headSha: pr.head.sha,
-    title: pr.title,
-    baseRef: pr.base?.ref,
+
+  // D1 fix (Issue #1851): evaluate admission from current live facts — no
+  // state-comment fingerprint required. A green, mergeable, non-draft PR with
+  // resolved threads and a substantive Copilot review is always admissible
+  // regardless of whether the CI-recovery state comment fingerprint is current.
+  // The old fingerprint gate was the root cause of D1: a PR that recovered its
+  // checks could not re-enter the train until a separate CI-recovery run
+  // updated the fingerprint first, creating a chicken-and-egg deadlock.
+  const prFacts = {
+    state: pr.state,
+    draft: pr.draft,
+    hasMergeConflict: pr.mergeable === false,
     checkRuns: runs,
-    requiredNames: requiredAdmissionChecks,
     reviewThreads: review.threads,
-  });
-  if (state.headSha !== pr.head.sha || state.fingerprint !== fingerprint) {
-    return { ok: false, reason: 'CI recovery admission evidence is stale' };
+    reviews: review.reviews || [],
+    humanApprovalDisposition: approvalRejection,
+    lifecyclePhase: null,
+  };
+  const admission = isAdmissible(prFacts, requiredAdmissionChecks);
+  if (!admission.eligible) {
+    return { ok: false, reason: admission.reasons.join(', ') };
   }
-  return { ok: true, fingerprint };
+  return { ok: true };
 }
 
 async function createTrainCheck(
