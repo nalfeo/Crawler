@@ -97,8 +97,12 @@ describe('Generated terrain-tile render guard', () => {
     let summary = await mainSceneProbe.getTerrainRenderSummary(page);
     const deadline = Date.now() + 5_000;
     while (
-      summary.packWallCount + summary.packFloorCount + summary.generatedCount +
-        summary.spriteCount + summary.colorCount === 0 &&
+      summary.packWallCount +
+        summary.packFloorCount +
+        summary.generatedCount +
+        summary.spriteCount +
+        summary.colorCount ===
+        0 &&
       Date.now() < deadline
     ) {
       await page.waitForTimeout(100);

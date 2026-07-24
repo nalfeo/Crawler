@@ -15,7 +15,10 @@ import os from 'node:os';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildIndustrialCavePack, writeIndustrialCavePack } from '../../../scripts/sprites/terrain-packs/build-industrial-cave.js';
+import {
+  buildIndustrialCavePack,
+  writeIndustrialCavePack,
+} from '../../../scripts/sprites/terrain-packs/build-industrial-cave.js';
 import {
   buildCaelesFixturePack,
   verifySha256,
