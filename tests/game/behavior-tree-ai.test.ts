@@ -37,6 +37,12 @@ import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-anchor.js';
 import { acceptQuest } from '../../src/core/systems/questSystem.js';
+import { unlockAchievement } from '../../src/game/systems/achievementSystem.js';
+import {
+  configureSettlementReturnRouting,
+  getSettlementReturnIntent,
+  updateSettlementReturnIntent,
+} from '../../src/game/ai/settlement-return-router.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { makeDiagonalCornerMap } from '../helpers/map-fixtures.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
@@ -3561,5 +3567,139 @@ describe('BehaviorTreeAI', () => {
 
       expect(ai.getDecision().state).toBe(AIState.ENGAGE);
     });
+  });
+});
+
+describe('settlement return routing (BT integration)', () => {
+  /** Arms an eligible floor2 world: settlement/broker done, one unclaimed
+   * achievement (guarantees positive utility), routing enabled. Returns the
+   * player eid and the resolved settlement anchor. */
+  function armEligibleSettlementReturnWorld(seed: number): {
+    world: GameWorld;
+    player: number;
+    anchor: { x: number; y: number };
+  } {
+    const world = createTestWorld({ seed, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    configureSettlementReturnRouting(world, true);
+    unlockAchievement(world, 'first-bonk');
+
+    const anchor = resolveFloor2SettlementAnchor(world);
+    expect(anchor).not.toBeNull();
+    // Ten feet out: netUtility = achievementGain(40) - travelCostPerFoot(0.5)*10
+    // = 35, comfortably above the default triggerThreshold (20).
+    world.stores.position.x[player] = anchor!.x + 10;
+    world.stores.position.y[player] = anchor!.y;
+
+    return { world, player, anchor: anchor! };
+  }
+
+  it('routes an armed/traveling settlement-return intent into Progress, subordinate to the mandatory settlement/broker/staircase objectives', () => {
+    const { world, player, anchor } = armEligibleSettlementReturnWorld(70);
+
+    // Drive the router directly (bypassing the BT's per-poll pre-tick hook)
+    // to confirm findFloor2ProgressObjective reads the router's status on its
+    // own merits, independent of the tree-tick wiring exercised below.
+    updateSettlementReturnIntent(
+      world,
+      player,
+      world.stores.position.x[player]!,
+      world.stores.position.y[player]!,
+      anchor,
+      false,
+      false,
+    );
+    expect(getSettlementReturnIntent(world).status).toBe('armed');
+
+    const ai = new BehaviorTreeAI({ seed: 70 });
+    const harness = ai as unknown as {
+      findFloor2ProgressObjective(
+        world: GameWorld,
+        playerEid: number,
+        playerX: number,
+        playerY: number,
+      ): { x: number; y: number; reason: string } | null;
+    };
+    const target = harness.findFloor2ProgressObjective(
+      world,
+      player,
+      world.stores.position.x[player]!,
+      world.stores.position.y[player]!,
+    );
+
+    expect(target).not.toBeNull();
+    expect(target!.x).toBeCloseTo(anchor.x, 6);
+    expect(target!.y).toBeCloseTo(anchor.y, 6);
+    expect(target!.reason).toBe(
+      'Returning to the settlement to run maintenance (equip/shop/claim)',
+    );
+  });
+
+  it('suppresses the settlement-return Progress branch while progress goals are suppressed, even when the router is armed', () => {
+    const { world, player, anchor } = armEligibleSettlementReturnWorld(71);
+    updateSettlementReturnIntent(
+      world,
+      player,
+      world.stores.position.x[player]!,
+      world.stores.position.y[player]!,
+      anchor,
+      false,
+      false,
+    );
+    expect(getSettlementReturnIntent(world).status).toBe('armed');
+
+    const ai = new BehaviorTreeAI({ seed: 71 });
+    suppressProgressGoals(ai, world.frameCount + 1000);
+    const harness = ai as unknown as {
+      findFloor2ProgressObjective(
+        world: GameWorld,
+        playerEid: number,
+        playerX: number,
+        playerY: number,
+      ): { x: number; y: number; reason: string } | null;
+    };
+
+    const target = harness.findFloor2ProgressObjective(
+      world,
+      player,
+      world.stores.position.x[player]!,
+      world.stores.position.y[player]!,
+    );
+    expect(target).toBeNull();
+  });
+
+  it('preserves ENGAGE combat priority over an armed settlement-return goal, and the router self-aborts (not stalls) under danger', () => {
+    const { world, player, anchor } = armEligibleSettlementReturnWorld(72);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const ai = new BehaviorTreeAI({ seed: 72 });
+    const input = createInputState();
+
+    // Poll 1: no threat nearby -> the router's unconditional pre-tick hook
+    // arms it (idle -> armed happens within a single call), and Progress
+    // routes the AI toward the settlement to run maintenance.
+    ai.poll(input, world);
+    const armedDecision = ai.getDecision();
+    expect(getSettlementReturnIntent(world).status).toBe('armed');
+    expect(armedDecision).toMatchObject({
+      state: AIState.EXPLORE,
+      targetX: anchor.x,
+      targetY: anchor.y,
+      reason: 'Returning to the settlement to run maintenance (equip/shop/claim)',
+    });
+
+    // Poll 2: a threat appears 5ft away (well within any engage radius) ->
+    // combat wins, and the router safely self-aborts (never overridden or
+    // silently stalled) rather than staying latched in a stale 'armed' state.
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    spawnEnemy(world, px + 5, py, 20);
+    ai.poll(input, world);
+
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(getSettlementReturnIntent(world).status).toBe('aborted-danger');
   });
 });

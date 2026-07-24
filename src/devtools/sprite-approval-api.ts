@@ -49,6 +49,22 @@ export interface ApproveResponse {
   readonly anchor: { readonly x: number; readonly y: number; readonly source: string } | null;
   readonly sensorScore: string;
   readonly judgeScore: string | null;
+  /**
+   * Outcome of the durable `assets/queue` push the sidecar performs right after
+   * writing the approved asset to disk (PR1). A `'failed'` status means the local
+   * catalog write succeeded but the edit is NOT yet safe across worktrees/sessions
+   * — the UI must surface this so the worktree isn't discarded and the approval
+   * lost. Absent when the sidecar build predates queue-commit or the push was a
+   * no-op with no field emitted.
+   */
+  readonly queueCommit?:
+    | {
+        readonly status: 'committed' | 'noop';
+        readonly branch: string;
+        readonly commit?: string;
+        readonly attempts: number;
+      }
+    | { readonly status: 'failed'; readonly error: string };
 }
 
 interface ApproveErrorBody {

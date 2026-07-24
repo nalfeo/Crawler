@@ -18,6 +18,8 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { approveVariant, ApproveError } from './approve.js';
+import { runQueueCommit } from './queue-commit.js';
+import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 
 interface ParsedArgs {
   readonly runDir: string;
@@ -122,6 +124,40 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
         `  source: ${entry.sourceRun}\n` +
         `  sensors: ${entry.sensorScore}${entry.judgeScore !== null ? ` · judge ${entry.judgeScore}` : ''}\n`,
     );
+
+    // Durably persist the approved asset onto the remote assets/queue branch so
+    // the approval survives across sessions/worktrees/processes. Skipped on CI:
+    // this CLI is operator-driven and (unlike the sidecar) intentionally still
+    // approves locally under CI, so we only skip the remote push there. A
+    // queue-commit failure is a loud warning, not a hard failure — the local
+    // approve already succeeded and the hourly reconciler is the backstop.
+    if (process.env.CI === undefined) {
+      try {
+        const result = await runQueueCommit(
+          repoRoot,
+          [
+            {
+              assetPath: entry.assetPath,
+              manifestKey: entry.spriteName,
+              briefId: entry.briefId,
+              variantIndex: entry.variantIndex,
+            },
+          ],
+          createDefaultQueueCommitDeps(repoRoot),
+          { message: `chore(assets): approve ${entry.spriteName}` },
+        );
+        process.stdout.write(
+          result.status === 'committed'
+            ? `  queued: ${result.branch} @ ${result.commit?.slice(0, 12)}\n`
+            : `  queued: no-op (${result.branch} already up to date)\n`,
+        );
+      } catch (err) {
+        process.stderr.write(
+          `⚠ queue-commit failed (approval is local-only until reconciled): ` +
+            `${err instanceof Error ? err.message : String(err)}\n`,
+        );
+      }
+    }
     return 0;
   } catch (err) {
     if (err instanceof ApproveError) {

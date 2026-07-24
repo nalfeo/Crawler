@@ -2023,6 +2023,60 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}.png`))).toBe(false);
   });
 
+  it('rejects a hostile browser Origin on /approve (CSRF guard) but allows the trusted gallery origin', async () => {
+    // /approve now runs `git fetch`/`git push` (durable queue-commit), so it
+    // needs the SAME allowlist CSRF guard as /api/checkin. Unlike /accept (a
+    // Node-only route that rejects ALL browser origins), /approve is invoked by
+    // the browser gallery UI, so the guard must let the exact CLI-supplied
+    // trusted origin through while blocking every other origin.
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      trustedMutationOrigins: ['http://localhost:4102'],
+    });
+    const assetAbs = path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`);
+
+    // A hostile loopback origin (different port) is rejected — and the guard
+    // fires BEFORE approveVariant/queue-commit, so nothing is written.
+    const hostile = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { origin: 'http://127.0.0.1:9999' },
+      payload: { variantIndex: 1 },
+    });
+    expect(hostile.statusCode).toBe(403);
+    expect(hostile.json()).toMatchObject({ error: 'forbidden-origin' });
+    expect(existsSync(assetAbs)).toBe(false);
+    expect(existsSync(manifestPath)).toBe(false);
+
+    // A fully external origin is likewise rejected.
+    const external = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { origin: 'https://evil.example' },
+      payload: { variantIndex: 1 },
+    });
+    expect(external.statusCode).toBe(403);
+    expect(external.json()).toMatchObject({ error: 'forbidden-origin' });
+    expect(existsSync(assetAbs)).toBe(false);
+
+    // The exact per-worktree gallery origin the CLI trusts IS allowed through to
+    // the real approve (proving the allowlist, not a blanket rejection).
+    const trusted = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { origin: 'http://localhost:4102' },
+      payload: { variantIndex: 1 },
+    });
+    expect(trusted.statusCode).toBe(200);
+    expect(existsSync(assetAbs)).toBe(true);
+  });
+
   it('returns 403 when briefId attempts traversal', async () => {
     const res = await app.inject({
       method: 'POST',

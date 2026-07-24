@@ -28,4 +28,40 @@ describe('devtools queued generation guards', () => {
     expect(source).not.toContain('workflow/store/clear');
     expect(source).not.toContain("scope: 'all'");
   });
+
+  it('pins the approve target before the durable queue-commit await so a mid-approval reselect cannot patch the wrong item', () => {
+    const source = readFileSync('src/devtools-main.ts', 'utf-8');
+
+    // FIX 7: postApprove now includes a seconds-long durable queue-commit git
+    // push, during which queue-chip selection is NOT locked. The item being
+    // approved must be captured BEFORE the await; patching a post-await
+    // getSelectedItem() would corrupt whichever item the operator reselected
+    // (and attach this asset's durability warning to it).
+    const captureIdx = source.indexOf('const approveTarget = getSelectedItem(queueState);');
+    const awaitIdx = source.indexOf('await postApprove(');
+    expect(captureIdx).toBeGreaterThan(-1);
+    expect(awaitIdx).toBeGreaterThan(-1);
+    // The capture must precede the slow await.
+    expect(captureIdx).toBeLessThan(awaitIdx);
+
+    // Both the success branch and the 409 already-approved branch patch the
+    // pinned target, not a freshly-read selection.
+    const patchCount =
+      source.split('queueState = queueUpdateItem(queueState, approveTarget.id, patch);').length - 1;
+    expect(patchCount).toBe(2);
+
+    // Regression guard scoped to the approve handler body (capture → finally):
+    // getSelectedItem must be called exactly ONCE — the pre-await capture — so a
+    // racy post-await re-read of the current selection cannot creep back in.
+    // Other synchronous handlers legitimately read getSelectedItem(queueState),
+    // so this must not be a whole-file assertion.
+    const handlerEnd = source.indexOf(
+      "setButtonBusy(triggerBtn, false, busyLabel, 'Approving...');",
+      captureIdx,
+    );
+    expect(handlerEnd).toBeGreaterThan(captureIdx);
+    const approveBody = source.slice(captureIdx, handlerEnd);
+    const selectionReads = approveBody.split('getSelectedItem(queueState)').length - 1;
+    expect(selectionReads).toBe(1);
+  });
 });

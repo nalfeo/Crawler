@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 148 ADR files — 105 numbered (0001–0068, with number reuse and gaps in this index — see below) + 43 date-prefixed
+- **Count:** 149 ADR files — 106 numbered (0001–0071, with number reuse and gaps in this index — see below) + 43 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -133,6 +133,7 @@ hundreds of inbound references.
 - [Durable player-hit signal for ally-defend retaliation](0042-durable-player-hit-signal-for-ally-defend.md) — a durable `world.lastPlayerHit` set at the core `applyDamage` choke point (survives the frame-end VFX drain) plus projectile `Owner` threading, so ally-defend fires in the real game and retaliates against the shooter.
 - [Decouple a door's logical-open latch from its physical tile state](0055-door-logical-latch-vs-physical-tile-decouple.md) — renames `doorState.isOpen`→`logicalOpen` (intended-open latch) and adds a derived, stored `effectiveOpen` (physical tile truth), so a safe-room force-close only closes the tile and a shared safe/boss connector door reopens when the seal lifts instead of permanently sealing.
 - [Floor 2 settlement progression contract](0059-floor2-settlement-progression-contract.md) — deterministic two-phase introduction (settlement discovery then Broker introduction) shared by quest waypoints, AI routing, and the Families HUD activation gate.
+- [Floor 3 — Companion League (commander / auto-battler floor)](0071-floor3-companion-league.md) — inverts combat via the existing `Invincible` tag (player + handlers undamageable), generalizes Floor 2 ally AI into a team-tagged Companion roster, defines a species = affinity × fighting-style model (styles as reusable AI personas seeding `AI_TYPE`), two-track progression (persistent player level/gear vs floor-scoped creature XP), a cross-floor kept-companion slot, party-lock recruiting, simultaneous-wipe lose, and seeded 6-gym + Final Four win.
 
 ### Quests & NPCs
 
@@ -287,3 +288,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0065 | [Versioned Frozen Floor 2 Equipment Instances](0065-versioned-frozen-floor2-equipment-instances.md)                                                | Accepted                 | 2026-07-17 |
 | 0066 | [Unique Equipment Schema, Acquisition, and Duplicate Policy](0066-unique-equipment-schema-and-acquisition.md)                                      | Accepted                 | 2026-07-19 |
 | 0068 | [Generator-Only Floor 2 Equipment Catalog Boundary](0068-generator-only-floor2-equipment-catalog-boundary.md)                                      | Accepted                 | 2026-07-22 |
+| 0071 | [Floor 3 — Companion League (commander / auto-battler floor)](0071-floor3-companion-league.md)                                                     | Proposed                 | 2026-07-24 |
