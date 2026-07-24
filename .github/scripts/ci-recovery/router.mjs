@@ -129,6 +129,27 @@ function parsePositiveInt(raw, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+export function resolveGlobalDispatchCaps(env = process.env) {
+  return {
+    maxBudgetTrainBusy: parsePositiveInt(
+      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+      MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+    ),
+    maxBudgetTrainIdle: parsePositiveInt(
+      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+      MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+    ),
+    globalTrainDispatchCap: parsePositiveInt(
+      env.CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP,
+      GLOBAL_TRAIN_DISPATCH_CAP,
+    ),
+    maxDispatchPerRun: parsePositiveInt(
+      env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
+      DEFAULT_MAX_DISPATCH_PER_RUN,
+    ),
+  };
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -793,14 +814,14 @@ export function computeDispatchBudget({
   outstandingCount,
   activeSweepJobs = 0,
   activeValidationJobs = 0,
+  maxBudgetTrainBusy = MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+  maxBudgetTrainIdle = MAX_DISPATCH_BUDGET_TRAIN_IDLE,
 }) {
   const reservedFloor = trainQueueNonEmpty
     ? VALIDATION_RESERVED_TRAIN_BUSY
     : VALIDATION_RESERVED_TRAIN_IDLE;
   const validationReserved = Math.max(reservedFloor, activeValidationJobs);
-  const maxBudget = trainQueueNonEmpty
-    ? MAX_DISPATCH_BUDGET_TRAIN_BUSY
-    : MAX_DISPATCH_BUDGET_TRAIN_IDLE;
+  const maxBudget = trainQueueNonEmpty ? maxBudgetTrainBusy : maxBudgetTrainIdle;
   const headroom = RUNNER_CEILING - validationReserved - activeSweepJobs - outstandingCount;
   return Math.max(0, Math.min(maxBudget, headroom));
 }
@@ -913,10 +934,8 @@ export async function runFromEnv(env = process.env) {
   const eventPath = env.GITHUB_EVENT_PATH;
   const trigger = env.RECOVERY_TRIGGER || eventName;
   const trainEnabled = parseEnabledFlag(env.MERGE_TRAIN_ENABLED);
-  const maxDispatchPerRun = parsePositiveInt(
-    env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
-    DEFAULT_MAX_DISPATCH_PER_RUN,
-  );
+  const caps = resolveGlobalDispatchCaps(env);
+  const maxDispatchPerRun = caps.maxDispatchPerRun;
 
   if (!token || !owner || !repo || !eventPath) {
     throw new Error('Missing GITHUB_TOKEN, GITHUB_REPOSITORY, or GITHUB_EVENT_PATH');
@@ -1106,8 +1125,13 @@ export async function runFromEnv(env = process.env) {
     outstandingCount,
     activeSweepJobs,
     activeValidationJobs,
+    maxBudgetTrainBusy: caps.maxBudgetTrainBusy,
+    maxBudgetTrainIdle: caps.maxBudgetTrainIdle,
   });
-  const { dispatchable, deferred } = partitionDispatchable(prNumbers, dispatchBudget);
+  const boundedDispatchBudget = trainQueueNonEmpty
+    ? Math.min(dispatchBudget, caps.globalTrainDispatchCap)
+    : dispatchBudget;
+  const { dispatchable, deferred } = partitionDispatchable(prNumbers, boundedDispatchBudget);
 
   // Capture pre-dispatch outstanding run IDs so waitForDispatchedRunsVisible
   // below can identify newly appeared runs rather than relying on an aggregate
@@ -1146,7 +1170,7 @@ export async function runFromEnv(env = process.env) {
 
   if (deferred.length > 0) {
     process.stdout.write(
-      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${maxDispatchPerRun} budget=${dispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
+      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${maxDispatchPerRun} budget=${boundedDispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 
@@ -1161,7 +1185,7 @@ export async function runFromEnv(env = process.env) {
     scheduledPulls.length > prNumbers.length
   ) {
     process.stdout.write(
-      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${dispatchBudget} outstanding=${outstandingCount} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
+      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${boundedDispatchBudget} outstanding=${outstandingCount} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 }

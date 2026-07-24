@@ -36,6 +36,7 @@ import {
   recoveryStateFromComments,
   recoveryBacklogEntries,
   requestWithBackoff,
+  resolveGlobalDispatchCaps,
   recoveryTriggerForPr,
   RUNNER_CEILING,
   SWEEP_RUNNER_WEIGHT,
@@ -1322,6 +1323,26 @@ test('router listens only for completed CI workflow runs', () => {
   assert.deepEqual(workflow.on.workflow_run.types, ['completed']);
 });
 
+test('router workflow exposes runtime-tunable dispatch-cap env knobs with invariant defaults', () => {
+  const env = routeJob.steps.find((step) => step.name === 'Dispatch per-PR reconciliation')?.env ?? {};
+  assert.equal(
+    env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+    "${{ vars.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY || '5' }}",
+  );
+  assert.equal(
+    env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+    "${{ vars.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE || '8' }}",
+  );
+  assert.equal(
+    env.CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP,
+    "${{ vars.CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP || '5' }}",
+  );
+  assert.equal(
+    env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
+    "${{ vars.CI_RECOVERY_MAX_DISPATCH_PER_RUN || '8' }}",
+  );
+});
+
 test('router concurrency serializes every event into one unconditional global group', () => {
   // queue: max is required so GitHub actually queues every event under the
   // shared group instead of its default "1 running + 1 pending, newest
@@ -1448,6 +1469,43 @@ test('computeDispatchBudget returns MAX_DISPATCH_BUDGET_TRAIN_IDLE when the trai
     computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 25 }),
     0,
     'budget never goes negative when outstanding exceeds ceiling',
+  );
+});
+
+test('resolveGlobalDispatchCaps enforces positive-int parsing with invariant defaults (5/8/5/8)', () => {
+  assert.deepEqual(resolveGlobalDispatchCaps({}), {
+    maxBudgetTrainBusy: 5,
+    maxBudgetTrainIdle: 8,
+    globalTrainDispatchCap: 5,
+    maxDispatchPerRun: 8,
+  });
+  assert.deepEqual(
+    resolveGlobalDispatchCaps({
+      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '7',
+      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '9',
+      CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '3',
+      CI_RECOVERY_MAX_DISPATCH_PER_RUN: '11',
+    }),
+    {
+      maxBudgetTrainBusy: 7,
+      maxBudgetTrainIdle: 9,
+      globalTrainDispatchCap: 3,
+      maxDispatchPerRun: 11,
+    },
+  );
+  assert.deepEqual(
+    resolveGlobalDispatchCaps({
+      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '0',
+      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '-1',
+      CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: 'nope',
+      CI_RECOVERY_MAX_DISPATCH_PER_RUN: '',
+    }),
+    {
+      maxBudgetTrainBusy: 5,
+      maxBudgetTrainIdle: 8,
+      globalTrainDispatchCap: 5,
+      maxDispatchPerRun: 8,
+    },
   );
 });
 
@@ -2559,5 +2617,71 @@ test('runFromEnv dispatches the lease-reaper at zero budget and excludes the rea
     stdout,
     /global backpressure applied deferred=1 pr_numbers=11 /,
     `#11 must be deferred by the normal loop while #10 is excluded; stdout: ${stdout}`,
+  );
+});
+
+test('runFromEnv respects runtime busy/global caps under a simulated schedule burst', async (t) => {
+  const OWNER = 'test-owner';
+  const REPO = 'test-repo';
+  const TOKEN = 'x-test-token';
+  const dispatches = [];
+  const scheduledPulls = Array.from({ length: 10 }, (_, i) => ({
+    number: i + 1,
+    state: 'open',
+    draft: false,
+    base: { ref: 'main' },
+    created_at: `2026-07-${String(i + 1).padStart(2, '0')}T00:00:00Z`,
+    labels: i === 0 ? [{ name: 'merge-train' }] : [],
+    head: { sha: `head-${i + 1}`, repo: { full_name: `${OWNER}/${REPO}` } },
+  }));
+  let visibleRuns = 0;
+
+  const { server, port } = await startRouterMockServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: scheduledPulls }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/runs`]: (url) => {
+      const parsed = new URL(`http://127.0.0.1${url}`);
+      const status = parsed.searchParams.get('status');
+      if (status) {
+        return { body: { total_count: 0, workflow_runs: [] } };
+      }
+      return {
+        body: {
+          total_count: visibleRuns,
+          workflow_runs: Array.from({ length: visibleRuns }, (_, index) => ({ id: index + 1 })),
+        },
+      };
+    },
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
+      dispatches.push(body?.inputs ?? {});
+      visibleRuns = dispatches.length;
+      return { status: 204 };
+    },
+  });
+  t.after(() => server.close());
+
+  const eventDir = await mkdtemp(join(tmpdir(), 'router-burst-'));
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({ repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } }),
+  );
+  t.after(() => rm(eventDir, { recursive: true, force: true }));
+
+  const { code, stdout, stderr } = await runRouterScript(port, {
+    GITHUB_TOKEN: TOKEN,
+    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_PATH: eventPath,
+    CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '7',
+    CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '3',
+    CI_RECOVERY_MAX_DISPATCH_PER_RUN: '8',
+  });
+  if (!assertRouterExit(t, code, stderr)) return;
+
+  assert.equal(dispatches.length, 3, `busy budget must be clamped by global cap; stdout: ${stdout}`);
+  assert.match(
+    stdout,
+    /dispatch cap applied sent=3 total_eligible=10 cap=8 budget=3 outstanding=0/,
+    `expected run output to show the bounded budget; stdout: ${stdout}`,
   );
 });

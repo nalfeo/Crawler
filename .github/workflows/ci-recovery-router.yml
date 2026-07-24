@@ -88,5 +88,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RECOVERY_TRIGGER: ${{ github.event_name }}
           MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
+          CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: ${{ vars.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY || '5' }}
+          CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: ${{ vars.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE || '8' }}
+          CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: ${{ vars.CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP || '5' }}
           CI_RECOVERY_MAX_DISPATCH_PER_RUN: ${{ vars.CI_RECOVERY_MAX_DISPATCH_PER_RUN || '8' }}
         run: node .github/scripts/ci-recovery/router.mjs
