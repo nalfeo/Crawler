@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9b3a715c965021e38091a8cefa65d7cc36e496e8",
+    "commitDate": "2026-07-23T23:13:12Z",
+    "commitSubject": "chore(security): temporary audit exception for find-my-way DDoS advisory (#1831)",
+    "capturedAt": "2026-07-24T00:29:55.268Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30053076534",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/9b3a715c965021e38091a8cefa65d7cc36e496e8.json"
+  },
+  {
     "commit": "5cc8d428a83ebfc908a43fab419ac08a0df45cf6",
     "commitDate": "2026-07-23T23:01:22Z",
     "commitSubject": "feat(ci): CI-fix-first + blocked-PR exclusion + global FIFO for recovery dispatch ordering (#1777)",
