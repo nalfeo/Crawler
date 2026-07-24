@@ -494,7 +494,8 @@ export function approvedItemPatch(info: ApprovedVariantInfo): ApprovedItemPatch 
     checkinSummary: null,
     generationRequestedAt: null,
     lastError: null,
-    queueDurability: info.queueCommitFailed === true ? 'failed' : info.queueCommitFailed === false ? 'ok' : null,
+    queueDurability:
+      info.queueCommitFailed === true ? 'failed' : info.queueCommitFailed === false ? 'ok' : null,
   };
 }
 

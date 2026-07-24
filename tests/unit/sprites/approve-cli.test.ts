@@ -98,10 +98,7 @@ describe('approve-cli already-approved idempotent retry (concern #6)', () => {
   });
 
   it('re-enters runQueueCommit for an already-approved entry and returns exit code 0', async () => {
-    const exitCode = await main(
-      ['/fake/runs/iron-sword/run-01', '--variant', '1'],
-      '/fake/repo',
-    );
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
 
     // The critical invariant: exits 0 (was 1 before the fix) even when the
     // variant was already approved, because the CLI re-runs queue-commit.
@@ -121,10 +118,7 @@ describe('approve-cli already-approved idempotent retry (concern #6)', () => {
   it('returns exit code 0 on CI without calling runQueueCommit (already-approved CI path)', async () => {
     process.env.CI = 'true';
 
-    const exitCode = await main(
-      ['/fake/runs/iron-sword/run-01', '--variant', '1'],
-      '/fake/repo',
-    );
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
 
     // On CI the remote push is skipped, but the exit code must still be 0 —
     // the already-approved retry is a success, not an error.
@@ -135,10 +129,7 @@ describe('approve-cli already-approved idempotent retry (concern #6)', () => {
   it('returns a non-zero exit code when the stored manifest entry cannot be found', async () => {
     mocks.loadApprovedEntry.mockReturnValueOnce(null as never);
 
-    const exitCode = await main(
-      ['/fake/runs/iron-sword/run-01', '--variant', '1'],
-      '/fake/repo',
-    );
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
 
     // No stored entry → nothing to make durable; original error code preserved.
     expect(exitCode).not.toBe(0);
