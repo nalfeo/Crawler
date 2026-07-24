@@ -32,8 +32,11 @@ review-driven fixes:
 - **queue-commit primitive** (`scripts/sprites/queue-commit.ts` + `-runtime.ts` + `-cli.ts`): a
   throwaway-worktree mechanism that fetches the `assets/queue` tip, unions the approved art surface
   onto it via `copyArtSurface` (semantic merge — no hand-rolled commit-tree re-parenting), commits
-  under a reused `makeCheckinFileLock` cross-process lock, and pushes with explicit
-  `--force-with-lease`. `ASSET_SURFACE_PATHS` allowlist bounds what the union touches.
+  under a reused `makeCheckinFileLock` cross-process lock, and pushes the new commit with a
+  **plain fast-forward-only push** (NOT `--force-with-lease`): a concurrent advance makes it a
+  non-fast-forward, git rejects it, and the bounded retry re-fetches + re-unions against the new
+  tip (the plain push can never overwrite a concurrent update). `ASSET_SURFACE_PATHS` allowlist
+  bounds what the union touches.
 - **wiring**: approve (`src/devtools-main.ts` `doApprove`, sidecar `server.ts`, `approve-cli.ts`),
   editor saves (`.github/extensions/sprite-editor/extension.mjs`), and revert re-queue.
 - **FIX 1** (round-3 F-C): CSRF origin guard added to the canonical

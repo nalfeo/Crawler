@@ -14,6 +14,11 @@ import {
   formatSensorResult,
   getItem,
   getSelectedItem,
+  metadataDonePatch,
+  metadataReadyBanner,
+  applyMetadataTagResult,
+  METADATA_BANNER_FAILED_COLOR,
+  METADATA_BANNER_OK_COLOR,
   primaryActionLabel,
   recoverInterruptedItem,
   removeItem,
@@ -541,6 +546,48 @@ describe('approvedItemPatch', () => {
     );
   });
 
+  it('drives queueDurability from the push outcome (failed -> "failed")', () => {
+    // #7: queueDurability is the single source of truth the render path reads to
+    // color the approved summary. A failed durable push must set it to 'failed' so
+    // the status stays red instead of being erased by a later green re-render.
+    const patch = approvedItemPatch({
+      briefId: 'bent-pipe-v1',
+      variantIndex: 0,
+      assetPath: 'generated/bent-pipe-v1-var-0.png',
+      sensorScore: '7/7',
+      judgeScore: null,
+      queueCommitFailed: true,
+    });
+    expect(patch.queueDurability).toBe('failed');
+  });
+
+  it('sets queueDurability to "ok" on a successful or no-op push', () => {
+    expect(
+      approvedItemPatch({
+        briefId: 'bent-pipe-v1',
+        variantIndex: 0,
+        assetPath: 'generated/bent-pipe-v1-var-0.png',
+        sensorScore: '7/7',
+        judgeScore: null,
+        queueCommitFailed: false,
+      }).queueDurability,
+    ).toBe('ok');
+  });
+
+  it('sets queueDurability to null when no queue-commit was attempted (old sidecar)', () => {
+    // An absent queueCommitFailed (undefined) means the sidecar did not attempt a
+    // queue-commit (pre-queue-commit sidecar, or the already-approved path on an
+    // old server). This is NOT the same as success — do not fabricate 'ok'.
+    expect(
+      approvedItemPatch({
+        briefId: 'bent-pipe-v1',
+        variantIndex: 0,
+        assetPath: 'generated/bent-pipe-v1-var-0.png',
+        alreadyApproved: true,
+      }).queueDurability,
+    ).toBeNull();
+  });
+
   it('produces a patch that drives an item from variants to approved via updateItem', () => {
     let state = createEmptyQueue();
     state = addItem(state, 'Green Slime Baby');
@@ -561,6 +608,195 @@ describe('approvedItemPatch', () => {
     // Approved is step 6 — i.e. the Tag step is now the active/next action.
     expect(stageActiveStep(updated.stage)).toBe(6);
     expect(primaryActionLabel(updated.stage)).toBe('Tag (generate metadata)');
+  });
+});
+
+describe('metadataDonePatch (Tag-step durability, #1c/#7)', () => {
+  const base = {
+    provider: 'heuristic',
+    processedCount: 1,
+    changedCount: 1,
+    rejectedCount: 0,
+  } as const;
+
+  it('marks the tag durable when the re-queue committed or was a no-op', () => {
+    expect(
+      metadataDonePatch({ ...base, queueStatus: 'committed', previousDurability: null }),
+    ).toMatchObject({ stage: 'done', queueDurability: 'ok', approvalSummary: null });
+    expect(
+      metadataDonePatch({ ...base, queueStatus: 'noop', previousDurability: 'failed' })
+        .queueDurability,
+    ).toBe('ok');
+  });
+
+  it('marks the tag failed and bakes the reason into metadataSummary on a failed push', () => {
+    const patch = metadataDonePatch({
+      ...base,
+      queueStatus: 'failed',
+      queueCommitError: 'push rejected',
+      previousDurability: 'ok',
+    });
+    expect(patch.queueDurability).toBe('failed');
+    expect(patch.metadataSummary).toContain('Durable queue push FAILED');
+    expect(patch.metadataSummary).toContain('(push rejected)');
+    expect(patch.metadataSummary).toContain('Tagged via heuristic: processed=1, changed=1');
+  });
+
+  it('PRESERVES prior durability when nothing was re-queued (null) — no fabricated green', () => {
+    // The core #1c/#7 regression: a no-op re-queue (queueCommit:null) used to be
+    // treated as success and flip the item to green 'ok', erasing a real prior
+    // 'failed'. It must instead leave the earlier durability verdict untouched.
+    expect(
+      metadataDonePatch({
+        ...base,
+        changedCount: 0,
+        queueStatus: null,
+        previousDurability: 'failed',
+      }).queueDurability,
+    ).toBe('failed');
+    expect(
+      metadataDonePatch({ ...base, changedCount: 0, queueStatus: null, previousDurability: 'ok' })
+        .queueDurability,
+    ).toBe('ok');
+    expect(
+      metadataDonePatch({ ...base, changedCount: 0, queueStatus: null, previousDurability: null })
+        .queueDurability,
+    ).toBeNull();
+  });
+
+  it('PRESERVES prior durability on a ci-refused (skipped) push and adds no warning', () => {
+    const patch = metadataDonePatch({
+      ...base,
+      queueStatus: 'skipped',
+      previousDurability: 'failed',
+    });
+    expect(patch.queueDurability).toBe('failed');
+    expect(patch.metadataSummary).not.toContain('Durable queue push FAILED');
+  });
+});
+
+describe('metadataReadyBanner (Tag→Done banner honesty, #1c/#7)', () => {
+  const base = {
+    provider: 'heuristic',
+    processedCount: 1,
+    changedCount: 1,
+    rejectedCount: 0,
+  } as const;
+
+  it('shows the green "ready to use" banner only when the tag is durable (ok)', () => {
+    const patch = metadataDonePatch({
+      ...base,
+      queueStatus: 'committed',
+      previousDurability: null,
+    });
+    const banner = metadataReadyBanner(patch);
+    expect(banner.color).toBe(METADATA_BANNER_OK_COLOR);
+    expect(banner.message).toContain('ready to use');
+    expect(banner.message.startsWith(patch.metadataSummary)).toBe(true);
+  });
+
+  it('shows a RED banner with NO "ready to use" on an outright failed push', () => {
+    const patch = metadataDonePatch({
+      ...base,
+      queueStatus: 'failed',
+      queueCommitError: 'push rejected',
+      previousDurability: 'ok',
+    });
+    const banner = metadataReadyBanner(patch);
+    expect(banner.color).toBe(METADATA_BANNER_FAILED_COLOR);
+    expect(banner.message).not.toContain('ready to use');
+    expect(banner.message).toContain('Durable queue push FAILED');
+  });
+
+  it('stays RED when a null/skipped re-queue INHERITS a prior failed (the caller regression)', () => {
+    // The exact bug Round-2 caught: the banner used to gate on this Tag's OWN
+    // push status, so a no-op (null) or ci-refused (skipped) re-queue that
+    // inherits an earlier 'failed' would flash green "ready to use" before
+    // recompute restored red. Gating on the honest patch.queueDurability (which
+    // metadataDonePatch preserves as 'failed' here) keeps it red. This locks the
+    // presentation so re-introducing raw-status gating in the DOM caller fails.
+    for (const queueStatus of ['skipped', null] as const) {
+      const patch = metadataDonePatch({
+        ...base,
+        changedCount: 0,
+        queueStatus,
+        previousDurability: 'failed',
+      });
+      expect(patch.queueDurability).toBe('failed');
+      const banner = metadataReadyBanner(patch);
+      expect(banner.color).toBe(METADATA_BANNER_FAILED_COLOR);
+      expect(banner.message).not.toContain('ready to use');
+    }
+  });
+
+  it('shows a NEUTRAL banner (not green) when durability is unknown (null)', () => {
+    // A null/skipped re-queue with null prior durability means no evidence of
+    // durability was ever established. The banner must NOT say "ready to use".
+    for (const queueStatus of ['skipped', null] as const) {
+      const patch = metadataDonePatch({
+        ...base,
+        changedCount: 0,
+        queueStatus,
+        previousDurability: null,
+      });
+      expect(patch.queueDurability).toBeNull();
+      const banner = metadataReadyBanner(patch);
+      expect(banner.color).not.toBe(METADATA_BANNER_OK_COLOR);
+      expect(banner.color).not.toBe(METADATA_BANNER_FAILED_COLOR);
+      expect(banner.message).not.toContain('ready to use');
+    }
+  });
+});
+
+describe('applyMetadataTagResult (bundled Tag→Done transition, #1c/#7 caller lock)', () => {
+  const base = {
+    provider: 'heuristic',
+    processedCount: 1,
+    changedCount: 1,
+    rejectedCount: 0,
+  } as const;
+
+  it('pairs a durable patch with a green banner on a committed push', () => {
+    const { patch, banner } = applyMetadataTagResult({
+      ...base,
+      queueStatus: 'committed',
+      previousDurability: null,
+    });
+    expect(patch.queueDurability).toBe('ok');
+    expect(banner.color).toBe(METADATA_BANNER_OK_COLOR);
+    expect(banner.message).toContain('ready to use');
+  });
+
+  it('pairs a failed patch with a red banner (no "ready to use") on a failed push', () => {
+    const { patch, banner } = applyMetadataTagResult({
+      ...base,
+      queueStatus: 'failed',
+      queueCommitError: 'push rejected',
+      previousDurability: 'ok',
+    });
+    expect(patch.queueDurability).toBe('failed');
+    expect(banner.color).toBe(METADATA_BANNER_FAILED_COLOR);
+    expect(banner.message).not.toContain('ready to use');
+  });
+
+  it('keeps a null/skipped re-queue RED when it inherits a prior failed (caller regression lock)', () => {
+    // Locks the WHOLE transition the DOM caller applies verbatim: a no-op (null)
+    // or ci-refused (skipped) re-queue that inherits an earlier 'failed' must
+    // yield a red banner with no "ready to use". Because the caller destructures
+    // { patch, banner } from THIS function and passes banner straight to
+    // setWorkflowStatus, re-gating the banner on the raw push status can no longer
+    // slip in without abandoning this tested function.
+    for (const queueStatus of ['skipped', null] as const) {
+      const { patch, banner } = applyMetadataTagResult({
+        ...base,
+        changedCount: 0,
+        queueStatus,
+        previousDurability: 'failed',
+      });
+      expect(patch.queueDurability).toBe('failed');
+      expect(banner.color).toBe(METADATA_BANNER_FAILED_COLOR);
+      expect(banner.message).not.toContain('ready to use');
+    }
   });
 });
 
@@ -634,6 +870,29 @@ describe('serialize / deserialize', () => {
     expect(restored.items[0]?.run?.candidates[0]?.sensors).toEqual([]);
     expect(restored.items[0]?.generationRequestedAt).toBeNull();
     expect(restored.items[0]?.generationStartedAt).toBeNull();
+  });
+
+  it('round-trips queueDurability and defaults unknown/absent values to null', () => {
+    // #7 durability field: a 'failed' state must survive serialize→deserialize so the
+    // warning persists across a page reload; pre-PR1 stored items (no field) and any
+    // malformed value must sanitize to null rather than throwing or leaking a string.
+    let state = addItem(createEmptyQueue(), 'Durable Sprite', '', 'item');
+    state = updateItem(state, 'item-1', { stage: 'approved', queueDurability: 'failed' });
+    expect(deserializeQueue(serializeQueue(state)).items[0]?.queueDurability).toBe('failed');
+
+    const legacy = JSON.stringify({
+      items: [{ id: 'item-1', seq: 1, brief: 'Legacy', stage: 'approved' }],
+      selectedId: 'item-1',
+      nextSeq: 2,
+    });
+    expect(deserializeQueue(legacy).items[0]?.queueDurability).toBeNull();
+
+    const malformed = JSON.stringify({
+      items: [{ id: 'item-1', seq: 1, brief: 'Bad', stage: 'approved', queueDurability: 'yes' }],
+      selectedId: 'item-1',
+      nextSeq: 2,
+    });
+    expect(deserializeQueue(malformed).items[0]?.queueDurability).toBeNull();
   });
 
   it('preserves structured per-sensor breakdown and drops malformed sensor entries', () => {

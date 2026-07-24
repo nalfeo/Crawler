@@ -50,6 +50,13 @@ export interface ApproveResponse {
   readonly sensorScore: string;
   readonly judgeScore: string | null;
   /**
+   * The sidecar found this exact variant already approved with byte-identical
+   * content and re-ran the durable queue-commit (PR1 retry path): the response is
+   * `200` with this flag instead of a bare `409`, so the client both advances the
+   * item to `approved` AND still learns the fresh `queueCommit` durability outcome.
+   */
+  readonly alreadyApproved?: boolean;
+  /**
    * Outcome of the durable `assets/queue` push the sidecar performs right after
    * writing the approved asset to disk (PR1). A `'failed'` status means the local
    * catalog write succeeded but the edit is NOT yet safe across worktrees/sessions

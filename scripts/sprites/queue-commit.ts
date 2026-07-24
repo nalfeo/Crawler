@@ -115,9 +115,12 @@ const DEFAULT_MAX_ATTEMPTS = 5;
 
 /**
  * Validate that each asset path is a safe repo-relative POSIX path under the art
- * surface (no absolute paths, no `..` traversal). Combined with the fixed
- * `git add -- <ASSET_SURFACE_PATHS>` allowlist, this guarantees a queue commit
- * can only ever touch generated art + the catalog.
+ * surface (no absolute paths, no `..` traversal) AND under the `generated/`
+ * subtree that `git add -- <ASSET_SURFACE_PATHS>` actually stages. Without the
+ * `generated/` check a path like `icons/foo.png` would be copied by
+ * `copyArtSurface` yet never staged, producing a silent no-op queue commit.
+ * Combined with the fixed allowlist, this guarantees a queue commit can only ever
+ * touch generated art + the catalog.
  */
 export function assertSafeAssetPaths(assets: readonly CheckinAsset[]): void {
   for (const asset of assets) {
@@ -134,6 +137,13 @@ export function assertSafeAssetPaths(assets: readonly CheckinAsset[]): void {
     const segments = p.split('/');
     if (segments.some((s) => s === '' || s === '.' || s === '..')) {
       throw new QueueCommitError('invalid-asset-path', `Unsafe asset path: ${p}`);
+    }
+    if (!p.startsWith('generated/')) {
+      throw new QueueCommitError(
+        'invalid-asset-path',
+        `Asset path must be under the staged art surface (generated/), got: ${p}. ` +
+          `Paths outside generated/ are copied but never staged, silently no-op'ing the commit.`,
+      );
     }
   }
 }
