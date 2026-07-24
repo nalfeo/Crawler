@@ -20,7 +20,13 @@
  * the container before first use.
  */
 
-import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
+import {
+  BlobSASPermissions,
+  BlobServiceClient,
+  SASProtocol,
+  StorageSharedKeyCredential,
+  generateBlobSASQueryParameters,
+} from '@azure/storage-blob';
 import type { ContainerClient } from '@azure/storage-blob';
 import { StoreNotFoundError, type RunStore } from './types.js';
 
@@ -52,6 +58,7 @@ export class AzureBlobRunStore implements RunStore {
     private readonly accountName: string,
     private readonly containerName: string,
     host: string,
+    private readonly sharedKeyCredential: StorageSharedKeyCredential | null,
   ) {
     this.identity = { host, account: accountName, container: containerName };
   }
@@ -67,6 +74,7 @@ export class AzureBlobRunStore implements RunStore {
       options.accountName,
       containerName,
       hostOf(endpoint),
+      cred,
     );
   }
 
@@ -80,11 +88,17 @@ export class AzureBlobRunStore implements RunStore {
     // 'devstoreaccount1' is the well-known Azurite account name used when
     // AccountName is absent from the connection string (UseDevelopmentStorage=true).
     const accountName = extractFromConnStr(connectionString, 'AccountName') ?? 'devstoreaccount1';
+    const accountKey = extractFromConnStr(connectionString, 'AccountKey');
+    const sharedKeyCredential =
+      typeof accountKey === 'string' && accountKey.length > 0
+        ? new StorageSharedKeyCredential(accountName, accountKey)
+        : null;
     return new AzureBlobRunStore(
       service.getContainerClient(name),
       accountName,
       name,
       hostOf(service.url),
+      sharedKeyCredential,
     );
   }
 
@@ -130,6 +144,24 @@ export class AzureBlobRunStore implements RunStore {
 
   resolve(key: string): string {
     return `https://${this.accountName}.blob.core.windows.net/${this.containerName}/${key}`;
+  }
+
+  resolveForExternalRead(key: string): string {
+    if (this.sharedKeyCredential === null) return this.resolve(key);
+    const startsOn = new Date(Date.now() - 5 * 60 * 1000);
+    const expiresOn = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const sas = generateBlobSASQueryParameters(
+      {
+        containerName: this.containerName,
+        blobName: key,
+        permissions: BlobSASPermissions.parse('r'),
+        startsOn,
+        expiresOn,
+        protocol: SASProtocol.HttpsAndHttp,
+      },
+      this.sharedKeyCredential,
+    ).toString();
+    return `${this.resolve(key)}?${sas}`;
   }
 }
 

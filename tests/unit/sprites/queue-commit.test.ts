@@ -97,6 +97,19 @@ describe('runQueueCommit (control flow)', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('rejects clean paths that escape the staged generated/ surface (silent no-op guard)', async () => {
+    const { exec, calls } = makeFakeExec(() => ({}));
+    // Traversal-free, absolute-free POSIX paths — but OUTSIDE `generated/`, so
+    // copyArtSurface would copy them yet `git add -- <surface>` never stages them,
+    // silently producing a no-op commit. assertSafeAssetPaths must reject them.
+    for (const bad of ['icons/foo.png', 'public/assets/other.png', 'sprite-catalog.json']) {
+      await expect(
+        runQueueCommit('/repo', [asset({ assetPath: bad })], controlDeps(exec), { message: 'm' }),
+      ).rejects.toMatchObject({ kind: 'invalid-asset-path' });
+    }
+    expect(calls).toHaveLength(0);
+  });
+
   it('returns a no-op for an empty asset list without touching git', async () => {
     const { exec, calls } = makeFakeExec(() => ({}));
     const result = await runQueueCommit('/repo', [], controlDeps(exec), { message: 'm' });

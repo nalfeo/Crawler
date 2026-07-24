@@ -65,13 +65,14 @@ import { parse as parseYaml } from 'yaml';
 import {
   approveVariant,
   ApproveError,
+  loadApprovedEntry,
   resolveVariantIdentity,
   unapproveVariant,
   UnapproveError,
   type ManifestEntry,
   type VariantIdentity,
 } from '../approve.js';
-import { runQueueCommit, type QueueCommitResult } from '../queue-commit.js';
+import { runQueueCommit, QueueCommitError, type QueueCommitResult } from '../queue-commit.js';
 import { createDefaultQueueCommitDeps } from '../queue-commit-runtime.js';
 import {
   runAssetCheckin,
@@ -87,6 +88,7 @@ import { briefDirectoryForType } from '../brief-paths.js';
 import { generateOne } from '../generate-one.js';
 import {
   DEFAULT_CATALOG_PATH,
+  mergeChangedCatalogEntries,
   resolveProvider,
   runMetadataPipeline,
   type MetadataProviderMode,
@@ -128,7 +130,7 @@ import {
   mirrorBriefToStore,
   toRepoRelativePath,
 } from '../brief-durability.js';
-import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
+import { parseSpriteCatalog, type SpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { writeCatalogJson } from '../catalog-io.js';
 import { hasDerivedResourceCache } from '../store/caching-store.js';
 import { LocalRunStore } from '../store/local-store.js';
@@ -1955,6 +1957,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     return withCheckinMutationLock(async () => {
       let hydrated: HydratedRunDir | null = null;
       let entry: ManifestEntry;
+      let alreadyApproved = false;
       try {
         hydrated =
           store.backend === 'local'
@@ -1965,14 +1968,35 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           reply.code(403);
           return { error: 'forbidden-path' };
         }
-        entry = approveVariant({
-          runDir,
-          variantIndex,
-          manifestPath,
-          catalogPath,
-          publicAssetsDir,
-          repoRoot: deps.repoRoot,
-        });
+        try {
+          entry = approveVariant({
+            runDir,
+            variantIndex,
+            manifestPath,
+            catalogPath,
+            publicAssetsDir,
+            repoRoot: deps.repoRoot,
+          });
+        } catch (err) {
+          // Failed-push retry gap: a prior approval succeeded LOCALLY (so this
+          // re-approve is a no-op `already-approved`) but its best-effort durable
+          // queue-commit may never have pushed to assets/queue. Rather than
+          // return a bare 409 that can never re-attempt the push, load the stored
+          // manifest entry and fall through to re-run the queue-commit below so a
+          // retry actually persists the asset remotely.
+          if (err instanceof ApproveError && err.kind === 'already-approved') {
+            const stored = loadApprovedEntry({ runDir, variantIndex, manifestPath });
+            if (stored === null) {
+              // The manifest entry is genuinely gone — nothing to re-queue.
+              reply.code(409);
+              return { error: err.kind, message: err.message };
+            }
+            entry = stored;
+            alreadyApproved = true;
+          } else {
+            throw err;
+          }
+        }
       } catch (err) {
         if (err instanceof ApproveError) {
           // variant-not-found / processed-missing -> 404 (resource missing).
@@ -2003,12 +2027,13 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         hydrated?.cleanup();
       }
 
-      // Durably persist the just-approved asset onto the remote assets/queue
-      // branch so the edit survives across sessions/worktrees/processes. This
-      // is best-effort: the local approve already succeeded, so a queue-commit
-      // failure is surfaced in the response (and logged) rather than rolling
-      // back the approval. The route already refuses on CI above, so the
-      // primitive's CI guard never fires here.
+      // Durably persist the approved asset onto the remote assets/queue branch so
+      // the edit survives across sessions/worktrees/processes. Runs on the fresh
+      // approval AND on an `already-approved` retry (above) so a previously-failed
+      // push can be re-attempted. Best-effort: the local approve already
+      // succeeded, so a queue-commit failure is surfaced in the response (and
+      // logged) rather than rolling back. The route already refuses on CI above,
+      // so the primitive's CI guard never fires here.
       let queueCommit: QueueCommitResult | { status: 'failed'; error: string };
       try {
         queueCommit = await runQueueCommit(
@@ -2030,7 +2055,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         queueCommit = { status: 'failed', error: message };
       }
 
-      return { ...entry, queueCommit };
+      return { ...entry, ...(alreadyApproved ? { alreadyApproved: true } : {}), queueCommit };
     });
   });
 
@@ -2834,18 +2859,148 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       minScore = body.minScore;
     }
 
+    // CSRF guard (mirrors /approve, ADR 0066 CTX-005): this route now runs
+    // `git fetch`/`git push` against the remote assets/queue branch (durable
+    // re-queue, below), so a cross-origin browser POST must not be able to
+    // trigger an authenticated remote push. Server-side callers (Node fetch, no
+    // Origin header) stay trusted, exactly as the sibling mutating routes do.
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && !deps.trustedMutationOrigins?.includes(origin)) {
+      reply.code(403);
+      return {
+        error: 'forbidden-origin',
+        message: 'This browser origin is not allowed to run sprite metadata generation.',
+      };
+    }
+
     try {
+      const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
+      const manifestPath =
+        deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
       const catalogAbs = path.resolve(deps.repoRoot, DEFAULT_CATALOG_PATH);
       const catalog = parseSpriteCatalog(JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown);
       const provider = await resolveProvider(providerMode);
       const result = await runMetadataPipeline(catalog, { provider, ids, force, minScore });
-      await writeCatalogJson(catalogAbs, result.updated);
+
+      // Persist the catalog AND durably re-queue the changed generated entries.
+      // Serialized with /approve and /checkin (same catalog surface) under the
+      // shared mutation lock. Without this queue-commit the Tag step would leave
+      // the assets/queue branch on the PRE-Tag catalog, silently dropping the
+      // metadata edit across worktrees/sessions (concern #1).
+      const env = deps.env ?? process.env;
+      const queueCommit = await withCheckinMutationLock(async () => {
+        // Re-read the catalog INSIDE the lock and overlay ONLY the entries this
+        // run changed, rather than writing the run's stale full snapshot. A
+        // concurrent /approve or /checkin (which mutate the same catalog under
+        // this lock) can add or edit a DIFFERENT entry between our pre-lock read
+        // (above, outside the lock so the slow provider call does not hold it)
+        // and this write; the merge preserves that change instead of clobbering
+        // it (read-modify-write race, concern #1a).
+        let mergedCatalog: SpriteCatalog;
+        try {
+          const fresh = parseSpriteCatalog(JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown);
+          mergedCatalog = parseSpriteCatalog(
+            mergeChangedCatalogEntries(fresh, result.updated, result.changedIds),
+          );
+        } catch (err) {
+          // A fresh re-read/parse failure means we cannot safely determine
+          // which concurrent rows might have landed since our pre-lock read.
+          // Writing the stale snapshot (result.updated) would clobber those
+          // concurrent entries, so we abort the mutation entirely and surface
+          // a route failure instead.
+          const message = err instanceof Error ? err.message : String(err);
+          req.log.warn(`metadata queue-commit: catalog re-read failed: ${message}`);
+          return { status: 'failed' as const, error: `catalog re-read failed: ${message}` };
+        }
+        await writeCatalogJson(catalogAbs, mergedCatalog);
+
+        // A `generated:<key>` catalog entry that this run changed AND that still
+        // survives the merge (concurrently-deleted ids were dropped above) MUST
+        // be durably re-queued. Non-generated rows (terrain/mob/etc.) are not
+        // queue-managed, and a concurrently-deleted id is genuinely gone — both
+        // are correctly excluded here.
+        const survivingIds = new Set(mergedCatalog.map((record) => record.id));
+        const changedGeneratedIds = result.changedIds.filter(
+          (id) => id.startsWith('generated:') && survivingIds.has(id),
+        );
+        // The ONLY honest `null`: nothing queue-managed changed, so there is
+        // genuinely no durable re-queue to do and the client PRESERVES its prior
+        // durability (#1c/#7). Reaching `null` any other way would fabricate a
+        // green "ready to use" the tag never earned.
+        if (changedGeneratedIds.length === 0) return null;
+
+        // Map each surviving changed generated id back to its manifest entry so
+        // the queue-commit stages the PNG + manifest + updated catalog together.
+        let manifestReadFailed = false;
+        let manifestEntries: Record<string, ManifestEntry> = {};
+        try {
+          const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+            entries?: Record<string, ManifestEntry>;
+          };
+          manifestEntries = parsed.entries ?? {};
+        } catch (err) {
+          manifestReadFailed = true;
+          req.log.warn(
+            `metadata queue-commit: manifest read failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        const changedAssetsMaybeNull = changedGeneratedIds.map((id) => {
+          const key = id.slice('generated:'.length);
+          const entry = manifestEntries[key];
+          if (!entry) return null;
+          return {
+            assetPath: entry.assetPath,
+            manifestKey: key,
+            briefId: entry.briefId ?? null,
+            variantIndex: typeof entry.variantIndex === 'number' ? entry.variantIndex : null,
+          };
+        });
+        // Every changed generated id MUST resolve to a manifest entry so the
+        // durable re-queue stages the complete set. A partial resolve (some ids
+        // missing) is still a failure: the assets/queue branch would be missing
+        // entries, silently under-reporting durability (#6-followup). If ANY id
+        // fails to resolve — or the manifest read itself failed — abort and
+        // surface a failure rather than committing a partial update.
+        const unresolvedCount = changedAssetsMaybeNull.filter((a) => a === null).length;
+        if (unresolvedCount > 0) {
+          const reason = manifestReadFailed
+            ? 'manifest read failed'
+            : `${unresolvedCount} of ${changedGeneratedIds.length} changed generated sprite(s) had no manifest entry`;
+          const message = `metadata changed for ${changedGeneratedIds.length} generated sprite(s) but could not be durably re-queued: ${reason}`;
+          req.log.warn(`metadata queue-commit failed: ${message}`);
+          return { status: 'failed' as const, error: message };
+        }
+        // All changed ids resolved — safe to cast (no nulls remain).
+        const changedAssets = changedAssetsMaybeNull as NonNullable<
+          (typeof changedAssetsMaybeNull)[number]
+        >[];
+        try {
+          return await runQueueCommit(
+            deps.repoRoot,
+            changedAssets,
+            createDefaultQueueCommitDeps(deps.repoRoot, env),
+            { message: `chore(assets): metadata for ${changedAssets.length} sprite(s)` },
+          );
+        } catch (err) {
+          // ci-refused is EXPECTED on CI (the primitive is local-only) — surface
+          // it as a skip, not a failure. Any other error is best-effort: the
+          // local catalog write already succeeded.
+          if (err instanceof QueueCommitError && err.kind === 'ci-refused') {
+            return { status: 'skipped' as const, reason: 'ci-refused' as const };
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          req.log.warn(`metadata queue-commit failed: ${message}`);
+          return { status: 'failed' as const, error: message };
+        }
+      });
+
       return {
         provider: provider.name,
         changedCount: result.changedCount,
         processedCount: result.processedCount,
         rejectedCount: result.rejectedCount,
         skippedCount: result.skippedCount,
+        queueCommit,
       };
     } catch (err) {
       reply.code(500);

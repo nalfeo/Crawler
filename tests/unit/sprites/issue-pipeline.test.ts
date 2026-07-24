@@ -16,7 +16,10 @@ vi.mock('../../../scripts/sprites/load-brief.js', () => ({
   loadBrief: vi.fn(),
 }));
 
-import { runIssuePipeline } from '../../../scripts/sprites/issue-pipeline.js';
+import {
+  buildCompletionComment,
+  runIssuePipeline,
+} from '../../../scripts/sprites/issue-pipeline.js';
 import { runFull } from '../../../scripts/sprites/run-full.js';
 import { synthesizeBrief } from '../../../scripts/sprites/synthesize-brief.js';
 import { loadBrief } from '../../../scripts/sprites/load-brief.js';
@@ -607,5 +610,133 @@ describe('runIssuePipeline', () => {
     // Final state: key and correct bytes still present after the pipeline completes.
     expect(store.mem.has(briefKey)).toBe(true);
     expect(store.mem.get(briefKey)!.toString('utf8')).toContain('enabled: true');
+  });
+});
+
+describe('buildCompletionComment', () => {
+  it('includes the spritesheet image embed using sheet-00.png for a single-attempt run', () => {
+    const store = makeStore();
+    const result = {
+      summary: { brief: 'bone-dagger', runId: 'run-1', attempts: 1, chosen: null, candidates: [] },
+      summaryPath: 'bone-dagger/run-1/summary.json',
+    } as never;
+    const comment = buildCompletionComment(result, store);
+    expect(comment).toContain('✅ Asset-request pipeline complete.');
+    expect(comment).toContain('### Spritesheet');
+    expect(comment).toContain('![Spritesheet](bone-dagger/run-1/sheet-00.png)');
+    expect(comment).not.toContain('Chosen variant');
+  });
+
+  it('uses the last attempt sheet index when multiple attempts were made', () => {
+    const store = makeStore();
+    const result = {
+      summary: {
+        brief: 'bone-dagger',
+        runId: 'run-2',
+        attempts: 3,
+        chosen: null,
+        candidates: [],
+      },
+      summaryPath: 'bone-dagger/run-2/summary.json',
+    } as never;
+    const comment = buildCompletionComment(result, store);
+    expect(comment).toContain('![Spritesheet](bone-dagger/run-2/sheet-02.png)');
+    expect(comment).not.toContain('sheet-00.png');
+  });
+
+  it('prefers resolveForExternalRead for embed URLs when available', () => {
+    const store: RunStore = {
+      ...makeStore(),
+      resolveForExternalRead(key) {
+        return `https://signed.example.test/${key}?sig=read-only`;
+      },
+    };
+    const result = {
+      summary: {
+        brief: 'bone-dagger',
+        runId: 'run-2a',
+        attempts: 2,
+        variantCount: 4,
+        chosen: { index: 1, score: 4, outOf: 5, passed: true, combinedPassed: true },
+        candidates: [{ index: 1, processedPath: 'bone-dagger/run-2a/processed/01.png' }],
+      },
+      summaryPath: 'bone-dagger/run-2a/summary.json',
+    } as never;
+    const comment = buildCompletionComment(result, store);
+    expect(comment).toContain(
+      '![Spritesheet](https://signed.example.test/bone-dagger/run-2a/sheet-01.png?sig=read-only)',
+    );
+    expect(comment).toContain(
+      '![Chosen variant 2/4 (score 4/5) ✅](https://signed.example.test/bone-dagger/run-2a/processed/01.png?sig=read-only)',
+    );
+  });
+
+  it('includes the chosen variant image embed with pass status when a chosen candidate exists', () => {
+    const store = makeStore();
+    const result = {
+      summary: {
+        brief: 'bone-dagger',
+        runId: 'run-3',
+        attempts: 1,
+        variantCount: 4,
+        chosen: { index: 2, score: 4, outOf: 5, passed: true, combinedPassed: true },
+        candidates: [
+          { index: 0, processedPath: 'bone-dagger/run-3/processed/00.png' },
+          { index: 2, processedPath: 'bone-dagger/run-3/processed/02.png' },
+        ],
+      },
+      summaryPath: 'bone-dagger/run-3/summary.json',
+    } as never;
+    const comment = buildCompletionComment(result, store);
+    expect(comment).toContain('### Chosen variant (3/4)');
+    expect(comment).toContain('bone-dagger/run-3/processed/02.png');
+    expect(comment).toContain('✅');
+  });
+
+  it('shows ⚠️ pass label when chosen variant did not fully pass the pipeline', () => {
+    const store = makeStore();
+    const result = {
+      summary: {
+        brief: 'bone-dagger',
+        runId: 'run-4',
+        attempts: 1,
+        variantCount: 2,
+        chosen: { index: 0, score: 3, outOf: 5, passed: true, combinedPassed: false },
+        candidates: [{ index: 0, processedPath: 'bone-dagger/run-4/processed/00.png' }],
+      },
+      summaryPath: 'bone-dagger/run-4/summary.json',
+    } as never;
+    const comment = buildCompletionComment(result, store);
+    expect(comment).toContain('⚠️');
+    expect(comment).toContain('bone-dagger/run-4/processed/00.png');
+  });
+
+  it('omits the chosen variant section when chosen is null', () => {
+    const store = makeStore();
+    const result = {
+      summary: {
+        brief: 'bone-dagger',
+        runId: 'run-5',
+        attempts: 1,
+        variantCount: 0,
+        chosen: null,
+        candidates: [],
+      },
+      summaryPath: 'bone-dagger/run-5/summary.json',
+    } as never;
+    const comment = buildCompletionComment(result, store);
+    expect(comment).not.toContain('Chosen variant');
+    expect(comment).toContain('![Spritesheet](bone-dagger/run-5/sheet-00.png)');
+  });
+
+  it('falls back to sheet-00.png when attempts is missing from summary', () => {
+    const store = makeStore();
+    // Simulates a legacy summary without the attempts field.
+    const result = {
+      summary: { brief: 'bone-dagger', runId: 'run-6' },
+      summaryPath: 'bone-dagger/run-6/summary.json',
+    } as never;
+    const comment = buildCompletionComment(result, store);
+    expect(comment).toContain('![Spritesheet](bone-dagger/run-6/sheet-00.png)');
   });
 });

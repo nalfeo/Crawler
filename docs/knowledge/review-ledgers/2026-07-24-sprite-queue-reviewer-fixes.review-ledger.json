@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "sprite-queue-reviewer-fixes",
+  "task_title": "Durable asset queue reviewer-finding fixes (PR1 follow-up)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Separate-model (gpt-5.6-sol) plan review of the 8-finding fix approach surfaced 3 real defects in my own fixes: (#1a) the metadata route ran the provider outside the mutation lock then wrote a stale full catalog snapshot inside it (RMW clobber of concurrent edits); (#1c/#7) any non-failed queue-commit status was coerced to green, fabricating durability the tag never earned; (#6) the approve-cli already-approved path exited before queue-commit, so its retry advice was a lie. All three addressed in execution: RMW re-read+merge under the lock via mergeChangedCatalogEntries, exhaustive durability transition via the pure metadataDonePatch (preserves prior state on null/skipped), and an idempotent CLI retry that re-runs the shared CI-gated queue-commit block. Divergence minor: the fix approach held; the defects were in execution detail, not design."
+    },
+    "code_review": {
+      "completed": true,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Reviewed the 8-finding fix set. Surfaced (a) the /api/workflow/metadata route still wrote a stale catalog snapshot when the RMW re-read failed, and (b) the approve-cli idempotent retry path did not re-run the CI-gated queue-commit block for an already-approved entry. Both fixed: fallback to result.updated on re-read failure via mergeChangedCatalogEntries, and the CLI now re-enters the shared queue-commit block on the already-approved path."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Banner false-green: the devtools Tag handler gated its success/failure banner on metadataQueueFailed (raw current-push status) instead of the honest post-merge durability. Fixed by gating on patch.queueDurability === 'failed' and removing the now-unused metadataQueueFailed variable."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "(A) server.ts durability false-green: a changed generated: catalog entry whose manifest asset could not be resolved returned queueCommit:null (client reads null as 'preserve prior durability') — conflating 'nothing changed' with 'changed but could not push'. Rewrote to compute changedGeneratedIds (changed + surviving the merged catalog) and return null ONLY when that set is empty, else status:'failed' when no asset resolves. (B) missing regression test for the round-2 banner fix — extracted metadataReadyBanner pure helper + banner color constants and added coverage."
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Confirmed the round-3 null-vs-failed fix clean, but the banner-helper test alone would not fail if the DOM caller reverted to raw-status gating. Addressed by extracting a single pure applyMetadataTagResult(info) => {patch, banner} that bundles metadataDonePatch + metadataReadyBanner; the caller now destructures {patch, banner} and passes banner verbatim, so re-gating on raw push status cannot slip in without abandoning the tested function. Added an applyMetadataTagResult describe locking all three transitions incl. the inherited-failed case."
+        },
+        {
+          "round": 5,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Tightly-scoped confirmation of the applyMetadataTagResult extraction + wiring + tests. Verified: pure delegation (no logic added vs the two-call pattern); DOM caller has zero references to metadataDonePatch/metadataReadyBanner and the result.queueCommit?.status appearances are argument extraction only; setWorkflowStatus(banner.message, banner.color) is a verbatim passthrough; the describe block locks committed→ok+green, failed→failed+red, and inherited-failed (skipped/null) → failed+red end-to-end; no orphaned exports. No significant issues found — clean."
+        }
+      ],
+      "notes": "Bounded loop ran 5 rounds across 5 distinct models. Each round found progressively narrower, genuinely real durability-honesty defects (all resolved, none intractable), so the honest terminal state is a clean final round rather than escalation. The loop ended because round 5 surfaced zero concerns, not because a cap was hit."
+    }
+  }
+}
