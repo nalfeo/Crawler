@@ -56,7 +56,9 @@ describe('CI harness knobs guard', () => {
     const source = read(ROUTER_PATH);
     expect(source).toContain('export const MAX_DISPATCH_BUDGET_TRAIN_BUSY = 5;');
     expect(source).toContain('export const MAX_DISPATCH_BUDGET_TRAIN_IDLE = 8;');
-    expect(source).toContain('export const GLOBAL_TRAIN_DISPATCH_CAP = MAX_DISPATCH_BUDGET_TRAIN_BUSY;');
+    expect(source).toContain(
+      'export const GLOBAL_TRAIN_DISPATCH_CAP = MAX_DISPATCH_BUDGET_TRAIN_BUSY;',
+    );
     expect(source).toContain(
       'export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = MAX_DISPATCH_BUDGET_TRAIN_IDLE;',
     );
@@ -170,8 +172,12 @@ describe('ci-config knobs + invariants guard', () => {
     expect(routerTests).toContain(
       'flag-off schedule dispatches CI-fix PRs before normal PRs, both oldest-first',
     );
-    expect(routerTests).toContain('flag-off schedule sweeps exclude blocked-labeled PRs from dispatch');
-    expect(routerTests).toContain('flag-off sweeps order PRs oldest-first (global FIFO) across sweeps');
+    expect(routerTests).toContain(
+      'flag-off schedule sweeps exclude blocked-labeled PRs from dispatch',
+    );
+    expect(routerTests).toContain(
+      'flag-off sweeps order PRs oldest-first (global FIFO) across sweeps',
+    );
     expect(routerTests).toContain(
       'runFromEnv respects runtime busy/global caps under a simulated schedule burst',
     );

@@ -524,7 +524,10 @@ test('flag-off schedule: ci-recovery-waiting PR excluded even when directly trig
     maxDispatchPerRun: 8,
   });
 
-  assert.ok(!numbers.includes(55), 'ci-recovery-waiting PR must be excluded even if directly triggered');
+  assert.ok(
+    !numbers.includes(55),
+    'ci-recovery-waiting PR must be excluded even if directly triggered',
+  );
 });
 
 test('flag-off schedule: all blocked label variants are excluded', () => {
@@ -1324,7 +1327,8 @@ test('router listens only for completed CI workflow runs', () => {
 });
 
 test('router workflow exposes runtime-tunable dispatch-cap env knobs with invariant defaults', () => {
-  const env = routeJob.steps.find((step) => step.name === 'Dispatch per-PR reconciliation')?.env ?? {};
+  const env =
+    routeJob.steps.find((step) => step.name === 'Dispatch per-PR reconciliation')?.env ?? {};
   assert.equal(
     env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY,
     "${{ vars.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY || '5' }}",
@@ -2661,7 +2665,10 @@ test('runFromEnv respects runtime busy/global caps under a simulated schedule bu
       return {
         body: {
           total_count: visibleRuns,
-          workflow_runs: Array.from({ length: visibleRuns }, (_, index) => ({ id: index + 1 })),
+          workflow_runs: Array.from({ length: visibleRuns }, (_, index) => ({
+            id: index + 1,
+            status: 'in_progress',
+          })),
         },
       };
     },
@@ -2692,7 +2699,11 @@ test('runFromEnv respects runtime busy/global caps under a simulated schedule bu
   });
   if (!assertRouterExit(t, code, stderr)) return;
 
-  assert.equal(dispatches.length, 3, `busy budget must be clamped by global cap; stdout: ${stdout}`);
+  assert.equal(
+    dispatches.length,
+    3,
+    `busy budget must be clamped by global cap; stdout: ${stdout}`,
+  );
   assert.match(
     stdout,
     /dispatch cap applied sent=3 total_eligible=10 cap=8 budget=3 outstanding=0/,
