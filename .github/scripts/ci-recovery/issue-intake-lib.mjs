@@ -504,6 +504,12 @@ export function openBlockingIssues(dependencies) {
  * eligibility AND open `blocked_by` dependencies: Copilot is never assigned
  * and the kickoff comment is never posted while any blocker issue is still
  * open.
+ *
+ * When `fromUnblockSweep` is true (called from `intakeUnblockedDependents`)
+ * the automation-label gate is bypassed: if a human deliberately set up a
+ * `blocked_by` dependency chain the intent is for Copilot to pick up the
+ * dependent once the blocker clears, regardless of its labels.  The
+ * trusted-opener check (no arbitrary bots) still applies.
  */
 export async function intakeOpenedIssue({
   graphql,
@@ -514,10 +520,29 @@ export async function intakeOpenedIssue({
   repo,
   issue,
   maintainerLogin = 'nalfeo',
+  fromUnblockSweep = false,
 }) {
-  const eligibility = issueIntakeEligibility(issue, maintainerLogin);
-  if (!eligibility.eligible) {
-    return { assigned: false, reason: eligibility.reason };
+  let eligibilityReason;
+  if (fromUnblockSweep) {
+    // Automation-label restriction is intentionally skipped here — see JSDoc.
+    // We still reject non-issues (PR payloads) and untrusted openers.
+    if (!issue || issue.pull_request) {
+      return { assigned: false, reason: 'event has no eligible issue payload' };
+    }
+    const opener = String(issue.user?.login || '').toLowerCase();
+    const maintainer = String(maintainerLogin || '').toLowerCase();
+    const trustedOpener =
+      opener === maintainer || opener === GITHUB_ACTIONS_LOGIN || isCopilotLogin(opener);
+    if (!trustedOpener) {
+      return { assigned: false, reason: `opener @${opener || 'unknown'} is not trusted` };
+    }
+    eligibilityReason = 'unblocked dependent';
+  } else {
+    const eligibility = issueIntakeEligibility(issue, maintainerLogin);
+    if (!eligibility.eligible) {
+      return { assigned: false, reason: eligibility.reason };
+    }
+    eligibilityReason = eligibility.reason;
   }
 
   const blockers = openBlockingIssues(
@@ -533,7 +558,7 @@ export async function intakeOpenedIssue({
   const result = await runIssueIntake({ graphql, paginate, request, token, owner, repo, issue });
   return {
     assigned: true,
-    reason: eligibility.reason,
+    reason: eligibilityReason,
     assignee: result.assignee,
     comment: result.comment,
   };
@@ -589,6 +614,7 @@ export async function intakeUnblockedDependents({
         repo,
         issue: dependent,
         maintainerLogin,
+        fromUnblockSweep: true,
       });
       results.push({ number: dependent.number, ...outcome });
     } catch (err) {

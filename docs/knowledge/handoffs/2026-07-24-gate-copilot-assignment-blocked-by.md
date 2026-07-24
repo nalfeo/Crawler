@@ -137,3 +137,5 @@ change). Validated instead via:
 - `.github/scripts/ci-recovery/issue-intake.test.mjs` — 8 new tests.
 - `docs/knowledge/review-ledgers/2026-07-24-gate-copilot-assignment-blocked-by.review-ledger.json`
   — new review ledger.
+- `docs/knowledge/metrics/apples/2026-07-24-gate-copilot-assignment-blocked-by.json`
+  — apple-metrics: estimated 3, actual 3, verdict exact.

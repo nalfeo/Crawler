@@ -8,8 +8,8 @@
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.4",
-      "concerns_count": 0,
-      "resolved_count": 0,
+      "concerns_count": 2,
+      "resolved_count": 2,
       "plan_divergence": "minor",
       "notes": "",
       "models": [

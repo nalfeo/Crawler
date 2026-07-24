@@ -825,12 +825,15 @@ test('intakeOpenedIssue skips ineligible openers before ever querying dependenci
 test('intakeUnblockedDependents assigns eligible unblocked dependents and skips the rest', async () => {
   const fakes = makeSuccessfulIntakeFakes();
   const closedIssue = { number: 1851 };
+  // depA mirrors the real #1892 payload: owner-opened with the automation label.
+  // The unblock-sweep must assign it despite the automation label (which the
+  // regular intake gate rejects when the opener is not github-actions[bot]).
   const depA = {
     number: 1892,
     node_id: 'ISSUE_1892',
     state: 'open',
     user: { login: 'nalfeo' },
-    labels: [],
+    labels: [{ name: 'automation' }],
     repository: { full_name: 'nalfeo/Crawler' },
   };
   const depB = {
@@ -885,7 +888,7 @@ test('intakeUnblockedDependents assigns eligible unblocked dependents and skips 
     results.map((r) => r.number),
     [1892, 1902, 1903, 1904],
   );
-  assert.equal(results[0].assigned, true);
+  assert.equal(results[0].assigned, true, 'automation-labeled owner-opened dependent should be assigned in unblock sweep');
   assert.equal(results[0].assignee, 'copilot-swe-agent');
   assert.equal(results[1].assigned, false);
   assert.match(results[1].reason, /blocked by open #1857/);
