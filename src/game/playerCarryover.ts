@@ -1132,17 +1132,16 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
           `Boss chest ${chest.chestId} has a revealedGrant while still in state "available"`,
         );
       }
-    } else if (chest.state === 'revealed' || chest.state === 'claimed') {
-      // The inverse of the check above: `revealedGrant` is populated on the
-      // same transition that sets state to 'revealed' (see `openBossChest`)
-      // and is never cleared on the revealed->claimed transition (see
-      // `acknowledgeBossChestReveal`), so a persisted 'revealed'/'claimed'
-      // chest missing it is impossible from real gameplay — fail closed
-      // rather than resume/present it (multi-model code review, round 2).
-      throw new PlayerCarryoverSnapshotError(
-        `Boss chest ${chest.chestId} is in state "${chest.state}" but has no revealedGrant`,
-      );
     }
+    // Note: the inverse case — a 'revealed'/'claimed' chest missing its
+    // `revealedGrant` (multi-model code review, round 2) — is checked further
+    // below, AFTER the bundle loop. A tampered snapshot can be simultaneously
+    // "revealed with no revealedGrant" AND "revealed with a lingering
+    // bundle"; the bundle loop's "already-opened boss chest" check is the
+    // pre-existing contract for that overlap case and must win so its error
+    // message/test coverage stays stable. The missing-revealedGrant check
+    // only needs to fire for the case the bundle loop can't see: no
+    // revealedGrant AND no lingering bundle.
     if (chestsByChestId.has(chest.chestId)) {
       throw new PlayerCarryoverSnapshotError(`Duplicate boss chest: ${chest.chestId}`);
     }
@@ -1269,6 +1268,19 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
     if (chest.state === 'available' && !bundleIds.has(chest.chestId)) {
       throw new PlayerCarryoverSnapshotError(
         `Boss chest ${chest.chestId} is missing its reward bundle`,
+      );
+    }
+    // `revealedGrant` is populated on the same transition that sets state to
+    // 'revealed' (see `openBossChest`) and is never cleared on the
+    // revealed->claimed transition (see `acknowledgeBossChestReveal`), so a
+    // persisted 'revealed'/'claimed' chest missing it is impossible from real
+    // gameplay — fail closed rather than resume/present it (multi-model code
+    // review, round 2). Checked here (after the bundle loop above) so that a
+    // snapshot which is ALSO carrying a lingering bundle for this chest hits
+    // the pre-existing "already-opened boss chest" bundle-check first.
+    if ((chest.state === 'revealed' || chest.state === 'claimed') && !chest.revealedGrant) {
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest ${chest.chestId} is in state "${chest.state}" but has no revealedGrant`,
       );
     }
   }
