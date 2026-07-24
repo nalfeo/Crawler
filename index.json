@@ -55,6 +55,17 @@
     "path": "by-sha/257fb495fdb5b8dd76901daa70ad3a6540e9d26c.json"
   },
   {
+    "commit": "07663f8adb8a598d8412a297c40bc229a0bb0d98",
+    "commitDate": "2026-07-24T00:07:59-07:00",
+    "commitSubject": "docs(floor3): design \"The Companion League\" — ADR 0071 + design docs + spec (#1878)",
+    "capturedAt": "2026-07-24T08:17:06.582Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30074494617",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/07663f8adb8a598d8412a297c40bc229a0bb0d98.json"
+  },
+  {
     "commit": "47ffc36b95f24aeebe80a22c579c4bd5703c83ae",
     "commitDate": "2026-07-23T23:28:30-07:00",
     "commitSubject": "feat(ai): deterministic settlement return routing (#1873)",
