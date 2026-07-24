@@ -1,5 +1,16 @@
 [
   {
+    "commit": "257fb495fdb5b8dd76901daa70ad3a6540e9d26c",
+    "commitDate": "2026-07-24T00:36:06Z",
+    "commitSubject": "Gate deploy/baseline to latest main tip so release publishing+sweep run once per train landing wave (#1797)",
+    "capturedAt": "2026-07-24T01:57:54.377Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30057162249",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/257fb495fdb5b8dd76901daa70ad3a6540e9d26c.json"
+  },
+  {
     "commit": "7a3c1fe73cecf48eea056aa75bc68ff436437c3c",
     "commitDate": "2026-07-23T23:25:01Z",
     "commitSubject": "Increase blood-pool shape variance and scale initial pool size by enemy body size (#1799)",
