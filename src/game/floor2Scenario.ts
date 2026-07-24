@@ -109,7 +109,7 @@ import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
 import { spawnHarvestableNode } from '../core/helpers.js';
-import { HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
+import { FLOOR2_HARVESTABLE_START_INDEX, HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import {
   scaleAmbientSpawnStats,
@@ -144,11 +144,6 @@ export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
 export const FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE = 0.25;
 const floor2CombatEventCursor = new WeakMap<GameWorld, { cursor: number; lastEvent?: object }>();
 
-/**
- * First index in HARVESTABLE_DEFS that belongs exclusively to Floor 2.
- * Floor 1 defs occupy indices 0–5; Floor 2 ore/gem nodes start at 6.
- */
-const FLOOR2_HARVESTABLE_START_INDEX = 6;
 
 export function resolveFloor2ArchetypeAIType(archetype: EnemyArchetypeDef): number {
   if (archetype.aiType === 'ranged') return AI_TYPE.RANGED;

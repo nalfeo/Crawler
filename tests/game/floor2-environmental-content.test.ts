@@ -22,6 +22,7 @@ import { TileMap } from '../../src/core/map/TileMap.js';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { DECORATION_DEFS, getDecorationDef } from '../../src/shared/decorationDefs.js';
 import {
+  FLOOR2_HARVESTABLE_START_INDEX,
   HARVESTABLE_DEFS,
   getHarvestableDef,
   getHarvestableDefByIndex,
@@ -30,6 +31,7 @@ import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../src/shared/
 import { SeededRandom } from '../../src/shared/random.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { initializeFloor2Scenario } from '../../src/game/floor2Scenario.js';
+import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
 import { placePropsForFloor } from '../../src/game/systems/propPlacer.js';
 
 // ─── Harvestable defs ────────────────────────────────────────────────────────
@@ -94,6 +96,26 @@ describe('Floor 1 harvestable def index stability', () => {
       expect(def?.itemId).toBe(itemId);
     });
   }
+
+  it('FLOOR2_HARVESTABLE_START_INDEX is 6 (first Floor-2 def)', () => {
+    expect(FLOOR2_HARVESTABLE_START_INDEX).toBe(6);
+    // Confirm that index 5 (last floor-1 def) and index 6 (first floor-2 def)
+    // are on the correct side of the boundary.
+    expect(getHarvestableDefByIndex(5)?.id).toBe('shadow-lichen');
+    expect(getHarvestableDefByIndex(6)?.id).toBe('iron-vein');
+  });
+
+  it('Floor 1 scenario does not spawn Floor-2 harvestable nodes', () => {
+    const world = createTestWorld({ seed: 42, floor: 1 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, playerEid);
+
+    const nodes = query(world.ecs, [Harvestable, Position]);
+    const floor2Nodes = nodes.filter(
+      (eid) => (world.stores.harvestable.defIndex[eid] ?? -1) >= FLOOR2_HARVESTABLE_START_INDEX,
+    );
+    expect(floor2Nodes).toHaveLength(0);
+  });
 });
 
 // ─── Cave decoration defs ─────────────────────────────────────────────────────

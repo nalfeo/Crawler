@@ -15,9 +15,10 @@ describe('Floor 2 environmental content wiring', () => {
     expect(source).toContain("import { spawnHarvestableNode } from '../core/helpers.js'");
   });
 
-  it('floor2Scenario.ts imports HARVESTABLE_DEFS from harvestableDefs', () => {
+  it('floor2Scenario.ts imports FLOOR2_HARVESTABLE_START_INDEX and HARVESTABLE_DEFS from harvestableDefs', () => {
     const source = readFileSync('src/game/floor2Scenario.ts', 'utf-8');
-    expect(source).toContain("import { HARVESTABLE_DEFS } from '../shared/harvestableDefs.js'");
+    expect(source).toContain('FLOOR2_HARVESTABLE_START_INDEX');
+    expect(source).toContain("from '../shared/harvestableDefs.js'");
   });
 
   it('floor2Scenario.ts imports placePropsForFloor from propPlacer', () => {
@@ -56,6 +57,16 @@ describe('Floor 2 environmental content wiring', () => {
     ) as { props?: { biomeTag?: string } };
     expect(manifest.props).toBeDefined();
     expect(manifest.props!.biomeTag).toBe('cave');
+  });
+
+  it('floorScenario.ts Floor-1 spawner uses FLOOR2_HARVESTABLE_START_INDEX as loop upper bound', () => {
+    const source = readFileSync('src/game/floorScenario.ts', 'utf-8');
+    // The Floor 1 spawner must NOT iterate over the full array — it must cap at
+    // FLOOR2_HARVESTABLE_START_INDEX to avoid spawning ore/gem nodes on Floor 1.
+    expect(source).toContain('FLOOR2_HARVESTABLE_START_INDEX');
+    expect(source).toContain('defIndex < FLOOR2_HARVESTABLE_START_INDEX');
+    // Must NOT use the uncapped HARVESTABLE_DEFS.length bound in the floor-1 spawner loop.
+    expect(source).not.toContain('defIndex < HARVESTABLE_DEFS.length');
   });
 
   it('prop-lab/index.ts biome dropdown includes "cave"', () => {

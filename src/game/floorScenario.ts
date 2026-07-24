@@ -77,7 +77,7 @@ import { getItemById, getItemIndex } from '../shared/items.js';
 import { GAME, PLAYER_SPEED } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
 import { addItem, hasItem, removeItem } from '../shared/inventory.js';
-import { HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
+import { FLOOR2_HARVESTABLE_START_INDEX, HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
 import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
 import {
   MERCHANTS_CHARM_COST,
@@ -734,6 +734,10 @@ function resolveRoutableNpcSpawnPosition(
  * `def.maxPerFloor` nodes, placed at randomly selected passable tiles in rooms
  * with role NORMAL or SPAWN (i.e. not safe room, boss room, or stair room).
  * Uses `world.rng` for all randomness.
+ *
+ * Only iterates Floor 1 defs (indices 0–FLOOR2_HARVESTABLE_START_INDEX-1).
+ * Floor 2+ defs are intentionally excluded — each floor's scenario spawns only
+ * its own range to avoid cross-floor node contamination.
  */
 function spawnFloor1HarvestableNodes(world: GameWorld): void {
   const floorMap = world.floorMap;
@@ -746,7 +750,9 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
 
   if (normalRooms.length === 0) return;
 
-  for (let defIndex = 0; defIndex < HARVESTABLE_DEFS.length; defIndex++) {
+  // Cap loop at FLOOR2_HARVESTABLE_START_INDEX so Floor 2 ore/gem defs are
+  // never spawned on Floor 1.
+  for (let defIndex = 0; defIndex < FLOOR2_HARVESTABLE_START_INDEX; defIndex++) {
     const def = HARVESTABLE_DEFS[defIndex]!;
     // Randomly choose a count between 2 and maxPerFloor (inclusive).
     const count = 2 + world.rng.nextInt(0, def.maxPerFloor - 2);

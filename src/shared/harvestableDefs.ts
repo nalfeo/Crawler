@@ -113,6 +113,14 @@ export const HARVESTABLE_DEFS: readonly HarvestableDef[] = [
   },
 ] as const;
 
+/**
+ * Stable boundary between Floor 1 and Floor 2 harvestable defs.
+ * Floor 1 spawner must iterate `defIndex < FLOOR2_HARVESTABLE_START_INDEX`.
+ * Floor 2 spawner must iterate `defIndex >= FLOOR2_HARVESTABLE_START_INDEX`.
+ * Must equal the array index of the first Floor 2 def (iron-vein, index 6).
+ */
+export const FLOOR2_HARVESTABLE_START_INDEX = 6;
+
 /** Look up a harvestable def by its stable slug ID. */
 export function getHarvestableDef(id: string): HarvestableDef | undefined {
   return HARVESTABLE_DEFS.find((d) => d.id === id);
