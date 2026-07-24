@@ -13,10 +13,13 @@
  * green. This suite reads the committed artifact from disk and validates it
  * independently of the builder.
  *
- * The compatible-boundary edge check at the 1.0 authored floor is also the
- * durable proof that the crenellation geometry fix (uniform inset wall
- * silhouettes — see quadrant-kit.ts) is present in the SHIPPED atlas: a
- * crenellated/mis-edged atlas cannot classify all 4×47 edges correctly.
+ * The compatible-boundary edge check at the 1.0 authored floor asserts every
+ * cardinal (N/E/S/W) edge of all 47 masks classifies correctly against the
+ * mask-0/mask-255 references — precisely the defect class of the crenellation
+ * bug (a notched wall top fails its north-edge classification). A dedicated
+ * silhouette test below adds a *direct* anti-crenellation guard (exposed wall
+ * faces must be a single flat band, not battlements) so the fix is locked
+ * beyond the aggregate cardinal-edge metric.
  */
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -51,6 +54,53 @@ function readCommittedManifest(): TerrainPackDef {
 
 function readCommittedAtlas(manifest: TerrainPackDef): Buffer {
   return readFileSync(path.join(repoRoot(), 'public', manifest.wallAutotile.imagePath));
+}
+
+type DecodedAtlas = ReturnType<typeof decodePng>;
+
+function frameForMask(manifest: TerrainPackDef, maskId: number): number {
+  const mask = manifest.wallAutotile.masks.find((m) => m.maskId === maskId);
+  if (!mask) throw new Error(`committed manifest is missing blob47 mask ${maskId}`);
+  return mask.frameIndex;
+}
+
+/**
+ * Contiguous horizontal opaque runs (alpha > threshold) in row `y` of the
+ * 64px wall cell at `frameIndex`. A flat wall face yields exactly one run; a
+ * crenellated / battlemented edge splits into two or more.
+ */
+function cellRowRuns(
+  atlas: DecodedAtlas,
+  manifest: TerrainPackDef,
+  frameIndex: number,
+  y: number,
+  alphaThreshold = 16,
+): number[] {
+  const { cellPx, gridCols } = manifest.wallAutotile;
+  const col = frameIndex % gridCols;
+  const row = Math.floor(frameIndex / gridCols);
+  const runs: number[] = [];
+  let run = 0;
+  for (let x = 0; x < cellPx; x += 1) {
+    const gx = col * cellPx + x;
+    const gy = row * cellPx + y;
+    const alpha = atlas.data[(gy * atlas.width + gx) * 4 + 3] ?? 0;
+    if (alpha > alphaThreshold) {
+      run += 1;
+    } else if (run > 0) {
+      runs.push(run);
+      run = 0;
+    }
+  }
+  if (run > 0) runs.push(run);
+  return runs;
+}
+
+function firstOpaqueRow(atlas: DecodedAtlas, manifest: TerrainPackDef, frameIndex: number): number {
+  for (let y = 0; y < manifest.wallAutotile.cellPx; y += 1) {
+    if (cellRowRuns(atlas, manifest, frameIndex, y).length > 0) return y;
+  }
+  return -1;
 }
 
 describe('committed industrial-cave terrain pack (runtime source of truth)', () => {
@@ -91,14 +141,34 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
     expect(atlas.height).toBe(384);
   });
 
-  it('the SHIPPED (generated) atlas meets the 100% authored edge-compatibility floor (crenellation-fix proof)', () => {
-    // A crenellated / mis-edged silhouette cannot classify all 4×47 cardinal
-    // edges against the mask-0/mask-255 references, so 1.0 here is durable proof
-    // the shipped generated art preserves the corrected blob47 wall geometry.
+  it('the SHIPPED (generated) atlas meets the 100% authored cardinal-edge-compatibility floor', () => {
+    // Every N/E/S/W edge of all 47 masks must classify against the mask-0/mask-255
+    // references. This is the crenellation bug's defect class (a notched top fails
+    // its north edge); the silhouette test below adds a direct anti-crenellation guard.
     const atlas = decodePng(readCommittedAtlas(manifest));
     const result = validateCompatibleBoundaries(manifest, atlas, { minEdgePassRate: 1.0 });
     expect(result.issues).toEqual([]);
     expect(result.ok).toBe(true);
+  });
+
+  it('the SHIPPED wall silhouettes have flat, non-crenellated exposed faces', () => {
+    // Direct anti-crenellation guard (complements the aggregate edge-pass rate,
+    // which only samples cardinal edges): the original bug notched the exposed
+    // wall top into battlements. The fixed uniform-inset geometry makes every
+    // exposed face one solid band, so the top band of an all-exposed cell
+    // (mask 0) must be exactly ONE contiguous horizontal run — a battlemented
+    // top would split into 2+ runs. An interior cell (mask 255, no exposed face)
+    // stays a single full-width band.
+    const atlas = decodePng(readCommittedAtlas(manifest));
+    const openFrame = frameForMask(manifest, 0);
+    const topRow = firstOpaqueRow(atlas, manifest, openFrame);
+    expect(topRow).toBeGreaterThanOrEqual(0);
+    for (let y = topRow; y < topRow + 4; y += 1) {
+      expect(cellRowRuns(atlas, manifest, openFrame, y)).toHaveLength(1);
+    }
+    const solidFrame = frameForMask(manifest, 255);
+    const solidMidRow = manifest.wallAutotile.cellPx >> 1;
+    expect(cellRowRuns(atlas, manifest, solidFrame, solidMidRow)).toHaveLength(1);
   });
 
   it('provenance truthfully records the Azure-generated, locally-composed origin', () => {

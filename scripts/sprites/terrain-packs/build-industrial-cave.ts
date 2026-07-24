@@ -163,7 +163,12 @@ export function writeIndustrialCavePack(repoRoot: string): void {
   // the placeholder would silently overwrite the generated art and revert the
   // manifest provenance. Refuse unless explicitly forced (i.e. intentionally
   // regenerating the procedural placeholder).
-  if (!process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE) {
+  // Explicit opt-in only: a bare truthiness check would let a benign-looking
+  // `TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE=0` / `=false` (or any value left in a
+  // shell profile / CI env) bypass the guard and clobber the shipped generated art.
+  const overwriteFlag = process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE?.trim().toLowerCase();
+  const allowProceduralOverwrite = overwriteFlag === '1' || overwriteFlag === 'true';
+  if (!allowProceduralOverwrite) {
     console.warn(
       '[industrial-cave] SKIPPED procedural write — shipped art is Azure gpt-image-1 generated. ' +
         'Set TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE=1 to overwrite it with the procedural placeholder.',

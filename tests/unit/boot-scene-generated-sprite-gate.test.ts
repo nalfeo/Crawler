@@ -66,10 +66,22 @@ describe('BootScene generated sprite preload gate', () => {
   // renderer's textures.exists() guard to the legacy tileset and renders ZERO
   // pack tiles. `preloadTerrainPacks` itself is covered by
   // terrain-pack-visuals.test.ts; this guards that BootScene actually invokes it.
-  it('queues terrain-pack textures in preload() (Floor 2 pack render fix)', () => {
+  it('queues terrain-pack textures inside preload() — not create() (Floor 2 pack render fix)', () => {
     expect(source).toMatch(
       /import \{[\s\S]*?preloadTerrainPacks[\s\S]*?\} from '\.\.\/sprites\/terrain-pack-visuals\.js';/,
     );
-    expect(source).toMatch(/preload\(\)[\s\S]*?preloadTerrainPacks\(this\.load\)/);
+    // Pin the call to the preload() method body: it must appear textually AFTER
+    // the preload() declaration and BEFORE the create() declaration. A bare
+    // "appears somewhere after preload()" match would still pass if the call
+    // drifted into create() — but Phaser only completes preload-queued loads
+    // before create() runs, so a call in create() leaves pack textures unloaded
+    // when MainGameScene bakes terrain (the exact 0-pack-tile regression).
+    const preloadDeclIdx = source.search(/preload\s*\(\s*\)\s*:/);
+    const createDeclIdx = source.search(/create\s*\(\s*\)\s*:/);
+    const callIdx = source.indexOf('preloadTerrainPacks(this.load)');
+    expect(preloadDeclIdx).toBeGreaterThanOrEqual(0);
+    expect(createDeclIdx).toBeGreaterThan(preloadDeclIdx);
+    expect(callIdx).toBeGreaterThan(preloadDeclIdx);
+    expect(callIdx).toBeLessThan(createDeclIdx);
   });
 });
