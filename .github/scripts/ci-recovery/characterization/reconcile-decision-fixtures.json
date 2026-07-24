@@ -1,0 +1,335 @@
+{
+  "schema": "ci-recovery-characterization/v1",
+  "source": ".github/scripts/ci-recovery/reconcile.mjs",
+  "decision_points": [
+    {
+      "id": "R01",
+      "dClass": "D6",
+      "verdict": "release",
+      "guard": "orphaned-owner-label cleanup",
+      "coverageBy": "closed PR orphan cleanup releases ownership exactly once"
+    },
+    {
+      "id": "R02",
+      "dClass": "D6",
+      "verdict": "release",
+      "guard": "closed PR release before skip",
+      "coverageBy": "closed PR orphan cleanup releases ownership exactly once"
+    },
+    {
+      "id": "R03",
+      "dClass": "D5",
+      "verdict": "skip",
+      "guard": "active shepherd lease short-circuit",
+      "coverageBy": "missing-label shepherd state fails closed until expiry but matching release still converges"
+    },
+    {
+      "id": "R04",
+      "dClass": "D5",
+      "verdict": "release",
+      "guard": "expired shepherd lease reclaim",
+      "coverageBy": "an expired missing-label shepherd lease can be safely reacquired"
+    },
+    {
+      "id": "R05",
+      "dClass": "D5",
+      "verdict": "release",
+      "guard": "stale automation conflict-or-train reclaim",
+      "coverageBy": "stale automation lock on a conflicted PR is reclaimed before the conflict short-circuit"
+    },
+    {
+      "id": "R06",
+      "dClass": "D1",
+      "verdict": "skip",
+      "guard": "merge-train-owned short-circuit",
+      "coverageBy": "reviewed-then-rebased PR still reaches admission, and its dedup marker still records the reviewed (not live) head"
+    },
+    {
+      "id": "R07",
+      "dClass": "D9",
+      "verdict": "skip",
+      "guard": "ci-conflict-order wait short-circuit",
+      "coverageBy": "reconcile still emits merge-conflict blocker for dirty or mergeable=false PRs"
+    },
+    {
+      "id": "R08",
+      "dClass": "D2",
+      "verdict": "dispatch",
+      "guard": "merge conflict dispatches conflict-only rebase",
+      "coverageBy": "train mode dispatches exactly one conflict-only rebase"
+    },
+    {
+      "id": "R09",
+      "dClass": "D2",
+      "verdict": "wait",
+      "guard": "pending conflict-rebase short-circuit",
+      "coverageBy": "train mode waits on a still-pending conflict-only rebase for the same head"
+    },
+    {
+      "id": "R10",
+      "dClass": "D2",
+      "verdict": "wait",
+      "guard": "bounded backoff while conflict retry is pending",
+      "coverageBy": "train mode waits during bounded backoff for auto-rebase-failure retries"
+    },
+    {
+      "id": "R11",
+      "dClass": "D2",
+      "verdict": "retry",
+      "guard": "retry conflict rebase after timeout/backoff",
+      "coverageBy": "train mode retries auto-rebase-failure for the same head before timeout once backoff elapses"
+    },
+    {
+      "id": "R12",
+      "dClass": "D2",
+      "verdict": "block",
+      "guard": "exhausted rebase retries produce blocker",
+      "coverageBy": "train mode escalates an explicit auto-rebase-failure once bounded retries are exhausted"
+    },
+    {
+      "id": "R13",
+      "dClass": "D7",
+      "verdict": "block",
+      "guard": "required-check action_required -> ci-retrigger blocker",
+      "coverageBy": "reconcile escalates required-check action-required runs as ci-retrigger blockers"
+    },
+    {
+      "id": "R14",
+      "dClass": "D7",
+      "verdict": "skip",
+      "guard": "non-actionable action_required run ignored",
+      "coverageBy": "reconcile ignores same-repository action-required runs without approval or dispatch"
+    },
+    {
+      "id": "R15",
+      "dClass": "D3",
+      "verdict": "resolve",
+      "guard": "auto-resolve outdated review threads",
+      "coverageBy": "live reconcile auto-resolves outdated threads and keeps reply targets on remaining review-thread blockers"
+    },
+    {
+      "id": "R16",
+      "dClass": "D3",
+      "verdict": "continue",
+      "guard": "outdated marker post failure is non-fatal",
+      "coverageBy": "live reconcile continues and exits cleanly when outdated-marker reply POST returns 422"
+    },
+    {
+      "id": "R17",
+      "dClass": "D3",
+      "verdict": "annotate",
+      "guard": "stale marker hint path",
+      "coverageBy": "non-outdated stale-marker thread includes recovery hint in blocker summary"
+    },
+    {
+      "id": "R18",
+      "dClass": "D3",
+      "verdict": "annotate",
+      "guard": "prior unresolved recovery reply hint path",
+      "coverageBy": "prior-reply thread includes hint in blocker summary when last trusted comment has no marker"
+    },
+    {
+      "id": "R19",
+      "dClass": "D3",
+      "verdict": "annotate",
+      "guard": "top-level prior-reply correlation survives digest churn",
+      "coverageBy": "top-level prior-reply hint survives reviewer follow-up that changes thread comment digest"
+    },
+    {
+      "id": "R20",
+      "dClass": "D5",
+      "verdict": "release",
+      "guard": "unexpected-error cleanup releases held ownership",
+      "coverageBy": "Bug 1: unexpected-error cleanup RELEASES held ownership when the trust fence is unchanged"
+    },
+    {
+      "id": "R21",
+      "dClass": "D5",
+      "verdict": "skip",
+      "guard": "unexpected-error cleanup leaves moved trust fence",
+      "coverageBy": "Bug 1: unexpected-error cleanup LEAVES ownership intact when the trust fence moved mid-run"
+    },
+    {
+      "id": "R22",
+      "dClass": "D6",
+      "verdict": "skip",
+      "guard": "terminal orphaned-fence cleanup skips fresh owner",
+      "coverageBy": "Bug 2: terminal orphaned-fence cleanup SKIPS when a fresh owner acquired the lock concurrently"
+    },
+    {
+      "id": "R23",
+      "dClass": "D6",
+      "verdict": "skip",
+      "guard": "terminal orphaned-fence cleanup skips incarnation change",
+      "coverageBy": "Bug 2b: terminal orphaned-fence cleanup SKIPS on an incarnation change even when ownership is UNCHANGED"
+    },
+    {
+      "id": "R24",
+      "dClass": "D5",
+      "verdict": "cleanup",
+      "guard": "partial-fence cleanup on crash mid-acquire",
+      "coverageBy": "Bug 3: a crash mid-acquire cleans up the partial repository fence by node id"
+    },
+    {
+      "id": "R25",
+      "dClass": "D5",
+      "verdict": "cleanup",
+      "guard": "partial-fence cleanup on metadata-move clean exit",
+      "coverageBy": "Bug 3b: a metadata move at the state-comment phase cleans the armed partial fence on the clean-skip exit path"
+    },
+    {
+      "id": "R26",
+      "dClass": "D1",
+      "verdict": "wait",
+      "guard": "admission wait state when checks/review missing",
+      "coverageBy": "train mode waits when Copilot produced only a no-files review"
+    },
+    {
+      "id": "R27",
+      "dClass": "D1",
+      "verdict": "queue",
+      "guard": "clean train-mode PR gets queued exactly once",
+      "coverageBy": "repeated clean reconciliation of an already queued PR does not dispatch another fill sweep"
+    },
+    {
+      "id": "R28",
+      "dClass": "D8",
+      "verdict": "queue",
+      "guard": "label pagination prevents duplicate queue dispatch",
+      "coverageBy": "queue admission finds a concurrently attached merge-train label on the second page"
+    },
+    {
+      "id": "R29",
+      "dClass": "D8",
+      "verdict": "clear",
+      "guard": "head-move clears stale train blockers",
+      "coverageBy": "scheduled sweep clears stale train labels when persisted state head differs from the live PR head"
+    },
+    {
+      "id": "R30",
+      "dClass": "D10",
+      "verdict": "fail-closed",
+      "guard": "expected_head mismatch before mutation",
+      "coverageBy": "expected_head_sha mismatch: reconcile fails closed before any mutation, even in live mode"
+    },
+    {
+      "id": "R31",
+      "dClass": "D10",
+      "verdict": "fail-closed",
+      "guard": "same-pass head move caught by metadata guard",
+      "coverageBy": "moved head after initial fetch fails closed before the first mutation phase"
+    },
+    {
+      "id": "R32",
+      "dClass": "D10",
+      "verdict": "fail-closed",
+      "guard": "same-head retarget after initial fetch is rejected",
+      "coverageBy": "same-head retarget after initial fetch fails closed before the first mutation phase"
+    },
+    {
+      "id": "R33",
+      "dClass": "D4",
+      "verdict": "retry",
+      "guard": "same-check rerun URL churn keeps stale-retry progression",
+      "coverageBy": "same check rerun with only a new run URL stays on stale-retry path and carries attempt forward (PR #1809 cycle 2/3)"
+    },
+    {
+      "id": "R34",
+      "dClass": "D4",
+      "verdict": "release",
+      "guard": "same-check rerun URL churn still reaches stale-retry ceiling",
+      "coverageBy": "same check rerun with only a new run URL still reaches the stale-retry ceiling and releases ownership (PR #1809 cycle 3/3 -- takeover-eligible, not immortal)"
+    }
+  ],
+  "lease_transition_fixtures": [
+    {
+      "name": "healthy shepherd lease",
+      "state": {
+        "owner": "shepherd",
+        "status": "active",
+        "updatedAt": "2099-01-01T00:00:00.000Z"
+      },
+      "expected": {
+        "isLeaseExpired": false
+      }
+    },
+    {
+      "name": "expired shepherd lease",
+      "state": {
+        "owner": "shepherd",
+        "status": "active",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      "expected": {
+        "isLeaseExpired": true
+      }
+    },
+    {
+      "name": "automation duplicate dispatch",
+      "state": {
+        "owner": "automation",
+        "status": "active",
+        "fingerprint": "fp-a",
+        "updatedAt": "2099-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-a",
+      "expected": {
+        "isDuplicateDispatch": true
+      }
+    },
+    {
+      "name": "automation stale retry",
+      "state": {
+        "owner": "automation",
+        "status": "active",
+        "fingerprint": "fp-a",
+        "attempt": 1,
+        "progressKey": "k",
+        "progressAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-a",
+      "expected": {
+        "stallAction": "retry"
+      }
+    },
+    {
+      "name": "automation stale release",
+      "state": {
+        "owner": "automation",
+        "status": "active",
+        "fingerprint": "fp-a",
+        "attempt": 2,
+        "progressKey": "k",
+        "progressAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      "fingerprint": "fp-a",
+      "expected": {
+        "stallAction": "release"
+      }
+    }
+  ],
+  "absorbed_regressions": [
+    {
+      "pr": 1782,
+      "coverage": "tests/unit/ci-knobs-guard.test.ts"
+    },
+    {
+      "pr": 1797,
+      "coverage": "tests/unit/deploy-workflow-gating.test.ts"
+    },
+    {
+      "pr": 1833,
+      "coverage": ".github/scripts/ci-recovery/reconcile.test.mjs :: stale automation lock on a conflicted PR is reclaimed before the conflict short-circuit"
+    },
+    {
+      "pr": 1813,
+      "coverage": ".github/scripts/ci-recovery/reconcile.test.mjs :: same check rerun with only a new run URL ..."
+    },
+    {
+      "pr": 1791,
+      "coverage": ".github/scripts/ci-recovery/reconcile.test.mjs :: Bug 1/Bug 2/Bug 3 lease hardening regressions"
+    }
+  ]
+}
