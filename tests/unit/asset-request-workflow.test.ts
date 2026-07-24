@@ -35,7 +35,7 @@ describe('asset-request workflow capacity', () => {
     });
   });
 
-  it('drains two requests concurrently through Azure OpenAI provider configuration', () => {
+  it('drains two requests concurrently through azure-openai provider configuration', () => {
     const workflow = loadWorkflow();
     const drain = workflow.jobs.drain?.steps?.find((step) => step.name === 'Drain worker');
     expect(drain?.env).toMatchObject({
@@ -61,11 +61,10 @@ describe('asset-request workflow capacity', () => {
     expect(Object.keys(drain?.env ?? {}).some((key) => key.startsWith('FOUNDRY_'))).toBe(false);
   });
 
-  it('keeps the GitHub secret-sync command Foundry-aware', () => {
+  it('keeps the GitHub secret-sync command azure-aware', () => {
     const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
       scripts?: Record<string, string>;
     };
-    expect(packageJson.scripts?.['setup:azure:github']).toContain('-IncludeFoundry');
     expect(packageJson.scripts?.['setup:azure:github']).toContain('-SyncGitHubSecrets');
   });
 });

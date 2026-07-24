@@ -83,4 +83,5 @@ jobs:
           MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
           MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
           MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,Security checks' }}
+          CI_GLOBAL_TRAIN_DISPATCH_CAP: ${{ vars.CI_GLOBAL_TRAIN_DISPATCH_CAP || '5' }}
         run: node .github/scripts/merge-train/reconcile.mjs
