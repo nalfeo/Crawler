@@ -54,6 +54,7 @@ for this invocation.
 | `MERGE_TRAIN_ENABLED` | `false` | When `true`, CI Recovery works up to 6 oldest non-ready PRs, enqueues converged immutable heads for the train, and switches auto-rebase to train-aware mode. When `false`, legacy auto-merge and blanket rebase behavior applies. | Router, Reconcile, CI, Auto-rebase |
 | `MERGE_TRAIN_ADMISSION_CHECKS` | `ci,Security checks` | Comma-separated list of check names that must be green before a PR is admitted to the merge train. | `ci-recovery.yml`, `merge-train.yml`, `ci-conflict-coordinator.yml` |
 | `CI_CONFLICT_REOPEN_RETRY_DELAY_MS` | `500` | Base delay in milliseconds between PR-reopen retry attempts in the CI Conflict Coordinator. | `ci-conflict-coordinator.yml` |
+| `GITHUB_REQUEST_RETRY_DELAY_MS` | `1000` | Base delay in milliseconds for GitHub API request retries in `ci-recovery/github.mjs`. Applies to all rate-limit and transient-error retries. | `ci-recovery/github.mjs` (direct env read, no workflow wiring required) |
 
 ---
 

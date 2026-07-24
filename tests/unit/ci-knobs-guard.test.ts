@@ -362,4 +362,45 @@ describe('CI knobs guard', () => {
       }
     }
   });
+
+  describe('ci-config-knobs.md documents every registered constant', () => {
+    // Cross-check between the test-local registry and the canonical knobs doc.
+    // Prevents the failure mode: a constant is added to STRUCTURAL_ALLOWLIST
+    // (making the guard pass) but the doc is never updated, so operators have
+    // no way to know the constant exists.
+    //
+    // Enforcement: every entry in STRUCTURAL_ALLOWLIST and every key in
+    // OPERATIONALLY_TWEAKABLE_ROUTER must appear by name somewhere in
+    // docs/agent-os/policies/ci-config-knobs.md.
+    const knobsDocPath = path.join(
+      REPO_ROOT,
+      'docs/agent-os/policies/ci-config-knobs.md',
+    );
+    const knobsDoc = readFileSync(knobsDocPath, 'utf8');
+
+    for (const name of STRUCTURAL_ALLOWLIST) {
+      it(`STRUCTURAL_ALLOWLIST: ${name} appears in ci-config-knobs.md`, () => {
+        expect(
+          knobsDoc.includes(name),
+          `Structural constant '${name}' is in STRUCTURAL_ALLOWLIST but not mentioned in ` +
+            `docs/agent-os/policies/ci-config-knobs.md. Add a row to the structural-constants ` +
+            `table so operators know this constant is intentionally hardcoded.`,
+        ).toBe(true);
+      });
+    }
+
+    for (const [constName, envVarName] of Object.entries(OPERATIONALLY_TWEAKABLE_ROUTER)) {
+      it(`OPERATIONALLY_TWEAKABLE: ${constName}/${envVarName} appears in ci-config-knobs.md`, () => {
+        const mentionsConst = knobsDoc.includes(constName);
+        const mentionsEnvVar = knobsDoc.includes(envVarName);
+        expect(
+          mentionsConst || mentionsEnvVar,
+          `Tweakable knob '${constName}' (env: '${envVarName}') is registered in ` +
+            `OPERATIONALLY_TWEAKABLE_ROUTER but neither name appears in ` +
+            `docs/agent-os/policies/ci-config-knobs.md. Add a row to the ` +
+            `runtime-tweakable knobs table so operators can find and use this variable.`,
+        ).toBe(true);
+      });
+    }
+  });
 });
