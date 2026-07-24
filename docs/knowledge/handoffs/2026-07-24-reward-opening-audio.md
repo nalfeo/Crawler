@@ -204,7 +204,47 @@ existing visual `reducedMotion` flag rather than a second audio-only setting.
 
 ## What's Next / Blockers
 
-No blockers. Recommended follow-ups (not required for this PR):
+**No blockers in this feature's own code, tests, or CI.** PR #1876
+(`nalfeo-reward-audio-cues`) is fully green on its own merits: all CI jobs
+pass, all 3 GitHub Copilot automated-reviewer threads are resolved, the review
+ledger validates, and the repo's `merge-train` label is applied (this repo's
+actual merge-arming mechanism — see "Round 5" below).
+
+**Round 5 — repo-wide merge-train pause is the only remaining blocker, and it
+is NOT specific to this PR.** While driving this PR to merge, discovered
+`main`'s own current HEAD (`11eb223e1`, an unrelated direct-push CI-workflow
+fix landed by someone else) broke `tests/unit/asset-request-workflow.test.ts`
+(env-var mismatch after repointing the asset-request drain worker from Foundry
+to Azure OpenAI per issue #1885). This repo uses a **custom merge-train**
+(`.github/scripts/merge-train/reconcile.mjs`, dispatched by
+`.github/workflows/merge-train.yml`) that performs real squash-merges directly
+via the GitHub API and explicitly **disables GitHub's native `--auto` merge**
+as a safety fence — so `gh pr merge --auto --squash` alone does not land
+anything in this repo; the `merge-train` label is the actual queue-entry
+mechanism. Its `mainHealthAllowsPromotion()` gate fails closed
+(confirmed via `gh run view <id> --log`: `"paused merge train; latest
+completed full-CI run for current main 11eb223e1... concluded failure"`) and
+**pauses ALL promotions repo-wide**, not just this PR, until `main`'s own CI is
+green again.
+
+This is already being remediated independently: PR #1889 ("Align
+asset-request workflow contract test with Azure OpenAI drain backend") was
+already open, targeting the same root cause, before this session found it;
+this session additionally fixed the identical break locally on its own branch
+(commit `dbfbb02f6`) purely to keep this branch's own CI green — no direct
+push to `main` was made from this session, since duplicating an in-flight fix
+risks colliding with PR #1889 and several other branches actively working the
+same merge-train incident (`copilot/fix-ci-incident-another-one`,
+`copilot/fix-merge-train-promotion-confirmation`,
+`nalfeo-fix-merge-train-dispatch-trigger`, `nalfeo-fix-merge-train-promotion`,
+`copilot/check-branch-health`). Per the CI-Recovery-first policy, once one of
+those lands and `main`'s CI goes green again, the merge-train's next
+reconcile cycle (5-minute cron, or a `workflow_dispatch`) should promote PR
+#1876 automatically — no further action should be required on this PR's own
+content. A follow-up check of `gh pr view 1876 --json state,mergeCommit`
+after that incident clears will confirm the final squash-merge SHA.
+
+Recommended follow-ups (not required for this PR):
 
 - When an `equipment`-type achievement or rarity-varying boss chest ships
   through real content (not just the generator-level calculator), extend the
