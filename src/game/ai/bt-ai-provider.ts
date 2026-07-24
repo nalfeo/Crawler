@@ -312,6 +312,11 @@ import {
 } from './run-planner.js';
 import { getMerchantWeaponIntent, updateMerchantWeaponIntent } from './merchant-weapon-intent.js';
 import {
+  getSettlementReturnIntent,
+  isSettlementReturnRoutingEnabled,
+  updateSettlementReturnIntent,
+} from './settlement-return-router.js';
+import {
   estimateObjectiveTravelMs,
   type ObjectiveTravelAdapters,
 } from './objective-travel-estimate.js';
@@ -3553,6 +3558,45 @@ export class BehaviorTreeAI implements AIInputProvider {
     };
 
     this.npcApproachThreatProgressEvaluatedThisPoll = false;
+
+    // Unconditional per-poll settlement-return-router state update, run
+    // BEFORE the tree ticks — see `settlement-return-router.ts`'s
+    // `updateSettlementReturnIntent` doc for why this must run before (not
+    // after, unlike the merchant-weapon-intent precedent above) the tree
+    // evaluates any branch: a danger-abort transition must already be
+    // committed by the time `findFloor2ProgressObjective` (if reached this
+    // same tick) reads the router's status. Reuses the SAME threat
+    // definition Retreat/Engage use (`findNearestEnemy`/`getEngageRadius`)
+    // and the SAME dwell-watchdog flag every sibling fixed-goal Progress
+    // branch already reads, so there is exactly one "danger"/"unreachable"
+    // definition, not a second one that could disagree.
+    //
+    // Gated on `isSettlementReturnRoutingEnabled` (a cheap WeakMap read):
+    // `updateSettlementReturnIntent` itself already no-ops with zero side
+    // effects when disabled (the default), but by then the threat scan/
+    // engage-radius/settlement-anchor lookups below would already have been
+    // computed and thrown away every single poll. Skipping the whole block
+    // when disabled is behaviorally identical (the disabled path never
+    // mutates `routerStates`) while avoiding that wasted per-frame cost.
+    if (isSettlementReturnRoutingEnabled(world)) {
+      const nearestThreatForSettlementReturn = this.findNearestEnemy(world, playerX, playerY);
+      const engageRadiusForSettlementReturn = this.getEngageRadius(world);
+      const dangerNearbyForSettlementReturn =
+        nearestThreatForSettlementReturn !== null &&
+        nearestThreatForSettlementReturn.distance <= engageRadiusForSettlementReturn;
+      const progressSuppressedForSettlementReturn =
+        world.frameCount < this.progressGoalSuppressedUntilFrame;
+      updateSettlementReturnIntent(
+        world,
+        playerEid,
+        playerX,
+        playerY,
+        resolveFloor2SettlementAnchor(world),
+        dangerNearbyForSettlementReturn,
+        progressSuppressedForSettlementReturn,
+      );
+    }
+
     // Execute behavior tree (Track A sets this.decision; Track B writes
     // opportunisticPullX/Y and dodgeVecX/Y as side-effects)
     this.tree.tick(context);
@@ -6279,6 +6323,38 @@ export class BehaviorTreeAI implements AIInputProvider {
         playerX,
         playerY,
         'Heading to the Floor 2 exit stairs',
+      );
+    }
+
+    // Optional latched settlement-return goal: only intercepts Progress when
+    // `settlement-return-router` has ARMED or is already TRAVELING (danger
+    // and unreachability abort conditions are evaluated by the router itself,
+    // upstream, once per poll — see the unconditional pre-tick hook above).
+    // Deliberately placed below the mandatory settlement/broker/staircase
+    // objectives (those always win) and above hunting (this is what actually
+    // gets pre-empted), matching the plan's "optional, subordinate to
+    // required progress" requirement. READ only — never mutates the router.
+    //
+    // Unlike the mandatory branches above, a suppressed-but-not-armed router
+    // must NOT `return null` here — that would swallow the *entire* function,
+    // silently blocking the boss-hunt logic below even though this optional
+    // branch was never going to fire. Instead, `!progressSuppressed` is
+    // folded into this branch's own condition so an ineligible/idle router
+    // simply falls through to hunting, exactly as if this branch didn't
+    // exist.
+    const settlementReturnIntent = getSettlementReturnIntent(world);
+    if (
+      !progressSuppressed &&
+      (settlementReturnIntent.status === 'armed' ||
+        settlementReturnIntent.status === 'traveling') &&
+      settlementAnchor
+    ) {
+      return this.createProgressTarget(
+        settlementAnchor.x,
+        settlementAnchor.y,
+        playerX,
+        playerY,
+        'Returning to the settlement to run maintenance (equip/shop/claim)',
       );
     }
 
