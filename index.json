@@ -88,6 +88,17 @@
     "path": "by-sha/7bed20b35f5e27d065667d22c330d91cfc7bb290.json"
   },
   {
+    "commit": "a4a23feecf9d7a3fe4097a92dda7a1d5430e14dd",
+    "commitDate": "2026-07-23T22:41:23-07:00",
+    "commitSubject": "Add deterministic CI-harness characterization baseline across reconcile, merge-train, and conflict coordinator (#1860)",
+    "capturedAt": "2026-07-24T07:02:00.711Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30070611720",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/a4a23feecf9d7a3fe4097a92dda7a1d5430e14dd.json"
+  },
+  {
     "commit": "b19713d83c872c69d00ace68c12ad0fe7d1e4669",
     "commitDate": "2026-07-23T22:17:46Z",
     "commitSubject": "feat(floor2): boss chest lifecycle + boss reward-policy (#1823)",
