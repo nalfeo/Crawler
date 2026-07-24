@@ -207,6 +207,14 @@ export interface QueueItem {
   checkinSummary: string | null;
   metadataSummary: string | null;
   lastError: string | null;
+  /**
+   * Durability of this item's last edit push to the long-lived `assets/queue`
+   * branch (PR1). `'ok'` = the approval/tag was committed+pushed durably; `'failed'`
+   * = the local catalog write succeeded but the durable push failed, so the edit is
+   * NOT safe across worktrees/sessions (keep the worktree and retry); `null` = no
+   * durable push has been attempted yet (or a pre-PR1 sidecar emitted no status).
+   */
+  queueDurability: 'ok' | 'failed' | null;
 }
 
 export interface QueueState {
@@ -278,6 +286,7 @@ function makeItem(
     checkinSummary: null,
     metadataSummary: null,
     lastError: null,
+    queueDurability: null,
   };
 }
 
@@ -432,6 +441,12 @@ export interface ApprovedItemPatch {
   readonly checkinSummary: null;
   readonly generationRequestedAt: null;
   readonly lastError: null;
+  /**
+   * `'ok'` when the durable `assets/queue` push succeeded (or was a no-op / not
+   * reported), `'failed'` when it failed — the single source of truth the render
+   * path reads to color the approved summary (green vs. red durability warning).
+   */
+  readonly queueDurability: 'ok' | 'failed';
 }
 
 /**
@@ -477,6 +492,7 @@ export function approvedItemPatch(info: ApprovedVariantInfo): ApprovedItemPatch 
     checkinSummary: null,
     generationRequestedAt: null,
     lastError: null,
+    queueDurability: info.queueCommitFailed ? 'failed' : 'ok',
   };
 }
 
@@ -810,6 +826,8 @@ function sanitizeItem(value: unknown): QueueItem | null {
     checkinSummary: typeof raw.checkinSummary === 'string' ? raw.checkinSummary : null,
     metadataSummary: typeof raw.metadataSummary === 'string' ? raw.metadataSummary : null,
     lastError: typeof raw.lastError === 'string' ? raw.lastError : null,
+    queueDurability:
+      raw.queueDurability === 'ok' || raw.queueDurability === 'failed' ? raw.queueDurability : null,
   };
 }
 

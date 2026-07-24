@@ -65,13 +65,14 @@ import { parse as parseYaml } from 'yaml';
 import {
   approveVariant,
   ApproveError,
+  loadApprovedEntry,
   resolveVariantIdentity,
   unapproveVariant,
   UnapproveError,
   type ManifestEntry,
   type VariantIdentity,
 } from '../approve.js';
-import { runQueueCommit, type QueueCommitResult } from '../queue-commit.js';
+import { runQueueCommit, QueueCommitError, type QueueCommitResult } from '../queue-commit.js';
 import { createDefaultQueueCommitDeps } from '../queue-commit-runtime.js';
 import {
   runAssetCheckin,
@@ -1955,6 +1956,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     return withCheckinMutationLock(async () => {
       let hydrated: HydratedRunDir | null = null;
       let entry: ManifestEntry;
+      let alreadyApproved = false;
       try {
         hydrated =
           store.backend === 'local'
@@ -1965,14 +1967,35 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           reply.code(403);
           return { error: 'forbidden-path' };
         }
-        entry = approveVariant({
-          runDir,
-          variantIndex,
-          manifestPath,
-          catalogPath,
-          publicAssetsDir,
-          repoRoot: deps.repoRoot,
-        });
+        try {
+          entry = approveVariant({
+            runDir,
+            variantIndex,
+            manifestPath,
+            catalogPath,
+            publicAssetsDir,
+            repoRoot: deps.repoRoot,
+          });
+        } catch (err) {
+          // Failed-push retry gap: a prior approval succeeded LOCALLY (so this
+          // re-approve is a no-op `already-approved`) but its best-effort durable
+          // queue-commit may never have pushed to assets/queue. Rather than
+          // return a bare 409 that can never re-attempt the push, load the stored
+          // manifest entry and fall through to re-run the queue-commit below so a
+          // retry actually persists the asset remotely.
+          if (err instanceof ApproveError && err.kind === 'already-approved') {
+            const stored = loadApprovedEntry({ runDir, variantIndex, manifestPath });
+            if (stored === null) {
+              // The manifest entry is genuinely gone — nothing to re-queue.
+              reply.code(409);
+              return { error: err.kind, message: err.message };
+            }
+            entry = stored;
+            alreadyApproved = true;
+          } else {
+            throw err;
+          }
+        }
       } catch (err) {
         if (err instanceof ApproveError) {
           // variant-not-found / processed-missing -> 404 (resource missing).
@@ -2003,12 +2026,13 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         hydrated?.cleanup();
       }
 
-      // Durably persist the just-approved asset onto the remote assets/queue
-      // branch so the edit survives across sessions/worktrees/processes. This
-      // is best-effort: the local approve already succeeded, so a queue-commit
-      // failure is surfaced in the response (and logged) rather than rolling
-      // back the approval. The route already refuses on CI above, so the
-      // primitive's CI guard never fires here.
+      // Durably persist the approved asset onto the remote assets/queue branch so
+      // the edit survives across sessions/worktrees/processes. Runs on the fresh
+      // approval AND on an `already-approved` retry (above) so a previously-failed
+      // push can be re-attempted. Best-effort: the local approve already
+      // succeeded, so a queue-commit failure is surfaced in the response (and
+      // logged) rather than rolling back. The route already refuses on CI above,
+      // so the primitive's CI guard never fires here.
       let queueCommit: QueueCommitResult | { status: 'failed'; error: string };
       try {
         queueCommit = await runQueueCommit(
@@ -2030,7 +2054,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         queueCommit = { status: 'failed', error: message };
       }
 
-      return { ...entry, queueCommit };
+      return { ...entry, ...(alreadyApproved ? { alreadyApproved: true } : {}), queueCommit };
     });
   });
 
@@ -2808,18 +2832,93 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       minScore = body.minScore;
     }
 
+    // CSRF guard (mirrors /approve, ADR 0066 CTX-005): this route now runs
+    // `git fetch`/`git push` against the remote assets/queue branch (durable
+    // re-queue, below), so a cross-origin browser POST must not be able to
+    // trigger an authenticated remote push. Server-side callers (Node fetch, no
+    // Origin header) stay trusted, exactly as the sibling mutating routes do.
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && !deps.trustedMutationOrigins?.includes(origin)) {
+      reply.code(403);
+      return {
+        error: 'forbidden-origin',
+        message: 'This browser origin is not allowed to run sprite metadata generation.',
+      };
+    }
+
     try {
+      const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
+      const manifestPath =
+        deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
       const catalogAbs = path.resolve(deps.repoRoot, DEFAULT_CATALOG_PATH);
       const catalog = parseSpriteCatalog(JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown);
       const provider = await resolveProvider(providerMode);
       const result = await runMetadataPipeline(catalog, { provider, ids, force, minScore });
-      await writeCatalogJson(catalogAbs, result.updated);
+
+      // Persist the catalog AND durably re-queue the changed generated entries.
+      // Serialized with /approve and /checkin (same catalog surface) under the
+      // shared mutation lock. Without this queue-commit the Tag step would leave
+      // the assets/queue branch on the PRE-Tag catalog, silently dropping the
+      // metadata edit across worktrees/sessions (concern #1).
+      const env = deps.env ?? process.env;
+      const queueCommit = await withCheckinMutationLock(async () => {
+        await writeCatalogJson(catalogAbs, result.updated);
+
+        // Map each changed `generated:<key>` catalog id back to its manifest
+        // entry so the queue-commit stages the PNG + manifest + updated catalog
+        // entry together. Non-generated catalog rows (terrain/mob/etc.) are not
+        // queue-managed, so they are intentionally excluded here.
+        let manifestEntries: Record<string, ManifestEntry> = {};
+        try {
+          const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+            entries?: Record<string, ManifestEntry>;
+          };
+          manifestEntries = parsed.entries ?? {};
+        } catch {
+          manifestEntries = {};
+        }
+        const changedAssets = result.changedIds.flatMap((id) => {
+          if (!id.startsWith('generated:')) return [];
+          const key = id.slice('generated:'.length);
+          const entry = manifestEntries[key];
+          if (!entry) return [];
+          return [
+            {
+              assetPath: entry.assetPath,
+              manifestKey: key,
+              briefId: entry.briefId ?? null,
+              variantIndex: typeof entry.variantIndex === 'number' ? entry.variantIndex : null,
+            },
+          ];
+        });
+        if (changedAssets.length === 0) return null;
+        try {
+          return await runQueueCommit(
+            deps.repoRoot,
+            changedAssets,
+            createDefaultQueueCommitDeps(deps.repoRoot, env),
+            { message: `chore(assets): metadata for ${changedAssets.length} sprite(s)` },
+          );
+        } catch (err) {
+          // ci-refused is EXPECTED on CI (the primitive is local-only) — surface
+          // it as a skip, not a failure. Any other error is best-effort: the
+          // local catalog write already succeeded.
+          if (err instanceof QueueCommitError && err.kind === 'ci-refused') {
+            return { status: 'skipped' as const, reason: 'ci-refused' as const };
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          req.log.warn(`metadata queue-commit failed: ${message}`);
+          return { status: 'failed' as const, error: message };
+        }
+      });
+
       return {
         provider: provider.name,
         changedCount: result.changedCount,
         processedCount: result.processedCount,
         rejectedCount: result.rejectedCount,
         skippedCount: result.skippedCount,
+        queueCommit,
       };
     } catch (err) {
       reply.code(500);

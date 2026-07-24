@@ -3942,11 +3942,17 @@ function render(): void {
         '#fcd34d',
       );
     } else if (item.metadataSummary && item.stage === 'done') {
-      setWorkflowStatus(item.metadataSummary, '#bef264');
+      setWorkflowStatus(
+        item.metadataSummary,
+        item.queueDurability === 'failed' ? '#fca5a5' : '#bef264',
+      );
     } else if (item.checkinSummary && item.stage === 'checked-in') {
       setWorkflowStatus(item.checkinSummary, '#86efac');
     } else if (item.approvalSummary && item.stage === 'approved') {
-      setWorkflowStatus(item.approvalSummary, '#bef264');
+      setWorkflowStatus(
+        item.approvalSummary,
+        item.queueDurability === 'failed' ? '#fca5a5' : '#bef264',
+      );
     } else if (nextAction) {
       setWorkflowStatus(`Next: ${nextAction}`, '#cbd5e1');
     }
@@ -4826,6 +4832,7 @@ function render(): void {
           const patch = approvedItemPatch({
             briefId: run.briefId,
             variantIndex: candidate.index,
+            alreadyApproved: approved.alreadyApproved,
             assetPath: approved.assetPath,
             sensorScore: approved.sensorScore,
             judgeScore: approved.judgeScore,
@@ -7887,6 +7894,12 @@ function render(): void {
         changedCount: number;
         processedCount: number;
         rejectedCount: number;
+        skippedCount?: number;
+        queueCommit?:
+          | { status: 'committed' | 'noop'; branch: string; commit?: string; attempts: number }
+          | { status: 'failed'; error: string }
+          | { status: 'skipped'; reason: string }
+          | null;
       }>(`${SIDECAR_BASE}/api/workflow/metadata`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -7897,16 +7910,32 @@ function render(): void {
         }),
       });
       const summaryText = `Tagged via ${result.provider}: processed=${result.processedCount}, changed=${result.changedCount}, rejected=${result.rejectedCount}`;
+      // The Tag step runs its OWN durable queue-commit (#1); it — not the earlier
+      // approve push — decides whether this item is safe across worktrees. Do NOT
+      // unconditionally flip to green "ready to use" (that erased the durability
+      // warning, #7). A failed push keeps a warning baked into metadataSummary (so it
+      // survives recompute's re-render) and drives queueDurability, which the render
+      // path reads to keep the status red until the tag is durable.
+      const metadataQueueFailed = result.queueCommit?.status === 'failed';
+      const durabilityWarning =
+        result.queueCommit && result.queueCommit.status === 'failed'
+          ? ` \u26a0 Durable queue push FAILED (${result.queueCommit.error}) \u2014 keep this worktree; the tag is not yet safe across sessions.`
+          : '';
       queueState = queueUpdateItem(queueState, item.id, {
         stage: 'done',
-        metadataSummary: summaryText,
+        metadataSummary: `${summaryText}${durabilityWarning}`,
         approvalSummary: null,
+        queueDurability: metadataQueueFailed ? 'failed' : 'ok',
         lastError: null,
       });
       writeQueueState();
       renderQueue();
       renderWorkflowSelection();
-      setWorkflowStatus(`${summaryText}. Sprite is in the catalog and ready to use.`, '#bef264');
+      if (metadataQueueFailed) {
+        setWorkflowStatus(`${summaryText}.${durabilityWarning}`, '#fca5a5');
+      } else {
+        setWorkflowStatus(`${summaryText}. Sprite is in the catalog and ready to use.`, '#bef264');
+      }
       void recompute();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

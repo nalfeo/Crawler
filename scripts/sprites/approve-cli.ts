@@ -153,7 +153,10 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
         );
       } catch (err) {
         process.stderr.write(
-          `⚠ queue-commit failed (approval is local-only until reconciled): ` +
+          `⚠ queue-commit failed — this approval is LOCAL-ONLY and is NOT yet safe across ` +
+            `worktrees/sessions. The hourly reconciler only sees commits already on ` +
+            `assets/queue, so it CANNOT recover a push that never reached the branch. Re-run ` +
+            `the approve (which retries queue-commit) before discarding this worktree: ` +
             `${err instanceof Error ? err.message : String(err)}\n`,
         );
       }

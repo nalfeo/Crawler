@@ -2288,6 +2288,40 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(res.json().error).toBe('processed-missing');
     expect(requestedKeys).not.toContain(`${briefId}/${runId}/C:/sneaky/processed/01.png`);
   });
+
+  it('re-runs the durable queue-commit on a repeat approve (failed-push retry gap, #0)', async () => {
+    // The first approval succeeds locally, but its best-effort durable
+    // queue-commit can fail to push (here the temp repoRoot is not a git repo,
+    // so the real queue-commit path fails and is surfaced as status:'failed').
+    // A subsequent approve of the SAME variant used to dead-end on a bare 409
+    // `already-approved`, permanently stranding the asset un-pushed with no way
+    // to retry the push. It must now load the stored manifest entry and RE-RUN
+    // the queue-commit so a previously-failed push can be re-attempted.
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+    expect(first.statusCode).toBe(200);
+    // Fresh approval is not flagged as a retry.
+    expect(first.json().alreadyApproved).toBeUndefined();
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+    // Not a bare 409 — the retry path returns 200 with the stored entry.
+    expect(second.statusCode).toBe(200);
+    const body = second.json();
+    expect(body.alreadyApproved).toBe(true);
+    expect(body.assetPath).toBe(`generated/${briefId}-var-1.png`);
+    // The retry actually re-attempted the durable push (a queueCommit field is
+    // always present regardless of its committed/failed outcome).
+    expect(body.queueCommit).toBeDefined();
+  });
 });
 
 describe('DELETE /api/manifest/:variantId', () => {
@@ -2912,6 +2946,39 @@ describe('sidecar POST /api/checkin', () => {
     expect(external.statusCode).toBe(403);
     expect(external.json()).toMatchObject({ error: 'forbidden-origin' });
     expect(exec).not.toHaveBeenCalled();
+  });
+
+  it('/api/workflow/metadata enforces the trusted-origin guard (concern #1)', async () => {
+    // The metadata route now runs git fetch/push against assets/queue to durably
+    // re-queue changed generated entries, so a cross-origin browser POST must not
+    // be able to trigger an authenticated remote push. A VALID provider is used
+    // so the request passes provider validation (which precedes the guard) and
+    // actually reaches the origin check.
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+      trustedMutationOrigins: ['http://localhost:4102'],
+    });
+
+    const hostileLoopback = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/metadata',
+      headers: { origin: 'http://127.0.0.1:9999', 'content-type': 'application/json' },
+      payload: { provider: 'heuristic' },
+    });
+    expect(hostileLoopback.statusCode).toBe(403);
+    expect(hostileLoopback.json()).toMatchObject({ error: 'forbidden-origin' });
+
+    const external = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/metadata',
+      headers: { origin: 'https://evil.example', 'content-type': 'application/json' },
+      payload: { provider: 'heuristic' },
+    });
+    expect(external.statusCode).toBe(403);
+    expect(external.json()).toMatchObject({ error: 'forbidden-origin' });
   });
 
   function makePreviewParityDeps(

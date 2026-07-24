@@ -541,6 +541,43 @@ describe('approvedItemPatch', () => {
     );
   });
 
+  it('drives queueDurability from the push outcome (failed -> "failed")', () => {
+    // #7: queueDurability is the single source of truth the render path reads to
+    // color the approved summary. A failed durable push must set it to 'failed' so
+    // the status stays red instead of being erased by a later green re-render.
+    const patch = approvedItemPatch({
+      briefId: 'bent-pipe-v1',
+      variantIndex: 0,
+      assetPath: 'generated/bent-pipe-v1-var-0.png',
+      sensorScore: '7/7',
+      judgeScore: null,
+      queueCommitFailed: true,
+    });
+    expect(patch.queueDurability).toBe('failed');
+  });
+
+  it('sets queueDurability to "ok" on a successful, no-op, or unreported push', () => {
+    expect(
+      approvedItemPatch({
+        briefId: 'bent-pipe-v1',
+        variantIndex: 0,
+        assetPath: 'generated/bent-pipe-v1-var-0.png',
+        sensorScore: '7/7',
+        judgeScore: null,
+        queueCommitFailed: false,
+      }).queueDurability,
+    ).toBe('ok');
+    // No queueCommit info at all (e.g. the already-approved 409 path) is optimistic.
+    expect(
+      approvedItemPatch({
+        briefId: 'bent-pipe-v1',
+        variantIndex: 0,
+        assetPath: 'generated/bent-pipe-v1-var-0.png',
+        alreadyApproved: true,
+      }).queueDurability,
+    ).toBe('ok');
+  });
+
   it('produces a patch that drives an item from variants to approved via updateItem', () => {
     let state = createEmptyQueue();
     state = addItem(state, 'Green Slime Baby');
@@ -634,6 +671,29 @@ describe('serialize / deserialize', () => {
     expect(restored.items[0]?.run?.candidates[0]?.sensors).toEqual([]);
     expect(restored.items[0]?.generationRequestedAt).toBeNull();
     expect(restored.items[0]?.generationStartedAt).toBeNull();
+  });
+
+  it('round-trips queueDurability and defaults unknown/absent values to null', () => {
+    // #7 durability field: a 'failed' state must survive serialize→deserialize so the
+    // warning persists across a page reload; pre-PR1 stored items (no field) and any
+    // malformed value must sanitize to null rather than throwing or leaking a string.
+    let state = addItem(createEmptyQueue(), 'Durable Sprite', '', 'item');
+    state = updateItem(state, 'item-1', { stage: 'approved', queueDurability: 'failed' });
+    expect(deserializeQueue(serializeQueue(state)).items[0]?.queueDurability).toBe('failed');
+
+    const legacy = JSON.stringify({
+      items: [{ id: 'item-1', seq: 1, brief: 'Legacy', stage: 'approved' }],
+      selectedId: 'item-1',
+      nextSeq: 2,
+    });
+    expect(deserializeQueue(legacy).items[0]?.queueDurability).toBeNull();
+
+    const malformed = JSON.stringify({
+      items: [{ id: 'item-1', seq: 1, brief: 'Bad', stage: 'approved', queueDurability: 'yes' }],
+      selectedId: 'item-1',
+      nextSeq: 2,
+    });
+    expect(deserializeQueue(malformed).items[0]?.queueDurability).toBeNull();
   });
 
   it('preserves structured per-sensor breakdown and drops malformed sensor entries', () => {

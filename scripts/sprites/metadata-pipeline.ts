@@ -59,6 +59,8 @@ export interface PipelineOptions {
 export interface PipelineResult {
   updated: SpriteCatalog;
   changedCount: number;
+  /** Catalog ids whose entry actually changed (drives durable re-queue). */
+  changedIds: string[];
   processedCount: number;
   rejectedCount: number;
   skippedCount: number;
@@ -466,6 +468,7 @@ export async function runMetadataPipeline(
   const force = options.force ?? false;
 
   let changedCount = 0;
+  const changedIds: string[] = [];
   let processedCount = 0;
   let rejectedCount = 0;
   let skippedCount = 0;
@@ -492,6 +495,7 @@ export async function runMetadataPipeline(
     const nextEntry = applyDraft(entry, draft);
     if (JSON.stringify(nextEntry) !== JSON.stringify(entry)) {
       changedCount += 1;
+      changedIds.push(entry.id);
     }
     updated.push(nextEntry);
   }
@@ -499,6 +503,7 @@ export async function runMetadataPipeline(
   return {
     updated: parseSpriteCatalog(updated),
     changedCount,
+    changedIds,
     processedCount,
     rejectedCount,
     skippedCount,
