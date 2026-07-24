@@ -72,6 +72,14 @@ export interface RunStore {
    * Azure impl returns the blob URL (without SAS — caller adds it as needed).
    */
   resolve(key: string): string;
+  /**
+   * Resolve a key to an externally fetchable URL suitable for embedding in
+   * GitHub comments (for example Markdown images). Implementations may return
+   * short-lived signed URLs when the backing store is private.
+   *
+   * If omitted, callers should fall back to {@link resolve}.
+   */
+  resolveForExternalRead?(key: string): string;
   /** Human-readable backend tag surfaced in /api/health. */
   readonly backend: 'local' | 'azure-blob';
 }

@@ -51,7 +51,7 @@ export function assertNever(value: never): never {
   throw new Error(`Unhandled attack kind ${String(value)}`);
 }
 
-export function expectedAttackKind(definition: Floor2WeaponBaseDefinition): ExpectedAttackKind {
+function expectedAttackKind(definition: Floor2WeaponBaseDefinition): ExpectedAttackKind {
   const { weaponDef } = definition;
   switch (weaponDef.weaponType) {
     case WeaponType.MELEE:
