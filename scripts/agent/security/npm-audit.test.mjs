@@ -34,12 +34,7 @@ test('reports every matched exception in the success diagnostic', (t) => {
     `process.stdout.write(JSON.stringify(${JSON.stringify(
       report({
         'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
-        'find-my-way': {
-          name: 'find-my-way',
-          severity: 'high',
-          via: [FIND_MY_WAY_ADVISORY],
-        },
-        fastify: { name: 'fastify', severity: 'high', via: ['find-my-way'] },
+        fastify: { name: 'fastify', severity: 'high', via: ['fast-uri'] },
       }),
     )}));`,
   );
@@ -57,11 +52,7 @@ test('reports every matched exception in the success diagnostic', (t) => {
     result.stderr,
     /Temporary audit exception through 2026-07-29: https:\/\/github\.com\/advisories\/GHSA-v2hh-gcrm-f6hx/,
   );
-  assert.match(
-    result.stderr,
-    /Temporary audit exception through 2026-07-30: https:\/\/github\.com\/advisories\/GHSA-c96f-x56v-gq3h/,
-  );
-  assert.match(result.stderr, /Suppressed derived findings: fast-uri, fastify, find-my-way/);
+  assert.match(result.stderr, /Suppressed derived findings: fast-uri, fastify/);
 });
 
 test('suppresses the exact fast-uri advisory and findings derived solely from it', () => {
@@ -130,6 +121,23 @@ test('does not suppress a different advisory for fast-uri', () => {
   assert.deepEqual(
     result.blocking.map((item) => item.name),
     ['fast-uri'],
+  );
+});
+
+test('does not suppress find-my-way once the exception is removed', () => {
+  const result = evaluateAudit(
+    report({
+      'find-my-way': { name: 'find-my-way', severity: 'high', via: [FIND_MY_WAY_ADVISORY] },
+      fastify: { name: 'fastify', severity: 'high', via: ['find-my-way'] },
+    }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(result.ignored, []);
+  assert.deepEqual(result.matchedExceptions, []);
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['find-my-way', 'fastify'],
   );
 });
 
