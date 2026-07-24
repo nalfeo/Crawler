@@ -1,0 +1,256 @@
+{
+  "schema": "merge-train-characterization/v1",
+  "verdict_fixtures": [
+    {
+      "id": "MT01",
+      "dClass": "D1",
+      "kind": "queueEntries",
+      "input": {
+        "repository": "test/repo",
+        "pulls": [
+          {
+            "number": 3,
+            "state": "open",
+            "draft": false,
+            "base": {
+              "ref": "main"
+            },
+            "head": {
+              "repo": {
+                "full_name": "test/repo"
+              }
+            },
+            "labels": [
+              {
+                "name": "merge-train"
+              }
+            ],
+            "created_at": "2026-01-01T00:00:03Z"
+          },
+          {
+            "number": 2,
+            "state": "open",
+            "draft": false,
+            "base": {
+              "ref": "main"
+            },
+            "head": {
+              "repo": {
+                "full_name": "test/repo"
+              }
+            },
+            "labels": [
+              {
+                "name": "merge-train"
+              }
+            ],
+            "created_at": "2026-01-01T00:00:02Z"
+          },
+          {
+            "number": 1,
+            "state": "open",
+            "draft": false,
+            "base": {
+              "ref": "main"
+            },
+            "head": {
+              "repo": {
+                "full_name": "fork/repo"
+              }
+            },
+            "labels": [
+              {
+                "name": "merge-train"
+              }
+            ],
+            "created_at": "2026-01-01T00:00:01Z"
+          }
+        ]
+      },
+      "expected": {
+        "orderedNumbers": [
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "id": "MT02",
+      "dClass": "D9",
+      "kind": "waitLabel",
+      "input": {
+        "labels": [
+          {
+            "name": "ci-conflict-order-wait"
+          }
+        ]
+      },
+      "expected": {
+        "wait": true
+      }
+    },
+    {
+      "id": "MT03",
+      "dClass": "D4",
+      "kind": "admissionFingerprintStable",
+      "input": {
+        "args": {
+          "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "title": "T",
+          "baseRef": "main",
+          "checkRunsA": [
+            {
+              "id": 100,
+              "name": "ci",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ],
+          "checkRunsB": [
+            {
+              "id": 200,
+              "name": "ci",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ],
+          "requiredNames": [
+            "ci"
+          ],
+          "threads": []
+        }
+      },
+      "expected": {
+        "equal": true
+      }
+    },
+    {
+      "id": "MT04",
+      "dClass": "D1",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "success",
+          "failure"
+        ]
+      },
+      "expected": {
+        "action": "promote",
+        "greenPrefixLength": 1
+      }
+    },
+    {
+      "id": "MT05",
+      "dClass": "D8",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "success",
+          "success"
+        ]
+      },
+      "expected": {
+        "action": "promote",
+        "greenPrefixLength": 2
+      }
+    },
+    {
+      "id": "MT06",
+      "dClass": "D10",
+      "kind": "unsatisfiedChecks",
+      "input": {
+        "runs": [
+          {
+            "name": "ci",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Security checks",
+            "status": "in_progress",
+            "conclusion": null
+          }
+        ],
+        "required": [
+          "ci",
+          "Security checks"
+        ]
+      },
+      "expected": {
+        "missing": [
+          "Security checks"
+        ]
+      }
+    },
+    {
+      "id": "MT07",
+      "dClass": "D1",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": []
+      },
+      "expected": {
+        "action": "noop"
+      }
+    },
+    {
+      "id": "MT08",
+      "dClass": "D8",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "pending"
+        ]
+      },
+      "expected": {
+        "action": "wait",
+        "firstFailure": -1
+      }
+    },
+    {
+      "id": "MT09",
+      "dClass": "D8",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "missing"
+        ]
+      },
+      "expected": {
+        "action": "validate",
+        "firstFailure": -1
+      }
+    },
+    {
+      "id": "MT10",
+      "dClass": "D8",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "missing",
+          "failure",
+          "failure"
+        ]
+      },
+      "expected": {
+        "action": "validate",
+        "firstFailure": 2
+      }
+    },
+    {
+      "id": "MT11",
+      "dClass": "D8",
+      "kind": "planPrefixPromotion",
+      "input": {
+        "states": [
+          "pending",
+          "failure"
+        ]
+      },
+      "expected": {
+        "action": "wait",
+        "firstFailure": 1
+      }
+    }
+  ]
+}
