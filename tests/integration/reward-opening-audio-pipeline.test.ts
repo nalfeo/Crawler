@@ -268,11 +268,11 @@ describe('reward-opening audio pipeline (real sequence + real audio controller)'
     expect(finalState.revealedCount).toBe(items.length);
     const labels = engine.log.map((spec) => spec.label);
     expect(labels[0]).toBe('reward:anticipation');
-    expect(labels.filter((l) => l === 'reward:reveal').length).toBe(items.length);
+    expect(labels.filter((l) => l === 'reward:item-revealed').length).toBe(items.length);
     expect(labels.at(-2)).toBe('reward:summary');
     expect(labels.at(-1)).toBe('reward:close');
     // Every reveal cue must land strictly between anticipation and summary.
-    expect(labels.indexOf('reward:summary')).toBeGreaterThan(labels.lastIndexOf('reward:reveal'));
+    expect(labels.indexOf('reward:summary')).toBeGreaterThan(labels.lastIndexOf('reward:item-revealed'));
   });
 
   it('skips straight to summary→skip→close with zero reveal/escalation cues, and never replays cues on duplicate input', () => {
@@ -294,8 +294,8 @@ describe('reward-opening audio pipeline (real sequence + real audio controller)'
 
     const labels = engine.log.map((spec) => spec.label);
     expect(labels).toEqual(['reward:anticipation', 'reward:skip', 'reward:close']);
-    expect(labels).not.toContain('reward:reveal');
-    expect(labels).not.toContain('reward:escalation');
+    expect(labels).not.toContain('reward:item-revealed');
+    expect(labels).not.toContain('reward:rarity-escalation');
     // The skip-caused summary transition must never even schedule the
     // summary cue (architectural suppression, not just inaudibility).
     expect(labels).not.toContain('reward:summary');
@@ -346,8 +346,8 @@ describe('reward-opening audio pipeline (real sequence + real audio controller)'
       900,
     );
 
-    const commonRevealGain = commonEngine.log.find((s) => s.label === 'reward:reveal')?.gain;
-    const uncommonRevealGain = uncommonEngine.log.find((s) => s.label === 'reward:reveal')?.gain;
+    const commonRevealGain = commonEngine.log.find((s) => s.label === 'reward:item-revealed')?.gain;
+    const uncommonRevealGain = uncommonEngine.log.find((s) => s.label === 'reward:item-revealed')?.gain;
     expect(commonRevealGain).toBeDefined();
     expect(uncommonRevealGain).toBeDefined();
     // Same tier, but the actual granted item's rarity is strictly higher —
@@ -379,6 +379,116 @@ describe('reward-opening audio pipeline (real sequence + real audio controller)'
     runSkipSession(controller, 4);
     const secondSessionLabels = engine.log.slice(firstSessionLen).map((s) => s.label);
     expect(secondSessionLabels).toEqual(['reward:anticipation', 'reward:skip', 'reward:close']);
+  });
+
+  it('coalesces a same-tick normal-mode multi-item reveal (large delta) into ONE itemRevealed cue carrying the batch peak rarity', () => {
+    // Follow-up review finding: a normal-mode large frame delta spanning
+    // multiple 450 ms reveal intervals (e.g. tab resume) can also advance
+    // revealedCount by >1 in a single tick. Coalescing must therefore apply
+    // regardless of reducedMotion, not only when reduced-motion is true.
+    const engine = new RecordingEngine();
+    const excitement: RewardExcitement = {
+      tierWeight: 0.5,
+      rarityWeight: 0,
+      score: 0.5,
+      bucket: 'exciting',
+    };
+    const controller = createRewardOpeningAudioController(
+      engine,
+      () => excitement,
+      () => false, // normal mode
+    );
+
+    const items: ItemRarity[] = [
+      { rarityWeight: equipmentRarityWeight('common') },
+      { rarityWeight: equipmentRarityWeight('rare') }, // batch peak
+      { rarityWeight: equipmentRarityWeight('uncommon') },
+    ];
+
+    // Simulate: anticipation tick, then ONE large-delta tick that reveals all
+    // 3 items simultaneously (delta = 3 * perItemRevealMs = 1350 ms), mirroring
+    // RewardOpeningUI.tick() with a delta after a tab resume.
+    controller.open();
+    let state = createRewardOpeningState(items.length, { reducedMotion: false });
+    let lastRenderedPhase: RewardOpeningState['phase'] | null = null;
+
+    const renderIfChanged = (next: RewardOpeningState): void => {
+      if (next.phase !== lastRenderedPhase) {
+        controller.phaseChanged(next.phase);
+        lastRenderedPhase = next.phase;
+      }
+    };
+    renderIfChanged(state);
+
+    // Clear anticipation.
+    state = tickSequence(state, 900);
+    renderIfChanged(state);
+
+    // Large delta: 3 items at once in normal mode.
+    const previousRevealed = state.revealedCount;
+    state = tickSequence(state, 450 * 3); // 1350 ms — reveals all 3
+    renderIfChanged(state);
+
+    const batchSize = state.revealedCount - previousRevealed;
+    expect(batchSize).toBeGreaterThan(1); // confirm it's actually a batch
+
+    // Mirror RewardOpeningUI.ts coalescing: one call with the peak rarity item.
+    let bestIndex = previousRevealed;
+    let bestRarityWeight: number | null = null;
+    for (let i = previousRevealed; i < state.revealedCount; i += 1) {
+      const rw = items[i]?.rarityWeight ?? null;
+      if ((rw ?? -1) > (bestRarityWeight ?? -1)) {
+        bestRarityWeight = rw;
+        bestIndex = i;
+      }
+    }
+    controller.itemRevealed({
+      index: bestIndex,
+      total: items.length,
+      rarityWeight: bestRarityWeight,
+    });
+
+    // Advance to summary, then close.
+    state = tickSequence(state, 450);
+    renderIfChanged(state);
+    expect(state.phase).toBe('summary');
+    acknowledgeSequence(state);
+    controller.closed();
+
+    const labels = engine.log.map((s) => s.label);
+    // Exactly ONE reveal cue (+ its escalation companion) for the whole batch.
+    expect(labels.filter((l) => l === 'reward:item-revealed').length).toBe(1);
+    expect(labels).toEqual([
+      'reward:anticipation',
+      'reward:item-revealed',
+      'reward:rarity-escalation',
+      'reward:summary',
+      'reward:close',
+    ]);
+
+    // The coalesced cue must reflect the batch's PEAK rarity (index 1, rare).
+    const soloRevealGain = engine.log.find((s) => s.label === 'reward:item-revealed')?.gain;
+    expect(soloRevealGain).toBeDefined();
+    const peakOnlyEngine = new RecordingEngine();
+    const peakOnlyController = createRewardOpeningAudioController(
+      peakOnlyEngine,
+      () => excitement,
+      () => false,
+    );
+    // Single-item session with only the peak rarity item.
+    peakOnlyController.open();
+    peakOnlyController.phaseChanged('anticipation');
+    peakOnlyController.itemRevealed({
+      index: 0,
+      total: 1,
+      rarityWeight: equipmentRarityWeight('rare'),
+    });
+    peakOnlyController.phaseChanged('summary');
+    peakOnlyController.closed();
+    const peakOnlyGain = peakOnlyEngine.log.find(
+      (s) => s.label === 'reward:item-revealed',
+    )?.gain;
+    expect(soloRevealGain).toBeCloseTo(peakOnlyGain!, 10);
   });
 
   it('coalesces a same-tick reduced-motion multi-item reveal into ONE itemRevealed cue carrying the batch peak rarity', () => {
@@ -415,18 +525,18 @@ describe('reward-opening audio pipeline (real sequence + real audio controller)'
     // Exactly ONE reveal cue (+ its escalation companion, since this is the
     // session's very first/highest-rarity item) for the whole 3-item batch —
     // never three.
-    expect(labels.filter((l) => l === 'reward:reveal').length).toBe(1);
+    expect(labels.filter((l) => l === 'reward:item-revealed').length).toBe(1);
     expect(labels).toEqual([
       'reward:anticipation',
-      'reward:reveal',
-      'reward:escalation',
+      'reward:item-revealed',
+      'reward:rarity-escalation',
       'reward:summary',
       'reward:close',
     ]);
 
     // The single coalesced reveal cue must reflect the batch's PEAK rarity
     // (item index 1, rare), not the first or last item in the batch.
-    const soloRevealGain = engine.log.find((s) => s.label === 'reward:reveal')?.gain;
+    const soloRevealGain = engine.log.find((s) => s.label === 'reward:item-revealed')?.gain;
     expect(soloRevealGain).toBeDefined();
 
     const peakOnlyEngine = new RecordingEngine();
@@ -438,7 +548,7 @@ describe('reward-opening audio pipeline (real sequence + real audio controller)'
     runReducedMotionForwardSession(peakOnlyController, [
       { rarityWeight: equipmentRarityWeight('rare') },
     ]);
-    const peakOnlyGain = peakOnlyEngine.log.find((s) => s.label === 'reward:reveal')?.gain;
+    const peakOnlyGain = peakOnlyEngine.log.find((s) => s.label === 'reward:item-revealed')?.gain;
     // The coalesced batch's single cue gain must match a single-item session
     // whose sole item IS the batch's peak rarity — proving the batch reports
     // the peak item, not (say) an average or the first/last item.

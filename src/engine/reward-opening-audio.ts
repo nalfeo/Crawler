@@ -45,17 +45,19 @@
  * mix must not flip mid-sequence if the OS-level setting changes while the
  * overlay is already open (plan review finding).
  *
- * Reduced-motion reveal density (adversarial plan review finding): under
- * reduced motion, `RewardOpeningUI.tick()` can reveal every remaining item in
- * a single call. Firing one `itemRevealed()` per item in that batch would
- * stack N simultaneous reveal (+ escalation) cues — audibly the OPPOSITE of
- * "reduced intensity" even though each individual cue is quieter/shorter. So
- * `RewardOpeningUI` coalesces any same-tick reduced-motion batch of more
- * than one item into a SINGLE `onItemRevealed` call carrying the batch's
+ * Reduced-motion reveal density (adversarial plan review finding, extended by
+ * follow-up review): Under reduced motion, `RewardOpeningUI.tick()` can reveal
+ * every remaining item in a single call. Even in normal mode, a large frame
+ * delta spanning multiple 450 ms reveal intervals (e.g. after a slow frame or
+ * tab resume) can advance `revealedCount` by more than one in a single tick.
+ * In either case, firing one `itemRevealed()` per item would stack N
+ * simultaneous reveal (+ escalation) cues — audibly the OPPOSITE of "no
+ * same-tick stacking". So `RewardOpeningUI` coalesces any same-tick batch of
+ * more than one item into a SINGLE `onItemRevealed` call carrying the batch's
  * highest rarity weight, and this module's `itemRevealed()` sees exactly one
  * event for that batch (still correctly advancing the escalation
- * peak-rarity tracker). Non-reduced motion always reveals one item per
- * tick, so this never changes cue density outside reduced motion.
+ * peak-rarity tracker). Every item is still visually rendered; only the AUDIO
+ * event count is reduced.
  */
 import type { RewardExcitement } from '../shared/reward-presentation.js';
 import type { RewardOpeningPhase } from '../shared/reward-opening-sequence.js';
@@ -100,7 +102,7 @@ export function synthSpecForCue(cue: RewardAudioCue): SynthCueSpec {
         frequencyHz: 440 + intensity * 260,
         durationMs: 140 * scale.duration,
         gain: (0.1 + intensity * 0.18) * scale.gain,
-        label: 'reward:reveal',
+        label: 'reward:item-revealed',
       };
     case 'escalation':
       return {
@@ -109,7 +111,7 @@ export function synthSpecForCue(cue: RewardAudioCue): SynthCueSpec {
         glideToHz: 880 + intensity * 400,
         durationMs: 220 * scale.duration,
         gain: (0.14 + intensity * 0.2) * scale.gain,
-        label: 'reward:escalation',
+        label: 'reward:rarity-escalation',
       };
     case 'summary':
       return {

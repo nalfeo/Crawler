@@ -500,22 +500,23 @@ export function createRewardOpeningUI(
       // Fire once per newly-revealed item, in order, ONLY from this forward
       // `tick()` progression — `skip()` jumps `revealedCount` straight to
       // `itemCount` without ever calling `tick()`, so it can never reach
-      // here (see `onSkip` for that transition instead). Under reduced
-      // motion, `tickSequence` jumps `revealedCount` from 0 straight to
-      // `itemCount` in a SINGLE call: firing one audio event per item here
-      // would stack every item's reveal (+ possible escalation) cue at the
-      // exact same instant — the opposite of "reduced" audio intensity
-      // (adversarial plan review finding). So a same-tick batch of more than
-      // one item is coalesced into exactly ONE `onItemRevealed` call,
-      // reporting whichever item in the batch has the HIGHEST rarity weight
-      // (so an escalation cue still correctly fires if the batch contains a
-      // new running-max rarity) — every item is still visually rendered by
-      // the `render()` call above, only the AUDIO event count is reduced.
-      // Normal (non-reduced) motion always reveals exactly one item per
-      // tick, so this never coalesces anything outside reduced motion.
+      // here (see `onSkip` for that transition instead). Any same-tick batch
+      // of more than one item is coalesced into exactly ONE `onItemRevealed`
+      // call, reporting whichever item in the batch has the HIGHEST rarity
+      // weight (so an escalation cue still correctly fires if the batch
+      // contains a new running-max rarity) — every item is still visually
+      // rendered by the `render()` call above, only the AUDIO event count is
+      // reduced. Batches > 1 can arise in two ways: (1) under reduced motion,
+      // `tickSequence` jumps `revealedCount` from 0 straight to `itemCount`
+      // in a SINGLE call; (2) in normal mode, a large frame delta spanning
+      // multiple 450 ms reveal intervals (e.g. after a slow frame or tab
+      // resume) can advance `revealedCount` by 2 or more. In both cases
+      // firing one cue per item would stack simultaneous voices — the
+      // opposite of "no same-tick stacking" (adversarial plan review finding,
+      // extended by follow-up review to cover normal-mode large deltas).
       if (next.phase === 'revealing' && next.revealedCount > previousRevealedCount) {
         const batchSize = next.revealedCount - previousRevealedCount;
-        if (next.config.reducedMotion && batchSize > 1) {
+        if (batchSize > 1) {
           let bestIndex = previousRevealedCount;
           let bestRarityWeight: number | null = null;
           for (let i = previousRevealedCount; i < next.revealedCount; i++) {
@@ -530,13 +531,11 @@ export function createRewardOpeningUI(
           }
           hooks.onItemRevealed?.(bestIndex, revealItems.length, bestRarityWeight);
         } else {
-          for (let i = previousRevealedCount; i < next.revealedCount; i++) {
-            const item = revealItems[i] as RevealItemDisplay | undefined;
-            const rarityWeight = item?.equipmentSpec
-              ? equipmentRarityWeight(item.equipmentSpec.rarity)
-              : null;
-            hooks.onItemRevealed?.(i, revealItems.length, rarityWeight);
-          }
+          const item = revealItems[previousRevealedCount] as RevealItemDisplay | undefined;
+          const rarityWeight = item?.equipmentSpec
+            ? equipmentRarityWeight(item.equipmentSpec.rarity)
+            : null;
+          hooks.onItemRevealed?.(previousRevealedCount, revealItems.length, rarityWeight);
         }
       }
     },

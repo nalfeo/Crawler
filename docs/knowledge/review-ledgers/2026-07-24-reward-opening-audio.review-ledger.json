@@ -37,7 +37,26 @@
           "concerns_count": 2,
           "valid_count": 2,
           "resolved_count": 2,
-          "clean": true
+          "clean": false,
+          "notes": "2 valid findings fixed: gain-floor-at-now for delayed cues; skip cue not scaled by intensity. Round marked non-clean per harness policy — a round that produced fixes cannot validate the post-fix diff."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Follow-up round after round-1 fixes. Two new valid findings raised by automated review: (1) cue label mismatch — implementation emits reward:reveal/reward:escalation but PR contract specifies reward:item-revealed/reward:rarity-escalation; (2) multi-item batch coalescing applied only in reduced-motion mode but normal-mode large-delta frames can also advance revealedCount by >1. Both fixed (label rename + condition change to batchSize>1 regardless of reducedMotion)."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-fix validation after round-2 fixes landed. No new concerns across all categories: correctness, contracts, policy compliance, determinism, lifecycle, wiring, performance."
         }
       ]
     }

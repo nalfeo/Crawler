@@ -121,9 +121,9 @@ describe('createRewardOpeningAudioController', () => {
     controller.itemRevealed({ index: 1, total: 2, rarityWeight: 0.2 });
     expect(engine.calls).toEqual([
       'stopAll',
-      'play:reward:reveal',
-      'play:reward:escalation',
-      'play:reward:reveal',
+      'play:reward:item-revealed',
+      'play:reward:rarity-escalation',
+      'play:reward:item-revealed',
     ]);
   });
 
@@ -185,7 +185,7 @@ describe('createRewardOpeningAudioController', () => {
     engine.calls.length = 0;
     // A low-rarity item after a fresh open() must escalate again (running-max reset to -1).
     controller.itemRevealed({ index: 0, total: 1, rarityWeight: 0.1 });
-    expect(engine.calls).toEqual(['play:reward:reveal', 'play:reward:escalation']);
+    expect(engine.calls).toEqual(['play:reward:item-revealed', 'play:reward:rarity-escalation']);
   });
 
   it('snapshots getReducedMotion() once at open() — a runtime toggle mid-session does not affect already-open cues', () => {
@@ -224,9 +224,9 @@ describe('createRewardOpeningAudioController', () => {
     controller.open();
     controller.itemRevealed({ index: 0, total: 1, rarityWeight: 0.9 });
     expect(engine.specs).toHaveLength(2);
-    expect(engine.specs[0]!.label).toBe('reward:reveal');
+    expect(engine.specs[0]!.label).toBe('reward:item-revealed');
     expect(engine.specs[0]!.delayMs).toBe(0);
-    expect(engine.specs[1]!.label).toBe('reward:escalation');
+    expect(engine.specs[1]!.label).toBe('reward:rarity-escalation');
     expect(engine.specs[1]!.delayMs).toBeGreaterThan(0);
   });
 });

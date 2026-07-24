@@ -387,7 +387,7 @@ describe('real reward-opening audio cues (achievement path)', () => {
       // same-JS-tick `AudioContext.currentTime` cancellation timing was
       // correct but fragile/non-obvious). 'reward:skip' fires instead, as
       // the sole audible "skip acknowledged" whoosh. No
-      // 'reward:reveal'/'reward:escalation' cues should ever have fired,
+      // 'reward:item-revealed'/'reward:rarity-escalation' cues should ever have fired,
       // proving the audio hooks track the REAL reveal loop, not a fixed
       // per-item cue independent of it.
       await mainSceneProbe.skipRewardOpening(page);
@@ -396,8 +396,8 @@ describe('real reward-opening audio cues (achievement path)', () => {
       });
       log = await mainSceneProbe.getRewardAudioCueLog(page);
       expect(log.map((entry) => entry.label)).toEqual(['reward:anticipation', 'reward:skip']);
-      expect(log.some((entry) => entry.label === 'reward:reveal')).toBe(false);
-      expect(log.some((entry) => entry.label === 'reward:escalation')).toBe(false);
+      expect(log.some((entry) => entry.label === 'reward:item-revealed')).toBe(false);
+      expect(log.some((entry) => entry.label === 'reward:rarity-escalation')).toBe(false);
       expect(log.some((entry) => entry.label === 'reward:summary')).toBe(false);
 
       await mainSceneProbe.acknowledgeRewardOpening(page);
@@ -429,9 +429,9 @@ describe('real reward-opening audio cues (achievement path)', () => {
       // Exactly one reveal cue per item, all BEFORE the summary cue, with
       // anticipation strictly first.
       expect(labels[0]).toBe('reward:anticipation');
-      expect(labels.filter((label) => label === 'reward:reveal')).toHaveLength(anticipation.total);
+      expect(labels.filter((label) => label === 'reward:item-revealed')).toHaveLength(anticipation.total);
       expect(labels.at(-1)).toBe('reward:summary');
-      expect(labels.indexOf('reward:summary')).toBeGreaterThan(labels.lastIndexOf('reward:reveal'));
+      expect(labels.indexOf('reward:summary')).toBeGreaterThan(labels.lastIndexOf('reward:item-revealed'));
     } finally {
       await context.close();
     }
@@ -448,7 +448,7 @@ describe('real reward-opening audio cues (achievement path)', () => {
       await advanceRewardOpeningToSummary(page, trash.total);
       const trashLog = await mainSceneProbe.getRewardAudioCueLog(page);
       const trashRevealGain = Math.max(
-        ...trashLog.filter((e) => e.label === 'reward:reveal').map((e) => e.gain),
+        ...trashLog.filter((e) => e.label === 'reward:item-revealed').map((e) => e.gain),
       );
       await mainSceneProbe.acknowledgeRewardOpening(page);
       await waitForRewardOpeningState(page, (s) => !s.open, { label: 'trash overlay to close' });
@@ -462,7 +462,7 @@ describe('real reward-opening audio cues (achievement path)', () => {
       await advanceRewardOpeningToSummary(page, rare.total);
       const rareLog = await mainSceneProbe.getRewardAudioCueLog(page);
       const rareRevealGain = Math.max(
-        ...rareLog.filter((e) => e.label === 'reward:reveal').map((e) => e.gain),
+        ...rareLog.filter((e) => e.label === 'reward:item-revealed').map((e) => e.gain),
       );
 
       // Same axis the visual bucket already proves (rare 'exciting' >
