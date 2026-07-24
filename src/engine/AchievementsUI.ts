@@ -20,7 +20,13 @@ import {
   type AchievementDifficulty,
   type AchievementReward,
 } from '../shared/achievements.js';
-import { claimAchievementReward } from '../core/systems/achievementRewards.js';
+import {
+  claimAchievementReward,
+  getPendingAchievementRewardPresentation,
+  acknowledgeAchievementRewardPresentation,
+} from '../core/systems/achievementRewards.js';
+import type { RewardOpeningUI } from './RewardOpeningUI.js';
+import { prefersReducedMotion } from './reduced-motion.js';
 
 const PANEL_PADDING = 16;
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
@@ -94,14 +100,30 @@ function rewardReveal(reward: AchievementReward): string {
 export interface AchievementsUIConfig {
   width?: number;
   height?: number;
+  /**
+   * Invoked when a claim's grant fails (e.g. the player's inventory is full),
+   * so the caller can surface feedback — the panel button gives no other
+   * indication that the click did nothing (the achievement is not marked
+   * claimed, so the claim stays retryable).
+   */
+  onGrantFailed?: (reason: string) => void;
 }
 
 export function createAchievementsUI(
   scene: Phaser.Scene,
+  rewardOpeningUI: RewardOpeningUI,
   config: AchievementsUIConfig = {},
 ): {
   toggle(world: GameWorld): void;
   refresh(world: GameWorld): void;
+  resumePendingPresentation(world: GameWorld): void;
+  /**
+   * Claim an unlocked achievement's reward and open its reveal presentation —
+   * the exact same code path the panel's "Open reward" button drives. Exposed
+   * so automation (e.g. `main-scene-probe-lab`) can trigger a real claim
+   * without synthesizing a pointer event on an internal, non-exported button.
+   */
+  claimReward(achievementId: string): void;
   isOpen(): boolean;
   destroy(): void;
 } {
@@ -184,11 +206,56 @@ export function createAchievementsUI(
     return `${unlocked}|${claimed}|${scrollIndex}|${expanded}`;
   }
 
+  function presentAchievementReward(world: GameWorld, id: string): void {
+    const presentation = getPendingAchievementRewardPresentation(world, id);
+    if (!presentation) return;
+    const def = ALL_ACHIEVEMENTS.find((a) => a.id === id);
+    rewardOpeningUI.open({
+      world,
+      presentation,
+      reducedMotion: prefersReducedMotion(),
+      sourceLabel: def ? `Achievement: ${def.title}` : 'Achievement Reward',
+      onAcknowledge: () => {
+        acknowledgeAchievementRewardPresentation(world, id);
+        lastSignature = null;
+        refresh(world);
+        resumePendingPresentation(world);
+      },
+    });
+  }
+
+  /**
+   * Auto-resumes any achievement claim whose reward presentation hasn't been
+   * shown yet (e.g. the game was reloaded between claiming and acknowledging
+   * the reveal, or two achievements unlocked in the same frame). Deterministic:
+   * scans in catalog order and opens at most one — `RewardOpeningUI` is a
+   * single shared modal, and `presentAchievementReward`'s own `onAcknowledge`
+   * chain calls back into this function so a save/frame with several pending
+   * rewards surfaces every one of them in sequence, not just the first.
+   */
+  function resumePendingPresentation(world: GameWorld): void {
+    if (rewardOpeningUI.isOpen()) return;
+    for (const def of ALL_ACHIEVEMENTS) {
+      if (getPendingAchievementRewardPresentation(world, def.id)) {
+        presentAchievementReward(world, def.id);
+        return;
+      }
+    }
+  }
+
   function open(id: string): void {
     if (!lastWorld) return;
-    claimAchievementReward(lastWorld, id);
+    const result = claimAchievementReward(lastWorld, id);
     lastSignature = null;
     refresh(lastWorld);
+    if (!result.ok) {
+      // `alreadyClaimed`/`unknown`/`locked` are not real failures the player
+      // needs to hear about (stale click, race with another claim path); only
+      // `grantFailed` (e.g. full inventory) is an actionable, silent no-op.
+      if (result.reason === 'grantFailed') config.onGrantFailed?.(result.reason);
+      return;
+    }
+    presentAchievementReward(lastWorld, id);
   }
 
   function makeRow(def: AchievementDef, x: number, y: number, w: number): number {
@@ -445,6 +512,8 @@ export function createAchievementsUI(
   return {
     toggle,
     refresh,
+    resumePendingPresentation,
+    claimReward: open,
     isOpen: () => visible,
     destroy() {
       scene.input.off('wheel', onWheel);

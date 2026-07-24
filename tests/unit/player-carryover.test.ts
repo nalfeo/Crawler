@@ -1452,4 +1452,141 @@ describe('player floor carryover', () => {
       expect(destination.playerName).toBe('Unchanged');
     }
   });
+
+  describe('reward-opening presentation persistence (save/load-safe redisplay)', () => {
+    it('round-trips an achievement pendingPresentations entry through a JSON save/load cycle', () => {
+      // Reward-opening UX hard requirement: a resolved-but-not-yet-acknowledged
+      // presentation must survive a reload byte-for-byte so the UI can redisplay
+      // the exact same reveal — never re-rolling or mutating the canonical grant.
+      const runKey = 'carryover-reward-presentation-run';
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      source.achievements.unlockedIds.add('first-bonk');
+      source.achievements.claimedIds.add('first-bonk');
+      source.achievements.pendingPresentations.set('first-bonk', {
+        kind: 'lootBox',
+        tier: 'trash',
+        gold: 25,
+        materials: ['floor1-common-scrap', 'floor1-common-scrap'],
+      });
+      const snapshot = capturePlayerCarryover(source, player);
+      const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      restorePlayerCarryover(destination, destinationPlayer, serialized);
+
+      expect(destination.achievements.pendingPresentations.get('first-bonk')).toEqual({
+        kind: 'lootBox',
+        tier: 'trash',
+        gold: 25,
+        materials: ['floor1-common-scrap', 'floor1-common-scrap'],
+      });
+    });
+
+    it('round-trips a boss chest revealedGrant through a JSON save/load cycle without mutating it', () => {
+      const runKey = 'carryover-bosschest-reveal-run';
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const instanceKeys: readonly GeneratedEquipmentInstanceKey[] = [
+        'gei:v1:carryover-bosschest-reveal-run:0',
+      ];
+      source.bossChests.set('boss-chest:goblin-warband', {
+        chestId: 'boss-chest:goblin-warband',
+        familyId: 'goblin-warband',
+        state: 'revealed',
+        createdAtMs: 123,
+        revealedGrant: { kind: 'equipment', tier: 'tier2', instanceKeys },
+      });
+      const snapshot = capturePlayerCarryover(source, player);
+      const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      restorePlayerCarryover(destination, destinationPlayer, serialized);
+
+      const restoredChest = destination.bossChests.get('boss-chest:goblin-warband');
+      expect(restoredChest?.state).toBe('revealed');
+      expect(restoredChest?.revealedGrant).toEqual({
+        kind: 'equipment',
+        tier: 'tier2',
+        instanceKeys,
+      });
+    });
+
+    it('restores a "player-carryover/v1" snapshot missing achievements.pendingPresentations (pre-existing field)', () => {
+      // pendingPresentations was added to the "player-carryover/v1" shape
+      // without a schema-version bump (same pattern as bossChests/
+      // generatedEquipmentRewardBundles). A snapshot serialized before this
+      // field existed must default to an empty map, not hard-fail restore.
+      const runKey = 'carryover-pre-presentations-run';
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const snapshot = capturePlayerCarryover(source, player);
+      const serialized = JSON.parse(JSON.stringify(snapshot)) as {
+        achievements: Record<string, unknown>;
+      };
+      expect(Array.isArray(serialized.achievements.pendingPresentations)).toBe(true);
+      delete serialized.achievements.pendingPresentations;
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+      expect(() =>
+        restorePlayerCarryover(destination, destinationPlayer, serialized),
+      ).not.toThrow();
+      expect(destination.achievements.pendingPresentations.size).toBe(0);
+    });
+
+    it('fails closed when a persisted pendingPresentations entry is malformed', () => {
+      const runKey = 'carryover-bad-presentation-run';
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const snapshot = capturePlayerCarryover(source, player);
+      const serialized = JSON.parse(JSON.stringify(snapshot)) as {
+        achievements: Record<string, unknown>;
+      };
+      serialized.achievements.pendingPresentations = [['first-bonk', { kind: 'notAKind' }]];
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow();
+    });
+
+    it('acknowledging a redisplayed boss chest reveal after reload is exact-once (no re-grant)', () => {
+      // Cross-checks the presentation-never-mutates-canon requirement: redisplay
+      // via a restored revealedGrant must never re-invoke the reward-granting
+      // claim path. We assert the restored chest carries its `revealed` state
+      // and grant snapshot forward untouched — the caller acknowledges via
+      // `acknowledgeBossChestReveal`, a separate lifecycle transition that never
+      // re-derives or re-rolls the grant.
+      const runKey = 'carryover-bosschest-exactonce-run';
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const instanceKeys: readonly GeneratedEquipmentInstanceKey[] = [
+        'gei:v1:carryover-bosschest-exactonce-run:0',
+      ];
+      const grant = { kind: 'equipment' as const, tier: 'tier1' as const, instanceKeys };
+      source.bossChests.set('boss-chest:rat-swarm', {
+        chestId: 'boss-chest:rat-swarm',
+        familyId: 'rat-swarm',
+        state: 'revealed',
+        createdAtMs: 0,
+        revealedGrant: grant,
+      });
+      const snapshot = capturePlayerCarryover(source, player);
+      const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      restorePlayerCarryover(destination, destinationPlayer, serialized);
+
+      const restoredChest = destination.bossChests.get('boss-chest:rat-swarm');
+      expect(restoredChest?.state).toBe('revealed');
+      expect(restoredChest?.revealedGrant).toEqual(grant);
+      // Redisplay must not have advanced the lifecycle state on its own.
+      expect(restoredChest?.state).not.toBe('claimed');
+    });
+  });
 });

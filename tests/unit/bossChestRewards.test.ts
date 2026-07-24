@@ -177,3 +177,45 @@ describe('acknowledgeBossChestReveal', () => {
     expect(world.bossChests.get(chestId)!.state).toBe('claimed');
   });
 });
+
+describe('revealedGrant presentation snapshot', () => {
+  it('opening a chest populates revealedGrant matching the actual granted instance keys (summary accuracy)', () => {
+    const { world, chestId } = makeChestedWorld('boss-chest-revealed-grant');
+    const playerEid = spawnPlayer(world, 0, 0);
+    const result = openBossChest(world, chestId, playerEid);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(world.bossChests.get(chestId)!.revealedGrant).toEqual({
+      kind: 'equipment',
+      tier: 'tier1',
+      instanceKeys: result.granted!.map((entry) => entry.instanceKey),
+    });
+  });
+
+  it('never clears revealedGrant on acknowledge (unlike achievement pendingPresentations) — save/load-safe redisplay', () => {
+    const { world, chestId } = makeChestedWorld('boss-chest-revealed-grant-ack');
+    const playerEid = spawnPlayer(world, 0, 0);
+    openBossChest(world, chestId, playerEid);
+    const grantBefore = world.bossChests.get(chestId)!.revealedGrant;
+
+    acknowledgeBossChestReveal(world, chestId);
+    expect(world.bossChests.get(chestId)!.revealedGrant).toEqual(grantBefore);
+
+    // A reload/resume that re-reads the chest record after acknowledge must
+    // still see the exact same snapshot — never re-rolled or cleared.
+    acknowledgeBossChestReveal(world, chestId);
+    expect(world.bossChests.get(chestId)!.revealedGrant).toEqual(grantBefore);
+  });
+
+  it('a duplicate/re-entrant open() never mutates the already-set revealedGrant', () => {
+    const { world, chestId } = makeChestedWorld('boss-chest-revealed-grant-reopen');
+    const playerEid = spawnPlayer(world, 0, 0);
+    openBossChest(world, chestId, playerEid);
+    const grantBefore = world.bossChests.get(chestId)!.revealedGrant;
+
+    const second = openBossChest(world, chestId, playerEid);
+    expect(second).toEqual({ ok: true, alreadyClaimed: true, state: 'revealed' });
+    expect(world.bossChests.get(chestId)!.revealedGrant).toEqual(grantBefore);
+  });
+});

@@ -19,6 +19,7 @@ import type {
   MainSceneState,
   NpcRenderInfo,
   ProbePoint,
+  RewardOpeningProbeState,
   TerrainRenderSummary,
   DoorRenderSummary,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
@@ -138,6 +139,18 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
   getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getDoorRenderSummary()),
+  claimAchievementReward: (page: Page, achievementId: string): Promise<void> =>
+    page.evaluate((id) => window.__mainSceneProbe!.claimAchievementReward(id), achievementId),
+  getRewardOpeningState: (page: Page): Promise<RewardOpeningProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getRewardOpeningState()),
+  tickRewardOpening: (page: Page, deltaMs: number): Promise<void> =>
+    page.evaluate((ms) => window.__mainSceneProbe!.tickRewardOpening(ms), deltaMs),
+  skipRewardOpening: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.skipRewardOpening()),
+  acknowledgeRewardOpening: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.acknowledgeRewardOpening()),
+  getWorldElapsedMs: (page: Page): Promise<number | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getWorldElapsedMs()),
 };
 
 /**
@@ -165,9 +178,31 @@ export async function waitForState(
 }
 
 /**
- * Poll the live world-camera center until it lands within `tolerancePx` of the
- * expected pixel point (or throw on timeout). Returns the final camera center.
+ * Poll the reward-opening probe until `predicate(state)` holds (or throw on
+ * timeout). Mirrors {@link waitForState} but for the shared reward-opening
+ * overlay, whose phase transitions are driven by explicit `tick`/`skip` calls
+ * rather than wall-clock time — this only exists to absorb the handful of
+ * Phaser update-loop frames between issuing a probe call and its effect
+ * landing, never to wait out a real presentation duration.
  */
+export async function waitForRewardOpeningState(
+  page: Page,
+  predicate: (state: RewardOpeningProbeState) => boolean,
+  options: { timeoutMs?: number; pollMs?: number; label?: string } = {},
+): Promise<RewardOpeningProbeState> {
+  const { timeoutMs = 8_000, pollMs = 50, label = 'reward-opening state predicate' } = options;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const state = await mainSceneProbe.getRewardOpeningState(page);
+    if (predicate(state)) {
+      return state;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for ${label}; last state: ${JSON.stringify(state)}`);
+    }
+    await page.waitForTimeout(pollMs);
+  }
+}
 export async function waitForCameraCenter(
   page: Page,
   expected: ProbePoint,

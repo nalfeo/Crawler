@@ -51,6 +51,7 @@ import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
+import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -111,7 +112,27 @@ interface MainSceneInternals {
   };
   inventoryUI?: { isOpen(): boolean };
   equipmentUI?: { isOpen(): boolean };
-  achievementsUI?: { isOpen(): boolean };
+  achievementsUI?: {
+    isOpen(): boolean;
+    refresh(world: GameWorld): void;
+    claimReward(achievementId: string): void;
+  };
+  /**
+   * The shared reward-opening sequence overlay driven by `AchievementsUI` /
+   * `BossChestUI`. Test/automation affordances only (`getPhase`/`getBucket`/
+   * `getRevealProgress`) plus the same `skip`/`acknowledge` a player's
+   * keyboard/pointer input drives — no probe-only bypass of the real state
+   * machine.
+   */
+  rewardOpeningUI?: {
+    isOpen(): boolean;
+    tick(deltaMs: number): void;
+    skip(): void;
+    acknowledge(): void;
+    getPhase(): string | null;
+    getBucket(): string | null;
+    getRevealProgress(): { readonly revealed: number; readonly total: number } | null;
+  };
   abilityLoadoutUI?: { isOpen(): boolean; close(): void };
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
@@ -151,6 +172,21 @@ interface MainSceneInternals {
 export interface ProbePoint {
   readonly x: number;
   readonly y: number;
+}
+
+/**
+ * Snapshot of the shared reward-opening sequence overlay, or the "closed"
+ * shape when no reward is currently presenting. Mirrors
+ * `RewardOpeningUI`'s test/automation getters 1:1 so the e2e suite can assert
+ * phase ordering / intensity bucket / reveal progress without reaching into
+ * Phaser internals itself.
+ */
+export interface RewardOpeningProbeState {
+  readonly open: boolean;
+  readonly phase: string | null;
+  readonly bucket: string | null;
+  readonly revealed: number;
+  readonly total: number;
 }
 
 /**
@@ -388,6 +424,23 @@ export interface MainSceneProbeApi {
    * (`renderableClosedCount > 0 && closedGeneratedCount === renderableClosedCount`).
    */
   getDoorRenderSummary(): DoorRenderSummary;
+  /**
+   * Unlock (if needed) and claim `achievementId`'s reward through the REAL
+   * `AchievementsUI.claimReward` code path — the same exact-once claim +
+   * `RewardOpeningUI.open()` call a player's "Open reward" click drives. A
+   * no-op unlock if the achievement is already unlocked/claimed (idempotent).
+   */
+  claimAchievementReward(achievementId: string): void;
+  /** Snapshot of the shared reward-opening overlay, or the closed shape. */
+  getRewardOpeningState(): RewardOpeningProbeState;
+  /** Advance the open reward-opening sequence by `deltaMs`. No-op while closed. */
+  tickRewardOpening(deltaMs: number): void;
+  /** Jump the open reward-opening sequence straight to `summary`. */
+  skipRewardOpening(): void;
+  /** Confirm the summary (the real acknowledge/claim-once path). */
+  acknowledgeRewardOpening(): void;
+  /** Live `world.elapsedMs` — used to prove the sim is frozen while a reward presents. */
+  getWorldElapsedMs(): number | null;
 }
 
 function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): () => void {
@@ -910,6 +963,62 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         openColorCount: summary?.openColorCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
       };
+    },
+
+    claimAchievementReward: (achievementId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      const achievementsUI = scene?.achievementsUI;
+      if (!world || !achievementsUI) {
+        return;
+      }
+      // Use the REAL unlock path (`unlockAchievement`) rather than mutating
+      // `unlockedIds` directly — for `lootBox`/`equipment` rewards, unlocking
+      // is what resolves the immutable reward bundle into
+      // `world.lootBoxRewardBundles`/generated-equipment registry BEFORE the
+      // unlock is recorded. Without that resolution step `claimReward` below
+      // fails closed (`grantFailed`, no bundle) and the reward-opening overlay
+      // never appears. Idempotent: a no-op if already unlocked.
+      unlockAchievement(world, achievementId);
+      // `refresh` unconditionally captures `world` as the panel's `lastWorld`
+      // even while the panel is closed — the same assignment the real toggle
+      // path performs — so claimReward can resolve/grant without requiring
+      // the achievements panel to be visibly open first.
+      achievementsUI.refresh(world);
+      achievementsUI.claimReward(achievementId);
+    },
+
+    getRewardOpeningState: (): RewardOpeningProbeState => {
+      const ui = getScene()?.rewardOpeningUI;
+      const open = ui?.isOpen() ?? false;
+      if (!ui || !open) {
+        return { open: false, phase: null, bucket: null, revealed: 0, total: 0 };
+      }
+      const progress = ui.getRevealProgress();
+      return {
+        open: true,
+        phase: ui.getPhase(),
+        bucket: ui.getBucket(),
+        revealed: progress?.revealed ?? 0,
+        total: progress?.total ?? 0,
+      };
+    },
+
+    tickRewardOpening: (deltaMs: number) => {
+      getScene()?.rewardOpeningUI?.tick(deltaMs);
+    },
+
+    skipRewardOpening: () => {
+      getScene()?.rewardOpeningUI?.skip();
+    },
+
+    acknowledgeRewardOpening: () => {
+      getScene()?.rewardOpeningUI?.acknowledge();
+    },
+
+    getWorldElapsedMs: (): number | null => {
+      const world = getScene()?.world;
+      return world ? world.elapsedMs : null;
     },
   };
   probeWindow.__mainSceneProbe = api;
