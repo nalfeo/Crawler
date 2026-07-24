@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "asset-issue-comment-signed-urls",
+  "task_title": "Fix sprite issue comment embeds for private Azure blobs",
+  "estimated_apples": 2,
+  "stages": {}
+}

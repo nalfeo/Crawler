@@ -62,7 +62,7 @@ import {
   VALIDATION_FAILED_LABEL,
 } from './state.mjs';
 import { humanApprovalRejection } from './human-approval.mjs';
-import { countOutstandingRecoveryRuns, GLOBAL_TRAIN_DISPATCH_CAP } from '../ci-recovery/router.mjs';
+import { countOutstandingRecoveryRuns, resolveGlobalDispatchCaps } from '../ci-recovery/router.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -70,6 +70,7 @@ const { promotionToken: token, workflowDispatchToken } = resolveMergeTrainTokens
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
+const { trainCap: resolvedTrainCap } = resolveGlobalDispatchCaps(process.env);
 
 if (!owner || !repo || !token || !Number.isInteger(trustedAppId)) {
   throw new Error('Merge train requires GITHUB_REPOSITORY, a GitHub token, and MERGE_TRAIN_APP_ID');
@@ -278,15 +279,17 @@ const { dispatchRecovery, dispatchValidation: baseDispatchValidation } = buildDi
   repo,
 });
 
-// Gate all reconcile.mjs CI Recovery dispatches against GLOBAL_TRAIN_DISPATCH_CAP
-// so they participate in the same backpressure as the router workflow. This is
-// best-effort: the router's concurrency group serialises its own invocations but
-// cannot serialise against reconcile.mjs calls, so a narrow race window remains.
-// See the router's `runFromEnv` comment for a full description of that gap.
+// Gate all reconcile.mjs CI Recovery dispatches against the runtime-resolved
+// trainCap so they participate in the same backpressure as the router workflow.
+// resolvedTrainCap honours CI_GLOBAL_TRAIN_DISPATCH_CAP env override (repo
+// Actions variable), falling back to the GLOBAL_TRAIN_DISPATCH_CAP default.
+// This is best-effort: the router's concurrency group serialises its own
+// invocations but cannot serialise against reconcile.mjs calls, so a narrow
+// race window remains. See the router's `runFromEnv` comment for details.
 const dispatchRecoveryGated = buildGatedDispatchRecovery({
   dispatchRecovery,
   countRuns: countOutstandingRecoveryRuns,
-  cap: GLOBAL_TRAIN_DISPATCH_CAP,
+  cap: resolvedTrainCap,
   token,
   owner,
   repo,
