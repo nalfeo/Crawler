@@ -1,8 +1,0 @@
-{
-  "schema_version": "review-ledger/v1",
-  "date": "2026-07-23",
-  "session_slug": "wave-b-display-name-authority-fix",
-  "task_title": "Post-merge correction: relocate Wave B display-name override authority to floor2-equipment-art.ts",
-  "estimated_apples": 2,
-  "stages": {}
-}

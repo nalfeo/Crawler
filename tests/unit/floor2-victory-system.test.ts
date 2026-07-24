@@ -9,7 +9,9 @@ import {
   FLOOR2_VICTORY_GOAL_ID,
   floor2VictorySystem,
   confirmFloor2StairDescend,
+  denUnlockGoalId,
 } from '../../src/game/floor2Scenario.js';
+import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 import {
   createAchievementCatalog,
   createAchievementCatalogRegistry,
@@ -146,6 +148,48 @@ describe('floor2VictorySystem', () => {
     floor2VictorySystem(world);
 
     expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
+  });
+
+  it('spawns boss chests for the secondary defeat-latch path (all dens unlocked, no living boss entities, some families not yet decapitated)', () => {
+    // Regression test for a gap surfaced by code review: a family whose boss
+    // ECS entity vanishes without a normal `death` combat event (e.g. all
+    // dens unlocked while the boss entity is otherwise despawned/recycled)
+    // is latched "defeated" by this secondary sweep. Without a
+    // spawnBossChestForDefeatedBoss call in that branch, such a family would
+    // be permanently defeated with no boss chest ever created.
+    const seed = 1205;
+    const world = createTestWorld({
+      seed,
+      floor: 2,
+      generatedEquipmentRunKey: 'victory-sweep-test',
+    });
+    world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+    world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+    world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+    const roster = selectFloor2Roster(new SeededRandom(seed), loadFamilies(), loadResources(), {
+      presentCountFourProbability: 0,
+    });
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+      },
+    };
+    // No families decapitated yet, no living boss entities spawned (so
+    // allBossesDead=false, allBossEntitiesGone=true), and every present
+    // family's den goal flag is unlocked.
+    for (const familyId of world.floorExtendedState.familyState!.presentFamilies) {
+      world.goalFlags.set(denUnlockGoalId(familyId), true);
+    }
+
+    floor2VictorySystem(world);
+
+    for (const familyId of world.floorExtendedState.familyState!.presentFamilies) {
+      const chestId = createBossChestId(familyId);
+      expect(world.bossChests.has(chestId)).toBe(true);
+      expect(world.bossChests.get(chestId)?.state).toBe('available');
+    }
   });
 });
 

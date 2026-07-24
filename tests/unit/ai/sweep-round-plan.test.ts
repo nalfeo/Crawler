@@ -40,12 +40,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyRoundResult,
+  assertResumeCompatible,
+  buildResumeLineageArtifact,
+  extractLegacyBaselineShard,
   halveSteps,
+  inferRunInputsFromCheckpoint,
   initCheckpoint,
+  normalizeResumedCheckpoint,
   planCandidates,
   planRoundMatrix,
+  resolveInitRunInputs,
   toSearchArtifact,
   type CheckpointWithKnobs,
+  type ResumeExpectedProvenance,
   type RoundCheckpoint,
 } from '../../../scripts/agent/perf/round-plan.js';
 import {
@@ -53,6 +60,7 @@ import {
   comboId,
   configId,
   LEGACY_COMBO_ID,
+  SECONDARY_KNOBS,
   type Combo,
   type SweepConfig,
   type TunableKnob,
@@ -127,6 +135,72 @@ function baselineShard(score = 100): ShardArtifact {
 
 function baseCheckpoint(score = 100): RoundCheckpoint {
   return initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(score));
+}
+
+/** A complete, duplicate-free, rectangular (seed × weapon) baseline shard for
+ *  `legacy+legacy` — the shape `inferRunInputsFromCheckpoint` requires to
+ *  safely infer a legacy checkpoint's implicit TRAIN seed panel + weapon
+ *  list. Mirrors cancelled run 29786216369's actual baseline shape (a full
+ *  train-seed × weapon sweep of the canonical LEGACY base config). */
+function legacyPanelShard(seeds: number[], weapons: string[]): ShardArtifact {
+  const rows: RunRow[] = [];
+  for (const s of seeds) {
+    for (const w of weapons) {
+      rows.push(row(BASE_ID, w, s, 100));
+    }
+  }
+  return shard(rows, { [BASE_ID]: BASE });
+}
+
+/** A legacy (pre-resume-support) `legacy+legacy` checkpoint — no `runInputs` —
+ *  whose round-0 baseline rows form the given seed × weapon panel. */
+function legacyCheckpointWithPanel(seeds: number[], weapons: string[]): RoundCheckpoint {
+  return initCheckpoint(LEGACY_LEGACY, KNOBS, legacyPanelShard(seeds, weapons));
+}
+
+/** A complete, duplicate-free, rectangular (seed × weapon) shard for an
+ *  arbitrary (config, combo) pair — generalizes `legacyPanelShard` beyond the
+ *  canonical LEGACY base config, for building a non-LEGACY checkpoint's OWN
+ *  base panel (as distinct from its separate LEGACY incumbent panel). */
+function ownPanelShard(
+  cfg: SweepConfig,
+  cfgId: string,
+  comboIdStr: string,
+  seeds: number[],
+  weapons: string[],
+): ShardArtifact {
+  const rows: RunRow[] = [];
+  for (const s of seeds) {
+    for (const w of weapons) {
+      rows.push(row(cfgId, w, s, 100, true, comboIdStr));
+    }
+  }
+  return shard(rows, { [cfgId]: cfg });
+}
+
+/** A non-LEGACY (`navmeshFused+legacy`) legacy (pre-resume-support) checkpoint
+ *  — no `runInputs` — with a SEPARATE LEGACY incumbent (from
+ *  `legacyBaseline`). `ownSeeds`/`ownWeapons` and `legacySeeds`/`legacyWeapons`
+ *  are independently sized so mismatch-between-panels tests can construct a
+ *  deliberately malformed checkpoint (own combo evaluated on a narrower/wider
+ *  panel than its LEGACY safety-gate incumbent). */
+function nonLegacyCheckpointWithPanels(
+  ownSeeds: number[],
+  ownWeapons: string[],
+  legacySeeds: number[],
+  legacyWeapons: string[],
+): RoundCheckpoint {
+  const navmeshBase = baseConfigForCombo(NAVMESH_LEGACY);
+  const navmeshBaseId = configId(navmeshBase);
+  const ownShard = ownPanelShard(
+    navmeshBase,
+    navmeshBaseId,
+    NAVMESH_LEGACY_COMBO_ID,
+    ownSeeds,
+    ownWeapons,
+  );
+  const legacyShard = legacyPanelShard(legacySeeds, legacyWeapons);
+  return initCheckpoint(NAVMESH_LEGACY, KNOBS, ownShard, legacyShard);
 }
 
 describe('initCheckpoint', () => {
@@ -409,6 +483,25 @@ describe('initCheckpoint', () => {
       /legacyBaseline shard rows must all reference its sole config/,
     );
   });
+
+  it('stamps the optional runInputs (TRAIN seeds + weapons + secondary) onto the checkpoint verbatim when supplied, and omits the field entirely when not', () => {
+    const withRunInputs = initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(150), undefined, {
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: true,
+    });
+    expect(withRunInputs.runInputs).toEqual({
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: true,
+    });
+
+    // Legacy caller (no runInputs arg) must NOT get a `runInputs: undefined`
+    // key — assertResumeCompatible's `!checkpoint.runInputs` check must see a
+    // genuinely absent field, matching real pre-resume-support checkpoints.
+    const withoutRunInputs = baseCheckpoint(150);
+    expect('runInputs' in withoutRunInputs).toBe(false);
+  });
 });
 
 describe('planCandidates', () => {
@@ -440,6 +533,31 @@ describe('planCandidates', () => {
   it('throws when bestConfigId is missing from configs (corrupt checkpoint)', () => {
     const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), bestConfigId: 'no-such-id' };
     expect(() => planCandidates(checkpoint, KNOBS)).toThrow(/missing config for bestConfigId/);
+  });
+
+  it('with no `round` argument, behaves exactly as before (round-agnostic — legacy call sites unaffected)', () => {
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), round: 2 };
+    expect(planCandidates(checkpoint, KNOBS)).toHaveLength(2);
+  });
+
+  it('a cross-run RESUMED checkpoint already past this round emits ZERO candidates for it — the fix for the real "extra optimization step" bug (Copilot review finding #4)', () => {
+    // Without the `round` gate, planCandidates only looks at `converged`/
+    // `configs`, so a checkpoint imported at round 2 would still emit fresh
+    // round-1 candidates when round1-candidates re-derives its neighbour set
+    // — silently performing an UNREQUESTED extra coordinate-ascent step using
+    // the checkpoint's CURRENT (already-reduced) step size.
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), round: 2 };
+    expect(planCandidates(checkpoint, KNOBS, 1)).toEqual([]);
+  });
+
+  it('a checkpoint exactly AT the requested round also emits zero candidates (>= is inclusive — this round already ran)', () => {
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), round: 1 };
+    expect(planCandidates(checkpoint, KNOBS, 1)).toEqual([]);
+  });
+
+  it('a checkpoint BEHIND the requested round still plans normally (ordinary fresh-run progression is unaffected)', () => {
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(), round: 0 };
+    expect(planCandidates(checkpoint, KNOBS, 1)).toHaveLength(2);
   });
 });
 
@@ -481,6 +599,18 @@ describe('planRoundMatrix', () => {
     ];
     // 4 total candidates, cap 3 -> must throw the same cardinality-guard message.
     expect(() => planRoundMatrix(checkpoints, 3)).toThrow(/exceeding the safe cap of 3/);
+  });
+
+  it('forwards `round` to planCandidates so a resumed-ahead combo contributes zero candidates while a fresh sibling combo still plans normally', () => {
+    const checkpoints: CheckpointWithKnobs[] = [
+      // Resumed at round 2 -- must plan nothing for round 1.
+      { checkpoint: { ...baseCheckpoint(), combo: 'legacy+legacy', round: 2 }, knobs: KNOBS },
+      // Fresh at round 0 -- must plan its 2 round-1 neighbours normally.
+      { checkpoint: { ...baseCheckpoint(), combo: 'navmeshFused+legacy', round: 0 }, knobs: KNOBS },
+    ];
+    const matrix = planRoundMatrix(checkpoints, 200, 1);
+    expect(matrix).toHaveLength(2);
+    expect(new Set(matrix.map((c) => c.combo))).toEqual(new Set(['navmeshFused+legacy']));
   });
 });
 
@@ -775,6 +905,71 @@ describe('applyRoundResult', () => {
     expect(updated.converged).toBe(false);
   });
 
+  it('does NOT advance `checkpoint.round` when the round is infra-incomplete (missing shards) — the round LABEL must stay at the last genuinely-complete tier', () => {
+    // Code-review finding (13th thread): the checkpoint's SEARCH STATE
+    // (bestConfigId/steps/converged) was already correctly frozen for an
+    // infra-incomplete round by the tests above, but the returned `round`
+    // field must ALSO stay at the prior value — otherwise a cross-run resume
+    // whose `rounds` input exactly matches this checkpoint's (falsely
+    // advanced) round would validate against permanently-incomplete search
+    // data. `checkpoint.round` starts at 0 (baseCheckpoint uses
+    // initCheckpoint); calling round 1 with an infra-incomplete result must
+    // leave `round` at 0, not bump it to 1.
+    const checkpoint = baseCheckpoint(500);
+    expect(checkpoint.round).toBe(0);
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, [], { plannedCount: 2 });
+    expect(updated.round).toBe(0); // NOT bumped to 1 — round 1 never actually completed
+  });
+
+  it('DOES advance `checkpoint.round` to the requested round on a genuinely complete round (control case proving the infra-incomplete guard is targeted, not a general round-advance regression)', () => {
+    const checkpoint = baseCheckpoint(500);
+    const worse: SweepConfig = { ...BASE, aggression: 1.5 };
+    const worseId = configId(worse);
+    const candidateShard = shard([row(worseId, 'sword', 1, 10)], { [worseId]: worse });
+    // 1 planned, 1 arrived — genuinely complete.
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, [candidateShard], { plannedCount: 1 });
+    expect(updated.round).toBe(1); // advances normally — no infra failure occurred
+  });
+
+  it('an infra-incomplete round-N checkpoint correctly fails assertResumeCompatible for the rN tier it was uploaded under, self-healing a resumed run back to the last genuinely-complete tier', () => {
+    // End-to-end proof that the 13th-thread fix and the existing 10th-thread
+    // combo/round binding compose correctly: round 2 fails to fully complete
+    // (an infra failure drops a shard), so the checkpoint that would be
+    // uploaded as `search-checkpoint-r2-<combo>.json` still internally
+    // reports round 1 (per the test above). A NEW dispatch requesting
+    // `rounds=2` must reject THIS artifact for the r2 slot — exactly the
+    // existing "mislabeled artifact" guard — so `resume-import`'s tier scan
+    // falls back to the genuinely-complete r1 (or earlier) artifact instead
+    // of silently validating incomplete round-2 search state.
+    let checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(150), undefined, {
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: false,
+    });
+    // Round 1 completes genuinely.
+    checkpoint = applyRoundResult(checkpoint, 1, KNOBS, []);
+    expect(checkpoint.round).toBe(1);
+    // Round 2 is infra-incomplete (a shard never arrived) — round must NOT advance.
+    checkpoint = applyRoundResult(checkpoint, 2, KNOBS, [], { plannedCount: 2 });
+    expect(checkpoint.round).toBe(1);
+
+    const expectedR2: ResumeExpectedProvenance = {
+      meta: { ...META },
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: false,
+      combo: LEGACY_COMBO_ID,
+      round: 2, // the tier this checkpoint was (mis)uploaded as search-checkpoint-r2-*
+    };
+    expect(() => assertResumeCompatible(checkpoint, expectedR2)).toThrow(
+      /checkpoint round 1 != expected round 2/,
+    );
+
+    // But it DOES validate cleanly against the tier it actually, genuinely completed.
+    const expectedR1: ResumeExpectedProvenance = { ...expectedR2, round: 1 };
+    expect(() => assertResumeCompatible(checkpoint, expectedR1)).not.toThrow();
+  });
+
   it('marks converged once a knob’s step has halved below its minStep across repeated non-improving rounds', () => {
     let checkpoint = baseCheckpoint(500);
     // Round 1: no improvement -> step 0.5 -> 0.25 (still >= minStep 0.25).
@@ -957,6 +1152,52 @@ describe('applyRoundResult', () => {
     expect(updated.incumbentCombo).toBe(LEGACY_COMBO_ID); // preserved across rounds
     expect(updated.incumbentConfigId).toBe(BASE_ID); // still the LEGACY config
   });
+
+  it('is an idempotent no-op for a round a cross-run resume already completed (checkpoint.round >= round, no shards) — never relabels round backward', () => {
+    // The fix for Copilot review finding #4: `round1-select` for a combo
+    // resumed at round 2 must not overwrite `checkpoint.round` back to 1 —
+    // `planCandidates(..., 1)` correspondingly plans (and thus evaluates)
+    // nothing for round 1 on this checkpoint, so candidateShards is empty.
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(500), round: 2 };
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, []);
+    expect(updated).toEqual(checkpoint); // fully unchanged, including round: 2
+  });
+
+  it('never relabels round backward even in the defensive case where shards ARE present for an already-past round', () => {
+    // Belt-and-suspenders: even if a caller passes candidateShards despite
+    // checkpoint.round already exceeding the requested round, the merged
+    // checkpoint's `round` must never regress below its own prior value.
+    // Uses a 2-cell panel (matching the "adopts a genuinely improving
+    // candidate" fixture above) so the candidate genuinely clears the
+    // net-win promotion gate — a 1-cell tie would never qualify.
+    const baseline = shard(
+      [row(BASE_ID, 'sword', 1, 100, true), row(BASE_ID, 'bow', 2, 100, false)],
+      { [BASE_ID]: BASE },
+    );
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // 1 win
+    const advanced: RoundCheckpoint = { ...checkpoint, round: 2 };
+    const better: SweepConfig = { ...BASE, aggression: 1.5 };
+    const betterId = configId(better);
+    // Wins both cells -> 2 total wins, strictly more than the incumbent's 1.
+    const candidateShard = shard([row(betterId, 'sword', 1, 500), row(betterId, 'bow', 2, 100)], {
+      [betterId]: better,
+    });
+    const updated = applyRoundResult(advanced, 1, KNOBS, [candidateShard]);
+    expect(updated.round).toBe(2); // Math.max(1, 2), never regresses to 1
+    expect(updated.bestConfigId).toBe(betterId); // merge/promotion logic still runs
+  });
+
+  it('still advances round forward normally for an ordinary fresh-run progression (round < checkpoint.round is the only special case)', () => {
+    const checkpoint = baseCheckpoint(500);
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, []);
+    expect(updated.round).toBe(1); // Math.max(1, 0) === 1, ordinary forward progress
+  });
+
+  it('preserves round on the already-converged idempotent-no-op path too (Math.max, not unconditional overwrite)', () => {
+    const checkpoint: RoundCheckpoint = { ...baseCheckpoint(500), converged: true, round: 3 };
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, []);
+    expect(updated.round).toBe(3); // Math.max(1, 3), never regresses to 1
+  });
 });
 
 describe('toSearchArtifact', () => {
@@ -998,5 +1239,555 @@ describe('halveSteps', () => {
     const steps: Partial<Record<TunableKnob, number>> = {};
     halveSteps(steps, KNOBS);
     expect(steps.aggression).toBe(0.25); // default step 0.5, halved once
+  });
+});
+
+describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_id)', () => {
+  // A resumed checkpoint must carry `runInputs` (real ones stamp this via
+  // initCheckpoint's optional 5th arg — see the `initCheckpoint` describe
+  // block above) and match the CURRENT run's expected provenance exactly.
+  const resumedCheckpoint = (): RoundCheckpoint =>
+    initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(150), undefined, {
+      trainSeeds: '1-24',
+      weapons: 'sword,bow,baseball-bat',
+      secondary: false,
+    });
+
+  const expected = (): ResumeExpectedProvenance => ({
+    meta: { ...META },
+    trainSeeds: '1-24',
+    weapons: 'sword,bow,baseball-bat',
+    secondary: false,
+    combo: LEGACY_COMBO_ID,
+    round: 0,
+  });
+
+  it('passes silently when every provenance field matches exactly', () => {
+    expect(() => assertResumeCompatible(resumedCheckpoint(), expected())).not.toThrow();
+  });
+
+  it('throws when checkpoint.combo does not match expected.combo — a mislabeled artifact (wrong combo) must never be silently trusted from its filename alone', () => {
+    const exp = expected();
+    exp.combo = NAVMESH_LEGACY_COMBO_ID; // checkpoint is actually 'legacy+legacy'
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(
+      /checkpoint combo .* != expected combo/,
+    );
+  });
+
+  it('throws when checkpoint.round does not match expected.round — a mislabeled artifact (wrong tier, e.g. an r2 checkpoint imported as r1) must never silently resume more or less optimization than requested', () => {
+    const exp = expected();
+    exp.round = 2; // resumedCheckpoint() is always round 0 (initCheckpoint)
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(
+      /checkpoint round 0 != expected round 2/,
+    );
+  });
+
+  it('checks combo/round BEFORE any other provenance field, so a mislabeled artifact fails fast with an unambiguous combo/round error rather than a confusing downstream one', () => {
+    const exp = expected();
+    exp.combo = NAVMESH_LEGACY_COMBO_ID;
+    exp.meta = { ...exp.meta, floorId: 'floor2' }; // would ALSO fail on floorId
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/checkpoint combo/);
+  });
+
+  it('reuses the existing strict shard-provenance checks: throws on schemaVersion mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, schemaVersion: SHARD_SCHEMA_VERSION + 1 };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/schemaVersion/);
+  });
+
+  it('reuses the existing strict shard-provenance checks: throws on floorId mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, floorId: 'floor2' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/floorId/);
+  });
+
+  it('reuses the existing strict shard-provenance checks: throws on budgetMs mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, budgetMs: exp.meta.budgetMs + 1 };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/budgetMs/);
+  });
+
+  it('reuses the existing strict shard-provenance checks: throws on maxFrames mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, maxFrames: exp.meta.maxFrames + 1 };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/maxFrames/);
+  });
+
+  it('throws on stage mismatch (a cross-run-only check, never varies intra-run)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, stage: 'validate' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/stage/);
+  });
+
+  it('throws on runnerOs mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, runnerOs: 'macos' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/runner-OS/);
+  });
+
+  it('throws on nodeVersion mismatch', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, nodeVersion: 'v20.0.0' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/node-version/);
+  });
+
+  it('does NOT throw on packageLockHash mismatch — an incidental/transitive dependency bump (e.g. run 29786216369-vs-later-main lockfile drift) always differs once ANY dependency has since changed, so it is deliberately excluded from the gate (see docstring)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, packageLockHash: 'ffffffffffffffffffffffff' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).not.toThrow();
+  });
+
+  it('does NOT throw on workflowSha mismatch — GITHUB_SHA always differs once the resuming workflow itself has changed, so it is deliberately excluded from the gate (see docstring)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, workflowSha: 'ffffffffffffffffffffffffffffffff' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).not.toThrow();
+  });
+
+  it('still fails closed on a genuine incompatibility even when workflowSha ALSO differs (workflowSha exclusion does not widen the gate)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, workflowSha: 'ffffffffffffffffffffffffffffffff', floorId: 'floor2' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/floorId/);
+  });
+
+  it('still fails closed on a genuine incompatibility even when packageLockHash ALSO differs (packageLockHash exclusion does not widen the gate)', () => {
+    const exp = expected();
+    exp.meta = { ...exp.meta, packageLockHash: 'ffffffffffffffffffffffff', floorId: 'floor2' };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/floorId/);
+  });
+
+  it('still fails closed on a genuine incompatibility even when BOTH workflowSha and packageLockHash differ (neither exclusion, together, widens the gate)', () => {
+    const exp = expected();
+    exp.meta = {
+      ...exp.meta,
+      workflowSha: 'ffffffffffffffffffffffffffffffff',
+      packageLockHash: 'ffffffffffffffffffffffff',
+      schemaVersion: SHARD_SCHEMA_VERSION + 1,
+    };
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/schemaVersion/);
+  });
+
+  it('throws on trainSeeds mismatch (a different TRAIN panel makes scores incomparable)', () => {
+    const exp = expected();
+    exp.trainSeeds = '1-80';
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/trainSeeds/);
+  });
+
+  it('throws on weapons mismatch', () => {
+    const exp = expected();
+    exp.weapons = 'sword';
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/weapons/);
+  });
+
+  it('throws on secondary mismatch: checkpoint searched WITHOUT secondary knobs, dispatch expects them (knobsFor selects a different TunableKnob[] set)', () => {
+    const exp = expected();
+    exp.secondary = true; // checkpoint stamped secondary:false above
+    expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/secondary/);
+  });
+
+  it('throws on secondary mismatch: checkpoint searched WITH secondary knobs, dispatch expects the base set', () => {
+    const checkpointWithSecondary = initCheckpoint(
+      LEGACY_LEGACY,
+      KNOBS,
+      baselineShard(150),
+      undefined,
+      {
+        trainSeeds: '1-24',
+        weapons: 'sword,bow,baseball-bat',
+        secondary: true,
+      },
+    );
+    const exp = expected(); // secondary: false
+    expect(() => assertResumeCompatible(checkpointWithSecondary, exp)).toThrow(/secondary/);
+  });
+
+  it('fails closed when a legacy checkpoint (no recorded runInputs) has only a 1-seed/1-weapon baseline panel that cannot match a multi-seed/multi-weapon expected TRAIN panel — inference is attempted (not an unconditional throw) but still fails closed on the resulting mismatch', () => {
+    const legacyCheckpoint = baseCheckpoint(150); // no runInputs arg passed; baseline is 1 row (seed 1, sword)
+    expect('runInputs' in legacyCheckpoint).toBe(false);
+    expect(() => assertResumeCompatible(legacyCheckpoint, expected())).toThrow(
+      /no recorded runInputs — inferred trainSeeds/,
+    );
+  });
+
+  describe("legacy checkpoints with no recorded runInputs: safe inference from the checkpoint's own baseline panel (run 29786216369 recovery)", () => {
+    // Mirrors cancelled run 29786216369's actual shape: a legacy (pre-runInputs)
+    // checkpoint whose round-0 baseline is a complete train-seed x weapon sweep.
+    const canonicalPanelCheckpoint = () => legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    const canonicalExpected = (): ResumeExpectedProvenance => ({
+      meta: { ...META },
+      trainSeeds: '1-3',
+      weapons: 'sword,bow',
+      secondary: false,
+      combo: LEGACY_COMBO_ID,
+      round: 0,
+    });
+
+    it('accepts a legacy checkpoint whose complete, duplicate-free, rectangular baseline panel exactly matches the requested trainSeeds/weapons/secondary (canonical run-29786216369 shape)', () => {
+      expect(() =>
+        assertResumeCompatible(canonicalPanelCheckpoint(), canonicalExpected()),
+      ).not.toThrow();
+    });
+
+    it('rejects when the requested trainSeeds panel is a superset of the inferred panel (seed mismatch)', () => {
+      const exp = canonicalExpected();
+      exp.trainSeeds = '1-4'; // checkpoint panel only covers seeds 1-3
+      expect(() => assertResumeCompatible(canonicalPanelCheckpoint(), exp)).toThrow(
+        /no recorded runInputs — inferred trainSeeds/,
+      );
+    });
+
+    it('rejects when the requested weapons list does not match the inferred weapons (weapon mismatch)', () => {
+      const exp = canonicalExpected();
+      exp.weapons = 'sword'; // checkpoint panel covers sword AND bow
+      expect(() => assertResumeCompatible(canonicalPanelCheckpoint(), exp)).toThrow(
+        /no recorded runInputs — inferred weapons/,
+      );
+    });
+
+    it('rejects when the requested secondary flag does not match the inferred secondary flag (steps has no SECONDARY_KNOBS key => secondary=false)', () => {
+      const exp = canonicalExpected();
+      exp.secondary = true; // fixture's KNOBS=['aggression'] is a PRIMARY knob only
+      expect(() => assertResumeCompatible(canonicalPanelCheckpoint(), exp)).toThrow(
+        /no recorded runInputs — inferred secondary knobs flag/,
+      );
+    });
+
+    it('rejects an incomplete/ragged panel (missing one (seed, weapon) combination) rather than guessing', () => {
+      const rows: RunRow[] = [
+        row(BASE_ID, 'sword', 1, 100),
+        row(BASE_ID, 'bow', 1, 100),
+        row(BASE_ID, 'sword', 2, 100),
+        // missing (seed=2, weapon=bow): 3 rows for a would-be 2x2 panel
+      ];
+      const incompleteCheckpoint = initCheckpoint(
+        LEGACY_LEGACY,
+        KNOBS,
+        shard(rows, { [BASE_ID]: BASE }),
+      );
+      const exp = canonicalExpected();
+      exp.trainSeeds = '1-2';
+      exp.weapons = 'sword,bow';
+      expect(() => assertResumeCompatible(incompleteCheckpoint, exp)).toThrow(
+        /do not form a complete rectangular panel/,
+      );
+    });
+
+    it('rejects a duplicate (seed, weapon) row rather than guessing', () => {
+      const rows: RunRow[] = [
+        row(BASE_ID, 'sword', 1, 100),
+        row(BASE_ID, 'sword', 1, 105), // duplicate (seed=1, weapon=sword)
+      ];
+      const duplicateCheckpoint = initCheckpoint(
+        LEGACY_LEGACY,
+        KNOBS,
+        shard(rows, { [BASE_ID]: BASE }),
+      );
+      const exp = canonicalExpected();
+      exp.trainSeeds = '1';
+      exp.weapons = 'sword';
+      expect(() => assertResumeCompatible(duplicateCheckpoint, exp)).toThrow(
+        /duplicate own base config .* row/,
+      );
+    });
+
+    it('does not weaken modern (runInputs present) behaviour: exact string comparison still applies even when the checkpoint would ALSO satisfy the panel-inference semantics', () => {
+      // A checkpoint stamped with real runInputs from a different, but
+      // semantically-equivalent-looking, weapon ordering must still fail on
+      // simple string inequality — the modern path never falls through to
+      // the lenient semantic-inference comparison.
+      const modernCheckpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(150), undefined, {
+        trainSeeds: '1-24',
+        weapons: 'bow,sword,baseball-bat', // different order, same set
+        secondary: false,
+      });
+      const exp: ResumeExpectedProvenance = {
+        meta: { ...META },
+        trainSeeds: '1-24',
+        weapons: 'sword,bow,baseball-bat',
+        secondary: false,
+        combo: LEGACY_COMBO_ID,
+        round: 0,
+      };
+      expect(() => assertResumeCompatible(modernCheckpoint, exp)).toThrow(/weapons/);
+    });
+
+    it('rejects a requested trainSeeds string containing a duplicate seed, even if the DEDUPED set would otherwise match the inferred panel exactly', () => {
+      // parseSeeds (the ACTUAL evaluator's --train-seeds/--seeds parser)
+      // preserves duplicates verbatim -- a fresh leg requesting "1,1,2,3"
+      // genuinely executes seed 1 TWICE and persists two rows for it, so
+      // silently deduping the request before comparing would accept a
+      // request whose fresh execution would NOT match the imported
+      // duplicate-free panel's row set (found in review).
+      const exp = canonicalExpected();
+      exp.trainSeeds = '1,1,2,3'; // dedupes to [1,2,3], same as the inferred panel
+      expect(() => assertResumeCompatible(canonicalPanelCheckpoint(), exp)).toThrow(
+        /requested trainSeeds '1,1,2,3' contains duplicate seed/,
+      );
+    });
+
+    it('rejects a requested weapons string containing an empty entry (stray/doubled comma)', () => {
+      const exp = canonicalExpected();
+      exp.weapons = 'sword,bow,'; // trailing comma -> empty 3rd entry
+      expect(() => assertResumeCompatible(canonicalPanelCheckpoint(), exp)).toThrow(
+        /requested weapons 'sword,bow,' contains an empty entry/,
+      );
+    });
+
+    it('rejects a requested weapons string containing a duplicate weapon, even if the DEDUPED set would otherwise match the inferred panel exactly', () => {
+      const exp = canonicalExpected();
+      exp.weapons = 'sword,bow,sword'; // dedupes to {sword,bow}, same as inferred
+      expect(() => assertResumeCompatible(canonicalPanelCheckpoint(), exp)).toThrow(
+        /requested weapons 'sword,bow,sword' contains duplicate weapon/,
+      );
+    });
+  });
+});
+
+describe('inferRunInputsFromCheckpoint (legacy checkpoint panel inference, unit-level)', () => {
+  it('infers sorted/deduped trainSeeds + weapons + secondary=false from a complete rectangular panel', () => {
+    const checkpoint = legacyCheckpointWithPanel([3, 1, 2], ['bow', 'sword']);
+    expect(inferRunInputsFromCheckpoint(checkpoint)).toEqual({
+      trainSeeds: [1, 2, 3],
+      weapons: ['bow', 'sword'],
+      secondary: false,
+    });
+  });
+
+  it('throws when the checkpoint has no round-0 baseline rows for its own incumbent anchor', () => {
+    const checkpoint = legacyCheckpointWithPanel([1], ['sword']);
+    // Simulate a corrupted/foreign checkpoint whose rows never match its own
+    // incumbentCombo/incumbentConfigId anchor.
+    const corrupted: RoundCheckpoint = { ...checkpoint, rows: [] };
+    expect(() => inferRunInputsFromCheckpoint(corrupted)).toThrow(/no round-0 baseline rows found/);
+  });
+
+  it('infers secondary=true from a checkpoint whose steps contain ALL of SECONDARY_KNOBS', () => {
+    const fullSecondaryKnobs: TunableKnob[] = [...KNOBS, ...SECONDARY_KNOBS];
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, fullSecondaryKnobs, baselineShard(150));
+    expect(inferRunInputsFromCheckpoint(checkpoint).secondary).toBe(true);
+  });
+
+  it('fails closed (does not guess) on a PARTIAL secondary-knobs key set — this is the exact `.some()` unsoundness the all-or-none check replaces: one stray secondary key must never be treated as proof of a full secondary-knobs search', () => {
+    const partialSecondaryKnobs: TunableKnob[] = [...KNOBS, SECONDARY_KNOBS[0]!];
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, partialSecondaryKnobs, baselineShard(150));
+    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
+      /PARTIAL secondary-knobs key set/,
+    );
+  });
+
+  // A non-LEGACY combo initialized with a `legacyBaseline` carries a SEPARATE
+  // LEGACY incumbent (`incumbentCombo`/`incumbentConfigId` point at LEGACY,
+  // not the checkpoint's own combo — see `initCheckpoint`). Inference must
+  // derive the checkpoint's OWN train panel from its own combo's rows, never
+  // from the incumbent's — otherwise a malformed checkpoint whose own combo
+  // was evaluated on a narrower/wider panel than its LEGACY incumbent would
+  // silently inherit the WRONG (incumbent's) panel instead of its own.
+  it("infers a non-LEGACY checkpoint's trainSeeds/weapons from its OWN base panel, not its separate LEGACY incumbent's panel", () => {
+    const checkpoint = nonLegacyCheckpointWithPanels(
+      [1, 2, 3],
+      ['sword', 'bow'],
+      [1, 2, 3],
+      ['sword', 'bow'],
+    );
+    expect(inferRunInputsFromCheckpoint(checkpoint)).toEqual({
+      trainSeeds: [1, 2, 3],
+      weapons: ['bow', 'sword'],
+      secondary: false,
+    });
+  });
+
+  it("fails closed when a non-LEGACY checkpoint's own base panel does NOT match its separate LEGACY incumbent's panel — this is the exact gap that let a malformed checkpoint (own combo evaluated on a narrower/wider train space than its safety-gate incumbent) silently infer the WRONG panel from the incumbent instead of its own combo's rows", () => {
+    // Own combo evaluated on seeds 1-3 (kept small for test speed); LEGACY
+    // incumbent evaluated on a WIDER/different panel (seeds 1-4). Before the
+    // fix, inference read `checkpoint.incumbentCombo`/`incumbentConfigId`
+    // (the LEGACY rows) and would have silently returned the LEGACY panel
+    // (seeds 1-4) as if it were this combo's own train space.
+    const checkpoint = nonLegacyCheckpointWithPanels([1, 2, 3], ['sword'], [1, 2, 3, 4], ['sword']);
+    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
+      /own combo's train panel .* does not match its LEGACY incumbent's train panel/,
+    );
+  });
+
+  it("fails closed when a non-LEGACY checkpoint's own base panel and its LEGACY incumbent's panel have the same SEED count but different WEAPON sets", () => {
+    const checkpoint = nonLegacyCheckpointWithPanels(
+      [1, 2],
+      ['sword', 'bow'],
+      [1, 2],
+      ['sword', 'baseball-bat'],
+    );
+    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
+      /own combo's train panel .* does not match its LEGACY incumbent's train panel/,
+    );
+  });
+
+  it("still requires the OWN panel (not just the incumbent's) to be complete/duplicate-free/rectangular — a non-LEGACY checkpoint whose own combo's rows are ragged fails on its own panel before the incumbent panel is even derived", () => {
+    const navmeshBase = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    // Own combo: ragged (2 seeds x 2 weapons expected = 4 rows, but only 3 present).
+    const raggedOwnShard = shard(
+      [
+        row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID),
+        row(navmeshBaseId, 'bow', 1, 100, true, NAVMESH_LEGACY_COMBO_ID),
+        row(navmeshBaseId, 'sword', 2, 100, true, NAVMESH_LEGACY_COMBO_ID),
+      ],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const checkpoint = initCheckpoint(
+      NAVMESH_LEGACY,
+      KNOBS,
+      raggedOwnShard,
+      legacyPanelShard([1, 2], ['sword', 'bow']),
+    );
+    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
+      /do not form a complete rectangular panel/,
+    );
+  });
+});
+
+describe('normalizeResumedCheckpoint (re-stamp workflowSha + packageLockHash on an ALREADY-accepted resume checkpoint)', () => {
+  it("re-stamps meta.workflowSha to the expected (current run) value when the checkpoint carries the PRIOR run's workflowSha", () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    expect(checkpoint.meta.workflowSha).toBe(META.workflowSha);
+    const expectedMeta: ShardMeta = { ...META, workflowSha: 'currentrunsha0000currentrunsha00' };
+    const normalized = normalizeResumedCheckpoint(checkpoint, expectedMeta);
+    expect(normalized.meta.workflowSha).toBe('currentrunsha0000currentrunsha00');
+    // Every other meta field and the rows/steps/combo must be unchanged --
+    // this is a workflowSha/packageLockHash-only re-stamp, not a general
+    // meta rewrite.
+    expect(normalized.meta).toEqual({ ...checkpoint.meta, workflowSha: expectedMeta.workflowSha });
+    expect(normalized.rows).toBe(checkpoint.rows);
+    expect(normalized.steps).toBe(checkpoint.steps);
+  });
+
+  it("re-stamps meta.packageLockHash to the expected (current run) value when the checkpoint carries the PRIOR run's packageLockHash", () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    expect(checkpoint.meta.packageLockHash).toBe(META.packageLockHash);
+    const expectedMeta: ShardMeta = {
+      ...META,
+      packageLockHash: 'currentlockhash0000currentlock00',
+    };
+    const normalized = normalizeResumedCheckpoint(checkpoint, expectedMeta);
+    expect(normalized.meta.packageLockHash).toBe('currentlockhash0000currentlock00');
+    expect(normalized.meta).toEqual({
+      ...checkpoint.meta,
+      packageLockHash: expectedMeta.packageLockHash,
+    });
+    expect(normalized.rows).toBe(checkpoint.rows);
+    expect(normalized.steps).toBe(checkpoint.steps);
+  });
+
+  it('re-stamps BOTH workflowSha and packageLockHash together when both differ from the expected (current run) values', () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    const expectedMeta: ShardMeta = {
+      ...META,
+      workflowSha: 'currentrunsha0000currentrunsha00',
+      packageLockHash: 'currentlockhash0000currentlock00',
+    };
+    const normalized = normalizeResumedCheckpoint(checkpoint, expectedMeta);
+    expect(normalized.meta.workflowSha).toBe(expectedMeta.workflowSha);
+    expect(normalized.meta.packageLockHash).toBe(expectedMeta.packageLockHash);
+  });
+
+  it('is a no-op (returns the SAME object reference) when workflowSha AND packageLockHash already match', () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    const expectedMeta: ShardMeta = {
+      ...META,
+      workflowSha: checkpoint.meta.workflowSha,
+      packageLockHash: checkpoint.meta.packageLockHash,
+    };
+    expect(normalizeResumedCheckpoint(checkpoint, expectedMeta)).toBe(checkpoint);
+  });
+
+  it('re-stamps (is NOT a no-op) when workflowSha matches but packageLockHash alone differs', () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2, 3], ['sword', 'bow']);
+    const expectedMeta: ShardMeta = {
+      ...META,
+      workflowSha: checkpoint.meta.workflowSha,
+      packageLockHash: 'currentlockhash0000currentlock00',
+    };
+    const normalized = normalizeResumedCheckpoint(checkpoint, expectedMeta);
+    expect(normalized).not.toBe(checkpoint);
+    expect(normalized.meta.packageLockHash).toBe('currentlockhash0000currentlock00');
+  });
+});
+
+describe("resolveInitRunInputs (--mode init's --train-seeds/--weapons CLI-flag pairing)", () => {
+  it('returns undefined when neither --train-seeds nor --weapons is supplied (deliberately legacy)', () => {
+    expect(resolveInitRunInputs(undefined, undefined, false)).toBeUndefined();
+  });
+
+  it('returns a populated runInputs record when both flags are supplied', () => {
+    expect(resolveInitRunInputs('1,2,3', 'sword,bow', true)).toEqual({
+      trainSeeds: '1,2,3',
+      weapons: 'sword,bow',
+      secondary: true,
+    });
+  });
+
+  it('rejects --train-seeds without --weapons (one-present/one-missing)', () => {
+    expect(() => resolveInitRunInputs('1,2,3', undefined, false)).toThrow(
+      /--train-seeds and --weapons together/,
+    );
+  });
+
+  it('rejects --weapons without --train-seeds (one-present/one-missing)', () => {
+    expect(() => resolveInitRunInputs(undefined, 'sword,bow', false)).toThrow(
+      /--train-seeds and --weapons together/,
+    );
+  });
+});
+
+describe('buildResumeLineageArtifact (durable viewer lineage contract)', () => {
+  it('returns the exact resume-lineage payload shape for a positive integer run id', () => {
+    expect(buildResumeLineageArtifact('29786216369')).toEqual({
+      schemaVersion: 1,
+      kind: 'resume',
+      sourceRunId: 29_786_216_369,
+    });
+  });
+
+  it('returns null for a blank resume_run_id so the workflow can skip upload on a fresh run', () => {
+    expect(buildResumeLineageArtifact('')).toBeNull();
+    expect(buildResumeLineageArtifact('   ')).toBeNull();
+    expect(buildResumeLineageArtifact(undefined)).toBeNull();
+  });
+
+  it('returns null for a non-positive-integer resume_run_id so lineage emission stays additive-only', () => {
+    expect(buildResumeLineageArtifact('0')).toBeNull();
+    expect(buildResumeLineageArtifact('-7')).toBeNull();
+    expect(buildResumeLineageArtifact('abc')).toBeNull();
+    expect(buildResumeLineageArtifact('12.5')).toBeNull();
+  });
+});
+
+describe('extractLegacyBaselineShard (derive a fresh legacy+legacy baseline shard from a resumed checkpoint)', () => {
+  it('extracts the canonical LEGACY config + its rows from a legacy+legacy checkpoint', () => {
+    const checkpoint = legacyCheckpointWithPanel([1, 2], ['sword']);
+    const extracted = extractLegacyBaselineShard(checkpoint);
+    expect(Object.keys(extracted.configs)).toEqual([BASE_ID]);
+    expect(extracted.configs[BASE_ID]).toEqual(BASE);
+    expect(extracted.rows).toHaveLength(2);
+    expect(extracted.rows.every((r) => r.combo === 'legacy+legacy' && r.configId === BASE_ID)).toBe(
+      true,
+    );
+  });
+
+  it('rejects a non-legacy+legacy checkpoint (there is no canonical LEGACY baseline to derive)', () => {
+    const nonLegacyCheckpoint = initCheckpoint(NAVMESH_LEGACY, KNOBS, baselineShard(150));
+    expect(() => extractLegacyBaselineShard(nonLegacyCheckpoint)).toThrow(
+      /checkpoint combo must be 'legacy\+legacy'/,
+    );
+  });
+
+  it('rejects a legacy+legacy checkpoint whose round-0 config is not the canonical LEGACY base', () => {
+    const wrongConfig: SweepConfig = { ...BASE, aggression: (BASE.aggression ?? 0) + 0.5 };
+    const wrongConfigId = configId(wrongConfig);
+    const checkpoint = initCheckpoint(
+      LEGACY_LEGACY,
+      KNOBS,
+      shard([row(wrongConfigId, 'sword', 1, 100)], { [wrongConfigId]: wrongConfig }),
+    );
+    expect(() => extractLegacyBaselineShard(checkpoint)).toThrow(
+      /does not contain the canonical LEGACY base config/,
+    );
   });
 });

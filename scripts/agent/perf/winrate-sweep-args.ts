@@ -76,7 +76,7 @@ export function parsePositiveInt(flag: string, raw: string): number {
     throw new Error(`Invalid ${flag} value ${JSON.stringify(raw)}: expected a positive integer.`);
   }
   const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error(`Invalid ${flag} value ${JSON.stringify(raw)}: expected a positive integer.`);
   }
   return value;

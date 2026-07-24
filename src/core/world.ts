@@ -38,6 +38,7 @@ import type {
   GeneratedEquipmentGenerationPolicyV1,
   GeneratedEquipmentRewardBundleV1,
 } from '../shared/generated-equipment-types.js';
+import type { BossChestRecord } from './systems/bossChestRewards.js';
 import {
   Position,
   Velocity,
@@ -102,6 +103,7 @@ import {
   type AchievementFactSnapshot,
   type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
+import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
 
 const logger = createLogger('core:world');
 
@@ -207,6 +209,8 @@ export interface GameWorld {
   generatedEquipmentRegistry: GeneratedEquipmentRegistry;
   /** Unopened generated-equipment reward bundles keyed by achievement ID. */
   generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
+  /** Boss chest lifecycle records keyed by chest ID (`boss-chest:<familyId>`). */
+  bossChests: Map<string, BossChestRecord>;
   /**
    * Unclaimed Floor 1 `lootBox` reward bundles keyed by achievement ID.
    * Resolved once at unlock (see `resolveLootBoxRewardBundle`) and consumed
@@ -452,6 +456,17 @@ export interface GameWorld {
     pendingUnlockIds: string[];
     /** Achievement IDs whose reward has been opened/claimed this run. */
     claimedIds: Set<string>;
+    /**
+     * Resolved `lootBox`/`equipment` reward snapshots waiting to be
+     * shown/acknowledged by the reward-opening presentation UI, keyed by
+     * achievement id. Populated by `claimAchievementReward` (atomically, at
+     * the same time as the grant) and consumed by
+     * `acknowledgeAchievementRewardPresentation` once the UI sequence
+     * finishes/skips to the end. Surviving reload lets a mid-sequence
+     * interruption resume exactly where it left off without re-granting
+     * anything.
+     */
+    pendingPresentations: Map<string, ResolvedRewardPresentation>;
     /** Aggregate facts from completed floors only; the active floor stays live. */
     carriedRunFacts: AchievementFactSnapshot;
   };
@@ -623,6 +638,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       generationPolicy: options.generatedEquipmentGenerationPolicy,
     }),
     generatedEquipmentRewardBundles: new Map(),
+    bossChests: new Map(),
     lootBoxRewardBundles: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
@@ -668,6 +684,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       unlockedIds: new Set(),
       pendingUnlockIds: [],
       claimedIds: new Set(),
+      pendingPresentations: new Map(),
       carriedRunFacts: createEmptyAchievementFactSnapshot(),
     },
     debugFlags: {
