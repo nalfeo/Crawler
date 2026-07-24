@@ -635,6 +635,33 @@ describe('buildCompletionComment', () => {
     expect(comment).not.toContain('sheet-00.png');
   });
 
+  it('prefers resolveForExternalRead for embed URLs when available', () => {
+    const store: RunStore = {
+      ...makeStore(),
+      resolveForExternalRead(key) {
+        return `https://signed.example.test/${key}?sig=read-only`;
+      },
+    };
+    const result = {
+      summary: {
+        brief: 'bone-dagger',
+        runId: 'run-2a',
+        attempts: 2,
+        variantCount: 4,
+        chosen: { index: 1, score: 4, outOf: 5, passed: true, combinedPassed: true },
+        candidates: [{ index: 1, processedPath: 'bone-dagger/run-2a/processed/01.png' }],
+      },
+      summaryPath: 'bone-dagger/run-2a/summary.json',
+    } as never;
+    const comment = buildCompletionComment(result, store);
+    expect(comment).toContain(
+      '![Spritesheet](https://signed.example.test/bone-dagger/run-2a/sheet-01.png?sig=read-only)',
+    );
+    expect(comment).toContain(
+      '![Chosen variant 2/4 (score 4/5) ✅](https://signed.example.test/bone-dagger/run-2a/processed/01.png?sig=read-only)',
+    );
+  });
+
   it('includes the chosen variant image embed with pass status when a chosen candidate exists', () => {
     const store = makeStore();
     const result = {

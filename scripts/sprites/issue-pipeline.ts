@@ -254,19 +254,22 @@ async function attachIssueMetadata(
  * (chosen) variant so reviewers can inspect the art directly in the issue
  * without navigating to Azure Blob Storage.
  *
- * Image embed URLs come from `store.resolve()` — for the Azure backend these
- * are public blob URLs that GitHub's image proxy can serve; for the local
- * backend they are file paths (which will not render as images in GitHub but
- * are still useful for debugging).
+ * Image embed URLs prefer `store.resolveForExternalRead()` so private backends
+ * (Azure) can return scoped signed URLs suitable for GitHub's image proxy.
+ * Falls back to `store.resolve()` when the store has no external-read resolver.
  */
 export function buildCompletionComment(result: RunFullResult, store: RunStore): string {
   const briefId = result.summary.brief;
   const runId = result.summary.runId;
+  const resolveForComment = (key: string): string =>
+    typeof store.resolveForExternalRead === 'function'
+      ? store.resolveForExternalRead(key)
+      : store.resolve(key);
 
   // The spritesheet file for the last generation attempt (0-indexed).
   const lastAttemptIndex = (result.summary.attempts ?? 1) - 1;
   const sheetFile = `sheet-${String(lastAttemptIndex).padStart(2, '0')}.png`;
-  const sheetUrl = store.resolve(`${briefId}/${runId}/${sheetFile}`);
+  const sheetUrl = resolveForComment(`${briefId}/${runId}/${sheetFile}`);
 
   let body =
     `✅ Asset-request pipeline complete.\n\n` +
@@ -285,7 +288,9 @@ export function buildCompletionComment(result: RunFullResult, store: RunStore): 
       const total = result.summary.variantCount;
       const passLabel = chosen.combinedPassed ? '✅' : '⚠️';
       const altText = `Chosen variant ${variantNum}/${total} (score ${chosen.score}/${chosen.outOf}) ${passLabel}`;
-      body += `\n\n### Chosen variant (${variantNum}/${total})\n\n![${altText}](${chosenEntry.processedPath})`;
+      const processedFile = `${String(chosen.index).padStart(2, '0')}.png`;
+      const processedUrl = resolveForComment(`${briefId}/${runId}/processed/${processedFile}`);
+      body += `\n\n### Chosen variant (${variantNum}/${total})\n\n![${altText}](${processedUrl})`;
     }
   }
 
