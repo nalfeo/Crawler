@@ -1,5 +1,16 @@
 [
   {
+    "commit": "19a0d4a7b483c0348ff678bc0b2dd26f45454db7",
+    "commitDate": "2026-07-24T21:03:20Z",
+    "commitSubject": "fix(sprites): honest durability reporting for queued sprite edits (PR1 follow-up) (#1891)",
+    "capturedAt": "2026-07-24T22:25:19.631Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30127057733",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/19a0d4a7b483c0348ff678bc0b2dd26f45454db7.json"
+  },
+  {
     "commit": "c92eaaf2389f6df6edac138444a5eae6a4c29cd8",
     "commitDate": "2026-07-24T20:50:27Z",
     "commitSubject": "feat(sprites): embed spritesheet and chosen variant images in asset-request issue completion comment (#1882)",
