@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c92eaaf2389f6df6edac138444a5eae6a4c29cd8",
+    "commitDate": "2026-07-24T20:50:27Z",
+    "commitSubject": "feat(sprites): embed spritesheet and chosen variant images in asset-request issue completion comment (#1882)",
+    "capturedAt": "2026-07-24T22:09:35.407Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30126286253",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/c92eaaf2389f6df6edac138444a5eae6a4c29cd8.json"
+  },
+  {
     "commit": "d56ebb1d172d03da16ab3a8e1db8c41b920721ad",
     "commitDate": "2026-07-24T12:46:51-07:00",
     "commitSubject": "feat(ci): promote dispatch caps to runtime vars, add knobs doc + guard (#1782)",
