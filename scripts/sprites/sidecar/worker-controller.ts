@@ -10,11 +10,11 @@
  * running, the devtools workflow page polled forever on "Generating…" with no
  * consumer on the other end (the exact bug this change fixes).
  *
- * This controller lets the sidecar **own** an in-process worker so a consumer
- * always exists wherever the sidecar runs:
- *   - `cli.ts` auto-starts it when the queue backend is `azure-queue`.
- *   - The devtools "Launch worker" button starts it on demand via
- *     `POST /api/workflow/worker/start`.
+ * This controller lets the sidecar **own** an in-process worker. The worker is
+ * idle by default — CI (`asset-request.yml`) is the sole authorized consumer of
+ * the Azure production queue (issue #1879). Local sidecar usage keeps the prior
+ * synchronous generate behavior on the `noop` backend; `POST /api/workflow/worker/start`
+ * is disabled for the `azure-queue` backend to prevent off-CI queue races.
  *
  * Design notes
  * ------------
@@ -131,9 +131,10 @@ export interface WorkerController {
 }
 
 /**
- * Construct a worker controller. Does NOT start the loop — call `start()`
- * (the CLI does this automatically for the `azure-queue` backend; the devtools
- * "Launch worker" button does it on demand).
+ * Construct a worker controller. Does NOT start the loop — starting is
+ * an explicit caller action. The `azure-queue` backend disables the
+ * `/api/workflow/worker/start` route; CI (`asset-request.yml`) is the
+ * sole authorized production queue consumer.
  */
 export function createWorkerController(deps: WorkerControllerDeps): WorkerController {
   const runWorker = deps.runWorker ?? defaultRunWorker;
