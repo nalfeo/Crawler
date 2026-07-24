@@ -1,5 +1,16 @@
 [
   {
+    "commit": "eddddf6bfa091bef696107012f819bbf3ce0d532",
+    "commitDate": "2026-07-24T03:09:44Z",
+    "commitSubject": "feat: deterministic reward-opening UX for achievement boxes and boss chests (#1865)",
+    "capturedAt": "2026-07-24T04:30:49.680Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30063996755",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/eddddf6bfa091bef696107012f819bbf3ce0d532.json"
+  },
+  {
     "commit": "2a216026f52d0bf722e9955f11c32dbaa2d2c013",
     "commitDate": "2026-07-24T01:35:58Z",
     "commitSubject": "feat(ai): deterministic AI settlement-maintenance planner (#1862)",
