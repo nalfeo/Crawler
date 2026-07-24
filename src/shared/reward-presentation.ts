@@ -74,8 +74,7 @@ export function highestGeneratedEquipmentRarity(
 }
 
 /** Four discrete excitement buckets driving visual intensity in the renderer. */
-const REWARD_EXCITEMENT_BUCKETS = ['modest', 'notable', 'exciting', 'legendary'] as const;
-export type RewardExcitementBucket = (typeof REWARD_EXCITEMENT_BUCKETS)[number];
+export type RewardExcitementBucket = 'modest' | 'notable' | 'exciting' | 'legendary';
 
 /**
  * Deterministic excitement result. `tierWeight`/`rarityWeight` are exposed
