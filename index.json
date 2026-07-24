@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7bed20b35f5e27d065667d22c330d91cfc7bb290",
+    "commitDate": "2026-07-23T22:48:48Z",
+    "commitSubject": "feat(ai-sweep): rebuild cross-run resume + fix legacy-baseline gap + infer legacy runInputs (#1759)",
+    "capturedAt": "2026-07-24T00:04:54.534Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30051773091",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/7bed20b35f5e27d065667d22c330d91cfc7bb290.json"
+  },
+  {
     "commit": "b19713d83c872c69d00ace68c12ad0fe7d1e4669",
     "commitDate": "2026-07-23T22:17:46Z",
     "commitSubject": "feat(floor2): boss chest lifecycle + boss reward-policy (#1823)",
