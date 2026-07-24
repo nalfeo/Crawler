@@ -71,7 +71,14 @@ describe('real reward-opening UX (achievement path)', () => {
       });
       expect(anticipation.phase).toBe('anticipation');
       expect(anticipation.revealed).toBe(0);
-      expect(anticipation.total).toBeGreaterThan(0);
+      // Exact count regression test (round-3 code review finding): the
+      // `trash` lootBox tier deterministically grants 1 gold entry +
+      // LOOT_BOX_MATERIAL_COUNT_BY_TIER.trash===1 distinct material entry =
+      // 2 reveal items. This locks in that RewardOpeningUI.open() derives
+      // itemCount from the REAL revealItems.length (round-2 fix), not a
+      // hardcoded lootBox constant — a regression back to hardcoding
+      // itemCount=1 would silently pass a bare `toBeGreaterThan(0)` check.
+      expect(anticipation.total).toBe(2);
 
       // A single large deterministic tick clears anticipation without
       // depending on real elapsed frame time (see reward-opening-sequence.ts
