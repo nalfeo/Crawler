@@ -34,10 +34,11 @@ This skill has two modes. Pick based on the request:
 ## Crawler merge facts (authoritative)
 
 - **Merge command:** `gh pr merge <n> --auto --squash`. This enables GitHub auto-merge; it completes on its own once required checks pass. Do **not** run open-ended manual polling/wait loops after arming, but do perform a **bounded final-state verification** (`state=MERGED` and non-null `mergeCommit`) and resolve any blocking review threads before idling.
-- **Required checks (branch protection):** only `ci` (the aggregate) and `commit-lint`. Everything else (`Build` shows "skipping", `PR Ready/Reviewer Guard`, coverage, security advisory) is **non-required** and never blocks merge.
+- **Required checks (GitHub Ruleset 19000576, "Merge Train Required Checks"):** `ci` (the aggregate) **and** `merge-train` (a custom GitHub App check). Classic branch protection is **not in use** on this repo. `merge-train` posts only after the Merge Train's batch validation (`merge-train-validate.yml`) succeeds for that PR's candidate — a PR can show green `ci` and still stay `BLOCKED` while waiting for `merge-train`. Everything else (`Build` shows "skipping", `PR Ready/Reviewer Guard`, coverage, security advisory) is **non-required** and never blocks merge.
 - **`required_conversation_resolution: true`** — an unresolved review thread blocks auto-merge **even when CI is green**. Always reply to and resolve every review thread.
 - **No required human review.** `reviewDecision` is empty by design. Auto-approve automation satisfies any nominal 1-review rule.
-- **Strict / up-to-date is on.** A `rebase-prs` bot auto-rebases branches that fall behind `main`; you rarely need to rebase by hand. Expect transient `BLOCKED` right after arming auto-merge while it rebases + re-runs CI.
+- **Merge Train disarms auto-merge:** The Merge Train's `reconcile` job (`.github/workflows/merge-train.yml`) **actively disarms any manually-armed `gh pr merge --auto`** each time it processes a PR in its queue. Expect to re-arm auto-merge repeatedly while a PR sits in the queue — a disarmed PR is normal, not a failure.
+- **Branch updates:** The `auto-rebase-prs.yml` workflow ("Auto-rebase open PRs") handles rebases. When the Merge Train is enabled it only dispatches targeted conflict-recovery rebases, not a blanket sweep. The Merge Train's own `reconcile` job also updates branches as part of its batch-validation cycle. As a manual fallback, `gh api -X PUT repos/nalfeo/Crawler/pulls/<n>/update-branch` reliably pulls latest `main` into a behind branch.
 - **Squash-merge auto-deletes the branch.** For a stacked PR whose head ref must survive, restore the ref afterward (see playbook).
 
 ## Per-PR shepherd loop (Mode B)

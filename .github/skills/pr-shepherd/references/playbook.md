@@ -177,6 +177,31 @@ required checks report green on the latest head.
   (especially from `copilot-pull-request-reviewer`) will silently block auto-merge
   even when all CI checks pass. Resolve the thread → re-arm auto-merge → merge
   completes immediately.
+- **`mergeStateStatus: BLOCKED` even after `ci` is green** — the Merge Train enforces
+  a second required check: `merge-train` (GitHub Ruleset 19000576, "Merge Train
+  Required Checks"). This check is posted by a custom GitHub App only after the Merge
+  Train's batch validation (`merge-train-validate.yml`) succeeds for that PR's
+  candidate. **A green `ci` does not guarantee merge readiness** — if `merge-train`
+  hasn't posted yet, the PR stays `BLOCKED`/`BEHIND` with no obvious diagnostic
+  pointer. Remedy: verify `merge-train` is present in `gh pr checks <n>`; if absent
+  or failing, the Merge Train's reconcile job will eventually pick it up, or wait for
+  the next train cycle. Re-arm auto-merge after `merge-train` goes green.
+- **Auto-merge disarmed by the Merge Train** — the Merge Train's `reconcile` job
+  (`merge-train.yml`) **actively disarms any manually-armed `gh pr merge --auto`**
+  each time it processes a PR in its queue (log line: `disabled armed auto-merge
+  pr=#NNNN`). This is normal, not a failure. Agents must expect to **re-arm
+  auto-merge after each reconcile pass** until both `ci` and `merge-train` are green
+  and the train advances. Do not interpret a missing auto-merge flag as a blocker
+  unless CI itself is failing.
+- **Security-audit asymmetry (train-wide block risk)** — `ci.yml` runs `npm audit`
+  with `continue-on-error: true`, so a pre-existing advisory finding shows as
+  advisory-only and never blocks an individual PR's CI. `merge-train-validate.yml`'s
+  "Candidate security verification" step runs `npm run security:check` **without**
+  `continue-on-error`, making it a hard gate on the entire train. A single repo-wide
+  `npm audit` finding can pass every individual PR's CI while silently blocking the
+  **entire Merge Train** for every queued PR. If `merge-train-validate.yml` fails with
+  an audit finding, the fix must land in a separate security PR before the train can
+  advance.
 
 ---
 
