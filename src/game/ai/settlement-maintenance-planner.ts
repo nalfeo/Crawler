@@ -130,6 +130,38 @@ interface SettlementVisitLatch {
  */
 const settlementVisitLatches = new WeakMap<GameWorld, SettlementVisitLatch>();
 
+/**
+ * Per-world "last call's result" cache. Lets a caller (e.g. the settlement
+ * return router in `settlement-return-router.ts`) observe whether the most
+ * recent {@link runSettlementMaintenancePlanner} call actually processed a
+ * visit — the return value itself was previously discarded by the only call
+ * site (`headless-runner.ts`). Additive only: does not change the function's
+ * return value or behavior, just mirrors it into a side-channel getter.
+ */
+const lastSettlementMaintenanceResults = new WeakMap<GameWorld, SettlementMaintenanceResult>();
+
+/**
+ * Returns the {@link SettlementMaintenanceResult} from the most recent
+ * {@link runSettlementMaintenancePlanner} call for this world, or `null` if
+ * the planner has never been called for it yet. One frame stale relative to
+ * the current tick's planner call (visible starting the frame after it ran),
+ * which is acceptable for callers that only need to know a visit has been
+ * processed at some point during a continuous safe-room dwell.
+ */
+export function getLastSettlementMaintenanceResult(
+  world: GameWorld,
+): SettlementMaintenanceResult | null {
+  return lastSettlementMaintenanceResults.get(world) ?? null;
+}
+
+function recordSettlementMaintenanceResult(
+  world: GameWorld,
+  result: SettlementMaintenanceResult,
+): SettlementMaintenanceResult {
+  lastSettlementMaintenanceResults.set(world, result);
+  return result;
+}
+
 function isPlayerInSettlementRoom(
   world: GameWorld,
   playerEid: number,
@@ -714,7 +746,11 @@ export function runSettlementMaintenancePlanner(world: GameWorld): SettlementMai
     latch.wasInSettlement = false;
     latch.processed = false;
     settlementVisitLatches.set(world, latch);
-    return { ran: false, terminationReason: 'no-opportunity', decisions: [] };
+    return recordSettlementMaintenanceResult(world, {
+      ran: false,
+      terminationReason: 'no-opportunity',
+      decisions: [],
+    });
   }
 
   const playerEid = query(world.ecs, [Player])[0];
@@ -722,7 +758,11 @@ export function runSettlementMaintenancePlanner(world: GameWorld): SettlementMai
     latch.wasInSettlement = false;
     latch.processed = false;
     settlementVisitLatches.set(world, latch);
-    return { ran: false, terminationReason: 'no-opportunity', decisions: [] };
+    return recordSettlementMaintenanceResult(world, {
+      ran: false,
+      terminationReason: 'no-opportunity',
+      decisions: [],
+    });
   }
 
   const inSettlement = isPlayerInSettlementRoom(world, playerEid, settlement, floorMap);
@@ -730,13 +770,21 @@ export function runSettlementMaintenancePlanner(world: GameWorld): SettlementMai
     latch.wasInSettlement = false;
     latch.processed = false;
     settlementVisitLatches.set(world, latch);
-    return { ran: false, terminationReason: 'no-opportunity', decisions: [] };
+    return recordSettlementMaintenanceResult(world, {
+      ran: false,
+      terminationReason: 'no-opportunity',
+      decisions: [],
+    });
   }
 
   if (latch.processed) {
     latch.wasInSettlement = true;
     settlementVisitLatches.set(world, latch);
-    return { ran: false, terminationReason: 'already-processed', decisions: [] };
+    return recordSettlementMaintenanceResult(world, {
+      ran: false,
+      terminationReason: 'already-processed',
+      decisions: [],
+    });
   }
 
   latch.wasInSettlement = true;
@@ -755,5 +803,128 @@ export function runSettlementMaintenancePlanner(world: GameWorld): SettlementMai
   retryDeferredBossChestActions(world, playerEid, decisions, deferredChestIds);
   fillRemainingOwnedAbilities(world, playerEid, decisions);
 
-  return { ran: true, terminationReason, decisions };
+  return recordSettlementMaintenanceResult(world, { ran: true, terminationReason, decisions });
+}
+
+/**
+ * Deterministic string joining every currently-available maintenance
+ * opportunity's stable id, sorted within each category so the result is
+ * order-independent (same set of opportunities in any input order produces
+ * the same fingerprint). Consumed by `settlement-return-router.ts` as an
+ * anti-retrigger signal: servicing an unchanged opportunity set must not
+ * re-arm the router even after its cooldown expires — only a genuinely new
+ * or changed opportunity (a fresh unclaimed achievement, an open chest, a
+ * better equipment swap, a fillable ability slot) changes the fingerprint.
+ */
+export function buildOpportunityFingerprint(input: {
+  readonly unclaimedAchievementIds: readonly string[];
+  readonly openBossChestIds: readonly string[];
+  readonly bestSwapInstanceId: string | null;
+  readonly fillableAbilityIds: readonly string[];
+}): string {
+  const parts: string[] = [];
+  parts.push(...[...input.unclaimedAchievementIds].sort());
+  parts.push(...[...input.openBossChestIds].sort().map((id) => `chest:${id}`));
+  if (input.bestSwapInstanceId) {
+    parts.push(`swap:${input.bestSwapInstanceId}`);
+  }
+  parts.push(...[...input.fillableAbilityIds].sort().map((id) => `ability:${id}`));
+  return parts.join('|');
+}
+
+export interface SettlementMaintenanceOpportunityPreview {
+  /** Count of unlocked-but-unclaimed achievement rewards, right now. */
+  readonly unclaimedAchievements: number;
+  /** Count of boss chests not yet in the `claimed` state, right now. */
+  readonly openBossChests: number;
+  /** Real top-ranked equipment-swap score from the actual evaluator; 0 if no swap beats the current loadout. */
+  readonly topEquipmentSwapScore: number;
+  /** Count of currently-owned-but-unequipped abilities that would fit in a still-open active-ability slot. */
+  readonly fillableAbilitySlots: number;
+  /** Deterministic sorted-id fingerprint of the above — see {@link buildOpportunityFingerprint}. */
+  readonly opportunityFingerprint: string;
+}
+
+/**
+ * Read-only preview of "how much settlement-maintenance opportunity exists
+ * right now," reusing the SAME real, already-pure evaluators the planner
+ * itself acts on (`buildEquipmentSnapshot`, `getStaticProtectedSlots`,
+ * `buildEquipmentCandidates`, `evaluateEquipmentLoadoutCandidates`) rather
+ * than a hand-rolled heuristic — this is what lets
+ * `settlement-return-router.ts` decide whether returning to the settlement
+ * is worth the travel using the actual top equipment-swap score the planner
+ * would act on, not a guess.
+ *
+ * Never mutates gameplay state and never logs: `buildEquipmentCandidates` is
+ * called with throwaway sink arrays (`decisions`/`loggedSkipKeys`) that are
+ * discarded after this call, so a preview never emits a `decisions` entry or
+ * accumulates skip-key state that could affect a later real call. Safe to
+ * call every frame; callers that want to bound this cost (e.g. the return
+ * router) should skip calling it while not eligible to act on the result.
+ */
+export function previewSettlementMaintenanceOpportunity(
+  world: GameWorld,
+  playerEid: number,
+): SettlementMaintenanceOpportunityPreview {
+  const unclaimedAchievementIds = [...world.achievements.unlockedIds]
+    .filter((achievementId) => !isAchievementClaimed(world, achievementId))
+    .sort();
+
+  const openBossChestIds = [...world.bossChests.entries()]
+    .filter(([, chest]) => chest.state !== 'claimed')
+    .map(([chestId]) => chestId)
+    .sort();
+
+  const protectedSlots = getStaticProtectedSlots(world, playerEid);
+  const previewDecisions: SettlementMaintenanceDecision[] = [];
+  const previewLoggedSkipKeys = new Set<string>();
+  const snapshot = buildEquipmentSnapshot(world, playerEid);
+  const { candidates } = buildEquipmentCandidates(
+    world,
+    playerEid,
+    protectedSlots,
+    previewDecisions,
+    previewLoggedSkipKeys,
+  );
+
+  let topEquipmentSwapScore = 0;
+  let bestSwapInstanceId: string | null = null;
+  if (candidates.length > 0) {
+    const evaluation = evaluateEquipmentLoadoutCandidates({
+      current: snapshot,
+      candidates,
+      remainingEncounters: [CANONICAL_ENCOUNTER_FIXTURE],
+      affinityTagWeights: deriveAffinityTagWeights(snapshot.equipped),
+    });
+    const top = evaluation.ranked[0];
+    if (top && top.score > 0) {
+      topEquipmentSwapScore = top.score;
+      bestSwapInstanceId = top.candidate.instance.instanceId;
+    }
+  }
+
+  const abilityState = getOrCreateAbilityState(world, playerEid);
+  const openAbilitySlots = Math.max(
+    0,
+    ACTIVE_ABILITY_SLOT_LIMIT - abilityState.equippedActiveAbilityIds.length,
+  );
+  const fillableAbilityIds = [...(abilityState.ownedActiveAbilityIds ?? [])]
+    .filter((abilityId) => !abilityState.equippedActiveAbilityIds.includes(abilityId))
+    .sort()
+    .slice(0, openAbilitySlots);
+
+  const opportunityFingerprint = buildOpportunityFingerprint({
+    unclaimedAchievementIds,
+    openBossChestIds,
+    bestSwapInstanceId,
+    fillableAbilityIds,
+  });
+
+  return {
+    unclaimedAchievements: unclaimedAchievementIds.length,
+    openBossChests: openBossChestIds.length,
+    topEquipmentSwapScore,
+    fillableAbilitySlots: fillableAbilityIds.length,
+    opportunityFingerprint,
+  };
 }
