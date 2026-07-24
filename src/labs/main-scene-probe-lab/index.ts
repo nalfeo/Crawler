@@ -170,9 +170,11 @@ interface MainSceneInternals {
     colorCount: number;
   };
   getDoorRenderSummary(): {
+    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
+    openPackCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
