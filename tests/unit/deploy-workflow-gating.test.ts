@@ -37,7 +37,13 @@ interface WorkflowJob {
   if?: string;
   needs?: string | string[];
   outputs?: Record<string, string>;
-  steps?: Array<{ id?: string; name?: string; run?: string; uses?: string; with?: Record<string, string | number | boolean> }>;
+  steps?: Array<{
+    id?: string;
+    name?: string;
+    run?: string;
+    uses?: string;
+    with?: Record<string, string | number | boolean>;
+  }>;
 }
 
 interface WorkflowDoc {
