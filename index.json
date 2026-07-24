@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d01c16d2bc0325a40651806d0f7b1bea18aec178",
+    "commitDate": "2026-07-24T04:21:40Z",
+    "commitSubject": "Remove expired find-my-way audit exception from npm-audit wrapper (#1846)",
+    "capturedAt": "2026-07-24T05:40:32.185Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30067066710",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/d01c16d2bc0325a40651806d0f7b1bea18aec178.json"
+  },
+  {
     "commit": "eddddf6bfa091bef696107012f819bbf3ce0d532",
     "commitDate": "2026-07-24T03:09:44Z",
     "commitSubject": "feat: deterministic reward-opening UX for achievement boxes and boss chests (#1865)",
