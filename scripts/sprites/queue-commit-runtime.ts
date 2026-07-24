@@ -13,21 +13,76 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { Exec } from './checkin.js';
 import { copyArtSurface, makeCheckinFileLock, realExec } from './checkin-runtime.js';
 import type { QueueCommitDeps } from './queue-commit.js';
+
+/**
+ * Hard deadline for any single git subprocess a queue-commit spawns. A
+ * fetch/push against `origin` completes in seconds on a dev box; a minute-plus
+ * wall means git is wedged (classically: blocked on a credential prompt) and
+ * must be killed so the sidecar mutation lock / editor save never hangs forever.
+ */
+const GIT_SUBPROCESS_TIMEOUT_MS = 120_000;
+
+/**
+ * Force git fully non-interactive so a missing/expired credential fails fast
+ * instead of blocking on a terminal or GUI prompt (which, headless, hangs
+ * indefinitely), and pin the locale so the push-rejection porcelain the
+ * retry/CAS classifier matches is always English. `GIT_ASKPASS` is forced
+ * EMPTY (not merely defaulted) because an inherited GUI askpass helper would
+ * still be invoked despite `GIT_TERMINAL_PROMPT=0`. `GIT_OPTIONAL_LOCKS=0`
+ * avoids incidental index-lock contention across the concurrent worktrees this
+ * flow creates.
+ */
+function nonInteractiveGitEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_ASKPASS: '',
+    GCM_INTERACTIVE: 'never',
+    GIT_OPTIONAL_LOCKS: '0',
+    // Pin porcelain to English: `isNonFastForwardRejection` keys on git's
+    // rejection phrases, which git otherwise localizes per LC_MESSAGES/LANG.
+    LC_ALL: 'C',
+    LANG: 'C',
+  };
+}
 
 /** Build the production `QueueCommitDeps` for a given repo root. */
 export function createDefaultQueueCommitDeps(
   repoRoot: string,
   env: NodeJS.ProcessEnv = process.env,
 ): QueueCommitDeps {
+  const gitEnv = nonInteractiveGitEnv(env);
+  // Every git call goes through the shared realExec but with a non-interactive
+  // env and a hard deadline injected, so no queue-commit git subprocess can hang
+  // the caller. A caller-supplied env/timeout still wins (none do today).
+  const exec: Exec = (command, args, options) =>
+    realExec(command, args, {
+      ...options,
+      env: options?.env ?? gitEnv,
+      timeoutMs: options?.timeoutMs ?? GIT_SUBPROCESS_TIMEOUT_MS,
+    });
   return {
-    exec: realExec,
+    exec,
     copyArtSurface,
     makeTempDir: () => Promise.resolve(mkdtempSync(path.join(tmpdir(), 'asset-queue-commit-'))),
-    removeDir: (dir) => {
-      rmSync(dir, { recursive: true, force: true });
-      return Promise.resolve();
+    removeDir: async (dir) => {
+      // rmSync can throw EPERM on Windows while git still briefly holds a lock on
+      // the just-removed worktree dir. Retry with backoff, then give up quietly:
+      // cleanup is best-effort (OS temp reaping is the backstop) and must never
+      // surface — the caller's `finally` also swallows throws, but resilience
+      // here keeps real leaks rare.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          rmSync(dir, { recursive: true, force: true });
+          return;
+        } catch {
+          if (attempt === 4) return;
+          await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+        }
+      }
     },
     withCrossProcessLock: makeCheckinFileLock(repoRoot),
     env,

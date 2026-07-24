@@ -208,7 +208,23 @@ export interface ExecResult {
 export type Exec = (
   command: string,
   args: readonly string[],
-  options?: { readonly cwd?: string },
+  options?: {
+    readonly cwd?: string;
+    /**
+     * Environment for the child process. Defaults to the parent `process.env`.
+     * Callers that shell out to `git` should inject a non-interactive env
+     * (e.g. `GIT_TERMINAL_PROMPT=0`) so a credential prompt can never hang the
+     * process indefinitely.
+     */
+    readonly env?: NodeJS.ProcessEnv;
+    /**
+     * Hard wall-clock deadline (ms) for the child process. When set and
+     * exceeded the process is killed and the exec resolves with a non-zero
+     * code. Defaults to no timeout (today's behavior) so existing callers are
+     * unaffected.
+     */
+    readonly timeoutMs?: number;
+  },
 ) => Promise<ExecResult>;
 
 /** Minimal manifest shape the check-in reads to enrich the issue body. */

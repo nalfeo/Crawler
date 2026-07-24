@@ -68,10 +68,7 @@ import {
   type ManifestEntry,
   type VariantIdentity,
 } from '../approve.js';
-import {
-  runQueueCommit,
-  type QueueCommitResult,
-} from '../queue-commit.js';
+import { runQueueCommit, type QueueCommitResult } from '../queue-commit.js';
 import { createDefaultQueueCommitDeps } from '../queue-commit-runtime.js';
 import {
   runAssetCheckin,
@@ -1894,6 +1891,22 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           'Per Constitutional §3, the sprite-pipeline approve endpoint is local-only. ' +
           'It mutates checked-in assets under public/assets/generated/ and the manifest. ' +
           'Run the gallery sidecar locally (npm run sprites:gallery) to approve.',
+      };
+    }
+
+    // CSRF guard (same policy as /api/checkin and /api/.../accept, ADR 0066
+    // CTX-005): this route now runs `git fetch`/`git push` against the remote
+    // assets/queue branch (durable persistence, below), so a cross-origin
+    // browser POST must not be able to trigger an authenticated remote push.
+    // Reject any request from a browser Origin NOT in the exact per-worktree
+    // trusted set; server-side callers (Node fetch, no Origin header) stay
+    // trusted, exactly as the sibling mutating routes do.
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && !deps.trustedMutationOrigins?.includes(origin)) {
+      reply.code(403);
+      return {
+        error: 'forbidden-origin',
+        message: 'This browser origin is not allowed to approve sprite assets.',
       };
     }
 

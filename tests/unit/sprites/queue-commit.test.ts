@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CheckinAsset, Exec, ExecResult } from '../../../scripts/sprites/checkin.js';
 import {
   runQueueCommit,
+  isNonFastForwardRejection,
   type QueueCommitDeps,
 } from '../../../scripts/sprites/queue-commit.js';
 import { createDefaultQueueCommitDeps } from '../../../scripts/sprites/queue-commit-runtime.js';
@@ -40,7 +41,9 @@ function asset(overrides: Partial<CheckinAsset> = {}): CheckinAsset {
 // Layer 1: control-flow (faked exec)
 // ---------------------------------------------------------------------------
 
-function makeFakeExec(responder: (command: string, args: readonly string[]) => Partial<ExecResult>): {
+function makeFakeExec(
+  responder: (command: string, args: readonly string[]) => Partial<ExecResult>,
+): {
   exec: Exec;
   calls: Array<{ command: string; args: string[]; cwd?: string }>;
 } {
@@ -129,10 +132,16 @@ describe('runQueueCommit (control flow)', () => {
 
     const line = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
     expect(line[0]).toBe('git ls-remote --heads origin assets/queue');
-    expect(line.some((l) => l === 'git fetch --no-tags origin main')).toBe(true);
-    expect(line.some((l) => l === 'git worktree add /tmp/qc-xyz --detach FETCH_HEAD')).toBe(true);
     expect(
-      line.some((l) => l === 'git add -- public/assets/generated src/shared/data/sprite-catalog.json'),
+      line.some((l) => l === 'git fetch --no-tags origin +main:refs/queue-commit/base-qc-xyz'),
+    ).toBe(true);
+    expect(
+      line.some((l) => l === 'git worktree add /tmp/qc-xyz --detach refs/queue-commit/base-qc-xyz'),
+    ).toBe(true);
+    expect(
+      line.some(
+        (l) => l === 'git add -- public/assets/generated src/shared/data/sprite-catalog.json',
+      ),
     ).toBe(true);
     expect(line.some((l) => l === 'git diff --cached --quiet')).toBe(true);
     expect(line.some((l) => l.startsWith('git commit --no-verify -m'))).toBe(true);
@@ -140,6 +149,8 @@ describe('runQueueCommit (control flow)', () => {
       line.some((l) => l === 'git push --no-verify origin abc123def456:refs/heads/assets/queue'),
     ).toBe(true);
     expect(line.some((l) => l.includes('worktree remove'))).toBe(true);
+    // The private scratch ref (unique per worktree) is always cleaned up.
+    expect(line.some((l) => l === 'git update-ref -d refs/queue-commit/base-qc-xyz')).toBe(true);
     // The PUSH is never a force push — the CAS relies on plain
     // fast-forward-only semantics (worktree remove --force is unrelated).
     const pushLines = line.filter((l) => l.startsWith('git push'));
@@ -156,8 +167,14 @@ describe('runQueueCommit (control flow)', () => {
     });
     await runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' });
     const line = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
-    expect(line.some((l) => l === 'git fetch --no-tags origin assets/queue')).toBe(true);
-    expect(line.some((l) => l === 'git fetch --no-tags origin main')).toBe(false);
+    expect(
+      line.some(
+        (l) => l === 'git fetch --no-tags origin +assets/queue:refs/queue-commit/base-qc-xyz',
+      ),
+    ).toBe(true);
+    expect(
+      line.some((l) => l.includes(':refs/queue-commit/base-qc-xyz') && l.includes('+main')),
+    ).toBe(false);
   });
 
   it('returns a no-op (no commit/push) when nothing is staged', async () => {
@@ -183,7 +200,9 @@ describe('runQueueCommit (control flow)', () => {
       if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
       if (args[0] === 'push') {
         pushCount++;
-        return pushCount === 1 ? { code: 1, stderr: '! [rejected] (non-fast-forward)' } : { code: 0 };
+        return pushCount === 1
+          ? { code: 1, stderr: '! [rejected] (non-fast-forward)' }
+          : { code: 0 };
       }
       return {};
     });
@@ -206,6 +225,114 @@ describe('runQueueCommit (control flow)', () => {
     await expect(
       runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm', maxAttempts: 3 }),
     ).rejects.toMatchObject({ kind: 'push-retries-exhausted' });
+  });
+
+  it('throws git-failed immediately (no retry) when a push fails for a non-fast-forward reason', async () => {
+    // Auth/permission/network/hook failures are NOT a concurrent-advance CAS
+    // miss: retrying just burns the budget and then mislabels the cause as
+    // "a concurrent writer kept advancing". They must fail fast as git-failed.
+    let pushCount = 0;
+    const { exec } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: '' };
+      if (args[0] === 'diff') return { code: 1 };
+      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      if (args[0] === 'push') {
+        pushCount++;
+        return { code: 128, stderr: 'fatal: Authentication failed for origin' };
+      }
+      return {};
+    });
+    await expect(
+      runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm', maxAttempts: 5 }),
+    ).rejects.toMatchObject({ kind: 'git-failed' });
+    expect(pushCount).toBe(1); // fatal push not retried
+  });
+
+  it('throws git-failed (no retry) on a hook/protected-branch rejection carrying the generic trailer', async () => {
+    // git prints `error: failed to push some refs` for EVERY rejected push,
+    // including pre-receive-hook and protected-branch declines. That generic
+    // trailer must NOT be treated as a retryable non-fast-forward: the only
+    // retryable case is a genuine concurrent-advance (which always also carries
+    // `(non-fast-forward)`/`(fetch first)`). Without this the loop would burn
+    // all attempts and mislabel a terminal failure as a phantom concurrent writer.
+    let pushCount = 0;
+    const { exec } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: '' };
+      if (args[0] === 'diff') return { code: 1 };
+      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      if (args[0] === 'push') {
+        pushCount++;
+        return {
+          code: 1,
+          stderr:
+            ' ! [remote rejected] sha -> assets/queue (pre-receive hook declined)\n' +
+            "error: failed to push some refs to 'origin'",
+        };
+      }
+      return {};
+    });
+    await expect(
+      runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm', maxAttempts: 5 }),
+    ).rejects.toMatchObject({ kind: 'git-failed' });
+    expect(pushCount).toBe(1); // hook decline is terminal, not a CAS race
+  });
+
+  it('classifies push-rejection stderr precisely (isNonFastForwardRejection)', () => {
+    // Retryable: genuine concurrent-advance signals (case-insensitive).
+    for (const s of [
+      ' ! [rejected]        main -> main (non-fast-forward)',
+      ' ! [rejected]        main -> main (fetch first)',
+      'hint: Updates were rejected because the tip of your current branch is behind',
+      'hint: Updates were rejected because the remote contains work that you do not have',
+      'NON-FAST-FORWARD',
+      // Lost server-side ref-transaction race: the expected-old-OID mismatch. A
+      // plain push CAN hit this on GitHub without a non-ff phrase; re-fetch +
+      // re-union + re-push is the correct CAS response, so it must retry.
+      " ! [remote rejected] sha -> assets/queue (cannot lock ref 'refs/heads/assets/queue': " +
+        'is at abc123 but expected def456)',
+    ]) {
+      expect(isNonFastForwardRejection(s)).toBe(true);
+    }
+    // Terminal: the generic trailer alone, and other fatal causes, are NOT retryable.
+    for (const s of [
+      "error: failed to push some refs to 'origin'",
+      ' ! [remote rejected] sha -> assets/queue (pre-receive hook declined)',
+      ' ! [remote rejected] sha -> assets/queue (protected branch hook declined)',
+      // Bare `cannot lock ref` WITHOUT the expected-OID mismatch is not a remote
+      // advance — e.g. local contention `cannot lock ref '...': .lock: File exists`.
+      'error: cannot lock ref',
+      "error: cannot lock ref 'refs/heads/assets/queue': " +
+        "Unable to create '.git/refs/heads/assets/queue.lock': File exists.",
+      'fatal: Authentication failed',
+      'fatal: unable to access: Could not resolve host',
+      '',
+    ]) {
+      expect(isNonFastForwardRejection(s)).toBe(false);
+    }
+  });
+
+  it('returns the committed result even when cleanup (removeDir) throws synchronously', async () => {
+    // The production removeDir runs rmSync BEFORE it returns a promise, and
+    // Windows can throw EPERM on a transiently-locked worktree dir. A finally
+    // that let that throw escape would clobber a successful commit — assert it
+    // is swallowed and the committed result survives.
+    const { exec } = makeFakeExec(happyResponder);
+    const result = await runQueueCommit(
+      '/repo',
+      [asset()],
+      controlDeps(exec, {
+        removeDir: () => {
+          throw new Error('EPERM: worktree dir locked');
+        },
+      }),
+      { message: 'm' },
+    );
+    expect(result).toEqual({
+      status: 'committed',
+      branch: 'assets/queue',
+      commit: 'abc123def456',
+      attempts: 1,
+    });
   });
 
   it('cleans up the worktree and surfaces git-failed when a git step fails', async () => {
@@ -385,7 +512,14 @@ describe('runQueueCommit (real git)', () => {
 
       const result = await runQueueCommit(
         liveDir,
-        [{ assetPath: 'generated/alpha.png', manifestKey: 'alpha', briefId: null, variantIndex: null }],
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
         realGitDeps(liveDir),
         { message: 'chore(assets): edit alpha' },
       );
@@ -396,16 +530,13 @@ describe('runQueueCommit (real git)', () => {
       const m = queueManifest(liveDir);
       expect(m.entries.alpha).toBeDefined();
       // ...and the PNG blob round-trips byte-identical.
-      const blob = execFileSync(
-        'git',
-        ['show', 'FETCH_HEAD:public/assets/generated/alpha.png'],
-        { cwd: liveDir, maxBuffer: 1 << 20 },
-      );
+      const blob = execFileSync('git', ['show', 'FETCH_HEAD:public/assets/generated/alpha.png'], {
+        cwd: liveDir,
+        maxBuffer: 1 << 20,
+      });
       expect(Buffer.compare(blob, PNG_BYTES)).toBe(0);
       // ...but NOT the caller's uncommitted files.
-      expect(() =>
-        gitSync(liveDir, 'cat-file', '-e', 'FETCH_HEAD:staged-new.txt'),
-      ).toThrow();
+      expect(() => gitSync(liveDir, 'cat-file', '-e', 'FETCH_HEAD:staged-new.txt')).toThrow();
 
       // Caller repo is byte-for-byte unchanged: HEAD, branch, and index/worktree.
       expect(gitSync(liveDir, 'rev-parse', 'HEAD').trim()).toBe(headBefore);
@@ -427,14 +558,28 @@ describe('runQueueCommit (real git)', () => {
       };
       const first = await runQueueCommit(
         liveDir,
-        [{ assetPath: 'generated/alpha.png', manifestKey: 'alpha', briefId: null, variantIndex: null }],
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
         deps,
         opts,
       );
       expect(first.status).toBe('committed');
       const second = await runQueueCommit(
         liveDir,
-        [{ assetPath: 'generated/alpha.png', manifestKey: 'alpha', briefId: null, variantIndex: null }],
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
         deps,
         opts,
       );
@@ -444,7 +589,7 @@ describe('runQueueCommit (real git)', () => {
   );
 
   it(
-    'preserves a concurrent writer\'s entry across a forced push-rejection retry (no clobber)',
+    "preserves a concurrent writer's entry across a forced push-rejection retry (no clobber)",
     async () => {
       const { root, liveDir } = setupRepos();
       cleanups.push(root);
@@ -453,7 +598,14 @@ describe('runQueueCommit (real git)', () => {
       stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
       await runQueueCommit(
         liveDir,
-        [{ assetPath: 'generated/alpha.png', manifestKey: 'alpha', briefId: null, variantIndex: null }],
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
         realGitDeps(liveDir),
         { message: 'edit alpha' },
       );
@@ -475,7 +627,14 @@ describe('runQueueCommit (real git)', () => {
 
       const result = await runQueueCommit(
         liveDir,
-        [{ assetPath: 'generated/beta.png', manifestKey: 'beta', briefId: null, variantIndex: null }],
+        [
+          {
+            assetPath: 'generated/beta.png',
+            manifestKey: 'beta',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
         { ...base, exec: wrappedExec },
         { message: 'edit beta' },
       );
@@ -485,6 +644,79 @@ describe('runQueueCommit (real git)', () => {
       const m = queueManifest(liveDir);
       // All three entries coexist — the retry unioned, it did not clobber.
       expect(Object.keys(m.entries).sort()).toEqual(['alpha', 'beta', 'gamma']);
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'same-key concurrent edits are last-writer-wins (accepted whole-asset projection tradeoff)',
+    async () => {
+      // Documents (and pins) the accepted copyArtSurface semantics: for the SAME
+      // manifest key this is a whole-asset overlay, NOT a field-level merge. A
+      // writer working from stale local content can supersede a NEWER queued
+      // entry for that key via a valid fast-forward push. This is intended per
+      // the "manifest = sole authority, whole-asset" design (ADR 0066 + the PR1
+      // queue-commit ADR): it never corrupts the branch and never clobbers OTHER
+      // keys (proven by the no-clobber test above), but a newer same-key edit
+      // CAN be superseded by an older one. Pinned here so the tradeoff is
+      // explicit rather than silent.
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+
+      // Writer A lands the "newer" alpha=PNG_BYTES_B on the queue.
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES_B);
+      const first = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        realGitDeps(liveDir),
+        { message: 'edit alpha (newer)' },
+      );
+      expect(first.status).toBe('committed');
+
+      // Writer B overwrites the SAME key from stale content (alpha=PNG_BYTES),
+      // with a distinguishing manifest field so we can prove whose entry wins.
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+      const localManifest = readJson<{
+        version: number;
+        entries: Record<string, Record<string, unknown>>;
+      }>(manifestPath(liveDir));
+      localManifest.entries.alpha!.editor = 'writer-B';
+      writeJson(manifestPath(liveDir), localManifest);
+
+      const result = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        realGitDeps(liveDir),
+        { message: 'edit alpha (stale)' },
+      );
+
+      expect(result.status).toBe('committed');
+      expect(result.attempts).toBe(1); // plain fast-forward, no rejection/retry
+
+      // Last writer wins: the queue now carries writer B's (older) PNG bytes and
+      // manifest entry, having wholesale-superseded writer A's newer version.
+      const m = queueManifest(liveDir);
+      expect((m.entries.alpha as { editor?: string }).editor).toBe('writer-B');
+      const blob = execFileSync('git', ['show', 'FETCH_HEAD:public/assets/generated/alpha.png'], {
+        cwd: liveDir,
+        maxBuffer: 1 << 20,
+      });
+      expect(Buffer.compare(blob, PNG_BYTES)).toBe(0);
+      expect(Buffer.compare(blob, PNG_BYTES_B)).not.toBe(0);
     },
     GIT_TIMEOUT_MS,
   );

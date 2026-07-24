@@ -47,15 +47,36 @@ export const realExec: Exec = (command, args, options) =>
     execFile(
       command,
       [...args],
-      { cwd: options?.cwd, maxBuffer: 16 * 1024 * 1024 },
+      {
+        cwd: options?.cwd,
+        maxBuffer: 16 * 1024 * 1024,
+        // Default to the parent env so existing callers are unchanged; a caller
+        // may override to inject a non-interactive git env.
+        env: options?.env,
+        // A `timeout` of 0/undefined means "no timeout" in child_process, so an
+        // absent option preserves today's unbounded behavior.
+        timeout: options?.timeoutMs,
+      },
       (error, stdout, stderr) => {
+        // A killed-on-timeout child reports `error.killed === true` (often with a
+        // null exit code); normalize that to a non-zero code with a clear stderr
+        // so callers see a failure instead of a spurious success.
+        const killed = Boolean(error && (error as { killed?: unknown }).killed === true);
         const code =
           error && typeof (error as { code?: unknown }).code === 'number'
             ? ((error as { code: number }).code ?? 1)
             : error
               ? 1
               : 0;
-        resolve({ stdout: String(stdout), stderr: String(stderr), code });
+        const timeoutNote =
+          killed && options?.timeoutMs !== undefined
+            ? `command timed out after ${options.timeoutMs}ms: ${command} ${args.join(' ')}`
+            : '';
+        resolve({
+          stdout: String(stdout),
+          stderr: timeoutNote ? `${timeoutNote}\n${String(stderr)}` : String(stderr),
+          code,
+        });
       },
     );
   });
@@ -85,6 +106,19 @@ function readJsonSafe<T>(absPath: string, fallback: T): T {
  * branch) copy via the same pure `mergeManifests`/`mergeCatalogs` helpers the
  * asset-pr consolidator uses, so a selective per-branch delta composes
  * correctly regardless of processing order downstream.
+ *
+ * Concurrency semantics (accepted tradeoff — see ADR 0066 and the PR1
+ * queue-commit ADR): this is a WHOLE-ASSET projection, not a field-level merge.
+ * For a given manifest key it is last-writer-wins — the PNG is a whole-file
+ * `cpSync` overlay and the manifest/catalog entry is replaced wholesale by the
+ * live source entry. When the SAME key is edited concurrently from two stale
+ * worktrees, the second durable commit's entry/PNG wins even if the first was
+ * newer; this is a valid fast-forward push, so no data is corrupted, but a
+ * newer edit CAN be superseded by an older one for that key. This matches the
+ * maintainer-accepted "manifest = sole authority, whole-asset" design; a
+ * field-level/delta merge is deliberately out of scope. The
+ * `same-key concurrent edits are last-writer-wins` regression test documents
+ * and pins this behavior.
  */
 export async function copyArtSurface(
   srcRepoRoot: string,

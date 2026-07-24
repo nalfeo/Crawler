@@ -25,6 +25,13 @@ const ASSETS_ROOT = path.join(REPO_ROOT, 'public', 'assets');
 // `node <tsx-cli> <file.ts>` shape the sidecar launcher uses).
 const TSX_CLI = path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 const QUEUE_COMMIT_CLI = path.join(REPO_ROOT, 'scripts', 'sprites', 'queue-commit-cli.ts');
+/**
+ * Catastrophic wall-clock backstop for the queue-commit CLI spawn. The CLI's own
+ * git subprocesses are already forced non-interactive with per-call deadlines, so
+ * this only fires if the whole tsx process wedges — it must never leave the
+ * editor save hanging indefinitely.
+ */
+const QUEUE_COMMIT_TIMEOUT_MS = 5 * 60_000;
 const MAX_WRITE_BYTES = 6 * 1024 * 1024;
 const MAX_RESULTS = 500;
 const OPENCV_VENDOR_BASE = 'https://docs.opencv.org/4.13.0';
@@ -319,18 +326,47 @@ async function queueCommitEditedAsset(assetPath, key) {
         '--message',
         `chore(assets): edit ${key}`,
       ],
-      { cwd: REPO_ROOT, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
+      {
+        cwd: REPO_ROOT,
+        maxBuffer: 16 * 1024 * 1024,
+        encoding: 'utf8',
+        // Belt-and-suspenders: force git fully non-interactive so a missing
+        // credential fails fast instead of blocking on a prompt (the CLI's
+        // runtime also injects this), pin the locale so git's rejection
+        // porcelain stays English, plus a catastrophic timeout backstop.
+        // GIT_ASKPASS is forced empty (not defaulted) so an inherited GUI
+        // helper can't be invoked despite GIT_TERMINAL_PROMPT=0.
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0',
+          GIT_ASKPASS: '',
+          GCM_INTERACTIVE: 'never',
+          LC_ALL: 'C',
+          LANG: 'C',
+        },
+        timeout: QUEUE_COMMIT_TIMEOUT_MS,
+      },
       (error, stdout, stderr) => {
-        const code =
-          error && typeof error.code === 'number' ? error.code : error ? 1 : 0;
-        resolve({ code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
+        // A timeout kill reports error.killed with a null code; normalize to a
+        // non-zero exit so it surfaces as a durability failure (never a silent
+        // success) that the caller logs without losing the on-disk edit.
+        const killed = Boolean(error && error.killed === true);
+        const code = error && typeof error.code === 'number' ? error.code : error ? 1 : 0;
+        const timeoutNote = killed
+          ? `queue-commit timed out after ${QUEUE_COMMIT_TIMEOUT_MS}ms\n`
+          : '';
+        resolve({
+          code: killed ? code || 1 : code,
+          stdout: String(stdout ?? ''),
+          stderr: timeoutNote + String(stderr ?? ''),
+        });
       },
     );
   });
   if (result.code === 0) {
     try {
       const lastLine = result.stdout.trim().split('\n').pop() || '{}';
-      return { status: 'ok', ...JSON.parse(lastLine) };
+      return { ...JSON.parse(lastLine), status: 'ok' };
     } catch {
       return { status: 'ok' };
     }
@@ -506,8 +542,14 @@ async function revertSprite(payload) {
     writeFileSync(assetDiskPath, pngHead);
     writeJsonFile(MANIFEST_PATH, data.manifest);
     writeJsonFile(CATALOG_PATH, data.catalog);
+    // A save queues the edit onto the durable assets/queue branch. Reverting
+    // only on disk would leave that queued edit live on the branch, so the
+    // hourly reconciler (assets/queue → main) would resurface it and silently
+    // undo the revert. Push the reverted state onto the queue too. Best-effort:
+    // queueCommitEditedAsset never throws (returns a {status} the UI surfaces).
+    const queue = await queueCommitEditedAsset(data.manifest.entries[key].assetPath, key);
     const fresh = loadData().summaryByKey.get(key);
-    return { ok: true, sprite: fresh ?? null };
+    return { ok: true, sprite: fresh ?? null, queue };
   } finally {
     cache.manifest = null;
     cache.catalog = null;
