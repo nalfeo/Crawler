@@ -3159,6 +3159,82 @@ describe('sidecar POST /api/checkin', () => {
     expect(String(body.queueCommit.error)).toContain('could not be durably re-queued');
   });
 
+  it('/api/workflow/metadata reports FAILED when only a SUBSET of changed generated ids resolve (mixed case)', async () => {
+    // Two generated entries change; only one has a manifest entry. The partial
+    // resolve must still return status:'failed' — committing only the subset
+    // would silently under-report durability for the unresolved entry.
+    mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
+      JSON.stringify([
+        {
+          id: 'generated:resolved-var-0',
+          kind: 'sprite',
+          label: 'resolved sprite',
+          description: 'Description pending.',
+          tags: [],
+          spriteId: 'resolved-sprite',
+          sheetKey: 'generated',
+          frame: 0,
+          col: 0,
+          row: 0,
+        },
+        {
+          id: 'generated:missing-var-0',
+          kind: 'sprite',
+          label: 'missing sprite',
+          description: 'Description pending.',
+          tags: [],
+          spriteId: 'missing-sprite',
+          sheetKey: 'generated',
+          frame: 1,
+          col: 1,
+          row: 0,
+        },
+      ]),
+    );
+    // Manifest has an entry for `resolved-var-0` but NOT for `missing-var-0`.
+    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+      JSON.stringify({
+        entries: {
+          'resolved-var-0': {
+            assetPath: 'generated/resolved-var-0.png',
+            briefId: 'resolved',
+            variantIndex: 0,
+          },
+        },
+      }),
+    );
+
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/metadata',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        provider: 'heuristic',
+        ids: ['generated:resolved-var-0', 'generated:missing-var-0'],
+        force: true,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.changedCount).toBeGreaterThanOrEqual(1);
+    // Even though one id resolved, the partial miss must report failed.
+    expect(body.queueCommit).not.toBeNull();
+    expect(body.queueCommit.status).toBe('failed');
+    expect(String(body.queueCommit.error)).toContain('could not be durably re-queued');
+  });
+
   function makePreviewParityDeps(
     diffStdout: string,
     queued: ReadonlyMap<string, QueuedAssetCheckin>,

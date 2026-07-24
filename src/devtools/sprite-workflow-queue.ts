@@ -442,11 +442,13 @@ export interface ApprovedItemPatch {
   readonly generationRequestedAt: null;
   readonly lastError: null;
   /**
-   * `'ok'` when the durable `assets/queue` push succeeded (or was a no-op / not
-   * reported), `'failed'` when it failed — the single source of truth the render
-   * path reads to color the approved summary (green vs. red durability warning).
+   * `'ok'` when the durable `assets/queue` push succeeded (or was a no-op),
+   * `'failed'` when it explicitly failed, `null` when no queue-commit was
+   * attempted (e.g. a pre-queue-commit sidecar that does not report durability)
+   * — the single source of truth the render path reads to color the approved
+   * summary (green vs. red vs. unknown).
    */
-  readonly queueDurability: 'ok' | 'failed';
+  readonly queueDurability: 'ok' | 'failed' | null;
 }
 
 /**
@@ -492,7 +494,7 @@ export function approvedItemPatch(info: ApprovedVariantInfo): ApprovedItemPatch 
     checkinSummary: null,
     generationRequestedAt: null,
     lastError: null,
-    queueDurability: info.queueCommitFailed ? 'failed' : 'ok',
+    queueDurability: info.queueCommitFailed === true ? 'failed' : info.queueCommitFailed === false ? 'ok' : null,
   };
 }
 
@@ -587,6 +589,11 @@ export function metadataReadyBanner(patch: MetadataDonePatch): {
 } {
   if (patch.queueDurability === 'failed') {
     return { message: patch.metadataSummary, color: METADATA_BANNER_FAILED_COLOR };
+  }
+  if (patch.queueDurability !== 'ok') {
+    // null = durability unknown (e.g. old sidecar with no queue-commit support).
+    // Show a neutral banner — never show "ready to use" without confirmed durability.
+    return { message: patch.metadataSummary, color: '#fcd34d' };
   }
   return {
     message: `${patch.metadataSummary}. Sprite is in the catalog and ready to use.`,

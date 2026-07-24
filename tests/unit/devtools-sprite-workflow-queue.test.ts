@@ -561,7 +561,7 @@ describe('approvedItemPatch', () => {
     expect(patch.queueDurability).toBe('failed');
   });
 
-  it('sets queueDurability to "ok" on a successful, no-op, or unreported push', () => {
+  it('sets queueDurability to "ok" on a successful or no-op push', () => {
     expect(
       approvedItemPatch({
         briefId: 'bent-pipe-v1',
@@ -572,7 +572,12 @@ describe('approvedItemPatch', () => {
         queueCommitFailed: false,
       }).queueDurability,
     ).toBe('ok');
-    // No queueCommit info at all (e.g. the already-approved 409 path) is optimistic.
+  });
+
+  it('sets queueDurability to null when no queue-commit was attempted (old sidecar)', () => {
+    // An absent queueCommitFailed (undefined) means the sidecar did not attempt a
+    // queue-commit (pre-queue-commit sidecar, or the already-approved path on an
+    // old server). This is NOT the same as success — do not fabricate 'ok'.
     expect(
       approvedItemPatch({
         briefId: 'bent-pipe-v1',
@@ -580,7 +585,7 @@ describe('approvedItemPatch', () => {
         assetPath: 'generated/bent-pipe-v1-var-0.png',
         alreadyApproved: true,
       }).queueDurability,
-    ).toBe('ok');
+    ).toBeNull();
   });
 
   it('produces a patch that drives an item from variants to approved via updateItem', () => {
@@ -720,6 +725,24 @@ describe('metadataReadyBanner (Tag→Done banner honesty, #1c/#7)', () => {
       expect(patch.queueDurability).toBe('failed');
       const banner = metadataReadyBanner(patch);
       expect(banner.color).toBe(METADATA_BANNER_FAILED_COLOR);
+      expect(banner.message).not.toContain('ready to use');
+    }
+  });
+
+  it('shows a NEUTRAL banner (not green) when durability is unknown (null)', () => {
+    // A null/skipped re-queue with null prior durability means no evidence of
+    // durability was ever established. The banner must NOT say "ready to use".
+    for (const queueStatus of ['skipped', null] as const) {
+      const patch = metadataDonePatch({
+        ...base,
+        changedCount: 0,
+        queueStatus,
+        previousDurability: null,
+      });
+      expect(patch.queueDurability).toBeNull();
+      const banner = metadataReadyBanner(patch);
+      expect(banner.color).not.toBe(METADATA_BANNER_OK_COLOR);
+      expect(banner.color).not.toBe(METADATA_BANNER_FAILED_COLOR);
       expect(banner.message).not.toContain('ready to use');
     }
   });

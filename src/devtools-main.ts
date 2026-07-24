@@ -3945,14 +3945,22 @@ function render(): void {
     } else if (item.metadataSummary && item.stage === 'done') {
       setWorkflowStatus(
         item.metadataSummary,
-        item.queueDurability === 'failed' ? '#fca5a5' : '#bef264',
+        item.queueDurability === 'failed'
+          ? '#fca5a5'
+          : item.queueDurability === 'ok'
+            ? '#bef264'
+            : '#fcd34d',
       );
     } else if (item.checkinSummary && item.stage === 'checked-in') {
       setWorkflowStatus(item.checkinSummary, '#86efac');
     } else if (item.approvalSummary && item.stage === 'approved') {
       setWorkflowStatus(
         item.approvalSummary,
-        item.queueDurability === 'failed' ? '#fca5a5' : '#bef264',
+        item.queueDurability === 'failed'
+          ? '#fca5a5'
+          : item.queueDurability === 'ok'
+            ? '#bef264'
+            : '#fcd34d',
       );
     } else if (nextAction) {
       setWorkflowStatus(`Next: ${nextAction}`, '#cbd5e1');

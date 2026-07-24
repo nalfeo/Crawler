@@ -31,8 +31,9 @@ is the follow-up that lands the 8 confirmed fixes plus the hardening surfaced by
   keep the provider call outside the lock (it's slow and side-effect-free), but INSIDE the
   lock **re-read the fresh catalog from disk and merge only the changed entries** via a new
   pure helper `mergeChangedCatalogEntries(fresh, updated, changedIds)`
-  (`scripts/sprites/metadata-pipeline.ts`). Falls back to `result.updated` if the fresh read
-  fails to parse.
+  (`scripts/sprites/metadata-pipeline.ts`). If the fresh re-read itself fails, the route
+  aborts the mutation and returns `status:'failed'` — writing a stale snapshot would clobber
+  concurrent rows, so a safe merge is impossible without a fresh catalog.
 - **#1 — the metadata route now actually runs the durable queue-commit** for changed
   `generated:` entries (maps each changed id → its manifest asset → `runQueueCommit`), and
   returns the `queueCommit` status to the client. Previously the Tag button's re-queue never
@@ -97,15 +98,14 @@ consumes. `verify:fast` green (146 tests).
 ## Validation
 
 - `npm run typecheck` → clean.
-- `npm run verify:fast` → green (146 tests; typecheck + lint + changed unit tests +
-  physics/size/weight coverage).
-- Targeted: `sidecar-server.test.ts` (127) + `sprite-metadata-pipeline.test.ts` +
-  `devtools-sprite-workflow-queue.test.ts` (109) all pass.
-- Review harness (3🍎): separate-model plan review (gpt-5.6-sol) + code-review loop
-  (round 1 gemini-3.1-pro-preview, round 2 claude-sonnet-4.6). Ledger:
+- `npm run verify:fast` → green (typecheck + lint + changed unit tests + physics/size/weight coverage).
+- Targeted: `sidecar-server.test.ts` + `sprite-metadata-pipeline.test.ts` +
+  `devtools-sprite-workflow-queue.test.ts` + `approve-cli.test.ts` all pass.
+- Review harness (3🍎): separate-model plan review (gpt-5.6-sol) + **5-round code-review loop**
+  (round 1 gemini-3.1-pro-preview, round 2 claude-sonnet-4.6, round 3 gpt-5.6-sol,
+  round 4 gpt-5.5, round 5 claude-sonnet-4.6 — **clean**). Ledger:
   `docs/knowledge/review-ledgers/2026-07-24-sprite-queue-reviewer-fixes.review-ledger.json`.
 
 ## Follow-ups
 
 1. **#1b** — wire the Tag button to pass the resolved `generated:<brief>-var-N` id (separate PR).
-2. Consider an `approve-cli.test.ts` covering the already-approved retry exit-0 path.

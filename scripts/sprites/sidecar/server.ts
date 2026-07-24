@@ -2876,10 +2876,15 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           mergedCatalog = parseSpriteCatalog(
             mergeChangedCatalogEntries(fresh, result.updated, result.changedIds),
           );
-        } catch {
-          // A fresh re-read/parse failure (unlikely — we read it moments ago)
-          // falls back to the computed snapshot rather than losing the edit.
-          mergedCatalog = result.updated;
+        } catch (err) {
+          // A fresh re-read/parse failure means we cannot safely determine
+          // which concurrent rows might have landed since our pre-lock read.
+          // Writing the stale snapshot (result.updated) would clobber those
+          // concurrent entries, so we abort the mutation entirely and surface
+          // a route failure instead.
+          const message = err instanceof Error ? err.message : String(err);
+          req.log.warn(`metadata queue-commit: catalog re-read failed: ${message}`);
+          return { status: 'failed' as const, error: `catalog re-read failed: ${message}` };
         }
         await writeCatalogJson(catalogAbs, mergedCatalog);
 
@@ -2913,32 +2918,36 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             `metadata queue-commit: manifest read failed: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
-        const changedAssets = changedGeneratedIds.flatMap((id) => {
+        const changedAssetsMaybeNull = changedGeneratedIds.map((id) => {
           const key = id.slice('generated:'.length);
           const entry = manifestEntries[key];
-          if (!entry) return [];
-          return [
-            {
-              assetPath: entry.assetPath,
-              manifestKey: key,
-              briefId: entry.briefId ?? null,
-              variantIndex: typeof entry.variantIndex === 'number' ? entry.variantIndex : null,
-            },
-          ];
+          if (!entry) return null;
+          return {
+            assetPath: entry.assetPath,
+            manifestKey: key,
+            briefId: entry.briefId ?? null,
+            variantIndex: typeof entry.variantIndex === 'number' ? entry.variantIndex : null,
+          };
         });
-        // A generated sprite's metadata changed but we could not resolve ANY of
-        // its assets (manifest read failed, or no manifest entry for the changed
-        // id). The catalog write above already landed locally, but the durable
-        // assets/queue branch was NOT updated — surface a failure rather than a
-        // silent `null` the client would read as durable green (#1c/#7).
-        if (changedAssets.length === 0) {
+        // Every changed generated id MUST resolve to a manifest entry so the
+        // durable re-queue stages the complete set. A partial resolve (some ids
+        // missing) is still a failure: the assets/queue branch would be missing
+        // entries, silently under-reporting durability (#6-followup). If ANY id
+        // fails to resolve — or the manifest read itself failed — abort and
+        // surface a failure rather than committing a partial update.
+        const unresolvedCount = changedAssetsMaybeNull.filter((a) => a === null).length;
+        if (unresolvedCount > 0) {
           const reason = manifestReadFailed
             ? 'manifest read failed'
-            : 'no manifest entry for the changed generated sprite(s)';
+            : `${unresolvedCount} of ${changedGeneratedIds.length} changed generated sprite(s) had no manifest entry`;
           const message = `metadata changed for ${changedGeneratedIds.length} generated sprite(s) but could not be durably re-queued: ${reason}`;
           req.log.warn(`metadata queue-commit failed: ${message}`);
           return { status: 'failed' as const, error: message };
         }
+        // All changed ids resolved — safe to cast (no nulls remain).
+        const changedAssets = changedAssetsMaybeNull as NonNullable<
+          (typeof changedAssetsMaybeNull)[number]
+        >[];
         try {
           return await runQueueCommit(
             deps.repoRoot,
