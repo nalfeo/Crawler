@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ece558328e987a1039ccf504340f2ca5675a474e",
+    "commitDate": "2026-07-24T05:53:27Z",
+    "commitSubject": "docs: fix pr-shepherd playbook — required checks, rebase-prs bot, merge-train behavior (#1845)",
+    "capturedAt": "2026-07-24T07:05:08.175Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30070692936",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/ece558328e987a1039ccf504340f2ca5675a474e.json"
+  },
+  {
     "commit": "d01c16d2bc0325a40651806d0f7b1bea18aec178",
     "commitDate": "2026-07-24T04:21:40Z",
     "commitSubject": "Remove expired find-my-way audit exception from npm-audit wrapper (#1846)",
