@@ -496,6 +496,121 @@ export function approvedItemPatch(info: ApprovedVariantInfo): ApprovedItemPatch 
   };
 }
 
+/**
+ * The durable queue-commit outcome the **Tag** step's own re-queue reported
+ * (`/api/workflow/metadata`), or `null` when there was nothing to re-queue
+ * because no metadata actually changed.
+ */
+export type MetadataQueueStatus = 'committed' | 'noop' | 'failed' | 'skipped' | null;
+
+export interface MetadataTagInfo {
+  readonly provider: string;
+  readonly processedCount: number;
+  readonly changedCount: number;
+  readonly rejectedCount: number;
+  readonly queueStatus: MetadataQueueStatus;
+  /** Present only when `queueStatus === 'failed'`; baked into the warning. */
+  readonly queueCommitError?: string;
+  /**
+   * The item's durability BEFORE this Tag ran. Preserved verbatim when the tag
+   * neither landed nor failed a push (`null` / `skipped`), so a no-op re-queue
+   * cannot fabricate a green "ready to use" the tag never earned (#1c/#7).
+   */
+  readonly previousDurability: 'ok' | 'failed' | null;
+}
+
+export interface MetadataDonePatch {
+  readonly stage: 'done';
+  readonly metadataSummary: string;
+  readonly approvalSummary: null;
+  readonly queueDurability: 'ok' | 'failed' | null;
+  readonly lastError: null;
+}
+
+/**
+ * Build the queue patch that advances an item into the `done` stage after the
+ * Tag step ran metadata + its OWN durable queue-commit (#1). The Tag push — not
+ * the earlier approve push — decides whether this item is safe across worktrees:
+ *
+ * - `committed` / `noop` → `'ok'` (the tag is durable).
+ * - `failed` → `'failed'` and a warning is baked into `metadataSummary` so it
+ *   survives recompute's re-render.
+ * - `null` (nothing to re-queue) / `skipped` (ci-refused) → **preserve** the
+ *   item's prior durability rather than fabricating a green state (#1c/#7).
+ *
+ * Pure so the durability transition is unit-testable without a DOM or a live
+ * sidecar.
+ */
+export function metadataDonePatch(info: MetadataTagInfo): MetadataDonePatch {
+  const summaryText =
+    `Tagged via ${info.provider}: processed=${info.processedCount}, ` +
+    `changed=${info.changedCount}, rejected=${info.rejectedCount}`;
+  const durabilityWarning =
+    info.queueStatus === 'failed'
+      ? ` \u26a0 Durable queue push FAILED (${info.queueCommitError ?? 'unknown error'}) \u2014 ` +
+        'keep this worktree; the tag is not yet safe across sessions.'
+      : '';
+  const queueDurability: 'ok' | 'failed' | null =
+    info.queueStatus === 'failed'
+      ? 'failed'
+      : info.queueStatus === 'committed' || info.queueStatus === 'noop'
+        ? 'ok'
+        : info.previousDurability;
+  return {
+    stage: 'done',
+    metadataSummary: `${summaryText}${durabilityWarning}`,
+    approvalSummary: null,
+    queueDurability,
+    lastError: null,
+  };
+}
+
+/** Tag→Done status-banner palette. Named + colocated with the helper below so
+ *  the caller cannot silently re-derive the wrong color (reviewer #1c/#7). */
+export const METADATA_BANNER_FAILED_COLOR = '#fca5a5';
+export const METADATA_BANNER_OK_COLOR = '#bef264';
+
+/**
+ * Presentation for the Tag→Done status banner, derived from the HONEST
+ * post-merge durability (`patch.queueDurability`) rather than the current push's
+ * raw status. A `null` / `skipped` re-queue that INHERITS a prior `'failed'`
+ * must stay red instead of flashing a transient green "ready to use" before
+ * `recompute()` restores it — the exact false-positive #1c/#7 guards against.
+ *
+ * Pure so the color/text mapping is unit-tested without a DOM; the DOM caller is
+ * a thin `setWorkflowStatus(banner.message, banner.color)` passthrough, so the
+ * regression (gating on raw push status) cannot re-enter through the caller.
+ */
+export function metadataReadyBanner(patch: MetadataDonePatch): {
+  message: string;
+  color: string;
+} {
+  if (patch.queueDurability === 'failed') {
+    return { message: patch.metadataSummary, color: METADATA_BANNER_FAILED_COLOR };
+  }
+  return {
+    message: `${patch.metadataSummary}. Sprite is in the catalog and ready to use.`,
+    color: METADATA_BANNER_OK_COLOR,
+  };
+}
+
+/**
+ * The full **Tag→Done** transition as ONE pure, tested unit: compute the durable
+ * `patch`, then the `banner` presentation from that patch's HONEST durability.
+ * The DOM caller applies `patch` via `updateItem` and calls
+ * `setWorkflowStatus(banner.message, banner.color)` verbatim. Bundling both here
+ * means a future edit cannot silently re-gate the banner on the raw push status
+ * (the #1c/#7 false-green Rounds 2/4 guarded against) without abandoning this
+ * tested function — the inherited-`failed` case is locked by its unit test.
+ */
+export function applyMetadataTagResult(info: MetadataTagInfo): {
+  patch: MetadataDonePatch;
+  banner: { message: string; color: string };
+} {
+  const patch = metadataDonePatch(info);
+  return { patch, banner: metadataReadyBanner(patch) };
+}
+
 // ── Restart points (Brief / Sheet) ───────────────────────────────────────────
 // Pure transitions that rewind an item to one of the two operator-facing
 // restart points. They return a `Partial<QueueItem>` patch for `updateItem`, so

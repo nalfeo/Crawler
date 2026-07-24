@@ -510,6 +510,37 @@ export async function runMetadataPipeline(
   };
 }
 
+/**
+ * Overlay only the entries a metadata run actually changed onto a freshly-read
+ * catalog, preserving concurrent mutations instead of clobbering them.
+ *
+ * The metadata route runs its (potentially slow) provider call OUTSIDE the
+ * catalog mutation lock, then persists the result INSIDE the lock. Between that
+ * pre-lock read and the locked write, a concurrent `/approve` or `/checkin`
+ * (which mutate the same catalog under the same lock) can add or edit a
+ * DIFFERENT entry. Writing the run's stale full-catalog snapshot would drop
+ * that concurrent change (a read-modify-write race — reviewer concern #1a).
+ *
+ * `fresh` is the current on-disk catalog re-read under the lock; `updated` is
+ * the pipeline's computed catalog derived from the possibly-stale pre-lock
+ * read; `changedIds` names the entries the run mutated. Only those ids are
+ * taken from `updated`; every other row keeps its `fresh` value. An id in
+ * `changedIds` that no longer exists in `fresh` (concurrently deleted) is
+ * intentionally dropped — resurrecting a deleted sprite would be wrong.
+ */
+export function mergeChangedCatalogEntries(
+  fresh: SpriteCatalog,
+  updated: SpriteCatalog,
+  changedIds: readonly string[],
+): SpriteCatalogRecord[] {
+  const changed = new Set(changedIds);
+  const changedById = new Map<string, SpriteCatalogRecord>();
+  for (const record of updated) {
+    if (changed.has(record.id)) changedById.set(record.id, record);
+  }
+  return fresh.map((record) => changedById.get(record.id) ?? record);
+}
+
 export async function resolveProvider(mode: MetadataProviderMode): Promise<MetadataProvider> {
   if (mode === 'heuristic') {
     return createHeuristicProvider();

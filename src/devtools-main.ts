@@ -62,6 +62,7 @@ import {
   candidateStatus,
   clearQueue as queueClear,
   createEmptyQueue,
+  applyMetadataTagResult,
   approvedItemPatch,
   describeGenerationProgress,
   describeJudgeSkipReason,
@@ -7909,33 +7910,31 @@ function render(): void {
           minScore: 70,
         }),
       });
-      const summaryText = `Tagged via ${result.provider}: processed=${result.processedCount}, changed=${result.changedCount}, rejected=${result.rejectedCount}`;
       // The Tag step runs its OWN durable queue-commit (#1); it — not the earlier
-      // approve push — decides whether this item is safe across worktrees. Do NOT
-      // unconditionally flip to green "ready to use" (that erased the durability
-      // warning, #7). A failed push keeps a warning baked into metadataSummary (so it
-      // survives recompute's re-render) and drives queueDurability, which the render
-      // path reads to keep the status red until the tag is durable.
-      const metadataQueueFailed = result.queueCommit?.status === 'failed';
-      const durabilityWarning =
-        result.queueCommit && result.queueCommit.status === 'failed'
-          ? ` \u26a0 Durable queue push FAILED (${result.queueCommit.error}) \u2014 keep this worktree; the tag is not yet safe across sessions.`
-          : '';
-      queueState = queueUpdateItem(queueState, item.id, {
-        stage: 'done',
-        metadataSummary: `${summaryText}${durabilityWarning}`,
-        approvalSummary: null,
-        queueDurability: metadataQueueFailed ? 'failed' : 'ok',
-        lastError: null,
+      // approve push — decides whether this item is safe across worktrees. A
+      // failed push bakes a warning into metadataSummary (so it survives
+      // recompute's re-render) and keeps queueDurability red; a null/skipped
+      // result preserves the item's prior durability instead of fabricating a
+      // green "ready to use" the tag never earned (#1c/#7). See applyMetadataTagResult.
+      const { patch, banner } = applyMetadataTagResult({
+        provider: result.provider,
+        processedCount: result.processedCount,
+        changedCount: result.changedCount,
+        rejectedCount: result.rejectedCount,
+        queueStatus: result.queueCommit?.status ?? null,
+        queueCommitError:
+          result.queueCommit?.status === 'failed' ? result.queueCommit.error : undefined,
+        previousDurability: item.queueDurability ?? null,
       });
+      queueState = queueUpdateItem(queueState, item.id, patch);
       writeQueueState();
       renderQueue();
       renderWorkflowSelection();
-      if (metadataQueueFailed) {
-        setWorkflowStatus(`${summaryText}.${durabilityWarning}`, '#fca5a5');
-      } else {
-        setWorkflowStatus(`${summaryText}. Sprite is in the catalog and ready to use.`, '#bef264');
-      }
+      // Thin passthrough: applyMetadataTagResult bundled the patch + banner into one
+      // tested transition. The banner color/text is gated on the HONEST post-merge
+      // durability (patch.queueDurability), so a null/skipped re-queue that INHERITS
+      // a prior 'failed' stays red instead of flashing green "ready to use" (#1c/#7).
+      setWorkflowStatus(banner.message, banner.color);
       void recompute();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

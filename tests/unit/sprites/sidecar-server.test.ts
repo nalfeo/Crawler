@@ -2981,6 +2981,184 @@ describe('sidecar POST /api/checkin', () => {
     expect(external.json()).toMatchObject({ error: 'forbidden-origin' });
   });
 
+  it('/api/workflow/metadata executes the durable queue-commit for changed generated entries (#1)', async () => {
+    // Seed a generated catalog entry the heuristic provider will enrich (empty
+    // tags + placeholder description) plus its matching manifest entry, so the
+    // route maps the changed `generated:` id back to a real asset and actually
+    // runs the durable queue-commit. The temp repoRoot is not a git repo, so the
+    // real queue-commit path deterministically fails — a `queueCommit` field with
+    // status 'failed' proves the route REACHED and EXECUTED the durable push.
+    // Before the #1 fix this route never ran queue-commit at all, silently
+    // dropping the metadata edit across worktrees/sessions.
+    mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
+      JSON.stringify([
+        {
+          id: 'generated:my-sword-var-0',
+          kind: 'sprite',
+          label: 'my sword',
+          description: 'Description pending.',
+          tags: [],
+          spriteId: 'my-sword',
+          sheetKey: 'generated',
+          frame: 0,
+          col: 0,
+          row: 0,
+        },
+      ]),
+    );
+    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+      JSON.stringify({
+        entries: {
+          'my-sword-var-0': {
+            assetPath: 'generated/my-sword-var-0.png',
+            briefId: 'my-sword',
+            variantIndex: 0,
+          },
+        },
+      }),
+    );
+    writeFileSync(
+      path.join(root, 'public', 'assets', 'generated', 'my-sword-var-0.png'),
+      Buffer.from('PNG'),
+    );
+
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/metadata',
+      headers: { 'content-type': 'application/json' },
+      payload: { provider: 'heuristic', ids: ['generated:my-sword-var-0'], force: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.changedCount).toBeGreaterThanOrEqual(1);
+    // The route mapped the changed generated id to its manifest asset and ran
+    // the durable queue-commit; in this non-git temp root the push fails, which
+    // is the deterministic proof it actually executed (not null, not skipped).
+    expect(body.queueCommit).not.toBeNull();
+    expect(body.queueCommit.status).toBe('failed');
+  });
+
+  it('/api/workflow/metadata returns queueCommit:null when nothing changed (no false durability)', async () => {
+    // A generated entry that already has complete metadata produces no change,
+    // so there is nothing to re-queue: the route must return queueCommit:null
+    // rather than fabricating a committed/failed push. The client relies on this
+    // to PRESERVE (not overwrite) the item's prior durability (#1c/#7).
+    mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
+      JSON.stringify([
+        {
+          id: 'generated:done-var-0',
+          kind: 'sprite',
+          label: 'done sword',
+          description: 'A finished sword sprite.',
+          tags: ['sprite', 'weapon'],
+          spriteId: 'done-sword',
+          sheetKey: 'generated',
+          frame: 0,
+          col: 0,
+          row: 0,
+        },
+      ]),
+    );
+
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/metadata',
+      headers: { 'content-type': 'application/json' },
+      // No `force`: a complete entry is skipped, yielding zero changed ids.
+      payload: { provider: 'heuristic', ids: ['generated:done-var-0'] },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.changedCount).toBe(0);
+    expect(body.queueCommit).toBeNull();
+  });
+
+  it('/api/workflow/metadata reports FAILED (not null) when a changed generated id has no manifest entry (#1c/#7)', async () => {
+    // A generated catalog entry changed, but the manifest has no entry for it, so
+    // its asset cannot be staged for the durable re-queue. The catalog write
+    // still lands locally, but the assets/queue branch is NOT updated — the route
+    // must report status:'failed' so the client shows red, NOT queueCommit:null
+    // (which the client reads as "preserve prior durability" and would surface as
+    // a false green "ready to use"). Before this fix, a resolvable-asset miss
+    // silently returned null.
+    mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
+      JSON.stringify([
+        {
+          id: 'generated:orphan-var-0',
+          kind: 'sprite',
+          label: 'orphan sword',
+          description: 'Description pending.',
+          tags: [],
+          spriteId: 'orphan-sword',
+          sheetKey: 'generated',
+          frame: 0,
+          col: 0,
+          row: 0,
+        },
+      ]),
+    );
+    // Manifest exists but has NO entry for `orphan-var-0` (only an unrelated key),
+    // so the changed generated id cannot be resolved to an asset path.
+    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+      JSON.stringify({
+        entries: {
+          'unrelated-var-0': {
+            assetPath: 'generated/unrelated-var-0.png',
+            briefId: 'unrelated',
+            variantIndex: 0,
+          },
+        },
+      }),
+    );
+
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/metadata',
+      headers: { 'content-type': 'application/json' },
+      payload: { provider: 'heuristic', ids: ['generated:orphan-var-0'], force: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.changedCount).toBeGreaterThanOrEqual(1);
+    expect(body.queueCommit).not.toBeNull();
+    expect(body.queueCommit.status).toBe('failed');
+    expect(String(body.queueCommit.error)).toContain('could not be durably re-queued');
+  });
+
   function makePreviewParityDeps(
     diffStdout: string,
     queued: ReadonlyMap<string, QueuedAssetCheckin>,

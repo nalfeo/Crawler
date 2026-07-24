@@ -88,6 +88,7 @@ import { briefDirectoryForType } from '../brief-paths.js';
 import { generateOne } from '../generate-one.js';
 import {
   DEFAULT_CATALOG_PATH,
+  mergeChangedCatalogEntries,
   resolveProvider,
   runMetadataPipeline,
   type MetadataProviderMode,
@@ -129,7 +130,7 @@ import {
   mirrorBriefToStore,
   toRepoRelativePath,
 } from '../brief-durability.js';
-import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
+import { parseSpriteCatalog, type SpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { writeCatalogJson } from '../catalog-io.js';
 import { hasDerivedResourceCache } from '../store/caching-store.js';
 import { LocalRunStore } from '../store/local-store.js';
@@ -2862,23 +2863,57 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       // metadata edit across worktrees/sessions (concern #1).
       const env = deps.env ?? process.env;
       const queueCommit = await withCheckinMutationLock(async () => {
-        await writeCatalogJson(catalogAbs, result.updated);
+        // Re-read the catalog INSIDE the lock and overlay ONLY the entries this
+        // run changed, rather than writing the run's stale full snapshot. A
+        // concurrent /approve or /checkin (which mutate the same catalog under
+        // this lock) can add or edit a DIFFERENT entry between our pre-lock read
+        // (above, outside the lock so the slow provider call does not hold it)
+        // and this write; the merge preserves that change instead of clobbering
+        // it (read-modify-write race, concern #1a).
+        let mergedCatalog: SpriteCatalog;
+        try {
+          const fresh = parseSpriteCatalog(JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown);
+          mergedCatalog = parseSpriteCatalog(
+            mergeChangedCatalogEntries(fresh, result.updated, result.changedIds),
+          );
+        } catch {
+          // A fresh re-read/parse failure (unlikely — we read it moments ago)
+          // falls back to the computed snapshot rather than losing the edit.
+          mergedCatalog = result.updated;
+        }
+        await writeCatalogJson(catalogAbs, mergedCatalog);
 
-        // Map each changed `generated:<key>` catalog id back to its manifest
-        // entry so the queue-commit stages the PNG + manifest + updated catalog
-        // entry together. Non-generated catalog rows (terrain/mob/etc.) are not
-        // queue-managed, so they are intentionally excluded here.
+        // A `generated:<key>` catalog entry that this run changed AND that still
+        // survives the merge (concurrently-deleted ids were dropped above) MUST
+        // be durably re-queued. Non-generated rows (terrain/mob/etc.) are not
+        // queue-managed, and a concurrently-deleted id is genuinely gone — both
+        // are correctly excluded here.
+        const survivingIds = new Set(mergedCatalog.map((record) => record.id));
+        const changedGeneratedIds = result.changedIds.filter(
+          (id) => id.startsWith('generated:') && survivingIds.has(id),
+        );
+        // The ONLY honest `null`: nothing queue-managed changed, so there is
+        // genuinely no durable re-queue to do and the client PRESERVES its prior
+        // durability (#1c/#7). Reaching `null` any other way would fabricate a
+        // green "ready to use" the tag never earned.
+        if (changedGeneratedIds.length === 0) return null;
+
+        // Map each surviving changed generated id back to its manifest entry so
+        // the queue-commit stages the PNG + manifest + updated catalog together.
+        let manifestReadFailed = false;
         let manifestEntries: Record<string, ManifestEntry> = {};
         try {
           const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
             entries?: Record<string, ManifestEntry>;
           };
           manifestEntries = parsed.entries ?? {};
-        } catch {
-          manifestEntries = {};
+        } catch (err) {
+          manifestReadFailed = true;
+          req.log.warn(
+            `metadata queue-commit: manifest read failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
-        const changedAssets = result.changedIds.flatMap((id) => {
-          if (!id.startsWith('generated:')) return [];
+        const changedAssets = changedGeneratedIds.flatMap((id) => {
           const key = id.slice('generated:'.length);
           const entry = manifestEntries[key];
           if (!entry) return [];
@@ -2891,7 +2926,19 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             },
           ];
         });
-        if (changedAssets.length === 0) return null;
+        // A generated sprite's metadata changed but we could not resolve ANY of
+        // its assets (manifest read failed, or no manifest entry for the changed
+        // id). The catalog write above already landed locally, but the durable
+        // assets/queue branch was NOT updated — surface a failure rather than a
+        // silent `null` the client would read as durable green (#1c/#7).
+        if (changedAssets.length === 0) {
+          const reason = manifestReadFailed
+            ? 'manifest read failed'
+            : 'no manifest entry for the changed generated sprite(s)';
+          const message = `metadata changed for ${changedGeneratedIds.length} generated sprite(s) but could not be durably re-queued: ${reason}`;
+          req.log.warn(`metadata queue-commit failed: ${message}`);
+          return { status: 'failed' as const, error: message };
+        }
         try {
           return await runQueueCommit(
             deps.repoRoot,
