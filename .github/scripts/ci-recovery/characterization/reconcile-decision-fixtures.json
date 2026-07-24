@@ -331,5 +331,76 @@
       "pr": 1791,
       "coverage": ".github/scripts/ci-recovery/reconcile.test.mjs :: Bug 1/Bug 2/Bug 3 lease hardening regressions"
     }
+  ],
+  "review_wake_gap_fixtures": [
+    {
+      "name": "broken PR with blockers does not request review (repair-wake gap)",
+      "dClass": "D3",
+      "input": {
+        "trigger": "schedule:sweep",
+        "pr": {
+          "state": "open",
+          "draft": false,
+          "head": {
+            "sha": "abc1234def5678901234567890abcdef12345678"
+          }
+        },
+        "hasMergeConflict": false,
+        "requiredChecksPassing": true,
+        "blockers": [
+          {
+            "kind": "ci-failure"
+          }
+        ],
+        "comments": []
+      },
+      "expected": null,
+      "coverageBy": "does not request review while another policy is blocking the PR"
+    },
+    {
+      "name": "merge-conflict PR does not request review (repair-wake gap)",
+      "dClass": "D3",
+      "input": {
+        "trigger": "schedule:sweep",
+        "pr": {
+          "state": "open",
+          "draft": false,
+          "head": {
+            "sha": "abc1234def5678901234567890abcdef12345678"
+          }
+        },
+        "hasMergeConflict": true,
+        "requiredChecksPassing": true,
+        "blockers": [],
+        "comments": []
+      },
+      "expected": null,
+      "coverageBy": "does not request review while another policy is blocking the PR"
+    },
+    {
+      "name": "clean synchronize PR requests review when budget remains",
+      "dClass": "D3",
+      "input": {
+        "trigger": "pull_request_target:synchronize",
+        "pr": {
+          "state": "open",
+          "draft": false,
+          "head": {
+            "sha": "abc1234def5678901234567890abcdef12345678"
+          }
+        },
+        "hasMergeConflict": false,
+        "requiredChecksPassing": true,
+        "blockers": [],
+        "comments": [
+          "<!-- crawler-review-request:v1 head=1111111111111111111111111111111111111111 reason=ready -->"
+        ]
+      },
+      "expected": {
+        "reason": "synchronize",
+        "requestReviewer": true
+      },
+      "coverageBy": "allows two normal CI-green re-reviews after the publish review"
+    }
   ]
 }
