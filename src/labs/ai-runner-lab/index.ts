@@ -29,6 +29,7 @@ import {
   autoFloor2ProgressionSystem,
   computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
+import { runSettlementMaintenancePlanner } from '../../game/ai/settlement-maintenance-planner.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
@@ -832,6 +833,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     configureMerchantWeaponPurchase(world, aiConfig.merchantWeaponPurchase);
     autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
+    runSettlementMaintenancePlanner(world);
   };
   let currentFloor = persisted?.floorId ?? 'floor1';
   let stagedSeedText = String(currentSeed);

@@ -78,6 +78,8 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'hud-family-relationships-lab': '/src/labs/hud-family-relationships-lab/index.ts',
   'combat-arena-lab': '/src/labs/combat-arena-lab/index.ts',
   'bosschestrewards-lab': '/src/labs/bosschestrewards-lab/index.ts',
+  'settlement-maintenance-planner-lab': '/src/labs/settlement-maintenance-planner-lab/index.ts',
+  'reward-opening-ux-lab': '/src/labs/reward-opening-ux-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {

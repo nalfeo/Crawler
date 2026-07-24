@@ -30,7 +30,7 @@ The `DungeonGenerator` (with `roomVariety: true`) had two related wall-integrity
 
 | Helper                        | Purpose                                                                                                                                                                                   |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preAssignRoles()`            | Assigns SPAWN/BOSS_STAIR/SAFE roles from bounds-centre distances _before_ any tile mutation. Identical distance scoring to the old post-variety assignment.                               |
+| `preAssignRoles()`            | Assigns SPAWN/BOSS*STAIR/SAFE roles from bounds-centre distances \_before* any tile mutation. Identical distance scoring to the old post-variety assignment.                              |
 | `sealSpecialRoomPerimeters()` | After pre-assignment, converts any passable non-door tile on the perimeter of SAFE/BOSS_STAIR rooms to `STONE_WALL`. Fixes pre-existing rot-js corridor tiles on special room boundaries. |
 | `buildSpecialRoomWalls()`     | Returns a `ReadonlySet<number>` of all perimeter tile indices for SAFE/BOSS_STAIR rooms.                                                                                                  |
 

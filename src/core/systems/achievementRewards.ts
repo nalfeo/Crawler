@@ -23,6 +23,7 @@ import {
   type AchievementReward,
 } from '../../shared/achievements.js';
 import { addItem } from '../../shared/inventory.js';
+import type { ResolvedRewardPresentation } from '../../shared/reward-presentation.js';
 import {
   claimGeneratedEquipmentRewardBundle,
   type ClaimedRewardBundleEntry,
@@ -104,6 +105,11 @@ export function claimAchievementReward(
       return { ok: false, reason: 'grantFailed' };
     }
     world.achievements.claimedIds.add(achievementId);
+    world.achievements.pendingPresentations.set(achievementId, {
+      kind: 'equipment',
+      tier: achievement.reward.tier,
+      instanceKeys: grant.granted.map((entry) => entry.instanceKey),
+    });
     return { ok: true, reward: achievement.reward, grantedEquipment: grant.granted };
   }
 
@@ -158,13 +164,59 @@ export function claimAchievementReward(
       addItem(bag, itemId, 1);
     }
     world.achievements.claimedIds.add(achievementId);
+    const grantedLootBox: GrantedLootBox = { gold: bundle.gold, materials: bundle.materials };
+    world.achievements.pendingPresentations.set(achievementId, {
+      kind: 'lootBox',
+      tier: bundle.tier,
+      gold: grantedLootBox.gold,
+      materials: grantedLootBox.materials,
+    });
     return {
       ok: true,
       reward: achievement.reward,
-      grantedLootBox: { gold: bundle.gold, materials: bundle.materials },
+      grantedLootBox,
     };
   }
 
   world.achievements.claimedIds.add(achievementId);
   return { ok: true, reward: achievement.reward };
+}
+
+/**
+ * True while a `lootBox`/`equipment` achievement claim has a resolved
+ * presentation snapshot still waiting to be shown/acknowledged by the UI
+ * (e.g. the game was reloaded mid-sequence). `directorMessage`/`item`/`none`
+ * rewards never populate this map — they remain today's unchanged
+ * instant-reveal claim.
+ */
+export function hasPendingAchievementRewardPresentation(
+  world: GameWorld,
+  achievementId: string,
+): boolean {
+  return world.achievements.pendingPresentations.has(achievementId);
+}
+
+/** Read (without consuming) the pending presentation snapshot, if any. */
+export function getPendingAchievementRewardPresentation(
+  world: GameWorld,
+  achievementId: string,
+): ResolvedRewardPresentation | undefined {
+  return world.achievements.pendingPresentations.get(achievementId);
+}
+
+/**
+ * Acknowledge (consume) an achievement's pending reward presentation once the
+ * UI sequence has completed or been skipped to its end. Idempotent: calling
+ * this when nothing is pending (already acknowledged, or a reward type that
+ * never had one) is always a safe no-op — matching
+ * {@link ../../core/systems/bossChestRewards.ts#acknowledgeBossChestReveal}'s
+ * idempotent-acknowledge convention. This never re-grants or re-touches the
+ * underlying claim — the grant already happened atomically in
+ * {@link claimAchievementReward}.
+ */
+export function acknowledgeAchievementRewardPresentation(
+  world: GameWorld,
+  achievementId: string,
+): void {
+  world.achievements.pendingPresentations.delete(achievementId);
 }
