@@ -117,6 +117,7 @@ interface MainSceneInternals {
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
   };
+  bossChestUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
    * The shared reward-opening sequence overlay driven by `AchievementsUI` /
    * `BossChestUI`. Test/automation affordances only (`getPhase`/`getBucket`/
@@ -138,6 +139,7 @@ interface MainSceneInternals {
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
+  bossChestButton?: { visible: boolean; emit(eventName: string): boolean };
   modalPicker?: {
     isOpen(): boolean;
     close(): void;
@@ -150,6 +152,8 @@ interface MainSceneInternals {
   requestInventoryToggle?(): void;
   requestEquipAction?(): void;
   requestAchievementsToggle?(): void;
+  requestBossChestsToggle?(): void;
+  resumePendingRewardPresentations?(): void;
   setSimulationPaused(paused: boolean): void;
   advanceSimulationFrames?(frames?: number): void;
   isSimulationPaused(): boolean;
@@ -228,6 +232,8 @@ export interface MainSceneState {
   readonly equipmentOpen: boolean;
   /** True when achievements is open. */
   readonly achievementsOpen: boolean;
+  /** True when the boss chest panel is open. */
+  readonly bossChestOpen: boolean;
   /** True while a conversation is active. */
   readonly conversationOpen: boolean;
   /** Active NPC dialogue line index, or null when no conversation is open. */
@@ -237,6 +243,7 @@ export interface MainSceneState {
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
+  readonly bossChestButtonVisible: boolean;
   /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
   readonly primarySurfaceCount: number;
   /** True when safe-room-gated surfaces should be allowed. */
@@ -387,12 +394,16 @@ export interface MainSceneProbeApi {
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
   requestInventoryToggle(): void;
   requestEquipToggle(): void;
+  /** Queue Boss Chests ([C]) through the scene request path. */
+  requestBossChestsToggle(): void;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
   tapAbilitiesButton(): boolean;
+  /** Emit a pointer tap on the Chests corner button. Returns false if unavailable/hidden. */
+  tapBossChestButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
   queueAbilitiesAndAchievementsToggle(): void;
   /** Queue the shared interaction request used by touch and repeated E presses. */
@@ -431,6 +442,12 @@ export interface MainSceneProbeApi {
    * no-op unlock if the achievement is already unlocked/claimed (idempotent).
    */
   claimAchievementReward(achievementId: string): void;
+  /** Seed one pending achievement reward plus one revealed boss chest reward. */
+  seedPendingRewardResumeScenario(): void;
+  /** Seed an available boss chest so touch/UI affordances can be observed. */
+  seedAvailableBossChest(): void;
+  /** Run the real MainGameScene shared reward-resume coordinator. */
+  resumePendingRewardPresentations(): void;
   /** Snapshot of the shared reward-opening overlay, or the closed shape. */
   getRewardOpeningState(): RewardOpeningProbeState;
   /** Advance the open reward-opening sequence by `deltaMs`. No-op while closed. */
@@ -543,6 +560,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
+      const bossChestOpen = scene?.bossChestUI?.isOpen() ?? false;
       const conversationNpcEid = scene?.conversationNpcEid ?? null;
       const conversationLineIndex =
         conversationNpcEid !== null
@@ -558,18 +576,21 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
+        bossChestOpen,
         conversationOpen: conversationNpcEid !== null,
         conversationLineIndex,
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
+        bossChestButtonVisible: scene?.bossChestButton?.visible ?? false,
         primarySurfaceCount: [
           modalOpen,
           abilityLoadoutOpen,
           inventoryOpen,
           equipmentOpen,
           achievementsOpen,
+          bossChestOpen,
         ].filter(Boolean).length,
         safeContext: (world?.playerInSafeRoom ?? false) || world?.state === 'safe_room',
         simulationPaused: scene?.isSimulationPaused() ?? false,
@@ -813,6 +834,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.requestAchievementsToggle?.();
     },
 
+    requestBossChestsToggle: () => {
+      getScene()?.requestBossChestsToggle?.();
+    },
+
     requestInventoryToggle: () => {
       getScene()?.requestInventoryToggle?.();
     },
@@ -830,6 +855,15 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     tapAbilitiesButton: () => {
       const button = getScene()?.abilitiesButton;
+      if (!button?.visible) {
+        return false;
+      }
+      button.emit('pointerdown');
+      return true;
+    },
+
+    tapBossChestButton: () => {
+      const button = getScene()?.bossChestButton;
       if (!button?.visible) {
         return false;
       }
@@ -986,6 +1020,52 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       // the achievements panel to be visibly open first.
       achievementsUI.refresh(world);
       achievementsUI.claimReward(achievementId);
+    },
+
+    seedPendingRewardResumeScenario: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) {
+        return;
+      }
+      world.achievements.pendingPresentations.set('first-bonk', {
+        kind: 'lootBox',
+        tier: 'trash',
+        gold: 25,
+        materials: ['floor1-common-scrap', 'floor1-common-scrap'],
+      });
+      world.bossChests.set('boss-chest:ratfolk', {
+        chestId: 'boss-chest:ratfolk',
+        familyId: 'ratfolk',
+        state: 'revealed',
+        createdAtMs: 0,
+        revealedGrant: {
+          kind: 'equipment',
+          tier: 'tier1',
+          instanceKeys: ['gei:v1:probe-boss-chest:0'],
+        },
+      });
+      scene.achievementsUI?.refresh(world);
+      scene.bossChestUI?.refresh(world);
+    },
+
+    seedAvailableBossChest: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) {
+        return;
+      }
+      world.bossChests.set('boss-chest:ratfolk', {
+        chestId: 'boss-chest:ratfolk',
+        familyId: 'ratfolk',
+        state: 'available',
+        createdAtMs: 0,
+      });
+      scene.bossChestUI?.refresh(world);
+    },
+
+    resumePendingRewardPresentations: () => {
+      getScene()?.resumePendingRewardPresentations?.();
     },
 
     getRewardOpeningState: (): RewardOpeningProbeState => {

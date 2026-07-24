@@ -1124,6 +1124,16 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
           `Boss chest ${chest.chestId} revealedGrant must be kind "equipment", got "${chest.revealedGrant.kind}"`,
         );
       }
+      if (chest.revealedGrant.tier !== 'tier1') {
+        throw new PlayerCarryoverSnapshotError(
+          `Boss chest ${chest.chestId} revealedGrant must have tier "tier1", got "${chest.revealedGrant.tier}"`,
+        );
+      }
+      if (chest.revealedGrant.instanceKeys.length !== 1) {
+        throw new PlayerCarryoverSnapshotError(
+          `Boss chest ${chest.chestId} revealedGrant must contain exactly 1 instance, got ${chest.revealedGrant.instanceKeys.length}`,
+        );
+      }
       if (chest.state === 'available') {
         // `revealedGrant` is only populated on the real available->revealed
         // transition (see `openBossChest`), so a persisted `available` chest
@@ -1282,6 +1292,15 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       throw new PlayerCarryoverSnapshotError(
         `Boss chest ${chest.chestId} is in state "${chest.state}" but has no revealedGrant`,
       );
+    }
+    if (chest.revealedGrant?.kind === 'equipment') {
+      for (const key of chest.revealedGrant.instanceKeys) {
+        if (!instancesByKey.has(key)) {
+          throw new PlayerCarryoverSnapshotError(
+            `Boss chest ${chest.chestId} revealedGrant has dangling instance key: ${key}`,
+          );
+        }
+      }
     }
   }
 

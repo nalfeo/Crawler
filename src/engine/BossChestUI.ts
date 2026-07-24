@@ -85,6 +85,12 @@ export interface BossChestUIConfig {
    * and retryable).
    */
   onGrantFailed?: (reason: string) => void;
+  /**
+   * Fired only when this UI has drained its own pending-presentation queue and
+   * the shared RewardOpeningUI is now closed, so the caller can resume another
+   * reward source through the same modal.
+   */
+  onPresentationQueueDrained?: (world: GameWorld) => void;
 }
 
 export interface BossChestUIApi {
@@ -178,6 +184,9 @@ export function createBossChestUI(
         lastSignature = null;
         refresh(world);
         resumePendingPresentation(world);
+        if (!rewardOpeningUI.isOpen()) {
+          config.onPresentationQueueDrained?.(world);
+        }
       },
     });
   }

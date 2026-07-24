@@ -768,6 +768,97 @@ describe('player floor carryover', () => {
     },
   );
 
+  it('fails closed when a persisted boss chest revealedGrant is not tier1', () => {
+    const runKey = 'carryover-bad-revealedgrant-tier-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      {
+        chestId: 'boss-chest:goblin-warband',
+        familyId: 'goblin-warband',
+        state: 'revealed',
+        createdAtMs: 0,
+        revealedGrant: {
+          kind: 'equipment',
+          tier: 'tier2',
+          instanceKeys: ['gei:v1:carryover-bad-revealedgrant-tier-run:0'],
+        },
+      },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /must have tier "tier1"/,
+    );
+  });
+
+  it('fails closed when a persisted boss chest revealedGrant has the wrong instance count', () => {
+    const runKey = 'carryover-bad-revealedgrant-count-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      {
+        chestId: 'boss-chest:goblin-warband',
+        familyId: 'goblin-warband',
+        state: 'revealed',
+        createdAtMs: 0,
+        revealedGrant: {
+          kind: 'equipment',
+          tier: 'tier1',
+          instanceKeys: [
+            'gei:v1:carryover-bad-revealedgrant-count-run:0',
+            'gei:v1:carryover-bad-revealedgrant-count-run:1',
+          ],
+        },
+      },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /must contain exactly 1 instance/,
+    );
+  });
+
+  it('fails closed when a persisted boss chest revealedGrant has a dangling instance key', () => {
+    const runKey = 'carryover-bad-revealedgrant-dangling-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const generated = createGeneratedEquipmentInstance(source, generatedEquipmentInput());
+    expect(addGeneratedEquipmentToBag(source, player, generated.instanceId).ok).toBe(true);
+    source.bossChests.set('boss-chest:goblin-warband', {
+      chestId: 'boss-chest:goblin-warband',
+      familyId: 'goblin-warband',
+      state: 'revealed',
+      createdAtMs: 0,
+      revealedGrant: {
+        kind: 'equipment',
+        tier: 'tier1',
+        instanceKeys: [generated.instanceId],
+      },
+    });
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as {
+      bossChests: Array<{ chestId: string; revealedGrant?: { instanceKeys: string[] } }>;
+    };
+    serialized.bossChests[0]!.revealedGrant!.instanceKeys = [
+      'gei:v1:carryover-bad-revealedgrant-dangling-run:999',
+    ];
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /dangling instance key/,
+    );
+  });
+
   it('restores a "player-carryover/v1" snapshot missing generatedEquipmentRewardBundles', () => {
     // Regression test: the round-1 absent-key default was only applied to
     // bossChests, but generatedInventoryInstanceKeys, generatedEquippedInstanceKeys,
@@ -1516,15 +1607,18 @@ describe('player floor carryover', () => {
       const runKey = 'carryover-bosschest-reveal-run';
       const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
       const player = spawnPlayer(source, 0, 0);
-      const instanceKeys: readonly GeneratedEquipmentInstanceKey[] = [
-        'gei:v1:carryover-bosschest-reveal-run:0',
-      ];
+      const generated = createGeneratedEquipmentInstance(
+        source,
+        generatedEquipmentInput({ baseId: 'armor.bosschest-reveal', rarity: 'common' }),
+      );
+      expect(addGeneratedEquipmentToBag(source, player, generated.instanceId).ok).toBe(true);
+      const instanceKeys: readonly GeneratedEquipmentInstanceKey[] = [generated.instanceId];
       source.bossChests.set('boss-chest:goblin-warband', {
         chestId: 'boss-chest:goblin-warband',
         familyId: 'goblin-warband',
         state: 'revealed',
         createdAtMs: 123,
-        revealedGrant: { kind: 'equipment', tier: 'tier2', instanceKeys },
+        revealedGrant: { kind: 'equipment', tier: 'tier1', instanceKeys },
       });
       const snapshot = capturePlayerCarryover(source, player);
       const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
@@ -1537,7 +1631,7 @@ describe('player floor carryover', () => {
       expect(restoredChest?.state).toBe('revealed');
       expect(restoredChest?.revealedGrant).toEqual({
         kind: 'equipment',
-        tier: 'tier2',
+        tier: 'tier1',
         instanceKeys,
       });
     });
@@ -1592,9 +1686,12 @@ describe('player floor carryover', () => {
       const runKey = 'carryover-bosschest-exactonce-run';
       const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
       const player = spawnPlayer(source, 0, 0);
-      const instanceKeys: readonly GeneratedEquipmentInstanceKey[] = [
-        'gei:v1:carryover-bosschest-exactonce-run:0',
-      ];
+      const generated = createGeneratedEquipmentInstance(
+        source,
+        generatedEquipmentInput({ baseId: 'armor.bosschest-exactonce', rarity: 'common' }),
+      );
+      expect(addGeneratedEquipmentToBag(source, player, generated.instanceId).ok).toBe(true);
+      const instanceKeys: readonly GeneratedEquipmentInstanceKey[] = [generated.instanceId];
       const grant = { kind: 'equipment' as const, tier: 'tier1' as const, instanceKeys };
       source.bossChests.set('boss-chest:rat-swarm', {
         chestId: 'boss-chest:rat-swarm',

@@ -80,6 +80,8 @@ export interface RewardOpeningUIHooks {
    * this slice.
    */
   readonly onPhaseChange?: (phase: RewardOpeningPhase, bucket: RewardExcitementBucket) => void;
+  /** Fired whenever the overlay opens or closes so callers can clear stale input. */
+  readonly onVisibilityChange?: (open: boolean) => void;
 }
 
 export interface OpenRewardOpeningParams {
@@ -344,6 +346,7 @@ export function createRewardOpeningUI(
     lastRenderedPhase = null;
     clearItemObjects();
     container.setVisible(false);
+    hooks.onVisibilityChange?.(false);
   }
 
   function handleSkip(): void {
@@ -411,6 +414,7 @@ export function createRewardOpeningUI(
       });
       lastRenderedPhase = null;
       container.setVisible(true);
+      hooks.onVisibilityChange?.(true);
       render();
     },
     isOpen(): boolean {

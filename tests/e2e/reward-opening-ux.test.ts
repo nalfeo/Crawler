@@ -33,6 +33,7 @@ import { closeQuietly } from './helpers/ui-probe.js';
 import {
   loadMainSceneProbeLab,
   mainSceneProbe,
+  waitForState,
   waitForRewardOpeningState,
 } from './helpers/main-scene-probe.js';
 import { DEFAULT_PER_ITEM_REVEAL_MS } from '../../src/shared/reward-opening-sequence.js';
@@ -259,6 +260,69 @@ describe('real reward-opening UX (achievement path)', () => {
       await page.waitForTimeout(300);
       const afterClose = await mainSceneProbe.getWorldElapsedMs(page);
       expect(afterClose).toBeGreaterThan(openedAt ?? 0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('drains achievement resumes before auto-resuming a revealed boss chest', async () => {
+    const { context, page } = await newPage(browser);
+    try {
+      await mainSceneProbe.seedPendingRewardResumeScenario(page);
+      await mainSceneProbe.resumePendingRewardPresentations(page);
+
+      const achievement = await waitForRewardOpeningState(page, (s) => s.open, {
+        label: 'achievement reward presentation to open first',
+      });
+      expect(achievement.phase).toBe('anticipation');
+      expect(achievement.total).toBe(2);
+
+      await mainSceneProbe.skipRewardOpening(page);
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+
+      const bossChest = await waitForRewardOpeningState(page, (s) => s.open && s.total === 1, {
+        label: 'boss chest reward presentation to auto-resume second',
+      });
+      expect(bossChest.phase).toBe('anticipation');
+      expect(bossChest.total).toBe(1);
+
+      await mainSceneProbe.skipRewardOpening(page);
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+      await waitForRewardOpeningState(page, (s) => !s.open, {
+        label: 'all resumed reward presentations to finish',
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('does not leak queued E interactions after the reward overlay closes', async () => {
+    const { context, page } = await newPage(browser);
+    try {
+      await mainSceneProbe.resolveLoadout(page);
+      await mainSceneProbe.setSimulationPaused(page, false);
+      await waitForState(page, (s) => s.worldState === 'playing' && !s.simulationPaused, {
+        label: 'playing state with live simulation',
+      });
+      const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
+      expect(npcTarget, 'probe should expose an NPC interaction target').not.toBeNull();
+
+      await mainSceneProbe.claimAchievementReward(page, RARE_TIER_ACHIEVEMENT_ID);
+      await waitForRewardOpeningState(page, (s) => s.open, { label: 'reward overlay to open' });
+
+      await page.keyboard.press('e');
+      await mainSceneProbe.skipRewardOpening(page);
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+      await waitForRewardOpeningState(page, (s) => !s.open, {
+        label: 'reward overlay to close after queued E input',
+      });
+      await page.waitForTimeout(250);
+
+      const state = await mainSceneProbe.getState(page);
+      expect(
+        state.conversationOpen,
+        'E pressed during the reward overlay must not fire after close',
+      ).toBe(false);
     } finally {
       await context.close();
     }
