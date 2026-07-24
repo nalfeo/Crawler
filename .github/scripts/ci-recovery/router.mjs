@@ -22,47 +22,55 @@ import {
 } from '../merge-train/state.mjs';
 
 const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
-// Default global cap on outstanding CI Recovery workflow runs while the merge
-// train queue is non-empty. Overridable at runtime via the
-// CI_GLOBAL_TRAIN_DISPATCH_CAP repo Actions variable -- no code change needed
-// during an incident. See docs/agent-os/policies/ci-config-knobs.md.
-//
-// This is intentionally independent of CI_RECOVERY_MAX_DISPATCH_PER_RUN:
-// that var caps dispatch *per router invocation*, but with the router now
-// serialized under a single concurrency group (see ci-recovery-router.yml),
-// this cap is what actually bounds the number of CI Recovery runs competing
-// with Merge Train Validation for runners at any moment.
-//
-// 2026-07-22 EMERGENCY raise 1 -> 5: CI Recovery is the merge train's SOLE
-// feeder (it drives PRs to convergence and applies the `merge-train` label),
-// so pinning it to 1 while the queue was non-empty meant a single slow PR
-// starved the train and froze throughput repo-wide. Raising to 5 lets
-// recovery converge several PRs per cycle and actually drain the backlog.
-// Runner-safety headroom now leans on #1770 (far less PR-head churn) and the
-// sweep-fencing work.
-export const GLOBAL_TRAIN_DISPATCH_CAP = 5;
-// Default cap applied whenever there is no active merge-train backlog to
-// protect -- the queue is empty, the train feature is enabled but idle, OR
-// the train feature is disabled/paused entirely. Overridable at runtime via
-// CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP repo Actions variable. Safe range: 1-20.
-// See docs/agent-os/policies/ci-config-knobs.md for interaction details.
-//
-// Measured capacity evidence (2026-07-21 incident follow-up): this repo is
-// public on GitHub Free (standard-hosted concurrency limit: 20 concurrent
-// jobs). Representative peaks observed: a normal full PR CI run uses ~5
-// concurrent jobs; uncontended Merge Train Validation runs alone peak at 7-9
-// concurrent jobs; an active AI Sweep Eval run can spawn 200+ jobs and peak
-// at ~19 concurrent, which is what starved Validation runners during the
-// incident. Even with no backlog to protect, sweep-style jobs can still be
-// running (and can be running whether or not the train feature itself is on),
-// so dispatch is not left fully unbounded here -- 5 (emergency-raised from 2
-// on 2026-07-22 to match GLOBAL_TRAIN_DISPATCH_CAP for throughput) preserves
-// bounded runner headroom instead of going back to effectively-unlimited
-// (Infinity) dispatch. This cap must remain in force during train
-// maintenance/disablement too: that is precisely when protecting shared
-// runner capacity matters most, not a window where backpressure can safely
-// lapse.
-export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = 5;
+// Runner-capacity model (load-aware budget architecture, 2026-07-22):
+//   RUNNER_CEILING          = GitHub Free standard-hosted concurrency limit
+//   VALIDATION_RESERVED_*   = runner slots reserved for Merge Train Validation
+//                             (the stricter train-busy floor applies when the
+//                             merge-train queue is non-empty)
+//   MAX_DISPATCH_BUDGET_*   = ceiling on outstanding CI Recovery runs (applied
+//                             after subtracting reserved and sweep headroom from
+//                             RUNNER_CEILING).  Overridable at runtime via
+//                             CI_GLOBAL_TRAIN_DISPATCH_CAP /
+//                             CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP repo variables.
+//   SWEEP_RUNNER_WEIGHT     = estimated concurrent jobs consumed by one active
+//                             AI Sweep Eval run (used to credit sweep headroom
+//                             without validation telemetry).
+//   VALIDATION_RUNNER_WEIGHT = estimated concurrent jobs per active Validation
+//                             run (used to measure live validation headroom).
+export const RUNNER_CEILING = 20;
+// Reserved runner slots for Merge Train Validation when the queue is non-empty.
+// Keeps validation throughput protected from CI Recovery bursts.
+export const VALIDATION_RESERVED_TRAIN_BUSY = 9;
+// Reserved slots when the queue is empty / train is idle or disabled.
+// Lower than TRAIN_BUSY because fewer Validation runs compete when idle.
+export const VALIDATION_RESERVED_TRAIN_IDLE = 3;
+// Default global cap on outstanding CI Recovery runs while the merge-train
+// queue is non-empty. Overridable via CI_GLOBAL_TRAIN_DISPATCH_CAP (range 1-10).
+// 2026-07-22 EMERGENCY raise 1 -> 5: pinning to 1 starved the train feeder.
+export const MAX_DISPATCH_BUDGET_TRAIN_BUSY = 5;
+// Default global cap on outstanding CI Recovery runs when the queue is empty,
+// the train is idle, or disabled. Overridable via CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP
+// (range 1-20). 8 leaves headroom for sweep peaks (~19 concurrent jobs observed).
+export const MAX_DISPATCH_BUDGET_TRAIN_IDLE = 8;
+// Estimated concurrent jobs consumed by one active AI Sweep Eval run.
+// Used to deduct sweep headroom from the runner ceiling in computeDispatchBudget.
+export const SWEEP_RUNNER_WEIGHT = 10;
+// Estimated concurrent jobs per active Merge Train Validation run.
+// Used to measure live validation headroom in computeDispatchBudget.
+export const VALIDATION_RUNNER_WEIGHT = 9;
+// Legacy alias exports: these constants are read by reconcile.mjs and
+// ci-recovery/reconcile.mjs via resolveGlobalDispatchCaps(process.env).
+// They alias MAX_DISPATCH_BUDGET_* so that in-code defaults and env-driven
+// overrides are always consistent.
+export const GLOBAL_TRAIN_DISPATCH_CAP = MAX_DISPATCH_BUDGET_TRAIN_BUSY;
+export const GLOBAL_IDLE_TRAIN_DISPATCH_CAP = MAX_DISPATCH_BUDGET_TRAIN_IDLE;
+// Enforced runner-safety ceilings for env-driven cap overrides.
+// Values above these are silently clamped so a typo in a repo variable
+// cannot flood CI beyond the GitHub Free runner capacity ceiling.
+// Structural constants: changing them requires evidence from incident metrics,
+// not just a repo-variable update. Documented in ci-config-knobs.md.
+const TRAIN_CAP_MAX = 10;
+const IDLE_CAP_MAX = 20;
 // GitHub Actions run states that represent a run not yet finished: actively
 // running, waiting to be scheduled, or held by a concurrency group (queued
 // runs whose concurrency group is busy report as `waiting`). `pending` is
@@ -118,6 +126,21 @@ const FLAG_OFF_SWEEP_ROTATION_WINDOW_MS = 10 * 60 * 1000;
 function parsePositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw ?? ''), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+// Like parsePositiveInt, but additionally:
+//  1. Rejects strings with non-numeric content (e.g. "10oops" -> fallback).
+//     Number.parseInt silently ignores trailing non-digits; this is intentional
+//     for many uses but dangerous for operator-supplied runner caps.
+//  2. Clamps the result to [1, max] so a typo cannot exceed the runner-safety
+//     ceiling documented in ci-config-knobs.md.
+function parseClampedPositiveInt(raw, fallback, max) {
+  const str = String(raw ?? '').trim();
+  // Strict: must be entirely digits (no leading sign, no decimals, no trailing junk).
+  if (!/^\d+$/.test(str)) return fallback;
+  const parsed = Number.parseInt(str, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
 }
 
 function sleep(ms) {
@@ -797,11 +820,18 @@ export async function listRecentOutstandingRunIds(
 export function computeDispatchBudget({
   trainQueueNonEmpty,
   outstandingCount,
-  trainCap = GLOBAL_TRAIN_DISPATCH_CAP,
-  idleCap = GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  activeSweepJobs = 0,
+  activeValidationJobs = 0,
+  trainCap = MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+  idleCap = MAX_DISPATCH_BUDGET_TRAIN_IDLE,
 }) {
-  const cap = trainQueueNonEmpty ? trainCap : idleCap;
-  return Math.max(0, cap - outstandingCount);
+  const reservedFloor = trainQueueNonEmpty
+    ? VALIDATION_RESERVED_TRAIN_BUSY
+    : VALIDATION_RESERVED_TRAIN_IDLE;
+  const validationReserved = Math.max(reservedFloor, activeValidationJobs);
+  const maxBudget = trainQueueNonEmpty ? trainCap : idleCap;
+  const headroom = RUNNER_CEILING - validationReserved - activeSweepJobs - outstandingCount;
+  return Math.max(0, Math.min(maxBudget, headroom));
 }
 
 // Resolves the runtime-overridable dispatch caps from the environment.
@@ -811,8 +841,16 @@ export function computeDispatchBudget({
 // honour the same env-driven caps.
 export function resolveGlobalDispatchCaps(env = process.env) {
   return {
-    trainCap: parsePositiveInt(env.CI_GLOBAL_TRAIN_DISPATCH_CAP, GLOBAL_TRAIN_DISPATCH_CAP),
-    idleCap: parsePositiveInt(env.CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP, GLOBAL_IDLE_TRAIN_DISPATCH_CAP),
+    trainCap: parseClampedPositiveInt(
+      env.CI_GLOBAL_TRAIN_DISPATCH_CAP,
+      GLOBAL_TRAIN_DISPATCH_CAP,
+      TRAIN_CAP_MAX,
+    ),
+    idleCap: parseClampedPositiveInt(
+      env.CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      IDLE_CAP_MAX,
+    ),
   };
 }
 

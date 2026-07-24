@@ -23,7 +23,7 @@
  * See docs/agent-os/policies/ci-config-knobs.md for the full reference.
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -32,6 +32,9 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 // Scripts we audit.  Each entry lists its path (relative to repo root) and the
 // env-var names whose `process.env.<VAR>` reads we expect to find.
+// The 'env-var reads' list covers scripts that have been PROMOTED to runtime
+// knobs — i.e., they actively read from process.env.  Purely structural scripts
+// (no operationally-tweakable vars) appear only in the all-scripts scan below.
 const AUDITED_SCRIPTS = [
   {
     relPath: '.github/scripts/ci-recovery/router.mjs',
@@ -81,9 +84,9 @@ const OPERATIONALLY_TWEAKABLE_ROUTER: Record<string, string> = {
 
 /**
  * All file-scope numeric constants that are intentionally hardcoded — not
- * operationally tweakable but structurally necessary.  The set spans all three
- * audited scripts combined (since a name only needs to be in one script's
- * allowlist to be valid globally — names are unique across these files).
+ * operationally tweakable but structurally necessary.  The set spans ALL
+ * production scripts under .github/scripts/ (names are unique across files).
+ * See docs/agent-os/policies/ci-config-knobs.md for the canonical table.
  */
 const STRUCTURAL_ALLOWLIST = new Set([
   // router.mjs — retry / timing / structural
@@ -95,7 +98,7 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS',
   'OWNERSHIP_HYDRATION_BATCH_SIZE',
   'REPAIR_WINDOW_SIZE',
-  // router.mjs — load-aware budget architecture (main 2026-07-22+)
+  // router.mjs — load-aware budget architecture (2026-07-22+)
   // These constants encode measured GitHub Free runner capacity and tuned
   // safety margins; changing them requires evidence from incident metrics,
   // not just a repo-variable update, so they remain structural.
@@ -105,9 +108,11 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'SWEEP_RUNNER_WEIGHT', // estimated concurrent jobs per in-progress sweep run
   'VALIDATION_RUNNER_WEIGHT', // estimated concurrent jobs per Validation run
   'REAPER_LANE_CAP', // max PRs per reaper sweep window
-  // ci-conflict-coordinator/state.mjs (imported constants, not checked here but listed for clarity)
-  // ci-conflict-coordinator/reconcile.mjs — reopen retry (delay is already env-driven; attempts is structural)
-  // reconcile.mjs (ci-recovery) — rebase backoff
+  // router.mjs — runner-safety ceilings for env-driven cap overrides.
+  // Changing these requires evidence from incident metrics, not a repo variable.
+  'TRAIN_CAP_MAX', // enforced ceiling for CI_GLOBAL_TRAIN_DISPATCH_CAP (safe range 1-10)
+  'IDLE_CAP_MAX', // enforced ceiling for CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP (safe range 1-20)
+  // ci-recovery/reconcile.mjs — rebase backoff
   'REBASE_FAILURE_MAX_ATTEMPTS',
   'REBASE_FAILURE_BASE_BACKOFF_MS',
   'REBASE_FAILURE_MAX_BACKOFF_MS',
@@ -115,6 +120,38 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'RELEASE_HANDOFF_DELAY_MS',
   // merge-train/reconcile.mjs — structural lookback window
   'MAIN_HEALTH_PUSH_RUN_LOOKBACK',
+  // merge-train/state.mjs
+  'MAX_TRAIN_SIZE', // merge train batch size (matches REPAIR_WINDOW_SIZE)
+  'CANDIDATE_VALIDATION_STALE_MS', // validation stale threshold
+  // merge-train/protection-lib.mjs
+  'GITHUB_ACTIONS_APP_ID', // fixed GitHub Actions App ID (not operator-tunable)
+  // merge-train/check-runs.mjs
+  'PAGE_SIZE', // GitHub API pagination page size
+  'MAX_PAGES', // pagination page limit
+  'MAX_TRUSTED_APP_CHECK_SUITES', // max check suites per trusted app
+  // merge-train/resolve-landed-pr.mjs
+  'EXIT_API_FAILURE', // exit code for API failure (structural, not a behavior knob)
+  'ASSOCIATED_PULLS_PER_PAGE', // GitHub API page size for associated pulls
+  // ci-recovery/github.mjs
+  'MAX_RETRY_ATTEMPTS', // GitHub API request retry limit
+  // ci-recovery/state.mjs
+  'DEFAULT_LEASE_TTL_MINUTES', // automation lease time-to-live
+  'DEFAULT_LEASE_GRACE_MINUTES', // grace period after lease expiry
+  'AUTOMATION_STALE_MINUTES', // age after which an automation comment is stale
+  // ci-recovery/issue-intake-lib.mjs
+  'RECOVERY_PLAN_CHECKLIST_MAX_ITEMS', // max checklist items in a recovery plan
+  'RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH', // max length per checklist item
+  // pr-ready-reviewer-guard.mjs
+  'COPILOT_CLOUD_AGENT_WORKFLOW_ID', // fixed Copilot cloud agent workflow ID
+  'EMPTY_DRAFT_REPAIR_GRACE_MS', // grace period for empty-draft repair
+  'WORKFLOW_RUNS_PAGE_SIZE', // page size for workflow runs API
+  'WORKFLOW_RUNS_MAX_PAGES', // max pages to fetch for workflow runs
+  // ci-conflict-coordinator/state.mjs
+  'MIN_CLUSTER_SIZE', // minimum PR count for a conflict-coordination cluster
+  'MAX_OVERLAP_FILES', // max overlap files stored per cluster
+  // sweep-budget.mjs
+  'SWEEP_POOL_SIZE', // max concurrent sweep runs in the pool
+  'ACCOUNT_RUNNER_LIMIT', // GitHub Free account-level runner concurrency limit
 ]);
 
 /** Regex that matches a top-level `const NAME = <number>;` declaration. */
@@ -270,5 +307,59 @@ describe('CI knobs guard', () => {
       // potentially-misleading "cap=5 while dispatching 0" message.
       expect(routerSource).toContain('budget=${dispatchBudget}');
     });
+  });
+
+  describe('no unregistered file-scope numeric constants in any production CI script', () => {
+    // Auto-discovers ALL .github/scripts/**/*.mjs files (excluding tests) and
+    // asserts every file-scope numeric constant is registered in either
+    // OPERATIONALLY_TWEAKABLE_ROUTER or STRUCTURAL_ALLOWLIST.
+    //
+    // This prevents the gap identified in the 2026-07 review: the per-file
+    // describe blocks above only covered 3 entrypoints; constants in supporting
+    // scripts (merge-train/state.mjs, ci-recovery/github.mjs, etc.) were
+    // invisible to the guard.  The auto-discovery approach covers the complete
+    // .github/scripts/** scope without requiring a per-file test scaffold.
+    const scriptsDir = path.join(REPO_ROOT, '.github/scripts');
+    const knownTweakable = new Set(Object.keys(OPERATIONALLY_TWEAKABLE_ROUTER));
+
+    function collectMjsFiles(dir: string): string[] {
+      const entries = readdirSync(dir, { withFileTypes: true });
+      const files: string[] = [];
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          files.push(...collectMjsFiles(full));
+        } else if (entry.isFile() && entry.name.endsWith('.mjs') && !entry.name.endsWith('.test.mjs')) {
+          files.push(full);
+        }
+      }
+      return files;
+    }
+
+    const allProductionScripts = collectMjsFiles(scriptsDir);
+
+    for (const scriptPath of allProductionScripts) {
+      const relPath = path.relative(REPO_ROOT, scriptPath);
+      const source = readFileSync(scriptPath, 'utf8');
+      const found = extractTopLevelNumericConsts(source);
+      if (found.length === 0) continue;
+
+      for (const name of found) {
+        it(`${relPath}: ${name} is registered as tweakable or structural`, () => {
+          const isKnown = knownTweakable.has(name) || STRUCTURAL_ALLOWLIST.has(name);
+          expect(
+            isKnown,
+            `Found unregistered file-scope numeric constant '${name}' in ${relPath}. ` +
+              `If this is a new operationally-meaningful knob, add a process.env read for it, ` +
+              `wire it in the relevant workflow YAML, document it in ` +
+              `docs/agent-os/policies/ci-config-knobs.md, and register it in ` +
+              `OPERATIONALLY_TWEAKABLE_ROUTER in ci-knobs-guard.test.ts. ` +
+              `If it is a structural constant, add it to STRUCTURAL_ALLOWLIST in ` +
+              `ci-knobs-guard.test.ts and add a row to the structural constants table in ` +
+              `docs/agent-os/policies/ci-config-knobs.md.`,
+          ).toBe(true);
+        });
+      }
+    }
   });
 });

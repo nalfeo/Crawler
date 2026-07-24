@@ -1545,7 +1545,53 @@ test('resolveGlobalDispatchCaps ignores non-positive and non-numeric env values'
   });
 });
 
-test('partitionDispatchable sends everything when the budget is unbounded', () => {
+test('resolveGlobalDispatchCaps: strict parse rejects trailing non-digit chars (e.g. "10oops")', () => {
+  // Number.parseInt("10oops") = 10, which would silently accept a malformed value.
+  // parseClampedPositiveInt requires purely-digit strings to prevent operator typos
+  // from silently accepting a partial value.
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '10oops' }), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '5bad' }), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+});
+
+test('resolveGlobalDispatchCaps: out-of-range values are clamped to runner-safety ceilings', () => {
+  // Train cap documented safe max = 10 (ci-config-knobs.md).
+  // Values above are clamped rather than rejected so the operator gets bounded
+  // protection instead of a silent fallback that could be lower than intended.
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '999' }), {
+    trainCap: 10,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '11' }), {
+    trainCap: 10,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+  // Idle cap documented safe max = 20 (ci-config-knobs.md).
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '999' }), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: 20,
+  });
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '21' }), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: 20,
+  });
+  // Values at the max boundary pass through unchanged.
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '10' }), {
+    trainCap: 10,
+    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+  });
+  assert.deepEqual(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '20' }), {
+    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+    idleCap: 20,
+  });
+});
+
+
   const prNumbers = [1, 2, 3, 4, 5];
   assert.deepEqual(partitionDispatchable(prNumbers, Infinity), {
     dispatchable: prNumbers,
