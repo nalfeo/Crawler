@@ -187,27 +187,22 @@ async function main(): Promise<number> {
       `            POST /api/workflow/issues/start|stop, GET /api/workflow/issues/status\n`,
     );
 
-    // Auto-start the in-process worker and issue ingester on the azure-queue backend so a queued
-    // generate always has a consumer. On the noop backend the generate route
-    // runs inline, so no worker is needed (and starting one would require Azure
-    // credentials the local dev box doesn't have).
-    if (queue.backend === 'azure-queue') {
-      const result = worker.start();
-      issueIngester.start();
-      if (result.started) {
-        process.stdout.write(`  worker  : auto-started (backend=${queue.backend})\n`);
-      } else {
-        process.stdout.write(
-          `  worker  : NOT started (${result.reason})` +
-            (result.status.lastError ? ` — ${result.status.lastError}` : '') +
-            `\n`,
-        );
-      }
-    } else {
-      process.stdout.write(
-        `  worker  : idle (backend=${queue.backend}; generate runs inline, no worker needed)\n`,
-      );
-    }
+    // The worker and issue ingester are NOT auto-started here. Starting them
+    // automatically against the azure-queue backend caused the local sidecar to
+    // race the CI `asset-request.yml` workflow for production queue messages —
+    // a long-running sidecar could silently drain the prod queue and run LLM
+    // generation locally, outside CI's security gates (GitHub issue #1879).
+    //
+    // The worker and ingester are available on-demand only:
+    //   • Worker:         POST /api/workflow/worker/start  (devtools "Launch worker" button)
+    //   • Issue ingester: POST /api/workflow/issues/start
+    //   • CI ingest:      npm run sprites:ingest-once  (asset-request.yml CI step only)
+    process.stdout.write(
+      `  worker  : idle (start via POST /api/workflow/worker/start or the devtools UI)\n`,
+    );
+    process.stdout.write(
+      `  ingester: idle (CI-only; start via POST /api/workflow/issues/start if needed locally)\n`,
+    );
     return 0;
   } catch (err) {
     releaseRegistry();
