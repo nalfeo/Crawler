@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5cc8d428a83ebfc908a43fab419ac08a0df45cf6",
+    "commitDate": "2026-07-23T23:01:22Z",
+    "commitSubject": "feat(ci): CI-fix-first + blocked-PR exclusion + global FIFO for recovery dispatch ordering (#1777)",
+    "capturedAt": "2026-07-24T00:19:14.567Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30052455351",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/5cc8d428a83ebfc908a43fab419ac08a0df45cf6.json"
+  },
+  {
     "commit": "7bed20b35f5e27d065667d22c330d91cfc7bb290",
     "commitDate": "2026-07-23T22:48:48Z",
     "commitSubject": "feat(ai-sweep): rebuild cross-run resume + fix legacy-baseline gap + infer legacy runInputs (#1759)",
