@@ -1,0 +1,79 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "reward-opening-ux",
+  "task_title": "Deterministic reward-opening UX (achievement boxes + boss chests)",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck review (gpt-5.4, high reasoning) of the shared reward-opening-sequence design. Verdict REJECT with 3 blocking + 3 non-blocking findings. Alt A: persisted presentation-ticket queue for save/load resume -- adopted in spirit (pendingPresentations map on world.achievements + revealedGrant on boss chest state). Alt B: provenance/claim-history reconstruction for resume -- rejected as too broad/over-engineered vs the ticket-queue approach. Alt C: auto-open scene overlay for boss chests instead of inventing new chest-interaction semantics -- adopted (BossChestUI drives RewardOpeningUI via the same shared renderer as AchievementsUI). Blocking issues fixed: (1) achievement save/load-resume gap -- added pendingPresentations persistence + fail-closed playerCarryover restore; (2) boss chest real-game integration underspecified -- resolved via Alt C; (3) carryover restore not fail-closed enough -- reworked to fail closed on any resolution error. divergence=minor: alternatives refined save/load + boss-chest integration details, but the core single shared reward-opening-sequence architecture was not re-architected."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "4 parallel reviewers (broken resume chain, tick() perf regression, silent grantFailed, equipment icons not added to container, lab never ticks) -- all 5 fixed before round 2."
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.3-codex", "claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "gemini clean; codex found boss-chest missing-revealedGrant carryover gap; code-review agent found state-machine premature-summary-transition bug. Both fixed before round 3."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Confirmation pass: codex found 0 new issues; code-review agent verified both round-2 fixes and found 1 test-coverage suggestion (no exact-count assertion for lootBox reveal items) -- addressed by strengthening the E2E assertion. Final round clean."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 5,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.3-codex", "claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex", "claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "Final adjudication (gpt-5.4, high reasoning, independent re-verification incl. running affected test suites) confirmed all 8 cumulative concerns across rounds 1-3 as VALID+FIXED with no new regressions or residual issues. Overall verdict: CLEAN."
+    }
+  }
+}

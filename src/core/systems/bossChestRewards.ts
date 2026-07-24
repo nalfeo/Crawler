@@ -22,6 +22,7 @@ import {
 } from './equipmentSystem.js';
 import type { EquipFailureReason } from '../../shared/equipment-types.js';
 import { BOSS_CHEST_ID_PREFIX } from '../../shared/achievements.js';
+import type { ResolvedRewardPresentation } from '../../shared/reward-presentation.js';
 
 export type BossChestState = 'available' | 'opening' | 'revealed' | 'claimed';
 
@@ -30,6 +31,15 @@ export interface BossChestRecord {
   readonly familyId: string;
   state: BossChestState;
   readonly createdAtMs: number;
+  /**
+   * Snapshot of the exact reward granted on the real `available` -> `revealed`
+   * transition, captured purely for redisplay (e.g. after a reload mid- or
+   * post-presentation). Set once and never cleared/re-rolled — reading it is
+   * always safe regardless of `state` (`revealed` or `claimed`). `undefined`
+   * only for chests created before this field existed (legacy carryover) or
+   * not yet opened.
+   */
+  revealedGrant?: ResolvedRewardPresentation;
 }
 
 /** Deterministic, collision-free chest id for a family's boss reward. */
@@ -131,6 +141,11 @@ export function openBossChest(
     return { ok: false, reason: 'grantFailed', detail: grant.reason };
   }
   chest.state = 'revealed';
+  chest.revealedGrant = {
+    kind: 'equipment',
+    tier: 'tier1',
+    instanceKeys: grant.granted.map((entry) => entry.instanceKey),
+  };
   return { ok: true, alreadyClaimed: false, state: 'revealed', granted: grant.granted };
 }
 

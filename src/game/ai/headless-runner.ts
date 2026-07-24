@@ -51,6 +51,7 @@ import {
   autoFloor2ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
+import { runSettlementMaintenancePlanner } from './settlement-maintenance-planner.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { initNavmesh } from './navmesh/index.js';
@@ -747,6 +748,7 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
+      runSettlementMaintenancePlanner(world);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 
       // Check win/loss conditions — read HP before the guard so both early-exit
