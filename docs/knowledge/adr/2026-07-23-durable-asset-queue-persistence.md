@@ -56,11 +56,14 @@ with the manifest as the sole source of truth.
      live repo's changed art surface onto it via the proven `copyArtSurface`
      (`mergeManifests`/`mergeCatalogs`), stages **only** an asset-surface path
      allowlist (rejecting `..`/absolute), no-op-guards on `git diff --cached
---quiet`, commits `--no-verify`, and **CAS-pushes** with
-     `--force-with-lease=refs/heads/assets/queue:<fetchedTip>` (plain create push
-     when the branch is new). On lease-stale / non-ff rejection it re-fetches and
+--quiet`, commits `--no-verify`, and **CAS-pushes** the new commit with a **plain
+     fast-forward-only push** (`git push <remote> <sha>:refs/heads/assets/queue`,
+     NOT `--force-with-lease`; a plain create push when the branch is new). Because
+     the commit's parent is the fetched tip, a concurrent advance makes the push a
+     non-fast-forward and git rejects it. On a non-ff rejection it re-fetches and
      re-unions against the new tip, so a concurrent writer's _different_ entry is
-     preserved rather than clobbered. The worktree is always removed in `finally`.
+     preserved rather than clobbered (a plain push can never overwrite a concurrent
+     update — that is the compare-and-swap). The worktree is always removed in `finally`.
    - `queue-commit-runtime.ts` wires real `execFile`; `queue-commit-cli.ts` is a
      thin JSON CLI so the `.mjs` extension (which cannot import TS) can shell out
      to the one tested implementation via `tsx`.

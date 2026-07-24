@@ -460,6 +460,31 @@ export function resolveVariantIdentity(
   return { briefId, variantId, assetPath: `generated/${variantId}.png`, contentHash };
 }
 
+/**
+ * Load the manifest entry for a variant that is ALREADY approved with identical
+ * content, WITHOUT mutating anything. Returns null when no such entry exists
+ * (e.g. the manifest was hand-edited away). Reuses `resolveVariantIdentity` to
+ * derive the canonical manifest key (`${briefId}-var-${variantIndex}`), so it
+ * throws the same run-validation `ApproveError` kinds when the run itself is
+ * gone.
+ *
+ * Used by the sidecar approve route to close the failed-push retry gap: when a
+ * prior approval already wrote the local manifest (so re-approve is a no-op
+ * `already-approved`) but its best-effort durable queue-commit never landed on
+ * the remote `assets/queue` branch, the route loads the stored entry via this
+ * helper and re-runs the queue-commit instead of returning a bare 409.
+ */
+export function loadApprovedEntry(options: {
+  readonly runDir: string;
+  readonly variantIndex: number;
+  readonly manifestPath: string;
+  readonly fs?: ApproveFs;
+}): ManifestEntry | null {
+  const fs = options.fs ?? DEFAULT_FS;
+  const identity = resolveVariantIdentity(options.runDir, options.variantIndex, fs);
+  return readManifestEntry(fs, options.manifestPath, identity.variantId);
+}
+
 function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {
   const facing = summary.postprocessOverrides?.facing;
   if (
