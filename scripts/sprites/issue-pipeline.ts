@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { SPRITE_TYPES, type Brief } from './brief-schema.js';
-import { runFull } from './run-full.js';
+import { runFull, type RunFullResult } from './run-full.js';
 import { synthesizeBrief } from './synthesize-brief.js';
 import type { IssueAssetRequest } from './queue/types.js';
 import type { ImageProvider } from './provider/types.js';
@@ -192,12 +192,9 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
     briefSelectorModel: selected.modelDeployment,
   });
   await setStatus('completed', { briefId: result.summary.brief, runId: result.summary.runId });
-  await comment(
-    `✅ Asset-request pipeline complete.\n\n` +
-      `- brief: \`${result.summary.brief}\`\n` +
-      `- run: \`${result.summary.runId}\`\n` +
-      `- summary: \`${result.summaryPath}\``,
-  );
+
+  const completionComment = buildCompletionComment(result, options.store);
+  await comment(completionComment);
   return {
     briefId: result.summary.brief,
     runId: result.summary.runId,
@@ -248,4 +245,49 @@ async function attachIssueMetadata(
       // Keep sidecar metadata even if summary parsing fails.
     }
   }
+}
+
+/**
+ * Build the terminal success comment posted to the asset-request issue when the
+ * pipeline completes. The comment includes the brief/run metadata plus inline
+ * Markdown image embeds for the completed spritesheet and the top-ranked
+ * (chosen) variant so reviewers can inspect the art directly in the issue
+ * without navigating to Azure Blob Storage.
+ *
+ * Image embed URLs come from `store.resolve()` — for the Azure backend these
+ * are public blob URLs that GitHub's image proxy can serve; for the local
+ * backend they are file paths (which will not render as images in GitHub but
+ * are still useful for debugging).
+ */
+export function buildCompletionComment(result: RunFullResult, store: RunStore): string {
+  const briefId = result.summary.brief;
+  const runId = result.summary.runId;
+
+  // The spritesheet file for the last generation attempt (0-indexed).
+  const lastAttemptIndex = (result.summary.attempts ?? 1) - 1;
+  const sheetFile = `sheet-${String(lastAttemptIndex).padStart(2, '0')}.png`;
+  const sheetUrl = store.resolve(`${briefId}/${runId}/${sheetFile}`);
+
+  let body =
+    `✅ Asset-request pipeline complete.\n\n` +
+    `- brief: \`${briefId}\`\n` +
+    `- run: \`${runId}\`\n` +
+    `- summary: \`${result.summaryPath}\`\n\n` +
+    `### Spritesheet\n\n` +
+    `![Spritesheet](${sheetUrl})`;
+
+  // Embed the top-ranked (chosen) variant when the pipeline produced one.
+  const chosen = result.summary.chosen;
+  if (chosen !== null && chosen !== undefined) {
+    const chosenEntry = result.summary.candidates.find((c) => c.index === chosen.index);
+    if (chosenEntry?.processedPath) {
+      const variantNum = chosen.index + 1;
+      const total = result.summary.variantCount;
+      const passLabel = chosen.combinedPassed ? '✅' : '⚠️';
+      const altText = `Chosen variant ${variantNum}/${total} (score ${chosen.score}/${chosen.outOf}) ${passLabel}`;
+      body += `\n\n### Chosen variant (${variantNum}/${total})\n\n![${altText}](${chosenEntry.processedPath})`;
+    }
+  }
+
+  return body;
 }
