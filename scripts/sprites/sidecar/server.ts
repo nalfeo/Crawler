@@ -71,6 +71,8 @@ import {
   type ManifestEntry,
   type VariantIdentity,
 } from '../approve.js';
+import { runQueueCommit, type QueueCommitResult } from '../queue-commit.js';
+import { createDefaultQueueCommitDeps } from '../queue-commit-runtime.js';
 import {
   runAssetCheckin,
   prepareAssetCheckin,
@@ -1902,6 +1904,22 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       };
     }
 
+    // CSRF guard (same policy as /api/checkin and /api/.../accept, ADR 0066
+    // CTX-005): this route now runs `git fetch`/`git push` against the remote
+    // assets/queue branch (durable persistence, below), so a cross-origin
+    // browser POST must not be able to trigger an authenticated remote push.
+    // Reject any request from a browser Origin NOT in the exact per-worktree
+    // trusted set; server-side callers (Node fetch, no Origin header) stay
+    // trusted, exactly as the sibling mutating routes do.
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && !deps.trustedMutationOrigins?.includes(origin)) {
+      reply.code(403);
+      return {
+        error: 'forbidden-origin',
+        message: 'This browser origin is not allowed to approve sprite assets.',
+      };
+    }
+
     const { briefId, runId } = req.params;
     if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
       reply.code(403);
@@ -1985,7 +2003,34 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         hydrated?.cleanup();
       }
 
-      return entry;
+      // Durably persist the just-approved asset onto the remote assets/queue
+      // branch so the edit survives across sessions/worktrees/processes. This
+      // is best-effort: the local approve already succeeded, so a queue-commit
+      // failure is surfaced in the response (and logged) rather than rolling
+      // back the approval. The route already refuses on CI above, so the
+      // primitive's CI guard never fires here.
+      let queueCommit: QueueCommitResult | { status: 'failed'; error: string };
+      try {
+        queueCommit = await runQueueCommit(
+          deps.repoRoot,
+          [
+            {
+              assetPath: entry.assetPath,
+              manifestKey: entry.spriteName,
+              briefId: entry.briefId,
+              variantIndex: entry.variantIndex,
+            },
+          ],
+          createDefaultQueueCommitDeps(deps.repoRoot, env),
+          { message: `chore(assets): approve ${entry.spriteName}` },
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        req.log.warn(`queue-commit failed for ${entry.spriteName}: ${message}`);
+        queueCommit = { status: 'failed', error: message };
+      }
+
+      return { ...entry, queueCommit };
     });
   });
 

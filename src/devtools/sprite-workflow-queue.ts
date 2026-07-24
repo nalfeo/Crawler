@@ -410,6 +410,14 @@ export interface ApprovedVariantInfo {
    * advance the item to `approved` so Tag unlocks rather than dead-end.
    */
   readonly alreadyApproved?: boolean;
+  /**
+   * The sidecar's durable `assets/queue` push failed after the catalog write
+   * succeeded (PR1). When true, the approval summary carries a persistent warning
+   * so the operator keeps the worktree until the edit is durable.
+   */
+  readonly queueCommitFailed?: boolean;
+  /** Human-readable reason for the failed queue push, when available. */
+  readonly queueCommitError?: string;
 }
 
 /** Fields an approval writes onto a queue item (advancing it to `approved`). */
@@ -450,6 +458,13 @@ export function approvedItemPatch(info: ApprovedVariantInfo): ApprovedItemPatch 
     approvalSummary =
       `Approved ${info.briefId} variant ${info.variantIndex}${overrideSuffix} -> ` +
       `${info.assetPath}${scoreSuffix}. Now Tag to add catalog metadata.`;
+  }
+  if (info.queueCommitFailed) {
+    approvalSummary +=
+      ' \u26a0 Durable queue push FAILED \u2014 keep this worktree; the approval is not yet ' +
+      'safe across sessions' +
+      (info.queueCommitError ? ` (${info.queueCommitError})` : '') +
+      '.';
   }
   return {
     stage: 'approved',

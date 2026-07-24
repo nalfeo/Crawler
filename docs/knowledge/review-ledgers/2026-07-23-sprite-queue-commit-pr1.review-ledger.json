@@ -1,0 +1,152 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "sprite-queue-commit-pr1",
+  "task_title": "PR1: durable approved-asset persistence via unified assets/queue branch",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 15,
+      "resolved_count": 15,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial plan review (gpt-5.6-sol, 688s) red-teamed the original committed-sidecar design, enumerated 4 alternatives, and returned RECONSIDER/major_fork with 15 blocking findings. It recommended Alt#1 (manifest = sole authority) + Alt#3 (single long-lived assets/queue branch, git = queue); maintainer adopted both + unify approvals&edits + hard cutover (zero open asset-checkin issues) + PR1 scope = approved-asset durability only. A focused confirming review (gpt-5.6-terra, 183s) of the concrete PR1 mechanism returned RECONSIDER (the hand-rolled commit-tree 're-parent on retry' would clobber a concurrent writer's whole-manifest snapshot); resolved by switching to the proven throwaway-worktree + copyArtSurface union-onto-refetched-tip mechanism (semantic merge for free) + reused makeCheckinFileLock cross-process lock + explicit --force-with-lease + ASSET_SURFACE_PATHS allowlist. All 15 adversarial findings closed by the redesign or explicitly deferred to PR2/PR3 within agreed scope; all confirming findings resolved. Design doc: session files/pr1-queue-commit-design.md."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.6-sol"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": false
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 5,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 6,
+          "models": ["claude-opus-4.8", "gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 7,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 8,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "8-round code-review loop (past the 2-round cap but genuinely converging on progressively-more-minor issues, which the policy permits — this is not an intractable-escalation case; every round's concern was resolved before the next). Each round re-reviewed the prior round's fixes. Severity strictly decreased R1->R8: security/correctness (CSRF, non-interactive git env, fetch-head race) -> approve/revert wiring -> test-coverage gap -> test timing-race -> hypothetical-future-hang guard. Terminated clean at R8. The same loop is recorded under multi_model_review with per-round valid_count, adjudication, and the deferred-out-of-scope findings. In-scope concern counts here mirror the valid_count of that stage."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.6-sol"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 9,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": false
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 5,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 6,
+          "models": ["claude-opus-4.8", "gpt-5.6-sol"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 7,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 8,
+          "models": ["gpt-5.6-sol", "claude-opus-4.8"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "Multi-model review loop; claude-opus-4.8 adjudicated cross-model divergences (e.g. R4 opus-0-blocking vs gpt-4-blocking; R7 & R8 opus-CLEAN vs gpt-1-Medium). Two distinct models every round (gpt-5.6-sol + claude-opus-4.8; R1 also attempted gemini-3.1-pro-preview but it flaked -> still 2 usable). valid_count = concerns adjudicated valid AND in PR1 scope; concerns_count includes raised-but-invalid (R3 F-F/F-G were stale-base diff artifacts, not real) and valid-but-out-of-PR1-scope items. DEFERRED valid findings (surfaced to maintainer, NOT resolved in this PR, so intentionally excluded from valid_count): (1) finding 5 = concurrent same-repo different-asset manifest read-modify-write race — pre-existing non-atomic RMW, out of PR1 scope, routed to a dedicated locking-hardening follow-up; (2) F2 = whole-asset last-writer-wins overwrite semantics -> PR3 (unify + retire asset-checkin); (3) R2-2 = /checkin old code path retained until PR3. R8 fix (bounded waitWithTimeout wrapper on the test handshake) is a trivial self-evident test-harness robustness change with no logic/production impact; the loop converged clean and was terminated at R8."
+    }
+  }
+}

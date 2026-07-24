@@ -31,6 +31,7 @@ export interface CLIArgs {
   pathingMode: AIPathingModeValue;
   decisionMode: AIDecisionModeValue;
   merchantWeaponPurchase: boolean;
+  settlementReturnRouting: boolean;
 }
 
 const PATHING_MODE_VALUES = Object.values(AIPathingMode) as AIPathingModeValue[];
@@ -65,6 +66,9 @@ export function defaultCLIArgs(
     merchantWeaponPurchase:
       env.AI_MERCHANT_WEAPON_PURCHASE === '1' ||
       env.AI_MERCHANT_WEAPON_PURCHASE?.toLowerCase() === 'true',
+    settlementReturnRouting:
+      env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
+      env.AI_SETTLEMENT_RETURN_ROUTING?.toLowerCase() === 'true',
   };
 }
 
@@ -153,6 +157,8 @@ export function parseArgs(
       args.weaponPersonas = false;
     } else if (arg === '--merchant-weapon-purchase') {
       args.merchantWeaponPurchase = true;
+    } else if (arg === '--settlement-return-routing') {
+      args.settlementReturnRouting = true;
     } else if (arg === '--pathing-mode' && next) {
       if (!(PATHING_MODE_VALUES as string[]).includes(next)) {
         throw new Error(
@@ -208,6 +214,11 @@ Options:
   --no-weapon-personas    Disable weapon personas for the legacy A/B control
   --merchant-weapon-purchase
                            Enable optional post-quest merchant weapon purchase
+  --settlement-return-routing
+                           Enable optional latched AI settlement-return route goal
+                           (deterministic expected-gain-vs-travel/risk/opportunity
+                           utility; periodically returns to settlement to run the
+                           maintenance planner — equip/shop/claim/abilities)
   --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh | navmeshFused (default: ${defaultPathingMode})
   --decision-mode <mode>  AI decision A/B axis: legacy | slackAware (default: legacy)
   --help, -h              Show this help message
