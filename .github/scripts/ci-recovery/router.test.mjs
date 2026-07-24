@@ -1495,11 +1495,18 @@ test('computeDispatchBudget accepts explicit trainCap/idleCap overrides', () => 
   // Verifies that the env-driven override path works end-to-end: both caps can
   // be independently overridden and the function uses them rather than the
   // module-level defaults.
+  // headroom=20-9-0-0=11, min(trainCap=3, 11)=3 (not default max 5)
   assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 0, trainCap: 3, idleCap: 10 }), 3);
+  // headroom=20-3-0-0=17, min(idleCap=10, 17)=10 (not default max 8)
   assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0, trainCap: 3, idleCap: 10 }), 10);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 3, trainCap: 3, idleCap: 10 }), 0);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 7, trainCap: 3, idleCap: 10 }), 3);
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 10, trainCap: 3, idleCap: 10 }), 0);
+  // headroom=20-9-0-3=8, min(trainCap=3, 8)=3 (outstanding reduces headroom, not the cap)
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 3, trainCap: 3, idleCap: 10 }), 3);
+  // headroom=20-3-0-7=10, min(idleCap=10, 10)=10
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 7, trainCap: 3, idleCap: 10 }), 10);
+  // headroom=20-3-0-10=7, min(idleCap=10, 7)=7 (headroom-capped below idleCap)
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 10, trainCap: 3, idleCap: 10 }), 7);
+  // headroom=20-9-0-11=0, budget floors at 0
+  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 11, trainCap: 3, idleCap: 10 }), 0);
 });
 
 test('resolveGlobalDispatchCaps falls back to hardcoded defaults when env vars are absent', () => {
@@ -1591,7 +1598,7 @@ test('resolveGlobalDispatchCaps: out-of-range values are clamped to runner-safet
   });
 });
 
-
+test('partitionDispatchable sends everything when the budget is unbounded', () => {
   const prNumbers = [1, 2, 3, 4, 5];
   assert.deepEqual(partitionDispatchable(prNumbers, Infinity), {
     dispatchable: prNumbers,

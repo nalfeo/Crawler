@@ -58,6 +58,17 @@ export const SWEEP_RUNNER_WEIGHT = 10;
 // Estimated concurrent jobs per active Merge Train Validation run.
 // Used to measure live validation headroom in computeDispatchBudget.
 export const VALIDATION_RUNNER_WEIGHT = 9;
+// Workflow files whose active run counts signal runner pressure to the budget.
+// weapon-sweep.yml joins the AI sweeps here: it also runs on the shared
+// standard-hosted pool and fans its weapon×shard matrix to ~24 concurrent
+// jobs, so an in-progress weapon sweep saturates runners exactly like an AI
+// sweep and must count toward the reserved-runner budget.
+export const SWEEP_WORKFLOW_FILES = Object.freeze([
+  'ai-sweep.yml',
+  'ai-sweep-recover.yml',
+  'weapon-sweep.yml',
+]);
+export const VALIDATION_WORKFLOW_FILE = 'merge-train-validate.yml';
 // Legacy alias exports: these constants are read by reconcile.mjs and
 // ci-recovery/reconcile.mjs via resolveGlobalDispatchCaps(process.env).
 // They alias MAX_DISPATCH_BUDGET_* so that in-code defaults and env-driven
