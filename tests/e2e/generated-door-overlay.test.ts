@@ -75,6 +75,7 @@ describe('Generated closed-door render guard', () => {
       `every closed door should render the generated texture in the real scene; ` +
         `summary=${JSON.stringify(summary)}`,
     ).toBe(summary.renderableClosedCount);
+    expect(summary.closedPackCount).toBe(0);
 
     // Non-destructive guarantee: generated art must not leak into the open state.
     // (Freshly booted floors have no open doors, so this is 0 here regardless —
