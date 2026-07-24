@@ -74,7 +74,7 @@ export function highestGeneratedEquipmentRarity(
 }
 
 /** Four discrete excitement buckets driving visual intensity in the renderer. */
-export const REWARD_EXCITEMENT_BUCKETS = ['modest', 'notable', 'exciting', 'legendary'] as const;
+const REWARD_EXCITEMENT_BUCKETS = ['modest', 'notable', 'exciting', 'legendary'] as const;
 export type RewardExcitementBucket = (typeof REWARD_EXCITEMENT_BUCKETS)[number];
 
 /**

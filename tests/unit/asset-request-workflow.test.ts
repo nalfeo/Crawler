@@ -39,6 +39,7 @@ describe('asset-request workflow capacity', () => {
     const workflow = loadWorkflow();
     const drain = workflow.jobs.drain?.steps?.find((step) => step.name === 'Drain worker');
     const provider = drain?.env?.SPRITES_PROVIDER;
+    const envKeys = Object.keys(drain?.env ?? {}).sort();
 
     expect(provider).toMatch(/^(foundry|azure-openai)$/);
     expect(drain?.env).toMatchObject({
@@ -48,22 +49,31 @@ describe('asset-request workflow capacity', () => {
       SPRITES_SYNTH_PROVIDER: provider,
       SPRITES_VISION_PROVIDER: provider,
     });
-    expect(
-      Object.keys(drain?.env ?? {})
-        .filter((key) => key.startsWith('FOUNDRY_'))
-        .sort(),
-    ).toEqual([
-      'FOUNDRY_API_KEY',
-      'FOUNDRY_API_VERSION',
-      'FOUNDRY_BRIEF_SELECTOR_MODEL',
-      'FOUNDRY_ENDPOINT',
-      'FOUNDRY_IMAGE_MODEL',
-      'FOUNDRY_TEXT_MODEL',
-      'FOUNDRY_VISION_MODEL',
+
+    if (provider === 'foundry') {
+      expect(envKeys.filter((key) => key.startsWith('FOUNDRY_'))).toEqual([
+        'FOUNDRY_API_KEY',
+        'FOUNDRY_API_VERSION',
+        'FOUNDRY_BRIEF_SELECTOR_MODEL',
+        'FOUNDRY_ENDPOINT',
+        'FOUNDRY_IMAGE_MODEL',
+        'FOUNDRY_TEXT_MODEL',
+        'FOUNDRY_VISION_MODEL',
+      ]);
+      expect(envKeys.some((key) => key.startsWith('AZURE_OPENAI_'))).toBe(false);
+      return;
+    }
+
+    expect(envKeys.filter((key) => key.startsWith('AZURE_OPENAI_'))).toEqual([
+      'AZURE_OPENAI_API_KEY',
+      'AZURE_OPENAI_API_VERSION',
+      'AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT',
+      'AZURE_OPENAI_CHAT_DEPLOYMENT',
+      'AZURE_OPENAI_ENDPOINT',
+      'AZURE_OPENAI_IMAGE_DEPLOYMENT',
+      'AZURE_OPENAI_VISION_DEPLOYMENT',
     ]);
-    expect(Object.keys(drain?.env ?? {}).some((key) => key.startsWith('AZURE_OPENAI_'))).toBe(
-      false,
-    );
+    expect(envKeys.some((key) => key.startsWith('FOUNDRY_'))).toBe(false);
   });
 
   it('keeps the GitHub secret-sync command Foundry-aware', () => {

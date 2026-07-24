@@ -144,88 +144,89 @@ describe('runIssuePipeline', () => {
   it(
     'records model metadata and only enables judge when a vision provider is configured',
     async () => {
-    const winnerPath = path.join(repoRoot, 'bone-dagger.yaml');
-    writeFileSync(winnerPath, 'name: bone-dagger\njudge:\n  enabled: false\n', 'utf8');
-    const store = makeStore();
-    const comments: string[] = [];
+      const winnerPath = path.join(repoRoot, 'bone-dagger.yaml');
+      writeFileSync(winnerPath, 'name: bone-dagger\njudge:\n  enabled: false\n', 'utf8');
+      const store = makeStore();
+      const comments: string[] = [];
 
-    mockSynthesizeBrief.mockResolvedValueOnce({
-      name: 'bone-dagger',
-      type: 'weapon',
-      sizeVariant: 'default',
-      outDir: repoRoot,
-      written: [
-        {
-          id: 'bone-dagger-v1',
-          type: 'weapon',
-          description: 'bone dagger',
-          embellishmentSeeds: [],
-          synthesisRationale: 'best silhouette',
-          yamlPath: winnerPath,
+      mockSynthesizeBrief.mockResolvedValueOnce({
+        name: 'bone-dagger',
+        type: 'weapon',
+        sizeVariant: 'default',
+        outDir: repoRoot,
+        written: [
+          {
+            id: 'bone-dagger-v1',
+            type: 'weapon',
+            description: 'bone dagger',
+            embellishmentSeeds: [],
+            synthesisRationale: 'best silhouette',
+            yamlPath: winnerPath,
+          },
+        ],
+        rejected: [],
+        sidecarPath: path.join(repoRoot, 'synthesis.json'),
+        providerLabel: 'azure-openai:synth',
+        promptHash: 'prompt-hash',
+      });
+      mockRunFull.mockImplementationOnce(async (options) => {
+        const store = options.store!;
+        await store.put(
+          'bone-dagger/run-7/summary.json',
+          Buffer.from('{"modelDeployments":{"judge":"vision"}}\n'),
+        );
+        return {
+          summary: { brief: 'bone-dagger', runId: 'run-7' },
+          summaryPath: '/tmp/run-7/summary.json',
+        } as never;
+      });
+
+      await runIssuePipeline({
+        request: makeRequest(),
+        repoRoot,
+        store,
+        imageProvider: {} as never,
+        textProvider: null,
+        synthProvider: {} as never,
+        briefSelectorProvider: {
+          modelDeployment: 'selector-deploy',
+          async selectBrief() {
+            return { index: 0, rationale: 'best match', modelDeployment: 'selector-deploy' };
+          },
         },
-      ],
-      rejected: [],
-      sidecarPath: path.join(repoRoot, 'synthesis.json'),
-      providerLabel: 'azure-openai:synth',
-      promptHash: 'prompt-hash',
-    });
-    mockRunFull.mockImplementationOnce(async (options) => {
-      const store = options.store!;
-      await store.put(
-        'bone-dagger/run-7/summary.json',
-        Buffer.from('{"modelDeployments":{"judge":"vision"}}\n'),
+        visionProvider: {} as never,
+        issueApi: {
+          async comment(_issueNumber, body) {
+            comments.push(body);
+          },
+        },
+        env: {},
+      });
+
+      const promotedPath = path.join(repoRoot, 'briefs', 'draft', 'weapons', 'bone-dagger.yaml');
+      expect(readFileSync(promotedPath, 'utf8')).toContain('enabled: true');
+      expect(
+        JSON.parse(store.mem.get('bone-dagger/run-7/summary.json')!.toString('utf8'))
+          .modelDeployments,
+      ).toEqual({
+        judge: 'vision',
+        synth: 'azure-openai:synth',
+        briefSelector: 'selector-deploy',
+      });
+      expect(
+        JSON.parse(store.mem.get('bone-dagger/run-7/issue-metadata.json')!.toString('utf8')),
+      ).toMatchObject({
+        issueNumber: 42,
+        issueFingerprint: 'fingerprint-1',
+        synthModel: 'azure-openai:synth',
+        briefSelectorModel: 'selector-deploy',
+      });
+      expect(comments.find((comment) => comment.includes('Promoted brief to'))).toContain(
+        'generate → postprocess → judge',
       );
-      return {
-        summary: { brief: 'bone-dagger', runId: 'run-7' },
-        summaryPath: '/tmp/run-7/summary.json',
-      } as never;
-    });
-
-    await runIssuePipeline({
-      request: makeRequest(),
-      repoRoot,
-      store,
-      imageProvider: {} as never,
-      textProvider: null,
-      synthProvider: {} as never,
-      briefSelectorProvider: {
-        modelDeployment: 'selector-deploy',
-        async selectBrief() {
-          return { index: 0, rationale: 'best match', modelDeployment: 'selector-deploy' };
-        },
-      },
-      visionProvider: {} as never,
-      issueApi: {
-        async comment(_issueNumber, body) {
-          comments.push(body);
-        },
-      },
-      env: {},
-    });
-
-    const promotedPath = path.join(repoRoot, 'briefs', 'draft', 'weapons', 'bone-dagger.yaml');
-    expect(readFileSync(promotedPath, 'utf8')).toContain('enabled: true');
-    expect(
-      JSON.parse(store.mem.get('bone-dagger/run-7/summary.json')!.toString('utf8'))
-        .modelDeployments,
-    ).toEqual({
-      judge: 'vision',
-      synth: 'azure-openai:synth',
-      briefSelector: 'selector-deploy',
-    });
-    expect(
-      JSON.parse(store.mem.get('bone-dagger/run-7/issue-metadata.json')!.toString('utf8')),
-    ).toMatchObject({
-      issueNumber: 42,
-      issueFingerprint: 'fingerprint-1',
-      synthModel: 'azure-openai:synth',
-      briefSelectorModel: 'selector-deploy',
-    });
-    expect(comments.find((comment) => comment.includes('Promoted brief to'))).toContain(
-      'generate → postprocess → judge',
-    );
-    expect(mockLoadBrief).toHaveBeenCalledWith(promotedPath, { projectRoot: repoRoot });
-  });
+      expect(mockLoadBrief).toHaveBeenCalledWith(promotedPath, { projectRoot: repoRoot });
+    },
+  );
 
   async function runWithComments(
     comments: string[],
