@@ -32,6 +32,7 @@ import {
   type AchievementFactSnapshot,
   type LootBoxRewardBundleV1,
 } from '../shared/achievements.js';
+import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
 import { normalizeAbilityState, synchronizeAbilityPassives } from './systems/abilitySystem.js';
@@ -114,6 +115,14 @@ export interface BossChestCarryoverEntry {
   readonly familyId: string;
   readonly state: BossChestState;
   readonly createdAtMs: number;
+  /**
+   * Snapshot of the reward granted on the real reveal transition, carried so a
+   * reload can redisplay the reveal without re-rolling. Optional: absent on
+   * chests persisted before this field existed (legacy — defaults to
+   * `undefined`, never re-derived); a PRESENT-but-malformed value fails
+   * closed (see the boss-chest validation loop below).
+   */
+  readonly revealedGrant?: ResolvedRewardPresentation;
 }
 
 export interface PlayerCarryoverSnapshot {
@@ -151,6 +160,15 @@ export interface PlayerCarryoverSnapshot {
     readonly pendingUnlockIds: readonly string[];
     readonly claimedIds: readonly string[];
     readonly carriedRunFacts?: AchievementFactSnapshot;
+    /**
+     * Resolved reward snapshots waiting to be shown/acknowledged by the
+     * reward-opening presentation UI, serialized as `[achievementId,
+     * presentation]` tuples (mirrors `playerSkills`'s tuple-array
+     * convention for `world.achievements.pendingPresentations`, a `Map`).
+     * Optional: absent on snapshots persisted before this field existed
+     * (legacy — defaults to `[]`); present-but-malformed data fails closed.
+     */
+    readonly pendingPresentations?: readonly (readonly [string, ResolvedRewardPresentation])[];
   };
 }
 
@@ -336,6 +354,52 @@ function assertUniqueStrings(values: readonly string[], path: string): void {
   }
 }
 
+/**
+ * Fail-closed structural validation for a persisted
+ * {@link ResolvedRewardPresentation} snapshot (used for both boss chests'
+ * `revealedGrant` and achievements' `pendingPresentations` entries). Never
+ * defaults/repairs a malformed value — always throws.
+ */
+function assertResolvedRewardPresentation(
+  value: unknown,
+  path: string,
+): asserts value is ResolvedRewardPresentation {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new PlayerCarryoverSnapshotError(`Expected object at ${path}`);
+  }
+  const record = value as Record<string, unknown>;
+  if (record.kind === 'lootBox') {
+    if (typeof record.tier !== 'string' || !isLootBoxTier(record.tier)) {
+      throw new PlayerCarryoverSnapshotError(`Invalid or missing lootBox tier at ${path}.tier`);
+    }
+    if (typeof record.gold !== 'number' || !Number.isFinite(record.gold) || record.gold < 0) {
+      throw new PlayerCarryoverSnapshotError(`Invalid lootBox gold at ${path}.gold`);
+    }
+    assertArray(record.materials, `${path}.materials`);
+    for (const materialId of record.materials as readonly unknown[]) {
+      if (typeof materialId !== 'string' || materialId.length === 0) {
+        throw new PlayerCarryoverSnapshotError(`Expected non-empty string at ${path}.materials`);
+      }
+    }
+    return;
+  }
+  if (record.kind === 'equipment') {
+    if (typeof record.tier !== 'string' || !isEquipmentRewardTier(record.tier)) {
+      throw new PlayerCarryoverSnapshotError(`Invalid or missing equipment tier at ${path}.tier`);
+    }
+    assertArray(record.instanceKeys, `${path}.instanceKeys`);
+    for (const instanceKey of record.instanceKeys as readonly unknown[]) {
+      if (typeof instanceKey !== 'string' || instanceKey.length === 0) {
+        throw new PlayerCarryoverSnapshotError(`Expected non-empty string at ${path}.instanceKeys`);
+      }
+    }
+    return;
+  }
+  throw new PlayerCarryoverSnapshotError(
+    `Unknown reward presentation kind at ${path}: ${String(record.kind)}`,
+  );
+}
+
 function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapshot {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     throw new PlayerCarryoverSnapshotError('Player carryover snapshot must be an object');
@@ -465,6 +529,28 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
   assertArray(ach.unlockedIds, 'achievements.unlockedIds');
   assertArray(ach.pendingUnlockIds, 'achievements.pendingUnlockIds');
   assertArray(ach.claimedIds, 'achievements.claimedIds');
+  // `pendingPresentations` was added after the current schema version first
+  // shipped (mirrors the `bossChests`/`lootBoxRewardBundles` "field added
+  // without a version bump" convention above): only default to `[]` when the
+  // property is genuinely ABSENT; a present-but-malformed value (e.g.
+  // explicit `null`) must still fail closed via `assertArray` rather than
+  // being silently treated as "missing".
+  if (ach.pendingPresentations !== undefined) {
+    assertArray(ach.pendingPresentations, 'achievements.pendingPresentations');
+    for (let i = 0; i < (ach.pendingPresentations as readonly unknown[]).length; i++) {
+      const entry: unknown = (ach.pendingPresentations as readonly unknown[])[i];
+      const path = `achievements.pendingPresentations[${i}]`;
+      if (!Array.isArray(entry) || entry.length !== 2) {
+        throw new PlayerCarryoverSnapshotError(
+          `Expected [achievementId, presentation] tuple at ${path}`,
+        );
+      }
+      if (typeof entry[0] !== 'string' || entry[0].length === 0) {
+        throw new PlayerCarryoverSnapshotError(`Expected non-empty string at ${path}[0]`);
+      }
+      assertResolvedRewardPresentation(entry[1], `${path}[1]`);
+    }
+  }
   const abilityStateRaw: unknown = normalized.abilityState;
   if (abilityStateRaw !== undefined) {
     if (
@@ -622,6 +708,59 @@ function validateLootBoxRewardBundles(snapshot: PlayerCarryoverSnapshot): void {
       throw new PlayerCarryoverSnapshotError(
         `Missing loot box reward bundle for unlocked, unclaimed achievement: ${achievement.id}`,
       );
+    }
+  }
+}
+
+/**
+ * Semantic guard (fail-closed) for achievements' `pendingPresentations`: each
+ * entry must reference an achievement that has ACTUALLY been claimed (a
+ * presentation snapshot only exists after a successful claim — see
+ * `claimAchievementReward` in `achievementRewards.ts`), the achievement's
+ * reward type must match the persisted presentation `kind`, and the
+ * persisted tier must match the achievement's own defined tier. Runs
+ * unconditionally alongside the other reward-bundle guards; independent of
+ * the generated-equipment registry (equipment presentations only reference
+ * instance key strings, not registry entries directly).
+ */
+function validatePendingAchievementRewardPresentations(snapshot: PlayerCarryoverSnapshot): void {
+  const claimedIds = new Set(snapshot.achievements.claimedIds);
+  const seenIds = new Set<string>();
+  for (const [achievementId, presentation] of snapshot.achievements.pendingPresentations ?? []) {
+    if (seenIds.has(achievementId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Duplicate pending achievement reward presentation: ${achievementId}`,
+      );
+    }
+    seenIds.add(achievementId);
+    if (!claimedIds.has(achievementId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Pending reward presentation for un-claimed achievement: ${achievementId}`,
+      );
+    }
+    const achievement = getAchievementById(achievementId);
+    if (!achievement) {
+      throw new PlayerCarryoverSnapshotError(
+        `Pending reward presentation for unknown achievement: ${achievementId}`,
+      );
+    }
+    if (achievement.reward.type !== presentation.kind) {
+      throw new PlayerCarryoverSnapshotError(
+        `Pending reward presentation for ${achievementId} has kind "${presentation.kind}", expected "${achievement.reward.type}"`,
+      );
+    }
+    if (presentation.kind === 'lootBox' && achievement.reward.type === 'lootBox') {
+      if (achievement.reward.tier !== presentation.tier) {
+        throw new PlayerCarryoverSnapshotError(
+          `Pending reward presentation for ${achievementId} has tier "${presentation.tier}", expected "${achievement.reward.tier}"`,
+        );
+      }
+    } else if (presentation.kind === 'equipment' && achievement.reward.type === 'equipment') {
+      if (achievement.reward.tier !== presentation.tier) {
+        throw new PlayerCarryoverSnapshotError(
+          `Pending reward presentation for ${achievementId} has tier "${presentation.tier}", expected "${achievement.reward.tier}"`,
+        );
+      }
     }
   }
 }
@@ -844,6 +983,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   // BOTH the registry and the bundle stripped can't slip past it (see
   // validateEquipmentBundlePresence doc comment).
   validateEquipmentBundlePresence(snapshot);
+  // Also unconditional: pending reward-opening presentations reference no
+  // registry state directly (only instance-key strings), so they can be
+  // cross-checked against the achievements slice regardless of whether a
+  // generated-equipment registry snapshot is present.
+  validatePendingAchievementRewardPresentations(snapshot);
   const hasGeneratedReferences =
     snapshot.generatedInventoryInstanceKeys.length > 0 ||
     snapshot.generatedEquippedInstanceKeys.length > 0 ||
@@ -967,6 +1111,47 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
         `Boss chest id ${chest.chestId} does not match family ${chest.familyId}`,
       );
     }
+    if (chest.revealedGrant !== undefined) {
+      assertResolvedRewardPresentation(
+        chest.revealedGrant,
+        `bossChests[${chest.chestId}].revealedGrant`,
+      );
+      // Boss chests only ever grant a single generated-equipment instance
+      // (tier1, ADR 0070) — never a lootBox bundle — so a persisted
+      // `revealedGrant` of the wrong kind is definitely tampered/corrupt data.
+      if (chest.revealedGrant.kind !== 'equipment') {
+        throw new PlayerCarryoverSnapshotError(
+          `Boss chest ${chest.chestId} revealedGrant must be kind "equipment", got "${chest.revealedGrant.kind}"`,
+        );
+      }
+      if (chest.revealedGrant.tier !== 'tier1') {
+        throw new PlayerCarryoverSnapshotError(
+          `Boss chest ${chest.chestId} revealedGrant must have tier "tier1", got "${chest.revealedGrant.tier}"`,
+        );
+      }
+      if (chest.revealedGrant.instanceKeys.length !== 1) {
+        throw new PlayerCarryoverSnapshotError(
+          `Boss chest ${chest.chestId} revealedGrant must contain exactly 1 instance, got ${chest.revealedGrant.instanceKeys.length}`,
+        );
+      }
+      if (chest.state === 'available') {
+        // `revealedGrant` is only populated on the real available->revealed
+        // transition (see `openBossChest`), so a persisted `available` chest
+        // carrying one is an impossible state.
+        throw new PlayerCarryoverSnapshotError(
+          `Boss chest ${chest.chestId} has a revealedGrant while still in state "available"`,
+        );
+      }
+    }
+    // Note: the inverse case — a 'revealed'/'claimed' chest missing its
+    // `revealedGrant` (multi-model code review, round 2) — is checked further
+    // below, AFTER the bundle loop. A tampered snapshot can be simultaneously
+    // "revealed with no revealedGrant" AND "revealed with a lingering
+    // bundle"; the bundle loop's "already-opened boss chest" check is the
+    // pre-existing contract for that overlap case and must win so its error
+    // message/test coverage stays stable. The missing-revealedGrant check
+    // only needs to fire for the case the bundle loop can't see: no
+    // revealedGrant AND no lingering bundle.
     if (chestsByChestId.has(chest.chestId)) {
       throw new PlayerCarryoverSnapshotError(`Duplicate boss chest: ${chest.chestId}`);
     }
@@ -1094,6 +1279,28 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       throw new PlayerCarryoverSnapshotError(
         `Boss chest ${chest.chestId} is missing its reward bundle`,
       );
+    }
+    // `revealedGrant` is populated on the same transition that sets state to
+    // 'revealed' (see `openBossChest`) and is never cleared on the
+    // revealed->claimed transition (see `acknowledgeBossChestReveal`), so a
+    // persisted 'revealed'/'claimed' chest missing it is impossible from real
+    // gameplay — fail closed rather than resume/present it (multi-model code
+    // review, round 2). Checked here (after the bundle loop above) so that a
+    // snapshot which is ALSO carrying a lingering bundle for this chest hits
+    // the pre-existing "already-opened boss chest" bundle-check first.
+    if ((chest.state === 'revealed' || chest.state === 'claimed') && !chest.revealedGrant) {
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest ${chest.chestId} is in state "${chest.state}" but has no revealedGrant`,
+      );
+    }
+    if (chest.revealedGrant?.kind === 'equipment') {
+      for (const key of chest.revealedGrant.instanceKeys) {
+        if (!instancesByKey.has(key)) {
+          throw new PlayerCarryoverSnapshotError(
+            `Boss chest ${chest.chestId} revealedGrant has dangling instance key: ${key}`,
+          );
+        }
+      }
     }
   }
 
@@ -1390,6 +1597,7 @@ export function capturePlayerCarryover(
       familyId: chest.familyId,
       state: chest.state,
       createdAtMs: chest.createdAtMs,
+      ...(chest.revealedGrant ? { revealedGrant: chest.revealedGrant } : {}),
     })),
     lootBoxRewardBundles: [...world.lootBoxRewardBundles.values()].map((bundle) => ({
       schemaVersion: bundle.schemaVersion,
@@ -1434,6 +1642,7 @@ export function capturePlayerCarryover(
         world.achievements.carriedRunFacts,
         collectCurrentFloorAchievementFacts(world),
       ),
+      pendingPresentations: [...world.achievements.pendingPresentations.entries()],
     },
   };
 
@@ -1458,6 +1667,7 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
     pendingUnlockIds: [...snapshot.achievements.pendingUnlockIds],
     claimedIds: new Set(snapshot.achievements.claimedIds),
     carriedRunFacts: cloneAchievementFactSnapshot(snapshot.achievements.carriedRunFacts),
+    pendingPresentations: new Map(snapshot.achievements.pendingPresentations ?? []),
   };
 
   clearEquipmentState(world, playerEid);
@@ -1536,6 +1746,7 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
         familyId: chest.familyId,
         state: chest.state,
         createdAtMs: chest.createdAtMs,
+        ...(chest.revealedGrant ? { revealedGrant: chest.revealedGrant } : {}),
       },
     ]),
   );
