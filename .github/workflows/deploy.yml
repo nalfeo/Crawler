@@ -25,17 +25,55 @@ permissions:
   pull-requests: write
 
 jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.gate.outputs.should_run }}
+    steps:
+      - name: Gate stale workflow_run releases
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ] || \
+             [ "${{ github.event.workflow_run.event }}" != "push" ]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          RUN_SHA="${{ github.event.workflow_run.head_sha }}"
+          MAIN_SHA=$(gh api "repos/${{ github.repository }}/commits/main" --jq '.sha' 2>/dev/null || true)
+          if [ -z "$MAIN_SHA" ]; then
+            echo "::warning::Failed to resolve current main HEAD; skipping deploy and baseline-sweep fail-closed."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$RUN_SHA" = "$MAIN_SHA" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipping stale release workflow_run for $RUN_SHA (current main HEAD is $MAIN_SHA)."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   deploy:
     runs-on: ubuntu-latest
+    needs: release-gate
     # Serialize Pages deploys only. The baseline-sweep job below runs
     # per-release and must not be cancelled if a newer release lands mid-sweep.
     concurrency:
       group: pages
       cancel-in-progress: true
     if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
+      needs.release-gate.outputs.should_run == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
     environment:
       name: github-pages
       url: ${{ steps.deploy-url.outputs.page_url }}
@@ -55,6 +93,12 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
+          # Pin to the released commit (the CI workflow_run head SHA), not the
+          # default github.sha -- on a workflow_run event github.sha may resolve
+          # to the current main tip if a newer commit landed between CI completing
+          # and this deploy job starting. Pinning ensures dev/beta builds and the
+          # version.json markers always reflect the exact commit that was tested.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -131,7 +175,7 @@ jobs:
 
       - name: Restore main branch
         if: steps.prod-tag.outputs.exists == 'true'
-        run: git checkout ${{ github.sha }} -- .
+        run: git checkout HEAD -- .
 
       - name: Guard - prod must NOT include lab.html or devtools.html
         if: steps.prod-tag.outputs.exists == 'true'
@@ -167,7 +211,7 @@ jobs:
       - name: Write version.json files
         run: |
           NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          HEAD_SHA=${{ github.sha }}
+          HEAD_SHA=${{ github.event.workflow_run.head_sha || github.sha }}
           PROD_SHA=${{ steps.prod-tag.outputs.sha || 'none' }}
 
           echo "{\"commit\":\"$HEAD_SHA\",\"env\":\"dev\",\"builtAt\":\"$NOW\"}" > site/dev/version.json
@@ -175,6 +219,24 @@ jobs:
 
           if [ -d staging/prod ]; then
             echo "{\"commit\":\"$PROD_SHA\",\"env\":\"prod\",\"builtAt\":\"$NOW\"}" > site/version.json
+          fi
+
+      - name: Final latest-tip guard
+        # Second SHA check immediately before publishing: if another commit
+        # landed on main after the release-gate check passed but before we
+        # reach this step, abort so B's own run handles the publish. This
+        # prevents the residual race where A passes the gate, B lands, A
+        # completes its build, and both A and B end up deploying Pages.
+        # Skipped for manual workflow_dispatch (operator is intentional).
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_SHA="${{ github.event.workflow_run.head_sha }}"
+          MAIN_SHA=$(gh api "repos/${{ github.repository }}/commits/main" --jq '.sha' 2>/dev/null || true)
+          if [ -n "$MAIN_SHA" ] && [ "$RUN_SHA" != "$MAIN_SHA" ]; then
+            echo "::warning::Aborting publish: $RUN_SHA is no longer main tip (${MAIN_SHA} landed before upload). B's run will handle this release."
+            exit 1
           fi
 
       - name: Upload artifact
@@ -284,7 +346,7 @@ jobs:
   baseline-sweep:
     name: Baseline win-rate sweep (100 seeds)
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: [release-gate, deploy]
     # Only baseline what we actually released to Pages. `needs: deploy` alone
     # is NOT sufficient here: GitHub Actions does not cascade-skip a job with
     # its own explicit `if:` just because a job it `needs` was skipped -- that
@@ -298,9 +360,10 @@ jobs:
     # as `deploy` so both jobs are skipped identically on non-push
     # invocations.
     if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
+      needs.release-gate.outputs.should_run == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
     timeout-minutes: 120
     # A job-level permissions block replaces the workflow default entirely, so
     # these are NOT inherited and must be listed explicitly. `gh pr comment` on
