@@ -4284,6 +4284,36 @@ test('trusted metadata drift after conflict state write blocks auto-rebase dispa
   );
 });
 
+/** A previously-dispatched validation-recovery rebase state comment for HEAD_SHA. */
+function validationRebaseDispatchedStateComment(id, updatedAt, attempt = 1) {
+  const state = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([
+      {
+        kind: 'merge-train-validation',
+        id: HEAD_SHA,
+        summary: 'This PR was the first failing addition in a bisected merge-train candidate.',
+        url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
+      },
+    ]),
+    owner: 'none',
+    status: 'idle',
+    trigger: 'rebase-dispatched',
+    blockers: [
+      {
+        kind: 'merge-train-validation',
+        id: HEAD_SHA,
+        summary: 'This PR was the first failing addition in a bisected merge-train candidate.',
+        url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
+      },
+    ],
+    attempt,
+    updatedAt,
+  });
+  return { id, body: renderStateComment(state) };
+}
+
 /** A previously-dispatched conflict-only rebase state comment for HEAD_SHA. */
 function rebaseDispatchedStateComment(id, updatedAt, attempt = 1) {
   const state = makeState({
@@ -4633,6 +4663,168 @@ test('train mode does not fan out past bounded retries for a schedule sweep once
     ).length,
     0,
     'must not redispatch (or wait indefinitely) once bounded retries are exhausted, regardless of trigger',
+  );
+});
+
+// Regression coverage for the CI recovery loop incident on PR #1876:
+// a PR with merge-train-validation-failed + merge-train-blocked labels but no
+// merge conflict would previously exhaust two Copilot dispatch attempts without
+// making progress, because the label-driven blocker has no code fix for Copilot
+// to apply.  The fix dispatches a validation-recovery auto-rebase instead, which
+// creates a new head commit that triggers the headMovedSinceState label-clearing
+// path on the subsequent synchronize-triggered reconcile.
+test('train mode dispatches validation-recovery rebase for merge-train-validation-failed PR without conflict', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+        mergeable: true,
+        mergeable_state: 'behind',
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /dispatched validation-recovery rebase pr=#42/,
+    'expected validation-recovery rebase dispatch instead of Copilot task',
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    1,
+    'must dispatch exactly one rebase',
+  );
+  const dispatch = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+  );
+  assert.equal(dispatch.body.inputs.expected_head_sha, HEAD_SHA);
+  assert.equal(dispatch.body.inputs.expected_base_ref, 'main');
+  assert.equal(dispatch.body.inputs.trigger, 'ci-recovery-validation');
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/labels` &&
+        call.body?.name === LABEL,
+    ),
+    false,
+    'validation-recovery rebase must not acquire a ci-owner label (it exits before that)',
+  );
+});
+
+test('train mode waits on a still-pending validation-recovery rebase for the same head', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        mergeable: true,
+        mergeable_state: 'behind',
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [validationRebaseDispatchedStateComment(950, new Date().toISOString())],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /wait pr=#42 reason=validation-rebase-pending/);
+  assert.deepEqual(mutatingCalls, []);
+});
+
+test('train mode escalates validation-recovery rebase to Copilot dispatch once bounded retries are exhausted', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        mergeable: true,
+        mergeable_state: 'behind',
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      // Already retried REBASE_FAILURE_MAX_ATTEMPTS (3) times, still fresh.
+      body: [validationRebaseDispatchedStateComment(951, new Date().toISOString(), 3)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'dry-run',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /merge-train-validation/,
+    'expected the merge-train-validation blocker to surface after rebase exhaustion',
+  );
+  assert.match(stdout, /dry-run would-assign copilot/, 'expected fallthrough to Copilot escalation');
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    0,
+    'must not redispatch once bounded retries are exhausted',
   );
 });
 
