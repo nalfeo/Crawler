@@ -154,18 +154,32 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
   it('the SHIPPED wall silhouettes have flat, non-crenellated exposed faces', () => {
     // Direct anti-crenellation guard (complements the aggregate edge-pass rate,
     // which only samples cardinal edges): the original bug notched the exposed
-    // wall top into battlements. The fixed uniform-inset geometry makes every
-    // exposed face one solid band, so the top band of an all-exposed cell
-    // (mask 0) must be exactly ONE contiguous horizontal run — a battlemented
-    // top would split into 2+ runs. An interior cell (mask 255, no exposed face)
-    // stays a single full-width band.
+    // wall top into per-quadrant battlements.
+    //
+    // We use mask 10 (E|W, N absent) — a straight exposed north cap spanning
+    // the full cell width. With the OLD edge-band geometry, all four quadrants
+    // produce separate top strips, which creates TWO separated horizontal runs
+    // at the first opaque row (one left strip, one right strip with a gap
+    // between them). With the fixed uniform WALL_INSET_PX geometry, the entire
+    // north face is one clean horizontal run of length 1.
+    //
+    // Mask 0 (all absent) is NOT used here: its four `open` inner squares
+    // already produce a single central horizontal run under the old geometry, so
+    // `cellRowRuns(mask 0) === 1` is TRUE for both the buggy and fixed versions,
+    // making it unable to distinguish them.
+    //
+    // An interior cell (mask 255) stays a single full-width run as a sanity
+    // check.
     const atlas = decodePng(readCommittedAtlas(manifest));
-    const openFrame = frameForMask(manifest, 0);
-    const topRow = firstOpaqueRow(atlas, manifest, openFrame);
+
+    // N=1, E=2, S=4, W=8 → E|W = 10 (N absent: exposed north face)
+    const ewCapFrame = frameForMask(manifest, 10);
+    const topRow = firstOpaqueRow(atlas, manifest, ewCapFrame);
     expect(topRow).toBeGreaterThanOrEqual(0);
     for (let y = topRow; y < topRow + 4; y += 1) {
-      expect(cellRowRuns(atlas, manifest, openFrame, y)).toHaveLength(1);
+      expect(cellRowRuns(atlas, manifest, ewCapFrame, y), `mask 10 row ${y}`).toHaveLength(1);
     }
+
     const solidFrame = frameForMask(manifest, 255);
     const solidMidRow = manifest.wallAutotile.cellPx >> 1;
     expect(cellRowRuns(atlas, manifest, solidFrame, solidMidRow)).toHaveLength(1);

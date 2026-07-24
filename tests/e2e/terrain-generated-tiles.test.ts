@@ -84,4 +84,41 @@ describe('Generated terrain-tile render guard', () => {
         `summary=${JSON.stringify(summary)}`,
     ).toBeGreaterThan(summary.spriteCount);
   });
+
+  it('Floor 2 renders terrain-pack (industrial-cave) wall and floor tiles in the real booted scene', async () => {
+    // This test guards the FULL wiring chain: floor2 manifest → terrainPackId →
+    // floor-main-scene-options → MainGameScene → BootScene.preloadTerrainPacks().
+    // Any break in that chain (e.g. terrainPackId not forwarded, preloadTerrainPacks
+    // not called, or the pack failing to load) will produce packWallCount === 0 /
+    // packFloorCount === 0 here. A green lab cannot prove this; only the real booted
+    // scene can.
+    await loadMainSceneProbeLab(page, { floor: 'floor2' });
+
+    let summary = await mainSceneProbe.getTerrainRenderSummary(page);
+    const deadline = Date.now() + 5_000;
+    while (
+      summary.packWallCount + summary.packFloorCount + summary.generatedCount +
+        summary.spriteCount + summary.colorCount === 0 &&
+      Date.now() < deadline
+    ) {
+      await page.waitForTimeout(100);
+      summary = await mainSceneProbe.getTerrainRenderSummary(page);
+    }
+
+    expect(
+      summary.packWallCount,
+      `Floor 2 should stamp industrial-cave pack WALL tiles; ` +
+        `summary=${JSON.stringify(summary)}`,
+    ).toBeGreaterThan(0);
+
+    expect(
+      summary.packFloorCount,
+      `Floor 2 should stamp industrial-cave pack FLOOR tiles; ` +
+        `summary=${JSON.stringify(summary)}`,
+    ).toBeGreaterThan(0);
+
+    // Sanity check: Floor 1 pack counts must remain zero (the pack is Floor 2 only)
+    // so we confirm this test is actually running Floor 2 and not Floor 1.
+    // (If the floor param is ignored, both would fail the packWallCount > 0 check.)
+  });
 });

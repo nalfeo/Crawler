@@ -86,6 +86,14 @@ const QUADRANT_GEOMETRY: Record<QuadrantCorner, QuadrantGeometry> = {
  * isolated cell) is thus inset on BOTH outer edges: convex corners are bevelled
  * and an isolated wall still renders a visible centre block.
  *
+ * `concave` (both cardinals present, diagonal ABSENT): both outer edges are
+ * fully solid — same as `full` so far — but the inner corner (cell-centre-
+ * facing) has a `WALL_INSET_PX × WALL_INSET_PX` notch carved out to represent
+ * the missing diagonal neighbour (floor cell on that diagonal). This makes
+ * `concave` visually distinct from `full` while preserving the cardinal-edge
+ * compatibility invariant (the notch is at the inner corner, far from the
+ * outer-edge sample bands used by the validator).
+ *
  * Because "present cardinal → wall reaches that edge; absent cardinal → inset
  * off it" holds independently per cardinal, each cell edge's wall/no-wall
  * coverage depends only on the corresponding cardinal bit — exactly the
@@ -110,6 +118,20 @@ function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): RgbaImage
 
   const [r, g, b, a] = WALL_COLOR;
   fillRect(img, left, top, right - left, bottom - top, r, g, b, a);
+
+  // 'concave': both cardinals present (wall reaches both outer edges) but the
+  // diagonal is ABSENT → carve a notch from the INNER corner (cell-centre-facing
+  // side) to distinguish it from 'full' (all three bits set, solid throughout).
+  // The notch is at the quadrant's inner corner — the intersection of the two
+  // INNER (non-outer) edges — and is `WALL_INSET_PX` wide on each axis.
+  // It never overlaps the outer-edge sample bands, so cardinal-edge compatibility
+  // is preserved (provably 100%) for both 'concave' and 'full'.
+  if (state === 'concave') {
+    const notchX = geom.nearLeftIsEdgeB ? QUADRANT_SRC_PX - WALL_INSET_PX : 0;
+    const notchY = geom.nearTopIsEdgeA ? QUADRANT_SRC_PX - WALL_INSET_PX : 0;
+    fillRect(img, notchX, notchY, WALL_INSET_PX, WALL_INSET_PX, 0, 0, 0, 0);
+  }
+
   return img;
 }
 
