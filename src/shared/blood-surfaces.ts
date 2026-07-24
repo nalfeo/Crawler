@@ -11,10 +11,14 @@ export const MAX_BLOODY_FOOTPRINT_EMITS_PER_FRAME = 24;
 
 const BLOOD_POOL_BASE_RADIUS_FT = 1.0;
 const BLOOD_POOL_MAX_EXTRA_RADIUS_FT = 2.25;
+const BLOOD_POOL_REFERENCE_ENEMY_SIZE_FT = 2.0;
+const BLOOD_POOL_MIN_ENEMY_SIZE_SCALE = 0.65;
+const BLOOD_POOL_MAX_ENEMY_SIZE_SCALE = 1.85;
 const BLOOD_POOL_INITIAL_SCALE = 0.25;
 const BLOOD_POOL_EXPAND_PHASE = 0.7;
 export const BLOOD_POOL_FINAL_VERTICAL_SCALE = 0.5;
-const BLOOD_POOL_LOBE_COUNT = 5;
+const BLOOD_POOL_LOBE_MIN_COUNT = 5;
+const BLOOD_POOL_LOBE_MAX_COUNT = 8;
 const BLOOD_POOL_COLOR_SCALE = 0.83;
 
 export interface BloodPoolLobeShape {
@@ -176,6 +180,7 @@ export function createBloodPoolSurface(params: {
   y: number;
   color?: number;
   overkill?: number;
+  enemySizeFt?: number;
   createdAtMs: number;
 }): BloodPoolSurface {
   const {
@@ -186,24 +191,37 @@ export function createBloodPoolSurface(params: {
     createdAtMs,
     color = DEFAULT_BLOOD_COLOR,
     overkill = 0,
+    enemySizeFt = BLOOD_POOL_REFERENCE_ENEMY_SIZE_FT,
   } = params;
   const rng = new SeededRandom(hashStringToSeed(`${worldSeed}:blood-pool:${poolId}`));
+  const enemySizeScale = Math.max(
+    BLOOD_POOL_MIN_ENEMY_SIZE_SCALE,
+    Math.min(BLOOD_POOL_MAX_ENEMY_SIZE_SCALE, enemySizeFt / BLOOD_POOL_REFERENCE_ENEMY_SIZE_FT),
+  );
   const radiusFt =
-    BLOOD_POOL_BASE_RADIUS_FT +
-    Math.min(BLOOD_POOL_MAX_EXTRA_RADIUS_FT, Math.max(0, overkill) * 0.0625);
+    (BLOOD_POOL_BASE_RADIUS_FT +
+      Math.min(BLOOD_POOL_MAX_EXTRA_RADIUS_FT, Math.max(0, overkill) * 0.0625)) *
+    enemySizeScale;
   const sizeVariance = 0.6 + rng.next() * 0.9;
-  const scaleX = (0.8 + rng.next() * 0.5) * sizeVariance;
-  const scaleY = (0.6 + rng.next() * 0.4) * sizeVariance;
+  const scaleX = (0.65 + rng.next() * 0.8) * sizeVariance;
+  const scaleY = (0.5 + rng.next() * 0.7) * sizeVariance;
   const baseRxFt = radiusFt * scaleX;
   const baseRyFt = radiusFt * scaleY;
+  const lobeCount =
+    BLOOD_POOL_LOBE_MIN_COUNT +
+    Math.floor(rng.next() * (BLOOD_POOL_LOBE_MAX_COUNT - BLOOD_POOL_LOBE_MIN_COUNT + 1));
   const lobes: BloodPoolLobeShape[] = [];
+  const dominantAngle = rng.next() * Math.PI * 2;
   let maxReachFt = Math.max(baseRxFt, baseRyFt);
-  for (let i = 0; i < BLOOD_POOL_LOBE_COUNT; i += 1) {
+  for (let i = 0; i < lobeCount; i += 1) {
     const isCore = i === 0;
     const lobeAngle = rng.next() * Math.PI * 2;
-    const lobeRadiusFt = isCore ? 0 : (0.25 + rng.next() * 0.55) * Math.min(baseRxFt, baseRyFt);
-    const radiusXFt = baseRxFt * (isCore ? 1 : 0.55 + rng.next() * 0.5);
-    const radiusYFt = baseRyFt * (isCore ? 1 : 0.55 + rng.next() * 0.5);
+    const alongDominantAxis = (Math.cos(lobeAngle - dominantAngle) + 1) * 0.5;
+    const lobeRadiusFt = isCore
+      ? 0
+      : (0.1 + rng.next() * 0.9 + alongDominantAxis * 0.35) * Math.min(baseRxFt, baseRyFt);
+    const radiusXFt = baseRxFt * (isCore ? 1 : 0.35 + rng.next() * 0.95);
+    const radiusYFt = baseRyFt * (isCore ? 1 : 0.35 + rng.next() * 0.95);
     const offsetXFt = Math.cos(lobeAngle) * lobeRadiusFt;
     const offsetYFt = Math.sin(lobeAngle) * lobeRadiusFt;
     maxReachFt = Math.max(
@@ -215,8 +233,8 @@ export function createBloodPoolSurface(params: {
       offsetYFt,
       radiusXFt,
       radiusYFt,
-      growAt: isCore ? 0.35 : 0.55 + rng.next() * 0.45,
-      initialScale: isCore ? BLOOD_POOL_INITIAL_SCALE : 0,
+      growAt: isCore ? 0.3 : 0.3 + rng.next() * 0.7,
+      initialScale: isCore ? BLOOD_POOL_INITIAL_SCALE : rng.next() * 0.18,
     });
   }
 

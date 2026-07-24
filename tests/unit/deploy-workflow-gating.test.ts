@@ -36,6 +36,14 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 interface WorkflowJob {
   if?: string;
   needs?: string | string[];
+  outputs?: Record<string, string>;
+  steps?: Array<{
+    id?: string;
+    name?: string;
+    run?: string;
+    uses?: string;
+    with?: Record<string, string | number | boolean>;
+  }>;
 }
 
 interface WorkflowDoc {
@@ -54,8 +62,9 @@ function getJob(doc: WorkflowDoc, name: string): WorkflowJob {
 }
 
 describe('deploy.yml job gating (scheduled CI must not run a live deploy or sweep)', () => {
-  it('parses deploy.yml and finds both jobs', () => {
+  it('parses deploy.yml and finds release-gate, deploy, and baseline-sweep jobs', () => {
     const doc = loadDeployWorkflow();
+    expect(doc.jobs['release-gate']).toBeDefined();
     expect(doc.jobs.deploy).toBeDefined();
     expect(doc.jobs['baseline-sweep']).toBeDefined();
   });
@@ -71,14 +80,64 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
     const doc = loadDeployWorkflow();
     for (const jobName of ['deploy', 'baseline-sweep']) {
       const condition = String(getJob(doc, jobName).if);
+      expect(condition, jobName).toContain("needs.release-gate.outputs.should_run == 'true'");
       expect(condition, jobName).toContain("github.event_name == 'workflow_dispatch'");
       expect(condition, jobName).toContain("github.event.workflow_run.conclusion == 'success'");
       expect(condition, jobName).toContain("github.event.workflow_run.event == 'push'");
     }
   });
 
-  it('keeps baseline-sweep depending on deploy (needs:), even though needs: alone is not a sufficient gate', () => {
+  it('keeps baseline-sweep depending on both release-gate and deploy jobs', () => {
     const doc = loadDeployWorkflow();
-    expect(getJob(doc, 'baseline-sweep').needs).toBe('deploy');
+    expect(getJob(doc, 'baseline-sweep').needs).toEqual(['release-gate', 'deploy']);
+  });
+
+  it('resolves stale workflow_run releases via release-gate output', () => {
+    const doc = loadDeployWorkflow();
+    const gate = getJob(doc, 'release-gate');
+    const gateStep = (gate.steps ?? []).find((step) => step.id === 'gate');
+    const script = String(gateStep?.run ?? '');
+
+    expect(gate.outputs?.should_run).toContain('steps.gate.outputs.should_run');
+    expect(script).toContain('github.event.workflow_run.head_sha');
+    expect(script).toContain('repos/${{ github.repository }}/commits/main');
+    expect(script).toContain('should_run=false');
+  });
+
+  it('deploy job checkout is pinned to workflow_run head SHA (not current github.sha)', () => {
+    const doc = loadDeployWorkflow();
+    const deploy = getJob(doc, 'deploy');
+    const checkoutStep = (deploy.steps ?? []).find((s) => s.uses?.startsWith('actions/checkout'));
+    expect(checkoutStep, 'deploy must have a checkout step').toBeDefined();
+    const ref = String(checkoutStep?.with?.ref ?? '');
+    expect(ref, 'deploy checkout must pin ref to RUN_SHA').toContain(
+      'github.event.workflow_run.head_sha',
+    );
+  });
+
+  it('baseline-sweep checkout is pinned to workflow_run head SHA', () => {
+    const doc = loadDeployWorkflow();
+    const sweep = getJob(doc, 'baseline-sweep');
+    const checkoutStep = (sweep.steps ?? []).find((s) => s.uses?.startsWith('actions/checkout'));
+    expect(checkoutStep, 'baseline-sweep must have a checkout step').toBeDefined();
+    const ref = String(checkoutStep?.with?.ref ?? '');
+    expect(ref, 'baseline-sweep checkout must pin ref to RUN_SHA').toContain(
+      'github.event.workflow_run.head_sha',
+    );
+  });
+
+  it('deploy job has a final latest-tip guard step before upload', () => {
+    const doc = loadDeployWorkflow();
+    const deploy = getJob(doc, 'deploy');
+    const steps = deploy.steps ?? [];
+    const guardIdx = steps.findIndex((s) => s.name === 'Final latest-tip guard');
+    const uploadIdx = steps.findIndex((s) => s.name === 'Upload artifact');
+    expect(guardIdx, 'deploy must have a "Final latest-tip guard" step').toBeGreaterThanOrEqual(0);
+    expect(uploadIdx, 'deploy must have an "Upload artifact" step').toBeGreaterThanOrEqual(0);
+    expect(guardIdx, 'guard step must run before upload').toBeLessThan(uploadIdx);
+
+    const guardScript = String(steps[guardIdx]?.run ?? '');
+    expect(guardScript).toContain('github.event.workflow_run.head_sha');
+    expect(guardScript).toContain('repos/${{ github.repository }}/commits/main');
   });
 });
