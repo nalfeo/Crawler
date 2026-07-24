@@ -51,11 +51,16 @@ import {
   autoFloor2ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
+import { runSettlementMaintenancePlanner } from './settlement-maintenance-planner.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { initNavmesh } from './navmesh/index.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
+import {
+  configureSettlementReturnRouting,
+  getSettlementReturnIntent,
+} from './settlement-return-router.js';
 import { countEngagingEnemies } from '../floorScenario.js';
 
 const logger = createLogger('game:headless-runner');
@@ -174,6 +179,17 @@ export interface HeadlessRunnerConfig {
   weaponPersonas?: boolean;
   /** Enable the optional seeded post-quest merchant weapon purchase. Default false. */
   merchantWeaponPurchase?: boolean;
+  /**
+   * Enable the optional latched settlement-return route goal: periodically
+   * evaluates whether returning to the Floor 2 settlement to run the
+   * maintenance planner (open boxes, equip affinity-maximizing gear, shop,
+   * configure abilities) is worth the travel/risk/opportunity cost, using
+   * `settlement-return-router.ts`'s deterministic utility scoring. Default
+   * false — when disabled the router's state machine is never armed and the
+   * AI's Floor 2 progress goal selection is byte-identical to before this
+   * feature.
+   */
+  settlementReturnRouting?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -196,6 +212,7 @@ const DEFAULT_CONFIG: Required<
   recordWeaponTelemetry: false,
   weaponPersonas: true,
   merchantWeaponPurchase: false,
+  settlementReturnRouting: false,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -381,6 +398,7 @@ export async function runHeadless(
   }
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
   configureMerchantWeaponPurchase(world, mergedConfig.merchantWeaponPurchase);
+  configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
   }
@@ -523,6 +541,10 @@ export async function runHeadless(
   let floor2HuntNearbyEnemyTotal = 0;
   let floor2HuntNearbyEnemyPeak = 0;
   let activeFloor2HuntFamilyId: string | null;
+  // Tracks the settlement-return-router status last emitted as a telemetry
+  // event, so only genuine transitions are recorded (not one event per
+  // frame while a status is held).
+  let lastSettlementReturnStatus: string | null = null;
 
   const recordDecisionState = (state: string): void => {
     decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;
@@ -747,6 +769,7 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
+      runSettlementMaintenancePlanner(world);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 
       // Check win/loss conditions — read HP before the guard so both early-exit
@@ -775,6 +798,22 @@ export async function runHeadless(
       // Per-frame enemy snapshot (reused for combat, damage, and telemetry).
       const enemyEids = query(world.ecs, [Enemy]);
       const currentEnemyCount = enemyEids.length;
+      if (mergedConfig.settlementReturnRouting) {
+        const settlementReturnIntent = getSettlementReturnIntent(world);
+        if (settlementReturnIntent.status !== lastSettlementReturnStatus) {
+          lastSettlementReturnStatus = settlementReturnIntent.status;
+          const latestDecision =
+            settlementReturnIntent.decisions[settlementReturnIntent.decisions.length - 1];
+          recordEvent?.(
+            buildEvent(
+              'control',
+              enemyEids,
+              `settlement-return: ${settlementReturnIntent.status}` +
+                (latestDecision ? ` — ${latestDecision.detail}` : ''),
+            ),
+          );
+        }
+      }
       if (activeFloor2HuntFamilyId !== null) {
         const playerX = world.stores.position.x[playerEid] ?? 0;
         const playerY = world.stores.position.y[playerEid] ?? 0;

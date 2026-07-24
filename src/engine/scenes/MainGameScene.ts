@@ -59,6 +59,8 @@ import { equipFromBag } from '../../core/systems/equipmentSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
+import { createRewardOpeningUI } from '../RewardOpeningUI.js';
+import { createBossChestUI } from '../BossChestUI.js';
 import {
   blurLightField,
   chooseAutoStepPx,
@@ -442,13 +444,21 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyAchievements?: Phaser.Input.Keyboard.Key;
 
+  private keyBossChests?: Phaser.Input.Keyboard.Key;
+
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
   private equipmentUI?: ReturnType<typeof createEquipmentUI>;
   private achievementsUI?: ReturnType<typeof createAchievementsUI>;
+  /** Shared full-screen anticipation->reveal->summary sequence (achievements + boss chests). */
+  private rewardOpeningUI?: ReturnType<typeof createRewardOpeningUI>;
+  private bossChestUI?: ReturnType<typeof createBossChestUI>;
 
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
 
   private levelUpUI?: ReturnType<typeof createLevelUpUI>;
+
+  /** Chest ids already surfaced via a one-time "ready to open" toast. */
+  private readonly notifiedBossChestIds = new Set<string>();
 
   /**
    * Frames the level-up modal has been held open while an `autoLevelUpAllocator`
@@ -534,8 +544,14 @@ export class MainGameScene extends Phaser.Scene {
   /** Touch button for the abilities config modal. */
   private abilitiesButton?: Phaser.GameObjects.Text;
 
+  /** Touch button for the boss chest panel. */
+  private bossChestButton?: Phaser.GameObjects.Text;
+
   /** One-frame latch set by tapping the on-screen achievements button. */
   private queuedAchievementsToggle = false;
+
+  /** One-frame latch set by tapping the on-screen boss chest button. */
+  private queuedBossChestsToggle = false;
 
   /**
    * Tracks whether the currently open modalPicker is the abilities config modal
@@ -691,6 +707,7 @@ export class MainGameScene extends Phaser.Scene {
     this.keyEquip = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.G);
     this.keyAbilities = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyAchievements = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.V);
+    this.keyBossChests = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);
     this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
@@ -718,7 +735,30 @@ export class MainGameScene extends Phaser.Scene {
         }
       },
     });
-    this.achievementsUI = createAchievementsUI(this);
+    this.rewardOpeningUI = createRewardOpeningUI(this, {
+      onVisibilityChange: () => {
+        this.clearPendingInteractionInput();
+      },
+    });
+    this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
+      onGrantFailed: () => {
+        this.flashHint('Reward could not be granted — check your bag has room and try again.');
+      },
+      onPresentationQueueDrained: () => {
+        this.resumePendingRewardPresentations();
+      },
+    });
+    this.bossChestUI = createBossChestUI(this, this.rewardOpeningUI, {
+      getPlayerEid: () => (this.playerEid >= 0 ? this.playerEid : undefined),
+      onGrantFailed: () => {
+        this.flashHint(
+          'Chest reward could not be granted — check your bag has room and try again.',
+        );
+      },
+      onPresentationQueueDrained: () => {
+        this.resumePendingRewardPresentations();
+      },
+    });
     this.gameOverUI = createGameOverUI(this, {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
       // TODO: differentiate onQuit to navigate to a title screen once it's implemented.
@@ -739,6 +779,13 @@ export class MainGameScene extends Phaser.Scene {
         this.world.state = 'playing';
       },
     });
+    // Fresh-create AND save/load resume both funnel through here:
+    // `configureWorld` (called above at spawnPlayer time) is where a carried-over
+    // save restores `pendingPresentations`/`revealedGrant` onto the fresh world
+    // (see `src/game/playerCarryover.ts`), so by this point any reward that was
+    // claimed-but-not-yet-acknowledged in a prior session is already present on
+    // `this.world` and ready to auto-surface here exactly once.
+    this.resumePendingRewardPresentations();
     this.input.on('pointerdown', this.handlePointerDown, this);
     this.initializeUi();
     // Apply this floor's lighting over a clean DEFAULT base BEFORE the first
@@ -840,6 +887,8 @@ export class MainGameScene extends Phaser.Scene {
       this.inventoryButton = undefined;
       this.equipButton?.destroy();
       this.equipButton = undefined;
+      this.bossChestButton?.destroy();
+      this.bossChestButton = undefined;
       this.offMobileButtonScale?.();
       this.offMobileButtonScale = undefined;
       this.dialogueBox?.destroy();
@@ -853,6 +902,10 @@ export class MainGameScene extends Phaser.Scene {
       this.equipmentUI = undefined;
       this.achievementsUI?.destroy();
       this.achievementsUI = undefined;
+      this.rewardOpeningUI?.destroy();
+      this.rewardOpeningUI = undefined;
+      this.bossChestUI?.destroy();
+      this.bossChestUI = undefined;
       this.achievementsButton?.destroy();
       this.achievementsButton = undefined;
       this.abilitiesButton?.destroy();
@@ -936,7 +989,8 @@ export class MainGameScene extends Phaser.Scene {
       isCornerButtonHit(this.inventoryButton) ||
       isCornerButtonHit(this.equipButton) ||
       isCornerButtonHit(this.achievementsButton) ||
-      isCornerButtonHit(this.abilitiesButton)
+      isCornerButtonHit(this.abilitiesButton) ||
+      isCornerButtonHit(this.bossChestButton)
     ) {
       return;
     }
@@ -944,7 +998,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handleKeyboardE(): void {
-    if (this.modalPicker?.isOpen() || this.abilityLoadoutUI?.isOpen()) {
+    if (this.isBlockingSurfaceOpen()) {
       return;
     }
     this.queuedInteraction = true;
@@ -962,6 +1016,8 @@ export class MainGameScene extends Phaser.Scene {
       this.keyInventory,
       this.keyEquip,
       this.keyAchievements,
+      this.keyAbilities,
+      this.keyBossChests,
       this.keyEsc,
     ]) {
       if (key) {
@@ -992,7 +1048,7 @@ export class MainGameScene extends Phaser.Scene {
       }
       return;
     }
-    if (this.modalPicker?.isOpen()) {
+    if (this.isBlockingSurfaceOpen()) {
       return;
     }
     if (event.code === 'KeyE') {
@@ -1022,6 +1078,23 @@ export class MainGameScene extends Phaser.Scene {
     this.tappedInteraction = false;
     this.queuedInteraction = false;
     this.queuedAchievementsToggle = true;
+  }
+
+  public requestBossChestsToggle(): void {
+    this.tappedInteraction = false;
+    this.queuedInteraction = false;
+    this.queuedBossChestsToggle = true;
+  }
+
+  private resumePendingRewardPresentations(): void {
+    if (this.rewardOpeningUI?.isOpen()) {
+      return;
+    }
+    this.achievementsUI?.resumePendingPresentation(this.world);
+    if (this.rewardOpeningUI?.isOpen()) {
+      return;
+    }
+    this.bossChestUI?.resumePendingPresentation(this.world);
   }
 
   public isInventoryOpen(): boolean {
@@ -1066,11 +1139,20 @@ export class MainGameScene extends Phaser.Scene {
       keepInventory?: boolean;
       keepEquipment?: boolean;
       keepAchievements?: boolean;
+      keepBossChests?: boolean;
     } = {},
   ): void {
-    const { keepInventory = false, keepEquipment = false, keepAchievements = false } = options;
+    const {
+      keepInventory = false,
+      keepEquipment = false,
+      keepAchievements = false,
+      keepBossChests = false,
+    } = options;
     if (!keepAchievements && this.achievementsUI?.isOpen()) {
       this.achievementsUI.toggle(this.world);
+    }
+    if (!keepBossChests && this.bossChestUI?.isOpen()) {
+      this.bossChestUI.toggle(this.world);
     }
     if (!keepEquipment && this.equipmentUI?.isOpen()) {
       this.equipmentUI.toggle(this.world);
@@ -1089,7 +1171,9 @@ export class MainGameScene extends Phaser.Scene {
       (this.levelUpUI?.isOpen() ?? false) ||
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.equipmentUI?.isOpen() ?? false) ||
-      (this.achievementsUI?.isOpen() ?? false)
+      (this.achievementsUI?.isOpen() ?? false) ||
+      (this.bossChestUI?.isOpen() ?? false) ||
+      (this.rewardOpeningUI?.isOpen() ?? false)
     );
   }
 
@@ -1124,6 +1208,20 @@ export class MainGameScene extends Phaser.Scene {
         this.queuedAbilitiesToggle = false;
         this.closeAbilitiesModal();
       }
+      this.updateOverlayText();
+      return;
+    }
+
+    // While the reward-opening sequence (achievement box / boss chest reveal)
+    // is presenting, freeze the simulation but keep rendering/camera alive and
+    // drive its own deltaMs-based tick — this is the one full-screen overlay
+    // that can appear outside a safe room (e.g. right after a boss kill), so
+    // unlike the achievements/inventory/equipment panels it must own input and
+    // pause gameplay exactly like the level-up screen.
+    if (this.rewardOpeningUI?.isOpen()) {
+      this.rewardOpeningUI.tick(delta);
+      this.bridge.sync(this.world);
+      this.updateCamera();
       this.updateOverlayText();
       return;
     }
@@ -1357,13 +1455,15 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid !== null ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
-      (this.levelUpUI?.isOpen() ?? false);
+      (this.levelUpUI?.isOpen() ?? false) ||
+      (this.rewardOpeningUI?.isOpen() ?? false);
 
     // Per-panel open state — used below to show each panel's own button as a
     // touch dismiss affordance even while that panel is blocking other opens.
     const inventoryOpen = this.inventoryUI?.isOpen() ?? false;
     const equipOpen = this.equipmentUI?.isOpen() ?? false;
     const achievementsOpen = this.achievementsUI?.isOpen() ?? false;
+    const bossChestsOpen = this.bossChestUI?.isOpen() ?? false;
     const abilitiesOpen = this.abilityLoadoutUI?.isOpen() ?? false;
 
     // A "hard blocker" prevents all touch-button navigation (conversation,
@@ -1372,11 +1472,17 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid !== null ||
       (this.hudUi?.isMapOverlayOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.rewardOpeningUI?.isOpen() ?? false) ||
       (!abilitiesOpen && (this.modalPicker?.isOpen() ?? false));
 
     // canOpenNew: no panel or modal is blocking, so "open" buttons should show.
     const canOpenNew =
-      !hardBlocker && !inventoryOpen && !equipOpen && !achievementsOpen && !abilitiesOpen;
+      !hardBlocker &&
+      !inventoryOpen &&
+      !equipOpen &&
+      !achievementsOpen &&
+      !bossChestsOpen &&
+      !abilitiesOpen;
 
     // Toggle the on-screen touch buttons in step with the key affordances.
     // Each button shows when its own panel is open (to allow touch dismiss) OR
@@ -1389,6 +1495,9 @@ export class MainGameScene extends Phaser.Scene {
     this.abilitiesButton
       ?.setDepth(abilitiesOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
       .setVisible(unlocks.spells && safeCtx && (abilitiesOpen || canOpenNew));
+    this.bossChestButton
+      ?.setDepth(bossChestsOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+      .setVisible(this.world.bossChests.size > 0 && (bossChestsOpen || canOpenNew));
 
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
@@ -1479,6 +1588,31 @@ export class MainGameScene extends Phaser.Scene {
       } else {
         this.achievementsUI.toggle(this.world);
       }
+    }
+
+    // Boss chests have no in-world entity and no safe-room gate — a den is
+    // rarely a designated SAFE room, so unlike achievements/inventory/equipment
+    // this panel must stay reachable anywhere once at least one chest exists.
+    // Surface a one-time "ready" toast per chest the moment it becomes
+    // available (deduped via `notifiedBossChestIds` so reopening the panel or
+    // re-running this per-frame check never re-flashes the same chest).
+    for (const chest of this.world.bossChests.values()) {
+      if (chest.state === 'available' && !this.notifiedBossChestIds.has(chest.chestId)) {
+        this.notifiedBossChestIds.add(chest.chestId);
+        this.flashHint('Boss chest ready! Press [C] or tap Chests to open it.');
+      }
+    }
+    const bossChestsToggleRequested = Boolean(
+      this.queuedBossChestsToggle ||
+      (this.keyBossChests && Phaser.Input.Keyboard.JustDown(this.keyBossChests)),
+    );
+    this.queuedBossChestsToggle = false;
+    if (this.world.bossChests.size > 0 && !isUiLockOpen() && bossChestsToggleRequested) {
+      this.closeMapOverlayIfOpen();
+      this.closeCharacterPanels({ keepBossChests: true });
+      this.bossChestUI?.toggle(this.world);
+    } else if (bossChestsOpen) {
+      this.bossChestUI?.refresh(this.world);
     }
 
     this.processAchievementUnlocks();
@@ -1718,12 +1852,16 @@ export class MainGameScene extends Phaser.Scene {
     this.abilitiesButton = makeCornerButton(184, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
+    this.bossChestButton = makeCornerButton(240, '💎 Chests', () => {
+      this.queuedBossChestsToggle = true;
+    });
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
       this.equipButton?.setScale(buttonScale);
       this.achievementsButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
+      this.bossChestButton?.setScale(buttonScale);
       // Keep buttons clear of each other when scaled.
       const bagH = (this.inventoryButton?.height ?? 44) * buttonScale + 8;
       this.equipButton?.setY(16 + bagH);
@@ -1731,6 +1869,8 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton?.setY(16 + bagH + gearH);
       const awardsH = (this.achievementsButton?.height ?? 44) * buttonScale + 8;
       this.abilitiesButton?.setY(16 + bagH + gearH + awardsH);
+      const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
+      this.bossChestButton?.setY(16 + bagH + gearH + awardsH + skillsH);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
@@ -2735,10 +2875,13 @@ export class MainGameScene extends Phaser.Scene {
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
+      (this.bossChestUI?.isOpen() ?? false) ||
+      (this.rewardOpeningUI?.isOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
     const abilityLoadoutOpen = this.abilityLoadoutUI?.isOpen() ?? false;
+    const bossChestsOpen = this.bossChestUI?.isOpen() ?? false;
     if (panelOpen !== this.hudHiddenForPanel) {
       this.hudHiddenForPanel = panelOpen;
       this.hudUi?.setVisible(!panelOpen);
@@ -2747,11 +2890,17 @@ export class MainGameScene extends Phaser.Scene {
         this.inventoryButton?.setVisible(false);
         this.equipButton?.setVisible(false);
         this.achievementsButton?.setVisible(false);
+        this.bossChestButton
+          ?.setDepth(bossChestsOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+          .setVisible(bossChestsOpen);
         this.abilitiesButton
           ?.setDepth(abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
           .setVisible(abilityLoadoutOpen);
       }
     }
+    this.bossChestButton?.setDepth(
+      bossChestsOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
+    );
     this.abilitiesButton?.setDepth(
       abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
     );

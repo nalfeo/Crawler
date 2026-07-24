@@ -4809,9 +4809,17 @@ function render(): void {
           );
           if (!ok) return;
         }
+        // Capture the queue item being approved BEFORE the await. postApprove
+        // now includes a durable queue-commit git push (seconds), during which
+        // the operator can reselect a different queue chip (selection is NOT
+        // locked). Reading getSelectedItem() after the await would patch the
+        // newly-selected item — corrupting its stage and attaching THIS asset's
+        // durability warning to the wrong item — so pin the target here.
+        const approveTarget = getSelectedItem(queueState);
         setButtonBusy(triggerBtn, true, busyLabel, 'Approving...');
         try {
           const approved = await postApprove(run.briefId, run.runId, candidate.index);
+          const queueCommitFailed = approved.queueCommit?.status === 'failed';
           // Mark approved locally so the card flips to "✓ Approved!" immediately,
           // before the async recompute re-reads the manifest to confirm.
           approvedVariantKeys.add(variantKey);
@@ -4822,15 +4830,22 @@ function render(): void {
             sensorScore: approved.sensorScore,
             judgeScore: approved.judgeScore,
             judgeOverride: overrideNeeded,
+            queueCommitFailed,
+            queueCommitError:
+              approved.queueCommit && approved.queueCommit.status === 'failed'
+                ? approved.queueCommit.error
+                : undefined,
           });
-          const active = getSelectedItem(queueState);
-          if (active) {
-            queueState = queueUpdateItem(queueState, active.id, patch);
+          if (approveTarget) {
+            queueState = queueUpdateItem(queueState, approveTarget.id, patch);
             writeQueueState();
           }
           renderQueue();
           renderWorkflowSelection();
-          setWorkflowStatus(patch.approvalSummary, '#bef264');
+          // A failed durable push isn't an approval failure (the catalog write
+          // succeeded), but it IS a durability warning: color it red and rely on
+          // the warning baked into approvalSummary so recompute's re-render keeps it.
+          setWorkflowStatus(patch.approvalSummary, queueCommitFailed ? '#fca5a5' : '#bef264');
           void recompute();
         } catch (error) {
           // The sidecar returns 409 (already-approved) only when this exact
@@ -4847,9 +4862,8 @@ function render(): void {
               assetPath: `generated/${variantKey}.png`,
               alreadyApproved: true,
             });
-            const active = getSelectedItem(queueState);
-            if (active) {
-              queueState = queueUpdateItem(queueState, active.id, patch);
+            if (approveTarget) {
+              queueState = queueUpdateItem(queueState, approveTarget.id, patch);
               writeQueueState();
             }
             renderQueue();

@@ -1481,7 +1481,7 @@ test('resolveGlobalDispatchCaps enforces positive-int parsing with invariant def
   });
   assert.deepEqual(
     resolveGlobalDispatchCaps({
-      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '7',
+      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: ' 7 ',
       CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '9',
       CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '3',
       CI_RECOVERY_MAX_DISPATCH_PER_RUN: '11',
@@ -1491,6 +1491,20 @@ test('resolveGlobalDispatchCaps enforces positive-int parsing with invariant def
       maxBudgetTrainIdle: 9,
       globalTrainDispatchCap: 3,
       maxDispatchPerRun: 11,
+    },
+  );
+  assert.deepEqual(
+    resolveGlobalDispatchCaps({
+      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '7garbage',
+      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '1.5',
+      CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '1e2',
+      CI_RECOVERY_MAX_DISPATCH_PER_RUN: '9007199254740993',
+    }),
+    {
+      maxBudgetTrainBusy: 5,
+      maxBudgetTrainIdle: 8,
+      globalTrainDispatchCap: 5,
+      maxDispatchPerRun: 8,
     },
   );
   assert.deepEqual(

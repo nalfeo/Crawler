@@ -93,10 +93,35 @@ function normalizeSavedAnnotationForFixture(annotation) {
   };
 }
 
+// A resolvable promise for deterministic mock handshakes (no fixed-delay
+// races): the mock resolves it to signal an event; the test resolves it to
+// release a held response.
+function deferred() {
+  let resolve;
+  const promise = new Promise((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+// Bound a mock-handshake wait so a broken run (e.g. revert never reaches its
+// image reload) fails fast into withEditor's cleanup instead of hanging Chromium
+// and the HTTP server indefinitely — a bare deferred has no timeout of its own.
+function waitWithTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms waiting for ${label}`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function withEditor(run, options = {}) {
   const html = renderHtml('test');
   const fixtureSprites = [structuredClone(SPRITE), structuredClone(SECOND_SPRITE)];
   let currentPng = TWO_BY_TWO_PNG;
+  // Per-key count of /img/sprite requests, so a test can gate only the RELOAD
+  // (2nd+) fetch for a key without touching the initial page-load fetch.
+  const imgRequestCounts = {};
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
@@ -105,6 +130,11 @@ async function withEditor(run, options = {}) {
       return;
     }
     if (url.pathname === '/api/list') {
+      // Count list refetches so a test can prove the revert post-loadImage guard
+      // RETURNS (no terminal loadList) rather than falling through to the
+      // terminal branch, which does an extra loadList — see the mid-reload
+      // revert test.
+      if (options.counters) options.counters.list += 1;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -148,17 +178,73 @@ async function withEditor(run, options = {}) {
           if (typeof payload.pngDataUrl === 'string') {
             currentPng = Buffer.from(payload.pngDataUrl.split(',')[1], 'base64');
           }
+          const saveResponse = { sprite: fixtureSprites[index] };
+          // Optionally simulate the sidecar's durable assets/queue push outcome so
+          // tests can exercise the queue-failure surfacing (F-D / FIX 3).
+          if (options.saveQueueStatus) {
+            saveResponse.queue = { status: options.saveQueueStatus };
+          }
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ sprite: fixtureSprites[index] }));
+          res.end(JSON.stringify(saveResponse));
         };
         if (options.saveDelayMs) setTimeout(respond, options.saveDelayMs);
         else respond();
       });
       return;
     }
+    if (req.method === 'POST' && url.pathname === '/api/revert') {
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', () => {
+        const respond = () => {
+          const payload = JSON.parse(body);
+          const sprite = fixtureSprites.find((entry) => entry.key === payload.key);
+          const revertResponse = { sprite };
+          // Optionally simulate the sidecar's durable assets/queue push outcome so
+          // tests can exercise revert queue-failure surfacing (FIX 3 / FIX 6).
+          if (options.revertQueueStatus) {
+            revertResponse.queue = { status: options.revertQueueStatus };
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(revertResponse));
+        };
+        if (options.revertDelayMs) setTimeout(respond, options.revertDelayMs);
+        else respond();
+      });
+      return;
+    }
     if (url.pathname === '/img/sprite') {
-      res.writeHead(200, { 'Content-Type': 'image/png' });
-      res.end(currentPng);
+      const imgKey = url.searchParams.get('key') || '';
+      imgRequestCounts[imgKey] = (imgRequestCounts[imgKey] || 0) + 1;
+      const respond = () => {
+        res.writeHead(200, { 'Content-Type': 'image/png' });
+        res.end(currentPng);
+      };
+      // Gate only the RELOAD (2nd+) image fetch for a key — never the initial
+      // page-load fetch — so a test can deterministically hold a revert's
+      // post-loadImage reload in flight: the mock resolves `started` the instant
+      // the held request arrives (letting the test switch sprites only AFTER
+      // revert has entered loadImage → the post-loadImage path is guaranteed),
+      // then waits for the test to resolve `release` before responding. This
+      // explicit handshake replaces fixed-delay timing, removing the
+      // reload/switch ordering races.
+      const gate =
+        options.imgGateByKey && imgRequestCounts[imgKey] > 1 ? options.imgGateByKey[imgKey] : null;
+      if (gate) {
+        gate.started.resolve();
+        gate.release.promise.then(() => {
+          try {
+            respond();
+          } catch {
+            // The page/server may have torn down before release (e.g. a test
+            // assertion threw); writing to a closed socket is a no-op we ignore.
+          }
+        });
+      } else {
+        respond();
+      }
       return;
     }
     res.writeHead(404);
@@ -876,6 +962,147 @@ test('save preserves edits made while the request is in flight', async () => {
       assert.equal(await page.locator('.sprite-title').textContent(), 'Fixture Sprite');
     },
     { saveDelayMs: 200 },
+  );
+});
+
+test('a failed durable queue push is surfaced even when the operator switches sprites mid-save', async () => {
+  // FIX 3 / F-D completion: a durable assets/queue push can take seconds. If the
+  // operator navigates to another sprite while it is in flight, the stale-token /
+  // changed-key guards must NOT swallow a failed-push warning — otherwise the
+  // worktree can be discarded with an un-persisted edit and the change is lost.
+  await withEditor(
+    async (page) => {
+      // Save from a clean editor so the mid-save switch needs no unsaved-edits
+      // dialog and stays deterministic. The delayed save still resolves stale
+      // (sprite.key !== expectedKey) once we switch to the second fixture, which
+      // is exactly the navigated-away-mid-push case FIX 3 must not swallow.
+      await page.getByRole('button', { name: 'Save' }).click();
+      await page.waitForFunction(
+        () => document.querySelector('#status')?.textContent === 'Saving…',
+      );
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      // The clean switch (loadSprite) completes well before the delayed save
+      // resolves, so the resolving save is genuinely stale.
+      await page.waitForFunction(
+        () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
+      );
+      await page.waitForFunction(() =>
+        (document.querySelector('#status')?.textContent ?? '').includes(
+          'durable queue push FAILED',
+        ),
+      );
+    },
+    { saveDelayMs: 1000, saveQueueStatus: 'failed' },
+  );
+});
+
+test('a failed durable queue push is surfaced on revert even when the operator switches sprites mid-revert', async () => {
+  // FIX 6 (the revert half of FIX 3): revert also re-queues the reverted state
+  // onto the durable assets/queue branch, and that push can take seconds. If the
+  // operator navigates to another sprite while it is in flight, revert's
+  // stale-token / changed-key guards must NOT swallow a failed-push warning —
+  // otherwise the discarded edit silently resurfaces on the next reconcile.
+  await withEditor(
+    async (page) => {
+      // Accept the "Revert to HEAD?" confirm; the later clean switch needs no
+      // dialog, so a persistent accept handler stays deterministic.
+      page.on('dialog', async (dialog) => {
+        await dialog.accept();
+      });
+      await page.getByRole('button', { name: 'Revert' }).click();
+      await page.waitForFunction(
+        () => document.querySelector('#status')?.textContent === 'Reverting…',
+      );
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      // The clean switch (loadSprite) completes well before the delayed revert
+      // resolves, so the resolving revert is genuinely stale
+      // (sprite.key !== expectedKey) — the navigated-away-mid-push case.
+      await page.waitForFunction(
+        () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
+      );
+      await page.waitForFunction(() =>
+        (document.querySelector('#status')?.textContent ?? '').includes(
+          'durable queue push FAILED',
+        ),
+      );
+    },
+    { revertDelayMs: 1000, revertQueueStatus: 'failed' },
+  );
+});
+
+test('a failed durable queue push is surfaced when the operator switches sprites during revert’s image reload', async () => {
+  // FIX 6, the SECOND async gap: revert stays NON-stale through /api/revert (no
+  // switch has happened yet), so the stale-token guard is skipped entirely. The
+  // operator then switches sprites while revert is awaiting its OWN image reload
+  // (renderer.mjs loadImage at ~2447). Only the post-loadImage guard
+  // (~2448-2452) surfaces the failed push on this path, because that guard
+  // RETURNS before the terminal report — pre-FIX-6 the return dropped the
+  // warning entirely.
+  //
+  // Fully synchronized (no fixed delays): a gate on the revert's image RELOAD
+  // lets us (1) switch sprites only AFTER revert has entered loadImage
+  // (guaranteeing the post-loadImage path, never the earlier stale-token guard),
+  // and (2) release the held reload only AFTER the clean switch has settled on
+  // 'Ready.' (so the FAILED warning can never be overwritten by a late 'Ready.').
+  //
+  // Non-vacuity — both mutations are killed deterministically:
+  //  - Mutation B: removing ONLY the warning line inside the guard (keeping the
+  //    return, i.e. the exact pre-FIX-6 code) leaves the status at 'Ready.' → the
+  //    'durable queue push FAILED' wait times out.
+  //  - Mutation A: removing the ENTIRE guard (warning + return) falls through to
+  //    the terminal branch, which does an extra `await loadList()` (a /api/list
+  //    refetch) before surfacing the warning → the list-count assertion fails.
+  const revertReload = { started: deferred(), release: deferred() };
+  const counters = { list: 0 };
+  await withEditor(
+    async (page) => {
+      page.on('dialog', async (dialog) => {
+        await dialog.accept();
+      });
+      await page.getByRole('button', { name: 'Revert' }).click();
+      // /api/revert resolves immediately (non-stale), so revert advances into its
+      // image reload. Wait until that RELOAD request has actually reached the
+      // server before switching — this pins us to the post-loadImage path rather
+      // than racing the earlier stale-token guard. Bounded so a revert that never
+      // reaches loadImage fails fast into cleanup instead of hanging forever.
+      await waitWithTimeout(
+        revertReload.started.promise,
+        15_000,
+        'revert image reload to reach the server',
+      );
+      // Switch mid-reload: loadSprite bumps loadTokenCounter, tripping revert's
+      // post-loadImage guard once the held reload resolves. Second Fixture's
+      // image is its first request (not gated), so the switch completes.
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
+      );
+      await page.waitForFunction(() => document.querySelector('#status')?.textContent === 'Ready.');
+      // The clean switch has fully settled. Snapshot the list-refetch count, then
+      // release the held revert reload so its post-loadImage guard runs.
+      const listCountBeforeRelease = counters.list;
+      revertReload.release.resolve();
+      // The queue push failed, so the post-loadImage guard surfaces the warning
+      // LAST (not overwritten — 'Ready.' already landed). This wait regresses to a
+      // timeout if FIX 6's warning line is removed (Mutation B).
+      await page.waitForFunction(() =>
+        (document.querySelector('#status')?.textContent ?? '').includes(
+          'durable queue push FAILED',
+        ),
+      );
+      // The guard RETURNED — it must not have fallen through to the terminal
+      // `await loadList()`. Removing the whole guard (Mutation A) would refetch
+      // the list before surfacing the warning, bumping this count.
+      assert.equal(counters.list, listCountBeforeRelease);
+      // Sanity: the switched-to sprite is still shown (the switch really landed
+      // and revert did not re-render over it).
+      assert.equal(await page.locator('.sprite-title').textContent(), 'Second Fixture');
+    },
+    {
+      revertQueueStatus: 'failed',
+      imgGateByKey: { 'fixture-sprite': revertReload },
+      counters,
+    },
   );
 });
 

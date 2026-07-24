@@ -73,6 +73,31 @@ function matchRoute(routes, method, pathname) {
   return null;
 }
 
+/** HTTP methods that can mutate state — subject to the CSRF origin guard. */
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+/** Loopback hostnames a same-origin canvas fetch may present (URL.hostname forms). */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+
+/**
+ * True iff `origin` is this harness server's OWN loopback origin (same port).
+ * An attacker page cannot bind the ephemeral port this server already holds, so
+ * "loopback host + exact same port" uniquely identifies the same-origin canvas
+ * page served from this server. Anything else (a different port, a non-loopback
+ * host, an unparseable value, a non-http scheme) is rejected.
+ */
+function isSelfOrigin(origin, port) {
+  if (!(port > 0)) return false;
+  let parsed;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:') return false;
+  if (Number(parsed.port) !== port) return false;
+  return LOOPBACK_HOSTS.has(parsed.hostname);
+}
+
 function writeJson(res, status, obj, extraHeaders = {}) {
   const body = JSON.stringify(obj);
   res.writeHead(status, {
@@ -190,6 +215,10 @@ export async function startCanvasServer(options) {
   /** @type {Set<import('node:http').ServerResponse>} */
   const sseClients = new Set();
 
+  // The server's own listen port, filled in after `listen` resolves. Used by the
+  // CSRF origin guard to recognize this harness's own same-origin canvas page.
+  let selfPort = 0;
+
   async function safeBuildState() {
     try {
       return await buildState();
@@ -211,6 +240,26 @@ export async function startCanvasServer(options) {
     const method = (req.method ?? 'GET').toUpperCase();
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const pathname = url.pathname;
+
+    // CSRF guard: a canvas extension may register mutating routes (POST/PUT/
+    // PATCH/DELETE) whose handlers have real side effects (disk writes, an
+    // authenticated push, etc.), so a forged cross-origin request must not be
+    // able to drive them. Browsers attach an Origin header to every non-GET
+    // request and a page cannot forge it, so reject any mutating request whose
+    // Origin is present and is NOT this server's own loopback origin.
+    // Server-side callers send no Origin and stay trusted; the same-origin
+    // canvas page (served from this very port) sends the matching loopback
+    // Origin.
+    if (MUTATING_METHODS.has(method)) {
+      const origin = req.headers.origin;
+      if (typeof origin === 'string' && !isSelfOrigin(origin, selfPort)) {
+        writeJson(res, 403, {
+          error: 'forbidden-origin',
+          message: 'This browser origin is not allowed to perform this request.',
+        });
+        return;
+      }
+    }
 
     if (method === 'GET' && pathname === '/') {
       writeText(res, 200, renderHtml(instanceId), 'text/html; charset=utf-8');
@@ -339,6 +388,7 @@ export async function startCanvasServer(options) {
 
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
+  selfPort = port;
   const url = `http://127.0.0.1:${port}/`;
   log(`canvas server for instance ${instanceId} listening on ${url}`);
 

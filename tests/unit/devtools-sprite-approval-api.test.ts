@@ -54,6 +54,41 @@ describe('devtools sprite approval api', () => {
     expect(JSON.parse(init.body as string)).toEqual({ variantIndex: 1 });
   });
 
+  it('passes through a queueCommit field so a failed durable push is not dropped', async () => {
+    // PR1 regression: ApproveResponse must carry the sidecar's queueCommit outcome
+    // so the UI can warn on a failed durable push instead of reporting success.
+    const fakeEntry = {
+      briefId: 'iron-sword',
+      spriteName: 'iron-sword-var-1',
+      assetPath: 'generated/iron-sword-var-1.png',
+      approvedAt: '2026-06-08T15:30:00.000Z',
+      sourceRun: 'generated/runs/iron-sword/2026-06-08T12-00-00-deadbeef',
+      variantIndex: 1,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: null,
+      queueCommit: { status: 'failed', error: 'non-fast-forward push rejected' },
+    };
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(fakeEntry), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const entry = await postApprove(
+      'iron-sword',
+      '2026-06-08T12-00-00-deadbeef',
+      1,
+      fetcher as unknown as typeof fetch,
+    );
+
+    expect(entry.queueCommit).toEqual({
+      status: 'failed',
+      error: 'non-fast-forward push rejected',
+    });
+  });
+
   it('URL-encodes path segments so a slash in briefId cannot escape the route', async () => {
     const fetcher = vi
       .fn()

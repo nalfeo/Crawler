@@ -125,8 +125,12 @@ export const REAPER_LANE_CAP = 2;
 const FLAG_OFF_SWEEP_ROTATION_WINDOW_MS = 10 * 60 * 1000;
 
 function parsePositiveInt(raw, fallback) {
-  const parsed = Number.parseInt(String(raw ?? ''), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  const normalized = String(raw ?? '').trim();
+  if (!/^\d+$/.test(normalized)) {
+    return fallback;
+  }
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export function resolveGlobalDispatchCaps(env = process.env) {

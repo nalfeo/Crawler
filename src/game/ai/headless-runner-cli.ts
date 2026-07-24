@@ -42,6 +42,9 @@ async function main(): Promise<void> {
   console.log(`Pathing mode:  ${args.pathingMode}`);
   console.log(`Decision mode: ${args.decisionMode}`);
   console.log(`Merchant weapon purchase: ${args.merchantWeaponPurchase ? 'enabled' : 'disabled'}`);
+  console.log(
+    `Settlement return routing: ${args.settlementReturnRouting ? 'enabled' : 'disabled'}`,
+  );
   console.log('');
 
   const ai = new BehaviorTreeAI({
@@ -70,6 +73,7 @@ async function main(): Promise<void> {
     recordWeaponTelemetry: args.weaponTelemetry,
     weaponPersonas: args.weaponPersonas,
     merchantWeaponPurchase: args.merchantWeaponPurchase,
+    settlementReturnRouting: args.settlementReturnRouting,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {

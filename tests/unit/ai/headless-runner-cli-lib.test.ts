@@ -74,6 +74,23 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
         .merchantWeaponPurchase,
     ).toBe(true);
   });
+
+  it('keeps settlement return routing off by default and enables it by flag or environment', () => {
+    expect(cli().settlementReturnRouting).toBe(false);
+    expect(cli('--settlement-return-routing').settlementReturnRouting).toBe(true);
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_SETTLEMENT_RETURN_ROUTING: '1' })
+        .settlementReturnRouting,
+    ).toBe(true);
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_SETTLEMENT_RETURN_ROUTING: 'true' })
+        .settlementReturnRouting,
+    ).toBe(true);
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_SETTLEMENT_RETURN_ROUTING: 'false' })
+        .settlementReturnRouting,
+    ).toBe(false);
+  });
 });
 
 describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {

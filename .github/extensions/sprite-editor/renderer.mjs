@@ -2340,8 +2340,30 @@ const CLIENT_SCRIPT = String.raw`
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
+      // A durable-queue push failure is a GLOBAL concern (not tied to which
+      // sprite is currently selected). The stale-token / changed-key guards
+      // below return early when the user navigated to another sprite while this
+      // save's queue push was still in flight (a push can take seconds), which
+      // would otherwise silently drop the failure warning and let the edit be
+      // lost when the worktree is discarded. So when the response is stale,
+      // surface the failed push here before returning; the non-stale path below
+      // reports it with more specific messaging.
+      var saveStale = saveToken !== saveTokenCounter || !sprite || sprite.key !== expectedKey;
+      if (saveStale && data && data.queue && data.queue.status === 'failed') {
+        setStatus(
+          '\u26a0 Saved to disk, but the durable queue push FAILED \u2014 this edit is NOT safe across worktrees/sessions yet. Keep this worktree and check the sprite-editor logs.',
+          true
+        );
+      }
       if (saveToken !== saveTokenCounter) return false;
       if (!sprite || sprite.key !== expectedKey) return false;
+      // The server persists edits to the durable assets/queue branch and reports
+      // the outcome in data.queue ({status:'ok'|'skipped'|'failed'}). A 'failed'
+      // push means the on-disk write is fine but the edit is NOT yet durable
+      // across worktrees/sessions — surface it loudly so the worktree isn't
+      // discarded and the edit lost. Annotation-only saves have no queue field.
+      var queue = data && data.queue ? data.queue : null;
+      var queueFailed = !!queue && queue.status === 'failed';
       if (currentEditorFingerprint() !== submittedFingerprint) {
         var savedSprite = data && data.sprite ? data.sprite : sprite;
         var savedBaselineFingerprint = editorFingerprintForSprite(
@@ -2351,7 +2373,13 @@ const CLIENT_SCRIPT = String.raw`
         baselineFingerprint = savedBaselineFingerprint ?? submittedFingerprint;
         captureLastSavedSnapshot(submittedCanvas);
         updateDirtyIndicator();
-        setStatus('Saved submitted state; newer edits remain unsaved.');
+        setStatus(
+          'Saved submitted state; newer edits remain unsaved.' +
+            (queueFailed
+              ? ' \u26a0 Durable queue push FAILED \u2014 keep this worktree; the edit is not yet safe across sessions.'
+              : ''),
+          queueFailed
+        );
         return false;
       }
       sprite = data.sprite || sprite;
@@ -2364,7 +2392,16 @@ const CLIENT_SCRIPT = String.raw`
           expectedFingerprint: currentEditorFingerprint()
         });
       }
-      setStatus('Saved to disk.');
+      if (queueFailed) {
+        setStatus(
+          '\u26a0 Saved to disk, but the durable queue push FAILED \u2014 this edit is NOT safe across worktrees/sessions yet. Keep this worktree and check the sprite-editor logs.',
+          true
+        );
+      } else if (queue && queue.status === 'ok') {
+        setStatus('Saved to disk and queued for durable persistence.');
+      } else {
+        setStatus('Saved to disk.');
+      }
       return true;
     } catch (error) {
       setStatus(error.message || String(error), true);
@@ -2391,16 +2428,39 @@ const CLIENT_SCRIPT = String.raw`
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: sprite.key })
       });
+      // A durable-queue push failure is a GLOBAL concern; surface it at EVERY
+      // early return (mirrors saveCurrent), or a mid-push navigation silently
+      // drops the warning. Unlike save, revert has a SECOND async gap
+      // (loadImage) with its own stale-token return, so it must surface at both
+      // the stale-token guard AND the post-loadImage guard.
+      var revertQueueFailed = !!(data && data.queue && data.queue.status === 'failed');
+      var revertFailureMsg =
+        '\u26a0 Reverted on disk, but the durable queue push FAILED \u2014 a previously-queued edit may resurface. Keep this worktree and check the sprite-editor logs.';
+      var revertStale = revertToken !== revertTokenCounter || !sprite || sprite.key !== expectedKey;
+      if (revertStale && revertQueueFailed) {
+        setStatus(revertFailureMsg, true);
+      }
       if (revertToken !== revertTokenCounter) return;
       if (!sprite || sprite.key !== expectedKey) return;
       sprite = data.sprite || sprite;
       var loadToken = ++loadTokenCounter;
       await loadImage(loadToken, sprite.key);
-      if (loadToken !== loadTokenCounter) return;
+      if (loadToken !== loadTokenCounter) {
+        // The user switched sprites during loadImage; this early return sits
+        // before the terminal report below, so surface a failed push here too.
+        if (revertQueueFailed) setStatus(revertFailureMsg, true);
+        return;
+      }
       renderEditor({ skipDraftPersist: true });
       resetBaseline();
       await loadList({ skipDirtyGuard: true });
-      setStatus('Reverted to HEAD.');
+      // Revert also re-queues the reverted state onto assets/queue so the hourly
+      // reconciler can't resurface the discarded edit. Surface a failed push.
+      if (revertQueueFailed) {
+        setStatus(revertFailureMsg, true);
+      } else {
+        setStatus('Reverted to HEAD.');
+      }
     } catch (error) {
       setStatus(error.message || String(error), true);
     } finally {

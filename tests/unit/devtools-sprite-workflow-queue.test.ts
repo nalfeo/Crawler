@@ -488,6 +488,59 @@ describe('approvedItemPatch', () => {
     expect(patch.approvalSummary).toContain('Tag to add catalog metadata');
   });
 
+  it('appends a durable-queue-failure warning (with reason) when the push failed', () => {
+    // PR1: the catalog write succeeded but the durable assets/queue push did not.
+    // The warning must be baked into approvalSummary (not just a transient status)
+    // so recompute's re-render keeps it and the operator does not discard the
+    // worktree with an un-persisted approval.
+    const patch = approvedItemPatch({
+      briefId: 'green-slime-baby-v1',
+      variantIndex: 2,
+      assetPath: 'generated/green-slime-baby-v1-var-2.png',
+      sensorScore: '6/7',
+      judgeScore: '4',
+      queueCommitFailed: true,
+      queueCommitError: 'push rejected',
+    });
+    expect(patch.stage).toBe('approved');
+    // The base approval summary is preserved…
+    expect(patch.approvalSummary).toContain(
+      'Approved green-slime-baby-v1 variant 2 -> generated/green-slime-baby-v1-var-2.png',
+    );
+    // …and the durability warning + reason are appended.
+    expect(patch.approvalSummary).toContain('Durable queue push FAILED');
+    expect(patch.approvalSummary).toContain('(push rejected).');
+  });
+
+  it('omits the reason parenthetical when a failed push has no error string', () => {
+    const patch = approvedItemPatch({
+      briefId: 'bent-pipe-v1',
+      variantIndex: 0,
+      assetPath: 'generated/bent-pipe-v1-var-0.png',
+      sensorScore: '7/7',
+      judgeScore: null,
+      queueCommitFailed: true,
+    });
+    expect(patch.approvalSummary).toContain('Durable queue push FAILED');
+    expect(patch.approvalSummary.endsWith('safe across sessions.')).toBe(true);
+  });
+
+  it('leaves the summary unchanged on a successful (non-failed) queue push', () => {
+    const patch = approvedItemPatch({
+      briefId: 'bent-pipe-v1',
+      variantIndex: 0,
+      assetPath: 'generated/bent-pipe-v1-var-0.png',
+      sensorScore: '7/7',
+      judgeScore: null,
+      queueCommitFailed: false,
+    });
+    expect(patch.approvalSummary).not.toContain('Durable queue push FAILED');
+    expect(patch.approvalSummary).toBe(
+      'Approved bent-pipe-v1 variant 0 -> generated/bent-pipe-v1-var-0.png (7/7). ' +
+        'Now Tag to add catalog metadata.',
+    );
+  });
+
   it('produces a patch that drives an item from variants to approved via updateItem', () => {
     let state = createEmptyQueue();
     state = addItem(state, 'Green Slime Baby');
