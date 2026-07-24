@@ -185,20 +185,26 @@ jobs:
           # E2E run.
           LOG_LEVEL: info
 
-          # Azure AI Foundry (image, variation, synthesis, selector, and vision).
-          FOUNDRY_ENDPOINT: ${{ secrets.FOUNDRY_ENDPOINT }}
-          FOUNDRY_API_KEY: ${{ secrets.FOUNDRY_API_KEY }}
-          FOUNDRY_API_VERSION: ${{ secrets.FOUNDRY_API_VERSION }}
-          FOUNDRY_IMAGE_MODEL: ${{ secrets.FOUNDRY_IMAGE_MODEL }}
-          # The Foundry text deployment serves both variation expansion and
-          # synthesis; the selector deliberately uses its own smaller model.
-          FOUNDRY_TEXT_MODEL: ${{ secrets.FOUNDRY_TEXT_MODEL }}
-          FOUNDRY_VISION_MODEL: ${{ secrets.FOUNDRY_VISION_MODEL }}
-          FOUNDRY_BRIEF_SELECTOR_MODEL: ${{ secrets.FOUNDRY_BRIEF_SELECTOR_MODEL }}
-          SPRITES_PROVIDER: foundry
-          SPRITES_TEXT_PROVIDER: foundry
-          SPRITES_SYNTH_PROVIDER: foundry
-          SPRITES_VISION_PROVIDER: foundry
+          # Direct Azure OpenAI (image, variation, synthesis, selector, and
+          # vision) — the same backend the local sidecar and the #1307 canary
+          # used end-to-end. The Foundry backend (ADR 0033) is retired for this
+          # pipeline: the Foundry resource has no deployable models/quota, which
+          # forced the brief-selector onto a reasoning model that rejects the
+          # `max_tokens`/`temperature` params the code sends (HTTP 400). See
+          # issue #1885 for the durable archival. gpt-4o serves both variation
+          # expansion and synthesis; the brief-selector uses its own deployment
+          # (no distinct-model guard on the azure-openai path).
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_IMAGE_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_IMAGE_DEPLOYMENT }}
+          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
+          AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT }}
+          SPRITES_PROVIDER: azure-openai
+          SPRITES_TEXT_PROVIDER: azure-openai
+          SPRITES_SYNTH_PROVIDER: azure-openai
+          SPRITES_VISION_PROVIDER: azure-openai
 
           # Azure Storage (queue + blob).
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
