@@ -62,6 +62,13 @@ import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
 import { createBossChestUI } from '../BossChestUI.js';
 import {
+  createAudioCueEngine,
+  type AudioCueEngine,
+  type SynthCueSpec,
+} from '../audio/audio-cue-engine.js';
+import { createRewardOpeningAudioController } from '../reward-opening-audio.js';
+import { prefersReducedMotion } from '../reduced-motion.js';
+import {
   blurLightField,
   chooseAutoStepPx,
   clampLightingStepPx,
@@ -276,6 +283,21 @@ interface MainGameSceneInitData {
   readonly mainGameSceneOptions?: MainGameSceneOptions;
 }
 
+/**
+ * One synthesized reward-opening audio cue as actually dispatched to the
+ * `AudioCueEngine`, captured for test/automation observability (unit,
+ * integration, and E2E). Mirrors `SynthCueSpec` rather than internal
+ * intensity/rarity inputs so tests assert on the real synthesized signal
+ * (label ordering, gain monotonicity, reduced-intensity scaling) instead of
+ * implementation details.
+ */
+export interface RewardAudioCueLogEntry {
+  readonly label: string;
+  readonly frequencyHz: number;
+  readonly durationMs: number;
+  readonly gain: number;
+}
+
 declare global {
   interface Window {
     __floor1Debug?: {
@@ -452,6 +474,18 @@ export class MainGameScene extends Phaser.Scene {
   /** Shared full-screen anticipation->reveal->summary sequence (achievements + boss chests). */
   private rewardOpeningUI?: ReturnType<typeof createRewardOpeningUI>;
   private bossChestUI?: ReturnType<typeof createBossChestUI>;
+  /** Procedural WebAudio synth backing the reward-opening audio cues; safe no-op if unavailable. */
+  private rewardAudioEngine?: ReturnType<typeof createAudioCueEngine>;
+  private rewardAudioController?: ReturnType<typeof createRewardOpeningAudioController>;
+  /**
+   * Test/automation observability only: every `SynthCueSpec` actually
+   * dispatched to `rewardAudioEngine.play()`, in dispatch order. Populated by
+   * a thin logging wrapper around the real engine so unit/integration/E2E
+   * coverage can assert on cue ordering, intensity monotonicity, and
+   * reduced-motion scaling against the REAL wiring — never read by gameplay
+   * code.
+   */
+  private rewardAudioCueLog: RewardAudioCueLogEntry[] = [];
 
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
 
@@ -735,9 +769,35 @@ export class MainGameScene extends Phaser.Scene {
         }
       },
     });
+    this.rewardAudioEngine = createAudioCueEngine();
+    this.rewardAudioController = createRewardOpeningAudioController(
+      this.createRewardAudioCueLoggingEngine(this.rewardAudioEngine),
+      () =>
+        this.rewardOpeningUI?.getExcitement() ?? {
+          tierWeight: 0,
+          rarityWeight: 0,
+          score: 0,
+          bucket: 'modest',
+        },
+      () => prefersReducedMotion(),
+    );
     this.rewardOpeningUI = createRewardOpeningUI(this, {
-      onVisibilityChange: () => {
+      onVisibilityChange: (open) => {
         this.clearPendingInteractionInput();
+        if (open) {
+          this.rewardAudioController?.open();
+        } else {
+          this.rewardAudioController?.closed();
+        }
+      },
+      onPhaseChange: (phase) => {
+        this.rewardAudioController?.phaseChanged(phase);
+      },
+      onItemRevealed: (index, total, rarityWeight) => {
+        this.rewardAudioController?.itemRevealed({ index, total, rarityWeight });
+      },
+      onSkip: () => {
+        this.rewardAudioController?.skipped();
       },
     });
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
@@ -904,6 +964,10 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsUI = undefined;
       this.rewardOpeningUI?.destroy();
       this.rewardOpeningUI = undefined;
+      this.rewardAudioEngine?.dispose();
+      this.rewardAudioEngine = undefined;
+      this.rewardAudioController = undefined;
+      this.rewardAudioCueLog.length = 0;
       this.bossChestUI?.destroy();
       this.bossChestUI = undefined;
       this.achievementsButton?.destroy();
@@ -1095,6 +1159,29 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     this.bossChestUI?.resumePendingPresentation(this.world);
+  }
+
+  /**
+   * Wraps the real `AudioCueEngine` so every dispatched `SynthCueSpec` is
+   * appended to `rewardAudioCueLog` before being forwarded unchanged for
+   * synthesis. Test/automation observability only — playback behavior is
+   * untouched.
+   */
+  private createRewardAudioCueLoggingEngine(engine: AudioCueEngine): AudioCueEngine {
+    return {
+      isAvailable: () => engine.isAvailable(),
+      play: (spec: SynthCueSpec) => {
+        this.rewardAudioCueLog.push({
+          label: spec.label,
+          frequencyHz: spec.frequencyHz,
+          durationMs: spec.durationMs,
+          gain: spec.gain,
+        });
+        engine.play(spec);
+      },
+      stopAll: () => engine.stopAll(),
+      dispose: () => engine.dispose(),
+    };
   }
 
   public isInventoryOpen(): boolean {

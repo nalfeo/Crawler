@@ -113,6 +113,17 @@ const EQUIPMENT_RARITY_WEIGHT: Readonly<Record<GeneratedEquipmentRarity, number>
   rare: 1,
 };
 
+/**
+ * 0..1 rarity weight for a single granted equipment instance, using the exact
+ * same table `computeEquipmentExcitement` averages into its score — the
+ * single source of truth so a later per-item consumer (e.g. the audio-cue
+ * escalation reducer) stays numerically consistent with the visual bucket
+ * instead of re-deriving its own rarity scale.
+ */
+export function equipmentRarityWeight(rarity: GeneratedEquipmentRarity): number {
+  return EQUIPMENT_RARITY_WEIGHT[rarity];
+}
+
 function bucketFromScore(score: number): RewardExcitementBucket {
   if (score >= 0.75) return 'legendary';
   if (score >= 0.5) return 'exciting';
