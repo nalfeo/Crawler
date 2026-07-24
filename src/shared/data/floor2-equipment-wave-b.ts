@@ -5,7 +5,6 @@ import type { WeaponDef } from '../weaponDefs.js';
 import { WEAPON_DEF_DEFAULTS } from '../weapon-def-defaults.js';
 import {
   FLOOR2_EQUIPMENT_ART_DEFINITIONS,
-  FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES,
   type Floor2EquipmentArtDefinition,
   type Floor2EquipmentStableId,
   type Floor2WeaponStableId,
@@ -75,8 +74,14 @@ const MANIFEST_BY_ID: ReadonlyMap<Floor2EquipmentStableId, Floor2EquipmentArtDef
   FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => [entry.stableId, entry]),
 );
 
+const WAVE_B_DISPLAY_NAME_OVERRIDES: Readonly<Partial<Record<Floor2EquipmentStableId, string>>> =
+  Object.freeze({
+    'head.iron-visor': 'Iron Faceplate',
+    'feet.iron-greaves': 'Iron Legguards',
+  });
+
 function waveBDisplayName(stableId: Floor2EquipmentStableId, fallback: string): string {
-  return FLOOR2_WAVE_B_DISPLAY_NAME_OVERRIDES[stableId] ?? fallback;
+  return WAVE_B_DISPLAY_NAME_OVERRIDES[stableId] ?? fallback;
 }
 
 function manifestEntry(stableId: Floor2EquipmentStableId): Floor2EquipmentArtDefinition {

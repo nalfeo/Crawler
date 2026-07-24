@@ -470,6 +470,10 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
     const isBoss = hasComponent(world.ecs, eid, FamilyMembership)
       ? ((world.stores.familyMembership.isBoss[eid] ?? 0) as 0 | 1)
       : 0;
+    const enemySizeFt = Math.max(
+      getBodyHalfWidth(world, eid, 'dropSystem') * 2,
+      getBodyHalfHeight(world, eid, 'dropSystem') * 2,
+    );
     world.bloodPools.push(
       createBloodPoolSurface({
         worldSeed: world.seed,
@@ -478,6 +482,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         y,
         color: bloodColor,
         overkill,
+        enemySizeFt: enemySizeFt > 0 ? enemySizeFt : undefined,
         createdAtMs: world.elapsedMs,
       }),
     );

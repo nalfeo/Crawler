@@ -1,6 +1,7 @@
 import {
   assertOwnershipInvariant,
   admissionWaitReasons,
+  AUTOMATION_STALE_MINUTES,
   automationProgressKey,
   automationStallAction,
   blockerFingerprint,
@@ -1191,6 +1192,40 @@ if (labelExists && state?.owner === 'shepherd' && !isLeaseExpired(state, now)) {
 }
 if (labelExists && state?.owner === 'shepherd') {
   stopIfReleaseConvergedElsewhere(await release('expired-shepherd-lease'));
+}
+
+// Reclaim a stale AUTOMATION lease that would otherwise strand its ci-owner
+// lock. The automation stale-lock GC (the isDuplicateDispatch block far below)
+// runs AFTER the merge-train-owned, ci-conflict-order-wait and hasMergeConflict
+// `process.exit(0)` short-circuits, so a conflicted or merge-train-owned
+// automation-owned PR could never reach it — its lock stayed held indefinitely
+// even though the lease-reaper re-dispatched it every sweep (observed: #1759
+// held ci-owner-pr-1759 for ~37h). Release it here, before those exits, but
+// ONLY for PRs that would short-circuit before the GC so the mergeable-PR
+// reaper path (attempt-ceiling retry via stale-automation-retry) is left
+// completely unchanged.
+if (
+  labelExists &&
+  state?.owner === 'automation' &&
+  ['active', 'dispatched', 'escalated'].includes(state.status)
+) {
+  const automationProgressAt = Date.parse(state.progressAt || state.updatedAt);
+  const automationLeaseStale =
+    Number.isFinite(automationProgressAt) &&
+    now.getTime() - automationProgressAt >= AUTOMATION_STALE_MINUTES * 60 * 1000;
+  const prHasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
+  const trainShortCircuits =
+    mergeTrainEnabled &&
+    !pendingHumanApproval &&
+    ((pr.labels || []).some((label) => label.name === QUEUE_LABEL) ||
+      shouldWaitForCiConflictOrder(pr.labels));
+  if (automationLeaseStale && (prHasMergeConflict || trainShortCircuits)) {
+    stopIfReleaseConvergedElsewhere(await release('stale-automation-conflict-reclaim'));
+    process.stdout.write(
+      `released stale automation lock pr=#${prNumber} reason=conflict-or-train-short-circuit\n`,
+    );
+    process.exit(0);
+  }
 }
 
 if (

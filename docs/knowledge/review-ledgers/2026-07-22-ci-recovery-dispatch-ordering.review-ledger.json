@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-22",
+  "session_slug": "ci-recovery-dispatch-ordering",
+  "task_title": "CI recovery dispatch ordering: CI-fix first, blocked-PR exclusion, global FIFO",
+  "estimated_apples": 2,
+  "stages": {}
+}
