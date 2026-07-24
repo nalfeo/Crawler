@@ -134,6 +134,13 @@ interface MainSceneInternals {
     getBucket(): string | null;
     getRevealProgress(): { readonly revealed: number; readonly total: number } | null;
   };
+  /**
+   * Test/automation observability only (see `MainGameScene.rewardAudioCueLog`):
+   * the ordered array of every reward-opening audio cue actually synthesized
+   * by the real `AudioCueEngine`. Mutable — cleared directly (`.length = 0`)
+   * by the probe so each e2e scenario starts clean.
+   */
+  rewardAudioCueLog?: RewardAudioCueLogEntryProbe[];
   abilityLoadoutUI?: { isOpen(): boolean; close(): void };
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
@@ -191,6 +198,20 @@ export interface RewardOpeningProbeState {
   readonly bucket: string | null;
   readonly revealed: number;
   readonly total: number;
+}
+
+/**
+ * One synthesized reward-opening audio cue as actually dispatched to the
+ * real `AudioCueEngine` inside the booted `MainGameScene` — mirrors
+ * `RewardAudioCueLogEntry`. Lets the e2e suite assert cue ordering, gain
+ * monotonicity, and reduced-intensity scaling against the REAL wiring
+ * without touching Phaser/WebAudio internals itself.
+ */
+export interface RewardAudioCueLogEntryProbe {
+  readonly label: string;
+  readonly frequencyHz: number;
+  readonly durationMs: number;
+  readonly gain: number;
 }
 
 /**
@@ -458,6 +479,17 @@ export interface MainSceneProbeApi {
   acknowledgeRewardOpening(): void;
   /** Live `world.elapsedMs` — used to prove the sim is frozen while a reward presents. */
   getWorldElapsedMs(): number | null;
+  /**
+   * Ordered log of every reward-opening audio cue actually dispatched to the
+   * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
+   * `clearRewardAudioCueLog()`. Used to prove — against the real scene wiring,
+   * not the pure cue-decision functions in isolation — cue ordering,
+   * intensity/gain monotonicity, reduced-motion scaling, and that
+   * skip/close/duplicate-input never leaves overlapping cues.
+   */
+  getRewardAudioCueLog(): readonly RewardAudioCueLogEntryProbe[];
+  /** Reset the reward-opening audio cue log so a scenario starts from empty. */
+  clearRewardAudioCueLog(): void;
 }
 
 function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): () => void {
@@ -1099,6 +1131,17 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getWorldElapsedMs: (): number | null => {
       const world = getScene()?.world;
       return world ? world.elapsedMs : null;
+    },
+
+    getRewardAudioCueLog: (): readonly RewardAudioCueLogEntryProbe[] => {
+      return getScene()?.rewardAudioCueLog ?? [];
+    },
+
+    clearRewardAudioCueLog: (): void => {
+      const scene = getScene();
+      if (scene?.rewardAudioCueLog) {
+        scene.rewardAudioCueLog.length = 0;
+      }
     },
   };
   probeWindow.__mainSceneProbe = api;

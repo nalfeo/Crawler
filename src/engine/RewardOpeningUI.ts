@@ -26,9 +26,11 @@
  * Excitement intensity (`RewardExcitement.bucket`) scales the reveal's visual
  * flourish (glow size/colour count) independently of which reward this is —
  * a tier2+common grant renders less intense than a tier2+uncommon grant, per
- * the hard UX contract. Audio is deliberately NOT implemented here; the
- * `onPhaseChange` hook exists purely so a later audio-hook slice has a stable,
- * already-shipped timing/intensity signal to attach sounds to.
+ * the hard UX contract. The same intensity signal drives audio: callers wire
+ * `onPhaseChange`/`onItemRevealed`/`onSkip`/`onVisibilityChange` to
+ * `src/engine/reward-opening-audio.ts`'s controller (see `MainGameScene`'s
+ * reward-opening construction) so audio excitement always matches this
+ * visual glow rather than guessing a second scale.
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
@@ -38,6 +40,7 @@ import type { ResolvedRewardPresentation } from '../shared/reward-presentation.j
 import {
   computeLootBoxExcitement,
   computeRewardExcitement,
+  equipmentRarityWeight,
   type RewardExcitement,
   type RewardExcitementBucket,
 } from '../shared/reward-presentation.js';
@@ -74,14 +77,39 @@ const BUCKET_STYLE: Readonly<
 
 export interface RewardOpeningUIHooks {
   /**
-   * Optional stable hook for a future audio-hook slice: fired whenever the
-   * phase actually changes (never on a same-phase tick), with the excitement
-   * bucket driving this reward's intensity. Deliberately unused for audio in
-   * this slice.
+   * Fired whenever the phase actually changes (never on a same-phase tick),
+   * with the excitement bucket driving this reward's intensity. Drives the
+   * `anticipation`/`summary` audio cues. NEVER fired for the `summary`
+   * transition reached via `skip()` — see `onSkip` below (adversarial plan
+   * review finding: relying on a scheduled-then-immediately-cancelled
+   * summary cue being "provably inaudible" via same-tick `AudioContext`
+   * timing was correct but fragile; it is architecturally simpler and more
+   * robust to simply never schedule that cue for a skip-caused transition).
    */
   readonly onPhaseChange?: (phase: RewardOpeningPhase, bucket: RewardExcitementBucket) => void;
   /** Fired whenever the overlay opens or closes so callers can clear stale input. */
   readonly onVisibilityChange?: (open: boolean) => void;
+  /**
+   * Fired once per DISTINCT reveal "beat", in reveal order, ONLY from
+   * forward `tick()` progression (never from `skip()`, which jumps straight
+   * to `summary` — use `onSkip` for that transition instead). `rarityWeight`
+   * is the item's own 0..1 rarity weight (e.g. `equipmentRarityWeight(...)`),
+   * or `null` for an item with no discrete rarity axis (a lootBox's
+   * gold/material beats). Drives the `reveal`/`escalation` audio cues.
+   * Under reduced motion, `tick()` can reveal every item in a single call —
+   * rather than firing once per item (which would stack N simultaneous
+   * cues, the OPPOSITE of reduced audio intensity), this fires exactly ONCE
+   * for that whole same-tick batch, reporting the batch's highest-rarity
+   * item so escalation still tracks correctly (adversarial plan review
+   * finding).
+   */
+  readonly onItemRevealed?: (index: number, total: number, rarityWeight: number | null) => void;
+  /**
+   * Fired for a skip/fast-forward input that ACTUALLY advanced the sequence
+   * (never for a no-op duplicate skip once already at/past `summary`).
+   * Drives the `skip` audio cue.
+   */
+  readonly onSkip?: () => void;
 }
 
 export interface OpenRewardOpeningParams {
@@ -119,6 +147,13 @@ export interface RewardOpeningUI {
   getPhase(): RewardOpeningPhase | null;
   /** Test/automation affordance: current excitement bucket, or `null` while closed. */
   getBucket(): RewardExcitementBucket | null;
+  /**
+   * The full excitement signal (tier + actual granted rarity + bucket) for
+   * the current session, or `null` while closed. `src/engine/reward-opening-audio.ts`
+   * reads this so audio intensity always derives from the SAME signal driving
+   * the visual glow — never a second, independently-tuned scale.
+   */
+  getExcitement(): RewardExcitement | null;
   /** Test/automation affordance: items revealed so far / total, or null while closed. */
   getRevealProgress(): { readonly revealed: number; readonly total: number } | null;
   destroy(): void;
@@ -251,7 +286,7 @@ export function createRewardOpeningUI(
     return computed;
   }
 
-  function render(): void {
+  function render(options?: { readonly suppressPhaseChangeHook?: boolean }): void {
     if (!sequenceState || !presentation) return;
     const style = BUCKET_STYLE[excitement.bucket];
     glow.setFillStyle(style.glowColor, 0.22);
@@ -334,11 +369,22 @@ export function createRewardOpeningUI(
 
     if (lastRenderedPhase !== sequenceState.phase) {
       lastRenderedPhase = sequenceState.phase;
-      hooks.onPhaseChange?.(sequenceState.phase, excitement.bucket);
+      if (!options?.suppressPhaseChangeHook) {
+        hooks.onPhaseChange?.(sequenceState.phase, excitement.bucket);
+      }
     }
   }
 
   function close(): void {
+    // Only fire the visibility hook when the overlay was ACTUALLY open —
+    // `destroy()` unconditionally calls `close()` on every scene teardown,
+    // even when no reward was ever opened, or when this reward was already
+    // closed (acknowledge → close, then scene shutdown moments later). An
+    // unguarded fire here would make `onVisibilityChange(false)` non-
+    // idempotent and cause the audio layer to schedule a spurious "close"
+    // cue (and a defensive `stopAll()`) on every normal scene teardown, not
+    // just a genuine open→close transition (code review round 1, finding 1).
+    const wasOpen = sequenceState !== null;
     world = null;
     presentation = null;
     onAcknowledgeCallback = null;
@@ -346,13 +392,30 @@ export function createRewardOpeningUI(
     lastRenderedPhase = null;
     clearItemObjects();
     container.setVisible(false);
-    hooks.onVisibilityChange?.(false);
+    if (wasOpen) {
+      hooks.onVisibilityChange?.(false);
+    }
   }
 
   function handleSkip(): void {
     if (!sequenceState) return;
+    const previousPhase = sequenceState.phase;
     sequenceState = skipSequence(sequenceState);
-    render();
+    // Suppress the phase-change hook for this render: a skip-caused
+    // `summary` transition must NEVER schedule the `reward:summary` audio
+    // cue at all (rather than relying on `onSkip`'s `stopAll()` to cancel a
+    // just-scheduled cue before its attack ramp rises — adversarial plan
+    // review finding). `onSkip` below is the sole audio signal for this
+    // transition; it still defensively `stopAll()`s first in case some
+    // OTHER cue (e.g. a reveal/escalation cue) is mid-flight from before the
+    // skip input arrived.
+    render({ suppressPhaseChangeHook: true });
+    // Only fire for a skip that actually advanced the sequence — a duplicate
+    // skip press once already at/past `summary` is a no-op, and must not
+    // replay the skip cue (duplicate input must never overlap/leak audio).
+    if (sequenceState.phase !== previousPhase) {
+      hooks.onSkip?.();
+    }
   }
 
   function handleAcknowledge(): void {
@@ -431,8 +494,51 @@ export function createRewardOpeningUI(
       // clearItemObjects(), which is far too expensive to run at 60 FPS.
       const needsRender =
         next.phase !== sequenceState.phase || next.revealedCount !== sequenceState.revealedCount;
+      const previousRevealedCount = sequenceState.revealedCount;
       sequenceState = next;
       if (needsRender) render();
+      // Fire once per newly-revealed item, in order, ONLY from this forward
+      // `tick()` progression — `skip()` jumps `revealedCount` straight to
+      // `itemCount` without ever calling `tick()`, so it can never reach
+      // here (see `onSkip` for that transition instead). Under reduced
+      // motion, `tickSequence` jumps `revealedCount` from 0 straight to
+      // `itemCount` in a SINGLE call: firing one audio event per item here
+      // would stack every item's reveal (+ possible escalation) cue at the
+      // exact same instant — the opposite of "reduced" audio intensity
+      // (adversarial plan review finding). So a same-tick batch of more than
+      // one item is coalesced into exactly ONE `onItemRevealed` call,
+      // reporting whichever item in the batch has the HIGHEST rarity weight
+      // (so an escalation cue still correctly fires if the batch contains a
+      // new running-max rarity) — every item is still visually rendered by
+      // the `render()` call above, only the AUDIO event count is reduced.
+      // Normal (non-reduced) motion always reveals exactly one item per
+      // tick, so this never coalesces anything outside reduced motion.
+      if (next.phase === 'revealing' && next.revealedCount > previousRevealedCount) {
+        const batchSize = next.revealedCount - previousRevealedCount;
+        if (next.config.reducedMotion && batchSize > 1) {
+          let bestIndex = previousRevealedCount;
+          let bestRarityWeight: number | null = null;
+          for (let i = previousRevealedCount; i < next.revealedCount; i++) {
+            const item = revealItems[i] as RevealItemDisplay | undefined;
+            const rarityWeight = item?.equipmentSpec
+              ? equipmentRarityWeight(item.equipmentSpec.rarity)
+              : null;
+            if ((rarityWeight ?? -1) > (bestRarityWeight ?? -1)) {
+              bestRarityWeight = rarityWeight;
+              bestIndex = i;
+            }
+          }
+          hooks.onItemRevealed?.(bestIndex, revealItems.length, bestRarityWeight);
+        } else {
+          for (let i = previousRevealedCount; i < next.revealedCount; i++) {
+            const item = revealItems[i] as RevealItemDisplay | undefined;
+            const rarityWeight = item?.equipmentSpec
+              ? equipmentRarityWeight(item.equipmentSpec.rarity)
+              : null;
+            hooks.onItemRevealed?.(i, revealItems.length, rarityWeight);
+          }
+        }
+      }
     },
     skip: handleSkip,
     acknowledge: handleAcknowledge,
@@ -441,6 +547,9 @@ export function createRewardOpeningUI(
     },
     getBucket(): RewardExcitementBucket | null {
       return sequenceState ? excitement.bucket : null;
+    },
+    getExcitement(): RewardExcitement | null {
+      return sequenceState ? excitement : null;
     },
     getRevealProgress(): { readonly revealed: number; readonly total: number } | null {
       return sequenceState

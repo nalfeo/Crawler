@@ -19,6 +19,7 @@ import type {
   MainSceneState,
   NpcRenderInfo,
   ProbePoint,
+  RewardAudioCueLogEntryProbe,
   RewardOpeningProbeState,
   TerrainRenderSummary,
   DoorRenderSummary,
@@ -161,6 +162,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.acknowledgeRewardOpening()),
   getWorldElapsedMs: (page: Page): Promise<number | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getWorldElapsedMs()),
+  getRewardAudioCueLog: (page: Page): Promise<readonly RewardAudioCueLogEntryProbe[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
+  clearRewardAudioCueLog: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.clearRewardAudioCueLog()),
 };
 
 /**
