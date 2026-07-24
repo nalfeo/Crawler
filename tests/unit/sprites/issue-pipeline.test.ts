@@ -16,7 +16,10 @@ vi.mock('../../../scripts/sprites/load-brief.js', () => ({
   loadBrief: vi.fn(),
 }));
 
-import { buildCompletionComment, runIssuePipeline } from '../../../scripts/sprites/issue-pipeline.js';
+import {
+  buildCompletionComment,
+  runIssuePipeline,
+} from '../../../scripts/sprites/issue-pipeline.js';
 import { runFull } from '../../../scripts/sprites/run-full.js';
 import { synthesizeBrief } from '../../../scripts/sprites/synthesize-brief.js';
 import { loadBrief } from '../../../scripts/sprites/load-brief.js';
@@ -138,7 +141,9 @@ describe('runIssuePipeline', () => {
     );
   });
 
-  it('records model metadata and only enables judge when a vision provider is configured', async () => {
+  it(
+    'records model metadata and only enables judge when a vision provider is configured',
+    async () => {
     const winnerPath = path.join(repoRoot, 'bone-dagger.yaml');
     writeFileSync(winnerPath, 'name: bone-dagger\njudge:\n  enabled: false\n', 'utf8');
     const store = makeStore();
@@ -288,7 +293,9 @@ describe('runIssuePipeline', () => {
     expect(comments.some((c) => c.startsWith('✅ Asset-request pipeline complete.'))).toBe(true);
   });
 
-  it('suppresses intermediate progress comments but keeps the terminal summary when postProgressComments is false', async () => {
+  it(
+    'suppresses intermediate progress comments but keeps the terminal summary when postProgressComments is false',
+    async () => {
     const comments: string[] = [];
     await runWithComments(comments, { postProgressComments: false });
 
@@ -299,7 +306,8 @@ describe('runIssuePipeline', () => {
     expect(comments.some((c) => c.startsWith('📌 Promoted'))).toBe(false);
     // ...but a terminal success summary still posts.
     expect(comments.some((c) => c.startsWith('✅ Asset-request pipeline complete.'))).toBe(true);
-  });
+    },
+  );
 
   it('infers weapon type from weapon-* prefix', async () => {
     const winnerPath = path.join(repoRoot, 'weapon-sword.yaml');
@@ -477,7 +485,9 @@ describe('runIssuePipeline', () => {
     expect(mockSynthesizeBrief.mock.calls[0]![0].sizeVariant).toBe(expected);
   });
 
-  it('type-omitted boss request infers enemy type so boss prompt and boss_presence activate', async () => {
+  it(
+    'type-omitted boss request infers enemy type so boss prompt and boss_presence activate',
+    async () => {
     // Regression: a type-omitted request like "countess-boss" resolved mobRole:'boss'
     // but inferSpriteTypeFromName defaulted the sprite type to 'character', preventing
     // both the boss prompt and boss_presence judge axis from running.
@@ -536,7 +546,9 @@ describe('runIssuePipeline', () => {
     expect(callArgs.mobRole).toBe('boss');
   });
 
-  it('mirrors the post-enableJudge brief bytes into the store before runFull executes', async () => {
+  it(
+    'mirrors the post-enableJudge brief bytes into the store before runFull executes',
+    async () => {
     // Regression test: issue-pipeline must mirror the promoted brief to the store
     // (via mirrorBriefToStore) AFTER enableJudge mutates it and BEFORE runFull starts,
     // so the sidecar can load it via materializeBriefFromStore after the CI runner shuts down.
@@ -627,7 +639,13 @@ describe('buildCompletionComment', () => {
   it('uses the last attempt sheet index when multiple attempts were made', () => {
     const store = makeStore();
     const result = {
-      summary: { brief: 'bone-dagger', runId: 'run-2', attempts: 3, chosen: null, candidates: [] },
+      summary: {
+        brief: 'bone-dagger',
+        runId: 'run-2',
+        attempts: 3,
+        chosen: null,
+        candidates: [],
+      },
       summaryPath: 'bone-dagger/run-2/summary.json',
     } as never;
     const comment = buildCompletionComment(result, store);
@@ -662,7 +680,9 @@ describe('buildCompletionComment', () => {
     );
   });
 
-  it('includes the chosen variant image embed with pass status when a chosen candidate exists', () => {
+  it(
+    'includes the chosen variant image embed with pass status when a chosen candidate exists',
+    () => {
     const store = makeStore();
     const result = {
       summary: {
@@ -682,7 +702,8 @@ describe('buildCompletionComment', () => {
     expect(comment).toContain('### Chosen variant (3/4)');
     expect(comment).toContain('bone-dagger/run-3/processed/02.png');
     expect(comment).toContain('✅');
-  });
+    },
+  );
 
   it('shows ⚠️ pass label when chosen variant did not fully pass the pipeline', () => {
     const store = makeStore();

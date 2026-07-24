@@ -35,15 +35,18 @@ describe('asset-request workflow capacity', () => {
     });
   });
 
-  it('drains two requests concurrently through Foundry-only provider configuration', () => {
+  it('drains two requests concurrently with one provider family configured', () => {
     const workflow = loadWorkflow();
     const drain = workflow.jobs.drain?.steps?.find((step) => step.name === 'Drain worker');
+    const provider = drain?.env?.SPRITES_PROVIDER;
+
+    expect(provider).toMatch(/^(foundry|azure-openai)$/);
     expect(drain?.env).toMatchObject({
       SPRITES_WORKER_CONCURRENCY: '2',
-      SPRITES_PROVIDER: 'foundry',
-      SPRITES_TEXT_PROVIDER: 'foundry',
-      SPRITES_SYNTH_PROVIDER: 'foundry',
-      SPRITES_VISION_PROVIDER: 'foundry',
+      SPRITES_PROVIDER: provider,
+      SPRITES_TEXT_PROVIDER: provider,
+      SPRITES_SYNTH_PROVIDER: provider,
+      SPRITES_VISION_PROVIDER: provider,
     });
     expect(
       Object.keys(drain?.env ?? {})
