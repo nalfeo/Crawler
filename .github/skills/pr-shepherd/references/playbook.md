@@ -177,22 +177,25 @@ required checks report green on the latest head.
   (especially from `copilot-pull-request-reviewer`) will silently block auto-merge
   even when all CI checks pass. Resolve the thread → re-arm auto-merge → merge
   completes immediately.
-- **`mergeStateStatus: BLOCKED` even after `ci` is green** — the Merge Train enforces
-  a second required check: `merge-train` (GitHub Ruleset 19000576, "Merge Train
-  Required Checks"). This check is posted by a custom GitHub App only after the Merge
-  Train's batch validation (`merge-train-validate.yml`) succeeds for that PR's
-  candidate. **A green `ci` does not guarantee merge readiness** — if `merge-train`
-  hasn't posted yet, the PR stays `BLOCKED`/`BEHIND` with no obvious diagnostic
-  pointer. Remedy: verify `merge-train` is present in `gh pr checks <n>`; if absent
-  or failing, the Merge Train's reconcile job will eventually pick it up, or wait for
-  the next train cycle. Re-arm auto-merge after `merge-train` goes green.
+- **`mergeStateStatus: BLOCKED` even after `ci` is green** — the Merge Train is the
+  promotion path; the ruleset requires `merge-train` for ordinary actors but the trusted
+  App has `bypass_mode: always`. **`merge-train` is written by reconciliation on the PR
+  head immediately before the App-bypass squash-merge** — it is not a check that appears
+  early enough for an ordinary `gh pr merge --auto` to wait on. What batch validation
+  publishes is `merge-train-candidate` on the current `main` SHA (not on the PR head).
+  **Remedy:** ensure the PR has the `merge-train` admission label (CI recovery adds it
+  once CI, review threads, and code-review admission checks all pass) and CI stays green;
+  the train will pick it up on its next cycle and promote via App bypass. Ordinary
+  auto-merge (`gh pr merge --auto --squash`) can remain armed as a safety net, but the
+  actual merge is performed by the train's App — do not treat a missing `merge-train`
+  check in `gh pr checks <n>` as an actionable blocker to diagnose.
 - **Auto-merge disarmed by the Merge Train** — the Merge Train's `reconcile` job
   (`merge-train.yml`) **actively disarms any manually-armed `gh pr merge --auto`**
   each time it processes a PR in its queue (log line: `disabled armed auto-merge
-  pr=#NNNN`). This is normal, not a failure. Agents must expect to **re-arm
-  auto-merge after each reconcile pass** until both `ci` and `merge-train` are green
-  and the train advances. Do not interpret a missing auto-merge flag as a blocker
-  unless CI itself is failing.
+  pr=#NNNN`). This is normal, not a failure. Re-arming is fine but the actual
+  promotion is always performed by the train's App; ordinary auto-merge is a
+  safety-net, not the primary mechanism. Do not interpret a disarmed auto-merge
+  as a blocker unless CI itself is failing.
 - **Security-audit asymmetry (train-wide block risk)** — `ci.yml` runs `npm audit`
   with `continue-on-error: true`, so a pre-existing advisory finding shows as
   advisory-only and never blocks an individual PR's CI. `merge-train-validate.yml`'s
@@ -200,8 +203,10 @@ required checks report green on the latest head.
   `continue-on-error`, making it a hard gate on the entire train. A single repo-wide
   `npm audit` finding can pass every individual PR's CI while silently blocking the
   **entire Merge Train** for every queued PR. If `merge-train-validate.yml` fails with
-  an audit finding, the fix must land in a separate security PR before the train can
-  advance.
+  an audit finding, queue a security-fix PR in the train: candidate validation is
+  cumulative, so once the queued candidate includes the fix, the security step can
+  pass and the train advances in order. The fix PR does **not** need to land via
+  ordinary merge first (and ordinary merge is blocked by the ruleset anyway).
 
 ---
 
