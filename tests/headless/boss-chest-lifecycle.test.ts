@@ -1,0 +1,124 @@
+import { describe, expect, it } from 'vitest';
+import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { runHeadless } from '../../src/game/ai/headless-runner.js';
+import { asFamilyId } from '../../src/core/faction-relations.js';
+import {
+  createBossChestId,
+  spawnBossChestForDefeatedBoss,
+} from '../../src/game/boss-chest-resolver.js';
+import type { GameWorld } from '../../src/core/world.js';
+
+/**
+ * Locate the first present Floor 2 boss family's entity and push a real
+ * `death` combat event for it. Runs as a `postSystems` hook so it executes
+ * inside the actual headless simulation loop (appended after the canonical
+ * Floor 2 `postSystems`, which includes `floor2ObjectiveTick` — see
+ * `headless-runner.ts`'s composition comment), meaning the boss-chest
+ * creation this exercises goes through the exact same real pipeline as the
+ * visual game, not a lab shortcut. Guards on a captured flag so it only
+ * fires once (frame 0), and no-ops if the roster/boss entity is not yet
+ * resolvable that frame.
+ */
+function killFirstPresentBossOnce(): (world: GameWorld) => void {
+  let fired = false;
+  return (world: GameWorld) => {
+    if (fired) return;
+    const familyState = world.floorExtendedState?.familyState;
+    const familyId = familyState?.presentFamilies[0];
+    if (!familyId) return;
+    const presentIndex = familyState!.presentFamilies.indexOf(asFamilyId(familyId));
+    const bossField = world.stores.familyMembership.isBoss;
+    const familyIdxField = world.stores.familyMembership.familyId;
+    let bossEid = -1;
+    for (let eid = 0; eid < bossField.length; eid++) {
+      if (bossField[eid] === 1 && familyIdxField[eid] === presentIndex) {
+        bossEid = eid;
+        break;
+      }
+    }
+    if (bossEid <= 0) return;
+    fired = true;
+    world.combatEvents.push({
+      type: 'death',
+      x: 0,
+      y: 0,
+      amount: 999,
+      targetType: 'enemy',
+      timestamp: world.elapsedMs,
+      targetEid: bossEid,
+    } as (typeof world.combatEvents)[number]);
+  };
+}
+
+describe('Boss chest lifecycle — real headless pipeline', () => {
+  it('creates an available Floor 2 boss chest with a resolved reward bundle when a boss dies', async () => {
+    let observed:
+      | { chestCount: number; state: string | undefined; bundleCount: number }
+      | undefined;
+
+    await runHeadless(new BehaviorTreeAI({ seed: 61 }), {
+      seed: 61,
+      floorId: 'floor2',
+      maxFrames: 5,
+      floor2EquipmentFlags: {
+        floor2EquipmentRegistry: true,
+        floor2EquipmentCatalog: true,
+        floor2EquipmentEconomy: true,
+      },
+      simulationOptions: {
+        postSystems: [killFirstPresentBossOnce()],
+      },
+      onFinish: (world) => {
+        const familyId = world.floorExtendedState?.familyState?.presentFamilies[0];
+        const chestId = familyId ? createBossChestId(familyId) : null;
+        observed = {
+          chestCount: world.bossChests.size,
+          state: chestId ? world.bossChests.get(chestId)?.state : undefined,
+          bundleCount: world.generatedEquipmentRewardBundles.size,
+        };
+      },
+    });
+
+    expect(observed?.chestCount).toBe(1);
+    expect(observed?.state).toBe('available');
+    expect(observed?.bundleCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('never populates boss chests on Floor 1, even with a boss defeat and Floor 2 equipment flags set', async () => {
+    // Floor 1 has no family/boss-chest system at all (its boss battles use a
+    // separate spell-reward flow — see `floorScenario.ts`), so there is no
+    // real "Floor 1 boss family death" event to synthesize. Instead, drive
+    // the real resolver directly against a real headless Floor 1 `GameWorld`
+    // (not a lab world) with Floor 2 equipment flags deliberately enabled, to
+    // prove the exclusion is enforced by the resolver's own `world.floor !==
+    // 2` gate rather than merely by nobody calling it on Floor 1.
+    let result: { created: boolean; reason?: string } | undefined;
+    let bossChestCount = -1;
+
+    await runHeadless(new BehaviorTreeAI({ seed: 62 }), {
+      seed: 62,
+      floorId: 'floor1',
+      maxFrames: 1,
+      floor2EquipmentFlags: {
+        floor2EquipmentRegistry: true,
+        floor2EquipmentCatalog: true,
+        floor2EquipmentEconomy: true,
+      },
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (result) return;
+            result = spawnBossChestForDefeatedBoss(world, 'floor1-slime-rat-boss');
+          },
+        ],
+      },
+      onFinish: (world) => {
+        bossChestCount = world.bossChests.size;
+      },
+    });
+
+    expect(result?.created).toBe(false);
+    expect(result?.reason).toBe('notFloor2');
+    expect(bossChestCount).toBe(0);
+  });
+});

@@ -184,6 +184,20 @@ describe('numeric validators', () => {
     expect(parsePositiveInt('--x', '12')).toBe(12);
   });
 
+  it('parsePositiveInt rejects integers beyond MAX_SAFE_INTEGER to prevent run-id corruption (e.g. 9007199254740993 serialises as 9007199254740992)', () => {
+    // Number(String(MAX_SAFE_INTEGER + 2)) rounds to MAX_SAFE_INTEGER + 2 per
+    // IEEE 754 (actually to MAX_SAFE_INTEGER + 2, but JS can't represent it
+    // exactly — Number.isInteger passes while Number.isSafeInteger fails).
+    const unsafeAbove = String(Number.MAX_SAFE_INTEGER + 2);
+    expect(() => parsePositiveInt('--resume-run-id', unsafeAbove)).toThrow(
+      /expected a positive integer/,
+    );
+    // The boundary itself (MAX_SAFE_INTEGER) is safe and must be accepted.
+    expect(parsePositiveInt('--resume-run-id', String(Number.MAX_SAFE_INTEGER))).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+  });
+
   it('parseNonNegativeInt rejects blank / non-integer / negative and accepts 0 and positive integers', () => {
     // Regression: blank / whitespace must not coerce to a silent `0`.
     expect(() => parseNonNegativeInt('--rounds', '')).toThrow();

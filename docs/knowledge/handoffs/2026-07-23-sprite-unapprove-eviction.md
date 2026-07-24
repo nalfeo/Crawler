@@ -19,6 +19,7 @@ all three locations that `approveVariant()` writes to.
 ## What was done
 
 ### Core logic (`scripts/sprites/approve.ts`)
+
 - Added `unlinkSync` to imports
 - Added `UnapproveFs` interface (extends `ApproveFs` with `unlinkSync`)
 - Added `DEFAULT_UNAPPROVE_FS` constant
@@ -31,10 +32,12 @@ all three locations that `approveVariant()` writes to.
   - Path-traversal guard: resolved asset path must stay inside `generated/`
 
 ### CLI (`scripts/sprites/unapprove-cli.ts`) — NEW FILE
+
 - `npm run sprites:unapprove -- <variantId> [--keep-asset]`
 - Exit codes: 0=success, 1=unknown, 2=not-found, 3=manifest-invalid
 
 ### Sidecar HTTP route (`scripts/sprites/sidecar/server.ts`)
+
 - Added `DELETE /api/manifest/:variantId`
 - CI guard (403 when `env.CI !== undefined`)
 - Input validation (rejects variantIds containing `/` or `\`)
@@ -42,15 +45,18 @@ all three locations that `approveVariant()` writes to.
 - Returns evicted manifest entry or 404/500
 
 ### Client API (`src/devtools/sprite-approval-api.ts`)
+
 - Added `UnapproveResponse` type
 - Added `UnapproveRequestError` error class
 - Added `deleteApprovedVariant(variantId)` function
 
 ### Tests
+
 - `tests/unit/sprites/approve.test.ts`: 9 new test cases for `unapproveVariant`
 - `tests/unit/sprites/sidecar-server.test.ts`: 5 new test cases for `DELETE /api/manifest/:variantId`
 
 ### Package / docs
+
 - Added `sprites:unapprove` to `package.json` scripts
 - Added `Sprite unapprove` row to `AGENTS.md` command table
 

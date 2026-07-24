@@ -525,6 +525,7 @@ describe('player floor carryover', () => {
       generatedEquippedInstanceKeys: _generatedEquippedInstanceKeys,
       generatedEquipmentRegistry: _generatedEquipmentRegistry,
       generatedEquipmentRewardBundles: _generatedEquipmentRewardBundles,
+      bossChests: _bossChests,
       lootBoxRewardBundles: _lootBoxRewardBundles,
       ...legacy
     } = current;
@@ -646,6 +647,161 @@ describe('player floor carryover', () => {
     expect(
       destination.abilityStatesByEntity.get(destinationPlayer)?.passiveAbilityIds,
     ).not.toContain('combat-flow');
+  });
+
+  it('restores a "player-carryover/v1" snapshot captured before bossChests existed', () => {
+    // Regression test: bossChests was added to the "player-carryover/v1" shape
+    // without a schema-version bump (same pattern PR #1810 used for
+    // generatedEquipmentRewardBundles). A snapshot serialized by a build
+    // before bossChests existed still carries schemaVersion "player-carryover/v1"
+    // and therefore matches the "current schema" branch of
+    // normalizePlayerCarryoverSnapshot — it must default the missing field to
+    // [] instead of hard-failing restore (multi-model code review round 1).
+    const runKey = 'carryover-pre-bosschest-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    expect(Array.isArray(serialized.bossChests)).toBe(true);
+    delete serialized.bossChests;
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).not.toThrow();
+    expect(destination.bossChests.size).toBe(0);
+  });
+
+  it('still fails closed when a "player-carryover/v1" snapshot has an explicitly null bossChests', () => {
+    // Regression test: the absent-field default must not swallow a
+    // present-but-malformed value. Setting bossChests to null (rather than
+    // omitting the key entirely) must still hit the assertArray guard and
+    // throw, matching every other structural field (multi-model code review
+    // round 2 — the initial `?? []` default treated null the same as
+    // "missing" and silently accepted it).
+    const runKey = 'carryover-null-bosschest-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = null;
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /Expected array at bossChests/,
+    );
+  });
+
+  it('fails closed when a persisted boss chest has a non-string familyId', () => {
+    // Regression test: familyId is interpolated into a template literal by
+    // createBossChestId, which silently coerces a non-string to a string, so
+    // a malformed numeric familyId can otherwise slip past the
+    // chestId-derivation equality check undetected (multi-model code review
+    // round 3).
+    const runKey = 'carryover-bad-familyid-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      { chestId: 'boss-chest:5', familyId: 5, state: 'available', createdAtMs: 0 },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /Boss chest requires a string familyId/,
+    );
+  });
+
+  it('fails closed when a persisted boss chest has a non-numeric createdAtMs', () => {
+    const runKey = 'carryover-bad-createdatms-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      {
+        chestId: 'boss-chest:goblin-warband',
+        familyId: 'goblin-warband',
+        state: 'available',
+        createdAtMs: undefined,
+      },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /invalid createdAtMs/,
+    );
+  });
+
+  it('restores a "player-carryover/v1" snapshot missing generatedEquipmentRewardBundles', () => {
+    // Regression test: the round-1 absent-key default was only applied to
+    // bossChests, but generatedInventoryInstanceKeys, generatedEquippedInstanceKeys,
+    // and generatedEquipmentRewardBundles were *also* added to the
+    // "player-carryover/v1" shape without a schema-version bump (PR #1810), so
+    // a pre-existing snapshot missing any of them hit the same hard-fail via
+    // assertArray. Fixed by defaulting all four fields on true key-absence
+    // (multi-model code review, round 4).
+    const runKey = 'carryover-pre-bundles-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    expect(Array.isArray(serialized.generatedEquipmentRewardBundles)).toBe(true);
+    delete serialized.generatedEquipmentRewardBundles;
+    delete serialized.generatedInventoryInstanceKeys;
+    delete serialized.generatedEquippedInstanceKeys;
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).not.toThrow();
+    expect(destination.generatedEquipmentRewardBundles.size).toBe(0);
+  });
+
+  it('fails closed when a persisted boss chest entry is null', () => {
+    // Regression test: assertArray only checks Array.isArray, so a malformed
+    // array element (e.g. null) previously bypassed the fail-closed
+    // PlayerCarryoverSnapshotError system entirely and threw a native
+    // TypeError when the loop accessed `chest.familyId` (multi-model code
+    // review, round 4).
+    const runKey = 'carryover-null-chest-entry-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [null];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /Boss chest entry must be an object/,
+    );
+  });
+
+  it('fails closed when a persisted generated reward bundle entry is null', () => {
+    // Mirrors the boss-chest null-entry guard above for
+    // generatedEquipmentRewardBundles (multi-model code review, round 4).
+    const runKey = 'carryover-null-bundle-entry-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.generatedEquipmentRewardBundles = [null];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /Generated reward bundle entry must be an object/,
+    );
   });
 
   it('retains independently owned grants after the last equipment source is removed', () => {
@@ -1095,5 +1251,205 @@ describe('player floor carryover', () => {
         sourceId: `combat-flow:passive:${player}:0`,
       }),
     );
+  });
+
+  it('fails closed with PlayerCarryoverSnapshotError on malformed array-typed fields', () => {
+    const source = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+
+    const invalidInputs: readonly unknown[] = [
+      // Finding 3: playerSkills not an array
+      { ...snapshot, playerSkills: null },
+      { ...snapshot, playerSkills: {} },
+      // Finding 3: persistentStatModifiers not an array
+      { ...snapshot, persistentStatModifiers: null },
+      { ...snapshot, persistentStatModifiers: {} },
+      // Finding 1: achievements sub-fields not arrays
+      { ...snapshot, achievements: { ...snapshot.achievements, unlockedIds: 5 } },
+      { ...snapshot, achievements: { ...snapshot.achievements, unlockedIds: null } },
+      {
+        ...snapshot,
+        achievements: { ...snapshot.achievements, pendingUnlockIds: 'not-an-array' },
+      },
+      { ...snapshot, achievements: { ...snapshot.achievements, claimedIds: {} } },
+      // Finding 1: achievements itself is not a non-null object
+      { ...snapshot, achievements: null },
+      { ...snapshot, achievements: 'string' },
+      // Finding 2: inventorySlots element is null
+      { ...snapshot, inventorySlots: [null] },
+      // Finding 2: inventorySlots element has non-string itemId
+      { ...snapshot, inventorySlots: [{ itemId: 123, quantity: 1 }] },
+      // Finding 2: inventorySlots element missing/wrong quantity
+      { ...snapshot, inventorySlots: [{ itemId: 'sword', quantity: 'lots' }] },
+      // Finding 2: disabledEquipmentSlots element is not a string
+      { ...snapshot, disabledEquipmentSlots: [42] },
+      { ...snapshot, disabledEquipmentSlots: [null] },
+      // Finding 5: equippedItemIds element is not a string
+      { ...snapshot, equippedItemIds: [42] },
+      { ...snapshot, equippedItemIds: [null] },
+    ];
+
+    for (const invalid of invalidInputs) {
+      const destination = createTestWorld({ seed: 42, floor: 2 });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      destination.playerName = 'Unchanged';
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow(
+        /Expected|must be|must contain/i,
+      );
+      expect(destination.playerName).toBe('Unchanged');
+    }
+  });
+
+  it('fails closed with PlayerCarryoverSnapshotError on malformed ability grant-source entries', () => {
+    const source = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(source, 0, 0);
+    source.abilityStatesByEntity.set(player, {
+      learnedSpellIds: ['fireball'],
+      equippedActiveAbilityIds: ['fireball'],
+      passiveAbilityIds: [],
+      cooldownByAbilityId: new Map(),
+      cooldownFramesByAbilityId: new Map(),
+      appliedPassiveAbilityIds: new Set(),
+    });
+    const snapshot = capturePlayerCarryover(source, player);
+
+    const invalidInputs: readonly unknown[] = [
+      // Finding 4: null entry in activeAbilityGrantSources
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [null],
+          passiveAbilityGrantSources: [],
+        },
+      },
+      // Finding 4: non-array entry (not a tuple)
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: ['not-a-tuple'],
+          passiveAbilityGrantSources: [],
+        },
+      },
+      // Finding 4: null sources within an entry
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [['fireball', null]],
+          passiveAbilityGrantSources: [],
+        },
+      },
+      // Finding 4: null source object within the sources array
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [['fireball', [null]]],
+          passiveAbilityGrantSources: [],
+        },
+      },
+      // Finding 4: null entry in passiveAbilityGrantSources
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [],
+          passiveAbilityGrantSources: [null],
+        },
+      },
+      // Finding 4: null source in passive sources
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          activeAbilityGrantSources: [],
+          passiveAbilityGrantSources: [['veteran-instinct', [null]]],
+        },
+      },
+    ];
+
+    for (const invalid of invalidInputs) {
+      const destination = createTestWorld({ seed: 42, floor: 2 });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      destination.playerName = 'Unchanged';
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow(
+        /Malformed/,
+      );
+      expect(destination.playerName).toBe('Unchanged');
+    }
+  });
+
+  it('fails closed with PlayerCarryoverSnapshotError on malformed grant-ownership source entries', () => {
+    const runKey = 'carryover-malformed-grant-ownership';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const equipped = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'armor.malformed-grant-ownership',
+        slots: ['head'],
+        grants: true,
+      }),
+    );
+    expect(addGeneratedEquipmentToBag(source, sourcePlayer, equipped.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
+        source,
+        sourcePlayer,
+        { kind: 'generated-instance', instanceKey: equipped.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    expect(snapshot.abilityState?.grantOwnership).toBeDefined();
+
+    const invalidInputs: readonly unknown[] = [
+      // Finding 4 (grantOwnership): null entry in activeSourcesByAbilityId
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          grantOwnership: {
+            ...snapshot.abilityState!.grantOwnership!,
+            activeSourcesByAbilityId: [null],
+          },
+        },
+      },
+      // Finding 4 (grantOwnership): non-array sources in an entry
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          grantOwnership: {
+            ...snapshot.abilityState!.grantOwnership!,
+            activeSourcesByAbilityId: [['magic-missile', null]],
+          },
+        },
+      },
+      // Finding 4 (grantOwnership): null entry in passiveSourcesByAbilityId
+      {
+        ...snapshot,
+        abilityState: {
+          ...snapshot.abilityState!,
+          grantOwnership: {
+            ...snapshot.abilityState!.grantOwnership!,
+            passiveSourcesByAbilityId: [null],
+          },
+        },
+      },
+    ];
+
+    for (const invalid of invalidInputs) {
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      destination.playerName = 'Unchanged';
+      expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow(
+        'Malformed grant ownership source entry',
+      );
+      expect(destination.playerName).toBe('Unchanged');
+    }
   });
 });

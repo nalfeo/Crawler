@@ -86,7 +86,10 @@ test('run/sheet/slice-map url builders encode their path + query segments', () =
   // No sheet → bare slice-map endpoint (no query).
   assert.equal(sliceMapUrl(BASE, 'b', 'r'), `${BASE}/api/runs/b/r/slice-map`);
   assert.equal(acceptUrl(BASE, 'a b', 'r/1'), `${BASE}/api/runs/a%20b/r%2F1/accept`);
-  assert.equal(deleteManifestUrl(BASE, 'goblin-archer-var-0'), `${BASE}/api/manifest/goblin-archer-var-0`);
+  assert.equal(
+    deleteManifestUrl(BASE, 'goblin-archer-var-0'),
+    `${BASE}/api/manifest/goblin-archer-var-0`,
+  );
   assert.equal(deleteManifestUrl(BASE, 'a b'), `${BASE}/api/manifest/a%20b`);
   // The embedded Postprocess Debugger (`/postprocess/*` under this canvas)
   // reuses THIS client, so it needs the persist-postprocess URL builder too —
@@ -226,13 +229,18 @@ test('unapproveVariant surfaces the sidecar error code on 404 not-found', async 
   await assert.rejects(
     () => client.unapproveVariant('missing-var-0'),
     (error) =>
-      error.code === 'not-found' && error.status === 404 && /not in the manifest/.test(error.message),
+      error.code === 'not-found' &&
+      error.status === 404 &&
+      /not in the manifest/.test(error.message),
   );
 });
 
 test('client.urls.deleteManifest is wired to the same builder', () => {
   const client = createSidecarClient({ baseUrl: BASE, fetchImpl: async () => jsonResponse({}) });
-  assert.equal(client.urls.deleteManifest('goblin-archer-var-0'), deleteManifestUrl(BASE, 'goblin-archer-var-0'));
+  assert.equal(
+    client.urls.deleteManifest('goblin-archer-var-0'),
+    deleteManifestUrl(BASE, 'goblin-archer-var-0'),
+  );
 });
 
 test('probeHealth stays down for a stale sidecar version', async () => {

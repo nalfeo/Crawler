@@ -29,8 +29,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertLegacyBaselineProvenance,
+  buildMeta,
   currentBuildFingerprint,
   selectSearchPromotion,
+  STANDALONE_SHARD_STAGE,
 } from '../../../scripts/agent/perf/sweep-eval.js';
 import { baseConfigForCombo, configId } from '../../../scripts/agent/perf/gen-configs.js';
 import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
@@ -602,5 +604,35 @@ describe('currentBuildFingerprint', () => {
     const fingerprint = currentBuildFingerprint();
     expect(fingerprint.workflowSha).toMatch(/^local:[0-9a-f]+:[0-9a-f]{12}$/);
     expect(fingerprint.workflowSha).not.toBe('local');
+  });
+});
+
+describe('STANDALONE_SHARD_STAGE', () => {
+  // A cross-run resume review flagged that `sweep-eval.ts --print-meta`
+  // (used by ai-sweep.yml's "Compute this run's expected provenance" step to
+  // produce the `--expect-meta` JSON round-plan.ts's `resume-check` mode
+  // compares against) defaults `--stage` to a *different* literal than what
+  // `--stage search-baseline`/`--stage search-eval` stamp onto `meta.stage`
+  // for the shards `initCheckpoint` folds into every round checkpoint — which
+  // would make `assertResumeCompatible`'s strict `stage` equality check
+  // reject every prior checkpoint and silently degrade `resume_run_id` to a
+  // fresh run. Both call sites are pinned to the SAME exported constant so
+  // they cannot drift independently; this test additionally pins the
+  // constant's value so an accidental edit is caught here instead of only
+  // failing a live GitHub Actions resume dispatch.
+  it('is "search", matching parseArgs\' --print-meta default stage', () => {
+    expect(STANDALONE_SHARD_STAGE).toBe('search');
+  });
+
+  it('produces a ShardMeta whose stage exactly matches buildMeta("search", ...)', () => {
+    // Simulates: (1) --print-meta's output for THIS run, using the shared
+    // constant exactly as parseArgs' default does; (2) a search-baseline/
+    // search-eval shard's stamped meta, using the shared constant exactly as
+    // evalStandalone's two call sites do. Both must be byte-identical on the
+    // `stage` field for `assertResumeCompatible` to accept a prior checkpoint.
+    const printMetaOutput = buildMeta(STANDALONE_SHARD_STAGE, 'floor1');
+    const standaloneShardMeta = buildMeta(STANDALONE_SHARD_STAGE, 'floor1');
+    expect(printMetaOutput.stage).toBe(standaloneShardMeta.stage);
+    expect(printMetaOutput.stage).toBe('search');
   });
 });
