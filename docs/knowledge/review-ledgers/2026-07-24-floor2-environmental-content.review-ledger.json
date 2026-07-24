@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "floor2-environmental-content",
+  "task_title": "Floor 2 industrial-cave harvestables, ambient lighting, and props",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-5",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "convergent",
+      "notes": "Plan reviewed via issue comment on #1903 before any code was written. Design adopted existing infrastructure (propPlacer, harvestSystem, decorationDefs) with a new cave BiomeTag. No alternative approaches required rework — single-file, append-only registry extensions with clear boundary constants. Convergent: the three-bucket design (harvestables+lighting+props) maps cleanly to existing systems with no architectural forks required."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "code-review-agent"
+          ],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Critical regression found and fixed: spawnFloor1HarvestableNodes iterated the full HARVESTABLE_DEFS array (0..length-1) which, after adding Floor 2 defs at indices 6-8, would spawn iron-vein, copper-seam, and gem-cluster nodes on Floor 1. Fixed by: (1) exporting FLOOR2_HARVESTABLE_START_INDEX=6 from harvestableDefs.ts as a shared boundary constant, (2) capping the Floor 1 spawner loop at defIndex < FLOOR2_HARVESTABLE_START_INDEX, (3) removing the redundant local re-declaration of FLOOR2_HARVESTABLE_START_INDEX from floor2Scenario.ts and importing the shared one, (4) adding a regression test asserting Floor 1 scenario produces zero nodes with defIndex>=6. No further concerns raised."
+        }
+      ]
+    }
+  }
+}
