@@ -51,6 +51,7 @@ import {
 import type { GeneratedEquipmentInventoryEntry } from '../../shared/inventory.js';
 import type { GeneratedEquipmentInstanceV1 } from '../../shared/generated-equipment-types.js';
 import type { EquipFailureReason } from '../../shared/equipment-types.js';
+import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
 import {
   evaluateEquipmentLoadoutCandidates,
   type EquipmentEncounterFixture,
@@ -353,6 +354,43 @@ function buildEquipmentSnapshot(world: GameWorld, playerEid: number): EquipmentL
 }
 
 /**
+ * Slots currently occupied by a STATIC (non-generated) equipment instance —
+ * e.g. the Floor 2 starter weapon or `MERCHANTS_CHARM_DEF`, both equipped via
+ * `equip(world, entity, staticDef, { force: true })`, which mints a numeric
+ * `EquipmentInstanceId` rather than a generated-equipment string key.
+ *
+ * `EquipmentLoadoutSnapshot.equipped` (from the equipment-loadout-evaluator
+ * dependency) can only represent GENERATED equipment instances, so
+ * `buildEquipmentSnapshot` above cannot include these items in the "current
+ * loadout" the evaluator scores against. Extending that evaluator's schema
+ * to model static items is out of scope for this planner. Instead, this
+ * planner treats any slot a static item occupies as PROTECTED: no bag/shop
+ * candidate is allowed to target it, so the greedy loop can never displace a
+ * real static item it cannot see or score a replacement against.
+ */
+function getStaticProtectedSlots(
+  world: GameWorld,
+  playerEid: number,
+): ReadonlySet<EquipmentSlotId> {
+  const equipmentState = getEquipmentState(world, playerEid);
+  const protectedSlots = new Set<EquipmentSlotId>();
+  for (const [slotId, instanceId] of Object.entries(equipmentState?.equipped ?? {})) {
+    if (typeof instanceId === 'number') {
+      protectedSlots.add(slotId as EquipmentSlotId);
+    }
+  }
+  return protectedSlots;
+}
+
+/** True when `instance` would occupy at least one slot in `protectedSlots`. */
+function instanceOccupiesProtectedSlot(
+  instance: GeneratedEquipmentInstanceV1,
+  protectedSlots: ReadonlySet<EquipmentSlotId>,
+): boolean {
+  return instance.frozen.slots.some((slotId) => protectedSlots.has(slotId));
+}
+
+/**
  * Simple, intentionally non-exhaustive affinity heuristic: weight the
  * player's current weapon-type tag (magic vs. physical, matching the
  * evaluator's own `affinityValue` classification) and reward any
@@ -396,22 +434,76 @@ interface EquipmentCandidateSet {
   readonly offerLookup: ReadonlyMap<string, ShopOfferRef>;
 }
 
-function buildEquipmentCandidates(world: GameWorld, playerEid: number): EquipmentCandidateSet {
+/**
+ * Builds this iteration's equipment candidate pool from the player's bag and
+ * the Quartermaster's current offers.
+ *
+ * Two filters apply, both explained via `decisions` telemetry:
+ *  - Candidates that would occupy a slot currently held by a STATIC
+ *    (non-generated) instance — see {@link getStaticProtectedSlots} — are
+ *    excluded so the loop never blindly displaces an item it cannot score.
+ *  - Quartermaster offers the shared purchase API already reports as
+ *    unpurchasable (`!offer.canPurchase`, e.g. unaffordable, capacity-full,
+ *    or sold-out) are excluded rather than silently dropped.
+ *
+ * Both skip reasons are logged at most once per visit via `loggedSkipKeys`
+ * (keyed by instance/offer identity) — `buildEquipmentCandidates` is called
+ * fresh every hill-climb iteration, and the same still-unavailable
+ * instance/offer would otherwise re-log identically on every iteration.
+ */
+function buildEquipmentCandidates(
+  world: GameWorld,
+  playerEid: number,
+  protectedSlots: ReadonlySet<EquipmentSlotId>,
+  decisions: SettlementMaintenanceDecision[],
+  loggedSkipKeys: Set<string>,
+): EquipmentCandidateSet {
   const candidates: EquipmentLoadoutCandidate[] = [];
   const offerLookup = new Map<string, ShopOfferRef>();
 
   const bag = world.inventories.get(playerEid);
   for (const entry of bag?.generatedEquipment ?? []) {
     const instance = getGeneratedEquipmentInstance(world, entry.instanceKey);
-    if (instance) {
-      candidates.push({ instance, source: 'inventory', purchaseCost: 0 });
+    if (!instance) continue;
+    if (instanceOccupiesProtectedSlot(instance, protectedSlots)) {
+      const skipKey = `protected:${instance.instanceId}`;
+      if (!loggedSkipKeys.has(skipKey)) {
+        loggedSkipKeys.add(skipKey);
+        decisions.push({
+          kind: 'skip',
+          detail: `Skipping bag candidate '${instance.instanceId}': would displace a statically-equipped item in slot(s) ${instance.frozen.slots.join(', ')}`,
+        });
+      }
+      continue;
     }
+    candidates.push({ instance, source: 'inventory', purchaseCost: 0 });
   }
 
   for (const offer of getQuartermasterOfferViews(world, playerEid)) {
-    if (!offer.canPurchase) continue;
+    if (!offer.canPurchase) {
+      const skipKey = `unpurchasable:${offer.stockId}::${offer.offerId}`;
+      if (!loggedSkipKeys.has(skipKey)) {
+        loggedSkipKeys.add(skipKey);
+        decisions.push({
+          kind: 'skip',
+          detail: `Skipping Quartermaster offer '${offer.offerId}' (${offer.instanceId}): ${offer.purchaseFailure} (affordable=${offer.affordable}, capacityAvailable=${offer.capacityAvailable})`,
+        });
+      }
+      continue;
+    }
     const instance = getGeneratedEquipmentInstance(world, offer.instanceId);
     if (!instance) continue;
+    if (instanceOccupiesProtectedSlot(instance, protectedSlots)) {
+      const skipKey = `protected:${instance.instanceId}`;
+      if (!loggedSkipKeys.has(skipKey)) {
+        loggedSkipKeys.add(skipKey);
+        decisions.push({
+          kind: 'skip',
+          detail: `Skipping shop candidate '${instance.instanceId}': would displace a statically-equipped item in slot(s) ${instance.frozen.slots.join(', ')}`,
+        });
+      }
+      continue;
+    }
     candidates.push({ instance, source: 'shop', purchaseCost: offer.unitPrice });
     offerLookup.set(instance.instanceId, { stockId: offer.stockId, offerId: offer.offerId });
   }
@@ -478,9 +570,17 @@ function runEquipmentLoop(
   decisions: SettlementMaintenanceDecision[],
 ): SettlementMaintenanceTerminationReason {
   const blacklistedInstanceIds = new Set<string>();
+  const loggedSkipKeys = new Set<string>();
+  const protectedSlots = getStaticProtectedSlots(world, playerEid);
   for (let step = 0; step < EQUIPMENT_LOOP_CANDIDATE_CAP; step += 1) {
     const snapshot = buildEquipmentSnapshot(world, playerEid);
-    const { candidates: allCandidates, offerLookup } = buildEquipmentCandidates(world, playerEid);
+    const { candidates: allCandidates, offerLookup } = buildEquipmentCandidates(
+      world,
+      playerEid,
+      protectedSlots,
+      decisions,
+      loggedSkipKeys,
+    );
     const candidates = allCandidates.filter(
       (candidate) => !blacklistedInstanceIds.has(candidate.instance.instanceId),
     );

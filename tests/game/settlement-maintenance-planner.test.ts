@@ -15,7 +15,8 @@ import {
 } from '../../src/game/boss-chest-resolver.js';
 import { generateEquipmentInstance } from '../../src/game/generated-equipment-generator.js';
 import { addGeneratedEquipmentReference } from '../../src/shared/inventory.js';
-import { getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import {
   grantAbilitySources,
   getOrCreateAbilityState,
@@ -558,5 +559,65 @@ describe('runSettlementMaintenancePlanner', () => {
       kind: 'configure-ability',
       detail: "Filled open active-ability slot with already-owned ability 'heal'",
     });
+  });
+
+  it('never displaces a statically-equipped item (e.g. the Floor 2 starter weapon) with a generated-equipment candidate for the same slot', () => {
+    const { world, playerEid } = createSettlementWorld();
+    // Static equip path: mirrors how starterWeaponEquip.ts / floor2Scenario.ts
+    // equip non-generated items — a numeric EquipmentInstanceId, invisible to
+    // the evaluator's `equipped` snapshot (see `buildEquipmentSnapshot`).
+    const staticEquip = equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
+    expect(staticEquip.ok).toBe(true);
+    const staticInstanceId = staticEquip.ok ? staticEquip.instanceId : null;
+
+    // A generated-equipment candidate targeting the SAME slot ('neck') as the
+    // static charm — without the protected-slot filter this would look like a
+    // pure upgrade over "no weapon" and get equipped, silently discarding the
+    // static item's stat bonuses/status effect.
+    const lockerInstanceId = addBagEquipment(
+      world,
+      playerEid,
+      'accessory.gearwork-locket',
+      'uncommon',
+    );
+
+    const result = runSettlementMaintenancePlanner(world);
+
+    expect(
+      result.decisions.some(
+        (d) => d.kind === 'equip-instance' && d.detail.includes(lockerInstanceId),
+      ),
+    ).toBe(false);
+    const skipDecision = result.decisions.find(
+      (d) => d.kind === 'skip' && d.detail.includes(lockerInstanceId),
+    );
+    expect(skipDecision).toBeDefined();
+    expect(skipDecision?.detail).toContain('statically-equipped');
+
+    const equipped = getEquipmentState(world, playerEid)?.equipped;
+    expect(equipped?.neck).toBe(staticInstanceId);
+  });
+
+  it('logs a Quartermaster offer skip decision for an unaffordable offer exactly once, even across multiple equipment-loop iterations', () => {
+    const { world, playerEid } = createSettlementWorld();
+    world.playerGold = 10;
+    const { offer } = attachSingleOfferStock(world, 'iron-breastplate', 5_000);
+    addBagEquipment(world, playerEid, 'iron-helm', 'uncommon');
+    addBagEquipment(world, playerEid, 'leather-boots', 'common');
+
+    const result = runSettlementMaintenancePlanner(world);
+
+    // Both bag candidates get equipped (different slots), spanning at least
+    // two equipment-loop iterations, while the unaffordable shop offer is
+    // re-evaluated (and re-filtered) on every iteration.
+    expect(result.decisions.filter((d) => d.kind === 'equip-instance').length).toBe(2);
+
+    const offerSkips = result.decisions.filter(
+      (d) => d.kind === 'skip' && d.detail.includes(offer.offerId),
+    );
+    expect(offerSkips).toHaveLength(1);
+    expect(offerSkips[0]?.detail).toContain('insufficient-funds');
+    expect(result.decisions.some((d) => d.kind === 'purchase-equipment')).toBe(false);
+    expect(world.playerGold).toBe(10);
   });
 });
