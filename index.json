@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2a216026f52d0bf722e9955f11c32dbaa2d2c013",
+    "commitDate": "2026-07-24T01:35:58Z",
+    "commitSubject": "feat(ai): deterministic AI settlement-maintenance planner (#1862)",
+    "capturedAt": "2026-07-24T02:39:30.031Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30059873598",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/2a216026f52d0bf722e9955f11c32dbaa2d2c013.json"
+  },
+  {
     "commit": "257fb495fdb5b8dd76901daa70ad3a6540e9d26c",
     "commitDate": "2026-07-24T00:36:06Z",
     "commitSubject": "Gate deploy/baseline to latest main tip so release publishing+sweep run once per train landing wave (#1797)",
