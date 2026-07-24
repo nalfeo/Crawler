@@ -2669,24 +2669,21 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
     expect(body.worker).toMatchObject({ running: false, backend: 'azure-queue' });
   });
 
-  it('POST /api/workflow/worker/start starts the worker', async () => {
+  it('POST /api/workflow/worker/start returns 403 for azure-queue backend', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ started: true, reason: 'started' });
-    expect(worker.start).toHaveBeenCalledTimes(1);
-
-    const health = await app.inject({ method: 'GET', url: '/api/health' });
-    expect(health.json().worker.running).toBe(true);
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: 'azure-queue-consumer-disabled' });
+    expect(worker.start).not.toHaveBeenCalled();
   });
 
-  it('POST /api/workflow/worker/start is idempotent (already-running)', async () => {
-    await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
-    const again = await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
-    expect(again.json()).toMatchObject({ started: false, reason: 'already-running' });
+  it('POST /api/workflow/worker/start is always 403 for azure-queue (no idempotency)', async () => {
+    const first = await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    const second = await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    expect(first.statusCode).toBe(403);
+    expect(second.statusCode).toBe(403);
   });
 
-  it('POST /api/workflow/worker/stop stops the worker', async () => {
-    await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+  it('POST /api/workflow/worker/stop stops the worker (azure-queue; stop always allowed)', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/workflow/worker/stop' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ stopped: true, status: { running: false } });
@@ -2759,6 +2756,188 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
     });
     expect(res.json().ok).toBe(true);
     expect(res.json().entry.state).toBe('rejected');
+  });
+});
+
+describe('worker start/stop routes with noop backend', () => {
+  let root: string;
+  let app: FastifyInstance;
+  let worker: WorkerController;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-noop-worker-'));
+    let running = false;
+    const snapshot = (): WorkerControllerStatus => ({
+      running,
+      backend: 'noop',
+      startedAt: running ? '2026-06-25T00:00:00.000Z' : null,
+      stoppedAt: null,
+      processed: 0,
+      failed: 0,
+      lastBriefId: null,
+      lastEvent: null,
+      lastEventAt: null,
+      lastError: null,
+    });
+    worker = {
+      start: vi.fn((): WorkerStartResult => {
+        if (running) return { started: false, reason: 'already-running', status: snapshot() };
+        running = true;
+        return { started: true, reason: 'started', status: snapshot() };
+      }),
+      stop: vi.fn(async () => {
+        running = false;
+        return snapshot();
+      }),
+      status: () => snapshot(),
+    };
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      queue: {
+        backend: 'noop',
+        enqueue: async () => {},
+        dequeue: async () => null,
+        peek: async () => [],
+      },
+      worker,
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('POST /api/workflow/worker/start starts the worker (noop backend)', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ started: true, reason: 'started' });
+    expect(worker.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST /api/workflow/worker/start is idempotent for noop backend', async () => {
+    await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    const again = await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    expect(again.json()).toMatchObject({ started: false, reason: 'already-running' });
+  });
+
+  it('POST /api/workflow/worker/stop stops the worker (noop backend)', async () => {
+    await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    const res = await app.inject({ method: 'POST', url: '/api/workflow/worker/stop' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ stopped: true, status: { running: false } });
+    expect(worker.stop).toHaveBeenCalled();
+  });
+});
+
+describe('issue ingester start route (azure-queue vs noop)', () => {
+  let root: string;
+  let app: FastifyInstance;
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('POST /api/workflow/issues/start returns 403 for azure-queue backend', async () => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-issues-azure-'));
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      queue: {
+        backend: 'azure-queue',
+        enqueue: async () => {},
+        dequeue: async () => null,
+        peek: async () => [],
+      },
+    });
+    const res = await app.inject({ method: 'POST', url: '/api/workflow/issues/start' });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: 'azure-queue-ingester-disabled' });
+  });
+
+  it('POST /api/workflow/issues/start is allowed for noop backend', async () => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-issues-noop-'));
+    let started = false;
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      queue: {
+        backend: 'noop',
+        enqueue: async () => {},
+        dequeue: async () => null,
+        peek: async () => [],
+      },
+      issueIngester: {
+        start: () => {
+          started = true;
+          return {
+            started: true,
+            status: {
+              running: true,
+              startedAt: null,
+              stoppedAt: null,
+              lastPollAt: null,
+              lastError: null,
+              enqueued: 0,
+              skippedDuplicate: 0,
+              reclaimedStale: 0,
+              enqueueCommentsPosted: 0,
+              enqueueCommentErrors: 0,
+              lastEnqueueCommentError: null,
+            },
+          };
+        },
+        stop: async () => ({
+          running: false,
+          startedAt: null,
+          stoppedAt: null,
+          lastPollAt: null,
+          lastError: null,
+          enqueued: 0,
+          skippedDuplicate: 0,
+          reclaimedStale: 0,
+          enqueueCommentsPosted: 0,
+          enqueueCommentErrors: 0,
+          lastEnqueueCommentError: null,
+        }),
+        status: () => ({
+          running: false,
+          startedAt: null,
+          stoppedAt: null,
+          lastPollAt: null,
+          lastError: null,
+          enqueued: 0,
+          skippedDuplicate: 0,
+          reclaimedStale: 0,
+          enqueueCommentsPosted: 0,
+          enqueueCommentErrors: 0,
+          lastEnqueueCommentError: null,
+        }),
+        pollOnce: async () => ({
+          running: false,
+          startedAt: null,
+          stoppedAt: null,
+          lastPollAt: null,
+          lastError: null,
+          enqueued: 0,
+          skippedDuplicate: 0,
+          reclaimedStale: 0,
+          enqueueCommentsPosted: 0,
+          enqueueCommentErrors: 0,
+          lastEnqueueCommentError: null,
+        }),
+        listRequests: async () => [],
+        rejectRequest: async () => null,
+      },
+    });
+    const res = await app.inject({ method: 'POST', url: '/api/workflow/issues/start' });
+    expect(res.statusCode).toBe(200);
+    expect(started).toBe(true);
   });
 });
 

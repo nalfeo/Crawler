@@ -135,8 +135,12 @@ export const REAPER_LANE_CAP = 2;
 const FLAG_OFF_SWEEP_ROTATION_WINDOW_MS = 10 * 60 * 1000;
 
 function parsePositiveInt(raw, fallback) {
-  const parsed = Number.parseInt(String(raw ?? ''), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  const normalized = String(raw ?? '').trim();
+  if (!/^\d+$/.test(normalized)) {
+    return fallback;
+  }
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 // Like parsePositiveInt, but additionally:
@@ -833,8 +837,10 @@ export function computeDispatchBudget({
   outstandingCount,
   activeSweepJobs = 0,
   activeValidationJobs = 0,
-  trainCap = MAX_DISPATCH_BUDGET_TRAIN_BUSY,
-  idleCap = MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+  maxBudgetTrainBusy = MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+  maxBudgetTrainIdle = MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+  trainCap = maxBudgetTrainBusy,
+  idleCap = maxBudgetTrainIdle,
 }) {
   const reservedFloor = trainQueueNonEmpty
     ? VALIDATION_RESERVED_TRAIN_BUSY
@@ -851,17 +857,32 @@ export function computeDispatchBudget({
 // Called by runFromEnv (this file) and reconcile.mjs so both dispatch sites
 // honour the same env-driven caps.
 export function resolveGlobalDispatchCaps(env = process.env) {
+  const trainCap = parseClampedPositiveInt(
+    env.CI_GLOBAL_TRAIN_DISPATCH_CAP,
+    GLOBAL_TRAIN_DISPATCH_CAP,
+    TRAIN_CAP_MAX,
+  );
+  const idleCap = parseClampedPositiveInt(
+    env.CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+    IDLE_CAP_MAX,
+  );
   return {
-    trainCap: parseClampedPositiveInt(
-      env.CI_GLOBAL_TRAIN_DISPATCH_CAP,
-      GLOBAL_TRAIN_DISPATCH_CAP,
-      TRAIN_CAP_MAX,
+    maxBudgetTrainBusy: parsePositiveInt(
+      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY,
+      trainCap,
     ),
-    idleCap: parseClampedPositiveInt(
-      env.CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
-      GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
-      IDLE_CAP_MAX,
+    maxBudgetTrainIdle: parsePositiveInt(
+      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE,
+      idleCap,
     ),
+    globalTrainDispatchCap: parsePositiveInt(env.CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP, trainCap),
+    maxDispatchPerRun: parsePositiveInt(
+      env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
+      DEFAULT_MAX_DISPATCH_PER_RUN,
+    ),
+    trainCap,
+    idleCap,
   };
 }
 
@@ -973,11 +994,8 @@ export async function runFromEnv(env = process.env) {
   const eventPath = env.GITHUB_EVENT_PATH;
   const trigger = env.RECOVERY_TRIGGER || eventName;
   const trainEnabled = parseEnabledFlag(env.MERGE_TRAIN_ENABLED);
-  const maxDispatchPerRun = parsePositiveInt(
-    env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
-    DEFAULT_MAX_DISPATCH_PER_RUN,
-  );
-  const { trainCap, idleCap } = resolveGlobalDispatchCaps(env);
+  const caps = resolveGlobalDispatchCaps(env);
+  const maxDispatchPerRun = caps.maxDispatchPerRun;
 
   if (!token || !owner || !repo || !eventPath) {
     throw new Error('Missing GITHUB_TOKEN, GITHUB_REPOSITORY, or GITHUB_EVENT_PATH');
@@ -1165,10 +1183,15 @@ export async function runFromEnv(env = process.env) {
   const dispatchBudget = computeDispatchBudget({
     trainQueueNonEmpty,
     outstandingCount,
-    trainCap,
-    idleCap,
+    activeSweepJobs,
+    activeValidationJobs,
+    maxBudgetTrainBusy: caps.maxBudgetTrainBusy,
+    maxBudgetTrainIdle: caps.maxBudgetTrainIdle,
   });
-  const { dispatchable, deferred } = partitionDispatchable(prNumbers, dispatchBudget);
+  const boundedDispatchBudget = trainQueueNonEmpty
+    ? Math.min(dispatchBudget, caps.globalTrainDispatchCap)
+    : dispatchBudget;
+  const { dispatchable, deferred } = partitionDispatchable(prNumbers, boundedDispatchBudget);
 
   // Capture pre-dispatch outstanding run IDs so waitForDispatchedRunsVisible
   // below can identify newly appeared runs rather than relying on an aggregate
@@ -1206,9 +1229,9 @@ export async function runFromEnv(env = process.env) {
   }
 
   if (deferred.length > 0) {
-    const cap = trainQueueNonEmpty ? trainCap : idleCap;
+    const cap = trainQueueNonEmpty ? caps.globalTrainDispatchCap : caps.maxBudgetTrainIdle;
     process.stdout.write(
-      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} budget=${dispatchBudget} cap=${cap}\n`,
+      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${cap} budget=${boundedDispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 
@@ -1223,7 +1246,7 @@ export async function runFromEnv(env = process.env) {
     scheduledPulls.length > prNumbers.length
   ) {
     process.stdout.write(
-      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${dispatchBudget} outstanding=${outstandingCount} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
+      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${boundedDispatchBudget} outstanding=${outstandingCount} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 }

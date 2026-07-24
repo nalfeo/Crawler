@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "sidecar-no-autostart",
+  "task_title": "Remove sidecar azure-queue auto-start of worker and issue ingester (issue #1879)",
+  "estimated_apples": 2,
+  "stages": {}
+}

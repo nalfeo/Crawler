@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "ci-incident-1888-asset-request-test",
+  "task_title": "Fix CI asset-request backend expectation",
+  "estimated_apples": 2,
+  "stages": {}
+}

@@ -283,9 +283,9 @@ export interface SidecarDeps {
   readonly queue?: AssetQueue;
   /**
    * In-process queue worker. Defaults to a controller wired to `queue`/`store`.
-   * `buildServer` never starts it — the CLI auto-starts it for the
-   * `azure-queue` backend and the devtools "Launch worker" button starts it on
-   * demand. Inject a fake in tests to assert the worker routes without a loop.
+   * `buildServer` never starts it — the `azure-queue` backend disables the
+   * `/api/workflow/worker/start` route (CI is the sole authorized consumer).
+   * Inject a fake in tests to assert the worker routes without a loop.
    */
   readonly worker?: WorkerController;
   /**
@@ -2711,7 +2711,20 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
   });
 
-  app.post('/api/workflow/worker/start', async () => {
+  app.post('/api/workflow/worker/start', async (_req, reply) => {
+    // The `azure-queue` backend is production. CI (`asset-request.yml`) is the
+    // sole authorized consumer — allowing a local sidecar to start a consumer
+    // against the same queue creates an off-CI generation path that races CI
+    // for messages (issue #1879). Disable the start route for that backend.
+    if (queue.backend === 'azure-queue') {
+      reply.code(403);
+      return {
+        error: 'azure-queue-consumer-disabled',
+        message:
+          'Starting a local worker against the azure-queue backend is disabled. ' +
+          'CI (asset-request.yml) is the sole authorized production queue consumer.',
+      };
+    }
     const result = worker.start();
     return result;
   });
@@ -2723,7 +2736,20 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   app.get('/api/workflow/worker/status', async () => worker.status());
 
-  app.post('/api/workflow/issues/start', async () => issueIngester.start());
+  app.post('/api/workflow/issues/start', async (_req, reply) => {
+    // Same as above — disable the issue ingester start route for the azure-queue
+    // backend. CI is the sole authorized ingestion path (issue #1879).
+    if (queue.backend === 'azure-queue') {
+      reply.code(403);
+      return {
+        error: 'azure-queue-ingester-disabled',
+        message:
+          'Starting a local issue ingester against the azure-queue backend is disabled. ' +
+          'CI (asset-request.yml) is the sole authorized ingestion path.',
+      };
+    }
+    return issueIngester.start();
+  });
 
   app.post('/api/workflow/issues/stop', async () => {
     const status = await issueIngester.stop();
