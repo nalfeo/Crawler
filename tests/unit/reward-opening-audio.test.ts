@@ -52,7 +52,9 @@ describe('synthSpecForCue', () => {
   });
 
   it('higher intensity yields a louder (or equal) gain for intensity-scaled kinds', () => {
-    for (const kind of ['anticipation', 'reveal', 'escalation', 'summary'] as const) {
+    // `close` is intentionally excluded: cueForClose() always returns a
+    // fixed intensity regardless of excitement (see reward-audio-cues.test.ts).
+    for (const kind of ['anticipation', 'reveal', 'escalation', 'summary', 'skip'] as const) {
       const low = synthSpecForCue(cue(kind, 0));
       const high = synthSpecForCue(cue(kind, 1));
       expect(high.gain).toBeGreaterThanOrEqual(low.gain);

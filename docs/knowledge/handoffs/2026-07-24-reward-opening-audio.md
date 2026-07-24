@@ -65,21 +65,22 @@ shipped content path varies granted-item rarity at a fixed box tier), by
 proving the dual tier+rarity excitement axis flows into real cue gain
 end-to-end.
 
-### Review-harness fixes (adversarial plan review + code review round 1)
+### Review-harness fixes (initial round: code review + this section's own mechanism, later superseded)
 
-Both an adversarial plan review and a code-review pass surfaced the same root
-cause from two angles plus five other concerns, all resolved before PR:
+An initial code-review pass surfaced 5 concerns, resolved before the fresh
+final review round documented below:
 
 - **`stopAll()`/`clearAllVoices()` now does a graceful ramped release**
   (`cancelScheduledValues` + a `GRACEFUL_RELEASE_SEC = 0.02`s linear ramp to
-  near-silence + a deferred `osc.stop()`) instead of a hard `osc.stop(0)`. This
-  is provably why `handleSkip()`'s synchronous `render()` (plays the
-  `reward:summary` cue) immediately followed by `hooks.onSkip?.()` (calls
-  `stopAll()`) never produces an audible click or an audible `summary` cue:
-  since both calls run in the same JS tick, `audioCtx.currentTime` cannot
-  advance between them, so the graceful cancellation always lands before the
-  cue's attack envelope rises above its near-silent floor. Locked in by a new
-  regression test in `tests/unit/audio-cue-engine.test.ts`.
+  near-silence + a deferred `osc.stop()`) instead of a hard `osc.stop(0)`.
+  This was originally the mechanism relied on for skip-cancels-summary too
+  (same-tick `stopAll()` after `render()` meant `audioCtx.currentTime`
+  couldn't advance between them) — **that specific reliance was later
+  replaced with an architectural guarantee** (see "Fresh adversarial plan
+  review" below: `reward:summary` is now never scheduled at all on a
+  skip-caused transition, not merely cancelled in time). The graceful-release
+  behavior itself remains a real, independently useful engine guarantee.
+  Locked in by a regression test in `tests/unit/audio-cue-engine.test.ts`.
 - **`play()` now drops cues (no scheduling) unless `audioCtx.state ===
 'running'`**, with a best-effort `resume()` call when `suspended` — closes a
   gap where a suspended/closed context could still schedule oscillators that
@@ -112,17 +113,83 @@ cause from two angles plus five other concerns, all resolved before PR:
   cue-type) is documented as an intentional non-goal in
   `audio-cue-engine.ts`'s module doc comment, not an oversight.
 
+### Fresh adversarial plan review + multi-model code review (final round, pre-PR)
+
+Because this session spanned a context compaction, the original background
+review-agent transcripts could not be retrieved. Per the ledger-honesty rule,
+both stages were re-run **fresh** against the final, rebased diff rather than
+fabricating the missing content — real time/tokens spent twice, but an
+honest ledger.
+
+**Adversarial plan review** (`gpt-5.4`, rubber-duck agent, 3 alternatives
+considered, `plan_divergence: minor`) raised 2 Blocking + 2 Non-Blocking
+concerns:
+
+- **Blocking, fixed**: skip-cancels-summary-cue relied on a fragile same-tick
+  `stopAll()`-after-`render()` cancellation proof instead of an architectural
+  guarantee. `RewardOpeningUI.render()` now takes a
+  `{ suppressPhaseChangeHook }` option; `handleSkip()` passes it so
+  `onPhaseChange`/`reward:summary` is **never invoked** on a skip-caused
+  transition — not merely inaudible, never scheduled.
+- **Blocking, fixed**: reduced motion fired one `onItemRevealed`/reveal-cue
+  per item in a same-tick reveal-all batch — the opposite of "reduced
+  intensity." `tick()` now fires `onItemRevealed` once per same-tick batch
+  under `reducedMotion`, reporting the batch's highest-rarity item so
+  escalation tracking still sees the true peak.
+- **Non-Blocking, accepted**: `isAvailable()` reports WebAudio support, not
+  live playability — `play()` already handles suspended/closed contexts
+  safely regardless, so this was judged not worth an API split.
+- **Non-Blocking, accepted**: re-entrant `open()` silently overwrites session
+  state — `open()` already unconditionally resets state and stops all voices
+  first, so this is safe by construction; the real UI never re-enters
+  without an intervening `close()` anyway.
+
+**Multi-model code review** (`gpt-5.4` + `gemini-3.1-pro-preview`,
+independently, against the same final diff): `gemini-3.1-pro-preview`
+returned clean across all 6 categories. `gpt-5.4` found 2 new issues, both
+independently re-verified against source before fixing:
+
+- **Blocking, fixed**: a `delayMs`-scheduled cue (e.g. the escalation
+  stagger) could turn a cancelled cue into an audible blip. `play()` only
+  scheduled the near-silent gain floor at the future `startAt`, never at
+  `now` — a Web Audio `AudioParam` holds its prior/default value (unity gain)
+  until its first scheduled event's time actually arrives, so `stopAll()`
+  cancelling during the pre-start delay window would snapshot-and-release
+  from the unset 1.0 default instead of near-silent. Fixed by also
+  scheduling the floor at `now`, immediately, in addition to `startAt`.
+  New regression test in `audio-cue-engine.test.ts`.
+- **Non-Blocking, fixed**: the skip cue's synth mapping
+  (`synthSpecForCue`'s `'skip'` case) hardcoded frequency/gain, silently
+  discarding the variable, excitement-scaled `intensity` that
+  `cueForSkip()` already computes — the only cue kind (besides the
+  intentionally-constant `close`) not honoring the tier+rarity intensity
+  contract. Fixed by scaling frequency/gain by `intensity`, matching the
+  `reveal`/`escalation`/`summary` pattern. Extended the existing
+  "higher intensity yields a louder gain" unit test to cover `'skip'`.
+
+All 4 stage findings and their resolutions are recorded in ADR 0071's "Plan
+Review Resolutions" and "Multi-Model Code Review Resolutions" sections, and
+in the review ledger
+(`docs/knowledge/review-ledgers/2026-07-24-reward-opening-audio.review-ledger.json`).
+
+The branch was also discovered to be 5 commits behind `origin/main` (still at
+PR #1865's merge-base) partway through this session; all work was committed
+in one commit and rebased cleanly onto `origin/main` with zero conflicts
+before this final review round, so `git diff --stat origin/main` shows
+exactly the 19 intended files.
+
 **Real-artifact observation**: Observed via the E2E suite driving the real
 `MainGameScene`/`RewardOpeningUI` pipeline (not lab-only) — before this
 session, `RewardOpeningUIHooks` fired with no audio side effect at all
 (silent reward-opening); after, `rewardAudioCueLog` on the real scene records
 the exact deterministic cue sequence per phase transition, confirmed
 `reward:anticipation → reward:reveal×N → reward:summary → reward:close` on
-full walkthrough and `reward:anticipation → reward:summary → reward:skip →
-reward:close` (zero reveal cues) on immediate skip. `npm run verify:fast` is
-green; `VERIFY_FULL=1 npm run verify` run for this handoff since
-`npm run scope` reported `gameplay_safe=false` (real `MainGameScene.ts`
-changed).
+full walkthrough and `reward:anticipation → reward:skip → reward:close`
+(zero reveal cues, `reward:summary` never scheduled at all) on immediate
+skip. `npm run verify:fast` is green; `VERIFY_FULL=1 npm run verify` run for
+this handoff since `npm run scope` reported `gameplay_safe=false` (real
+`MainGameScene.ts` changed) — full suite (1465/1466, 1 pre-existing skip) and
+the headless Floor-1 gate (150/150) both passed.
 
 ## Key Decisions Made
 

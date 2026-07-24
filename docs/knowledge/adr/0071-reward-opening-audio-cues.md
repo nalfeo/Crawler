@@ -187,6 +187,45 @@ against the same diff across 7 categories (correctness, determinism,
 cancellation/ownership, reduced-intensity mixing, no-audio fallback, testing,
 wiring) and returned `clean` with no issues.
 
+## Multi-Model Code Review Resolutions
+
+After the plan-review fixes above landed, a multi-model code-review pass ran
+two independent code-review agents against the actual, current, rebased diff:
+`gpt-5.4` and `gemini-3.1-pro-preview`. `gemini-3.1-pro-preview` returned
+`clean` across all 6 categories, confirming the plan-review fixes were
+correctly implemented and finding nothing new. `gpt-5.4` returned 2 findings,
+both independently re-verified against source before fixing:
+
+1. **Blocking — a `delayMs`-scheduled cue could turn a cancelled cue into an
+   audible blip.** `audio-cue-engine.ts`'s `play()` only scheduled the
+   near-silent gain floor (`setValueAtTime(0.0001, ...)`) at the future
+   `startAt`, never at `now`. A Web Audio `AudioParam` holds its prior/default
+   value (1.0/unity gain for `GainNode.gain`) until its _first_ scheduled
+   automation event's time actually arrives — so a cue still waiting out its
+   `delayMs` (e.g. the `ESCALATION_STAGGER_MS` stagger) had its gain node
+   sitting at the unset 1.0 default, not the intended silent floor. If
+   `stopAll()`/`clearAllVoices()` cancelled and snapshotted the gain during
+   that window, it would ramp the graceful release down _from full volume_
+   instead of from near-silent — producing an audible blip for a cue that was
+   supposed to be cancelled inaudibly. **Fixed**: `play()` now also schedules
+   `setValueAtTime(0.0001, now)` immediately, in addition to the existing
+   `startAt`-scheduled floor, so the resting value is always near-silent
+   regardless of when a cancel lands relative to `startAt`. Covered by a new
+   regression test in `audio-cue-engine.test.ts` asserting the immediate floor
+   is the first scheduled gain event for any delayed cue.
+2. **Non-blocking — the skip cue's synth mapping ignored its computed
+   intensity.** `reward-audio-cues.ts`'s `cueForSkip()` already computes a
+   variable, excitement-scaled intensity (`0.4 + 0.3 * excitement.score`), but
+   `reward-opening-audio.ts`'s `synthSpecForCue()` hardcoded the skip cue's
+   frequency/gain, silently discarding that variability — the only cue kind
+   (besides the intentionally-constant `close`) not honoring the tier+rarity
+   intensity contract. **Fixed**: `synthSpecForCue`'s `'skip'` case now scales
+   both frequency and gain by `intensity`, mirroring the pattern used by
+   `reveal`/`escalation`/`summary`. Covered by extending the existing
+   "higher intensity yields a louder gain" unit test to include `'skip'`
+   (`close` remains intentionally excluded, matching its constant-by-design
+   contract).
+
 ## Alternatives Considered
 
 - **Bundle/ship pre-rendered short audio clips**: rejected outright — the hard

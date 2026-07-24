@@ -123,10 +123,10 @@ export function synthSpecForCue(cue: RewardAudioCue): SynthCueSpec {
     case 'skip':
       return {
         waveform: 'sawtooth',
-        frequencyHz: 520,
+        frequencyHz: 520 + intensity * 140,
         glideToHz: 200,
         durationMs: 180 * scale.duration,
-        gain: 0.14 * scale.gain,
+        gain: (0.1 + intensity * 0.12) * scale.gain,
         label: 'reward:skip',
       };
     case 'close':

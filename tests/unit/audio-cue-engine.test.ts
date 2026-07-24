@@ -238,7 +238,34 @@ describe('audio-cue-engine (with a fake AudioContext)', () => {
     expect(startArgs![0]).toBeCloseTo(0.25, 5);
     const freqCall = osc.frequency.setValueAtTime.mock.calls.at(0);
     expect(freqCall![1]).toBeCloseTo(0.25, 5);
-    const gainCall = gain.gain.setValueAtTime.mock.calls.at(0);
-    expect(gainCall![1]).toBeCloseTo(0.25, 5);
+    // play() now floors the gain at `now` (time 0) FIRST, in addition to the
+    // future `startAt` — so the startAt-time floor is the *second* scheduled
+    // gain event, not the first. See the dedicated regression test below for
+    // why the immediate floor matters.
+    const gainCallAtStart = gain.gain.setValueAtTime.mock.calls.find((args) => args[1]! > 0);
+    expect(gainCallAtStart![1]).toBeCloseTo(0.25, 5);
+  });
+
+  it('play() floors the gain at the immediate `now` time (not just the future startAt), so a delayed cue never rests at the GainNode default while awaiting its stagger', () => {
+    // Regression test for a multi-model code-review finding: a `delayMs`-scheduled
+    // cue (e.g. the escalation stagger) previously only scheduled its gain
+    // floor at the future `startAt`. A Web Audio AudioParam holds its prior/
+    // default value (1.0/unity gain for GainNode.gain) until its FIRST
+    // scheduled automation event's time actually arrives — so if `stopAll()`
+    // cancelled and snapshotted the gain during the pre-start delay window, it
+    // would read back the unity-gain default and ramp the graceful release
+    // down FROM full volume instead of from near-silent, producing an audible
+    // blip for a cue that was supposed to be cancelled inaudibly.
+    const engine = createAudioCueEngine();
+    engine.play({ ...CUE, delayMs: 90 });
+    const gain = createdGains[0]!;
+    const setCalls = gain.gain.setValueAtTime.mock.calls;
+    // The very first scheduled gain event must pin the near-silent floor at
+    // `now` (time 0 in this fake, since the context's currentTime never
+    // advances) — never left implicit/unset for the whole delay window.
+    expect(setCalls[0]).toEqual([0.0001, 0]);
+    // The startAt-time floor (for the actual attack ramp to depart from) must
+    // still be scheduled separately.
+    expect(setCalls.some((args) => args[0] === 0.0001 && args[1]! > 0)).toBe(true);
   });
 });

@@ -178,7 +178,23 @@ export function createAudioCueEngine(): AudioCueEngine {
           osc.frequency.linearRampToValueAtTime(Math.max(1, spec.glideToHz), startAt + durationSec);
         }
         const peakGain = Math.min(1, Math.max(0, spec.gain));
-        gainNode.gain.setValueAtTime(0.0001, startAt);
+        // Pin the gain floor at `now` (the play() call time), not just at the
+        // future `startAt`. A `delayMs`-scheduled cue (e.g. the escalation
+        // stagger) would otherwise leave the AudioParam at its GainNode
+        // default (1.0, i.e. full volume) for the entire delay window, since
+        // an AudioParam holds its prior/default value until its FIRST
+        // scheduled event executes. `clearAllVoices()` (stopAll()) snapshots
+        // `gain.value` at cancellation time to ramp-release gracefully — if
+        // that snapshot happens before `startAt`, it would read back the
+        // unity-gain default and ramp the release down FROM full volume
+        // instead of from near-silent, producing an audible blip for a cue
+        // that was supposed to be cancelled inaudibly (code-review finding).
+        // Explicitly flooring `now` guarantees the resting value is always
+        // near-silent regardless of when a cancel lands.
+        gainNode.gain.setValueAtTime(0.0001, now);
+        if (startAt > now) {
+          gainNode.gain.setValueAtTime(0.0001, startAt);
+        }
         gainNode.gain.linearRampToValueAtTime(peakGain, startAt + Math.min(0.02, durationSec / 4));
         gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + durationSec);
         osc.connect(gainNode);
