@@ -20,6 +20,11 @@ const FIND_MY_WAY_ADVISORY = {
   url: 'https://github.com/advisories/GHSA-c96f-x56v-gq3h',
   severity: 'high',
 };
+const BRACE_EXPANSION_ADVISORY = {
+  source: 1124334,
+  url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+  severity: 'high',
+};
 
 function report(vulnerabilities) {
   return { auditReportVersion: 2, vulnerabilities };
@@ -68,6 +73,46 @@ test('suppresses the exact fast-uri advisory and findings derived solely from it
   assert.deepEqual(result.blocking, []);
   assert.deepEqual(result.ignored, ['ajv', 'fast-uri', 'fastify']);
   assert.deepEqual(result.matchedExceptions.map((item) => item.packageName), ['fast-uri']);
+});
+
+test('suppresses the exact brace-expansion advisory and findings derived solely from it', () => {
+  const result = evaluateAudit(
+    report({
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: 'high',
+        via: [BRACE_EXPANSION_ADVISORY],
+      },
+      minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
+      eslint: { name: 'eslint', severity: 'high', via: ['minimatch'] },
+    }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(result.blocking, []);
+  assert.deepEqual(result.ignored, ['brace-expansion', 'eslint', 'minimatch']);
+  assert.deepEqual(result.matchedExceptions.map((item) => item.packageName), ['brace-expansion']);
+});
+
+test('fails closed after the brace-expansion exception expires', () => {
+  const result = evaluateAudit(
+    report({
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: 'high',
+        via: [BRACE_EXPANSION_ADVISORY],
+      },
+      minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
+    }),
+    { now: new Date('2026-08-22T00:00:00Z') },
+  );
+
+  assert.deepEqual(result.ignored, []);
+  assert.deepEqual(result.matchedExceptions, []);
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['brace-expansion', 'minimatch'],
+  );
 });
 
 test('fails closed for a mixed dependency chain', () => {
