@@ -8,8 +8,13 @@ import { test } from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
 import { evaluateAudit } from './npm-audit.mjs';
 
-const ACTIVE_DATE = new Date('2026-07-22T00:00:00Z');
+const ACTIVE_DATE = new Date('2026-07-24T00:00:00Z');
 const SCRIPT = fileURLToPath(new URL('./npm-audit.mjs', import.meta.url));
+const BRACE_EXPANSION_ADVISORY = {
+  source: 1124334,
+  url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+  severity: 'high',
+};
 const ADVISORY = {
   source: 1124064,
   url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
@@ -33,8 +38,14 @@ test('reports every matched exception in the success diagnostic', (t) => {
     fakeNpmCli,
     `process.stdout.write(JSON.stringify(${JSON.stringify(
       report({
+        'brace-expansion': {
+          name: 'brace-expansion',
+          severity: 'high',
+          via: [BRACE_EXPANSION_ADVISORY],
+        },
         'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
         fastify: { name: 'fastify', severity: 'high', via: ['fast-uri'] },
+        minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
       }),
     )}));`,
   );
@@ -50,9 +61,57 @@ test('reports every matched exception in the success diagnostic', (t) => {
   assert.equal(result.status, 0);
   assert.match(
     result.stderr,
+    /Temporary audit exception through 2026-07-31: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
+  );
+  assert.match(
+    result.stderr,
     /Temporary audit exception through 2026-07-29: https:\/\/github\.com\/advisories\/GHSA-v2hh-gcrm-f6hx/,
   );
-  assert.match(result.stderr, /Suppressed derived findings: fast-uri, fastify/);
+  assert.match(
+    result.stderr,
+    /Suppressed derived findings: brace-expansion, fast-uri, fastify, minimatch/,
+  );
+});
+
+test('suppresses the exact brace-expansion advisory and findings derived solely from it', () => {
+  const result = evaluateAudit(
+    report({
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: 'high',
+        via: [BRACE_EXPANSION_ADVISORY],
+      },
+      minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
+    }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(result.blocking, []);
+  assert.deepEqual(result.ignored, ['brace-expansion', 'minimatch']);
+  assert.deepEqual(
+    result.matchedExceptions.map((item) => item.packageName),
+    ['brace-expansion'],
+  );
+});
+
+test('fails closed after the brace-expansion exception expires', () => {
+  const result = evaluateAudit(
+    report({
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: 'high',
+        via: [BRACE_EXPANSION_ADVISORY],
+      },
+    }),
+    { now: new Date('2026-08-01T00:00:00Z') },
+  );
+
+  assert.deepEqual(result.ignored, []);
+  assert.deepEqual(result.matchedExceptions, []);
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['brace-expansion'],
+  );
 });
 
 test('suppresses the exact fast-uri advisory and findings derived solely from it', () => {
@@ -67,7 +126,10 @@ test('suppresses the exact fast-uri advisory and findings derived solely from it
 
   assert.deepEqual(result.blocking, []);
   assert.deepEqual(result.ignored, ['ajv', 'fast-uri', 'fastify']);
-  assert.deepEqual(result.matchedExceptions.map((item) => item.packageName), ['fast-uri']);
+  assert.deepEqual(
+    result.matchedExceptions.map((item) => item.packageName),
+    ['fast-uri'],
+  );
 });
 
 test('fails closed for a mixed dependency chain', () => {
@@ -81,7 +143,10 @@ test('fails closed for a mixed dependency chain', () => {
   );
 
   assert.deepEqual(result.ignored, ['fast-uri']);
-  assert.deepEqual(result.matchedExceptions.map((item) => item.packageName), ['fast-uri']);
+  assert.deepEqual(
+    result.matchedExceptions.map((item) => item.packageName),
+    ['fast-uri'],
+  );
   assert.deepEqual(
     result.blocking.map((item) => item.name),
     ['ajv'],

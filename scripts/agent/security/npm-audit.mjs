@@ -8,6 +8,13 @@ const SEVERITY_ORDER = ['info', 'low', 'moderate', 'high', 'critical'];
 
 export const AUDIT_EXCEPTIONS = [
   {
+    packageName: 'brace-expansion',
+    source: 1124334,
+    url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+    expiresOn: '2026-07-31',
+    reason: 'No patched brace-expansion release is available yet.',
+  },
+  {
     packageName: 'fast-uri',
     source: 1124064,
     url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
@@ -120,8 +127,7 @@ function main() {
           (exception) =>
             `Temporary audit exception through ${exception.expiresOn}: ${exception.url}`,
         )
-        .join('\n')}\n` +
-        `Suppressed derived findings: ${ignored.join(', ')}\n`,
+        .join('\n')}\n` + `Suppressed derived findings: ${ignored.join(', ')}\n`,
     );
   }
   if (blocking.length > 0) {
