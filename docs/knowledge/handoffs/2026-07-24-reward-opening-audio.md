@@ -345,3 +345,4 @@ reduced-motion trigger it was explicitly designed for.
   `verify:fast`'s lint step is expected to also catch format-only issues, or
   documenting explicitly that a full `verify`/`VERIFY_FULL=1` run is the only
   formatting-authoritative local check.
+
