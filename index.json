@@ -55,6 +55,17 @@
     "path": "by-sha/257fb495fdb5b8dd76901daa70ad3a6540e9d26c.json"
   },
   {
+    "commit": "47ffc36b95f24aeebe80a22c579c4bd5703c83ae",
+    "commitDate": "2026-07-23T23:28:30-07:00",
+    "commitSubject": "feat(ai): deterministic settlement return routing (#1873)",
+    "capturedAt": "2026-07-24T07:32:58.533Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30072956304",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/47ffc36b95f24aeebe80a22c579c4bd5703c83ae.json"
+  },
+  {
     "commit": "7a3c1fe73cecf48eea056aa75bc68ff436437c3c",
     "commitDate": "2026-07-23T23:25:01Z",
     "commitSubject": "Increase blood-pool shape variance and scale initial pool size by enemy body size (#1799)",
