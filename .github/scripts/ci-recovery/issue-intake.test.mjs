@@ -7,10 +7,13 @@ import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
+  intakeOpenedIssue,
+  intakeUnblockedDependents,
   ISSUE_INTAKE_BODY,
   ISSUE_INTAKE_MARKER,
   ISSUE_RECOVERY_PLAN_MARKER,
   issueIntakeEligibility,
+  openBlockingIssues,
   removeIssueAssignees,
   reviewThreadPlanIssueNumbers,
   runIssueIntake,
@@ -704,4 +707,333 @@ test('buildRetroactivePlanComment stays below the GitHub comment limit for overs
   );
   assert.ok(!injected.includes('<!-- injected -->'));
   assert.ok(!injected.includes('<!-- hidden -->'));
+});
+
+// --- blocked_by gate + auto-assign-on-unblock -----------------------------
+
+function makeSuccessfulIntakeFakes() {
+  const graphql = async (_token, query) => {
+    if (query.includes('suggestedActors')) {
+      return {
+        repository: {
+          suggestedActors: {
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: { id: 'ISSUE_NODE', state: 'OPEN', assignees: { nodes: [] } },
+        },
+      };
+    }
+    return {
+      replaceActorsForAssignable: {
+        assignable: { assignees: { nodes: [{ login: 'copilot-swe-agent' }] } },
+      },
+    };
+  };
+  const paginate = async () => [];
+  const request = async (_token, _path, _options) => ({ data: { id: 1 } });
+  return { graphql, paginate, request };
+}
+
+test('openBlockingIssues keeps only open dependencies, case-insensitively', () => {
+  assert.deepEqual(openBlockingIssues(undefined), []);
+  assert.deepEqual(openBlockingIssues([]), []);
+  assert.deepEqual(
+    openBlockingIssues([{ number: 1, state: 'open' }, { number: 2, state: 'closed' }]),
+    [{ number: 1, state: 'open' }],
+  );
+  assert.deepEqual(
+    openBlockingIssues([{ number: 3, state: 'OPEN' }]),
+    [{ number: 3, state: 'OPEN' }],
+  );
+});
+
+test('intakeOpenedIssue is blocked while an open blocker exists and never assigns', async () => {
+  let graphqlCalled = false;
+  const graphql = async () => {
+    graphqlCalled = true;
+    return {};
+  };
+  const paginate = async (_token, path) => {
+    assert.ok(path.includes('/dependencies/blocked_by'));
+    return [{ number: 1851, state: 'open' }, { number: 1857, state: 'closed' }];
+  };
+  const request = async () => {
+    throw new Error('request must not be called by the blocked_by dependency fetch');
+  };
+
+  const result = await intakeOpenedIssue({
+    graphql,
+    paginate,
+    request,
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue: { number: 1892, node_id: 'ISSUE_1892', user: { login: 'nalfeo' }, labels: [] },
+  });
+
+  assert.equal(result.assigned, false);
+  assert.match(result.reason, /blocked by open #1851/);
+  assert.equal(graphqlCalled, false, 'must never call graphql while blocked');
+});
+
+test('intakeOpenedIssue proceeds with assignment when eligible and unblocked', async () => {
+  const fakes = makeSuccessfulIntakeFakes();
+  const paginate = async (_token, path) => {
+    if (path.includes('/dependencies/blocked_by')) {
+      return [];
+    }
+    return fakes.paginate(_token, path);
+  };
+
+  const result = await intakeOpenedIssue({
+    graphql: fakes.graphql,
+    paginate,
+    request: fakes.request,
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue: { number: 1900, node_id: 'ISSUE_1900', user: { login: 'nalfeo' }, labels: [] },
+  });
+
+  assert.deepEqual(result, {
+    assigned: true,
+    reason: 'trusted issue opener',
+    assignee: 'copilot-swe-agent',
+    comment: 'posted',
+  });
+});
+
+test('intakeOpenedIssue skips ineligible openers before ever querying dependencies', async () => {
+  let paginateCalled = false;
+  const result = await intakeOpenedIssue({
+    graphql: async () => ({}),
+    paginate: async () => {
+      paginateCalled = true;
+      return [];
+    },
+    request: async () => ({ data: [] }),
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue: { number: 1901, node_id: 'ISSUE_1901', user: { login: 'random-user' }, labels: [] },
+  });
+
+  assert.equal(result.assigned, false);
+  assert.equal(paginateCalled, false, 'eligibility must short-circuit before the dependency query');
+});
+
+test('intakeUnblockedDependents assigns eligible unblocked dependents and skips the rest', async () => {
+  const fakes = makeSuccessfulIntakeFakes();
+  const closedIssue = { number: 1851 };
+  // depA mirrors the real #1892 payload: owner-opened with the automation label.
+  // The unblock-sweep must assign it despite the automation label (which the
+  // regular intake gate rejects when the opener is not github-actions[bot]).
+  const depA = {
+    number: 1892,
+    node_id: 'ISSUE_1892',
+    state: 'open',
+    user: { login: 'nalfeo' },
+    labels: [{ name: 'automation' }],
+    repository: { full_name: 'nalfeo/Crawler' },
+  };
+  const depB = {
+    number: 1902,
+    node_id: 'ISSUE_1902',
+    state: 'open',
+    user: { login: 'nalfeo' },
+    labels: [],
+    repository: { full_name: 'nalfeo/Crawler' },
+  };
+  const depC = {
+    number: 1903,
+    node_id: 'ISSUE_1903',
+    state: 'closed',
+    user: { login: 'nalfeo' },
+    labels: [],
+    repository: { full_name: 'nalfeo/Crawler' },
+  };
+  const depD = {
+    number: 1904,
+    node_id: 'ISSUE_1904',
+    state: 'open',
+    user: { login: 'nalfeo' },
+    labels: [],
+    repository: { full_name: 'other/repo' },
+  };
+
+  const paginate = async (_token, path) => {
+    if (path === '/repos/nalfeo/Crawler/issues/1851/dependencies/blocking') {
+      return [depA, depB, depC, depD];
+    }
+    if (path === '/repos/nalfeo/Crawler/issues/1892/dependencies/blocked_by') {
+      return [];
+    }
+    if (path === '/repos/nalfeo/Crawler/issues/1902/dependencies/blocked_by') {
+      return [{ number: 1857, state: 'open' }];
+    }
+    return fakes.paginate(_token, path);
+  };
+
+  const results = await intakeUnblockedDependents({
+    graphql: fakes.graphql,
+    paginate,
+    request: fakes.request,
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    closedIssue,
+  });
+
+  assert.deepEqual(
+    results.map((r) => r.number),
+    [1892, 1902, 1903, 1904],
+  );
+  assert.equal(results[0].assigned, true, 'automation-labeled owner-opened dependent should be assigned in unblock sweep');
+  assert.equal(results[0].assignee, 'copilot-swe-agent');
+  assert.equal(results[1].assigned, false);
+  assert.match(results[1].reason, /blocked by open #1857/);
+  assert.equal(results[2].assigned, false);
+  assert.equal(results[2].reason, 'dependent not open');
+  assert.equal(results[3].assigned, false);
+  assert.equal(results[3].reason, 'dependent in a different repository');
+});
+
+test('intakeOpenedIssue propagates a blocked_by fetch error instead of assuming unblocked', async () => {
+  await assert.rejects(
+    intakeOpenedIssue({
+      graphql: async () => ({}),
+      paginate: async () => {
+        throw new Error('GitHub GET failed (500): boom');
+      },
+      request: async () => ({ data: [] }),
+      token: 'token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      issue: { number: 1905, node_id: 'ISSUE_1905', user: { login: 'nalfeo' }, labels: [] },
+    }),
+    /boom/,
+  );
+});
+
+test('intakeUnblockedDependents records a per-dependent error without stopping other dependents', async () => {
+  const depOk = {
+    number: 2001,
+    node_id: 'ISSUE_2001',
+    state: 'open',
+    user: { login: 'nalfeo' },
+    labels: [],
+    repository: { full_name: 'nalfeo/Crawler' },
+  };
+  const depFails = {
+    number: 2002,
+    node_id: 'ISSUE_2002',
+    state: 'open',
+    user: { login: 'nalfeo' },
+    labels: [],
+    repository: { full_name: 'nalfeo/Crawler' },
+  };
+  const fakes = makeSuccessfulIntakeFakes();
+
+  const paginate = async (_token, path) => {
+    if (path === '/repos/nalfeo/Crawler/issues/1851/dependencies/blocking') {
+      return [depOk, depFails];
+    }
+    if (path === '/repos/nalfeo/Crawler/issues/2001/dependencies/blocked_by') {
+      return [];
+    }
+    if (path === '/repos/nalfeo/Crawler/issues/2002/dependencies/blocked_by') {
+      throw new Error('GitHub GET failed (503): transient');
+    }
+    return fakes.paginate(_token, path);
+  };
+
+  const results = await intakeUnblockedDependents({
+    graphql: fakes.graphql,
+    paginate,
+    request: fakes.request,
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    closedIssue: { number: 1851 },
+  });
+
+  assert.deepEqual(
+    results.map((r) => r.number),
+    [2001, 2002],
+  );
+  assert.equal(results[0].assigned, true);
+  assert.equal(results[1].assigned, false);
+  assert.match(results[1].error, /transient/);
+});
+
+test('intakeUnblockedDependents reports a dependent that closed mid-sweep as a skip, not an error', async () => {
+  const depRacing = {
+    number: 3001,
+    node_id: 'ISSUE_3001',
+    state: 'open',
+    user: { login: 'nalfeo' },
+    labels: [],
+    repository: { full_name: 'nalfeo/Crawler' },
+  };
+  const graphql = async (_token, query) => {
+    if (query.includes('suggestedActors')) {
+      return {
+        repository: {
+          suggestedActors: {
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          // The issue closed between our blocked_by check and this live fetch.
+          issue: { id: 'ISSUE_3001', state: 'CLOSED', assignees: { nodes: [] } },
+        },
+      };
+    }
+    throw new Error('must not attempt assignment mutation for a closed issue');
+  };
+  const paginate = async (_token, path) => {
+    if (path === '/repos/nalfeo/Crawler/issues/1851/dependencies/blocking') {
+      return [depRacing];
+    }
+    if (path === '/repos/nalfeo/Crawler/issues/3001/dependencies/blocked_by') {
+      return [];
+    }
+    return [];
+  };
+
+  const results = await intakeUnblockedDependents({
+    graphql,
+    paginate,
+    request: async () => ({ data: [] }),
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    closedIssue: { number: 1851 },
+  });
+
+  assert.deepEqual(results, [
+    { number: 3001, assigned: false, reason: 'dependent closed during processing' },
+  ]);
+});
+
+test('runIssueIntake refuses to assign an issue that is no longer open', async () => {
+  const graphql = async () => ({
+    repository: {
+      suggestedActors: {
+        nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+      },
+      issue: { id: 'ISSUE_1067', state: 'CLOSED', assignees: { nodes: [] } },
+    },
+  });
+
+  await assert.rejects(
+    runIssueIntake({
+      graphql,
+      paginate: async () => [],
+      request: async () => ({ data: { id: 1 } }),
+      token: 'token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      issue,
+    }),
+    /no longer open/,
+  );
 });

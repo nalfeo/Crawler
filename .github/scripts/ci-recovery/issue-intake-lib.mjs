@@ -470,6 +470,182 @@ async function deleteCommentIfCreated(request, token, owner, repo, commentId) {
   }
 }
 
+/**
+ * Fetches the issues that block `issueNumber` from being worked (GitHub's
+ * `blocked_by` dependency direction). Errors are intentionally NOT swallowed:
+ * callers must never assign Copilot unless they positively confirmed there is
+ * no open blocker, and a network/API failure (or an unexpected non-array
+ * response shape) must fail loud rather than silently behave as "no
+ * blockers". Uses `paginate` so a dependency list beyond a single page can
+ * never be silently truncated into a false "unblocked" verdict.
+ */
+export async function getBlockedByDependencies({ paginate, token, owner, repo, issueNumber }) {
+  return paginate(token, `/repos/${owner}/${repo}/issues/${issueNumber}/dependencies/blocked_by`);
+}
+
+/**
+ * Fetches the issues that `issueNumber` blocks (GitHub's `blocking` dependency
+ * direction), i.e. its dependents. Same fail-loud, fully-paginated contract as
+ * `getBlockedByDependencies`.
+ */
+export async function getBlockingDependents({ paginate, token, owner, repo, issueNumber }) {
+  return paginate(token, `/repos/${owner}/${repo}/issues/${issueNumber}/dependencies/blocking`);
+}
+
+/** Filters a dependency list down to the entries that are still open. */
+export function openBlockingIssues(dependencies) {
+  return (dependencies || []).filter(
+    (dep) => String(dep?.state || '').toLowerCase() === 'open',
+  );
+}
+
+/**
+ * Intake entry point for a newly-opened issue. Gates on both trusted-opener
+ * eligibility AND open `blocked_by` dependencies: Copilot is never assigned
+ * and the kickoff comment is never posted while any blocker issue is still
+ * open.
+ *
+ * When `fromUnblockSweep` is true (called from `intakeUnblockedDependents`)
+ * the automation-label gate is bypassed: if a human deliberately set up a
+ * `blocked_by` dependency chain the intent is for Copilot to pick up the
+ * dependent once the blocker clears, regardless of its labels.  The
+ * trusted-opener check (no arbitrary bots) still applies.
+ */
+export async function intakeOpenedIssue({
+  graphql,
+  paginate,
+  request,
+  token,
+  owner,
+  repo,
+  issue,
+  maintainerLogin = 'nalfeo',
+  fromUnblockSweep = false,
+}) {
+  let eligibilityReason;
+  if (fromUnblockSweep) {
+    // Automation-label restriction is intentionally skipped here — see JSDoc.
+    // We still reject non-issues (PR payloads) and untrusted openers.
+    if (!issue || issue.pull_request) {
+      return { assigned: false, reason: 'event has no eligible issue payload' };
+    }
+    const opener = String(issue.user?.login || '').toLowerCase();
+    const maintainer = String(maintainerLogin || '').toLowerCase();
+    const trustedOpener =
+      opener === maintainer || opener === GITHUB_ACTIONS_LOGIN || isCopilotLogin(opener);
+    if (!trustedOpener) {
+      return { assigned: false, reason: `opener @${opener || 'unknown'} is not trusted` };
+    }
+    eligibilityReason = 'unblocked dependent';
+  } else {
+    const eligibility = issueIntakeEligibility(issue, maintainerLogin);
+    if (!eligibility.eligible) {
+      return { assigned: false, reason: eligibility.reason };
+    }
+    eligibilityReason = eligibility.reason;
+  }
+
+  const blockers = openBlockingIssues(
+    await getBlockedByDependencies({ paginate, token, owner, repo, issueNumber: issue.number }),
+  );
+  if (blockers.length > 0) {
+    return {
+      assigned: false,
+      reason: `blocked by open ${blockers.map((blocker) => `#${blocker.number}`).join(', ')}`,
+    };
+  }
+
+  const result = await runIssueIntake({ graphql, paginate, request, token, owner, repo, issue });
+  return {
+    assigned: true,
+    reason: eligibilityReason,
+    assignee: result.assignee,
+    comment: result.comment,
+  };
+}
+
+/**
+ * Re-runs intake for every dependent of a just-closed issue, so that a
+ * dependent whose last blocker just closed gets picked up automatically
+ * instead of waiting for a human to notice. Dependent issue payloads returned
+ * by the `blocking` dependency endpoint are full issue payloads, so they are
+ * passed straight through to `intakeOpenedIssue` without a re-fetch.
+ */
+export async function intakeUnblockedDependents({
+  graphql,
+  paginate,
+  request,
+  token,
+  owner,
+  repo,
+  closedIssue,
+  maintainerLogin = 'nalfeo',
+}) {
+  const dependents = await getBlockingDependents({
+    paginate,
+    token,
+    owner,
+    repo,
+    issueNumber: closedIssue.number,
+  });
+
+  const repoFullName = `${owner}/${repo}`.toLowerCase();
+  const results = [];
+  for (const dependent of dependents) {
+    if (String(dependent?.state || '').toLowerCase() !== 'open') {
+      results.push({ number: dependent?.number, assigned: false, reason: 'dependent not open' });
+      continue;
+    }
+    if (String(dependent?.repository?.full_name || '').toLowerCase() !== repoFullName) {
+      results.push({
+        number: dependent?.number,
+        assigned: false,
+        reason: 'dependent in a different repository',
+      });
+      continue;
+    }
+    try {
+      const outcome = await intakeOpenedIssue({
+        graphql,
+        paginate,
+        request,
+        token,
+        owner,
+        repo,
+        issue: dependent,
+        maintainerLogin,
+        fromUnblockSweep: true,
+      });
+      results.push({ number: dependent.number, ...outcome });
+    } catch (err) {
+      // A dependent closing between our `open` check above and the live
+      // assignment mutation is a benign race, not an infra failure — report it
+      // as a skip so the sweep doesn't flag the workflow run red for it.
+      if (err instanceof IssueNoLongerOpenError) {
+        results.push({ number: dependent.number, assigned: false, reason: 'dependent closed during processing' });
+        continue;
+      }
+      results.push({ number: dependent.number, assigned: false, error: String(err?.message || err) });
+    }
+  }
+  return results;
+}
+
+/**
+ * Thrown by `runIssueIntake` when the issue's live GraphQL state is no longer
+ * OPEN. Exported (and used as a marker via `instanceof`) so callers like
+ * `intakeUnblockedDependents` can distinguish this benign race — the issue
+ * closed between eligibility/blocked_by checks and the assignment mutation —
+ * from a genuine API/infra failure, and report it as a skip rather than an
+ * error.
+ */
+export class IssueNoLongerOpenError extends Error {
+  constructor(issueNumber) {
+    super(`Issue #${issueNumber} is no longer open; skipping intake`);
+    this.name = 'IssueNoLongerOpenError';
+  }
+}
+
 export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
   const assignmentContext = await getCopilotIssueAssignmentContext({
     graphql,
@@ -478,6 +654,15 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
     repo,
     issueNumber: issue.number,
   });
+
+  // Guard against a moment-in-time race: the issue may have been closed between
+  // when the caller last observed it as eligible/unblocked and this live GraphQL
+  // fetch. Never post a kickoff comment or assign Copilot to an issue that is no
+  // longer open.
+  if (String(assignmentContext.issueState || '').toUpperCase() !== 'OPEN') {
+    throw new IssueNoLongerOpenError(issue.number);
+  }
+
   const actorIds = buildIssueActorIds({
     assignees: assignmentContext.assignees,
     copilotActorId: assignmentContext.copilot.id,
