@@ -1,0 +1,69 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-23",
+  "session_slug": "ai-settlement-maintenance-planner",
+  "task_title": "AI settlement maintenance planner",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck review of the settlement-maintenance planner plan (APPROVE WITH CHANGES). 2 blocking + 2 non-blocking issues, all resolved: (1) renamed EQUIPMENT_ACTION_CAP to EQUIPMENT_LOOP_CANDIDATE_CAP since it bounds candidates evaluated per-visit, not total mutations; (2) implemented defer-then-retry-once for achievement/boss-chest claims so a bag-full grantFailed can retry after the equipment loop frees bag capacity in the same visit (new regression test proves this); (3, non-blocking, accepted as a documented tradeoff) path-dependent affinity weights across equipment-loop iterations; (4, non-blocking) a single failed purchase/equip previously aborted the whole equipment loop via 'exhausted', fixed with a this-visit blacklist-and-continue pattern in runEquipmentLoop plus a new regression test proving a failed candidate does not block a later positive-utility candidate. 2 alternatives enumerated and argued against: (a) a full combinatorial loadout search across all bag/shop candidates — rejected as not cheaply bounded/deterministic enough for a per-tick AI system; (b) LLM-driven purchase/equip decisions — rejected outright, the project bans LLM-as-judge/non-deterministic control for runtime AI systems."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.7"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "1 Critical finding: claimed isInSafeContext (RoomRole.SAFE only) never passes for a real Floor 2 settlement room (generated as RoomRole.SETTLEMENT), so equips/purchases would never execute live, with gold spent before the equip failed. Investigated via a corrected probe (the original probe read a stale local floorMap reference instead of re-reading world.floorMap, which initializeFloor2Scenario regenerates internally) and confirmed a FALSE POSITIVE as originally raised: prepareSettlementMapAndPlacement retags the settlement room(s) RoomRole.SETTLEMENT -> RoomRole.SAFE during the real initializeFloor2Scenario boot sequence, before the player can ever reach the settlement. Converted the probe into a permanent regression test (tests/game/settlement-maintenance-planner-safe-context.test.ts) proving both the retagging and a full end-to-end equip through the real boot path. Also found and fixed a genuine related low-severity lab-only gap: settlement-maintenance-planner-lab never called safeRoomSystem(world), so world.playerInSafeRoom was never set and the lab's Run Planner button silently no-oped even standing in a real SAFE room."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Genuine post-fix re-review, triggered by GitHub PR #1862 copilot-pull-request-reviewer findings raised after round 1 was (incorrectly) recorded as the clean terminal state. Scope: the 2 subsequent fixes for (a) static-equipped-item displacement (buildEquipmentSnapshot dropping numeric/static instance IDs from the evaluator snapshot, so the planner could blindly displace a real equipped item like MERCHANTS_CHARM_DEF or the Floor 2 starter weapon -- fixed via new getStaticProtectedSlots/instanceOccupiesProtectedSlot helpers that reject any candidate occupying a slot held by a static item) and (b) missing skip telemetry for unaffordable/capacity-blocked Quartermaster offers (buildEquipmentCandidates silently `continue`d instead of logging a decision citing offer.purchaseFailure/affordable/capacityAvailable, contradicting the PR's explain-each-decision contract), plus the loggedSkipKeys per-visit dedup that prevents re-logging the same skip across hill-climb iterations, and the 2 new regression tests added for both fixes. Reviewed the actual uncommitted diff (git diff on settlement-maintenance-planner.ts + its test file), not the whole file. Verdict: NO VALID CONCERNS -- clean. Confirmed correctness of the static-vs-generated instanceId type discrimination, multi-slot displacement handling via frozen.slots overlap, once-per-visit scoping of loggedSkipKeys (no cross-visit leakage), no other equip/purchase call site bypassing the new protected-slots filter, and no masking of the 16 pre-existing tests."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5 (self-adjudicated in-session with full context of all raw reports, each round)",
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6",
+            "gpt-5.3-codex",
+            "gemini-3.1-pro-preview",
+            "gpt-5.4 (security)"
+          ],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "gemini-3.1-pro-preview (code-review): clean, no issues, independently re-verified the safe-context false-positive resolution and the lab fix. gpt-5.4 (security-review): no security vulnerabilities found (duplicate-claim/double-spend, affordability/capacity bypass, direct-mutation, determinism all reviewed). claude-sonnet-4.6 (code-review): 1 valid finding -- committed ledger scaffold still empty/invalid per `review:ledger -- validate` (expected at time of review; resolved by completing this ledger). gpt-5.3-codex (code-review): 1 valid-at-time-of-review finding -- a just-added regression test for the blacklist-and-continue fix hard-coded which of two shop offers would rank top, which was wrong for the actual utility scores (boots outranked helm, not the reverse) and failed reliably. Resolved by rewriting the test's assertions to be order-agnostic: it now locates whichever offer failed via the recorded skip decision and asserts the OTHER offer was purchased+equipped, regardless of ranking direction; re-priced both offers to 5g so cost does not dominate the utility comparison. Verified: tsc --noEmit clean, full planner test suite 18/18 passing, npm run verify:fast passed cleanly after the fix."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gemini-3.1-pro-preview", "gpt-5.4 (security)"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Genuine post-fix multi-model fan-out, triggered by GitHub PR #1862 copilot-pull-request-reviewer findings raised after round 1 was (incorrectly) recorded as the clean terminal state despite surfacing 2 valid concerns. Scope: same 2 subsequent fixes as the round-2 code_review entry (static-equipped-item displacement protection + Quartermaster unpurchasable-offer skip telemetry, both deduplicated per-visit via loggedSkipKeys) plus their 2 new regression tests, reviewed against the actual uncommitted diff. claude-sonnet-4.6 (code-review): independently traced equipFromBag's slot resolution to confirm instanceOccupiesProtectedSlot's frozen.slots check is exhaustive (no alternative equip path bypasses it), confirmed loggedSkipKeys gates only the log push (not the continue) so an offer that becomes purchasable mid-loop still flows through, and verified both new tests' assertions against the real wave-b slot data and utility scores. Clean, no issues. gemini-3.1-pro-preview (code-review): confirmed multi-slot displacement handling (fails if ANY required slot is protected), confirmed Object.entries()-driven Set population introduces no non-determinism, confirmed buildEquipmentCandidates is the sole equip/purchase candidate funnel (no bypass). Clean, no issues. gpt-5.4 (security-review): reviewed for AI-lockout risk (protected-slots logic cannot starve the planner of all future equips -- it only blocks candidates for the specific already-occupied static slots), unbounded loggedSkipKeys growth (bounded per-visit, not global), duplicate-purchase/double-spend, and determinism (no new iteration-order or time/random dependency). Clean, no issues. Verified: tsc --noEmit clean, full planner test suite 18/18 passing, npm run verify:fast passed cleanly."
+        }
+      ]
+    }
+  }
+}
