@@ -84,6 +84,33 @@ export const HARVESTABLE_DEFS: readonly HarvestableDef[] = [
     tint: 0x446688,
     maxPerFloor: 5,
   },
+  // --- Floor 2: Industrial-Cave ore / gem nodes (indices 6–8) ---
+  // Always append — never reorder — to keep defIndex values stable.
+  {
+    id: 'iron-vein',
+    label: 'Iron Vein',
+    itemId: 'iron-ore',
+    durationMs: 4_500,
+    tint: 0x7a7a8c,
+    maxPerFloor: 6,
+  },
+  {
+    id: 'copper-seam',
+    label: 'Copper Seam',
+    itemId: 'copper-ore',
+    durationMs: 4_000,
+    tint: 0xb87333,
+    maxPerFloor: 6,
+  },
+  {
+    id: 'gem-cluster',
+    label: 'Gem Cluster',
+    itemId: 'void-crystal',
+    durationMs: 7_000,
+    tint: 0x9955ff,
+    maxPerFloor: 3,
+    lightEmission: { radiusFt: 8, intensity: 0.35 },
+  },
 ] as const;
 
 /** Look up a harvestable def by its stable slug ID. */

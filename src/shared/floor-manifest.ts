@@ -149,7 +149,7 @@ export const floorManifestDefSchema = z
     props: z
       .object({
         /** Biome tag used to filter decoration defs. */
-        biomeTag: z.enum(['dungeon', 'organic', 'tech', 'void']),
+        biomeTag: z.enum(['dungeon', 'organic', 'tech', 'void', 'cave']),
         /** Multiplier applied to each def's base density (default 1.0). */
         densityMultiplier: z.number().positive().optional(),
         /** Category whitelist — only defs in these categories are placed. */

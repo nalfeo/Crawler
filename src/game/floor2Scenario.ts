@@ -108,6 +108,9 @@ import {
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
+import { spawnHarvestableNode } from '../core/helpers.js';
+import { HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
+import { placePropsForFloor } from './systems/propPlacer.js';
 import {
   scaleAmbientSpawnStats,
   pruneAmbientOutOfRange,
@@ -140,6 +143,12 @@ const FLOOR2_DIRECT_START_LEVEL = 5;
 export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
 export const FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE = 0.25;
 const floor2CombatEventCursor = new WeakMap<GameWorld, { cursor: number; lastEvent?: object }>();
+
+/**
+ * First index in HARVESTABLE_DEFS that belongs exclusively to Floor 2.
+ * Floor 1 defs occupy indices 0–5; Floor 2 ore/gem nodes start at 6.
+ */
+const FLOOR2_HARVESTABLE_START_INDEX = 6;
 
 export function resolveFloor2ArchetypeAIType(archetype: EnemyArchetypeDef): number {
   if (archetype.aiType === 'ranged') return AI_TYPE.RANGED;
@@ -784,6 +793,58 @@ export function confirmFloor2StairDescend(
 }
 
 /**
+ * Spawn Floor 2 harvestable ore and gem nodes across passable tiles in normal
+ * and spawn rooms. Only the Floor 2 entries in HARVESTABLE_DEFS (indices
+ * FLOOR2_HARVESTABLE_START_INDEX and above) are considered — Floor 1 mushroom/
+ * flower/lichen defs are never placed here. Each def spawns between 2 and
+ * maxPerFloor nodes, spaced ≥3 ft apart, using `world.rng` for determinism.
+ */
+function spawnFloor2HarvestableNodes(world: GameWorld): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+
+  const normalRooms = floorMap.roomGraph
+    .getAll()
+    .filter((room) => room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN);
+
+  if (normalRooms.length === 0) return;
+
+  for (
+    let defIndex = FLOOR2_HARVESTABLE_START_INDEX;
+    defIndex < HARVESTABLE_DEFS.length;
+    defIndex++
+  ) {
+    const def = HARVESTABLE_DEFS[defIndex]!;
+    const count = 2 + world.rng.nextInt(0, def.maxPerFloor - 2);
+
+    const placed: Array<{ x: number; y: number }> = [];
+
+    const maxAttempts = count * 12;
+    for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
+      const room = normalRooms[world.rng.nextInt(0, normalRooms.length - 1)]!;
+      const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+
+      const tx = bx + 1 + world.rng.nextInt(0, Math.max(0, bw - 3));
+      const ty = by + 1 + world.rng.nextInt(0, Math.max(0, bh - 3));
+
+      if (!floorMap.tileMap.isPassable(tx, ty)) continue;
+
+      const pos = floorMap.tileToWorld(tx, ty);
+
+      const tooClose = placed.some((p) => {
+        const ddx = p.x - pos.x;
+        const ddy = p.y - pos.y;
+        return ddx * ddx + ddy * ddy < 9;
+      });
+      if (tooClose) continue;
+
+      placed.push(pos);
+      spawnHarvestableNode(world, pos.x, pos.y, defIndex);
+    }
+  }
+}
+
+/**
  * Floor 2 scenario initializer used by scenario wiring (Slice 8).
  */
 export function initializeFloor2Scenario(
@@ -1035,6 +1096,18 @@ export function initializeFloor2Scenario(
   if (floor2Config?.governor?.autoVictoryOnStart === true) {
     latchFloor2Victory(world);
   }
+
+  // Place ambient scene-dressing props (mining carts, support beams, cave
+  // rubble, pipe sections, lanterns, glowing crystals) using the floor manifest
+  // props config. Uses world.rng so placement is fully deterministic.
+  if (manifest.props !== undefined) {
+    placePropsForFloor(world, world.floorMap!, manifest.props, world.rng);
+  }
+
+  // Spawn Floor 2 harvestable ore / gem nodes after map and settlement are
+  // fully set up so room roles are final before tile sampling.
+  spawnFloor2HarvestableNodes(world);
+
   world.state = 'playing';
   world.floorObjectiveTick = floor2ObjectiveTick;
 }
