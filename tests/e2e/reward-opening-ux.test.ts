@@ -429,9 +429,13 @@ describe('real reward-opening audio cues (achievement path)', () => {
       // Exactly one reveal cue per item, all BEFORE the summary cue, with
       // anticipation strictly first.
       expect(labels[0]).toBe('reward:anticipation');
-      expect(labels.filter((label) => label === 'reward:item-revealed')).toHaveLength(anticipation.total);
+      expect(labels.filter((label) => label === 'reward:item-revealed')).toHaveLength(
+        anticipation.total,
+      );
       expect(labels.at(-1)).toBe('reward:summary');
-      expect(labels.indexOf('reward:summary')).toBeGreaterThan(labels.lastIndexOf('reward:item-revealed'));
+      expect(labels.indexOf('reward:summary')).toBeGreaterThan(
+        labels.lastIndexOf('reward:item-revealed'),
+      );
     } finally {
       await context.close();
     }

@@ -272,7 +272,9 @@ describe('reward-opening audio pipeline (real sequence + real audio controller)'
     expect(labels.at(-2)).toBe('reward:summary');
     expect(labels.at(-1)).toBe('reward:close');
     // Every reveal cue must land strictly between anticipation and summary.
-    expect(labels.indexOf('reward:summary')).toBeGreaterThan(labels.lastIndexOf('reward:item-revealed'));
+    expect(labels.indexOf('reward:summary')).toBeGreaterThan(
+      labels.lastIndexOf('reward:item-revealed'),
+    );
   });
 
   it('skips straight to summary→skip→close with zero reveal/escalation cues, and never replays cues on duplicate input', () => {
@@ -347,7 +349,9 @@ describe('reward-opening audio pipeline (real sequence + real audio controller)'
     );
 
     const commonRevealGain = commonEngine.log.find((s) => s.label === 'reward:item-revealed')?.gain;
-    const uncommonRevealGain = uncommonEngine.log.find((s) => s.label === 'reward:item-revealed')?.gain;
+    const uncommonRevealGain = uncommonEngine.log.find(
+      (s) => s.label === 'reward:item-revealed',
+    )?.gain;
     expect(commonRevealGain).toBeDefined();
     expect(uncommonRevealGain).toBeDefined();
     // Same tier, but the actual granted item's rarity is strictly higher —
@@ -485,9 +489,7 @@ describe('reward-opening audio pipeline (real sequence + real audio controller)'
     });
     peakOnlyController.phaseChanged('summary');
     peakOnlyController.closed();
-    const peakOnlyGain = peakOnlyEngine.log.find(
-      (s) => s.label === 'reward:item-revealed',
-    )?.gain;
+    const peakOnlyGain = peakOnlyEngine.log.find((s) => s.label === 'reward:item-revealed')?.gain;
     expect(soloRevealGain).toBeCloseTo(peakOnlyGain!, 10);
   });
 

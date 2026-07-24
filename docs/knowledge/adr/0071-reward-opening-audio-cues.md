@@ -226,6 +226,70 @@ both independently re-verified against source before fixing:
    (`close` remains intentionally excluded, matching its constant-by-design
    contract).
 
+## GitHub Copilot Automated PR Review Findings (Round 4)
+
+After PR #1876 opened with auto-merge armed and all declared CI checks green,
+GitHub's automated `copilot-pull-request-reviewer` bot — a review source
+independent of this ADR's declared review-harness stages — left 3 additional
+inline findings against the merged diff. All 3 were legitimate and are now
+fixed (landed by a follow-up "Copilot cloud agent" run addressing the PR's own
+review comments, commit `e829e3676`):
+
+1. **Review-ledger process violation.** The `multi_model_review` stage's round
+   1 (documented above) both discovered 2 concerns and fixed them, then
+   self-certified `clean: true` in that same round — violating the
+   review-harness rule that a round producing fixes cannot also be the clean
+   validating round for those fixes
+   (`.github/skills/review-harness/references/code-review-loop.md`). **Fixed**:
+   the ledger was restructured so round 1 is `clean: false` (documenting the 2
+   findings it fixed), a genuine round 2 re-reviewed the diff and surfaced the
+   2 findings below (also non-clean, since it both found and fixed them), and
+   a true round 3 — run against the fully-fixed diff — returned 0 concerns
+   across all categories (correctness, contracts, policy compliance,
+   determinism, lifecycle, wiring, performance) and is the round the stage's
+   `clean: true` is actually validated against.
+
+2. **Real bug — reveal-batch audio coalescing was gated on the wrong
+   condition.** `RewardOpeningUI.tick()`'s same-tick reveal-batch
+   audio-coalescing guard was `if (next.config.reducedMotion && batchSize >
+1)`. But Phaser's frame `delta` (passed straight through
+   `MainGameScene.update()` with no clamping) can advance
+   `reward-opening-sequence.ts`'s `revealedCount` by more than one item in a
+   single `tick()` call under **normal** motion too — e.g. after a
+   backgrounded browser tab resumes and delivers one large catch-up frame
+   spanning multiple `perItemRevealMs` intervals. The original code comment's
+   claim that "normal motion always reveals exactly one item per tick" was
+   factually wrong, and the gap reproduced the exact audio-stacking bug the
+   adversarial plan review had already flagged for reduced motion, just
+   outside the condition that was supposed to prevent it. **Fixed**: the guard
+   is now `if (batchSize > 1)` — coalescing applies to ANY same-tick multi-item
+   batch regardless of motion mode, still reporting the batch's highest rarity
+   weight so an escalation cue correctly fires. Covered by a new regression
+   test in `reward-opening-audio-pipeline.test.ts` that drives a real,
+   non-reduced-motion `tickSequence()` through a large single-tick delta and
+   asserts exactly one coalesced `reward:item-revealed` cue.
+
+3. **PR-description/code cue-label mismatch.** The PR description's hard
+   contract listed cue labels `reward:item-revealed` /
+   `reward:rarity-escalation`, but the shipped code emitted the shorter
+   `reward:reveal` / `reward:escalation`. **Fixed** by renaming the emitted
+   cue labels in `reward-opening-audio.ts` (and updating every test/assertion
+   that referenced the old names — `reward-opening-audio.test.ts`,
+   `reward-opening-audio-pipeline.test.ts`, `reward-opening-ux.test.ts`) to
+   match the originally-declared hard contract, rather than rewriting the
+   contract to match the code — the longer, more descriptive names better
+   match the naming convention of the other cues (`reward:anticipation`,
+   `reward:summary`, `reward:skip`, `reward:close`) and the PR's stated hard
+   contract is the source of truth for the public cue vocabulary.
+
+This is a useful process lesson: GitHub's automated PR reviewer is a genuine
+additional review source beyond the declared review-harness ledger stages,
+and caught a real bug (#2) that all 3 declared review rounds (adversarial plan
+review, code review, multi-model review round 1) missed — likely because none
+of them specifically stress-tested the "unclamped Phaser frame delta in
+normal motion" angle on the coalescing guard, only the reduced-motion trigger
+it was explicitly designed to cover.
+
 ## Alternatives Considered
 
 - **Bundle/ship pre-rendered short audio clips**: rejected outright — the hard

@@ -215,6 +215,50 @@ No blockers. Recommended follow-ups (not required for this PR):
   second engine-layer sound (combat hits, UI chrome) should reuse it rather
   than growing a second `AudioContext`/no-audio-fallback implementation.
 
+## Round 4: GitHub Copilot Automated PR Review
+
+After PR #1876 opened with auto-merge armed and CI green, GitHub's automated
+`copilot-pull-request-reviewer` bot left 3 legitimate inline findings (full
+detail in ADR 0071's "GitHub Copilot Automated PR Review Findings" section),
+addressed by a follow-up "Copilot cloud agent" run (`e829e3676`):
+
+1. **Ledger process violation**: `multi_model_review` round 1 both found+fixed
+   2 concerns and self-certified `clean: true` in the same round. Fixed: round
+   1 now recorded `clean: false`; a genuine round 2 raised 2 further findings
+   (below) and a true round 3, run against the fully-fixed diff, returned 0
+   concerns and is the validating clean round.
+2. **Real bug**: the reveal-batch audio-coalescing guard in
+   `RewardOpeningUI.tick()` was gated on `reducedMotion`, but an unclamped
+   Phaser frame `delta` in NORMAL motion (e.g. tab-resume) can also jump
+   `revealedCount` by more than one item in a single `tick()` call,
+   reproducing the same audio-stacking bug outside reduced motion. Fixed by
+   dropping the `reducedMotion` gate so ANY same-tick multi-item batch
+   coalesces, regardless of motion mode. New regression test drives a real
+   non-reduced-motion `tickSequence()` through a large single-tick delta.
+3. **PR-description/code mismatch**: the PR's stated hard contract used cue
+   labels `reward:item-revealed`/`reward:rarity-escalation`; shipped code
+   emitted the shorter `reward:reveal`/`reward:escalation`. Fixed by renaming
+   the code's emitted labels (and all referencing tests) to match the
+   originally-declared contract, rather than rewriting the contract to match
+   the code.
+
+This session additionally found and fixed a **CI-blocking Prettier formatting
+issue** introduced by that follow-up commit (`tests/e2e/reward-opening-ux.test.ts`
+and `tests/integration/reward-opening-audio-pipeline.test.ts` were not
+`prettier --write`-formatted), which was failing the "Lightweight Checks" /
+"Merge gate" / "ci" required checks. Fixed with `npx prettier --write` on both
+files; re-verified format:check, lint, typecheck, and the full targeted unit
+(51 passed) + integration (6 passed) + E2E (12 passed) suites all pass after
+the fix.
+
+This is a useful process lesson: GitHub's automated PR reviewer is a REAL
+additional review source beyond the declared review-harness ledger stages,
+and caught a genuine bug (#2) that 3 separate declared review rounds
+(adversarial plan review, code review, multi-model review round 1) all
+missed — likely because none of those rounds specifically stress-tested the
+"unclamped frame delta" angle on the coalescing guard, only the
+reduced-motion trigger it was explicitly designed for.
+
 ## Retrospective
 
 ### Lessons Learned
