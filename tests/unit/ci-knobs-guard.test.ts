@@ -329,7 +329,11 @@ describe('CI knobs guard', () => {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           files.push(...collectMjsFiles(full));
-        } else if (entry.isFile() && entry.name.endsWith('.mjs') && !entry.name.endsWith('.test.mjs')) {
+        } else if (
+          entry.isFile() &&
+          entry.name.endsWith('.mjs') &&
+          !entry.name.endsWith('.test.mjs')
+        ) {
           files.push(full);
         }
       }
@@ -372,10 +376,7 @@ describe('CI knobs guard', () => {
     // Enforcement: every entry in STRUCTURAL_ALLOWLIST and every key in
     // OPERATIONALLY_TWEAKABLE_ROUTER must appear by name somewhere in
     // docs/agent-os/policies/ci-config-knobs.md.
-    const knobsDocPath = path.join(
-      REPO_ROOT,
-      'docs/agent-os/policies/ci-config-knobs.md',
-    );
+    const knobsDocPath = path.join(REPO_ROOT, 'docs/agent-os/policies/ci-config-knobs.md');
     const knobsDoc = readFileSync(knobsDocPath, 'utf8');
 
     for (const name of STRUCTURAL_ALLOWLIST) {
