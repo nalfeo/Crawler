@@ -1,5 +1,16 @@
 [
   {
+    "commit": "431c32dac0ed253d1d9fddc1bb0503a9f6709004",
+    "commitDate": "2026-07-24T21:17:59Z",
+    "commitSubject": "fix(ci): gate Copilot assignment on blocked_by dependencies (#1895)",
+    "capturedAt": "2026-07-24T22:40:13.178Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30127977995",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/431c32dac0ed253d1d9fddc1bb0503a9f6709004.json"
+  },
+  {
     "commit": "19a0d4a7b483c0348ff678bc0b2dd26f45454db7",
     "commitDate": "2026-07-24T21:03:20Z",
     "commitSubject": "fix(sprites): honest durability reporting for queued sprite edits (PR1 follow-up) (#1891)",
