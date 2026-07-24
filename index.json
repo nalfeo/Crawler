@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d56ebb1d172d03da16ab3a8e1db8c41b920721ad",
+    "commitDate": "2026-07-24T12:46:51-07:00",
+    "commitSubject": "feat(ci): promote dispatch caps to runtime vars, add knobs doc + guard (#1782)",
+    "capturedAt": "2026-07-24T21:06:02.500Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30122235220",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/d56ebb1d172d03da16ab3a8e1db8c41b920721ad.json"
+  },
+  {
     "commit": "ece558328e987a1039ccf504340f2ca5675a474e",
     "commitDate": "2026-07-24T05:53:27Z",
     "commitSubject": "docs: fix pr-shepherd playbook — required checks, rebase-prs bot, merge-train behavior (#1845)",
