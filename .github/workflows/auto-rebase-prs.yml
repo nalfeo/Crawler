@@ -71,6 +71,7 @@ jobs:
           TARGET_PR: ${{ inputs.pr_number }}
           EXPECTED_HEAD_INPUT: ${{ inputs.expected_head_sha }}
           EXPECTED_BASE_INPUT: ${{ inputs.expected_base_ref }}
+          DISPATCH_TRIGGER_INPUT: ${{ inputs.trigger }}
         run: |
           set -euo pipefail
 
@@ -161,6 +162,11 @@ jobs:
             fi
 
             if git rebase origin/main; then
+              rebased_head=$(git rev-parse HEAD)
+              if [ "$train_enabled" = "true" ] && [ "$DISPATCH_TRIGGER_INPUT" = "ci-recovery-validation" ] && [ "$rebased_head" = "$expected_head" ]; then
+                echo "  ℹ️ Validation recovery rebase produced no head movement; creating an empty retrigger commit."
+                git commit --allow-empty -m "chore(ci-recovery): retrigger validation recovery for PR #$number"
+              fi
               if [ "$train_enabled" = "true" ]; then
                 live_pr=$(
                   gh pr view "$number" \
