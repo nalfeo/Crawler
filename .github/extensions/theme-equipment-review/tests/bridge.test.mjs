@@ -1,9 +1,46 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createSerializedThemeEquipmentReviewRunner, loadRepoEnv } from '../lib/bridge.mjs';
+import {
+  createSerializedThemeEquipmentReviewRunner,
+  loadRepoEnv,
+  resolveThemeSetId,
+} from '../lib/bridge.mjs';
+
+function repoWithSets(setIds) {
+  const root = mkdtempSync(path.join(tmpdir(), 'theme-review-sets-'));
+  const dir = path.join(root, 'data', 'theme-equipment-sets');
+  mkdirSync(dir, { recursive: true });
+  for (const setId of setIds) {
+    writeFileSync(path.join(dir, `${setId}.json`), `{"id":"${setId}"}\n`);
+  }
+  return root;
+}
+
+test('resolves the only authored set when the canvas is opened without a setId', () => {
+  const root = repoWithSets(['classic-fantasy']);
+  try {
+    assert.equal(resolveThemeSetId(root, undefined), 'classic-fantasy');
+    assert.equal(resolveThemeSetId(root, 'pirate'), 'pirate');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('requires an explicit setId when zero or several authored sets exist', () => {
+  const empty = repoWithSets([]);
+  const many = repoWithSets(['classic-fantasy', 'pirate']);
+  try {
+    assert.throws(() => resolveThemeSetId(empty, undefined), /No authored theme-equipment sets/);
+    assert.throws(() => resolveThemeSetId(many, undefined), /classic-fantasy, pirate/);
+    assert.equal(resolveThemeSetId(many, 'pirate'), 'pirate');
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+    rmSync(many, { recursive: true, force: true });
+  }
+});
 
 test('loads missing values from .env.local without overriding the process environment', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'theme-review-env-'));
