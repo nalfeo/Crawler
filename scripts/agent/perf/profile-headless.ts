@@ -108,7 +108,7 @@ function parseSeeds(spec: string): number[] {
   return seeds;
 }
 
-function parseArgs(argv: readonly string[]): Options | { ceiling: [number, number] } {
+export function parseArgs(argv: readonly string[]): Options | { ceiling: [number, number] } {
   const options: Options = {
     // Three seeds by default: one run overfits to a single route and combat
     // sequence, which is how you end up optimizing a seed rather than the game.
@@ -151,9 +151,14 @@ function parseArgs(argv: readonly string[]): Options | { ceiling: [number, numbe
         options.sortBy = value;
         break;
       }
-      case '--max-frames':
-        options.maxFrames = Number(next());
+      case '--max-frames': {
+        const rawFrames = Number(next());
+        if (!Number.isInteger(rawFrames) || rawFrames <= 0) {
+          throw new Error('--max-frames must be a positive integer');
+        }
+        options.maxFrames = rawFrames;
         break;
+      }
       case '--json':
         options.json = true;
         // Optional path: `--json` alone writes to stdout, `--json <path>`
@@ -295,7 +300,13 @@ function main(): void {
 
   if ('ceiling' in parsed) {
     const [share, speedup] = parsed.ceiling;
-    const ceiling = predictCeiling(share, speedup);
+    let ceiling: number;
+    try {
+      ceiling = predictCeiling(share, speedup);
+    } catch (error) {
+      console.error(`perf:profile — ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
     console.log(
       `A component at ${share}% of total, made ${speedup === Infinity ? 'free' : `${speedup}x faster`}, ` +
         `can win at most ${ceiling.toFixed(2)}% end-to-end.`,

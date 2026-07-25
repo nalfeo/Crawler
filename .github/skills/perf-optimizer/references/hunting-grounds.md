@@ -16,8 +16,9 @@ The real ranked cost of a headless Floor 1 run. This is a **starting hint, not a
 target list** — it goes stale as the code changes.
 
 **Re-profile before choosing anything from it** (`npm run perf:profile`, ~35s).
-The numbers below are also inflated ~1.12x by Node/tsx startup, which is a fixed
-cost of the harness rather than game work.
+The numbers below are also diluted ~1.12x by Node/tsx startup, which is a fixed
+cost of the harness rather than game work. Each game-code function's true share is
+~1.12× higher than the displayed value (true share ≈ displayed × 1 / (1 − startup%)).
 
 - **Captured:** 2026-07-25 at commit `30d39bfd1`
 - **Command:** `npm run perf:profile -- --top 18` (default panel: seeds 1-3 x

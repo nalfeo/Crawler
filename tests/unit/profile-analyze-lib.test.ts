@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyRunTermination } from '../../scripts/agent/perf/profile-headless.js';
+import { classifyRunTermination, parseArgs } from '../../scripts/agent/perf/profile-headless.js';
 import {
   formatSummary,
   HARNESS_OVERHEAD_WARN_PCT,
@@ -231,6 +231,10 @@ describe('predictCeiling', () => {
     expect(() => predictCeiling(10, Number.NaN)).toThrow(/speedup/);
     expect(() => predictCeiling(-1, 2)).toThrow(/sharePct/);
     expect(() => predictCeiling(Number.NaN, 2)).toThrow(/sharePct/);
+    // A share above 100% is impossible and would produce authoritative-looking
+    // nonsense (e.g. "150% end-to-end win") from malformed profile input.
+    expect(() => predictCeiling(101, 2)).toThrow(/sharePct/);
+    expect(() => predictCeiling(150, Infinity)).toThrow(/sharePct/);
   });
 });
 
@@ -318,5 +322,49 @@ describe('classifyRunTermination', () => {
     expect(classifyRunTermination('note: the Outcome:      VICTORY was logged')).toEqual({
       kind: 'missing',
     });
+  });
+});
+
+describe('parseArgs (profile-headless)', () => {
+  /** Simulate what profile-headless parseArgs receives: just the argv args, no node/script prefix. */
+  function args(...a: string[]): string[] {
+    return a;
+  }
+
+  it('rejects --max-frames 0 with a clear error', () => {
+    expect(() => parseArgs(args('--max-frames', '0'))).toThrow(/--max-frames.*positive integer/);
+  });
+
+  it('rejects a negative --max-frames', () => {
+    expect(() => parseArgs(args('--max-frames', '-1'))).toThrow(/--max-frames.*positive integer/);
+  });
+
+  it('rejects a non-integer --max-frames', () => {
+    expect(() => parseArgs(args('--max-frames', '3.5'))).toThrow(/--max-frames.*positive integer/);
+    expect(() => parseArgs(args('--max-frames', 'NaN'))).toThrow(/--max-frames.*positive integer/);
+  });
+
+  it('accepts a valid positive integer --max-frames', () => {
+    const result = parseArgs(args('--max-frames', '5000'));
+    expect('maxFrames' in result ? (result as { maxFrames: number }).maxFrames : null).toBe(5000);
+  });
+
+  it('rejects --ceiling with a speedup < 1 (caught in the ceiling branch)', () => {
+    // speedup=0.5 passes regex parsing but predictCeiling throws; parseArgs
+    // returns the raw values — the error surfaces when main() calls predictCeiling.
+    // The regex allows any decimal, so 0.5 parses successfully.
+    const result = parseArgs(args('--ceiling', '10:0.5'));
+    expect(result).toHaveProperty('ceiling');
+    // Verify that predictCeiling rejects the parsed speedup, proving the
+    // ceiling branch in main() must catch this error.
+    const [share, speedup] = (result as { ceiling: [number, number] }).ceiling;
+    expect(() => predictCeiling(share, speedup)).toThrow(/speedup/);
+  });
+
+  it('rejects --ceiling with a share > 100 (caught in the ceiling branch)', () => {
+    const result = parseArgs(args('--ceiling', '150:2'));
+    expect(result).toHaveProperty('ceiling');
+    const [share, speedup] = (result as { ceiling: [number, number] }).ceiling;
+    expect(() => predictCeiling(share, speedup)).toThrow(/sharePct/);
   });
 });

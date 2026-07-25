@@ -1,6 +1,6 @@
 {
   "schema": "agent-os-guard-telemetry-capture/v1",
-  "session": "perf-optimizer-agent",
+  "session": "perf-profile-target-selection",
   "date": "2026-07-25",
   "artifact": "files/guard-telemetry.jsonl",
   "events": 2,

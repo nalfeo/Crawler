@@ -390,8 +390,8 @@ export function mergeSummaries(summaries: readonly ProfileSummary[]): ProfileSum
  * `speedup = Infinity` (making the component free) returns `sharePct`.
  */
 export function predictCeiling(sharePct: number, speedup: number): number {
-  if (!Number.isFinite(sharePct) || sharePct < 0) {
-    throw new Error(`sharePct must be a non-negative finite number, got ${sharePct}`);
+  if (!Number.isFinite(sharePct) || sharePct < 0 || sharePct > 100) {
+    throw new Error(`sharePct must be a number in [0, 100], got ${sharePct}`);
   }
   if (Number.isNaN(speedup) || speedup < 1) {
     throw new Error(`speedup must be >= 1, got ${speedup}`);
@@ -421,7 +421,7 @@ export function formatSummary(summary: ProfileSummary, options: FormatOptions = 
   );
   lines.push(
     `Node/tsx/esbuild startup overhead: ${summary.harnessOverheadPct.toFixed(1)}% ` +
-      `(inflates every share below by ~${(100 / (100 - summary.harnessOverheadPct)).toFixed(2)}x)`,
+      `(dilutes game-code shares; true share ≈ displayed × ${(100 / (100 - summary.harnessOverheadPct)).toFixed(2)})`,
   );
   if (summary.harnessOverheadPct >= HARNESS_OVERHEAD_WARN_PCT) {
     lines.push('');
