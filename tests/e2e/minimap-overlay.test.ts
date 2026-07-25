@@ -192,7 +192,7 @@ describe('minimap visual regression', () => {
   describe('full-screen map overlay (press M)', () => {
     it('shows and hides the overlay edge arrow as zoom/pan move a tracked waypoint off-screen', async () => {
       await loadLab(page);
-      await setTrackedWaypointPx(page, 64, GAME_H / 2);
+      await setTrackedWaypointPx(page, 0, GAME_H / 2);
       await page.keyboard.press('m');
       await page.waitForTimeout(500);
 
@@ -200,9 +200,9 @@ describe('minimap visual regression', () => {
       const viewport = boundsToScreen(rect, await getMinimapOverlayViewportBounds(page));
       const edgeProbe = {
         x: viewport.x + 4,
-        y: viewport.y + Math.round(viewport.height / 2) - 12,
-        w: 24,
-        h: 24,
+        y: viewport.y + Math.round(viewport.height / 2) - 16,
+        w: 32,
+        h: 32,
       };
 
       let buf = await page.screenshot({ type: 'png' });
@@ -211,7 +211,7 @@ describe('minimap visual regression', () => {
 
       const viewportCenterX = Math.round(viewport.x + viewport.width / 2);
       const viewportCenterY = Math.round(viewport.y + viewport.height / 2);
-      for (let i = 0; i < 3; i += 1) {
+      for (let i = 0; i < 4; i += 1) {
         await page.mouse.move(viewportCenterX, viewportCenterY);
         await page.mouse.wheel(0, -240);
         await page.waitForTimeout(120);
@@ -224,7 +224,7 @@ describe('minimap visual regression', () => {
 
       await page.mouse.move(viewportCenterX, viewportCenterY);
       await page.mouse.down();
-      await page.mouse.move(viewportCenterX + 120, viewportCenterY, { steps: 8 });
+      await page.mouse.move(viewportCenterX + 180, viewportCenterY, { steps: 8 });
       await page.mouse.up();
       await page.waitForTimeout(200);
 
@@ -421,7 +421,7 @@ describe('minimap visual regression', () => {
 
       expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(true);
 
-      await setTrackedWaypointPx(page, 960, GAME_H / 2);
+      await setTrackedWaypointPx(page, GAME_W / 2, GAME_H / 2);
       buf = await page.screenshot({ type: 'png' });
       png = parsePng(buf);
       expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(false);

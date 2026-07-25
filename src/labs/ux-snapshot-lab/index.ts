@@ -249,12 +249,16 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     }
     const pos = { x: pxToFt(x), y: pxToFt(y) };
     const objective = world.floorScenario.objective;
-    objective.welcomeOfficePos = pos;
-    objective.questItemPos = pos;
-    objective.slimeRatRoomPos = pos;
-    objective.spellQuestGiverPos = pos;
-    objective.shopRoomPos = pos;
-    objective.staircasePos = pos;
+    const assignPos = (target: { x: number; y: number }): void => {
+      target.x = pos.x;
+      target.y = pos.y;
+    };
+    assignPos(objective.welcomeOfficePos);
+    assignPos(objective.questItemPos);
+    assignPos(objective.slimeRatRoomPos);
+    assignPos(objective.spellQuestGiverPos);
+    assignPos(objective.shopRoomPos);
+    assignPos(objective.staircasePos);
     setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
     hudUi?.sync(world, playerEid);
   };

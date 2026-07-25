@@ -9,7 +9,7 @@
  * never writes back. Direction depends only on the player→target vector, so it
  * is correct regardless of camera zoom.
  */
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import {
   getQuestWaypoints,
@@ -173,6 +173,10 @@ function labelBounds(label: { x: number; y: number; width: number; height: numbe
  */
 type RectEdge = 'left' | 'right' | 'top' | 'bottom';
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
 function rectEdgePt(angle: number): { edge: RectEdge; x: number; y: number } {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
@@ -195,12 +199,12 @@ function slideAlongEdge(
     case 'right':
       return {
         x: edgePoint.x,
-        y: Phaser.Math.Clamp(edgePoint.y + offset, CY - RY, CY + RY),
+        y: clamp(edgePoint.y + offset, CY - RY, CY + RY),
       };
     case 'top':
     case 'bottom':
       return {
-        x: Phaser.Math.Clamp(edgePoint.x + offset, CX - RX, CX + RX),
+        x: clamp(edgePoint.x + offset, CX - RX, CX + RX),
         y: edgePoint.y,
       };
   }
