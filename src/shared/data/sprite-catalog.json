@@ -3713,6 +3713,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-merchant-board-var-6",
+    "kind": "sprite",
+    "label": "welcome-room-merchant-board-var-6",
+    "description": "Generated sprite from brief: welcome-room-merchant-board.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-merchant-board-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-merchant-board-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-potted-plant-var-0",
     "kind": "sprite",
     "label": "welcome-room-potted-plant-var-0",
