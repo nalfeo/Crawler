@@ -1,7 +1,7 @@
 {
-  "schema": "crawler.velocity.experiment.v1",
+  "schema": "crawler-velocity-experiment/v1",
   "id": "smoke-reasoning-effort",
-  "hypothesis": "On a replayed Crawler PR with a frozen test verifier, raising reasoning effort from low to high on the same model reduces the number of agent turns needed to reach first green, at the cost of more tokens.",
+  "hypothesis": "On a replayed Crawler PR with a frozen test verifier, raising reasoning effort from low to high on the same model reduces the number of agent turns needed to reach a passing completion, at the cost of more tokens.",
   "factor": "model",
   "pack": "docs/knowledge/metrics/velocity/packs/smoke-blood-pool.json",
   "trials": 1,

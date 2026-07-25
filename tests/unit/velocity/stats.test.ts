@@ -145,6 +145,39 @@ describe('one-factor rule', () => {
     ).toThrow(/no arm varies/i);
   });
 
+  it('accepts a model experiment where only agent differs', () => {
+    expect(() =>
+      assertOneFactor(
+        spec({
+          factor: 'model',
+          arms: [
+            { id: 'a', description: 'producer', agent: 'producer' },
+            { id: 'b', description: 'perf', agent: 'perf-optimizer' },
+          ],
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it('rejects an environment experiment that swaps agents', () => {
+    expect(() =>
+      assertOneFactor(
+        spec({
+          factor: 'environment',
+          arms: [
+            { id: 'a', description: 'producer', setup: ['echo baseline'], agent: 'producer' },
+            {
+              id: 'b',
+              description: 'perf',
+              setup: ['echo baseline'],
+              agent: 'perf-optimizer',
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/two-factor/i);
+  });
+
   it('rejects duplicate arm ids and single-arm experiments', () => {
     expect(() => assertOneFactor(spec({ arms: [{ id: 'only', description: 'x' }] }))).toThrow(
       /at least 2 arms/i,

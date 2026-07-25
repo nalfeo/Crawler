@@ -45,6 +45,11 @@ describe('buildCopilotArgs', () => {
     expect(valueAfter(args, '-C')).toBe('C:/snap/t');
   });
 
+  it('does not grant global filesystem access to the trial agent', () => {
+    const args = buildCopilotArgs(arm(), options(), 'sid', 'C:/snap/t');
+    expect(args).not.toContain('--allow-all-paths');
+  });
+
   it('pins the session id so the transcript can be attributed to this trial', () => {
     const args = buildCopilotArgs(arm(), options(), 'sid-123', 'C:/snap/t');
     expect(valueAfter(args, '--session-id')).toBe('sid-123');

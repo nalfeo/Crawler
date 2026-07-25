@@ -140,8 +140,8 @@ export function compareArms(
   };
 }
 
-const MODEL_FIELDS = ['model', 'reasoningEffort', 'contextTier'] as const;
-const ENVIRONMENT_FIELDS = ['agent', 'setup'] as const;
+const MODEL_FIELDS = ['model', 'reasoningEffort', 'contextTier', 'agent'] as const;
+const ENVIRONMENT_FIELDS = ['setup'] as const;
 
 function fingerprint(arm: ArmSpec, fields: readonly (keyof ArmSpec)[]): string {
   return JSON.stringify(fields.map((field) => arm[field] ?? null));

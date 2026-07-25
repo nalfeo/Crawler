@@ -18,7 +18,7 @@ features Foo and Bar — and do they still work?**
 
 | Metric               | Role      | Why                                                        |
 | -------------------- | --------- | ---------------------------------------------------------- |
-| Turns to first green | primary   | Model calls needed; the cleanest proxy for agent effort    |
+| Turns to passing completion | primary | Model calls needed for sessions that finish green; the cleanest proxy for agent effort |
 | Tokens / nanoAiu     | primary   | What the work actually costs                               |
 | Wall clock           | secondary | Noisy — depends on machine load and API latency            |
 | Verifier pass rate   | **gate**  | A trial that fails the frozen verifier is not a data point |
@@ -44,7 +44,7 @@ The report is printed and written to `files/velocity-reports/<id>.json`.
 
 ```jsonc
 {
-  "schema": "crawler.velocity.experiment.v1",
+  "schema": "crawler-velocity-experiment/v1",
   "id": "contracts-vs-baseline",
   "hypothesis": "Written before the run. What you expect, and why.",
   "factor": "environment", // "environment" | "model"

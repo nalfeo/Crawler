@@ -261,7 +261,6 @@ export function buildCopilotArgs(
     '-C',
     snapshot,
     '--allow-all-tools',
-    '--allow-all-paths',
     '--no-ask-user',
     '--output-format',
     'json',

@@ -183,7 +183,7 @@ export interface ArmSummary {
   trials: number;
   passed: number;
   passRate: number;
-  /** Summaries computed over PASSING trials only — failures have no "time to green". */
+  /** Summaries computed over passing trials only — session cost for runs that finish green. */
   modelCalls: MetricSummary;
   outputTokens: MetricSummary;
   nanoAiu: MetricSummary;

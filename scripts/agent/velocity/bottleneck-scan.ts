@@ -75,6 +75,10 @@ function hoursBetween(from: string, to: string): number {
   return (Date.parse(to) - Date.parse(from)) / HOUR_MS;
 }
 
+function maxIsoDate(a: string, b: string): string {
+  return Date.parse(a) >= Date.parse(b) ? a : b;
+}
+
 export function computeStageTimings(prs: readonly PrRecord[]): StageTiming[] {
   const timings: StageTiming[] = [];
   for (const pr of prs) {
@@ -91,6 +95,10 @@ export function computeStageTimings(prs: readonly PrRecord[]): StageTiming[] {
 
     const firstReview = reviewTimes[0] ?? null;
     const lastCommit = commitTimes[commitTimes.length - 1] ?? null;
+    const mergeQueueStart =
+      lastCommit == null
+        ? null
+        : maxIsoDate(lastCommit, firstReview ? maxIsoDate(firstReview, pr.createdAt) : pr.createdAt);
 
     timings.push({
       prNumber: pr.number,
@@ -98,8 +106,8 @@ export function computeStageTimings(prs: readonly PrRecord[]): StageTiming[] {
       leadTimeH: hoursBetween(pr.createdAt, pr.mergedAt),
       reviewQueueH: firstReview ? Math.max(0, hoursBetween(pr.createdAt, firstReview)) : null,
       reworkH:
-        firstReview && lastCommit ? Math.max(0, hoursBetween(firstReview, lastCommit)) : null,
-      mergeQueueH: lastCommit ? Math.max(0, hoursBetween(lastCommit, pr.mergedAt)) : null,
+        firstReview && mergeQueueStart ? Math.max(0, hoursBetween(firstReview, mergeQueueStart)) : null,
+      mergeQueueH: mergeQueueStart ? Math.max(0, hoursBetween(mergeQueueStart, pr.mergedAt)) : null,
       reviewRounds: reviewTimes.length,
       churn: pr.additions + pr.deletions,
     });

@@ -4,9 +4,9 @@
  *   npm run velocity:experiment -- --spec <experiment.json>
  *
  * Runs every (task × arm × repetition) trial, then emits a verdict report with
- * per-arm verifier pass-rate, median agent turns, and median tokens to first
- * green. It refuses two-factor experiments, excludes leaked trials, and reports
- * "INCONCLUSIVE" loudly rather than inventing significance from a tiny sample.
+ * per-arm verifier pass-rate, median agent turns, and median tokens for passing
+ * completions. It refuses two-factor experiments, excludes leaked trials, and
+ * reports "INCONCLUSIVE" loudly rather than inventing significance from a tiny sample.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -193,7 +193,7 @@ export function buildWarnings(
     }
     if (arm.trials > 0 && arm.passRate === 0) {
       warnings.push(
-        `Arm "${arm.armId}" never reached a passing verifier — it has no "time to green".`,
+        `Arm "${arm.armId}" never reached a passing verifier — it has no passing completion metrics.`,
       );
     }
   }
