@@ -44,9 +44,12 @@ No functional/behavioral change; `main`'s bug-fix behavior is unchanged.
 ## Verification
 
 - Standalone `tsc --noEmit --strict` (scratch project with `typescript@5.7`,
-  `@types/node@22`) on both changed files: 0 errors (only the expected
-  `vitest` module-not-found in the test file, since `vitest` types aren't
-  installed in the standalone scratch project).
+  `@types/node@22`) on `scripts/sprites/reconcile-queue.ts`: 0 errors.
+- The same scratch `tsc` check on
+  `tests/unit/sprites/reconcile-queue.test.ts` hits the expected `vitest`
+  module-not-found because `vitest` types are not installed in the standalone
+  scratch project; full repo/CI typecheck remains authoritative for the test
+  file.
 - `prettier --config .prettierrc --write` on both files: no changes needed.
 - Local `npm ci`/`vitest` continues to hit the known MS-proxy `E404` issue
   documented in PR2's and #1925's handoffs (pre-existing, out of scope). Worked
@@ -72,5 +75,6 @@ commit, avoiding any merge-commit noise from the already-landed fix.
 
 ## Follow-ups
 
-None. This is the terminal cleanup for the merge-train label enrollment gap;
-#1925 (parent fix) and this PR (DRY + test) both merged.
+None. This is the pending terminal cleanup for the merge-train label enrollment
+gap; #1925 (parent fix) is merged, and this PR (DRY + test) is open and ready
+to merge.
