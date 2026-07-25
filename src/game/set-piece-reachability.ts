@@ -205,22 +205,37 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
 
   const { x: bx, y: by, width: bw, height: bh } = room.bounds;
 
-  // Whether the prefab carved authoritatively (bounds == footprint) or degraded
-  // to the render-only fallback. Recorded as a first-class signal (check #0 below
-  // also turns `carved: false` into a hard failure).
-  const carved = bw === def.width && bh === def.height;
+  // Whether the prefab carved authoritatively. GROUND TRUTH from the persisted
+  // `carveWelcomeRoomPrefab` `fitted` result — NOT re-derived from `bounds ==
+  // footprint`. (Code-review round 2, gpt-5.4: Floor 1's room-size config permits
+  // the generator to emit a coincidentally 10x9 welcome room, which the no-fit
+  // fallback then leaves untouched while `tagRoomAsSafe`/`sealSpecialRooms`
+  // hardens its perimeter — so a bounds match plus the #0b shell checks could BOTH
+  // pass on a render-only degraded floor, reporting "authoritative carve" when the
+  // prefab never applied. That is exactly the false-green the parent plan-review
+  // flagged. `welcomeRoomCarved` is the only unambiguous signal the carve
+  // tile-writes ran.)
+  const carved = scenario.welcomeRoomCarved === true;
 
-  // 0. The prefab carve actually happened (not the render-only fallback). When
-  //    the carve fits, the room's bounds equal the prefab footprint EXACTLY
-  //    (see carveSetPieceRoom); the legacy fallback leaves the generator's
-  //    arbitrary bounds. Asserting bounds == footprint turns a silent no-fit
-  //    fallback — which would still be "reachable" via mapgen's own walls — into
-  //    a hard gate failure, so the sweep proves the AUTHORITATIVE carve, not just
-  //    reachability. A real no-fit is a carve bug to fix (grow-into-rock / pick
-  //    another hub), never a threshold to weaken (rule #11).
+  // 0. The prefab carve actually happened (not the render-only fallback). A no-fit
+  //    degrades to the legacy render-only stamp — still "reachable" via mapgen's
+  //    own walls — so making it a hard failure proves the sweep is green because
+  //    the AUTHORITATIVE carve applied, not merely because the room is reachable.
+  //    A real no-fit is a carve bug to fix (grow-into-rock / pick another hub),
+  //    never a threshold to weaken (rule #11).
   if (!carved) {
     failures.push(
-      `welcome-room did not carve to the prefab footprint: bounds ${bw}x${bh} != footprint ${def.width}x${def.height} (no-fit fallback shipped the legacy room)`,
+      `welcome-room did not carve authoritatively (scenario.welcomeRoomCarved=${String(scenario.welcomeRoomCarved)}): the no-fit fallback shipped the legacy render-only room`,
+    );
+  }
+
+  // 0a. Defense-in-depth: when the carve DID run, its bounds MUST equal the
+  //     footprint exactly (carveSetPieceRoom resizes the room in place to the
+  //     footprint). A `fitted` carve whose bounds diverge is a carve bug distinct
+  //     from a no-fit, so assert it rather than let it slide.
+  if (carved && (bw !== def.width || bh !== def.height)) {
+    failures.push(
+      `welcome-room carved (fitted) but bounds ${bw}x${bh} != footprint ${def.width}x${def.height}: the carve wrote inconsistent bounds`,
     );
   }
 

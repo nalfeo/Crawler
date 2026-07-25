@@ -114,6 +114,20 @@ export interface FloorScenarioState {
    */
   welcomeRoomId?: number | null;
   /**
+   * Ground-truth signal that the welcome-room prefab authoritatively CARVED (its
+   * tile-write shell actually ran), persisted straight from
+   * `carveWelcomeRoomPrefab`'s `fitted` result. Consumers (the reachability gate)
+   * MUST use this rather than re-deriving carve success from `room.bounds ==
+   * footprint`: Floor 1's config permits the generator to emit a coincidentally
+   * 10x9 welcome room that `tagRoomAsSafe`/`sealSpecialRooms` then hardens, so a
+   * bounds match can be true even on the render-only no-fit fallback — a false
+   * "carved" that would let a silently-degraded floor pass the gate. `false` (or
+   * absent) ⇒ degraded to the legacy render-only stamp; that is a hard gate
+   * failure and a first-class degradation count, never an acceptable resting
+   * state.
+   */
+  welcomeRoomCarved?: boolean;
+  /**
    * Door entity IDs guarding each boss room, keyed by the same boss ID used in
    * `FloorObjectiveState.bossBattles` ('slime-rat', 'staircase', …).
    */

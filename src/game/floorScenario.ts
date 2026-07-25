@@ -1614,6 +1614,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     shopkeeperNpcEid: null,
     questItemEid: null,
     welcomeRoomId: welcomeCarve.welcomeRoomId ?? null,
+    welcomeRoomCarved: welcomeCarve.fitted,
     bossRoomDoorEids: new Map([
       ['slime-rat', []],
       ['staircase', []],
