@@ -1,0 +1,55 @@
+{
+  "id": "classic-fantasy",
+  "displayName": "Classic Fantasy",
+  "themeDesignLanguage": "Burnished steel plate with brass rivets and visible pin joints; deep crimson and old-gold heraldic cloth accents (tabards, cloaks, sashes) trimmed in simple geometric knotwork embroidery; worn-but-cared-for oiled leather straps and pouches; engraved knotwork filigree only on exposed metal edges and pommels, never covering a full plate face; matte non-reflective metal finish (no chrome/mirror sheen); silhouettes read as grounded medieval knight/adventurer gear. Excludes: sci-fi materials, glowing energy elements, modern fasteners (zippers/buckles-as-plastic), gemstone-encrusted maximalism, and anachronistic ornamentation.",
+  "weapons": [
+    { "id": "arming-sword", "displayName": "Arming Sword", "weaponType": "sword" },
+    { "id": "war-hammer", "displayName": "War Hammer", "weaponType": "hammer" },
+    { "id": "recurve-bow", "displayName": "Recurve Bow", "weaponType": "bow" },
+    { "id": "battle-axe", "displayName": "Battle Axe", "weaponType": "axe" },
+    { "id": "ashwood-spear", "displayName": "Ashwood Spear", "weaponType": "spear" },
+    { "id": "hunting-dagger", "displayName": "Hunting Dagger", "weaponType": "dagger" }
+  ],
+  "equipment": [
+    { "id": "engraved-great-helm", "displayName": "Engraved Great Helm", "slots": ["head"] },
+    {
+      "id": "amulet-of-the-old-kings",
+      "displayName": "Amulet of the Old Kings",
+      "slots": ["neck"]
+    },
+    { "id": "heraldic-cloak", "displayName": "Heraldic Cloak", "slots": ["back"] },
+    { "id": "iron-visor", "displayName": "Iron Visor", "slots": ["face"] },
+    { "id": "lion-pauldrons", "displayName": "Lion Pauldrons", "slots": ["shoulders"] },
+    { "id": "tabard-of-valor", "displayName": "Tabard of Valor", "slots": ["chest"] },
+    {
+      "id": "gauntlets-of-the-guard",
+      "displayName": "Gauntlets of the Guard",
+      "slots": ["gloves"]
+    },
+    {
+      "id": "greaves-of-the-vanguard",
+      "displayName": "Greaves of the Vanguard",
+      "slots": ["legs"]
+    },
+    { "id": "cinched-leather-belt", "displayName": "Cinched Leather Belt", "slots": ["belt"] },
+    { "id": "steel-sabatons", "displayName": "Steel Sabatons", "slots": ["feet"] },
+    { "id": "banded-vambrace-left", "displayName": "Banded Vambrace (Left)", "slots": ["leftArm"] },
+    {
+      "id": "banded-vambrace-right",
+      "displayName": "Banded Vambrace (Right)",
+      "slots": ["rightArm"]
+    },
+    {
+      "id": "oiled-leather-bracer-left",
+      "displayName": "Oiled Leather Bracer (Left)",
+      "slots": ["leftWrist"]
+    },
+    {
+      "id": "oiled-leather-bracer-right",
+      "displayName": "Oiled Leather Bracer (Right)",
+      "slots": ["rightWrist"]
+    },
+    { "id": "signet-ring-left", "displayName": "Signet Ring (Left)", "slots": ["ringLeft"] },
+    { "id": "signet-ring-right", "displayName": "Signet Ring (Right)", "slots": ["ringRight"] }
+  ]
+}

@@ -408,6 +408,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
   const designLanguageAddenda = resolveDesignLanguageAddenda(
     options.brief.name,
     options.brief.floor,
+    options.brief.theme?.designLanguage,
   );
   const hasAddendumForPrompt =
     designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;

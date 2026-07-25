@@ -35,6 +35,7 @@
  * reported as a sample mismatch rather than as a false gameplay finding.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
 import path from 'node:path';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
@@ -203,7 +204,7 @@ function isGateSample(args: CLIArgs): boolean {
 }
 
 async function main(args: CLIArgs): Promise<void> {
-  const start = Date.now();
+  const start = performance.now();
   const tasks: FingerprintTask[] = [];
   for (const weapon of args.weapons) {
     for (const seed of args.seeds) {
@@ -256,7 +257,7 @@ async function main(args: CLIArgs): Promise<void> {
   });
 
   console.log(`Hash:    ${fingerprint.hash}`);
-  console.log(`Elapsed: ${((Date.now() - start) / 1000).toFixed(0)}s`);
+  console.log(`Elapsed: ${((performance.now() - start) / 1000).toFixed(0)}s`);
   console.log('');
 
   if (args.write !== null) {

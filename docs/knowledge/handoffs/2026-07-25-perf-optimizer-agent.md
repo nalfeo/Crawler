@@ -6,7 +6,7 @@
 
 ## Systems touched
 
-agent-tooling, ci-automation
+mcp-tooling, ci-policy
 
 ## Outcome
 
@@ -21,8 +21,9 @@ So the agent ships with a deterministic proof mechanism rather than a promise.
 `npm run perf:fingerprint` replays the exact sample the blocking Floor-1 headless
 gate already requires (seeds 1–8 × sword/bow/baseball-bat) and hashes the full
 `RunStats` of every run with wall-clock fields stripped — wall time being the only
-thing an optimization is _supposed_ to change. Identical hash ⇒ identical RNG
-stream, spawns, damage, quest progression, and outcome.
+thing an optimization is _supposed_ to change. Identical hash ⇒ identical covered
+`RunStats` fields, i.e. a strong gameplay-neutrality signal for the sampled
+headless runs (not proof of identical intermediate state history).
 
 The agent's PR gate is: **full suite green AND a clean fingerprint check on the
 full gate sample.** Neither alone is sufficient. Regenerating the baseline to
@@ -31,6 +32,10 @@ make drift disappear is explicitly called out as falsifying the proof
 
 ## What changed
 
+- **New** `docs/knowledge/adr/2026-07-25-perf-fingerprint-neutrality-gate.md` —
+  records the cross-system decisions for the fingerprint gate: >10-run execution
+  policy (GitHub-backed by default), baseline lifecycle rules, coverage limits,
+  and why the fingerprint normalizer layers on top of `src/shared/canonical-json.ts`.
 - **New** `scripts/agent/perf/sim-fingerprint-lib.ts` — pure, unit-testable
   canonicalize/hash/diff helpers.
   - `canonicalize()` sorts object keys (so property insertion order can't affect

@@ -78,21 +78,27 @@ the neutrality-check procedure. Do not improvise a profiling methodology.
      `npm run review:visual` or an e2e/`ui-probe` check for anything visual, and a
      first-frame / trace measurement for load work. Say which one you did.
 
-   **Broad-sweep exception (AGENTS.md r15).** r15 defaults sweeps of >10 runs to
-   GitHub infrastructure. The 24-run fingerprint sample is an explicit, narrow
-   exception: it is not a sampling sweep but a _deterministic before/after
-   comparison_, and both halves must run on the same machine and the same build
-   for the comparison to mean anything. Run it locally. It stays a single fixed
-   24-run sample — if you find yourself wanting a wider seed range, that is a
+   **Broad-run policy (AGENTS.md r15).** r15 defaults workloads of >10 runs to
+   GitHub infrastructure. Treat the 24-run fingerprint sample the same way:
+   execute it on GitHub-backed infrastructure by default, and run it locally
+   only when a human explicitly asks. If you want a wider seed range, that is a
    sweep and r15 applies: dispatch `ai-sweep.yml`.
 
 3. **Never update the baseline to make drift go away.** A changed fingerprint means
    your change altered gameplay. Fix the change. Regenerating the baseline to match
    falsifies the check (AGENTS.md r11).
-4. **Report the win as a number.** State the before/after for the metric you targeted,
-   how it was measured, and the sample size. "Feels snappier" is not a result.
+4. **Report the win as a number, and commit the thing that measures it.** State the
+   before/after for the metric you targeted, how it was measured, and the sample size.
+   "Feels snappier" is not a result. If you wrote a bench to produce the number,
+   **commit the bench** — a throwaway you delete before the PR makes your headline
+   claim unauditable, and the next agent has to rebuild it from scratch to review you.
 5. **Reject non-wins.** If the measured improvement is inside measurement noise, say
-   so and revert. A neutral-but-riskier codebase is a net loss.
+   so and revert. A neutral-but-riskier codebase is a net loss. A win is credible only
+   when the `before` and `after` distributions do **not overlap**; a difference in
+   medians with overlapping ranges is not a result. If a large per-call win is real but
+   the end-to-end delta is inside noise, report the per-call number as the win and say
+   plainly that the end-to-end delta is inside noise — do not dress it up as a
+   percentage.
 6. **Observe before done.** Per AGENTS.md r9, name the real artifact — the running
    game (`npm run dev`) or a headless/pipeline measurement. A lab-only measurement
    does not prove a runtime win.

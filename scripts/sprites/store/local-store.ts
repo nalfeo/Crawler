@@ -20,7 +20,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { StoreNotFoundError, type RunStore } from './types.js';
+import {
+  StoreConditionalWriteError,
+  StoreNotFoundError,
+  type ConditionalWriteConditions,
+  type RunStore,
+} from './types.js';
 
 /** Monotonic suffix so concurrent `put`s in the same ms get distinct temp names. */
 let tmpCounter = 0;
@@ -63,6 +68,32 @@ export class LocalRunStore implements RunStore {
     const abs = this.abs(key);
     if (!existsSync(abs)) throw new StoreNotFoundError(key);
     return readFileSync(abs);
+  }
+
+  async getWithETag(key: string): Promise<{ data: Buffer; etag: string }> {
+    const abs = this.abs(key);
+    if (!existsSync(abs)) throw new StoreNotFoundError(key);
+    const data = readFileSync(abs);
+    const { mtimeMs, size } = statSync(abs);
+    const etag = `"${mtimeMs.toString(36)}-${size.toString(36)}"`;
+    return { data, etag };
+  }
+
+  async putConditional(
+    key: string,
+    data: Buffer,
+    conditions: ConditionalWriteConditions,
+  ): Promise<void> {
+    const abs = this.abs(key);
+    if (conditions.ifNoneMatch === '*') {
+      if (existsSync(abs)) throw new StoreConditionalWriteError(key);
+    } else if (conditions.ifMatch !== undefined) {
+      if (!existsSync(abs)) throw new StoreConditionalWriteError(key);
+      const { mtimeMs, size } = statSync(abs);
+      const currentEtag = `"${mtimeMs.toString(36)}-${size.toString(36)}"`;
+      if (currentEtag !== conditions.ifMatch) throw new StoreConditionalWriteError(key);
+    }
+    await this.put(key, data);
   }
 
   async has(key: string): Promise<boolean> {
