@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f6803079c9f3f5e5e417f8af48657bf4c2aa40b3",
+    "commitDate": "2026-07-25T15:28:34Z",
+    "commitSubject": "Fix quest arrow bouncing and add minimap edge arrows (#1941)",
+    "capturedAt": "2026-07-25T16:50:23.264Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30164076212",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/f6803079c9f3f5e5e417f8af48657bf4c2aa40b3.json"
+  },
+  {
     "commit": "6bbeea7e02ccff4fac03ce1ee4daa545e63fd7fc",
     "commitDate": "2026-07-25T13:00:14Z",
     "commitSubject": "fix(ci-recovery): fix 4 dispatch-table reviewer thread defects; restore dropped production code (#2004)",
