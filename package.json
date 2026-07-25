@@ -121,6 +121,7 @@
     "verify:labs": "npm run typecheck:src && npm run lint:labs",
     "perf:baseline": "tsx scripts/agent/perf/baseline.ts",
     "perf:find-baseline": "node scripts/agent/perf/find-baseline.mjs",
+    "perf:fingerprint": "tsx scripts/agent/perf/sim-fingerprint.ts",
     "bench": "vitest bench",
     "docs:check": "tsx scripts/agent/docs/check-paths.ts && tsx scripts/agent/docs/check-adr-consistency.ts && tsx scripts/agent/docs/check-readme-commands.ts && tsx scripts/agent/docs/check-session-instructions.ts && tsx scripts/agent/docs/check-personas.ts && tsx scripts/agent/docs/stale-game-design.ts && tsx scripts/agent/docs/lint-handoff.ts && tsx scripts/agent/docs/promote-handoffs.ts && tsx scripts/agent/docs/apple-calibration.ts && tsx scripts/agent/docs/guard-telemetry.ts && tsx scripts/agent/docs/archive-handoffs.ts",
     "security:audit": "node scripts/agent/security/npm-audit.mjs --audit-level=high",

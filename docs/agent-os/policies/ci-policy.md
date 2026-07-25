@@ -131,7 +131,7 @@ re-run `npm run test:headless` after each.
   swarm-separation kite + melee focus-dive + ranged line-of-sight reposition in
   one commit): it broke the headless gate on correctness, performance, **and**
   stability simultaneously and had to be reverted wholesale — see the
-  `docs/knowledge/handoffs/2026-06-23-revert-swarm-kite-regression.md` handoff.
+  `docs/knowledge/handoffs/archive/2026-06-23-revert-swarm-kite-regression.md` handoff.
 - **Expect an over-broad change to fail several assertions at once.** The headless
   gate (`tests/headless/floor1-completion.test.ts`) asserts correctness on
   deterministic _game_ time **and** a coarse wall-time perf-regression guard
