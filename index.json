@@ -132,6 +132,17 @@
     "path": "by-sha/c92eaaf2389f6df6edac138444a5eae6a4c29cd8.json"
   },
   {
+    "commit": "1f06239d87574d24a031bfea34b467f5eea37291",
+    "commitDate": "2026-07-24T20:37:04-07:00",
+    "commitSubject": "fix(deps): restore proxy-compatible package versions",
+    "capturedAt": "2026-07-25T05:03:01.231Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30142932602",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/1f06239d87574d24a031bfea34b467f5eea37291.json"
+  },
+  {
     "commit": "fa546158b7b20a19114465ab82ce849120948d67",
     "commitDate": "2026-07-24T16:47:10-07:00",
     "commitSubject": "ci(security): suppress brace-expansion advisory temporarily",
