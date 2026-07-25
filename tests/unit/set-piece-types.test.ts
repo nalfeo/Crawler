@@ -605,17 +605,28 @@ describe('welcome-room authored set piece', () => {
 
   it('wires the hero props to their shipped generated catalog art', () => {
     const room = getSetPieceDef('welcome-room')!;
-    // The three Kenney-sourced cozy decor props (plant, side table, stool) are
-    // placeholders: they render as honest labeled boxes and sit in the custom
-    // art-request queue until bespoke art is generated — never as arbitrary
-    // Kenney tile frames masquerading as furniture.
+    // Props whose art has not been generated yet are honest custom requests:
+    // they render as labeled boxes and sit in the custom art-request queue until
+    // bespoke art exists — never as arbitrary Kenney tile frames masquerading as
+    // furniture, and never as a plausible-but-wrong catalog reuse.
     const requestIds = collectCustomArtRequests([room])
       .map((req) => req.requestId)
       .sort();
     expect(requestIds).toEqual([
+      'welcome-room-cable-coil',
+      'welcome-room-camera-rig',
+      'welcome-room-crate-single',
+      'welcome-room-crate-stack',
+      'welcome-room-floor-seam',
+      'welcome-room-floor-stain',
+      'welcome-room-floor-tape',
+      'welcome-room-floor-worn',
       'welcome-room-lounge-stool',
       'welcome-room-potted-plant',
+      'welcome-room-show-poster',
       'welcome-room-side-table',
+      'welcome-room-trash-bin',
+      'welcome-room-wall-shelf',
     ]);
     // Those three queued decor props must NOT resolve to raw Kenney sheet
     // frames anymore — each base layer is now an honest custom request.
