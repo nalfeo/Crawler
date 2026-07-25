@@ -3609,6 +3609,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-show-poster-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-show-poster-var-0",
+    "description": "Generated sprite from brief: welcome-room-show-poster.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-show-poster-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-show-poster-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-trash-bin-var-0",
     "kind": "sprite",
     "label": "welcome-room-trash-bin-var-0",
