@@ -3648,6 +3648,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-side-table-var-12",
+    "kind": "sprite",
+    "label": "welcome-room-side-table-var-12",
+    "description": "Generated sprite from brief: welcome-room-side-table.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-side-table-var-12",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-side-table-var-12.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-trash-bin-var-0",
     "kind": "sprite",
     "label": "welcome-room-trash-bin-var-0",
