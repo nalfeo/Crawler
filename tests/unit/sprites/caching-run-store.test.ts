@@ -439,9 +439,16 @@ describe('backend / resolve', () => {
 
   it('resolveForExternalRead delegates to inner.resolveForExternalRead when present', () => {
     const signed = (key: string): string => `https://signed.example.test/${key}?sig=abc`;
-    const innerWithSas = Object.assign(Object.create(Object.getPrototypeOf(inner)) as RunStore, inner, {
+    const innerWithSas: RunStore = {
+      backend: inner.backend,
+      put: inner.put.bind(inner),
+      get: inner.get.bind(inner),
+      has: inner.has.bind(inner),
+      list: inner.list.bind(inner),
+      remove: inner.remove.bind(inner),
+      resolve: inner.resolve.bind(inner),
       resolveForExternalRead: signed,
-    });
+    };
     const wrapping = new CachingRunStore({ inner: innerWithSas, cache });
     expect(wrapping.resolveForExternalRead(SHEET)).toBe(signed(SHEET));
   });
