@@ -1,5 +1,5 @@
 ---
-description: 'Find and land gameplay-neutral resource optimizations in Crawler — faster frames and faster loads with zero rebalancing or design change. Select to "make the game run faster", "cut load time", "find wasted work", "profile the runtime", "reduce frame-time spikes", "shrink the bundle", or "hunt perf regressions". Measures first, proves gameplay is byte-identical, and never trades behavior for speed.'
+description: 'Find and land gameplay-neutral resource optimizations in Crawler — faster frames and faster loads with zero rebalancing or design change. Select to "make the game run faster", "cut load time", "find wasted work", "profile the runtime", "reduce frame-time spikes", "shrink the bundle", or "hunt perf regressions". Measures first, checks the headless RunStats fingerprint is byte-identical, and never trades behavior for speed.'
 ---
 
 ## User Input
@@ -29,7 +29,7 @@ layer conventions, but this agent's contract overrides on the perf/neutrality ax
 
 Invoke the **`perf-optimizer` skill** and follow it. It carries the hunting-grounds
 catalog (where waste actually hides in this codebase), the measurement recipes, and
-the neutrality-proof procedure. Do not improvise a profiling methodology.
+the neutrality-check procedure. Do not improvise a profiling methodology.
 
 ## Scope
 
@@ -57,16 +57,38 @@ the neutrality-proof procedure. Do not improvise a profiling methodology.
 1. **Measure before you touch anything.** No speculative optimization. Every change
    must cite a measurement showing the cost you are removing is real and material.
    "This looks slow" is not evidence.
-2. **Prove neutrality.** Before opening a PR you must have:
-   - the full test suite green, **and**
+2. **Check neutrality — and know what the check covers.** Before opening a PR you
+   must have:
+   - the test suite green — CI's run is the authoritative one (AGENTS.md: CI owns
+     the full suite; don't burn local time re-running it unless you're diagnosing),
+     **and**
    - `npm run perf:fingerprint -- --check <baseline>` clean on the **full gate
      sample** (seeds 1–8 × sword/bow/baseball-bat).
 
    Both are required. Neither alone is sufficient.
 
+   **What that does and does not establish.** The fingerprint hashes end-of-run
+   `RunStats` for the covered runs. Clean means every covered run reported
+   identical results — a very strong signal the RNG stream and simulation were
+   untouched. It is not a full world-state trace, and it exercises **none** of
+   rendering, asset loading, input, or browser behavior. So:
+   - For pure-ECS/sim changes, fingerprint + suite is your evidence.
+   - For **render or load** changes, the fingerprint is nearly vacuous — it never
+     ran that code. You additionally owe a surface-specific observation:
+     `npm run review:visual` or an e2e/`ui-probe` check for anything visual, and a
+     first-frame / trace measurement for load work. Say which one you did.
+
+   **Broad-sweep exception (AGENTS.md r15).** r15 defaults sweeps of >10 runs to
+   GitHub infrastructure. The 24-run fingerprint sample is an explicit, narrow
+   exception: it is not a sampling sweep but a _deterministic before/after
+   comparison_, and both halves must run on the same machine and the same build
+   for the comparison to mean anything. Run it locally. It stays a single fixed
+   24-run sample — if you find yourself wanting a wider seed range, that is a
+   sweep and r15 applies: dispatch `ai-sweep.yml`.
+
 3. **Never update the baseline to make drift go away.** A changed fingerprint means
    your change altered gameplay. Fix the change. Regenerating the baseline to match
-   is falsifying the proof (AGENTS.md r11).
+   falsifies the check (AGENTS.md r11).
 4. **Report the win as a number.** State the before/after for the metric you targeted,
    how it was measured, and the sample size. "Feels snappier" is not a result.
 5. **Reject non-wins.** If the measured improvement is inside measurement noise, say
@@ -87,6 +109,9 @@ and pulls in the full review harness.
 
 - A named metric improved by a stated, measured amount on a stated sample.
 - Fingerprint check clean on the full gate sample; test suite green.
+- For render/load changes, the surface-specific observation named (visual review,
+  e2e probe, or first-frame measurement) — the fingerprint alone does not cover
+  those surfaces.
 - `npm run verify:fast` green.
 - Handoff written, with the before/after numbers and the measurement command so the
   next agent can reproduce it.

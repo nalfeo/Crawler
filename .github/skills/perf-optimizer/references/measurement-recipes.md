@@ -122,7 +122,7 @@ confirms the same seeds won and lost.
 
 ---
 
-## The neutrality proof (mandatory, both directions)
+## The neutrality check (mandatory, both directions)
 
 ```bash
 # BEFORE any edit, on the clean tree:
@@ -134,13 +134,18 @@ npm run perf:fingerprint -- --check files/perf-baseline.json
 
 Full gate sample only (seeds 1–8 × sword/bow/baseball-bat) for the PR gate — the
 tool prints whether the sample it ran is the full gate sample, and warns loudly
-when it is not.
+when it is not. A narrowed `--check` against a full-gate baseline is reported as a
+**sample mismatch**, not as gameplay drift.
+
+**Coverage limit:** this replays only the headless sim. It says nothing about
+rendering, asset loading, input, or browser behavior. For render/load work you
+still owe `npm run review:visual` / an e2e probe / a first-frame measurement.
 
 On drift, the tool prints the exact run label and `RunStats` field paths that
 diverged, e.g.:
 
 ```
-Gameplay DRIFT in 1 run(s):
+RunStats DRIFT in 1 run(s):
   bow:3
     combat.totalKills: 41 → 42
     finalScore: 8120 → 8190
@@ -159,7 +164,8 @@ baseline.
 - **Before:** 312s / 308s / 315s (median 312s)
 - **After:** 271s / 269s / 274s (median 271s)
 - **Win:** −41s, −13.1%
-- **Gameplay neutrality:** `perf:fingerprint --check` clean on the full gate
+- **RunStats neutrality:** `perf:fingerprint --check` clean on the full gate
   sample (24 runs); hash `422e8836…`
-- **Suite:** `npm test` green
+- **Surface observation:** n/a (pure-ECS change) — or name the visual/load check
+- **Suite:** green in CI
 ```

@@ -2,16 +2,22 @@
 /**
  * Deterministic gameplay fingerprint for the **perf-optimizer** workflow.
  *
- * A resource optimization is only legitimate if the game plays *exactly* the
- * same afterwards. This tool proves that: it replays the same sample the
+ * A resource optimization is only legitimate if the simulation is unchanged
+ * afterwards. This tool checks that mechanically: it replays the same sample the
  * blocking Floor-1 headless gate uses — seeds 1–8 × {sword, bow, baseball-bat}
  * through the pure-ECS `runHeadless` + `BehaviorTreeAI` pipeline — and hashes
  * the full `RunStats` of every run, minus wall-clock fields (the only thing an
  * optimization is allowed to change).
  *
- * Identical hash ⇒ identical simulation: same RNG stream, same spawns, same
- * damage, same quest progression, same outcome. Any drift means the change
- * altered gameplay and is NOT a pure optimization.
+ * ## Scope of the guarantee
+ *
+ * An identical hash means every covered run produced identical **reported
+ * results** — same outcome, spawns-as-reflected-in-kills, damage, quest
+ * progression, level/XP/gold. In practice that is a very strong signal the RNG
+ * stream was untouched, since almost any divergence moves at least one field.
+ * It is not a full world-state trace, and it covers **nothing** outside the
+ * headless sim: rendering, asset loading, input, and browser behavior are not
+ * exercised at all. Render/load optimizations need their own observation.
  *
  * Usage
  * -----
@@ -24,9 +30,9 @@
  *   # Narrow the sample while iterating (NOT valid as the PR gate):
  *   npm run perf:fingerprint -- --seeds 1-2 --weapons sword --write files/quick.json
  *
- * `--check` exits 1 on any drift and prints the exact divergent fields, so it
- * can be wired straight into a pre-PR script. The default sample matches the
- * required gate; narrowing it is for fast local iteration only.
+ * `--check` exits 1 on any drift and prints the exact divergent fields. A
+ * baseline records the sample it covers, so comparing mismatched workloads is
+ * reported as a sample mismatch rather than as a false gameplay finding.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -34,7 +40,12 @@ import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import type { RunStats } from '../../../src/game/ai/types.js';
-import { GAME } from '../../../src/shared/constants.js';
+import {
+  GATE_MAX_FRAMES,
+  GATE_SEEDS,
+  GATE_WALL_TIME_CAP_MS,
+  GATE_WEAPONS,
+} from './floor1-gate-sample.js';
 import {
   buildFingerprint,
   compareFingerprints,
@@ -48,18 +59,6 @@ import {
   type WorkerTaskFailure,
   type WorkerTaskSuccess,
 } from './worker-pool.js';
-
-/**
- * The gate sample, mirroring `tests/headless/floor1-completion.test.ts`. Keep
- * these in lockstep with that gate: the whole point is that the fingerprint
- * covers the runs CI already requires, so a green fingerprint plus a green
- * suite is a complete gameplay-neutrality proof.
- */
-const GATE_SEEDS = Array.from({ length: 8 }, (_, i) => i + 1);
-const GATE_WEAPONS = ['sword', 'bow', 'baseball-bat'];
-const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
-const MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
-const WALL_TIME_CAP_MS = 30 * 60 * 1000;
 
 interface FingerprintTask {
   weapon: string;
@@ -83,7 +82,7 @@ async function runFingerprintTask(
   const stats = await runHeadless(ai, {
     seed: task.seed,
     maxFrames: config.maxFrames,
-    maxWallTimeMs: WALL_TIME_CAP_MS,
+    maxWallTimeMs: GATE_WALL_TIME_CAP_MS,
     forceWeaponId: task.weapon,
   });
   return { task, stats };
@@ -127,10 +126,10 @@ function parseSeeds(raw: string): number[] {
 
 function parseArgs(argv: readonly string[]): CLIArgs {
   const args: CLIArgs = {
-    seeds: GATE_SEEDS,
-    weapons: GATE_WEAPONS,
+    seeds: [...GATE_SEEDS],
+    weapons: [...GATE_WEAPONS],
     workers: 4,
-    maxFrames: MAX_FRAMES,
+    maxFrames: GATE_MAX_FRAMES,
     write: null,
     check: null,
   };
@@ -195,7 +194,7 @@ function parseArgs(argv: readonly string[]): CLIArgs {
 
 function isGateSample(args: CLIArgs): boolean {
   return (
-    args.maxFrames === MAX_FRAMES &&
+    args.maxFrames === GATE_MAX_FRAMES &&
     args.seeds.length === GATE_SEEDS.length &&
     args.seeds.every((seed, i) => seed === GATE_SEEDS[i]) &&
     args.weapons.length === GATE_WEAPONS.length &&
@@ -250,7 +249,11 @@ async function main(args: CLIArgs): Promise<void> {
     seed: result.task.seed,
     stats: result.stats,
   }));
-  const fingerprint = buildFingerprint(runs);
+  const fingerprint = buildFingerprint(runs, {
+    seeds: args.seeds,
+    weapons: args.weapons,
+    maxFrames: args.maxFrames,
+  });
 
   console.log(`Hash:    ${fingerprint.hash}`);
   console.log(`Elapsed: ${((Date.now() - start) / 1000).toFixed(0)}s`);
@@ -282,13 +285,16 @@ async function main(args: CLIArgs): Promise<void> {
 
   const comparison = compareFingerprints(baseline, fingerprint);
   console.log(formatComparison(comparison));
+  if (comparison.versionMismatch || comparison.sampleMismatch !== null) {
+    // Not a gameplay finding — the two fingerprints simply aren't comparable.
+    process.exit(1);
+  }
   if (!comparison.identical) {
     console.log('');
     console.log(
       'This change is NOT gameplay-neutral. Fix the divergence — do not update the baseline to match.',
     );
-    process.exitCode = 1;
-    return;
+    process.exit(1);
   }
   if (!gateSample) {
     console.log('');

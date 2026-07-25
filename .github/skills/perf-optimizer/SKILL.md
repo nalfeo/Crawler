@@ -1,6 +1,6 @@
 ---
 name: perf-optimizer
-description: Find and land gameplay-neutral resource optimizations in Crawler — faster frames, faster loads, less wasted work, with provably identical gameplay. Use when asked to "make the game run faster", "cut load time", "find where we're wasting time", "profile the runtime", "fix frame-time spikes", "shrink the bundle", "reduce GC pressure", or "hunt a perf regression". Covers measuring first, the hunting-grounds catalog of where waste hides in this codebase, and the mandatory byte-identical `RunStats` neutrality proof before PR.
+description: Find and land gameplay-neutral resource optimizations in Crawler — faster frames, faster loads, less wasted work, with provably identical gameplay. Use when asked to "make the game run faster", "cut load time", "find where we're wasting time", "profile the runtime", "fix frame-time spikes", "shrink the bundle", "reduce GC pressure", or "hunt a perf regression". Covers measuring first, the hunting-grounds catalog of where waste hides in this codebase, and the mandatory byte-identical `RunStats` neutrality check before PR.
 ---
 
 # Perf Optimizer
@@ -12,12 +12,24 @@ changing what the game does.
 
 Every change you land must satisfy both halves:
 
-| Half               | Proof                                                                                    |
-| ------------------ | ---------------------------------------------------------------------------------------- |
-| It's faster        | A before/after number on a named metric, from a repeatable command                       |
-| It's the same game | Full test suite green **AND** a clean `perf:fingerprint --check` on the full gate sample |
+| Half               | Evidence                                                                            |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| It's faster        | A before/after number on a named metric, from a repeatable command                  |
+| It's the same game | Test suite green **AND** a clean `perf:fingerprint --check` on the full gate sample |
 
 Missing either half means the work is not done. There is no "probably fine".
+
+**Know the limits of the neutrality check.** The fingerprint hashes end-of-run
+`RunStats` for the covered runs. Clean means every covered run reported identical
+results — in practice a very strong signal that the RNG stream and the simulation
+are untouched, since almost any divergence moves at least one field. But it is not
+a full world-state trace, and the headless pipeline exercises **no** rendering,
+asset loading, input, or browser behavior. For **render or load** changes the
+fingerprint is close to vacuous: it never ran that code. Those need a
+surface-specific observation as well (see step 6).
+
+The "test suite green" half is satisfied by **CI's** run. Per AGENTS.md, CI owns
+the full suite — run it locally only when diagnosing or when the human asks.
 
 ## Workflow
 
@@ -48,8 +60,15 @@ While iterating you can narrow the sample for a fast signal:
 npm run perf:fingerprint -- --seeds 1-2 --weapons sword --write files/quick.json
 ```
 
-A narrowed sample is **local iteration only** — the tool labels it as such and it
-never satisfies the PR gate.
+A narrowed sample is **local iteration only** — the tool labels it as such, refuses
+to compare it against a full-gate baseline, and it never satisfies the PR gate.
+
+> **Why this 24-run sample runs locally.** AGENTS.md r15 sends sweeps of >10 runs
+> to GitHub infrastructure. This is an explicit, narrow exception: it is not a
+> sampling sweep but a _deterministic before/after comparison_, and both halves
+> must run on the same machine and build for the comparison to mean anything. It
+> stays a fixed 24-run sample. If you want a wider seed range, that **is** a sweep
+> — dispatch `ai-sweep.yml` and r15 applies.
 
 ### 3. Measure the cost you intend to remove
 
@@ -79,20 +98,36 @@ guessing. The recurring shapes:
 One optimization per PR where practical. Bundled changes make it impossible to
 attribute either the win or a later regression.
 
-### 6. Prove both halves
+### 6. Check both halves
 
 ```bash
-npm run perf:fingerprint -- --check files/perf-baseline.json   # gameplay identical
+npm run perf:fingerprint -- --check files/perf-baseline.json   # RunStats unchanged
 npm run verify:fast                                            # fast gates
-npm test                                                       # full suite
 ```
+
+The full suite is CI's job — don't burn local minutes on `npm test` unless you are
+diagnosing a specific failure.
+
+**If your change touched rendering, asset loading, scene setup, or the boot path,
+the fingerprint did not cover it.** Add the matching observation and name it in the
+PR:
+
+| Change touches            | Additional observation                                           |
+| ------------------------- | ---------------------------------------------------------------- |
+| rendering / HUD / sprites | `npm run review:visual`, or an e2e `ui-probe`/pixel assertion    |
+| boot / asset load         | first-frame or load-time measurement (see recipes), before/after |
+| scene & floor transitions | e2e transition test plus the load measurement                    |
 
 Re-run your measurement from step 3 and record the before/after.
 
 **If the fingerprint reports drift, your change altered gameplay.** Read the
 reported field paths — the tool names the exact divergent `RunStats` fields and
 runs. Fix the change. **Never** regenerate the baseline to make drift disappear;
-that falsifies the proof and violates AGENTS.md r11.
+that falsifies the check and violates AGENTS.md r11.
+
+(A _sample mismatch_ is different and is not a gameplay finding — it means you
+checked a narrowed run against a full-gate baseline. Re-run with the same
+`--seeds`/`--weapons`/`--max-frames`.)
 
 ### 7. Report
 

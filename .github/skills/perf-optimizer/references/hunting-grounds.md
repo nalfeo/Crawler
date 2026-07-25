@@ -4,8 +4,9 @@ A catalog of the places in this codebase where gameplay-neutral waste has
 historically lived or is structurally likely. Start here instead of guessing.
 Each entry names the surface, the pattern to look for, and the neutrality risk.
 
-Every candidate is still subject to the contract: measure it, then prove the
-fingerprint is unchanged.
+Every candidate is still subject to the contract: measure it, then check the
+fingerprint is unchanged — and for render/load candidates, add the
+surface-specific observation the fingerprint cannot give you.
 
 ---
 
@@ -94,10 +95,12 @@ per frame, per-frame texture or tint churn, redundant depth sorting.
 
 **Neutral fix:** dirty-flagging, and skipping submission when nothing changed.
 
-**Risk:** **zero gameplay risk** (rendering can't feed the sim — that's the whole
-point of the bridge pattern), but real _visual_ risk. This is the safest
-category for gameplay neutrality and the one where visual verification matters
-most: observe the running game, not just the fingerprint.
+**Risk:** **zero pure-ECS simulation risk** (rendering can't feed the sim — that's
+the whole point of the bridge pattern), but **nonzero player-facing risk**:
+dirty-flagging can break attack telegraphs, depth ordering, input hit-areas
+attached to display objects, and first-use hitches. The fingerprint is nearly
+vacuous here — it never runs this code. Visual/e2e observation is the real gate:
+`npm run review:visual` or a `ui-probe`/pixel assertion, plus the running game.
 
 ---
 
