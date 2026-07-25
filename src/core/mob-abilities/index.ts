@@ -7,5 +7,6 @@
 export * from './types.js';
 export * from './runtime.js';
 export * from './verdigris-glamour.js';
+export * from './undercity-mob-call.js';
 export * from './bamboo-fed-berserk.js';
 export * from './clockwork-kill-saw.js';

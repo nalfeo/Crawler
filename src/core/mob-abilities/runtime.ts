@@ -88,7 +88,11 @@ export function registerMobAbility(
     resolvedCasts: 0,
     announcementsEmitted: 0,
     registrationToken: token,
+<<<<<<< HEAD
     activeState: null,
+=======
+    ownedEntityGenerations: new Map(),
+>>>>>>> origin/main
   });
 }
 
@@ -126,6 +130,7 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   for (const eid of [...world.statusEffectsByEntity.keys()]) {
     clearStatusEffects(world, eid, (effect) => effect.sourceId === sourceId);
   }
+  inst.ownedEntityGenerations.clear();
   world.mobAbilities.activeBuffsByEntity.delete(casterEid);
 }
 
@@ -222,20 +227,66 @@ function isTargetValid(
 
 function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
-  const targetingMode = normalizedTargetingMode(def);
-  let targetEid: number | null;
-  let pos: { x: number; y: number } | null = null;
-
-  if (targetingMode === 'self') {
-    targetEid = casterEid;
-    pos = targetPosition(world, casterEid);
-  } else {
-    // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
-    targetEid = findDefaultTarget(world);
-    if (targetEid !== null) {
-      pos = targetPosition(world, targetEid);
+  // Spawn-circle abilities commit deterministic caster-relative geometry directly.
+  if (def.geometry.kind === 'spawn-circles') {
+    const x = world.stores.position.x[casterEid];
+    const y = world.stores.position.y[casterEid];
+    if (x === undefined || y === undefined) {
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
     }
+    const circles: Array<{ kind: 'circle'; x: number; y: number; radiusFt: number }> = [];
+    for (let i = 0; i < def.geometry.count; i += 1) {
+      const angle = (i / def.geometry.count) * Math.PI * 2;
+      circles.push({
+        kind: 'circle',
+        x: x + Math.cos(angle) * def.geometry.distanceFromCasterFt,
+        y: y + Math.sin(angle) * def.geometry.distanceFromCasterFt,
+        radiusFt: def.geometry.radiusFt,
+      });
+    }
+    inst.phase = 'telegraph';
+    inst.timerMs = def.telegraphDurationMs;
+    inst.committedTargetEid = null;
+    inst.committedTargetGeneration = null;
+    inst.committedGeometry = { kind: 'spawn-circles', circles };
+  } else {
+    const targetingMode = normalizedTargetingMode(def);
+    let targetEid: number | null;
+    let pos: { x: number; y: number } | null = null;
+
+    if (targetingMode === 'self') {
+      targetEid = casterEid;
+      pos = targetPosition(world, casterEid);
+    } else {
+      // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
+      targetEid = findDefaultTarget(world);
+      if (targetEid !== null) {
+        pos = targetPosition(world, targetEid);
+      }
+    }
+    if (pos === null) {
+      // No valid target/origin to lock onto — skip this cast and re-arm cooldown.
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    inst.phase = 'telegraph';
+    inst.timerMs = def.telegraphDurationMs;
+    inst.committedTargetEid = targetingMode === 'self' ? null : targetEid;
+    inst.committedTargetGeneration =
+      targetingMode === 'self' || targetEid === null
+        ? null
+        : (world.entityRenderGeneration[targetEid] ?? 0);
+    inst.committedGeometry = {
+      kind: 'circle',
+      x: pos.x,
+      y: pos.y,
+      radiusFt: def.geometry.radiusFt,
+    };
   }
+<<<<<<< HEAD
   if (pos === null) {
     // No valid target/origin to lock onto — skip this cast and re-arm cooldown.
     inst.phase = 'cooldown';
@@ -266,6 +317,8 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
           def.geometry.maxRangeFt,
         )),
   };
+=======
+>>>>>>> origin/main
 
   // Announcement is emitted exactly once, here, per cast.
   pushAnnouncement(world.announcements, {
@@ -298,6 +351,7 @@ function syncTelegraphGeometryToCaster(
   inst: MobAbilityInstanceState,
 ): void {
   if (inst.committedGeometry === null) return;
+  if (inst.committedGeometry.kind !== 'circle') return;
   if (normalizedOriginMode(inst.definition) !== 'follows-caster') return;
   if (inst.committedGeometry.kind !== 'circle') return;
   const pos = targetPosition(world, casterEid);
@@ -327,8 +381,13 @@ function pinCasterDuringTelegraph(
 function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
   const geometry = inst.committedGeometry;
+  const countOwnedLiving = () => pruneOwnedEntities(world, inst);
+  const registerOwnedEntity = (eid: number): void => {
+    inst.ownedEntityGenerations.set(eid, world.entityRenderGeneration[eid] ?? 0);
+  };
   const targetingMode = normalizedTargetingMode(def);
   const canResolve =
+    def.geometry.kind === 'spawn-circles' ||
     targetingMode === 'self' ||
     isTargetValid(world, inst.committedTargetEid, inst.committedTargetGeneration);
   // Revalidate the locked target before resolution. If the player died,
@@ -341,6 +400,8 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
       sourceId: mobAbilitySourceId(def.abilityId, casterEid),
       geometry,
       targetEid: inst.committedTargetEid,
+      countOwnedLiving,
+      registerOwnedEntity,
     });
     if (def.activeEffect?.kind === 'returning-lane' && geometry.kind === 'lane') {
       inst.phase = 'active';
@@ -363,7 +424,10 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
     // burst even if the caster dies later in the same simulation step (which
     // would remove byEntity[casterEid] before PhaserBridge.sync runs).
     // Bounded push prevents unbounded headless growth (VFX is the sole drain).
-    pushMobAbilityBurst(world.mobAbilities.pendingBursts, geometry);
+    pushMobAbilityBurst(world.mobAbilities.pendingBursts, {
+      abilityId: def.abilityId,
+      geometry,
+    });
   }
   // Re-arm: cooldown is anchored AFTER resolution.
   inst.phase = 'cooldown';
@@ -605,6 +669,27 @@ function updateActiveState(
   pushActiveCue(world, casterEid, inst);
 }
 
+function pruneOwnedEntities(world: GameWorld, inst: MobAbilityInstanceState): number {
+  for (const [eid, generation] of [...inst.ownedEntityGenerations.entries()]) {
+    if (!entityExists(world.ecs, eid)) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if ((world.entityRenderGeneration[eid] ?? -1) !== generation) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if (!hasComponent(world.ecs, eid, Health)) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if ((world.stores.health.current[eid] ?? 0) <= 0) {
+      inst.ownedEntityGenerations.delete(eid);
+    }
+  }
+  return inst.ownedEntityGenerations.size;
+}
+
 export interface ActivateMobAbilitySelfBuffInput {
   readonly abilityId: string;
   readonly casterEid: number;
@@ -712,6 +797,7 @@ export function mobAbilitySystem(world: GameWorld): void {
       clearMobAbility(world, casterEid);
       continue;
     }
+    pruneOwnedEntities(world, inst);
 
     if (inst.phase === 'active') {
       updateActiveState(world, casterEid, inst);

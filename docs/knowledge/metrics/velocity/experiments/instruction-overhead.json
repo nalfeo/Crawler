@@ -1,0 +1,26 @@
+{
+  "schema": "crawler-velocity-experiment/v1",
+  "id": "instruction-overhead",
+  "hypothesis": "The repo's instruction surface (AGENTS.md + .github/copilot-instructions.md + .github/instructions/, ~65KB / ~16K tokens loaded into every session) is a net context tax on a small, well-scoped feature task. Removing it should reduce tool-result bytes and output tokens to first green, with turns roughly unchanged. NOTE: the verifier only checks the PR's own tests, so it CANNOT see policy compliance. A win here means 'cheaper to reach green', never 'instructions are not worth their cost'.",
+  "factor": "environment",
+  "pack": "docs/knowledge/metrics/velocity/packs/smoke-blood-pool.json",
+  "trials": 3,
+  "maxAiCredits": 600,
+  "defaultModel": "claude-sonnet-4.6",
+  "arms": [
+    {
+      "id": "full-instructions",
+      "description": "Status quo: repo instruction surface present and untouched.",
+      "setup": [
+        "node -e \"const fs=require('fs');const need=['AGENTS.md','.github/copilot-instructions.md','.github/instructions'];const missing=need.filter(p=>!fs.existsSync(p));if(missing.length){console.error('control arm is not the status quo, missing: '+missing.join(', '));process.exit(1)}\""
+      ]
+    },
+    {
+      "id": "trimmed-instructions",
+      "description": "Instruction surface removed: no AGENTS.md, no copilot-instructions.md, no .github/instructions/. Skills and agent definitions are left intact so only one factor moves.",
+      "setup": [
+        "node -e \"const fs=require('fs');for(const p of ['AGENTS.md','.github/copilot-instructions.md'])fs.rmSync(p,{force:true});fs.rmSync('.github/instructions',{recursive:true,force:true});const left=['AGENTS.md','.github/copilot-instructions.md','.github/instructions'].filter(p=>fs.existsSync(p));if(left.length){console.error('trim did not take effect, still present: '+left.join(', '));process.exit(1)}\""
+      ]
+    }
+  ]
+}

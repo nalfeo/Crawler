@@ -206,9 +206,13 @@ function makeResolveHandler(ability: BossAbilityDef) {
   const tuning = readTarnishedTuning(ability);
   return function resolveVerdigrisGlamour(world: GameWorld, ctx: MobAbilityResolveContext): void {
     const { geometry, casterEid, sourceId } = ctx;
+<<<<<<< HEAD
     if (geometry.kind !== 'circle') {
       throw new Error('Verdigris Glamour requires committed circle geometry');
     }
+=======
+    if (geometry.kind !== 'circle') return;
+>>>>>>> origin/main
     const r2 = geometry.radiusFt * geometry.radiusFt;
     // Every damageable entity inside the committed circle (except the caster)
     // takes moderate damage and is Tarnished. Entities outside are untouched.

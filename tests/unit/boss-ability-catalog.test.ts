@@ -283,32 +283,51 @@ describe('Floor 2 boss ability delivery status', () => {
     expect(queen?.status.arenaLabState).toBe('verified');
     expect(queen?.status.runtimeState).toBe('verified');
     expect(queen?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    const squick = records.find((record) => record.ability.bossArchetypeId === 'ratfolk-boss');
+    expect(squick?.status.arenaLabState).toBe('verified');
+    expect(squick?.status.runtimeState).toBe('verified');
+    expect(squick?.status.telegraphVfxState).toBe('verified');
+    expect(squick?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     const panda = records.find((record) => record.ability.bossArchetypeId === 'panda-boss');
     expect(panda?.status.arenaLabState).toBe('verified');
     expect(panda?.status.runtimeState).toBe('verified');
     expect(panda?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+<<<<<<< HEAD
     const fizzwick = records.find((record) => record.ability.bossArchetypeId === 'gnome-boss');
     expect(fizzwick?.status.arenaLabState).toBe('verified');
     expect(fizzwick?.status.runtimeState).toBe('verified');
     expect(fizzwick?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+=======
+>>>>>>> origin/main
     // The other 15 abilities remain blocked purely by the production-enable
     // gate; arena slices must not promote them to ready.
     for (const record of records.filter(
       (candidate) =>
         candidate.ability.bossArchetypeId !== 'faerie-boss' &&
+<<<<<<< HEAD
         candidate.ability.bossArchetypeId !== 'panda-boss' &&
         candidate.ability.bossArchetypeId !== 'gnome-boss',
+=======
+        candidate.ability.bossArchetypeId !== 'ratfolk-boss' &&
+        candidate.ability.bossArchetypeId !== 'panda-boss',
+>>>>>>> origin/main
     )) {
       expect(record.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     }
   });
 
+<<<<<<< HEAD
   it('promotes the remaining 15-boss backlog only when the production-enable gate is verified', () => {
     const backlog = FLOOR2_BOSS_ABILITY_STATUS.entries.filter(
       (entry) =>
         entry.abilityId !== 'queen-mab-verdigris-glamour' &&
         entry.abilityId !== 'big-panda-wei-bamboo-fed-berserk' &&
         entry.abilityId !== 'overseer-fizzwick-clockwork-kill-saw',
+=======
+  it('promotes the not-started backlog only when the production-enable gate is verified', () => {
+    const backlog = FLOOR2_BOSS_ABILITY_STATUS.entries.filter(
+      (entry) => entry.runtimeState === 'not-started',
+>>>>>>> origin/main
     );
     expect(backlog.every((entry) => entry.foundationState === 'verified')).toBe(true);
 
@@ -318,6 +337,7 @@ describe('Floor 2 boss ability delivery status', () => {
         gate.id === 'floor2-boss-production-enable' ? { ...gate, state: 'verified' } : gate,
       ),
     });
+<<<<<<< HEAD
     const promotedBacklog = promoted.entries.filter(
       (entry) =>
         entry.abilityId !== 'queen-mab-verdigris-glamour' &&
@@ -325,6 +345,12 @@ describe('Floor 2 boss ability delivery status', () => {
         entry.abilityId !== 'overseer-fizzwick-clockwork-kill-saw',
     );
     expect(promotedBacklog).toHaveLength(15);
+=======
+    const promotedBacklog = promoted.entries.filter((entry) =>
+      backlog.some((candidate) => candidate.abilityId === entry.abilityId),
+    );
+    expect(promotedBacklog).toHaveLength(backlog.length);
+>>>>>>> origin/main
     expect(
       promotedBacklog.every((entry) => deriveBossAbilityDeliveryStage(entry, promoted) === 'ready'),
     ).toBe(true);
