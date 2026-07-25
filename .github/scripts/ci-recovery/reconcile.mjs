@@ -1257,10 +1257,15 @@ if (
             .replace(/[\r\n]/g, ' ')
             .slice(0, 500);
           process.stderr.write(`loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`);
-          // Re-throw: successful incident filing is a prerequisite for releasing
-          // the lock.  Retaining the lock means the next stale-sweep will retry
-          // filing rather than silently abandoning the exhausted PR.
-          throw err;
+          // Exit non-zero WITHOUT releasing the lock.  Re-throwing would trigger
+          // the global unhandledRejection handler (reportUnexpectedError), which
+          // calls releaseUnexpectedOwnership() → release('unexpected-error') and
+          // writes owner:'none'/status:'idle' — causing the next sweep to skip
+          // this path entirely (labelExists && state.owner==='automation' guard
+          // fails).  By calling process.exit(1) directly (no throw, no release),
+          // the automation lock is intentionally retained so the next
+          // automationLeaseStale sweep re-enters this branch and retries filing.
+          process.exit(1);
         }
       } else {
         process.stdout.write(
