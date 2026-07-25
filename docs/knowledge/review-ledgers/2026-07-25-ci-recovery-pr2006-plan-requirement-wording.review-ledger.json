@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "ci-recovery-pr2006-plan-requirement-wording",
+  "task_title": "Fix CI recovery plan-requirement wording detection",
+  "estimated_apples": 2,
+  "stages": {}
+}
