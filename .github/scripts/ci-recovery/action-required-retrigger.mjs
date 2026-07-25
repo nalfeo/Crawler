@@ -52,25 +52,56 @@ async function request(token, path) {
 }
 
 function git(args, options = {}) {
-  execFileSync('git', args, { stdio: 'inherit', ...options });
+  return execFileSync('git', args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    ...options,
+  });
 }
 
-function pushEmptyCommit(pull) {
+function isLeaseMiss(error) {
+  const details = [error?.message, error?.stdout, error?.stderr]
+    .filter((value) => typeof value === 'string' && value.length > 0)
+    .join('\n');
+  return /stale info|cannot lock ref .* but expected/i.test(details);
+}
+
+export function pushEmptyCommit(
+  pull,
+  {
+    owner: repoOwner = owner,
+    repo: repoName = repo,
+    retriggerPat = retriggerToken,
+    git: runGit = git,
+  } = {},
+) {
   const branch = pull.head.ref;
   const localBranch = `retrigger-${pull.number}`;
-  const remote = `https://x-access-token:${retriggerToken}@github.com/${owner}/${repo}.git`;
-  git(['config', 'user.name', 'crawler-ci-recovery']);
-  git(['config', 'user.email', 'crawler-ci-recovery@users.noreply.github.com']);
-  git(['remote', 'set-url', 'origin', remote], { stdio: 'ignore' });
-  git(['fetch', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`]);
-  git(['checkout', '-B', localBranch, `refs/remotes/origin/${branch}`]);
-  git([
+  const validatedSha = pull.head.sha;
+  const remote = `https://x-access-token:${retriggerPat}@github.com/${repoOwner}/${repoName}.git`;
+  runGit(['config', 'user.name', 'crawler-ci-recovery']);
+  runGit(['config', 'user.email', 'crawler-ci-recovery@users.noreply.github.com']);
+  runGit(['remote', 'set-url', 'origin', remote], { stdio: 'ignore' });
+  runGit(['fetch', 'origin', validatedSha]);
+  runGit(['checkout', '-B', localBranch, 'FETCH_HEAD']);
+  runGit([
     'commit',
     '--allow-empty',
     '-m',
     `chore(ci): retrigger parked checks for PR #${pull.number}`,
   ]);
-  git(['push', 'origin', `HEAD:refs/heads/${branch}`]);
+  try {
+    runGit([
+      'push',
+      `--force-with-lease=refs/heads/${branch}:${validatedSha}`,
+      'origin',
+      `HEAD:refs/heads/${branch}`,
+    ]);
+    return 'pushed';
+  } catch (error) {
+    if (isLeaseMiss(error)) return 'lease-miss';
+    throw error;
+  }
 }
 
 async function main() {
@@ -107,7 +138,11 @@ async function main() {
     return;
   }
 
-  pushEmptyCommit(pull);
+  const pushResult = pushEmptyCommit(pull);
+  if (pushResult === 'lease-miss') {
+    process.stdout.write(`skip run=${runId} pr=#${pull.number} reason=lease-miss\n`);
+    return;
+  }
   process.stdout.write(`retriggered pr=#${pull.number} run=${runId} branch=${pull.head.ref}\n`);
 }
 

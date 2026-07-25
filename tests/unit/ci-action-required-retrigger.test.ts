@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 // @ts-expect-error CI scripts are authored as ESM JavaScript, not typed app modules.
-import { classifyParkedRun } from '../../.github/scripts/ci-recovery/action-required-retrigger.mjs';
+import {
+  classifyParkedRun,
+  pushEmptyCommit,
+} from '../../.github/scripts/ci-recovery/action-required-retrigger.mjs';
 
 const baseRun = {
   id: 123,
@@ -56,5 +59,68 @@ describe('action-required retrigger classification', () => {
         repository: 'nalfeo/Crawler',
       }),
     ).toBe('head-moved');
+  });
+});
+
+describe('pushEmptyCommit', () => {
+  it('fetches the validated sha and pushes with a force-with-lease bound to it', () => {
+    const calls: unknown[][] = [];
+    const result = pushEmptyCommit(
+      {
+        number: 42,
+        head: {
+          ref: 'feature/retrigger',
+          sha: 'a'.repeat(40),
+          repo: { full_name: 'nalfeo/Crawler' },
+        },
+      },
+      {
+        owner: 'nalfeo',
+        repo: 'Crawler',
+        retriggerPat: 'test-token',
+        git: (args: unknown[]) => {
+          calls.push(args);
+          return '';
+        },
+      },
+    );
+
+    expect(result).toBe('pushed');
+    expect(calls).toContainEqual(['fetch', 'origin', 'a'.repeat(40)]);
+    expect(calls).toContainEqual([
+      'push',
+      `--force-with-lease=refs/heads/feature/retrigger:${'a'.repeat(40)}`,
+      'origin',
+      'HEAD:refs/heads/feature/retrigger',
+    ]);
+  });
+
+  it('treats force-with-lease drift as a safe skip', () => {
+    const result = pushEmptyCommit(
+      {
+        number: 42,
+        head: {
+          ref: 'feature/retrigger',
+          sha: 'b'.repeat(40),
+          repo: { full_name: 'nalfeo/Crawler' },
+        },
+      },
+      {
+        owner: 'nalfeo',
+        repo: 'Crawler',
+        retriggerPat: 'test-token',
+        git: (args: unknown[]) => {
+          if (args[0] === 'push') {
+            const error = new Error('stale info');
+            // @ts-expect-error test fixture simulates execFileSync error shape.
+            error.stderr = 'stale info';
+            throw error;
+          }
+          return '';
+        },
+      },
+    );
+
+    expect(result).toBe('lease-miss');
   });
 });

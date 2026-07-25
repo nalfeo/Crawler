@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bucketBySize,
+  collectMergedPrPages,
   computeStageTimings,
   deriveFindings,
   fetchMergedPrs,
@@ -258,5 +259,58 @@ describe('deriveFindings', () => {
 
   it('reports honestly when the sample shows nothing', () => {
     expect(deriveFindings(report({})).join('\n')).toMatch(/Widen --limit/);
+  });
+});
+
+describe('collectMergedPrPages', () => {
+  it('keeps paging by stable cursor when merge order differs from creation order', () => {
+    const calls: Array<string | null | undefined> = [];
+    const prs = collectMergedPrPages((_pageSize, cursor) => {
+      calls.push(cursor);
+      if (!cursor) {
+        return {
+          prs: [
+            {
+              number: 30,
+              title: 'newest created',
+              createdAt: at(30),
+              mergedAt: at(90),
+              additions: 1,
+              deletions: 0,
+              changedFiles: 1,
+            },
+            {
+              number: 20,
+              title: 'older created',
+              createdAt: at(20),
+              mergedAt: at(70),
+              additions: 1,
+              deletions: 0,
+              changedFiles: 1,
+            },
+          ],
+          hasNextPage: true,
+          endCursor: 'CURSOR_1',
+        };
+      }
+      return {
+        prs: [
+          {
+            number: 10,
+            title: 'long lived but merged late',
+            createdAt: at(10),
+            mergedAt: at(85),
+            additions: 1,
+            deletions: 0,
+            changedFiles: 1,
+          },
+        ],
+        hasNextPage: false,
+        endCursor: null,
+      };
+    }, 3);
+
+    expect(calls).toEqual([null, 'CURSOR_1']);
+    expect(prs.map((pr) => pr.number)).toEqual([30, 20, 10]);
   });
 });
