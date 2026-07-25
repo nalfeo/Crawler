@@ -1,7 +1,7 @@
 {
   "schemaVersion": "boss-ability-status/v1",
   "catalogSchemaVersion": "boss-abilities/v1",
-  "lastAuditedAt": "2026-07-17",
+  "lastAuditedAt": "2026-07-25",
   "gates": [
     {
       "id": "floor2-boss-difficulty-pr-1237",
@@ -78,7 +78,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "don-paco-the-big-gob",
@@ -106,13 +108,15 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "big-panda-wei-bamboo-fed-berserk",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "panda-boss",
         "approvedAssetId": "panda-boss-var-0",
@@ -121,20 +125,28 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-big-panda-wei",
+      "arenaLabEvidence": "Verified in canonical combat arena preset `f2-big-panda-wei` with deterministic observation: frame 599 (9983.33ms) no cue/banner; frame 600 (10000ms) first themed self-aura telegraph starts with exact `BAMBOO-FED BERSERK \u2014 Big Wei is collecting personally!` announcement. frame 690 (11500ms) first cast resolves and self-buff activates (+40% move, +40% melee, heavy knockback resistance). frame 930 (15500ms) first 4s buff expires and aura cleans up. frame 1290 (21500ms) second telegraph starts; frame 1380 (23000ms) second cast resolves. Cadence and modifier windows are covered by `tests/unit/mob-abilities/bamboo-fed-berserk.test.ts`, runtime script evidence in `scripts/agent/big-panda-wei-arena-evidence.ts`, and browser observation in `tests/e2e/big-panda-wei-arena-observation.test.ts`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1957,
+        "state": "open",
+        "title": "Implement Big Panda Wei's BAMBOO-FED BERSERK ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1957"
+      },
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "queen-mab-verdigris-glamour",
@@ -180,7 +192,9 @@
         "title": "feat(bosses): Queen Mab Verdigris Glamour \u2014 arena-only ability runtime slice (production-off)",
         "url": "https://github.com/nalfeo/Crawler/pull/1273"
       },
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "king-skritt-roman-candle-coronation",
@@ -208,7 +222,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "sovereign-cap-spore-bloom",
@@ -236,7 +252,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "big-mama-bufo-tongue-repossession",
@@ -264,7 +282,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "overseer-fizzwick-clockwork-kill-saw",
@@ -292,7 +312,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "plague-boss-squick-undercity-mob-call",
@@ -320,7 +342,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "abuela-saguaro-thorn-ring",
@@ -354,7 +378,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "countess-vesper-midnight-resonance",
@@ -388,7 +414,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "kingpin-molt-shell-company-lockdown",
@@ -416,7 +444,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "broodfather-chitin-turnover",
@@ -450,7 +480,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "foreman-grubbs-undermine-the-union",
@@ -478,7 +510,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "boss-bandit-rocco-highway-robbery",
@@ -506,7 +540,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "don-honkrado-omerta-honk",
@@ -540,7 +576,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "foreman-scorch-hellfire-shift-line",
@@ -568,7 +606,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "gastropod-godfather-long-squeeze",
@@ -596,7 +636,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     }
   ]
 }

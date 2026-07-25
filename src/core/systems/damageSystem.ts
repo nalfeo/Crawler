@@ -20,6 +20,7 @@ import type { GameWorld } from '../world.js';
 import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
 import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js';
 import { computeArmorReducedDamage } from '../combat-math.js';
+import { getMobAbilityMeleeDamageMultiplier } from '../mob-abilities/runtime.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -193,7 +194,9 @@ function applyPlayerEnemyHit(
     return;
   }
 
-  const raw = getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE);
+  const raw =
+    getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE) *
+    getMobAbilityMeleeDamageMultiplier(world, enemy);
   const hostileMult = world.hostileDamageMultiplier ?? 1;
   const amount = applyArmorReduction(world, player, raw * hostileMult);
   applyDamage(

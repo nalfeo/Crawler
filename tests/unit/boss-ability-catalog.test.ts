@@ -276,25 +276,33 @@ describe('Floor 2 boss ability delivery status', () => {
     const records = buildBossAbilityStatusRecords();
     expect(records.every((record) => record.stage === 'blocked')).toBe(true);
 
-    // Queen's runtime, telegraph VFX, and arena observation are verified, but
-    // she still stays blocked overall behind the separate production-enable
-    // gate for real-game enablement/balance.
+    // Queen Mab and Big Panda Wei runtime/telegraph/arena slices are verified,
+    // but both stay blocked overall behind the separate production-enable gate
+    // for real-game enablement/balance.
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
     expect(queen?.status.arenaLabState).toBe('verified');
     expect(queen?.status.runtimeState).toBe('verified');
     expect(queen?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
-    // The other 17 abilities remain blocked purely by the production-enable
-    // gate; the arena slice must not promote them to ready.
+    const panda = records.find((record) => record.ability.bossArchetypeId === 'panda-boss');
+    expect(panda?.status.arenaLabState).toBe('verified');
+    expect(panda?.status.runtimeState).toBe('verified');
+    expect(panda?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    // The other 16 abilities remain blocked purely by the production-enable
+    // gate; arena slices must not promote them to ready.
     for (const record of records.filter(
-      (candidate) => candidate.ability.bossArchetypeId !== 'faerie-boss',
+      (candidate) =>
+        candidate.ability.bossArchetypeId !== 'faerie-boss' &&
+        candidate.ability.bossArchetypeId !== 'panda-boss',
     )) {
       expect(record.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     }
   });
 
-  it('promotes the 17-boss backlog only when the production-enable gate is verified', () => {
+  it('promotes the 16-boss backlog only when the production-enable gate is verified', () => {
     const backlog = FLOOR2_BOSS_ABILITY_STATUS.entries.filter(
-      (entry) => entry.abilityId !== 'queen-mab-verdigris-glamour',
+      (entry) =>
+        entry.abilityId !== 'queen-mab-verdigris-glamour' &&
+        entry.abilityId !== 'big-panda-wei-bamboo-fed-berserk',
     );
     expect(backlog.every((entry) => entry.foundationState === 'verified')).toBe(true);
 
@@ -305,9 +313,11 @@ describe('Floor 2 boss ability delivery status', () => {
       ),
     });
     const promotedBacklog = promoted.entries.filter(
-      (entry) => entry.abilityId !== 'queen-mab-verdigris-glamour',
+      (entry) =>
+        entry.abilityId !== 'queen-mab-verdigris-glamour' &&
+        entry.abilityId !== 'big-panda-wei-bamboo-fed-berserk',
     );
-    expect(promotedBacklog).toHaveLength(17);
+    expect(promotedBacklog).toHaveLength(16);
     expect(
       promotedBacklog.every((entry) => deriveBossAbilityDeliveryStage(entry, promoted) === 'ready'),
     ).toBe(true);

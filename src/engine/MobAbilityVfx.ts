@@ -23,7 +23,7 @@
  */
 import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { getStatusEffects } from '../core/index.js';
+import { BAMBOO_FED_BERSERK_ABILITY_ID, getMobAbilityActiveAura, getStatusEffects } from '../core/index.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { ftToPx } from '../shared/units.js';
 
@@ -41,6 +41,9 @@ const COLOR_CROWN_RUNE = 0xffd166;
 const COLOR_VERDIGRIS = 0x3fbf7f;
 const COLOR_BRONZE = 0xb08d57;
 const COLOR_TARNISH_RING = 0x5fb89a;
+const COLOR_BERSERK_GREEN = 0x59c36a;
+const COLOR_BERSERK_GOLD = 0xf4c542;
+const COLOR_BERSERK_RED = 0xff4d4d;
 
 const BURST_LIFETIME_MS = 560;
 const CAST_START_LIFETIME_MS = 320;
@@ -60,6 +63,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const telegraphGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const tarnishGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const tarnishLastPos = new Map<number, { x: number; y: number }>();
+  const berserkAuraGfx = new Map<number, Phaser.GameObjects.Graphics>();
+  const berserkAuraSeen = new Set<number>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
   const castStartSeen = new Set<number>();
   /**
@@ -179,8 +184,19 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     cy: number,
     radiusPx: number,
     progress: number,
+    dangerColor: 'ability-theme' | 'hostile-red',
   ): void {
     gfx.clear();
+    if (dangerColor === 'ability-theme') {
+      const pulse = 0.75 + 0.25 * Math.sin(progress * Math.PI * 2);
+      gfx.lineStyle(2 + 2 * progress, COLOR_BERSERK_RED, 0.65 + 0.25 * pulse);
+      gfx.strokeCircle(cx, cy, radiusPx);
+      gfx.lineStyle(2, COLOR_BERSERK_GOLD, 0.8);
+      gfx.strokeCircle(cx, cy, radiusPx * (0.4 + 0.5 * progress));
+      gfx.fillStyle(COLOR_BERSERK_GREEN, 0.12 + 0.18 * progress);
+      gfx.fillCircle(cx, cy, radiusPx * (0.25 + 0.55 * progress));
+      return;
+    }
     // Committed footprint outline (hostile red), urgency-pulsing thickness.
     const thickness = 2 + 2 * progress;
     gfx.lineStyle(thickness, COLOR_HOSTILE_RED, 0.9);
@@ -211,6 +227,16 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       gfx.fillStyle(COLOR_BRONZE, 0.8);
       gfx.fillCircle(cx + Math.cos(a) * ftToPx(1.4), cy + Math.sin(a) * ftToPx(1.4), 2);
     }
+  }
+
+  function drawBerserkAura(gfx: Phaser.GameObjects.Graphics, cx: number, cy: number, radiusPx: number): void {
+    gfx.clear();
+    gfx.lineStyle(3, COLOR_BERSERK_RED, 0.8);
+    gfx.strokeCircle(cx, cy, radiusPx);
+    gfx.lineStyle(2, COLOR_BERSERK_GOLD, 0.85);
+    gfx.strokeCircle(cx, cy, radiusPx * 0.7);
+    gfx.fillStyle(COLOR_BERSERK_GREEN, 0.16);
+    gfx.fillCircle(cx, cy, radiusPx * 0.5);
   }
 
   function hasMobAbilityDebuff(world: GameWorld, eid: number): boolean {
@@ -245,7 +271,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         ignoreUi(gfx);
         telegraphGfx.set(cue.casterEid, gfx);
       }
-      drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress);
+      drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress, cue.dangerColor);
     }
 
     // ── Resolution bursts (drain the durable pending-burst queue) ─────────
@@ -274,6 +300,43 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     for (const eid of [...lastGeom.keys()]) {
       if (!runtime.byEntity.has(eid)) {
         lastGeom.delete(eid);
+      }
+    }
+
+    // ── Active self-buff aura (Big Panda Wei) ──────────────────────────────
+    const liveAuras = new Set<number>();
+    for (const [eid, buff] of runtime.activeBuffsByEntity) {
+      if (buff.abilityId !== BAMBOO_FED_BERSERK_ABILITY_ID) continue;
+      const aura = getMobAbilityActiveAura(world, eid);
+      if (aura === null || aura.kind !== 'circle') continue;
+      liveAuras.add(eid);
+      const cx = ftToPx(aura.x);
+      const cy = ftToPx(aura.y);
+      const radiusPx = ftToPx(aura.radiusFt);
+      if (!berserkAuraSeen.has(eid)) {
+        berserkAuraSeen.add(eid);
+        spawnRing(cx, cy, radiusPx * 0.5, radiusPx * 1.2, COLOR_BERSERK_RED, 420, BURST_DEPTH);
+        scene.cameras.main?.shake?.(120, 0.0035);
+      }
+      if (!enabled) continue;
+      let gfx = berserkAuraGfx.get(eid);
+      if (gfx === undefined) {
+        gfx = scene.add.graphics();
+        gfx.setDepth(TARNISH_DEPTH);
+        gfx.setBlendMode('ADD');
+        ignoreUi(gfx);
+        berserkAuraGfx.set(eid, gfx);
+      }
+      drawBerserkAura(gfx, cx, cy, radiusPx);
+      if (world.frameCount % 12 === 0) {
+        spawnRing(cx, cy, radiusPx * 0.3, radiusPx * 0.9, COLOR_BERSERK_GOLD, 220, BURST_DEPTH);
+      }
+    }
+    for (const [eid, gfx] of berserkAuraGfx) {
+      if (!liveAuras.has(eid)) {
+        gfx.destroy();
+        berserkAuraGfx.delete(eid);
+        berserkAuraSeen.delete(eid);
       }
     }
 
@@ -332,7 +395,10 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     telegraphGfx.clear();
     for (const gfx of tarnishGfx.values()) gfx.destroy();
     tarnishGfx.clear();
+    for (const gfx of berserkAuraGfx.values()) gfx.destroy();
+    berserkAuraGfx.clear();
     tarnishLastPos.clear();
+    berserkAuraSeen.clear();
     lastGeom.clear();
     castStartSeen.clear();
   }

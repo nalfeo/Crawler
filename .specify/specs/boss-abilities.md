@@ -1,7 +1,7 @@
 # Spec: Boss Abilities
 
 > **Status:** Partial
-> **Last reconciled:** 2026-07-17
+> **Last reconciled:** 2026-07-25
 > **Estimated complexity:** 🍎🍎🍎🍎
 > **Related ADRs:** [0064-data-driven-boss-ability-catalog](../../docs/knowledge/adr/0064-data-driven-boss-ability-catalog.md)
 > **Code source-of-truth:** `src/shared/data/boss-abilities.floor2.json`,
@@ -12,11 +12,11 @@
 > [PR #1243](https://github.com/nalfeo/Crawler/pull/1243)
 > **Test suites:** `tests/unit/boss-ability-catalog.test.ts`; future runtime work
 > must add integration, headless, and deterministic visual coverage
-> **Known implementation gaps:** the reusable runtime foundation and the Queen
-> Mab arena-only vertical slice are implemented and browser-observed in the
-> combat arena, but production activation remains gated off by
-> `floor2-boss-production-enable`; the other 17 Floor 2 abilities remain blocked
-> until their own runtime slices land.
+> **Known implementation gaps:** the reusable runtime foundation plus the Queen
+> Mab and Big Panda Wei arena-only vertical slices are implemented and
+> browser-observed in the combat arena, but production activation remains gated
+> off by `floor2-boss-production-enable`; the other 16 Floor 2 abilities remain
+> blocked until their own runtime slices land.
 
 ## Context
 

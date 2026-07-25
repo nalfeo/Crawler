@@ -6,6 +6,7 @@ import {
   KNOCKBACK_WEIGHT_BASELINE_LB,
   KNOCKBACK_WEIGHT_SCALE_MAX,
 } from '../physics-defs.js';
+import { getMobAbilityKnockbackResistanceMultiplier } from '../mob-abilities/runtime.js';
 import type { GameWorld } from '../world.js';
 
 // Sample just inside an entity's footprint so exact tile-edge contact does not
@@ -144,7 +145,7 @@ export function knockbackSystem(world: GameWorld): void {
     const rawWeightScale = KNOCKBACK_WEIGHT_BASELINE_LB / Math.max(1, targetWeight);
     const weightScale = Math.min(rawWeightScale, KNOCKBACK_WEIGHT_SCALE_MAX);
     const baseStep = Math.min(speed, remaining);
-    const step = baseStep * weightScale;
+    const step = baseStep * weightScale * getMobAbilityKnockbackResistanceMultiplier(world, eid);
     const dirX = knockback.dirX[eid] ?? 0;
     const dirY = knockback.dirY[eid] ?? 0;
     const oldX = position.x[eid] ?? 0;
