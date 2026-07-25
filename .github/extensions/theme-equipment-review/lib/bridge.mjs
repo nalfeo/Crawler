@@ -1,11 +1,15 @@
 import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-const SERIALIZED_ACTIONS = new Set(['state', 'item-review', 'set-review', 'advance']);
+const SERIALIZED_ACTIONS = new Set(['state', 'item-review', 'set-review', 'advance', 'save-plan']);
 const SET_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Roster synthesis makes a chat call; give it more headroom than a state read. */
+const SYNTH_TIMEOUT_MS = 240_000;
+const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
 
 export function listAuthoredThemeSetIds(repoRoot) {
   let entries;
@@ -23,36 +27,47 @@ export function listAuthoredThemeSetIds(repoRoot) {
     .sort();
 }
 
+/**
+ * Resolve which set a freshly-opened canvas should show.
+ *
+ * Returns `null` when there is no unambiguous choice (zero authored
+ * plans, or several). The canvas then opens on its set index instead of
+ * refusing to open — a picker is a better answer to "which set?" than an
+ * error telling the user to reopen with different arguments.
+ */
 export function resolveThemeSetId(repoRoot, requestedSetId) {
   if (requestedSetId) return requestedSetId;
   const available = listAuthoredThemeSetIds(repoRoot);
-  if (available.length === 1) return available[0];
-  if (available.length === 0) {
-    throw new Error(
-      'No authored theme-equipment sets were found in data/theme-equipment-sets. Author a set plan, then reopen this canvas.',
-    );
-  }
-  throw new Error(
-    `Multiple theme-equipment sets are available (${available.join(', ')}). Reopen this canvas with an explicit setId.`,
-  );
+  return available.length === 1 ? available[0] : null;
 }
 
 export function createSerializedThemeEquipmentReviewRunner(execute) {
   const tails = new Map();
   return (command) => {
     if (!SERIALIZED_ACTIONS.has(command.action)) return execute(command);
-    const previous = tails.get(command.setId) ?? Promise.resolve();
+    const key = serializationKey(command);
+    const previous = tails.get(key) ?? Promise.resolve();
     const current = previous.then(() => execute(command));
     const tail = current.then(
       () => undefined,
       () => undefined,
     );
-    tails.set(command.setId, tail);
+    tails.set(key, tail);
     void tail.finally(() => {
-      if (tails.get(command.setId) === tail) tails.delete(command.setId);
+      if (tails.get(key) === tail) tails.delete(key);
     });
     return current;
   };
+}
+
+/**
+ * Serialize per set. `save-plan` carries the set id inside the plan
+ * rather than at the top level, so two concurrent saves of the same
+ * plan still queue behind each other.
+ */
+function serializationKey(command) {
+  if (command.action === 'save-plan') return `plan:${command.plan?.id ?? ''}`;
+  return command.setId;
 }
 
 export async function runThemeEquipmentReviewCommand(command, repoRoot) {
@@ -66,7 +81,7 @@ export async function runThemeEquipmentReviewCommand(command, repoRoot) {
       encoding: 'utf8',
       maxBuffer: 24 * 1024 * 1024,
       windowsHide: true,
-      timeout: 120_000,
+      timeout: command.action === 'synth-roster' ? SYNTH_TIMEOUT_MS : DEFAULT_COMMAND_TIMEOUT_MS,
     });
     return JSON.parse(stdout);
   } catch (error) {
@@ -75,31 +90,106 @@ export async function runThemeEquipmentReviewCommand(command, repoRoot) {
   }
 }
 
+/**
+ * Resolve the git ref the workflow should run against.
+ *
+ * `gh workflow run` without `--ref` dispatches against the repository's
+ * DEFAULT branch, and the workflow then reads `plan_path` from that ref.
+ * Telling the user to "commit and push first" is therefore not enough on
+ * its own — a plan pushed to a feature branch would still be invisible to
+ * a default-branch run. Every dispatch pins the current branch explicitly.
+ */
+export async function resolveDispatchRef(repoRoot, env = loadRepoEnv(repoRoot)) {
+  const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+    cwd: repoRoot,
+    env,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 15_000,
+  });
+  const ref = stdout.trim();
+  if (!ref || ref === 'HEAD') {
+    throw new Error(
+      'Cannot dispatch from a detached HEAD. Check out a branch and push it before running the workflow.',
+    );
+  }
+  return ref;
+}
+
+/**
+ * Confirm the authored plan is visible on the remote ref the workflow
+ * will check out. This must be judged against the *remote*, so the fetch
+ * has to succeed: a failed fetch leaves any local ref at whatever it was
+ * last time, and stale local state can still contain a plan that is no
+ * longer on the branch the workflow will run.
+ *
+ * The tip is fetched into a private, per-call ref rather than read from
+ * `FETCH_HEAD` or `origin/<ref>`, both of which are shared per repository
+ * and can be overwritten by a concurrent git process mid-check.
+ */
+export async function assertPlanOnRef(repoRoot, ref, planPath, env = loadRepoEnv(repoRoot)) {
+  const options = { cwd: repoRoot, env, encoding: 'utf8', windowsHide: true, timeout: 30_000 };
+  const scratch = `refs/theme-equipment-dispatch/${randomUUID()}`;
+  try {
+    try {
+      await execFileAsync('git', ['fetch', '--quiet', 'origin', `+${ref}:${scratch}`], options);
+    } catch (error) {
+      throw new Error(
+        `Could not fetch origin/${ref} to confirm ${planPath} is pushed. The workflow reads the ` +
+          `plan from the remote ref, so initialization is refused rather than trusting stale local ` +
+          `state. Push this branch (and check your connection), then initialize.`,
+        { cause: error },
+      );
+    }
+    try {
+      await execFileAsync('git', ['cat-file', '-e', `${scratch}:${planPath}`], options);
+    } catch {
+      throw new Error(
+        `${planPath} was not found on origin/${ref}. Commit the plan and push this branch, ` +
+          `then initialize — the workflow reads the plan from the ref it runs on.`,
+      );
+    }
+  } finally {
+    await execFileAsync('git', ['update-ref', '-d', scratch], options).catch(() => {});
+  }
+}
+
 export async function dispatchThemeEquipmentWorkflow(repoRoot, setId, action) {
   if (action !== 'init' && action !== 'run-phase' && action !== 'publish') {
     throw new Error(`Unsupported theme-equipment workflow action "${action}".`);
+  }
+  if (!SET_ID_PATTERN.test(setId ?? '')) {
+    throw new Error(`Invalid theme-equipment set id "${setId}".`);
+  }
+  const env = loadRepoEnv(repoRoot);
+  const ref = await resolveDispatchRef(repoRoot, env);
+  const planPath = `data/theme-equipment-sets/${setId}.json`;
+  if (action === 'init') {
+    await assertPlanOnRef(repoRoot, ref, planPath, env);
   }
   const args = [
     'workflow',
     'run',
     'theme-equipment.yml',
+    '--ref',
+    ref,
     '--field',
     `action=${action}`,
     '--field',
     `set_id=${setId}`,
   ];
   if (action === 'init') {
-    args.push('--field', `plan_path=data/theme-equipment-sets/${setId}.json`);
+    args.push('--field', `plan_path=${planPath}`);
   }
   try {
     await execFileAsync('gh', args, {
       cwd: repoRoot,
-      env: loadRepoEnv(repoRoot),
+      env,
       encoding: 'utf8',
       windowsHide: true,
       timeout: 30_000,
     });
-    return { dispatched: true, action, setId };
+    return { dispatched: true, action, setId, ref };
   } catch (error) {
     const detail = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
     throw new Error(detail || error?.message || String(error));

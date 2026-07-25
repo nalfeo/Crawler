@@ -32,34 +32,31 @@ async function ensureServer(ctx) {
   const requestedSetId = ctx.input?.setId;
   const existing = instances.get(ctx.instanceId);
   if (existing) {
-    if (requestedSetId && existing.setId !== requestedSetId) {
+    if (requestedSetId && existing.getSetId() !== requestedSetId) {
       throw new CanvasError(
         'set_mismatch',
-        `Canvas instance "${ctx.instanceId}" is already bound to "${existing.setId}".`,
+        `Canvas instance "${ctx.instanceId}" is already bound to "${existing.getSetId()}".`,
       );
     }
     return existing;
   }
   const pending = pendingStartups.get(ctx.instanceId);
   if (pending) return pending;
-  let setId;
-  try {
-    setId = resolveThemeSetId(REPO_ROOT, requestedSetId);
-  } catch (error) {
-    throw new CanvasError('set_required', error?.message ?? String(error));
-  }
+  // May be null: with zero or several authored plans the canvas opens on
+  // its set index rather than refusing to open.
+  const setId = resolveThemeSetId(REPO_ROOT, requestedSetId);
   const startup = startThemeEquipmentReviewServer({
     instanceId: ctx.instanceId,
     setId,
     repoRoot: REPO_ROOT,
     renderHtml,
     runCommand,
-    dispatchWorkflow: (action) => dispatchThemeEquipmentWorkflow(REPO_ROOT, setId, action),
+    dispatchWorkflow: (action, currentSetId) =>
+      dispatchThemeEquipmentWorkflow(REPO_ROOT, currentSetId, action),
     log,
   }).then((server) => {
-    const entry = { ...server, setId };
-    instances.set(ctx.instanceId, entry);
-    return entry;
+    instances.set(ctx.instanceId, server);
+    return server;
   });
   pendingStartups.set(ctx.instanceId, startup);
   try {
@@ -75,10 +72,22 @@ function requireInstance(instanceId) {
   return entry;
 }
 
+function requireSelectedSet(instanceId) {
+  const entry = requireInstance(instanceId);
+  const setId = entry.getSetId();
+  if (!setId) {
+    throw new CanvasError(
+      'set_required',
+      'No theme set is selected. Pick one in the canvas first.',
+    );
+  }
+  return { entry, setId };
+}
+
 async function mutateAndPush(ctx, command) {
-  const entry = requireInstance(ctx.instanceId);
+  const { entry, setId } = requireSelectedSet(ctx.instanceId);
   try {
-    const state = await runCommand({ ...command, setId: entry.setId });
+    const state = await runCommand({ ...command, setId });
     await entry.pushState(state);
     return state;
   } catch (error) {
@@ -109,8 +118,18 @@ const canvas = createCanvas({
       description: 'Load the current durable review state for this theme set.',
       inputSchema: { type: 'object', additionalProperties: false, properties: {} },
       handler: async (ctx) => {
-        const entry = requireInstance(ctx.instanceId);
-        return runCommand({ action: 'state', setId: entry.setId });
+        const { setId } = requireSelectedSet(ctx.instanceId);
+        return runCommand({ action: 'state', setId });
+      },
+    },
+    {
+      name: 'list_sets',
+      description:
+        'List every authored theme set with its coverage and durable-state status. Use to discover sets before opening one.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+      handler: async (ctx) => {
+        requireInstance(ctx.instanceId);
+        return runCommand({ action: 'list' });
       },
     },
     {
@@ -188,14 +207,18 @@ const canvas = createCanvas({
         required: ['action'],
       },
       handler: async (ctx) => {
-        const entry = requireInstance(ctx.instanceId);
-        return dispatchThemeEquipmentWorkflow(REPO_ROOT, entry.setId, ctx.input.action);
+        const { setId } = requireSelectedSet(ctx.instanceId);
+        return dispatchThemeEquipmentWorkflow(REPO_ROOT, setId, ctx.input.action);
       },
     },
   ],
   open: async (ctx) => {
     const entry = await ensureServer(ctx);
-    return { title: `Theme Equipment · ${entry.setId}`, url: entry.url };
+    const setId = entry.getSetId();
+    return {
+      title: setId ? `Theme Equipment · ${setId}` : 'Theme Equipment · sets',
+      url: entry.url,
+    };
   },
   onClose: async (ctx) => {
     const entry = instances.get(ctx.instanceId);
