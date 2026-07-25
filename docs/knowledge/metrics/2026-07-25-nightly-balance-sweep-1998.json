@@ -1,0 +1,69 @@
+{
+  "issueNumber": 1998,
+  "analysisDate": "2026-07-25T09:27:37Z",
+  "analyst": "copilot",
+  "outcome": "TERMINAL_NO_PR",
+  "stopCondition": "STALE_BASELINE",
+  "baselineEligibilityCheck": {
+    "latestMainSweepRunId": 29507839303,
+    "latestMainSweepURL": "https://github.com/nalfeo/Crawler/actions/runs/29507839303",
+    "latestMainSweepSHA": "b61c1bc7feb494cc195efabeee894ff328d5b3bc",
+    "latestMainSweepBranch": "main",
+    "latestMainSweepCreatedAt": "2026-07-16T14:42:56Z",
+    "latestMainSweepCompletedAt": "2026-07-16T14:47:06Z",
+    "weapons": ["sword", "bow", "baseball-bat", "pistol", "throwing-knife", "fireball"],
+    "allSixFinalAggregateArtifactsPresent": true,
+    "artifactIds": {
+      "weapon-sweep-sword": 8379383717,
+      "weapon-sweep-bow": 8379383505,
+      "weapon-sweep-baseball-bat": 8379384395,
+      "weapon-sweep-pistol": 8379385774,
+      "weapon-sweep-throwing-knife": 8379382290,
+      "weapon-sweep-fireball": 8379384485
+    },
+    "seedCountPerWeapon": "100 (4 shards × 25 seeds each, per standard weapon-sweep.yml config)"
+  },
+  "staleBasisCheck": {
+    "currentMainHEAD": "d16944b2252d3094b78e5654404b267d09a8cd8a",
+    "currentMainHEADCommittedAt": "2026-07-25T09:18:42Z",
+    "baselineSHAMatchesCurrentMain": false,
+    "commitsBetweenBaselineAndMain": 283,
+    "representativeGameplayCommitsSinceBaseline": [
+      "fed0cee7 feat: Floor 2 industrial-cave harvestables, ambient lighting, and props (#1911)",
+      "4f002dfa feat(engine): add particle effects to reward unlock sequence (#1910)",
+      "4771dd1e feat(terrain): ship generated Floor 2 industrial-cave art + fix pack render wiring (#1912)",
+      "f906ffb5 Wire Floor 2 terrain-pack doorSet into MainGameScene door overlay rendering (#1904)",
+      "47ffc36b feat(ai): deterministic settlement return routing (#1873)",
+      "2a216026 feat(ai): deterministic AI settlement-maintenance planner (#1862)",
+      "eddddf6b feat: deterministic reward-opening UX for achievement boxes and boss chests (#1865)",
+      "00436f30 feat(audio): deterministic reward-opening audio cues (anticipation, reveal, escalation, summary, skip, close) (#1876)",
+      "b19713d8 feat(floor2): boss chest lifecycle + boss reward-policy (#1823)",
+      "d16944b2 perf(core): reuse scratch buffers in applyEffectiveStats hot path (~3x per-call) (#1973)",
+      "108e1c55 fix(terrain): stamp floor-pool underdraw beneath pack-wall blob47 tiles (#1968)"
+    ],
+    "verdict": "BASELINE_STALE — gameplay commits exist since sweep SHA; a fresh canonical GitHub Actions sweep on current main HEAD is required before candidate analysis can proceed"
+  },
+  "durableLedger": [
+    {
+      "rank": 1,
+      "name": "BLOCKED: Stale baseline gate",
+      "measuredSymptom": "N/A — baseline eligibility check failed before any candidate metrics were examined",
+      "causalEvidence": "Baseline sweep SHA b61c1bc7feb4 (2026-07-16) does not match current main HEAD d16944b2 (2026-07-25); 283 commits later including multiple gameplay-touching features",
+      "productionPath": "N/A",
+      "enablingConfigFlag": "N/A",
+      "hypothesis": "N/A",
+      "exactChange": "N/A",
+      "baselineMetrics": "N/A — artifact content unread; baseline gated out before reading",
+      "postMetrics": "N/A",
+      "runArtifactURLs": "https://github.com/nalfeo/Crawler/actions/runs/29507839303",
+      "verdict": "BLOCKED",
+      "rationale": "Stale baseline hard gate. Per issue #1998: 'gameplay commits after [baseline sweep] require fresh canonical GitHub Actions sweep'. A new weapon-sweep.yml dispatch against current main HEAD is required before any balance analysis can be performed. No implementation PR is produced."
+    }
+  ],
+  "candidatesEvaluated": 0,
+  "candidatesAccepted": 0,
+  "candidatesRejected": 0,
+  "candidatesBlocked": 1,
+  "implementationPR": null,
+  "closureRationale": "Terminal no-PR path: stale baseline. The most recent weapon-sweep.yml run on main was at SHA b61c1bc7feb4 (2026-07-16). Current main HEAD is d16944b2 (2026-07-25), 283 commits and 9 days later, with multiple gameplay-affecting merges (Floor 2 content, AI settlement routing, reward UX, terrain fixes, perf changes). Per the issue hard gate, gameplay commits after the baseline require a fresh canonical sweep. No eligible baseline exists for the current main revision. This issue is closed; the next nightly run will dispatch a fresh sweep if needed."
+}
