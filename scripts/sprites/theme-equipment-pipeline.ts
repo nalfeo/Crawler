@@ -639,9 +639,7 @@ export async function publishThemeEquipmentSet(
   for (const phase of THEME_EQUIPMENT_SET_REVIEW_PHASES) {
     for (const item of validated.items) {
       if (item.phases[phase].review.verdict !== 'up') {
-        phaseGateErrors.push(
-          `Item "${item.id}" does not have an up review for phase "${phase}"`,
-        );
+        phaseGateErrors.push(`Item "${item.id}" does not have an up review for phase "${phase}"`);
       }
     }
     const phaseReview = validated.phases[phase];

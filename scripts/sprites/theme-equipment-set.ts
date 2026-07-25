@@ -2,11 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
-import {
-  StoreConditionalWriteError,
-  StoreNotFoundError,
-  type RunStore,
-} from './store/types.js';
+import { StoreConditionalWriteError, StoreNotFoundError, type RunStore } from './store/types.js';
 
 export const THEME_EQUIPMENT_SET_SCHEMA_VERSION = 1;
 export const THEME_EQUIPMENT_SET_MAX_ITEMS = 32;
@@ -1130,7 +1126,11 @@ export async function saveThemeEquipmentSetState(
       const stored = themeEquipmentSetStateSchema.safeParse(raw);
       const actualRevision = stored.success ? stored.data.stateRevision : null;
       if (actualRevision !== options.expectedRevision) {
-        throw new ThemeEquipmentSetRevisionConflictError(key, options.expectedRevision, actualRevision);
+        throw new ThemeEquipmentSetRevisionConflictError(
+          key,
+          options.expectedRevision,
+          actualRevision,
+        );
       }
       etag = result.etag;
     } catch (error) {
@@ -1160,7 +1160,11 @@ export async function saveThemeEquipmentSetState(
       (actualRevision === null && options.expectedRevision !== null) ||
       (actualRevision !== null && actualRevision !== options.expectedRevision)
     ) {
-      throw new ThemeEquipmentSetRevisionConflictError(key, options.expectedRevision, actualRevision);
+      throw new ThemeEquipmentSetRevisionConflictError(
+        key,
+        options.expectedRevision,
+        actualRevision,
+      );
     }
     await store.put(key, data);
   }

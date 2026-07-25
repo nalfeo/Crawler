@@ -89,7 +89,7 @@ export function resolveDesignLanguageAddenda(
   const themeAddendum =
     authoredTheme && builtInTheme
       ? `${builtInTheme} ${authoredTheme}`
-      : authoredTheme ?? builtInTheme;
+      : (authoredTheme ?? builtInTheme);
 
   return {
     ...(floorAddendum === undefined ? {} : { floor: floorAddendum }),
