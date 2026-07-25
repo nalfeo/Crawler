@@ -29,7 +29,11 @@ import { describe, expect, it } from 'vitest';
 
 import { briefSchema, type Brief } from '../../../scripts/sprites/brief-schema.js';
 import { JudgeCache } from '../../../scripts/sprites/judge-cache.js';
-import { judgeVariant, JudgeError } from '../../../scripts/sprites/judge.js';
+import {
+  JUDGE_HARD_BLOCK_PHRASE,
+  judgeVariant,
+  JudgeError,
+} from '../../../scripts/sprites/judge.js';
 import {
   VisionProviderError,
   type EvaluateRequest,
@@ -323,6 +327,46 @@ describe('judgeVariant — happy path', () => {
     expect(call.request.systemInstructions).toContain('disconnected/floating pixel islands');
     // System prompt must embed the (truncated) style guide.
     expect(call.request.systemInstructions).toContain('pixel art style guide content');
+  });
+
+  it('accepts the hard-block response contract and surfaces the exact phrase', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        confidence: 0.91,
+        hard_block: {
+          blocked: true,
+          instruction: JUDGE_HARD_BLOCK_PHRASE,
+          rationale: 'The sheet is fundamentally unusable at game scale.',
+        },
+        design_language: { score: 5, rationale: 'crawler specific' },
+        reference_style_match: { score: 5, rationale: 'matches finish' },
+        brief_match: { score: 5, rationale: 'matches brief' },
+        readability: { score: 5, rationale: 'reads cleanly' },
+      },
+    });
+
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [makeRefPng()],
+      brief: makeBrief(),
+      styleGuide: 'pixel art style guide content',
+      provider,
+      variantIndex: 1,
+      now: FIXED_NOW,
+      env: {},
+    });
+
+    expect(scorecard.passed).toBe(false);
+    expect(scorecard.hardBlockEvaluated).toBe(true);
+    expect(scorecard.hardBlocked).toBe(true);
+    expect(scorecard.hardBlockInstruction).toBe(JUDGE_HARD_BLOCK_PHRASE);
+    expect(scorecard.hardBlockRationale).toBe('The sheet is fundamentally unusable at game scale.');
+    expect(scorecard.confidence).toBe(0.91);
+    expect(calls[0]?.request.systemInstructions).toContain(JUDGE_HARD_BLOCK_PHRASE);
+    expect(responseShape(calls[0]!.request.systemInstructions)).toMatchObject({
+      confidence: 0.85,
+      hard_block: { blocked: false, instruction: null, rationale: '...' },
+    });
   });
 
   it('caps references at 3 to control cost', async () => {
@@ -835,6 +879,41 @@ describe('judgeVariant — threshold rejection', () => {
 });
 
 describe('judgeVariant — malformed responses', () => {
+  it.each([
+    {
+      blocked: true,
+      instruction: null,
+      rationale: 'blocked without the required exact phrase',
+    },
+    {
+      blocked: false,
+      instruction: JUDGE_HARD_BLOCK_PHRASE,
+      rationale: 'not blocked but still emitted the phrase',
+    },
+  ])('throws JudgeError(malformed) on hard_block contract mismatch: %j', async (hardBlock) => {
+    const { provider } = stubProvider({
+      responseJson: {
+        confidence: 0.5,
+        hard_block: hardBlock,
+        design_language: { score: 5, rationale: 'a' },
+        reference_style_match: { score: 5, rationale: 'b' },
+        brief_match: { score: 5, rationale: 'c' },
+        readability: { score: 5, rationale: 'd' },
+      },
+    });
+    await expect(
+      judgeVariant({
+        processed: makeTinyPng(),
+        referencePngs: [],
+        brief: makeBrief(),
+        styleGuide: '',
+        provider,
+        variantIndex: 0,
+        env: {},
+      }),
+    ).rejects.toMatchObject({ kind: 'malformed' });
+  });
+
   it('throws JudgeError(malformed) when an evaluator is missing', async () => {
     const { provider } = stubProvider({
       responseJson: {
@@ -914,6 +993,36 @@ describe('judgeVariant — malformed responses', () => {
         env: {},
       }),
     ).rejects.toMatchObject({ name: 'VisionProviderError', kind: 'rate-limit' });
+  });
+});
+
+describe('judgeVariant — legacy scorecards', () => {
+  it('marks legacy responses as hard-block unevaluated with safe defaults', async () => {
+    const { provider } = stubProvider({
+      responseJson: {
+        style_match: { score: 5, rationale: 'looks identical' },
+        brief_match: { score: 4, rationale: 'on target' },
+        readability: { score: 5, rationale: 'silhouette pops' },
+      },
+    });
+
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief(),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+
+    expect(scorecard.passed).toBe(true);
+    expect(scorecard.hardBlockEvaluated).toBe(false);
+    expect(scorecard.hardBlocked).toBe(false);
+    expect(scorecard.hardBlockInstruction).toBeNull();
+    expect(scorecard.hardBlockRationale).toBeNull();
+    expect(scorecard.confidence).toBeNull();
   });
 });
 

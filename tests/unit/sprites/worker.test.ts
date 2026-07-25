@@ -373,6 +373,8 @@ describe('runWorker', () => {
       briefId: 'bone-dagger',
       runId: 'run-1',
       summaryPath: '/tmp/run-1/summary.json',
+      selectedIndexes: [0],
+      outcome: 'selected-pending-publish',
     });
     const ack = vi.fn().mockResolvedValue(undefined);
     const request: AssetRequest = {
