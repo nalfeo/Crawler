@@ -21,7 +21,7 @@
  * particles, a persistent Tarnished indicator, and a cleanup/expiry poof. The
  * announcement itself is rendered by `HudAnnouncementBanner`.
  */
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import {
   BAMBOO_FED_BERSERK_ABILITY_ID,
@@ -301,15 +301,13 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     const fillColor = dangerColor === 'ability-theme' ? COLOR_BERSERK_GREEN : COLOR_HOSTILE_RED;
     const railColor = dangerColor === 'ability-theme' ? COLOR_BERSERK_RED : COLOR_HOSTILE_RED;
     gfx.fillStyle(fillColor, 0.12 + 0.28 * progress);
-    gfx.fillPoints(
-      [
-        new Phaser.Math.Vector2(left0x, left0y),
-        new Phaser.Math.Vector2(left1x, left1y),
-        new Phaser.Math.Vector2(right1x, right1y),
-        new Phaser.Math.Vector2(right0x, right0y),
-      ],
-      true,
-    );
+    gfx.beginPath();
+    gfx.moveTo(left0x, left0y);
+    gfx.lineTo(left1x, left1y);
+    gfx.lineTo(right1x, right1y);
+    gfx.lineTo(right0x, right0y);
+    gfx.closePath();
+    gfx.fillPath();
     gfx.lineStyle(2 + 2 * progress, railColor, 0.92);
     gfx.lineBetween(left0x, left0y, left1x, left1y);
     gfx.lineBetween(right0x, right0y, right1x, right1y);

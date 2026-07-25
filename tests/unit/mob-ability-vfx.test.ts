@@ -9,6 +9,11 @@ function createGraphicsStub() {
     clear: vi.fn(),
     lineStyle: vi.fn(),
     fillStyle: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
+    fillPath: vi.fn(),
     strokeCircle: vi.fn(),
     fillCircle: vi.fn(),
     fillPoints: vi.fn(),
@@ -176,7 +181,13 @@ describe('MobAbilityVfx', () => {
 
     const telegraphGfx = graphicsObjects[0];
     expect(telegraphGfx).toBeDefined();
-    expect(telegraphGfx!.fillPoints).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.beginPath).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.moveTo).toHaveBeenCalledWith(ftToPx(10), ftToPx(21.5));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(30), ftToPx(21.5));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(30), ftToPx(18.5));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(10), ftToPx(18.5));
+    expect(telegraphGfx!.closePath).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.fillPath).toHaveBeenCalledTimes(1);
     expect(telegraphGfx!.fillStyle).toHaveBeenCalledWith(0x59c36a, expect.any(Number));
     expect(telegraphGfx!.lineBetween).toHaveBeenCalled();
   });

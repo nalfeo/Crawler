@@ -34,8 +34,9 @@ const SECOND_TELEGRAPH_FRAME = 1035; // +8,000ms after first resolution
 const SECOND_RESOLUTION_FRAME = 1110;
 
 type World = ReturnType<typeof createTestWorld>;
+type AiTypeValue = (typeof AI_TYPE)[keyof typeof AI_TYPE];
 
-function buildHarness(px = 40, py = 40, bx = 40, by = 10, aiType = AI_TYPE.CHASE) {
+function buildHarness(px = 40, py = 40, bx = 40, by = 10, aiType: AiTypeValue = AI_TYPE.CHASE) {
   const world = createTestWorld();
   const player = spawnPlayer(world, px, py);
   world.stores.health.current[player] = 100_000;

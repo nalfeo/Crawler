@@ -37,18 +37,9 @@ interface BufoArenaScene {
     mobAbilities?: {
       cues?: Array<{
         geometry?:
-          | {
-              kind: 'lane';
-              originX: number;
-              originY: number;
-              endX: number;
-              endY: number;
-              dirX: number;
-              dirY: number;
-              widthFt: number;
-              lengthFt: number;
-            }
-          | { kind: string };
+          | LaneCueGeometry
+          | { kind: 'circle'; x: number; y: number; radiusFt: number }
+          | { kind: 'spawn-circles' };
       }>;
       byEntity?: Map<number, unknown>;
     };
@@ -78,6 +69,9 @@ interface ArenaProbe {
 }
 
 type LaneProbe = NonNullable<ArenaProbe['lane']>;
+interface LaneCueGeometry extends LaneProbe {
+  readonly kind: 'lane';
+}
 
 function countChangedPixels(
   beforeBuffer: Buffer,
@@ -163,19 +157,32 @@ async function stepToFrame(page: Page, targetFrame: number): Promise<ArenaProbe>
       const laneCue = scene.world.mobAbilities?.cues?.find(
         (cue) => cue?.geometry?.kind === 'lane',
       )?.geometry;
-      const lane: LaneProbe | null =
-        laneCue?.kind === 'lane'
-          ? {
-              originX: laneCue.originX,
-              originY: laneCue.originY,
-              endX: laneCue.endX,
-              endY: laneCue.endY,
-              dirX: laneCue.dirX,
-              dirY: laneCue.dirY,
-              widthFt: laneCue.widthFt,
-              lengthFt: laneCue.lengthFt,
-            }
-          : null;
+      let lane: LaneProbe | null = null;
+      if (
+        laneCue !== null &&
+        laneCue !== undefined &&
+        laneCue.kind === 'lane' &&
+        'originX' in laneCue &&
+        'originY' in laneCue &&
+        'endX' in laneCue &&
+        'endY' in laneCue &&
+        'dirX' in laneCue &&
+        'dirY' in laneCue &&
+        'widthFt' in laneCue &&
+        'lengthFt' in laneCue
+      ) {
+        const committedLane = laneCue;
+        lane = {
+          originX: committedLane.originX,
+          originY: committedLane.originY,
+          endX: committedLane.endX,
+          endY: committedLane.endY,
+          dirX: committedLane.dirX,
+          dirY: committedLane.dirY,
+          widthFt: committedLane.widthFt,
+          lengthFt: committedLane.lengthFt,
+        };
+      }
       return {
         frame: scene.world.frameCount,
         cueCount: scene.world.mobAbilities?.cues?.length ?? 0,

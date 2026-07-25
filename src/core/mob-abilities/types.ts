@@ -75,7 +75,10 @@ export interface MobAbilitySelfBuffDefinition {
  * Handlers are ordinary typed functions (one per ability kind), never derived
  * from arbitrary catalog values.
  */
-export type MobAbilityResolveHandler = (world: GameWorld, ctx: MobAbilityResolveContext) => void;
+export type MobAbilityResolveHandler = (
+  world: GameWorld,
+  ctx: MobAbilityResolveContext,
+) => void;
 
 /** Everything a resolve handler needs, all committed at telegraph start. */
 export interface MobAbilityResolveContext {
