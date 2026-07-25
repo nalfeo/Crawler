@@ -223,6 +223,36 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     );
   }
 
+  /** Sovereign Cap–specific fungal puff burst for SPORE BLOOM resolutions. */
+  function spawnSporeBurst(x: number, y: number, radiusPx: number): void {
+    if (!enabled) return;
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.5,
+      radiusPx * 1.3,
+      COLOR_SPORE_RIM,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.2,
+      radiusPx * 0.9,
+      COLOR_SPORE_FOG,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnSparkBurst(
+      x,
+      y,
+      radiusPx,
+      [COLOR_SPORE_PUFF, COLOR_SPORE_RIM] as const,
+      BURST_SPARK_COUNT,
+    );
+  }
+
   /** A quick pulse when a telegraph first locks (cast-start cue). */
   function spawnCastStart(x: number, y: number, radiusPx: number): void {
     spawnRing(
@@ -502,17 +532,10 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // ── Telegraph circles ──────────────────────────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
-<<<<<<< HEAD
-      liveCasters.add(cue.casterEid);
-      const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
-      const first = circles[0];
-      if (!first) continue;
-=======
       const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
       if (circles.length === 0) continue;
       liveCasters.add(cue.casterEid);
       const first = circles[0]!;
->>>>>>> origin/main
       const firstCx = ftToPx(first.x);
       const firstCy = ftToPx(first.y);
       const firstRadiusPx = ftToPx(first.radiusFt);
@@ -534,11 +557,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       }
       gfx.clear();
       for (const circle of circles) {
-<<<<<<< HEAD
         drawTelegraphCircle(
-=======
-        drawTelegraph(
->>>>>>> origin/main
           gfx,
           ftToPx(circle.x),
           ftToPx(circle.y),
@@ -556,17 +575,20 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     while (runtime.pendingBursts.length > 0) {
       const burst = runtime.pendingBursts.shift()!;
       const spawn =
-        burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID ? spawnUndercityBurst : spawnBurst;
+        burst.abilityId === SOVEREIGN_SPORE_BLOOM_ABILITY_ID
+          ? spawnSporeBurst
+          : burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID
+            ? spawnUndercityBurst
+            : spawnBurst;
       const geom = burst.geometry;
       if (geom.kind === 'circle') {
         const cx = ftToPx(geom.x);
         const cy = ftToPx(geom.y);
         const r = ftToPx(geom.radiusFt);
-<<<<<<< HEAD
-        spawnBurst(cx, cy, r);
+        spawn(cx, cy, r);
       } else {
         for (const circle of geom.circles) {
-          spawnBurst(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+          spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
         }
       }
     }
@@ -602,13 +624,6 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       if (!liveZones.has(zoneId)) {
         gfx.destroy();
         cloudZoneGfx.delete(zoneId);
-=======
-        spawn(cx, cy, r);
-      } else {
-        for (const circle of geom.circles) {
-          spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
-        }
->>>>>>> origin/main
       }
     }
 

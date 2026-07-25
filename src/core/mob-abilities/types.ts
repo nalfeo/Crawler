@@ -37,27 +37,28 @@ export interface MobAbilityCircleGeometry {
   readonly radiusFt: number;
 }
 
-<<<<<<< HEAD
-export interface MobAbilityMultiCircleGeometry {
-  readonly kind: 'multi-circle';
-  readonly circles: readonly MobAbilityCircleGeometry[];
-}
-
-export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilityMultiCircleGeometry;
-
-export function mobAbilityGeometryCircles(
-  geometry: MobAbilityGeometry,
-): readonly MobAbilityCircleGeometry[] {
-  return geometry.kind === 'circle' ? [geometry] : geometry.circles;
-}
-=======
 export interface MobAbilitySpawnCirclesGeometry {
   readonly kind: 'spawn-circles';
   readonly circles: readonly MobAbilityCircleGeometry[];
 }
 
-export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry;
->>>>>>> origin/main
+/** Multi-circle geometry committed by a custom `commitGeometry` hook (e.g. Sovereign Cap triangle). */
+export interface MobAbilityMultiCircleGeometry {
+  readonly kind: 'multi-circle';
+  readonly circles: readonly MobAbilityCircleGeometry[];
+}
+
+export type MobAbilityGeometry =
+  | MobAbilityCircleGeometry
+  | MobAbilitySpawnCirclesGeometry
+  | MobAbilityMultiCircleGeometry;
+
+/** Flatten any geometry variant to an array of individual circles. */
+export function mobAbilityGeometryCircles(
+  geometry: MobAbilityGeometry,
+): readonly MobAbilityCircleGeometry[] {
+  return geometry.kind === 'circle' ? [geometry] : geometry.circles;
+}
 
 export type MobAbilityTargetingMode = 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
@@ -113,18 +114,6 @@ export interface MobAbilityRuntimeDefinition {
   readonly dangerColor: MobAbilityDangerColor;
   /** Exact, fully formatted announcement string emitted once per cast. */
   readonly announcementText: string;
-<<<<<<< HEAD
-  /** Committed geometry footprint (radius etc.); position is locked at cast. */
-  readonly geometry: { readonly kind: 'circle'; readonly radiusFt: number };
-  /** Optional custom geometry commit from a locked origin position. */
-  readonly commitGeometry?: (ctx: {
-    readonly world: GameWorld;
-    readonly casterEid: number;
-    readonly targetEid: number | null;
-    readonly lockedX: number;
-    readonly lockedY: number;
-  }) => MobAbilityGeometry;
-=======
   /** Committed geometry footprint authored by this ability. */
   readonly geometry:
     | { readonly kind: 'circle'; readonly radiusFt: number }
@@ -134,7 +123,14 @@ export interface MobAbilityRuntimeDefinition {
         readonly radiusFt: number;
         readonly distanceFromCasterFt: number;
       };
->>>>>>> origin/main
+  /** Optional custom geometry commit from a locked origin position (e.g. triangle around player). */
+  readonly commitGeometry?: (ctx: {
+    readonly world: GameWorld;
+    readonly casterEid: number;
+    readonly targetEid: number | null;
+    readonly lockedX: number;
+    readonly lockedY: number;
+  }) => MobAbilityGeometry;
   /** Targeting mode for telegraph lock semantics (player-position or self). */
   readonly targetingMode?: MobAbilityTargetingMode;
   /** Origin lock mode for telegraph geometry. */

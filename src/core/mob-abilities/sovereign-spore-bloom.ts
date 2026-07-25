@@ -182,12 +182,12 @@ function commitTriangleGeometry(
 
 function makeResolveHandler(ability: BossAbilityDef, tuning: SporeBloomTuning) {
   return function resolveSovereignSporeBloom(world: GameWorld, ctx: MobAbilityResolveContext): void {
-    const geometry =
+    const geometry: MobAbilityGeometry =
       ctx.geometry.kind === 'multi-circle'
         ? ctx.geometry
         : {
-            kind: 'multi-circle',
-            circles: [ctx.geometry],
+            kind: 'multi-circle' as const,
+            circles: mobAbilityGeometryCircles(ctx.geometry),
           };
     applyGeometryDamage(world, geometry, ctx.casterEid, tuning.impactDamage);
     registerMobAbilityOwnedZone(world, {

@@ -273,42 +273,20 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
       targetingMode === 'self' || targetEid === null
         ? null
         : (world.entityRenderGeneration[targetEid] ?? 0);
-    inst.committedGeometry = {
-      kind: 'circle',
-      x: pos.x,
-      y: pos.y,
-      radiusFt: def.geometry.radiusFt,
-    };
+    inst.committedGeometry =
+      def.commitGeometry?.({
+        world,
+        casterEid,
+        targetEid: targetingMode === 'self' ? null : targetEid,
+        lockedX: pos.x,
+        lockedY: pos.y,
+      }) ?? {
+        kind: 'circle',
+        x: pos.x,
+        y: pos.y,
+        radiusFt: def.geometry.radiusFt,
+      };
   }
-<<<<<<< HEAD
-  if (pos === null) {
-    // No valid target/origin to lock onto — skip this cast and re-arm cooldown.
-    inst.phase = 'cooldown';
-    inst.timerMs = def.cooldownMs;
-    return;
-  }
-  inst.phase = 'telegraph';
-  inst.timerMs = def.telegraphDurationMs;
-  inst.committedTargetEid = targetingMode === 'self' ? null : targetEid;
-  inst.committedTargetGeneration =
-    targetingMode === 'self' || targetEid === null
-      ? null
-      : (world.entityRenderGeneration[targetEid] ?? 0);
-  inst.committedGeometry =
-    def.commitGeometry?.({
-      world,
-      casterEid,
-      targetEid: targetingMode === 'self' ? null : targetEid,
-      lockedX: pos.x,
-      lockedY: pos.y,
-    }) ?? {
-      kind: 'circle',
-      x: pos.x,
-      y: pos.y,
-      radiusFt: def.geometry.radiusFt,
-    };
-=======
->>>>>>> origin/main
 
   // Announcement is emitted exactly once, here, per cast.
   pushAnnouncement(world.announcements, {
@@ -582,10 +560,13 @@ export function mobAbilitySystem(world: GameWorld): void {
   runtime.cues.length = 0;
   if (!runtime.enabled || !runtime.encounterActive) return;
   tickActiveBuffs(world);
-  if (runtime.byEntity.size === 0) {
-    tickOwnedZones(world);
-    return;
-  }
+
+  // Tick pre-existing zones BEFORE processing new casts so that a zone
+  // registered in resolveCast this step is not immediately advanced.
+  // This keeps first-tick and expiry frame indices deterministic.
+  tickOwnedZones(world);
+
+  if (runtime.byEntity.size === 0) return;
 
   const dtMs = GAME.DELTA_MS;
 
@@ -629,5 +610,4 @@ export function mobAbilitySystem(world: GameWorld): void {
       });
     }
   }
-  tickOwnedZones(world);
 }
