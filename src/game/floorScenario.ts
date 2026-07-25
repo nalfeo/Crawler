@@ -1765,6 +1765,20 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
             }
           }
         }
+        // Forbid the connector from carving the welcome room's OWN footprint
+        // (interior + perimeter ring) — except the door it starts from. Without
+        // this the BFS tunnels the shortest route through wall rock, which can
+        // clip the room's own perimeter and open plain-floor breaches in the
+        // prefab wall ring (observed on seed 21: 5 non-door breaches). The hub
+        // already has a real door; the repair must only EXTEND that door outward
+        // through exterior rock, never punch new holes in the shell.
+        const primaryDoorIdx = primaryDoor.y * fm.width + primaryDoor.x;
+        for (let yy = b.y; yy < b.y + b.height; yy += 1) {
+          for (let xx = b.x; xx < b.x + b.width; xx += 1) {
+            const idx = yy * fm.width + xx;
+            if (idx !== primaryDoorIdx) avoid.add(idx);
+          }
+        }
         carveConnectorToReachable(fm, primaryDoor.x, primaryDoor.y, spawnReachableMask, avoid);
         spawnReachableMask = buildReachableFromSpawnMask(
           fm,

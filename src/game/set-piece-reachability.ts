@@ -30,7 +30,7 @@ import { generatedEquipmentRunKeyFromSeed } from '../shared/generated-equipment-
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { initializeFloor1Scenario, WELCOME_ROOM_SET_PIECE_ID } from './floorScenario.js';
 import { getNavigationBlockedDoors } from '../core/door-navigation.js';
-import { getSetPieceDef } from '../shared/set-piece-types.js';
+import { getSetPieceDef, resolveSetPieceDoorSlots } from '../shared/set-piece-types.js';
 
 /** Per-seed reachability outcome. `pass` is false when any failure is recorded. */
 export interface SetPieceReachabilityResult {
@@ -224,6 +224,61 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
     );
   }
 
+  const doors = room.doors ?? [];
+
+  // 0b. The prefab SHELL actually landed as tile writes. Reachability + correct
+  //     bounds are necessary but NOT sufficient (parent plan-review): the legacy
+  //     render-only fallback has NO impassable walls, so a room that silently
+  //     degraded is TRIVIALLY reachable — the sweep would be greenest exactly
+  //     when the feature failed. And a carve that resized bounds without writing
+  //     the ring would pass checks #0/#1. So — only when the prefab claims to have
+  //     carved authoritatively — POSITIVELY assert the shell:
+  //       (a) every perimeter tile is impassable wall OR a door (no open breach),
+  //       (b) every recorded door tile carries TileFlags.DOOR and sits on the ring,
+  //       (c) the door count equals the def's resolved door slots.
+  //     These prove the prefab APPLIED, not merely that the room is reachable.
+  if (carved) {
+    let ringBreaches = 0;
+    for (let tx = bx; tx < bx + bw; tx += 1) {
+      for (let ty = by; ty < by + bh; ty += 1) {
+        const onPerimeter = tx === bx || tx === bx + bw - 1 || ty === by || ty === by + bh - 1;
+        if (!onPerimeter) continue;
+        if (!floorMap.tileMap.isDoor(tx, ty) && floorMap.tileMap.isPassable(tx, ty)) {
+          ringBreaches += 1;
+        }
+      }
+    }
+    if (ringBreaches > 0) {
+      failures.push(
+        `welcome-room perimeter has ${ringBreaches} passable non-door tile(s): the prefab wall ring did not land as impassable tiles`,
+      );
+    }
+    for (const door of doors) {
+      const onPerimeter =
+        door.x === bx || door.x === bx + bw - 1 || door.y === by || door.y === by + bh - 1;
+      if (!onPerimeter) {
+        failures.push(`door (${door.x},${door.y}) is not on the room's perimeter ring`);
+      }
+      if (!floorMap.tileMap.isDoor(door.x, door.y)) {
+        failures.push(`door (${door.x},${door.y}) tile does not carry TileFlags.DOOR`);
+      }
+    }
+    // The def's resolved slots are the MINIMUM, not an exact count:
+    // carveSetPieceRoom intentionally converts load-bearing ring breaches
+    // (corridors that already connected to the room) into ADDITIONAL doors so no
+    // spawn-reachable region is ever stranded (see sealRoomPerimeter, step 5). An
+    // exact match would FALSELY fail seeds where corridors join the ring (e.g.
+    // seed 2024: 1 declared + 2 connectivity doors). Assert the declared doors
+    // landed (a floor); a count BELOW that floor means the prefab's own doors did
+    // not all land — a hard failure (never a threshold to relax, rule #11).
+    const expectedDoorCount = resolveSetPieceDoorSlots(def).length;
+    if (doors.length < expectedDoorCount) {
+      failures.push(
+        `welcome-room carved ${doors.length} door(s) but the def declares ${expectedDoorCount} door slot(s): the prefab's declared doors did not all land`,
+      );
+    }
+  }
+
   // 1. The room interior is reachable from spawn: require at least one interior
   //    (inside-the-ring) floor tile to be in the flood set.
   let interiorReachable = false;
@@ -242,7 +297,6 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
   }
 
   // 2. Every door on the room is pathable.
-  const doors = room.doors ?? [];
   if (doors.length === 0) {
     failures.push('welcome-room has no doors (a sealed prefab)');
   }
@@ -271,15 +325,24 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
     failures.push('no NPC anchors found inside the welcome-room bounds');
   }
 
-  // 4. The carve stranded no OTHER room. Rewriting the hub's geometry + doors
-  //    could wall off a corridor that was some other room's only approach, so
-  //    assert every room in the graph still has >=1 interior tile reachable from
-  //    spawn. This uses the TOPOLOGY-only flood (closed AND locked doors
-  //    traversable), so it is a pure wall-connectivity check independent of
-  //    gameplay gating — locked rooms are INTENTIONALLY gated, not stranded, and
-  //    must not fail here just because their door starts locked. The generator's
-  //    own reachability pass guarantees this pre-carve; a failure here is a
-  //    carve-induced regression (plan-review concern #2), not a pre-existing gap.
+  // 4. The carve stranded no OTHER room. Rewriting the hub's geometry + doors —
+  //    including GROWING the footprint beyond the old room into surrounding rock —
+  //    could wall off or overwrite a corridor that was some other room's only
+  //    approach, so assert every room in the graph still has >=1 interior tile
+  //    reachable from spawn. This is the topological backstop for the parent's
+  //    "grown carve swallows a third-party corridor" concern: carveSetPieceRoom
+  //    step 3 already REJECTS any footprint that overlaps another room's bounds,
+  //    and sealRoomPerimeter converts load-bearing ring breaches to DOORS (not
+  //    walls) so a corridor crossing the ring is preserved; this check is the
+  //    final guarantee that no ROOM ends up stranded regardless. It uses the
+  //    TOPOLOGY-only flood (closed AND locked doors traversable), so it is a pure
+  //    wall-connectivity check independent of gameplay gating — locked rooms are
+  //    INTENTIONALLY gated, not stranded, and must not fail here just because
+  //    their door starts locked. The generator's own reachability pass guarantees
+  //    this pre-carve; a failure here is a carve-induced regression (plan-review
+  //    concern #2). The only uncovered residual — severing the sole approach to a
+  //    ROOMLESS corridor pocket (no room, NPC anchor, or objective) — is not
+  //    gameplay-relevant and is out of the hard gate's scope by design.
   for (const other of floorMap.roomGraph.getAll()) {
     let anyReachable = false;
     const ob = other.bounds;
