@@ -1204,6 +1204,27 @@ if (!mergeTrainEnabled) {
 // merge-conflict blocker and is dispatched by the terminal table.
 
 const hasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
+
+// Record the conflict episode marker here (before Phase A) so that the
+// conflict-resolved review path remains available even when R08/R11 exits before
+// the main pipeline reaches the recording point.  The main pipeline's
+// `unrecordedConflictEpisode` call will be a no-op once the marker is present.
+const conflictEpisode = unrecordedConflictEpisode({ pr, hasMergeConflict, comments });
+if (conflictEpisode) {
+  const marker = conflictEpisodeMarker(conflictEpisode);
+  if (live) {
+    await assertExpectedMetadataUnchanged('conflict-episode-marker');
+    const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+      method: 'POST',
+      body: { body: marker },
+    });
+    comments.push(created.data);
+  }
+  process.stdout.write(
+    `${live ? 'recorded' : 'would-record'} conflict episode pr=#${prNumber} episode=${conflictEpisode.episode}\n`,
+  );
+}
+
 const rebaseDispatchPendingForHead =
   state?.headSha === pr.head.sha && state?.trigger === 'rebase-dispatched';
 const rebaseDispatchAttemptsForHead =
@@ -1697,21 +1718,8 @@ for (const thread of unresolvedThreads) {
 }
 
 const blockers = [];
-const conflictEpisode = unrecordedConflictEpisode({ pr, hasMergeConflict, comments });
-if (conflictEpisode) {
-  const marker = conflictEpisodeMarker(conflictEpisode);
-  if (live) {
-    await assertExpectedMetadataUnchanged('conflict-episode-marker');
-    const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
-      method: 'POST',
-      body: { body: marker },
-    });
-    comments.push(created.data);
-  }
-  process.stdout.write(
-    `${live ? 'recorded' : 'would-record'} conflict episode pr=#${prNumber} episode=${conflictEpisode.episode}\n`,
-  );
-}
+// conflictEpisode was already recorded in Phase A (before the dispatch table)
+// so that R08/R11 conflict-rebase exits don't skip the episode marker.
 const labels = new Set((pr.labels || []).map((label) => label.name));
 const trainBlocked = labels.has(BLOCKED_LABEL);
 let trainNoop = labels.has(NOOP_LABEL);
