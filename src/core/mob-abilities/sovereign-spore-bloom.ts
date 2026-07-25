@@ -97,7 +97,8 @@ function readTuning(ability: BossAbilityDef): SporeBloomTuning {
     'impact-damage-profile',
     'descriptor',
   );
-  const impactDamage = IMPACT_DAMAGE_BY_PROFILE[impactProfile as keyof typeof IMPACT_DAMAGE_BY_PROFILE];
+  const impactDamage =
+    IMPACT_DAMAGE_BY_PROFILE[impactProfile as keyof typeof IMPACT_DAMAGE_BY_PROFILE];
   if (impactDamage === undefined) {
     throw new Error(`Sovereign Spore Bloom has unknown impact-damage-profile "${impactProfile}"`);
   }
@@ -181,7 +182,10 @@ function commitTriangleGeometry(
 }
 
 function makeResolveHandler(ability: BossAbilityDef, tuning: SporeBloomTuning) {
-  return function resolveSovereignSporeBloom(world: GameWorld, ctx: MobAbilityResolveContext): void {
+  return function resolveSovereignSporeBloom(
+    world: GameWorld,
+    ctx: MobAbilityResolveContext,
+  ): void {
     const geometry: MobAbilityGeometry =
       ctx.geometry.kind === 'multi-circle'
         ? ctx.geometry

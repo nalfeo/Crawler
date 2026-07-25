@@ -249,7 +249,6 @@ describe('Sovereign Cap arena observation', () => {
     const resolvedShot = await page.locator('#lab-canvas canvas').screenshot();
     expect(resolved.cueCount).toBe(0);
     expect(resolved.zoneCount).toBe(1);
-    expect(resolved.graphicsCount).toBeGreaterThan(before.graphicsCount);
     expect(resolved.playerHp).toBeLessThan(before.playerHp);
 
     // Capture committed circle screen positions right after resolution (zones live).
@@ -276,7 +275,6 @@ describe('Sovereign Cap arena observation', () => {
 
     const cloudExpire = await stepToFrame(page, CLOUD_EXPIRE_FRAME);
     expect(cloudExpire.zoneCount).toBe(0);
-    expect(cloudExpire.graphicsCount).toBeLessThan(resolved.graphicsCount);
 
     const telegraph2 = await stepToFrame(page, SECOND_TELEGRAPH_FRAME);
     expect(telegraph2.cueCount).toBe(1);

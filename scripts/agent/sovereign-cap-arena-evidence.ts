@@ -122,7 +122,9 @@ const normalOk = normal.casts === 0 && normal.resolutions.length === 0;
 
 console.log('\n=== GATE ===');
 console.log(`arena two-cast cadence (540/636/1176/1272): ${cadenceOk ? 'PASS' : 'FAIL'}`);
-console.log(`cloud repeated damage + zone lifecycle      : ${repeatedDamageOk && zoneLifecycleOk ? 'PASS' : 'FAIL'}`);
+console.log(
+  `cloud repeated damage + zone lifecycle      : ${repeatedDamageOk && zoneLifecycleOk ? 'PASS' : 'FAIL'}`,
+);
 console.log(`normal-game zero casts                      : ${normalOk ? 'PASS' : 'FAIL'}`);
 
 if (!cadenceOk || !repeatedDamageOk || !zoneLifecycleOk || !normalOk) {

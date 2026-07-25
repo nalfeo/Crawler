@@ -125,7 +125,10 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   }
   inst.ownedEntityGenerations.clear();
   world.mobAbilities.activeBuffsByEntity.delete(casterEid);
-  clearMobAbilityOwnedZones(world, (zone) => zone.casterEid === casterEid || zone.sourceId === sourceId);
+  clearMobAbilityOwnedZones(
+    world,
+    (zone) => zone.casterEid === casterEid || zone.sourceId === sourceId,
+  );
 }
 
 /** Enable/disable the runtime feature gate. Disabling clears all cues + clocks. */
@@ -273,19 +276,18 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
       targetingMode === 'self' || targetEid === null
         ? null
         : (world.entityRenderGeneration[targetEid] ?? 0);
-    inst.committedGeometry =
-      def.commitGeometry?.({
-        world,
-        casterEid,
-        targetEid: targetingMode === 'self' ? null : targetEid,
-        lockedX: pos.x,
-        lockedY: pos.y,
-      }) ?? {
-        kind: 'circle',
-        x: pos.x,
-        y: pos.y,
-        radiusFt: def.geometry.radiusFt,
-      };
+    inst.committedGeometry = def.commitGeometry?.({
+      world,
+      casterEid,
+      targetEid: targetingMode === 'self' ? null : targetEid,
+      lockedX: pos.x,
+      lockedY: pos.y,
+    }) ?? {
+      kind: 'circle',
+      x: pos.x,
+      y: pos.y,
+      radiusFt: def.geometry.radiusFt,
+    };
   }
 
   // Announcement is emitted exactly once, here, per cast.
@@ -455,7 +457,10 @@ export function registerMobAbilityOwnedZone(
   world: GameWorld,
   zone: Omit<MobAbilityOwnedZone, 'id' | 'elapsedMs' | 'nextTickAtMs'>,
 ): number {
-  if (!Number.isFinite(zone.tickIntervalMs) || zone.tickIntervalMs < MIN_OWNED_ZONE_TICK_INTERVAL_MS) {
+  if (
+    !Number.isFinite(zone.tickIntervalMs) ||
+    zone.tickIntervalMs < MIN_OWNED_ZONE_TICK_INTERVAL_MS
+  ) {
     throw new Error(
       `Mob ability owned zone tickIntervalMs must be >= ${MIN_OWNED_ZONE_TICK_INTERVAL_MS} (received ${zone.tickIntervalMs})`,
     );

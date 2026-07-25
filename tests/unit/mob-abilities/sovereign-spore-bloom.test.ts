@@ -166,7 +166,10 @@ describe('Sovereign Spore Bloom damage and zone lifecycle', () => {
 
     // For each circle, compute an exclusive point 7 ft from center in the direction away
     // from the other two circles' centroid (radius = 8, so still safely inside).
-    function exclusivePoint(c: MobAbilityCircleGeometry, others: readonly MobAbilityCircleGeometry[]) {
+    function exclusivePoint(
+      c: MobAbilityCircleGeometry,
+      others: readonly MobAbilityCircleGeometry[],
+    ) {
       const cx = others.reduce((s, o) => s + o.x, 0) / others.length;
       const cy = others.reduce((s, o) => s + o.y, 0) / others.length;
       const dx = c.x - cx;

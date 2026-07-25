@@ -703,7 +703,7 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
     name: 'F2: The Sovereign Cap (Sovereign Spore Bloom)',
     floor: 'floor2',
     description:
-      "The Sovereign Cap solo, with Sovereign Spore Bloom armed through the canonical mob-ability runtime: 9s eligibility, 1.6s locked hostile-red triangle telegraph, moderate impact damage, then 4s persistent toxic cloud rims dealing repeated light damage.",
+      'The Sovereign Cap solo, with Sovereign Spore Bloom armed through the canonical mob-ability runtime: 9s eligibility, 1.6s locked hostile-red triangle telegraph, moderate impact damage, then 4s persistent toxic cloud rims dealing repeated light damage.',
     entries: [],
     customSpawnFn: spawnSovereignCapArena,
   },
