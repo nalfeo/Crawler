@@ -524,6 +524,8 @@ class FakeGh {
    * the run (which the list-before-create finds first).
    */
   createRaceInsert = false;
+  /** Labels the create-race-inserted PR carries (see `createRaceInsert`). */
+  createRaceLabels: string[] = [];
   /** Pre-seed an open PR (used to exercise the create-race reuse path). */
   seedOpen(head: string, base: string, isCrossRepository = false, labels: string[] = []): number {
     const number = this.next++;
@@ -605,7 +607,7 @@ class FakeGh {
           body: flags.body ?? '',
           autoMerge: false,
           isCrossRepository: false,
-          labels: [],
+          labels: [...this.createRaceLabels],
         });
         return err(`a pull request for branch "${flags.head}" already exists`);
       }
@@ -824,6 +826,24 @@ describe('runReconcile (real git)', () => {
     // Race-recovered PR must carry merge-train — it was opened without the
     // label by the concurrent writer and the reconciler must re-ensure it.
     expect(gh.prs[0]!.labels).toContain('merge-train');
+  });
+
+  it('(e3) does NOT re-add merge-train on a create-race PR that is already merge-train-blocked', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    // The concurrent writer's PR was already blocked by the train before our
+    // create attempt raced with it — re-ensuring merge-train here would fight
+    // that intentional train decision, same as the normal update path.
+    gh.createRaceInsert = true;
+    gh.createRaceLabels = ['merge-train-blocked'];
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(result.created).toBe(false);
+    expect(gh.prs[0]!.labels).not.toContain('merge-train');
+    expect(gh.prs[0]!.labels).toContain('merge-train-blocked');
   });
 
   it('(f) ignores a cross-repository (fork) PR reusing the promote branch name', async () => {
