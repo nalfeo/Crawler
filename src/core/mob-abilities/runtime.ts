@@ -216,7 +216,7 @@ function isTargetValid(
 function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
   const targetingMode = normalizedTargetingMode(def);
-  let targetEid: number | null = null;
+  let targetEid: number | null;
   let pos: { x: number; y: number } | null = null;
 
   if (targetingMode === 'self') {
