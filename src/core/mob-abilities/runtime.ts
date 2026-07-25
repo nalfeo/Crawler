@@ -439,16 +439,18 @@ export function mobAbilitySystem(world: GameWorld): void {
     }
 
     inst.timerMs -= dtMs;
-    if (inst.phase === 'telegraph') {
-      syncTelegraphGeometryToCaster(world, casterEid, inst);
-      pinCasterDuringTelegraph(world, casterEid, inst);
-    }
     if (inst.timerMs <= TIMER_EPSILON_MS) {
       if (inst.phase === 'cooldown') {
         beginTelegraph(world, casterEid, inst);
       } else {
         resolveCast(world, casterEid, inst);
       }
+    }
+    // Re-check after phase transitions so a cooldown→telegraph flip on this
+    // same tick still gets pinned immediately (no one-frame movement leak).
+    if (inst.phase === 'telegraph') {
+      syncTelegraphGeometryToCaster(world, casterEid, inst);
+      pinCasterDuringTelegraph(world, casterEid, inst);
     }
 
     // Publish committed cue state for the renderer (telegraph phase only).

@@ -6,23 +6,43 @@
   "estimated_apples": 5,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Compared (A) per-system duplicated buffs, (B) status-effect reuse, and (C) runtime-owned mob-ability buffs. Chose runtime-owned state to keep cadence/telegraph/buff ownership deterministic across core/game/engine seams."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "concerns_count": 12,
+          "resolved_count": 12,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "models": [
+            "gpt-5.6-terra",
+            "claude-sonnet-5"
+          ],
+          "concerns_count": 6,
+          "valid_count": 6,
+          "resolved_count": 6,
+          "clean": true
+        }
+      ]
     }
   }
 }

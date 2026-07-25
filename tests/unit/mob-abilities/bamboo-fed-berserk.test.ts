@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasComponent, removeEntity } from 'bitecs';
+import { addComponent, hasComponent, removeEntity } from 'bitecs';
 import { createTestWorld } from '../../helpers/world-factory.js';
 import { GAME } from '../../../src/shared/constants.js';
 import { createInputState } from '../../../src/shared/input.js';
@@ -24,6 +24,7 @@ import {
   Knockback,
 } from '../../../src/core/index.js';
 import { runCoreSimulationStep } from '../../../src/core/simulation-core-step.js';
+import type { CollisionResult } from '../../../src/core/systems/collisionSystem.js';
 import { AI_TYPE } from '../../../src/game/enemyAISystem.js';
 import { enemyAISystem, weaponSystem } from '../../../src/game/index.js';
 import {
@@ -104,7 +105,7 @@ function collisionResultFor(player: number, enemy: number) {
   return {
     pairs: [{ a: player, b: enemy }],
     grid: { clear() {}, insert() {}, queryPairs: () => [], queryRadius: () => [] },
-  } as const;
+  } satisfies CollisionResult;
 }
 
 describe('Bamboo-Fed Berserk definition', () => {
@@ -155,15 +156,19 @@ describe('Bamboo-Fed Berserk cadence and telegraph', () => {
     const h = buildHarness();
     arm(h);
     stepRuntime(h.world, FIRST_TELEGRAPH_FRAME);
-    set(h.world.ecs, h.wei, Knockback, { dirX: 1, dirY: 0, speed: 2, remaining: 2 });
-    const xBefore = h.world.stores.position.x[h.wei];
+    addComponent(
+      h.world.ecs,
+      h.wei,
+      set(Knockback, { dirX: 1, dirY: 0, speed: 2, remaining: 2 }),
+    );
+    const xBefore = h.world.stores.position.x[h.wei] ?? 0;
     h.world.frameCount += 1;
     h.world.elapsedMs += DELTA;
     statusEffectSystem(h.world);
     mobAbilitySystem(h.world);
     knockbackSystem(h.world);
     expect(hasComponent(h.world.ecs, h.wei, Knockback)).toBe(false);
-    expect(h.world.stores.position.x[h.wei]).toBeCloseTo(xBefore, 10);
+    expect(h.world.stores.position.x[h.wei] ?? 0).toBeCloseTo(xBefore, 10);
   });
 });
 
@@ -205,8 +210,7 @@ describe('Bamboo-Fed Berserk active buff modifiers', () => {
       targetEid: null,
     });
     const after = h.world.mobAbilities.activeBuffsByEntity.get(h.wei)!.remainingMs;
-    expect(after).toBeLessThan(before);
-    expect(after).toBeGreaterThan(3000);
+    expect(after).toBeCloseTo(4000 - 20 * DELTA, 6);
   });
 });
 
@@ -217,8 +221,8 @@ describe('Bamboo-Fed Berserk seam consumption', () => {
     baseline.world.elapsedMs += DELTA;
     enemyAISystem(baseline.world);
     const baseSpeed = Math.hypot(
-      baseline.world.stores.velocity.x[baseline.wei],
-      baseline.world.stores.velocity.y[baseline.wei],
+      baseline.world.stores.velocity.x[baseline.wei] ?? 0,
+      baseline.world.stores.velocity.y[baseline.wei] ?? 0,
     );
 
     const buffed = buildHarness(40, 40, 40, 5);
@@ -234,8 +238,8 @@ describe('Bamboo-Fed Berserk seam consumption', () => {
     buffed.world.elapsedMs += DELTA;
     enemyAISystem(buffed.world);
     const buffedSpeed = Math.hypot(
-      buffed.world.stores.velocity.x[buffed.wei],
-      buffed.world.stores.velocity.y[buffed.wei],
+      buffed.world.stores.velocity.x[buffed.wei] ?? 0,
+      buffed.world.stores.velocity.y[buffed.wei] ?? 0,
     );
 
     expect(buffedSpeed).toBeGreaterThan(baseSpeed * 1.35);
@@ -244,9 +248,9 @@ describe('Bamboo-Fed Berserk seam consumption', () => {
   it('enemy contact melee damage is multiplied while buffed', () => {
     const baseline = buildHarness(40, 40, 40, 40);
     baseline.world.elapsedMs = 1000;
-    const playerHpBefore = baseline.world.stores.health.current[baseline.player];
+    const playerHpBefore = baseline.world.stores.health.current[baseline.player] ?? 0;
     damageSystem(baseline.world, collisionResultFor(baseline.player, baseline.wei));
-    const baselineDelta = playerHpBefore - baseline.world.stores.health.current[baseline.player];
+    const baselineDelta = playerHpBefore - (baseline.world.stores.health.current[baseline.player] ?? 0);
 
     const buffed = buildHarness(40, 40, 40, 40);
     const def = createBambooFedBerserkDefinition();
@@ -258,21 +262,27 @@ describe('Bamboo-Fed Berserk seam consumption', () => {
       targetEid: null,
     });
     buffed.world.elapsedMs = 1000;
-    const hpBeforeBuffed = buffed.world.stores.health.current[buffed.player];
+    const hpBeforeBuffed = buffed.world.stores.health.current[buffed.player] ?? 0;
     damageSystem(buffed.world, collisionResultFor(buffed.player, buffed.wei));
-    const buffedDelta = hpBeforeBuffed - buffed.world.stores.health.current[buffed.player];
+    const buffedDelta = hpBeforeBuffed - (buffed.world.stores.health.current[buffed.player] ?? 0);
 
     expect(buffedDelta).toBeGreaterThan(baselineDelta * 1.35);
   });
 
   it('knockback displacement is reduced while buffed', () => {
     const baseline = buildHarness(40, 40, 40, 40);
+    baseline.world.floorMap = undefined;
     baseline.world.stores.weight.value[baseline.wei] = 120;
-    set(baseline.world.ecs, baseline.wei, Knockback, { dirX: 1, dirY: 0, speed: 2, remaining: 2 });
+    addComponent(
+      baseline.world.ecs,
+      baseline.wei,
+      set(Knockback, { dirX: 1, dirY: 0, speed: 2, remaining: 2 }),
+    );
     knockbackSystem(baseline.world);
-    const baselineStep = baseline.world.stores.position.x[baseline.wei] - 40;
+    const baselineStep = (baseline.world.stores.position.x[baseline.wei] ?? 0) - 40;
 
     const buffed = buildHarness(40, 40, 40, 40);
+    buffed.world.floorMap = undefined;
     const def = createBambooFedBerserkDefinition();
     def.resolve(buffed.world, {
       abilityId: def.abilityId,
@@ -282,9 +292,13 @@ describe('Bamboo-Fed Berserk seam consumption', () => {
       targetEid: null,
     });
     buffed.world.stores.weight.value[buffed.wei] = 120;
-    set(buffed.world.ecs, buffed.wei, Knockback, { dirX: 1, dirY: 0, speed: 2, remaining: 2 });
+    addComponent(
+      buffed.world.ecs,
+      buffed.wei,
+      set(Knockback, { dirX: 1, dirY: 0, speed: 2, remaining: 2 }),
+    );
     knockbackSystem(buffed.world);
-    const buffedStep = buffed.world.stores.position.x[buffed.wei] - 40;
+    const buffedStep = (buffed.world.stores.position.x[buffed.wei] ?? 0) - 40;
 
     expect(buffedStep).toBeLessThan(baselineStep * 0.5);
   });

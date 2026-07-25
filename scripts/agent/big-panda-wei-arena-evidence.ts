@@ -18,7 +18,7 @@ import {
 } from '../../src/labs/combat-arena-lab/arena-data.js';
 
 const DELTA = GAME.DELTA_MS;
-const TOTAL_FRAMES = 1420;
+const TOTAL_FRAMES = 1660;
 
 function makeWorld() {
   const world = createGameWorld({ seed: 42, floor: 1, entityCapacityMode: 'game' });
@@ -75,10 +75,13 @@ function run(label: string, arm: boolean) {
         prevResolved = inst.resolvedCasts;
       }
       if (
+        world.frameCount === 599 ||
         world.frameCount === 690 ||
         world.frameCount === 820 ||
         world.frameCount === 930 ||
-        world.frameCount === 1380
+        world.frameCount === 1290 ||
+        world.frameCount === 1380 ||
+        world.frameCount === 1620
       ) {
         modifierSnapshots.push({
           frame: world.frameCount,
@@ -113,25 +116,64 @@ const cadenceOk =
   arena.resolutions[0] === 690 &&
   arena.telegraphs[1] === 1290 &&
   arena.resolutions[1] === 1380;
-const modifiersOk = arena.modifierSnapshots.some(
+const firstResolveOk = arena.modifierSnapshots.some(
   (s) =>
     s.frame === 690 &&
     Math.abs(s.move - 1.4) < 1e-6 &&
     Math.abs(s.melee - 1.4) < 1e-6 &&
     Math.abs(s.knockback - 0.35) < 1e-6,
 );
-const expiryOk = arena.modifierSnapshots.some(
+const firstWindowMidOk = arena.modifierSnapshots.some(
+  (s) =>
+    s.frame === 820 &&
+    Math.abs(s.move - 1.4) < 1e-6 &&
+    Math.abs(s.melee - 1.4) < 1e-6 &&
+    Math.abs(s.knockback - 0.35) < 1e-6,
+);
+const secondResolveOk = arena.modifierSnapshots.some(
+  (s) =>
+    s.frame === 1380 &&
+    Math.abs(s.move - 1.4) < 1e-6 &&
+    Math.abs(s.melee - 1.4) < 1e-6 &&
+    Math.abs(s.knockback - 0.35) < 1e-6,
+);
+const baselineBeforeFirstOk = arena.modifierSnapshots.some(
+  (s) =>
+    s.frame === 599 &&
+    Math.abs(s.move - 1) < 1e-6 &&
+    Math.abs(s.melee - 1) < 1e-6 &&
+    Math.abs(s.knockback - 1) < 1e-6,
+);
+const baselineBeforeSecondOk = arena.modifierSnapshots.some(
+  (s) =>
+    s.frame === 1290 &&
+    Math.abs(s.move - 1) < 1e-6 &&
+    Math.abs(s.melee - 1) < 1e-6 &&
+    Math.abs(s.knockback - 1) < 1e-6,
+);
+const firstExpiryOk = arena.modifierSnapshots.some(
   (s) =>
     s.frame === 930 &&
     Math.abs(s.move - 1) < 1e-6 &&
     Math.abs(s.melee - 1) < 1e-6 &&
     Math.abs(s.knockback - 1) < 1e-6,
 );
+const secondExpiryOk = arena.modifierSnapshots.some(
+  (s) =>
+    s.frame === 1620 &&
+    Math.abs(s.move - 1) < 1e-6 &&
+    Math.abs(s.melee - 1) < 1e-6 &&
+    Math.abs(s.knockback - 1) < 1e-6,
+);
 const normalOk = normal.casts === 0 && normal.resolutions.length === 0;
+const modifiersOk = firstResolveOk && firstWindowMidOk && secondResolveOk;
+const expiryOk = baselineBeforeFirstOk && baselineBeforeSecondOk && firstExpiryOk && secondExpiryOk;
 
 console.log('\n=== GATE ===');
 console.log(`arena two-cast cadence (600/690/1290/1380): ${cadenceOk ? 'PASS' : 'FAIL'}`);
-console.log(`buff modifiers active/expiry                : ${modifiersOk && expiryOk ? 'PASS' : 'FAIL'}`);
+console.log(
+  `buff modifiers both windows + baseline      : ${modifiersOk && expiryOk ? 'PASS' : 'FAIL'}`,
+);
 console.log(`normal-game zero casts                      : ${normalOk ? 'PASS' : 'FAIL'}`);
 
 if (!cadenceOk || !modifiersOk || !expiryOk || !normalOk) {

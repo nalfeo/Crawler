@@ -30,11 +30,20 @@ interface WeiArenaScene {
     announcements: Array<{ kind: string; text?: string }>;
     mobAbilities: {
       cues?: unknown[];
-      activeBuffsByEntity: Map<number, { abilityId: string; remainingMs: number }>;
+      activeBuffsByEntity: Map<
+        number,
+        {
+          abilityId: string;
+          remainingMs: number;
+          movementSpeedMultiplier: number;
+          meleeDamageMultiplier: number;
+          knockbackResistanceMultiplier: number;
+        }
+      >;
     };
   };
   children?: {
-    list?: Array<{ type?: string; visible?: boolean }>;
+    list?: Array<{ type?: string; visible?: boolean; name?: string }>;
   };
 }
 
@@ -78,9 +87,13 @@ interface ArenaProbe {
   readonly frame: number;
   readonly elapsedMs: number;
   readonly graphicsCount: number;
+  readonly auraGraphicsCount: number;
   readonly cueCount: number;
   readonly announcementText: string | null;
   readonly berserkActive: boolean;
+  readonly movementMultiplier: number;
+  readonly meleeMultiplier: number;
+  readonly knockbackMultiplier: number;
 }
 
 async function stepToFrame(page: Page, targetFrame: number): Promise<ArenaProbe> {
@@ -102,19 +115,28 @@ async function stepToFrame(page: Page, targetFrame: number): Promise<ArenaProbe>
       const graphicsCount =
         scene.children?.list?.filter((obj) => obj?.type === 'Graphics' && obj.visible !== false)
           .length ?? 0;
+      const auraGraphicsCount =
+        scene.children?.list?.filter(
+          (obj) => obj?.type === 'Graphics' && obj.visible !== false && obj.name === 'berserkAura',
+        ).length ?? 0;
       const announcementText =
         scene.world.announcements.find((event) => event.kind === 'bossAbilityCast')?.text ?? null;
       const cueCount = scene.world.mobAbilities?.cues?.length ?? 0;
-      const berserkActive = [...scene.world.mobAbilities.activeBuffsByEntity.values()].some(
+      const activeBuff = [...scene.world.mobAbilities.activeBuffsByEntity.values()].find(
         (buff) => buff.abilityId === 'big-panda-wei-bamboo-fed-berserk',
       );
+      const berserkActive = activeBuff !== undefined;
       const probe = {
         frame: scene.world.frameCount,
         elapsedMs: scene.world.elapsedMs,
         graphicsCount,
+        auraGraphicsCount,
         cueCount,
         announcementText,
         berserkActive,
+        movementMultiplier: activeBuff?.movementSpeedMultiplier ?? 1,
+        meleeMultiplier: activeBuff?.meleeDamageMultiplier ?? 1,
+        knockbackMultiplier: activeBuff?.knockbackResistanceMultiplier ?? 1,
       } satisfies ArenaProbe;
       if (probe.announcementText !== null && probe.announcementText !== announcement) {
         throw new Error(`unexpected announcement text: ${probe.announcementText}`);
@@ -175,6 +197,10 @@ describe('Big Panda Wei arena observation', () => {
     expect(before.cueCount).toBe(0);
     expect(before.announcementText).toBeNull();
     expect(before.berserkActive).toBe(false);
+    expect(before.auraGraphicsCount).toBe(0);
+    expect(before.movementMultiplier).toBe(1);
+    expect(before.meleeMultiplier).toBe(1);
+    expect(before.knockbackMultiplier).toBe(1);
     expect(telegraph.cueCount).toBe(1);
     expect(telegraph.announcementText).toBe(ANNOUNCEMENT);
 
@@ -190,16 +216,32 @@ describe('Big Panda Wei arena observation', () => {
     expect(resolved.cueCount).toBe(0);
     expect(resolved.berserkActive).toBe(true);
     expect(resolved.graphicsCount).toBeGreaterThan(before.graphicsCount);
+    expect(resolved.auraGraphicsCount).toBeGreaterThan(0);
+    expect(resolved.movementMultiplier).toBeCloseTo(1.4, 6);
+    expect(resolved.meleeMultiplier).toBeCloseTo(1.4, 6);
+    expect(resolved.knockbackMultiplier).toBeCloseTo(0.35, 6);
 
     const expiry = await stepToFrame(page, EXPIRY_FRAME);
     expect(expiry.berserkActive).toBe(false);
+    expect(expiry.auraGraphicsCount).toBe(0);
+    expect(expiry.graphicsCount).toBeLessThan(resolved.graphicsCount);
+    expect(expiry.movementMultiplier).toBe(1);
+    expect(expiry.meleeMultiplier).toBe(1);
+    expect(expiry.knockbackMultiplier).toBe(1);
 
     const telegraph2 = await stepToFrame(page, SECOND_TELEGRAPH_FRAME);
     expect(telegraph2.cueCount).toBe(1);
     expect(telegraph2.berserkActive).toBe(false);
+    expect(telegraph2.movementMultiplier).toBe(1);
+    expect(telegraph2.meleeMultiplier).toBe(1);
+    expect(telegraph2.knockbackMultiplier).toBe(1);
 
     const resolved2 = await stepToFrame(page, SECOND_RESOLUTION_FRAME);
     expect(resolved2.cueCount).toBe(0);
     expect(resolved2.berserkActive).toBe(true);
+    expect(resolved2.auraGraphicsCount).toBeGreaterThan(0);
+    expect(resolved2.movementMultiplier).toBeCloseTo(1.4, 6);
+    expect(resolved2.meleeMultiplier).toBeCloseTo(1.4, 6);
+    expect(resolved2.knockbackMultiplier).toBeCloseTo(0.35, 6);
   }, 120_000);
 });
