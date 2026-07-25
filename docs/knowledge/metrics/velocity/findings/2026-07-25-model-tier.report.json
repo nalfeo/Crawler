@@ -1,0 +1,459 @@
+{
+  "schema": "crawler-velocity-report/v1",
+  "experimentId": "model-tier",
+  "hypothesis": "A small, well-scoped replay task does not need a frontier model. claude-haiku-4.5 should reach a passing verifier at a comparable pass rate to claude-sonnet-4.6, at materially lower nanoAiu cost. The decision-relevant outcome is pass RATE first and cost second: a cheap model that fails trials is not cheap. NOTE: the verifier only runs the PR's own tests, so a win means 'reaches green as reliably, for less', never 'produces equal-quality code'.",
+  "factor": "model",
+  "packId": "smoke-blood-pool",
+  "startedAt": "2026-07-25T18:39:14.790Z",
+  "finishedAt": "2026-07-25T19:26:27.418Z",
+  "arms": [
+    {
+      "armId": "sonnet-4.6",
+      "description": "Status quo model for implementation sessions.",
+      "trials": 4,
+      "passed": 4,
+      "passRate": 1,
+      "modelCalls": {
+        "n": 4,
+        "median": 9.5,
+        "mean": 9.5,
+        "min": 9,
+        "max": 10
+      },
+      "outputTokens": {
+        "n": 4,
+        "median": 11100,
+        "mean": 11045,
+        "min": 9766,
+        "max": 12214
+      },
+      "nanoAiu": {
+        "n": 4,
+        "median": 67735500000,
+        "mean": 71943157500,
+        "min": 60547965000,
+        "max": 91753665000
+      },
+      "sessionDurationMs": {
+        "n": 4,
+        "median": 215639,
+        "mean": 216032.5,
+        "min": 203190,
+        "max": 229662
+      },
+      "toolResultBytes": {
+        "n": 4,
+        "median": 63356.5,
+        "mean": 63356.5,
+        "min": 63145,
+        "max": 63568
+      },
+      "compactions": {
+        "n": 4,
+        "median": 0,
+        "mean": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    {
+      "armId": "haiku-4.5",
+      "description": "Cheaper, faster tier. Environment is byte-identical to the control arm; only the model differs.",
+      "trials": 4,
+      "passed": 4,
+      "passRate": 1,
+      "modelCalls": {
+        "n": 4,
+        "median": 13,
+        "mean": 13.75,
+        "min": 10,
+        "max": 19
+      },
+      "outputTokens": {
+        "n": 4,
+        "median": 7919.5,
+        "mean": 7915.25,
+        "min": 6621,
+        "max": 9201
+      },
+      "nanoAiu": {
+        "n": 4,
+        "median": 25341545000,
+        "mean": 25390058750,
+        "min": 19435595000,
+        "max": 31441550000
+      },
+      "sessionDurationMs": {
+        "n": 4,
+        "median": 173266.5,
+        "mean": 176103.75,
+        "min": 155273,
+        "max": 202609
+      },
+      "toolResultBytes": {
+        "n": 4,
+        "median": 63958.5,
+        "mean": 60806.75,
+        "min": 47570,
+        "max": 67740
+      },
+      "compactions": {
+        "n": 4,
+        "median": 0,
+        "mean": 0,
+        "min": 0,
+        "max": 0
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "metric": "modelCalls",
+      "baselineArm": "sonnet-4.6",
+      "treatmentArm": "haiku-4.5",
+      "baselineMedian": 9.5,
+      "treatmentMedian": 13,
+      "medianDelta": 3.5,
+      "ci95": [0.5, 9.5],
+      "cliffsDelta": 0.875,
+      "effectSizeLabel": "large",
+      "conclusive": true
+    },
+    {
+      "metric": "outputTokens",
+      "baselineArm": "sonnet-4.6",
+      "treatmentArm": "haiku-4.5",
+      "baselineMedian": 11100,
+      "treatmentMedian": 7919.5,
+      "medianDelta": -3180.5,
+      "ci95": [-4828, -1431.5],
+      "cliffsDelta": -1,
+      "effectSizeLabel": "large",
+      "conclusive": true
+    },
+    {
+      "metric": "nanoAiu",
+      "baselineArm": "sonnet-4.6",
+      "treatmentArm": "haiku-4.5",
+      "baselineMedian": 67735500000,
+      "treatmentMedian": 25341545000,
+      "medianDelta": -42393955000,
+      "ci95": [-66412120000, -32710172500],
+      "cliffsDelta": -1,
+      "effectSizeLabel": "large",
+      "conclusive": true
+    },
+    {
+      "metric": "sessionDurationMs",
+      "baselineArm": "sonnet-4.6",
+      "treatmentArm": "haiku-4.5",
+      "baselineMedian": 215639,
+      "treatmentMedian": 173266.5,
+      "medianDelta": -42372.5,
+      "ci95": [-67731.5, -9127.5],
+      "cliffsDelta": -1,
+      "effectSizeLabel": "large",
+      "conclusive": true
+    },
+    {
+      "metric": "toolResultBytes",
+      "baselineArm": "sonnet-4.6",
+      "treatmentArm": "haiku-4.5",
+      "baselineMedian": 63356.5,
+      "treatmentMedian": 63958.5,
+      "medianDelta": 602,
+      "ci95": [-15786.5, 4383.5],
+      "cliffsDelta": 0.25,
+      "effectSizeLabel": "small",
+      "conclusive": false
+    },
+    {
+      "metric": "compactions",
+      "baselineArm": "sonnet-4.6",
+      "treatmentArm": "haiku-4.5",
+      "baselineMedian": 0,
+      "treatmentMedian": 0,
+      "medianDelta": 0,
+      "ci95": [0, 0],
+      "cliffsDelta": 0,
+      "effectSizeLabel": "negligible",
+      "conclusive": false
+    }
+  ],
+  "trials": [
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "sonnet-4.6",
+      "repetition": 1,
+      "sessionId": "1299dd8b-febd-426b-8cc9-4caad6c94e58",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 10,
+        "outputTokens": 10497,
+        "toolCalls": 12,
+        "nanoAiu": 91753665000,
+        "sessionDurationMs": 210995,
+        "apiDurationMs": 168316,
+        "linesAdded": 22,
+        "linesRemoved": 6,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 63568,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\model-tier\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__sonnet-4.6__r1.jsonl",
+      "startedAt": "2026-07-25T18:39:14.792Z",
+      "finishedAt": "2026-07-25T18:45:15.108Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "sonnet-4.6",
+      "repetition": 2,
+      "sessionId": "9a89dd18-0725-4e46-a69e-5aa482539c89",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 9,
+        "outputTokens": 11703,
+        "toolCalls": 11,
+        "nanoAiu": 66517635000,
+        "sessionDurationMs": 220283,
+        "apiDurationMs": 180204,
+        "linesAdded": 25,
+        "linesRemoved": 6,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 63145,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\model-tier\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__sonnet-4.6__r2.jsonl",
+      "startedAt": "2026-07-25T18:45:15.108Z",
+      "finishedAt": "2026-07-25T18:51:06.242Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "sonnet-4.6",
+      "repetition": 3,
+      "sessionId": "ffcce49d-f507-45ba-a8d5-66bbdb46f43a",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 10,
+        "outputTokens": 12214,
+        "toolCalls": 12,
+        "nanoAiu": 68953365000,
+        "sessionDurationMs": 229662,
+        "apiDurationMs": 184908,
+        "linesAdded": 18,
+        "linesRemoved": 4,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 63568,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\model-tier\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__sonnet-4.6__r3.jsonl",
+      "startedAt": "2026-07-25T18:51:06.242Z",
+      "finishedAt": "2026-07-25T18:58:41.774Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "sonnet-4.6",
+      "repetition": 4,
+      "sessionId": "eb1b7ee1-453b-48e0-938e-ef4667bbb191",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 9,
+        "outputTokens": 9766,
+        "toolCalls": 11,
+        "nanoAiu": 60547965000,
+        "sessionDurationMs": 203190,
+        "apiDurationMs": 157553,
+        "linesAdded": 18,
+        "linesRemoved": 5,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 63145,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\model-tier\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__sonnet-4.6__r4.jsonl",
+      "startedAt": "2026-07-25T18:58:41.774Z",
+      "finishedAt": "2026-07-25T19:04:33.767Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "haiku-4.5",
+      "repetition": 1,
+      "sessionId": "91c2bb9b-509e-4cda-ae54-7055ec1af1e1",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 14,
+        "outputTokens": 8199,
+        "toolCalls": 16,
+        "nanoAiu": 31441550000,
+        "sessionDurationMs": 155273,
+        "apiDurationMs": 106113,
+        "linesAdded": 15,
+        "linesRemoved": 6,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 63502,
+        "largestToolResultBytes": 20641,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\model-tier\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__haiku-4.5__r1.jsonl",
+      "startedAt": "2026-07-25T19:04:33.767Z",
+      "finishedAt": "2026-07-25T19:09:25.768Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "haiku-4.5",
+      "repetition": 2,
+      "sessionId": "a896e123-74d1-4402-8df2-fdd637b01629",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 19,
+        "outputTokens": 9201,
+        "toolCalls": 19,
+        "nanoAiu": 30203705000,
+        "sessionDurationMs": 187324,
+        "apiDurationMs": 127384,
+        "linesAdded": 17,
+        "linesRemoved": 6,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 67740,
+        "largestToolResultBytes": 20641,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\model-tier\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__haiku-4.5__r2.jsonl",
+      "startedAt": "2026-07-25T19:09:25.768Z",
+      "finishedAt": "2026-07-25T19:14:48.464Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "haiku-4.5",
+      "repetition": 3,
+      "sessionId": "9f393893-6af1-49fd-b552-5b12838cd9fa",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 10,
+        "outputTokens": 7640,
+        "toolCalls": 11,
+        "nanoAiu": 20479385000,
+        "sessionDurationMs": 202609,
+        "apiDurationMs": 90148,
+        "linesAdded": 45,
+        "linesRemoved": 9,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 64415,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\model-tier\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__haiku-4.5__r3.jsonl",
+      "startedAt": "2026-07-25T19:14:48.464Z",
+      "finishedAt": "2026-07-25T19:20:27.618Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "haiku-4.5",
+      "repetition": 4,
+      "sessionId": "c24e3517-1fd8-4b1f-a72c-c1144c82a1c1",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 12,
+        "outputTokens": 6621,
+        "toolCalls": 12,
+        "nanoAiu": 19435595000,
+        "sessionDurationMs": 159209,
+        "apiDurationMs": 84389,
+        "linesAdded": 18,
+        "linesRemoved": 6,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 47570,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\model-tier\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__haiku-4.5__r4.jsonl",
+      "startedAt": "2026-07-25T19:20:27.618Z",
+      "finishedAt": "2026-07-25T19:26:27.334Z"
+    }
+  ],
+  "verdict": "CONCLUSIVE on 4/6 comparison(s):\n  - haiku-4.5 increased median modelCalls vs sonnet-4.6 by 3.5 (95% CI [0.5, 9.5], Cliff's δ=0.88, large)\n  - haiku-4.5 reduced median outputTokens vs sonnet-4.6 by 3180.5 (95% CI [-4828.0, -1431.5], Cliff's δ=-1.00, large)\n  - haiku-4.5 reduced median nanoAiu vs sonnet-4.6 by 42393955000.0 (95% CI [-66412120000.0, -32710172500.0], Cliff's δ=-1.00, large)\n  - haiku-4.5 reduced median sessionDurationMs vs sonnet-4.6 by 42372.5 (95% CI [-67731.5, -9127.5], Cliff's δ=-1.00, large)",
+  "warnings": []
+}
