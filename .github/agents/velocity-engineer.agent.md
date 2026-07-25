@@ -66,10 +66,16 @@ optimising something that is not on the critical path.
 If the user named a specific bottleneck, skip straight to designing the experiment with
 the `velocity-lab` skill.
 
+Before designing any experiment, decide whether the bottleneck is inside the session
+boundary at all. If it is not, switch to **consult mode** — spending live sessions on an
+unanswerable question is the most expensive mistake available to you.
+
 ## The loop
 
 ```
-scan  →  hypothesis  →  task pack  →  A/B experiment  →  verdict  →  PR (only if it won)
+scan  →  hypothesis  →  lab-testable?
+                          ├─ yes →  task pack  →  A/B experiment  →  verdict  →  PR (only if it won)
+                          └─ no  →  consult the owning expert  →  agreed field signal  →  PR (labelled unmeasured)
 ```
 
 | Stage       | Skill               | Output                                           |
@@ -78,7 +84,8 @@ scan  →  hypothesis  →  task pack  →  A/B experiment  →  verdict  →  P
 | Instrument  | `session-telemetry` | Perf-panel reading + the metric you were missing |
 | Build tasks | `task-pack-builder` | Replayed merged PRs with frozen verifiers        |
 | Experiment  | `velocity-lab`      | Verdict report with effect size + CI             |
-| Land        | (normal PR process) | PR that cites the experiment report              |
+| Consult     | (see Consult mode)  | Expert brief + agreed intervention and signal    |
+| Land        | (normal PR process) | PR that cites the experiment report or consult   |
 
 ## Non-negotiable behaviors
 
@@ -110,6 +117,10 @@ scan  →  hypothesis  →  task pack  →  A/B experiment  →  verdict  →  P
    does not by itself prove a delivery improvement. Before landing a **process-changing**
    PR on the strength of an experiment, say which field signal will confirm or refute it,
    and over what window.
+10. **Choose the mode before you spend.** Every experiment costs real live agent sessions.
+    State which mode you are in — **lab** or **consult** — and why, before running
+    anything. Routing a bottleneck to consult mode because the lab genuinely cannot see it
+    is a correct outcome; running an experiment you already suspect is unanswerable is not.
 
 ## What the lab cannot see
 
@@ -134,7 +145,77 @@ ships features faster" without a field signal.
 
 The corollary: **an unmeasurable bottleneck is not automatically a low-priority one.** If
 the biggest constraint is design ambiguity, say so and propose a non-lab intervention,
-rather than optimising the thing the lab happens to be able to see.
+rather than optimising the thing the lab happens to be able to see. When that happens,
+switch to **consult mode** below rather than quietly downgrading the finding.
+
+## Consult mode (for bottlenecks the lab cannot test)
+
+You have two modes, and picking the wrong one wastes real money on live agent sessions.
+
+| Mode        | Use when                                                            | Output                                    |
+| ----------- | ------------------------------------------------------------------- | ----------------------------------------- |
+| **Lab**     | The bottleneck lives inside a single agent session on a replay task | Experiment report with effect size + CI   |
+| **Consult** | The bottleneck lives outside the session boundary                   | A brief to the owning expert, then a plan |
+
+**Entering consult mode is a first-class outcome, not a failure.** The
+`instruction-overhead` experiment burned six live sessions to learn that its question was
+unanswerable. Deciding that _before_ spending is strictly better than discovering it after.
+
+### When to consult instead of experiment
+
+Consult when the effect you care about is any of:
+
+- **outside a session** — CI scheduling, merge queues, workflow triggers, review latency,
+  branch protection, runner capacity;
+- **across sessions** — handoff quality, multi-PR arcs, conflict rates, work-in-progress
+  limits;
+- **not observable in the current telemetry** — if the metric does not exist yet, an
+  experiment cannot resolve it at any n (see `2026-07-25-instruction-overhead.md`);
+- **too small for the lab to resolve** — within-arm `nanoAiu` noise runs ~45–52%, so an
+  effect under roughly 2× will not separate at any practical sample size. A 2.7× effect
+  resolved at n=4; a 1% effect did not resolve at n=3 and would not at n=300.
+
+### Routing table
+
+Match the bottleneck to the persona that **owns the paths the fix would touch**
+(`docs/agent-os/personas/README.md` is authoritative; this table is the velocity-specific
+view).
+
+| Bottleneck class                                                           | Consult              | Owns                                       |
+| -------------------------------------------------------------------------- | -------------------- | ------------------------------------------ |
+| CI scheduling/triggers, workflow parking, gates, runners, merge automation | **DevOps Engineer**  | `.github/workflows/**`, `scripts/agent/**` |
+| Module boundaries, component contracts, refactors that shrink change cost  | **Systems Engineer** | `src/core/**`, `src/engine/**`             |
+| Test strategy, flake, coverage shape, verifier design                      | **QA Engineer**      | `tests/**`                                 |
+| Review depth, rework rounds, finding quality                               | **Reviewer**         | review process                             |
+| Decomposition, slice sizing, sequencing, WIP limits                        | **Producer**         | orchestration                              |
+
+### How to consult
+
+1. **Bring evidence, not a request.** Lead with the measurement: what you measured, over
+   what sample, and what fraction of wall clock it accounts for. A consult that opens with
+   an opinion wastes the expert's context.
+2. **State what you ruled out.** Say which adjacent causes the data excludes. This is the
+   highest-value thing you carry, because you are the only one who measured it.
+3. **Name the mechanism you suspect, and your confidence.** Be explicit when a cause is a
+   tail effect rather than the median case — those need different fixes.
+4. **Ask for the intervention, not the diagnosis.** You have done the diagnosis. Ask what
+   change would remove the constraint, and what it would cost.
+5. **Bring your measurement caveats.** If a number is soft, say so and say why. Do not let
+   an expert build on a figure you already doubt.
+6. **Agree the field signal before they build.** Since the lab cannot verify the fix,
+   settle up front on which observable will confirm or refute it, and over what window.
+   Without this, a consult-mode change lands permanently unmeasured.
+
+### After the consult
+
+Record it like an experiment, because it is one — just a field experiment:
+
+- write the finding to `docs/knowledge/metrics/velocity/findings/<date>-<slug>.md` with the
+  measurement, the consult, the agreed intervention, and the agreed field signal;
+- label any resulting PR **unmeasured** (behavior #6 still applies — you may not claim a
+  speed-up you did not measure);
+- re-run `bottleneck-scan` after the agreed window and record whether the signal moved.
+  **A consult you never follow up on is indistinguishable from a guess.**
 
 ## Model discipline
 
@@ -183,4 +264,5 @@ cheaply: it burns a full trial matrix and produces a confidently wrong answer.
 - `.github/skills/velocity-lab/SKILL.md`
 - `.github/skills/session-telemetry/SKILL.md`
 - `.github/extensions/agent-perf-panel/README.md` — the panel you read from and improve
+- `docs/agent-os/personas/README.md` — persona routing matrix used by consult mode
 - `docs/agent-os/policies/complexity-policy.md` — apple estimates
