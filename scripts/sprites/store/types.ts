@@ -23,12 +23,25 @@
  * `get` and `has` throw `StoreNotFoundError` when the key doesn't exist.
  * All other errors surface as plain Error instances from the underlying
  * backend (fs errno, Azure SDK error).
+ * `putConditional` throws `StoreConditionalWriteError` when the
+ * If-Match / If-None-Match precondition is not met.
  */
 
 export class StoreNotFoundError extends Error {
   override readonly name = 'StoreNotFoundError';
   constructor(readonly key: string) {
     super(`Run-store key not found: ${key}`);
+  }
+}
+
+/**
+ * Thrown by {@link RunStore.putConditional} when the ETag precondition is not
+ * met — i.e. a concurrent writer already changed the blob.
+ */
+export class StoreConditionalWriteError extends Error {
+  override readonly name = 'StoreConditionalWriteError';
+  constructor(readonly key: string) {
+    super(`Run-store conditional write precondition failed: ${key}`);
   }
 }
 
@@ -46,6 +59,21 @@ export interface ListOptions {
    * directly) are always authoritative and ignore this option.
    */
   readonly authoritative?: boolean;
+}
+
+/**
+ * Conditions for a conditional write. Exactly one of `ifMatch` or
+ * `ifNoneMatch` should be set.
+ *
+ * - `ifMatch`: write succeeds only when the stored ETag equals this value
+ *   (Azure `If-Match`; update-only semantics). Pass the ETag returned by
+ *   {@link RunStore.getWithETag}.
+ * - `ifNoneMatch: '*'`: write succeeds only when the key does not yet exist
+ *   (Azure `If-None-Match: *`; create-only semantics).
+ */
+export interface ConditionalWriteConditions {
+  readonly ifMatch?: string;
+  readonly ifNoneMatch?: string;
 }
 
 export interface RunStore {
@@ -80,6 +108,26 @@ export interface RunStore {
    * If omitted, callers should fall back to {@link resolve}.
    */
   resolveForExternalRead?(key: string): string;
+  /**
+   * Read bytes **and** the current ETag together. Used by callers that need
+   * to follow with a {@link putConditional} to achieve atomic
+   * compare-and-swap semantics.
+   *
+   * @throws {StoreNotFoundError} if the key does not exist.
+   */
+  getWithETag?(key: string): Promise<{ data: Buffer; etag: string }>;
+  /**
+   * Write `data` to `key` only when the given condition holds:
+   * - `{ ifMatch: etag }` — succeeds only when the stored ETag equals `etag`
+   *   (Azure `If-Match`; update-only).
+   * - `{ ifNoneMatch: '*' }` — succeeds only when the key does not exist
+   *   (Azure `If-None-Match: *`; create-only).
+   *
+   * @throws {StoreConditionalWriteError} when the precondition is not met
+   *   (concurrent writer changed the blob, or key already exists for a
+   *   create-only write).
+   */
+  putConditional?(key: string, data: Buffer, conditions: ConditionalWriteConditions): Promise<void>;
   /** Human-readable backend tag surfaced in /api/health. */
   readonly backend: 'local' | 'azure-blob';
 }

@@ -37,7 +37,7 @@ Add an optional `weapon` anchor to the generated sprite pipeline:
 2. **Pipeline layer** (`scripts/sprites/`): `postprocess-overrides.ts` stores
    `ManualWeaponAnchorOverride`; `run-pipeline.ts` writes `NN.anchor.weapon.json` per variant;
    `rerun.ts` threads it through postprocess; `approve.ts` reads it into the manifest;
-   `sidecar/server.ts` exposes `POST /weapon-anchor` and includes the sidecar in store hydration.
+   `scripts/sprites/sidecar/server.ts` exposes `POST /weapon-anchor` and includes the sidecar in store hydration.
 
 3. **World-state bridge** (`src/core/world.ts`): `entityWeaponAnchors: Map<number, {x,y}>` stores
    canonical right-facing world-feet offsets for entities whose generated sprite has an explicit
