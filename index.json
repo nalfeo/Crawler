@@ -44,6 +44,17 @@
     "path": "by-sha/c92eaaf2389f6df6edac138444a5eae6a4c29cd8.json"
   },
   {
+    "commit": "0d3a8e7063b1976c43631ee07fb1159083cdf117",
+    "commitDate": "2026-07-24T15:51:30-07:00",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#1883)",
+    "capturedAt": "2026-07-25T00:00:58.644Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30132199732",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/0d3a8e7063b1976c43631ee07fb1159083cdf117.json"
+  },
+  {
     "commit": "d56ebb1d172d03da16ab3a8e1db8c41b920721ad",
     "commitDate": "2026-07-24T12:46:51-07:00",
     "commitSubject": "feat(ci): promote dispatch caps to runtime vars, add knobs doc + guard (#1782)",
