@@ -330,6 +330,16 @@ export async function savePlan(
   deps: Pick<ThemeEquipmentReviewCliDeps, 'store' | 'repoRoot'>,
 ): Promise<Record<string, unknown>> {
   const plan = themeEquipmentSetPlanSchema.parse(command.plan);
+  // Enforce the 40+ char design-language contract. The canonical plan schema
+  // intentionally allows min(1) so existing hand-authored files (which predate
+  // the synthesis contract) remain parseable, but saving through this path
+  // must meet the same brief contract that synthesis enforces.
+  if (plan.themeDesignLanguage.trim().length < 40) {
+    throw new Error(
+      `themeDesignLanguage must be at least 40 characters (got ${plan.themeDesignLanguage.trim().length}). ` +
+        `This is a human-authored design contract that drives all downstream art prompts.`,
+    );
+  }
   // Re-run the production expansion so coverage/duplicate-id/slot rules
   // reject a hand-edited roster exactly as they reject a synthesized one.
   validateRosterProposal(JSON.stringify(plan), {

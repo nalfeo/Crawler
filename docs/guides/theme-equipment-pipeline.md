@@ -59,7 +59,7 @@ gh workflow run theme-equipment.yml --ref <branch> --field action=init --field s
 Generate or regenerate only unresolved items in the current phase:
 
 ```powershell
-gh workflow run theme-equipment.yml --field action=run-phase --field set_id=<set-id>
+gh workflow run theme-equipment.yml --ref <branch> --field action=run-phase --field set_id=<set-id>
 ```
 
 Advance and status operations are storage-only and do not require OpenAI credentials. The workflow
@@ -85,7 +85,7 @@ refresh rather than overwriting the newer revision.
 After the state reaches `complete`, dispatch:
 
 ```powershell
-gh workflow run theme-equipment.yml --field action=publish --field set_id=<set-id>
+gh workflow run theme-equipment.yml --ref <branch> --field action=publish --field set_id=<set-id>
 ```
 
 Publication stages the current generated-art manifest/catalog and complete source-run artifacts,

@@ -228,7 +228,7 @@ export function renderHtml(bootstrap) {
     function rosterTable(plan) {
       const rows = [
         ...(Array.isArray(plan.weapons) ? plan.weapons : []).map(w => ({ id: w?.id, name: w?.displayName, kind: 'weapon', detail: w?.weaponType })),
-        ...(Array.isArray(plan.equipment) ? plan.equipment : []).map(e => ({ id: e?.id, name: e?.displayName, kind: 'equipment', detail: (e?.slots ?? []).join(', ') })),
+        ...(Array.isArray(plan.equipment) ? plan.equipment : []).map(e => ({ id: e?.id, name: e?.displayName, kind: 'equipment', detail: Array.isArray(e?.slots) ? e.slots.join(', ') : '' })),
       ];
       if (!rows.length) return '';
       return '<details open><summary>' + rows.length + ' items</summary><table class="roster">' +
@@ -242,7 +242,12 @@ export function renderHtml(bootstrap) {
       document.querySelectorAll('[data-field]').forEach(input =>
         input.addEventListener('input', () => { draft[input.dataset.field] = input.value; }));
       const planEditor = document.querySelector('[data-plan-text]');
-      planEditor?.addEventListener('input', () => { draft.planText = planEditor.value; });
+      let meterTimer = null;
+      planEditor?.addEventListener('input', () => {
+        draft.planText = planEditor.value;
+        clearTimeout(meterTimer);
+        meterTimer = setTimeout(() => { renderCreate(); }, 300);
+      });
       planEditor?.addEventListener('change', () => { draft.planText = planEditor.value; renderCreate(); });
       document.querySelector('[data-synth]')?.addEventListener('click', synthRoster);
       document.querySelector('[data-save]')?.addEventListener('click', savePlan);

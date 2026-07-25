@@ -168,3 +168,37 @@ test('judges the plan against the freshly fetched remote tip, not a stale tracki
     rmSync(remote, { recursive: true, force: true });
   }
 });
+
+test('rejects when the working-tree plan differs from the remote blob', async () => {
+  const remote = mkdtempSync(path.join(tmpdir(), 'theme-review-remote-stale-'));
+  const root = repoWithSets(['classic-fantasy']);
+  const planPath = 'data/theme-equipment-sets/classic-fantasy.json';
+  const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: path.join(root, 'gitconfig') };
+  const run = (args, cwd = root) =>
+    execFileSync('git', args, { cwd, stdio: 'ignore', env: gitEnv });
+  try {
+    writeFileSync(path.join(root, 'gitconfig'), '[user]\n  name = t\n  email = t@example.com\n');
+    execFileSync('git', ['init', '--quiet', '--bare', remote], { stdio: 'ignore', env: gitEnv });
+    run(['init', '--quiet', '--initial-branch', 'feature-branch']);
+    run(['remote', 'add', 'origin', remote]);
+    run(['add', '.']);
+    run(['commit', '--quiet', '-m', 'seed']);
+    run(['push', '--quiet', 'origin', 'feature-branch']);
+
+    // Overwrite the local working-tree plan without committing or pushing.
+    writeFileSync(
+      path.join(root, planPath),
+      `{"id":"classic-fantasy","updated":true}\n`,
+    );
+
+    // The remote still has the old content, so the working tree and the
+    // remote blob diverge — initialization must be refused.
+    await assert.rejects(
+      () => assertPlanOnRef(root, 'feature-branch', planPath, gitEnv),
+      /does not match the local working-tree file/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  }
+});

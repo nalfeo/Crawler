@@ -126,6 +126,11 @@ export async function resolveDispatchRef(repoRoot, env = loadRepoEnv(repoRoot)) 
  * The tip is fetched into a private, per-call ref rather than read from
  * `FETCH_HEAD` or `origin/<ref>`, both of which are shared per repository
  * and can be overwritten by a concurrent git process mid-check.
+ *
+ * Beyond existence, the remote blob is compared byte-for-byte with the
+ * working-tree file. An overwritten-but-not-pushed plan would pass an
+ * existence-only check while the workflow initializes a stale roster; plan
+ * immutability then locks in the drift.
  */
 export async function assertPlanOnRef(repoRoot, ref, planPath, env = loadRepoEnv(repoRoot)) {
   const options = { cwd: repoRoot, env, encoding: 'utf8', windowsHide: true, timeout: 30_000 };
@@ -141,12 +146,33 @@ export async function assertPlanOnRef(repoRoot, ref, planPath, env = loadRepoEnv
         { cause: error },
       );
     }
+    let remoteContent;
     try {
-      await execFileAsync('git', ['cat-file', '-e', `${scratch}:${planPath}`], options);
+      const { stdout } = await execFileAsync(
+        'git',
+        ['cat-file', '-p', `${scratch}:${planPath}`],
+        options,
+      );
+      remoteContent = stdout;
     } catch {
       throw new Error(
         `${planPath} was not found on origin/${ref}. Commit the plan and push this branch, ` +
           `then initialize — the workflow reads the plan from the ref it runs on.`,
+      );
+    }
+    const localPath = path.join(repoRoot, planPath);
+    let localContent;
+    try {
+      localContent = readFileSync(localPath, 'utf8');
+    } catch {
+      // No local file — nothing to compare; the remote copy is what will run.
+      return;
+    }
+    if (remoteContent !== localContent) {
+      throw new Error(
+        `${planPath} on origin/${ref} does not match the local working-tree file. ` +
+          `Push the latest version of this plan before initializing — the workflow reads the ` +
+          `plan from the remote ref, and plan immutability will lock in any drift.`,
       );
     }
   } finally {
