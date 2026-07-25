@@ -324,7 +324,7 @@ export class ThemeEquipmentRunner {
       designLanguage: state.themeDesignLanguage,
     };
     const synthesis = await synthesizeBrief({
-      name: item.id,
+      name: `${state.id}-${item.id}`,
       briefHint: `${item.displayName}. Theme context: ${JSON.stringify(theme)}`,
       theme,
       type: item.kind === 'weapon' ? 'weapon' : 'equipment',
@@ -526,32 +526,45 @@ export class ThemeEquipmentRunner {
       return this.judgeTextCollection(state, state.phase);
     }
     const tiles = await Promise.all(
-      state.items.map(async (item) => {
-        const artifact =
-          state.phase === 'sprite-sheets'
-            ? requiredArtifact(item, 'sprite-sheets', 'raw-sheet')
-            : requiredArtifact(
-                item,
-                'variant-approval',
-                THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
-              );
-        if (
-          !artifact.briefId ||
-          !artifact.runId ||
-          (artifact.variantIndex === undefined && state.phase === 'variant-approval')
-        ) {
+      state.items.flatMap((item) => {
+        if (state.phase === 'sprite-sheets') {
+          const artifact = requiredArtifact(item, 'sprite-sheets', 'raw-sheet');
+          if (!artifact.briefId || !artifact.runId) {
+            throw new ThemeEquipmentRunnerError(
+              `Collection artifact metadata is incomplete for "${item.id}".`,
+            );
+          }
+          return [
+            this.deps.store
+              .get(`${artifact.briefId}/${artifact.runId}/${artifact.summary}`)
+              .then((png) => ({ label: item.displayName, png })),
+          ];
+        }
+        // variant-approval: include ALL approved variants so the collection
+        // judge scores every selected variant, not just the first one.
+        const approvedArtifacts = item.phases['variant-approval'].artifacts.filter(
+          (a) => a.kind === THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
+        );
+        if (approvedArtifacts.length === 0) {
           throw new ThemeEquipmentRunnerError(
-            `Collection artifact metadata is incomplete for "${item.id}".`,
+            `Item "${item.id}" has no approved-variant artifacts for collection judging.`,
           );
         }
-        const filename =
-          state.phase === 'sprite-sheets'
-            ? artifact.summary
-            : `processed/${String(artifact.variantIndex).padStart(2, '0')}.png`;
-        return {
-          label: item.displayName,
-          png: await this.deps.store.get(`${artifact.briefId}/${artifact.runId}/${filename}`),
-        };
+        return approvedArtifacts.map((artifact) => {
+          if (!artifact.briefId || !artifact.runId || artifact.variantIndex === undefined) {
+            throw new ThemeEquipmentRunnerError(
+              `Collection artifact metadata is incomplete for "${item.id}".`,
+            );
+          }
+          const filename = `processed/${String(artifact.variantIndex).padStart(2, '0')}.png`;
+          const label =
+            approvedArtifacts.length > 1
+              ? `${item.displayName} v${artifact.variantIndex}`
+              : item.displayName;
+          return this.deps.store
+            .get(`${artifact.briefId}/${artifact.runId}/${filename}`)
+            .then((png) => ({ label, png }));
+        });
       }),
     );
     return judgeThemeEquipmentCollectionWithVision({

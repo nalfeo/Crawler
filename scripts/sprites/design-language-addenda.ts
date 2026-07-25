@@ -82,12 +82,14 @@ export function resolveDesignLanguageAddenda(
       : FAMILY_DESIGN_LANGUAGE[familyId as keyof typeof FAMILY_DESIGN_LANGUAGE];
   const archetypeExtra = familyTheme !== undefined ? ARCHETYPE_THEME_ADDENDA[canonical] : undefined;
   const authoredTheme = themeOverride?.trim();
+  const builtInTheme =
+    familyTheme !== undefined && archetypeExtra !== undefined
+      ? `${familyTheme} ${archetypeExtra}`
+      : familyTheme;
   const themeAddendum =
-    authoredTheme && authoredTheme.length > 0
-      ? authoredTheme
-      : familyTheme !== undefined && archetypeExtra !== undefined
-        ? `${familyTheme} ${archetypeExtra}`
-        : familyTheme;
+    authoredTheme && builtInTheme
+      ? `${builtInTheme} ${authoredTheme}`
+      : authoredTheme ?? builtInTheme;
 
   return {
     ...(floorAddendum === undefined ? {} : { floor: floorAddendum }),

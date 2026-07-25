@@ -47,6 +47,7 @@ import {
   THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
   THEME_EQUIPMENT_MAX_APPROVED_VARIANTS,
   THEME_EQUIPMENT_MIN_APPROVED_VARIANTS,
+  THEME_EQUIPMENT_SET_REVIEW_PHASES,
   type ThemeEquipmentArtifactEvidence,
   type ThemeEquipmentCollectionJudgeResult,
   type ThemeEquipmentSetItem,
@@ -509,6 +510,7 @@ export class ThemeEquipmentPublishError extends Error {
     readonly kind:
       | 'not-complete'
       | 'already-published'
+      | 'phase-gates-not-satisfied'
       | 'variant-count-invalid'
       | 'asset-mismatch',
     message: string,
@@ -627,6 +629,37 @@ export async function publishThemeEquipmentSet(
     throw new ThemeEquipmentPublishError(
       'already-published',
       `Theme set "${validated.id}" publication is already "${validated.publication.status}"`,
+    );
+  }
+
+  // Re-validate all historical phase gates — re-parsing proves only schema
+  // shape. A forged or corrupt state with phase='complete' but null reviews
+  // must not reach runQueueCommit.
+  const phaseGateErrors: string[] = [];
+  for (const phase of THEME_EQUIPMENT_SET_REVIEW_PHASES) {
+    for (const item of validated.items) {
+      if (item.phases[phase].review.verdict !== 'up') {
+        phaseGateErrors.push(
+          `Item "${item.id}" does not have an up review for phase "${phase}"`,
+        );
+      }
+    }
+    const phaseReview = validated.phases[phase];
+    if (phaseReview.humanReview.verdict !== 'up') {
+      phaseGateErrors.push(`Set-level human review is not up for phase "${phase}"`);
+    }
+    if (phaseReview.collectionJudge === null) {
+      phaseGateErrors.push(`Collection judge score is missing for phase "${phase}"`);
+    } else if (phaseReview.collectionJudge.score < 3) {
+      phaseGateErrors.push(
+        `Collection judge score ${phaseReview.collectionJudge.score}/5 is below 3/5 for phase "${phase}"`,
+      );
+    }
+  }
+  if (phaseGateErrors.length > 0) {
+    throw new ThemeEquipmentPublishError(
+      'phase-gates-not-satisfied',
+      `Theme set "${validated.id}" has unsatisfied phase gates:\n${phaseGateErrors.join('\n')}`,
     );
   }
 

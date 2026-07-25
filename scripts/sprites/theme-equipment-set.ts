@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
-import { StoreNotFoundError, type RunStore } from './store/types.js';
+import {
+  StoreConditionalWriteError,
+  StoreNotFoundError,
+  type RunStore,
+} from './store/types.js';
 
 export const THEME_EQUIPMENT_SET_SCHEMA_VERSION = 1;
 export const THEME_EQUIPMENT_SET_MAX_ITEMS = 32;
@@ -668,6 +672,57 @@ export function recordThemeSetItemPhaseArtifacts(
   return { ok: true, state: parseThemeEquipmentSetState(nextState) };
 }
 
+/** Required artifact `kind` for an up vote in each reviewable phase. */
+const PHASE_REQUIRED_ARTIFACT_KIND: Partial<Record<ThemeEquipmentSetReviewPhase, string>> = {
+  briefs: 'selected-brief',
+  'sprite-sheets': 'raw-sheet',
+  'variant-approval': THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
+} as const;
+
+/**
+ * Returns a gate reason when the item is missing the required artifact for an
+ * up vote in the given phase, or when variant-approval has the wrong count.
+ * Returns `null` when everything is in order.
+ */
+function validatePhaseArtifactsForUpVote(
+  item: ThemeEquipmentSetItem,
+  phase: ThemeEquipmentSetReviewPhase,
+): ThemeSetGateReason | null {
+  const requiredKind = PHASE_REQUIRED_ARTIFACT_KIND[phase];
+  if (!requiredKind) return null; // roster has no required visual artifact
+
+  const matching = item.phases[phase].artifacts.filter(
+    (artifact) => artifact.kind === requiredKind,
+  );
+
+  if (matching.length === 0) {
+    return {
+      code: 'item-missing-phase-artifact',
+      message: `Cannot approve item "${item.id}" for phase "${phase}": required "${requiredKind}" artifact is absent`,
+      path: ['items', item.id, 'phases', phase, 'artifacts'],
+    };
+  }
+
+  if (phase === 'variant-approval') {
+    if (matching.length < THEME_EQUIPMENT_MIN_APPROVED_VARIANTS) {
+      return {
+        code: 'approved-variant-count-low',
+        message: `Item "${item.id}" has ${matching.length} approved variant(s); at least ${THEME_EQUIPMENT_MIN_APPROVED_VARIANTS} required`,
+        path: ['items', item.id, 'phases', 'variant-approval', 'artifacts'],
+      };
+    }
+    if (matching.length > THEME_EQUIPMENT_MAX_APPROVED_VARIANTS) {
+      return {
+        code: 'approved-variant-count-high',
+        message: `Item "${item.id}" has ${matching.length} approved variant(s); at most ${THEME_EQUIPMENT_MAX_APPROVED_VARIANTS} allowed`,
+        path: ['items', item.id, 'phases', 'variant-approval', 'artifacts'],
+      };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Applies a human up/down/null verdict (with optional feedback) to one
  * item's current-phase review. An "up" verdict is what makes
@@ -721,6 +776,15 @@ export function applyThemeSetItemReview(
   }
 
   const phase = state.phase;
+
+  // An 'up' verdict is only valid once the phase's required artifacts are present.
+  if (parsedReview.data.verdict === 'up') {
+    const artifactReason = validatePhaseArtifactsForUpVote(item, phase);
+    if (artifactReason) {
+      return { ok: false, reasons: [artifactReason] };
+    }
+  }
+
   const verdictChanged = item.phases[phase].review.verdict !== parsedReview.data.verdict;
 
   const nextState: ThemeEquipmentSetState = {
@@ -1051,22 +1115,55 @@ export async function saveThemeEquipmentSetState(
   },
 ): Promise<ThemeEquipmentSetState> {
   const key = themeEquipmentSetStateKey(state.id);
-  const stored = await loadThemeEquipmentSetState(store, state.id);
-  const actualRevision = stored?.stateRevision ?? null;
-  if (
-    (actualRevision === null &&
-      options.expectedRevision !== null &&
-      options.expectedRevision !== state.stateRevision) ||
-    (actualRevision !== null && actualRevision !== options.expectedRevision)
-  ) {
-    throw new ThemeEquipmentSetRevisionConflictError(key, options.expectedRevision, actualRevision);
-  }
-
   const nextState = parseThemeEquipmentSetState({
     ...state,
     updatedAt: options.now().toISOString(),
   });
-  await store.put(key, Buffer.from(`${JSON.stringify(nextState, null, 2)}\n`));
+  const data = Buffer.from(`${JSON.stringify(nextState, null, 2)}\n`);
+
+  if (store.getWithETag && store.putConditional) {
+    // Atomic compare-and-swap path: read ETag, validate revision, write with If-Match.
+    let etag: string | undefined;
+    try {
+      const result = await store.getWithETag(key);
+      const raw = JSON.parse(result.data.toString('utf8')) as unknown;
+      const stored = themeEquipmentSetStateSchema.safeParse(raw);
+      const actualRevision = stored.success ? stored.data.stateRevision : null;
+      if (actualRevision !== options.expectedRevision) {
+        throw new ThemeEquipmentSetRevisionConflictError(key, options.expectedRevision, actualRevision);
+      }
+      etag = result.etag;
+    } catch (error) {
+      if (error instanceof StoreNotFoundError) {
+        if (options.expectedRevision !== null) {
+          throw new ThemeEquipmentSetRevisionConflictError(key, options.expectedRevision, null);
+        }
+        // etag stays undefined — use If-None-Match: * for create-only write
+      } else {
+        throw error;
+      }
+    }
+    const conditions = etag !== undefined ? { ifMatch: etag } : { ifNoneMatch: '*' };
+    try {
+      await store.putConditional(key, data, conditions);
+    } catch (error) {
+      if (error instanceof StoreConditionalWriteError) {
+        throw new ThemeEquipmentSetRevisionConflictError(key, options.expectedRevision, null);
+      }
+      throw error;
+    }
+  } else {
+    // Fallback: check-then-write (test doubles and stores without ETag support).
+    const stored = await loadThemeEquipmentSetState(store, state.id);
+    const actualRevision = stored?.stateRevision ?? null;
+    if (
+      (actualRevision === null && options.expectedRevision !== null) ||
+      (actualRevision !== null && actualRevision !== options.expectedRevision)
+    ) {
+      throw new ThemeEquipmentSetRevisionConflictError(key, options.expectedRevision, actualRevision);
+    }
+    await store.put(key, data);
+  }
   return nextState;
 }
 

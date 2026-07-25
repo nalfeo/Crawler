@@ -108,7 +108,38 @@ function makeCompleteState(countOverrides: Record<string, number> = {}): ThemeEq
       revisionStatus: 'frozen',
       frozenPhases: [...THEME_EQUIPMENT_SET_REVIEW_PHASES],
       phases: {
-        ...item.phases,
+        roster: {
+          artifacts: [],
+          evidence: [],
+          review: { verdict: 'up' as const },
+        },
+        briefs: {
+          artifacts: [
+            {
+              id: `${item.id}-brief-selected`,
+              kind: 'selected-brief',
+              uri: `run://${item.id}/briefs/brief.yaml`,
+              provenance: 'unit-test',
+            },
+          ],
+          evidence: [],
+          review: { verdict: 'up' as const },
+        },
+        'sprite-sheets': {
+          artifacts: [
+            {
+              id: `${item.id}-raw-sheet`,
+              kind: 'raw-sheet',
+              uri: `run://${item.id}/sprite-sheets/sheet-00.png`,
+              provenance: 'unit-test',
+              briefId: `${item.id}-v2`,
+              runId: `run-${item.id}`,
+              summary: 'sheet-00.png',
+            },
+          ],
+          evidence: [],
+          review: { verdict: 'up' as const },
+        },
         'variant-approval': {
           artifacts: approvedArtifacts,
           evidence: [],
@@ -118,10 +149,21 @@ function makeCompleteState(countOverrides: Record<string, number> = {}): ThemeEq
     };
   });
 
+  const passedPhaseReview = {
+    humanReview: { verdict: 'up' as const },
+    collectionJudge: { score: 4 as const, rationale: 'cohesive', provenance: 'unit-test' },
+  };
+
   return parseThemeEquipmentSetState({
     ...base,
     phase: 'complete',
     items,
+    phases: {
+      roster: passedPhaseReview,
+      briefs: passedPhaseReview,
+      'sprite-sheets': passedPhaseReview,
+      'variant-approval': passedPhaseReview,
+    },
     publication: emptyThemeEquipmentSetPublication(),
   });
 }
@@ -610,6 +652,89 @@ describe('publishThemeEquipmentSet', () => {
         now: FIXED_NOW,
       }),
     ).rejects.toMatchObject({ kind: 'variant-count-invalid' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('is blocked when a set-level collection judge score is below 3 in a prior phase', async () => {
+    const complete = makeCompleteState();
+    const state = parseThemeEquipmentSetState({
+      ...complete,
+      phases: {
+        ...complete.phases,
+        briefs: {
+          ...complete.phases.briefs,
+          collectionJudge: { score: 2, rationale: 'too generic', provenance: 'unit-test' },
+        },
+      },
+    });
+    const { exec, calls } = makeFakeExec(happyResponder);
+    await expect(
+      publishThemeEquipmentSet(state, {
+        repoRoot: '/repo',
+        sourceRoot: '/stage',
+        assets: assetsForState(state),
+        deps: controlDeps(exec),
+        message: 'publish',
+        now: FIXED_NOW,
+      }),
+    ).rejects.toMatchObject({ kind: 'phase-gates-not-satisfied' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('is blocked when an item was not up-reviewed in a prior phase', async () => {
+    const complete = makeCompleteState();
+    const firstItem = complete.items[0]!;
+    const state = parseThemeEquipmentSetState({
+      ...complete,
+      items: complete.items.map((item) =>
+        item.id === firstItem.id
+          ? {
+              ...item,
+              phases: {
+                ...item.phases,
+                roster: { ...item.phases.roster, review: { verdict: null } },
+              },
+            }
+          : item,
+      ),
+    });
+    const { exec, calls } = makeFakeExec(happyResponder);
+    await expect(
+      publishThemeEquipmentSet(state, {
+        repoRoot: '/repo',
+        sourceRoot: '/stage',
+        assets: assetsForState(state),
+        deps: controlDeps(exec),
+        message: 'publish',
+        now: FIXED_NOW,
+      }),
+    ).rejects.toMatchObject({ kind: 'phase-gates-not-satisfied' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('is blocked when a set-level human review is absent in a prior phase', async () => {
+    const complete = makeCompleteState();
+    const state = parseThemeEquipmentSetState({
+      ...complete,
+      phases: {
+        ...complete.phases,
+        'sprite-sheets': {
+          ...complete.phases['sprite-sheets'],
+          humanReview: { verdict: null },
+        },
+      },
+    });
+    const { exec, calls } = makeFakeExec(happyResponder);
+    await expect(
+      publishThemeEquipmentSet(state, {
+        repoRoot: '/repo',
+        sourceRoot: '/stage',
+        assets: assetsForState(state),
+        deps: controlDeps(exec),
+        message: 'publish',
+        now: FIXED_NOW,
+      }),
+    ).rejects.toMatchObject({ kind: 'phase-gates-not-satisfied' });
     expect(calls).toHaveLength(0);
   });
 

@@ -21,7 +21,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: theme-equipment-${{ inputs.set_id }}
@@ -86,6 +86,11 @@ jobs:
           SPRITES_ALLOW_CI_THEME_PIPELINE: 'true'
         run: |
           if [ "$THEME_ACTION" = "init" ]; then
+            PLAN_ID=$(node -e "const fs=require('fs');try{const p=JSON.parse(fs.readFileSync(process.env.THEME_PLAN_PATH,'utf8'));process.stdout.write(String(p.id??''))}catch(e){process.stdout.write('')}")
+            if [ "$PLAN_ID" != "$THEME_SET_ID" ]; then
+              echo "ERROR: plan id '$PLAN_ID' does not match workflow set_id '$THEME_SET_ID'. Update the set_id input or choose the correct plan." >&2
+              exit 1
+            fi
             npm run sprites:theme-equipment -- init --plan "$THEME_PLAN_PATH"
           else
             npm run sprites:theme-equipment -- run-phase --set-id "$THEME_SET_ID"

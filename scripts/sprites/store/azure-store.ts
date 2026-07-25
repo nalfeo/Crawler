@@ -28,7 +28,12 @@ import {
   generateBlobSASQueryParameters,
 } from '@azure/storage-blob';
 import type { ContainerClient } from '@azure/storage-blob';
-import { StoreNotFoundError, type RunStore } from './types.js';
+import {
+  StoreConditionalWriteError,
+  StoreNotFoundError,
+  type ConditionalWriteConditions,
+  type RunStore,
+} from './types.js';
 
 export interface AzureBlobRunStoreOptions {
   /** Azure Storage account name. */
@@ -124,6 +129,41 @@ export class AzureBlobRunStore implements RunStore {
     }
   }
 
+  async getWithETag(key: string): Promise<{ data: Buffer; etag: string }> {
+    const blobClient = this.container.getBlobClient(key);
+    try {
+      const download = await blobClient.download();
+      const chunks: Buffer[] = [];
+      for await (const chunk of download.readableStreamBody ?? []) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
+      }
+      return { data: Buffer.concat(chunks), etag: download.etag ?? '' };
+    } catch (err: unknown) {
+      if (isNotFound(err)) throw new StoreNotFoundError(key);
+      throw err;
+    }
+  }
+
+  async putConditional(
+    key: string,
+    data: Buffer,
+    conditions: ConditionalWriteConditions,
+  ): Promise<void> {
+    const blobClient = this.container.getBlockBlobClient(key);
+    try {
+      await blobClient.uploadData(data, {
+        blobHTTPHeaders: { blobContentType: contentTypeFor(key) },
+        conditions: {
+          ifMatch: conditions.ifMatch,
+          ifNoneMatch: conditions.ifNoneMatch,
+        },
+      });
+    } catch (err: unknown) {
+      if (isPreconditionFailed(err)) throw new StoreConditionalWriteError(key);
+      throw err;
+    }
+  }
+
   async has(key: string): Promise<boolean> {
     const blobClient = this.container.getBlobClient(key);
     return blobClient.exists();
@@ -188,6 +228,12 @@ function isNotFound(err: unknown): boolean {
   if (err == null || typeof err !== 'object') return false;
   const status = (err as { statusCode?: unknown }).statusCode;
   return status === 404;
+}
+
+function isPreconditionFailed(err: unknown): boolean {
+  if (err == null || typeof err !== 'object') return false;
+  const status = (err as { statusCode?: unknown }).statusCode;
+  return status === 412;
 }
 
 function extractFromConnStr(connStr: string, field: string): string | undefined {
