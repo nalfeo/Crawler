@@ -7771,6 +7771,336 @@
       "facingDirection": "right",
       "contentHash": "896360f915fb5c64739129ab5d5a01a76317c3dd3ffffcb84c624a3fbebf90ae"
     },
+    "quartermaster-cap-v1-var-0": {
+      "briefId": "quartermaster-cap-v1",
+      "spriteName": "quartermaster-cap-v1-var-0",
+      "assetPath": "generated/quartermaster-cap-v1-var-0.png",
+      "approvedAt": "2026-07-25T05:27:44.367Z",
+      "sourceRun": "generated/runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 29,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 37,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-derivable",
+          "anchor": {
+            "x": 29,
+            "y": 60
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 0,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-25T05:26:43.224Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept of a patched tricorn hat with a glowing brass orb fits the dark-fantasy salvage aesthetic of Crawler. The jagged edges and eerie light add a touch of authored contradiction, but the design could push the scavenged look further for more impact."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the reference style in terms of outline weight, shading, and palette depth. The glowing orb is well-executed, but the leather texture could use more nuanced shading to match the references more closely."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the reference style in terms of outline weight, shading, and palette depth. The glowing orb is well-executed, but the leather texture could use more nuanced shading to match the references more closely."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite clearly depicts a tall, battered tricorn hat with jagged edges, patched leather, and a glowing brass orb in the center, as described in the brief."
+        },
+        "readability": {
+          "score": 4,
+          "rationale": "The silhouette is clear and recognizable at game scale, with the glowing orb providing a focal point. However, the jagged edges could be slightly more pronounced to enhance the silhouette's distinctiveness."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is an isolated item with no extraneous elements, adhering to the presentation requirements for an inanimate consumable or prop."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues in readability or style match. Minor improvements could enhance its integration into the game.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 2610,
+          "completionTokens": 387,
+          "totalTokens": 2997
+        }
+      },
+      "type": "item",
+      "contentHash": "f4d151e3eb1483216ef63a6ec5b7141c50654e820db4b7e8520726b531564be7",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "quartermaster-cap-v1-var-1": {
+      "briefId": "quartermaster-cap-v1",
+      "spriteName": "quartermaster-cap-v1-var-1",
+      "assetPath": "generated/quartermaster-cap-v1-var-1.png",
+      "approvedAt": "2026-07-25T05:27:44.367Z",
+      "sourceRun": "generated/runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 30,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 37,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-derivable",
+          "anchor": {
+            "x": 30,
+            "y": 60
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 1,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-25T05:26:47.736Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept of a patched tricorn hat with a glowing brass orb fits the dark-fantasy salvage theme and has a clear contradiction between authority and scavenged origins. However, the jagged edges could be more pronounced to emphasize the battered look."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering is close to the reference style, with appropriate outline weight, shading, and palette depth. However, the orb's glow could be more integrated into the hat's texture to match the references' cohesive lighting."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering is close to the reference style, with appropriate outline weight, shading, and palette depth. However, the orb's glow could be more integrated into the hat's texture to match the references' cohesive lighting."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite clearly depicts a tricorn hat with patched leather and a glowing brass orb, matching the brief perfectly."
+        },
+        "readability": {
+          "score": 4,
+          "rationale": "The silhouette is clear at game scale, and the glowing orb is immediately noticeable. However, the jagged edges could be more distinct to enhance the readability of the battered look."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is an isolated item with no extraneous elements, adhering to the presentation requirements."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, but has minor issues in design language and style match that could be improved.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 2610,
+          "completionTokens": 355,
+          "totalTokens": 2965
+        }
+      },
+      "type": "item",
+      "contentHash": "11c0a6640909c239dc25820be534576f9b34f99c5931a12fd130460986850701",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "quartermaster-cap-v1-var-2": {
+      "briefId": "quartermaster-cap-v1",
+      "spriteName": "quartermaster-cap-v1-var-2",
+      "assetPath": "generated/quartermaster-cap-v1-var-2.png",
+      "approvedAt": "2026-07-25T05:27:44.367Z",
+      "sourceRun": "generated/runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 30,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-derivable",
+          "anchor": {
+            "x": 30,
+            "y": 60
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 2,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-25T05:26:53.349Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept of a patched tricorn hat with a glowing brass orb fits the dark-fantasy salvage theme and has a clear contradiction between its scavenged origins and its authoritative glowing orb. However, the jagged edges could be more pronounced to emphasize the battered look."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering is close to the reference style, with appropriate outline weight, shading, and palette depth. However, the orb's glow could be more integrated into the overall lighting to match the references more closely."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering is close to the reference style, with appropriate outline weight, shading, and palette depth. However, the orb's glow could be more integrated into the overall lighting to match the references more closely."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite clearly depicts a tricorn hat with patched leather and a glowing brass orb, matching the brief perfectly."
+        },
+        "readability": {
+          "score": 4,
+          "rationale": "The silhouette is clear and recognizable at game scale, but the jagged edges could be more exaggerated to enhance the readability of the battered look."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is an isolated item with no extraneous elements, adhering to the presentation requirements."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, but has minor issues in design language and style match that could be improved.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 2610,
+          "completionTokens": 350,
+          "totalTokens": 2960
+        }
+      },
+      "type": "item",
+      "contentHash": "1c43076a48a30f77770a39886429b61a00605f672e96c2abc507c736727f982e",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quartermaster-cap-v1/2026-07-25T05-24-46-3af30111/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "quarterstaff-v2-var-0": {
       "briefId": "quarterstaff-v2",
       "spriteName": "quarterstaff-v2-var-0",

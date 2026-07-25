@@ -2788,6 +2788,57 @@
     "row": 0
   },
   {
+    "id": "generated:quartermaster-cap-v1-var-0",
+    "kind": "sprite",
+    "label": "quartermaster-cap-v1-var-0",
+    "description": "Generated sprite from brief: quartermaster-cap-v1.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "quartermaster-cap-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/quartermaster-cap-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:quartermaster-cap-v1-var-1",
+    "kind": "sprite",
+    "label": "quartermaster-cap-v1-var-1",
+    "description": "Generated sprite from brief: quartermaster-cap-v1.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "quartermaster-cap-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/quartermaster-cap-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:quartermaster-cap-v1-var-2",
+    "kind": "sprite",
+    "label": "quartermaster-cap-v1-var-2",
+    "description": "Generated sprite from brief: quartermaster-cap-v1.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "quartermaster-cap-v1-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/quartermaster-cap-v1-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:quarterstaff-v2-var-0",
     "kind": "sprite",
     "label": "quarterstaff-v2-var-0",
