@@ -454,19 +454,13 @@ export async function reconcileCanonicalPr(
 
 export async function ensureRequiredPublicationLabels(exec: Exec, repoRoot: string): Promise<void> {
   for (const label of REQUIRED_PUBLICATION_LABELS) {
-    if (await publicationLabelExists(exec, repoRoot, label.name)) continue;
+    if (await publicationLabelExists(exec, repoRoot, label.name)) {
+      continue;
+    }
     await mustExec(
       exec,
       'gh',
-      [
-        'label',
-        'create',
-        label.name,
-        '--color',
-        label.color,
-        '--description',
-        label.description,
-      ],
+      ['label', 'create', label.name, '--color', label.color, '--description', label.description],
       repoRoot,
     );
   }
@@ -483,9 +477,7 @@ async function publicationLabelExists(
     ['label', 'list', '--search', labelName, '--json', 'name', '--limit', '100'],
     repoRoot,
   );
-  const labels = z
-    .array(z.object({ name: z.string() }).passthrough())
-    .parse(JSON.parse(output));
+  const labels = z.array(z.object({ name: z.string() }).passthrough()).parse(JSON.parse(output));
   return labels.some((label) => label.name === labelName);
 }
 

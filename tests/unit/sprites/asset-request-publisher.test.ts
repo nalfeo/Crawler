@@ -261,10 +261,7 @@ describe('canonical generated-art PR reconciliation', () => {
       if (args[0] === 'pr' && args[1] === 'list') {
         listCalls++;
         return {
-          stdout:
-            listCalls === 1
-              ? '[]'
-              : '[{"number":91,"url":"https://example.test/pr/91"}]',
+          stdout: listCalls === 1 ? '[]' : '[{"number":91,"url":"https://example.test/pr/91"}]',
           stderr: '',
           code: 0,
         };
@@ -288,9 +285,7 @@ describe('canonical generated-art PR reconciliation', () => {
       return { stdout: '', stderr: '', code: 0 };
     });
 
-    await expect(reconcileCanonicalPr(exec, '/repo', {})).resolves.toMatchObject({
-      number: 91,
-    });
+    await expect(reconcileCanonicalPr(exec, '/repo', {})).resolves.toMatchObject({ number: 91 });
 
     const labelCreate = calls.findIndex(
       (args) => args[0] === 'label' && args[1] === 'create' && args[2] === 'art-only',
@@ -314,10 +309,7 @@ describe('canonical generated-art PR reconciliation', () => {
       if (args[0] === 'pr' && args[1] === 'list') {
         listCalls++;
         return {
-          stdout:
-            listCalls === 1
-              ? '[]'
-              : '[{"number":91,"url":"https://example.test/pr/91"}]',
+          stdout: listCalls === 1 ? '[]' : '[{"number":91,"url":"https://example.test/pr/91"}]',
           stderr: '',
           code: 0,
         };
@@ -335,9 +327,7 @@ describe('canonical generated-art PR reconciliation', () => {
       return { stdout: '', stderr: '', code: 0 };
     });
 
-    await expect(reconcileCanonicalPr(exec, '/repo', {})).resolves.toMatchObject({
-      number: 91,
-    });
+    await expect(reconcileCanonicalPr(exec, '/repo', {})).resolves.toMatchObject({ number: 91 });
     expect(calls.some((args) => args[0] === 'label' && args[1] === 'create')).toBe(false);
     expect(calls.some((args) => args[0] === 'label' && args[1] === 'list')).toBe(true);
   });
