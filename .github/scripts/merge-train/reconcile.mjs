@@ -12,6 +12,8 @@ import {
   isTrainFastPathPushRun,
   parseStateComment,
   STATE_MARKER as RECOVERY_STATE_MARKER,
+  TRUSTED_ASSOCIATIONS,
+  TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
 import { ciConflictOrderReasonForPromotion } from './ci-conflict-order.mjs';
 import {
@@ -219,18 +221,45 @@ async function eligible(pr) {
   // PRs are structurally rejected before entering the train, regardless of their labels.
   // If no lifecycle comment exists yet (pre-Issue-8 PRs), lifecyclePhase stays null and
   // the check is a no-op — harmless since no PR has been transitioned to quarantined yet.
+  //
+  // Trust boundary: only accept lifecycle comments that (a) have the marker at the START
+  // of the comment (hasLeadingMarker, not .includes()), (b) were authored by a trusted App,
+  // org member, or collaborator. Duplicate trusted comments fail closed (throw).  A trusted
+  // but malformed comment also fails closed: we reject the PR rather than silently treating
+  // a corrupted authoritative record as "no phase".
   let lifecyclePhase = null;
-  const lifecycleCommentBody = comments.find(
-    (comment) =>
-      typeof comment.body === 'string' && comment.body.includes(LIFECYCLE_MARKER),
-  );
-  if (lifecycleCommentBody) {
-    try {
-      const record = parseLifecycleComment(lifecycleCommentBody.body);
-      lifecyclePhase = record?.phase ?? null;
-    } catch {
-      // Malformed lifecycle comment — treat as no phase; log but don't throw.
-      process.stdout.write(`lifecycle-comment-parse-error pr=#${pr.number}\n`);
+  {
+    const isTrustedLifecycleAuthor = (comment) => {
+      if (!comment) return false;
+      // A GitHub App (performed_via_github_app non-null) from any App is trusted since
+      // contributors cannot post comments via a GitHub App token.
+      if (comment.performed_via_github_app != null) return true;
+      const association = String(comment.author_association ?? '').toUpperCase();
+      const login = String(comment.user?.login ?? '').toLowerCase();
+      return TRUSTED_ASSOCIATIONS.has(association) || TRUSTED_BOT_LOGINS.has(login);
+    };
+    const trustedLifecycleComments = comments.filter(
+      (comment) =>
+        hasLeadingMarker(comment.body, LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
+    );
+    if (trustedLifecycleComments.length > 1) {
+      // Duplicate authoritative lifecycle comments are a data-integrity error.
+      // Fail closed: reject admission rather than silently picking one.
+      return {
+        ok: false,
+        reason: `lifecycle-comment-duplicate:${trustedLifecycleComments.length}`,
+      };
+    }
+    if (trustedLifecycleComments.length === 1) {
+      try {
+        const record = parseLifecycleComment(trustedLifecycleComments[0].body);
+        lifecyclePhase = record?.phase ?? null;
+      } catch {
+        // Malformed lifecycle comment from a trusted source — fail closed rather than
+        // admitting the PR with an unknown/corrupted phase record.
+        process.stdout.write(`lifecycle-comment-parse-error pr=#${pr.number}\n`);
+        return { ok: false, reason: 'lifecycle-comment-malformed' };
+      }
     }
   }
 
@@ -244,7 +273,7 @@ async function eligible(pr) {
   const prFacts = {
     state: pr.state,
     draft: pr.draft,
-    hasMergeConflict: pr.mergeable === false,
+    hasMergeConflict: pr.mergeable === false || pr.mergeable_state === 'dirty',
     checkRuns: runs,
     reviewThreads: review.threads,
     reviews: review.reviews || [],

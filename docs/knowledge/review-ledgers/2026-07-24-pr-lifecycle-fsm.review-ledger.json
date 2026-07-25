@@ -22,10 +22,18 @@
         {
           "round": 1,
           "models": ["gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "clean": false,
+          "concerns_count": 8,
+          "resolved_count": 0,
+          "notes": "8 findings raised by copilot-pull-request-reviewer (post-merge automated review). Round 1 incorrectly marked clean — these findings were valid and unaddressed at time of ledger creation."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
           "clean": true,
           "concerns_count": 8,
           "resolved_count": 8,
-          "notes": "8 findings resolved: (1) applyLifecycleDecision never called - fixed; (2) D11 bypassed lifecyclePhase=null - fixed with lifecycle comment parsing; (3) ORDERING label conflict - fixed; (4) evaluateAdmission schema mismatch - fixed; (5) force-push no-op stale - fixed; (6) coordinator selectCoordination deferred to Issue 8; (7) empty train/cluster state - improved with comment parsing; (8) LIFECYCLE_MARKER missing from imports - fixed."
+          "notes": "All 8 copilot-pull-request-reviewer findings resolved: (1) whoMustLandFirst not wired into coordinator runtime - fixed: coordinator/reconcile.mjs now imports whoMustLandFirst, populates lifecyclePhase on pull facts, filters non-blocking pulls from blockingPulls before ranking, and guards for all-non-blocking groups; (2) trust-boundary flaw in merge-train lifecycle comment parsing - fixed: parseLifecycleComment now requires trusted GitHub App or known-bot login, leading LIFECYCLE_MARKER, and fails closed on malformed/duplicate records; (3) same trust-boundary flaw in ci-recovery/reconcile.mjs - fixed: same isTrustedComment + leading-marker guard applied; (4) unreliable mergeability check in merge-train/reconcile.mjs - fixed: added mergeable_state === 'dirty' alongside mergeable === false; (5) duplicate isAdmissible in merge-train/state.mjs diverging from evaluateAdmission - fixed: isAdmissible now delegates to evaluateAdmission(prFacts, {requiredChecks}); (6) SHA no-op contradiction in applyLifecycleDecision - fixed: missing currentHeadSha now treated as changed (always rewrite) instead of match; (7) golden fixture for #1883 only tested pure return value - fixed: added reconcile-level regression test that spawns reconcile.mjs against mock HTTP server and asserts queued merge-train pr=#42 stdout, WAITING_LABEL DELETE, and QUEUE_LABEL POST; (8) review ledger marked clean despite open findings - fixed: this round documents all 8 resolutions."
         }
       ]
     },

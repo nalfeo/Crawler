@@ -2037,22 +2037,31 @@ if (live && retroactivePlanIssueNumbers.size > 0) {
 // emits an explicit acted-vs-no-op signal so a disabled/dry-run sweep is never
 // indistinguishable from a completed action.
 //
-// Parse the existing lifecycle comment (if any) so evaluatePhase() knows the
-// current declared phase — this feeds the QUARANTINED/ABANDONED non-blocking
-// check (D11) so the evaluator doesn't incorrectly compute QUEUED for a
-// quarantined PR with green checks.
+// Trust boundary: only accept lifecycle comments that (a) have the marker at the
+// START of the comment body (hasLeadingMarker, not .includes()), (b) were authored
+// by a trusted source (GitHub App, org member, or collaborator). Duplicate trusted
+// comments are logged; a malformed trusted comment keeps currentLifecyclePhase null
+// (evaluatePhase derives phase from live facts, which is safe and conservative).
 let currentLifecyclePhase = null;
 {
-  const lifecycleComment = comments.find(
+  const isTrustedLifecycleAuthor = (comment) => {
+    if (!comment) return false;
+    if (comment.performed_via_github_app != null) return true;
+    return isTrustedComment(comment);
+  };
+  const trustedLifecycleComments = comments.filter(
     (comment) =>
-      typeof comment.body === 'string' && comment.body.includes(LIFECYCLE_MARKER),
+      hasLeadingMarker(comment.body, LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
   );
-  if (lifecycleComment) {
+  if (trustedLifecycleComments.length > 1) {
+    process.stdout.write(`lifecycle-comment-duplicate pr=#${prNumber} count=${trustedLifecycleComments.length}\n`);
+  } else if (trustedLifecycleComments.length === 1) {
     try {
-      const record = parseLifecycleComment(lifecycleComment.body);
+      const record = parseLifecycleComment(trustedLifecycleComments[0].body);
       currentLifecyclePhase = record?.phase ?? null;
     } catch {
-      // Malformed lifecycle comment — treat as no phase; log and continue.
+      // Malformed lifecycle comment from a trusted source — log and continue.
+      // evaluatePhase will receive null and derive the phase from live facts.
       process.stdout.write(`lifecycle-comment-parse-error pr=#${prNumber}\n`);
     }
   }

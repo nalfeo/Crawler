@@ -9,7 +9,7 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
-import { applyRawLabelDecision, formatRawLabelOutcome } from '../ci-recovery/pr-lifecycle.mjs';
+import { applyRawLabelDecision, formatRawLabelOutcome, LIFECYCLE_MARKER, nonBlockingPhases, parseLifecycleComment } from '../ci-recovery/pr-lifecycle.mjs';
 import {
   parseEnabledFlag,
   resolveAdmissionChecks,
@@ -41,6 +41,7 @@ import {
   renderCoordinatorComment,
   selectCoordination,
   shouldDispatchActiveSlot,
+  whoMustLandFirst,
 } from './state.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -205,6 +206,40 @@ function singleManagedComment(
     throw new Error(`PR #${number} has duplicate managed comments for ${marker}`);
   }
   return matching[0] ? { comment: matching[0], state: parser(matching[0].body) } : null;
+}
+
+/**
+ * Read the authoritative lifecycle phase from a PR's comments.
+ * Returns null when no trusted lifecycle comment exists (pre-Issue-8 PRs).
+ * Fails closed on duplicates (returns null, logs warning) and on malformed
+ * trusted comments (returns null, logs error).
+ * Trust boundary: only GitHub Apps, org members, and collaborators can write
+ * authoritative lifecycle comments.
+ */
+function readLifecyclePhase(number, comments) {
+  const isTrustedLifecycleAuthor = (comment) => {
+    if (!comment) return false;
+    if (comment.performed_via_github_app != null) return true;
+    return isTrustedRecoveryComment(comment);
+  };
+  const trusted = comments.filter(
+    (comment) =>
+      String(comment.body || '')
+        .trimStart()
+        .startsWith(LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
+  );
+  if (trusted.length > 1) {
+    process.stdout.write(`lifecycle-comment-duplicate pr=#${number} count=${trusted.length}\n`);
+    return null;
+  }
+  if (trusted.length === 0) return null;
+  try {
+    const record = parseLifecycleComment(trusted[0].body);
+    return record?.phase ?? null;
+  } catch {
+    process.stdout.write(`lifecycle-comment-parse-error pr=#${number}\n`);
+    return null;
+  }
 }
 
 function recoveryContext(pull, comments) {
@@ -698,7 +733,29 @@ for (const group of groups) {
   await mapLimit(group.pulls, 6, async (pull) => {
     pull.green = successfulChecks(await checkRunsFor(pull.headSha), requiredChecks);
   });
-  const ranked = rankPullRequests(group.pulls);
+
+  // Populate lifecyclePhase on each pull so whoMustLandFirst can structurally
+  // exclude quarantined/abandoned PRs from leader and ordering selection (D11).
+  for (const pull of group.pulls) {
+    pull.lifecyclePhase = readLifecyclePhase(pull.number, groupComments.get(pull.number) || []);
+  }
+
+  // Filter out non-blocking (quarantined/abandoned) pulls before ranking and
+  // proof collection. A non-blocking PR is never a valid leader or predecessor —
+  // whoMustLandFirst enforces this structurally, but filtering at the ranked
+  // list prevents proof collection and selectCoordination from touching those
+  // PRs entirely (D11 structural guarantee in the coordinator runtime).
+  const nbPhases = new Set(nonBlockingPhases());
+  const blockingPulls = group.pulls.filter((pull) => !nbPhases.has(pull.lifecyclePhase));
+  if (blockingPulls.length === 0) {
+    // All pulls in this group are non-blocking (quarantined/abandoned). Nothing to
+    // coordinate — skip proof collection and selection for this group entirely.
+    process.stdout.write(
+      `skip group=${group.groupId} reason=all-pulls-non-blocking members=${group.pulls.map((p) => p.number).join(',')}\n`,
+    );
+    continue;
+  }
+  const ranked = rankPullRequests(blockingPulls);
   const proofEntries = await mapLimit(ranked, 4, fetchExactHead);
   const initialProofs = buildSupersessionProofs({
     baseSha: mainSha,

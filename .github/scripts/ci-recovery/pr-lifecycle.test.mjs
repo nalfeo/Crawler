@@ -202,6 +202,7 @@ test('acted-vs-no-op: an already-in-phase decision is an explicit no-op', async 
   const outcome = await applyLifecycleDecision({
     prNumber: 1883,
     currentPhase: PHASE.QUEUED,
+    currentHeadSha: HEAD,
     targetPhase: PHASE.QUEUED,
     headSha: HEAD,
     mode: 'live',
@@ -220,6 +221,27 @@ test('acted-vs-no-op: an already-in-phase decision is an explicit no-op', async 
     formatLifecycleOutcome(1883, outcome),
     'lifecycle no-op: pr=#1883 reason=already-in-phase',
   );
+});
+
+test('acted-vs-no-op: omitting currentHeadSha is never a no-op (fail-open on missing SHA)', async () => {
+  // A caller that does not supply currentHeadSha cannot confirm the comment is
+  // already current for this head SHA. Treat as "changed" so the lifecycle
+  // comment is always rewritten rather than silently left stale after a force-push.
+  const comments = [];
+  const outcome = await applyLifecycleDecision({
+    prNumber: 1883,
+    currentPhase: PHASE.QUEUED,
+    // currentHeadSha intentionally omitted
+    targetPhase: PHASE.QUEUED,
+    headSha: HEAD,
+    mode: 'live',
+    writeComment: (_, body) => comments.push(body),
+    addLabel: () => {},
+    removeLabel: () => {},
+  });
+  assert.equal(outcome.acted, true, 'must act when currentHeadSha is missing');
+  assert.equal(outcome.noOp, false);
+  assert.equal(comments.length, 1, 'lifecycle comment must be rewritten');
 });
 
 test('acted-vs-no-op: a live transition writes and reports acted', async () => {
@@ -288,7 +310,7 @@ test('isAdmissible ignores stale enrollment state and answers from live facts (D
   assert.deepEqual(isAdmissible(greenPrFacts()), { eligible: true, reasons: [] });
   assert.deepEqual(isAdmissible(greenPrFacts({ hasMergeConflict: true })), {
     eligible: false,
-    reasons: ['merge-conflict'],
+    reasons: ['not-mergeable'],
   });
 });
 

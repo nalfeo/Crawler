@@ -265,12 +265,14 @@ export async function applyLifecycleDecision({
   removeLabel,
   now = new Date(),
 }) {
-  // True no-op: same phase AND (head SHA matches or caller didn't provide current head SHA).
-  // A force-push that stays in the same phase must still update the lifecycle comment;
-  // callers that know the current head SHA should pass it as currentHeadSha to enable this.
+  // True no-op: same phase AND the caller explicitly provided the current head SHA and it
+  // matches the target. Callers that omit currentHeadSha cannot know whether the comment
+  // is already current for this head, so they are treated as "changed" and the record is
+  // always rewritten. This prevents a wired caller from inadvertently leaving the lifecycle
+  // comment bound to a stale head after a force-push when it forgets to pass currentHeadSha.
   const samePhase = currentPhase === targetPhase;
   const headShaChanged =
-    currentHeadSha != null && compact(currentHeadSha) !== compact(headSha);
+    currentHeadSha == null || compact(currentHeadSha) !== compact(headSha);
   if (samePhase && !headShaChanged) {
     return { acted: false, noOp: true, phase: currentPhase, reason: 'already-in-phase' };
   }

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { hasSubstantiveCopilotReview } from '../ci-recovery/state.mjs';
+import { evaluateAdmission } from '../ci-recovery/state.mjs';
 
 export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
@@ -288,50 +288,17 @@ export function successfulChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_CH
 
 /**
  * Pure admission predicate for the merge train.
- * Returns {eligible, reasons[]} without any async operations or label writes.
- * Structurally eliminates D1 (enrollment deadlock from a stale state comment):
- * admissibility is a question answered from live PR facts, never a side effect
- * of the `merge-train` label being written in the right order.
+ * Delegates to evaluateAdmission (ci-recovery/state.mjs) so there is one
+ * canonical admission policy that cannot drift between the merge-train and the
+ * lifecycle FSM.  The `requiredChecks` argument is forwarded through the config
+ * object so evaluateAdmission's existing signature is unaffected.
  *
  * @param {object} prFacts - current PR facts
  * @param {string[]} requiredChecks - required check names
  * @returns {{ eligible: boolean, reasons: string[] }}
  */
 export function isAdmissible(prFacts, requiredChecks = DEFAULT_ADMISSION_CHECKS) {
-  const {
-    state,
-    draft,
-    checkRuns = [],
-    reviewThreads = [],
-    reviews = [],
-    hasMergeConflict = false,
-    humanApprovalDisposition = null,
-    lifecyclePhase = null,
-  } = prFacts || {};
-
-  const reasons = [];
-
-  // Non-blocking lifecycle phases are never admissible (D11): a quarantined or
-  // abandoned PR must never occupy a train slot and dead-head the queue.
-  if (lifecyclePhase === 'quarantined' || lifecyclePhase === 'abandoned') {
-    reasons.push(`lifecycle-phase:${lifecyclePhase}`);
-    return { eligible: false, reasons };
-  }
-
-  if (state !== 'open') reasons.push('pr-not-open');
-  if (draft) reasons.push('pr-is-draft');
-  if (hasMergeConflict) reasons.push('merge-conflict');
-
-  reasons.push(...unsatisfiedChecks(checkRuns, requiredChecks));
-
-  if (!hasSubstantiveCopilotReview(reviews)) reasons.push('substantive-copilot-review');
-
-  const unresolvedCount = (reviewThreads || []).filter((thread) => !thread.isResolved).length;
-  if (unresolvedCount > 0) reasons.push(`unresolved-threads:${unresolvedCount}`);
-
-  if (humanApprovalDisposition) reasons.push('human-approval-pending');
-
-  return { eligible: reasons.length === 0, reasons };
+  return evaluateAdmission(prFacts, { requiredChecks });
 }
 
 // A candidate check normally completes within the validator's own
