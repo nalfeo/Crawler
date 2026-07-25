@@ -12,6 +12,17 @@ on:
         description: 'Number of sequential Floor 1 seeds to run (1..1000)'
         type: string
         default: '200'
+  pull_request:
+    # Run the hard gate automatically in CI (rule #15: >10 runs via CI) whenever
+    # the set-piece prefab carve, its data, or the sweep itself changes.
+    paths:
+      - 'src/core/map/**'
+      - 'src/game/floorScenario.ts'
+      - 'src/game/set-piece-reachability.ts'
+      - 'src/shared/set-piece-types.ts'
+      - 'src/shared/data/set-pieces.json'
+      - 'scripts/agent/set-piece/reachability-sweep.ts'
+      - '.github/workflows/set-piece-reachability.yml'
 
 permissions:
   contents: read
@@ -24,19 +35,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Validate seed_count
+      - name: Resolve seed count
+        id: seeds
         env:
           SEED_COUNT: ${{ inputs.seed_count }}
         run: |
           set -euo pipefail
-          if ! [[ "$SEED_COUNT" =~ ^[0-9]+$ ]] || [ "$SEED_COUNT" -lt 1 ] || [ "$SEED_COUNT" -gt 1000 ]; then
+          # PR runs use a fixed 200-seed panel; workflow_dispatch honors its input.
+          count="${SEED_COUNT:-200}"
+          if ! [[ "$count" =~ ^[0-9]+$ ]] || [ "$count" -lt 1 ] || [ "$count" -gt 1000 ]; then
             echo "::error::seed_count must be an integer in [1,1000]"
             exit 1
           fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
 
       - name: Run set-piece reachability sweep
         env:
-          SEED_COUNT: ${{ inputs.seed_count }}
+          SEED_COUNT: ${{ steps.seeds.outputs.count }}
         run: |
           set -euo pipefail
           npx tsx scripts/agent/set-piece/reachability-sweep.ts \
