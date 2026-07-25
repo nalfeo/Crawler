@@ -37,7 +37,18 @@ export interface MobAbilityCircleGeometry {
   readonly radiusFt: number;
 }
 
-export type MobAbilityGeometry = MobAbilityCircleGeometry;
+export interface MobAbilityMultiCircleGeometry {
+  readonly kind: 'multi-circle';
+  readonly circles: readonly MobAbilityCircleGeometry[];
+}
+
+export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilityMultiCircleGeometry;
+
+export function mobAbilityGeometryCircles(
+  geometry: MobAbilityGeometry,
+): readonly MobAbilityCircleGeometry[] {
+  return geometry.kind === 'circle' ? [geometry] : geometry.circles;
+}
 
 export type MobAbilityTargetingMode = 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
@@ -91,6 +102,14 @@ export interface MobAbilityRuntimeDefinition {
   readonly announcementText: string;
   /** Committed geometry footprint (radius etc.); position is locked at cast. */
   readonly geometry: { readonly kind: 'circle'; readonly radiusFt: number };
+  /** Optional custom geometry commit from a locked origin position. */
+  readonly commitGeometry?: (ctx: {
+    readonly world: GameWorld;
+    readonly casterEid: number;
+    readonly targetEid: number | null;
+    readonly lockedX: number;
+    readonly lockedY: number;
+  }) => MobAbilityGeometry;
   /** Targeting mode for telegraph lock semantics (player-position or self). */
   readonly targetingMode?: MobAbilityTargetingMode;
   /** Origin lock mode for telegraph geometry. */
@@ -180,6 +199,8 @@ export interface MobAbilityRuntime {
   readonly pendingBursts: Array<MobAbilityGeometry>;
   /** Active self-buffs authored by ability handlers and ticked by the runtime. */
   readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
+  /** Runtime-owned persistent zones (e.g. Sovereign Cap toxic clouds). */
+  readonly ownedZones: MobAbilityOwnedZone[];
   /**
    * Per-EID generation token, set on each `registerMobAbility` and cleared on
    * `clearMobAbility`. Compared against `MobAbilityInstanceState.registrationToken`
@@ -188,6 +209,8 @@ export interface MobAbilityRuntime {
   readonly registrationTokens: Map<number, number>;
   /** Monotonically increasing counter; incremented on each registration. */
   nextToken: number;
+  /** Monotonically increasing persistent-zone id counter. */
+  nextZoneId: number;
 }
 
 export interface MobAbilityActiveBuffState {
@@ -200,6 +223,21 @@ export interface MobAbilityActiveBuffState {
   remainingMs: number;
 }
 
+export type MobAbilityOwnedZoneTick = (world: GameWorld, zone: MobAbilityOwnedZone) => void;
+
+export interface MobAbilityOwnedZone {
+  readonly id: number;
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly geometry: MobAbilityGeometry;
+  readonly durationMs: number;
+  readonly tickIntervalMs: number;
+  nextTickAtMs: number;
+  elapsedMs: number;
+  readonly tick: MobAbilityOwnedZoneTick;
+}
+
 /** Create the default-off, empty runtime state for a fresh world. */
 export function createMobAbilityRuntime(): MobAbilityRuntime {
   return {
@@ -209,8 +247,10 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     cues: [],
     pendingBursts: [],
     activeBuffsByEntity: new Map(),
+    ownedZones: [],
     registrationTokens: new Map(),
     nextToken: 0,
+    nextZoneId: 0,
   };
 }
 

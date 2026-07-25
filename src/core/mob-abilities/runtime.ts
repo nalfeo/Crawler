@@ -27,6 +27,7 @@ import type { GameWorld } from '../world.js';
 import {
   mobAbilitySourceId,
   pushMobAbilityBurst,
+  type MobAbilityOwnedZone,
   type MobAbilityActiveBuffState,
   type MobAbilityGeometry,
   type MobAbilityInstanceState,
@@ -121,6 +122,7 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
     clearStatusEffects(world, eid, (effect) => effect.sourceId === sourceId);
   }
   world.mobAbilities.activeBuffsByEntity.delete(casterEid);
+  clearMobAbilityOwnedZones(world, (zone) => zone.casterEid === casterEid || zone.sourceId === sourceId);
 }
 
 /** Enable/disable the runtime feature gate. Disabling clears all cues + clocks. */
@@ -162,6 +164,7 @@ export function disableMobAbilityEncounter(world: GameWorld): void {
   // pendingBursts so that per-caster death still renders the resolution VFX.
   runtime.pendingBursts.length = 0;
   runtime.activeBuffsByEntity.clear();
+  runtime.ownedZones.length = 0;
 }
 
 /** A caster is valid iff it still exists, is alive, and is still its own boss. */
@@ -242,12 +245,19 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
     targetingMode === 'self' || targetEid === null
       ? null
       : (world.entityRenderGeneration[targetEid] ?? 0);
-  inst.committedGeometry = {
-    kind: 'circle',
-    x: pos.x,
-    y: pos.y,
-    radiusFt: def.geometry.radiusFt,
-  };
+  inst.committedGeometry =
+    def.commitGeometry?.({
+      world,
+      casterEid,
+      targetEid: targetingMode === 'self' ? null : targetEid,
+      lockedX: pos.x,
+      lockedY: pos.y,
+    }) ?? {
+      kind: 'circle',
+      x: pos.x,
+      y: pos.y,
+      radiusFt: def.geometry.radiusFt,
+    };
 
   // Announcement is emitted exactly once, here, per cast.
   pushAnnouncement(world.announcements, {
@@ -283,6 +293,7 @@ function syncTelegraphGeometryToCaster(
   if (normalizedOriginMode(inst.definition) !== 'follows-caster') return;
   const pos = targetPosition(world, casterEid);
   if (pos === null) return;
+  if (inst.committedGeometry.kind !== 'circle') return;
   inst.committedGeometry = {
     kind: 'circle',
     x: pos.x,
@@ -379,6 +390,49 @@ export function activateMobAbilitySelfBuff(
   world.mobAbilities.activeBuffsByEntity.set(buff.casterEid, state);
 }
 
+export function registerMobAbilityOwnedZone(
+  world: GameWorld,
+  zone: Omit<MobAbilityOwnedZone, 'id' | 'elapsedMs' | 'nextTickAtMs'>,
+): number {
+  const id = world.mobAbilities.nextZoneId;
+  world.mobAbilities.nextZoneId += 1;
+  world.mobAbilities.ownedZones.push({
+    ...zone,
+    id,
+    elapsedMs: 0,
+    nextTickAtMs: zone.tickIntervalMs,
+  });
+  return id;
+}
+
+export function clearMobAbilityOwnedZones(
+  world: GameWorld,
+  predicate: (zone: MobAbilityOwnedZone) => boolean,
+): void {
+  const zones = world.mobAbilities.ownedZones;
+  for (let i = zones.length - 1; i >= 0; i -= 1) {
+    if (predicate(zones[i]!)) {
+      zones.splice(i, 1);
+    }
+  }
+}
+
+function tickOwnedZones(world: GameWorld): void {
+  const dtMs = GAME.DELTA_MS;
+  const zones = world.mobAbilities.ownedZones;
+  for (let i = zones.length - 1; i >= 0; i -= 1) {
+    const zone = zones[i]!;
+    zone.elapsedMs += dtMs;
+    while (zone.elapsedMs + TIMER_EPSILON_MS >= zone.nextTickAtMs) {
+      zone.tick(world, zone);
+      zone.nextTickAtMs += zone.tickIntervalMs;
+    }
+    if (zone.elapsedMs + TIMER_EPSILON_MS >= zone.durationMs) {
+      zones.splice(i, 1);
+    }
+  }
+}
+
 function activeBuff(world: GameWorld, eid: number): MobAbilityActiveBuffState | undefined {
   const buff = world.mobAbilities.activeBuffsByEntity.get(eid);
   if (buff === undefined) return undefined;
@@ -432,6 +486,7 @@ export function mobAbilitySystem(world: GameWorld): void {
   runtime.cues.length = 0;
   if (!runtime.enabled || !runtime.encounterActive) return;
   tickActiveBuffs(world);
+  tickOwnedZones(world);
   if (runtime.byEntity.size === 0) return;
 
   const dtMs = GAME.DELTA_MS;
