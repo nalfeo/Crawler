@@ -110,6 +110,76 @@ describe('runQueueCommit (control flow)', () => {
     expect(calls.some((call) => call.args[0] === 'push')).toBe(true);
   });
 
+  it('allows the narrow theme-equipment-publisher capability under CI', async () => {
+    const { exec, calls } = makeFakeExec(happyResponder);
+    const result = await runQueueCommit(
+      '/repo',
+      [asset()],
+      controlDeps(exec, {
+        env: {
+          CI: 'true',
+          GITHUB_ACTIONS: 'true',
+          GITHUB_WORKFLOW_REF:
+            'nalfeo/Crawler/.github/workflows/theme-equipment.yml@refs/heads/main',
+          SPRITES_ALLOW_CI_THEME_PUBLISH: 'true',
+        },
+      }),
+      {
+        message: 'm',
+        ciAuthorization: { caller: 'theme-equipment-publisher' },
+      },
+    );
+
+    expect(result.status).toBe('committed');
+    expect(calls.some((call) => call.args[0] === 'push')).toBe(true);
+  });
+
+  it('refuses the theme-equipment-publisher capability if the asset-request env flag was set instead', async () => {
+    const { exec, calls } = makeFakeExec(() => ({}));
+    await expect(
+      runQueueCommit(
+        '/repo',
+        [asset()],
+        controlDeps(exec, {
+          env: {
+            CI: 'true',
+            GITHUB_ACTIONS: 'true',
+            GITHUB_WORKFLOW_REF:
+              'nalfeo/Crawler/.github/workflows/theme-equipment.yml@refs/heads/main',
+            // Wrong flag for this caller — the asset-request publisher's flag
+            // must not also unlock the theme-equipment-publisher caller.
+            SPRITES_ALLOW_CI_ASSET_PUBLISH: 'true',
+          },
+        }),
+        { message: 'm', ciAuthorization: { caller: 'theme-equipment-publisher' } },
+      ),
+    ).rejects.toMatchObject({ kind: 'ci-refused' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses the theme-equipment-publisher capability when the workflow-ref does not match', async () => {
+    const { exec, calls } = makeFakeExec(() => ({}));
+    await expect(
+      runQueueCommit(
+        '/repo',
+        [asset()],
+        controlDeps(exec, {
+          env: {
+            CI: 'true',
+            GITHUB_ACTIONS: 'true',
+            // An unrecognized workflow path must not authorize publication,
+            // even with the right flag set.
+            GITHUB_WORKFLOW_REF:
+              'nalfeo/Crawler/.github/workflows/some-other-workflow.yml@refs/heads/main',
+            SPRITES_ALLOW_CI_THEME_PUBLISH: 'true',
+          },
+        }),
+        { message: 'm', ciAuthorization: { caller: 'theme-equipment-publisher' } },
+      ),
+    ).rejects.toMatchObject({ kind: 'ci-refused' });
+    expect(calls).toHaveLength(0);
+  });
+
   it('rejects unsafe asset paths before touching git', async () => {
     const { exec, calls } = makeFakeExec(() => ({}));
     for (const bad of ['../evil.png', '/abs/evil.png', 'generated/../../etc.png', 'a\\b.png']) {

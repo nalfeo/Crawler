@@ -196,6 +196,14 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
     "You are Crawler's art director. Write concrete concept briefs for 256x256-source pixel-art sprites that resolve to readable game-scale art.",
     '',
     contentDirectionBlock(request.floor),
+    ...(request.theme
+      ? [
+          '',
+          `Equipment collection: ${request.theme.displayName} (${request.theme.setId}).`,
+          `Collection design language: ${request.theme.designLanguage}`,
+          'Every candidate must read as a basic reusable member of this collection. Preserve the shared materials, silhouette vocabulary, construction era, and cultural cues without making every item identical.',
+        ]
+      : []),
     '',
     'A strong brief names the pose, silhouette, orientation, proportions, materials, dominant colors by name, and one memorable contradiction. Use specific nouns and verbs instead of generic adjectives. Do not prescribe hex colors.',
     '',
@@ -243,6 +251,7 @@ export function buildUserPrompt(request: SynthesizeBriefRequest): string {
   const hint = request.briefHint?.trim();
   return [
     `Subject name: ${request.name}.`,
+    ...(request.theme ? [`Theme set: ${request.theme.displayName} (${request.theme.setId}).`] : []),
     ...(hint ? [`Additional direction: ${hint}`] : []),
     typeLine,
     `Floor: ${request.floor} of 20.`,
