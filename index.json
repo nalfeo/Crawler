@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2bff58556ed8a397d518e8a92ae45b7f4deb1ca0",
+    "commitDate": "2026-07-25T02:38:22Z",
+    "commitSubject": "refactor(sprites): DRY merge-train label re-ensure logic + race-path blocked-label test (#1930)",
+    "capturedAt": "2026-07-25T04:01:41.393Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30141126536",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/2bff58556ed8a397d518e8a92ae45b7f4deb1ca0.json"
+  },
+  {
     "commit": "5cab6b1d48e56b75d555dd59a291c400e5a16c1d",
     "commitDate": "2026-07-25T02:28:23Z",
     "commitSubject": "feat: retire Foundry backend, standardize asset pipeline on Azure OpenAI, fix CI recovery loop incident filing (#1909)",
