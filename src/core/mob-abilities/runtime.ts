@@ -74,6 +74,7 @@ export function registerMobAbility(
     resolvedCasts: 0,
     announcementsEmitted: 0,
     registrationToken: token,
+    ownedEntityGenerations: new Map(),
   });
 }
 
@@ -110,6 +111,7 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   for (const eid of [...world.statusEffectsByEntity.keys()]) {
     clearStatusEffects(world, eid, (effect) => effect.sourceId === sourceId);
   }
+  inst.ownedEntityGenerations.clear();
 }
 
 /** Enable/disable the runtime feature gate. Disabling clears all cues + clocks. */
@@ -204,30 +206,56 @@ function isTargetValid(
 function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
   // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
-  const targetEid = findDefaultTarget(world);
-  if (targetEid === null) {
-    inst.phase = 'cooldown';
-    inst.timerMs = def.cooldownMs;
-    return;
-  }
-  const pos = targetPosition(world, targetEid);
-  if (pos === null) {
-    // No valid target to lock onto — skip this cast and re-arm the cooldown so
-    // the boss tries again next cycle instead of firing a phantom telegraph.
-    inst.phase = 'cooldown';
-    inst.timerMs = def.cooldownMs;
-    return;
+  let targetEid: number | null = null;
+  let targetGeneration: number | null = null;
+  let committedGeometry: MobAbilityInstanceState['committedGeometry'] = null;
+  if (def.geometry.kind === 'circle') {
+    targetEid = findDefaultTarget(world);
+    if (targetEid === null) {
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    const pos = targetPosition(world, targetEid);
+    if (pos === null) {
+      // No valid target to lock onto — skip this cast and re-arm the cooldown so
+      // the boss tries again next cycle instead of firing a phantom telegraph.
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    committedGeometry = {
+      kind: 'circle',
+      x: pos.x,
+      y: pos.y,
+      radiusFt: def.geometry.radiusFt,
+    };
+    targetGeneration = world.entityRenderGeneration[targetEid] ?? 0;
+  } else {
+    const x = world.stores.position.x[casterEid];
+    const y = world.stores.position.y[casterEid];
+    if (x === undefined || y === undefined) {
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    const circles: Array<{ kind: 'circle'; x: number; y: number; radiusFt: number }> = [];
+    for (let i = 0; i < def.geometry.count; i += 1) {
+      const angle = (i / def.geometry.count) * Math.PI * 2;
+      circles.push({
+        kind: 'circle',
+        x: x + Math.cos(angle) * def.geometry.distanceFromCasterFt,
+        y: y + Math.sin(angle) * def.geometry.distanceFromCasterFt,
+        radiusFt: def.geometry.radiusFt,
+      });
+    }
+    committedGeometry = { kind: 'spawn-circles', circles };
   }
   inst.phase = 'telegraph';
   inst.timerMs = def.telegraphDurationMs;
   inst.committedTargetEid = targetEid;
-  inst.committedTargetGeneration = world.entityRenderGeneration[targetEid] ?? 0;
-  inst.committedGeometry = {
-    kind: 'circle',
-    x: pos.x,
-    y: pos.y,
-    radiusFt: def.geometry.radiusFt,
-  };
+  inst.committedTargetGeneration = targetGeneration;
+  inst.committedGeometry = committedGeometry;
 
   // Announcement is emitted exactly once, here, per cast.
   pushAnnouncement(world.announcements, {
@@ -244,12 +272,17 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
 function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
   const geometry = inst.committedGeometry;
+  const countOwnedLiving = () => pruneOwnedEntities(world, inst);
+  const registerOwnedEntity = (eid: number): void => {
+    inst.ownedEntityGenerations.set(eid, world.entityRenderGeneration[eid] ?? 0);
+  };
   // Revalidate the locked target before resolution. If the player died,
   // despawned, or its ID was recycled during the 1.5s telegraph, skip the
   // resolve call and take the cancellation/cleanup path instead.
   if (
     geometry !== null &&
-    isTargetValid(world, inst.committedTargetEid, inst.committedTargetGeneration)
+    (inst.committedTargetEid === null ||
+      isTargetValid(world, inst.committedTargetEid, inst.committedTargetGeneration))
   ) {
     def.resolve(world, {
       abilityId: def.abilityId,
@@ -257,6 +290,8 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
       sourceId: mobAbilitySourceId(def.abilityId, casterEid),
       geometry,
       targetEid: inst.committedTargetEid,
+      countOwnedLiving,
+      registerOwnedEntity,
     });
     inst.resolvedCasts += 1;
     // Enqueue a durable burst event so the VFX renderer can fire the resolution
@@ -271,6 +306,27 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
   inst.committedGeometry = null;
   inst.committedTargetEid = null;
   inst.committedTargetGeneration = null;
+}
+
+function pruneOwnedEntities(world: GameWorld, inst: MobAbilityInstanceState): number {
+  for (const [eid, generation] of [...inst.ownedEntityGenerations.entries()]) {
+    if (!entityExists(world.ecs, eid)) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if ((world.entityRenderGeneration[eid] ?? -1) !== generation) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if (!hasComponent(world.ecs, eid, Health)) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if ((world.stores.health.current[eid] ?? 0) <= 0) {
+      inst.ownedEntityGenerations.delete(eid);
+    }
+  }
+  return inst.ownedEntityGenerations.size;
 }
 
 /** Default target selection: the living player singleton (catalog `player-position`). */
@@ -308,6 +364,7 @@ export function mobAbilitySystem(world: GameWorld): void {
       clearMobAbility(world, casterEid);
       continue;
     }
+    pruneOwnedEntities(world, inst);
 
     inst.timerMs -= dtMs;
     if (inst.timerMs <= TIMER_EPSILON_MS) {

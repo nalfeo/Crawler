@@ -180,7 +180,6 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     radiusPx: number,
     progress: number,
   ): void {
-    gfx.clear();
     // Committed footprint outline (hostile red), urgency-pulsing thickness.
     const thickness = 2 + 2 * progress;
     gfx.lineStyle(thickness, COLOR_HOSTILE_RED, 0.9);
@@ -226,15 +225,19 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // ── Telegraph circles ──────────────────────────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
-      if (cue.geometry.kind !== 'circle') continue;
+      const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
+      if (circles.length === 0) continue;
       liveCasters.add(cue.casterEid);
-      const cx = ftToPx(cue.geometry.x);
-      const cy = ftToPx(cue.geometry.y);
-      const radiusPx = ftToPx(cue.geometry.radiusFt);
-      lastGeom.set(cue.casterEid, { x: cx, y: cy, r: radiusPx });
+      const first = circles[0]!;
+      const firstCx = ftToPx(first.x);
+      const firstCy = ftToPx(first.y);
+      const firstRadiusPx = ftToPx(first.radiusFt);
+      lastGeom.set(cue.casterEid, { x: firstCx, y: firstCy, r: firstRadiusPx });
       if (!castStartSeen.has(cue.casterEid)) {
         castStartSeen.add(cue.casterEid);
-        spawnCastStart(cx, cy, radiusPx);
+        for (const circle of circles) {
+          spawnCastStart(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        }
       }
       if (!enabled) continue;
       let gfx = telegraphGfx.get(cue.casterEid);
@@ -245,7 +248,16 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         ignoreUi(gfx);
         telegraphGfx.set(cue.casterEid, gfx);
       }
-      drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress);
+      gfx.clear();
+      for (const circle of circles) {
+        drawTelegraph(
+          gfx,
+          ftToPx(circle.x),
+          ftToPx(circle.y),
+          ftToPx(circle.radiusFt),
+          cue.telegraphProgress,
+        );
+      }
     }
 
     // ── Resolution bursts (drain the durable pending-burst queue) ─────────
@@ -259,6 +271,10 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         const cy = ftToPx(geom.y);
         const r = ftToPx(geom.radiusFt);
         spawnBurst(cx, cy, r);
+      } else {
+        for (const circle of geom.circles) {
+          spawnBurst(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        }
       }
     }
 

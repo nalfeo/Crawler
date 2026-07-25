@@ -37,7 +37,12 @@ export interface MobAbilityCircleGeometry {
   readonly radiusFt: number;
 }
 
-export type MobAbilityGeometry = MobAbilityCircleGeometry;
+export interface MobAbilitySpawnCirclesGeometry {
+  readonly kind: 'spawn-circles';
+  readonly circles: readonly MobAbilityCircleGeometry[];
+}
+
+export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry;
 
 /**
  * A named handler that applies one ability's committed effect at resolution.
@@ -55,6 +60,10 @@ export interface MobAbilityResolveContext {
   readonly geometry: MobAbilityGeometry;
   /** Target entity locked at telegraph start; `null`/invalid targets are tolerated. */
   readonly targetEid: number | null;
+  /** Current living ability-owned entity count for this caster. */
+  readonly countOwnedLiving?: () => number;
+  /** Register one newly spawned ability-owned entity for lifecycle tracking. */
+  readonly registerOwnedEntity?: (eid: number) => void;
 }
 
 /**
@@ -76,8 +85,15 @@ export interface MobAbilityRuntimeDefinition {
   readonly dangerColor: MobAbilityDangerColor;
   /** Exact, fully formatted announcement string emitted once per cast. */
   readonly announcementText: string;
-  /** Committed geometry footprint (radius etc.); position is locked at cast. */
-  readonly geometry: { readonly kind: 'circle'; readonly radiusFt: number };
+  /** Committed geometry footprint authored by this ability. */
+  readonly geometry:
+    | { readonly kind: 'circle'; readonly radiusFt: number }
+    | {
+        readonly kind: 'spawn-circles';
+        readonly count: number;
+        readonly radiusFt: number;
+        readonly distanceFromCasterFt: number;
+      };
   /** Named typed effect handler run at resolution. */
   readonly resolve: MobAbilityResolveHandler;
 }
@@ -119,6 +135,8 @@ export interface MobAbilityInstanceState {
   resolvedCasts: number;
   /** Count of announcements emitted (must equal `resolvedCasts + inFlight`). */
   announcementsEmitted: number;
+  /** Owned summoned entities for this caster's ability instance (eid -> generation). */
+  readonly ownedEntityGenerations: Map<number, number>;
   /**
    * Per-registration generation token. Monotonically increases with each
    * `registerMobAbility` call. The runtime validates this against

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "boss-ability-status/v1",
   "catalogSchemaVersion": "boss-abilities/v1",
-  "lastAuditedAt": "2026-07-17",
+  "lastAuditedAt": "2026-07-25",
   "gates": [
     {
       "id": "floor2-boss-difficulty-pr-1237",
@@ -56,7 +56,7 @@
       "abilityId": "nana-snaggle-scrap-cart-stampede",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "goblin-boss",
         "approvedAssetId": "goblin-boss-var-0",
@@ -65,18 +65,24 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-squick",
+      "arenaLabEvidence": "Verified in canonical combat arena preset `f2-squick` with deterministic runtime + browser evidence: `tests/unit/mob-abilities/undercity-mob-call.test.ts`, `scripts/agent/squick-arena-evidence.ts`, and `tests/e2e/squick-arena-observation.test.ts`. Cadence: telegraphs at frames 660/1410 (11,000ms / 23,500ms), resolutions at 750/1500 (12,500ms / 25,000ms); exactly two `bossAbilityCast` announcements with exact text `UNDERCITY MOB CALL — The guild always collects!`; second resolution never exceeds six living ability-owned minions.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1956,
+        "state": "open",
+        "title": "Implement Plague-Boss Squick's UNDERCITY MOB CALL ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1956"
+      },
       "implementationPullRequest": null,
       "blockers": ["floor2-boss-production-enable"]
     },

@@ -283,6 +283,11 @@ describe('Floor 2 boss ability delivery status', () => {
     expect(queen?.status.arenaLabState).toBe('verified');
     expect(queen?.status.runtimeState).toBe('verified');
     expect(queen?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    const squick = records.find((record) => record.ability.bossArchetypeId === 'ratfolk-boss');
+    expect(squick?.status.arenaLabState).toBe('verified');
+    expect(squick?.status.runtimeState).toBe('verified');
+    expect(squick?.status.telegraphVfxState).toBe('verified');
+    expect(squick?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     // The other 17 abilities remain blocked purely by the production-enable
     // gate; the arena slice must not promote them to ready.
     for (const record of records.filter(
