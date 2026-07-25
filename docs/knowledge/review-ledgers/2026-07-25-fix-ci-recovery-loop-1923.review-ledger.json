@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "fix-ci-recovery-loop-1923",
+  "task_title": "Fix 4 reviewer thread defects in PR #1923 dispatch-table refactor",
+  "estimated_apples": 2,
+  "stages": {}
+}
