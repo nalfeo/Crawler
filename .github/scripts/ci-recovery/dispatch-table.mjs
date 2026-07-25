@@ -2,13 +2,13 @@
  * dispatch-table.mjs — Data-driven dispatch table for CI-recovery reconcile.
  *
  * SCOPE:
- *   EARLY_DECISIONS table: ordered rows (R03–R12) that fire against cheap
- *   context before any expensive API calls (review threads, check runs).
- *   Returns the first matching row, or `null` to continue to the pipeline.
- *
- *   The terminal dispatch path (R26–R34/GC) remains inline in reconcile.mjs;
- *   wiring it into a data-driven table is deferred to a follow-up once the
- *   early-table D5 fix has stabilised and proven correct.
+ *   1. EARLY_DECISIONS table: ordered rows (R03–R12) that fire against cheap
+ *      context before any expensive API calls (review threads, check runs).
+ *      Returns the first matching row, or `null` to continue to the pipeline.
+ *   2. TERMINAL_DISPATCH table: models the R26–R34/GC terminal path as pure
+ *      data-driven rows.  Fully tested and exported for unit coverage.
+ *      Wiring `selectTerminalAction` into reconcile.mjs to replace the inline
+ *      cascade is deferred to a follow-up (marked TODO below).
  *
  * OUT OF SCOPE (handled by dedicated passes in the driver):
  *   - Startup guards: mode=off, draft, fork, metadata mismatch
@@ -17,7 +17,9 @@
  *   - Side-effect passes: thread resolution, stale-label clearing
  *   - Blocker construction, fingerprint computation
  *   - R15–R25: thread annotation/resolution, fence cleanup — within passes
- *   - R26–R34/GC: terminal dispatch — inline in reconcile.mjs for now
+ *   - R26–R34/GC: terminal dispatch — inline in reconcile.mjs until the TODO
+ *     wiring follow-up lands; `buildTerminalDispatchTable` is exported for
+ *     unit testing and future use.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * STRUCTURAL INVARIANT — D5 fix:
@@ -306,4 +308,129 @@ export function assertEarlyTableInvariant(rows) {
 export function selectEarlyAction(ctx) {
   const table = buildEarlyDecisionTable();
   return table.find((row) => row.guard(ctx)) ?? null;
+}
+
+/**
+ * Build the TERMINAL_DISPATCH ordered table.
+ *
+ * This table models the R26–R34/GC decision path that reconcile.mjs currently
+ * handles inline.  It is exported and fully unit-tested here; wiring it into
+ * reconcile.mjs to replace the inline cascade is a separate follow-up (TODO).
+ *
+ * Rows are evaluated in order; the first matching row is returned.
+ * If no row matches, `selectTerminalAction` throws with a descriptive error
+ * (internal invariant violation — the last T-DISPATCH row is a catch-all for
+ * any context with blockers, so this should be unreachable in production).
+ *
+ * @returns {Array<{id: string, dClass: string, action: string, description: string, guard: (ctx: TerminalContext) => boolean}>}
+ */
+export function buildTerminalDispatchTable() {
+  return [
+    // ── No-blockers terminal path ─────────────────────────────────────────────
+    {
+      id: 'R26',
+      dClass: 'D1',
+      action: DISPATCH_ACTION.WAIT_ADMISSION,
+      description: 'admission wait state when checks/review missing',
+      guard: (ctx) => ctx.normalizedBlockers.length === 0 && ctx.admissionWaiting.length > 0,
+    },
+    {
+      id: 'R27',
+      dClass: 'D8',
+      action: DISPATCH_ACTION.QUEUE_MERGE_TRAIN,
+      description: 'clean train-mode PR gets queued',
+      guard: (ctx) => ctx.normalizedBlockers.length === 0 && ctx.mergeTrainEnabled,
+    },
+    {
+      id: 'T-ARM',
+      dClass: 'D1',
+      action: DISPATCH_ACTION.ARM_AUTO_MERGE,
+      description: 'clean non-train PR arms auto-merge',
+      guard: (ctx) => ctx.normalizedBlockers.length === 0,
+    },
+
+    // ── Has-blockers terminal path: GC checks (release before skip) ──────────
+    {
+      id: 'T-EXHAUSTED',
+      dClass: 'D5',
+      action: DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED,
+      description: 'stale-automation-exhausted idle state suppresses re-dispatch',
+      guard: (ctx) =>
+        ctx.normalizedBlockers.length > 0 &&
+        !ctx.labelExists &&
+        ctx.owner === 'none' &&
+        ctx.status === 'idle' &&
+        ctx.stateProgressKey === ctx.currentProgressKey &&
+        ctx.stateTrigger === 'stale-automation-exhausted',
+    },
+    {
+      id: 'R34',
+      dClass: 'D4',
+      action: DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_EXHAUSTED,
+      description: 'stale-automation GC: exhausted → release and file loop incident',
+      guard: (ctx) =>
+        ctx.normalizedBlockers.length > 0 &&
+        ctx.labelExists &&
+        ctx.isDuplicateDispatch &&
+        ctx.stallAction === 'release',
+    },
+    {
+      id: 'R33',
+      dClass: 'D4',
+      action: DISPATCH_ACTION.SKIP_DUPLICATE_FINGERPRINT,
+      description: 'duplicate-fingerprint within liveness window → wait',
+      guard: (ctx) =>
+        ctx.normalizedBlockers.length > 0 &&
+        ctx.labelExists &&
+        ctx.isDuplicateDispatch &&
+        ctx.stallAction === 'wait',
+    },
+    {
+      id: 'T-COPILOT-PROGRESS',
+      dClass: 'D5',
+      action: DISPATCH_ACTION.SKIP_ACTIVE_COPILOT_PROGRESS,
+      description: 'copilot actively working on a recently changed fingerprint',
+      guard: (ctx) =>
+        ctx.normalizedBlockers.length > 0 &&
+        ctx.labelExists &&
+        ctx.owner === 'automation' &&
+        ['active', 'dispatched'].includes(ctx.status) &&
+        ctx.copilotAssigned &&
+        ctx.automationProgressAgeMs < 30 * 60 * 1000,
+    },
+    // Catch-all: dispatch @copilot when there are unresolved blockers and none
+    // of the GC/skip conditions above apply.
+    {
+      id: 'T-DISPATCH',
+      dClass: 'D5',
+      action: DISPATCH_ACTION.DISPATCH_COPILOT,
+      description: 'dispatch @copilot to fix blockers',
+      guard: (ctx) => ctx.normalizedBlockers.length > 0,
+    },
+  ];
+}
+
+/**
+ * Evaluate the terminal dispatch table against a full context.
+ *
+ * @param {TerminalContext} ctx
+ * @returns {{ id: string, action: string, description: string }}
+ * @throws {Error} if no row matches (internal invariant violation)
+ */
+export function selectTerminalAction(ctx) {
+  const table = buildTerminalDispatchTable();
+  const row = table.find((r) => r.guard(ctx));
+  if (!row) {
+    throw new Error(
+      `dispatch-table: no terminal action matched. ` +
+        `owner=${ctx.owner} status=${ctx.status} ` +
+        `blockers=${ctx.normalizedBlockers.length} ` +
+        `mergeTrainEnabled=${ctx.mergeTrainEnabled} ` +
+        `admissionWaiting=${ctx.admissionWaiting.length} ` +
+        `labelExists=${ctx.labelExists} ` +
+        `isDuplicate=${ctx.isDuplicateDispatch} ` +
+        `stallAction=${ctx.stallAction ?? 'n/a'}`,
+    );
+  }
+  return row;
 }

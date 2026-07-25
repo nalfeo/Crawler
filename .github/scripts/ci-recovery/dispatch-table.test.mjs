@@ -4,8 +4,10 @@ import test from 'node:test';
 import {
   assertEarlyTableInvariant,
   buildEarlyDecisionTable,
+  buildTerminalDispatchTable,
   DISPATCH_ACTION,
   selectEarlyAction,
+  selectTerminalAction,
 } from './dispatch-table.mjs';
 
 // ─── structural invariant ────────────────────────────────────────────────────
@@ -294,5 +296,138 @@ test('selectEarlyAction: no conflict rebase rows fire when auto-rebase-conflict 
     row === null || !conflictActions.has(row.action),
     `unexpected conflict rebase action ${row?.action} for auto-rebase-conflict trigger`,
   );
+});
+
+// ─── buildTerminalDispatchTable / selectTerminalAction ───────────────────────
+
+test('buildTerminalDispatchTable: returns a non-empty array with valid rows', () => {
+  const table = buildTerminalDispatchTable();
+  assert.ok(Array.isArray(table) && table.length > 0, 'expected non-empty table');
+  for (const row of table) {
+    assert.ok(row.id, `row missing id: ${JSON.stringify(row)}`);
+    assert.ok(row.action, `row ${row.id} missing action`);
+    assert.ok(
+      Object.values(DISPATCH_ACTION).includes(row.action),
+      `row ${row.id} unknown action ${row.action}`,
+    );
+    assert.strictEqual(typeof row.guard, 'function', `row ${row.id} guard is not a function`);
+  }
+});
+
+const baseTerminal = {
+  normalizedBlockers: [],
+  admissionWaiting: [],
+  mergeTrainEnabled: false,
+  labelExists: false,
+  owner: 'none',
+  status: 'idle',
+  isDuplicateDispatch: false,
+  stallAction: null,
+  stateProgressKey: null,
+  currentProgressKey: 'k1',
+  stateTrigger: null,
+  copilotAssigned: false,
+  automationProgressAgeMs: Infinity,
+};
+
+test('selectTerminalAction: clean non-train PR → ARM_AUTO_MERGE', () => {
+  const row = selectTerminalAction(baseTerminal);
+  assert.strictEqual(row.action, DISPATCH_ACTION.ARM_AUTO_MERGE);
+  assert.strictEqual(row.id, 'T-ARM');
+});
+
+test('selectTerminalAction: clean train PR → QUEUE_MERGE_TRAIN', () => {
+  const ctx = { ...baseTerminal, mergeTrainEnabled: true };
+  const row = selectTerminalAction(ctx);
+  assert.strictEqual(row.action, DISPATCH_ACTION.QUEUE_MERGE_TRAIN);
+  assert.strictEqual(row.id, 'R27');
+});
+
+test('selectTerminalAction: clean PR with admission-wait reasons → WAIT_ADMISSION', () => {
+  const ctx = { ...baseTerminal, admissionWaiting: ['check:ci'] };
+  const row = selectTerminalAction(ctx);
+  assert.strictEqual(row.action, DISPATCH_ACTION.WAIT_ADMISSION);
+  assert.strictEqual(row.id, 'R26');
+});
+
+test('selectTerminalAction: blockers present → DISPATCH_COPILOT (catch-all)', () => {
+  const ctx = {
+    ...baseTerminal,
+    normalizedBlockers: [{ kind: 'review-thread', id: 't1', summary: 's' }],
+  };
+  const row = selectTerminalAction(ctx);
+  assert.strictEqual(row.action, DISPATCH_ACTION.DISPATCH_COPILOT);
+  assert.strictEqual(row.id, 'T-DISPATCH');
+});
+
+test('selectTerminalAction: stale-automation-exhausted idle state → SKIP_STALE_AUTOMATION_EXHAUSTED', () => {
+  const ctx = {
+    ...baseTerminal,
+    normalizedBlockers: [{ kind: 'ci-failure', id: 'c1', summary: 's' }],
+    labelExists: false,
+    owner: 'none',
+    status: 'idle',
+    stateProgressKey: 'k1',
+    currentProgressKey: 'k1',
+    stateTrigger: 'stale-automation-exhausted',
+  };
+  const row = selectTerminalAction(ctx);
+  assert.strictEqual(row.action, DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED);
+  assert.strictEqual(row.id, 'T-EXHAUSTED');
+});
+
+test('selectTerminalAction: duplicate dispatch stallAction=release → RELEASE_STALE_AUTOMATION_EXHAUSTED', () => {
+  const ctx = {
+    ...baseTerminal,
+    normalizedBlockers: [{ kind: 'ci-failure', id: 'c1', summary: 's' }],
+    labelExists: true,
+    isDuplicateDispatch: true,
+    stallAction: 'release',
+  };
+  const row = selectTerminalAction(ctx);
+  assert.strictEqual(row.action, DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_EXHAUSTED);
+  assert.strictEqual(row.id, 'R34');
+});
+
+test('selectTerminalAction: duplicate dispatch stallAction=wait → SKIP_DUPLICATE_FINGERPRINT', () => {
+  const ctx = {
+    ...baseTerminal,
+    normalizedBlockers: [{ kind: 'ci-failure', id: 'c1', summary: 's' }],
+    labelExists: true,
+    isDuplicateDispatch: true,
+    stallAction: 'wait',
+  };
+  const row = selectTerminalAction(ctx);
+  assert.strictEqual(row.action, DISPATCH_ACTION.SKIP_DUPLICATE_FINGERPRINT);
+  assert.strictEqual(row.id, 'R33');
+});
+
+test('selectTerminalAction: active copilot in progress → SKIP_ACTIVE_COPILOT_PROGRESS', () => {
+  const ctx = {
+    ...baseTerminal,
+    normalizedBlockers: [{ kind: 'ci-failure', id: 'c1', summary: 's' }],
+    labelExists: true,
+    owner: 'automation',
+    status: 'active',
+    copilotAssigned: true,
+    automationProgressAgeMs: 5 * 60 * 1000, // 5 minutes — within the 30-minute window
+  };
+  const row = selectTerminalAction(ctx);
+  assert.strictEqual(row.action, DISPATCH_ACTION.SKIP_ACTIVE_COPILOT_PROGRESS);
+  assert.strictEqual(row.id, 'T-COPILOT-PROGRESS');
+});
+
+test('selectTerminalAction: active copilot older than 30 min falls through to DISPATCH_COPILOT', () => {
+  const ctx = {
+    ...baseTerminal,
+    normalizedBlockers: [{ kind: 'ci-failure', id: 'c1', summary: 's' }],
+    labelExists: true,
+    owner: 'automation',
+    status: 'active',
+    copilotAssigned: true,
+    automationProgressAgeMs: 31 * 60 * 1000, // 31 minutes — outside the 30-minute window
+  };
+  const row = selectTerminalAction(ctx);
+  assert.strictEqual(row.action, DISPATCH_ACTION.DISPATCH_COPILOT);
 });
 
