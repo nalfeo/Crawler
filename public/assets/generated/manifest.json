@@ -14813,8 +14813,8 @@
       "briefId": "welcome-room-floor-tape",
       "spriteName": "welcome-room-floor-tape-var-0",
       "assetPath": "generated/welcome-room-floor-tape-var-0.png",
-      "approvedAt": "2026-07-25T06:43:09.311Z",
-      "sourceRun": "generated/runs/welcome-room-floor-tape/2026-07-25T06-11-40-56fc871e",
+      "approvedAt": "2026-07-25T07:16:35.975Z",
+      "sourceRun": "generated/runs/welcome-room-floor-tape/2026-07-25T07-11-56-43aa66f0",
       "variantIndex": 0,
       "anchor": {
         "x": 127,
@@ -14872,26 +14872,26 @@
       "judgeScorecard": {
         "variantIndex": 0,
         "modelDeployment": "gpt-4o",
-        "judgedAt": "2026-07-25T06:12:42.301Z",
+        "judgedAt": "2026-07-25T07:13:11.418Z",
         "designLanguage": {
           "score": 4,
-          "rationale": "The concept of a worn carpet tile with a gaffer-tape cross is clear and fits the darkly humorous, deranged reality-show aesthetic of Crawler. The tape lifting at one edge adds a touch of imperfection and decay, aligning with the theme of wear and tear."
+          "rationale": "The concept of a worn carpet tile with a gaffer-tape cross is clear and fits the darkly humorous, derelict showbiz aesthetic of Crawler. The tape lifting slightly adds a touch of realism and character."
         },
         "referenceStyleMatch": {
           "score": 4,
-          "rationale": "The sprite uses a warm, desaturated palette and matches the rendering style of the references in terms of outline, shading, and texture. However, the tape's edges could be slightly more defined to better match the hard outlines of the references."
+          "rationale": "The rendering aligns well with the approved references in terms of outline weight, muted palette, and shading style. The texture and wear are consistent with the established style, though the tape could be slightly more integrated into the carpet texture."
         },
         "styleMatch": {
           "score": 4,
-          "rationale": "The sprite uses a warm, desaturated palette and matches the rendering style of the references in terms of outline, shading, and texture. However, the tape's edges could be slightly more defined to better match the hard outlines of the references."
+          "rationale": "The rendering aligns well with the approved references in terms of outline weight, muted palette, and shading style. The texture and wear are consistent with the established style, though the tape could be slightly more integrated into the carpet texture."
         },
         "briefMatch": {
           "score": 5,
-          "rationale": "The sprite clearly depicts a warm orange carpet tile with a gaffer-tape cross, including the specified lifting edge. The texture and colors align with the description of a worn, dusty, and threadbare carpet."
+          "rationale": "The candidate matches the brief closely, with a warm orange carpet base near the specified color (#eaa56c) and a dull, desaturated gaffer tape cross. The wear and tear are subtle and appropriate for the setting."
         },
         "readability": {
           "score": 4,
-          "rationale": "The silhouette is clear and the tape cross is easily distinguishable at 16px. However, the lifting edge of the tape could be slightly more pronounced to enhance readability at game scale."
+          "rationale": "The silhouette of the tape cross is clear and distinct at 16px, and the tile integrates well into a grid. However, the contrast between the tape and the carpet could be slightly increased to enhance visibility without breaking the muted palette."
         },
         "passed": true,
         "minScore": 4,
@@ -14899,19 +14899,19 @@
         "hardBlockEvaluated": true,
         "hardBlocked": false,
         "hardBlockInstruction": null,
-        "hardBlockRationale": "The candidate is functional and aligns with the brief, though there are minor areas for improvement.",
-        "confidence": 0.92,
+        "hardBlockRationale": "The candidate is functional and adheres to the brief, though there are areas for improvement.",
+        "confidence": 0.9,
         "usage": {
-          "promptTokens": 3655,
+          "promptTokens": 3923,
           "completionTokens": 324,
-          "totalTokens": 3979
+          "totalTokens": 4247
         }
       },
       "type": "tile",
-      "contentHash": "53b91eee2404032b236296ba286aed6b7df220777a49b0db68f0ede8c1c64775",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-tape\\2026-07-25T06-11-40-56fc871e\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-tape\\2026-07-25T06-11-40-56fc871e\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-tape\\2026-07-25T06-11-40-56fc871e\\postprocess.pipeline.effective.yaml",
+      "contentHash": "7f1123548118731baec1b0af1b684dc4605b0f57a74a28c397ec6906602a7ae3",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-tape\\2026-07-25T07-11-56-43aa66f0\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-tape\\2026-07-25T07-11-56-43aa66f0\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-tape\\2026-07-25T07-11-56-43aa66f0\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
