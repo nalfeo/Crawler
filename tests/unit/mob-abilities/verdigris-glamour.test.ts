@@ -668,7 +668,10 @@ describe('Verdigris Glamour — pendingBursts durable queue', () => {
       preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
     });
     expect(world.mobAbilities.pendingBursts).toHaveLength(1);
-    expect(world.mobAbilities.pendingBursts[0]).toMatchObject({ kind: 'circle' });
+    expect(world.mobAbilities.pendingBursts[0]).toMatchObject({
+      kind: 'resolution',
+      geometry: { kind: 'circle' },
+    });
 
     // Simulate caster teardown (byEntity cleared) — pendingBursts is unaffected.
     clearMobAbility(world, queen);

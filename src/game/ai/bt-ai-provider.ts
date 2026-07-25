@@ -2581,32 +2581,62 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }
 
-      // Mob-ability circle avoidance: if the player is inside a committed
-      // telegraph circle, flee outward using the same committed geometry the
-      // renderer draws — no information advantage over what the player sees.
-      // Runs only when no projectile threat is in the dodge horizon.
+      // Mob-ability geometry avoidance: if the player is inside a committed
+      // telegraph / active danger footprint, flee using the same public
+      // geometry the renderer draws — no information advantage over what the
+      // player sees. Runs only when no projectile threat is in the dodge horizon.
       for (const cue of ctx.world.mobAbilities.cues) {
-        if (cue.phase !== 'telegraph') continue;
         const { geometry } = cue;
-        if (geometry.kind !== 'circle') continue;
-        const dx = ctx.playerX - geometry.x;
-        const dy = ctx.playerY - geometry.y;
-        // Use squared distance to match the damage resolver exactly (no sqrt).
-        // The resolver uses `if (dx² + dy² > r²) continue;` so damage hits when
-        // dx² + dy² <= r². The AI must avoid using the SAME geometry contract,
-        // so it continues (skips avoidance) only when strictly outside: dx² + dy² > r².
-        const distSq = dx * dx + dy * dy;
-        const r2 = geometry.radiusFt * geometry.radiusFt;
-        if (distSq > r2) continue;
-        // Compute unit vector for dodge direction.
+        if (geometry.kind === 'circle') {
+          const dx = ctx.playerX - geometry.x;
+          const dy = ctx.playerY - geometry.y;
+          // Use squared distance to match the damage resolver exactly (no sqrt).
+          // The resolver uses `if (dx² + dy² > r²) continue;` so damage hits when
+          // dx² + dy² <= r². The AI must avoid using the SAME geometry contract,
+          // so it continues (skips avoidance) only when strictly outside: dx² + dy² > r².
+          const distSq = dx * dx + dy * dy;
+          const r2 = geometry.radiusFt * geometry.radiusFt;
+          if (distSq > r2) continue;
+          const dist = Math.sqrt(distSq);
+          if (dist > Number.EPSILON) {
+            this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          } else {
+            this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = 0;
+          }
+          return BTStatus.SUCCESS;
+        }
+        const laneDx = geometry.endpointX - geometry.originX;
+        const laneDy = geometry.endpointY - geometry.originY;
+        const laneLenSq = laneDx * laneDx + laneDy * laneDy;
+        if (laneLenSq <= Number.EPSILON) continue;
+        const t = Math.max(
+          0,
+          Math.min(
+            1,
+            ((ctx.playerX - geometry.originX) * laneDx +
+              (ctx.playerY - geometry.originY) * laneDy) /
+              laneLenSq,
+          ),
+        );
+        const closestX = geometry.originX + laneDx * t;
+        const closestY = geometry.originY + laneDy * t;
+        const awayX = ctx.playerX - closestX;
+        const awayY = ctx.playerY - closestY;
+        const distSq = awayX * awayX + awayY * awayY;
+        const halfWidthSq = (geometry.widthFt * 0.5) ** 2;
+        if (distSq > halfWidthSq) continue;
         const dist = Math.sqrt(distSq);
         if (dist > Number.EPSILON) {
-          this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
-          this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          this.dodgeVecX = (awayX / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          this.dodgeVecY = (awayY / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
         } else {
-          // Player is exactly at the circle center — flee along kite orbit tangent.
-          this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
-          this.dodgeVecY = 0;
+          const laneLen = Math.sqrt(laneLenSq);
+          const nx = (-laneDy / laneLen) * this.kiteOrbitSign;
+          const ny = (laneDx / laneLen) * this.kiteOrbitSign;
+          this.dodgeVecX = nx * PROJECTILE_DODGE_VECTOR_SCALE;
+          this.dodgeVecY = ny * PROJECTILE_DODGE_VECTOR_SCALE;
         }
         return BTStatus.SUCCESS;
       }

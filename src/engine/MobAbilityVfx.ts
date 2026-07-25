@@ -16,10 +16,10 @@
  *     carrying a `mob-ability:`-sourced effect.
  *
  * Every required visual state is procedural (no generated art, no textures):
- * cast-start cue, locked hostile-red telegraph circle with the exact 12ft
- * footprint, a countdown/anticipation fill, a resolution burst with gratuitous
- * particles, a persistent Tarnished indicator, and a cleanup/expiry poof. The
- * announcement itself is rendered by `HudAnnouncementBanner`.
+ * cast-start cue, locked hostile-red telegraphs (circle or lane), countdown
+ * anticipation fill, motion/impact/re-catch bursts for active lane projectiles,
+ * a persistent Tarnished indicator, and cleanup poofs. The announcement itself
+ * is rendered by `HudAnnouncementBanner`.
  */
 import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
@@ -28,6 +28,7 @@ import {
   getMobAbilityActiveAura,
   getStatusEffects,
 } from '../core/index.js';
+import type { MobAbilityCue, MobAbilityLaneGeometry } from '../core/mob-abilities/types.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { ftToPx } from '../shared/units.js';
 
@@ -51,12 +52,16 @@ const COLOR_BERSERK_RED = 0xff4d4d;
 const COLOR_BERSERK_DUST = 0xc98b56;
 const COLOR_BERSERK_ENVELOPE = 0xff6b6b;
 const COLOR_BERSERK_LEAF = 0x8bd17c;
+const COLOR_SAW_ORANGE = 0xff8c42;
+const COLOR_SAW_SMOKE = 0x6b7280;
+const COLOR_SAW_STEAM = 0xd1d5db;
 
 const BURST_LIFETIME_MS = 560;
 const CAST_START_LIFETIME_MS = 320;
 const CLEANUP_LIFETIME_MS = 300;
 const CROWN_RUNE_COUNT = 8;
 const BURST_SPARK_COUNT = 18;
+const SAW_TRAIL_LIFETIME_MS = 180;
 
 export function createMobAbilityVfx(scene: Phaser.Scene): {
   update(world: GameWorld): void;
@@ -70,6 +75,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const canAddEllipse = typeof scene.add?.ellipse === 'function';
 
   const telegraphGfx = new Map<number, Phaser.GameObjects.Graphics>();
+  const sawGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const tarnishGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const tarnishLastPos = new Map<number, { x: number; y: number }>();
   const berserkAuraGfx = new Map<number, Phaser.GameObjects.Graphics>();
@@ -77,6 +83,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const berserkAuraLastPos = new Map<number, { x: number; y: number }>();
   const berserkAuraLastPulseFrame = new Map<number, number>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
+  const lastCuePhase = new Map<number, 'telegraph' | 'outbound' | 'hold' | 'return'>();
   const castStartSeen = new Set<number>();
   /**
    * Transient circles created by spawnRing/spawnBurst/spawnCastStart.
@@ -225,6 +232,115 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       const oy = cy + Math.sin(a) * (radiusPx + 6);
       gfx.lineBetween(ix, iy, ox, oy);
     }
+  }
+
+  function drawLaneTelegraph(
+    gfx: Phaser.GameObjects.Graphics,
+    cue: MobAbilityCue & { geometry: MobAbilityLaneGeometry },
+  ): void {
+    const { geometry, telegraphProgress } = cue;
+    const ox = ftToPx(geometry.originX);
+    const oy = ftToPx(geometry.originY);
+    const ex = ftToPx(geometry.endpointX);
+    const ey = ftToPx(geometry.endpointY);
+    const widthPx = ftToPx(geometry.widthFt);
+    const dx = ex - ox;
+    const dy = ey - oy;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const half = widthPx * 0.5;
+    const urgency = 0.75 + 0.25 * Math.sin(telegraphProgress * Math.PI * 2);
+    gfx.clear();
+    gfx.lineStyle(Math.max(2, widthPx), COLOR_HOSTILE_RED, 0.16 + 0.16 * telegraphProgress);
+    gfx.beginPath();
+    gfx.moveTo(ox, oy);
+    gfx.lineTo(ex, ey);
+    gfx.strokePath();
+    gfx.lineStyle(2 + telegraphProgress * 2, COLOR_HOSTILE_RED, 0.95);
+    gfx.beginPath();
+    gfx.moveTo(ox + nx * half, oy + ny * half);
+    gfx.lineTo(ex + nx * half, ey + ny * half);
+    gfx.moveTo(ox - nx * half, oy - ny * half);
+    gfx.lineTo(ex - nx * half, ey - ny * half);
+    gfx.strokePath();
+    gfx.lineStyle(2, COLOR_CROWN_RUNE, 0.65 + 0.2 * urgency);
+    gfx.beginPath();
+    gfx.moveTo(ox, oy);
+    gfx.lineTo(ex, ey);
+    gfx.strokePath();
+    const arrow = Math.min(14, len * 0.18);
+    const arrowWidth = Math.max(5, half * 0.6);
+    gfx.fillStyle(COLOR_CROWN_RUNE, 0.55 + 0.3 * telegraphProgress);
+    gfx.fillTriangle(
+      ex,
+      ey,
+      ex - (dx / len) * arrow + nx * arrowWidth,
+      ey - (dy / len) * arrow + ny * arrowWidth,
+      ex - (dx / len) * arrow - nx * arrowWidth,
+      ey - (dy / len) * arrow - ny * arrowWidth,
+    );
+    gfx.fillTriangle(
+      ox,
+      oy,
+      ox + (dx / len) * arrow + nx * arrowWidth,
+      oy + (dy / len) * arrow + ny * arrowWidth,
+      ox + (dx / len) * arrow - nx * arrowWidth,
+      oy + (dy / len) * arrow - ny * arrowWidth,
+    );
+  }
+
+  function drawSaw(
+    gfx: Phaser.GameObjects.Graphics,
+    projectileX: number,
+    projectileY: number,
+    phase: 'outbound' | 'hold' | 'return',
+  ): void {
+    const px = ftToPx(projectileX);
+    const py = ftToPx(projectileY);
+    const radius = ftToPx(1.2);
+    gfx.clear();
+    gfx.fillStyle(COLOR_BRONZE, 0.95);
+    gfx.fillCircle(px, py, radius);
+    gfx.lineStyle(2, COLOR_SAW_ORANGE, phase === 'hold' ? 1 : 0.85);
+    gfx.strokeCircle(px, py, radius + 2);
+    gfx.lineStyle(2, COLOR_HOSTILE_RED, 0.8);
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i / 6) * Math.PI * 2;
+      gfx.beginPath();
+      gfx.moveTo(px, py);
+      gfx.lineTo(px + Math.cos(a) * (radius + 3), py + Math.sin(a) * (radius + 3));
+      gfx.strokePath();
+    }
+  }
+
+  function spawnSawFlair(
+    x: number,
+    y: number,
+    radiusPx: number,
+    smokeColor: number,
+    sparkColor: number,
+  ): void {
+    if (!enabled) return;
+    spawnRing(x, y, radiusPx * 0.4, radiusPx * 1.1, sparkColor, SAW_TRAIL_LIFETIME_MS, BURST_DEPTH);
+    const smoke = scene.add.circle(x, y, radiusPx * 0.32, smokeColor, 0.24);
+    smoke.setDepth(BURST_DEPTH);
+    smoke.setBlendMode('ADD');
+    ignoreUi(smoke);
+    transientCircles.add(smoke);
+    const tween = scene.tweens.add({
+      targets: smoke,
+      alpha: { from: 0.24, to: 0 },
+      scale: { from: 1, to: 1.8 },
+      duration: SAW_TRAIL_LIFETIME_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        transientCircles.delete(smoke);
+        transientTweens.delete(smoke);
+        smoke.destroy();
+      },
+    });
+    transientTweens.set(smoke, tween);
   }
 
   /** Redraw the persistent Tarnished indicator under a debuffed entity. */
@@ -428,18 +544,20 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   function update(world: GameWorld): void {
     const runtime = world.mobAbilities;
 
-    // ── Telegraph circles ──────────────────────────────────────────────────
+    // ── Telegraphs + active lane projectiles ───────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
-      if (cue.geometry.kind !== 'circle') continue;
       liveCasters.add(cue.casterEid);
-      const cx = ftToPx(cue.geometry.x);
-      const cy = ftToPx(cue.geometry.y);
-      const radiusPx = ftToPx(cue.geometry.radiusFt);
-      lastGeom.set(cue.casterEid, { x: cx, y: cy, r: radiusPx });
       if (!castStartSeen.has(cue.casterEid)) {
         castStartSeen.add(cue.casterEid);
-        spawnCastStart(cx, cy, radiusPx);
+        if (cue.geometry.kind === 'circle') {
+          const cx = ftToPx(cue.geometry.x);
+          const cy = ftToPx(cue.geometry.y);
+          const radiusPx = ftToPx(cue.geometry.radiusFt);
+          spawnCastStart(cx, cy, radiusPx);
+        } else {
+          spawnCastStart(ftToPx(cue.geometry.originX), ftToPx(cue.geometry.originY), ftToPx(2));
+        }
       }
       if (!enabled) continue;
       let gfx = telegraphGfx.get(cue.casterEid);
@@ -450,7 +568,41 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         ignoreUi(gfx);
         telegraphGfx.set(cue.casterEid, gfx);
       }
-      drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress, cue.dangerColor);
+      const previousPhase = lastCuePhase.get(cue.casterEid);
+      lastCuePhase.set(cue.casterEid, cue.phase);
+      if (cue.geometry.kind === 'circle') {
+        const cx = ftToPx(cue.geometry.x);
+        const cy = ftToPx(cue.geometry.y);
+        const radiusPx = ftToPx(cue.geometry.radiusFt);
+        lastGeom.set(cue.casterEid, { x: cx, y: cy, r: radiusPx });
+        drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress, cue.dangerColor);
+      } else {
+        drawLaneTelegraph(gfx, cue as MobAbilityCue & { geometry: MobAbilityLaneGeometry });
+        let saw = sawGfx.get(cue.casterEid);
+        if (cue.phase === 'telegraph') {
+          saw?.clear();
+        } else if (cue.projectileX !== undefined && cue.projectileY !== undefined) {
+          if (saw === undefined) {
+            saw = scene.add.graphics();
+            saw.setDepth(BURST_DEPTH);
+            saw.setBlendMode('ADD');
+            ignoreUi(saw);
+            sawGfx.set(cue.casterEid, saw);
+          }
+          drawSaw(saw, cue.projectileX, cue.projectileY, cue.phase);
+          if (previousPhase !== cue.phase) {
+            const px = ftToPx(cue.projectileX);
+            const py = ftToPx(cue.projectileY);
+            if (cue.phase === 'outbound') {
+              spawnSawFlair(px, py, ftToPx(1.2), COLOR_SAW_STEAM, COLOR_SAW_ORANGE);
+            } else if (cue.phase === 'hold') {
+              spawnSawFlair(px, py, ftToPx(1.5), COLOR_SAW_SMOKE, COLOR_HOSTILE_RED);
+            } else if (cue.phase === 'return') {
+              spawnSawFlair(px, py, ftToPx(1.2), COLOR_SAW_STEAM, COLOR_CROWN_RUNE);
+            }
+          }
+        }
+      }
     }
 
     // ── Resolution bursts (drain the durable pending-burst queue) ─────────
@@ -458,12 +610,17 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // bursts survive even if the caster is cleared (killed/despawned) later in
     // the same simulation step before PhaserBridge.sync runs.
     while (runtime.pendingBursts.length > 0) {
-      const geom = runtime.pendingBursts.shift()!;
-      if (geom.kind === 'circle') {
-        const cx = ftToPx(geom.x);
-        const cy = ftToPx(geom.y);
-        const r = ftToPx(geom.radiusFt);
+      const event = runtime.pendingBursts.shift()!;
+      if (event.kind === 'resolution' && event.geometry.kind === 'circle') {
+        const cx = ftToPx(event.geometry.x);
+        const cy = ftToPx(event.geometry.y);
+        const r = ftToPx(event.geometry.radiusFt);
         spawnBurst(cx, cy, r);
+      } else if (event.kind === 'recatch') {
+        const x = ftToPx(event.x);
+        const y = ftToPx(event.y);
+        spawnBurst(x, y, ftToPx(2.4));
+        spawnSawFlair(x, y, ftToPx(1.6), COLOR_SAW_SMOKE, COLOR_SAW_ORANGE);
       }
     }
 
@@ -472,7 +629,10 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       if (!liveCasters.has(eid)) {
         gfx.destroy();
         telegraphGfx.delete(eid);
+        sawGfx.get(eid)?.destroy();
+        sawGfx.delete(eid);
         castStartSeen.delete(eid);
+        lastCuePhase.delete(eid);
       }
     }
     // Drop stale geometry bookkeeping for gone casters.
@@ -598,6 +758,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     transientCircles.clear();
     for (const gfx of telegraphGfx.values()) gfx.destroy();
     telegraphGfx.clear();
+    for (const gfx of sawGfx.values()) gfx.destroy();
+    sawGfx.clear();
     for (const gfx of tarnishGfx.values()) gfx.destroy();
     tarnishGfx.clear();
     for (const gfx of berserkAuraGfx.values()) gfx.destroy();
@@ -607,6 +769,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     tarnishLastPos.clear();
     berserkAuraSeen.clear();
     lastGeom.clear();
+    lastCuePhase.clear();
     castStartSeen.clear();
   }
 

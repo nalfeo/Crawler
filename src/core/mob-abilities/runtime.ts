@@ -21,15 +21,19 @@
 import { entityExists, hasComponent, query, removeComponent } from 'bitecs';
 import { GAME } from '../../shared/constants.js';
 import { Health, Knockback, Player, Position, Velocity } from '../components.js';
+import { applyDamage } from '../apply-damage.js';
 import { clearStatusEffects } from '../status-effects.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
 import type { GameWorld } from '../world.js';
 import {
   mobAbilitySourceId,
   pushMobAbilityBurst,
+  pushMobAbilityRecatch,
   type MobAbilityActiveBuffState,
+  type MobAbilityActiveState,
   type MobAbilityGeometry,
   type MobAbilityInstanceState,
+  type MobAbilityLaneGeometry,
   type MobAbilityRuntimeDefinition,
 } from './types.js';
 
@@ -84,6 +88,7 @@ export function registerMobAbility(
     resolvedCasts: 0,
     announcementsEmitted: 0,
     registrationToken: token,
+    activeState: null,
   });
 }
 
@@ -98,6 +103,7 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   if (inst === undefined) return;
   runtime.byEntity.delete(casterEid);
   runtime.registrationTokens.delete(casterEid);
+  inst.activeState = null;
 
   // Drop any committed cue for this caster.
   for (let i = runtime.cues.length - 1; i >= 0; i -= 1) {
@@ -143,6 +149,7 @@ export function activateMobAbilityEncounter(world: GameWorld): void {
     inst.committedGeometry = null;
     inst.committedTargetEid = null;
     inst.committedTargetGeneration = null;
+    inst.activeState = null;
   }
 }
 
@@ -243,10 +250,21 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
       ? null
       : (world.entityRenderGeneration[targetEid] ?? 0);
   inst.committedGeometry = {
-    kind: 'circle',
-    x: pos.x,
-    y: pos.y,
-    radiusFt: def.geometry.radiusFt,
+    ...(def.geometry.kind === 'circle'
+      ? {
+          kind: 'circle' as const,
+          x: pos.x,
+          y: pos.y,
+          radiusFt: def.geometry.radiusFt,
+        }
+      : createCommittedLaneGeometry(
+          world,
+          casterEid,
+          pos.x,
+          pos.y,
+          def.geometry.widthFt,
+          def.geometry.maxRangeFt,
+        )),
   };
 
   // Announcement is emitted exactly once, here, per cast.
@@ -281,6 +299,7 @@ function syncTelegraphGeometryToCaster(
 ): void {
   if (inst.committedGeometry === null) return;
   if (normalizedOriginMode(inst.definition) !== 'follows-caster') return;
+  if (inst.committedGeometry.kind !== 'circle') return;
   const pos = targetPosition(world, casterEid);
   if (pos === null) return;
   inst.committedGeometry = {
@@ -323,6 +342,22 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
       geometry,
       targetEid: inst.committedTargetEid,
     });
+    if (def.activeEffect?.kind === 'returning-lane' && geometry.kind === 'lane') {
+      inst.phase = 'active';
+      inst.timerMs = 0;
+      inst.activeState = {
+        kind: 'returning-lane',
+        speedFtPerTick: def.activeEffect.speedFtPerTick,
+        holdMs: def.activeEffect.holdMs,
+        damageAmount: def.activeEffect.damageAmount,
+        phase: 'outbound',
+        projectileX: geometry.originX,
+        projectileY: geometry.originY,
+        holdRemainingMs: def.activeEffect.holdMs,
+        hitKeys: new Set(),
+      };
+      return;
+    }
     inst.resolvedCasts += 1;
     // Enqueue a durable burst event so the VFX renderer can fire the resolution
     // burst even if the caster dies later in the same simulation step (which
@@ -336,6 +371,238 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
   inst.committedGeometry = null;
   inst.committedTargetEid = null;
   inst.committedTargetGeneration = null;
+  inst.activeState = null;
+}
+
+function beginCooldownAfterActive(world: GameWorld, inst: MobAbilityInstanceState): void {
+  const geometry = inst.committedGeometry;
+  if (geometry?.kind === 'lane') {
+    pushMobAbilityRecatch(world.mobAbilities.pendingBursts, geometry.originX, geometry.originY);
+  }
+  inst.resolvedCasts += 1;
+  inst.phase = 'cooldown';
+  inst.timerMs = inst.definition.cooldownMs;
+  inst.committedGeometry = null;
+  inst.committedTargetEid = null;
+  inst.committedTargetGeneration = null;
+  inst.activeState = null;
+}
+
+function createCommittedLaneGeometry(
+  world: GameWorld,
+  casterEid: number,
+  targetX: number,
+  targetY: number,
+  widthFt: number,
+  maxRangeFt: number,
+): MobAbilityLaneGeometry {
+  const origin = targetPosition(world, casterEid) ?? { x: targetX, y: targetY };
+  const rawDx = targetX - origin.x;
+  const rawDy = targetY - origin.y;
+  const rawDist = Math.hypot(rawDx, rawDy);
+  const dirX = rawDist > Number.EPSILON ? rawDx / rawDist : 1;
+  const dirY = rawDist > Number.EPSILON ? rawDy / rawDist : 0;
+  const unclippedLengthFt = Math.min(maxRangeFt, rawDist > Number.EPSILON ? rawDist : maxRangeFt);
+  const lengthFt = clipLaneLengthFt(world, origin.x, origin.y, dirX, dirY, unclippedLengthFt);
+  return {
+    kind: 'lane',
+    originX: origin.x,
+    originY: origin.y,
+    endpointX: origin.x + dirX * lengthFt,
+    endpointY: origin.y + dirY * lengthFt,
+    widthFt,
+    lengthFt,
+  };
+}
+
+function clipLaneLengthFt(
+  world: GameWorld,
+  originX: number,
+  originY: number,
+  dirX: number,
+  dirY: number,
+  targetLengthFt: number,
+): number {
+  const floorMap = world.floorMap;
+  if (!floorMap) return targetLengthFt;
+  let lastPassable = 0;
+  const stepFt = 0.5;
+  const steps = Math.max(1, Math.ceil(targetLengthFt / stepFt));
+  for (let i = 1; i <= steps; i += 1) {
+    const sample = Math.min(targetLengthFt, i * stepFt);
+    if (!floorMap.isPassableAt(originX + dirX * sample, originY + dirY * sample)) break;
+    lastPassable = sample;
+  }
+  return lastPassable;
+}
+
+function pushCue(
+  runtime: GameWorld['mobAbilities'],
+  cue: GameWorld['mobAbilities']['cues'][number],
+): void {
+  runtime.cues.push(cue);
+}
+
+function pushActiveCue(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
+  const active = inst.activeState;
+  const geometry = inst.committedGeometry;
+  if (active === null || active.kind !== 'returning-lane' || geometry?.kind !== 'lane') return;
+  pushCue(world.mobAbilities, {
+    abilityId: inst.definition.abilityId,
+    casterEid,
+    phase: active.phase,
+    telegraphProgress: 1,
+    geometry,
+    dangerColor: inst.definition.dangerColor,
+    announcementText: inst.definition.announcementText,
+    projectileX: active.projectileX,
+    projectileY: active.projectileY,
+  });
+}
+
+function isLockedTargetStillLive(world: GameWorld, inst: MobAbilityInstanceState): boolean {
+  return (
+    normalizedTargetingMode(inst.definition) === 'self' ||
+    isTargetValid(world, inst.committedTargetEid, inst.committedTargetGeneration)
+  );
+}
+
+function targetHitKey(world: GameWorld, eid: number, pass: 'outbound' | 'return'): string {
+  return `${pass}:${eid}:${world.entityRenderGeneration[eid] ?? 0}`;
+}
+
+function distanceSqPointToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abSq = abx * abx + aby * aby;
+  if (abSq <= Number.EPSILON) {
+    const dx = px - ax;
+    const dy = py - ay;
+    return dx * dx + dy * dy;
+  }
+  const t = Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / abSq));
+  const qx = ax + abx * t;
+  const qy = ay + aby * t;
+  const dx = px - qx;
+  const dy = py - qy;
+  return dx * dx + dy * dy;
+}
+
+function applyReturningLaneDamage(
+  world: GameWorld,
+  casterEid: number,
+  inst: MobAbilityInstanceState,
+  lane: MobAbilityLaneGeometry,
+  active: Extract<MobAbilityActiveState, { kind: 'returning-lane' }>,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): void {
+  if (active.phase === 'hold') return;
+  if (!isLockedTargetStillLive(world, inst)) return;
+  const targetEid = inst.committedTargetEid;
+  if (
+    targetEid === null ||
+    !entityExists(world.ecs, targetEid) ||
+    !hasComponent(world.ecs, targetEid, Position)
+  ) {
+    return;
+  }
+  const key = targetHitKey(world, targetEid, active.phase);
+  if (active.hitKeys.has(key)) return;
+  const px = world.stores.position.x[targetEid] ?? 0;
+  const py = world.stores.position.y[targetEid] ?? 0;
+  const halfWidth = lane.widthFt * 0.5;
+  if (distanceSqPointToSegment(px, py, fromX, fromY, toX, toY) > halfWidth * halfWidth) return;
+  active.hitKeys.add(key);
+  applyDamage(world, targetEid, active.damageAmount, px, py, {
+    origin: 'enemy',
+    affinity: 'unscaled',
+    scaleWithPrimary: false,
+    canCrit: false,
+    delivery: 'projectile',
+    sourceEid: casterEid,
+    sourceX: toX,
+    sourceY: toY,
+    sourceArchetypeKey: world.enemyAppearanceKeys.get(casterEid),
+  });
+}
+
+function updateActiveState(
+  world: GameWorld,
+  casterEid: number,
+  inst: MobAbilityInstanceState,
+): void {
+  const active = inst.activeState;
+  const geometry = inst.committedGeometry;
+  if (
+    active === null ||
+    active.kind !== 'returning-lane' ||
+    geometry === null ||
+    geometry.kind !== 'lane'
+  ) {
+    beginCooldownAfterActive(world, inst);
+    return;
+  }
+  if (!isLockedTargetStillLive(world, inst)) {
+    clearMobAbility(world, casterEid);
+    return;
+  }
+  const fromX = active.projectileX;
+  const fromY = active.projectileY;
+  if (active.phase === 'hold') {
+    active.holdRemainingMs -= GAME.DELTA_MS;
+    if (active.holdRemainingMs <= TIMER_EPSILON_MS) {
+      active.phase = 'return';
+    }
+  } else {
+    const targetX = active.phase === 'outbound' ? geometry.endpointX : geometry.originX;
+    const targetY = active.phase === 'outbound' ? geometry.endpointY : geometry.originY;
+    const dx = targetX - active.projectileX;
+    const dy = targetY - active.projectileY;
+    const dist = Math.hypot(dx, dy);
+    const step = Math.min(active.speedFtPerTick, dist);
+    if (dist > Number.EPSILON) {
+      active.projectileX += (dx / dist) * step;
+      active.projectileY += (dy / dist) * step;
+    } else {
+      active.projectileX = targetX;
+      active.projectileY = targetY;
+    }
+    applyReturningLaneDamage(
+      world,
+      casterEid,
+      inst,
+      geometry,
+      active,
+      fromX,
+      fromY,
+      active.projectileX,
+      active.projectileY,
+    );
+    if (dist <= active.speedFtPerTick + TIMER_EPSILON_MS) {
+      if (active.phase === 'outbound') {
+        active.projectileX = geometry.endpointX;
+        active.projectileY = geometry.endpointY;
+        active.phase = 'hold';
+        active.holdRemainingMs = active.holdMs;
+      } else {
+        active.projectileX = geometry.originX;
+        active.projectileY = geometry.originY;
+        beginCooldownAfterActive(world, inst);
+        return;
+      }
+    }
+  }
+  pushActiveCue(world, casterEid, inst);
 }
 
 export interface ActivateMobAbilitySelfBuffInput {
@@ -446,6 +713,10 @@ export function mobAbilitySystem(world: GameWorld): void {
       continue;
     }
 
+    if (inst.phase === 'active') {
+      updateActiveState(world, casterEid, inst);
+      continue;
+    }
     inst.timerMs -= dtMs;
     if (inst.timerMs <= TIMER_EPSILON_MS) {
       if (inst.phase === 'cooldown') {
@@ -461,7 +732,11 @@ export function mobAbilitySystem(world: GameWorld): void {
       pinCasterDuringTelegraph(world, casterEid, inst);
     }
 
-    // Publish committed cue state for the renderer (telegraph phase only).
+    if (inst.activeState !== null) {
+      pushActiveCue(world, casterEid, inst);
+    }
+
+    // Publish committed cue state for the renderer.
     if (inst.phase === 'telegraph' && inst.committedGeometry !== null) {
       const progress = 1 - Math.max(0, inst.timerMs) / inst.definition.telegraphDurationMs;
       runtime.cues.push({

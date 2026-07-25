@@ -17,10 +17,10 @@
 import type { GameWorld } from '../world.js';
 
 /** Internal phase of an in-flight ability cast (per caster). */
-export type MobAbilityPhase = 'cooldown' | 'telegraph';
+export type MobAbilityPhase = 'cooldown' | 'telegraph' | 'active';
 
 /** Public cue phase surfaced to the renderer. */
-export type MobAbilityCuePhase = 'telegraph' | 'resolved';
+export type MobAbilityCuePhase = 'telegraph' | 'outbound' | 'hold' | 'return';
 
 /** Danger-cue colour, mirrored from the catalog. */
 export type MobAbilityDangerColor = 'ability-theme' | 'hostile-red';
@@ -37,7 +37,17 @@ export interface MobAbilityCircleGeometry {
   readonly radiusFt: number;
 }
 
-export type MobAbilityGeometry = MobAbilityCircleGeometry;
+export interface MobAbilityLaneGeometry {
+  readonly kind: 'lane';
+  readonly originX: number;
+  readonly originY: number;
+  readonly endpointX: number;
+  readonly endpointY: number;
+  readonly widthFt: number;
+  readonly lengthFt: number;
+}
+
+export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilityLaneGeometry;
 
 export type MobAbilityTargetingMode = 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
@@ -58,6 +68,13 @@ export interface MobAbilitySelfBuffDefinition {
  * from arbitrary catalog values.
  */
 export type MobAbilityResolveHandler = (world: GameWorld, ctx: MobAbilityResolveContext) => void;
+
+export interface MobAbilityReturningLaneEffectDefinition {
+  readonly kind: 'returning-lane';
+  readonly speedFtPerTick: number;
+  readonly holdMs: number;
+  readonly damageAmount: number;
+}
 
 /** Everything a resolve handler needs, all committed at telegraph start. */
 export interface MobAbilityResolveContext {
@@ -90,7 +107,9 @@ export interface MobAbilityRuntimeDefinition {
   /** Exact, fully formatted announcement string emitted once per cast. */
   readonly announcementText: string;
   /** Committed geometry footprint (radius etc.); position is locked at cast. */
-  readonly geometry: { readonly kind: 'circle'; readonly radiusFt: number };
+  readonly geometry:
+    | { readonly kind: 'circle'; readonly radiusFt: number }
+    | { readonly kind: 'lane'; readonly widthFt: number; readonly maxRangeFt: number };
   /** Targeting mode for telegraph lock semantics (player-position or self). */
   readonly targetingMode?: MobAbilityTargetingMode;
   /** Origin lock mode for telegraph geometry. */
@@ -99,6 +118,8 @@ export interface MobAbilityRuntimeDefinition {
   readonly lockCasterDuringTelegraph?: boolean;
   /** Optional self-buff payload consumed by runtime helper seams. */
   readonly selfBuff?: MobAbilitySelfBuffDefinition;
+  /** Optional active projectile/effect lifecycle driven after telegraph resolution. */
+  readonly activeEffect?: MobAbilityReturningLaneEffectDefinition;
   /** Named typed effect handler run at resolution. */
   readonly resolve: MobAbilityResolveHandler;
 }
@@ -119,7 +140,34 @@ export interface MobAbilityCue {
   readonly geometry: MobAbilityGeometry;
   readonly dangerColor: MobAbilityDangerColor;
   readonly announcementText: string;
+  readonly projectileX?: number;
+  readonly projectileY?: number;
 }
+
+export interface MobAbilityReturningLaneActiveState {
+  readonly kind: 'returning-lane';
+  readonly speedFtPerTick: number;
+  readonly holdMs: number;
+  readonly damageAmount: number;
+  phase: 'outbound' | 'hold' | 'return';
+  projectileX: number;
+  projectileY: number;
+  holdRemainingMs: number;
+  readonly hitKeys: Set<string>;
+}
+
+export type MobAbilityActiveState = MobAbilityReturningLaneActiveState;
+
+export type MobAbilityBurstEvent =
+  | {
+      readonly kind: 'resolution';
+      readonly geometry: MobAbilityGeometry;
+    }
+  | {
+      readonly kind: 'recatch';
+      readonly x: number;
+      readonly y: number;
+    };
 
 /** Per-caster runtime instance state driven by the executor. */
 export interface MobAbilityInstanceState {
@@ -148,6 +196,8 @@ export interface MobAbilityInstanceState {
    * instance's token no longer matches — preventing false-positive liveness.
    */
   registrationToken: number;
+  /** Optional in-flight active effect after telegraph resolution. */
+  activeState: MobAbilityActiveState | null;
 }
 
 /**
@@ -177,7 +227,7 @@ export interface MobAbilityRuntime {
    * the caster died in the same simulation step that called `clearMobAbility`
    * (which would remove the caster from `byEntity` before `PhaserBridge.sync`).
    */
-  readonly pendingBursts: Array<MobAbilityGeometry>;
+  readonly pendingBursts: Array<MobAbilityBurstEvent>;
   /** Active self-buffs authored by ability handlers and ticked by the runtime. */
   readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
   /**
@@ -232,8 +282,18 @@ const MOB_ABILITY_BURST_CAP = 256;
  * when full). Follows the same bounded-queue pattern as `pushVfxEvent` and
  * `pushAnnouncement`.
  */
-export function pushMobAbilityBurst(bursts: MobAbilityGeometry[], geom: MobAbilityGeometry): void {
-  bursts.push(geom);
+export function pushMobAbilityBurst(
+  bursts: MobAbilityBurstEvent[],
+  geom: MobAbilityGeometry,
+): void {
+  bursts.push({ kind: 'resolution', geometry: geom });
+  if (bursts.length > MOB_ABILITY_BURST_CAP) {
+    bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
+  }
+}
+
+export function pushMobAbilityRecatch(bursts: MobAbilityBurstEvent[], x: number, y: number): void {
+  bursts.push({ kind: 'recatch', x, y });
   if (bursts.length > MOB_ABILITY_BURST_CAP) {
     bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
   }

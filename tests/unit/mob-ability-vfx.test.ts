@@ -9,6 +9,11 @@ function createGraphicsStub() {
     clear: vi.fn(),
     lineStyle: vi.fn(),
     fillStyle: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    strokePath: vi.fn(),
+    fillTriangle: vi.fn(),
     strokeCircle: vi.fn(),
     fillCircle: vi.fn(),
     lineBetween: vi.fn(),
@@ -87,6 +92,7 @@ function mockInstance() {
     committedGeometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
     committedTargetEid: 1,
     committedTargetGeneration: null,
+    activeState: null,
     resolvedCasts: 0,
     announcementsEmitted: 1,
     registrationToken: 1,
@@ -165,11 +171,83 @@ describe('MobAbilityVfx', () => {
     // (instead of the old resolvedCasts polling which broke when byEntity was
     // cleared before PhaserBridge.sync ran).
     world.mobAbilities.cues.length = 0;
-    world.mobAbilities.pendingBursts.push({ kind: 'circle', x: 40, y: 40, radiusFt: 12 });
+    world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+    });
     vfx.update(world);
 
     // Resolution burst emits rings (circles/tweened objects).
     expect(circles.length).toBeGreaterThan(circlesBeforeBurst);
+  });
+
+  it('renders a re-catch burst only from an explicit re-catch event', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const vfx = createMobAbilityVfx(scene);
+
+    world.mobAbilities.pendingBursts.push({ kind: 'recatch', x: 40, y: 10 });
+    vfx.update(world);
+    expect(circles.length).toBeGreaterThan(0);
+
+    const afterRecatch = circles.length;
+    world.mobAbilities.cues.push({
+      abilityId: 'overseer-fizzwick-clockwork-kill-saw',
+      casterEid: 8,
+      phase: 'return',
+      telegraphProgress: 1,
+      geometry: {
+        kind: 'lane',
+        originX: 40,
+        originY: 10,
+        endpointX: 40,
+        endpointY: 42,
+        widthFt: 6,
+        lengthFt: 32,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'CLOCKWORK KILL-SAW — Mandatory overtime starts now!',
+      projectileX: 40,
+      projectileY: 20,
+    });
+    vfx.update(world);
+    world.mobAbilities.cues.length = 0;
+    vfx.update(world);
+    const beforeRemoval = circles.length;
+    expect(beforeRemoval).toBeGreaterThan(afterRecatch);
+    vfx.update(world);
+    expect(circles.length).toBe(beforeRemoval);
+  });
+
+  it('draws the exact committed lane geometry footprint for Clockwork Kill-Saw', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'overseer-fizzwick-clockwork-kill-saw',
+      casterEid: 8,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'lane',
+        originX: 40,
+        originY: 10,
+        endpointX: 40,
+        endpointY: 42,
+        widthFt: 6,
+        lengthFt: 32,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'CLOCKWORK KILL-SAW — Mandatory overtime starts now!',
+    });
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.lineStyle).toHaveBeenCalledWith(ftToPx(6), 0xef4444, expect.any(Number));
+    expect(telegraphGfx!.moveTo).toHaveBeenCalledWith(ftToPx(40), ftToPx(10));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(40), ftToPx(42));
   });
 
   it('retires telegraph graphics when the cue ends', () => {

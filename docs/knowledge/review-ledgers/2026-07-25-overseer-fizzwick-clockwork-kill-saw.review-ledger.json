@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "overseer-fizzwick-clockwork-kill-saw",
+  "task_title": "Implement Overseer Fizzwick CLOCKWORK KILL-SAW",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Alt A: runtime-only bespoke moving saw state — rejected because it would duplicate projectile/return cleanup instead of reusing existing returning-projectile lifecycle. Alt B: fully generic path-phase runtime overhaul before landing Fizzwick — rejected because it expands scope beyond the bounded issue. Chosen: keep typed mob-ability runtime as authoritative committed-path state, extend public cue/geometry phases beyond telegraph, and reuse/extend returning projectile lifecycle for outbound/hold/return/re-catch. Added clipped endpoint semantics, pass-aware hit latching, Queen/Panda regression coverage, explicit default-off zero-casts proof, and process notes for issue-comment 403 + registry override."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}
