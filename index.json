@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fed0cee70ef2c0e661775f7b865cf5fd1a5d1fe5",
+    "commitDate": "2026-07-25T02:03:16Z",
+    "commitSubject": "feat: Floor 2 industrial-cave harvestables, ambient lighting, and props (#1911)",
+    "capturedAt": "2026-07-25T03:21:44.302Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30140072786",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/fed0cee70ef2c0e661775f7b865cf5fd1a5d1fe5.json"
+  },
+  {
     "commit": "7380e3e71592ffa6a33f9eb0882614263b617da0",
     "commitDate": "2026-07-25T01:28:07Z",
     "commitSubject": "fix(sprite-pipeline): enroll assets/promote PRs in the merge-train label (#1925)",
