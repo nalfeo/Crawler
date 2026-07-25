@@ -181,6 +181,12 @@ describe('combat-arena-lab wiring', () => {
     expect(presetWithBoss).toBeDefined();
   });
 
+  it('includes the canonical Squick boss-ability preset', () => {
+    const preset = getEnemyPreset('f2-squick');
+    expect(preset.id).toBe('f2-squick');
+    expect(preset.customSpawnFn).toBeTypeOf('function');
+  });
+
   // ── arena-data.ts: ALL_ARCHETYPES ─────────────────────────────────────────
 
   it('ALL_ARCHETYPES contains archetypes from floor1 and floor2', () => {

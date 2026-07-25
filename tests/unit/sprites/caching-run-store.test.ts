@@ -440,12 +440,33 @@ describe('backend / resolve', () => {
     expect(store.backend).toBe('azure-blob');
     expect(store.resolve(SHEET)).toBe(new LocalRunStore(innerDir).resolve(SHEET));
   });
+
+  it('resolveForExternalRead delegates to inner.resolveForExternalRead when present', () => {
+    const signed = (key: string): string => `https://signed.example.test/${key}?sig=abc`;
+    const innerWithSas: RunStore = {
+      backend: inner.backend,
+      put: inner.put.bind(inner),
+      get: inner.get.bind(inner),
+      has: inner.has.bind(inner),
+      list: inner.list.bind(inner),
+      remove: inner.remove.bind(inner),
+      resolve: inner.resolve.bind(inner),
+      resolveForExternalRead: signed,
+    };
+    const wrapping = new CachingRunStore({ inner: innerWithSas, cache });
+    expect(wrapping.resolveForExternalRead(SHEET)).toBe(signed(SHEET));
+  });
+
+  it('resolveForExternalRead falls back to resolve() when inner lacks the method', () => {
+    // inner (CountingStore wrapping LocalRunStore) has no resolveForExternalRead.
+    expect(store.resolveForExternalRead(SHEET)).toBe(store.resolve(SHEET));
+  });
 });
 
 describe('read-through / write-through — all artifact categories', () => {
-  it.each(ALL_ARTIFACTS)(
+  it.each<string>(ALL_ARTIFACTS)(
     'first get populates cache; second get is a cache hit (%s)',
-    async (key) => {
+    async (key: string) => {
       const data = Buffer.from(`bytes-for-${key}`);
       await inner.put(key, data);
       inner.puts = 0;

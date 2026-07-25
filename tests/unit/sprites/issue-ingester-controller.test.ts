@@ -559,7 +559,7 @@ describe('issue ingester controller', () => {
       expect(enqueued).toHaveLength(2);
     });
 
-    it('skips reclaim when a completed status doc exists', async () => {
+    it('reclaims a legacy completed status doc (no version/stages) once its heartbeat is stale', async () => {
       const enqueued: AssetRequest[] = [];
       const queue = {
         backend: 'azure-queue' as const,
@@ -584,13 +584,128 @@ describe('issue ingester controller', () => {
       expect(enqueued).toHaveLength(1);
       const fingerprint = (enqueued[0] as { fingerprint: string }).fingerprint;
 
-      // Simulate the worker having written a completed status doc.
+      // Simulate a pre-checkpoint-schema (legacy) status doc written by the
+      // retired pipeline: flat shape, no `version`/`stages`. Even though its
+      // `stage` reads 'completed', this is NOT a real v1 checkpoint — the
+      // request was never published under the new resumable pipeline, so it
+      // must eventually reclaim (once its heartbeat goes stale) rather than
+      // deadlocking forever.
       await store.put(
         `${ISSUE_STATUS_KEY_PREFIX}/42-${fingerprint}.json`,
         Buffer.from(JSON.stringify({ stage: 'completed', updatedAt: '2026-07-03T00:15:00.000Z' })),
       );
 
-      // Second poll: TTL passed, but completion doc protects against reclaim.
+      // Second poll: claim TTL passed AND the legacy doc's heartbeat is also
+      // stale (45 min old > TTL/2 = 22.5 min) — should reclaim.
+      const tLater = new Date('2026-07-03T01:00:00.000Z');
+      const controllerB = createIssueIngesterController({
+        queue,
+        store,
+        issues,
+        requestedBy: 'test',
+        pollIntervalMs: 24 * 60 * 60 * 1000,
+        staleClaimTtlMs: 45 * 60 * 1000,
+        issueStatusPrefix: ISSUE_STATUS_KEY_PREFIX,
+        now: () => tLater,
+      });
+      const statusB = await controllerB.pollOnce();
+      expect(statusB.enqueued).toBe(1);
+      expect(statusB.reclaimedStale).toBe(1);
+      expect(statusB.skippedDuplicate).toBe(0);
+      expect(enqueued).toHaveLength(2);
+    });
+
+    it('does not reclaim a legacy completed status doc whose heartbeat is still fresh', async () => {
+      const enqueued: AssetRequest[] = [];
+      const queue = {
+        backend: 'azure-queue' as const,
+        enqueue: async (r: AssetRequest) => void enqueued.push(r),
+        dequeue: async () => null,
+        peek: async () => [],
+      };
+      const store = memStore();
+      const issues = issuesMock({ list: async () => [{ number: 42, body }] });
+
+      const t0 = new Date('2026-07-03T00:00:00.000Z');
+      const controllerA = createIssueIngesterController({
+        queue,
+        store,
+        issues,
+        requestedBy: 'test',
+        pollIntervalMs: 24 * 60 * 60 * 1000,
+        now: () => t0,
+      });
+      await controllerA.pollOnce();
+      const fingerprint = (enqueued[0] as { fingerprint: string }).fingerprint;
+
+      // Legacy doc, but its heartbeat is recent (5 min before the next poll)
+      // — a "completed" reading alone must not bypass the ordinary
+      // heartbeat-staleness check for legacy docs.
+      const tLater = new Date('2026-07-03T01:00:00.000Z');
+      await store.put(
+        `${ISSUE_STATUS_KEY_PREFIX}/42-${fingerprint}.json`,
+        Buffer.from(JSON.stringify({ stage: 'completed', updatedAt: '2026-07-03T00:55:00.000Z' })),
+      );
+
+      const controllerB = createIssueIngesterController({
+        queue,
+        store,
+        issues,
+        requestedBy: 'test',
+        pollIntervalMs: 24 * 60 * 60 * 1000,
+        staleClaimTtlMs: 45 * 60 * 1000,
+        issueStatusPrefix: ISSUE_STATUS_KEY_PREFIX,
+        now: () => tLater,
+      });
+      const statusB = await controllerB.pollOnce();
+      expect(statusB.enqueued).toBe(0);
+      expect(statusB.reclaimedStale).toBe(0);
+      expect(enqueued).toHaveLength(1);
+    });
+
+    it('skips reclaim forever when a REAL v1 completed checkpoint exists (version + stages)', async () => {
+      const enqueued: AssetRequest[] = [];
+      const queue = {
+        backend: 'azure-queue' as const,
+        enqueue: async (r: AssetRequest) => void enqueued.push(r),
+        dequeue: async () => null,
+        peek: async () => [],
+      };
+      const store = memStore();
+      const issues = issuesMock({ list: async () => [{ number: 42, body }] });
+
+      const t0 = new Date('2026-07-03T00:00:00.000Z');
+      const controllerA = createIssueIngesterController({
+        queue,
+        store,
+        issues,
+        requestedBy: 'test',
+        pollIntervalMs: 24 * 60 * 60 * 1000,
+        now: () => t0,
+      });
+      await controllerA.pollOnce();
+      expect(enqueued).toHaveLength(1);
+      const fingerprint = (enqueued[0] as { fingerprint: string }).fingerprint;
+
+      // Real v1 checkpoint: `version` + object `stages`, and a heartbeat that
+      // is ALSO stale by TTL/2 — this must still short-circuit to "not
+      // stale" because it is a genuine, current-schema completion.
+      await store.put(
+        `${ISSUE_STATUS_KEY_PREFIX}/42-${fingerprint}.json`,
+        Buffer.from(
+          JSON.stringify({
+            version: 1,
+            issueNumber: 42,
+            fingerprint,
+            stage: 'completed',
+            updatedAt: '2026-07-03T00:15:00.000Z',
+            stages: {
+              publish: { status: 'completed', attempts: 1, updatedAt: '2026-07-03T00:15:00.000Z' },
+            },
+          }),
+        ),
+      );
+
       const tLater = new Date('2026-07-03T01:00:00.000Z');
       const controllerB = createIssueIngesterController({
         queue,

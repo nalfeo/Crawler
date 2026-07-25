@@ -2588,27 +2588,29 @@ export class BehaviorTreeAI implements AIInputProvider {
       for (const cue of ctx.world.mobAbilities.cues) {
         if (cue.phase !== 'telegraph') continue;
         const { geometry } = cue;
-        if (geometry.kind !== 'circle') continue;
-        const dx = ctx.playerX - geometry.x;
-        const dy = ctx.playerY - geometry.y;
-        // Use squared distance to match the damage resolver exactly (no sqrt).
-        // The resolver uses `if (dx² + dy² > r²) continue;` so damage hits when
-        // dx² + dy² <= r². The AI must avoid using the SAME geometry contract,
-        // so it continues (skips avoidance) only when strictly outside: dx² + dy² > r².
-        const distSq = dx * dx + dy * dy;
-        const r2 = geometry.radiusFt * geometry.radiusFt;
-        if (distSq > r2) continue;
-        // Compute unit vector for dodge direction.
-        const dist = Math.sqrt(distSq);
-        if (dist > Number.EPSILON) {
-          this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
-          this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
-        } else {
-          // Player is exactly at the circle center — flee along kite orbit tangent.
-          this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
-          this.dodgeVecY = 0;
+        const circles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        for (const circle of circles) {
+          const dx = ctx.playerX - circle.x;
+          const dy = ctx.playerY - circle.y;
+          // Use squared distance to match the damage resolver exactly (no sqrt).
+          // The resolver uses `if (dx² + dy² > r²) continue;` so damage hits when
+          // dx² + dy² <= r². The AI must avoid using the SAME geometry contract,
+          // so it continues (skips avoidance) only when strictly outside: dx² + dy² > r².
+          const distSq = dx * dx + dy * dy;
+          const r2 = circle.radiusFt * circle.radiusFt;
+          if (distSq > r2) continue;
+          // Compute unit vector for dodge direction.
+          const dist = Math.sqrt(distSq);
+          if (dist > Number.EPSILON) {
+            this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          } else {
+            // Player is exactly at the circle center — flee along kite orbit tangent.
+            this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = 0;
+          }
+          return BTStatus.SUCCESS;
         }
-        return BTStatus.SUCCESS;
       }
 
       // Enemy-body dodging remains suspended during retreat and engagement:

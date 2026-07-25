@@ -88,4 +88,4 @@ quest-chain **re-sequencing** — gating merchant/spell quest acceptance behind
 reaching level 2, and changing the boss-door gate to (shop + spell-battle) — is
 deferred. Those changes alter the behavior-tree AI's decision path and require
 re-tuning and re-probing the canonical headless seeds. See the session handoff
-`docs/knowledge/handoffs/2026-06-21-level1-quest-flow-refresh.md`.
+`docs/knowledge/handoffs/archive/2026-06-21-level1-quest-flow-refresh.md`.

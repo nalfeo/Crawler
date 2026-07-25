@@ -120,10 +120,16 @@ export interface QueueCommitOptions {
    */
   readonly sourceRoot?: string;
   /**
-   * Narrow CI capability for the trusted asset-request publisher. Ordinary
-   * CLI/sidecar callers omit this and remain hard-refused under CI.
+   * Narrow CI capability for the trusted asset-request publisher, or the
+   * equally narrow theme-equipment-set publisher (ADR 0073). Ordinary
+   * CLI/sidecar callers omit this and remain hard-refused under CI. Each
+   * caller is authorized by its own env flag + workflow-ref check (see
+   * `isAuthorizedAssetPublisher`) — this union intentionally does NOT open a
+   * generic "any CI caller" path.
    */
-  readonly ciAuthorization?: { readonly caller: 'asset-request-publisher' };
+  readonly ciAuthorization?: {
+    readonly caller: 'asset-request-publisher' | 'theme-equipment-publisher';
+  };
   /**
    * Optional same-key conflict guard. Runs inside every CAS attempt against the
    * freshly fetched and main-aligned destination before any asset is copied.
@@ -427,11 +433,22 @@ export async function runQueueCommit(
 }
 
 function isAuthorizedAssetPublisher(env: NodeJS.ProcessEnv, options: QueueCommitOptions): boolean {
-  return (
-    options.ciAuthorization?.caller === 'asset-request-publisher' &&
-    env.SPRITES_ALLOW_CI_ASSET_PUBLISH === 'true' &&
-    env.GITHUB_ACTIONS === 'true' &&
-    typeof env.GITHUB_WORKFLOW_REF === 'string' &&
-    env.GITHUB_WORKFLOW_REF.includes('/.github/workflows/asset-request.yml@')
-  );
+  const caller = options.ciAuthorization?.caller;
+  if (caller === 'asset-request-publisher') {
+    return (
+      env.SPRITES_ALLOW_CI_ASSET_PUBLISH === 'true' &&
+      env.GITHUB_ACTIONS === 'true' &&
+      typeof env.GITHUB_WORKFLOW_REF === 'string' &&
+      env.GITHUB_WORKFLOW_REF.includes('/.github/workflows/asset-request.yml@')
+    );
+  }
+  if (caller === 'theme-equipment-publisher') {
+    return (
+      env.SPRITES_ALLOW_CI_THEME_PUBLISH === 'true' &&
+      env.GITHUB_ACTIONS === 'true' &&
+      typeof env.GITHUB_WORKFLOW_REF === 'string' &&
+      env.GITHUB_WORKFLOW_REF.includes('/.github/workflows/theme-equipment.yml@')
+    );
+  }
+  return false;
 }

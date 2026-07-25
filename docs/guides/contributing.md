@@ -19,6 +19,13 @@ bash scripts/agent/preflight.sh
 
 Then load the relevant persona, recent handoffs, and any needed policy or guide docs.
 
+### Sprite pipeline publication labels
+
+Repository bootstrap for the sprite publication path should include this GitHub
+label (the publisher now creates it on demand if it is missing before publishing):
+
+- `art-only` — color `7057ff` — `Generated art-only changes eligible for guarded promotion`
+
 ## 3. Make focused changes
 
 - Keep architectural changes aligned with the constitution

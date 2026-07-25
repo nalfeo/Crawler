@@ -16,6 +16,7 @@ import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
 import { computeEffectiveSpeed, getStatusEffects } from '../core/status-effects.js';
+import { getMobAbilityMovementSpeedMultiplier } from '../core/mob-abilities/runtime.js';
 import {
   cancelEnemyProjectileTelegraph,
   getEffectiveTelegraphMs,
@@ -255,7 +256,10 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
   // from. Because the slow multiplies the ramped base, status slows genuinely
   // take precedence: a slowed hate mob is slowed proportionally rather than
   // leaping over its own debuff, and slime-leap multipliers still layer on top.
-  return computeEffectiveSpeed(rampedBase, getStatusEffects(world, eid));
+  return (
+    computeEffectiveSpeed(rampedBase, getStatusEffects(world, eid)) *
+    getMobAbilityMovementSpeedMultiplier(world, eid)
+  );
 }
 
 function getEnemySpeedCap(world: GameWorld, eid: number): number {

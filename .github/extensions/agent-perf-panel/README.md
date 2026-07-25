@@ -46,7 +46,11 @@ so no native dependencies are required.
   records context size when a compaction fires, so no continuous line is drawn or
   interpolated (sessions with no compactions show an explicit note).
 - **Long poles** — top-20 individual tool calls + aggregate by tool name
-  (count / total / avg / p50 / p95 / max / failures).
+  (count / total / avg / p50 / p95 / max / failures / context bytes), plus a
+  **Biggest context sinks** table ranking the same tools by bytes pulled into
+  context rather than by latency. These two orders routinely disagree — a 10ms
+  `grep` returning 300KB costs far more context than a 60s build returning 500
+  bytes — and context cost, not latency, is what drives compaction.
 - **Tokens & context** — cumulative output-token curve with compaction
   markers, plus a context-window budget breakdown at compaction (system /
   conversation / tool definitions).
@@ -111,3 +115,24 @@ The same data primitives are exposed for programmatic use by sub-agents:
 - Context-window budgets are hard-coded per model prefix
   (claude-\* = 200k, gpt-5.\* = 400k, gemini-\* = 1M). Percentages are
   approximate.
+- **Context-sink bytes are a proxy for tokens.** They count the characters of a
+  tool's returned payload, which is good enough to rank sinks against each other
+  but must never be presented as a token count.
+
+## Improving this panel
+
+The `velocity-engineer` agent is required to leave this panel measurably more useful
+after every investigation — see
+[`docs/agent-os/policies/velocity-lab-policy.md`](../../../docs/agent-os/policies/velocity-lab-policy.md)
+§12 and [`.github/skills/session-telemetry/SKILL.md`](../../skills/session-telemetry/SKILL.md)
+for the procedure.
+
+Two rules worth repeating here, because both have already caused silent-zero bugs:
+
+1. **Verify a field exists in a real `events.jsonl` before coding against it.** Several
+   plausible-looking fields do not exist — there is no `inputTokens` on
+   `assistant.message`, and no `toolName` on `tool.execution_complete` (join to
+   `tool.execution_start` on `toolCallId` instead).
+2. **Check a new metric against a real session, not only the fixture.** A metric that
+   passes `tests/analyzer.test.mjs` and reads zero in production is worse than no metric,
+   because it looks like data.

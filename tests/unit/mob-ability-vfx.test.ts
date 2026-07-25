@@ -28,6 +28,15 @@ function createCircleStub() {
   };
 }
 
+function createShapeStub() {
+  return {
+    setAngle: vi.fn().mockReturnThis(),
+    setDepth: vi.fn().mockReturnThis(),
+    setBlendMode: vi.fn().mockReturnThis(),
+    destroy: vi.fn(),
+  };
+}
+
 function createSceneStub() {
   const circles: Array<{ x: number; y: number; r: number }> = [];
   const graphicsObjects: ReturnType<typeof createGraphicsStub>[] = [];
@@ -42,6 +51,8 @@ function createSceneStub() {
         circles.push({ x, y, r });
         return createCircleStub();
       }),
+      rectangle: vi.fn(() => createShapeStub()),
+      ellipse: vi.fn(() => createShapeStub()),
     },
     tweens: {
       add: vi.fn((config: { onComplete?: () => void }) => {
@@ -78,6 +89,7 @@ function mockInstance() {
     committedTargetGeneration: null,
     resolvedCasts: 0,
     announcementsEmitted: 1,
+    ownedEntityGenerations: new Map<number, number>(),
     registrationToken: 1,
   } as const;
 }
@@ -103,6 +115,35 @@ describe('MobAbilityVfx', () => {
     const telegraphGfx = graphicsObjects[0];
     expect(telegraphGfx).toBeDefined();
     expect(telegraphGfx!.strokeCircle).toHaveBeenCalledWith(ftToPx(40), ftToPx(40), ftToPx(12));
+  });
+
+  it('draws each committed spawn-circle in a multi-circle telegraph', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'plague-boss-squick-undercity-mob-call',
+      casterEid: 11,
+      phase: 'telegraph',
+      telegraphProgress: 0.25,
+      geometry: {
+        kind: 'spawn-circles',
+        circles: [
+          { kind: 'circle', x: 32, y: 32, radiusFt: 4 },
+          { kind: 'circle', x: 40, y: 32, radiusFt: 4 },
+          { kind: 'circle', x: 36, y: 39, radiusFt: 4 },
+        ],
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'UNDERCITY MOB CALL — The guild always collects!',
+    });
+    world.mobAbilities.byEntity.set(11, mockInstance());
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.strokeCircle).toHaveBeenCalledTimes(3);
   });
 
   it('draws the Tarnished indicator ring for debuffed entities', () => {
@@ -154,11 +195,36 @@ describe('MobAbilityVfx', () => {
     // (instead of the old resolvedCasts polling which broke when byEntity was
     // cleared before PhaserBridge.sync ran).
     world.mobAbilities.cues.length = 0;
-    world.mobAbilities.pendingBursts.push({ kind: 'circle', x: 40, y: 40, radiusFt: 12 });
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+    });
     vfx.update(world);
 
     // Resolution burst emits rings (circles/tweened objects).
     expect(circles.length).toBeGreaterThan(circlesBeforeBurst);
+  });
+
+  it('dispatches Squick bursts through the undercity-specific renderer path', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const vfx = createMobAbilityVfx(scene);
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+    });
+    vfx.update(world);
+    const genericCircleCount = circles.length;
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'plague-boss-squick-undercity-mob-call',
+      geometry: { kind: 'circle', x: 42, y: 39, radiusFt: 12 },
+    });
+    vfx.update(world);
+    const undercityCircleCount = circles.length - genericCircleCount;
+
+    expect(undercityCircleCount).toBeGreaterThan(genericCircleCount);
   });
 
   it('retires telegraph graphics when the cue ends', () => {
@@ -215,5 +281,27 @@ describe('MobAbilityVfx', () => {
     expect(cleanupPoof).toBeDefined();
     expect(cleanupPoof!.x).toBe(ftToPx(10));
     expect(cleanupPoof!.y).toBe(ftToPx(20));
+  });
+
+  it('emits deterministic berserk motif shapes for active bamboo-fed buffs', () => {
+    const { scene } = createSceneStub();
+    const world = createTestWorld();
+    const eid = spawnPlayer(world, 15, 15);
+    world.frameCount = 12;
+    world.mobAbilities.activeBuffsByEntity.set(eid, {
+      abilityId: 'big-panda-wei-bamboo-fed-berserk',
+      sourceId: 'mob-ability:big-panda-wei-bamboo-fed-berserk:1',
+      remainingMs: 3000,
+      movementSpeedMultiplier: 1.4,
+      meleeDamageMultiplier: 1.4,
+      knockbackResistanceMultiplier: 0.35,
+      auraRadiusFt: 10,
+    });
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    expect(scene.add.rectangle).toHaveBeenCalled();
+    expect(scene.add.ellipse).toHaveBeenCalled();
   });
 });

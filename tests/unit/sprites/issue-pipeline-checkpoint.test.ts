@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
   createIssueCheckpointController,
+  IssuePipelineCheckpointError,
   loadIssueCheckpoint,
   markIssuePipelineTerminal,
   runCheckpointStage,
@@ -147,6 +148,121 @@ describe('issue pipeline checkpoints', () => {
       details: {
         outcome: 'selected-pending-publish',
       },
+    });
+  });
+
+  describe('legacy pre-checkpoint status docs', () => {
+    // Shape written by the retired pipeline before commit 49d133cea
+    // introduced the v1 checkpoint schema — no `version`/`stages` at all.
+    function legacyDoc(overrides: Partial<Record<string, unknown>> = {}) {
+      return {
+        issueNumber: 42,
+        fingerprint: 'request-fingerprint',
+        stage: 'completed',
+        updatedAt: '2026-06-01T00:00:00.000Z',
+        ...overrides,
+      };
+    }
+
+    it('reinitializes a legacy status doc (even stage:"completed") to a fresh v1 checkpoint instead of throwing', async () => {
+      const store = makeStore();
+      store.mem.set(controller(store).key, Buffer.from(`${JSON.stringify(legacyDoc())}\n`));
+
+      const checkpoint = await loadIssueCheckpoint(controller(store));
+
+      expect(checkpoint).toEqual({
+        version: 1,
+        issueNumber: 42,
+        fingerprint: 'request-fingerprint',
+        stage: 'queued',
+        updatedAt: '2026-07-24T12:00:00.000Z',
+        stages: {},
+      });
+    });
+
+    it('runs a stage fresh (not resumed) over a legacy doc and durably overwrites it with a real v1 checkpoint', async () => {
+      const store = makeStore();
+      const key = controller(store).key;
+      store.mem.set(key, Buffer.from(`${JSON.stringify(legacyDoc({ stage: 'synthesizing' }))}\n`));
+
+      const operation = vi.fn(async () => ({ runId: 'run-1' }));
+      const result = await runCheckpointStage(
+        controller(store),
+        'synthesize',
+        z.object({ runId: z.string() }).strict(),
+        operation,
+      );
+
+      expect(result).toEqual({ output: { runId: 'run-1' }, resumed: false });
+      expect(operation).toHaveBeenCalledTimes(1);
+
+      const persistedRaw = JSON.parse(store.mem.get(key)!.toString('utf8')) as Record<
+        string,
+        unknown
+      >;
+      expect(persistedRaw.version).toBe(1);
+      expect(persistedRaw.stages).toMatchObject({
+        synthesize: { status: 'completed', output: { runId: 'run-1' } },
+      });
+    });
+
+    it('still throws checkpoint-invalid for a legacy doc belonging to a different issue number', async () => {
+      const store = makeStore();
+      store.mem.set(
+        controller(store).key,
+        Buffer.from(`${JSON.stringify(legacyDoc({ issueNumber: 999 }))}\n`),
+      );
+
+      await expect(loadIssueCheckpoint(controller(store))).rejects.toThrow(
+        IssuePipelineCheckpointError,
+      );
+      await expect(loadIssueCheckpoint(controller(store))).rejects.toThrow(
+        /belongs to a different issue request/,
+      );
+    });
+
+    it('still throws checkpoint-invalid for a legacy doc belonging to a different fingerprint', async () => {
+      const store = makeStore();
+      store.mem.set(
+        controller(store).key,
+        Buffer.from(`${JSON.stringify(legacyDoc({ fingerprint: 'other-fingerprint' }))}\n`),
+      );
+
+      await expect(loadIssueCheckpoint(controller(store))).rejects.toThrow(
+        /belongs to a different issue request/,
+      );
+    });
+
+    it('still throws checkpoint-invalid for genuinely malformed current-schema JSON (missing stages, present version)', async () => {
+      const store = makeStore();
+      store.mem.set(
+        controller(store).key,
+        Buffer.from(
+          `${JSON.stringify({
+            version: 1,
+            issueNumber: 42,
+            fingerprint: 'request-fingerprint',
+            stage: 'generate',
+            updatedAt: '2026-07-01T00:00:00.000Z',
+            // `stages` missing entirely — not a legacy shape (has `version`)
+            // and not a valid v1 checkpoint either.
+          })}\n`,
+        ),
+      );
+
+      await expect(loadIssueCheckpoint(controller(store))).rejects.toThrow(
+        IssuePipelineCheckpointError,
+      );
+      await expect(loadIssueCheckpoint(controller(store))).rejects.toThrow(/failed validation/);
+    });
+
+    it('still throws checkpoint-invalid for arbitrary garbage JSON', async () => {
+      const store = makeStore();
+      store.mem.set(controller(store).key, Buffer.from(`${JSON.stringify({ foo: 1 })}\n`));
+
+      await expect(loadIssueCheckpoint(controller(store))).rejects.toThrow(
+        IssuePipelineCheckpointError,
+      );
     });
   });
 });
