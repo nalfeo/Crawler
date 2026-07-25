@@ -107,6 +107,21 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
     reviewThreadPlanIssueNumbers(
       {
         comments: {
+          nodes: [
+            trustedRoot(
+              'Issue #1307 explicitly required the detailed plan to be posted on the issue before any code was written. This note confirms that requirement was not met.',
+            ),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
           nodes: [trustedRoot('Issue #999 required an implementation plan comment before the PR.')],
         },
       },

@@ -192,7 +192,8 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
   }
 
   const text = String(rootComment?.body || '').toLowerCase();
-  const planSubject = '(?:plan comment|implementation plan|issue comment itself)';
+  const planSubject =
+    '(?:plan comment|implementation plan|issue comment itself|(?:detailed\\s+)?plan\\s+to\\s+be\\s+posted\\s+on\\s+the\\s+issue)';
   const mentionsMissingPlanRequirement = new RegExp(
     `(?:\\b(?:missing|required|requires?)\\s+(?:(?:an?|the)\\s+)?${planSubject}\\b|` +
       `\\b${planSubject}\\b\\s+(?:(?:is|was|remains?)\\s+)?(?:missing|required)\\b)`,

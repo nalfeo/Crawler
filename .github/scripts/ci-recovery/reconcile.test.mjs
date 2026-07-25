@@ -8946,7 +8946,7 @@ test('live reconcile posts retroactive plan comment on linked issue with missing
               nodes: [
                 {
                   id: 'comment-plan-missing',
-                  body: 'Issue #1307 required a plan comment before the PR.',
+                  body: 'Issue #1307 explicitly required the detailed plan to be posted on the issue before any code was written. This note confirms that requirement was not met.',
                   author: { login: 'copilot-pull-request-reviewer' },
                   authorAssociation: 'NONE',
                   url: threadUrl,
