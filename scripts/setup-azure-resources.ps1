@@ -58,15 +58,6 @@ param(
     [string]$StorageLocation = 'eastus',
     [string]$StorageAccountName = 'crawlersprites',
 
-    # ── Azure AI Foundry (ADR 0033, opt-in) ───────────────────────────────────
-    # Provision an Azure AI Foundry (AIServices) resource + the OpenAI-compatible
-    # starter catalog (see scripts/azure-foundry-plan.ps1). Off by default so a
-    # normal run only touches the direct Azure OpenAI + Storage resources.
-    [switch]$IncludeFoundry,
-    [string]$FoundryResourceGroup = 'rg-crawler-foundry',
-    [string]$FoundryLocation = 'eastus',
-    [string]$FoundryAccountName = 'aif-crawler-nalfeo',
-
     # ── Recreate / safety controls ──────────────────────────────────────────
     # Delete + re-create the stateful resources (storage account, model
     # deployments) for a clean dev/test slate. Off by default.
@@ -85,18 +76,12 @@ param(
         'aoai-crawler-nalfeo', # persistent Azure OpenAI account
         'crawlersprites',      # persistent Storage account (stored runs + workflow-state)
         'rg-crawler-sprites',  # persistent OpenAI resource group
-        'crawler-sprites-rg',  # persistent Storage resource group
-        'aif-crawler-nalfeo',  # persistent Azure AI Foundry (AIServices) account
-        'rg-crawler-foundry'   # persistent Foundry resource group
+        'crawler-sprites-rg'   # persistent Storage resource group
     )
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-# Shared, pure Foundry catalog helpers (no param block / no side effects, so
-# dot-sourcing is safe here and in setup-azure-env.ps1 / the tests).
-. (Join-Path $PSScriptRoot 'azure-foundry-plan.ps1')
 
 # ── Pure decision logic (no Azure calls; unit-testable) ─────────────────────
 
@@ -201,30 +186,6 @@ function Ensure-OpenAIAccount([string]$ResourceGroup, [string]$Name, [string]$Lo
         --yes 1>$null
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to create Azure OpenAI account '$Name'."
-    }
-}
-
-function Ensure-AIFoundryAccount([string]$ResourceGroup, [string]$Name, [string]$Location) {
-    # Azure AI Foundry (ADR 0033) is a Cognitive Services account of kind
-    # AIServices — the unified multi-model inference resource, distinct from the
-    # kind=OpenAI account above. It is a persistent container (deleting it
-    # soft-deletes the account and all of its deployments), so it is only ever
-    # created-if-missing. Existence check is kind-agnostic, so we reuse it.
-    if (Test-OpenAIAccountExists -ResourceGroup $ResourceGroup -Name $Name) {
-        Write-Host "Azure AI Foundry account exists: $Name" -ForegroundColor DarkGray
-        return
-    }
-
-    Write-Host "Creating Azure AI Foundry (AIServices) account: $Name ($Location)" -ForegroundColor Cyan
-    az cognitiveservices account create `
-        --name $Name `
-        --resource-group $ResourceGroup `
-        --location $Location `
-        --kind AIServices `
-        --sku S0 `
-        --yes 1>$null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to create Azure AI Foundry account '$Name'."
     }
 }
 
@@ -421,22 +382,6 @@ function Invoke-Provisioning {
     Ensure-OpenAIDeployment -ResourceGroup $OpenAIResourceGroup -AccountName $OpenAIAccountName `
         -DeploymentName $OpenAIImageDeployment -ModelName $OpenAIImageModelName -ModelVersion $OpenAIImageModelVersion `
         -Recreate:$Recreate -AllowRecreatePersistent:$AllowRecreatePersistent -PersistentNames $PersistentResourceNames
-
-    if ($IncludeFoundry) {
-        # ADR 0033 Phase 2 groundwork: stand up the Azure AI Foundry (AIServices)
-        # resource + the OpenAI-compatible starter catalog. The deployment aliases,
-        # models, versions, and the text!=selector invariant all come from the one
-        # shared plan (scripts/azure-foundry-plan.ps1). All catalog entries are
-        # OpenAI-format, so the same kind-agnostic Ensure-OpenAIDeployment applies.
-        Ensure-ResourceGroup -Name $FoundryResourceGroup -Location $FoundryLocation
-        Ensure-AIFoundryAccount -ResourceGroup $FoundryResourceGroup -Name $FoundryAccountName -Location $FoundryLocation
-        $foundryPlan = Get-FoundryDeploymentPlan
-        foreach ($dep in $foundryPlan.Deployments) {
-            Ensure-OpenAIDeployment -ResourceGroup $FoundryResourceGroup -AccountName $FoundryAccountName `
-                -DeploymentName $dep.Alias -ModelName $dep.ModelName -ModelVersion $dep.ModelVersion `
-                -Recreate:$Recreate -AllowRecreatePersistent:$AllowRecreatePersistent -PersistentNames $PersistentResourceNames
-        }
-    }
 
     Write-Host "Azure resource provisioning complete." -ForegroundColor Green
 }

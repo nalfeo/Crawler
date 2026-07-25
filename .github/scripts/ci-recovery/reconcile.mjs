@@ -1221,6 +1221,59 @@ if (
     ((pr.labels || []).some((label) => label.name === QUEUE_LABEL) ||
       shouldWaitForCiConflictOrder(pr.labels));
   if (automationLeaseStale && (prHasMergeConflict || trainShortCircuits)) {
+    // Regression fix (#1886, 2026-07-24): when the automation retry budget is
+    // exhausted (attempt >= 2, same head/fingerprint), release ATOMICALLY with a
+    // deduplicated loop incident so the failure is visible to an investigation
+    // agent. Without this, the short-circuit exit bypassed the stale-exhaustion
+    // incident path entirely, leaving exhausted locked PRs without a filed incident.
+    //
+    // Guard: only count attempts accumulated against the SAME head SHA.  After a
+    // rebase or push the old head's attempts are stale; applying them to the new
+    // head would file an incident with wrong blockers/fingerprint.
+    const headMatchesState = !state.headSha || state.headSha === pr.head.sha;
+    const stallAttempt = state.progressKey && headMatchesState ? (state.attempt ?? 0) : 0;
+    if (stallAttempt >= 2) {
+      const exhaustedFingerprint = state.fingerprint || '';
+      if (live) {
+        try {
+          const loopResult = await fileLoopIncident({
+            request,
+            paginate,
+            token: pat,
+            owner,
+            repo,
+            prNumber,
+            headSha: pr.head.sha,
+            blockerFingerprint: exhaustedFingerprint,
+            blockers: state.blockers || [],
+            attempt: state.attempt ?? 0,
+            workflowRunUrl,
+            now,
+          });
+          process.stdout.write(
+            `loop-incident pr=#${prNumber} issue=#${loopResult.issueNumber} action=${loopResult.action} reason=conflict-or-train-short-circuit\n`,
+          );
+        } catch (err) {
+          const safeMsg = String(err.message || err)
+            .replace(/[\r\n]/g, ' ')
+            .slice(0, 500);
+          process.stderr.write(`loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`);
+          // Exit non-zero WITHOUT releasing the lock.  Re-throwing would trigger
+          // the global unhandledRejection handler (reportUnexpectedError), which
+          // calls releaseUnexpectedOwnership() → release('unexpected-error') and
+          // writes owner:'none'/status:'idle' — causing the next sweep to skip
+          // this path entirely (labelExists && state.owner==='automation' guard
+          // fails).  By calling process.exit(1) directly (no throw, no release),
+          // the automation lock is intentionally retained so the next
+          // automationLeaseStale sweep re-enters this branch and retries filing.
+          process.exit(1);
+        }
+      } else {
+        process.stdout.write(
+          `dry-run would-file-loop-incident pr=#${prNumber} fingerprint=${exhaustedFingerprint} reason=conflict-or-train-short-circuit\n`,
+        );
+      }
+    }
     stopIfReleaseConvergedElsewhere(await release('stale-automation-conflict-reclaim'));
     process.stdout.write(
       `released stale automation lock pr=#${prNumber} reason=conflict-or-train-short-circuit\n`,
