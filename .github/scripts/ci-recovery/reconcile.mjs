@@ -61,7 +61,12 @@ import {
   shouldRequestReview,
   unrecordedConflictEpisode,
 } from './review-request.mjs';
-import { evaluatePhase, formatLifecycleOutcome, LIFECYCLE_MARKER, parseLifecycleComment } from './pr-lifecycle.mjs';
+import {
+  evaluatePhase,
+  formatLifecycleOutcome,
+  LIFECYCLE_MARKER,
+  parseLifecycleComment,
+} from './pr-lifecycle.mjs';
 import { DISPATCH_ACTION, selectEarlyAction } from './dispatch-table.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -1353,7 +1358,9 @@ const rebaseFailureBackoffActive =
                 const safeMsg = String(err.message || err)
                   .replace(/[\r\n]/g, ' ')
                   .slice(0, 500);
-                process.stderr.write(`loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`);
+                process.stderr.write(
+                  `loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`,
+                );
                 // Exit non-zero WITHOUT releasing the lock so the next sweep retries filing.
                 process.exit(1);
               }
@@ -1488,6 +1495,22 @@ const reachableMarkerShas = new Set();
 // 422 ambiguous SHA) are omitted from both sets so that the stale-marker hint is not
 // emitted spuriously.
 const definitivelyUnreachableMarkerShas = new Set();
+// Narrow subset of definitively unreachable SHAs that were confirmed missing via 404.
+// Only these are eligible for typo-promotion to avoid reclassifying real commits that
+// exist on a divergent lineage.
+const definitivelyMissingMarkerShas = new Set();
+
+function differsByExactlyOneHexDigit(leftSha, rightSha) {
+  if (leftSha.length !== 40 || rightSha.length !== 40) return false;
+  let differenceCount = 0;
+  for (let index = 0; index < leftSha.length; index += 1) {
+    if (leftSha[index] === rightSha[index]) continue;
+    differenceCount += 1;
+    if (differenceCount > 1) return false;
+  }
+  return differenceCount === 1;
+}
+
 for (const markerSha of markerShasNeedingLineageCheck) {
   try {
     const compare = (
@@ -1519,12 +1542,29 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     if (isDefinitivelyMissing) {
       // 404: commit does not exist on GitHub — definitively a stale/never-pushed SHA.
       definitivelyUnreachableMarkerShas.add(markerSha);
+      definitivelyMissingMarkerShas.add(markerSha);
     }
     // For transient/indeterminate failures (rate limits, 5xx, network errors,
     // 422 ambiguous SHA, etc.) the SHA is absent from both sets so no stale-marker
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+
+// Promote only definitively-missing 40-char SHAs that differ from the current
+// head by exactly one hex digit. This covers the reported stale-marker typo
+// incident without reclassifying divergent/behind commits or unrelated missing
+// SHAs that merely share a 7-char prefix with HEAD.
+for (const sha of [...definitivelyMissingMarkerShas]) {
+  if (headSha.startsWith(sha.slice(0, 7)) && differsByExactlyOneHexDigit(sha, headSha)) {
+    reachableMarkerShas.add(sha);
+    definitivelyUnreachableMarkerShas.delete(sha);
+    definitivelyMissingMarkerShas.delete(sha);
+    process.stdout.write(
+      `promoted stale-marker sha=${sha} to reachable via one-digit typo match head=${headSha}\n`,
+    );
+  }
+}
+
 function shouldAutoPostOutdatedMarker(candidate) {
   if (!candidate.isOutdated) return false;
   if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
@@ -2271,7 +2311,9 @@ let currentLifecyclePhase = null;
       hasLeadingMarker(comment.body, LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
   );
   if (trustedLifecycleComments.length > 1) {
-    process.stdout.write(`lifecycle-comment-duplicate pr=#${prNumber} count=${trustedLifecycleComments.length}\n`);
+    process.stdout.write(
+      `lifecycle-comment-duplicate pr=#${prNumber} count=${trustedLifecycleComments.length}\n`,
+    );
   } else if (trustedLifecycleComments.length === 1) {
     try {
       const record = parseLifecycleComment(trustedLifecycleComments[0].body);
@@ -2302,9 +2344,7 @@ process.stdout.write(
 if (lifecycleEvaluation.readmit && mergeTrainEnabled) {
   // D1 fix: a fully admissible PR not yet in the train must trigger re-admission.
   // Reporting "train empty" for such a PR is the root cause of D1.
-  process.stdout.write(
-    `lifecycle readmit pr=#${prNumber} reason=d1-fix admission-was-stale\n`,
-  );
+  process.stdout.write(`lifecycle readmit pr=#${prNumber} reason=d1-fix admission-was-stale\n`);
 }
 
 if (normalized.length === 0) {
