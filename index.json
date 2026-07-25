@@ -11,6 +11,17 @@
     "path": "by-sha/ff44b1dc0fce23b8dfdd73a81550f4078a2fb12c.json"
   },
   {
+    "commit": "43248a23e1d4bfb312693866c7ddbc1b549de772",
+    "commitDate": "2026-07-25T08:51:38Z",
+    "commitSubject": "fix(sprite-pipeline): preflight required publication labels before queue mutation (#1970)",
+    "capturedAt": "2026-07-25T10:15:13.089Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30152170297",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/43248a23e1d4bfb312693866c7ddbc1b549de772.json"
+  },
+  {
     "commit": "f0dd023ddbcb112f26870c538e897f87d31c2ca2",
     "commitDate": "2026-07-25T08:33:34Z",
     "commitSubject": "feat: screenshot-viewer canvas extension (#1947)",
