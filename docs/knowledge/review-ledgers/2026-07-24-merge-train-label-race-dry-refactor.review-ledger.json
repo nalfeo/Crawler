@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "merge-train-label-race-dry-refactor",
+  "task_title": "DRY the merge-train label re-ensure logic and add race-path blocked-label test (follow-up to #1925)",
+  "estimated_apples": 1,
+  "stages": {}
+}
