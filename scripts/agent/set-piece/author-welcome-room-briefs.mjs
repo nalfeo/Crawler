@@ -2,6 +2,7 @@
 // Brief name === bare requestId so art auto-resolves on check-in.
 import fs from 'node:fs';
 import path from 'node:path';
+import { log } from 'node:console';
 
 const CONTRACT =
   'Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. ' +
@@ -94,7 +95,7 @@ for (const [requestId, { sprite }] of seen) {
   ];
   const out = path.join(dir, `${requestId}.yaml`);
   fs.writeFileSync(out, lines.join('\n'));
-  console.log('wrote', out, `(${spec.type}/${spec.sizeVariant})`);
+  log('wrote', out, `(${spec.type}/${spec.sizeVariant})`);
   written++;
 }
-console.log('total briefs:', written);
+log('total briefs:', written);

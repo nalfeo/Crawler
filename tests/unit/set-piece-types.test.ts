@@ -915,7 +915,18 @@ describe('set-piece door slots', () => {
       setPiecePackSchema.parse(
         packWith({ doorAt: { x: 2, y: 2 }, doorSlots: [{ propId: 'entrance', mode: 'fixed' }] }),
       ),
-    ).toThrow(/not on the .* footprint ring/);
+    ).toThrow(/must be a 1×1 door with origin on the .* footprint ring/);
+  });
+
+  it('rejects a slot referencing a multi-tile door prop', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({
+          extraProps: [{ id: 'wide-door', kind: 'door', x: 1, y: 3, width: 2, layers }],
+          doorSlots: [{ propId: 'wide-door', mode: 'fixed' }],
+        }),
+      ),
+    ).toThrow(/must be a 1×1 door with origin on the .* footprint ring/);
   });
 
   it('rejects duplicate slots for the same door prop', () => {
@@ -929,5 +940,18 @@ describe('set-piece door slots', () => {
         }),
       ),
     ).toThrow(/Duplicate door slot/);
+  });
+
+  it('excludes implicit multi-tile door props from resolved slots', () => {
+    installSetPiecePacks([
+      setPiecePackSchema.parse(
+        packWith({
+          extraProps: [{ id: 'wide-door', kind: 'door', x: 1, y: 3, width: 2, layers }],
+        }),
+      ),
+    ]);
+    expect(resolveSetPieceDoorSlots(getSetPieceDef('door-room')!)).toEqual([
+      { propId: 'entrance', mode: 'fixed', x: 1, y: 3, width: 1, height: 1 },
+    ]);
   });
 });

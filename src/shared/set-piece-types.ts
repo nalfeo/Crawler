@@ -519,14 +519,13 @@ const setPieceSourceSchema = z
       for (const prop of value.props) {
         if (prop.kind === 'door') doorPropsById.set(prop.id, prop);
       }
-      const touchesRing = (prop: (typeof value.props)[number]): boolean => {
-        const w = prop.width ?? 1;
-        const h = prop.height ?? 1;
+      const isSingleTileRingOrigin = (prop: (typeof value.props)[number]): boolean => {
+        const w = Math.floor(prop.width ?? 1);
+        const h = Math.floor(prop.height ?? 1);
+        if (w !== 1 || h !== 1) return false;
         const x0 = Math.floor(prop.x);
         const y0 = Math.floor(prop.y);
-        const x1 = Math.floor(prop.x + w - 1);
-        const y1 = Math.floor(prop.y + h - 1);
-        return x0 <= 0 || y0 <= 0 || x1 >= ringW - 1 || y1 >= ringH - 1;
+        return x0 <= 0 || y0 <= 0 || x0 >= ringW - 1 || y0 >= ringH - 1;
       };
       const seenSlotProps = new Set<string>();
       for (const slot of value.doorSlots) {
@@ -545,10 +544,10 @@ const setPieceSourceSchema = z
           });
           continue;
         }
-        if (!touchesRing(prop)) {
+        if (!isSingleTileRingOrigin(prop)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `Door slot prop "${slot.propId}" is not on the ${ringW}×${ringH} footprint ring.`,
+            message: `Door slot prop "${slot.propId}" must be a 1×1 door with origin on the ${ringW}×${ringH} footprint ring.`,
           });
         }
         if (slot.mode === 'dynamic' && (slot.edges === undefined || slot.edges.length === 0)) {
@@ -782,10 +781,8 @@ export function resolveSetPieceDoorSlots(def: SetPieceDef): SetPieceResolvedDoor
     const y0 = Math.floor(prop.y);
     const w = Math.max(1, Math.floor(prop.width));
     const h = Math.max(1, Math.floor(prop.height));
-    const x1 = x0 + w - 1;
-    const y1 = y0 + h - 1;
-    const onRing = x0 <= 0 || y0 <= 0 || x1 >= ringW - 1 || y1 >= ringH - 1;
-    if (!onRing) continue;
+    const onRing = x0 <= 0 || y0 <= 0 || x0 >= ringW - 1 || y0 >= ringH - 1;
+    if (w !== 1 || h !== 1 || !onRing) continue;
     const slot = slotByProp.get(prop.id);
     const mode: SetPieceDoorSlotMode = slot?.mode ?? 'fixed';
     resolved.push({
