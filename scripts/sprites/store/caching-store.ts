@@ -300,6 +300,13 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     return this.inner.resolve(key);
   }
 
+  resolveForExternalRead(key: string): string {
+    if (typeof this.inner.resolveForExternalRead === 'function') {
+      return this.inner.resolveForExternalRead(key);
+    }
+    return this.inner.resolve(key);
+  }
+
   async getCachedResource(key: string): Promise<Buffer | null> {
     return (await this.cache.get(`${DERIVED_PREFIX}${key}`))?.data ?? null;
   }
