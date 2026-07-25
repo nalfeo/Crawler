@@ -69,6 +69,8 @@ export function createHudUI(scene: Phaser.Scene): {
   getNavigationBounds(): NavigationHudBounds;
   getFamilyRelationshipsLayout(): FamilyRelationshipsLayout;
   getMinimapBounds(): ScreenBounds | null;
+  getMinimapOverlayWaypointArrowBounds(): ScreenBounds | null;
+  getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
   getBottomCenterBounds(): ScreenBounds;
   destroy(): void;
 } {
@@ -213,7 +215,7 @@ export function createHudUI(scene: Phaser.Scene): {
       questTracker: questTracker.getBounds(),
       familyPanel: familyRelationships.getLayout().panel,
       arrows: directionArrows.getBounds(),
-      mapOverlay: null,
+      mapOverlay: minimap.getOverlayViewportBounds(),
       mapClose: minimap.getOverlayCloseBounds(),
     };
   }
@@ -278,6 +280,8 @@ export function createHudUI(scene: Phaser.Scene): {
     getNavigationBounds,
     getFamilyRelationshipsLayout: familyRelationships.getLayout,
     getMinimapBounds: minimap.getDockedBounds,
+    getMinimapOverlayWaypointArrowBounds: minimap.getOverlayWaypointArrowBounds,
+    getMinimapRadarWaypointArrowBounds: minimap.getRadarWaypointArrowBounds,
     getBottomCenterBounds: () => {
       const b = bottomCenter.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
