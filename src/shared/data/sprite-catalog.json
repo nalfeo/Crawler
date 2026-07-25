@@ -3570,6 +3570,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-floor-seam-var-9",
+    "kind": "sprite",
+    "label": "welcome-room-floor-seam-var-9",
+    "description": "Generated sprite from brief: welcome-room-floor-seam.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-seam-var-9",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-seam-var-9.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-floor-stain-var-0",
     "kind": "sprite",
     "label": "welcome-room-floor-stain-var-0",
