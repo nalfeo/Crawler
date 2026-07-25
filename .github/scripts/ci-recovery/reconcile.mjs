@@ -61,7 +61,12 @@ import {
   shouldRequestReview,
   unrecordedConflictEpisode,
 } from './review-request.mjs';
-import { evaluatePhase, formatLifecycleOutcome, LIFECYCLE_MARKER, parseLifecycleComment } from './pr-lifecycle.mjs';
+import {
+  evaluatePhase,
+  formatLifecycleOutcome,
+  LIFECYCLE_MARKER,
+  parseLifecycleComment,
+} from './pr-lifecycle.mjs';
 import { DISPATCH_ACTION, selectEarlyAction } from './dispatch-table.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -1353,7 +1358,9 @@ const rebaseFailureBackoffActive =
                 const safeMsg = String(err.message || err)
                   .replace(/[\r\n]/g, ' ')
                   .slice(0, 500);
-                process.stderr.write(`loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`);
+                process.stderr.write(
+                  `loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`,
+                );
                 // Exit non-zero WITHOUT releasing the lock so the next sweep retries filing.
                 process.exit(1);
               }
@@ -1525,6 +1532,28 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+
+// Promote definitively-unreachable SHAs whose 7-char prefix is a valid
+// abbreviated prefix of the current head SHA.  A 40-char SHA with a typo in
+// its trailing digits returns 404 from the compare API (definitively
+// unreachable) but shares the same git-standard 7-char abbreviation as the
+// head — strong evidence of a one-character transcription error rather than a
+// genuinely absent fix.  Moving these SHAs into reachableMarkerShas lets
+// shouldResolveThread accept them via the reachableCommitShas.has() path in
+// markerNamesHead, auto-resolving the thread without requiring a running LLM
+// agent.  The 7-char prefix is the same length used by the existing abbreviated-
+// SHA acceptance logic (headSha.startsWith(markerSha)), so the additional risk
+// from this promotion is no greater than the existing abbreviated-SHA path.
+for (const sha of [...definitivelyUnreachableMarkerShas]) {
+  if (sha.length >= 7 && headSha.startsWith(sha.slice(0, 7)) && !headSha.startsWith(sha)) {
+    reachableMarkerShas.add(sha);
+    definitivelyUnreachableMarkerShas.delete(sha);
+    process.stdout.write(
+      `promoted stale-marker sha=${sha} to reachable via 7-char prefix match head=${headSha}\n`,
+    );
+  }
+}
+
 function shouldAutoPostOutdatedMarker(candidate) {
   if (!candidate.isOutdated) return false;
   if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
@@ -2271,7 +2300,9 @@ let currentLifecyclePhase = null;
       hasLeadingMarker(comment.body, LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
   );
   if (trustedLifecycleComments.length > 1) {
-    process.stdout.write(`lifecycle-comment-duplicate pr=#${prNumber} count=${trustedLifecycleComments.length}\n`);
+    process.stdout.write(
+      `lifecycle-comment-duplicate pr=#${prNumber} count=${trustedLifecycleComments.length}\n`,
+    );
   } else if (trustedLifecycleComments.length === 1) {
     try {
       const record = parseLifecycleComment(trustedLifecycleComments[0].body);
@@ -2302,9 +2333,7 @@ process.stdout.write(
 if (lifecycleEvaluation.readmit && mergeTrainEnabled) {
   // D1 fix: a fully admissible PR not yet in the train must trigger re-admission.
   // Reporting "train empty" for such a PR is the root cause of D1.
-  process.stdout.write(
-    `lifecycle readmit pr=#${prNumber} reason=d1-fix admission-was-stale\n`,
-  );
+  process.stdout.write(`lifecycle readmit pr=#${prNumber} reason=d1-fix admission-was-stale\n`);
 }
 
 if (normalized.length === 0) {

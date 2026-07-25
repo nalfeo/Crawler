@@ -4958,7 +4958,10 @@ test('train mode reclaims a stale automation lock before waiting on a queued con
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  assert.match(stdout, /released stale automation lock pr=#42 reason=pre-train-predecessor-reclaim/);
+  assert.match(
+    stdout,
+    /released stale automation lock pr=#42 reason=pre-train-predecessor-reclaim/,
+  );
   assert.match(stdout, /wait pr=#42 reason=train-conflict-predecessor-pending predecessor=#77/);
   assert.equal(repositoryLabelExists, false, 'expected the stale ci-owner fence to be deleted');
   const finalState = parseStateComment(stateComment.body);
@@ -8482,6 +8485,148 @@ test('non-outdated stale-marker thread includes recovery hint in blocker summary
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
 });
 
+test('stale-marker SHA that is a typo of head SHA (same 7-char prefix, 404) is auto-resolved', async (t) => {
+  // PR #2010 scenario: the recovery agent posted ✅ Addressed in <sha> but
+  // transcribed a single hex digit wrong at the end of the full 40-char SHA.
+  // The typo SHA returns 404 (definitively unreachable) but its first 7
+  // characters are a valid abbreviated prefix of the current head — strong
+  // evidence of a typo rather than an absent fix.  The reconciler must promote
+  // the SHA and auto-resolve the thread without dispatching a new LLM agent.
+  const typoSha = 'abc1234fffffffffffffffffffffffffffffffff';
+  // typoSha starts with 'abc1234', which is the same 7-char prefix as HEAD_SHA.
+  assert.ok(HEAD_SHA.startsWith(typoSha.slice(0, 7)), 'test invariant: prefixes must match');
+  assert.notEqual(typoSha, HEAD_SHA, 'test invariant: full SHAs must differ');
+
+  const threadId = 'PRRT_typo_sha_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation') && query.includes('resolveReviewThread')) {
+        return {
+          body: {
+            data: {
+              resolveReviewThread: { thread: { isResolved: true } },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/engine/MobAbilityVfx.ts',
+            line: 120,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_typo_reply',
+                  body: `✅ Addressed in \`${typoSha}\`: Added ADR-0040 documenting the phase contract.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    // Typo SHA returns 404 — it doesn't exist as a commit.
+    [`GET /repos/${OWNER}/${REPO}/compare/${typoSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1001 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    new RegExp(`promoted stale-marker sha=${typoSha} to reachable via 7-char prefix match`),
+    'expected prefix-match promotion log line',
+  );
+  assert.match(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'thread with typo SHA prefix-matching the head must be auto-resolved',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /assigned copilot pr=#42/,
+    'must not dispatch a repair agent when the thread is auto-resolved',
+  );
+
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === threadId,
+  );
+  assert.ok(resolveCall, 'expected a resolveReviewThread mutation for the prefix-matched thread');
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.equal(taskCommentCall, undefined, 'must not post a task comment for the resolved thread');
+});
+
 test('outdated stale-marker thread stays on the stale-marker hint path', async (t) => {
   // PR #1266 scenario: the recovery agent replied with ✅ Addressed in <sha>
   // but the commit was never pushed to GitHub (compare API returns 404).
@@ -11661,7 +11806,11 @@ test('train mode escalates validation-recovery rebase to Copilot dispatch once b
     /merge-train-validation/,
     'expected the merge-train-validation blocker to surface after rebase exhaustion',
   );
-  assert.match(stdout, /dry-run would-assign copilot/, 'expected fallthrough to Copilot escalation');
+  assert.match(
+    stdout,
+    /dry-run would-assign copilot/,
+    'expected fallthrough to Copilot escalation',
+  );
   assert.equal(
     mutatingCalls.filter(
       (call) =>
@@ -11734,7 +11883,11 @@ test('conflict episode marker is posted before the conflict-only rebase dispatch
 
   const conflictEpisodeMarkerBody = firstPassCommentPosts[episodeMarkerIdx];
   const secondPassCommentPosts = [];
-  const { server: secondPassServer, port: secondPassPort, mutatingCalls } = await startServer({
+  const {
+    server: secondPassServer,
+    port: secondPassPort,
+    mutatingCalls,
+  } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
       body: {
         ...basePr(),
@@ -11787,14 +11940,17 @@ test('conflict episode marker is posted before the conflict-only rebase dispatch
   });
   t.after(() => secondPassServer.close());
 
-  const { code: secondPassCode, stdout: secondPassStdout, stderr: secondPassStderr } =
-    await runScript(secondPassPort, {
-      RECOVERY_OPERATION: 'reconcile',
-      RECOVERY_TRIGGER: 'schedule',
-      CI_RECOVERY_MODE: 'live',
-      MERGE_TRAIN_ENABLED: 'true',
-      MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
-    });
+  const {
+    code: secondPassCode,
+    stdout: secondPassStdout,
+    stderr: secondPassStderr,
+  } = await runScript(secondPassPort, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
 
   if (!assertSuccessfulExit(t, secondPassCode, secondPassStderr, '', true)) return;
 
