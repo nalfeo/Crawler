@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  buildCaptureTelemetryOpts,
   evaluatePrereqs,
   inferTelemetrySessionSlug,
   summarizePrereqResult,
@@ -162,4 +163,21 @@ test('telemetryCaptureNote returns null once a capture file is staged', () => {
     );
     assert.equal(note, null);
   });
+});
+
+test('buildCaptureTelemetryOpts uses a single shell command string on Windows', () => {
+  const opts = buildCaptureTelemetryOpts(true, 'my-session');
+  assert.equal(opts.type, 'shell');
+  assert.equal(typeof opts.command, 'string');
+  assert.match(opts.command, /my-session/);
+  // Must not be an args array — shell: true + args array triggers DEP0190.
+  assert.ok(!('args' in opts));
+});
+
+test('buildCaptureTelemetryOpts uses execFileSync args array on POSIX', () => {
+  const opts = buildCaptureTelemetryOpts(false, 'my-session');
+  assert.equal(opts.type, 'execFile');
+  assert.deepEqual(opts.args, ['npm', 'run', 'telemetry:capture', '--', 'my-session']);
+  // Must not be a single command string — that path is Windows-only.
+  assert.ok(!('command' in opts));
 });

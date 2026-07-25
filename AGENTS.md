@@ -95,6 +95,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Verify labs layer         | `npm run verify:labs`                     |
 | Perf baseline             | `npm run perf:baseline`                   |
 | Gameplay fingerprint      | `npm run perf:fingerprint`                |
+| Sim CPU profile           | `npm run perf:profile`                    |
 | Benchmarks                | `npm run bench`                           |
 | Unit test coverage        | `npm run test:coverage`                   |
 | AI hill-climb sweep       | `npm run ai:hill-climb`                   |
