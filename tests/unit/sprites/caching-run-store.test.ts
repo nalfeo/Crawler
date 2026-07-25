@@ -16,7 +16,11 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { CachingRunStore, isCacheableKey } from '../../../scripts/sprites/store/caching-store.js';
 import { SharedResourceCache } from '../../../scripts/sprites/store/shared-cache.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
-import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
+import {
+  StoreNotFoundError,
+  type ListOptions,
+  type RunStore,
+} from '../../../scripts/sprites/store/types.js';
 import { WORKFLOW_STATE_KEY } from '../../../scripts/sprites/sidecar/workflow-state.js';
 
 const noop = (): void => {};
@@ -108,9 +112,9 @@ class CountingStore implements RunStore {
     this.has_++;
     return this.inner.has(key);
   }
-  async list(prefix: string): Promise<readonly string[]> {
+  async list(prefix: string, options?: ListOptions): Promise<readonly string[]> {
     this.lists++;
-    return this.inner.list(prefix);
+    return this.inner.list(prefix, options);
   }
   async remove(key: string): Promise<void> {
     this.removes++;
@@ -127,22 +131,22 @@ class ThrowingStore implements RunStore {
   gets = 0;
   has_ = 0;
   lists = 0;
-  async put(): Promise<void> {
+  async put(_key: string, _data: Buffer): Promise<void> {
     throw new Error('offline: put');
   }
   async get(key: string): Promise<Buffer> {
     this.gets++;
     throw new StoreNotFoundError(key);
   }
-  async has(): Promise<boolean> {
+  async has(_key: string): Promise<boolean> {
     this.has_++;
     throw new Error('offline: has');
   }
-  async list(): Promise<readonly string[]> {
+  async list(_prefix: string, _options?: ListOptions): Promise<readonly string[]> {
     this.lists++;
     throw new Error('offline: list');
   }
-  async remove(): Promise<void> {
+  async remove(_key: string): Promise<void> {
     throw new Error('offline: remove');
   }
   resolve(key: string): string {
@@ -192,7 +196,7 @@ class RaceStore implements RunStore {
     return this.values.has(key);
   }
 
-  async list(prefix: string): Promise<readonly string[]> {
+  async list(prefix: string, _options?: ListOptions): Promise<readonly string[]> {
     return [...this.values.keys()].filter((key) => key.startsWith(prefix));
   }
 
@@ -270,7 +274,7 @@ class BothCommitRaceStore implements RunStore {
     return this.values.has(key);
   }
 
-  async list(prefix: string): Promise<readonly string[]> {
+  async list(prefix: string, _options?: ListOptions): Promise<readonly string[]> {
     return [...this.values.keys()].filter((k) => k.startsWith(prefix));
   }
 
@@ -308,23 +312,23 @@ class GatedListStore implements RunStore {
   releaseGate(): void {
     this.release?.();
   }
-  async put(): Promise<void> {
+  async put(_key: string, _data: Buffer): Promise<void> {
     throw new Error('unused: put');
   }
   async get(key: string): Promise<Buffer> {
     throw new StoreNotFoundError(key);
   }
-  async has(): Promise<boolean> {
+  async has(_key: string): Promise<boolean> {
     throw new Error('unused: has');
   }
-  async list(): Promise<readonly string[]> {
+  async list(_prefix: string, _options?: ListOptions): Promise<readonly string[]> {
     this.lists++;
     this.signalListStarted?.();
     this.signalListStarted = null;
     await this.gate;
     return this.keys;
   }
-  async remove(): Promise<void> {
+  async remove(_key: string): Promise<void> {
     throw new Error('unused: remove');
   }
   resolve(key: string): string {
@@ -336,19 +340,19 @@ class GatedListStore implements RunStore {
 class ShrinkingStore implements RunStore {
   readonly backend = 'azure-blob' as const;
   constructor(private readonly keys: readonly string[]) {}
-  async put(): Promise<void> {
+  async put(_key: string, _data: Buffer): Promise<void> {
     throw new Error('unused: put');
   }
   async get(key: string): Promise<Buffer> {
     throw new StoreNotFoundError(key);
   }
-  async has(): Promise<boolean> {
+  async has(_key: string): Promise<boolean> {
     return false;
   }
-  async list(): Promise<readonly string[]> {
+  async list(_prefix: string, _options?: ListOptions): Promise<readonly string[]> {
     return this.keys;
   }
-  async remove(): Promise<void> {
+  async remove(_key: string): Promise<void> {
     throw new Error('unused: remove');
   }
   resolve(key: string): string {
@@ -371,20 +375,20 @@ class StaleGetShrinkingStore implements RunStore {
     private readonly staleGetKey: string,
     private readonly staleGetBytes: Buffer,
   ) {}
-  async put(): Promise<void> {
+  async put(_key: string, _data: Buffer): Promise<void> {
     throw new Error('unused: put');
   }
   async get(key: string): Promise<Buffer> {
     if (key === this.staleGetKey) return this.staleGetBytes;
     throw new StoreNotFoundError(key);
   }
-  async has(): Promise<boolean> {
+  async has(_key: string): Promise<boolean> {
     return false;
   }
-  async list(): Promise<readonly string[]> {
+  async list(_prefix: string, _options?: ListOptions): Promise<readonly string[]> {
     return this.listedKeys;
   }
-  async remove(): Promise<void> {
+  async remove(_key: string): Promise<void> {
     throw new Error('unused: remove');
   }
   resolve(key: string): string {
@@ -919,18 +923,18 @@ describe('list snapshots', () => {
     // before ever touching setIfAbsent, defeating the race this test drives).
     const rawInner = new (class implements RunStore {
       readonly backend = 'azure-blob' as const;
-      async put(): Promise<void> {}
+      async put(_key: string, _data: Buffer): Promise<void> {}
       async get(key: string): Promise<Buffer> {
         if (key === RAW) return staleBytes;
         throw new StoreNotFoundError(key);
       }
-      async has(): Promise<boolean> {
+      async has(_key: string): Promise<boolean> {
         return true;
       }
-      async list(): Promise<readonly string[]> {
+      async list(_prefix: string, _options?: ListOptions): Promise<readonly string[]> {
         return [SHEET, RAW];
       }
-      async remove(): Promise<void> {}
+      async remove(_key: string): Promise<void> {}
       resolve(key: string): string {
         return key;
       }

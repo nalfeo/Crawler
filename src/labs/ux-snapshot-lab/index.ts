@@ -29,17 +29,37 @@ import { TileMap } from '../../core/map/TileMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../shared/map-types.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
-import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR1_BOSS_UNLOCK_QUEST_ID } from '../../shared/quest-types.js';
+import {
+  FLOOR1_FIND_WELCOME_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
+} from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { SeededRandom } from '../../shared/random.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import { addItem } from '../../shared/inventory.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
+import type { ScreenBounds } from '../../engine/ui-scale.js';
+import { setTrackedQuest } from '../../core/systems/questSystem.js';
 import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
+
+interface UxSnapshotProbeApi {
+  ready(): boolean;
+  setTrackedWaypointPx(x: number, y: number): void;
+  getMinimapDockedBounds(): ScreenBounds | null;
+  getMinimapOverlayViewportBounds(): ScreenBounds | null;
+  getMinimapOverlayWaypointArrowBounds(): ScreenBounds | null;
+  getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
+}
+
+type UxSnapshotProbeWindow = Window &
+  typeof globalThis & {
+    __uxSnapshotProbe?: UxSnapshotProbeApi;
+  };
 
 /**
  * Resolve the loader path for the generated art the REAL game pins to a render
@@ -228,6 +248,38 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   let modalPicker: ReturnType<typeof createModalPickerUI> | undefined;
   let inventoryUI: ReturnType<typeof createInventoryUI> | undefined;
   let equipmentUI: ReturnType<typeof createEquipmentUI> | undefined;
+
+  const setTrackedWaypointPx = (x: number, y: number): void => {
+    if (!world?.floorScenario) {
+      return;
+    }
+    const pos = { x: pxToFt(x), y: pxToFt(y) };
+    const objective = world.floorScenario.objective;
+    const assignPos = (target: { x: number; y: number }): void => {
+      target.x = pos.x;
+      target.y = pos.y;
+    };
+    assignPos(objective.welcomeOfficePos);
+    assignPos(objective.questItemPos);
+    assignPos(objective.slimeRatRoomPos);
+    assignPos(objective.spellQuestGiverPos);
+    assignPos(objective.shopRoomPos);
+    assignPos(objective.staircasePos);
+    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    hudUi?.sync(world, playerEid);
+  };
+
+  const probeWindow = window as UxSnapshotProbeWindow;
+  probeWindow.__uxSnapshotProbe = {
+    ready: () => Boolean(world && hudUi && playerEid >= 0),
+    setTrackedWaypointPx,
+    getMinimapDockedBounds: () => hudUi?.getMinimapBounds() ?? null,
+    getMinimapOverlayViewportBounds: () => hudUi?.getNavigationBounds().mapOverlay ?? null,
+    getMinimapOverlayWaypointArrowBounds: () =>
+      hudUi?.getMinimapOverlayWaypointArrowBounds() ?? null,
+    getMinimapRadarWaypointArrowBounds: () => hudUi?.getMinimapRadarWaypointArrowBounds() ?? null,
+  };
 
   const openSampleModal = (): void => {
     modalPicker?.open(
@@ -534,6 +586,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       dialogueBox.setVisible(settings.showDialog);
 
       this.events.once('shutdown', () => {
+        delete probeWindow.__uxSnapshotProbe;
         hudUi?.destroy();
         hudUi = undefined;
         inventoryUI?.destroy();
@@ -651,6 +704,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   createGame();
 
   return () => {
+    delete probeWindow.__uxSnapshotProbe;
     hudUi?.destroy();
     inventoryUI?.destroy();
     equipmentUI?.destroy();
