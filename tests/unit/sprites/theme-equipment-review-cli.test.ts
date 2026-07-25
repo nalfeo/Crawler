@@ -59,7 +59,7 @@ describe('theme equipment review command bridge', () => {
 
     const result = await executeThemeEquipmentReviewCommand(
       { action: 'state', setId: state.id },
-      { store, now: NOW },
+      { store, now: NOW, repoRoot: process.cwd() },
     );
 
     expect(result).toMatchObject({
@@ -83,7 +83,7 @@ describe('theme equipment review command bridge', () => {
         review: { verdict: 'down', feedback: 'Silhouette is too ornate.' },
         expectedRevision: 0,
       },
-      { store, now: NOW },
+      { store, now: NOW, repoRoot: process.cwd() },
     );
 
     expect(reviewed.stateRevision).toBe(1);
@@ -100,7 +100,7 @@ describe('theme equipment review command bridge', () => {
           review: { verdict: 'up' },
           expectedRevision: 0,
         },
-        { store, now: NOW },
+        { store, now: NOW, repoRoot: process.cwd() },
       ),
     ).rejects.toThrow(/revision-conflict/);
   });
@@ -134,7 +134,7 @@ describe('theme equipment review command bridge', () => {
         itemId: item.id,
         artifactId: `${item.id}-sheet-r0-raw`,
       },
-      { store, now: NOW },
+      { store, now: NOW, repoRoot: process.cwd() },
     );
 
     expect(Buffer.from(String(result.base64), 'base64').toString()).toBe('png-bytes');
