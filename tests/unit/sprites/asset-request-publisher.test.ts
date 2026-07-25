@@ -114,6 +114,29 @@ describe('asset-request publication discovery', () => {
     expect(ready).toHaveLength(1);
     expect(ready[0]?.issueNumber).toBe(20);
   });
+
+  it('remains fail-closed and skips a legacy pre-checkpoint status doc (no version/stages), even with stage:"completed"', async () => {
+    // The pre-migration pipeline (before commit 49d133cea) wrote a flat
+    // status doc with no `version`/`stages` fields. The publisher must never
+    // treat this as a publishable v1 result — it fails the strict schema
+    // parse and is skipped, exactly like any other malformed checkpoint. The
+    // worker-side fix reinitializes such docs to a fresh v1 checkpoint on
+    // next reclaim; the publisher itself must not be weakened to accept them.
+    const store = makeStore();
+    await store.put(
+      issueCheckpointKey(30, 'fingerprint-30'),
+      Buffer.from(
+        JSON.stringify({
+          issueNumber: 30,
+          fingerprint: 'fingerprint-30',
+          stage: 'completed',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        }),
+      ),
+    );
+
+    await expect(discoverReadyCheckpoints(store)).resolves.toEqual([]);
+  });
 });
 
 describe('exact generated-asset collision validation', () => {
