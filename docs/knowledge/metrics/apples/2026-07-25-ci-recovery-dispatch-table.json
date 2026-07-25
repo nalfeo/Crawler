@@ -1,0 +1,9 @@
+{
+  "date": "2026-07-25",
+  "session": "ci-recovery-dispatch-table",
+  "estimated_apples": 5,
+  "actual_apples": 5,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 1
+}
