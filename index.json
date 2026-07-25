@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a0d7c926aff01fd03d188f3ecc98b9ecb86e195f",
+    "commitDate": "2026-07-25T21:37:35Z",
+    "commitSubject": "fix(ci): auto-retrigger workflow runs parked in action_required (#2046)",
+    "capturedAt": "2026-07-25T22:42:21.678Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30176260029",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/a0d7c926aff01fd03d188f3ecc98b9ecb86e195f.json"
+  },
+  {
     "commit": "1e78f7dc6744040bebb5639cef3cde2f2351e8d9",
     "commitDate": "2026-07-25T21:18:46Z",
     "commitSubject": "feat(mob-abilities): implement King Skritt ROMAN-CANDLE CORONATION (#2017)",
