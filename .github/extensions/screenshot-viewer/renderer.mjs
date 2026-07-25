@@ -328,8 +328,21 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
     </div>
 
     <script>
-      const stateUrl = '/api/state';
-      const refreshUrl = '/api/refresh';
+      const token = new URLSearchParams(window.location.search).get('token') ?? '';
+      function buildUrl(pathname, params = {}) {
+        const query = new URLSearchParams();
+        for (const [key, value] of Object.entries(params)) {
+          if (value !== null && value !== undefined) {
+            query.set(key, String(value));
+          }
+        }
+        if (token) query.set('token', token);
+        const queryString = query.toString();
+        return queryString ? pathname + '?' + queryString : pathname;
+      }
+
+      const stateUrl = buildUrl('/api/state');
+      const refreshUrl = buildUrl('/api/refresh');
       const pollIntervalMs = ${JSON.stringify(pollIntervalMs)};
 
       const galleryEl = document.getElementById('gallery');
@@ -395,7 +408,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       });
 
       function buildImgUrl(encodedPath) {
-        return '/img?path=' + encodeURIComponent(encodedPath);
+        return buildUrl('/img', { path: encodedPath });
       }
 
       function renderThumb(screenshot) {
@@ -407,7 +420,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           : '<span class="thumb-tag">scanned</span>';
 
         return \`
-          <article class="thumb-card" tabindex="0" data-img-url="\${escapeHtml(imgUrl)}" data-caption="\${escapeHtml(screenshot.path)}">
+          <article class="thumb-card" tabindex="0" role="button" aria-label="Open screenshot: \${escapeHtml(screenshot.filename)}" data-img-url="\${escapeHtml(imgUrl)}" data-caption="\${escapeHtml(screenshot.path)}">
             <div class="thumb-img-wrap">
               <img
                 src="\${escapeHtml(imgUrl)}"
@@ -509,7 +522,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
 
       // SSE live updates
       function subscribeEvents() {
-        const events = new EventSource('/events');
+        const events = new EventSource(buildUrl('/events'));
         events.onmessage = (e) => {
           try {
             applyState(JSON.parse(e.data));

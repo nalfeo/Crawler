@@ -12,8 +12,8 @@
  *        - CWD /** (same depth)
  *
  * Images are served from the local loopback server at GET /img?path=<encoded>.
- * Path access is validated against an allowlist (workspace + cwd) so the server
- * cannot be used as an arbitrary filesystem relay.
+ * Path access is validated against the discovered screenshot registry and allowed
+ * image extensions so the server cannot be used as an arbitrary filesystem relay.
  */
 
 import { randomBytes } from 'node:crypto';
@@ -33,7 +33,7 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const SCAN_SUBDIRS = ['files/visual-review', 'files'];
 
 /** Maximum depth when scanning a directory (1 = immediate children only). */
-const SCAN_MAX_DEPTH = 2;
+const SCAN_MAX_DEPTH = 3;
 
 /** Maximum size of a request body (16 KiB). */
 const MAX_BODY_BYTES = 16_384;
@@ -64,18 +64,20 @@ function getWorkspacePath() {
 
 /** Global ordered list of known screenshots (newest first). */
 const screenshotRegistry = new Map(); // path → Screenshot
+let lastScannedAt = null;
 
 function registerScreenshot(absPath, source) {
-  if (screenshotRegistry.has(absPath)) {
+  const normalizedPath = normalize(resolve(absPath));
+  if (screenshotRegistry.has(normalizedPath)) {
     // Update source to 'live' if we're seeing it live
     if (source === 'live') {
-      screenshotRegistry.get(absPath).source = 'live';
+      screenshotRegistry.get(normalizedPath).source = 'live';
     }
     return;
   }
-  screenshotRegistry.set(absPath, {
-    path: absPath,
-    filename: basename(absPath),
+  screenshotRegistry.set(normalizedPath, {
+    path: normalizedPath,
+    filename: basename(normalizedPath),
     takenAt: new Date().toISOString(),
     source,
   });
@@ -173,20 +175,22 @@ async function scanWorkspace(workspacePath) {
 
   // Assign filesystem mtime as takenAt for scanned files
   for (const p of found) {
-    if (!screenshotRegistry.has(p)) {
+    const normalizedPath = normalize(resolve(p));
+    if (!screenshotRegistry.has(normalizedPath)) {
       let takenAt = new Date().toISOString();
       try {
-        const s = await stat(p);
+        const s = await stat(normalizedPath);
         takenAt = s.mtime.toISOString();
       } catch {}
-      screenshotRegistry.set(p, {
-        path: p,
-        filename: basename(p),
+      screenshotRegistry.set(normalizedPath, {
+        path: normalizedPath,
+        filename: basename(normalizedPath),
         takenAt,
         source: 'scanned',
       });
     }
   }
+  lastScannedAt = new Date().toISOString();
 }
 
 // ── state helpers ──────────────────────────────────────────────────────────
@@ -198,7 +202,7 @@ function buildState(instanceId) {
     workspacePath: workspacePath ?? null,
     screenshots: sortedScreenshots(),
     liveTracking: true,
-    scannedAt: new Date().toISOString(),
+    scannedAt: lastScannedAt,
     error: null,
   };
 }
@@ -254,20 +258,13 @@ async function readJsonBody(req) {
 // ── path allowlist for image serving ──────────────────────────────────────
 
 /**
- * Return true iff `absPath` is safely within one of the allowed roots.
+ * Return true iff `absPath` is a known screenshot with an allowed extension.
  * Prevents the /img route from acting as an arbitrary filesystem relay.
  */
 function isAllowedPath(absPath) {
-  const normalized = normalize(absPath);
-  // Must match a known screenshot in the registry
-  if (screenshotRegistry.has(normalized)) return true;
-  // Or fall within workspace / cwd
-  const roots = [trackedWorkspacePath, trackedCwd].filter(Boolean);
-  for (const root of roots) {
-    const normalRoot = normalize(root) + (root.endsWith('/') || root.endsWith('\\') ? '' : '/');
-    if (normalized.startsWith(normalRoot)) return true;
-  }
-  return false;
+  const normalized = normalize(resolve(absPath));
+  const ext = extname(normalized).toLowerCase();
+  return IMAGE_EXTENSIONS.has(ext) && screenshotRegistry.has(normalized);
 }
 
 // ── image MIME type ────────────────────────────────────────────────────────

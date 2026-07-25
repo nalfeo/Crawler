@@ -33,6 +33,16 @@ test('includes SSE subscription (EventSource)', () => {
   assert.match(html, /\/events/);
 });
 
+test('derives token from location search and appends it to route URLs', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /new URLSearchParams\(window\.location\.search\)\.get\('token'\)/);
+  assert.match(html, /const stateUrl = buildUrl\('\/api\/state'\)/);
+  assert.match(html, /const refreshUrl = buildUrl\('\/api\/refresh'\)/);
+  assert.match(html, /new EventSource\(buildUrl\('\/events'\)\)/);
+  assert.match(html, /buildUrl\('\/img', \{ path: encodedPath \}\)/);
+  assert.match(html, /if \(token\)\s+query\.set\('token', token\)/);
+});
+
 test('includes refresh button and polling interval', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /id="refresh-button"/);
@@ -48,7 +58,7 @@ test('includes API state URL', () => {
 
 test('includes /img image serving route reference', () => {
   const html = renderHtml(OPTS);
-  assert.match(html, /\/img\?path=/);
+  assert.match(html, /buildUrl\('\/img'/);
 });
 
 test('renders responsive grid CSS', () => {
@@ -84,4 +94,10 @@ test('live badge element is present', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /id="live-badge"/);
   assert.match(html, /status-badge--live/);
+});
+
+test('gallery cards expose button semantics for keyboard and assistive tech', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /class="thumb-card" tabindex="0" role="button"/);
+  assert.match(html, /aria-label="Open screenshot:/);
 });
