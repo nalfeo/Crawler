@@ -1328,6 +1328,57 @@
     "row": 0
   },
   {
+    "id": "generated:duelist-gloves-v2-var-0",
+    "kind": "sprite",
+    "label": "duelist-gloves-v2-var-0",
+    "description": "Generated sprite from brief: duelist-gloves-v2.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "duelist-gloves-v2-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/duelist-gloves-v2-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:duelist-gloves-v2-var-2",
+    "kind": "sprite",
+    "label": "duelist-gloves-v2-var-2",
+    "description": "Generated sprite from brief: duelist-gloves-v2.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "duelist-gloves-v2-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/duelist-gloves-v2-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:duelist-gloves-v2-var-5",
+    "kind": "sprite",
+    "label": "duelist-gloves-v2-var-5",
+    "description": "Generated sprite from brief: duelist-gloves-v2.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "duelist-gloves-v2-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/duelist-gloves-v2-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:equipment/accessory/lucky-feather",
     "kind": "sprite",
     "label": "equipment/accessory/lucky-feather",
