@@ -251,4 +251,107 @@ describe('canonical generated-art PR reconciliation', () => {
     expect(calls.some((args) => args[0] === 'pr' && args[1] === 'comment')).toBe(true);
     expect(calls.some((args) => args[0] === 'pr' && args[1] === 'close')).toBe(true);
   });
+
+  it('provisions required labels before creating the canonical PR when art-only is missing', async () => {
+    const calls: string[][] = [];
+    let listCalls = 0;
+    let labelEnsured = false;
+    const exec: Exec = vi.fn(async (_command, args) => {
+      calls.push([...args]);
+      if (args[0] === 'pr' && args[1] === 'list') {
+        listCalls++;
+        return {
+          stdout: listCalls === 1 ? '[]' : '[{"number":91,"url":"https://example.test/pr/91"}]',
+          stderr: '',
+          code: 0,
+        };
+      }
+      if (args[0] === 'label' && args[1] === 'list') {
+        return { stdout: '[]', stderr: '', code: 0 };
+      }
+      if (args[0] === 'label' && args[1] === 'create' && args[2] === 'art-only') {
+        labelEnsured = true;
+        return { stdout: '', stderr: '', code: 0 };
+      }
+      if (args[0] === 'pr' && args[1] === 'create') {
+        return labelEnsured
+          ? { stdout: 'https://example.test/pr/91', stderr: '', code: 0 }
+          : {
+              stdout: '',
+              stderr: "could not add label: 'art-only' not found",
+              code: 1,
+            };
+      }
+      return { stdout: '', stderr: '', code: 0 };
+    });
+
+    await expect(reconcileCanonicalPr(exec, '/repo', {})).resolves.toMatchObject({ number: 91 });
+
+    const labelCreate = calls.findIndex(
+      (args) => args[0] === 'label' && args[1] === 'create' && args[2] === 'art-only',
+    );
+    const prCreate = calls.findIndex((args) => args[0] === 'pr' && args[1] === 'create');
+    expect(labelCreate).toBeGreaterThan(-1);
+    expect(prCreate).toBeGreaterThan(-1);
+    expect(labelCreate).toBeLessThan(prCreate);
+    expect(calls[labelCreate]).toContain('7057ff');
+    expect(calls[labelCreate]).toContain(
+      'Generated art-only changes eligible for guarded promotion',
+    );
+    expect(calls[labelCreate]).not.toContain('--force');
+  });
+
+  it('does not recreate an existing required label before creating the canonical PR', async () => {
+    const calls: string[][] = [];
+    let listCalls = 0;
+    const exec: Exec = vi.fn(async (_command, args) => {
+      calls.push([...args]);
+      if (args[0] === 'pr' && args[1] === 'list') {
+        listCalls++;
+        return {
+          stdout: listCalls === 1 ? '[]' : '[{"number":91,"url":"https://example.test/pr/91"}]',
+          stderr: '',
+          code: 0,
+        };
+      }
+      if (args[0] === 'label' && args[1] === 'list') {
+        return {
+          stdout: '[{"name":"art-only"}]',
+          stderr: '',
+          code: 0,
+        };
+      }
+      if (args[0] === 'pr' && args[1] === 'create') {
+        return { stdout: 'https://example.test/pr/91', stderr: '', code: 0 };
+      }
+      return { stdout: '', stderr: '', code: 0 };
+    });
+
+    await expect(reconcileCanonicalPr(exec, '/repo', {})).resolves.toMatchObject({ number: 91 });
+    expect(calls.some((args) => args[0] === 'label' && args[1] === 'create')).toBe(false);
+    expect(calls.some((args) => args[0] === 'label' && args[1] === 'list')).toBe(true);
+  });
+
+  it('fails before canonical PR creation when required label provisioning fails', async () => {
+    const calls: string[][] = [];
+    const exec: Exec = vi.fn(async (_command, args) => {
+      calls.push([...args]);
+      if (args[0] === 'pr' && args[1] === 'list') {
+        return { stdout: '[]', stderr: '', code: 0 };
+      }
+      if (args[0] === 'label' && args[1] === 'list') {
+        return { stdout: '[]', stderr: '', code: 0 };
+      }
+      if (args[0] === 'label' && args[1] === 'create' && args[2] === 'art-only') {
+        return { stdout: '', stderr: 'permission denied', code: 1 };
+      }
+      return { stdout: '', stderr: '', code: 0 };
+    });
+
+    await expect(reconcileCanonicalPr(exec, '/repo', {})).rejects.toThrow(
+      'gh label create art-only --color 7057ff --description ' +
+        '"Generated art-only changes eligible for guarded promotion"',
+    );
+    expect(calls.some((args) => args[0] === 'pr' && args[1] === 'create')).toBe(false);
+  });
 });

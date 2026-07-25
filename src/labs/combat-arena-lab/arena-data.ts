@@ -17,6 +17,7 @@ import {
   spawnBehaviorEnemy,
   activateMobAbilityEncounter,
   createUndercityMobCallDefinition,
+  createBambooFedBerserkDefinition,
   createVerdigrisGlamourDefinition,
   registerMobAbility,
   setMobAbilitiesEnabled,
@@ -526,6 +527,7 @@ const F1_SLIME = floor1EnemyPack.archetypes.find((a) => a.id === 'slime')!;
 const F2_QUEEN_MAB = floor2EnemyPack.archetypes.find((a) => a.id === 'faerie-boss')!;
 /** Plague-Boss Squick — the ratfolk boss that owns Undercity Mob Call. */
 const F2_SQUICK = floor2EnemyPack.archetypes.find((a) => a.id === 'ratfolk-boss')!;
+const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-boss')!;
 
 /**
  * Spawn Queen Mab and arm Verdigris Glamour through the CANONICAL mob-ability
@@ -571,6 +573,22 @@ function spawnSquickArena(
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   setMobAbilitiesEnabled(world, true);
   registerMobAbility(world, eid, createUndercityMobCallDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnBigPandaWeiArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_BIG_PANDA_WEI);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createBambooFedBerserkDefinition());
   activateMobAbilityEncounter(world);
   return [eid];
 }
@@ -652,6 +670,15 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
       'Plague-Boss Squick solo, with UNDERCITY MOB CALL armed through the canonical mob-ability runtime: 11s eligibility, 1.5s three-circle telegraph, summon up to 3 plague rats per cast with a strict owned cap of 6.',
     entries: [],
     customSpawnFn: spawnSquickArena,
+  },
+  {
+    id: 'f2-big-panda-wei',
+    name: 'F2: Big Panda Wei (Bamboo-Fed Berserk)',
+    floor: 'floor2',
+    description:
+      'Big Panda Wei solo, with Bamboo-Fed Berserk armed through the canonical mob-ability runtime: 10s eligibility, 1.5s self-following aura telegraph while planted, then 4s +40% move speed, +40% melee damage, and heavy knockback resistance.',
+    entries: [],
+    customSpawnFn: spawnBigPandaWeiArena,
   },
   // ── Custom / blank ───────────────────────────────────────────────────────
   {

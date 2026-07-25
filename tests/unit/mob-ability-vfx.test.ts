@@ -28,6 +28,15 @@ function createCircleStub() {
   };
 }
 
+function createShapeStub() {
+  return {
+    setAngle: vi.fn().mockReturnThis(),
+    setDepth: vi.fn().mockReturnThis(),
+    setBlendMode: vi.fn().mockReturnThis(),
+    destroy: vi.fn(),
+  };
+}
+
 function createSceneStub() {
   const circles: Array<{ x: number; y: number; r: number }> = [];
   const graphicsObjects: ReturnType<typeof createGraphicsStub>[] = [];
@@ -42,6 +51,8 @@ function createSceneStub() {
         circles.push({ x, y, r });
         return createCircleStub();
       }),
+      rectangle: vi.fn(() => createShapeStub()),
+      ellipse: vi.fn(() => createShapeStub()),
     },
     tweens: {
       add: vi.fn((config: { onComplete?: () => void }) => {
@@ -270,5 +281,27 @@ describe('MobAbilityVfx', () => {
     expect(cleanupPoof).toBeDefined();
     expect(cleanupPoof!.x).toBe(ftToPx(10));
     expect(cleanupPoof!.y).toBe(ftToPx(20));
+  });
+
+  it('emits deterministic berserk motif shapes for active bamboo-fed buffs', () => {
+    const { scene } = createSceneStub();
+    const world = createTestWorld();
+    const eid = spawnPlayer(world, 15, 15);
+    world.frameCount = 12;
+    world.mobAbilities.activeBuffsByEntity.set(eid, {
+      abilityId: 'big-panda-wei-bamboo-fed-berserk',
+      sourceId: 'mob-ability:big-panda-wei-bamboo-fed-berserk:1',
+      remainingMs: 3000,
+      movementSpeedMultiplier: 1.4,
+      meleeDamageMultiplier: 1.4,
+      knockbackResistanceMultiplier: 0.35,
+      auraRadiusFt: 10,
+    });
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    expect(scene.add.rectangle).toHaveBeenCalled();
+    expect(scene.add.ellipse).toHaveBeenCalled();
   });
 });

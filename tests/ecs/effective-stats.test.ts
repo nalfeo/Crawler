@@ -10,6 +10,7 @@ import {
   STR_PHYSICAL_DAMAGE_RATE,
   INT_MAGIC_STRENGTH_RATE,
   computeTypedPrimaryMultiplier,
+  type LegacyStatModifierLike,
 } from '../../src/shared/stats.js';
 
 /**
@@ -124,5 +125,47 @@ describe('effective-stats secondary derivation (level-up bridge)', () => {
 
     const multiplier = computeTypedPrimaryMultiplier('magic', after.strength, after.intelligence);
     expect(multiplier).toBeCloseTo(1 + 11 * INT_MAGIC_STRENGTH_RATE, 6);
+  });
+});
+
+describe('applyEffectiveStats — module-level scratch buffer safety', () => {
+  it('throws with a clear message if called re-entrantly (would alias scratch)', async () => {
+    const { applyEffectiveStats } = await import('../../src/core/effective-stats.js');
+    const world = createTestWorld();
+    world.state = 'safe_room';
+    const entity = addEntity(world.ecs);
+    initializeBaseStats(world, entity);
+
+    // Simulate re-entry: a fake `activeModifiers` iterable whose iterator
+    // calls applyEffectiveStats again mid-fold. The scratch buffers would
+    // otherwise silently alias and corrupt the outer call's result.
+    const reentrantModifiers = {
+      [Symbol.iterator]() {
+        applyEffectiveStats(world, entity, undefined, []);
+        return { next: () => ({ done: true as const, value: undefined }) };
+      },
+    } as unknown as readonly LegacyStatModifierLike[];
+
+    expect(() => applyEffectiveStats(world, entity, undefined, reentrantModifiers)).toThrow(
+      /re-entrantly/,
+    );
+  });
+
+  it('recovers cleanly after a throw so the next call succeeds (finally resets the flag)', async () => {
+    const { applyEffectiveStats } = await import('../../src/core/effective-stats.js');
+    const world = createTestWorld();
+    world.state = 'safe_room';
+    const entity = addEntity(world.ecs);
+    initializeBaseStats(world, entity);
+
+    const throwingModifiers = {
+      [Symbol.iterator]() {
+        throw new Error('boom');
+      },
+    } as unknown as readonly LegacyStatModifierLike[];
+
+    expect(() => applyEffectiveStats(world, entity, undefined, throwingModifiers)).toThrow(/boom/);
+    // If the guard flag leaked, this second call would spuriously throw "re-entrantly".
+    expect(() => applyEffectiveStats(world, entity, undefined, [])).not.toThrow();
   });
 });

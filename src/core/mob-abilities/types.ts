@@ -44,6 +44,19 @@ export interface MobAbilitySpawnCirclesGeometry {
 
 export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry;
 
+export type MobAbilityTargetingMode = 'player-position' | 'self';
+export type MobAbilityOriginMode = 'locked' | 'follows-caster';
+
+export interface MobAbilitySelfBuffDefinition {
+  readonly durationMs: number;
+  readonly movementSpeedMultiplier: number;
+  readonly meleeDamageMultiplier: number;
+  /** Multiplier applied to realized knockback displacement (`< 1` = resistant). */
+  readonly knockbackResistanceMultiplier: number;
+  /** Visual-only active aura radius in feet (used by engine VFX). */
+  readonly auraRadiusFt: number;
+}
+
 /**
  * A named handler that applies one ability's committed effect at resolution.
  * Handlers are ordinary typed functions (one per ability kind), never derived
@@ -94,6 +107,14 @@ export interface MobAbilityRuntimeDefinition {
         readonly radiusFt: number;
         readonly distanceFromCasterFt: number;
       };
+  /** Targeting mode for telegraph lock semantics (player-position or self). */
+  readonly targetingMode?: MobAbilityTargetingMode;
+  /** Origin lock mode for telegraph geometry. */
+  readonly originMode?: MobAbilityOriginMode;
+  /** When true, telegraph frames pin caster velocity to zero. */
+  readonly lockCasterDuringTelegraph?: boolean;
+  /** Optional self-buff payload consumed by runtime helper seams. */
+  readonly selfBuff?: MobAbilitySelfBuffDefinition;
   /** Named typed effect handler run at resolution. */
   readonly resolve: MobAbilityResolveHandler;
 }
@@ -175,6 +196,8 @@ export interface MobAbilityRuntime {
    * (which would remove the caster from `byEntity` before `PhaserBridge.sync`).
    */
   readonly pendingBursts: Array<MobAbilityBurst>;
+  /** Active self-buffs authored by ability handlers and ticked by the runtime. */
+  readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
   /**
    * Per-EID generation token, set on each `registerMobAbility` and cleared on
    * `clearMobAbility`. Compared against `MobAbilityInstanceState.registrationToken`
@@ -185,6 +208,16 @@ export interface MobAbilityRuntime {
   nextToken: number;
 }
 
+export interface MobAbilityActiveBuffState {
+  readonly abilityId: string;
+  readonly sourceId: string;
+  readonly movementSpeedMultiplier: number;
+  readonly meleeDamageMultiplier: number;
+  readonly knockbackResistanceMultiplier: number;
+  readonly auraRadiusFt: number;
+  remainingMs: number;
+}
+
 /** Create the default-off, empty runtime state for a fresh world. */
 export function createMobAbilityRuntime(): MobAbilityRuntime {
   return {
@@ -193,6 +226,7 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     byEntity: new Map(),
     cues: [],
     pendingBursts: [],
+    activeBuffsByEntity: new Map(),
     registrationTokens: new Map(),
     nextToken: 0,
   };
