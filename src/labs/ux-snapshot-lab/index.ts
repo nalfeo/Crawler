@@ -48,6 +48,8 @@ interface UxSnapshotProbeApi {
   setTrackedWaypointPx(x: number, y: number): void;
   getMinimapDockedBounds(): ScreenBounds | null;
   getMinimapOverlayViewportBounds(): ScreenBounds | null;
+  getMinimapOverlayWaypointArrowBounds(): ScreenBounds | null;
+  getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
 }
 
 type UxSnapshotProbeWindow = Window &
@@ -269,6 +271,8 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     setTrackedWaypointPx,
     getMinimapDockedBounds: () => hudUi?.getMinimapBounds() ?? null,
     getMinimapOverlayViewportBounds: () => hudUi?.getNavigationBounds().mapOverlay ?? null,
+    getMinimapOverlayWaypointArrowBounds: () => hudUi?.getMinimapOverlayWaypointArrowBounds() ?? null,
+    getMinimapRadarWaypointArrowBounds: () => hudUi?.getMinimapRadarWaypointArrowBounds() ?? null,
   };
 
   const openSampleModal = (): void => {

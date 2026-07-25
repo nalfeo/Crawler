@@ -178,12 +178,16 @@ export function createHudMinimap(scene: Phaser.Scene): {
    * harnesses tap the close button at its real (responsive) position.
    */
   getOverlayCloseBounds(): ScreenBounds | null;
+  /** Screen-space bounds of the overlay waypoint edge arrow when drawn. */
+  getOverlayWaypointArrowBounds(): ScreenBounds | null;
   /**
    * Screen-space bounds of the docked radar dial when visible, or null when it
    * is hidden (e.g. suppressed by an open character panel). Lets deterministic
    * e2e assert the minimap does not punch through a full-screen panel.
    */
   getDockedBounds(): ScreenBounds | null;
+  /** Screen-space bounds of the docked radar waypoint edge arrow when drawn. */
+  getRadarWaypointArrowBounds(): ScreenBounds | null;
   destroy(): void;
 } {
   // --- Round radar minimap chrome (top-right corner) ------------------------
@@ -369,6 +373,24 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let dragging = false;
   let lastPinchDist = 0;
   let lastTerritoryPaletteSignature = '';
+  let hudRadarScale = 1;
+  let lastOverlayWaypointArrowBounds: ScreenBounds | null = null;
+  let lastRadarWaypointArrowBounds: ScreenBounds | null = null;
+
+  function triangleBounds(
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    cx: number,
+    cy: number,
+  ): ScreenBounds {
+    const minX = Math.min(ax, bx, cx);
+    const maxX = Math.max(ax, bx, cx);
+    const minY = Math.min(ay, by, cy);
+    const maxY = Math.max(ay, by, cy);
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }
 
   function getGameSize(): { width: number; height: number } {
     // HUD geometry is laid out in design space (1280×720). After the HiDPI
@@ -404,6 +426,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     // without touching the per-tile clip math in drawRadar.
     const navLayout = resolveNavigationHudLayout(getUiScale(scene), 1);
     const radarScale = navLayout.radarScale;
+    hudRadarScale = radarScale;
     const scaledRadius = HUD_RADAR_RADIUS * radarScale;
     const scaledCx = navLayout.radarBounds.x + navLayout.radarBounds.width / 2;
     const scaledCy = navLayout.radarBounds.y + HUD_RADAR_DIAMETER * radarScale * 0.5;
@@ -736,6 +759,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
    */
   function drawOverlayArrows(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
     overlayArrowGraphics.clear();
+    lastOverlayWaypointArrowBounds = null;
     if (!viewState) {
       return;
     }
@@ -786,6 +810,14 @@ export function createHudMinimap(scene: Phaser.Scene): {
     overlayArrowGraphics.fillPath();
     overlayArrowGraphics.lineStyle(1, 0x020617, 0.7);
     overlayArrowGraphics.strokePath();
+    lastOverlayWaypointArrowBounds = triangleBounds(
+      tipX,
+      tipY,
+      backX - perpX,
+      backY - perpY,
+      backX + perpX,
+      backY + perpY,
+    );
   }
 
   /**
@@ -799,6 +831,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     floorMap: FloorMap,
     visited: Uint8Array,
   ): void {
+    lastRadarWaypointArrowBounds = null;
     const tileFt = floorMap.config.tileSizeFt;
     let ptx = lastPlayerWorldX / tileFt;
     let pty = lastPlayerWorldY / tileFt;
@@ -966,6 +999,22 @@ export function createHudMinimap(scene: Phaser.Scene): {
           radarScratch.lineTo(backX + perpX, backY + perpY);
           radarScratch.closePath();
           radarScratch.fillPath();
+          const localBounds = triangleBounds(
+            tipX,
+            tipY,
+            backX - perpX,
+            backY - perpY,
+            backX + perpX,
+            backY + perpY,
+          );
+          const radarOriginX = hudRadarCenterX - HUD_RADAR_RADIUS * hudRadarScale;
+          const radarOriginY = hudRadarCenterY - HUD_RADAR_RADIUS * hudRadarScale;
+          lastRadarWaypointArrowBounds = {
+            x: radarOriginX + localBounds.x * hudRadarScale,
+            y: radarOriginY + localBounds.y * hudRadarScale,
+            width: localBounds.width * hudRadarScale,
+            height: localBounds.height * hudRadarScale,
+          };
         }
       }
     }
@@ -1392,6 +1441,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const b = closeButtonBg.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
+    getOverlayWaypointArrowBounds: (): ScreenBounds | null =>
+      overlayOpen && !masterHidden ? lastOverlayWaypointArrowBounds : null,
     getDockedBounds: (): ScreenBounds | null => {
       if (masterHidden || !hudMapBg.visible) return null;
       const dial = hudMapBg.getBounds();
@@ -1402,6 +1453,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const bottom = Math.max(dial.bottom, label.bottom);
       return { x, y, width: right - x, height: bottom - y };
     },
+    getRadarWaypointArrowBounds: (): ScreenBounds | null =>
+      !masterHidden && hudMapBg.visible ? lastRadarWaypointArrowBounds : null,
     destroy,
   };
 }

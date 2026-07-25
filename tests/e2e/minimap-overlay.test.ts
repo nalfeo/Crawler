@@ -74,6 +74,8 @@ interface UxSnapshotProbeApi {
   setTrackedWaypointPx(x: number, y: number): void;
   getMinimapDockedBounds(): ScreenBounds | null;
   getMinimapOverlayViewportBounds(): ScreenBounds | null;
+  getMinimapOverlayWaypointArrowBounds(): ScreenBounds | null;
+  getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
 }
 
 interface UxSnapshotProbeWindow extends Window {
@@ -157,6 +159,20 @@ async function getMinimapOverlayViewportBounds(page: Page): Promise<ScreenBounds
   return bounds!;
 }
 
+async function getMinimapOverlayWaypointArrowBounds(page: Page): Promise<ScreenBounds | null> {
+  return page.evaluate(() =>
+    (
+      window as unknown as UxSnapshotProbeWindow
+    ).__uxSnapshotProbe!.getMinimapOverlayWaypointArrowBounds(),
+  );
+}
+
+async function getMinimapRadarWaypointArrowBounds(page: Page): Promise<ScreenBounds | null> {
+  return page.evaluate(() =>
+    (window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe!.getMinimapRadarWaypointArrowBounds(),
+  );
+}
+
 /** Save a screenshot to tmp/e2e-screenshots/ for debugging failures. */
 function saveDebugShot(buf: Buffer, filename: string): void {
   try {
@@ -207,6 +223,7 @@ describe('minimap visual regression', () => {
 
       let buf = await page.screenshot({ type: 'png' });
       let png = parsePng(buf);
+      expect(await getMinimapOverlayWaypointArrowBounds(page)).toBeNull();
       expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(false);
 
       const viewportCenterX = Math.round(viewport.x + viewport.width / 2);
@@ -217,20 +234,41 @@ describe('minimap visual regression', () => {
         await page.waitForTimeout(120);
       }
 
+      await page.waitForFunction(
+        () =>
+          Boolean(
+            (window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe?.getMinimapOverlayWaypointArrowBounds(),
+          ),
+        undefined,
+        { timeout: 2_000 },
+      );
+
       buf = await page.screenshot({ type: 'png' });
       saveDebugShot(buf, 'overlay-waypoint-edge-arrow.png');
       png = parsePng(buf);
-      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(true);
+      const overlayArrowBounds = boundsToScreen(
+        rect,
+        (await getMinimapOverlayWaypointArrowBounds(page))!,
+      );
+      expect(regionContainsColor(png, overlayArrowBounds, WAYPOINT, 30)).toBe(true);
 
       await page.mouse.move(viewportCenterX, viewportCenterY);
       await page.mouse.down();
       await page.mouse.move(viewportCenterX + 180, viewportCenterY, { steps: 8 });
       await page.mouse.up();
       await page.waitForTimeout(200);
+      await page.waitForFunction(
+        () =>
+          !(
+            window as unknown as UxSnapshotProbeWindow
+          ).__uxSnapshotProbe?.getMinimapOverlayWaypointArrowBounds(),
+        undefined,
+        { timeout: 2_000 },
+      );
 
       buf = await page.screenshot({ type: 'png' });
       png = parsePng(buf);
-      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(false);
+      expect(regionContainsColor(png, overlayArrowBounds, WAYPOINT, 30)).toBe(false);
     });
 
     it('renders safe-room floor tiles (teal) in the map content area', async () => {
@@ -410,18 +448,27 @@ describe('minimap visual regression', () => {
       saveDebugShot(buf, 'radar-waypoint-edge-arrow.png');
       let png = parsePng(buf);
       const rect = await getCanvasRect(page);
-      const dialCenter = gameToScreen(rect, RADAR_CX, RADAR_CY);
-      const scaleX = rect.width / GAME_W;
-      const edgeProbe = {
-        x: Math.round(dialCenter.x + 54 * scaleX),
-        y: Math.round(dialCenter.y - 10 * scaleX),
-        w: 20,
-        h: 20,
-      };
+      await page.waitForFunction(
+        () =>
+          Boolean(
+            (window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe?.getMinimapRadarWaypointArrowBounds(),
+          ),
+        undefined,
+        { timeout: 2_000 },
+      );
+      const edgeProbe = boundsToScreen(rect, (await getMinimapRadarWaypointArrowBounds(page))!);
 
       expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(true);
 
       await setTrackedWaypointPx(page, GAME_W / 2, GAME_H / 2);
+      await page.waitForFunction(
+        () =>
+          !(
+            window as unknown as UxSnapshotProbeWindow
+          ).__uxSnapshotProbe?.getMinimapRadarWaypointArrowBounds(),
+        undefined,
+        { timeout: 2_000 },
+      );
       buf = await page.screenshot({ type: 'png' });
       png = parsePng(buf);
       expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(false);
