@@ -454,6 +454,7 @@ export async function reconcileCanonicalPr(
 
 export async function ensureRequiredPublicationLabels(exec: Exec, repoRoot: string): Promise<void> {
   for (const label of REQUIRED_PUBLICATION_LABELS) {
+    if (await publicationLabelExists(exec, repoRoot, label.name)) continue;
     await mustExec(
       exec,
       'gh',
@@ -465,11 +466,27 @@ export async function ensureRequiredPublicationLabels(exec: Exec, repoRoot: stri
         label.color,
         '--description',
         label.description,
-        '--force',
       ],
       repoRoot,
     );
   }
+}
+
+async function publicationLabelExists(
+  exec: Exec,
+  repoRoot: string,
+  labelName: string,
+): Promise<boolean> {
+  const output = await mustExec(
+    exec,
+    'gh',
+    ['label', 'list', '--search', labelName, '--json', 'name', '--limit', '100'],
+    repoRoot,
+  );
+  const labels = z
+    .array(z.object({ name: z.string() }).passthrough())
+    .parse(JSON.parse(output));
+  return labels.some((label) => label.name === labelName);
 }
 
 export async function closeCanonicalPrOnConflict(
@@ -522,12 +539,21 @@ async function mustExec(
 ): Promise<string> {
   const result = await exec(command, args, { cwd });
   if (result.code !== 0) {
+    const failureOutput = result.stderr || result.stdout;
     throw new QueueCommitError(
       'git-failed',
-      `${command} ${args.join(' ')} failed (exit ${result.code}): ${result.stderr || result.stdout}`,
+      `${formatCommand(command, args)} failed (exit ${result.code}): ${failureOutput}`,
     );
   }
   return result.stdout;
+}
+
+function formatCommand(command: string, args: readonly string[]): string {
+  return [command, ...args.map(formatCommandArg)].join(' ');
+}
+
+function formatCommandArg(arg: string): string {
+  return /^[A-Za-z0-9_./:=,@%+-]+$/.test(arg) ? arg : JSON.stringify(arg);
 }
 
 function readJson(file: string): unknown {

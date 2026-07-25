@@ -22,7 +22,7 @@ Then load the relevant persona, recent handoffs, and any needed policy or guide 
 ### Sprite pipeline publication labels
 
 Repository bootstrap for the sprite publication path should include this GitHub
-label (the publisher now also re-ensures it idempotently before publishing):
+label (the publisher now creates it on demand if it is missing before publishing):
 
 - `art-only` — color `7057ff` — `Generated art-only changes eligible for guarded promotion`
 
