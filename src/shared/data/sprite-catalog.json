@@ -3479,6 +3479,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-camera-rig-var-4",
+    "kind": "sprite",
+    "label": "welcome-room-camera-rig-var-4",
+    "description": "Generated sprite from brief: welcome-room-camera-rig.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-camera-rig-var-4",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-camera-rig-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-desk-var-0",
     "kind": "sprite",
     "label": "welcome-room-desk-var-0",
