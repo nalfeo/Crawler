@@ -1,10 +1,41 @@
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const SERIALIZED_ACTIONS = new Set(['state', 'item-review', 'set-review', 'advance']);
+const SET_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function listAuthoredThemeSetIds(repoRoot) {
+  let entries;
+  try {
+    entries = readdirSync(path.join(repoRoot, 'data', 'theme-equipment-sets'), {
+      withFileTypes: true,
+    });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+    .map((entry) => entry.name.slice(0, -'.json'.length))
+    .filter((id) => SET_ID_PATTERN.test(id))
+    .sort();
+}
+
+export function resolveThemeSetId(repoRoot, requestedSetId) {
+  if (requestedSetId) return requestedSetId;
+  const available = listAuthoredThemeSetIds(repoRoot);
+  if (available.length === 1) return available[0];
+  if (available.length === 0) {
+    throw new Error(
+      'No authored theme-equipment sets were found in data/theme-equipment-sets. Author a set plan, then reopen this canvas.',
+    );
+  }
+  throw new Error(
+    `Multiple theme-equipment sets are available (${available.join(', ')}). Reopen this canvas with an explicit setId.`,
+  );
+}
 
 export function createSerializedThemeEquipmentReviewRunner(execute) {
   const tails = new Map();
@@ -45,7 +76,7 @@ export async function runThemeEquipmentReviewCommand(command, repoRoot) {
 }
 
 export async function dispatchThemeEquipmentWorkflow(repoRoot, setId, action) {
-  if (action !== 'run-phase' && action !== 'publish') {
+  if (action !== 'init' && action !== 'run-phase' && action !== 'publish') {
     throw new Error(`Unsupported theme-equipment workflow action "${action}".`);
   }
   const args = [
@@ -57,6 +88,9 @@ export async function dispatchThemeEquipmentWorkflow(repoRoot, setId, action) {
     '--field',
     `set_id=${setId}`,
   ];
+  if (action === 'init') {
+    args.push('--field', `plan_path=data/theme-equipment-sets/${setId}.json`);
+  }
   try {
     await execFileAsync('gh', args, {
       cwd: repoRoot,

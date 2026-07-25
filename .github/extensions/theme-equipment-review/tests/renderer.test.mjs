@@ -15,7 +15,14 @@ test('renders the four review phases, revision controls, coverage, and workflow 
     'coveredSlotCount',
     'Run / rerun unresolved items on GitHub',
     'Publish complete set atomically on GitHub',
+    'Initialize set on GitHub',
   ]) {
     assert.match(html, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+});
+
+test('exposes the authored plan path for an uninitialized set', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  assert.match(html, /data\/theme-equipment-sets\//);
+  assert.match(html, /action: 'init'/);
 });

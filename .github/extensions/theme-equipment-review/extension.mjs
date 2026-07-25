@@ -4,6 +4,7 @@ import { CanvasError, createCanvas, joinSession } from '@github/copilot-sdk/exte
 import {
   createSerializedThemeEquipmentReviewRunner,
   dispatchThemeEquipmentWorkflow,
+  resolveThemeSetId,
   runThemeEquipmentReviewCommand,
 } from './lib/bridge.mjs';
 import { startThemeEquipmentReviewServer } from './lib/server.mjs';
@@ -28,10 +29,10 @@ const runCommand = createSerializedThemeEquipmentReviewRunner((command) =>
 );
 
 async function ensureServer(ctx) {
-  const setId = ctx.input?.setId;
+  const requestedSetId = ctx.input?.setId;
   const existing = instances.get(ctx.instanceId);
   if (existing) {
-    if (existing.setId !== setId) {
+    if (requestedSetId && existing.setId !== requestedSetId) {
       throw new CanvasError(
         'set_mismatch',
         `Canvas instance "${ctx.instanceId}" is already bound to "${existing.setId}".`,
@@ -41,6 +42,12 @@ async function ensureServer(ctx) {
   }
   const pending = pendingStartups.get(ctx.instanceId);
   if (pending) return pending;
+  let setId;
+  try {
+    setId = resolveThemeSetId(REPO_ROOT, requestedSetId);
+  } catch (error) {
+    throw new CanvasError('set_required', error?.message ?? String(error));
+  }
   const startup = startThemeEquipmentReviewServer({
     instanceId: ctx.instanceId,
     setId,
@@ -91,10 +98,10 @@ const canvas = createCanvas({
       setId: {
         type: 'string',
         pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$',
-        description: 'Stable theme-equipment set ID.',
+        description:
+          'Stable theme-equipment set ID. Omit to use the only authored set in data/theme-equipment-sets.',
       },
     },
-    required: ['setId'],
   },
   actions: [
     {
@@ -173,11 +180,11 @@ const canvas = createCanvas({
     {
       name: 'dispatch_workflow',
       description:
-        'Dispatch paid phase generation or atomic publication to the trusted GitHub workflow.',
+        'Dispatch durable set initialization, paid phase generation, or atomic publication to the trusted GitHub workflow.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
-        properties: { action: { type: 'string', enum: ['run-phase', 'publish'] } },
+        properties: { action: { type: 'string', enum: ['init', 'run-phase', 'publish'] } },
         required: ['action'],
       },
       handler: async (ctx) => {

@@ -73,9 +73,35 @@ export function renderHtml(bootstrap) {
         selectedPhase ??= state.phase === 'complete' ? 'variant-approval' : state.phase;
         render();
       } catch (error) {
-        app.className = 'error';
-        app.textContent = error.message + '\\n\\nIf this set lives in Azure, refresh .env.local with npm run setup:azure:env.';
+        state = null;
+        renderUninitialized(error.message);
       }
+    }
+
+    function renderUninitialized(message) {
+      const missing = /was not found/.test(message);
+      app.className = '';
+      app.innerHTML =
+        '<header><h1>' + esc(bootstrap.setId) + '</h1>' +
+        '<div class="subtitle">' + (missing ? 'No durable state yet' : 'State unavailable') + '</div></header>' +
+        '<main><section class="panel">' +
+        '<p class="error">' + esc(message) + '</p>' +
+        (missing
+          ? '<p class="muted">Initialize the durable set from its authored plan (data/theme-equipment-sets/' + esc(bootstrap.setId) + '.json) on GitHub, then refresh once the run completes.</p>' +
+            '<div class="controls"><button data-dispatch="init">Initialize set on GitHub</button><button data-refresh>Refresh</button></div>'
+          : '<p class="muted">If this set lives in Azure, refresh .env.local with npm run setup:azure:env.</p>' +
+            '<div class="controls"><button data-refresh>Refresh</button></div>') +
+        '</section></main>';
+      document.querySelector('[data-refresh]')?.addEventListener('click', load);
+      document.querySelector('[data-dispatch]')?.addEventListener('click', async () => {
+        if (!confirm('Dispatch init for ' + bootstrap.setId + ' on GitHub?')) return;
+        try {
+          await request('/api/dispatch', { method: 'POST', body: JSON.stringify({ action: 'init' }) });
+          alert('Initialization dispatched. Refresh after the run completes.');
+        } catch (error) {
+          alert(error.message);
+        }
+      });
     }
 
     function reviewButtons(review, scope, id = '') {
