@@ -1225,7 +1225,12 @@ if (
     // deduplicated loop incident so the failure is visible to an investigation
     // agent. Without this, the short-circuit exit bypassed the stale-exhaustion
     // incident path entirely, leaving exhausted locked PRs without a filed incident.
-    const stallAttempt = state.progressKey ? (state.attempt ?? 0) : 0;
+    //
+    // Guard: only count attempts accumulated against the SAME head SHA.  After a
+    // rebase or push the old head's attempts are stale; applying them to the new
+    // head would file an incident with wrong blockers/fingerprint.
+    const headMatchesState = !state.headSha || state.headSha === pr.head.sha;
+    const stallAttempt = state.progressKey && headMatchesState ? (state.attempt ?? 0) : 0;
     if (stallAttempt >= 2) {
       const exhaustedFingerprint = state.fingerprint || '';
       if (live) {
@@ -1252,6 +1257,10 @@ if (
             .replace(/[\r\n]/g, ' ')
             .slice(0, 500);
           process.stderr.write(`loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`);
+          // Re-throw: successful incident filing is a prerequisite for releasing
+          // the lock.  Retaining the lock means the next stale-sweep will retry
+          // filing rather than silently abandoning the exhausted PR.
+          throw err;
         }
       } else {
         process.stdout.write(

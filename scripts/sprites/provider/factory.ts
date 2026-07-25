@@ -71,7 +71,6 @@ function resolveBackend(value: string | undefined, varName: string): Backend {
   );
 }
 
-
 /**
  * Resolve the Azure OpenAI **chat** deployment from the environment,
  * with a graceful fallback to the **vision** deployment.

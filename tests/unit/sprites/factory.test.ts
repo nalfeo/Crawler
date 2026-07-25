@@ -153,6 +153,12 @@ describe('unknown backend rejection (ADR 0072 — foundry retired)', () => {
     );
   });
 
+  it('SPRITES_SYNTH_PROVIDER=foundry throws for createBriefSelectorProvider', () => {
+    expect(() =>
+      createBriefSelectorProvider({ env: { SPRITES_SYNTH_PROVIDER: 'foundry' } }),
+    ).toThrow(/Unknown SPRITES_SYNTH_PROVIDER/);
+  });
+
   it('rejects other unknown backend values too', () => {
     expect(() => createImageProvider({ env: { SPRITES_PROVIDER: 'bedrock' } })).toThrow(
       /Unknown SPRITES_PROVIDER/,
@@ -174,5 +180,3 @@ describe('local-a1111 backend', () => {
     );
   });
 });
-
-

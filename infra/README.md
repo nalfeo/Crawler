@@ -100,22 +100,19 @@ SPRITES_ASSET_QUEUE=azure-queue               # 'noop' (default) | 'azure-queue'
 # Legacy aliases still honoured: SPRITES_AZURE_CACHE, SPRITES_AZURE_CACHE_DIR,
 # SPRITES_AZURE_CACHE_MAX_BYTES, SPRITES_AZURE_OFFLINE.
 
-# ── Azure AI Foundry (optional; ADR 0033) ──────────────────────────────────
-# Populated by `npm run setup:azure:foundry:env`. Values are set but the
-# SPRITES_*_PROVIDER=foundry selectors stay COMMENTED, so azure-openai remains
-# the default until you opt a stage in. FOUNDRY_*_MODEL are deployment ALIASES
-# (the /openai/deployments/{alias} path segment), not raw catalog model IDs.
-# FOUNDRY_ENDPOINT=https://aif-crawler-nalfeo.services.ai.azure.com
-# FOUNDRY_API_KEY=<paste key from setup>
-# FOUNDRY_API_VERSION=2025-04-01-preview
-# FOUNDRY_IMAGE_MODEL=gpt-image-1
-# FOUNDRY_TEXT_MODEL=gpt-4o            # also serves vision
-# FOUNDRY_VISION_MODEL=gpt-4o
-# FOUNDRY_BRIEF_SELECTOR_MODEL=gpt-4o-mini   # MUST differ from FOUNDRY_TEXT_MODEL
-# SPRITES_PROVIDER=foundry             # image stage -> Foundry
-# SPRITES_TEXT_PROVIDER=foundry        # brief/variation text -> Foundry
-# SPRITES_SYNTH_PROVIDER=foundry       # synth + brief selector -> Foundry
-# SPRITES_VISION_PROVIDER=foundry      # judge/vision -> Foundry
+# ── Azure AI Foundry (RETIRED — ADR 0072) ──────────────────────────────────
+# Foundry vars are no longer read. Safe to delete from your .env.local.
+# FOUNDRY_ENDPOINT=
+# FOUNDRY_API_KEY=
+# FOUNDRY_API_VERSION=
+# FOUNDRY_IMAGE_MODEL=
+# FOUNDRY_TEXT_MODEL=
+# FOUNDRY_VISION_MODEL=
+# FOUNDRY_BRIEF_SELECTOR_MODEL=
+# SPRITES_PROVIDER=foundry             # ← now throws Unknown SPRITES_PROVIDER
+# SPRITES_TEXT_PROVIDER=foundry        # ← now throws Unknown SPRITES_TEXT_PROVIDER
+# SPRITES_SYNTH_PROVIDER=foundry       # ← now throws Unknown SPRITES_SYNTH_PROVIDER
+# SPRITES_VISION_PROVIDER=foundry      # ← now throws Unknown SPRITES_VISION_PROVIDER
 ```
 
 Alternatively, use a **connection string** (simplifies local Azurite use):
@@ -235,78 +232,32 @@ pwsh -NoProfile -File scripts/setup-azure-resources.tests.ps1
 
 ---
 
-## Azure AI Foundry (optional — ADR 0033)
+## Azure AI Foundry — **RETIRED (ADR 0072)**
 
-`azure-openai` is the default asset-gen backend. Azure AI **Foundry** is an
-opt-in alternative that unlocks per-stage model selection (ADR 0033). Phase 2
-groundwork provisions a Foundry endpoint and writes creds; flipping any stage to
-it is a manual, per-selector opt-in.
+> The Foundry backend was retired in favour of standardising the entire asset
+> pipeline on **`azure-openai`** (direct Azure OpenAI resource). See
+> `docs/knowledge/adr/0072-retire-foundry-standardize-azure-openai.md` for
+> rationale. Passing `foundry` as any `SPRITES_*_PROVIDER` value now throws an
+> unknown-backend error at factory time. The `setup:azure:foundry` and
+> `setup:azure:foundry:env` npm scripts and the `-IncludeFoundry` PowerShell flag
+> have been removed. The `.env.local` template block below is kept for reference
+> so existing dotfiles can be cleaned up, but the values are no longer read.
 
-**What gets provisioned** (`-IncludeFoundry`): a separate resource group
-(`rg-crawler-foundry`) + an `az cognitiveservices account --kind AIServices`
-account (`aif-crawler-nalfeo`, default region `eastus`), plus an **OpenAI-format
-starter catalog** deployed on the same `/openai/deployments/{alias}` route the
-factory already uses:
-
-| Deployment alias | Model       | Serves stage(s)                                 |
-| ---------------- | ----------- | ----------------------------------------------- |
-| `gpt-image-1`    | gpt-image-1 | `FOUNDRY_IMAGE_MODEL`                           |
-| `gpt-4o`         | gpt-4o      | `FOUNDRY_TEXT_MODEL` + `_VISION_MODEL` (shared) |
-| `gpt-4o-mini`    | gpt-4o-mini | `FOUNDRY_BRIEF_SELECTOR_MODEL`                  |
-
-Text and vision share the one `gpt-4o` deployment, so the catalog is **three
-deployments / four `FOUNDRY_*_MODEL` vars**. The brief selector uses a distinct
-`gpt-4o-mini` alias because the factory rejects a selector that equals the text
-deployment — `scripts/azure-foundry-plan.ps1` enforces the same invariant at
-provision time.
-
-> **Scope:** Phase 2 ships the **OpenAI-compatible subset only**. Non-OpenAI
-> models (FLUX/SDXL/Llama/Phi) and the model **router** need the Azure AI
-> **Model-Inference** route rather than `/openai/deployments/{alias}`, so they
-> are deferred to Phase 4 (see ADR 0033).
-
-**Provision + write env** (adds a `FOUNDRY_*` block to `.env.local`; region
-override via `-FoundryLocation`):
-
-```powershell
-# Provision Foundry + write FOUNDRY_* creds to .env.local
-npm run setup:azure:foundry
-# Env-only (Foundry already provisioned) — fetch creds, refresh .env.local:
-npm run setup:azure:foundry:env
+```dotenv
+# ── Azure AI Foundry (RETIRED — ADR 0072) ─────────────────────────────────
+# These env vars are no longer consumed by the provider factory. Safe to delete.
+# FOUNDRY_ENDPOINT=
+# FOUNDRY_API_KEY=
+# FOUNDRY_API_VERSION=
+# FOUNDRY_IMAGE_MODEL=
+# FOUNDRY_TEXT_MODEL=
+# FOUNDRY_VISION_MODEL=
+# FOUNDRY_BRIEF_SELECTOR_MODEL=
+# SPRITES_PROVIDER=foundry        ← throws Unknown SPRITES_PROVIDER
+# SPRITES_TEXT_PROVIDER=foundry   ← throws Unknown SPRITES_TEXT_PROVIDER
+# SPRITES_SYNTH_PROVIDER=foundry  ← throws Unknown SPRITES_SYNTH_PROVIDER
+# SPRITES_VISION_PROVIDER=foundry ← throws Unknown SPRITES_VISION_PROVIDER
 ```
-
-The env writer sets the `FOUNDRY_*` values but leaves every
-`SPRITES_*_PROVIDER=foundry` line **commented**, so nothing changes until you
-uncomment a selector. To route, e.g., only image generation through Foundry, set
-`SPRITES_PROVIDER=foundry`; leave the rest on `azure-openai`.
-
-**GitHub secrets** (`-SyncGitHubSecrets -IncludeFoundry` — or
-`npm run setup:azure:foundry` with `-SyncGitHubSecrets`) writes:
-
-- `FOUNDRY_ENDPOINT`, `FOUNDRY_API_KEY`, `FOUNDRY_API_VERSION`
-- `FOUNDRY_IMAGE_MODEL`, `FOUNDRY_TEXT_MODEL`, `FOUNDRY_VISION_MODEL`,
-  `FOUNDRY_BRIEF_SELECTOR_MODEL`
-
-**Live smoke (operator step, not CI).** After provisioning, verify the endpoint
-actually serves the deployments with a chat + image call against the generated
-env:
-
-```powershell
-# Chat (text/selector) — expects HTTP 200 + a completion
-curl "$env:FOUNDRY_ENDPOINT/openai/deployments/gpt-4o/chat/completions?api-version=$env:FOUNDRY_API_VERSION" `
-  -H "api-key: $env:FOUNDRY_API_KEY" -H "Content-Type: application/json" `
-  -d '{"messages":[{"role":"user","content":"ping"}],"max_tokens":5}'
-
-# Image — expects HTTP 200 + b64_json
-curl "$env:FOUNDRY_ENDPOINT/openai/deployments/gpt-image-1/images/generations?api-version=$env:FOUNDRY_API_VERSION" `
-  -H "api-key: $env:FOUNDRY_API_KEY" -H "Content-Type: application/json" `
-  -d '{"prompt":"a red pixel","size":"1024x1024","n":1}'
-```
-
-> **Sidecar bootstrap gap:** the sprite sidecar's Azure auto-bootstrap only
-> writes the Storage/OpenAI env, **not** `FOUNDRY_*`. Foundry users must run
-> `npm run setup:azure:foundry:env` themselves; sidecar parity is a tracked
-> follow-up (ADR 0033).
 
 ---
 
