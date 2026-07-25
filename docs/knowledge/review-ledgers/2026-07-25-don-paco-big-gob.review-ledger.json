@@ -16,13 +16,49 @@
       "notes": "Alt A: general reusable compound hazard/public-geometry model; adopted in narrower form by explicitly adding shared authoritative projectile/slick state instead of a Don-Paco-only visual shim. Alt B: schedule via mob-ability runtime but hand travel/zones to unrelated projectile/surface subsystems; rejected because the issue requires renderer/AI/projectile/impact/slick occupancy to consume one committed five-path geometry contract. Review forced explicit decisions for authoritative post-resolution state, exact cooldown anchor semantics, cone/circle/slick AI consumption, wall semantics, five-path verification, and correcting the stale Don Paco status metadata."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Round 1 found two high-confidence issues: (1) death-ordering defect in mobAbilitySystem — tickActiveProjectiles/tickActiveZones ran before caster validity checks, allowing onImpact to fire for dead casters; (2) zone-dodge vector preservation predicate only checked for telegraph cues but not slick-zone occupancy, allowing AI to walk through active slicks. Both fixed: pre-tick caster validation pass added; preserveMobAbilityDodge extended to include active-zone occupancy check."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "No further concerns. Death-ordering fix and zone-dodge vector preservation confirmed correct. All cleanup paths (clear, death, despawn, disable, invalid target, final-travel-frame death) tested and passing. No Math.random(), no Phaser imports in core, no non-determinism risks."
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "claude-sonnet-5"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Secondary model confirmed the two code-review findings and additionally flagged the missing ADR for the projectile-fan geometry contract spanning core/engine/AI/arena. ADR 0076 created covering projectile/zone ownership, cleanup ordering, death-ordering contract, zone-dodge preservation, and shared geometry consumers."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "claude-sonnet-5"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "All concerns resolved. ADR 0076 accepted. Code fixes verified by targeted unit tests including final-travel-frame death regression test. No further concerns from any reviewer."
+        }
+      ]
     }
   }
 }

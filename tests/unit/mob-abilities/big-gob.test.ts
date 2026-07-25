@@ -300,6 +300,25 @@ describe('THE BIG GOB — announcements and cleanup', () => {
       invalidTarget.world.mobAbilities.byEntity.get(invalidTarget.don)?.resolvedCasts ?? 0,
     ).toBe(0);
   });
+
+  it('does not fire onImpact for projectiles owned by a caster that dies on the final travel frame', () => {
+    // Death-ordering regression: validate casters before ticking projectiles so a
+    // boss killed on frame N-1 cannot trigger onImpact (damage + zone spawn) on
+    // frame N when the projectile reaches its travel limit.
+    const h = buildHarness();
+    arm(h);
+    // Advance to one frame before impact (projectiles in-flight, caster still alive).
+    step(h.world, FIRST_IMPACT_FRAME - 1);
+    expect(h.world.mobAbilities.activeProjectiles).toHaveLength(5);
+    expect(h.world.mobAbilities.activeZones).toHaveLength(0);
+    // Kill the caster on this frame.
+    h.world.stores.health.current[h.don] = 0;
+    // Step one more frame: the caster must be cleared BEFORE projectiles are ticked,
+    // so onImpact is never called and no zones are spawned.
+    step(h.world, 1);
+    expect(h.world.mobAbilities.activeProjectiles).toHaveLength(0);
+    expect(h.world.mobAbilities.activeZones).toHaveLength(0);
+  });
 });
 
 describe('THE BIG GOB — canonical pipeline hard gate', () => {

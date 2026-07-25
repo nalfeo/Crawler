@@ -111,7 +111,13 @@
         "title": "Implement Don Paco's THE BIG GOB ability",
         "url": "https://github.com/nalfeo/Crawler/issues/1952"
       },
-      "implementationPullRequest": null,
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 2016,
+        "state": "open",
+        "title": "Implement Don Paco's THE BIG GOB on the typed mob-ability runtime",
+        "url": "https://github.com/nalfeo/Crawler/pull/2016"
+      },
       "blockers": ["floor2-boss-production-enable"]
     },
     {

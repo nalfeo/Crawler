@@ -3775,15 +3775,22 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.farmPullX = 0;
           this.farmPullY = 0;
         }
-        const preserveMobAbilityDodge = world.mobAbilities.cues.some(
-          (cue) => cue.phase === 'telegraph',
-        );
+        const preserveMobAbilityDodge =
+          world.mobAbilities.cues.some((cue) => cue.phase === 'telegraph') ||
+          world.mobAbilities.activeZones.some((zone) => {
+            const dx = playerX - zone.circle.x;
+            const dy = playerY - zone.circle.y;
+            return dx * dx + dy * dy <= zone.circle.radiusFt * zone.circle.radiusFt;
+          });
         // The steering heading already encodes predictive spacing; blending the
         // legacy single-closest-threat dodge on top would double-count and
         // reintroduce the oscillation that widening it caused (commit f4f538d7),
         // so retire the additive travel dodge whenever steering drives the frame.
         // Mob-ability danger cues are different: their committed geometry is not
         // represented in travel steering, so preserve that dodge contribution.
+        // Slick-zone occupancy: if the player is currently inside an active zone,
+        // the zone-branch dodge vector must also be preserved so the AI exits
+        // rather than walking through the slick after travel steering takes over.
         if (!preserveMobAbilityDodge) {
           this.dodgeVecX = 0;
           this.dodgeVecY = 0;

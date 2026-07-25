@@ -721,6 +721,18 @@ export function mobAbilitySystem(world: GameWorld): void {
   const runtime = world.mobAbilities;
   runtime.cues.length = 0;
   if (!runtime.enabled || !runtime.encounterActive) return;
+
+  // Validate and clear invalid casters BEFORE ticking owned projectiles/zones.
+  // A caster killed in the preceding frame must not fire onImpact or apply zone
+  // effects on the next tick. clearMobAbility removes that caster's projectiles
+  // and zones so tickActiveProjectiles/tickActiveZones only process live state.
+  for (const casterEid of [...runtime.byEntity.keys()]) {
+    const inst = runtime.byEntity.get(casterEid);
+    if (inst !== undefined && !isCasterValid(world, casterEid, inst)) {
+      clearMobAbility(world, casterEid);
+    }
+  }
+
   tickActiveBuffs(world);
   tickActiveProjectiles(world);
   tickActiveZones(world);
@@ -732,7 +744,9 @@ export function mobAbilitySystem(world: GameWorld): void {
     const inst = runtime.byEntity.get(casterEid);
     if (inst === undefined) continue;
 
-    // Cleanup: dead/despawned/recycled casters release all owned state.
+    // Caster validity was confirmed at frame start; run pruneOwnedEntities and
+    // phase transitions. The isCasterValid guard remains here as a safety net
+    // for edge cases introduced mid-loop by beginTelegraph/resolveCast.
     if (!isCasterValid(world, casterEid, inst)) {
       clearMobAbility(world, casterEid);
       continue;
