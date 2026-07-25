@@ -40,7 +40,11 @@ const WARMUP_FRAMES = 2;
 const TARGET_HP = 1_000_000;
 
 type EquipmentBalanceBuildId =
-  'single-target' | 'aoe' | 'cadence-crit' | 'active-ability' | 'defensive-encumbrance';
+  | 'single-target'
+  | 'aoe'
+  | 'cadence-crit'
+  | 'active-ability'
+  | 'defensive-encumbrance';
 
 interface GearSpec {
   readonly baseId: string;

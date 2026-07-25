@@ -205,7 +205,8 @@ export type ThemeEquipmentCollectionJudgeResult = z.infer<typeof collectionJudge
 export type ThemeEquipmentSetPhaseReview = z.infer<typeof phaseSetReviewSchema>;
 export type ThemeEquipmentSetPublication = z.infer<typeof themeEquipmentSetPublicationSchema>;
 export type ThemeEquipmentSetItem =
-  z.infer<typeof weaponItemSchema> | z.infer<typeof equipmentItemSchema>;
+  | z.infer<typeof weaponItemSchema>
+  | z.infer<typeof equipmentItemSchema>;
 export type ThemeEquipmentSetState = z.infer<typeof themeEquipmentSetStateSchema>;
 
 /** Artifact `kind` marking a variant-approval artifact as the human-approved pick. */
@@ -1020,26 +1021,30 @@ export function buildThemeEquipmentSetStateFromPlan(
   const parsedPlan = themeEquipmentSetPlanSchema.parse(plan);
 
   const items: ThemeEquipmentSetItem[] = [
-    ...parsedPlan.weapons.map((weapon): ThemeEquipmentSetItem => ({
-      id: weapon.id,
-      displayName: weapon.displayName,
-      kind: 'weapon',
-      weaponType: weapon.weaponType,
-      revision: 0,
-      revisionStatus: 'open',
-      frozenPhases: [],
-      phases: emptyThemeEquipmentItemPhases(),
-    })),
-    ...parsedPlan.equipment.map((equipment): ThemeEquipmentSetItem => ({
-      id: equipment.id,
-      displayName: equipment.displayName,
-      kind: 'equipment',
-      slots: [...equipment.slots],
-      revision: 0,
-      revisionStatus: 'open',
-      frozenPhases: [],
-      phases: emptyThemeEquipmentItemPhases(),
-    })),
+    ...parsedPlan.weapons.map(
+      (weapon): ThemeEquipmentSetItem => ({
+        id: weapon.id,
+        displayName: weapon.displayName,
+        kind: 'weapon',
+        weaponType: weapon.weaponType,
+        revision: 0,
+        revisionStatus: 'open',
+        frozenPhases: [],
+        phases: emptyThemeEquipmentItemPhases(),
+      }),
+    ),
+    ...parsedPlan.equipment.map(
+      (equipment): ThemeEquipmentSetItem => ({
+        id: equipment.id,
+        displayName: equipment.displayName,
+        kind: 'equipment',
+        slots: [...equipment.slots],
+        revision: 0,
+        revisionStatus: 'open',
+        frozenPhases: [],
+        phases: emptyThemeEquipmentItemPhases(),
+      }),
+    ),
   ];
 
   return parseThemeEquipmentSetState({

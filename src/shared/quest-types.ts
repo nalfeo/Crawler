@@ -19,7 +19,12 @@ import floor2QuestPack from './data/quests.floor2.json';
  * - `equip`          — player has `equipmentId` equipped.
  */
 export type QuestObjectiveKind =
-  'counter' | 'collect' | 'talk' | 'goal' | 'haveEquippable' | 'equip';
+  | 'counter'
+  | 'collect'
+  | 'talk'
+  | 'goal'
+  | 'haveEquippable'
+  | 'equip';
 
 export interface QuestObjectiveDef {
   /** Unique within the quest. */
@@ -132,7 +137,9 @@ export interface FetchAndEquipTemplateDef {
 }
 
 export type QuestTemplateDef =
-  GoalFlagTemplateDef | KillTargetsTemplateDef | FetchAndEquipTemplateDef;
+  | GoalFlagTemplateDef
+  | KillTargetsTemplateDef
+  | FetchAndEquipTemplateDef;
 
 export interface QuestPackQuestSource {
   readonly id: string;
@@ -381,7 +388,11 @@ export function objectiveTarget(objective: QuestObjectiveDef): number {
  * - `complete`       — errand done.
  */
 export type ShopkeeperStage =
-  'not-met' | 'awaiting-prize' | 'ready-to-buy' | 'awaiting-equip' | 'complete';
+  | 'not-met'
+  | 'awaiting-prize'
+  | 'ready-to-buy'
+  | 'awaiting-equip'
+  | 'complete';
 
 /**
  * Quest-indicator affordance state for a Floor 1 NPC.

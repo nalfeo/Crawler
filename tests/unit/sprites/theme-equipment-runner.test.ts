@@ -139,7 +139,8 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
     expect(state.phases.roster.collectionJudge?.score).toBe(4);
     expect(evaluate).toHaveBeenCalledTimes(1);
     const request = evaluate.mock.calls[0]?.[0] as
-      { readonly images: readonly unknown[]; readonly userPrompt: string } | undefined;
+      | { readonly images: readonly unknown[]; readonly userPrompt: string }
+      | undefined;
     expect(request?.images).toEqual([]);
     expect(request?.userPrompt).toContain('Burnished steel plate');
   });

@@ -329,7 +329,8 @@ declare global {
       getWorld?: () => GameWorld;
       getPlayerEid?: () => number;
       getIntroData?: () =>
-        { playerName: string; playerGender: 'female' | 'male' | 'other' } | undefined;
+        | { playerName: string; playerGender: 'female' | 'male' | 'other' }
+        | undefined;
       getDirectorCommentaryText?: () => string | null;
       lighting: {
         getConfig: () => LightingConfig;
@@ -696,7 +697,8 @@ export class MainGameScene extends Phaser.Scene {
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
     const introData = this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
-      { playerName: string; playerGender: 'female' | 'male' | 'other' } | undefined;
+      | { playerName: string; playerGender: 'female' | 'male' | 'other' }
+      | undefined;
     if (introData) {
       this.world.playerName = introData.playerName;
       this.world.playerGender = introData.playerGender;
@@ -919,7 +921,8 @@ export class MainGameScene extends Phaser.Scene {
               getPlayerEid: () => this.playerEid,
               getIntroData: () =>
                 this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
-                  { playerName: string; playerGender: 'female' | 'male' | 'other' } | undefined,
+                  | { playerName: string; playerGender: 'female' | 'male' | 'other' }
+                  | undefined,
               getDirectorCommentaryText: () => this.directorCommentaryText?.text ?? null,
             }
           : {}),
