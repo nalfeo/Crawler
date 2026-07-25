@@ -3,7 +3,8 @@
 **Date:** 2026-07-25  
 **Session:** ci-recovery-r07-outdated-thread-bypass  
 **Apple estimate:** 🍎 (1 — small script fix + regression tests, no gameplay code)  
-**Closes:** #2047  
+**Closes:** #2047
+**PR:** #2058  
 
 ## Systems touched
 
