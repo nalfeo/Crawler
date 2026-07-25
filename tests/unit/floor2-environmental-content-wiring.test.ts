@@ -23,19 +23,17 @@ describe('Floor 2 environmental content wiring', () => {
 
   it('floor2Scenario.ts imports placePropsForFloor from propPlacer', () => {
     const source = readFileSync('src/game/floor2Scenario.ts', 'utf-8');
-    expect(source).toContain(
-      "import { placePropsForFloor } from './systems/propPlacer.js'",
-    );
+    expect(source).toContain("import { placePropsForFloor } from './systems/propPlacer.js'");
   });
 
   it('floor2Scenario.ts defines spawnFloor2HarvestableNodes function', () => {
     const source = readFileSync('src/game/floor2Scenario.ts', 'utf-8');
-    expect(source).toContain('function spawnFloor2HarvestableNodes(world: GameWorld)');
+    expect(source).toContain('function spawnFloor2HarvestableNodes(world: GameWorld,');
   });
 
   it('floor2Scenario.ts calls spawnFloor2HarvestableNodes inside initializeFloor2Scenario', () => {
     const source = readFileSync('src/game/floor2Scenario.ts', 'utf-8');
-    expect(source).toContain('spawnFloor2HarvestableNodes(world)');
+    expect(source).toContain('spawnFloor2HarvestableNodes(world,');
   });
 
   it('floor2Scenario.ts calls placePropsForFloor with the manifest props config', () => {

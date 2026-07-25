@@ -173,7 +173,7 @@ describe('Cave decoration defs', () => {
   it('all cave defs have a positive weight', () => {
     for (const id of CAVE_DEFS) {
       const def = getDecorationDef(id)!;
-      expect((def.weight ?? 100)).toBeGreaterThan(0);
+      expect(def.weight ?? 100).toBeGreaterThan(0);
     }
   });
 });
@@ -320,9 +320,7 @@ describe('initializeFloor2Scenario harvestable spawning', () => {
     initializeFloor2Scenario(world, playerEid);
 
     const nodes = query(world.ecs, [Harvestable, Position]);
-    const defIndices = new Set(
-      nodes.map((eid) => world.stores.harvestable.defIndex[eid] ?? -1),
-    );
+    const defIndices = new Set(nodes.map((eid) => world.stores.harvestable.defIndex[eid] ?? -1));
 
     // Should include all 3 floor-2 ore types (indices 6, 7, 8).
     expect(defIndices.has(6)).toBe(true); // iron-vein
@@ -336,7 +334,7 @@ describe('initializeFloor2Scenario harvestable spawning', () => {
     initializeFloor2Scenario(world, playerEid);
 
     const nodes = query(world.ecs, [Harvestable, Position]);
-    const positions = nodes.map((eid) => ({
+    const positions = Array.from(nodes).map((eid) => ({
       x: world.stores.position.x[eid] ?? 0,
       y: world.stores.position.y[eid] ?? 0,
     }));
