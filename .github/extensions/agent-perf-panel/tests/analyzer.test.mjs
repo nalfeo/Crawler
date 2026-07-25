@@ -771,3 +771,60 @@ test('waterfall bars floor rendered width at 1px so the true axis position is no
   assert.ok(html.includes('.wf-plot .wf-row .track .seg { min-width: 1px; }'));
   assert.ok(!html.includes('min-width: 2px'));
 });
+
+test('buildSummary aggregates per-tool context cost and ranks the biggest sinks', () => {
+  // A fast tool that returns a huge payload is the classic compaction cause,
+  // so context ranking must not follow latency ranking.
+  const raw = makeRaw({
+    tools: [
+      {
+        name: 'grep',
+        durationMs: 10,
+        success: true,
+        start: 0,
+        end: 10,
+        turnIndex: 0,
+        resultSizeBytes: 300_000,
+      },
+      {
+        name: 'grep',
+        durationMs: 10,
+        success: true,
+        start: 10,
+        end: 20,
+        turnIndex: 0,
+        resultSizeBytes: 100_000,
+      },
+      {
+        name: 'build',
+        durationMs: 60_000,
+        success: true,
+        start: 20,
+        end: 60_020,
+        turnIndex: 0,
+        resultSizeBytes: 500,
+      },
+    ],
+  });
+
+  const s = buildSummary(raw);
+
+  const grep = s.toolAggregates.find((t) => t.name === 'grep');
+  assert.equal(grep.totalResultBytes, 400_000);
+  assert.equal(grep.avgResultBytes, 200_000);
+  assert.equal(grep.maxResultBytes, 300_000);
+
+  // Latency order puts the slow build first; context order must not.
+  assert.equal(s.toolAggregates[0].name, 'build');
+  assert.equal(s.contextSinks[0].name, 'grep');
+  assert.equal(s.contextSinks[1].name, 'build');
+});
+
+test('contextSinks omits tools that never returned a payload', () => {
+  const raw = makeRaw({
+    tools: [{ name: 'edit', durationMs: 5, success: true, start: 0, end: 5, turnIndex: 0 }],
+  });
+  const s = buildSummary(raw);
+  assert.equal(s.toolAggregates.find((t) => t.name === 'edit').totalResultBytes, 0);
+  assert.deepEqual(s.contextSinks, []);
+});

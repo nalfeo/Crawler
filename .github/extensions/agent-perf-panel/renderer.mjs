@@ -517,6 +517,17 @@ const CLIENT_SCRIPT = `
         <td class="num">\${fmtMs(r.p95)}</td>
         <td class="num">\${fmtMs(r.max)}</td>
         <td class="num">\${r.failures > 0 ? '<span style="color:var(--err)">' + r.failures + '</span>' : '0'}</td>
+        <td class="num" title="Bytes this tool pulled into context across the session">\${fmtBytes(r.totalResultBytes)}</td>
+      </tr>\`).join('');
+    // Ranked by context cost, which is a different order from latency: a fast
+    // tool returning a huge payload is a common reason sessions compact.
+    const sinkRows = (s.contextSinks || []).map((r) => \`
+      <tr>
+        <td>\${esc(r.name)}</td>
+        <td class="num">\${fmtInt(r.count)}</td>
+        <td class="num">\${fmtBytes(r.totalResultBytes)}</td>
+        <td class="num">\${fmtBytes(r.avgResultBytes)}</td>
+        <td class="num">\${fmtBytes(r.maxResultBytes)}</td>
       </tr>\`).join('');
     return \`
       <div class="summary-block">
@@ -526,7 +537,13 @@ const CLIENT_SCRIPT = `
         </div>
         <div class="panel">
           <h2>By tool name</h2>
-          <table><thead><tr><th>Tool</th><th class="num">Count</th><th class="num">Total</th><th class="num">Avg</th><th class="num">p50</th><th class="num">p95</th><th class="num">Max</th><th class="num">Fail</th></tr></thead><tbody>\${aggRows}</tbody></table>
+          <table><thead><tr><th>Tool</th><th class="num">Count</th><th class="num">Total</th><th class="num">Avg</th><th class="num">p50</th><th class="num">p95</th><th class="num">Max</th><th class="num">Fail</th><th class="num">Context</th></tr></thead><tbody>\${aggRows}</tbody></table>
+        </div>
+        <div class="panel">
+          <h2>Biggest context sinks</h2>
+          \${sinkRows
+            ? \`<table><thead><tr><th>Tool</th><th class="num">Count</th><th class="num">Total bytes</th><th class="num">Avg</th><th class="num">Max</th></tr></thead><tbody>\${sinkRows}</tbody></table>\`
+            : '<div class="empty">No tool returned a measurable payload.</div>'}
         </div>
       </div>
     \`;

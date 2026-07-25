@@ -1,0 +1,23 @@
+{
+  "schema": "crawler.velocity.experiment.v1",
+  "id": "smoke-reasoning-effort",
+  "hypothesis": "On a replayed Crawler PR with a frozen test verifier, raising reasoning effort from low to high on the same model reduces the number of agent turns needed to reach first green, at the cost of more tokens.",
+  "factor": "model",
+  "pack": "docs/knowledge/metrics/velocity/packs/smoke-blood-pool.json",
+  "trials": 1,
+  "maxAiCredits": 600,
+  "timeoutMs": 1800000,
+  "defaultModel": "claude-sonnet-4.6",
+  "arms": [
+    {
+      "id": "effort-low",
+      "description": "Baseline: claude-sonnet-4.6 at low reasoning effort.",
+      "reasoningEffort": "low"
+    },
+    {
+      "id": "effort-high",
+      "description": "Treatment: same model and environment, high reasoning effort.",
+      "reasoningEffort": "high"
+    }
+  ]
+}
