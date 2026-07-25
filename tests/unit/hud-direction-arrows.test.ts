@@ -200,4 +200,26 @@ describe('resolveDirectionArrowStates', () => {
     const BOTTOM_EDGE_Y = 720 / 2 + (720 / 2 - 96); // CY + RY = 624
     expect(state!.screenY).toBeCloseTo(BOTTOM_EDGE_Y, 0);
   });
+
+  it('places axial directions exactly on the correct screen edge', () => {
+    // Straight right (angle=0): must land on right edge (x = CX+RX = 1184).
+    const [right] = resolveDirectionArrowStates([waypoint('r', 100, 0)], 0, 0, 1);
+    expect(right).toBeDefined();
+    expect(right!.screenX).toBeCloseTo(1280 / 2 + (1280 / 2 - 96), 0); // 1184
+
+    // Straight down (angle=π/2): must land on bottom edge (y = CY+RY = 624).
+    const [down] = resolveDirectionArrowStates([waypoint('d', 0, 100)], 0, 0, 1);
+    expect(down).toBeDefined();
+    expect(down!.screenY).toBeCloseTo(720 / 2 + (720 / 2 - 96), 0); // 624
+
+    // Straight up (angle=-π/2): must land on top edge (y = CY-RY = 96).
+    const [up] = resolveDirectionArrowStates([waypoint('u', 0, -100)], 0, 0, 1);
+    expect(up).toBeDefined();
+    expect(up!.screenY).toBeCloseTo(720 / 2 - (720 / 2 - 96), 0); // 96
+
+    // Straight left (angle=π): must land on left edge (x = CX-RX = 96).
+    const [left] = resolveDirectionArrowStates([waypoint('l', -100, 0)], 0, 0, 1);
+    expect(left).toBeDefined();
+    expect(left!.screenX).toBeCloseTo(1280 / 2 - (1280 / 2 - 96), 0); // 96
+  });
 });

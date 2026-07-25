@@ -760,15 +760,18 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
     const nx = dx / dist;
     const ny = dy / dist;
-    // Rectangle-edge intersection from viewport center to boundary.
-    const vRX = viewport.width / 2;
-    const vRY = viewport.height / 2;
-    const tH = nx !== 0 ? vRX / Math.abs(nx) : Infinity;
-    const tV = ny !== 0 ? vRY / Math.abs(ny) : Infinity;
-    const t = Math.min(tH, tV) - OVERLAY_EDGE_ARROW_INSET;
-    if (t <= 0) {
+    // Rectangle-edge intersection: inset the half-extents so the tip sits a
+    // fixed perpendicular distance from whichever edge it hits, regardless of
+    // the approach angle (subtracting from t would shift along the ray, giving
+    // inconsistent inset near corners).
+    const vRX = viewport.width / 2 - OVERLAY_EDGE_ARROW_INSET;
+    const vRY = viewport.height / 2 - OVERLAY_EDGE_ARROW_INSET;
+    if (vRX <= 0 || vRY <= 0) {
       return;
     }
+    const tH = nx !== 0 ? vRX / Math.abs(nx) : Infinity;
+    const tV = ny !== 0 ? vRY / Math.abs(ny) : Infinity;
+    const t = Math.min(tH, tV);
     const tipX = viewport.centerX + nx * t;
     const tipY = viewport.centerY + ny * t;
     const perpX = -ny * OVERLAY_EDGE_ARROW_SIZE;
