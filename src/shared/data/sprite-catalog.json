@@ -1141,6 +1141,57 @@
     "row": 0
   },
   {
+    "id": "generated:crystal-cannon-v1-var-0",
+    "kind": "sprite",
+    "label": "crystal-cannon-v1-var-0",
+    "description": "Generated sprite from brief: crystal-cannon-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "crystal-cannon-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/crystal-cannon-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:crystal-cannon-v1-var-1",
+    "kind": "sprite",
+    "label": "crystal-cannon-v1-var-1",
+    "description": "Generated sprite from brief: crystal-cannon-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "crystal-cannon-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/crystal-cannon-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:crystal-cannon-v1-var-15",
+    "kind": "sprite",
+    "label": "crystal-cannon-v1-var-15",
+    "description": "Generated sprite from brief: crystal-cannon-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "crystal-cannon-v1-var-15",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/crystal-cannon-v1-var-15.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:crystal-fiber-var-4",
     "kind": "sprite",
     "label": "crystal-fiber-var-4",
