@@ -173,7 +173,29 @@ function chooseDynamicDoorTile(
       }
     }
   }
+  // Deterministic fallback: stay on the FIRST declared eligible edge tile, never
+  // the authored prop origin (which may be on a different edge than `slot.edges`).
+  for (const edge of edges) {
+    const fallbackTile = edgeRingTiles(edge, bounds)[0];
+    if (fallbackTile) {
+      return { x: fallbackTile.x, y: fallbackTile.y };
+    }
+  }
   return { x: bounds.x + slot.x, y: bounds.y + slot.y };
+}
+
+function addRoomBoundsToAvoidSet(
+  avoid: Set<number>,
+  width: number,
+  bounds: RoomBounds,
+  exceptIdx?: number,
+): void {
+  for (let yy = bounds.y; yy < bounds.y + bounds.height; yy += 1) {
+    for (let xx = bounds.x; xx < bounds.x + bounds.width; xx += 1) {
+      const idx = yy * width + xx;
+      if (idx !== exceptIdx) avoid.add(idx);
+    }
+  }
 }
 
 /** Flood the tiles reachable from the player spawn over passable/door tiles. */
@@ -352,7 +374,12 @@ export function carveSetPieceRoom(
   const interiorY = originY + Math.floor(fpH / 2);
   if (reachableAfter[interiorY * w + interiorX] !== 1) {
     const primary = doors[0]!;
-    carveConnectorToReachable(floorMap, primary.x, primary.y, reachableBefore);
+    const avoid = new Set<number>();
+    for (const other of floorMap.roomGraph.getAll()) {
+      if (other.id === updated.id) continue;
+      addRoomBoundsToAvoidSet(avoid, w, other.bounds);
+    }
+    carveConnectorToReachable(floorMap, primary.x, primary.y, reachableBefore, avoid);
   }
 
   return {

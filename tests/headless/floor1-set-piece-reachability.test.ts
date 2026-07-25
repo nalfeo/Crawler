@@ -5,7 +5,7 @@ import { checkFloor1SetPieceReachability } from '../../src/game/set-piece-reacha
  * Local smoke panel for the prefab set-piece reachability hard gate: the carved
  * welcome-room must be reachable from spawn with every door + NPC anchor pathable
  * on every seed. The broad zero-tolerance sweep (>10 runs) runs in CI via
- * `.github/workflows/set-piece-reachability.yml`; this panel gives fast local
+ * `CI` workflow (`set-piece-reachability` job); this panel gives fast local
  * feedback and guards against regressions in `npm run verify`. Seeds are a fixed
  * deterministic panel — NO cherry-picking (rule #12): a single sealed room here
  * is a real bug, not a seed to swap out.

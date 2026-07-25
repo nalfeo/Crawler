@@ -12,17 +12,6 @@ on:
         description: 'Number of sequential Floor 1 seeds to run (1..1000)'
         type: string
         default: '200'
-  pull_request:
-    # Run the hard gate automatically in CI (rule #15: >10 runs via CI) whenever
-    # the set-piece prefab carve, its data, or the sweep itself changes.
-    paths:
-      - 'src/core/map/**'
-      - 'src/game/floorScenario.ts'
-      - 'src/game/set-piece-reachability.ts'
-      - 'src/shared/set-piece-types.ts'
-      - 'src/shared/data/set-pieces.json'
-      - 'scripts/agent/set-piece/reachability-sweep.ts'
-      - '.github/workflows/set-piece-reachability.yml'
 
 permissions:
   contents: read

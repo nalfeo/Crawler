@@ -1019,6 +1019,9 @@ function chooseObjectiveTiles(world: GameWorld): {
 function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
+  for (const safeRoom of floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE)) {
+    floorMap.roomGraph.setRole(safeRoom.id, RoomRole.NORMAL);
+  }
   const tile = floorMap.worldToTile(roomPos.x, roomPos.y);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) return;
@@ -1762,6 +1765,15 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
           const lb = lockedRoom.bounds;
           for (let yy = lb.y; yy < lb.y + lb.height; yy += 1) {
             for (let xx = lb.x; xx < lb.x + lb.width; xx += 1) {
+              avoid.add(yy * fm.width + xx);
+            }
+          }
+        }
+        for (const otherRoom of fm.roomGraph.getAll()) {
+          if (otherRoom.id === welcomeRoom.id) continue;
+          const ob = otherRoom.bounds;
+          for (let yy = ob.y; yy < ob.y + ob.height; yy += 1) {
+            for (let xx = ob.x; xx < ob.x + ob.width; xx += 1) {
               avoid.add(yy * fm.width + xx);
             }
           }

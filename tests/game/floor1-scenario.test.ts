@@ -1598,6 +1598,22 @@ describe('floor1Scenario', () => {
       }
     });
 
+    it('keeps exactly one SAFE room after welcome-room promotion', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const floorMap = world.floorMap!;
+      const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
+      expect(safeRooms).toHaveLength(1);
+
+      const welcomeRoomId = world.floorScenario?.welcomeRoomId;
+      expect(typeof welcomeRoomId).toBe('number');
+      if (typeof welcomeRoomId !== 'number') return;
+      expect(safeRooms[0]?.id).toBe(welcomeRoomId);
+    });
+
     it('regression: seed 665790 spawns final boss at a passable tile (not in a wall)', () => {
       // Seed 665790 produces a boss room where variety post-processing leaves only a
       // single passable interior tile outside the center±2 random search window.

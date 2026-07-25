@@ -179,12 +179,12 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
   // tutorial-goon NPC tile after placement (floorScenario ~1793), which can fall
   // on the ring or just outside the interior, making `getRoomAt` return the wrong
   // room (or -1) and producing a FALSE gate failure (code-review: seed 21). We
-  // also do NOT use the SAFE role: the generator pre-assigns SAFE to its own safe
-  // room (dungeon/roles.ts), so there are TWO SAFE rooms and role lookup returns
-  // the generator's, not the carved welcome office. The recorded room id is the
-  // one carveSetPieceRoom resized in place, so it is unambiguous even when a
-  // generator room coincidentally matches the 10x9 footprint (floor1 config
-  // allows rooms that small).
+  // also do NOT use the SAFE role: role-selection policy has changed over time
+  // (historically this floor had two SAFE rooms), and role lookup is inherently
+  // ambiguous if that invariant regresses again. The recorded room id is the one
+  // carveSetPieceRoom resized in place, so it is unambiguous even when a generator
+  // room coincidentally matches the 10x9 footprint (floor1 config allows rooms
+  // that small).
   const welcomeRoomId = scenario.welcomeRoomId;
   const room =
     typeof welcomeRoomId === 'number' && welcomeRoomId >= 0

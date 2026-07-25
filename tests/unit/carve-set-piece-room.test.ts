@@ -240,6 +240,60 @@ describe('carveSetPieceRoom', () => {
     const leftDoor = result.doors!.find((d) => d.x === b.x && d.y === 3);
     expect(leftDoor).toBeDefined();
   });
+
+  it('falls back to the first declared dynamic edge tile when no eligible edge faces reachable floor', () => {
+    const { floorMap, targetRoomId } = buildMap({ corridorReachesRing: false });
+    const def = makeDef({
+      // Authored prop is on the bottom edge, but this dynamic slot may only use LEFT.
+      doorSlots: [{ propId: 'door-1', mode: 'dynamic', edges: ['left'] }],
+    });
+    const result = carveSetPieceRoom(floorMap, floorMap.roomGraph.get(targetRoomId)!, def);
+    expect(result.fitted).toBe(true);
+    const b = result.bounds!;
+    expect(result.doors).toEqual([{ x: b.x, y: b.y + 1, connectsTo: -1 }]);
+  });
+
+  it('connector backstop never punches a side entrance through another room wall', () => {
+    const flags = new Uint8Array(W * H);
+    const terrain = new Uint8Array(W * H).fill(TerrainType.STONE_WALL);
+    const setFloor = (x: number, y: number): void => {
+      flags[y * W + x] = TilePresets.FLOOR;
+      terrain[y * W + x] = TerrainType.STONE_FLOOR;
+    };
+    // Spawn room interior.
+    for (let y = 2; y <= 4; y += 1) for (let x = 2; x <= 4; x += 1) setFloor(x, y);
+    // Target room interior (will be carved as prefab).
+    for (let y = 3; y <= 6; y += 1) for (let x = 11; x <= 14; x += 1) setFloor(x, y);
+    // Corridor stops short of target ring (forces connector).
+    for (let x = 5; x <= 8; x += 1) setFloor(x, 3);
+    // A different room is reachable through its own left-side entry door.
+    const other = { x: 12, y: 8, width: 6, height: 6 };
+    for (let y = 9; y <= 12; y += 1) for (let x = 13; x <= 16; x += 1) setFloor(x, y);
+    setFloor(12, 10); // existing doorway on this room's left wall
+    for (let y = 3; y <= 10; y += 1) setFloor(6, y);
+    for (let x = 6; x <= 12; x += 1) setFloor(x, 10);
+
+    const tileMap = new TileMap(W, H, flags);
+    const graph = new RoomGraph();
+    graph.add({ x: 1, y: 1, width: 5, height: 5 }, [], [], RoomRole.SPAWN);
+    const targetRoomId = graph.add({ x: 10, y: 2, width: 6, height: 6 }, [], [], RoomRole.SAFE);
+    graph.add(other, [{ x: 12, y: 10, connectsTo: -1 }], [], RoomRole.NORMAL);
+    const floorMap = new FloorMap(CFG, tileMap, graph, terrain, { x: 3, y: 3 });
+
+    const result = carveSetPieceRoom(floorMap, floorMap.roomGraph.get(targetRoomId)!, makeDef());
+    expect(result.fitted).toBe(true);
+
+    // Before the fix the shortest connector tunneled through this room's top wall.
+    expect(floorMap.tileMap.isPassable(13, 8)).toBe(false);
+    expect(floorMap.tileMap.isDoor(13, 8)).toBe(false);
+
+    // Connectivity still restored through valid non-room rock/corridor routes.
+    const reach = reachableFromSpawn(floorMap);
+    const b = result.bounds!;
+    const cx = b.x + Math.floor(b.width / 2);
+    const cy = b.y + Math.floor(b.height / 2);
+    expect(reach[cy * W + cx]).toBe(1);
+  });
 });
 
 describe('carveConnectorToReachable', () => {
