@@ -45,8 +45,9 @@ barely overlap.
 +3.5 turns, yet emitted 29% fewer output tokens (shorter per turn), cost **2.7× less**, and
 still finished 20% faster in wall clock. The extra turns are cheap turns.
 
-**Reliability was identical on this task** — 4/4 versus 4/4. That is the load-bearing
-result: a cheap model that fails trials is not cheap, and this one did not fail.
+**Observed reliability was identical in this sample** — 4/4 versus 4/4. That is
+encouraging, but at one task and n=4 per arm it is not enough to claim pass-rate
+equivalence.
 
 **But haiku's turn count is much more variable.** Sonnet ran 9, 9, 10, 10 — a 1-turn
 spread. Haiku ran 10, 12, 14, 19 — a 9-turn spread, nearly 2× at the top end. On this task
@@ -63,8 +64,8 @@ fix the measurement first.
 
 ## What this does and does not license
 
-- It **does** support defaulting small, well-scoped, test-verified replay tasks to
-  `claude-haiku-4.5`.
+- It **does** demonstrate large cost/speed gains on this small, well-scoped,
+  test-verified replay task, conditional on successful execution.
 - It does **not** say anything about code quality, policy compliance, or design judgement.
   The verifier runs only the PR's own tests, so "green" means the tests pass — nothing more.
   Haiku's diffs were not reviewed for adherence to repo conventions.
