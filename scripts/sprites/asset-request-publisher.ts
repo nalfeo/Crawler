@@ -69,6 +69,20 @@ interface PullRequestRef {
   readonly url: string;
 }
 
+interface RequiredLabel {
+  readonly name: string;
+  readonly color: string;
+  readonly description: string;
+}
+
+const REQUIRED_PUBLICATION_LABELS: readonly RequiredLabel[] = [
+  {
+    name: 'art-only',
+    color: '7057ff',
+    description: 'Generated art-only changes eligible for guarded promotion',
+  },
+];
+
 export interface AssetRequestPublisherOptions {
   readonly repoRoot: string;
   readonly store: RunStore;
@@ -98,6 +112,7 @@ export async function publishSelectedAssetRequests(
         error instanceof Error ? error.message : String(error),
       );
     }
+    await ensureRequiredPublicationLabels(exec, options.repoRoot);
 
     const pendingTerminal: Array<{
       controller: ReturnType<typeof createIssueCheckpointController>;
@@ -410,6 +425,7 @@ export async function reconcileCanonicalPr(
     );
     return open[0];
   }
+  await ensureRequiredPublicationLabels(exec, repoRoot);
   const output = await mustExec(
     exec,
     'gh',
@@ -434,6 +450,35 @@ export async function reconcileCanonicalPr(
     throw new Error(`Canonical PR creation did not yield exactly one open PR: ${output}`);
   }
   return created[0]!;
+}
+
+export async function ensureRequiredPublicationLabels(exec: Exec, repoRoot: string): Promise<void> {
+  for (const label of REQUIRED_PUBLICATION_LABELS) {
+    if (await publicationLabelExists(exec, repoRoot, label.name)) {
+      continue;
+    }
+    await mustExec(
+      exec,
+      'gh',
+      ['label', 'create', label.name, '--color', label.color, '--description', label.description],
+      repoRoot,
+    );
+  }
+}
+
+async function publicationLabelExists(
+  exec: Exec,
+  repoRoot: string,
+  labelName: string,
+): Promise<boolean> {
+  const output = await mustExec(
+    exec,
+    'gh',
+    ['label', 'list', '--search', labelName, '--json', 'name', '--limit', '100'],
+    repoRoot,
+  );
+  const labels = z.array(z.object({ name: z.string() }).passthrough()).parse(JSON.parse(output));
+  return labels.some((label) => label.name === labelName);
 }
 
 export async function closeCanonicalPrOnConflict(
@@ -486,12 +531,21 @@ async function mustExec(
 ): Promise<string> {
   const result = await exec(command, args, { cwd });
   if (result.code !== 0) {
+    const failureOutput = result.stderr || result.stdout;
     throw new QueueCommitError(
       'git-failed',
-      `${command} ${args.join(' ')} failed (exit ${result.code}): ${result.stderr || result.stdout}`,
+      `${formatCommand(command, args)} failed (exit ${result.code}): ${failureOutput}`,
     );
   }
   return result.stdout;
+}
+
+function formatCommand(command: string, args: readonly string[]): string {
+  return [command, ...args.map(formatCommandArg)].join(' ');
+}
+
+function formatCommandArg(arg: string): string {
+  return /^[A-Za-z0-9_./:=,@%+-]+$/.test(arg) ? arg : JSON.stringify(arg);
 }
 
 function readJson(file: string): unknown {
