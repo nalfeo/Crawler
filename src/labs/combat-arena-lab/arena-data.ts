@@ -19,7 +19,9 @@ import {
   createUndercityMobCallDefinition,
   createBambooFedBerserkDefinition,
   createTongueRepossessionDefinition,
+  createSovereignSporeBloomDefinition,
   createVerdigrisGlamourDefinition,
+  createRomanCandleCoronationDefinition,
   registerMobAbility,
   setMobAbilitiesEnabled,
 } from '../../core/index.js';
@@ -530,6 +532,10 @@ const F2_QUEEN_MAB = floor2EnemyPack.archetypes.find((a) => a.id === 'faerie-bos
 const F2_SQUICK = floor2EnemyPack.archetypes.find((a) => a.id === 'ratfolk-boss')!;
 const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-boss')!;
 const F2_BIG_MAMA_BUFO = floor2EnemyPack.archetypes.find((a) => a.id === 'toadkin-boss')!;
+const F2_SOVEREIGN_CAP = floor2EnemyPack.archetypes.find((a) => a.id === 'myconid-boss')!;
+/** King Skritt the Unburnt — the kobold boss that owns Roman Candle Coronation. */
+const F2_KING_SKRITT = floor2EnemyPack.archetypes.find((a) => a.id === 'kobold-boss')!;
+const F2_BIG_MAMA_BUFO = floor2EnemyPack.archetypes.find((a) => a.id === 'toadkin-boss')!;
 
 /**
  * Spawn Queen Mab and arm Verdigris Glamour through the CANONICAL mob-ability
@@ -591,6 +597,45 @@ function spawnBigPandaWeiArena(
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   setMobAbilitiesEnabled(world, true);
   registerMobAbility(world, eid, createBambooFedBerserkDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnBigMamaBufoArena(
+function spawnSovereignCapArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_SOVEREIGN_CAP);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createSovereignSporeBloomDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+/**
+ * Spawn King Skritt the Unburnt and arm ROMAN-CANDLE CORONATION through the
+ * canonical mob-ability runtime. Twelve straight non-homing crown-flame
+ * projectiles radiate along telegraphed spokes; every other cast rotates the
+ * whole pattern by exactly 15 degrees.
+ */
+function spawnKingSkryttArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_KING_SKRITT);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createRomanCandleCoronationDefinition());
   activateMobAbilityEncounter(world);
   return [eid];
 }
@@ -706,6 +751,24 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
       "Big Mama Bufo solo, with TONGUE REPOSSESSION armed through the canonical mob-ability runtime: 8s eligibility, 1.25s hostile-red lane locked to the player's position, moderate hit damage, pull to 5ft in front of Bufo, and a brief miss recovery punish window.",
     entries: [],
     customSpawnFn: spawnBigMamaBufoArena,
+  },
+  {
+    id: 'f2-sovereign-cap',
+    name: 'F2: The Sovereign Cap (Sovereign Spore Bloom)',
+    floor: 'floor2',
+    description:
+      'The Sovereign Cap solo, with Sovereign Spore Bloom armed through the canonical mob-ability runtime: 9s eligibility, 1.6s locked hostile-red triangle telegraph, moderate impact damage, then 4s persistent toxic cloud rims dealing repeated light damage.',
+    entries: [],
+    customSpawnFn: spawnSovereignCapArena,
+  },
+  {
+    id: 'f2-king-skritt',
+    name: 'F2: King Skritt the Unburnt (Roman Candle Coronation)',
+    floor: 'floor2',
+    description:
+      'King Skritt the Unburnt solo, with ROMAN-CANDLE CORONATION armed through the canonical mob-ability runtime: 8s eligibility, 1.3s twelve-spoke hostile-red telegraph, twelve simultaneous crown-flame projectiles, alternating 15-degree rotation every other cast.',
+    entries: [],
+    customSpawnFn: spawnKingSkryttArena,
   },
   // ── Custom / blank ───────────────────────────────────────────────────────
   {

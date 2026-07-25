@@ -71,6 +71,12 @@ export interface BottleneckReport {
   findings: string[];
 }
 
+interface MergedPrPage {
+  prs: PrRecord[];
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
 function hoursBetween(from: string, to: string): number {
   return (Date.parse(to) - Date.parse(from)) / HOUR_MS;
 }
@@ -261,22 +267,162 @@ export function deriveFindings(report: Omit<BottleneckReport, 'findings'>): stri
   return findings;
 }
 
-function fetchMergedPrs(root: string, limit: number): PrRecord[] {
-  const raw = execFileSync(
+/**
+ * `gh pr list --json commits,reviews` costs roughly
+ * `limit × 100 commits × 100 authors` GraphQL nodes, so anything above ~50 PRs
+ * per request trips GitHub's hard 500,000-node ceiling. Page in small chunks,
+ * but keep a stable PR-creation sort with GraphQL `endCursor` so long-lived PRs
+ * are neither skipped nor duplicated when merge order differs from creation order.
+ */
+const PR_PAGE_SIZE = 25;
+
+function fetchRepositorySlug(root: string): { owner: string; repo: string } {
+  const slug = execFileSync(
     'gh',
-    [
-      'pr',
-      'list',
-      '--state',
-      'merged',
-      '--limit',
-      String(limit),
-      '--json',
-      'number,title,createdAt,mergedAt,additions,deletions,changedFiles,reviews,commits',
-    ],
-    { cwd: root, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 },
+    ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+    },
+  ).trim();
+  const [owner, repo] = slug.split('/');
+  if (!owner || !repo) {
+    throw new Error(`Could not determine repository slug from gh repo view output: ${slug}`);
+  }
+  return { owner, repo };
+}
+
+function fetchMergedPrPage(
+  root: string,
+  repository: { owner: string; repo: string },
+  pageSize: number,
+  cursor?: string | null,
+): MergedPrPage {
+  const query = `
+    query($owner: String!, $repo: String!, $pageSize: Int!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        pullRequests(
+          states: MERGED
+          first: $pageSize
+          after: $cursor
+          orderBy: { field: CREATED_AT, direction: DESC }
+        ) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            number
+            title
+            createdAt
+            mergedAt
+            additions
+            deletions
+            changedFiles
+            reviews(first: 100) {
+              nodes { submittedAt }
+            }
+            commits(first: 100) {
+              nodes {
+                commit { committedDate }
+              }
+            }
+          }
+        }
+      }
+    }`;
+  const args = [
+    'api',
+    'graphql',
+    '-f',
+    `query=${query}`,
+    '-F',
+    `owner=${repository.owner}`,
+    '-F',
+    `repo=${repository.repo}`,
+    '-F',
+    `pageSize=${pageSize}`,
+  ];
+  if (cursor) {
+    args.push('-F', `cursor=${cursor}`);
+  }
+  const raw = execFileSync('gh', args, {
+    cwd: root,
+    encoding: 'utf8',
+    maxBuffer: 128 * 1024 * 1024,
+  });
+  const parsed = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        pullRequests?: {
+          pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+          nodes?: Array<{
+            number: number;
+            title: string;
+            createdAt: string;
+            mergedAt: string | null;
+            additions: number;
+            deletions: number;
+            changedFiles: number;
+            reviews?: { nodes?: Array<{ submittedAt?: string | null }> };
+            commits?: { nodes?: Array<{ commit?: { committedDate?: string | null } }> };
+          }>;
+        };
+      };
+    };
+  };
+  const connection = parsed.data?.repository?.pullRequests;
+  return {
+    prs: (connection?.nodes ?? []).map((pr) => ({
+      number: pr.number,
+      title: pr.title,
+      createdAt: pr.createdAt,
+      mergedAt: pr.mergedAt,
+      additions: pr.additions,
+      deletions: pr.deletions,
+      changedFiles: pr.changedFiles,
+      reviews: (pr.reviews?.nodes ?? []).map((review) => ({
+        submittedAt: review.submittedAt ?? null,
+      })),
+      commits: (pr.commits?.nodes ?? []).map((commit) => ({
+        committedDate: commit.commit?.committedDate ?? null,
+      })),
+    })),
+    hasNextPage: connection?.pageInfo?.hasNextPage === true,
+    endCursor: connection?.pageInfo?.endCursor ?? null,
+  };
+}
+
+export function collectMergedPrPages(
+  fetchPage: (pageSize: number, cursor?: string | null) => MergedPrPage,
+  limit: number,
+): PrRecord[] {
+  const collected: PrRecord[] = [];
+  const seen = new Set<number>();
+  let cursor: string | null = null;
+
+  while (collected.length < limit) {
+    const page = fetchPage(Math.min(PR_PAGE_SIZE, limit - collected.length), cursor);
+    if (page.prs.length === 0) break;
+
+    let added = 0;
+    for (const pr of page.prs) {
+      if (seen.has(pr.number)) continue;
+      seen.add(pr.number);
+      collected.push(pr);
+      added += 1;
+    }
+    if (added === 0 || !page.hasNextPage || !page.endCursor) break;
+    cursor = page.endCursor;
+  }
+
+  return collected.slice(0, limit);
+}
+
+export function fetchMergedPrs(root: string, limit: number): PrRecord[] {
+  const repository = fetchRepositorySlug(root);
+  return collectMergedPrPages(
+    (pageSize, cursor) => fetchMergedPrPage(root, repository, pageSize, cursor),
+    limit,
   );
-  return JSON.parse(raw) as PrRecord[];
 }
 
 export function buildReport(root: string, prs: readonly PrRecord[]): BottleneckReport {

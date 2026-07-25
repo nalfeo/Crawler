@@ -1,0 +1,50 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "perf-profile-target-selection",
+  "task_title": "perf:profile - make perf target selection measured, not guessed",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "plan_divergence": "minor",
+      "notes": "Adversarial plan review of the perf:profile design. 8 findings, all accepted and folded in: report self AND inclusive time; group frames by name+url+line; surface-scope the gate (sim -> perf:profile, render/load -> Chrome trace); require a multi-seed panel; allow a documented low-risk GC/spike exception but forbid bundling small wins to clear the bar; state self-vs-inclusive scope on Amdahl ceilings; narrow the 3-apple trigger to risk patterns rather than a blanket core-hot-path rule; require escape/alias regression coverage rather than only a reentrancy guard.",
+      "models": ["gpt-5.5"],
+      "alternatives_considered": 2,
+      "adversarial": true
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "notes": "A crashed run was silently accepted as a valid profile; docs advertised a --json <path> form the CLI rejected.",
+          "models": ["gpt-5.5"],
+          "resolved_count": 2,
+          "concerns_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "notes": "The Run Complete marker check still accepts Outcome: ERROR because runHeadless catches mid-run exceptions and the CLI prints the marker first. Replaced with an Outcome: allowlist.",
+          "models": ["gpt-5.5"],
+          "resolved_count": 1,
+          "concerns_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "notes": "Clean. Verified HEALTHY_OUTCOMES matches RunStats[outcome] exactly, STALLED is safe to profile, the tsx entrypoint guard cannot silently no-op on Windows, all fail() paths terminate, and importing the CLI in a test does not run main().",
+          "models": ["claude-sonnet-4.6"],
+          "resolved_count": 0,
+          "concerns_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true
+    }
+  }
+}

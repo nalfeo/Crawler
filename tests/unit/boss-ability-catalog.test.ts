@@ -272,12 +272,17 @@ describe('Floor 2 boss ability delivery status', () => {
     );
   });
 
-  it('derives all current work as blocked without storing an overall stage', () => {
+  it('derives the current backlog as blocked with the active king-skritt slice in progress', () => {
     const records = buildBossAbilityStatusRecords();
-    expect(records.every((record) => record.stage === 'blocked')).toBe(true);
+    const stageCounts = records.reduce<Record<string, number>>((counts, record) => {
+      counts[record.stage] = (counts[record.stage] ?? 0) + 1;
+      return counts;
+    }, {});
+    expect(stageCounts).toMatchObject({ blocked: 17, 'in-progress': 1 });
+    expect(Object.keys(stageCounts).sort()).toEqual(['blocked', 'in-progress']);
 
-    // Queen Mab, Squick, Big Panda Wei, and Big Mama Bufo runtime/telegraph/arena
-    // slices are verified,
+    // Queen Mab, Squick, Big Panda Wei, Sovereign Cap, and Big Mama Bufo
+    // runtime/telegraph/arena slices are verified,
     // but all stay blocked overall behind the separate production-enable gate
     // for real-game enablement/balance.
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
@@ -297,13 +302,18 @@ describe('Floor 2 boss ability delivery status', () => {
     expect(bufo?.status.arenaLabState).toBe('verified');
     expect(bufo?.status.runtimeState).toBe('verified');
     expect(bufo?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
-    // The other 14 abilities remain blocked purely by the production-enable
+    const sovereign = records.find((record) => record.ability.bossArchetypeId === 'myconid-boss');
+    expect(sovereign?.status.arenaLabState).toBe('verified');
+    expect(sovereign?.status.runtimeState).toBe('verified');
+    expect(sovereign?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    // The other abilities remain blocked purely by the production-enable
     // gate; arena slices must not promote them to ready.
     for (const record of records.filter(
       (candidate) =>
         candidate.ability.bossArchetypeId !== 'faerie-boss' &&
         candidate.ability.bossArchetypeId !== 'ratfolk-boss' &&
         candidate.ability.bossArchetypeId !== 'panda-boss' &&
+        candidate.ability.bossArchetypeId !== 'myconid-boss' &&
         candidate.ability.bossArchetypeId !== 'toadkin-boss',
     )) {
       expect(record.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
@@ -532,7 +542,7 @@ describe('Floor 2 boss ability delivery status', () => {
   it('prints a complete non-failing backlog report', () => {
     const report = formatBossAbilityStatusReport();
     expect(report).toContain('Floor 2 boss abilities: 18');
-    expect(report).toContain('Stages: blocked=18');
+    expect(report).toContain('Stages: blocked=17, in-progress=1');
     for (const ability of FLOOR2_BOSS_ABILITY_CATALOG.entries) {
       expect(report).toContain(`${ability.bossName} — ${ability.attackName}`);
     }

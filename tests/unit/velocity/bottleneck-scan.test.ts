@@ -1,15 +1,43 @@
-import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bucketBySize,
+  collectMergedPrPages,
   computeStageTimings,
   deriveFindings,
+  fetchMergedPrs,
   type BottleneckReport,
   type StageTiming,
 } from '../../../scripts/agent/velocity/bottleneck-scan';
 
+vi.mock('node:child_process', () => ({
+  execFileSync: vi.fn(),
+}));
+
 const HOUR = 3600_000;
 const START = Date.parse('2026-07-01T00:00:00.000Z');
 const at = (hours: number) => new Date(START + hours * HOUR).toISOString();
+
+function graphqlPage(
+  prs: Array<Record<string, unknown>>,
+  endCursor: string | null,
+  hasNextPage: boolean,
+) {
+  return JSON.stringify({
+    data: {
+      repository: {
+        pullRequests: {
+          pageInfo: { endCursor, hasNextPage },
+          nodes: prs.map((pr) => ({
+            ...pr,
+            reviews: { nodes: [] },
+            commits: { nodes: [] },
+          })),
+        },
+      },
+    },
+  });
+}
 
 describe('computeStageTimings', () => {
   it('splits lead time into review queue, rework, and merge queue', () => {
@@ -123,6 +151,82 @@ describe('bucketBySize', () => {
   });
 });
 
+describe('fetchMergedPrs', () => {
+  beforeEach(() => {
+    vi.mocked(execFileSync).mockReset();
+  });
+
+  it('pages merged PR fetches below the GitHub GraphQL node ceiling', () => {
+    const firstPage = Array.from({ length: 25 }, (_, index) => ({
+      number: index + 1,
+      title: `PR ${index + 1}`,
+      createdAt: at(0),
+      mergedAt: at(10 - index * 0.01),
+      additions: 1,
+      deletions: 0,
+      changedFiles: 1,
+    }));
+    const oldest = firstPage.at(-1)!.mergedAt;
+    const secondPage = [
+      firstPage.at(-1)!,
+      {
+        number: 26,
+        title: 'PR 26',
+        createdAt: at(0),
+        mergedAt: oldest,
+        additions: 1,
+        deletions: 0,
+        changedFiles: 1,
+      },
+      {
+        number: 27,
+        title: 'PR 27',
+        createdAt: at(0),
+        mergedAt: at(1),
+        additions: 1,
+        deletions: 0,
+        changedFiles: 1,
+      },
+    ];
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(graphqlPage(firstPage, 'CURSOR_1', true))
+      .mockReturnValueOnce(graphqlPage(secondPage, null, false));
+
+    const prs = fetchMergedPrs('repo-root', 27);
+
+    expect(prs.map((pr) => pr.number)).toEqual(Array.from({ length: 27 }, (_, index) => index + 1));
+    expect(execFileSync).toHaveBeenCalledTimes(3);
+    const repoArgs = vi.mocked(execFileSync).mock.calls[0]![1] as string[];
+    expect(repoArgs).toEqual(['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner']);
+    const secondArgs = vi.mocked(execFileSync).mock.calls[2]![1] as string[];
+    expect(secondArgs).toContain('api');
+    expect(secondArgs).toContain('graphql');
+    expect(secondArgs).toContain('cursor=CURSOR_1');
+  });
+
+  it('stops instead of looping forever when a page adds no unseen PRs', () => {
+    const repeated = [
+      {
+        number: 1,
+        title: 'PR 1',
+        createdAt: at(0),
+        mergedAt: at(1),
+        additions: 1,
+        deletions: 0,
+        changedFiles: 1,
+      },
+    ];
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(graphqlPage(repeated, 'CURSOR_1', true))
+      .mockReturnValueOnce(graphqlPage(repeated, 'CURSOR_2', true));
+
+    expect(fetchMergedPrs('repo-root', 2).map((pr) => pr.number)).toEqual([1]);
+    expect(execFileSync).toHaveBeenCalledTimes(3);
+  });
+});
+
 function report(overrides: Partial<Omit<BottleneckReport, 'findings'>>) {
   return {
     schema: 'crawler-velocity-bottlenecks/v1' as const,
@@ -180,5 +284,58 @@ describe('deriveFindings', () => {
 
   it('reports honestly when the sample shows nothing', () => {
     expect(deriveFindings(report({})).join('\n')).toMatch(/Widen --limit/);
+  });
+});
+
+describe('collectMergedPrPages', () => {
+  it('keeps paging by stable cursor when merge order differs from creation order', () => {
+    const calls: Array<string | null | undefined> = [];
+    const prs = collectMergedPrPages((_pageSize, cursor) => {
+      calls.push(cursor);
+      if (!cursor) {
+        return {
+          prs: [
+            {
+              number: 30,
+              title: 'newest created',
+              createdAt: at(30),
+              mergedAt: at(90),
+              additions: 1,
+              deletions: 0,
+              changedFiles: 1,
+            },
+            {
+              number: 20,
+              title: 'older created',
+              createdAt: at(20),
+              mergedAt: at(70),
+              additions: 1,
+              deletions: 0,
+              changedFiles: 1,
+            },
+          ],
+          hasNextPage: true,
+          endCursor: 'CURSOR_1',
+        };
+      }
+      return {
+        prs: [
+          {
+            number: 10,
+            title: 'long lived but merged late',
+            createdAt: at(10),
+            mergedAt: at(85),
+            additions: 1,
+            deletions: 0,
+            changedFiles: 1,
+          },
+        ],
+        hasNextPage: false,
+        endCursor: null,
+      };
+    }, 3);
+
+    expect(calls).toEqual([null, 'CURSOR_1']);
+    expect(prs.map((pr) => pr.number)).toEqual([30, 20, 10]);
   });
 });

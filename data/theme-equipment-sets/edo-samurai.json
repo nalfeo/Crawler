@@ -1,0 +1,119 @@
+{
+  "id": "edo-samurai",
+  "displayName": "Edo Samurai",
+  "themeDesignLanguage": "Lacquered iron plate in deep indigo and oxblood, silk cord lacing over dark leather, muted gold family crests, weathered steel with a soft satin sheen, woven straw and dark-stained wood accents.",
+  "weapons": [
+    {
+      "id": "katana-of-honor",
+      "displayName": "Katana of Honor",
+      "weaponType": "sword"
+    },
+    {
+      "id": "naginata-of-grace",
+      "displayName": "Naginata of Grace",
+      "weaponType": "polearm"
+    },
+    {
+      "id": "wakizashi-of-discipline",
+      "displayName": "Wakizashi of Discipline",
+      "weaponType": "dagger"
+    },
+    {
+      "id": "yumi-of-the-winds",
+      "displayName": "Yumi of the Winds",
+      "weaponType": "bow"
+    },
+    {
+      "id": "tetsubo-of-strength",
+      "displayName": "Tetsubo of Strength",
+      "weaponType": "hammer"
+    },
+    {
+      "id": "yari-of-the-guard",
+      "displayName": "Yari of the Guard",
+      "weaponType": "spear"
+    }
+  ],
+  "equipment": [
+    {
+      "id": "kabuto-helm",
+      "displayName": "Kabuto Helm",
+      "slots": ["head"]
+    },
+    {
+      "id": "hachimaki-headband",
+      "displayName": "Hachimaki Headband",
+      "slots": ["face"]
+    },
+    {
+      "id": "yoroi-shoulder-plates",
+      "displayName": "Yoroi Shoulder Plates",
+      "slots": ["shoulders"]
+    },
+    {
+      "id": "tatami-dou",
+      "displayName": "Tatami Dou",
+      "slots": ["chest"]
+    },
+    {
+      "id": "kote-gauntlets",
+      "displayName": "Kote Gauntlets",
+      "slots": ["gloves"]
+    },
+    {
+      "id": "haori-cloak",
+      "displayName": "Haori Cloak",
+      "slots": ["back"]
+    },
+    {
+      "id": "obi-belt",
+      "displayName": "Obi Belt",
+      "slots": ["belt"]
+    },
+    {
+      "id": "haidate-guards",
+      "displayName": "Haidate Guards",
+      "slots": ["legs"]
+    },
+    {
+      "id": "suneate-greaves",
+      "displayName": "Suneate Greaves",
+      "slots": ["feet"]
+    },
+    {
+      "id": "left-kao-ring",
+      "displayName": "Left Kao Ring",
+      "slots": ["ringLeft"]
+    },
+    {
+      "id": "right-kao-ring",
+      "displayName": "Right Kao Ring",
+      "slots": ["ringRight"]
+    },
+    {
+      "id": "tasuki-cord",
+      "displayName": "Tasuki Cord",
+      "slots": ["neck"]
+    },
+    {
+      "id": "tekko-bracer-left",
+      "displayName": "Tekko Bracer (Left)",
+      "slots": ["leftWrist"]
+    },
+    {
+      "id": "tekko-bracer-right",
+      "displayName": "Tekko Bracer (Right)",
+      "slots": ["rightWrist"]
+    },
+    {
+      "id": "sode-arm-guard-left",
+      "displayName": "Sode Arm Guard (Left)",
+      "slots": ["leftArm"]
+    },
+    {
+      "id": "sode-arm-guard-right",
+      "displayName": "Sode Arm Guard (Right)",
+      "slots": ["rightArm"]
+    }
+  ]
+}

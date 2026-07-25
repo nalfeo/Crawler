@@ -198,7 +198,7 @@
       "abilityId": "king-skritt-roman-candle-coronation",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "in-progress",
       "bossArt": {
         "runtimeBriefId": "kobold-boss",
         "approvedAssetId": "kobold-boss-var-0",
@@ -207,18 +207,24 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "in-progress",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
+      "arenaLabState": "in-progress",
+      "arenaLabPresetId": "f2-king-skritt",
       "arenaLabEvidence": null,
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1955,
+        "state": "open",
+        "title": "Implement King Skritt's ROMAN-CANDLE CORONATION ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1955"
+      },
       "implementationPullRequest": null,
       "blockers": ["floor2-boss-production-enable"]
     },
@@ -226,7 +232,7 @@
       "abilityId": "sovereign-cap-spore-bloom",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "myconid-boss",
         "approvedAssetId": "myconid-boss-var-0",
@@ -235,20 +241,34 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-sovereign-cap",
+      "arenaLabEvidence": "Verified in canonical combat arena preset `f2-sovereign-cap` with deterministic runtime + browser evidence: frame 539 has no cue/zone; frame 540 starts the locked three-circle hostile-red telegraph with exact `SOVEREIGN SPORE BLOOM \u2014 The colony claims this ground!` announcement; frame 636 resolves impact and opens one runtime-owned persistent toxic cloud zone over the same committed three circles; frame 666 confirms repeated cloud damage inside the zone; frame 876 confirms exact 4s cloud expiry/visual cleanup; frame 1176 starts second telegraph and frame 1272 resolves second cast. Evidence is covered by `tests/unit/mob-abilities/sovereign-spore-bloom.test.ts`, `scripts/agent/sovereign-cap-arena-evidence.ts`, and `tests/e2e/sovereign-cap-arena-observation.test.ts`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
-      "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1951,
+        "state": "open",
+        "title": "Implement The Sovereign Cap's SOVEREIGN SPORE BLOOM ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1951"
+      },
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 2012,
+        "state": "open",
+        "title": "Implement Sovereign Cap Spore Bloom in typed mob-ability runtime (multi-circle telegraph + persistent toxic zones)",
+        "url": "https://github.com/nalfeo/Crawler/pull/2012"
+      },
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "big-mama-bufo-tongue-repossession",
@@ -282,7 +302,9 @@
         "url": "https://github.com/nalfeo/Crawler/issues/1950"
       },
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "overseer-fizzwick-clockwork-kill-saw",
@@ -626,7 +648,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     }
   ]
 }
