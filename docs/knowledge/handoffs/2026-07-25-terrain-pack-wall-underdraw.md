@@ -4,6 +4,7 @@
 **Session slug:** terrain-pack-wall-underdraw  
 **Apple estimate:** 🍎🍎  
 **PR:** fixes #1967  
+**Review ledger:** `docs/knowledge/review-ledgers/2026-07-25-terrain-pack-wall-underdraw.review-ledger.json`
 
 ## Systems touched
 
@@ -60,9 +61,26 @@ Key constraints honoured:
 ## Verification notes
 
 This change only affects `src/engine/` (no core, game, or labs changes). CI runs
-`terrain-pack-renderer.test.ts` in the unit suite. The real behavior is visible in
-`MainGameScene` on Floor 2: wall-adjacent cells should now show continuous ground
-through silhouette notches instead of black voids.
+`terrain-pack-renderer.test.ts` in the unit suite.
+
+Real-scene observe-before-done (deterministic, fixed-seed `MainGameScene` on Floor
+2 via `main-scene-probe-lab`, which boots through `createFloorGameConfig` +
+`createFloorMainSceneOptions` with `worldSeed=4242`):
+
+- **Before** (temporarily restoring `src/engine/terrain-renderer.ts` from `HEAD~2`,
+  then resolving the loadout, pausing the sim, hiding lab chrome, and capturing the
+  real canvas): terrain provenance was unchanged
+  (`generated=185, sprite=15, color=0, packWall=11509, packFloor=28291,
+  packCorridor=0`), but the captured Floor 2 canvas contained many very-dark wall
+  notch pixels — for example `(498,245)` and `(573,280)` were `rgba(6,6,6,255)`.
+- **After** (current HEAD, same seed and probe steps): provenance counts stayed
+  identical, proving the map/layout did not change, while those same pixels became
+  floor-colored `rgba(24,20,18,255)` / `rgba(24,19,17,255)`.
+- A direct before/after canvas diff changed **22,784** pixels, with **22,351**
+  getting brighter and only **427** darker from antialiasing at the wall edge. Of
+  the changed pixels whose pre-fix average RGB was below 20, **844** crossed to 20+
+  after the fix, matching the expected “black-ish void under transparent wall
+  silhouette becomes visible floor art” behavior in the real Floor 2 scene.
 
 No wiring changes — `buildTerrainLayer` is called by `MainGameScene` at
 `src/engine/scenes/MainGameScene.ts:2142` unchanged.
