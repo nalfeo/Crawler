@@ -21,7 +21,8 @@ were preserved.
 
 The first push also exposed 28 current-`main` Prettier violations in unrelated TypeScript
 files. The repository formatter was applied mechanically so the mandatory pre-push gate
-could pass; no behavior was intentionally changed by that cleanup.
+could pass; no behavior was intentionally changed by that cleanup. The cross-path gate
+repair is documented in `docs/knowledge/adr/0072-repository-prettier-gate-repair.md`.
 
 ## What changed
 
