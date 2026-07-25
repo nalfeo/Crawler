@@ -1730,6 +1730,57 @@
     "row": 0
   },
   {
+    "id": "generated:hunting-bola-v1-var-0",
+    "kind": "sprite",
+    "label": "hunting-bola-v1-var-0",
+    "description": "Generated sprite from brief: hunting-bola-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "hunting-bola-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/hunting-bola-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:hunting-bola-v1-var-11",
+    "kind": "sprite",
+    "label": "hunting-bola-v1-var-11",
+    "description": "Generated sprite from brief: hunting-bola-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "hunting-bola-v1-var-11",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/hunting-bola-v1-var-11.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:hunting-bola-v1-var-6",
+    "kind": "sprite",
+    "label": "hunting-bola-v1-var-6",
+    "description": "Generated sprite from brief: hunting-bola-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "hunting-bola-v1-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/hunting-bola-v1-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:imp-elite-hellfire-capo-v1-var-3",
     "kind": "sprite",
     "label": "imp-elite-hellfire-capo-v1-var-3",
