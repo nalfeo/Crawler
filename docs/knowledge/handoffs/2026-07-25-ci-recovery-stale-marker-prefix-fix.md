@@ -5,13 +5,13 @@
 **Apple estimate:** 2🍎 (tooling-only, capped at 3🍎)  
 **Branch:** copilot/fix-ci-recovery-loop-2010  
 **PR:** closes #2054  
-**Systems touched:** ci-recovery
+**Systems touched:** ci-policy
 
 ---
 
 ## Summary
 
-Investigated the PR #2010 CI recovery loop incident (issue #2054). The automated recovery pipeline made no progress after 2 attempts. Implemented a targeted fix in `reconcile.mjs` that auto-resolves review threads whose stale-marker SHA is a 7-char-prefix typo of the current PR head.
+Investigated the PR #2010 CI recovery loop incident (issue #2054). The automated recovery pipeline made no progress after 2 attempts. Implemented a targeted fix in `reconcile.mjs` that auto-resolves review threads only when the stale-marker SHA is a **404-missing, full 40-char, one-digit typo** of the current PR head.
 
 ---
 
@@ -32,23 +32,28 @@ PR #2010 also has `mergeable_state: "dirty"` which triggered the `RELEASE_STALE_
 
 **File:** `.github/scripts/ci-recovery/reconcile.mjs`
 
-After the lineage-check loop (which populates `definitivelyUnreachableMarkerShas`), added a promotion step that scans for SHAs whose first 7 characters are a valid abbreviated prefix of the current head SHA:
+After the lineage-check loop:
+
+- keep successful `behind` / `diverged` compare results in `definitivelyUnreachableMarkerShas` only;
+- track 404-missing SHAs separately in `definitivelyMissingMarkerShas`;
+- promote only those missing SHAs that still share the head's 7-char abbreviation **and** differ from the head by exactly one hex digit.
 
 ```javascript
-for (const sha of [...definitivelyUnreachableMarkerShas]) {
-  if (sha.length >= 7 && headSha.startsWith(sha.slice(0, 7)) && !headSha.startsWith(sha)) {
+for (const sha of [...definitivelyMissingMarkerShas]) {
+  if (headSha.startsWith(sha.slice(0, 7)) && differsByExactlyOneHexDigit(sha, headSha)) {
     reachableMarkerShas.add(sha);
     definitivelyUnreachableMarkerShas.delete(sha);
+    definitivelyMissingMarkerShas.delete(sha);
     process.stdout.write(
-      `promoted stale-marker sha=${sha} to reachable via 7-char prefix match head=${headSha}\n`,
+      `promoted stale-marker sha=${sha} to reachable via one-digit typo match head=${headSha}\n`,
     );
   }
 }
 ```
 
 **Why this is safe:**
-- A 40-char SHA returning 404 (doesn't exist as a commit) whose first 7 chars match the head is strong evidence of a transcription error, not an absent fix.
-- The 7-char prefix is the same length used by the existing abbreviated-SHA acceptance logic (`headSha.startsWith(markerSha)` for short SHAs), so the additional attack surface is no greater than the existing path.
+- A real divergent or behind commit can no longer be reclassified as reachable just because its first 7 chars collide with the head.
+- A random 404-missing SHA can no longer auto-resolve unless it is a full-length near-match to the head (exactly one differing hex digit), which matches the reported transcription-error incident.
 - The reconciler still requires a trusted author (`TRUSTED_BOT_LOGINS` or `TRUSTED_ASSOCIATIONS`) for the marker to be in the stale-marker candidate set in the first place.
 
 **What this does NOT fix:**
@@ -59,19 +64,21 @@ for (const sha of [...definitivelyUnreachableMarkerShas]) {
 
 ## Files touched
 
-- `.github/scripts/ci-recovery/reconcile.mjs` — added prefix-match promotion step (~22 lines + Prettier reformatting of surrounding code)
-- `.github/scripts/ci-recovery/reconcile.test.mjs` — added regression test: `stale-marker SHA that is a typo of head SHA (same 7-char prefix, 404) is auto-resolved`
+- `.github/scripts/ci-recovery/reconcile.mjs` — narrowed stale-marker typo promotion to 404-missing, one-digit near-matches and kept divergent/behind commits stale
+- `.github/scripts/ci-recovery/reconcile.test.mjs` — added a faithful positive typo regression plus negative regressions for divergent-prefix and non-near-match 404 cases
 - `docs/knowledge/review-ledgers/2026-07-25-ci-recovery-stale-marker-prefix-fix.review-ledger.json` — 2🍎 ledger
 
 ---
 
 ## Verification run
 
-- All 137 reconcile.test.mjs tests pass (up from 136 before this PR)
-- New test: `stale-marker SHA that is a typo of head SHA (same 7-char prefix, 404) is auto-resolved` — PASS
-- Existing tests unchanged: `non-outdated stale-marker thread includes recovery hint in blocker summary` — PASS, `outdated stale-marker thread stays on the stale-marker hint path` — PASS
-- Prettier format check passes on both changed files
-- `verify:pr-prereqs` passes after adding handoff + ledger
+- All 139 reconcile.test.mjs tests pass (up from 136 before this PR)
+- New positive test: `stale-marker SHA that is a one-digit typo of head SHA (404) is auto-resolved` — PASS
+- New negative tests:
+  - `diverged/behind stale-marker SHA that shares head prefix is not auto-resolved` — PASS
+  - `missing stale-marker SHA with same 7-char prefix but many differing digits is not auto-resolved` — PASS
+- `verify:pr-prereqs` passes
+- `verify:fast` could not complete in this sandbox because dependency installation never finished; `npx` fell back to ad-hoc `tsc` / `eslint` packages instead of the repo toolchain
 
 ---
 

@@ -8485,15 +8485,15 @@ test('non-outdated stale-marker thread includes recovery hint in blocker summary
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
 });
 
-test('stale-marker SHA that is a typo of head SHA (same 7-char prefix, 404) is auto-resolved', async (t) => {
+test('stale-marker SHA that is a one-digit typo of head SHA (404) is auto-resolved', async (t) => {
   // PR #2010 scenario: the recovery agent posted ✅ Addressed in <sha> but
   // transcribed a single hex digit wrong at the end of the full 40-char SHA.
-  // The typo SHA returns 404 (definitively unreachable) but its first 7
-  // characters are a valid abbreviated prefix of the current head — strong
-  // evidence of a typo rather than an absent fix.  The reconciler must promote
-  // the SHA and auto-resolve the thread without dispatching a new LLM agent.
-  const typoSha = 'abc1234fffffffffffffffffffffffffffffffff';
-  // typoSha starts with 'abc1234', which is the same 7-char prefix as HEAD_SHA.
+  // The typo SHA returns 404 (definitively unreachable), still shares HEAD's
+  // 7-char abbreviation, and differs by exactly one hex digit overall — strong
+  // evidence of a transcription error rather than an absent fix. The reconciler
+  // must promote the SHA and auto-resolve the thread without dispatching a new
+  // LLM agent.
+  const typoSha = `${HEAD_SHA.slice(0, -1)}9`;
   assert.ok(HEAD_SHA.startsWith(typoSha.slice(0, 7)), 'test invariant: prefixes must match');
   assert.notEqual(typoSha, HEAD_SHA, 'test invariant: full SHAs must differ');
 
@@ -8595,7 +8595,7 @@ test('stale-marker SHA that is a typo of head SHA (same 7-char prefix, 404) is a
 
   assert.match(
     stdout,
-    new RegExp(`promoted stale-marker sha=${typoSha} to reachable via 7-char prefix match`),
+    new RegExp(`promoted stale-marker sha=${typoSha} to reachable via one-digit typo match`),
     'expected prefix-match promotion log line',
   );
   assert.match(
@@ -8625,6 +8625,239 @@ test('stale-marker SHA that is a typo of head SHA (same 7-char prefix, 404) is a
       call.body.body.includes('crawler-ci-task'),
   );
   assert.equal(taskCommentCall, undefined, 'must not post a task comment for the resolved thread');
+});
+
+test('diverged/behind stale-marker SHA that shares head prefix is not auto-resolved', async (t) => {
+  const divergentSha = `${HEAD_SHA.slice(0, 7)}fffffff00000000000000000000000000`;
+  assert.ok(
+    HEAD_SHA.startsWith(divergentSha.slice(0, 7)),
+    'test invariant: prefixes must match for divergent SHA',
+  );
+  assert.notEqual(divergentSha, HEAD_SHA, 'test invariant: divergent SHA must differ from head');
+
+  const threadId = 'PRRT_divergent_prefix_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/engine/MobAbilityVfx.ts',
+            line: 120,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_divergent_reply',
+                  body: `✅ Addressed in \`${divergentSha}\`: Added ADR-0040 documenting the phase contract.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${divergentSha}...${HEAD_SHA}`]: () => ({
+      body: { status: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1002 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`promoted stale-marker sha=${divergentSha} to reachable via one-digit typo match`),
+  );
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'diverged/behind commits must stay unresolved even if their first 7 chars match HEAD',
+  );
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes(threadId),
+  );
+  assert.ok(taskCommentCall, 'expected stale-marker task comment for divergent lineage marker');
+});
+
+test('missing stale-marker SHA with same 7-char prefix but many differing digits is not auto-resolved', async (t) => {
+  const missingNonNearMatchSha = 'abc1234fffffffffffffffffffffffffffffffff';
+  assert.ok(
+    HEAD_SHA.startsWith(missingNonNearMatchSha.slice(0, 7)),
+    'test invariant: prefixes must match for missing non-near-match SHA',
+  );
+  assert.notEqual(
+    missingNonNearMatchSha,
+    HEAD_SHA,
+    'test invariant: missing non-near-match SHA must differ from head',
+  );
+
+  const threadId = 'PRRT_missing_prefix_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/engine/MobAbilityVfx.ts',
+            line: 120,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_missing_reply',
+                  body: `✅ Addressed in \`${missingNonNearMatchSha}\`: Added ADR-0040 documenting the phase contract.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${missingNonNearMatchSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1003 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(
+      `promoted stale-marker sha=${missingNonNearMatchSha} to reachable via one-digit typo match`,
+    ),
+  );
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'non-near-match missing SHAs must stay on the stale-marker hint path',
+  );
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes(threadId),
+  );
+  assert.ok(taskCommentCall, 'expected stale-marker task comment for missing non-near-match SHA');
 });
 
 test('outdated stale-marker thread stays on the stale-marker hint path', async (t) => {
