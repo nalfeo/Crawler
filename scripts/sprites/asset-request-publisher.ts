@@ -69,6 +69,20 @@ interface PullRequestRef {
   readonly url: string;
 }
 
+interface RequiredLabel {
+  readonly name: string;
+  readonly color: string;
+  readonly description: string;
+}
+
+const REQUIRED_PUBLICATION_LABELS: readonly RequiredLabel[] = [
+  {
+    name: 'art-only',
+    color: '7057ff',
+    description: 'Generated art-only changes eligible for guarded promotion',
+  },
+];
+
 export interface AssetRequestPublisherOptions {
   readonly repoRoot: string;
   readonly store: RunStore;
@@ -98,6 +112,7 @@ export async function publishSelectedAssetRequests(
         error instanceof Error ? error.message : String(error),
       );
     }
+    await ensureRequiredPublicationLabels(exec, options.repoRoot);
 
     const pendingTerminal: Array<{
       controller: ReturnType<typeof createIssueCheckpointController>;
@@ -410,6 +425,7 @@ export async function reconcileCanonicalPr(
     );
     return open[0];
   }
+  await ensureRequiredPublicationLabels(exec, repoRoot);
   const output = await mustExec(
     exec,
     'gh',
@@ -434,6 +450,26 @@ export async function reconcileCanonicalPr(
     throw new Error(`Canonical PR creation did not yield exactly one open PR: ${output}`);
   }
   return created[0]!;
+}
+
+export async function ensureRequiredPublicationLabels(exec: Exec, repoRoot: string): Promise<void> {
+  for (const label of REQUIRED_PUBLICATION_LABELS) {
+    await mustExec(
+      exec,
+      'gh',
+      [
+        'label',
+        'create',
+        label.name,
+        '--color',
+        label.color,
+        '--description',
+        label.description,
+        '--force',
+      ],
+      repoRoot,
+    );
+  }
 }
 
 export async function closeCanonicalPrOnConflict(
