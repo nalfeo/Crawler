@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2581672278b53de7341fff8ca76a1ed680d646f1",
+    "commitDate": "2026-07-25T05:01:24Z",
+    "commitSubject": "fix(sprite-pipeline): recover legacy asset-request checkpoints instead of deadlocking (#1943)",
+    "capturedAt": "2026-07-25T06:23:30.787Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30145368916",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/2581672278b53de7341fff8ca76a1ed680d646f1.json"
+  },
+  {
     "commit": "2bff58556ed8a397d518e8a92ae45b7f4deb1ca0",
     "commitDate": "2026-07-25T02:38:22Z",
     "commitSubject": "refactor(sprites): DRY merge-train label re-ensure logic + race-path blocked-label test (#1930)",
