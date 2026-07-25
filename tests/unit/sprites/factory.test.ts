@@ -28,7 +28,6 @@ const BASE_ENV = {
   AZURE_OPENAI_API_KEY: 'k',
 } as const;
 
-
 afterEach(() => {
   __resetChatDeploymentFallbackWarnings();
 });
@@ -142,9 +141,9 @@ describe('unknown backend rejection (ADR 0072 — foundry retired)', () => {
   });
 
   it('SPRITES_VISION_PROVIDER=foundry throws with an unknown-provider error', () => {
-    expect(() =>
-      createVisionProvider({ env: { SPRITES_VISION_PROVIDER: 'foundry' } }),
-    ).toThrow(/Unknown SPRITES_VISION_PROVIDER/);
+    expect(() => createVisionProvider({ env: { SPRITES_VISION_PROVIDER: 'foundry' } })).toThrow(
+      /Unknown SPRITES_VISION_PROVIDER/,
+    );
   });
 
   it('SPRITES_SYNTH_PROVIDER=foundry throws via resolveBackend', () => {
