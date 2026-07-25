@@ -14538,7 +14538,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-floor-worn-var-0"
+                "spriteId": "welcome-room-floor-worn-var-3"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14558,7 +14558,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-floor-worn-var-0"
+                "spriteId": "welcome-room-floor-worn-var-3"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14578,7 +14578,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-floor-worn-var-0"
+                "spriteId": "welcome-room-floor-worn-var-3"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14598,7 +14598,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-floor-stain-var-2"
+                "spriteId": "welcome-room-floor-stain-var-1"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14618,7 +14618,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-floor-stain-var-2"
+                "spriteId": "welcome-room-floor-stain-var-1"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14638,7 +14638,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-floor-tape-var-0"
+                "spriteId": "welcome-room-floor-tape-var-1"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14658,7 +14658,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-floor-tape-var-0"
+                "spriteId": "welcome-room-floor-tape-var-1"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14678,7 +14678,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-floor-seam-var-0"
+                "spriteId": "welcome-room-floor-seam-var-9"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14698,7 +14698,7 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-floor-seam-var-0"
+                "spriteId": "welcome-room-floor-seam-var-9"
               },
               "widthFt": 2,
               "heightFt": 2
