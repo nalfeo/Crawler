@@ -536,7 +536,7 @@ export function createRewardOpeningUI(
         for (let i = previousRevealedCount; i < next.revealedCount; i++) {
           const item = revealItems[i] as RevealItemDisplay | undefined;
           if (item) {
-            const startX = GAME.WIDTH / 2 - ((revealItems.length - 1) * 90) / 2;
+            const startX = GAME.WIDTH / 2 - ((next.revealedCount - 1) * 90) / 2;
             const itemX = startX + i * 90;
             const itemY = GAME.HEIGHT / 2 - 20;
             vfx.onItemRevealed(itemX, itemY, item.color, excitement.bucket, reducedMotion);

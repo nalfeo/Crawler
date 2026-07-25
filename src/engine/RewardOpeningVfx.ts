@@ -122,7 +122,7 @@ export function createRewardOpeningVfx(scene: Phaser.Scene): RewardOpeningVfx {
     return (rand() - 0.5) * 2 * mag;
   }
   function pickColor(colors: readonly number[]): number {
-    return colors[Math.floor(rand() * colors.length)] ?? (colors[0] ?? 0xffffff);
+    return colors[Math.floor(rand() * colors.length)] ?? colors[0] ?? 0xffffff;
   }
 
   /** Register a newly-created shape: pin to screen, set depth, track it. */
@@ -212,17 +212,12 @@ export function createRewardOpeningVfx(scene: Phaser.Scene): RewardOpeningVfx {
    * Thin laser beam line extending outward from the centre point, fading
    * over ~600 ms. Uses ADD blend for a bright, glowing appearance.
    */
-  function spawnBeam(
-    cx: number,
-    cy: number,
-    angle: number,
-    color: number,
-    length: number,
-  ): void {
+  function spawnBeam(cx: number, cy: number, angle: number, color: number, length: number): void {
     if (!enabled) return;
     const beam = scene.add.graphics();
     beam.setScrollFactor(0);
     beam.setDepth(VFX_DEPTH);
+    (beam as unknown as { setBlendMode(m: string): void }).setBlendMode('ADD');
     beam.lineStyle(2, color, 0.9);
     beam.beginPath();
     beam.moveTo(cx, cy);
@@ -358,13 +353,13 @@ export function createRewardOpeningVfx(scene: Phaser.Scene): RewardOpeningVfx {
       // Additional rings for notable+
       if (bucket !== 'modest') {
         spawnRing(cx, cy, 0xffffff, 5, endScale * 0.7, 820, 0.35);
-        spawnRing(cx, cy, colors[1] ?? (colors[0] ?? 0x8fa0c2), 14, endScale * 1.2, 780, 0.45);
+        spawnRing(cx, cy, colors[1] ?? colors[0] ?? 0x8fa0c2, 14, endScale * 1.2, 780, 0.45);
       }
       if (bucket === 'exciting' || bucket === 'legendary') {
-        spawnRing(cx, cy, 0xffffff, 22, endScale * 1.6, 1000, 0.20);
+        spawnRing(cx, cy, 0xffffff, 22, endScale * 1.6, 1000, 0.2);
       }
       if (bucket === 'legendary') {
-        spawnRing(cx, cy, colors[3] ?? (colors[0] ?? 0x8fa0c2), 30, endScale * 2.2, 1200, 0.14);
+        spawnRing(cx, cy, colors[3] ?? colors[0] ?? 0x8fa0c2, 30, endScale * 2.2, 1200, 0.14);
       }
 
       // Sparks
@@ -388,6 +383,9 @@ export function createRewardOpeningVfx(scene: Phaser.Scene): RewardOpeningVfx {
     },
 
     destroy() {
+      if (enabled) {
+        scene.tweens.killTweensOf([...active]);
+      }
       for (const obj of active) {
         obj.destroy();
       }

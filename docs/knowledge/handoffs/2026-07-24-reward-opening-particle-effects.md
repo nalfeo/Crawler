@@ -53,15 +53,20 @@ pattern (Phaser tweens that self-destruct on completion). Key design points:
 
 ## Testing
 
-No new unit tests required: visual rendering is exercised via the existing
-`reward-opening-ux-lab` (`?lab=reward-opening-ux-lab`). The existing
-`reward-opening-ui-visibility-hook.test.ts` continues to pass because the
-fake scene used in tests lacks `add.graphics` and `tweens.add`, so
+Unit tests added in `tests/unit/reward-opening-vfx.test.ts` covering:
+- **Capability guard / reduced-motion no-ops**: disabled scene and `reducedMotion=true` both produce zero shapes/graphics without throwing.
+- **Tier-specific spawning**: each excitement bucket spawns at least one object during anticipation and reveal; higher tiers produce ≥ as many objects as lower tiers on summary burst; laser beams (Graphics) only appear for `exciting`/`legendary`.
+- **Lifecycle / cleanup**: `onComplete` tween callbacks correctly destroy objects; `destroy()` calls `killTweensOf` before destroying live objects; `destroy()` is idempotent.
+- **Blend mode**: all Graphics beam objects have `setBlendMode('ADD')` applied.
+
+The existing `reward-opening-ui-visibility-hook.test.ts` continues to pass because the
+fake scene used in those tests lacks `add.graphics` and `tweens.add`, so
 `enabled = false` and all VFX calls are no-ops.
 
 ## Observe before done
 
-VFX confirmed visible in the `reward-opening-ux-lab` via `npm run lab`
-(inspect at `?lab=reward-opening-ux-lab`): animated chest lid during
-anticipation, spark bursts on item reveal, grand ring/laser burst on summary.
-All four bucket tiers visible via the lab's GUI buttons.
+VFX validated in two places:
+
+1. **Lab** (`reward-opening-ux-lab` via `npm run lab`, `?lab=reward-opening-ux-lab`): animated chest lid during anticipation, spark bursts on item reveal, grand ring/laser burst on summary. All four bucket tiers visible via the lab's GUI buttons.
+
+2. **Real game** (`npm run dev`, trigger a reward in-game): anticipation chest animation, item reveal sparks at each card position, and summary burst all fire with the correct card-aligned positions. VFX depth (6005) correctly stacks above the overlay container (6000) and clears cleanly on close.
