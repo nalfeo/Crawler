@@ -1,5 +1,16 @@
 [
   {
+    "commit": "19e467b9039346e95ced9c02c0b478fa1d8f9b44",
+    "commitDate": "2026-07-25T07:28:37Z",
+    "commitSubject": "fix(sprite-pipeline): forward resolveForExternalRead through CachingRunStore (#1949)",
+    "capturedAt": "2026-07-25T08:51:31.915Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30149732880",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/19e467b9039346e95ced9c02c0b478fa1d8f9b44.json"
+  },
+  {
     "commit": "ee68060002011dfd453aa268bc6f9b945b9afdcd",
     "commitDate": "2026-07-25T07:13:59Z",
     "commitSubject": "feat(agent): add perf-optimizer agent + skill with a deterministic gameplay-neutrality gate (#1958)",
