@@ -4112,6 +4112,57 @@
     "row": 0
   },
   {
+    "id": "generated:velvet-coat-v2-var-1",
+    "kind": "sprite",
+    "label": "velvet-coat-v2-var-1",
+    "description": "Generated sprite from brief: velvet-coat-v2.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "velvet-coat-v2-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/velvet-coat-v2-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:velvet-coat-v2-var-5",
+    "kind": "sprite",
+    "label": "velvet-coat-v2-var-5",
+    "description": "Generated sprite from brief: velvet-coat-v2.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "velvet-coat-v2-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/velvet-coat-v2-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:velvet-coat-v2-var-7",
+    "kind": "sprite",
+    "label": "velvet-coat-v2-var-7",
+    "description": "Generated sprite from brief: velvet-coat-v2.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "velvet-coat-v2-var-7",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/velvet-coat-v2-var-7.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:void-rapier-v1-var-1",
     "kind": "sprite",
     "label": "void-rapier-v1-var-1",
