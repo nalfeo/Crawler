@@ -3583,6 +3583,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-floor-stain-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-floor-stain-var-2",
+    "description": "Generated sprite from brief: welcome-room-floor-stain.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-stain-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-stain-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-floor-tape-var-0",
     "kind": "sprite",
     "label": "welcome-room-floor-tape-var-0",
