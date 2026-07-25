@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f0dd023ddbcb112f26870c538e897f87d31c2ca2",
+    "commitDate": "2026-07-25T08:33:34Z",
+    "commitSubject": "feat: screenshot-viewer canvas extension (#1947)",
+    "capturedAt": "2026-07-25T09:58:02.612Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30151685488",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/f0dd023ddbcb112f26870c538e897f87d31c2ca2.json"
+  },
+  {
     "commit": "108e1c555940a16735d5185a1a6a7a096db4e8b0",
     "commitDate": "2026-07-25T07:54:47Z",
     "commitSubject": "fix(terrain): stamp floor-pool underdraw beneath pack-wall blob47 tiles (#1968)",
