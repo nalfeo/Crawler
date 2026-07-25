@@ -62,6 +62,8 @@ describe('CI recovery auto-rebase callback fencing', () => {
     expect(raw).toContain('DISPATCH_TRIGGER_INPUT: ${{ inputs.trigger }}');
     expect(raw).toContain('[ "$DISPATCH_TRIGGER_INPUT" = "ci-recovery-validation" ]');
     expect(raw).toContain('[ "$rebased_head" = "$expected_head" ]');
-    expect(raw).toContain('git commit --allow-empty -m "chore(ci-recovery): retrigger validation recovery for PR #$number"');
+    expect(raw).toContain(
+      'git commit --allow-empty -m "chore(ci-recovery): retrigger validation recovery for PR #$number"',
+    );
   });
 });
