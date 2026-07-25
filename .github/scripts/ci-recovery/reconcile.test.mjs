@@ -1677,6 +1677,67 @@ for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] o
   });
 }
 
+test('stale automation lock is reclaimed before the ci-recovery-opt-out exit', async (t) => {
+  const fingerprint = blockerFingerprint([]);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 880,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: [],
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: 'ci-recovery-opt-out' }, { name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 995 } }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(stdout, /released stale automation lock pr=#42 reason=pre-opt-out-reclaim/);
+  assert.match(stdout, /skip pr=#42 reason=opt-out/);
+  assert.equal(repositoryLabelExists, false, 'expected the stale ci-owner fence to be deleted');
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState.owner, 'none');
+  assert.equal(finalState.status, 'idle');
+  assert.equal(finalState.trigger, 'stale-automation-pre-opt-out-reclaim');
+});
+
 test('closed PR orphan cleanup releases ownership exactly once', async (t) => {
   let repositoryLabelExists = true;
   const { server, port, mutatingCalls } = await startServer({
@@ -4831,6 +4892,79 @@ test('train mode still waits (does not retry) during bounded backoff for schedul
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /wait pr=#42 reason=conflict-rebase-pending attempt=1/);
   assert.deepEqual(mutatingCalls, []);
+});
+
+test('train mode reclaims a stale automation lock before waiting on a queued conflict predecessor', async (t) => {
+  const predecessorNumber = 77;
+  const fingerprint = blockerFingerprint([]);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 907,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        trigger: `merge-train-cumulative-conflict:${predecessorNumber}`,
+        blockers: [],
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: LABEL }, { name: 'merge-train-blocked' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/pulls/${predecessorNumber}`]: () => ({
+      body: {
+        number: predecessorNumber,
+        state: 'open',
+        labels: [{ name: QUEUE_LABEL }],
+      },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(stdout, /released stale automation lock pr=#42 reason=pre-train-predecessor-reclaim/);
+  assert.match(stdout, /wait pr=#42 reason=train-conflict-predecessor-pending predecessor=#77/);
+  assert.equal(repositoryLabelExists, false, 'expected the stale ci-owner fence to be deleted');
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState.owner, 'none');
+  assert.equal(finalState.status, 'idle');
+  assert.equal(finalState.trigger, 'stale-automation-pre-train-predecessor-reclaim');
 });
 
 // Regression coverage for the other half of the same finding: bounded
@@ -11453,6 +11587,40 @@ test('train mode waits on a still-pending validation-recovery rebase for the sam
   assert.deepEqual(mutatingCalls, []);
 });
 
+test('train mode waits during bounded backoff for validation-recovery auto-rebase failures', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        mergeable: true,
+        mergeable_state: 'behind',
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [validationRebaseDispatchedStateComment(951, new Date().toISOString(), 1)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'auto-rebase-failure',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /wait pr=#42 reason=validation-rebase-retry-backoff attempt=1/);
+  assert.deepEqual(mutatingCalls, []);
+});
+
 test('train mode escalates validation-recovery rebase to Copilot dispatch once bounded retries are exhausted', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
@@ -11510,7 +11678,7 @@ test('train mode escalates validation-recovery rebase to Copilot dispatch once b
 // available on the next reconcile pass even when R08 exits early.
 test('conflict episode marker is posted before the conflict-only rebase dispatch (R08)', async (t) => {
   const BASE_SHA = '0000111122223333444455556666777788889999';
-  const commentPosts = [];
+  const firstPassCommentPosts = [];
   const { server, port } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
       body: {
@@ -11527,7 +11695,7 @@ test('conflict episode marker is posted before the conflict-only rebase dispatch
     }),
     [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
-      commentPosts.push(body.body);
+      firstPassCommentPosts.push(body.body);
       return { body: { id: 999, body: body.body } };
     },
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
@@ -11547,7 +11715,7 @@ test('conflict episode marker is posted before the conflict-only rebase dispatch
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
   // The conflict episode marker comment must have been posted.
-  const episodeMarkerIdx = commentPosts.findIndex((body) =>
+  const episodeMarkerIdx = firstPassCommentPosts.findIndex((body) =>
     body.startsWith(REVIEW_CONFLICT_MARKER),
   );
   assert.ok(
@@ -11559,8 +11727,98 @@ test('conflict episode marker is posted before the conflict-only rebase dispatch
   // since the label is absent and the rebase dispatch writes state then exits).
   // Verify the marker format matches the expected pattern.
   assert.match(
-    commentPosts[episodeMarkerIdx],
+    firstPassCommentPosts[episodeMarkerIdx],
     /<!-- crawler-review-conflict:v1 episode=[0-9a-f]+ head=[0-9a-f]+ base=[0-9a-f]+ -->/,
     'conflict episode marker must have the expected format',
+  );
+
+  const conflictEpisodeMarkerBody = firstPassCommentPosts[episodeMarkerIdx];
+  const secondPassCommentPosts = [];
+  const { server: secondPassServer, port: secondPassPort, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        base: { ref: 'main', sha: BASE_SHA, repo: { full_name: `${OWNER}/${REPO}` } },
+        mergeable: true,
+        mergeable_state: 'clean',
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [
+        {
+          id: 1000,
+          body: conflictEpisodeMarkerBody,
+          author_association: 'OWNER',
+        },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      secondPassCommentPosts.push(body.body);
+      return { body: { id: 1001 + secondPassCommentPosts.length, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/requested_reviewers`]: () => ({
+      body: {},
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => secondPassServer.close());
+
+  const { code: secondPassCode, stdout: secondPassStdout, stderr: secondPassStderr } =
+    await runScript(secondPassPort, {
+      RECOVERY_OPERATION: 'reconcile',
+      RECOVERY_TRIGGER: 'schedule',
+      CI_RECOVERY_MODE: 'live',
+      MERGE_TRAIN_ENABLED: 'true',
+      MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+    });
+
+  if (!assertSuccessfulExit(t, secondPassCode, secondPassStderr, '', true)) return;
+
+  assert.match(
+    secondPassStdout,
+    /recorded review reason=conflict-resolved pr=#42/,
+    'expected the second pass to request a conflict-resolved review',
+  );
+  const conflictResolvedMarker = secondPassCommentPosts.find((body) =>
+    body.startsWith(REVIEW_REQUEST_MARKER),
+  );
+  assert.ok(conflictResolvedMarker, 'expected the second pass to post a review-request marker');
+  assert.match(
+    conflictResolvedMarker,
+    /reason=conflict-resolved episode=[0-9a-f]{64} -->$/,
+    'expected the second-pass marker to record the conflict-resolved episode',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/requested_reviewers`,
+    ),
+    true,
+    'expected the second pass to request the reviewer after recording the marker',
   );
 });
