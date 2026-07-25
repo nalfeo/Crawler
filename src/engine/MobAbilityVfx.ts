@@ -25,6 +25,8 @@ import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import {
   BAMBOO_FED_BERSERK_ABILITY_ID,
+  DON_PACO_BIG_GOB_ABILITY_ID,
+  circlesForMobAbilityGeometry,
   getMobAbilityActiveAura,
   getStatusEffects,
 } from '../core/index.js';
@@ -38,6 +40,8 @@ const MOB_ABILITY_SOURCE_PREFIX = 'mob-ability:';
 // danger circle reads as painted on the floor beneath the fight.
 const TELEGRAPH_DEPTH = -14;
 const TARNISH_DEPTH = -13;
+const SLICK_DEPTH = -12;
+const PROJECTILE_DEPTH = -11;
 const BURST_DEPTH = WORLD_VFX_DEPTH.spellCast;
 
 const COLOR_HOSTILE_RED = 0xef4444;
@@ -54,6 +58,9 @@ const COLOR_BERSERK_RED = 0xff4d4d;
 const COLOR_BERSERK_DUST = 0xc98b56;
 const COLOR_BERSERK_ENVELOPE = 0xff6b6b;
 const COLOR_BERSERK_LEAF = 0x8bd17c;
+const COLOR_GOB_TRAIL = 0x7cff4f;
+const COLOR_GOB_SLIME = 0x39d353;
+const COLOR_GOB_STEAM = 0xb7ff80;
 
 const BURST_LIFETIME_MS = 560;
 const CAST_START_LIFETIME_MS = 320;
@@ -82,6 +89,9 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const berserkAuraLastPulseFrame = new Map<number, number>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
   const castStartSeen = new Set<number>();
+  let projectileGfx: Phaser.GameObjects.Graphics | undefined;
+  let slickGfx: Phaser.GameObjects.Graphics | undefined;
+  const slickLastGeom = new Map<string, { x: number; y: number; r: number }>();
   /**
    * Transient circles created by spawnRing/spawnBurst/spawnCastStart.
    * Each entry is removed by its `onComplete` callback when the tween finishes
@@ -217,6 +227,29 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     );
   }
 
+  function spawnBigGobBurst(x: number, y: number, radiusPx: number): void {
+    if (!enabled) return;
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.35,
+      radiusPx * 1.45,
+      COLOR_GOB_TRAIL,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.15,
+      radiusPx * 1.1,
+      COLOR_GOB_STEAM,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnSparkBurst(x, y, radiusPx * 1.1, [COLOR_GOB_TRAIL, COLOR_GOB_STEAM] as const, 26);
+  }
+
   /** A quick pulse when a telegraph first locks (cast-start cue). */
   function spawnCastStart(x: number, y: number, radiusPx: number): void {
     spawnRing(
@@ -265,6 +298,63 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       const ox = cx + Math.cos(a) * (radiusPx + 6);
       const oy = cy + Math.sin(a) * (radiusPx + 6);
       gfx.lineBetween(ix, iy, ox, oy);
+    }
+  }
+
+  function drawProjectileFanTelegraph(
+    gfx: Phaser.GameObjects.Graphics,
+    cue: GameWorld['mobAbilities']['cues'][number],
+  ): void {
+    if (cue.geometry.kind !== 'projectile-fan') return;
+    const originX = ftToPx(cue.geometry.originX);
+    const originY = ftToPx(cue.geometry.originY);
+    gfx.lineStyle(2 + cue.telegraphProgress * 2, COLOR_HOSTILE_RED, 0.9);
+    for (const path of cue.geometry.paths) {
+      gfx.lineBetween(originX, originY, ftToPx(path.endX), ftToPx(path.endY));
+      gfx.strokeCircle(ftToPx(path.endX), ftToPx(path.endY), ftToPx(path.impactRadiusFt));
+      gfx.fillStyle(COLOR_HOSTILE_RED, 0.06 + cue.telegraphProgress * 0.12);
+      gfx.fillCircle(
+        ftToPx(path.endX),
+        ftToPx(path.endY),
+        ftToPx(path.impactRadiusFt) * cue.telegraphProgress,
+      );
+    }
+    const halfAngleRad = (cue.geometry.coneAngleDeg * Math.PI) / 360;
+    const leftRad = cue.geometry.facingRad - halfAngleRad;
+    const rightRad = cue.geometry.facingRad + halfAngleRad;
+    gfx.lineBetween(
+      originX,
+      originY,
+      originX + Math.cos(leftRad) * ftToPx(cue.geometry.rangeFt),
+      originY + Math.sin(leftRad) * ftToPx(cue.geometry.rangeFt),
+    );
+    gfx.lineBetween(
+      originX,
+      originY,
+      originX + Math.cos(rightRad) * ftToPx(cue.geometry.rangeFt),
+      originY + Math.sin(rightRad) * ftToPx(cue.geometry.rangeFt),
+    );
+    const arcSteps = Math.max(8, cue.geometry.paths.length * 3);
+    for (let i = 0; i < arcSteps; i += 1) {
+      const a0 = leftRad + ((rightRad - leftRad) * i) / arcSteps;
+      const a1 = leftRad + ((rightRad - leftRad) * (i + 1)) / arcSteps;
+      gfx.lineBetween(
+        originX + Math.cos(a0) * ftToPx(cue.geometry.rangeFt),
+        originY + Math.sin(a0) * ftToPx(cue.geometry.rangeFt),
+        originX + Math.cos(a1) * ftToPx(cue.geometry.rangeFt),
+        originY + Math.sin(a1) * ftToPx(cue.geometry.rangeFt),
+      );
+    }
+    gfx.fillStyle(COLOR_GOB_TRAIL, 0.18 + cue.telegraphProgress * 0.12);
+    gfx.fillCircle(originX, originY, ftToPx(1.1 + cue.telegraphProgress * 0.4));
+    for (let i = 0; i < 3; i += 1) {
+      const a = cue.geometry.facingRad + (i - 1) * 0.35;
+      gfx.fillStyle(COLOR_GOB_STEAM, 0.4 + cue.telegraphProgress * 0.2);
+      gfx.fillCircle(
+        originX + Math.cos(a) * ftToPx(1.2 + cue.telegraphProgress * 0.4),
+        originY + Math.sin(a) * ftToPx(1.2 + cue.telegraphProgress * 0.4),
+        2 + cue.telegraphProgress * 2,
+      );
     }
   }
 
@@ -472,7 +562,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // ── Telegraph circles ──────────────────────────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
-      const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
+      const circles = circlesForMobAbilityGeometry(cue.geometry);
       if (circles.length === 0) continue;
       liveCasters.add(cue.casterEid);
       const first = circles[0]!;
@@ -496,16 +586,129 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         telegraphGfx.set(cue.casterEid, gfx);
       }
       gfx.clear();
-      for (const circle of circles) {
-        drawTelegraph(
-          gfx,
-          ftToPx(circle.x),
-          ftToPx(circle.y),
-          ftToPx(circle.radiusFt),
-          cue.telegraphProgress,
-          cue.dangerColor,
+      if (cue.geometry.kind === 'projectile-fan') {
+        drawProjectileFanTelegraph(gfx, cue);
+      } else {
+        for (const circle of circles) {
+          drawTelegraph(
+            gfx,
+            ftToPx(circle.x),
+            ftToPx(circle.y),
+            ftToPx(circle.radiusFt),
+            cue.telegraphProgress,
+            cue.dangerColor,
+          );
+        }
+      }
+    }
+
+    // ── In-flight Don Paco projectiles ──────────────────────────────────────
+    if (runtime.activeProjectiles.length > 0) {
+      if (projectileGfx === undefined && enabled) {
+        projectileGfx = scene.add.graphics();
+        projectileGfx.setDepth(PROJECTILE_DEPTH);
+        projectileGfx.setBlendMode('ADD');
+        ignoreUi(projectileGfx);
+      }
+      projectileGfx?.clear();
+      for (const projectile of runtime.activeProjectiles) {
+        if (projectileGfx === undefined) continue;
+        const progress = Math.min(
+          1,
+          Math.max(0, projectile.elapsedMs / projectile.travelDurationMs),
+        );
+        const currentX =
+          projectile.path.startX + (projectile.path.endX - projectile.path.startX) * progress;
+        const currentY =
+          projectile.path.startY + (projectile.path.endY - projectile.path.startY) * progress;
+        projectileGfx.lineStyle(3, COLOR_GOB_TRAIL, 0.8);
+        projectileGfx.lineBetween(
+          ftToPx(projectile.path.startX),
+          ftToPx(projectile.path.startY),
+          ftToPx(currentX),
+          ftToPx(currentY),
+        );
+        projectileGfx.fillStyle(COLOR_GOB_TRAIL, 0.95);
+        projectileGfx.fillCircle(ftToPx(currentX), ftToPx(currentY), 4);
+        projectileGfx.fillStyle(COLOR_GOB_STEAM, 0.35);
+        projectileGfx.fillCircle(
+          ftToPx(currentX - (projectile.path.endX - projectile.path.startX) * 0.04),
+          ftToPx(currentY - (projectile.path.endY - projectile.path.startY) * 0.04),
+          2.5,
         );
       }
+    } else if (projectileGfx) {
+      projectileGfx.destroy();
+      projectileGfx = undefined;
+    }
+
+    // ── Persistent slick rims ────────────────────────────────────────────────
+    if (runtime.activeZones.length > 0) {
+      if (slickGfx === undefined && enabled) {
+        slickGfx = scene.add.graphics();
+        slickGfx.setDepth(SLICK_DEPTH);
+        slickGfx.setBlendMode('ADD');
+        ignoreUi(slickGfx);
+      }
+      slickGfx?.clear();
+      const nextKeys = new Set<string>();
+      for (const zone of runtime.activeZones) {
+        const key = `${zone.sourceId}:${zone.circle.x}:${zone.circle.y}`;
+        nextKeys.add(key);
+        slickLastGeom.set(key, {
+          x: ftToPx(zone.circle.x),
+          y: ftToPx(zone.circle.y),
+          r: ftToPx(zone.circle.radiusFt),
+        });
+        if (slickGfx === undefined) continue;
+        const cx = ftToPx(zone.circle.x);
+        const cy = ftToPx(zone.circle.y);
+        const radiusPx = ftToPx(zone.circle.radiusFt);
+        const bubbleAlpha = 0.35 + 0.15 * Math.sin((zone.remainingMs / 120) % (Math.PI * 2));
+        slickGfx.lineStyle(3, COLOR_GOB_STEAM, 0.95);
+        slickGfx.strokeCircle(cx, cy, radiusPx);
+        slickGfx.lineStyle(2, COLOR_GOB_TRAIL, 0.75);
+        slickGfx.strokeCircle(cx, cy, radiusPx * 0.82);
+        slickGfx.fillStyle(COLOR_GOB_SLIME, 0.16);
+        slickGfx.fillCircle(cx, cy, radiusPx * 0.92);
+        for (let i = 0; i < 5; i += 1) {
+          const a = (i / 5) * Math.PI * 2 + zone.remainingMs / 600;
+          slickGfx.fillStyle(COLOR_GOB_STEAM, bubbleAlpha);
+          slickGfx.fillCircle(
+            cx + Math.cos(a) * radiusPx * 0.58,
+            cy + Math.sin(a) * radiusPx * 0.58,
+            2.5,
+          );
+        }
+      }
+      for (const [key, geom] of [...slickLastGeom.entries()]) {
+        if (nextKeys.has(key)) continue;
+        slickLastGeom.delete(key);
+        spawnRing(
+          geom.x,
+          geom.y,
+          geom.r,
+          geom.r * 0.4,
+          COLOR_GOB_STEAM,
+          CLEANUP_LIFETIME_MS,
+          BURST_DEPTH,
+        );
+      }
+    } else {
+      for (const geom of slickLastGeom.values()) {
+        spawnRing(
+          geom.x,
+          geom.y,
+          geom.r,
+          geom.r * 0.4,
+          COLOR_GOB_STEAM,
+          CLEANUP_LIFETIME_MS,
+          BURST_DEPTH,
+        );
+      }
+      slickLastGeom.clear();
+      slickGfx?.destroy();
+      slickGfx = undefined;
     }
 
     // ── Resolution bursts (drain the durable pending-burst queue) ─────────
@@ -515,15 +718,23 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     while (runtime.pendingBursts.length > 0) {
       const burst = runtime.pendingBursts.shift()!;
       const spawn =
-        burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID ? spawnUndercityBurst : spawnBurst;
+        burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID
+          ? spawnUndercityBurst
+          : burst.abilityId === DON_PACO_BIG_GOB_ABILITY_ID
+            ? spawnBigGobBurst
+            : spawnBurst;
       const geom = burst.geometry;
       if (geom.kind === 'circle') {
         const cx = ftToPx(geom.x);
         const cy = ftToPx(geom.y);
         const r = ftToPx(geom.radiusFt);
         spawn(cx, cy, r);
-      } else {
+      } else if (geom.kind === 'spawn-circles') {
         for (const circle of geom.circles) {
+          spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        }
+      } else {
+        for (const circle of circlesForMobAbilityGeometry(geom)) {
           spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
         }
       }
@@ -664,10 +875,15 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     tarnishGfx.clear();
     for (const gfx of berserkAuraGfx.values()) gfx.destroy();
     berserkAuraGfx.clear();
+    projectileGfx?.destroy();
+    projectileGfx = undefined;
+    slickGfx?.destroy();
+    slickGfx = undefined;
     berserkAuraLastPos.clear();
     berserkAuraLastPulseFrame.clear();
     tarnishLastPos.clear();
     berserkAuraSeen.clear();
+    slickLastGeom.clear();
     lastGeom.clear();
     castStartSeen.clear();
   }

@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "don-paco-big-gob",
+  "task_title": "Implement Don Paco THE BIG GOB",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Alt A: general reusable compound hazard/public-geometry model; adopted in narrower form by explicitly adding shared authoritative projectile/slick state instead of a Don-Paco-only visual shim. Alt B: schedule via mob-ability runtime but hand travel/zones to unrelated projectile/surface subsystems; rejected because the issue requires renderer/AI/projectile/impact/slick occupancy to consume one committed five-path geometry contract. Review forced explicit decisions for authoritative post-resolution state, exact cooldown anchor semantics, cone/circle/slick AI consumption, wall semantics, five-path verification, and correcting the stale Don Paco status metadata."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

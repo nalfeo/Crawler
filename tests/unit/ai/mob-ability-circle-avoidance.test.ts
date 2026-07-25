@@ -1,22 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
-import { createVerdigrisGlamourDefinition } from '../../../src/core/index.js';
+import {
+  createDonPacoBigGobDefinition,
+  createVerdigrisGlamourDefinition,
+  spawnBehaviorEnemy,
+} from '../../../src/core/index.js';
 import { spawnPlayer } from '../../../src/core/spawners/combatants.js';
 import { createInputState } from '../../../src/shared/input.js';
+import { getWeaponDef } from '../../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
-import {
-  initializeFloor1Scenario,
-  selectFloor1StarterWeapon,
-} from '../../../src/game/floorScenario.js';
+import { AI_TYPE } from '../../../src/game/enemyAISystem.js';
+import { setActiveWeapon } from '../../../src/game/weaponSystem.js';
 
 describe('BehaviorTreeAI mob-ability circle avoidance', () => {
   it('treats the exact telegraph boundary as dangerous and dodges outward', () => {
     const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
     const player = spawnPlayer(world, 12, 0);
-    initializeFloor1Scenario(world, player);
-    selectFloor1StarterWeapon(world, 0);
     world.stores.position.x[player] = 12;
     world.stores.position.y[player] = 0;
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
     const def = createVerdigrisGlamourDefinition();
     world.mobAbilities.cues.push({
       abilityId: def.abilityId,
@@ -38,11 +42,12 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
 
   it('uses spawn-circle telegraphs as danger cues and dodges from the committed circle', () => {
     const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
     const player = spawnPlayer(world, 10, 10);
-    initializeFloor1Scenario(world, player);
-    selectFloor1StarterWeapon(world, 0);
     world.stores.position.x[player] = 10;
     world.stores.position.y[player] = 10;
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
     world.mobAbilities.cues.push({
       abilityId: 'plague-boss-squick-undercity-mob-call',
       casterEid: 88,
@@ -65,5 +70,95 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
 
     const debug = ai.getOpportunisticDebug();
     expect(Math.hypot(debug.dodgeX, debug.dodgeY)).toBeGreaterThan(0);
+  });
+
+  it('uses projectile-fan telegraphs to dodge laterally out of the locked cone', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 0, 10);
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    const def = createDonPacoBigGobDefinition();
+    world.mobAbilities.cues.push({
+      abilityId: def.abilityId,
+      casterEid: 77,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'projectile-fan',
+        originX: 0,
+        originY: 0,
+        facingRad: Math.PI / 2,
+        coneAngleDeg: 70,
+        rangeFt: 30,
+        paths: [
+          {
+            kind: 'projectile-path',
+            startX: 0,
+            startY: 0,
+            endX: -17.21,
+            endY: 24.57,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 0,
+            startY: 0,
+            endX: -9.01,
+            endY: 28.61,
+            impactRadiusFt: 3,
+          },
+          { kind: 'projectile-path', startX: 0, startY: 0, endX: 0, endY: 30, impactRadiusFt: 3 },
+          {
+            kind: 'projectile-path',
+            startX: 0,
+            startY: 0,
+            endX: 9.01,
+            endY: 28.61,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 0,
+            startY: 0,
+            endX: 17.21,
+            endY: 24.57,
+            impactRadiusFt: 3,
+          },
+        ],
+      },
+      dangerColor: def.dangerColor,
+      announcementText: def.announcementText,
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const debug = ai.getOpportunisticDebug();
+    expect(Math.abs(debug.dodgeX)).toBeGreaterThan(0);
+    expect(debug.dodgeY).toBeCloseTo(0, 6);
+  });
+
+  it('dodges outward from active mob-ability slick zones', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 1, 0);
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    world.mobAbilities.activeZones.push({
+      abilityId: 'don-paco-the-big-gob',
+      casterEid: 77,
+      sourceId: 'mob-ability:don-paco-the-big-gob:77:slick',
+      circle: { kind: 'circle', x: 0, y: 0, radiusFt: 3 },
+      remainingMs: 4000,
+      slowMultiplier: 0.65,
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const debug = ai.getOpportunisticDebug();
+    expect(debug.dodgeX).toBeGreaterThan(0);
+    expect(debug.dodgeY).toBeCloseTo(0, 6);
   });
 });

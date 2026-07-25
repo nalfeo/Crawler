@@ -21,15 +21,17 @@
 import { entityExists, hasComponent, query, removeComponent } from 'bitecs';
 import { GAME } from '../../shared/constants.js';
 import { Health, Knockback, Player, Position, Velocity } from '../components.js';
-import { clearStatusEffects } from '../status-effects.js';
+import { applyStatusEffect, clearStatusEffects } from '../status-effects.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
 import type { GameWorld } from '../world.js';
 import {
   mobAbilitySourceId,
   pushMobAbilityBurst,
+  type MobAbilityActiveProjectileState,
   type MobAbilityActiveBuffState,
   type MobAbilityGeometry,
   type MobAbilityInstanceState,
+  type MobAbilityProjectileFanPath,
   type MobAbilityRuntimeDefinition,
 } from './types.js';
 
@@ -46,7 +48,9 @@ const ANNOUNCEMENT_DURATION_MS = 2200;
  */
 const TIMER_EPSILON_MS = 1e-6;
 
-function normalizedTargetingMode(def: MobAbilityRuntimeDefinition): 'player-position' | 'self' {
+function normalizedTargetingMode(
+  def: MobAbilityRuntimeDefinition,
+): 'player-direction' | 'player-position' | 'self' {
   return def.targetingMode ?? 'player-position';
 }
 
@@ -119,10 +123,24 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   // Release owned status effects (e.g. Tarnished) from every affected entity.
   const sourceId = mobAbilitySourceId(inst.definition.abilityId, casterEid);
   for (const eid of [...world.statusEffectsByEntity.keys()]) {
-    clearStatusEffects(world, eid, (effect) => effect.sourceId === sourceId);
+    clearStatusEffects(
+      world,
+      eid,
+      (effect) => effect.sourceId === sourceId || effect.sourceId.startsWith(`${sourceId}:`),
+    );
   }
   inst.ownedEntityGenerations.clear();
   world.mobAbilities.activeBuffsByEntity.delete(casterEid);
+  for (let i = runtime.activeProjectiles.length - 1; i >= 0; i -= 1) {
+    if (runtime.activeProjectiles[i]!.casterEid === casterEid) {
+      runtime.activeProjectiles.splice(i, 1);
+    }
+  }
+  for (let i = runtime.activeZones.length - 1; i >= 0; i -= 1) {
+    if (runtime.activeZones[i]!.casterEid === casterEid) {
+      runtime.activeZones.splice(i, 1);
+    }
+  }
 }
 
 /** Enable/disable the runtime feature gate. Disabling clears all cues + clocks. */
@@ -139,6 +157,8 @@ export function setMobAbilitiesEnabled(world: GameWorld, enabled: boolean): void
 export function activateMobAbilityEncounter(world: GameWorld): void {
   const runtime = world.mobAbilities;
   runtime.encounterActive = true;
+  runtime.activeProjectiles.length = 0;
+  runtime.activeZones.length = 0;
   for (const inst of runtime.byEntity.values()) {
     inst.phase = 'cooldown';
     inst.timerMs = inst.definition.firstEligibleAfterMs;
@@ -164,6 +184,8 @@ export function disableMobAbilityEncounter(world: GameWorld): void {
   // pendingBursts so that per-caster death still renders the resolution VFX.
   runtime.pendingBursts.length = 0;
   runtime.activeBuffsByEntity.clear();
+  runtime.activeProjectiles.length = 0;
+  runtime.activeZones.length = 0;
 }
 
 /** A caster is valid iff it still exists, is alive, and is still its own boss. */
@@ -215,10 +237,72 @@ function isTargetValid(
   return true;
 }
 
+function buildProjectileFanPaths(
+  originX: number,
+  originY: number,
+  facingRad: number,
+  count: number,
+  coneAngleDeg: number,
+  rangeFt: number,
+  impactRadiusFt: number,
+): MobAbilityProjectileFanPath[] {
+  const halfAngleRad = (coneAngleDeg * Math.PI) / 360;
+  const stepRad = count > 1 ? (halfAngleRad * 2) / (count - 1) : 0;
+  const paths: MobAbilityProjectileFanPath[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const angleRad = facingRad - halfAngleRad + stepRad * i;
+    paths.push({
+      kind: 'projectile-path',
+      startX: originX,
+      startY: originY,
+      endX: originX + Math.cos(angleRad) * rangeFt,
+      endY: originY + Math.sin(angleRad) * rangeFt,
+      impactRadiusFt,
+    });
+  }
+  return paths;
+}
+
 function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
-  // Spawn-circle abilities commit deterministic caster-relative geometry directly.
-  if (def.geometry.kind === 'spawn-circles') {
+  if (def.geometry.kind === 'projectile-fan') {
+    const casterPos = targetPosition(world, casterEid);
+    if (casterPos === null) {
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    const targetEid = findDefaultTarget(world);
+    const targetPos = targetPosition(world, targetEid);
+    if (targetPos === null) {
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    const facingRad = Math.atan2(targetPos.y - casterPos.y, targetPos.x - casterPos.x);
+    inst.phase = 'telegraph';
+    inst.timerMs = def.telegraphDurationMs;
+    inst.committedTargetEid = targetEid;
+    inst.committedTargetGeneration =
+      targetEid === null ? null : (world.entityRenderGeneration[targetEid] ?? 0);
+    inst.committedGeometry = {
+      kind: 'projectile-fan',
+      originX: casterPos.x,
+      originY: casterPos.y,
+      facingRad,
+      coneAngleDeg: def.geometry.coneAngleDeg,
+      rangeFt: def.geometry.rangeFt,
+      paths: buildProjectileFanPaths(
+        casterPos.x,
+        casterPos.y,
+        facingRad,
+        def.geometry.count,
+        def.geometry.coneAngleDeg,
+        def.geometry.rangeFt,
+        def.geometry.impactRadiusFt,
+      ),
+    };
+  } else if (def.geometry.kind === 'spawn-circles') {
     const x = world.stores.position.x[casterEid];
     const y = world.stores.position.y[casterEid];
     if (x === undefined || y === undefined) {
@@ -302,6 +386,150 @@ function tickActiveBuffs(world: GameWorld): void {
   }
 }
 
+export interface LaunchMobAbilityProjectilesInput {
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly paths: readonly MobAbilityProjectileFanPath[];
+  readonly damageAmount: number;
+  readonly zoneDurationMs: number;
+  readonly slowMultiplier: number;
+  readonly travelDurationMs: number;
+  readonly onImpact: (world: GameWorld, projectile: MobAbilityActiveProjectileState) => void;
+}
+
+export function launchMobAbilityProjectiles(
+  world: GameWorld,
+  input: LaunchMobAbilityProjectilesInput,
+): void {
+  for (const path of input.paths) {
+    world.mobAbilities.activeProjectiles.push({
+      abilityId: input.abilityId,
+      casterEid: input.casterEid,
+      sourceId: input.sourceId,
+      path,
+      damageAmount: input.damageAmount,
+      zoneDurationMs: input.zoneDurationMs,
+      slowMultiplier: input.slowMultiplier,
+      travelDurationMs: input.travelDurationMs,
+      onImpact: input.onImpact,
+      elapsedMs: 0,
+    });
+  }
+}
+
+export interface SpawnMobAbilityZoneInput {
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly x: number;
+  readonly y: number;
+  readonly radiusFt: number;
+  readonly durationMs: number;
+  readonly slowMultiplier: number;
+}
+
+export function spawnMobAbilityZone(world: GameWorld, zone: SpawnMobAbilityZoneInput): void {
+  world.mobAbilities.activeZones.push({
+    abilityId: zone.abilityId,
+    casterEid: zone.casterEid,
+    sourceId: zone.sourceId,
+    circle: {
+      kind: 'circle',
+      x: zone.x,
+      y: zone.y,
+      radiusFt: zone.radiusFt,
+    },
+    remainingMs: zone.durationMs,
+    slowMultiplier: zone.slowMultiplier,
+  });
+}
+
+function isPointInsideCircle(
+  x: number,
+  y: number,
+  circle: { x: number; y: number; radiusFt: number },
+): boolean {
+  const dx = x - circle.x;
+  const dy = y - circle.y;
+  return dx * dx + dy * dy <= circle.radiusFt * circle.radiusFt;
+}
+
+function tickActiveProjectiles(world: GameWorld): void {
+  const runtime = world.mobAbilities;
+  const dtMs = GAME.DELTA_MS;
+  for (let i = runtime.activeProjectiles.length - 1; i >= 0; i -= 1) {
+    const projectile = runtime.activeProjectiles[i]!;
+    projectile.elapsedMs += dtMs;
+    if (projectile.elapsedMs + TIMER_EPSILON_MS < projectile.travelDurationMs) {
+      continue;
+    }
+    projectile.onImpact(world, projectile);
+    pushMobAbilityBurst(world.mobAbilities.pendingBursts, {
+      abilityId: projectile.abilityId,
+      geometry: {
+        kind: 'circle',
+        x: projectile.path.endX,
+        y: projectile.path.endY,
+        radiusFt: projectile.path.impactRadiusFt,
+      },
+    });
+    runtime.activeProjectiles.splice(i, 1);
+  }
+}
+
+function tickActiveZones(world: GameWorld): void {
+  const runtime = world.mobAbilities;
+  const dtMs = GAME.DELTA_MS;
+  for (let i = runtime.activeZones.length - 1; i >= 0; i -= 1) {
+    const zone = runtime.activeZones[i]!;
+    zone.remainingMs -= dtMs;
+    if (zone.remainingMs <= TIMER_EPSILON_MS) {
+      runtime.activeZones.splice(i, 1);
+    }
+  }
+
+  const players = query(world.ecs, [Player, Position, Health]);
+  const activeZonePrefixes = new Set(
+    runtime.activeZones.map((zone) => `mob-ability:${zone.abilityId}:`),
+  );
+  for (const player of players) {
+    if ((world.stores.health.current[player] ?? 0) <= 0) continue;
+    let slowSourceId: string | null = null;
+    let slowMultiplier = 1;
+    for (const zone of runtime.activeZones) {
+      const x = world.stores.position.x[player] ?? 0;
+      const y = world.stores.position.y[player] ?? 0;
+      if (!isPointInsideCircle(x, y, zone.circle)) continue;
+      if (slowSourceId === null || zone.slowMultiplier < slowMultiplier) {
+        slowSourceId = zone.sourceId;
+        slowMultiplier = zone.slowMultiplier;
+      }
+    }
+    clearStatusEffects(
+      world,
+      player,
+      (effect) =>
+        effect.sourceType === 'ability' &&
+        effect.stat === 'speed' &&
+        effect.sourceId.endsWith(':slick') &&
+        (activeZonePrefixes.size === 0 ||
+          [...activeZonePrefixes].some((prefix) => effect.sourceId.startsWith(prefix))),
+    );
+    if (slowSourceId !== null) {
+      applyStatusEffect(world, player, {
+        stat: 'speed',
+        op: 'multiply',
+        value: slowMultiplier,
+        durationMs: GAME.DELTA_MS * 2,
+        sourceType: 'ability',
+        sourceId: slowSourceId,
+        stackRule: { mode: 'replace' },
+      });
+    }
+  }
+}
+
 function syncTelegraphGeometryToCaster(
   world: GameWorld,
   casterEid: number,
@@ -364,10 +592,12 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
     // burst even if the caster dies later in the same simulation step (which
     // would remove byEntity[casterEid] before PhaserBridge.sync runs).
     // Bounded push prevents unbounded headless growth (VFX is the sole drain).
-    pushMobAbilityBurst(world.mobAbilities.pendingBursts, {
-      abilityId: def.abilityId,
-      geometry,
-    });
+    if (def.geometry.kind !== 'projectile-fan') {
+      pushMobAbilityBurst(world.mobAbilities.pendingBursts, {
+        abilityId: def.abilityId,
+        geometry,
+      });
+    }
   }
   // Re-arm: cooldown is anchored AFTER resolution.
   inst.phase = 'cooldown';
@@ -492,6 +722,8 @@ export function mobAbilitySystem(world: GameWorld): void {
   runtime.cues.length = 0;
   if (!runtime.enabled || !runtime.encounterActive) return;
   tickActiveBuffs(world);
+  tickActiveProjectiles(world);
+  tickActiveZones(world);
   if (runtime.byEntity.size === 0) return;
 
   const dtMs = GAME.DELTA_MS;

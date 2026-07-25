@@ -42,9 +42,29 @@ export interface MobAbilitySpawnCirclesGeometry {
   readonly circles: readonly MobAbilityCircleGeometry[];
 }
 
-export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry;
+export interface MobAbilityProjectileFanPath {
+  readonly kind: 'projectile-path';
+  readonly startX: number;
+  readonly startY: number;
+  readonly endX: number;
+  readonly endY: number;
+  readonly impactRadiusFt: number;
+}
 
-export type MobAbilityTargetingMode = 'player-position' | 'self';
+export interface MobAbilityProjectileFanGeometry {
+  readonly kind: 'projectile-fan';
+  readonly originX: number;
+  readonly originY: number;
+  readonly facingRad: number;
+  readonly coneAngleDeg: number;
+  readonly rangeFt: number;
+  readonly paths: readonly MobAbilityProjectileFanPath[];
+}
+
+export type MobAbilityGeometry =
+  MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry | MobAbilityProjectileFanGeometry;
+
+export type MobAbilityTargetingMode = 'player-direction' | 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
 
 export interface MobAbilitySelfBuffDefinition {
@@ -106,6 +126,13 @@ export interface MobAbilityRuntimeDefinition {
         readonly count: number;
         readonly radiusFt: number;
         readonly distanceFromCasterFt: number;
+      }
+    | {
+        readonly kind: 'projectile-fan';
+        readonly count: number;
+        readonly coneAngleDeg: number;
+        readonly rangeFt: number;
+        readonly impactRadiusFt: number;
       };
   /** Targeting mode for telegraph lock semantics (player-position or self). */
   readonly targetingMode?: MobAbilityTargetingMode;
@@ -198,6 +225,10 @@ export interface MobAbilityRuntime {
   readonly pendingBursts: Array<MobAbilityBurst>;
   /** Active self-buffs authored by ability handlers and ticked by the runtime. */
   readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
+  /** In-flight ability projectiles authored by typed handlers and ticked by the runtime. */
+  readonly activeProjectiles: MobAbilityActiveProjectileState[];
+  /** Persistent ability zones authored by typed handlers and ticked by the runtime. */
+  readonly activeZones: MobAbilityActiveZoneState[];
   /**
    * Per-EID generation token, set on each `registerMobAbility` and cleared on
    * `clearMobAbility`. Compared against `MobAbilityInstanceState.registrationToken`
@@ -218,6 +249,28 @@ export interface MobAbilityActiveBuffState {
   remainingMs: number;
 }
 
+export interface MobAbilityActiveProjectileState {
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly path: MobAbilityProjectileFanPath;
+  readonly damageAmount: number;
+  readonly zoneDurationMs: number;
+  readonly slowMultiplier: number;
+  readonly travelDurationMs: number;
+  readonly onImpact: (world: GameWorld, projectile: MobAbilityActiveProjectileState) => void;
+  elapsedMs: number;
+}
+
+export interface MobAbilityActiveZoneState {
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly circle: MobAbilityCircleGeometry;
+  readonly slowMultiplier: number;
+  remainingMs: number;
+}
+
 /** Create the default-off, empty runtime state for a fresh world. */
 export function createMobAbilityRuntime(): MobAbilityRuntime {
   return {
@@ -227,6 +280,8 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     cues: [],
     pendingBursts: [],
     activeBuffsByEntity: new Map(),
+    activeProjectiles: [],
+    activeZones: [],
     registrationTokens: new Map(),
     nextToken: 0,
   };
@@ -259,5 +314,23 @@ export function pushMobAbilityBurst(bursts: MobAbilityBurst[], burst: MobAbility
   bursts.push(burst);
   if (bursts.length > MOB_ABILITY_BURST_CAP) {
     bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
+  }
+}
+
+export function circlesForMobAbilityGeometry(
+  geometry: MobAbilityGeometry,
+): readonly MobAbilityCircleGeometry[] {
+  switch (geometry.kind) {
+    case 'circle':
+      return [geometry];
+    case 'spawn-circles':
+      return geometry.circles;
+    case 'projectile-fan':
+      return geometry.paths.map((path) => ({
+        kind: 'circle',
+        x: path.endX,
+        y: path.endY,
+        radiusFt: path.impactRadiusFt,
+      }));
   }
 }
