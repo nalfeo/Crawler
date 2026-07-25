@@ -13,6 +13,7 @@ import {
   installDefaultSetPiecePacks,
   installSetPiecePacks,
   isCustomSpriteRef,
+  resolveSetPieceDoorSlots,
   setPiecePackSchema,
 } from '../../src/shared/set-piece-types.js';
 
@@ -811,5 +812,122 @@ describe('set-piece placement schema', () => {
     expect(() =>
       setPiecePackSchema.parse(packWithPlacement({ verticalAlign: 'middle' })),
     ).toThrow();
+  });
+});
+
+describe('set-piece door slots', () => {
+  afterEach(() => {
+    installDefaultSetPiecePacks();
+  });
+
+  const layers = [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 } }];
+
+  // 4×4 room; the ring is every tile with x/y at 0 or 3. A door prop sits on the
+  // bottom-centre ring tile (1,3); an optional interior floor keeps the interior valid.
+  const packWith = (opts: {
+    doorAt?: { x: number; y: number };
+    doorSlots?: unknown;
+    extraProps?: unknown[];
+  }) => {
+    const door = opts.doorAt ?? { x: 1, y: 3 };
+    return {
+      version: 1,
+      packId: 'door-slot-test',
+      setPieces: [
+        {
+          id: 'door-room',
+          name: 'Door Room',
+          theme: 'test',
+          sizing: 'exact',
+          width: 4,
+          height: 4,
+          description: 'Exercises the door-slot schema + resolver.',
+          props: [
+            { id: 'entrance', kind: 'door', x: door.x, y: door.y, layers },
+            ...(opts.extraProps ?? []),
+          ],
+          ...(opts.doorSlots !== undefined ? { doorSlots: opts.doorSlots } : {}),
+        },
+      ],
+    };
+  };
+
+  it('treats a ring door prop with no slot as an implicit fixed door', () => {
+    installSetPiecePacks([setPiecePackSchema.parse(packWith({}))]);
+    const slots = resolveSetPieceDoorSlots(getSetPieceDef('door-room')!);
+    expect(slots).toEqual([{ propId: 'entrance', mode: 'fixed', x: 1, y: 3, width: 1, height: 1 }]);
+  });
+
+  it('upgrades a door to dynamic with eligible edges via a slot', () => {
+    installSetPiecePacks([
+      setPiecePackSchema.parse(
+        packWith({
+          doorSlots: [{ propId: 'entrance', mode: 'dynamic', edges: ['bottom', 'left'] }],
+        }),
+      ),
+    ]);
+    const slots = resolveSetPieceDoorSlots(getSetPieceDef('door-room')!);
+    expect(slots).toEqual([
+      {
+        propId: 'entrance',
+        mode: 'dynamic',
+        edges: ['bottom', 'left'],
+        x: 1,
+        y: 3,
+        width: 1,
+        height: 1,
+      },
+    ]);
+  });
+
+  it('excludes door props that sit off the ring (interior doors)', () => {
+    installSetPiecePacks([setPiecePackSchema.parse(packWith({ doorAt: { x: 2, y: 2 } }))]);
+    expect(resolveSetPieceDoorSlots(getSetPieceDef('door-room')!)).toEqual([]);
+  });
+
+  it('rejects a dynamic slot with no eligible edges', () => {
+    expect(() =>
+      setPiecePackSchema.parse(packWith({ doorSlots: [{ propId: 'entrance', mode: 'dynamic' }] })),
+    ).toThrow(/at least one eligible edge/);
+  });
+
+  it('rejects a fixed slot that declares edges', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({ doorSlots: [{ propId: 'entrance', mode: 'fixed', edges: ['top'] }] }),
+      ),
+    ).toThrow(/must not declare edges/);
+  });
+
+  it('rejects a slot referencing a non-door prop', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({
+          extraProps: [{ id: 'shelf', kind: 'furniture', x: 1, y: 1, layers }],
+          doorSlots: [{ propId: 'shelf', mode: 'fixed' }],
+        }),
+      ),
+    ).toThrow(/unknown door prop/);
+  });
+
+  it('rejects a slot referencing an off-ring door prop', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({ doorAt: { x: 2, y: 2 }, doorSlots: [{ propId: 'entrance', mode: 'fixed' }] }),
+      ),
+    ).toThrow(/not on the .* footprint ring/);
+  });
+
+  it('rejects duplicate slots for the same door prop', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({
+          doorSlots: [
+            { propId: 'entrance', mode: 'fixed' },
+            { propId: 'entrance', mode: 'dynamic', edges: ['top'] },
+          ],
+        }),
+      ),
+    ).toThrow(/Duplicate door slot/);
   });
 });

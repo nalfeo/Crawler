@@ -10,7 +10,6 @@ import {
 import {
   BiomeType,
   RoomRole,
-  TilePresets,
   TerrainType,
   type MapConfig,
   type RoomBounds,
@@ -30,6 +29,7 @@ import {
   type StampedSetPiece,
   type StampedSetPieceNpc,
 } from '../core/map/stampSetPiece.js';
+import { carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
 import { getSetPieceDef, getSetPieceFootprint } from '../shared/set-piece-types.js';
 import {
   Position,
@@ -161,7 +161,7 @@ const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 // component carries matching dimensions in feet (px / PIXELS_PER_FOOT).
 const WELCOME_SIGN_WIDTH = 6;
 const WELCOME_SIGN_HEIGHT = 3.25;
-const WELCOME_ROOM_SET_PIECE_ID = 'welcome-room';
+export const WELCOME_ROOM_SET_PIECE_ID = 'welcome-room';
 
 /** Blood colours for Floor 1 enemy archetypes. */
 const BLOOD_COLOR_RAT = DEFAULT_BLOOD_COLOR; // red — 0xcc0000
@@ -1368,6 +1368,7 @@ function spawnNpcFromPlacement(
 function computeWelcomeRoomStamp(
   world: GameWorld,
   welcomeOfficePos: { x: number; y: number },
+  carved: boolean,
 ): StampedSetPiece | null {
   const floorMap = world.floorMap;
   if (!floorMap) {
@@ -1386,57 +1387,46 @@ function computeWelcomeRoomStamp(
   return stampSetPiece(def, {
     roomBounds: room.bounds,
     tileSizeFt: floorMap.config.tileSizeFt,
+    // When the prefab was carved, the room's bounds ARE the footprint, so anchor
+    // the def's (0,0) to the top-left corner: the authored wall ring coincides
+    // with the carved perimeter walls and interior props/NPCs land inside. Without
+    // a carve (rollback fallback) keep the historical interior-centred placement.
+    anchor: carved ? 'bounds-topleft' : 'interior-center',
   });
 }
 
 /**
- * Apply authored structural set-piece props (wall/door) onto real map tiles.
- *
- * Set-piece dressing is mostly render-only, but structural props must also
- * mutate map terrain semantics so authored walls/doors render as wall/door
- * terrain, and authored doors are treated as real door tiles at runtime.
+ * Carve the welcome-room prefab so it is authoritative for its room geometry:
+ * resize the welcome-office hub room to the prefab footprint, wall its perimeter,
+ * punch the declared door(s), and reconnect corridors — all as TILE WRITES, never
+ * ECS entities (allocating entity ids for dressing would perturb the global RNG
+ * and break headless↔rendered determinism; see world-objects.ts). Returns whether
+ * the prefab was carved and, when fitted, the recentred hub tile (the new room's
+ * interior centre) so downstream NPC/sign placement uses a tile guaranteed to lie
+ * inside the resized room. `fitted: false` ⇒ nothing was mutated and the caller
+ * keeps the legacy render-only stamp so Floor 1 stays winnable (rollback safety).
  */
-function applyWelcomeRoomStructuralTiles(world: GameWorld, stamp: StampedSetPiece): void {
+function carveWelcomeRoomPrefab(
+  world: GameWorld,
+  welcomeOfficePos: { x: number; y: number },
+): { fitted: boolean; recentredWelcomePos?: { x: number; y: number } } {
   const floorMap = world.floorMap;
-  if (!floorMap) return;
+  if (!floorMap) return { fitted: false };
   const def = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
-  if (!def) return;
-
-  const propById = new Map(def.props.map((prop) => [prop.id, prop]));
-  const applied = new Set<string>();
-  const mapWidth = floorMap.config.widthTiles;
-  for (const stampedProp of stamp.props) {
-    const propId = stampedProp.render.label;
-    if (!propId || applied.has(propId)) continue;
-    const prop = propById.get(propId);
-    if (!prop) continue;
-    applied.add(propId);
-    if (prop.kind !== 'wall' && prop.kind !== 'door') continue;
-
-    const terrain = prop.kind === 'wall' ? TerrainType.STONE_WALL : TerrainType.DOOR;
-    for (let dy = 0; dy < prop.height; dy += 1) {
-      for (let dx = 0; dx < prop.width; dx += 1) {
-        const tx = stampedProp.tileX + dx;
-        const ty = stampedProp.tileY + dy;
-        if (!floorMap.tileMap.inBounds(tx, ty)) continue;
-        const idx = ty * mapWidth + tx;
-        if (prop.kind === 'door') {
-          floorMap.tileMap.setFlags(tx, ty, TilePresets.DOOR_OPEN);
-          floorMap.terrain[idx] = terrain;
-        } else if (floorMap.terrain[idx] !== TerrainType.DOOR) {
-          // Always set wall physics flags when stamping a wall prop — interior
-          // tiles start passable so the old `!isPassable` guard would silently
-          // skip the physics update, leaving a tile that looks like a wall but
-          // lets the player walk through it.  The welcome-room set-piece no
-          // longer includes wall-kind props (its structure comes from the dungeon
-          // generator), so this branch is a defensive guard for any future
-          // set-piece that authors explicit interior walls.
-          floorMap.tileMap.setFlags(tx, ty, TilePresets.WALL);
-          floorMap.terrain[idx] = terrain;
-        }
-      }
-    }
+  if (!def) return { fitted: false };
+  const officeTile = floorMap.worldToTile(welcomeOfficePos.x, welcomeOfficePos.y);
+  const roomId = floorMap.roomGraph.getRoomAt(officeTile.x, officeTile.y);
+  const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
+  if (!room) return { fitted: false };
+  // Carve paints the interior as plain STONE_FLOOR; the subsequent tagRoomAsSafe
+  // upgrades it to SAFE_ROOM_FLOOR, keeping the safe-room tint logic in one place.
+  const result = carveSetPieceRoom(floorMap, room, def);
+  if (!result.fitted || !result.bounds) {
+    return { fitted: false };
   }
+  const centreTileX = result.bounds.x + Math.floor(result.bounds.width / 2);
+  const centreTileY = result.bounds.y + Math.floor(result.bounds.height / 2);
+  return { fitted: true, recentredWelcomePos: floorMap.tileToWorld(centreTileX, centreTileY) };
 }
 
 /**
@@ -1519,15 +1509,28 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const maxHp = (world.stores.health.max[playerEid] ?? 100) + floor1Config.player.hpBonus;
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
+  const objectiveTiles = chooseObjectiveTiles(world);
   const {
-    welcomeOfficePos,
     safeRoomPos,
     staircasePos,
     slimeRatRoomPos,
     spellQuestGiverPos,
     shopRoomPos,
     questItemPos,
-  } = chooseObjectiveTiles(world);
+  } = objectiveTiles;
+  // `welcomeOfficePos` is mutable: carving the welcome-room prefab (below) resizes
+  // the hub room, so we recentre it onto the carved room's interior centre.
+  let welcomeOfficePos = objectiveTiles.welcomeOfficePos;
+  // Carve the welcome-room prefab so it OWNS its geometry: the hub room is resized
+  // to the prefab footprint with a real impassable wall ring + a real door, all as
+  // tile writes (never ECS entities → determinism preserved). Runs BEFORE
+  // tagRoomAsSafe (so the safe tint/role lands on the carved geometry) and BEFORE
+  // the spawn-reachability mask (so NPC routability sees the carved walls/doors).
+  // On no-fit it mutates nothing and we keep the legacy render-only stamp.
+  const welcomeCarve = carveWelcomeRoomPrefab(world, welcomeOfficePos);
+  if (welcomeCarve.fitted && welcomeCarve.recentredWelcomePos) {
+    welcomeOfficePos = welcomeCarve.recentredWelcomePos;
+  }
   // The welcome room is the only safe room on Floor 1 — the bar/hub where all
   // three quest NPCs live. The shop and spell-broker rooms are regular rooms.
   tagRoomAsSafe(world, welcomeOfficePos);
@@ -1716,10 +1719,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // themed props. When present it drives NPC placement (replacing the scatter
   // fallback); the objective anchors below then auto-follow each NPC's actual
   // spawned tile.
-  const welcomeStamp = computeWelcomeRoomStamp(world, welcomeOfficePos);
+  const welcomeStamp = computeWelcomeRoomStamp(world, welcomeOfficePos, welcomeCarve.fitted);
   const stampedNpcByType = new Map<string, StampedSetPieceNpc>();
   if (welcomeStamp) {
-    applyWelcomeRoomStructuralTiles(world, welcomeStamp);
     for (const npc of welcomeStamp.npcs) {
       stampedNpcByType.set(npc.npcTypeId, npc);
     }
@@ -1848,9 +1850,21 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // instances on `world.setPieceProps` — NOT ECS entities — so they layer over
   // the baked terrain and around the NPCs without consuming entity ids or
   // entering the collision grid: no effect on collision, pathing, RNG, or
-  // balance.
+  // balance. Wall/door-kind props are SKIPPED: under the prefab-room model the
+  // carved terrain layer is authoritative for walls/doors, so re-drawing them as
+  // sprites would double-render/z-fight the baked tiles. Their role is purely to
+  // define the shell in the def (composition gate + door-tile source of truth).
   if (welcomeStamp) {
+    const welcomeDef = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
+    const structuralPropIds = new Set(
+      (welcomeDef?.props ?? [])
+        .filter((prop) => prop.kind === 'wall' || prop.kind === 'door')
+        .map((prop) => prop.id),
+    );
     for (const stampedProp of welcomeStamp.props) {
+      if (stampedProp.render.label && structuralPropIds.has(stampedProp.render.label)) {
+        continue;
+      }
       addSetPieceProp(world, stampedProp.x, stampedProp.y, stampedProp.render);
     }
   }

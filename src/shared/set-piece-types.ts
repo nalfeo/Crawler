@@ -234,6 +234,36 @@ export interface SetPiecePlacement {
   readonly horizontalAlign?: SetPieceHorizontalAlign;
 }
 
+/** A perimeter edge of a set-piece footprint. */
+export type SetPieceDoorEdge = 'top' | 'bottom' | 'left' | 'right';
+
+/**
+ * How map generation resolves a door slot when carving the prefab room.
+ * - `fixed`   — the corridor is pinned to the door prop's authored ring tile
+ *               (a shop's street entrance, a boss den's single approach).
+ * - `dynamic` — map-gen may relocate the door to whichever tile along the
+ *               eligible `edges` connects most straightforwardly to the floor.
+ */
+export type SetPieceDoorSlotMode = 'fixed' | 'dynamic';
+
+/**
+ * Map-generation resolution metadata for a door in a prefab set-piece room.
+ *
+ * Door **props** (`kind: 'door'`) remain the single source of truth for where a
+ * door renders and for the {@link https shell-integrity} composition gate. A
+ * `SetPieceDoorSlot` only layers on the map-gen *resolution* behaviour, keyed to
+ * a door prop by {@link propId}. When a def declares no slots, every ring door
+ * prop is treated as an implicit `fixed` slot (see {@link resolveSetPieceDoorSlots}).
+ */
+export interface SetPieceDoorSlot {
+  /** References a `kind: 'door'` prop (by id) that lies on the footprint ring. */
+  readonly propId: string;
+  /** `fixed` pins the corridor to the door tile; `dynamic` relocates along `edges`. */
+  readonly mode: SetPieceDoorSlotMode;
+  /** For `dynamic`: the eligible perimeter edges map-gen may relocate the door onto. */
+  readonly edges?: readonly SetPieceDoorEdge[];
+}
+
 export interface SetPieceDef {
   readonly id: string;
   readonly name: string;
@@ -251,6 +281,11 @@ export interface SetPieceDef {
   /** How the block anchors within an oversized room. Defaults to centre/centre. */
   readonly placement?: SetPiecePlacement;
   readonly props: readonly SetPiecePropDef[];
+  /**
+   * Optional map-gen door-slot resolution metadata (see {@link SetPieceDoorSlot}).
+   * When omitted, every ring door prop is treated as an implicit `fixed` slot.
+   */
+  readonly doorSlots?: readonly SetPieceDoorSlot[];
   /** NPCs placed by this set piece (empty when none authored). */
   readonly npcs: readonly SetPieceNpcDef[];
   /** Optional editor scene layers (editor visibility/locking grouping only). */
@@ -391,6 +426,16 @@ const placementSchema = z
   })
   .strict();
 
+const doorEdges = ['top', 'bottom', 'left', 'right'] as const;
+
+const doorSlotSchema = z
+  .object({
+    propId: z.string().trim().min(1),
+    mode: z.enum(['fixed', 'dynamic']),
+    edges: z.array(z.enum(doorEdges)).min(1).optional(),
+  })
+  .strict();
+
 const setPieceSourceSchema = z
   .object({
     id: z.string().trim().min(1),
@@ -405,6 +450,7 @@ const setPieceSourceSchema = z
     tags: z.array(z.string().trim().min(1)).default([]),
     placement: placementSchema.optional(),
     props: z.array(propSourceSchema).min(1),
+    doorSlots: z.array(doorSlotSchema).optional(),
     npcs: z.array(npcSourceSchema).default([]),
     sceneLayers: z.array(setPieceSceneLayerSchema).optional(),
   })
@@ -461,6 +507,62 @@ const setPieceSourceSchema = z
           code: z.ZodIssueCode.custom,
           message: `Prop "${prop.id}" references unknown sceneLayer "${prop.sceneLayer}".`,
         });
+      }
+    }
+    if (value.doorSlots !== undefined) {
+      // Door slots resolve against the nominal footprint ring (value.width ×
+      // value.height), matching the shell-integrity composition gate. A slot
+      // references a `door` prop by id; that prop must lie on the ring.
+      const ringW = value.width;
+      const ringH = value.height;
+      const doorPropsById = new Map<string, (typeof value.props)[number]>();
+      for (const prop of value.props) {
+        if (prop.kind === 'door') doorPropsById.set(prop.id, prop);
+      }
+      const touchesRing = (prop: (typeof value.props)[number]): boolean => {
+        const w = prop.width ?? 1;
+        const h = prop.height ?? 1;
+        const x0 = Math.floor(prop.x);
+        const y0 = Math.floor(prop.y);
+        const x1 = Math.floor(prop.x + w - 1);
+        const y1 = Math.floor(prop.y + h - 1);
+        return x0 <= 0 || y0 <= 0 || x1 >= ringW - 1 || y1 >= ringH - 1;
+      };
+      const seenSlotProps = new Set<string>();
+      for (const slot of value.doorSlots) {
+        if (seenSlotProps.has(slot.propId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate door slot for prop "${slot.propId}" — one slot per door prop.`,
+          });
+        }
+        seenSlotProps.add(slot.propId);
+        const prop = doorPropsById.get(slot.propId);
+        if (prop === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Door slot references unknown door prop "${slot.propId}" (must be a kind:'door' prop).`,
+          });
+          continue;
+        }
+        if (!touchesRing(prop)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Door slot prop "${slot.propId}" is not on the ${ringW}×${ringH} footprint ring.`,
+          });
+        }
+        if (slot.mode === 'dynamic' && (slot.edges === undefined || slot.edges.length === 0)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Dynamic door slot "${slot.propId}" must declare at least one eligible edge.`,
+          });
+        }
+        if (slot.mode === 'fixed' && slot.edges !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Fixed door slot "${slot.propId}" must not declare edges (edges are for dynamic slots).`,
+          });
+        }
       }
     }
     const seenNpcIds = new Set<string>();
@@ -571,6 +673,7 @@ function compileSetPiece(source: SetPieceSource): SetPieceDef {
     tags: source.tags,
     ...(source.placement !== undefined ? { placement: source.placement } : {}),
     props: source.props.map(compileProp),
+    ...(source.doorSlots !== undefined ? { doorSlots: source.doorSlots } : {}),
     npcs: source.npcs.map(compileNpc),
     ...(source.sceneLayers !== undefined ? { sceneLayers: source.sceneLayers } : {}),
   };
@@ -641,6 +744,61 @@ export function findSetPieceNpcByAnchor(
   role: SetPieceNpcAnchorRole,
 ): SetPieceNpcDef | undefined {
   return def.npcs.find((npc) => npc.anchorRole === role);
+}
+
+/** A door slot resolved to concrete set-piece tiles for map generation. */
+export interface SetPieceResolvedDoorSlot {
+  /** The door prop this slot renders as. */
+  readonly propId: string;
+  readonly mode: SetPieceDoorSlotMode;
+  /** For `dynamic`: eligible perimeter edges map-gen may relocate the door onto. */
+  readonly edges?: readonly SetPieceDoorEdge[];
+  /** Door tile(s) in set-piece coords (top-left). Doors are usually 1×1. */
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Resolve the door slots map generation should carve for a prefab set-piece room.
+ *
+ * Door **props** on the footprint ring are the source of truth for door position
+ * and rendering. A matching {@link SetPieceDoorSlot} (by `propId`) upgrades a
+ * door to `dynamic` (relocatable along its eligible edges); a door prop with no
+ * matching slot is an implicit `fixed` door pinned to its authored tile. Result
+ * order follows authored prop order, so the output is fully deterministic.
+ */
+export function resolveSetPieceDoorSlots(def: SetPieceDef): SetPieceResolvedDoorSlot[] {
+  const ringW = def.width;
+  const ringH = def.height;
+  const slotByProp = new Map<string, SetPieceDoorSlot>();
+  for (const slot of def.doorSlots ?? []) slotByProp.set(slot.propId, slot);
+
+  const resolved: SetPieceResolvedDoorSlot[] = [];
+  for (const prop of def.props) {
+    if (prop.kind !== 'door') continue;
+    const x0 = Math.floor(prop.x);
+    const y0 = Math.floor(prop.y);
+    const w = Math.max(1, Math.floor(prop.width));
+    const h = Math.max(1, Math.floor(prop.height));
+    const x1 = x0 + w - 1;
+    const y1 = y0 + h - 1;
+    const onRing = x0 <= 0 || y0 <= 0 || x1 >= ringW - 1 || y1 >= ringH - 1;
+    if (!onRing) continue;
+    const slot = slotByProp.get(prop.id);
+    const mode: SetPieceDoorSlotMode = slot?.mode ?? 'fixed';
+    resolved.push({
+      propId: prop.id,
+      mode,
+      ...(mode === 'dynamic' && slot?.edges !== undefined ? { edges: slot.edges } : {}),
+      x: x0,
+      y: y0,
+      width: w,
+      height: h,
+    });
+  }
+  return resolved;
 }
 
 /** A single resolved draw instruction, flattened across props and their layers. */

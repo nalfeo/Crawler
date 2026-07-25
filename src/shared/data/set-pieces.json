@@ -1016,23 +1016,6 @@
           ]
         },
         {
-          "id": "__auto-wall-5-7",
-          "kind": "wall",
-          "x": 5,
-          "y": 7,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-6-0",
           "kind": "wall",
           "x": 6,
@@ -1474,6 +1457,25 @@
                 "source": "catalog",
                 "spriteId": "sprite:npc.guide"
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 5,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -2265,23 +2267,6 @@
           ]
         },
         {
-          "id": "__auto-wall-4-6",
-          "kind": "wall",
-          "x": 4,
-          "y": 6,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-5-0",
           "kind": "wall",
           "x": 5,
@@ -2655,7 +2640,7 @@
           "id": "door",
           "kind": "door",
           "x": 4,
-          "y": 5,
+          "y": 6,
           "layers": [
             {
               "sprite": {
@@ -2663,7 +2648,9 @@
                 "sheetKey": "kenney-tiny-dungeon",
                 "col": 4,
                 "row": 2
-              }
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -3608,23 +3595,6 @@
           ]
         },
         {
-          "id": "__auto-wall-6-5",
-          "kind": "wall",
-          "x": 6,
-          "y": 5,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-7-0",
           "kind": "wall",
           "x": 7,
@@ -3998,6 +3968,25 @@
                 "source": "catalog",
                 "spriteId": "sprite:player"
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 6,
+          "y": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -4908,23 +4897,6 @@
           ]
         },
         {
-          "id": "__auto-wall-5-6",
-          "kind": "wall",
-          "x": 5,
-          "y": 6,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-6-0",
           "kind": "wall",
           "x": 6,
@@ -5310,6 +5282,25 @@
                 "source": "catalog",
                 "spriteId": "sprite:npc.guide"
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 5,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -6220,23 +6211,6 @@
           ]
         },
         {
-          "id": "__auto-wall-4-7",
-          "kind": "wall",
-          "x": 4,
-          "y": 7,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-5-0",
           "kind": "wall",
           "x": 5,
@@ -6644,6 +6618,25 @@
                 "source": "catalog",
                 "spriteId": "sprite:npc.guide"
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 4,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -7352,23 +7345,6 @@
           ]
         },
         {
-          "id": "__auto-wall-4-6",
-          "kind": "wall",
-          "x": 4,
-          "y": 6,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-5-0",
           "kind": "wall",
           "x": 5,
@@ -7707,6 +7683,25 @@
                 "source": "catalog",
                 "spriteId": "sprite:npc.guide"
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 4,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -8313,23 +8308,6 @@
           ]
         },
         {
-          "id": "__auto-wall-4-5",
-          "kind": "wall",
-          "x": 4,
-          "y": 5,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-5-0",
           "kind": "wall",
           "x": 5,
@@ -8629,6 +8607,25 @@
                 "prompt": "A glowing aquarium with a few orange fish and bubbles, top-down 16x16 pixel art.",
                 "tags": ["decoration"]
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 4,
+          "y": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -9133,23 +9130,6 @@
           ]
         },
         {
-          "id": "__auto-wall-3-5",
-          "kind": "wall",
-          "x": 3,
-          "y": 5,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-4-0",
           "kind": "wall",
           "x": 4,
@@ -9454,6 +9434,25 @@
                 "source": "catalog",
                 "spriteId": "sprite:player"
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 3,
+          "y": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -10162,23 +10161,6 @@
           ]
         },
         {
-          "id": "__auto-wall-4-6",
-          "kind": "wall",
-          "x": 4,
-          "y": 6,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-5-0",
           "kind": "wall",
           "x": 5,
@@ -10537,6 +10519,25 @@
                 "col": 4,
                 "row": 3
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 4,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -11245,23 +11246,6 @@
           ]
         },
         {
-          "id": "__auto-wall-4-6",
-          "kind": "wall",
-          "x": 4,
-          "y": 6,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-5-0",
           "kind": "wall",
           "x": 5,
@@ -11613,6 +11597,25 @@
                 "source": "catalog",
                 "spriteId": "sprite:enemy.slime"
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 4,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -12202,23 +12205,6 @@
           ]
         },
         {
-          "id": "__auto-wall-3-6",
-          "kind": "wall",
-          "x": 3,
-          "y": 6,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-4-0",
           "kind": "wall",
           "x": 4,
@@ -12543,6 +12529,25 @@
                 "col": 6,
                 "row": 7
               }
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 3,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -13336,23 +13341,6 @@
           ]
         },
         {
-          "id": "__auto-wall-4-6",
-          "kind": "wall",
-          "x": 4,
-          "y": 6,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
           "id": "__auto-wall-5-0",
           "kind": "wall",
           "x": 5,
@@ -13757,6 +13745,25 @@
             }
           ],
           "sceneLayer": "default"
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 4,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
+            }
+          ],
+          "sceneLayer": "default"
         }
       ],
       "sceneLayers": [
@@ -13890,7 +13897,7 @@
         {
           "id": "welcome-desk",
           "kind": "furniture",
-          "x": 4.75,
+          "x": 3.75,
           "y": 2.25,
           "layers": [
             {
@@ -14702,6 +14709,586 @@
               },
               "widthFt": 2,
               "heightFt": 2
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "__auto-wall-0-0",
+          "kind": "wall",
+          "x": 0,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-1-0",
+          "kind": "wall",
+          "x": 1,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-2-0",
+          "kind": "wall",
+          "x": 2,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-3-0",
+          "kind": "wall",
+          "x": 3,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-4-0",
+          "kind": "wall",
+          "x": 4,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-5-0",
+          "kind": "wall",
+          "x": 5,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-6-0",
+          "kind": "wall",
+          "x": 6,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-7-0",
+          "kind": "wall",
+          "x": 7,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-8-0",
+          "kind": "wall",
+          "x": 8,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-9-0",
+          "kind": "wall",
+          "x": 9,
+          "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-1",
+          "kind": "wall",
+          "x": 0,
+          "y": 1,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-9-1",
+          "kind": "wall",
+          "x": 9,
+          "y": 1,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-2",
+          "kind": "wall",
+          "x": 0,
+          "y": 2,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-9-2",
+          "kind": "wall",
+          "x": 9,
+          "y": 2,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-3",
+          "kind": "wall",
+          "x": 0,
+          "y": 3,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-9-3",
+          "kind": "wall",
+          "x": 9,
+          "y": 3,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-4",
+          "kind": "wall",
+          "x": 0,
+          "y": 4,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-9-4",
+          "kind": "wall",
+          "x": 9,
+          "y": 4,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-5",
+          "kind": "wall",
+          "x": 0,
+          "y": 5,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-9-5",
+          "kind": "wall",
+          "x": 9,
+          "y": 5,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-6",
+          "kind": "wall",
+          "x": 0,
+          "y": 6,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-9-6",
+          "kind": "wall",
+          "x": 9,
+          "y": 6,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-7",
+          "kind": "wall",
+          "x": 0,
+          "y": 7,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-9-7",
+          "kind": "wall",
+          "x": 9,
+          "y": 7,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-8",
+          "kind": "wall",
+          "x": 0,
+          "y": 8,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-1-8",
+          "kind": "wall",
+          "x": 1,
+          "y": 8,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-2-8",
+          "kind": "wall",
+          "x": 2,
+          "y": 8,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-3-8",
+          "kind": "wall",
+          "x": 3,
+          "y": 8,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-4-8",
+          "kind": "wall",
+          "x": 4,
+          "y": 8,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-6-8",
+          "kind": "wall",
+          "x": 6,
+          "y": 8,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-7-8",
+          "kind": "wall",
+          "x": 7,
+          "y": 8,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-8-8",
+          "kind": "wall",
+          "x": 8,
+          "y": 8,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-9-8",
+          "kind": "wall",
+          "x": 9,
+          "y": 8,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 5,
+          "y": 8,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 2
+              },
+              "widthFt": 3,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
