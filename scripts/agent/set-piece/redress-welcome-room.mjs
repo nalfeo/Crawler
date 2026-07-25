@@ -15,6 +15,7 @@
  *             scale class 1-8 ft
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { log } from 'node:console';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -318,4 +319,4 @@ if (stool) {
 room.props.push(...stageWall, ...leftEdge, ...rightEdge, ...bottomEdge, ...floorScatter);
 
 writeFileSync(dataPath, `${JSON.stringify(data, null, 2)}\n`);
-console.log(`welcome-room: ${room.props.length} props`);
+log(`welcome-room: ${room.props.length} props`);

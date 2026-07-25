@@ -331,11 +331,25 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     // wiring or the shipped manifest — fails loudly here instead of silently
     // degrading to a labeled placeholder box in-engine.
     const expectedKeys = [
-      'welcome-room-rug-var-0',
-      'welcome-room-desk-var-0',
-      'welcome-room-shop-table-var-0',
       'welcome-room-bookcase-var-0',
+      'welcome-room-cable-coil-var-0',
+      'welcome-room-camera-rig-var-4',
+      'welcome-room-crate-single-var-0',
+      'welcome-room-crate-stack-var-3',
+      'welcome-room-desk-var-0',
+      'welcome-room-floor-seam-var-0',
+      'welcome-room-floor-stain-var-2',
+      'welcome-room-floor-tape-var-0',
+      'welcome-room-floor-worn-var-0',
+      'welcome-room-lounge-stool-var-1',
+      'welcome-room-potted-plant-var-0',
+      'welcome-room-rug-var-0',
+      'welcome-room-shop-table-var-0',
+      'welcome-room-show-poster-var-0',
+      'welcome-room-side-table-var-12',
+      'welcome-room-trash-bin-var-0',
       'welcome-room-velvet-rope-var-2',
+      'welcome-room-wall-shelf-var-0',
     ];
 
     // 1) The shipped manifest carries each key as its own texture, resolving to

@@ -23,7 +23,10 @@ import {
   type MapConfig,
   type RoomData,
 } from '../../shared/map-types.js';
-import type { FloorMap } from '../../core/map/FloorMap.js';
+import { FloorMap } from '../../core/map/FloorMap.js';
+import { TileMap } from '../../core/map/TileMap.js';
+import { RoomGraph } from '../../core/map/RoomGraph.js';
+import { carveSetPieceRoom } from '../../core/map/carveSetPieceRoom.js';
 import { getSpawnerArchetypeByIndex } from '../../game/spawners/registry.js';
 import type { SpawnerArchetype } from '../../game/spawners/types.js';
 import {
@@ -1593,13 +1596,39 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       ctx.restore();
     }
 
-    // Overlay: stamp the welcome-room set piece into a real generated room and
-    // draw its props (footprint rects) + NPC markers. Uses the SAME pure
-    // stampSetPiece the floor scenario uses, so what you see here is what the
-    // real game places.
+    // Overlay: carve the welcome-room prefab into a real generated room and draw
+    // its REAL tile output — impassable walls, TileFlags.DOOR doors — plus its
+    // render-only props + NPC markers. Uses the SAME pure carveSetPieceRoom the
+    // floor scenario uses, so what you see here is the geometry the real game
+    // generates (rendered from a throwaway clone so the lab map stays clean).
     if (settings.showSetPiece) {
       drawSetPieceOverlay(currentMap);
     }
+  }
+
+  /**
+   * Deep-copy a FloorMap enough to run a mutating {@link carveSetPieceRoom} on it
+   * without touching the persistent lab map: clones the tile flags + terrain
+   * arrays and rebuilds the RoomGraph from copied RoomData records (bounds/doors/
+   * neighbors), preserving room ids. FOV/visibility buffers are freshly zeroed by
+   * the FloorMap constructor, which is fine for a render-only overlay.
+   */
+  function cloneFloorMapForCarve(map: FloorMap): FloorMap {
+    const flags = map.tileMap.flags.slice();
+    const terrain = map.terrain.slice();
+    const tileMap = new TileMap(map.width, map.height, flags);
+    const rooms: RoomData[] = map.roomGraph.getAll().map((r) => ({
+      ...r,
+      bounds: { ...r.bounds },
+      doors: r.doors.map((d) => ({ ...d })),
+      neighbors: [...r.neighbors],
+      interiorCells: r.interiorCells ? r.interiorCells.map((c) => ({ ...c })) : undefined,
+    }));
+    const roomGraph = new RoomGraph(rooms);
+    return new FloorMap(map.config, tileMap, roomGraph, terrain, {
+      x: map.playerSpawn.x,
+      y: map.playerSpawn.y,
+    });
   }
 
   function drawSetPieceOverlay(map: FloorMap): void {
@@ -1610,23 +1639,82 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     if (roomIdx < 0) return;
     const room = map.rooms[roomIdx]!;
     const tileSizeFt = map.config.tileSizeFt;
-    const stamp: StampedSetPiece = stampSetPiece(def, { roomBounds: room.bounds, tileSizeFt });
 
-    // Highlight the host room so it's clear which room was chosen.
+    // Carve the prefab into a throwaway CLONE so we can draw the REAL tile-write
+    // output (impassable walls + TileFlags.DOOR doors) the production mapgen path
+    // produces, without mutating the persistent lab map (toggling the overlay off
+    // must restore a clean render). The lab is a dev aid only — rule #9's
+    // observe-before-done still requires the headless reachability gate.
+    const clone = cloneFloorMapForCarve(map);
+    const cloneRoom = clone.roomGraph.get(room.id)!;
+    const carve = carveSetPieceRoom(clone, cloneRoom, def);
+
     ctx.save();
+
+    if (!carve.fitted || !carve.bounds || !carve.doors) {
+      // Prefab did not fit — surface the reason and highlight the rejected room.
+      ctx.strokeStyle = '#f87171';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(
+        room.bounds.x * CELL_SIZE + 1,
+        room.bounds.y * CELL_SIZE + 1,
+        room.bounds.width * CELL_SIZE - 2,
+        room.bounds.height * CELL_SIZE - 2,
+      );
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#f87171';
+      ctx.font = `${Math.max(CELL_SIZE, 9)}px monospace`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(
+        `prefab unfit: ${carve.reason}`,
+        room.bounds.x * CELL_SIZE + 2,
+        room.bounds.y * CELL_SIZE + 2,
+      );
+      ctx.restore();
+      return;
+    }
+
+    const bounds = carve.bounds;
+    const doorKeys = new Set(carve.doors.map((d) => `${d.x},${d.y}`));
+
+    // 1. Real carved tiles: read the clone's flags across the footprint and paint
+    //    walls (impassable), doors (TileFlags.DOOR), and interior floor distinctly.
+    for (let ty = bounds.y; ty < bounds.y + bounds.height; ty++) {
+      for (let tx = bounds.x; tx < bounds.x + bounds.width; tx++) {
+        const idx = ty * clone.width + tx;
+        const flag = clone.flags[idx]!;
+        const px = tx * CELL_SIZE;
+        const py = ty * CELL_SIZE;
+        if (doorKeys.has(`${tx},${ty}`) || (flag & TileFlags.DOOR) !== 0) {
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+        } else if ((flag & TileFlags.PASSABLE) === 0) {
+          ctx.fillStyle = '#1f2937';
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+        } else {
+          ctx.fillStyle = 'rgba(126, 224, 255, 0.18)';
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+        }
+      }
+    }
+
+    // Highlight the carved footprint so the authoritative prefab bounds are clear.
     ctx.strokeStyle = '#7ee0ff';
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
     ctx.strokeRect(
-      room.bounds.x * CELL_SIZE + 1,
-      room.bounds.y * CELL_SIZE + 1,
-      room.bounds.width * CELL_SIZE - 2,
-      room.bounds.height * CELL_SIZE - 2,
+      bounds.x * CELL_SIZE + 1,
+      bounds.y * CELL_SIZE + 1,
+      bounds.width * CELL_SIZE - 2,
+      bounds.height * CELL_SIZE - 2,
     );
     ctx.setLineDash([]);
 
-    // Props: draw each footprint as a translucent rect (later = higher depth, so
-    // painting in stamp order gives the same front-to-back read as the game).
+    // 2. Props (render-only sidecars) aligned to the carved footprint, so the
+    //    dressing reads in the same front-to-back order as the game.
+    const stamp: StampedSetPiece = stampSetPiece(def, { roomBounds: bounds, tileSizeFt });
     for (const prop of stamp.props) {
       const wTiles = prop.render.widthFt / tileSizeFt;
       const hTiles = prop.render.heightFt / tileSizeFt;
@@ -1647,7 +1735,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       );
     }
 
-    // NPC markers on top, tinted by objective anchor role.
+    // 3. NPC markers on top, tinted by objective anchor role.
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.font = `${Math.max(CELL_SIZE, 9)}px monospace`;
