@@ -242,13 +242,17 @@ describe('Clockwork Kill-Saw — announcements and cleanup', () => {
     expect(h.world.mobAbilities.cues).toHaveLength(0);
   });
 
-  it('cleans all state when the target despawns during an active cast', () => {
+  it('enters cooldown (preserving registration) when the target despawns during an active cast', () => {
     const h = buildHarness();
     arm(h);
     step(h.world, FIRST_HOLD_FRAME);
     removeEntity(h.world.ecs, h.player);
     step(h.world, 1);
-    expect(h.world.mobAbilities.byEntity.has(h.fizzwick)).toBe(false);
+    // beginCooldownAfterActive re-arms the ability instead of removing it, so the
+    // registration survives — Fizzwick can cast again after cooldown.
+    expect(h.world.mobAbilities.byEntity.has(h.fizzwick)).toBe(true);
+    const inst = h.world.mobAbilities.byEntity.get(h.fizzwick)!;
+    expect(inst.phase).toBe('cooldown');
     expect(h.world.mobAbilities.cues).toHaveLength(0);
   });
 

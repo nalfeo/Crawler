@@ -2587,76 +2587,76 @@ export class BehaviorTreeAI implements AIInputProvider {
       // player sees. Runs only when no projectile threat is in the dodge horizon.
       for (const cue of ctx.world.mobAbilities.cues) {
         const { geometry } = cue;
-<<<<<<< HEAD
         if (geometry.kind === 'circle') {
           const dx = ctx.playerX - geometry.x;
           const dy = ctx.playerY - geometry.y;
-=======
-        const circles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
-        for (const circle of circles) {
-          const dx = ctx.playerX - circle.x;
-          const dy = ctx.playerY - circle.y;
->>>>>>> origin/main
           // Use squared distance to match the damage resolver exactly (no sqrt).
           // The resolver uses `if (dx² + dy² > r²) continue;` so damage hits when
           // dx² + dy² <= r². The AI must avoid using the SAME geometry contract,
           // so it continues (skips avoidance) only when strictly outside: dx² + dy² > r².
           const distSq = dx * dx + dy * dy;
-<<<<<<< HEAD
           const r2 = geometry.radiusFt * geometry.radiusFt;
           if (distSq > r2) continue;
-=======
-          const r2 = circle.radiusFt * circle.radiusFt;
-          if (distSq > r2) continue;
-          // Compute unit vector for dodge direction.
->>>>>>> origin/main
           const dist = Math.sqrt(distSq);
           if (dist > Number.EPSILON) {
             this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
             this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
           } else {
-<<<<<<< HEAD
-=======
             // Player is exactly at the circle center — flee along kite orbit tangent.
->>>>>>> origin/main
             this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
             this.dodgeVecY = 0;
           }
           return BTStatus.SUCCESS;
-<<<<<<< HEAD
         }
-        const laneDx = geometry.endpointX - geometry.originX;
-        const laneDy = geometry.endpointY - geometry.originY;
-        const laneLenSq = laneDx * laneDx + laneDy * laneDy;
-        if (laneLenSq <= Number.EPSILON) continue;
-        const t = Math.max(
-          0,
-          Math.min(
-            1,
-            ((ctx.playerX - geometry.originX) * laneDx +
-              (ctx.playerY - geometry.originY) * laneDy) /
-              laneLenSq,
-          ),
-        );
-        const closestX = geometry.originX + laneDx * t;
-        const closestY = geometry.originY + laneDy * t;
-        const awayX = ctx.playerX - closestX;
-        const awayY = ctx.playerY - closestY;
-        const distSq = awayX * awayX + awayY * awayY;
-        const halfWidthSq = (geometry.widthFt * 0.5) ** 2;
-        if (distSq > halfWidthSq) continue;
-        const dist = Math.sqrt(distSq);
-        if (dist > Number.EPSILON) {
-          this.dodgeVecX = (awayX / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
-          this.dodgeVecY = (awayY / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
-        } else {
-          const laneLen = Math.sqrt(laneLenSq);
-          const nx = (-laneDy / laneLen) * this.kiteOrbitSign;
-          const ny = (laneDx / laneLen) * this.kiteOrbitSign;
-          this.dodgeVecX = nx * PROJECTILE_DODGE_VECTOR_SCALE;
-          this.dodgeVecY = ny * PROJECTILE_DODGE_VECTOR_SCALE;
-=======
->>>>>>> origin/main
+        if (geometry.kind === 'lane') {
+          const laneDx = geometry.endpointX - geometry.originX;
+          const laneDy = geometry.endpointY - geometry.originY;
+          const laneLenSq = laneDx * laneDx + laneDy * laneDy;
+          if (laneLenSq <= Number.EPSILON) continue;
+          const t = Math.max(
+            0,
+            Math.min(
+              1,
+              ((ctx.playerX - geometry.originX) * laneDx +
+                (ctx.playerY - geometry.originY) * laneDy) /
+                laneLenSq,
+            ),
+          );
+          const closestX = geometry.originX + laneDx * t;
+          const closestY = geometry.originY + laneDy * t;
+          const awayX = ctx.playerX - closestX;
+          const awayY = ctx.playerY - closestY;
+          const distSq = awayX * awayX + awayY * awayY;
+          const halfWidthSq = (geometry.widthFt * 0.5) ** 2;
+          if (distSq > halfWidthSq) continue;
+          const dist = Math.sqrt(distSq);
+          if (dist > Number.EPSILON) {
+            this.dodgeVecX = (awayX / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = (awayY / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          } else {
+            const laneLen = Math.sqrt(laneLenSq);
+            const nx = (-laneDy / laneLen) * this.kiteOrbitSign;
+            const ny = (laneDx / laneLen) * this.kiteOrbitSign;
+            this.dodgeVecX = nx * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = ny * PROJECTILE_DODGE_VECTOR_SCALE;
+          }
+          return BTStatus.SUCCESS;
+        }
+        for (const circle of geometry.circles) {
+          const dx = ctx.playerX - circle.x;
+          const dy = ctx.playerY - circle.y;
+          const distSq = dx * dx + dy * dy;
+          const r2 = circle.radiusFt * circle.radiusFt;
+          if (distSq > r2) continue;
+          const dist = Math.sqrt(distSq);
+          if (dist > Number.EPSILON) {
+            this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          } else {
+            this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = 0;
+          }
+          return BTStatus.SUCCESS;
         }
       }
 

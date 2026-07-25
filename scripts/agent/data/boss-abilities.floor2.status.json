@@ -309,7 +309,13 @@
         "title": "Implement Overseer Fizzwick's CLOCKWORK KILL-SAW ability",
         "url": "https://github.com/nalfeo/Crawler/issues/1954"
       },
-      "implementationPullRequest": null,
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 2010,
+        "state": "open",
+        "title": "Implement Overseer Fizzwick's CLOCKWORK KILL-SAW ability",
+        "url": "https://github.com/nalfeo/Crawler/pull/2010"
+      },
       "blockers": ["floor2-boss-production-enable"]
     },
     {
@@ -336,10 +342,6 @@
       "arenaLabEvidence": "Verified in canonical combat-arena preset `f2-squick` via deterministic headless observation (`tests/e2e/squick-arena-observation.test.ts`) and cadence evidence capture (`scripts/agent/squick-arena-evidence.ts`): first telegraph at 11000ms, first resolve at 12500ms, second resolve at 25000ms, committed three-circle summon geometry reused through resolve, and owned summon cap enforced at <=6.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-<<<<<<< HEAD
-      "implementationIssue": null,
-      "implementationPullRequest": null,
-=======
       "implementationIssue": {
         "kind": "issue",
         "number": 1956,
@@ -354,7 +356,6 @@
         "title": "Implement Squick UNDERCITY MOB CALL on typed mob-ability runtime with deterministic cap/cadence enforcement",
         "url": "https://github.com/nalfeo/Crawler/pull/1962"
       },
->>>>>>> origin/main
       "blockers": ["floor2-boss-production-enable"]
     },
     {

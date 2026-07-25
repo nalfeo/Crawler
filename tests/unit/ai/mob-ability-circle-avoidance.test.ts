@@ -39,7 +39,6 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
     expect(debug.dodgeY).toBeCloseTo(0, 10);
   });
 
-<<<<<<< HEAD
   it('treats a committed lane as dangerous and dodges sideways out of it', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 1);
@@ -64,7 +63,16 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
       },
       dangerColor: def.dangerColor,
       announcementText: def.announcementText,
-=======
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const debug = ai.getOpportunisticDebug();
+    expect(debug.dodgeX).toBeCloseTo(0, 10);
+    expect(Math.abs(debug.dodgeY)).toBeGreaterThan(0);
+  });
+
   it('uses spawn-circle telegraphs as danger cues and dodges from the committed circle', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 10, 10);
@@ -87,18 +95,12 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
       },
       dangerColor: 'hostile-red',
       announcementText: 'UNDERCITY MOB CALL — The guild always collects!',
->>>>>>> origin/main
     });
 
     const ai = new BehaviorTreeAI({ seed: 42 });
     ai.poll(createInputState(), world);
 
     const debug = ai.getOpportunisticDebug();
-<<<<<<< HEAD
-    expect(debug.dodgeX).toBeCloseTo(0, 10);
-    expect(Math.abs(debug.dodgeY)).toBeGreaterThan(0);
-=======
     expect(Math.hypot(debug.dodgeX, debug.dodgeY)).toBeGreaterThan(0);
->>>>>>> origin/main
   });
 });

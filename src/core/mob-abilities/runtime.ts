@@ -88,11 +88,8 @@ export function registerMobAbility(
     resolvedCasts: 0,
     announcementsEmitted: 0,
     registrationToken: token,
-<<<<<<< HEAD
-    activeState: null,
-=======
     ownedEntityGenerations: new Map(),
->>>>>>> origin/main
+    activeState: null,
   });
 }
 
@@ -279,46 +276,23 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
       targetingMode === 'self' || targetEid === null
         ? null
         : (world.entityRenderGeneration[targetEid] ?? 0);
-    inst.committedGeometry = {
-      kind: 'circle',
-      x: pos.x,
-      y: pos.y,
-      radiusFt: def.geometry.radiusFt,
-    };
+    inst.committedGeometry =
+      def.geometry.kind === 'lane'
+        ? createCommittedLaneGeometry(
+            world,
+            casterEid,
+            pos.x,
+            pos.y,
+            def.geometry.widthFt,
+            def.geometry.maxRangeFt,
+          )
+        : {
+            kind: 'circle',
+            x: pos.x,
+            y: pos.y,
+            radiusFt: def.geometry.radiusFt,
+          };
   }
-<<<<<<< HEAD
-  if (pos === null) {
-    // No valid target/origin to lock onto — skip this cast and re-arm cooldown.
-    inst.phase = 'cooldown';
-    inst.timerMs = def.cooldownMs;
-    return;
-  }
-  inst.phase = 'telegraph';
-  inst.timerMs = def.telegraphDurationMs;
-  inst.committedTargetEid = targetingMode === 'self' ? null : targetEid;
-  inst.committedTargetGeneration =
-    targetingMode === 'self' || targetEid === null
-      ? null
-      : (world.entityRenderGeneration[targetEid] ?? 0);
-  inst.committedGeometry = {
-    ...(def.geometry.kind === 'circle'
-      ? {
-          kind: 'circle' as const,
-          x: pos.x,
-          y: pos.y,
-          radiusFt: def.geometry.radiusFt,
-        }
-      : createCommittedLaneGeometry(
-          world,
-          casterEid,
-          pos.x,
-          pos.y,
-          def.geometry.widthFt,
-          def.geometry.maxRangeFt,
-        )),
-  };
-=======
->>>>>>> origin/main
 
   // Announcement is emitted exactly once, here, per cast.
   pushAnnouncement(world.announcements, {
@@ -425,6 +399,7 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
     // would remove byEntity[casterEid] before PhaserBridge.sync runs).
     // Bounded push prevents unbounded headless growth (VFX is the sole drain).
     pushMobAbilityBurst(world.mobAbilities.pendingBursts, {
+      kind: 'resolution',
       abilityId: def.abilityId,
       geometry,
     });
@@ -441,7 +416,12 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
 function beginCooldownAfterActive(world: GameWorld, inst: MobAbilityInstanceState): void {
   const geometry = inst.committedGeometry;
   if (geometry?.kind === 'lane') {
-    pushMobAbilityRecatch(world.mobAbilities.pendingBursts, geometry.originX, geometry.originY);
+    // Use the saw's actual current position for the recatch burst so the VFX
+    // appears where the saw vanishes — for a clean return this equals the lane
+    // origin, but for an early abort (target despawn) the saw may be mid-lane.
+    const recatchX = inst.activeState?.projectileX ?? geometry.originX;
+    const recatchY = inst.activeState?.projectileY ?? geometry.originY;
+    pushMobAbilityRecatch(world.mobAbilities.pendingBursts, recatchX, recatchY);
   }
   inst.resolvedCasts += 1;
   inst.phase = 'cooldown';
@@ -617,7 +597,11 @@ function updateActiveState(
     return;
   }
   if (!isLockedTargetStillLive(world, inst)) {
-    clearMobAbility(world, casterEid);
+    // The locked target died/despawned while the saw is in flight. The saw
+    // follows its committed lane regardless — no living target is needed once
+    // geometry is committed. Abort only the active cast and re-arm cooldown;
+    // calling clearMobAbility here would permanently unregister the ability.
+    beginCooldownAfterActive(world, inst);
     return;
   }
   const fromX = active.projectileX;

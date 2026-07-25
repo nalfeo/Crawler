@@ -16,13 +16,32 @@
       "notes": "Alt A: runtime-only bespoke moving saw state — rejected because it would duplicate projectile/return cleanup instead of reusing existing returning-projectile lifecycle. Alt B: fully generic path-phase runtime overhaul before landing Fizzwick — rejected because it expands scope beyond the bounded issue. Chosen: keep typed mob-ability runtime as authoritative committed-path state, extend public cue/geometry phases beyond telegraph, and reuse/extend returning projectile lifecycle for outbound/hold/return/re-catch. Added clipped endpoint semantics, pass-aware hit latching, Queen/Panda regression coverage, explicit default-off zero-casts proof, and process notes for issue-comment 403 + registry override."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Finding 1: lane damage can bleed through walls near edges — accepted with ADR-0076 DEC-004 documentation as an arena-only ability where open-arena use is the intended deployment. Finding 2: clearMobAbility during active phase permanently disables boss ability for the encounter — fixed by replacing clearMobAbility call in updateActiveState with beginCooldownAfterActive to preserve ability registration."
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-4.6",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Finding 1: Conflict markers in HEAD (critical) — already resolved in working tree by conflict-resolution agent; committed in this push. Finding 2: Test for target-despawn during active cast asserted old clearMobAbility behavior (byEntity.has=false) instead of new beginCooldownAfterActive behavior (phase=cooldown, registration preserved) — test updated to assert inst.phase==='cooldown' and byEntity.has===true. Finding 3: beginCooldownAfterActive fired recatch VFX at lane origin even during early abort when saw is mid-lane — fixed to use inst.activeState.projectileX/Y when available, falling back to geometry.originX/Y for normal completion."
+        }
+      ]
     }
   }
 }

@@ -202,11 +202,8 @@ describe('MobAbilityVfx', () => {
     // cleared before PhaserBridge.sync ran).
     world.mobAbilities.cues.length = 0;
     world.mobAbilities.pendingBursts.push({
-<<<<<<< HEAD
       kind: 'resolution',
-=======
       abilityId: 'queen-mab-verdigris-glamour',
->>>>>>> origin/main
       geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
     });
     vfx.update(world);
@@ -215,16 +212,11 @@ describe('MobAbilityVfx', () => {
     expect(circles.length).toBeGreaterThan(circlesBeforeBurst);
   });
 
-<<<<<<< HEAD
   it('renders a re-catch burst only from an explicit re-catch event', () => {
-=======
-  it('dispatches Squick bursts through the undercity-specific renderer path', () => {
->>>>>>> origin/main
     const { scene, circles } = createSceneStub();
     const world = createTestWorld();
     const vfx = createMobAbilityVfx(scene);
 
-<<<<<<< HEAD
     world.mobAbilities.pendingBursts.push({ kind: 'recatch', x: 40, y: 10 });
     vfx.update(world);
     expect(circles.length).toBeGreaterThan(0);
@@ -258,6 +250,30 @@ describe('MobAbilityVfx', () => {
     expect(circles.length).toBe(beforeRemoval);
   });
 
+  it('dispatches Squick bursts through the undercity-specific renderer path', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const vfx = createMobAbilityVfx(scene);
+
+    world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+    });
+    vfx.update(world);
+    const genericCircleCount = circles.length;
+
+    world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
+      abilityId: 'plague-boss-squick-undercity-mob-call',
+      geometry: { kind: 'circle', x: 42, y: 39, radiusFt: 12 },
+    });
+    vfx.update(world);
+    const undercityCircleCount = circles.length - genericCircleCount;
+
+    expect(undercityCircleCount).toBeGreaterThan(genericCircleCount);
+  });
+
   it('draws the exact committed lane geometry footprint for Clockwork Kill-Saw', () => {
     const { scene, graphicsObjects } = createSceneStub();
     const world = createTestWorld();
@@ -287,23 +303,6 @@ describe('MobAbilityVfx', () => {
     expect(telegraphGfx!.lineStyle).toHaveBeenCalledWith(ftToPx(6), 0xef4444, expect.any(Number));
     expect(telegraphGfx!.moveTo).toHaveBeenCalledWith(ftToPx(40), ftToPx(10));
     expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(40), ftToPx(42));
-=======
-    world.mobAbilities.pendingBursts.push({
-      abilityId: 'queen-mab-verdigris-glamour',
-      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
-    });
-    vfx.update(world);
-    const genericCircleCount = circles.length;
-
-    world.mobAbilities.pendingBursts.push({
-      abilityId: 'plague-boss-squick-undercity-mob-call',
-      geometry: { kind: 'circle', x: 42, y: 39, radiusFt: 12 },
-    });
-    vfx.update(world);
-    const undercityCircleCount = circles.length - genericCircleCount;
-
-    expect(undercityCircleCount).toBeGreaterThan(genericCircleCount);
->>>>>>> origin/main
   });
 
   it('retires telegraph graphics when the cue ends', () => {

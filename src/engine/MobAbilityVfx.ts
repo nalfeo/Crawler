@@ -64,11 +64,8 @@ const CAST_START_LIFETIME_MS = 320;
 const CLEANUP_LIFETIME_MS = 300;
 const CROWN_RUNE_COUNT = 8;
 const BURST_SPARK_COUNT = 18;
-<<<<<<< HEAD
 const SAW_TRAIL_LIFETIME_MS = 180;
-=======
 const UNDERCITY_BURST_SPARK_COUNT = 24;
->>>>>>> origin/main
 
 export function createMobAbilityVfx(scene: Phaser.Scene): {
   update(world: GameWorld): void;
@@ -101,6 +98,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const transientCircles = new Set<Phaser.GameObjects.Shape>();
   /** Tweens driving transient circles. Each entry is also removed on `onComplete`. */
   const transientTweens = new Map<Phaser.GameObjects.Shape, Phaser.Tweens.Tween>();
+  /** Last pixel position at which continuous saw-trail particles were emitted, per caster EID. */
+  const lastSawTrailPos = new Map<number, { x: number; y: number }>();
 
   function ignoreUi(obj: Phaser.GameObjects.GameObject & { setDepth(d: number): unknown }): void {
     (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(obj);
@@ -387,6 +386,68 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     transientTweens.set(smoke, tween);
   }
 
+  /**
+   * Emit a small burst of continuous trail particles as the saw travels.
+   * Called every tick during outbound/return; uses a deterministic LCG seeded
+   * by position so that headless / visual runs produce identical emission
+   * patterns (both drain the visual tween system identically on the engine side).
+   */
+  function spawnSawTrailParticle(x: number, y: number, seed: number): void {
+    if (!enabled) return;
+    const rand = makeDeterministicRand(seed);
+    // Orange trail spark.
+    const spark = scene.add.circle(x, y, 2 + rand() * 2, COLOR_SAW_ORANGE, 0.7 + rand() * 0.25);
+    spark.setDepth(BURST_DEPTH);
+    spark.setBlendMode('ADD');
+    ignoreUi(spark);
+    transientCircles.add(spark);
+    const angle = rand() * Math.PI * 2;
+    const dist = 4 + rand() * 8;
+    const sparkTween = scene.tweens.add({
+      targets: spark,
+      x: x + Math.cos(angle) * dist,
+      y: y + Math.sin(angle) * dist,
+      alpha: { from: 0.9, to: 0 },
+      scale: { from: 1, to: 0.3 },
+      duration: 80 + rand() * 60,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        transientCircles.delete(spark);
+        transientTweens.delete(spark);
+        spark.destroy();
+      },
+    });
+    transientTweens.set(spark, sparkTween);
+    // Occasional floor-scrape screw/metal fragment.
+    if (rand() < 0.35) {
+      const frag = canAddRectangle
+        ? scene.add.rectangle(x, y, 2 + rand() * 2, 4 + rand() * 3, COLOR_BRONZE)
+        : scene.add.circle(x, y, 1 + rand(), COLOR_BRONZE);
+      frag.setAngle?.((rand() * 360));
+      frag.setDepth(BURST_DEPTH);
+      frag.setBlendMode('ADD');
+      ignoreUi(frag);
+      transientCircles.add(frag);
+      const fragAngle = rand() * Math.PI * 2;
+      const fragDist = 6 + rand() * 14;
+      const fragTween = scene.tweens.add({
+        targets: frag,
+        x: x + Math.cos(fragAngle) * fragDist,
+        y: y + Math.sin(fragAngle) * fragDist,
+        alpha: { from: 0.8, to: 0 },
+        scale: { from: 1, to: 0.2 },
+        duration: 140 + rand() * 100,
+        ease: 'Sine.easeOut',
+        onComplete: () => {
+          transientCircles.delete(frag);
+          transientTweens.delete(frag);
+          frag.destroy();
+        },
+      });
+      transientTweens.set(frag, fragTween);
+    }
+  }
+
   /** Redraw the persistent Tarnished indicator under a debuffed entity. */
   function drawTarnish(gfx: Phaser.GameObjects.Graphics, cx: number, cy: number): void {
     gfx.clear();
@@ -591,31 +652,21 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // ── Telegraphs + active lane projectiles ───────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
-<<<<<<< HEAD
       liveCasters.add(cue.casterEid);
       if (!castStartSeen.has(cue.casterEid)) {
         castStartSeen.add(cue.casterEid);
         if (cue.geometry.kind === 'circle') {
-          const cx = ftToPx(cue.geometry.x);
-          const cy = ftToPx(cue.geometry.y);
-          const radiusPx = ftToPx(cue.geometry.radiusFt);
-          spawnCastStart(cx, cy, radiusPx);
-        } else {
+          spawnCastStart(
+            ftToPx(cue.geometry.x),
+            ftToPx(cue.geometry.y),
+            ftToPx(cue.geometry.radiusFt),
+          );
+        } else if (cue.geometry.kind === 'lane') {
           spawnCastStart(ftToPx(cue.geometry.originX), ftToPx(cue.geometry.originY), ftToPx(2));
-=======
-      const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
-      if (circles.length === 0) continue;
-      liveCasters.add(cue.casterEid);
-      const first = circles[0]!;
-      const firstCx = ftToPx(first.x);
-      const firstCy = ftToPx(first.y);
-      const firstRadiusPx = ftToPx(first.radiusFt);
-      lastGeom.set(cue.casterEid, { x: firstCx, y: firstCy, r: firstRadiusPx });
-      if (!castStartSeen.has(cue.casterEid)) {
-        castStartSeen.add(cue.casterEid);
-        for (const circle of circles) {
+        } else {
+          for (const circle of cue.geometry.circles) {
           spawnCastStart(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
->>>>>>> origin/main
+          }
         }
       }
       if (!enabled) continue;
@@ -627,7 +678,6 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         ignoreUi(gfx);
         telegraphGfx.set(cue.casterEid, gfx);
       }
-<<<<<<< HEAD
       const previousPhase = lastCuePhase.get(cue.casterEid);
       lastCuePhase.set(cue.casterEid, cue.phase);
       if (cue.geometry.kind === 'circle') {
@@ -636,7 +686,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         const radiusPx = ftToPx(cue.geometry.radiusFt);
         lastGeom.set(cue.casterEid, { x: cx, y: cy, r: radiusPx });
         drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress, cue.dangerColor);
-      } else {
+      } else if (cue.geometry.kind === 'lane') {
         drawLaneTelegraph(gfx, cue as MobAbilityCue & { geometry: MobAbilityLaneGeometry });
         let saw = sawGfx.get(cue.casterEid);
         if (cue.phase === 'telegraph') {
@@ -661,19 +711,46 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
               spawnSawFlair(px, py, ftToPx(1.2), COLOR_SAW_STEAM, COLOR_CROWN_RUNE);
             }
           }
+          // Continuous trail particles during outbound/return travel.
+          if (cue.phase === 'outbound' || cue.phase === 'return') {
+            const px = ftToPx(cue.projectileX);
+            const py = ftToPx(cue.projectileY);
+            const prior = lastSawTrailPos.get(cue.casterEid);
+            const TRAIL_STEP_PX = ftToPx(0.5);
+            if (
+              prior === undefined ||
+              (px - prior.x) ** 2 + (py - prior.y) ** 2 >= TRAIL_STEP_PX ** 2
+            ) {
+              // Seed deterministically by caster EID and pixel position so the
+              // emission pattern is identical in headless and visual runs.
+              const seed = (cue.casterEid * 7919 + Math.round(px) * 31 + Math.round(py)) | 0;
+              spawnSawTrailParticle(px, py, seed);
+              lastSawTrailPos.set(cue.casterEid, { x: px, y: py });
+            }
+          } else {
+            lastSawTrailPos.delete(cue.casterEid);
+          }
         }
-=======
-      gfx.clear();
-      for (const circle of circles) {
-        drawTelegraph(
-          gfx,
-          ftToPx(circle.x),
-          ftToPx(circle.y),
-          ftToPx(circle.radiusFt),
-          cue.telegraphProgress,
-          cue.dangerColor,
-        );
->>>>>>> origin/main
+      } else {
+        const circles = cue.geometry.circles;
+        if (circles.length === 0) continue;
+        const first = circles[0]!;
+        lastGeom.set(cue.casterEid, {
+          x: ftToPx(first.x),
+          y: ftToPx(first.y),
+          r: ftToPx(first.radiusFt),
+        });
+        gfx.clear();
+        for (const circle of circles) {
+          drawTelegraph(
+            gfx,
+            ftToPx(circle.x),
+            ftToPx(circle.y),
+            ftToPx(circle.radiusFt),
+            cue.telegraphProgress,
+            cue.dangerColor,
+          );
+        }
       }
     }
 
@@ -682,33 +759,23 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // bursts survive even if the caster is cleared (killed/despawned) later in
     // the same simulation step before PhaserBridge.sync runs.
     while (runtime.pendingBursts.length > 0) {
-<<<<<<< HEAD
       const event = runtime.pendingBursts.shift()!;
-      if (event.kind === 'resolution' && event.geometry.kind === 'circle') {
-        const cx = ftToPx(event.geometry.x);
-        const cy = ftToPx(event.geometry.y);
-        const r = ftToPx(event.geometry.radiusFt);
-        spawnBurst(cx, cy, r);
-      } else if (event.kind === 'recatch') {
+      if (event.kind === 'recatch') {
         const x = ftToPx(event.x);
         const y = ftToPx(event.y);
         spawnBurst(x, y, ftToPx(2.4));
         spawnSawFlair(x, y, ftToPx(1.6), COLOR_SAW_SMOKE, COLOR_SAW_ORANGE);
-=======
-      const burst = runtime.pendingBursts.shift()!;
-      const spawn =
-        burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID ? spawnUndercityBurst : spawnBurst;
-      const geom = burst.geometry;
-      if (geom.kind === 'circle') {
-        const cx = ftToPx(geom.x);
-        const cy = ftToPx(geom.y);
-        const r = ftToPx(geom.radiusFt);
-        spawn(cx, cy, r);
       } else {
-        for (const circle of geom.circles) {
-          spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        const spawn =
+          event.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID ? spawnUndercityBurst : spawnBurst;
+        const geom = event.geometry;
+        if (geom.kind === 'circle') {
+          spawn(ftToPx(geom.x), ftToPx(geom.y), ftToPx(geom.radiusFt));
+        } else if (geom.kind === 'spawn-circles') {
+          for (const circle of geom.circles) {
+            spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+          }
         }
->>>>>>> origin/main
       }
     }
 
@@ -721,6 +788,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         sawGfx.delete(eid);
         castStartSeen.delete(eid);
         lastCuePhase.delete(eid);
+        lastSawTrailPos.delete(eid);
       }
     }
     // Drop stale geometry bookkeeping for gone casters.
@@ -859,6 +927,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     lastGeom.clear();
     lastCuePhase.clear();
     castStartSeen.clear();
+    lastSawTrailPos.clear();
   }
 
   return { update, destroy };
