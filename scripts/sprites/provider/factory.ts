@@ -232,8 +232,7 @@ function createLocalA1111ImageProvider(
   });
 }
 
-/**
- * Build a {@link SynthProvider} for brief synthesis.
+function createAzureChatProvider(
   env: Readonly<Record<string, string | undefined>>,
   warn: (message: string) => void,
   fetchImpl?: typeof fetch,

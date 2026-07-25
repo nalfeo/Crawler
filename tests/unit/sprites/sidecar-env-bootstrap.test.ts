@@ -80,9 +80,9 @@ describe('imageProviderIsAzureOpenAi', () => {
     expect(imageProviderIsAzureOpenAi({})).toBe(true);
   });
 
-  it('is false only for the foundry provider (case/space-insensitive)', () => {
-    expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: 'foundry' })).toBe(false);
-    expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: '  FOUNDRY ' })).toBe(false);
+  it('is false only for the local-a1111 provider (case/space-insensitive)', () => {
+    expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: 'local-a1111' })).toBe(false);
+    expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: '  LOCAL-A1111 ' })).toBe(false);
     expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: 'azure-openai' })).toBe(true);
   });
 });
@@ -149,12 +149,12 @@ describe('needsAzureEnvBootstrap', () => {
     expect(needsAzureEnvBootstrap({ ...FULL_AZURE })).toBe(false);
   });
 
-  it('foundry image provider + storage skips the Azure OpenAI requirement', () => {
-    // SPRITES_PROVIDER=foundry reads FOUNDRY_* creds, which this bootstrap cannot
-    // write, so we must not hard-fail a valid Foundry config for missing OpenAI.
-    expect(needsAzureEnvBootstrap({ SPRITES_PROVIDER: 'foundry', ...STORAGE })).toBe(false);
+  it('local-a1111 image provider + storage skips the Azure OpenAI requirement', () => {
+    // SPRITES_PROVIDER=local-a1111 reads local A1111 creds, which this bootstrap cannot
+    // write, so we must not hard-fail a valid local-a1111 config for missing OpenAI.
+    expect(needsAzureEnvBootstrap({ SPRITES_PROVIDER: 'local-a1111', ...STORAGE })).toBe(false);
     // Storage is still required (the queue/store are Azure Storage).
-    expect(needsAzureEnvBootstrap({ SPRITES_PROVIDER: 'foundry' })).toBe(true);
+    expect(needsAzureEnvBootstrap({ SPRITES_PROVIDER: 'local-a1111' })).toBe(true);
   });
 });
 

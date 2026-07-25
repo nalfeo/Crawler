@@ -35,39 +35,27 @@ describe('asset-request workflow capacity', () => {
     });
   });
 
-  it('drains two requests concurrently through Foundry-only provider configuration', () => {
+  it('drains two requests concurrently through Azure OpenAI provider configuration', () => {
     const workflow = loadWorkflow();
     const drain = workflow.jobs.drain?.steps?.find((step) => step.name === 'Drain worker');
     expect(drain?.env).toMatchObject({
       SPRITES_WORKER_CONCURRENCY: '2',
-      SPRITES_PROVIDER: 'foundry',
-      SPRITES_TEXT_PROVIDER: 'foundry',
-      SPRITES_SYNTH_PROVIDER: 'foundry',
-      SPRITES_VISION_PROVIDER: 'foundry',
+      AZURE_OPENAI_ENDPOINT: '${{ secrets.AZURE_OPENAI_ENDPOINT }}',
+      AZURE_OPENAI_API_KEY: '${{ secrets.AZURE_OPENAI_API_KEY }}',
     });
     expect(
-      Object.keys(drain?.env ?? {})
-        .filter((key) => key.startsWith('FOUNDRY_'))
-        .sort(),
-    ).toEqual([
-      'FOUNDRY_API_KEY',
-      'FOUNDRY_API_VERSION',
-      'FOUNDRY_BRIEF_SELECTOR_MODEL',
-      'FOUNDRY_ENDPOINT',
-      'FOUNDRY_IMAGE_MODEL',
-      'FOUNDRY_TEXT_MODEL',
-      'FOUNDRY_VISION_MODEL',
-    ]);
-    expect(Object.keys(drain?.env ?? {}).some((key) => key.startsWith('AZURE_OPENAI_'))).toBe(
-      false,
-    );
+      Object.keys(drain?.env ?? {}).some((key) => key.startsWith('FOUNDRY_')),
+    ).toBe(false);
+    expect(
+      Object.keys(drain?.env ?? {}).some((key) => key.startsWith('AZURE_OPENAI_')),
+    ).toBe(true);
   });
 
-  it('keeps the GitHub secret-sync command Foundry-aware', () => {
+  it('keeps the GitHub secret-sync command Azure-aware (no -IncludeFoundry)', () => {
     const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
       scripts?: Record<string, string>;
     };
-    expect(packageJson.scripts?.['setup:azure:github']).toContain('-IncludeFoundry');
     expect(packageJson.scripts?.['setup:azure:github']).toContain('-SyncGitHubSecrets');
+    expect(packageJson.scripts?.['setup:azure:github']).not.toContain('-IncludeFoundry');
   });
 });
