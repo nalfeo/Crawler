@@ -2247,9 +2247,13 @@ export class MainGameScene extends Phaser.Scene {
     const t0 = performance.now();
 
     // Build light source list: player torch first, then any PropLight entities.
-    const lightSources: { x: number; y: number; radiusPx: number; intensity: number; colorHex?: number }[] = [
-      { x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity },
-    ];
+    const lightSources: {
+      x: number;
+      y: number;
+      radiusPx: number;
+      intensity: number;
+      colorHex?: number;
+    }[] = [{ x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity }];
     const secondarySourceKeyParts: string[] = [];
     for (const propEid of query(this.world.ecs, [Prop, PropLight, Position])) {
       const sourceX = ftToPx(this.world.stores.position.x[propEid] ?? 0);

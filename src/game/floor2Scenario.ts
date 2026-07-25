@@ -109,7 +109,11 @@ import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
 import { spawnHarvestableNode } from '../core/helpers.js';
-import { FLOOR2_HARVESTABLE_START_INDEX, FLOOR2_HARVESTABLE_END_INDEX, HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
+import {
+  FLOOR2_HARVESTABLE_START_INDEX,
+  FLOOR2_HARVESTABLE_END_INDEX,
+  HARVESTABLE_DEFS,
+} from '../shared/harvestableDefs.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import {
   scaleAmbientSpawnStats,
