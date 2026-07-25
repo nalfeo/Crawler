@@ -36,6 +36,40 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
     expect(debug.dodgeY).toBeCloseTo(0, 10);
   });
 
+  it('treats active sovereign cloud zones as dangerous and dodges outward', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.position.x[player] = 0;
+    world.stores.position.y[player] = 0;
+    world.mobAbilities.ownedZones.push({
+      id: 1,
+      abilityId: 'sovereign-cap-spore-bloom',
+      casterEid: 99,
+      sourceId: 'mob-ability:sovereign-cap-spore-bloom:99',
+      geometry: {
+        kind: 'multi-circle',
+        circles: [
+          { kind: 'circle', x: 0, y: 0, radiusFt: 8 },
+          { kind: 'circle', x: 6, y: 0, radiusFt: 8 },
+          { kind: 'circle', x: -6, y: 0, radiusFt: 8 },
+        ],
+      },
+      durationMs: 4000,
+      tickIntervalMs: 500,
+      elapsedMs: 0,
+      nextTickAtMs: 500,
+      tick: () => {},
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const debug = ai.getOpportunisticDebug();
+    expect(Math.hypot(debug.dodgeX, debug.dodgeY)).toBeGreaterThan(0);
+  });
+
   it('uses spawn-circle telegraphs as danger cues and dodges from the committed circle', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 10, 10);

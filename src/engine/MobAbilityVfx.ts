@@ -1,6 +1,7 @@
 /**
- * Mob-ability VFX renderer — the procedural presentation layer for Queen Mab's
- * Verdigris Glamour (and future generic mob abilities).
+ * Mob-ability VFX renderer — procedural presentation for currently implemented
+ * boss abilities (Queen Mab Verdigris Glamour, Big Panda Wei Berserk, and
+ * Sovereign Cap Spore Bloom).
  *
  * Reads from committed public state:
  *   - `world.mobAbilities.cues` — the telegraph cue rebuilt each tick by the
@@ -25,6 +26,7 @@ import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import {
   BAMBOO_FED_BERSERK_ABILITY_ID,
+  SOVEREIGN_SPORE_BLOOM_ABILITY_ID,
   ROMAN_CANDLE_CORONATION_ABILITY_ID,
   getMobAbilityActiveAura,
   getStatusEffects,
@@ -58,6 +60,9 @@ const COLOR_BERSERK_RED = 0xff4d4d;
 const COLOR_BERSERK_DUST = 0xc98b56;
 const COLOR_BERSERK_ENVELOPE = 0xff6b6b;
 const COLOR_BERSERK_LEAF = 0x8bd17c;
+const COLOR_SPORE_RIM = 0xc4f36b;
+const COLOR_SPORE_FOG = 0x5b7f44;
+const COLOR_SPORE_PUFF = 0xe8ffb5;
 
 const BURST_LIFETIME_MS = 560;
 const CAST_START_LIFETIME_MS = 320;
@@ -85,6 +90,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const berserkAuraSeen = new Set<number>();
   const berserkAuraLastPos = new Map<number, { x: number; y: number }>();
   const berserkAuraLastPulseFrame = new Map<number, number>();
+  const cloudZoneGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
   const coronationProjectileLastPos = new Map<number, { x: number; y: number }>();
   const castStartSeen = new Set<number>();
@@ -223,6 +229,36 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     );
   }
 
+  /** Sovereign Cap–specific fungal puff burst for SPORE BLOOM resolutions. */
+  function spawnSporeBurst(x: number, y: number, radiusPx: number): void {
+    if (!enabled) return;
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.5,
+      radiusPx * 1.3,
+      COLOR_SPORE_RIM,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.2,
+      radiusPx * 0.9,
+      COLOR_SPORE_FOG,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnSparkBurst(
+      x,
+      y,
+      radiusPx,
+      [COLOR_SPORE_PUFF, COLOR_SPORE_RIM] as const,
+      BURST_SPARK_COUNT,
+    );
+  }
+
   /** A quick pulse when a telegraph first locks (cast-start cue). */
   function spawnCastStart(x: number, y: number, radiusPx: number): void {
     spawnRing(
@@ -237,7 +273,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   }
 
   /** Redraw one locked telegraph circle: footprint, anticipation fill, runes. */
-  function drawTelegraph(
+  function drawTelegraphCircle(
     gfx: Phaser.GameObjects.Graphics,
     cx: number,
     cy: number,
@@ -271,6 +307,30 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       const ox = cx + Math.cos(a) * (radiusPx + 6);
       const oy = cy + Math.sin(a) * (radiusPx + 6);
       gfx.lineBetween(ix, iy, ox, oy);
+    }
+  }
+
+  function drawSporeCloudCircle(
+    gfx: Phaser.GameObjects.Graphics,
+    cx: number,
+    cy: number,
+    radiusPx: number,
+    lifeProgress: number,
+  ): void {
+    const alpha = 0.22 + 0.08 * Math.sin(lifeProgress * Math.PI * 4);
+    gfx.fillStyle(COLOR_SPORE_FOG, alpha);
+    gfx.fillCircle(cx, cy, radiusPx);
+    gfx.lineStyle(3, COLOR_SPORE_RIM, 0.95);
+    gfx.strokeCircle(cx, cy, radiusPx);
+    gfx.lineStyle(1.5, COLOR_SPORE_PUFF, 0.55);
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i / 6) * Math.PI * 2 + lifeProgress * Math.PI * 2;
+      gfx.lineBetween(
+        cx + Math.cos(a) * radiusPx * 0.5,
+        cy + Math.sin(a) * radiusPx * 0.5,
+        cx + Math.cos(a) * radiusPx * 0.8,
+        cy + Math.sin(a) * radiusPx * 0.8,
+      );
     }
   }
 
@@ -645,7 +705,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       }
       gfx.clear();
       for (const circle of circles) {
-        drawTelegraph(
+        drawTelegraphCircle(
           gfx,
           ftToPx(circle.x),
           ftToPx(circle.y),
@@ -700,7 +760,11 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         continue;
       }
       const spawn =
-        burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID ? spawnUndercityBurst : spawnBurst;
+        burst.abilityId === SOVEREIGN_SPORE_BLOOM_ABILITY_ID
+          ? spawnSporeBurst
+          : burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID
+            ? spawnUndercityBurst
+            : spawnBurst;
       if (geom.kind === 'circle') {
         const cx = ftToPx(geom.x);
         const cy = ftToPx(geom.y);
@@ -710,6 +774,45 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         for (const circle of geom.circles) {
           spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
         }
+      }
+    }
+
+    // ── Runtime-owned persistent cloud zones (Sovereign Cap) ───────────────
+    const liveZones = new Set<number>();
+    for (const zone of runtime.ownedZones) {
+      if (zone.abilityId !== SOVEREIGN_SPORE_BLOOM_ABILITY_ID) continue;
+      liveZones.add(zone.id);
+      if (!enabled) continue;
+      let gfx = cloudZoneGfx.get(zone.id);
+      if (gfx === undefined) {
+        gfx = scene.add.graphics();
+        gfx.setDepth(TELEGRAPH_DEPTH);
+        gfx.setBlendMode('ADD');
+        ignoreUi(gfx);
+        cloudZoneGfx.set(zone.id, gfx);
+      }
+      gfx.clear();
+      const lifeProgress = Math.min(1, Math.max(0, zone.elapsedMs / zone.durationMs));
+      const circles =
+        zone.geometry.kind === 'circle'
+          ? [zone.geometry]
+          : zone.geometry.kind === 'radial-projectiles'
+            ? []
+            : zone.geometry.circles;
+      for (const circle of circles) {
+        drawSporeCloudCircle(
+          gfx,
+          ftToPx(circle.x),
+          ftToPx(circle.y),
+          ftToPx(circle.radiusFt),
+          lifeProgress,
+        );
+      }
+    }
+    for (const [zoneId, gfx] of cloudZoneGfx) {
+      if (!liveZones.has(zoneId)) {
+        gfx.destroy();
+        cloudZoneGfx.delete(zoneId);
       }
     }
 
@@ -848,6 +951,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     tarnishGfx.clear();
     for (const gfx of berserkAuraGfx.values()) gfx.destroy();
     berserkAuraGfx.clear();
+    for (const gfx of cloudZoneGfx.values()) gfx.destroy();
+    cloudZoneGfx.clear();
     berserkAuraLastPos.clear();
     berserkAuraLastPulseFrame.clear();
     tarnishLastPos.clear();
