@@ -261,22 +261,63 @@ export function deriveFindings(report: Omit<BottleneckReport, 'findings'>): stri
   return findings;
 }
 
-function fetchMergedPrs(root: string, limit: number): PrRecord[] {
-  const raw = execFileSync(
-    'gh',
-    [
-      'pr',
-      'list',
-      '--state',
-      'merged',
-      '--limit',
-      String(limit),
-      '--json',
-      'number,title,createdAt,mergedAt,additions,deletions,changedFiles,reviews,commits',
-    ],
-    { cwd: root, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 },
-  );
+/**
+ * `gh pr list --json commits,reviews` costs roughly
+ * `limit × 100 commits × 100 authors` GraphQL nodes, so anything above ~50 PRs
+ * per request trips GitHub's hard 500,000-node ceiling. Page in small chunks and
+ * walk backwards with a `merged:<timestamp` search cursor instead.
+ */
+const PR_PAGE_SIZE = 25;
+
+function fetchMergedPrPage(root: string, limit: number, before?: string): PrRecord[] {
+  const args = [
+    'pr',
+    'list',
+    '--state',
+    'merged',
+    '--limit',
+    String(limit),
+    '--json',
+    'number,title,createdAt,mergedAt,additions,deletions,changedFiles,reviews,commits',
+  ];
+  if (before) args.push('--search', `merged:<${before}`);
+  const raw = execFileSync('gh', args, {
+    cwd: root,
+    encoding: 'utf8',
+    maxBuffer: 128 * 1024 * 1024,
+  });
   return JSON.parse(raw) as PrRecord[];
+}
+
+export function fetchMergedPrs(root: string, limit: number): PrRecord[] {
+  const collected: PrRecord[] = [];
+  const seen = new Set<number>();
+  let cursor: string | undefined;
+
+  while (collected.length < limit) {
+    const page = fetchMergedPrPage(root, Math.min(PR_PAGE_SIZE, limit - collected.length), cursor);
+    if (page.length === 0) break;
+
+    let added = 0;
+    for (const pr of page) {
+      if (seen.has(pr.number)) continue;
+      seen.add(pr.number);
+      collected.push(pr);
+      added += 1;
+    }
+    // A page that contributes nothing new means the cursor stopped advancing;
+    // bail rather than loop forever.
+    if (added === 0) break;
+
+    const oldest = page
+      .map((pr) => pr.mergedAt)
+      .filter((at): at is string => typeof at === 'string' && at.length > 0)
+      .sort()[0];
+    if (!oldest) break;
+    cursor = oldest;
+  }
+
+  return collected.slice(0, limit);
 }
 
 export function buildReport(root: string, prs: readonly PrRecord[]): BottleneckReport {
