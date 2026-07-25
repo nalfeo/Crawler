@@ -6,23 +6,44 @@
   "estimated_apples": 5,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "copilot-pull-request-reviewer",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review by copilot-pull-request-reviewer on PR #2012. Compared (A) multi-circle committed geometry (chosen) vs (B) reusing main's spawn-circles geometry type — reviewer correctly identified the naming collision and that spawn-circles geometry was being added separately on main; (C) zone-tick-after-resolve (initial) vs zone-tick-before-resolve (correct) — reviewer found the off-by-one-frame bug; (D) Verdigris/bronze burst renderer for all abilities vs per-ability dispatched burst renderers — reviewer required Sovereign-specific fungal/spore burst. Resolved: types.ts now carries both spawn-circles and multi-circle; ticking order moved before resolve; spawnSporeBurst added with COLOR_SPORE_RIM/SPORE_FOG/SPORE_PUFF colors; PR link and E2E visual assertions also addressed."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "models": [
+            "copilot-pull-request-reviewer",
+            "claude-sonnet-5"
+          ],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5",
+      "rounds": [
+        {
+          "models": [
+            "copilot-pull-request-reviewer",
+            "claude-sonnet-5"
+          ],
+          "concerns_count": 7,
+          "valid_count": 7,
+          "resolved_count": 7,
+          "clean": true
+        }
+      ]
     }
   }
 }

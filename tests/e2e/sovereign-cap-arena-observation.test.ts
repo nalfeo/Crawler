@@ -14,6 +14,12 @@ const CLOUD_EXPIRE_FRAME = 876;
 const SECOND_TELEGRAPH_FRAME = 1176;
 const SECOND_RESOLUTION_FRAME = 1272;
 
+interface CircleScreenPos {
+  screenX: number;
+  screenY: number;
+  radiusPx: number;
+}
+
 interface SovereignArenaScene {
   settings: {
     roomPresetId: string;
@@ -32,11 +38,61 @@ interface SovereignArenaScene {
     stores: { health: { current: ArrayLike<number> } };
     mobAbilities: {
       cues?: unknown[];
-      ownedZones: Array<{ id: number }>;
+      ownedZones: Array<{
+        id: number;
+        geometry?: { kind: string; circles?: Array<{ x: number; y: number; radiusFt: number }> };
+      }>;
     };
   };
   playerEid?: number;
   children?: { list?: Array<{ type?: string; visible?: boolean }> };
+  cameras: { main: { scrollX: number; scrollY: number } };
+}
+
+/** Read the screen positions of the three committed cloud circles from the live scene. */
+async function getCloudCircleScreenPositions(page: Page): Promise<CircleScreenPos[] | null> {
+  return page.evaluate(() => {
+    const PIXELS_PER_FOOT = 8;
+    const scene = (window as unknown as { __arenaScene?: SovereignArenaScene }).__arenaScene;
+    if (!scene) return null;
+    const cam = scene.cameras.main;
+    const zones = scene.world.mobAbilities.ownedZones;
+    const geom = zones[0]?.geometry;
+    if (!geom || geom.kind !== 'multi-circle' || !geom.circles) return null;
+    return geom.circles.map((c) => ({
+      screenX: c.x * PIXELS_PER_FOOT - cam.scrollX,
+      screenY: c.y * PIXELS_PER_FOOT - cam.scrollY,
+      radiusPx: c.radiusFt * PIXELS_PER_FOOT,
+    }));
+  });
+}
+
+/**
+ * Assert that each cloud circle shows changed pixels near its rim in `afterShot` vs `beforeShot`.
+ * For each circle we check a bounding box around the entire circle; the box must
+ * contain at least `minFraction` changed pixels (default 0.5 %).
+ */
+function assertCloudRimsVisible(
+  beforeShot: Buffer,
+  afterShot: Buffer,
+  circles: CircleScreenPos[],
+  minFraction = 0.005,
+): void {
+  for (let i = 0; i < circles.length; i += 1) {
+    const { screenX, screenY, radiusPx } = circles[i]!;
+    // Sample a generous bounding box around the entire circle.
+    const margin = Math.ceil(radiusPx * 0.25);
+    const rect = {
+      x: Math.round(screenX - radiusPx - margin),
+      y: Math.round(screenY - radiusPx - margin),
+      w: Math.round((radiusPx + margin) * 2),
+      h: Math.round((radiusPx + margin) * 2),
+    };
+    const diff = countChangedPixels(beforeShot, afterShot, rect);
+    expect(diff, `circle ${i} rim should show changed pixels vs baseline`).toBeGreaterThan(
+      minFraction,
+    );
+  }
 }
 
 async function loadArenaLab(page: Page): Promise<void> {
@@ -190,14 +246,33 @@ describe('Sovereign Cap arena observation', () => {
     expect(telegraphDiff).toBeGreaterThan(0.002);
 
     const resolved = await stepToFrame(page, RESOLUTION_FRAME);
+    const resolvedShot = await page.locator('#lab-canvas canvas').screenshot();
     expect(resolved.cueCount).toBe(0);
     expect(resolved.zoneCount).toBe(1);
     expect(resolved.graphicsCount).toBeGreaterThan(before.graphicsCount);
     expect(resolved.playerHp).toBeLessThan(before.playerHp);
 
+    // Capture committed circle screen positions right after resolution (zones live).
+    const cloudCircles = await getCloudCircleScreenPositions(page);
+    expect(cloudCircles).not.toBeNull();
+    expect(cloudCircles?.length).toBe(3);
+
+    // Verify all three cloud circle rims are visible near creation.
+    if (cloudCircles) {
+      assertCloudRimsVisible(beforeShot, resolvedShot, cloudCircles);
+    }
+
     const cloudTick = await stepToFrame(page, CLOUD_TICK_FRAME);
     expect(cloudTick.zoneCount).toBe(1);
     expect(cloudTick.playerHp).toBeLessThan(resolved.playerHp);
+
+    // Verify all three rims are still visible near expiry (just before cleanup).
+    const preExpireFrame = CLOUD_EXPIRE_FRAME - 1;
+    await stepToFrame(page, preExpireFrame);
+    const preExpireShot = await page.locator('#lab-canvas canvas').screenshot();
+    if (cloudCircles) {
+      assertCloudRimsVisible(beforeShot, preExpireShot, cloudCircles);
+    }
 
     const cloudExpire = await stepToFrame(page, CLOUD_EXPIRE_FRAME);
     expect(cloudExpire.zoneCount).toBe(0);

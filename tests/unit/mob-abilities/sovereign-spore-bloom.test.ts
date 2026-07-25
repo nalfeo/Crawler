@@ -14,6 +14,8 @@ import {
   spawnBehaviorEnemy,
   spawnPlayer,
 } from '../../../src/core/index.js';
+import { createEntity } from '../../../src/core/spawners/entity-core.js';
+import type { MobAbilityCircleGeometry } from '../../../src/core/mob-abilities/types.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
 import { AI_TYPE } from '../../../src/game/enemyAISystem.js';
 import { enemyAISystem, weaponSystem } from '../../../src/game/index.js';
@@ -145,22 +147,111 @@ describe('Sovereign Spore Bloom cadence and lock geometry', () => {
 });
 
 describe('Sovereign Spore Bloom damage and zone lifecycle', () => {
-  it('applies impact at resolution then repeated cloud damage inside while outside stays safe', () => {
+  it('applies impact and cloud damage in each exclusive per-circle zone, outside target is safe', () => {
+    // Step to telegraph start to read committed geometry, then place one target
+    // in an exclusive portion of each circle (inside that circle, outside the other two),
+    // plus one target outside all circles. This proves all three circles are individually
+    // checked for damage — not just the first or the centroid.
+    const h = buildHarness(); // player at (40, 40) to anchor triangle
+    arm(h);
+    stepRuntime(h.world, FIRST_TELEGRAPH_FRAME);
+    const cue = h.world.mobAbilities.cues[0];
+    expect(cue?.geometry.kind).toBe('multi-circle');
+    if (cue?.geometry.kind !== 'multi-circle') return;
+    const circles = cue.geometry.circles as [
+      MobAbilityCircleGeometry,
+      MobAbilityCircleGeometry,
+      MobAbilityCircleGeometry,
+    ];
+
+    // For each circle, compute an exclusive point 7 ft from center in the direction away
+    // from the other two circles' centroid (radius = 8, so still safely inside).
+    function exclusivePoint(c: MobAbilityCircleGeometry, others: readonly MobAbilityCircleGeometry[]) {
+      const cx = others.reduce((s, o) => s + o.x, 0) / others.length;
+      const cy = others.reduce((s, o) => s + o.y, 0) / others.length;
+      const dx = c.x - cx;
+      const dy = c.y - cy;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      return { x: c.x + (dx / len) * 7, y: c.y + (dy / len) * 7 };
+    }
+
+    const [c0, c1, c2] = circles;
+    const p0 = exclusivePoint(c0, [c1, c2]);
+    const p1 = exclusivePoint(c1, [c0, c2]);
+    const p2 = exclusivePoint(c2, [c0, c1]);
+    const outside = { x: 200, y: 200 };
+
+    const t0 = spawnPlayer(h.world, p0.x, p0.y);
+    const t1 = spawnPlayer(h.world, p1.x, p1.y);
+    const t2 = spawnPlayer(h.world, p2.x, p2.y);
+    const tOut = spawnPlayer(h.world, outside.x, outside.y);
+    for (const t of [t0, t1, t2, tOut]) {
+      h.world.stores.health.current[t] = 100_000;
+      h.world.stores.health.max[t] = 100_000;
+    }
+
+    // Advance to resolution.
+    stepRuntime(h.world, FIRST_RESOLUTION_FRAME - FIRST_TELEGRAPH_FRAME);
+
+    // All three exclusive-zone targets receive impact damage; outside target is untouched.
+    expect(h.world.stores.health.current[t0]).toBeLessThan(100_000);
+    expect(h.world.stores.health.current[t1]).toBeLessThan(100_000);
+    expect(h.world.stores.health.current[t2]).toBeLessThan(100_000);
+    expect(h.world.stores.health.current[tOut]).toBe(100_000);
+
+    const afterImpact0 = h.world.stores.health.current[t0] ?? 0;
+    const afterImpact1 = h.world.stores.health.current[t1] ?? 0;
+    const afterImpact2 = h.world.stores.health.current[t2] ?? 0;
+
+    // One cloud tick: all three inside targets take repeated damage; outside remains safe.
+    stepRuntime(h.world, CLOUD_TICK_FRAMES);
+    expect(h.world.stores.health.current[t0]).toBeLessThan(afterImpact0);
+    expect(h.world.stores.health.current[t1]).toBeLessThan(afterImpact1);
+    expect(h.world.stores.health.current[t2]).toBeLessThan(afterImpact2);
+    expect(h.world.stores.health.current[tOut]).toBe(100_000);
+  });
+
+  it('skips resolution and registers no zone when the locked target is invalid at resolution time', () => {
+    // Telegraph commits the player's position, then the player dies before resolution.
+    // isTargetValid returns false → resolveCast does not fire → no zone created.
     const h = buildHarness();
-    const outsider = spawnPlayer(h.world, 200, 200);
-    h.world.stores.health.current[outsider] = 100_000;
-    const playerStart = h.world.stores.health.current[h.player] ?? 0;
-    const outsiderStart = h.world.stores.health.current[outsider] ?? 0;
+    arm(h);
+    // Advance to telegraph start (target committed).
+    stepRuntime(h.world, FIRST_TELEGRAPH_FRAME);
+    expect(h.world.mobAbilities.cues[0]).toBeDefined();
+
+    // Kill the player during the telegraph window.
+    h.world.stores.health.current[h.player] = 0;
+    const inst = h.world.mobAbilities.byEntity.get(h.sovereign);
+    const resolvedBefore = inst?.resolvedCasts ?? 0;
+
+    // Advance to resolution.
+    stepRuntime(h.world, FIRST_RESOLUTION_FRAME - FIRST_TELEGRAPH_FRAME);
+
+    // No zone registered, no resolvedCasts increment, geometry cleared.
+    expect(h.world.mobAbilities.ownedZones).toHaveLength(0);
+    const instAfter = h.world.mobAbilities.byEntity.get(h.sovereign);
+    expect(instAfter?.resolvedCasts).toBe(resolvedBefore);
+    expect(instAfter?.committedGeometry).toBeNull();
+  });
+
+  it('clears zones immediately when the caster EID is recycled while a zone is active', () => {
+    // After resolution a zone is active. The caster entity is removed and its EID
+    // reused by a new entity (simulating ID recycling). On the next system tick,
+    // isCasterValid detects the token/archetype mismatch and clears all owned zones.
+    const h = buildHarness();
     arm(h);
     stepRuntime(h.world, FIRST_RESOLUTION_FRAME);
-    const afterImpact = h.world.stores.health.current[h.player] ?? 0;
-    expect(afterImpact).toBeLessThan(playerStart);
-    expect(h.world.stores.health.current[outsider]).toBe(outsiderStart);
+    expect(h.world.mobAbilities.ownedZones.length).toBeGreaterThan(0);
 
-    stepRuntime(h.world, CLOUD_TICK_FRAMES);
-    const afterTick = h.world.stores.health.current[h.player] ?? 0;
-    expect(afterTick).toBeLessThan(afterImpact);
-    expect(h.world.stores.health.current[outsider]).toBe(outsiderStart);
+    // Remove the caster entity and allocate a new entity that recycles the same EID.
+    removeEntity(h.world.ecs, h.sovereign);
+    createEntity(h.world); // increments generation on the recycled slot → token invalidated
+
+    // One system step: isCasterValid catches the mismatch, clears mob-ability state.
+    stepRuntime(h.world, 1);
+    expect(h.world.mobAbilities.ownedZones).toHaveLength(0);
+    expect(h.world.mobAbilities.byEntity.has(h.sovereign)).toBe(false);
   });
 
   it('expires clouds exactly after 4 seconds and cleans up on death/despawn/encounter disable', () => {

@@ -263,37 +263,13 @@
         "title": "Implement The Sovereign Cap's SOVEREIGN SPORE BLOOM ability",
         "url": "https://github.com/nalfeo/Crawler/issues/1951"
       },
-      "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
-    },
-    {
-      "abilityId": "big-mama-bufo-tongue-repossession",
-      "designState": "approved",
-      "foundationState": "verified",
-      "runtimeState": "not-started",
-      "bossArt": {
-        "runtimeBriefId": "toadkin-boss",
-        "approvedAssetId": "toadkin-boss-var-0",
-        "evidenceKind": "manifest-only",
-        "sourceBriefPath": null,
-        "assetRequest": null,
-        "runtimeWiringState": "verified"
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 2012,
+        "state": "open",
+        "title": "Implement Sovereign Cap Spore Bloom in typed mob-ability runtime (multi-circle telegraph + persistent toxic zones)",
+        "url": "https://github.com/nalfeo/Crawler/pull/2012"
       },
-      "telegraphVfxState": "planned",
-      "telegraphVfxAssetRequest": null,
-      "codexIconState": "not-requested",
-      "codexIconAssetRequest": null,
-      "castAnimationState": "not-authored",
-      "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
-      "animationLabState": "not-required",
-      "animationLabEvidence": null,
-      "implementationIssue": null,
-      "implementationPullRequest": null,
       "blockers": [
         "floor2-boss-production-enable"
       ]
@@ -640,6 +616,36 @@
       "bossArt": {
         "runtimeBriefId": "snailfolk-boss",
         "approvedAssetId": "snailfolk-boss-var-0",
+        "evidenceKind": "manifest-only",
+        "sourceBriefPath": null,
+        "assetRequest": null,
+        "runtimeWiringState": "verified"
+      },
+      "telegraphVfxState": "planned",
+      "telegraphVfxAssetRequest": null,
+      "codexIconState": "not-requested",
+      "codexIconAssetRequest": null,
+      "castAnimationState": "not-authored",
+      "castAnimationAssetRequest": null,
+      "arenaLabState": "blocked",
+      "arenaLabPresetId": null,
+      "arenaLabEvidence": null,
+      "animationLabState": "not-required",
+      "animationLabEvidence": null,
+      "implementationIssue": null,
+      "implementationPullRequest": null,
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
+    },
+    {
+      "abilityId": "big-mama-bufo-tongue-repossession",
+      "designState": "approved",
+      "foundationState": "verified",
+      "runtimeState": "not-started",
+      "bossArt": {
+        "runtimeBriefId": "toadkin-boss",
+        "approvedAssetId": "toadkin-boss-var-0",
         "evidenceKind": "manifest-only",
         "sourceBriefPath": null,
         "assetRequest": null,
