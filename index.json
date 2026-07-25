@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d29bd8865599b2d45693eb280c16ef84782ba85a",
+    "commitDate": "2026-07-25T18:03:47Z",
+    "commitSubject": "chore(assets): reconcile queued sprite edits (76 art paths) (#2025)",
+    "capturedAt": "2026-07-25T19:17:10.871Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30168979863",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/d29bd8865599b2d45693eb280c16ef84782ba85a.json"
+  },
+  {
     "commit": "f6803079c9f3f5e5e417f8af48657bf4c2aa40b3",
     "commitDate": "2026-07-25T15:28:34Z",
     "commitSubject": "Fix quest arrow bouncing and add minimap edge arrows (#1941)",
