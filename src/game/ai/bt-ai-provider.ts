@@ -2594,7 +2594,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           const radialDist = Math.hypot(relX, relY);
           if (radialDist <= geometry.spokeLengthFt) {
             const stepDeg = 360 / geometry.count;
-            const playerAngleDeg = (((Math.atan2(relY, relX) * 180) / Math.PI) % 360 + 360) % 360;
+            const playerAngleDeg = ((((Math.atan2(relY, relX) * 180) / Math.PI) % 360) + 360) % 360;
             let nearestDeltaDeg = 180;
             let nearestSpokeRad = 0;
             for (let i = 0; i < geometry.count; i += 1) {

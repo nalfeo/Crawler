@@ -529,17 +529,54 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   function spawnCoronationBurst(cx: number, cy: number, spokeLengthPx: number): void {
     if (!enabled) return;
     // Central coronation flash: expanding crown-gold ring.
-    spawnRing(cx, cy, spokeLengthPx * 0.08, spokeLengthPx * 0.55, COLOR_CROWN_RUNE, BURST_LIFETIME_MS, BURST_DEPTH);
+    spawnRing(
+      cx,
+      cy,
+      spokeLengthPx * 0.08,
+      spokeLengthPx * 0.55,
+      COLOR_CROWN_RUNE,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
     // Inner molten-orange pulse.
-    spawnRing(cx, cy, spokeLengthPx * 0.04, spokeLengthPx * 0.3, COLOR_MOLTEN_ORANGE, BURST_LIFETIME_MS, BURST_DEPTH);
+    spawnRing(
+      cx,
+      cy,
+      spokeLengthPx * 0.04,
+      spokeLengthPx * 0.3,
+      COLOR_MOLTEN_ORANGE,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
     // Hostile-red outer shockwave.
-    spawnRing(cx, cy, spokeLengthPx * 0.12, spokeLengthPx * 0.75, COLOR_HOSTILE_RED, BURST_LIFETIME_MS * 0.8, BURST_DEPTH);
+    spawnRing(
+      cx,
+      cy,
+      spokeLengthPx * 0.12,
+      spokeLengthPx * 0.75,
+      COLOR_HOSTILE_RED,
+      BURST_LIFETIME_MS * 0.8,
+      BURST_DEPTH,
+    );
     // Upward ember sparks from the centre.
-    spawnSparkBurst(cx, cy, spokeLengthPx * 0.45, [COLOR_EMBER_GOLD, COLOR_MOLTEN_ORANGE] as const, CORONATION_BURST_SPARK_COUNT);
+    spawnSparkBurst(
+      cx,
+      cy,
+      spokeLengthPx * 0.45,
+      [COLOR_EMBER_GOLD, COLOR_MOLTEN_ORANGE] as const,
+      CORONATION_BURST_SPARK_COUNT,
+    );
     // Char flake haze (desaturated smoke ring).
-    spawnRing(cx, cy, spokeLengthPx * 0.1, spokeLengthPx * 0.4, COLOR_CHAR_SMOKE, BURST_LIFETIME_MS * 1.1, BURST_DEPTH);
+    spawnRing(
+      cx,
+      cy,
+      spokeLengthPx * 0.1,
+      spokeLengthPx * 0.4,
+      COLOR_CHAR_SMOKE,
+      BURST_LIFETIME_MS * 1.1,
+      BURST_DEPTH,
+    );
   }
-
 
   function update(world: GameWorld): void {
     const runtime = world.mobAbilities;
@@ -634,7 +671,15 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // Emit cinders when tracked coronation projectiles actually despawn/collide.
     for (const [eid, lastPos] of [...coronationProjectileLastPos.entries()]) {
       if (liveCoronationProjectiles.has(eid)) continue;
-      spawnRing(lastPos.x, lastPos.y, 3, 10, COLOR_MOLTEN_ORANGE, BURST_LIFETIME_MS * 0.55, BURST_DEPTH);
+      spawnRing(
+        lastPos.x,
+        lastPos.y,
+        3,
+        10,
+        COLOR_MOLTEN_ORANGE,
+        BURST_LIFETIME_MS * 0.55,
+        BURST_DEPTH,
+      );
       coronationProjectileLastPos.delete(eid);
     }
 

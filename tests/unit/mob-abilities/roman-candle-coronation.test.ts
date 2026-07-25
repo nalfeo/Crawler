@@ -109,8 +109,7 @@ function recordTimeline(h: Harness, frames: number) {
     if (inst === undefined) continue;
     if (inst.announcementsEmitted > prevAnnounce) {
       const geom = inst.committedGeometry;
-      const offsetDeg =
-        geom?.kind === 'radial-projectiles' ? geom.offsetDeg : Number.NaN;
+      const offsetDeg = geom?.kind === 'radial-projectiles' ? geom.offsetDeg : Number.NaN;
       telegraphs.push({ frame: h.world.frameCount, elapsedMs: h.world.elapsedMs, offsetDeg });
       prevAnnounce = inst.announcementsEmitted;
     }
@@ -181,10 +180,7 @@ describe('Roman Candle Coronation — cadence', () => {
     const h = buildHarness();
     arm(h);
     const { telegraphs, resolutions } = recordTimeline(h, SECOND_RESOLUTION_FRAME + 5);
-    expect(telegraphs.map((t) => t.frame)).toEqual([
-      FIRST_TELEGRAPH_FRAME,
-      SECOND_TELEGRAPH_FRAME,
-    ]);
+    expect(telegraphs.map((t) => t.frame)).toEqual([FIRST_TELEGRAPH_FRAME, SECOND_TELEGRAPH_FRAME]);
     expect(resolutions.map((r) => r.frame)).toEqual([
       FIRST_RESOLUTION_FRAME,
       SECOND_RESOLUTION_FRAME,
@@ -397,9 +393,7 @@ describe('Roman Candle Coronation — non-homing travel', () => {
     for (let i = 0; i < 12; i += 1) {
       const expected = (i / 12) * 360; // 0°, 30°, 60°, …, 330°
       const found = angles.some((a) => Math.abs(((a - expected + 180) % 360) - 180) < 0.02);
-      expect(found, `spoke at ~${expected}° not found in angles [${angles.join(', ')}]`).toBe(
-        true,
-      );
+      expect(found, `spoke at ~${expected}° not found in angles [${angles.join(', ')}]`).toBe(true);
     }
   });
 
@@ -423,7 +417,7 @@ describe('Roman Candle Coronation — non-homing travel', () => {
     expect(secondAngles).toHaveLength(12);
     // Every second-cast angle must be exactly 15° more than the matching first-cast angle (mod 360).
     for (let i = 0; i < 12; i += 1) {
-      const diff = ((secondAngles[i]! - firstAngles[i]! + 360) % 360);
+      const diff = (secondAngles[i]! - firstAngles[i]! + 360) % 360;
       expect(diff).toBeCloseTo(15, 2);
     }
   });

@@ -82,7 +82,9 @@ function asPositiveInt(entry: CatalogDesignValue, id: string, expectedUnit: stri
 function asPositiveNumber(entry: CatalogDesignValue, id: string, expectedUnit: string): number {
   expectUnit(entry.unit, expectedUnit, id);
   if (typeof entry.value !== 'number' || !Number.isFinite(entry.value) || entry.value <= 0) {
-    throw new Error(`Roman Candle Coronation design value "${id}" must be a positive finite number`);
+    throw new Error(
+      `Roman Candle Coronation design value "${id}" must be a positive finite number`,
+    );
   }
   return entry.value;
 }
@@ -104,7 +106,9 @@ function readProjectileCount(ability: BossAbilityDef): number {
     );
   }
   if (typeof metric.value !== 'number' || !Number.isInteger(metric.value) || metric.value <= 0) {
-    throw new Error('Roman Candle Coronation telegraph projectile-count must be a positive integer');
+    throw new Error(
+      'Roman Candle Coronation telegraph projectile-count must be a positive integer',
+    );
   }
   return metric.value;
 }
@@ -123,7 +127,9 @@ function readAlternateOffsetDeg(ability: BossAbilityDef): number {
     metric.value <= 0 ||
     metric.value >= 360
   ) {
-    throw new Error('Roman Candle Coronation alternate-offset must be a positive finite degrees in (0, 360)');
+    throw new Error(
+      'Roman Candle Coronation alternate-offset must be a positive finite degrees in (0, 360)',
+    );
   }
   return metric.value;
 }
@@ -186,7 +192,15 @@ function makeResolveHandler(count: number) {
       const angleRad = (angleDeg * Math.PI) / 180;
       const vx = CROWN_FLAME_SPEED * Math.cos(angleRad);
       const vy = CROWN_FLAME_SPEED * Math.sin(angleRad);
-      const eid = spawnEnemyProjectile(world, casterX, casterY, vx, vy, CROWN_FLAME_DAMAGE, casterEid);
+      const eid = spawnEnemyProjectile(
+        world,
+        casterX,
+        casterY,
+        vx,
+        vy,
+        CROWN_FLAME_DAMAGE,
+        casterEid,
+      );
       ctx.registerOwnedEntity?.(eid);
     }
   };
