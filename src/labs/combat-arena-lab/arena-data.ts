@@ -16,6 +16,7 @@ import {
   setEnemyAppearanceKey,
   spawnBehaviorEnemy,
   activateMobAbilityEncounter,
+  createBambooFedBerserkDefinition,
   createVerdigrisGlamourDefinition,
   registerMobAbility,
   setMobAbilitiesEnabled,
@@ -523,6 +524,7 @@ const F1_SLIME = floor1EnemyPack.archetypes.find((a) => a.id === 'slime')!;
 
 /** Queen Mab Tarnish — the faerie boss that owns Verdigris Glamour. */
 const F2_QUEEN_MAB = floor2EnemyPack.archetypes.find((a) => a.id === 'faerie-boss')!;
+const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-boss')!;
 
 /**
  * Spawn Queen Mab and arm Verdigris Glamour through the CANONICAL mob-ability
@@ -552,6 +554,22 @@ function spawnQueenMabArena(
   // preset IS the explicit arena encounter-start transition.
   setMobAbilitiesEnabled(world, true);
   registerMobAbility(world, eid, createVerdigrisGlamourDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnBigPandaWeiArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_BIG_PANDA_WEI);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createBambooFedBerserkDefinition());
   activateMobAbilityEncounter(world);
   return [eid];
 }
@@ -624,6 +642,15 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
       'Queen Mab Tarnish solo, with Verdigris Glamour armed through the canonical mob-ability runtime: 9s eligibility, 1.5s hostile-red 12ft telegraph locked to the player, moderate damage + Tarnished, 9s cooldown after resolution.',
     entries: [],
     customSpawnFn: spawnQueenMabArena,
+  },
+  {
+    id: 'f2-big-panda-wei',
+    name: 'F2: Big Panda Wei (Bamboo-Fed Berserk)',
+    floor: 'floor2',
+    description:
+      'Big Panda Wei solo, with Bamboo-Fed Berserk armed through the canonical mob-ability runtime: 10s eligibility, 1.5s self-following aura telegraph while planted, then 4s +40% move speed, +40% melee damage, and heavy knockback resistance.',
+    entries: [],
+    customSpawnFn: spawnBigPandaWeiArena,
   },
   // ── Custom / blank ───────────────────────────────────────────────────────
   {

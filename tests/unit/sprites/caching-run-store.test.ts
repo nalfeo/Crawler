@@ -460,9 +460,9 @@ describe('backend / resolve', () => {
 });
 
 describe('read-through / write-through — all artifact categories', () => {
-  it.each(ALL_ARTIFACTS)(
+  it.each<string>(ALL_ARTIFACTS)(
     'first get populates cache; second get is a cache hit (%s)',
-    async (key) => {
+    async (key: string) => {
       const data = Buffer.from(`bytes-for-${key}`);
       await inner.put(key, data);
       inner.puts = 0;
