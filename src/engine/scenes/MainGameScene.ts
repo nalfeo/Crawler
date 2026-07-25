@@ -27,6 +27,13 @@ import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipme
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
+import { getFloorManifest } from '../../shared/floor-registry.js';
+import { getTerrainPack } from '../../shared/terrain-pack-registry.js';
+import {
+  resolveDoorOrientationFromFlanks,
+  resolveDoorPoolVariant,
+} from '../../shared/terrain-pack-variants.js';
+import { TERRAIN_PACK_CELL_PX } from '../../shared/terrain-pack-types.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
 import type { TerrainPackId } from '../../shared/terrain-pack-types.js';
 import {
@@ -420,25 +427,30 @@ export class MainGameScene extends Phaser.Scene {
   /**
    * Diagnostic door-render counts from the last `updateDoorOverlay()` pass. Read
    * by the main-scene-probe-lab observe seam (`getDoorRenderSummary`) to prove —
-   * in a REAL booted scene — that CLOSED dungeon doors render the approved
-   * generated texture (`closedGeneratedCount === renderableClosedCount`) rather
-   * than the Kenney placeholder. The five kind buckets are mutually exclusive;
+   * in a REAL booted scene — that CLOSED dungeon doors render the active terrain
+   * pack's doorSet art when a pack is active (`closedPackCount`), while non-pack
+   * floors keep the generated/Kenney/color fallback path. The kind buckets are
+   * mutually exclusive;
    * `renderableClosedCount` is the sum of the three CLOSED buckets so the e2e can
    * tell "no eligible closed doors on the map" (0) apart from "wrong branch taken"
    * (generated !== renderable). Doors are drawn per-frame, so these reflect the
    * most recent overlay pass.
    */
   private doorRenderSummary: {
+    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
+    openPackCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
   } = {
+    closedPackCount: 0,
     closedGeneratedCount: 0,
     closedKenneyCount: 0,
     closedColorCount: 0,
+    openPackCount: 0,
     openKenneyCount: 0,
     openColorCount: 0,
     renderableClosedCount: 0,
@@ -1854,14 +1866,16 @@ export class MainGameScene extends Phaser.Scene {
 
   /**
    * Diagnostic door-render provenance counts from the last `updateDoorOverlay()`
-   * pass. Lets the main-scene-probe-lab prove — in a REAL booted scene — that
-   * closed dungeon doors stamp the approved generated texture
-   * (`closedGeneratedCount === renderableClosedCount`), not the Kenney frame.
+   * pass. Lets the main-scene-probe-lab prove — in a REAL booted scene — that a
+   * pack-using floor stamps `doorSet` textures (`closedPackCount`) and non-pack
+   * floors preserve the generated/Kenney/color fallback chain.
    */
   getDoorRenderSummary(): {
+    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
+    openPackCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
@@ -2697,9 +2711,11 @@ export class MainGameScene extends Phaser.Scene {
       // Nothing to render this pass — zero the observe seam so a prior floor's
       // counts can't mislead the probe into a false "closed door rendered".
       this.doorRenderSummary = {
+        closedPackCount: 0,
         closedGeneratedCount: 0,
         closedKenneyCount: 0,
         closedColorCount: 0,
+        openPackCount: 0,
         openKenneyCount: 0,
         openColorCount: 0,
         renderableClosedCount: 0,
@@ -2731,6 +2747,10 @@ export class MainGameScene extends Phaser.Scene {
       }
     }
     const hasGeneratedClosed = generatedDoorScale !== null;
+    const terrainPackId = this.options.floorId
+      ? getFloorManifest(this.options.floorId)?.terrainPackId
+      : undefined;
+    const activeDoorSet = terrainPackId ? getTerrainPack(terrainPackId).doorSet : null;
 
     // Door images are recreated every frame, AFTER refreshCameraMasks() has
     // already rebuilt the camera ignore lists. Without pinning uiCamera.ignore
@@ -2749,9 +2769,11 @@ export class MainGameScene extends Phaser.Scene {
       this.doorImages.push(img);
     };
 
+    let closedPackCount = 0;
     let closedGeneratedCount = 0;
     let closedKenneyCount = 0;
     let closedColorCount = 0;
+    let openPackCount = 0;
     let openKenneyCount = 0;
     let openColorCount = 0;
 
@@ -2777,9 +2799,30 @@ export class MainGameScene extends Phaser.Scene {
         const isOpen = tm.isPassable(x, y);
         const cx = x * tileSize + tileSize / 2;
         const cy = y * tileSize + tileSize / 2;
-        const mode = resolveDoorRenderMode(isOpen, { hasGeneratedClosed, hasSheet });
+        const orientation = resolveDoorOrientationFromFlanks(horizontalDoorway);
+        const packDoorVariant = activeDoorSet
+          ? resolveDoorPoolVariant(activeDoorSet, { isOpen, orientation })
+          : null;
+        const packDoorTextureKey =
+          packDoorVariant && this.textures.exists(packDoorVariant.textureKey)
+            ? packDoorVariant.textureKey
+            : undefined;
+        const mode = resolveDoorRenderMode(isOpen, {
+          hasGeneratedClosed,
+          hasSheet,
+          packDoorTextureKey,
+        });
 
         switch (mode.kind) {
+          case 'pack': {
+            addDoorImage(cx, cy, mode.textureKey, undefined, tileSize / TERRAIN_PACK_CELL_PX);
+            if (isOpen) {
+              openPackCount += 1;
+            } else {
+              closedPackCount += 1;
+            }
+            break;
+          }
           case 'generated': {
             // 'generated' is only chosen when hasGeneratedClosed, so
             // generatedDoorScale is non-null here (?? 1 is unreachable but keeps
@@ -2816,12 +2859,15 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.doorRenderSummary = {
+      closedPackCount,
       closedGeneratedCount,
       closedKenneyCount,
       closedColorCount,
+      openPackCount,
       openKenneyCount,
       openColorCount,
-      renderableClosedCount: closedGeneratedCount + closedKenneyCount + closedColorCount,
+      renderableClosedCount:
+        closedPackCount + closedGeneratedCount + closedKenneyCount + closedColorCount,
     };
   }
 

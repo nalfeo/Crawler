@@ -39,6 +39,7 @@
   "lighting": {
     "ambient": 0.1
   },
+  "terrainPackId": "industrial-cave",
   "floor2": {
     "presentCount": 4,
     "settlement": {

@@ -9,12 +9,12 @@
  * concrete Image and derives the generated texture's scale from its ACTUAL
  * loaded width (never a hardcoded asset dimension), mirroring terrain-renderer.
  *
- * Precedence for a CLOSED door: approved GENERATED closed-door art → Kenney
- * closed frame → solid-color fallback. OPEN doors deliberately NEVER use
- * generated art: there is no approved open-door variant yet, and the
- * non-destructive default keeps the open state on the existing Kenney open frame
- * so the open/closed read is preserved. Open precedence: Kenney open frame →
- * solid-color fallback.
+ * Precedence when a terrain-pack door variant is available: pack door art wins
+ * (for both open/closed × orientation), so pack-using floors render their
+ * authored `doorSet` textures. Fallback precedence for non-pack or missing-pack
+ * cases stays unchanged:
+ *   - CLOSED: approved GENERATED closed-door art → Kenney closed frame → color.
+ *   - OPEN: Kenney open frame → color (generated remains unreachable for open).
  */
 
 /**
@@ -38,6 +38,7 @@ export const DOOR_OPEN_FRAME = 34;
  * Image; `color` fills a solid rect (its `open` flag picks the palette).
  */
 export type DoorRenderMode =
+  | { readonly kind: 'pack'; readonly textureKey: string }
   | { readonly kind: 'generated' }
   | { readonly kind: 'kenney-closed' }
   | { readonly kind: 'kenney-open' }
@@ -50,14 +51,23 @@ export type DoorRenderMode =
  * texture width.
  *
  * @param isOpen Whether the door tile is currently passable (open).
+ * @param opts.packDoorTextureKey Active terrain-pack door texture key for this
+ *   exact open/closed × orientation state, when available and loaded.
  * @param opts.hasGeneratedClosed The generated closed-door texture is loaded AND
  *   has a usable (>0) width, so it can be scaled to fill a tile.
  * @param opts.hasSheet The Kenney Tiny Dungeon spritesheet is loaded.
  */
 export function resolveDoorRenderMode(
   isOpen: boolean,
-  opts: { readonly hasGeneratedClosed: boolean; readonly hasSheet: boolean },
+  opts: {
+    readonly hasGeneratedClosed: boolean;
+    readonly hasSheet: boolean;
+    readonly packDoorTextureKey?: string;
+  },
 ): DoorRenderMode {
+  if (typeof opts.packDoorTextureKey === 'string' && opts.packDoorTextureKey.length > 0) {
+    return { kind: 'pack', textureKey: opts.packDoorTextureKey };
+  }
   if (isOpen) {
     // Non-destructive: the open state stays on Kenney art. No approved generated
     // open-door variant exists, so generated is unreachable for open doors.
