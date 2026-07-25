@@ -11,10 +11,16 @@ import {
   RECOVERY_PENDING_LABEL,
   candidateFingerprint,
   commitTimestamp,
+  isAdmissible,
   renderStatus,
   squashCommitMessage,
   squashCommitTitle,
 } from './state.mjs';
+
+// Re-exported so train callers consume admissibility as a pure predicate over
+// live PR facts instead of re-deriving it from labels/state comments. The
+// lifecycle owner remains the sole initiator of the resulting label writes.
+export { isAdmissible };
 
 export class MergeTrainConflictError extends Error {
   constructor(message, options) {

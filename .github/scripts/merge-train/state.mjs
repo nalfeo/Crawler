@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { evaluateAdmission } from '../ci-recovery/state.mjs';
+
 export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
 export const RECOVERY_PENDING_LABEL = 'merge-train-recovery-pending';
@@ -282,6 +284,21 @@ export function unsatisfiedChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_C
 
 export function successfulChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_CHECKS) {
   return unsatisfiedChecks(checkRuns, requiredNames).length === 0;
+}
+
+/**
+ * Pure admission predicate for the merge train.
+ * Delegates to evaluateAdmission (ci-recovery/state.mjs) so there is one
+ * canonical admission policy that cannot drift between the merge-train and the
+ * lifecycle FSM.  The `requiredChecks` argument is forwarded through the config
+ * object so evaluateAdmission's existing signature is unaffected.
+ *
+ * @param {object} prFacts - current PR facts
+ * @param {string[]} requiredChecks - required check names
+ * @returns {{ eligible: boolean, reasons: string[] }}
+ */
+export function isAdmissible(prFacts, requiredChecks = DEFAULT_ADMISSION_CHECKS) {
+  return evaluateAdmission(prFacts, { requiredChecks });
 }
 
 // A candidate check normally completes within the validator's own

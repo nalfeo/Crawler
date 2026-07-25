@@ -265,6 +265,37 @@ export function selectCoordination({ rankedPulls, proofs }) {
   return { leader, active, ordered, duplicates, ambiguous };
 }
 
+/**
+ * Pure ordering predicate for conflict clusters.
+ * Returns the deterministic merge order for a cluster.
+ * Never writes labels or comments — the lifecycle owner is the sole writer.
+ * A quarantined or abandoned PR is never returned as the leader, and never
+ * appears in `order` as a predecessor (D11).
+ *
+ * @param {object[]} cluster - PRs in the conflict cluster
+ * @param {object[]} proofs - existing proof records
+ * @param {string[]} nonBlockingPhases - lifecycle phases that are non-blocking
+ * @returns {{ leader: object|null, order: object[], nonBlocking: object[] }}
+ */
+export function whoMustLandFirst(cluster, proofs = [], nonBlockingPhases = []) {
+  const nonBlockingSet = new Set(nonBlockingPhases);
+  const blockingCluster = (cluster || []).filter(
+    (pull) => !nonBlockingSet.has(pull.lifecyclePhase),
+  );
+  const nonBlockingPulls = (cluster || []).filter((pull) =>
+    nonBlockingSet.has(pull.lifecyclePhase),
+  );
+
+  const ranked = rankPullRequests(blockingCluster);
+  const { leader, ordered } = selectCoordination({ rankedPulls: ranked, proofs });
+
+  return {
+    leader: leader ?? null,
+    order: ordered,
+    nonBlocking: nonBlockingPulls,
+  };
+}
+
 export function dispatchKey({ groupId, active, baseSha, order }) {
   if (!active) return null;
   return hash({

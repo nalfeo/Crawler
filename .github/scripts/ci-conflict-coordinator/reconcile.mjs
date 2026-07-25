@@ -9,6 +9,7 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
+import { applyRawLabelDecision, formatRawLabelOutcome, LIFECYCLE_MARKER, nonBlockingPhases, parseLifecycleComment } from '../ci-recovery/pr-lifecycle.mjs';
 import {
   parseEnabledFlag,
   resolveAdmissionChecks,
@@ -40,6 +41,7 @@ import {
   renderCoordinatorComment,
   selectCoordination,
   shouldDispatchActiveSlot,
+  whoMustLandFirst,
 } from './state.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -100,7 +102,7 @@ async function ensureLabel(name, color, description) {
   }
 }
 
-async function addLabel(pull, name) {
+async function githubAddLabel(pull, name) {
   if (pull.labelNames.has(name)) return;
   await request(token, `/repos/${owner}/${repo}/issues/${pull.number}/labels`, {
     method: 'POST',
@@ -109,7 +111,7 @@ async function addLabel(pull, name) {
   pull.labelNames.add(name);
 }
 
-async function removeLabel(pull, name) {
+async function githubRemoveLabel(pull, name) {
   if (!pull.labelNames.has(name)) return;
   try {
     await request(
@@ -121,6 +123,33 @@ async function removeLabel(pull, name) {
     if (error.status !== 404) throw error;
   }
   pull.labelNames.delete(name);
+}
+
+// The coordinator never writes phase labels on its own authority. Every
+// coordinator-label mutation is expressed as a raw-label decision descriptor
+// (applyRawLabelDecision) logged with an explicit acted-vs-no-op signal.
+// Coordinator fence labels (COORDINATED_LABEL, LEADER_LABEL, ORDER_WAIT_LABEL,
+// ESCALATION_LABEL) are sub-phase signals, not lifecycle phase transitions; they
+// do not update the lifecycle comment so the lifecycle record remains coherent.
+async function applyCoordinatorLabel(pull, name, desired, reason = 'coordination') {
+  const outcome = await applyRawLabelDecision({
+    prNumber: pull.number,
+    label: name,
+    desired,
+    currentlyPresent: pull.labelNames.has(name),
+    addLabel: () => githubAddLabel(pull, name),
+    removeLabel: () => githubRemoveLabel(pull, name),
+  });
+  process.stdout.write(`${formatRawLabelOutcome(pull.number, outcome)} action=${reason}\n`);
+  return outcome;
+}
+
+function addLabel(pull, name) {
+  return applyCoordinatorLabel(pull, name, true);
+}
+
+function removeLabel(pull, name) {
+  return applyCoordinatorLabel(pull, name, false);
 }
 
 async function disableAutoMerge(pull) {
@@ -177,6 +206,40 @@ function singleManagedComment(
     throw new Error(`PR #${number} has duplicate managed comments for ${marker}`);
   }
   return matching[0] ? { comment: matching[0], state: parser(matching[0].body) } : null;
+}
+
+/**
+ * Read the authoritative lifecycle phase from a PR's comments.
+ * Returns null when no trusted lifecycle comment exists (pre-Issue-8 PRs).
+ * Fails closed on duplicates (returns null, logs warning) and on malformed
+ * trusted comments (returns null, logs error).
+ * Trust boundary: only GitHub Apps, org members, and collaborators can write
+ * authoritative lifecycle comments.
+ */
+function readLifecyclePhase(number, comments) {
+  const isTrustedLifecycleAuthor = (comment) => {
+    if (!comment) return false;
+    if (comment.performed_via_github_app != null) return true;
+    return isTrustedRecoveryComment(comment);
+  };
+  const trusted = comments.filter(
+    (comment) =>
+      String(comment.body || '')
+        .trimStart()
+        .startsWith(LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
+  );
+  if (trusted.length > 1) {
+    process.stdout.write(`lifecycle-comment-duplicate pr=#${number} count=${trusted.length}\n`);
+    return null;
+  }
+  if (trusted.length === 0) return null;
+  try {
+    const record = parseLifecycleComment(trusted[0].body);
+    return record?.phase ?? null;
+  } catch {
+    process.stdout.write(`lifecycle-comment-parse-error pr=#${number}\n`);
+    return null;
+  }
 }
 
 function recoveryContext(pull, comments) {
@@ -670,7 +733,29 @@ for (const group of groups) {
   await mapLimit(group.pulls, 6, async (pull) => {
     pull.green = successfulChecks(await checkRunsFor(pull.headSha), requiredChecks);
   });
-  const ranked = rankPullRequests(group.pulls);
+
+  // Populate lifecyclePhase on each pull so whoMustLandFirst can structurally
+  // exclude quarantined/abandoned PRs from leader and ordering selection (D11).
+  for (const pull of group.pulls) {
+    pull.lifecyclePhase = readLifecyclePhase(pull.number, groupComments.get(pull.number) || []);
+  }
+
+  // Filter out non-blocking (quarantined/abandoned) pulls before ranking and
+  // proof collection. A non-blocking PR is never a valid leader or predecessor —
+  // whoMustLandFirst enforces this structurally, but filtering at the ranked
+  // list prevents proof collection and selectCoordination from touching those
+  // PRs entirely (D11 structural guarantee in the coordinator runtime).
+  const nbPhases = new Set(nonBlockingPhases());
+  const blockingPulls = group.pulls.filter((pull) => !nbPhases.has(pull.lifecyclePhase));
+  if (blockingPulls.length === 0) {
+    // All pulls in this group are non-blocking (quarantined/abandoned). Nothing to
+    // coordinate — skip proof collection and selection for this group entirely.
+    process.stdout.write(
+      `skip group=${group.groupId} reason=all-pulls-non-blocking members=${group.pulls.map((p) => p.number).join(',')}\n`,
+    );
+    continue;
+  }
+  const ranked = rankPullRequests(blockingPulls);
   const proofEntries = await mapLimit(ranked, 4, fetchExactHead);
   const initialProofs = buildSupersessionProofs({
     baseSha: mainSha,

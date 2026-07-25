@@ -12,6 +12,8 @@ import {
   isTrainFastPathPushRun,
   parseStateComment,
   STATE_MARKER as RECOVERY_STATE_MARKER,
+  TRUSTED_ASSOCIATIONS,
+  TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
 import { ciConflictOrderReasonForPromotion } from './ci-conflict-order.mjs';
 import {
@@ -42,6 +44,7 @@ import {
   candidateFingerprint,
   candidateRef,
   hasLeadingMarker,
+  isAdmissible,
   LANDED_LABEL,
   LANDED_MARKER,
   MAX_TRAIN_SIZE,
@@ -63,6 +66,7 @@ import {
 } from './state.mjs';
 import { humanApprovalRejection } from './human-approval.mjs';
 import { countOutstandingRecoveryRuns, resolveGlobalDispatchCaps } from '../ci-recovery/router.mjs';
+import { LIFECYCLE_MARKER, parseLifecycleComment } from '../ci-recovery/pr-lifecycle.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -203,13 +207,7 @@ async function updateStatus(prNumber, status) {
 
 async function eligible(pr) {
   const runs = await checkRuns(pr.head.sha);
-  if (!successfulChecks(runs, requiredAdmissionChecks)) {
-    return { ok: false, reason: `waiting for ${requiredAdmissionChecks.join(', ')}` };
-  }
   const review = await listReviewThreads(token, owner, repo, pr.number);
-  if (review.threads.some((thread) => !thread.isResolved)) {
-    return { ok: false, reason: 'unresolved review threads' };
-  }
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
   const closingIssues = await listClosingIssues(token, owner, repo, pr.number);
   const approvalRejection = humanApprovalRejection({
@@ -218,31 +216,75 @@ async function eligible(pr) {
     comments,
     ownerLogin: owner,
   });
-  if (approvalRejection) {
-    return { ok: false, reason: approvalRejection };
-  }
-  const stateComments = comments.filter((comment) =>
-    hasLeadingMarker(comment.body, RECOVERY_STATE_MARKER),
-  );
-  if (stateComments.length !== 1) {
-    return {
-      ok: false,
-      reason: `expected one CI recovery state comment, found ${stateComments.length}`,
+
+  // D11 fix (Issue #1851): read the authoritative lifecycle phase so quarantined/abandoned
+  // PRs are structurally rejected before entering the train, regardless of their labels.
+  // If no lifecycle comment exists yet (pre-Issue-8 PRs), lifecyclePhase stays null and
+  // the check is a no-op — harmless since no PR has been transitioned to quarantined yet.
+  //
+  // Trust boundary: only accept lifecycle comments that (a) have the marker at the START
+  // of the comment (hasLeadingMarker, not .includes()), (b) were authored by a trusted App,
+  // org member, or collaborator. Duplicate trusted comments fail closed (throw).  A trusted
+  // but malformed comment also fails closed: we reject the PR rather than silently treating
+  // a corrupted authoritative record as "no phase".
+  let lifecyclePhase = null;
+  {
+    const isTrustedLifecycleAuthor = (comment) => {
+      if (!comment) return false;
+      // A GitHub App (performed_via_github_app non-null) from any App is trusted since
+      // contributors cannot post comments via a GitHub App token.
+      if (comment.performed_via_github_app != null) return true;
+      const association = String(comment.author_association ?? '').toUpperCase();
+      const login = String(comment.user?.login ?? '').toLowerCase();
+      return TRUSTED_ASSOCIATIONS.has(association) || TRUSTED_BOT_LOGINS.has(login);
     };
+    const trustedLifecycleComments = comments.filter(
+      (comment) =>
+        hasLeadingMarker(comment.body, LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
+    );
+    if (trustedLifecycleComments.length > 1) {
+      // Duplicate authoritative lifecycle comments are a data-integrity error.
+      // Fail closed: reject admission rather than silently picking one.
+      return {
+        ok: false,
+        reason: `lifecycle-comment-duplicate:${trustedLifecycleComments.length}`,
+      };
+    }
+    if (trustedLifecycleComments.length === 1) {
+      try {
+        const record = parseLifecycleComment(trustedLifecycleComments[0].body);
+        lifecyclePhase = record?.phase ?? null;
+      } catch {
+        // Malformed lifecycle comment from a trusted source — fail closed rather than
+        // admitting the PR with an unknown/corrupted phase record.
+        process.stdout.write(`lifecycle-comment-parse-error pr=#${pr.number}\n`);
+        return { ok: false, reason: 'lifecycle-comment-malformed' };
+      }
+    }
   }
-  const state = parseStateComment(stateComments[0].body);
-  const fingerprint = admissionFingerprint({
-    headSha: pr.head.sha,
-    title: pr.title,
-    baseRef: pr.base?.ref,
+
+  // D1 fix (Issue #1851): evaluate admission from current live facts — no
+  // state-comment fingerprint required. A green, mergeable, non-draft PR with
+  // resolved threads and a substantive Copilot review is always admissible
+  // regardless of whether the CI-recovery state comment fingerprint is current.
+  // The old fingerprint gate was the root cause of D1: a PR that recovered its
+  // checks could not re-enter the train until a separate CI-recovery run
+  // updated the fingerprint first, creating a chicken-and-egg deadlock.
+  const prFacts = {
+    state: pr.state,
+    draft: pr.draft,
+    hasMergeConflict: pr.mergeable === false || pr.mergeable_state === 'dirty',
     checkRuns: runs,
-    requiredNames: requiredAdmissionChecks,
     reviewThreads: review.threads,
-  });
-  if (state.headSha !== pr.head.sha || state.fingerprint !== fingerprint) {
-    return { ok: false, reason: 'CI recovery admission evidence is stale' };
+    reviews: review.reviews || [],
+    humanApprovalDisposition: approvalRejection,
+    lifecyclePhase,
+  };
+  const admission = isAdmissible(prFacts, requiredAdmissionChecks);
+  if (!admission.eligible) {
+    return { ok: false, reason: admission.reasons.join(', ') };
   }
-  return { ok: true, fingerprint };
+  return { ok: true };
 }
 
 async function createTrainCheck(

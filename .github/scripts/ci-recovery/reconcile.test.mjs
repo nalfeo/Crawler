@@ -11018,3 +11018,86 @@ test('same check rerun with only a new run URL still reaches the stale-retry cei
   // freely acquire ownership on the next reconcile pass.
   assert.equal(repositoryLabelExists, false);
 });
+
+// ---------------------------------------------------------------------------
+// #1883 regression: waiting PR with zero blockers + green CI is re-admitted
+// ---------------------------------------------------------------------------
+
+test('waiting PR with zero blockers and green CI is re-admitted to merge train (PR #1883)', async (t) => {
+  // Regression for #1883: a PR that entered waiting state (e.g. CI was red)
+  // later has all checks pass.  The reconcile run triggered by the CI
+  // workflow_run:completed event must transition the PR back to idle, clear
+  // WAITING_LABEL, and add QUEUE_LABEL — not log "train empty".
+  const stateComment = waitingStateComment(792, {
+    checkRuns: [{ id: 5, name: 'ci', status: 'completed', conclusion: 'success' }],
+  });
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    // No owner label in the repository.
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/`]: () => ({ body: {} }),
+    [`POST /graphql`]: () => ({
+      body: gqlNoThreads([substantiveCopilotReview()]),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 5, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The PR must be admitted to the merge train.
+  assert.match(stdout, /queued merge-train pr=#42/, 'readmit must queue the PR');
+  assert.doesNotMatch(stdout, /train empty/, 'must not report train empty when re-admitting');
+
+  // WAITING_LABEL must be removed.
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url ===
+          `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(WAITING_LABEL)}`,
+    ),
+    'WAITING_LABEL must be deleted on successful readmit',
+  );
+
+  // QUEUE_LABEL must be added.
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+        call.body?.labels?.includes(QUEUE_LABEL),
+    ),
+    'QUEUE_LABEL must be added on successful readmit',
+  );
+});

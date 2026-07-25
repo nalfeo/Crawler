@@ -54,16 +54,128 @@ export function admissionWaitReasons(requiredChecks, reviews) {
   ];
 }
 
+// Phase enum for the authoritative lifecycle FSM. The lifecycle owner
+// (pr-lifecycle.mjs) is the sole writer of these phases; the merge train and
+// conflict coordinator are demoted to pure predicates over them.
+export const LIFECYCLE_PHASES = {
+  REPAIRING: 'repairing',
+  QUEUED: 'queued',
+  ORDERING: 'ordering',
+  MERGING: 'merging',
+  DONE: 'done',
+  QUARANTINED: 'quarantined',
+  ABANDONED: 'abandoned',
+};
+
+export const TERMINAL_PHASES = new Set([
+  LIFECYCLE_PHASES.DONE,
+  LIFECYCLE_PHASES.QUARANTINED,
+  LIFECYCLE_PHASES.ABANDONED,
+]);
+
+// Structurally non-blocking phases (D11): a PR in one of these can never be a
+// merge-train admission candidate, a conflict-cluster leader, or an ordering
+// predecessor, so it can never dead-head another PR.
+export const NON_BLOCKING_PHASES = new Set([
+  LIFECYCLE_PHASES.QUARANTINED,
+  LIFECYCLE_PHASES.ABANDONED,
+]);
+
+export const DEFAULT_REQUIRED_CHECKS = ['ci', 'Security checks'];
+
+/**
+ * Returns the required check names that are not completed+successful on the
+ * supplied check runs. Latest attempt per logical name wins, mirroring
+ * `collapseCheckRunsByName` so a green rerun supersedes an earlier failure.
+ *
+ * Kept local to this module (rather than importing merge-train's
+ * `unsatisfiedChecks`) so `merge-train/state.mjs` can import from here without
+ * creating an import cycle.
+ *
+ * @param {object[]} checkRuns
+ * @param {string[]} requiredNames
+ * @returns {string[]} unsatisfied required check names
+ */
+export function unsatisfiedChecksFromRuns(checkRuns, requiredNames = DEFAULT_REQUIRED_CHECKS) {
+  const latest = new Map();
+  for (const run of collapseCheckRunsByName(checkRuns || [])) {
+    latest.set(compact(run.name).toLowerCase(), run);
+  }
+  return (requiredNames || []).filter((name) => {
+    const check = latest.get(compact(name).toLowerCase());
+    return check?.status !== 'completed' || check.conclusion !== 'success';
+  });
+}
+
+/**
+ * Pure admission evaluator — takes current PR facts, returns {eligible, reasons[]}.
+ * Uses current-facts only (no async state comment required). This eliminates D1
+ * (admission deadlock from a stale state comment / wrong enrollment order): the
+ * answer is derived from live PR facts rather than from a label whose write
+ * order is itself the deadlock.
+ *
+ * @param {object} prFacts
+ * @param {string} [prFacts.headSha]
+ * @param {string} [prFacts.baseRef]
+ * @param {string} prFacts.state - 'open' | 'closed' | 'merged'
+ * @param {boolean} prFacts.draft
+ * @param {boolean} [prFacts.mergeable] - true when GitHub API says PR is mergeable
+ * @param {boolean} [prFacts.hasMergeConflict] - true when PR has a merge conflict
+ * @param {object[]} [prFacts.checkRuns] - check runs with {name, status, conclusion}
+ * @param {object[]} [prFacts.reviewThreads] - review threads with {isResolved}
+ * @param {object[]} [prFacts.reviews] - reviews, for hasSubstantiveCopilotReview
+ * @param {string[]} [prFacts.requiredChecks] - required check names
+ * @param {string|null} [prFacts.humanApprovalDisposition] - non-null means approval pending
+ * @returns {{ eligible: boolean, reasons: string[] }}
+ */
+export function evaluateAdmission(prFacts, config = {}) {
+  const {
+    state,
+    draft,
+    mergeable,
+    hasMergeConflict = false,
+    checkRuns = [],
+    reviewThreads = [],
+    reviews = [],
+    requiredChecks = config.requiredChecks || DEFAULT_REQUIRED_CHECKS,
+    lifecyclePhase = null,
+    humanApprovalDisposition = null,
+  } = prFacts || {};
+
+  const reasons = [];
+
+  if (lifecyclePhase && NON_BLOCKING_PHASES.has(lifecyclePhase)) {
+    return { eligible: false, reasons: [`lifecycle-phase:${lifecyclePhase}`] };
+  }
+
+  if (state !== 'open') reasons.push('pr-not-open');
+  if (draft) reasons.push('pr-is-draft');
+  // Accept either the GitHub API mergeable=false or a hasMergeConflict flag
+  // (used when the caller already computed the conflict state from mergeable_state).
+  if (mergeable === false || hasMergeConflict === true) reasons.push('not-mergeable');
+
+  reasons.push(
+    ...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks), reviews),
+  );
+
+  const unresolvedCount = (reviewThreads || []).filter((thread) => !thread.isResolved).length;
+  if (unresolvedCount > 0) reasons.push(`unresolved-threads:${unresolvedCount}`);
+
+  if (humanApprovalDisposition) reasons.push('human-approval-pending');
+
+  return { eligible: reasons.length === 0, reasons };
+}
+
 export function isTrustedTrainPromotionCheck(check, trustedAppId) {
   return Boolean(
     check &&
-    check.name === 'merge-train' &&
-    check.status === 'completed' &&
-    check.conclusion === 'success' &&
-    Number.isInteger(trustedAppId) &&
-    Number(check.app?.id) === trustedAppId &&
-    typeof check.external_id === 'string' &&
-    TRAIN_PROMOTION_FINGERPRINT_SHAPE.test(check.external_id),
+      check.name === 'merge-train' &&
+      check.status === 'completed' &&
+      check.conclusion === 'success' &&
+      Number.isInteger(trustedAppId) &&
+      Number(check.app?.id) === trustedAppId &&
+      typeof check.external_id === 'string' &&
+      TRAIN_PROMOTION_FINGERPRINT_SHAPE.test(check.external_id),
   );
 }
 
@@ -342,9 +454,9 @@ export function assertOwnershipInvariant({ labelExists, state }) {
 export function isDuplicateDispatch(state, fingerprint) {
   return Boolean(
     state &&
-    state.owner === 'automation' &&
-    ['active', 'dispatched', 'escalated'].includes(state.status) &&
-    state.fingerprint === fingerprint,
+      state.owner === 'automation' &&
+      ['active', 'dispatched', 'escalated'].includes(state.status) &&
+      state.fingerprint === fingerprint,
   );
 }
 

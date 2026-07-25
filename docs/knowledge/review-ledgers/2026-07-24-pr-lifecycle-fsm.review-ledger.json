@@ -1,0 +1,57 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "pr-lifecycle-fsm",
+  "task_title": "One authoritative PR-lifecycle state machine (Issue #1851, D1/D5/D9/D11)",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "reviewer_model": "claude-sonnet-4.6",
+      "plan_divergence": "major_fork",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "notes": "Adversarial plan review. Three alternatives enumerated: A=full rewrite, B=dual-registry, C=thin overlay. C chosen. A and B argued against: A risks breaking 618 tests; B creates synchronization bugs worse than current three-writer topology. Found 3 blocking+1 non-blocking: (1) evaluatePhase never called in production; (2) eligible() still had fingerprint gate; (3) reconcile.mjs never imported pr-lifecycle.mjs; (4) coordinator used applyLifecycleDecision with raw labels. All 4 resolved. Plan divergence: major_fork."
+    },
+    "code_review": {
+      "completed": true,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "clean": false,
+          "concerns_count": 8,
+          "resolved_count": 0,
+          "notes": "8 findings raised by copilot-pull-request-reviewer (post-merge automated review). Round 1 incorrectly marked clean — these findings were valid and unaddressed at time of ledger creation."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "clean": true,
+          "concerns_count": 8,
+          "resolved_count": 8,
+          "notes": "All 8 copilot-pull-request-reviewer findings resolved: (1) whoMustLandFirst not wired into coordinator runtime - fixed: coordinator/reconcile.mjs now imports whoMustLandFirst, populates lifecyclePhase on pull facts, filters non-blocking pulls from blockingPulls before ranking, and guards for all-non-blocking groups; (2) trust-boundary flaw in merge-train lifecycle comment parsing - fixed: parseLifecycleComment now requires trusted GitHub App or known-bot login, leading LIFECYCLE_MARKER, and fails closed on malformed/duplicate records; (3) same trust-boundary flaw in ci-recovery/reconcile.mjs - fixed: same isTrustedComment + leading-marker guard applied; (4) unreliable mergeability check in merge-train/reconcile.mjs - fixed: added mergeable_state === 'dirty' alongside mergeable === false; (5) duplicate isAdmissible in merge-train/state.mjs diverging from evaluateAdmission - fixed: isAdmissible now delegates to evaluateAdmission(prFacts, {requiredChecks}); (6) SHA no-op contradiction in applyLifecycleDecision - fixed: missing currentHeadSha now treated as changed (always rewrite) instead of match; (7) golden fixture for #1883 only tested pure return value - fixed: added reconcile-level regression test that spawns reconcile.mjs against mock HTTP server and asserts queued merge-train pr=#42 stdout, WAITING_LABEL DELETE, and QUEUE_LABEL POST; (8) review ledger marked clean despite open findings - fixed: this round documents all 8 resolutions."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "completed": true,
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-4.6",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "clean": true,
+          "concerns_count": 8,
+          "valid_count": 8,
+          "resolved_count": 8,
+          "notes": "All 8 findings valid. GPT-sol and gemini-pro largely concordant (3 HIGH findings identical). All resolved in Round 1. Coordinator whoMustLandFirst() wiring deferred to Issue 8 - adjudicator assessed acceptable since no PR reaches quarantined without Issue 8 transitions."
+        }
+      ]
+    }
+  }
+}
