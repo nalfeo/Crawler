@@ -83,8 +83,7 @@ export function resolveEquipmentIconSpec(
 
 function getGeneratedRegistry(scene: Phaser.Scene): GeneratedSpriteRegistry {
   const registry = scene.game?.registry?.get(GENERATED_SPRITE_REGISTRY_KEY) as
-    | GeneratedSpriteRegistry
-    | undefined;
+    GeneratedSpriteRegistry | undefined;
   return registry ?? emptyGeneratedSpriteRegistry();
 }
 

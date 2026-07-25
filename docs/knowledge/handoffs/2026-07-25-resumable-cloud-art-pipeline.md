@@ -19,6 +19,10 @@ The implementation was recovered from the stalled `Audit asset requests` session
 replayed onto current `main` with Git's three-way merge so later queue-persistence fixes
 were preserved.
 
+The first push also exposed 28 current-`main` Prettier violations in unrelated TypeScript
+files. The repository formatter was applied mechanically so the mandatory pre-push gate
+could pass; no behavior was intentionally changed by that cleanup.
+
 ## What changed
 
 - Added durable per-issue checkpoints for synthesize, brief selection, promotion,
