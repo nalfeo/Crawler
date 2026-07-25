@@ -226,7 +226,13 @@
       "arenaLabEvidence": null,
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": 1955,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1955,
+        "state": "open",
+        "title": "Implement King Skritt's ROMAN-CANDLE CORONATION ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1955"
+      },
       "implementationPullRequest": null,
       "blockers": [
         "floor2-boss-production-enable"

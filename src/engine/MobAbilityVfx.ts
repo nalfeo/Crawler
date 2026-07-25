@@ -86,6 +86,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const berserkAuraLastPos = new Map<number, { x: number; y: number }>();
   const berserkAuraLastPulseFrame = new Map<number, number>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
+  const coronationProjectileLastPos = new Map<number, { x: number; y: number }>();
   const castStartSeen = new Set<number>();
   /**
    * Transient circles created by spawnRing/spawnBurst/spawnCastStart.
@@ -525,13 +526,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
    * crown flame jets, ember halo, upward sparks, molten-orange trails, char
    * flakes, and a central coronation flash.
    */
-  function spawnCoronationBurst(
-    cx: number,
-    cy: number,
-    spokeLengthPx: number,
-    count: number,
-    offsetDeg: number,
-  ): void {
+  function spawnCoronationBurst(cx: number, cy: number, spokeLengthPx: number): void {
     if (!enabled) return;
     // Central coronation flash: expanding crown-gold ring.
     spawnRing(cx, cy, spokeLengthPx * 0.08, spokeLengthPx * 0.55, COLOR_CROWN_RUNE, BURST_LIFETIME_MS, BURST_DEPTH);
@@ -539,14 +534,6 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     spawnRing(cx, cy, spokeLengthPx * 0.04, spokeLengthPx * 0.3, COLOR_MOLTEN_ORANGE, BURST_LIFETIME_MS, BURST_DEPTH);
     // Hostile-red outer shockwave.
     spawnRing(cx, cy, spokeLengthPx * 0.12, spokeLengthPx * 0.75, COLOR_HOSTILE_RED, BURST_LIFETIME_MS * 0.8, BURST_DEPTH);
-    // Impact cinders at each spoke tip.
-    for (let i = 0; i < count; i += 1) {
-      const angleDeg = (i / count) * 360 + offsetDeg;
-      const angleRad = (angleDeg * Math.PI) / 180;
-      const tx = cx + Math.cos(angleRad) * spokeLengthPx;
-      const ty = cy + Math.sin(angleRad) * spokeLengthPx;
-      spawnRing(tx, ty, spokeLengthPx * 0.04, spokeLengthPx * 0.12, COLOR_MOLTEN_ORANGE, BURST_LIFETIME_MS * 0.7, BURST_DEPTH);
-    }
     // Upward ember sparks from the centre.
     spawnSparkBurst(cx, cy, spokeLengthPx * 0.45, [COLOR_EMBER_GOLD, COLOR_MOLTEN_ORANGE] as const, CORONATION_BURST_SPARK_COUNT);
     // Char flake haze (desaturated smoke ring).
@@ -556,6 +543,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
 
   function update(world: GameWorld): void {
     const runtime = world.mobAbilities;
+    const liveCoronationProjectiles = new Set<number>();
 
     // ── Telegraph circles ──────────────────────────────────────────────────
     const liveCasters = new Set<number>();
@@ -631,6 +619,25 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       }
     }
 
+    // Track Roman Candle projectile positions from authoritative runtime ownership.
+    for (const inst of runtime.byEntity.values()) {
+      if (inst.definition.abilityId !== ROMAN_CANDLE_CORONATION_ABILITY_ID) continue;
+      for (const [eid, generation] of inst.ownedEntityGenerations) {
+        if ((world.entityRenderGeneration[eid] ?? -1) !== generation) continue;
+        const x = world.stores.position.x[eid];
+        const y = world.stores.position.y[eid];
+        if (x === undefined || y === undefined) continue;
+        liveCoronationProjectiles.add(eid);
+        coronationProjectileLastPos.set(eid, { x: ftToPx(x), y: ftToPx(y) });
+      }
+    }
+    // Emit cinders when tracked coronation projectiles actually despawn/collide.
+    for (const [eid, lastPos] of [...coronationProjectileLastPos.entries()]) {
+      if (liveCoronationProjectiles.has(eid)) continue;
+      spawnRing(lastPos.x, lastPos.y, 3, 10, COLOR_MOLTEN_ORANGE, BURST_LIFETIME_MS * 0.55, BURST_DEPTH);
+      coronationProjectileLastPos.delete(eid);
+    }
+
     // ── Resolution bursts (drain the durable pending-burst queue) ─────────
     // The core runtime pushes committed geometry here when a cast resolves, so
     // bursts survive even if the caster is cleared (killed/despawned) later in
@@ -644,8 +651,6 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
           ftToPx(geom.casterX),
           ftToPx(geom.casterY),
           ftToPx(geom.spokeLengthFt),
-          geom.count,
-          geom.offsetDeg,
         );
         continue;
       }
@@ -803,6 +808,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     tarnishLastPos.clear();
     berserkAuraSeen.clear();
     lastGeom.clear();
+    coronationProjectileLastPos.clear();
     castStartSeen.clear();
   }
 

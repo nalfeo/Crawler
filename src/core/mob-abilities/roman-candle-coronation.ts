@@ -186,7 +186,8 @@ function makeResolveHandler(count: number) {
       const angleRad = (angleDeg * Math.PI) / 180;
       const vx = CROWN_FLAME_SPEED * Math.cos(angleRad);
       const vy = CROWN_FLAME_SPEED * Math.sin(angleRad);
-      spawnEnemyProjectile(world, casterX, casterY, vx, vy, CROWN_FLAME_DAMAGE, casterEid);
+      const eid = spawnEnemyProjectile(world, casterX, casterY, vx, vy, CROWN_FLAME_DAMAGE, casterEid);
+      ctx.registerOwnedEntity?.(eid);
     }
   };
 }

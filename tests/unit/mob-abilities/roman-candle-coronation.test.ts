@@ -124,13 +124,17 @@ function recordTimeline(h: Harness, frames: number) {
 
 /** Returns angles (degrees, normalised 0–360) for projectiles spawned between beforeCount and after. */
 function captureAnglesDeg(world: World, beforeCount: number): number[] {
-  const eids = query(world.ecs, [Projectile, EnemyProjectile]);
+  const eids = Array.from(query(world.ecs, [Projectile, EnemyProjectile]));
   return eids.slice(beforeCount).map((eid) => {
     const vx = world.stores.velocity.x[eid] ?? 0;
     const vy = world.stores.velocity.y[eid] ?? 0;
     const angleDeg = (Math.atan2(vy, vx) * 180) / Math.PI;
     return ((angleDeg % 360) + 360) % 360;
   });
+}
+
+function enemyProjectileCount(world: World): number {
+  return query(world.ecs, [Projectile, EnemyProjectile]).length;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -324,7 +328,7 @@ describe('Roman Candle Coronation — simultaneous launch', () => {
 
     const beforeCount = query(h.world.ecs, [Projectile, EnemyProjectile]).length;
     step(h.world, FIRST_RESOLUTION_FRAME - FIRST_TELEGRAPH_FRAME);
-    const eids = query(h.world.ecs, [Projectile, EnemyProjectile]);
+    const eids = Array.from(query(h.world.ecs, [Projectile, EnemyProjectile]));
     const launched = eids.slice(beforeCount);
     expect(launched).toHaveLength(12);
     for (const eid of launched) {
@@ -345,7 +349,7 @@ describe('Roman Candle Coronation — non-homing travel', () => {
     step(h.world, FIRST_RESOLUTION_FRAME - 1);
     const beforeCount = query(h.world.ecs, [Projectile, EnemyProjectile]).length;
     step(h.world, 1);
-    const eids = query(h.world.ecs, [Projectile, EnemyProjectile]);
+    const eids = Array.from(query(h.world.ecs, [Projectile, EnemyProjectile]));
     const launched = eids.slice(beforeCount);
     expect(launched).toHaveLength(12);
 
@@ -370,7 +374,7 @@ describe('Roman Candle Coronation — non-homing travel', () => {
     step(h.world, FIRST_RESOLUTION_FRAME - 1);
     const beforeCount = query(h.world.ecs, [Projectile, EnemyProjectile]).length;
     step(h.world, 1);
-    const eids = query(h.world.ecs, [Projectile, EnemyProjectile]);
+    const eids = Array.from(query(h.world.ecs, [Projectile, EnemyProjectile]));
     const launched = eids.slice(beforeCount);
     expect(launched).toHaveLength(12);
 
@@ -492,6 +496,38 @@ describe('Roman Candle Coronation — cleanup', () => {
     clearMobAbility(h.world, h.king);
     expect(h.world.mobAbilities.byEntity.has(h.king)).toBe(false);
     expect(h.world.mobAbilities.cues.filter((c) => c.casterEid === h.king)).toHaveLength(0);
+  });
+
+  it('retires in-flight coronation projectiles across every cleanup path', () => {
+    const byClear = buildHarness();
+    arm(byClear);
+    step(byClear.world, FIRST_RESOLUTION_FRAME);
+    expect(enemyProjectileCount(byClear.world)).toBe(12);
+    clearMobAbility(byClear.world, byClear.king);
+    expect(enemyProjectileCount(byClear.world)).toBe(0);
+
+    const byDisable = buildHarness();
+    arm(byDisable);
+    step(byDisable.world, FIRST_RESOLUTION_FRAME);
+    expect(enemyProjectileCount(byDisable.world)).toBe(12);
+    disableMobAbilityEncounter(byDisable.world);
+    expect(enemyProjectileCount(byDisable.world)).toBe(0);
+
+    const byDeath = buildHarness();
+    arm(byDeath);
+    step(byDeath.world, FIRST_RESOLUTION_FRAME);
+    expect(enemyProjectileCount(byDeath.world)).toBe(12);
+    byDeath.world.stores.health.current[byDeath.king] = 0;
+    step(byDeath.world, 1);
+    expect(enemyProjectileCount(byDeath.world)).toBe(0);
+
+    const byDespawn = buildHarness();
+    arm(byDespawn);
+    step(byDespawn.world, FIRST_RESOLUTION_FRAME);
+    expect(enemyProjectileCount(byDespawn.world)).toBe(12);
+    removeEntity(byDespawn.world.ecs, byDespawn.king);
+    step(byDespawn.world, 1);
+    expect(enemyProjectileCount(byDespawn.world)).toBe(0);
   });
 
   it('re-registration resets resolvedCasts and restarts the cooldown clock', () => {

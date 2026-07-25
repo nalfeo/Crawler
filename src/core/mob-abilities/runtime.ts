@@ -18,9 +18,9 @@
  * all release the caster's instance, its cue, and any status effects it owns.
  */
 
-import { entityExists, hasComponent, query, removeComponent } from 'bitecs';
+import { entityExists, hasComponent, query, removeComponent, removeEntity } from 'bitecs';
 import { GAME } from '../../shared/constants.js';
-import { Health, Knockback, Player, Position, Velocity } from '../components.js';
+import { EnemyProjectile, Health, Knockback, Player, Position, Velocity } from '../components.js';
 import { clearStatusEffects } from '../status-effects.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
 import type { GameWorld } from '../world.js';
@@ -97,6 +97,7 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   const runtime = world.mobAbilities;
   const inst = runtime.byEntity.get(casterEid);
   if (inst === undefined) return;
+  clearOwnedProjectiles(world, inst);
   runtime.byEntity.delete(casterEid);
   runtime.registrationTokens.delete(casterEid);
 
@@ -123,6 +124,16 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   }
   inst.ownedEntityGenerations.clear();
   world.mobAbilities.activeBuffsByEntity.delete(casterEid);
+}
+
+function clearOwnedProjectiles(world: GameWorld, inst: MobAbilityInstanceState): void {
+  for (const [eid, generation] of inst.ownedEntityGenerations) {
+    if (!entityExists(world.ecs, eid)) continue;
+    if ((world.entityRenderGeneration[eid] ?? -1) !== generation) continue;
+    if (!hasComponent(world.ecs, eid, EnemyProjectile)) continue;
+    removeEntity(world.ecs, eid);
+    world.enemyProjectileArchetypeKeys.delete(eid);
+  }
 }
 
 /** Enable/disable the runtime feature gate. Disabling clears all cues + clocks. */
@@ -415,11 +426,7 @@ function pruneOwnedEntities(world: GameWorld, inst: MobAbilityInstanceState): nu
       inst.ownedEntityGenerations.delete(eid);
       continue;
     }
-    if (!hasComponent(world.ecs, eid, Health)) {
-      inst.ownedEntityGenerations.delete(eid);
-      continue;
-    }
-    if ((world.stores.health.current[eid] ?? 0) <= 0) {
+    if (hasComponent(world.ecs, eid, Health) && (world.stores.health.current[eid] ?? 0) <= 0) {
       inst.ownedEntityGenerations.delete(eid);
     }
   }
