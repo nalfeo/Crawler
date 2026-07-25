@@ -49,6 +49,30 @@ cannot make: they see the sprite on a neutral background, you see it in the room
    that story.
 6. **Batch by zone.** Props from one zone generated together share context and cohere
    better than props batched by type.
+7. **Brief the art for how it is USED, not for what it is called.** This is the single
+   most expensive mistake available to you, because the resulting art passes every
+   deterministic check and only fails on the render — after which you will burn round
+   after round critiquing colour and detail while the actual defect is in the premise.
+   Before writing a word, ask: _will this asset be repeated edge-to-edge, or will it sit
+   alone?_
+   - **Tiled** (a real floor field, a wall run): opaque, seamless, pattern runs off all
+     four edges, no border, no transparent margin.
+   - **Isolated** (a scattered wear mark, a decal, an accent placed on 9 tiles in a
+     40-prop room): **transparent background, feathered alpha, and nothing touching the
+     canvas edge.** Keep the mark inside the central ~70% and avoid any straight line
+     parallel to a canvas edge.
+
+   An **opaque** asset used in an **isolated** position always reads as a hard-edged
+   square dropped on the floor — like a sheet of paper — no matter how well it tiles
+   against itself and no matter how precisely its base colour is matched to the floor
+   beneath. Colour-matching cannot fix it, because the defect is the opacity and the
+   90° edge, not the hue. The `welcome-room-floor-*` set burned two full generate/judge
+   rounds on exactly this: briefed as seamless carpet tiles, used as nine scattered
+   decals, rejected on the render both times for "visible squares", and only fixed by
+   rewriting the premise to a transparent decal.
+
+   The `floor` prop kind is the usual trap, since the word "tile" is right there in the
+   brief type. A `floor` prop placed on a minority of the room's tiles is a **decal**.
 
 ## The iteration loop
 
