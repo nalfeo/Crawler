@@ -62,7 +62,9 @@ export interface MobAbilityProjectileFanGeometry {
 }
 
 export type MobAbilityGeometry =
-  MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry | MobAbilityProjectileFanGeometry;
+  | MobAbilityCircleGeometry
+  | MobAbilitySpawnCirclesGeometry
+  | MobAbilityProjectileFanGeometry;
 
 export type MobAbilityTargetingMode = 'player-direction' | 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
