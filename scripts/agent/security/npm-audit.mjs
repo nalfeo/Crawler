@@ -21,6 +21,13 @@ export const AUDIT_EXCEPTIONS = [
     expiresOn: '2026-07-29',
     reason: 'Microsoft npm proxy does not yet mirror fixed 3.x release 3.1.4.',
   },
+  {
+    packageName: 'find-my-way',
+    source: 1124273,
+    url: 'https://github.com/advisories/GHSA-c96f-x56v-gq3h',
+    expiresOn: '2026-07-31',
+    reason: 'Microsoft npm proxy does not yet mirror fixed release 9.7.0.',
+  },
 ];
 
 function isActive(exception, now) {

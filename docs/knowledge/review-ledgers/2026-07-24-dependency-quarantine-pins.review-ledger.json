@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "dependency-quarantine-pins",
+  "task_title": "Pin proxy-compatible dependencies",
+  "estimated_apples": 2,
+  "stages": {}
+}

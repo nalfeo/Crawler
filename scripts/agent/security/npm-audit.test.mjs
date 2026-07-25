@@ -44,7 +44,12 @@ test('reports every matched exception in the success diagnostic', (t) => {
           via: [BRACE_EXPANSION_ADVISORY],
         },
         'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
-        fastify: { name: 'fastify', severity: 'high', via: ['fast-uri'] },
+        'find-my-way': {
+          name: 'find-my-way',
+          severity: 'high',
+          via: [FIND_MY_WAY_ADVISORY],
+        },
+        fastify: { name: 'fastify', severity: 'high', via: ['find-my-way'] },
         minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
       }),
     )}));`,
@@ -69,7 +74,11 @@ test('reports every matched exception in the success diagnostic', (t) => {
   );
   assert.match(
     result.stderr,
-    /Suppressed derived findings: brace-expansion, fast-uri, fastify, minimatch/,
+    /Temporary audit exception through 2026-07-31: https:\/\/github\.com\/advisories\/GHSA-c96f-x56v-gq3h/,
+  );
+  assert.match(
+    result.stderr,
+    /Suppressed derived findings: brace-expansion, fast-uri, fastify, find-my-way, minimatch/,
   );
 });
 
@@ -189,7 +198,7 @@ test('does not suppress a different advisory for fast-uri', () => {
   );
 });
 
-test('does not suppress find-my-way once the exception is removed', () => {
+test('suppresses the exact find-my-way advisory and findings derived solely from it', () => {
   const result = evaluateAudit(
     report({
       'find-my-way': { name: 'find-my-way', severity: 'high', via: [FIND_MY_WAY_ADVISORY] },
@@ -198,11 +207,27 @@ test('does not suppress find-my-way once the exception is removed', () => {
     { now: ACTIVE_DATE },
   );
 
+  assert.deepEqual(result.blocking, []);
+  assert.deepEqual(result.ignored, ['fastify', 'find-my-way']);
+  assert.deepEqual(
+    result.matchedExceptions.map((item) => item.packageName),
+    ['find-my-way'],
+  );
+});
+
+test('fails closed after the find-my-way exception expires', () => {
+  const result = evaluateAudit(
+    report({
+      'find-my-way': { name: 'find-my-way', severity: 'high', via: [FIND_MY_WAY_ADVISORY] },
+    }),
+    { now: new Date('2026-08-01T00:00:00Z') },
+  );
+
   assert.deepEqual(result.ignored, []);
   assert.deepEqual(result.matchedExceptions, []);
   assert.deepEqual(
     result.blocking.map((item) => item.name),
-    ['find-my-way', 'fastify'],
+    ['find-my-way'],
   );
 });
 
