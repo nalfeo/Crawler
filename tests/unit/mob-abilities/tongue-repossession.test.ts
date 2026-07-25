@@ -163,7 +163,7 @@ describe('Tongue Repossession hit, pull, miss, and collision safety', () => {
   });
 
   it('pull fallback respects collision validity and never places the player in blocked geometry', () => {
-    const h = buildHarness(20, 20, 20, 10);
+    const h = buildHarness(20, 12, 20, 10);
     h.world.floorMap = {
       isPassableAt(_x: number, y: number) {
         return y < 14;
@@ -187,6 +187,7 @@ describe('Tongue Repossession hit, pull, miss, and collision safety', () => {
       },
     });
     const pulledY = h.world.stores.position.y[h.player] ?? 0;
+    expect(pulledY).toBeCloseTo(12, 6);
     expect(pulledY).toBeLessThan(14);
   });
 });
