@@ -308,6 +308,7 @@ function syncTelegraphGeometryToCaster(
   inst: MobAbilityInstanceState,
 ): void {
   if (inst.committedGeometry === null) return;
+  if (inst.committedGeometry.kind !== 'circle') return;
   if (normalizedOriginMode(inst.definition) !== 'follows-caster') return;
   const pos = targetPosition(world, casterEid);
   if (pos === null) return;
