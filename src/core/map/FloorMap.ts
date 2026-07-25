@@ -320,6 +320,38 @@ export class FloorMap implements FloorMapData {
   }
 
   /**
+   * Mark a sub-tile as both visible and discovered in one call.
+   *
+   * Exactly equivalent to `setVisible(hx, hy)` followed by
+   * `setDiscovered(hx, hy)` — the FOV system's only write pattern — but shares
+   * the bounds check, the sub-tile index, and the tile-index derivation that
+   * the two separate calls each recompute. FOV writes this for every lit
+   * sub-tile (up to ~10 K per pass at `subFactor` 2), so the duplicated work
+   * was measurable in the sim profile.
+   *
+   * Callers that need only one of the two bitmaps must keep using the
+   * individual setters.
+   */
+  markVisibleAndDiscovered(hx: number, hy: number): void {
+    const sw = this.subWidth;
+    if (hx < 0 || hx >= sw || hy < 0 || hy >= this.subHeight) return;
+    const subIdx = hy * sw + hx;
+    this.visible[subIdx] = 1;
+    this.discovered[subIdx] = 1;
+
+    const sf = this._subFactor;
+    const tileIdx = Math.floor(hy / sf) * this.config.widthTiles + Math.floor(hx / sf);
+    this.tileVisible[tileIdx] = 1;
+    this.tileDiscovered[tileIdx] = 1;
+
+    // Expand the bounding box that clearVisibility() will zero next frame.
+    if (hx < this.lastFovMinX) this.lastFovMinX = hx;
+    if (hy < this.lastFovMinY) this.lastFovMinY = hy;
+    if (hx > this.lastFovMaxX) this.lastFovMaxX = hx;
+    if (hy > this.lastFovMaxY) this.lastFovMaxY = hy;
+  }
+
+  /**
    * Clear the per-frame visibility bitmap (called before each FOV recompute).
    * Does NOT clear `discovered` — explored terrain persists for the floor.
    *
