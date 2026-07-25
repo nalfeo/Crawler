@@ -277,6 +277,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     endY: number,
     widthPx: number,
     progress: number,
+    dangerColor: 'ability-theme' | 'hostile-red',
   ): void {
     const dx = endX - originX;
     const dy = endY - originY;
@@ -293,7 +294,9 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     const left1y = endY + ny * halfW;
     const right1x = endX - nx * halfW;
     const right1y = endY - ny * halfW;
-    gfx.fillStyle(COLOR_HOSTILE_RED, 0.12 + 0.28 * progress);
+    const fillColor = dangerColor === 'ability-theme' ? COLOR_BERSERK_GREEN : COLOR_HOSTILE_RED;
+    const railColor = dangerColor === 'ability-theme' ? COLOR_BERSERK_RED : COLOR_HOSTILE_RED;
+    gfx.fillStyle(fillColor, 0.12 + 0.28 * progress);
     gfx.fillPoints(
       [
         { x: left0x, y: left0y },
@@ -303,7 +306,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       ],
       true,
     );
-    gfx.lineStyle(2 + 2 * progress, COLOR_HOSTILE_RED, 0.92);
+    gfx.lineStyle(2 + 2 * progress, railColor, 0.92);
     gfx.lineBetween(left0x, left0y, left1x, left1y);
     gfx.lineBetween(right0x, right0y, right1x, right1y);
     gfx.lineStyle(2, COLOR_CROWN_RUNE, 0.45 + 0.4 * progress);
@@ -564,6 +567,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
           ftToPx(cue.geometry.endY),
           ftToPx(cue.geometry.widthFt),
           cue.telegraphProgress,
+          cue.dangerColor,
         );
       } else {
         const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;

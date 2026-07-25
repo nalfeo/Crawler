@@ -166,7 +166,7 @@ describe('MobAbilityVfx', () => {
         widthFt: 3,
         lengthFt: 20,
       },
-      dangerColor: 'hostile-red',
+      dangerColor: 'ability-theme',
       announcementText: "TONGUE REPOSSESSION — Big Mama wants what's hers!",
     });
     world.mobAbilities.byEntity.set(19, mockInstance());
@@ -177,6 +177,7 @@ describe('MobAbilityVfx', () => {
     const telegraphGfx = graphicsObjects[0];
     expect(telegraphGfx).toBeDefined();
     expect(telegraphGfx!.fillPoints).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.fillStyle).toHaveBeenCalledWith(0x59c36a, expect.any(Number));
     expect(telegraphGfx!.lineBetween).toHaveBeenCalled();
   });
 
@@ -259,6 +260,39 @@ describe('MobAbilityVfx', () => {
     const undercityCircleCount = circles.length - genericCircleCount;
 
     expect(undercityCircleCount).toBeGreaterThan(genericCircleCount);
+  });
+
+  it('renders Tongue Repossession lane bursts with an extra retract snap ring', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const vfx = createMobAbilityVfx(scene);
+    const laneGeometry = {
+      kind: 'lane' as const,
+      originX: 10,
+      originY: 10,
+      endX: 20,
+      endY: 10,
+      dirX: 1,
+      dirY: 0,
+      widthFt: 3,
+      lengthFt: 10,
+    };
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: laneGeometry,
+    });
+    vfx.update(world);
+    const genericLaneBurstCircleCount = circles.length;
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'big-mama-bufo-tongue-repossession',
+      geometry: laneGeometry,
+    });
+    vfx.update(world);
+    const tongueLaneBurstCircleCount = circles.length - genericLaneBurstCircleCount;
+
+    expect(tongueLaneBurstCircleCount).toBeGreaterThan(genericLaneBurstCircleCount);
   });
 
   it('retires telegraph graphics when the cue ends', () => {
