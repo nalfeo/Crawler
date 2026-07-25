@@ -5,41 +5,42 @@
   "outcome": "TERMINAL_NO_PR",
   "stopCondition": "STALE_BASELINE",
   "baselineEligibilityCheck": {
-    "latestMainSweepRunId": 29507839303,
-    "latestMainSweepURL": "https://github.com/nalfeo/Crawler/actions/runs/29507839303",
-    "latestMainSweepSHA": "b61c1bc7feb494cc195efabeee894ff328d5b3bc",
+    "latestMainSweepRunId": 29483586088,
+    "latestMainSweepURL": "https://github.com/nalfeo/Crawler/actions/runs/29483586088",
+    "latestMainSweepSHA": "2cca6f1037771f212add3f8b8669d9de66d8b7f0",
     "latestMainSweepBranch": "main",
-    "latestMainSweepCreatedAt": "2026-07-16T14:42:56Z",
-    "latestMainSweepCompletedAt": "2026-07-16T14:47:06Z",
+    "latestMainSweepCreatedAt": "2026-07-16T08:28:34Z",
+    "latestMainSweepCompletedAt": "2026-07-16T08:37:14Z",
     "weapons": ["sword", "bow", "baseball-bat", "pistol", "throwing-knife", "fireball"],
     "allSixFinalAggregateArtifactsPresent": true,
     "artifactIds": {
-      "weapon-sweep-sword": 8379383717,
-      "weapon-sweep-bow": 8379383505,
-      "weapon-sweep-baseball-bat": 8379384395,
-      "weapon-sweep-pistol": 8379385774,
-      "weapon-sweep-throwing-knife": 8379382290,
-      "weapon-sweep-fireball": 8379384485
+      "weapon-sweep-sword": 8369652774,
+      "weapon-sweep-bow": 8369653179,
+      "weapon-sweep-baseball-bat": 8369655397,
+      "weapon-sweep-pistol": 8369651578,
+      "weapon-sweep-throwing-knife": 8369651468,
+      "weapon-sweep-fireball": 8369656847
     },
-    "seedCountPerWeapon": "100 (4 shards × 25 seeds each, per standard weapon-sweep.yml config)"
+    "seedCountPerWeapon": 100,
+    "seedDistribution": {
+      "shard0": "1,5,9,13,17,21,25,29,33,37,41,45,49,53,57,61,65,69,73,77,81,85,89,93,97",
+      "shard1": "2,6,10,14,18,22,26,30,34,38,42,46,50,54,58,62,66,70,74,78,82,86,90,94,98",
+      "shard2": "3,7,11,15,19,23,27,31,35,39,43,47,51,55,59,63,67,71,75,79,83,87,91,95,99",
+      "shard3": "4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100"
+    },
+    "maxFrames": 19800,
+    "behaviorFlags": {
+      "weaponPersonas": false
+    }
   },
   "staleBasisCheck": {
     "currentMainHEAD": "d16944b2252d3094b78e5654404b267d09a8cd8a",
     "currentMainHEADCommittedAt": "2026-07-25T09:18:42Z",
     "baselineSHAMatchesCurrentMain": false,
-    "commitsBetweenBaselineAndMain": 283,
+    "commitsBetweenBaselineAndMain": 2,
     "representativeGameplayCommitsSinceBaseline": [
-      "fed0cee7 feat: Floor 2 industrial-cave harvestables, ambient lighting, and props (#1911)",
-      "4f002dfa feat(engine): add particle effects to reward unlock sequence (#1910)",
-      "4771dd1e feat(terrain): ship generated Floor 2 industrial-cave art + fix pack render wiring (#1912)",
-      "f906ffb5 Wire Floor 2 terrain-pack doorSet into MainGameScene door overlay rendering (#1904)",
-      "47ffc36b feat(ai): deterministic settlement return routing (#1873)",
-      "2a216026 feat(ai): deterministic AI settlement-maintenance planner (#1862)",
-      "eddddf6b feat: deterministic reward-opening UX for achievement boxes and boss chests (#1865)",
-      "00436f30 feat(audio): deterministic reward-opening audio cues (anticipation, reveal, escalation, summary, skip, close) (#1876)",
-      "b19713d8 feat(floor2): boss chest lifecycle + boss reward-policy (#1823)",
-      "d16944b2 perf(core): reuse scratch buffers in applyEffectiveStats hot path (~3x per-call) (#1973)",
-      "108e1c55 fix(terrain): stamp floor-pool underdraw beneath pack-wall blob47 tiles (#1968)"
+      "d725bcf9 feat(floor3): implement Big Panda Wei's typed BAMBOO-FED BERSERK runtime slice with canonical arena wiring (#1960)",
+      "d16944b2 perf(core): reuse scratch buffers in applyEffectiveStats hot path (~3x per-call) (#1973)"
     ],
     "verdict": "BASELINE_STALE — gameplay commits exist since sweep SHA; a fresh canonical GitHub Actions sweep on current main HEAD is required before candidate analysis can proceed"
   },
@@ -48,14 +49,14 @@
       "rank": 1,
       "name": "BLOCKED: Stale baseline gate",
       "measuredSymptom": "N/A — baseline eligibility check failed before any candidate metrics were examined",
-      "causalEvidence": "Baseline sweep SHA b61c1bc7feb4 (2026-07-16) does not match current main HEAD d16944b2 (2026-07-25); 283 commits later including multiple gameplay-touching features",
+      "causalEvidence": "Baseline sweep SHA 2cca6f103777 (2026-07-16) does not match current main HEAD d16944b2 (2026-07-25); 2 commits later including gameplay merge d725bcf9",
       "productionPath": "N/A",
       "enablingConfigFlag": "N/A",
       "hypothesis": "N/A",
       "exactChange": "N/A",
       "baselineMetrics": "N/A — artifact content unread; baseline gated out before reading",
       "postMetrics": "N/A",
-      "runArtifactURLs": "https://github.com/nalfeo/Crawler/actions/runs/29507839303",
+      "runArtifactURLs": "https://github.com/nalfeo/Crawler/actions/runs/29483586088",
       "verdict": "BLOCKED",
       "rationale": "Stale baseline hard gate. Per issue #1998: 'gameplay commits after [baseline sweep] require fresh canonical GitHub Actions sweep'. A new weapon-sweep.yml dispatch against current main HEAD is required before any balance analysis can be performed. No implementation PR is produced."
     }
@@ -65,5 +66,5 @@
   "candidatesRejected": 0,
   "candidatesBlocked": 1,
   "implementationPR": null,
-  "closureRationale": "Terminal no-PR path: stale baseline. The most recent weapon-sweep.yml run on main was at SHA b61c1bc7feb4 (2026-07-16). Current main HEAD is d16944b2 (2026-07-25), 283 commits and 9 days later, with multiple gameplay-affecting merges (Floor 2 content, AI settlement routing, reward UX, terrain fixes, perf changes). Per the issue hard gate, gameplay commits after the baseline require a fresh canonical sweep. No eligible baseline exists for the current main revision. This issue is closed; the next nightly run will dispatch a fresh sweep if needed."
+  "closureRationale": "Terminal no-PR path: stale baseline. The latest eligible main-branch weapon-sweep.yml run was 29483586088 at SHA 2cca6f103777 (2026-07-16), with 100 seeds per weapon, MAX_FRAMES=19800, and WEAPON_PERSONAS=false. Current main HEAD is d16944b2 (2026-07-25), 2 commits and 9 days later, including gameplay merge d725bcf9. Per the issue hard gate, gameplay commits after the baseline require a fresh canonical sweep. No eligible baseline exists for the current main revision. Issue closure remains pending the required final rationale comment plus direct issue close."
 }
