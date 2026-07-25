@@ -44,6 +44,7 @@ const COLOR_TARNISH_RING = 0x5fb89a;
 const COLOR_BERSERK_GREEN = 0x59c36a;
 const COLOR_BERSERK_GOLD = 0xf4c542;
 const COLOR_BERSERK_RED = 0xff4d4d;
+const COLOR_BERSERK_DUST = 0xc98b56;
 
 const BURST_LIFETIME_MS = 560;
 const CAST_START_LIFETIME_MS = 320;
@@ -65,6 +66,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const tarnishLastPos = new Map<number, { x: number; y: number }>();
   const berserkAuraGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const berserkAuraSeen = new Set<number>();
+  const berserkAuraLastPos = new Map<number, { x: number; y: number }>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
   const castStartSeen = new Set<number>();
   /**
@@ -239,6 +241,44 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     gfx.fillCircle(cx, cy, radiusPx * 0.5);
   }
 
+  function makeDeterministicRand(seedBase: number): () => number {
+    let seed = seedBase & 0x7fffffff;
+    return () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed & 0x7fffffff) / 2147483647;
+    };
+  }
+
+  function spawnBerserkFlair(x: number, y: number, radiusPx: number, seedBase: number): void {
+    if (!enabled) return;
+    const rand = makeDeterministicRand(seedBase);
+    const colors = [COLOR_BERSERK_GREEN, COLOR_BERSERK_RED, COLOR_BERSERK_GOLD, COLOR_BERSERK_DUST];
+    for (let i = 0; i < 14; i += 1) {
+      const angle = rand() * Math.PI * 2;
+      const dist = radiusPx * (0.3 + rand() * 1.1);
+      const particle = scene.add.circle(x, y, 1.5 + rand() * 2.2, colors[i % colors.length]!);
+      particle.setDepth(BURST_DEPTH);
+      particle.setBlendMode('ADD');
+      ignoreUi(particle);
+      transientCircles.add(particle);
+      const tween = scene.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: { from: 0.95, to: 0 },
+        scale: { from: 1, to: 0.1 },
+        duration: 200 + rand() * 260,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          transientCircles.delete(particle);
+          transientTweens.delete(particle);
+          particle.destroy();
+        },
+      });
+      transientTweens.set(particle, tween);
+    }
+  }
+
   function hasMobAbilityDebuff(world: GameWorld, eid: number): boolean {
     for (const e of getStatusEffects(world, eid)) {
       if (e.sourceId.startsWith(MOB_ABILITY_SOURCE_PREFIX)) return true;
@@ -313,10 +353,16 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       const cx = ftToPx(aura.x);
       const cy = ftToPx(aura.y);
       const radiusPx = ftToPx(aura.radiusFt);
+      const lastPos = berserkAuraLastPos.get(eid);
+      berserkAuraLastPos.set(eid, { x: cx, y: cy });
       if (!berserkAuraSeen.has(eid)) {
         berserkAuraSeen.add(eid);
         spawnRing(cx, cy, radiusPx * 0.5, radiusPx * 1.2, COLOR_BERSERK_RED, 420, BURST_DEPTH);
+        spawnBerserkFlair(cx, cy, radiusPx, eid * 101 + world.frameCount * 13);
         scene.cameras.main?.shake?.(120, 0.0035);
+      }
+      if (lastPos && (Math.abs(lastPos.x - cx) > 0.25 || Math.abs(lastPos.y - cy) > 0.25)) {
+        spawnRing(lastPos.x, lastPos.y, radiusPx * 0.45, radiusPx * 0.75, COLOR_BERSERK_RED, 120, BURST_DEPTH);
       }
       if (!enabled) continue;
       let gfx = berserkAuraGfx.get(eid);
@@ -330,6 +376,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       drawBerserkAura(gfx, cx, cy, radiusPx);
       if (world.frameCount % 12 === 0) {
         spawnRing(cx, cy, radiusPx * 0.3, radiusPx * 0.9, COLOR_BERSERK_GOLD, 220, BURST_DEPTH);
+        spawnBerserkFlair(cx, cy, radiusPx * 0.65, eid * 977 + world.frameCount);
       }
     }
     for (const [eid, gfx] of berserkAuraGfx) {
@@ -337,6 +384,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         gfx.destroy();
         berserkAuraGfx.delete(eid);
         berserkAuraSeen.delete(eid);
+        berserkAuraLastPos.delete(eid);
       }
     }
 
@@ -397,6 +445,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     tarnishGfx.clear();
     for (const gfx of berserkAuraGfx.values()) gfx.destroy();
     berserkAuraGfx.clear();
+    berserkAuraLastPos.clear();
     tarnishLastPos.clear();
     berserkAuraSeen.clear();
     lastGeom.clear();

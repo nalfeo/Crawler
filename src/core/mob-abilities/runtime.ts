@@ -18,9 +18,9 @@
  * all release the caster's instance, its cue, and any status effects it owns.
  */
 
-import { entityExists, hasComponent, query } from 'bitecs';
+import { entityExists, hasComponent, query, removeComponent } from 'bitecs';
 import { GAME } from '../../shared/constants.js';
-import { Health, Player, Position, Velocity } from '../components.js';
+import { Health, Knockback, Player, Position, Velocity } from '../components.js';
 import { clearStatusEffects } from '../status-effects.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
 import type { GameWorld } from '../world.js';
@@ -296,6 +296,9 @@ function pinCasterDuringTelegraph(world: GameWorld, casterEid: number, inst: Mob
   if (!hasComponent(world.ecs, casterEid, Velocity)) return;
   world.stores.velocity.x[casterEid] = 0;
   world.stores.velocity.y[casterEid] = 0;
+  if (hasComponent(world.ecs, casterEid, Knockback)) {
+    removeComponent(world.ecs, casterEid, Knockback);
+  }
 }
 
 function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {

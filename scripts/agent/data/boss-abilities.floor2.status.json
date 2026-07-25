@@ -77,7 +77,13 @@
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
-      "implementationPullRequest": null,
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 1960,
+        "state": "open",
+        "title": "Implement Big Panda Wei's BAMBOO-FED BERSERK ability",
+        "url": "https://github.com/nalfeo/Crawler/pull/1960"
+      },
       "blockers": [
         "floor2-boss-production-enable"
       ]

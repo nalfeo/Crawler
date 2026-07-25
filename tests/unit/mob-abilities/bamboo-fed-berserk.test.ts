@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { removeEntity } from 'bitecs';
+import { hasComponent, removeEntity } from 'bitecs';
 import { createTestWorld } from '../../helpers/world-factory.js';
 import { GAME } from '../../../src/shared/constants.js';
 import { createInputState } from '../../../src/shared/input.js';
@@ -150,6 +150,21 @@ describe('Bamboo-Fed Berserk cadence and telegraph', () => {
     expect(h.world.stores.velocity.x[h.wei]).toBe(0);
     expect(h.world.stores.velocity.y[h.wei]).toBe(0);
   });
+
+  it('cancels knockback during telegraph so Wei cannot be displaced while planted', () => {
+    const h = buildHarness();
+    arm(h);
+    stepRuntime(h.world, FIRST_TELEGRAPH_FRAME);
+    set(h.world.ecs, h.wei, Knockback, { dirX: 1, dirY: 0, speed: 2, remaining: 2 });
+    const xBefore = h.world.stores.position.x[h.wei];
+    h.world.frameCount += 1;
+    h.world.elapsedMs += DELTA;
+    statusEffectSystem(h.world);
+    mobAbilitySystem(h.world);
+    knockbackSystem(h.world);
+    expect(hasComponent(h.world.ecs, h.wei, Knockback)).toBe(false);
+    expect(h.world.stores.position.x[h.wei]).toBeCloseTo(xBefore, 10);
+  });
 });
 
 describe('Bamboo-Fed Berserk active buff modifiers', () => {
@@ -169,6 +184,8 @@ describe('Bamboo-Fed Berserk active buff modifiers', () => {
 
   it('does not stack or extend itself when resolve is re-fired during an active window', () => {
     const h = buildHarness();
+    setMobAbilitiesEnabled(h.world, true);
+    activateMobAbilityEncounter(h.world);
     const def = createBambooFedBerserkDefinition();
     const sourceId = mobAbilitySourceId(def.abilityId, h.wei);
     def.resolve(h.world, {
@@ -275,20 +292,21 @@ describe('Bamboo-Fed Berserk seam consumption', () => {
 
 describe('Bamboo-Fed Berserk cleanup', () => {
   it('clears active buff and cues when Wei dies/despawns/encounter disables', () => {
-    const h = buildHarness();
-    arm(h);
-    stepRuntime(h.world, FIRST_RESOLUTION_FRAME);
-    expect(h.world.mobAbilities.activeBuffsByEntity.has(h.wei)).toBe(true);
+    const dead = buildHarness();
+    arm(dead);
+    stepRuntime(dead.world, FIRST_RESOLUTION_FRAME);
+    expect(dead.world.mobAbilities.activeBuffsByEntity.has(dead.wei)).toBe(true);
+    dead.world.stores.health.current[dead.wei] = 0;
+    stepRuntime(dead.world, 1);
+    expect(dead.world.mobAbilities.activeBuffsByEntity.has(dead.wei)).toBe(false);
 
-    h.world.stores.health.current[h.wei] = 0;
-    stepRuntime(h.world, 1);
-    expect(h.world.mobAbilities.activeBuffsByEntity.has(h.wei)).toBe(false);
-
-    arm(h);
-    stepRuntime(h.world, FIRST_RESOLUTION_FRAME);
-    removeEntity(h.world.ecs, h.wei);
-    stepRuntime(h.world, 1);
-    expect(h.world.mobAbilities.activeBuffsByEntity.has(h.wei)).toBe(false);
+    const despawned = buildHarness();
+    arm(despawned);
+    stepRuntime(despawned.world, FIRST_RESOLUTION_FRAME);
+    expect(despawned.world.mobAbilities.activeBuffsByEntity.has(despawned.wei)).toBe(true);
+    removeEntity(despawned.world.ecs, despawned.wei);
+    stepRuntime(despawned.world, 1);
+    expect(despawned.world.mobAbilities.activeBuffsByEntity.has(despawned.wei)).toBe(false);
 
     const h2 = buildHarness();
     arm(h2);

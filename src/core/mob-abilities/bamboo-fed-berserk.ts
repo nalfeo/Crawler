@@ -96,6 +96,10 @@ function readTuning(ability: BossAbilityDef): BerserkTuning {
       `Bamboo-Fed Berserk has unknown knockback-resistance "${knockbackDescriptor}"`,
     );
   }
+  const stacking = asBoolean(designValue(ability, 'stacking'), 'stacking', 'flag');
+  if (stacking) {
+    throw new Error('Bamboo-Fed Berserk stacking must be false');
+  }
   return {
     durationMs: asNumber(designValue(ability, 'duration'), 'duration', 'milliseconds'),
     movementSpeedMultiplier: percentBonusToMultiplier(
@@ -105,15 +109,12 @@ function readTuning(ability: BossAbilityDef): BerserkTuning {
       asNumber(designValue(ability, 'melee-damage-bonus'), 'melee-damage-bonus', 'percent'),
     ),
     knockbackResistanceMultiplier,
-    stacking: asBoolean(designValue(ability, 'stacking'), 'stacking', 'flag'),
+    stacking,
   };
 }
 
 function makeResolveHandler(ability: BossAbilityDef, auraRadiusFt: number, tuning: BerserkTuning) {
   return function resolveBambooFedBerserk(world: GameWorld, ctx: MobAbilityResolveContext): void {
-    if (tuning.stacking) {
-      throw new Error('Bamboo-Fed Berserk stacking must be false');
-    }
     activateMobAbilitySelfBuff(world, {
       abilityId: ability.id,
       casterEid: ctx.casterEid,
