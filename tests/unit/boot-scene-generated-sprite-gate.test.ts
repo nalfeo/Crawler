@@ -59,4 +59,8 @@ describe('BootScene generated sprite preload gate', () => {
   it('starts the main game from the manifest-fetch failure path', () => {
     expect(source).toMatch(/catch \(err\) \{[\s\S]*?this\.startMainGame\(\);[\s\S]*?\}/);
   });
+
+  it('calls preloadTerrainPacks in preload() so pack door textures are available at boot', () => {
+    expect(source).toContain('preloadTerrainPacks(this.load)');
+  });
 });

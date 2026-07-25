@@ -170,9 +170,11 @@ interface MainSceneInternals {
     colorCount: number;
   };
   getDoorRenderSummary(): {
+    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
+    openPackCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
@@ -343,16 +345,20 @@ export interface TerrainRenderSummary {
  * REAL booted scene. Doors are drawn per-frame as overlay Images (not baked into
  * the terrain RenderTexture); this summary (read from the scene's stored counts)
  * is the observe seam proving CLOSED doors stamp the approved generated texture
- * (`closedGeneratedCount === renderableClosedCount`) rather than the Kenney
- * placeholder. The five kind buckets are mutually exclusive.
+ * (`closedPackCount === renderableClosedCount` on a pack-using floor) rather
+ * than generated/Kenney/color fallbacks. Buckets are mutually exclusive.
  */
 export interface DoorRenderSummary {
+  /** Closed doors rendered from a terrain-pack doorSet texture. */
+  readonly closedPackCount: number;
   /** Closed doors rendered from the approved GENERATED texture. */
   readonly closedGeneratedCount: number;
   /** Closed doors rendered from the Kenney closed frame (fallback). */
   readonly closedKenneyCount: number;
   /** Closed doors drawn as a solid-color fill (no art at all). */
   readonly closedColorCount: number;
+  /** Open doors rendered from a terrain-pack doorSet texture. */
+  readonly openPackCount: number;
   /** Open doors rendered from the Kenney open frame (non-destructive default). */
   readonly openKenneyCount: number;
   /** Open doors drawn as a solid-color fill (no art at all). */
@@ -1022,9 +1028,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getDoorRenderSummary: (): DoorRenderSummary => {
       const summary = getScene()?.getDoorRenderSummary();
       return {
+        closedPackCount: summary?.closedPackCount ?? 0,
         closedGeneratedCount: summary?.closedGeneratedCount ?? 0,
         closedKenneyCount: summary?.closedKenneyCount ?? 0,
         closedColorCount: summary?.closedColorCount ?? 0,
+        openPackCount: summary?.openPackCount ?? 0,
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
