@@ -29,7 +29,11 @@ import { TileMap } from '../../core/map/TileMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../shared/map-types.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
-import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR1_BOSS_UNLOCK_QUEST_ID } from '../../shared/quest-types.js';
+import {
+  FLOOR1_FIND_WELCOME_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
+} from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { SeededRandom } from '../../shared/random.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -261,7 +265,8 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     assignPos(objective.spellQuestGiverPos);
     assignPos(objective.shopRoomPos);
     assignPos(objective.staircasePos);
-    setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+    acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
     hudUi?.sync(world, playerEid);
   };
 
@@ -271,7 +276,8 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     setTrackedWaypointPx,
     getMinimapDockedBounds: () => hudUi?.getMinimapBounds() ?? null,
     getMinimapOverlayViewportBounds: () => hudUi?.getNavigationBounds().mapOverlay ?? null,
-    getMinimapOverlayWaypointArrowBounds: () => hudUi?.getMinimapOverlayWaypointArrowBounds() ?? null,
+    getMinimapOverlayWaypointArrowBounds: () =>
+      hudUi?.getMinimapOverlayWaypointArrowBounds() ?? null,
     getMinimapRadarWaypointArrowBounds: () => hudUi?.getMinimapRadarWaypointArrowBounds() ?? null,
   };
 

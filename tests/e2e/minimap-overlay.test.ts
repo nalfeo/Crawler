@@ -169,7 +169,9 @@ async function getMinimapOverlayWaypointArrowBounds(page: Page): Promise<ScreenB
 
 async function getMinimapRadarWaypointArrowBounds(page: Page): Promise<ScreenBounds | null> {
   return page.evaluate(() =>
-    (window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe!.getMinimapRadarWaypointArrowBounds(),
+    (
+      window as unknown as UxSnapshotProbeWindow
+    ).__uxSnapshotProbe!.getMinimapRadarWaypointArrowBounds(),
   );
 }
 
@@ -237,7 +239,9 @@ describe('minimap visual regression', () => {
       await page.waitForFunction(
         () =>
           Boolean(
-            (window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe?.getMinimapOverlayWaypointArrowBounds(),
+            (
+              window as unknown as UxSnapshotProbeWindow
+            ).__uxSnapshotProbe?.getMinimapOverlayWaypointArrowBounds(),
           ),
         undefined,
         { timeout: 2_000 },
@@ -444,18 +448,20 @@ describe('minimap visual regression', () => {
       await loadLab(page);
       await setTrackedWaypointPx(page, 2000, GAME_H / 2);
 
-      let buf = await page.screenshot({ type: 'png' });
-      saveDebugShot(buf, 'radar-waypoint-edge-arrow.png');
-      let png = parsePng(buf);
       const rect = await getCanvasRect(page);
       await page.waitForFunction(
         () =>
           Boolean(
-            (window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe?.getMinimapRadarWaypointArrowBounds(),
+            (
+              window as unknown as UxSnapshotProbeWindow
+            ).__uxSnapshotProbe?.getMinimapRadarWaypointArrowBounds(),
           ),
         undefined,
         { timeout: 2_000 },
       );
+      let buf = await page.screenshot({ type: 'png' });
+      saveDebugShot(buf, 'radar-waypoint-edge-arrow.png');
+      let png = parsePng(buf);
       const edgeProbe = boundsToScreen(rect, (await getMinimapRadarWaypointArrowBounds(page))!);
 
       expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(true);
