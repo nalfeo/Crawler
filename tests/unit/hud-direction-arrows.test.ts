@@ -128,6 +128,20 @@ describe('resolveDirectionArrowStates', () => {
     expect(state!.screenY).toBeGreaterThan(340);
   });
 
+  it('keeps crowded right-side arrows pinned to the right edge through later fan attempts', () => {
+    const states = resolveDirectionArrowStates(
+      Array.from({ length: 8 }, (_, index) => waypoint(`right-${index}`, 100, 0)),
+      0,
+      0,
+      1,
+    );
+
+    expect(states).toHaveLength(8);
+    for (const state of states) {
+      expect(state.screenX).toBeCloseTo(1280 / 2 + (1280 / 2 - 96), 0);
+    }
+  });
+
   it('compacts long distances and wraps labels into two bounded lines', () => {
     const [state] = resolveDirectionArrowStates(
       [
@@ -176,9 +190,9 @@ describe('resolveDirectionArrowStates', () => {
     // differs by small amounts. All arrows must share the same side (x > CX).
     const RIGHT_EDGE_X = 1280 / 2 + (1280 / 2 - 96); // CX + RX = 1184
     const targets = [
-      waypoint('t1', 100, 0.01),   // almost horizontal right, tiny positive dy
-      waypoint('t2', 100, -0.01),  // almost horizontal right, tiny negative dy
-      waypoint('t3', 100, 0),      // exactly horizontal right
+      waypoint('t1', 100, 0.01), // almost horizontal right, tiny positive dy
+      waypoint('t2', 100, -0.01), // almost horizontal right, tiny negative dy
+      waypoint('t3', 100, 0), // exactly horizontal right
     ];
     const states = resolveDirectionArrowStates(targets, 0, 0, 1);
 

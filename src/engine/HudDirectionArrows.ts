@@ -33,7 +33,6 @@ const RY = GAME.HEIGHT / 2 - RING_INSET;
 const ARROW_SIZE = 22;
 const SCREEN_MARGIN = 80;
 const MIN_ARROW_SEPARATION = 48;
-const FAN_ANGLE_STEP = Math.PI / 24;
 const LABEL_CHAR_WIDTH = 8;
 const LABEL_LINE_HEIGHT = 15;
 const LABEL_HORIZONTAL_PADDING = 14;
@@ -66,12 +65,12 @@ export interface DirectionArrowState {
   readonly labelHeight: number;
 }
 
-function fanOffset(attempt: number): number {
+function fanDistance(attempt: number): number {
   if (attempt === 0) {
     return 0;
   }
   const direction = attempt % 2 === 1 ? 1 : -1;
-  return Math.ceil(attempt / 2) * FAN_ANGLE_STEP * direction;
+  return Math.ceil(attempt / 2) * MIN_ARROW_SEPARATION * direction;
 }
 
 function labelLayout(
@@ -172,13 +171,39 @@ function labelBounds(label: { x: number; y: number; width: number; height: numbe
  * arrow pinned to exactly one screen edge (right/top/left/bottom), preventing
  * side-to-side bouncing as the player moves.
  */
-function rectEdgePt(angle: number): { x: number; y: number } {
+type RectEdge = 'left' | 'right' | 'top' | 'bottom';
+
+function rectEdgePt(angle: number): { edge: RectEdge; x: number; y: number } {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const tH = cos !== 0 ? RX / Math.abs(cos) : Infinity;
   const tV = sin !== 0 ? RY / Math.abs(sin) : Infinity;
   const t = Math.min(tH, tV);
-  return { x: CX + cos * t, y: CY + sin * t };
+  return {
+    edge: tH <= tV ? (cos >= 0 ? 'right' : 'left') : sin >= 0 ? 'bottom' : 'top',
+    x: CX + cos * t,
+    y: CY + sin * t,
+  };
+}
+
+function slideAlongEdge(
+  edgePoint: { edge: RectEdge; x: number; y: number },
+  offset: number,
+): { x: number; y: number } {
+  switch (edgePoint.edge) {
+    case 'left':
+    case 'right':
+      return {
+        x: edgePoint.x,
+        y: Phaser.Math.Clamp(edgePoint.y + offset, CY - RY, CY + RY),
+      };
+    case 'top':
+    case 'bottom':
+      return {
+        x: Phaser.Math.Clamp(edgePoint.x + offset, CX - RX, CX + RX),
+        y: edgePoint.y,
+      };
+  }
 }
 
 /** Pure screen-space layout used by the Phaser widget and unit tests. */
@@ -209,12 +234,12 @@ export function resolveDirectionArrowStates(
     const targetAngle = Math.atan2(dy, dx);
     const distanceFt = Math.hypot(dx, dy);
     const labelText = wrapWaypointText(`${waypoint.label}  ${formatWaypointDistance(distanceFt)}`);
-    let { x: screenX, y: screenY } = rectEdgePt(targetAngle);
+    const edgePoint = rectEdgePt(targetAngle);
+    let { x: screenX, y: screenY } = edgePoint;
     let label = labelLayout(screenX, screenY, labelText);
     const maxAttempts = Math.max(48, waypoints.length * 12);
     for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
-      const displayAngle = targetAngle + fanOffset(attempt);
-      const { x: candidateX, y: candidateY } = rectEdgePt(displayAngle);
+      const { x: candidateX, y: candidateY } = slideAlongEdge(edgePoint, fanDistance(attempt));
       const candidateLabel = labelLayout(candidateX, candidateY, labelText);
       const avoidsHud = forbiddenRegions.every(
         (region) =>

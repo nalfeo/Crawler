@@ -39,14 +39,20 @@ Added `overlayArrowGraphics` (screen-space Graphics object, `HUD_DEPTH+5`) and `
 
 - `src/engine/HudDirectionArrows.ts` — Added `rectEdgePt()`, changed `resolveDirectionArrowStates` to use rectangle-edge intersection
 - `src/engine/HudMinimap.ts` — Added radar edge arrows, `overlayArrowGraphics`, `drawOverlayArrows()`, visibility management
-- `tests/unit/hud-direction-arrows.test.ts` — Added 3 new regression/edge-case tests
+- `src/engine/HudUI.ts` — Exposed live overlay viewport bounds through the HUD navigation probe
+- `src/labs/ux-snapshot-lab/index.ts` — Added a lab-only minimap probe seam for deterministic waypoint placement in e2e
+- `tests/unit/hud-direction-arrows.test.ts` — Added same-edge crowding coverage plus rectangle-edge regression tests
+- `tests/e2e/minimap-overlay.test.ts` — Added radar/overlay waypoint-arrow pixel assertions and overlay zoom/pan visibility transitions
 
 ## Tests
 
 Added:
 - `keeps an arrow on the same screen edge when the target angle varies slightly` — regression for the bouncing bug
+- `keeps crowded right-side arrows pinned to the right edge through later fan attempts` — regression for collision-avoidance reselecting the wrong edge
 - `pins arrows to the nearest screen edge not an intermediate ellipse position` — verifies 45° goes to bottom edge
 - `places axial directions exactly on the correct screen edge` — verifies straight up/down/left/right hit their exact edges
+- `shows and hides the overlay edge arrow as zoom/pan move a tracked waypoint off-screen` — verifies overlay arrow visibility transitions in the real Phaser HUD
+- `draws a radar edge arrow only while the tracked waypoint is outside the dial` — verifies the docked radar arrow appears only for off-dial waypoints
 
 ## Product decisions
 
@@ -54,7 +60,7 @@ Added:
 
 ## Known gaps
 
-- No automated test coverage for `drawRadar` edge arrows or `drawOverlayArrows` — both are tightly coupled to Phaser (RenderTexture, Graphics, viewState). Coverage would require a Phaser headless test rig not present in the codebase.
+- Local validation in this recovery session depended on a clean `npm ci`, but the sandbox could not fetch lockfile tarballs from `ms-feed-2.pkgs.visualstudio.com` (`ENOTFOUND`). The new minimap and arrow coverage is present in-tree; CI is the first full runner that can execute it end-to-end from this session.
 
 ## Review
 

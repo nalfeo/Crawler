@@ -171,6 +171,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
    * top-right corner, so without this it punches through wide panels.
    */
   setHudVisible(visible: boolean): void;
+  getOverlayViewportBounds(): ScreenBounds | null;
   /**
    * Test/automation affordance: world-space bounds of the fullscreen-overlay
    * close button while the overlay is open, or null when it is closed. Lets e2e
@@ -744,10 +745,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
     const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
     const snappedZoom = Math.max(0.25, Math.round(viewState.zoom * 2) / 2);
-    const wpScreenX =
-      viewport.centerX + (wpTile.x + 0.5 - viewState.centerX) * snappedZoom;
-    const wpScreenY =
-      viewport.centerY + (wpTile.y + 0.5 - viewState.centerY) * snappedZoom;
+    const wpScreenX = viewport.centerX + (wpTile.x + 0.5 - viewState.centerX) * snappedZoom;
+    const wpScreenY = viewport.centerY + (wpTile.y + 0.5 - viewState.centerY) * snappedZoom;
     if (isInsideViewport(wpScreenX, wpScreenY, viewport)) {
       return; // waypoint dot is already visible on the overlay map
     }
@@ -1384,6 +1383,10 @@ export function createHudMinimap(scene: Phaser.Scene): {
     closeOverlay,
     isOverlayOpen: () => overlayOpen,
     setHudVisible,
+    getOverlayViewportBounds: (): ScreenBounds | null => {
+      if (!overlayOpen || masterHidden) return null;
+      return { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height };
+    },
     getOverlayCloseBounds: (): ScreenBounds | null => {
       if (!overlayOpen) return null;
       const b = closeButtonBg.getBounds();

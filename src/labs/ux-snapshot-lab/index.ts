@@ -36,10 +36,24 @@ import { registerLab, type LabCategory } from '../registry.js';
 import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import { addItem } from '../../shared/inventory.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
+import type { ScreenBounds } from '../../engine/ui-scale.js';
+import { setTrackedQuest } from '../../core/systems/questSystem.js';
 import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
+
+interface UxSnapshotProbeApi {
+  ready(): boolean;
+  setTrackedWaypointPx(x: number, y: number): void;
+  getMinimapDockedBounds(): ScreenBounds | null;
+  getMinimapOverlayViewportBounds(): ScreenBounds | null;
+}
+
+type UxSnapshotProbeWindow = Window &
+  typeof globalThis & {
+    __uxSnapshotProbe?: UxSnapshotProbeApi;
+  };
 
 /**
  * Resolve the loader path for the generated art the REAL game pins to a render
@@ -228,6 +242,30 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   let modalPicker: ReturnType<typeof createModalPickerUI> | undefined;
   let inventoryUI: ReturnType<typeof createInventoryUI> | undefined;
   let equipmentUI: ReturnType<typeof createEquipmentUI> | undefined;
+
+  const setTrackedWaypointPx = (x: number, y: number): void => {
+    if (!world?.floorScenario) {
+      return;
+    }
+    const pos = { x: pxToFt(x), y: pxToFt(y) };
+    const objective = world.floorScenario.objective;
+    objective.welcomeOfficePos = pos;
+    objective.questItemPos = pos;
+    objective.slimeRatRoomPos = pos;
+    objective.spellQuestGiverPos = pos;
+    objective.shopRoomPos = pos;
+    objective.staircasePos = pos;
+    setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+    hudUi?.sync(world, playerEid);
+  };
+
+  const probeWindow = window as UxSnapshotProbeWindow;
+  probeWindow.__uxSnapshotProbe = {
+    ready: () => Boolean(world && hudUi && playerEid >= 0),
+    setTrackedWaypointPx,
+    getMinimapDockedBounds: () => hudUi?.getMinimapBounds() ?? null,
+    getMinimapOverlayViewportBounds: () => hudUi?.getNavigationBounds().mapOverlay ?? null,
+  };
 
   const openSampleModal = (): void => {
     modalPicker?.open(
@@ -534,6 +572,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       dialogueBox.setVisible(settings.showDialog);
 
       this.events.once('shutdown', () => {
+        delete probeWindow.__uxSnapshotProbe;
         hudUi?.destroy();
         hudUi = undefined;
         inventoryUI?.destroy();
@@ -651,6 +690,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   createGame();
 
   return () => {
+    delete probeWindow.__uxSnapshotProbe;
     hudUi?.destroy();
     inventoryUI?.destroy();
     equipmentUI?.destroy();

@@ -36,6 +36,7 @@ import { E2E_LAB_BASE_URL, GAME_W, GAME_H } from './e2e-constants.js';
 const SAFE_ROOM_FLOOR = { r: 0x0f, g: 0x76, b: 0x6e }; // 0x0f766e  teal
 const STONE_WALL = { r: 0x1f, g: 0x29, b: 0x37 }; //      0x1f2937  dark blue-gray
 const VOID = { r: 0x05, g: 0x06, b: 0x0f }; //             0x05060f  near-black
+const WAYPOINT = { r: 0xfc, g: 0xd3, b: 0x4d }; //         0xfcd34d  gold
 
 // ── Map-overlay layout constants (derived from HudMinimap updateLayout) ───────
 // At GAME_W=1280, GAME_H=720 the overlay panel covers most of the canvas.
@@ -59,6 +60,24 @@ interface CanvasRect {
   y: number;
   width: number;
   height: number;
+}
+
+interface ScreenBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface UxSnapshotProbeApi {
+  ready(): boolean;
+  setTrackedWaypointPx(x: number, y: number): void;
+  getMinimapDockedBounds(): ScreenBounds | null;
+  getMinimapOverlayViewportBounds(): ScreenBounds | null;
+}
+
+interface UxSnapshotProbeWindow extends Window {
+  __uxSnapshotProbe?: UxSnapshotProbeApi;
 }
 
 async function getCanvasRect(page: Page): Promise<CanvasRect> {
@@ -93,10 +112,49 @@ async function loadLab(page: Page): Promise<void> {
   // matching the robust pattern in tests/e2e/helpers/ui-probe.ts.
   await page.goto(LAB_URL, { waitUntil: 'commit', timeout: 45_000 });
   await page.waitForSelector('#lab-canvas canvas', { timeout: 30_000 });
+  await page.waitForFunction(
+    () => Boolean((window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe?.ready()),
+    undefined,
+    { timeout: 30_000 },
+  );
   // Give Phaser time to mount HudUI, call sync(), and bake the terrain
   // RenderTexture.  The 'ux-snapshot-lab' sets visible.fill(1) synchronously,
   // so one game loop tick is enough, but 3 s provides headroom on slow CI.
   await page.waitForTimeout(3_000);
+}
+
+function boundsToScreen(rect: CanvasRect, bounds: ScreenBounds): ScreenBounds {
+  const scaleX = rect.width / GAME_W;
+  const scaleY = rect.height / GAME_H;
+  return {
+    x: Math.round(rect.x + bounds.x * scaleX),
+    y: Math.round(rect.y + bounds.y * scaleY),
+    width: Math.round(bounds.width * scaleX),
+    height: Math.round(bounds.height * scaleY),
+  };
+}
+
+async function setTrackedWaypointPx(page: Page, x: number, y: number): Promise<void> {
+  await page.evaluate(
+    ([nextX, nextY]) => {
+      (window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe!.setTrackedWaypointPx(
+        nextX,
+        nextY,
+      );
+    },
+    [x, y] as const,
+  );
+  await page.waitForTimeout(150);
+}
+
+async function getMinimapOverlayViewportBounds(page: Page): Promise<ScreenBounds> {
+  const bounds = await page.evaluate(() =>
+    (
+      window as unknown as UxSnapshotProbeWindow
+    ).__uxSnapshotProbe!.getMinimapOverlayViewportBounds(),
+  );
+  expect(bounds).not.toBeNull();
+  return bounds!;
 }
 
 /** Save a screenshot to tmp/e2e-screenshots/ for debugging failures. */
@@ -132,6 +190,49 @@ describe('minimap visual regression', () => {
   // ── Full-screen map overlay ──────────────────────────────────────────────
 
   describe('full-screen map overlay (press M)', () => {
+    it('shows and hides the overlay edge arrow as zoom/pan move a tracked waypoint off-screen', async () => {
+      await loadLab(page);
+      await setTrackedWaypointPx(page, 64, GAME_H / 2);
+      await page.keyboard.press('m');
+      await page.waitForTimeout(500);
+
+      const rect = await getCanvasRect(page);
+      const viewport = boundsToScreen(rect, await getMinimapOverlayViewportBounds(page));
+      const edgeProbe = {
+        x: viewport.x + 4,
+        y: viewport.y + Math.round(viewport.height / 2) - 12,
+        w: 24,
+        h: 24,
+      };
+
+      let buf = await page.screenshot({ type: 'png' });
+      let png = parsePng(buf);
+      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(false);
+
+      const viewportCenterX = Math.round(viewport.x + viewport.width / 2);
+      const viewportCenterY = Math.round(viewport.y + viewport.height / 2);
+      for (let i = 0; i < 3; i += 1) {
+        await page.mouse.move(viewportCenterX, viewportCenterY);
+        await page.mouse.wheel(0, -240);
+        await page.waitForTimeout(120);
+      }
+
+      buf = await page.screenshot({ type: 'png' });
+      saveDebugShot(buf, 'overlay-waypoint-edge-arrow.png');
+      png = parsePng(buf);
+      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(true);
+
+      await page.mouse.move(viewportCenterX, viewportCenterY);
+      await page.mouse.down();
+      await page.mouse.move(viewportCenterX + 120, viewportCenterY, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(200);
+
+      buf = await page.screenshot({ type: 'png' });
+      png = parsePng(buf);
+      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(false);
+    });
+
     it('renders safe-room floor tiles (teal) in the map content area', async () => {
       await loadLab(page);
       // window.addEventListener('keydown', …) in HudMinimap picks up 'm'.
@@ -299,6 +400,31 @@ describe('minimap visual regression', () => {
         'Expected teal safe-room floor pixels inside the docked radar dial. ' +
           'If this fails, the radar RenderTexture is not compositing terrain.',
       ).toBe(true);
+    });
+
+    it('draws a radar edge arrow only while the tracked waypoint is outside the dial', async () => {
+      await loadLab(page);
+      await setTrackedWaypointPx(page, 2000, GAME_H / 2);
+
+      let buf = await page.screenshot({ type: 'png' });
+      saveDebugShot(buf, 'radar-waypoint-edge-arrow.png');
+      let png = parsePng(buf);
+      const rect = await getCanvasRect(page);
+      const dialCenter = gameToScreen(rect, RADAR_CX, RADAR_CY);
+      const scaleX = rect.width / GAME_W;
+      const edgeProbe = {
+        x: Math.round(dialCenter.x + 54 * scaleX),
+        y: Math.round(dialCenter.y - 10 * scaleX),
+        w: 20,
+        h: 20,
+      };
+
+      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(true);
+
+      await setTrackedWaypointPx(page, 960, GAME_H / 2);
+      buf = await page.screenshot({ type: 'png' });
+      png = parsePng(buf);
+      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(false);
     });
   });
 });
