@@ -688,6 +688,57 @@
     "row": 0
   },
   {
+    "id": "generated:brass-knuckles-v3-var-0",
+    "kind": "sprite",
+    "label": "brass-knuckles-v3-var-0",
+    "description": "Generated sprite from brief: brass-knuckles-v3.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "brass-knuckles-v3-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/brass-knuckles-v3-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:brass-knuckles-v3-var-1",
+    "kind": "sprite",
+    "label": "brass-knuckles-v3-var-1",
+    "description": "Generated sprite from brief: brass-knuckles-v3.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "brass-knuckles-v3-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/brass-knuckles-v3-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:brass-knuckles-v3-var-2",
+    "kind": "sprite",
+    "label": "brass-knuckles-v3-var-2",
+    "description": "Generated sprite from brief: brass-knuckles-v3.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "brass-knuckles-v3-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/brass-knuckles-v3-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:cactusfolk-boss-v1-var-0",
     "kind": "sprite",
     "label": "cactusfolk-boss-v1-var-0",
