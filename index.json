@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0316c9a8a57e31a8a26b70f0877668c03e6eca90",
+    "commitDate": "2026-07-25T18:10:35Z",
+    "commitSubject": "docs(velocity): record instruction-overhead experiment and the input-token telemetry gap it exposed (#2027)",
+    "capturedAt": "2026-07-25T19:19:59.998Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30169122920",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/0316c9a8a57e31a8a26b70f0877668c03e6eca90.json"
+  },
+  {
     "commit": "d29bd8865599b2d45693eb280c16ef84782ba85a",
     "commitDate": "2026-07-25T18:03:47Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (76 art paths) (#2025)",
