@@ -74,16 +74,39 @@ export function computeEffectiveStatsFromLoadout(
   equippedDefs: Iterable<StatBonusSource>,
   activeModifiers: readonly LegacyStatModifierLike[] = [],
 ): Record<StatId, number> {
-  const eff = {} as Record<StatId, number>;
+  return computeEffectiveStatsFromLoadoutInto(
+    {} as Record<StatId, number>,
+    baseStats,
+    coreStatPoints,
+    equippedDefs,
+    activeModifiers,
+  );
+}
 
-  // 1. Start from base stats.
+/**
+ * Same semantics as `computeEffectiveStatsFromLoadout`, but writes into a
+ * caller-supplied `target` record instead of allocating a fresh one. Used by
+ * `applyEffectiveStats`'s hot per-frame path (statSystem) to avoid per-call
+ * object churn. Every `StatId` slot in `target` is fully overwritten (never
+ * additively OR'd with stale state), so the target is reusable across calls.
+ * Returns `target` for call-site convenience.
+ */
+export function computeEffectiveStatsFromLoadoutInto(
+  target: Record<StatId, number>,
+  baseStats: Partial<Readonly<Record<StatId, number>>>,
+  coreStatPoints: Partial<Readonly<Record<PrimaryStatId, number>>>,
+  equippedDefs: Iterable<StatBonusSource>,
+  activeModifiers: readonly LegacyStatModifierLike[] = [],
+): Record<StatId, number> {
+  // 1. Start from base stats. This overwrites every slot, wiping any residual
+  //    value from a previous invocation when `target` is a reused scratch.
   for (const statId of ALL_STAT_IDS) {
-    eff[statId] = baseStats[statId] ?? 0;
+    target[statId] = baseStats[statId] ?? 0;
   }
 
   // 2. Fold level-up core-stat points into the effective primaries.
   for (const p of PRIMARY_STATS) {
-    eff[p] += coreStatPoints[p] ?? 0;
+    target[p] += coreStatPoints[p] ?? 0;
   }
 
   // 3. Add equipment bonuses. The caller is responsible for passing unique
@@ -91,31 +114,31 @@ export function computeEffectiveStatsFromLoadout(
   for (const def of equippedDefs) {
     for (const [stat, bonus] of Object.entries(def.statBonuses)) {
       if (typeof bonus === 'number' && isValidStatId(stat)) {
-        eff[stat] += bonus;
+        target[stat] += bonus;
       }
     }
   }
 
   // 4. Fold active ability/skill modifiers (legacy StatModifier shape).
   for (const mod of activeModifiers) {
-    foldLegacyStatModifier(eff, mod);
+    foldLegacyStatModifier(target, mod);
   }
 
   // 5. Derive secondaries from the (post-equipment/modifier) effective primaries.
   for (const p of PRIMARY_STATS) {
-    const primaryValue = eff[p];
+    const primaryValue = target[p];
     const derived = CORE_STAT_TO_SECONDARY[p];
     for (const [secondary, rate] of Object.entries(derived) as [SecondaryStatId, number][]) {
-      eff[secondary] += primaryValue * rate;
+      target[secondary] += primaryValue * rate;
     }
   }
 
   // 6. Clamp every stat to its configured range.
   for (const statId of ALL_STAT_IDS) {
-    eff[statId] = clampStat(statId, eff[statId]);
+    target[statId] = clampStat(statId, target[statId]);
   }
 
-  return eff;
+  return target;
 }
 
 /**
@@ -126,13 +149,25 @@ export function computeEffectiveStatsFromLoadout(
  * for equipped weight (see `computeEquippedWeightLb`) — dedupe means a
  * two-handed weapon's `weightLb` counts once, not once per occupied slot.
  */
-export function uniqueEquippedDefs(
+/**
+ * Fill `target` with the unique equipped item defs from an equipment state,
+ * deduping the multi-slot items that occupy more than one slot. Same semantics
+ * as `uniqueEquippedDefs` but writes into a caller-supplied array + Set
+ * instead of allocating fresh ones. Used by `applyEffectiveStats`'s hot
+ * per-frame path (statSystem) to avoid per-call array/Set churn.
+ *
+ * Both `target` and `seen` are cleared before refill, so they are reusable
+ * across calls. Returns `target` for call-site convenience.
+ */
+export function writeUniqueEquippedDefsInto(
+  target: Array<{ instanceId: EquipmentInstanceId } & StatBonusSource>,
+  seen: Set<EquipmentInstanceId>,
   world: GameWorld,
   equipmentState: EquipmentState | undefined,
 ): Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> {
-  const defs: Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> = [];
-  if (!equipmentState) return defs;
-  const seen = new Set<EquipmentInstanceId>();
+  target.length = 0;
+  seen.clear();
+  if (!equipmentState) return target;
   for (const slotId of Object.keys(equipmentState.equipped)) {
     const instId = equipmentState.equipped[slotId] ?? null;
     if (instId === null || seen.has(instId)) continue;
@@ -140,21 +175,28 @@ export function uniqueEquippedDefs(
     if (typeof instId === 'number') {
       const inst = equipmentState.instances.get(instId);
       if (!inst) continue;
-      defs.push({
+      target.push({
         instanceId: instId,
         statBonuses: inst.def.statBonuses,
         weightLb: inst.def.weightLb,
       });
     } else {
       const generated = requireGeneratedEquipmentInstance(world, instId);
-      defs.push({
+      target.push({
         instanceId: instId,
         statBonuses: generated.frozen.statBonuses,
         weightLb: generated.frozen.weightLb,
       });
     }
   }
-  return defs;
+  return target;
+}
+
+export function uniqueEquippedDefs(
+  world: GameWorld,
+  equipmentState: EquipmentState | undefined,
+): Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> {
+  return writeUniqueEquippedDefsInto([], new Set<EquipmentInstanceId>(), world, equipmentState);
 }
 
 /**
@@ -181,33 +223,73 @@ export function computeEquippedWeightLb(
  * undefined if it has none). `activeModifiers` are the entity's currently
  * active (non-expired) ability/skill modifiers — pass `[]` when the caller
  * doesn't track any (e.g. non-player entities). Delegates to
- * `computeEffectiveStatsFromLoadout` so the live and preview paths share one
- * formula.
+ * `computeEffectiveStatsFromLoadoutInto` so the live and preview paths share
+ * one formula.
+ *
+ * Uses reusable module-level scratch buffers for the base/core/eff records
+ * and the deduped defs array/Set. This is safe because `applyEffectiveStats`
+ * is only ever called from single-threaded, non-reentrant sim/equipment code:
+ * statSystem's per-entity loop (reads from `_scratchEff` and writes to
+ * `world.stores.effectiveStats` inside the same loop iteration before the
+ * next call reuses the buffer), and equipmentSystem's eager equip/unequip
+ * recompute (also a single call, not nested inside another applyEffectiveStats
+ * invocation). The store write drains the scratch immediately, so subsequent
+ * reuse never observes stale data.
  */
+// Module-level scratch buffers, reused across applyEffectiveStats calls to
+// avoid per-frame allocation (statSystem calls this every frame per equipped
+// entity; each fresh object was pure GC pressure).
+const _scratchBase = {} as Record<StatId, number>;
+const _scratchCore = {} as Record<PrimaryStatId, number>;
+const _scratchEff = {} as Record<StatId, number>;
+const _scratchDefs: Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> = [];
+const _scratchSeen = new Set<EquipmentInstanceId>();
+
+// Enforced non-reentrancy: the safety argument for reusing module-level
+// scratch depends on there being no nested/concurrent call. A comment claiming
+// that won't survive future refactors — this guard turns a nested call into
+// a loud throw instead of silent stat corruption. Overhead is two boolean
+// writes per call (negligible vs the ~3.6us body), so it stays on in
+// production. If a future refactor legitimately needs re-entry (e.g. a
+// preview path calling into the live path), promote the buffers to a small
+// per-caller pool instead of removing this guard.
+let _applyEffectiveStatsInUse = false;
+
 export function applyEffectiveStats(
   world: GameWorld,
   entity: number,
   equipmentState: EquipmentState | undefined,
   activeModifiers: readonly LegacyStatModifierLike[] = [],
 ): void {
-  const stores = world.stores;
-  const base = {} as Record<StatId, number>;
-  for (const statId of ALL_STAT_IDS) {
-    base[statId] = stores.baseStats[statId][entity] ?? 0;
+  if (_applyEffectiveStatsInUse) {
+    throw new Error(
+      'applyEffectiveStats called re-entrantly; module-level scratch buffers ' +
+        'would alias. Refactor the new call site to snapshot into its own buffer ' +
+        '(see computeEffectiveStatsFromLoadoutInto) or promote the scratch to a pool.',
+    );
   }
-  const core = {} as Record<PrimaryStatId, number>;
-  for (const p of PRIMARY_STATS) {
-    core[p] = stores.coreStatPoints[p][entity] ?? 0;
-  }
+  _applyEffectiveStatsInUse = true;
+  try {
+    const stores = world.stores;
+    for (const statId of ALL_STAT_IDS) {
+      _scratchBase[statId] = stores.baseStats[statId][entity] ?? 0;
+    }
+    for (const p of PRIMARY_STATS) {
+      _scratchCore[p] = stores.coreStatPoints[p][entity] ?? 0;
+    }
 
-  const eff = computeEffectiveStatsFromLoadout(
-    base,
-    core,
-    uniqueEquippedDefs(world, equipmentState),
-    activeModifiers,
-  );
+    computeEffectiveStatsFromLoadoutInto(
+      _scratchEff,
+      _scratchBase,
+      _scratchCore,
+      writeUniqueEquippedDefsInto(_scratchDefs, _scratchSeen, world, equipmentState),
+      activeModifiers,
+    );
 
-  for (const statId of ALL_STAT_IDS) {
-    stores.effectiveStats[statId][entity] = eff[statId];
+    for (const statId of ALL_STAT_IDS) {
+      stores.effectiveStats[statId][entity] = _scratchEff[statId];
+    }
+  } finally {
+    _applyEffectiveStatsInUse = false;
   }
 }
