@@ -7276,6 +7276,306 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "rune-axe-v1-var-0": {
+      "briefId": "rune-axe-v1",
+      "spriteName": "rune-axe-v1-var-0",
+      "assetPath": "generated/rune-axe-v1-var-0.png",
+      "approvedAt": "2026-07-25T05:42:08.351Z",
+      "sourceRun": "generated/runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa",
+      "variantIndex": 0,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 31,
+          "y": 21,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": false,
+          "sensor": "anchor-derivable",
+          "reason": "grip midpoint x=37 is outside ±3 of center 32"
+        },
+        {
+          "ok": false,
+          "sensor": "silhouette-orientation-axis",
+          "reason": "principal axis 76.23° is more than ±5° away from vertical"
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 0,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-25T05:41:05.528Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept aligns well with Crawler's design language, featuring a clear identity as a rune-inscribed axe with a glowing crystal pommel. The primitive runes and tattered leather wrapping add a dark-fantasy aesthetic, though the contradiction could be slightly more pronounced."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the references in terms of outline weight, shading, and palette depth. The glowing runes and crystal are consistent with the style, though the blade's texture could be slightly more refined to match the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the references in terms of outline weight, shading, and palette depth. The glowing runes and crystal are consistent with the style, though the blade's texture could be slightly more refined to match the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite clearly depicts a heavy, single-bladed battle axe with glowing runes, a tattered leather handle, and a cobalt-blue crystal pommel, as described in the brief."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and instantly recognizable at game scale. The glowing runes and crystal provide strong visual contrast, and the axe's shape is distinct against the dark floor tile."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.95,
+        "usage": {
+          "promptTokens": 2542,
+          "completionTokens": 332,
+          "totalTokens": 2874
+        }
+      },
+      "type": "weapon",
+      "contentHash": "80e0b0fb936624a1a69f363947c20ff0044ed50c38a0bd9c67cbec523a24f132",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
+    "rune-axe-v1-var-1": {
+      "briefId": "rune-axe-v1",
+      "spriteName": "rune-axe-v1-var-1",
+      "assetPath": "generated/rune-axe-v1-var-1.png",
+      "approvedAt": "2026-07-25T05:42:08.351Z",
+      "sourceRun": "generated/runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa",
+      "variantIndex": 1,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 34,
+          "y": 23,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": false,
+          "sensor": "anchor-derivable",
+          "reason": "grip midpoint x=36 is outside ±3 of center 32"
+        },
+        {
+          "ok": false,
+          "sensor": "silhouette-orientation-axis",
+          "reason": "principal axis 76.58° is more than ±5° away from vertical"
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 1,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-25T05:41:10.554Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The glowing runes and cobalt-blue crystal pommel provide a strong authored contradiction, combining primitive and magical elements. The design feels appropriately grounded for Floor 1 while still being distinct and memorable."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The outline weight, shading stops, and palette depth align well with the references. The sprite uses crisp edges and appropriate color contrast, though the glow effect could be slightly more refined to match the references' polish."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The outline weight, shading stops, and palette depth align well with the references. The sprite uses crisp edges and appropriate color contrast, though the glow effect could be slightly more refined to match the references' polish."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite clearly depicts a heavy, single-bladed battle axe with glowing runes, a tattered leather-wrapped handle, and a cobalt-blue crystal pommel, as described in the brief."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and instantly recognizable at game scale. The axe blade, handle, and pommel are distinct, and the glowing runes enhance visibility without compromising the overall readability."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major defects or off-style elements.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 2542,
+          "completionTokens": 314,
+          "totalTokens": 2856
+        }
+      },
+      "type": "weapon",
+      "contentHash": "ce2258e1530d07d1a2edcde0ff4637461f049874e97034539bccb885e4bb3d11",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
+    "rune-axe-v1-var-10": {
+      "briefId": "rune-axe-v1",
+      "spriteName": "rune-axe-v1-var-10",
+      "assetPath": "generated/rune-axe-v1-var-10.png",
+      "approvedAt": "2026-07-25T05:42:08.351Z",
+      "sourceRun": "generated/runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa",
+      "variantIndex": 10,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 34,
+          "y": 23,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": false,
+          "sensor": "anchor-derivable",
+          "reason": "grip midpoint x=36 is outside ±3 of center 32"
+        },
+        {
+          "ok": false,
+          "sensor": "silhouette-orientation-axis",
+          "reason": "principal axis 77.78° is more than ±5° away from vertical"
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 10,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-25T05:41:53.151Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept aligns well with Crawler's design language, featuring a clear identity as a rune-inscribed axe with a glowing crystal pommel. The glowing runes and jagged crystal provide a subtle but effective contradiction between primitive and magical elements, fitting the dark-fantasy theme of Floor 1."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the reference sprites in terms of outline weight, shading style, and palette depth. The glowing runes are well-integrated and consistent with the visual style, though the blade's texture could be slightly refined to better match the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the reference sprites in terms of outline weight, shading style, and palette depth. The glowing runes are well-integrated and consistent with the visual style, though the blade's texture could be slightly refined to better match the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite clearly depicts a heavy, single-bladed battle axe with a crescent blade, glowing runes, a tattered leather-wrapped handle, and a cobalt-blue crystal pommel. All elements of the brief are present and well-executed."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The glowing runes and crystal pommel enhance the readability and make the weapon visually striking against the dark floor tile."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.95,
+        "usage": {
+          "promptTokens": 2542,
+          "completionTokens": 361,
+          "totalTokens": 2903
+        }
+      },
+      "type": "weapon",
+      "contentHash": "8c6fcf8ba9e360747b656b2d0d4ddcf4665d40a8c9d0f592b3c73b872379eb6c",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
     "runed-cuirass-placeholder": {
       "briefId": "runed-cuirass",
       "spriteName": "runed-cuirass",

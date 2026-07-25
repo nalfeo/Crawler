@@ -2916,6 +2916,57 @@
     "row": 0
   },
   {
+    "id": "generated:rune-axe-v1-var-0",
+    "kind": "sprite",
+    "label": "rune-axe-v1-var-0",
+    "description": "Generated sprite from brief: rune-axe-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "rune-axe-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/rune-axe-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:rune-axe-v1-var-1",
+    "kind": "sprite",
+    "label": "rune-axe-v1-var-1",
+    "description": "Generated sprite from brief: rune-axe-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "rune-axe-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/rune-axe-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:rune-axe-v1-var-10",
+    "kind": "sprite",
+    "label": "rune-axe-v1-var-10",
+    "description": "Generated sprite from brief: rune-axe-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "rune-axe-v1-var-10",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/rune-axe-v1-var-10.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:rusted-scrap-var-0",
     "kind": "sprite",
     "label": "rusted-scrap-var-0",
