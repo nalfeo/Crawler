@@ -94,6 +94,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Verify engine layer       | `npm run verify:engine`                   |
 | Verify labs layer         | `npm run verify:labs`                     |
 | Perf baseline             | `npm run perf:baseline`                   |
+| Gameplay fingerprint      | `npm run perf:fingerprint`                |
 | Benchmarks                | `npm run bench`                           |
 | Unit test coverage        | `npm run test:coverage`                   |
 | AI hill-climb sweep       | `npm run ai:hill-climb`                   |
@@ -119,8 +120,8 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Terrain packs build       | `npm run terrain-packs:build`             |
 | Terrain packs validate    | `npm run terrain-packs:validate`          |
 | Azure setup (provision)   | `npm run setup:azure:provision`           |
-| Azure foundry setup       | `npm run setup:azure:foundry`             |
-| Azure foundry env         | `npm run setup:azure:foundry:env`         |
+| Azure env setup           | `npm run setup:azure:env`                 |
+| Azure env setup (force)   | `npm run setup:azure:env:force`           |
 | Azure GitHub setup        | `npm run setup:azure:github`              |
 | Check physics defs sync   | `npm run check:physics-defs-sync`         |
 | Check size coverage       | `npm run check:size-coverage`             |
@@ -204,23 +205,23 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Key Files
 
-| What                      | Where                                                                                        |
-| ------------------------- | -------------------------------------------------------------------------------------------- |
-| Docs hub & governance map | `docs/README.md`                                                                             |
-| Architecture overview     | `docs/architecture.md`                                                                       |
-| Agent personas            | `docs/agent-os/personas/*.md`                                                                |
-| Policies                  | `docs/agent-os/policies/*.md`                                                                |
+| What                      | Where                                                                                                                      |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Docs hub & governance map | `docs/README.md`                                                                                                           |
+| Architecture overview     | `docs/architecture.md`                                                                                                     |
+| Agent personas            | `docs/agent-os/personas/*.md`                                                                                              |
+| Policies                  | `docs/agent-os/policies/*.md`                                                                                              |
 | **CI knobs reference**    | `docs/agent-os/policies/ci-config-knobs.md` — all runtime-tweakable CI variables, defaults, valid ranges, and interactions |
-| Architecture decisions    | `docs/knowledge/adr/*.md`                                                                    |
-| Specs                     | `.specify/specs/*.md`                                                                        |
-| Game design               | `docs/knowledge/game-design/*.md`                                                            |
-| Session handoffs          | `docs/knowledge/handoffs/*.md`                                                               |
-| Agent memory              | `docs/guides/agent-memory.md`, `docs/knowledge/memory/`, `docs/knowledge/agent-memory.jsonl` |
-| Guides                    | `docs/guides/*.md`                                                                           |
-| CI config                 | `.github/workflows/`                                                                         |
-| Automation loop scripts   | `scripts/agent/`                                                                             |
-| Health metrics            | `docs/knowledge/metrics/`                                                                    |
-| SpecKit constitution      | `.specify/memory/constitution.md`                                                            |
+| Architecture decisions    | `docs/knowledge/adr/*.md`                                                                                                  |
+| Specs                     | `.specify/specs/*.md`                                                                                                      |
+| Game design               | `docs/knowledge/game-design/*.md`                                                                                          |
+| Session handoffs          | `docs/knowledge/handoffs/*.md`                                                                                             |
+| Agent memory              | `docs/guides/agent-memory.md`, `docs/knowledge/memory/`, `docs/knowledge/agent-memory.jsonl`                               |
+| Guides                    | `docs/guides/*.md`                                                                                                         |
+| CI config                 | `.github/workflows/`                                                                                                       |
+| Automation loop scripts   | `scripts/agent/`                                                                                                           |
+| Health metrics            | `docs/knowledge/metrics/`                                                                                                  |
+| SpecKit constitution      | `.specify/memory/constitution.md`                                                                                          |
 
 ## Rules
 
