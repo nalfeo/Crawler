@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ff44b1dc0fce23b8dfdd73a81550f4078a2fb12c",
+    "commitDate": "2026-07-25T09:04:11Z",
+    "commitSubject": "feat(agent-os): add velocity-engineer agent and A/B trial lab (#1978)",
+    "capturedAt": "2026-07-25T10:14:36.415Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30152561435",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/ff44b1dc0fce23b8dfdd73a81550f4078a2fb12c.json"
+  },
+  {
     "commit": "f0dd023ddbcb112f26870c538e897f87d31c2ca2",
     "commitDate": "2026-07-25T08:33:34Z",
     "commitSubject": "feat: screenshot-viewer canvas extension (#1947)",
