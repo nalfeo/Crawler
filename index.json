@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6bbeea7e02ccff4fac03ce1ee4daa545e63fd7fc",
+    "commitDate": "2026-07-25T13:00:14Z",
+    "commitSubject": "fix(ci-recovery): fix 4 dispatch-table reviewer thread defects; restore dropped production code (#2004)",
+    "capturedAt": "2026-07-25T14:20:52.545Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30159277064",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/6bbeea7e02ccff4fac03ce1ee4daa545e63fd7fc.json"
+  },
+  {
     "commit": "34734fdb9ad4da7bce6c644c9e4f6d45f0276a7e",
     "commitDate": "2026-07-25T10:20:28Z",
     "commitSubject": "Implement Squick UNDERCITY MOB CALL on typed mob-ability runtime with deterministic cap/cadence enforcement (#1962)",
