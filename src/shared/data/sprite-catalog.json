@@ -3001,6 +3001,57 @@
     "row": 0
   },
   {
+    "id": "generated:ritual-dagger-v1-var-0",
+    "kind": "sprite",
+    "label": "ritual-dagger-v1-var-0",
+    "description": "Generated sprite from brief: ritual-dagger-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "ritual-dagger-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/ritual-dagger-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:ritual-dagger-v1-var-1",
+    "kind": "sprite",
+    "label": "ritual-dagger-v1-var-1",
+    "description": "Generated sprite from brief: ritual-dagger-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "ritual-dagger-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/ritual-dagger-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:ritual-dagger-v1-var-3",
+    "kind": "sprite",
+    "label": "ritual-dagger-v1-var-3",
+    "description": "Generated sprite from brief: ritual-dagger-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "ritual-dagger-v1-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/ritual-dagger-v1-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:rock-lice-var-1",
     "kind": "sprite",
     "label": "rock-lice-var-1",
