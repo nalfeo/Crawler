@@ -1345,6 +1345,57 @@
     "row": 0
   },
   {
+    "id": "generated:frost-crook-v1-var-0",
+    "kind": "sprite",
+    "label": "frost-crook-v1-var-0",
+    "description": "Generated sprite from brief: frost-crook-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "frost-crook-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/frost-crook-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:frost-crook-v1-var-1",
+    "kind": "sprite",
+    "label": "frost-crook-v1-var-1",
+    "description": "Generated sprite from brief: frost-crook-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "frost-crook-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/frost-crook-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:frost-crook-v1-var-2",
+    "kind": "sprite",
+    "label": "frost-crook-v1-var-2",
+    "description": "Generated sprite from brief: frost-crook-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "frost-crook-v1-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/frost-crook-v1-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:frost-lichen-v1-var-12",
     "kind": "sprite",
     "label": "frost-lichen-v1-var-12",
