@@ -326,7 +326,7 @@
       "abilityId": "plague-boss-squick-undercity-mob-call",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "ratfolk-boss",
         "approvedAssetId": "ratfolk-boss-var-0",
@@ -335,22 +335,32 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-squick",
+      "arenaLabEvidence": "Verified in canonical combat-arena preset `f2-squick` via deterministic headless observation (`tests/e2e/squick-arena-observation.test.ts`) and cadence evidence capture (`scripts/agent/squick-arena-evidence.ts`): first telegraph at 11000ms, first resolve at 12500ms, second resolve at 25000ms, committed three-circle summon geometry reused through resolve, and owned summon cap enforced at <=6.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
-      "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1956,
+        "state": "open",
+        "title": "Implement Plague-Boss Squick's UNDERCITY MOB CALL ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1956"
+      },
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 1962,
+        "state": "open",
+        "title": "Implement Squick UNDERCITY MOB CALL on typed mob-ability runtime with deterministic cap/cadence enforcement",
+        "url": "https://github.com/nalfeo/Crawler/pull/1962"
+      },
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "abuela-saguaro-thorn-ring",

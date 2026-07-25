@@ -37,7 +37,12 @@ export interface MobAbilityCircleGeometry {
   readonly radiusFt: number;
 }
 
-export type MobAbilityGeometry = MobAbilityCircleGeometry;
+export interface MobAbilitySpawnCirclesGeometry {
+  readonly kind: 'spawn-circles';
+  readonly circles: readonly MobAbilityCircleGeometry[];
+}
+
+export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry;
 
 export type MobAbilityTargetingMode = 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
@@ -68,6 +73,10 @@ export interface MobAbilityResolveContext {
   readonly geometry: MobAbilityGeometry;
   /** Target entity locked at telegraph start; `null`/invalid targets are tolerated. */
   readonly targetEid: number | null;
+  /** Current living ability-owned entity count for this caster. */
+  readonly countOwnedLiving?: () => number;
+  /** Register one newly spawned ability-owned entity for lifecycle tracking. */
+  readonly registerOwnedEntity?: (eid: number) => void;
 }
 
 /**
@@ -89,8 +98,15 @@ export interface MobAbilityRuntimeDefinition {
   readonly dangerColor: MobAbilityDangerColor;
   /** Exact, fully formatted announcement string emitted once per cast. */
   readonly announcementText: string;
-  /** Committed geometry footprint (radius etc.); position is locked at cast. */
-  readonly geometry: { readonly kind: 'circle'; readonly radiusFt: number };
+  /** Committed geometry footprint authored by this ability. */
+  readonly geometry:
+    | { readonly kind: 'circle'; readonly radiusFt: number }
+    | {
+        readonly kind: 'spawn-circles';
+        readonly count: number;
+        readonly radiusFt: number;
+        readonly distanceFromCasterFt: number;
+      };
   /** Targeting mode for telegraph lock semantics (player-position or self). */
   readonly targetingMode?: MobAbilityTargetingMode;
   /** Origin lock mode for telegraph geometry. */
@@ -140,6 +156,8 @@ export interface MobAbilityInstanceState {
   resolvedCasts: number;
   /** Count of announcements emitted (must equal `resolvedCasts + inFlight`). */
   announcementsEmitted: number;
+  /** Owned summoned entities for this caster's ability instance (eid -> generation). */
+  readonly ownedEntityGenerations: Map<number, number>;
   /**
    * Per-registration generation token. Monotonically increases with each
    * `registerMobAbility` call. The runtime validates this against
@@ -177,7 +195,7 @@ export interface MobAbilityRuntime {
    * the caster died in the same simulation step that called `clearMobAbility`
    * (which would remove the caster from `byEntity` before `PhaserBridge.sync`).
    */
-  readonly pendingBursts: Array<MobAbilityGeometry>;
+  readonly pendingBursts: Array<MobAbilityBurst>;
   /** Active self-buffs authored by ability handlers and ticked by the runtime. */
   readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
   /**
@@ -214,6 +232,11 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
   };
 }
 
+export interface MobAbilityBurst {
+  readonly abilityId: string;
+  readonly geometry: MobAbilityGeometry;
+}
+
 /** Stable per-cast source key for status effects owned by a caster's ability. */
 export function mobAbilitySourceId(abilityId: string, casterEid: number): string {
   return `mob-ability:${abilityId}:${casterEid}`;
@@ -232,8 +255,8 @@ const MOB_ABILITY_BURST_CAP = 256;
  * when full). Follows the same bounded-queue pattern as `pushVfxEvent` and
  * `pushAnnouncement`.
  */
-export function pushMobAbilityBurst(bursts: MobAbilityGeometry[], geom: MobAbilityGeometry): void {
-  bursts.push(geom);
+export function pushMobAbilityBurst(bursts: MobAbilityBurst[], burst: MobAbilityBurst): void {
+  bursts.push(burst);
   if (bursts.length > MOB_ABILITY_BURST_CAP) {
     bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
   }

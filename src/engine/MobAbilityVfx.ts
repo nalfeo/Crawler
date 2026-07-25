@@ -44,7 +44,10 @@ const COLOR_HOSTILE_RED = 0xef4444;
 const COLOR_CROWN_RUNE = 0xffd166;
 const COLOR_VERDIGRIS = 0x3fbf7f;
 const COLOR_BRONZE = 0xb08d57;
+const COLOR_SEWER_GREEN = 0x22c55e;
+const COLOR_SICKLY_MIST = 0x65a30d;
 const COLOR_TARNISH_RING = 0x5fb89a;
+const UNDERCITY_MOB_CALL_ABILITY_ID = 'plague-boss-squick-undercity-mob-call';
 const COLOR_BERSERK_GREEN = 0x59c36a;
 const COLOR_BERSERK_GOLD = 0xf4c542;
 const COLOR_BERSERK_RED = 0xff4d4d;
@@ -57,6 +60,7 @@ const CAST_START_LIFETIME_MS = 320;
 const CLEANUP_LIFETIME_MS = 300;
 const CROWN_RUNE_COUNT = 8;
 const BURST_SPARK_COUNT = 18;
+const UNDERCITY_BURST_SPARK_COUNT = 24;
 
 export function createMobAbilityVfx(scene: Phaser.Scene): {
   update(world: GameWorld): void;
@@ -125,34 +129,25 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     transientTweens.set(ring, tween);
   }
 
-  /** Gratuitous verdigris/bronze sparks flying outward from the detonation. */
-  function spawnBurst(x: number, y: number, radiusPx: number): void {
+  /** Render-only spark spray for burst effects. */
+  function spawnSparkBurst(
+    x: number,
+    y: number,
+    radiusPx: number,
+    colors: readonly [number, number],
+    count: number,
+  ): void {
     if (!enabled) return;
-    spawnRing(
-      x,
-      y,
-      radiusPx * 0.4,
-      radiusPx * 1.25,
-      COLOR_VERDIGRIS,
-      BURST_LIFETIME_MS,
-      BURST_DEPTH,
-    );
-    spawnRing(x, y, radiusPx * 0.2, radiusPx, COLOR_BRONZE, BURST_LIFETIME_MS, BURST_DEPTH);
     // Render-only RNG (never touches the simulation).
     let seed = (Math.floor(x) * 73856093) ^ (Math.floor(y) * 19349663) ^ 0x9e3779b9;
     const rand = () => {
       seed = (seed * 16807) % 2147483647;
       return (seed & 0x7fffffff) / 2147483647;
     };
-    for (let i = 0; i < BURST_SPARK_COUNT; i += 1) {
-      const angle = (i / BURST_SPARK_COUNT) * Math.PI * 2 + rand() * 0.3;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2 + rand() * 0.3;
       const dist = radiusPx * (0.6 + rand() * 0.8);
-      const spark = scene.add.circle(
-        x,
-        y,
-        2 + rand() * 2,
-        i % 2 === 0 ? COLOR_VERDIGRIS : COLOR_BRONZE,
-      );
+      const spark = scene.add.circle(x, y, 2 + rand() * 2, i % 2 === 0 ? colors[0] : colors[1]);
       spark.setDepth(BURST_DEPTH);
       spark.setBlendMode('ADD');
       ignoreUi(spark);
@@ -173,6 +168,53 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       });
       transientTweens.set(spark, tween);
     }
+  }
+
+  /** Gratuitous verdigris/bronze sparks flying outward from the detonation. */
+  function spawnBurst(x: number, y: number, radiusPx: number): void {
+    if (!enabled) return;
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.4,
+      radiusPx * 1.25,
+      COLOR_VERDIGRIS,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnRing(x, y, radiusPx * 0.2, radiusPx, COLOR_BRONZE, BURST_LIFETIME_MS, BURST_DEPTH);
+    spawnSparkBurst(x, y, radiusPx, [COLOR_VERDIGRIS, COLOR_BRONZE] as const, BURST_SPARK_COUNT);
+  }
+
+  /** Squick-specific sewer-green burst for UNDERCITY MOB CALL resolutions. */
+  function spawnUndercityBurst(x: number, y: number, radiusPx: number): void {
+    if (!enabled) return;
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.55,
+      radiusPx * 1.35,
+      COLOR_SEWER_GREEN,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.25,
+      radiusPx * 1.05,
+      COLOR_SICKLY_MIST,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnRing(x, y, radiusPx * 0.05, radiusPx * 0.45, COLOR_BRONZE, BURST_LIFETIME_MS, BURST_DEPTH);
+    spawnSparkBurst(
+      x,
+      y,
+      radiusPx,
+      [COLOR_SEWER_GREEN, COLOR_SICKLY_MIST] as const,
+      UNDERCITY_BURST_SPARK_COUNT,
+    );
   }
 
   /** A quick pulse when a telegraph first locks (cast-start cue). */
@@ -197,7 +239,6 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     progress: number,
     dangerColor: 'ability-theme' | 'hostile-red',
   ): void {
-    gfx.clear();
     if (dangerColor === 'ability-theme') {
       const pulse = 0.75 + 0.25 * Math.sin(progress * Math.PI * 2);
       gfx.lineStyle(2 + 2 * progress, COLOR_BERSERK_RED, 0.65 + 0.25 * pulse);
@@ -431,15 +472,19 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // ── Telegraph circles ──────────────────────────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
-      if (cue.geometry.kind !== 'circle') continue;
+      const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
+      if (circles.length === 0) continue;
       liveCasters.add(cue.casterEid);
-      const cx = ftToPx(cue.geometry.x);
-      const cy = ftToPx(cue.geometry.y);
-      const radiusPx = ftToPx(cue.geometry.radiusFt);
-      lastGeom.set(cue.casterEid, { x: cx, y: cy, r: radiusPx });
+      const first = circles[0]!;
+      const firstCx = ftToPx(first.x);
+      const firstCy = ftToPx(first.y);
+      const firstRadiusPx = ftToPx(first.radiusFt);
+      lastGeom.set(cue.casterEid, { x: firstCx, y: firstCy, r: firstRadiusPx });
       if (!castStartSeen.has(cue.casterEid)) {
         castStartSeen.add(cue.casterEid);
-        spawnCastStart(cx, cy, radiusPx);
+        for (const circle of circles) {
+          spawnCastStart(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        }
       }
       if (!enabled) continue;
       let gfx = telegraphGfx.get(cue.casterEid);
@@ -450,7 +495,17 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         ignoreUi(gfx);
         telegraphGfx.set(cue.casterEid, gfx);
       }
-      drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress, cue.dangerColor);
+      gfx.clear();
+      for (const circle of circles) {
+        drawTelegraph(
+          gfx,
+          ftToPx(circle.x),
+          ftToPx(circle.y),
+          ftToPx(circle.radiusFt),
+          cue.telegraphProgress,
+          cue.dangerColor,
+        );
+      }
     }
 
     // ── Resolution bursts (drain the durable pending-burst queue) ─────────
@@ -458,12 +513,19 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // bursts survive even if the caster is cleared (killed/despawned) later in
     // the same simulation step before PhaserBridge.sync runs.
     while (runtime.pendingBursts.length > 0) {
-      const geom = runtime.pendingBursts.shift()!;
+      const burst = runtime.pendingBursts.shift()!;
+      const spawn =
+        burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID ? spawnUndercityBurst : spawnBurst;
+      const geom = burst.geometry;
       if (geom.kind === 'circle') {
         const cx = ftToPx(geom.x);
         const cy = ftToPx(geom.y);
         const r = ftToPx(geom.radiusFt);
-        spawnBurst(cx, cy, r);
+        spawn(cx, cy, r);
+      } else {
+        for (const circle of geom.circles) {
+          spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        }
       }
     }
 

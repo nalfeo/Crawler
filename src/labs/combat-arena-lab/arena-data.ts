@@ -16,6 +16,7 @@ import {
   setEnemyAppearanceKey,
   spawnBehaviorEnemy,
   activateMobAbilityEncounter,
+  createUndercityMobCallDefinition,
   createBambooFedBerserkDefinition,
   createVerdigrisGlamourDefinition,
   registerMobAbility,
@@ -524,6 +525,8 @@ const F1_SLIME = floor1EnemyPack.archetypes.find((a) => a.id === 'slime')!;
 
 /** Queen Mab Tarnish — the faerie boss that owns Verdigris Glamour. */
 const F2_QUEEN_MAB = floor2EnemyPack.archetypes.find((a) => a.id === 'faerie-boss')!;
+/** Plague-Boss Squick — the ratfolk boss that owns Undercity Mob Call. */
+const F2_SQUICK = floor2EnemyPack.archetypes.find((a) => a.id === 'ratfolk-boss')!;
 const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-boss')!;
 
 /**
@@ -554,6 +557,22 @@ function spawnQueenMabArena(
   // preset IS the explicit arena encounter-start transition.
   setMobAbilitiesEnabled(world, true);
   registerMobAbility(world, eid, createVerdigrisGlamourDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnSquickArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_SQUICK);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createUndercityMobCallDefinition());
   activateMobAbilityEncounter(world);
   return [eid];
 }
@@ -642,6 +661,15 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
       'Queen Mab Tarnish solo, with Verdigris Glamour armed through the canonical mob-ability runtime: 9s eligibility, 1.5s hostile-red 12ft telegraph locked to the player, moderate damage + Tarnished, 9s cooldown after resolution.',
     entries: [],
     customSpawnFn: spawnQueenMabArena,
+  },
+  {
+    id: 'f2-squick',
+    name: 'F2: Plague-Boss Squick (Undercity Mob Call)',
+    floor: 'floor2',
+    description:
+      'Plague-Boss Squick solo, with UNDERCITY MOB CALL armed through the canonical mob-ability runtime: 11s eligibility, 1.5s three-circle telegraph, summon up to 3 plague rats per cast with a strict owned cap of 6.',
+    entries: [],
+    customSpawnFn: spawnSquickArena,
   },
   {
     id: 'f2-big-panda-wei',
