@@ -1273,6 +1273,8 @@ const rebaseFailureBackoffActive =
     ['active', 'dispatched', 'escalated'].includes(state?.status)
       ? Date.parse(state.progressAt || state.updatedAt)
       : NaN;
+  const ciConflictOrderWait =
+    mergeTrainEnabled && !pendingHumanApproval && shouldWaitForCiConflictOrder(pr.labels);
   let earlyCtx = {
     labelExists,
     owner: state?.owner ?? 'none',
@@ -1289,8 +1291,7 @@ const rebaseFailureBackoffActive =
     trainShortCircuits:
       mergeTrainEnabled &&
       !pendingHumanApproval &&
-      ((pr.labels || []).some((label) => label.name === QUEUE_LABEL) ||
-        shouldWaitForCiConflictOrder(pr.labels)),
+      ((pr.labels || []).some((label) => label.name === QUEUE_LABEL) || ciConflictOrderWait),
     trigger,
     rebaseDispatchPendingForHead,
     rebaseDispatchAttemptsForHead,
