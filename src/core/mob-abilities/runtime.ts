@@ -46,6 +46,7 @@ const ANNOUNCEMENT_DURATION_MS = 2200;
  * single "simulation-step boundary" allowance the spec calls out.
  */
 const TIMER_EPSILON_MS = 1e-6;
+const MIN_OWNED_ZONE_TICK_INTERVAL_MS = 1;
 
 function normalizedTargetingMode(def: MobAbilityRuntimeDefinition): 'player-position' | 'self' {
   return def.targetingMode ?? 'player-position';
@@ -394,6 +395,14 @@ export function registerMobAbilityOwnedZone(
   world: GameWorld,
   zone: Omit<MobAbilityOwnedZone, 'id' | 'elapsedMs' | 'nextTickAtMs'>,
 ): number {
+  if (!Number.isFinite(zone.tickIntervalMs) || zone.tickIntervalMs < MIN_OWNED_ZONE_TICK_INTERVAL_MS) {
+    throw new Error(
+      `Mob ability owned zone tickIntervalMs must be >= ${MIN_OWNED_ZONE_TICK_INTERVAL_MS} (received ${zone.tickIntervalMs})`,
+    );
+  }
+  if (!Number.isFinite(zone.durationMs) || zone.durationMs <= 0) {
+    throw new Error(`Mob ability owned zone durationMs must be > 0 (received ${zone.durationMs})`);
+  }
   const id = world.mobAbilities.nextZoneId;
   world.mobAbilities.nextZoneId += 1;
   world.mobAbilities.ownedZones.push({
