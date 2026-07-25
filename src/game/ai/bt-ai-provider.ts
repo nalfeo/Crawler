@@ -3775,9 +3775,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.farmPullX = 0;
           this.farmPullY = 0;
         }
-        const preserveMobAbilityDodge =
-          world.mobAbilities.activeZones.length > 0 ||
-          world.mobAbilities.cues.some((cue) => cue.phase === 'telegraph');
+        const preserveMobAbilityDodge = world.mobAbilities.cues.some(
+          (cue) => cue.phase === 'telegraph',
+        );
         // The steering heading already encodes predictive spacing; blending the
         // legacy single-closest-threat dodge on top would double-count and
         // reintroduce the oscillation that widening it caused (commit f4f538d7),
