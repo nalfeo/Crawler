@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b769f88542ae3f66c7d4c6bbb18ff8bd06a0ac8a",
+    "commitDate": "2026-07-25T18:59:54Z",
+    "commitSubject": "perf(agent): add `perf:profile` so the Perf Optimizer measures its target instead of guessing (#2030)",
+    "capturedAt": "2026-07-25T20:21:30.063Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30171121517",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/b769f88542ae3f66c7d4c6bbb18ff8bd06a0ac8a.json"
+  },
+  {
     "commit": "0316c9a8a57e31a8a26b70f0877668c03e6eca90",
     "commitDate": "2026-07-25T18:10:35Z",
     "commitSubject": "docs(velocity): record instruction-overhead experiment and the input-token telemetry gap it exposed (#2027)",
