@@ -49,9 +49,17 @@ interface SovereignArenaScene {
   cameras: { main: { scrollX: number; scrollY: number } };
 }
 
-/** Read the screen positions of the three committed cloud circles from the live scene. */
+/** Read the screen positions of the three committed cloud circles from the live scene.
+ *
+ * Phaser's Scale.FIT mode scales the canvas CSS display size to fit the parent container
+ * (which is narrower than the 1280×720 logical game resolution due to the 300px controls
+ * panel). `page.locator('canvas').screenshot()` returns CSS-sized pixels, so we must
+ * apply the CSS display scale factor so the returned positions index correctly into the
+ * screenshot buffer.
+ */
 async function getCloudCircleScreenPositions(page: Page): Promise<CircleScreenPos[] | null> {
   return page.evaluate(() => {
+    const GAME_LOGICAL_W = 1280;
     const PIXELS_PER_FOOT = 8;
     const scene = (window as unknown as { __arenaScene?: SovereignArenaScene }).__arenaScene;
     if (!scene) return null;
@@ -59,10 +67,17 @@ async function getCloudCircleScreenPositions(page: Page): Promise<CircleScreenPo
     const zones = scene.world.mobAbilities.ownedZones;
     const geom = zones[0]?.geometry;
     if (!geom || geom.kind !== 'multi-circle' || !geom.circles) return null;
+    // Compute the CSS display scale factor. Phaser.Scale.FIT sets the canvas CSS width to
+    // the actual rendered display width, which may be less than GAME_LOGICAL_W when the
+    // container is smaller. Screenshot pixels are in CSS space, so all positions must be
+    // multiplied by this factor.
+    const canvas = document.querySelector('#lab-canvas canvas') as HTMLCanvasElement | null;
+    const cssW = canvas ? canvas.getBoundingClientRect().width : GAME_LOGICAL_W;
+    const displayScale = cssW > 0 ? cssW / GAME_LOGICAL_W : 1;
     return geom.circles.map((c) => ({
-      screenX: c.x * PIXELS_PER_FOOT - cam.scrollX,
-      screenY: c.y * PIXELS_PER_FOOT - cam.scrollY,
-      radiusPx: c.radiusFt * PIXELS_PER_FOOT,
+      screenX: (c.x * PIXELS_PER_FOOT - cam.scrollX) * displayScale,
+      screenY: (c.y * PIXELS_PER_FOOT - cam.scrollY) * displayScale,
+      radiusPx: c.radiusFt * PIXELS_PER_FOOT * displayScale,
     }));
   });
 }
