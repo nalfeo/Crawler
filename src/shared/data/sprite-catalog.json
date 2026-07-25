@@ -3492,6 +3492,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-crate-single-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-crate-single-var-0",
+    "description": "Generated sprite from brief: welcome-room-crate-single.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-crate-single-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-crate-single-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-desk-var-0",
     "kind": "sprite",
     "label": "welcome-room-desk-var-0",
