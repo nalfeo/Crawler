@@ -22,6 +22,17 @@
     "path": "by-sha/6bbeea7e02ccff4fac03ce1ee4daa545e63fd7fc.json"
   },
   {
+    "commit": "7c2187745774641038369a1c532f31ff09abf60b",
+    "commitDate": "2026-07-25T10:25:50-07:00",
+    "commitSubject": "fix(sprite-pipeline): configure reconciler git identity",
+    "capturedAt": "2026-07-25T18:48:06.438Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30168013507",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/7c2187745774641038369a1c532f31ff09abf60b.json"
+  },
+  {
     "commit": "34734fdb9ad4da7bce6c644c9e4f6d45f0276a7e",
     "commitDate": "2026-07-25T10:20:28Z",
     "commitSubject": "Implement Squick UNDERCITY MOB CALL on typed mob-ability runtime with deterministic cap/cadence enforcement (#1962)",
