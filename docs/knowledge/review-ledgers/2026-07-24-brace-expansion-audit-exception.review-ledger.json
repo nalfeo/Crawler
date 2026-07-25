@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "brace-expansion-audit-exception",
+  "task_title": "Add temporary brace-expansion audit exception",
+  "estimated_apples": 2,
+  "stages": {}
+}

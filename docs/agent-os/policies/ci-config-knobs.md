@@ -16,33 +16,44 @@ All operationally-meaningful knobs are settable via GitHub Actions repository va
 
 ### Dispatch caps (CI Recovery ↔ Merge Train backpressure)
 
+`resolveGlobalDispatchCaps(env)` in `.github/scripts/ci-recovery/router.mjs` resolves
+both the already-landed legacy dispatch-cap variables and this PR's narrower
+capacity/prioritization knobs. Reconcile-side gated dispatch still consumes the
+resolved legacy `trainCap`; router admission additionally honors the load-aware
+budget and global-clamp fields below.
+
 | Variable | Default | Safe range | Scope | Effect |
 |---|---|---|---|---|
-| `CI_GLOBAL_TRAIN_DISPATCH_CAP` | `5` | 1–10 | Router + Reconcile | Max outstanding CI Recovery runs while the merge-train queue is non-empty. Raising this allows more PRs to converge in parallel; lowering it reserves more runner capacity for Merge Train Validation. **This is the knob that was silently inert during the 2026-07-22 incident** — it now takes effect immediately via repo variable. |
-| `CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP` | `8` | 1–20 | Router only | Max outstanding CI Recovery runs when the merge-train queue is empty, the train feature is idle, or the train is disabled/paused. Kept non-infinite because AI Sweep Eval jobs can peak at ~19 concurrent jobs on GitHub Free. |
-| `CI_RECOVERY_MAX_DISPATCH_PER_RUN` | `8` | 1–20 | Router only | Max number of CI Recovery dispatches in a **single router invocation** (before the global budget check). Lowering this reduces per-event bursts; the global cap still applies afterward. |
+| `CI_GLOBAL_TRAIN_DISPATCH_CAP` | `5` | 1–10 | Router + Reconcile | Legacy train-busy dispatch cap. Preserved for runtime tuning and still consumed by Merge Train via `resolveGlobalDispatchCaps(process.env)`. |
+| `CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP` | `8` | 1–20 | Router only | Legacy idle dispatch cap when the merge-train queue is empty / disabled. |
+| `CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY` | `5` | positive integer | Router only | Max **load-aware dispatch budget** while the merge-train queue is non-empty. When unset, the router falls back to `CI_GLOBAL_TRAIN_DISPATCH_CAP`. |
+| `CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE` | `8` | positive integer | Router only | Max **load-aware dispatch budget** while the merge-train queue is empty. When unset, the router falls back to `CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP`. |
+| `CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP` | `5` | positive integer | Router only | Additional hard clamp applied after the train-busy budget is computed. When unset, the router falls back to `CI_GLOBAL_TRAIN_DISPATCH_CAP`. |
+| `CI_RECOVERY_MAX_DISPATCH_PER_RUN` | `8` | positive integer | Router only | Max number of CI Recovery dispatches in a **single router invocation** before the live global-budget check. |
 
 **Critical interaction — dispatch-cap selection (mutually exclusive branches)**:
 
 ```
 train queue non-empty?
-  YES → active cap = CI_GLOBAL_TRAIN_DISPATCH_CAP   (safe range 1–10)
-  NO  → active cap = CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP (safe range 1–20)
+  YES → budget cap = CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY (fallback CI_GLOBAL_TRAIN_DISPATCH_CAP)
+         global clamp = CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP   (fallback CI_GLOBAL_TRAIN_DISPATCH_CAP)
+  NO  → budget cap = CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE (fallback CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP)
 
-effective budget = min(active_cap, RUNNER_CEILING − validationReserved − activeSweepJobs − outstandingCount)
-dispatch limit   = min(CI_RECOVERY_MAX_DISPATCH_PER_RUN, effective_budget)
+effective budget = min(budget cap, RUNNER_CEILING − validationReserved − activeSweepJobs − outstandingCount)
+train-busy final  = min(effective budget, global clamp)
+dispatch limit    = min(CI_RECOVERY_MAX_DISPATCH_PER_RUN, train-busy final or effective budget)
 ```
 
-The two global caps are **mutually exclusive** — exactly one applies per invocation based
-on `trainQueueNonEmpty`. `CI_RECOVERY_MAX_DISPATCH_PER_RUN` is a per-invocation burst
-limit applied after the budget is computed.
+The router resolves the new `CI_RECOVERY_*` knobs with strict fail-closed parsing:
+invalid, empty, non-positive, unsafe, or partially-numeric values fall back to
+safe defaults. The legacy `CI_GLOBAL_*` caps remain range-clamped so reconcile and
+router keep honoring the already-landed runtime dispatch-cap controls.
 
-**Log line**: when backpressure defers PRs, the router now emits:
+**Log line**: when backpressure defers PRs, the router emits:
 ```
-global backpressure applied deferred=N pr_numbers=... outstanding=K budget=B cap=C
+global backpressure applied deferred=N pr_numbers=... outstanding=K cap=C budget=B ...
 ```
-`budget` is the **effective** remaining capacity (cap minus outstanding); `cap` is the active cap
-for this invocation.
+`budget` is the effective post-budget / post-clamp capacity for this invocation.
 
 ---
 
@@ -63,6 +74,21 @@ for this invocation.
 | Variable | Default | Effect | Scope |
 |---|---|---|---|
 | `MERGE_QUEUE_ENABLED` | _(unset / falsy)_ | When truthy, allows `auto-rebase-prs.yml` to run even if `MERGE_TRAIN_ENABLED` is false (legacy GitHub Merge Queue mode). **Keep unset** unless explicitly using GitHub's native merge queue. | `auto-rebase-prs.yml` |
+
+---
+
+## Must-preserve invariants
+
+The CI-recovery redesign must preserve these behaviors; deleting any mechanism
+must fail at least one deterministic regression test.
+
+1. **Load-aware dispatch budget caps** — train-busy `5`, train-idle `8`, train-busy global clamp `5`, and default per-run admission `8` stay pinned as explicit baselines unless a deliberate policy change updates both code and tests.
+2. **Review-round throttle** — exactly one Copilot review run per PR conflict/head episode.
+3. **Per-PR concurrency** — parallel across PRs, serialized within a PR.
+4. **`expected_head_sha` fail-closed binding** — reconcile aborts before mutation on head drift.
+5. **CI-fix-first + blocked-PR exclusion + global FIFO admission** — CI-fix work lands first, blocked PRs consume no slots, and flag-off sweeps stay globally oldest-first.
+6. **Superseded-run cancellation + impact-gated CI dispatch** — PR workflow cancellation remains scoped correctly and heavyweight CI dispatch stays fail-closed on impact gating.
+7. **Thundering-herd backpressure and queue-aware sweep behavior** — router invocations serialize globally, sweeps respect runner pressure, and queue-aware sweep budget protections remain intact.
 
 ---
 
@@ -141,6 +167,7 @@ is deliberately fixed" from "this value was missed."
 2. Requires each to appear in either the **operationally-tweakable** registry or the
    **structural constants** allowlist above.
 3. Fails CI if a new behavior-shaping constant is added without a doc entry.
+4. Anchors the named regression suites that pin the must-preserve invariants above.
 
 To add a new knob:
 - If operationally tweakable: add a `process.env.YOUR_VAR` read in the script, wire

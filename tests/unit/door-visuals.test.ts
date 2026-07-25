@@ -12,6 +12,8 @@ import {
  * maps a mode to a concrete Image and derives scale from the loaded texture).
  *
  * The matrix that matters:
+ *  - PACK: when a pack door texture key is supplied for this state/orientation,
+ *    it wins (open and closed both render from the pack).
  *  - CLOSED: generated > Kenney closed frame > solid color.
  *  - OPEN: Kenney open frame > solid color — generated is UNREACHABLE (there is
  *    no approved open-door variant; the non-destructive default keeps open on
@@ -21,6 +23,32 @@ import {
  *    door even with the Kenney sheet absent.
  */
 describe('resolveDoorRenderMode', () => {
+  it('open + pack door variant → pack texture (pack doorSet takes precedence)', () => {
+    expect(
+      resolveDoorRenderMode(true, {
+        hasGeneratedClosed: true,
+        hasSheet: true,
+        packDoorTextureKey: 'terrain-pack-industrial-cave-door-open-horizontal',
+      }),
+    ).toEqual({
+      kind: 'pack',
+      textureKey: 'terrain-pack-industrial-cave-door-open-horizontal',
+    });
+  });
+
+  it('closed + pack door variant → pack texture (pack doorSet beats generated/kenney)', () => {
+    expect(
+      resolveDoorRenderMode(false, {
+        hasGeneratedClosed: true,
+        hasSheet: true,
+        packDoorTextureKey: 'terrain-pack-industrial-cave-door-closed-vertical',
+      }),
+    ).toEqual({
+      kind: 'pack',
+      textureKey: 'terrain-pack-industrial-cave-door-closed-vertical',
+    });
+  });
+
   it('closed + generated + sheet → generated (generated wins the closed precedence)', () => {
     expect(resolveDoorRenderMode(false, { hasGeneratedClosed: true, hasSheet: true })).toEqual({
       kind: 'generated',
