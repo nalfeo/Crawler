@@ -606,6 +606,43 @@ describe('judgeVariant — happy path', () => {
     });
   });
 
+  it('requests theme_adherence for an authored floor 1 equipment theme', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 4, rationale: 'a' },
+        reference_style_match: { score: 4, rationale: 'b' },
+        brief_match: { score: 4, rationale: 'c' },
+        readability: { score: 4, rationale: 'd' },
+        presentation: { score: 4, rationale: 'isolated equipment icon' },
+        theme_adherence: { score: 5, rationale: 'materials and heraldry match' },
+      },
+    });
+
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({
+        type: 'equipment',
+        name: 'classic-fantasy-helm',
+        theme: {
+          setId: 'classic-fantasy',
+          displayName: 'Classic Fantasy',
+          designLanguage:
+            'Practical late-medieval steel, leather, wool, and carved hardwood with restrained heraldry.',
+        },
+      }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+
+    expect(calls[0]?.request.systemInstructions).toContain('Practical late-medieval steel');
+    expect(calls[0]?.request.systemInstructions).toContain('theme_adherence');
+    expect(scorecard.themeAdherence?.score).toBe(5);
+  });
+
   it('does not request theme_adherence and leaves it undefined when no theme addendum applies', async () => {
     const { provider, calls } = stubProvider({
       responseJson: {

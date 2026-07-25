@@ -212,6 +212,39 @@ describe('synthesizeBrief — happy path', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('persists authored theme context through synthesis YAML and brief loading', async () => {
+    const theme = {
+      setId: 'classic-fantasy',
+      displayName: 'Classic Fantasy',
+      designLanguage:
+        'Practical late-medieval steel, leather, wool, and carved hardwood with restrained heraldry.',
+    } as const;
+    const provider = makeProvider((request) => {
+      expect(request.theme).toEqual(theme);
+      return makeWeaponResponse([makeCandidate()]);
+    });
+    const { hooks, files } = makeFsWrites();
+
+    const result = await synthesizeBrief({
+      name: 'arming-sword',
+      type: 'weapon',
+      candidates: 1,
+      theme,
+      provider,
+      repoRoot: REPO_ROOT,
+      env: {},
+      fsWrites: hooks,
+    });
+
+    const yaml = files.get(result.written[0]!.yamlPath);
+    const parsed = parseYaml(yaml!) as Record<string, unknown>;
+    expect(parsed.theme).toEqual(theme);
+    expect(mergeMinimalIntoDefaults(parsed, WEAPON_DEFAULTS).theme).toEqual(theme);
+    expect(JSON.parse(files.get(result.sidecarPath)!) as Record<string, unknown>).toMatchObject({
+      theme,
+    });
+  });
 });
 
 describe('synthesizeBrief — size variants', () => {

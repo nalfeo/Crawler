@@ -68,7 +68,11 @@ function canonicalSpriteName(name: string): string {
   return name.replace(/-v\d+$/, '');
 }
 
-export function resolveDesignLanguageAddenda(name: string, floor: number): DesignLanguageAddenda {
+export function resolveDesignLanguageAddenda(
+  name: string,
+  floor: number,
+  themeOverride?: string,
+): DesignLanguageAddenda {
   const canonical = canonicalSpriteName(name);
   const floorAddendum = FLOOR_DESIGN_LANGUAGE[floor];
   const familyId = floor === 2 ? FLOOR_2_FAMILY_BY_SPRITE_NAME.get(canonical) : undefined;
@@ -77,10 +81,13 @@ export function resolveDesignLanguageAddenda(name: string, floor: number): Desig
       ? undefined
       : FAMILY_DESIGN_LANGUAGE[familyId as keyof typeof FAMILY_DESIGN_LANGUAGE];
   const archetypeExtra = familyTheme !== undefined ? ARCHETYPE_THEME_ADDENDA[canonical] : undefined;
+  const authoredTheme = themeOverride?.trim();
   const themeAddendum =
-    familyTheme !== undefined && archetypeExtra !== undefined
-      ? `${familyTheme} ${archetypeExtra}`
-      : familyTheme;
+    authoredTheme && authoredTheme.length > 0
+      ? authoredTheme
+      : familyTheme !== undefined && archetypeExtra !== undefined
+        ? `${familyTheme} ${archetypeExtra}`
+        : familyTheme;
 
   return {
     ...(floorAddendum === undefined ? {} : { floor: floorAddendum }),

@@ -1,0 +1,108 @@
+name: Theme Equipment Set Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Pipeline action
+        required: true
+        type: choice
+        default: status
+        options: [init, run-phase, advance, status, publish]
+      set_id:
+        description: Theme equipment set id
+        required: true
+        default: classic-fantasy
+        type: string
+      plan_path:
+        description: Authored plan path (used by init)
+        required: false
+        default: data/theme-equipment-sets/classic-fantasy.json
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: theme-equipment-${{ inputs.set_id }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        if: inputs.action != 'publish'
+        uses: actions/checkout@v4
+
+      # The publisher alone receives the owner-scoped credential because it
+      # pushes the combined, already-approved art surface to assets/queue.
+      - name: Checkout for publish
+        if: inputs.action == 'publish'
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CRAWLER_CI_PAT }}
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Inspect or advance theme set
+        if: inputs.action == 'status' || inputs.action == 'advance'
+        env:
+          THEME_ACTION: ${{ inputs.action }}
+          THEME_SET_ID: ${{ inputs.set_id }}
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+        run: npm run sprites:theme-equipment -- "$THEME_ACTION" --set-id "$THEME_SET_ID"
+
+      - name: Initialize or run paid phase
+        if: inputs.action == 'init' || inputs.action == 'run-phase'
+        env:
+          THEME_ACTION: ${{ inputs.action }}
+          THEME_SET_ID: ${{ inputs.set_id }}
+          THEME_PLAN_PATH: ${{ inputs.plan_path }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_IMAGE_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_IMAGE_DEPLOYMENT }}
+          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
+          AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT }}
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          SPRITES_PROVIDER: azure-openai
+          SPRITES_TEXT_PROVIDER: azure-openai
+          SPRITES_SYNTH_PROVIDER: azure-openai
+          SPRITES_VISION_PROVIDER: azure-openai
+          # Existing synthesizeBrief/rejudgeRun gate.
+          SPRITES_ALLOW_CI_PIPELINE: 'true'
+          # Narrower collection-judge gate, bound to this workflow ref in code.
+          SPRITES_ALLOW_CI_THEME_PIPELINE: 'true'
+        run: |
+          if [ "$THEME_ACTION" = "init" ]; then
+            npm run sprites:theme-equipment -- init --plan "$THEME_PLAN_PATH"
+          else
+            npm run sprites:theme-equipment -- run-phase --set-id "$THEME_SET_ID"
+          fi
+
+      - name: Publish approved theme set
+        if: inputs.action == 'publish'
+        env:
+          THEME_SET_ID: ${{ inputs.set_id }}
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          SPRITES_ALLOW_CI_THEME_PUBLISH: 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm run sprites:theme-equipment -- publish --set-id "$THEME_SET_ID"

@@ -110,6 +110,18 @@ describe('resolveDesignLanguageAddenda', () => {
     expect(resolveDesignLanguageAddenda('goblin-grunt', 1)).toEqual({});
   });
 
+  it('uses an authored theme override for equipment outside hard-coded families', () => {
+    expect(
+      resolveDesignLanguageAddenda(
+        'arming-sword-v2',
+        1,
+        'Practical late-medieval steel with restrained heraldry.',
+      ),
+    ).toEqual({
+      theme: 'Practical late-medieval steel with restrained heraldry.',
+    });
+  });
+
   it('resolves synthesized version suffixes to the canonical family sprite', () => {
     expect(resolveDesignLanguageAddenda('faerie-boss-v1', 2).theme).toBe(
       FAMILY_DESIGN_LANGUAGE.faeries,
