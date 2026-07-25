@@ -356,7 +356,7 @@ describe('judgeVariant — happy path', () => {
       env: {},
     });
 
-    expect(scorecard.passed).toBe(true);
+    expect(scorecard.passed).toBe(false);
     expect(scorecard.hardBlockEvaluated).toBe(true);
     expect(scorecard.hardBlocked).toBe(true);
     expect(scorecard.hardBlockInstruction).toBe(JUDGE_HARD_BLOCK_PHRASE);

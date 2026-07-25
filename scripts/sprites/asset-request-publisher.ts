@@ -99,6 +99,10 @@ export async function publishSelectedAssetRequests(
       );
     }
 
+    const pendingTerminal: Array<{
+      controller: ReturnType<typeof createIssueCheckpointController>;
+      output: z.infer<typeof publishOutputSchema>;
+    }> = [];
     let published = 0;
     let skipped = 0;
     for (const item of prepared) {
@@ -146,10 +150,15 @@ export async function publishSelectedAssetRequests(
       );
       if (result.resumed) skipped++;
       else published++;
+      pendingTerminal.push({ controller, output: result.output });
+    }
+    // All items succeeded — write terminal marks atomically after the loop so a
+    // mid-batch conflict does not strand earlier items with a stale published state.
+    for (const { controller, output } of pendingTerminal) {
       await markIssuePipelineTerminal(controller, 'published', {
-        publishedAt: result.output.publishedAt,
-        branch: result.output.branch,
-        prNumber: result.output.prNumber,
+        publishedAt: output.publishedAt,
+        branch: output.branch,
+        prNumber: output.prNumber,
       });
     }
     return { published, skipped };
@@ -186,7 +195,7 @@ export async function discoverReadyCheckpoints(store: RunStore): Promise<ReadyCh
       continue;
     }
     if (parsed.data.stage !== 'completed') continue;
-    if (parsed.data.stages.publish?.status === 'completed') continue;
+    if (parsed.data.details?.['outcome'] === 'published') continue;
     const details = selectedDetailsSchema.safeParse(parsed.data.details);
     if (!details.success) continue;
     ready.push({

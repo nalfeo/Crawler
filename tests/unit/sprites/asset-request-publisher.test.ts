@@ -42,7 +42,7 @@ function makeStore(): RunStore & { mem: Map<string, Buffer> } {
 
 function checkpoint(
   issueNumber: number,
-  outcome: 'selected-pending-publish' | 'quality-stopped',
+  outcome: 'selected-pending-publish' | 'quality-stopped' | 'published',
   publishCompleted = false,
 ): Buffer {
   return Buffer.from(
@@ -85,10 +85,7 @@ describe('asset-request publication discovery', () => {
       issueCheckpointKey(11, 'fingerprint-11'),
       checkpoint(11, 'selected-pending-publish'),
     );
-    await store.put(
-      issueCheckpointKey(12, 'fingerprint-12'),
-      checkpoint(12, 'selected-pending-publish', true),
-    );
+    await store.put(issueCheckpointKey(12, 'fingerprint-12'), checkpoint(12, 'published', true));
     await store.put(issueCheckpointKey(13, 'fingerprint-13'), Buffer.from('{truncated'));
 
     await expect(discoverReadyCheckpoints(store)).resolves.toEqual([
@@ -101,6 +98,21 @@ describe('asset-request publication discovery', () => {
         }),
       }),
     ]);
+  });
+
+  it('re-discovers an item whose publish stage completed but terminal mark was not written', async () => {
+    // Simulates item A from a failed batch: runCheckpointStage wrote
+    // stages.publish.status='completed' but markIssuePipelineTerminal
+    // was never called because item B later threw a destination-conflict.
+    const store = makeStore();
+    await store.put(
+      issueCheckpointKey(20, 'fingerprint-20'),
+      checkpoint(20, 'selected-pending-publish', /* publishCompleted= */ true),
+    );
+
+    const ready = await discoverReadyCheckpoints(store);
+    expect(ready).toHaveLength(1);
+    expect(ready[0]?.issueNumber).toBe(20);
   });
 });
 

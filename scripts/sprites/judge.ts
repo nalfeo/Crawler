@@ -572,7 +572,7 @@ function buildScorecard(args: {
     bossPresence: args.payload.boss_presence,
     presentation: args.payload.presentation,
     themeAdherence: args.payload.theme_adherence,
-    passed: rejectedBy.length === 0,
+    passed: rejectedBy.length === 0 && !(hardBlock?.blocked ?? false),
     minScore,
     rejectedBy,
     hardBlockEvaluated: args.hardBlockEvaluated,
