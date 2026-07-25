@@ -18,6 +18,27 @@ const HOUR = 3600_000;
 const START = Date.parse('2026-07-01T00:00:00.000Z');
 const at = (hours: number) => new Date(START + hours * HOUR).toISOString();
 
+function graphqlPage(
+  prs: Array<Record<string, unknown>>,
+  endCursor: string | null,
+  hasNextPage: boolean,
+) {
+  return JSON.stringify({
+    data: {
+      repository: {
+        pullRequests: {
+          pageInfo: { endCursor, hasNextPage },
+          nodes: prs.map((pr) => ({
+            ...pr,
+            reviews: { nodes: [] },
+            commits: { nodes: [] },
+          })),
+        },
+      },
+    },
+  });
+}
+
 describe('computeStageTimings', () => {
   it('splits lead time into review queue, rework, and merge queue', () => {
     const [timing] = computeStageTimings([
@@ -147,7 +168,7 @@ describe('fetchMergedPrs', () => {
     }));
     const oldest = firstPage.at(-1)!.mergedAt;
     const secondPage = [
-      firstPage.at(-1),
+      firstPage.at(-1)!,
       {
         number: 26,
         title: 'PR 26',
@@ -168,17 +189,20 @@ describe('fetchMergedPrs', () => {
       },
     ];
     vi.mocked(execFileSync)
-      .mockReturnValueOnce(JSON.stringify(firstPage))
-      .mockReturnValueOnce(JSON.stringify(secondPage))
-      .mockReturnValueOnce(JSON.stringify([]));
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(graphqlPage(firstPage, 'CURSOR_1', true))
+      .mockReturnValueOnce(graphqlPage(secondPage, null, false));
 
     const prs = fetchMergedPrs('repo-root', 27);
 
     expect(prs.map((pr) => pr.number)).toEqual(Array.from({ length: 27 }, (_, index) => index + 1));
-    expect(execFileSync).toHaveBeenCalledTimes(2);
-    const secondArgs = vi.mocked(execFileSync).mock.calls[1]![1] as string[];
-    expect(secondArgs).toContain('--search');
-    expect(secondArgs).toContain(`merged:<${new Date(Date.parse(oldest) + 1).toISOString()}`);
+    expect(execFileSync).toHaveBeenCalledTimes(3);
+    const repoArgs = vi.mocked(execFileSync).mock.calls[0]![1] as string[];
+    expect(repoArgs).toEqual(['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner']);
+    const secondArgs = vi.mocked(execFileSync).mock.calls[2]![1] as string[];
+    expect(secondArgs).toContain('api');
+    expect(secondArgs).toContain('graphql');
+    expect(secondArgs).toContain('cursor=CURSOR_1');
   });
 
   it('stops instead of looping forever when a page adds no unseen PRs', () => {
@@ -194,11 +218,12 @@ describe('fetchMergedPrs', () => {
       },
     ];
     vi.mocked(execFileSync)
-      .mockReturnValueOnce(JSON.stringify(repeated))
-      .mockReturnValueOnce(JSON.stringify(repeated));
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(graphqlPage(repeated, 'CURSOR_1', true))
+      .mockReturnValueOnce(graphqlPage(repeated, 'CURSOR_2', true));
 
     expect(fetchMergedPrs('repo-root', 2).map((pr) => pr.number)).toEqual([1]);
-    expect(execFileSync).toHaveBeenCalledTimes(2);
+    expect(execFileSync).toHaveBeenCalledTimes(3);
   });
 });
 
