@@ -38,6 +38,7 @@
   "lighting": {
     "ambient": 0.1
   },
+  "terrainPackId": "industrial-cave",
   "props": {
     "biomeTag": "cave",
     "densityMultiplier": 0.8,
