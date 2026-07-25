@@ -62,7 +62,10 @@ jobs:
       - name: Authenticate git with CRAWLER_CI_PAT
         env:
           GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
-        run: gh auth setup-git
+        run: |
+          gh auth setup-git
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Run reconciler
         id: reconcile

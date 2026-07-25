@@ -14,6 +14,10 @@
  *      a. PACK surface (wall atlas / floor pool / corridor pool) — if a
  *         `terrainPackId` is supplied, the tile type is eligible, AND
  *         `scene.textures.exists(textureKey)` is true, stamp from the pack.
+ *         For WALL tiles a floor-pool underdraw is stamped first so that
+ *         transparent regions of the blob47 silhouette (open-edge quadrants
+ *         are inset by WALL_INSET_PX of alpha) expose ground rather than the
+ *         empty RenderTexture (which reads as pure black).
  *         Missing pack textures fall through to the next step so a cold boot
  *         or an asset load error never leaves a blank tile.
  *      b. GENERATED single-texture tile — if the def has a `textureKey` whose
@@ -201,6 +205,21 @@ export function buildTerrainLayer(
         const canonicalMask = normalizeBlob47Mask(rawMask);
         const frameIndex = maskFrameLookup.get(canonicalMask);
         if (frameIndex !== undefined && scene.textures.exists(pack.wallAutotile.textureKey)) {
+          // Stamp the floor pool variant underneath the wall frame first, so that
+          // transparent regions of the blob47 silhouette (open-edge quadrants are
+          // inset by WALL_INSET_PX of alpha) expose ground rather than the empty
+          // RenderTexture (which reads as black). The underdraw is NOT counted in
+          // packFloorCount — it is not a floor tile from the player's perspective
+          // and must not pollute floor-diversity metrics.
+          const underVariant = pickPoolVariant(pack.floorPool, floorSeed, tx, ty);
+          if (underVariant && scene.textures.exists(underVariant.textureKey)) {
+            rt.stamp(underVariant.textureKey, undefined, tx * tileSize, ty * tileSize, {
+              originX: 0,
+              originY: 0,
+              scaleX: packPoolScale,
+              scaleY: packPoolScale,
+            });
+          }
           rt.stamp(pack.wallAutotile.textureKey, frameIndex, tx * tileSize, ty * tileSize, {
             originX: 0,
             originY: 0,

@@ -146,6 +146,7 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(result.spriteCount).toBe(0);
     expect(result.colorCount).toBe(0);
     expect(result.packWallCount).toBe(1);
+    // Underdraw does NOT count toward packFloorCount — it is not a player-visible floor tile.
     expect(result.packFloorCount).toBe(0);
     expect(result.packCorridorCount).toBe(0);
 
@@ -155,11 +156,17 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       (m) => m.maskId === expectedMask,
     )!.frameIndex;
 
-    expect(rt.stamps).toHaveLength(1);
-    expect(rt.stamps[0]!.key).toBe(pack.wallAutotile.textureKey);
-    expect(rt.stamps[0]!.frame).toBe(expectedFrame);
-    expect(rt.stamps[0]!.config.scaleX).toBe(packWallScale);
-    expect(rt.stamps[0]!.config.scaleY).toBe(packWallScale);
+    // stamps[0] = floor-pool underdraw, stamps[1] = wall atlas frame.
+    expect(rt.stamps).toHaveLength(2);
+    const expectedUnderdraw = pickPoolVariant(pack.floorPool, 42, 0, 0)!;
+    expect(rt.stamps[0]!.key).toBe(expectedUnderdraw.textureKey);
+    expect(rt.stamps[0]!.frame).toBeUndefined();
+    expect(rt.stamps[0]!.config.scaleX).toBe(packPoolScale);
+    expect(rt.stamps[0]!.config.scaleY).toBe(packPoolScale);
+    expect(rt.stamps[1]!.key).toBe(pack.wallAutotile.textureKey);
+    expect(rt.stamps[1]!.frame).toBe(expectedFrame);
+    expect(rt.stamps[1]!.config.scaleX).toBe(packWallScale);
+    expect(rt.stamps[1]!.config.scaleY).toBe(packWallScale);
   });
 
   it('stamps the fully-enclosed (mask 255) frame for an interior wall tile surrounded by walls', () => {
@@ -170,8 +177,9 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
 
     buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
 
-    // Center tile is index (1,1) -> the 5th stamp (row-major, ty then tx).
-    const centerStamp = rt.stamps[1 * 3 + 1];
+    // Each wall tile produces 2 stamps (floor underdraw + wall frame).
+    // Center tile is row-major index (1*3+1)=4, so wall stamp is at position 4*2+1=9.
+    const centerStamp = rt.stamps[(1 * 3 + 1) * 2 + 1];
     const rawMask = neighborMask8InTerrain(floorMap.terrain, 3, 3, 1, 1, TerrainType.STONE_WALL);
     expect(rawMask).toBe(255);
     const canonicalMask = normalizeBlob47Mask(255);
@@ -204,13 +212,14 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       (m) => m.maskId === normalizeBlob47Mask(rawRight),
     )!.frameIndex;
 
-    expect(rt.stamps).toHaveLength(2);
-    expect(rt.stamps[0]!.frame).toBe(leftFrame);
-    expect(rt.stamps[1]!.frame).toBe(rightFrame);
-    expect(rt.stamps[0]!.frame).not.toBe(
+    // Each wall tile produces 2 stamps (floor underdraw + wall frame).
+    expect(rt.stamps).toHaveLength(4);
+    expect(rt.stamps[1]!.frame).toBe(leftFrame);
+    expect(rt.stamps[3]!.frame).toBe(rightFrame);
+    expect(rt.stamps[1]!.frame).not.toBe(
       pack.wallAutotile.masks.find((m) => m.maskId === 0)!.frameIndex,
     );
-    expect(rt.stamps[1]!.frame).not.toBe(
+    expect(rt.stamps[3]!.frame).not.toBe(
       pack.wallAutotile.masks.find((m) => m.maskId === 0)!.frameIndex,
     );
   });
@@ -296,5 +305,53 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(result.packFloorCount).toBe(0);
     expect(result.colorCount).toBe(1);
     expect(rt.stamps).toHaveLength(0);
+  });
+
+  it('wall tile underdraw: stamps floor-pool texture first, then wall atlas frame on top', () => {
+    const { scene, rt } = createPackScene(allPackKeys);
+    const floorMap = makeFloorMap([TerrainType.STONE_WALL], 1, 1, 42);
+
+    const result = buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    // Two stamps per wall tile: [0]=underdraw from floorPool, [1]=wall atlas frame.
+    expect(rt.stamps).toHaveLength(2);
+    const expectedUnderdraw = pickPoolVariant(pack.floorPool, 42, 0, 0)!;
+    expect(rt.stamps[0]!.key).toBe(expectedUnderdraw.textureKey);
+    expect(rt.stamps[0]!.frame).toBeUndefined();
+    expect(rt.stamps[0]!.config.scaleX).toBe(packPoolScale);
+    expect(rt.stamps[0]!.config.scaleY).toBe(packPoolScale);
+    expect(rt.stamps[0]!.x).toBe(0);
+    expect(rt.stamps[0]!.y).toBe(0);
+    expect(rt.stamps[1]!.key).toBe(pack.wallAutotile.textureKey);
+    // packFloorCount must stay 0: the underdraw is not a player-visible floor tile.
+    expect(result.packFloorCount).toBe(0);
+    expect(result.packWallCount).toBe(1);
+  });
+
+  it('wall tile underdraw is deterministic: same seed+position gives same underdraw tile', () => {
+    const { scene: sceneA, rt: rtA } = createPackScene(allPackKeys);
+    const { scene: sceneB, rt: rtB } = createPackScene(allPackKeys);
+    const floorMap = makeFloorMap([TerrainType.STONE_WALL], 1, 1, 77);
+
+    buildTerrainLayer(sceneA, floorMap, { terrainPackId: 'industrial-cave' });
+    buildTerrainLayer(sceneB, floorMap, { terrainPackId: 'industrial-cave' });
+
+    // stamps[0] is the floor underdraw — must be identical across two bakes.
+    expect(rtA.stamps[0]!.key).toBe(rtB.stamps[0]!.key);
+  });
+
+  it('wall tile stamps only wall frame (no underdraw) when floor pool textures are missing', () => {
+    // Load wall atlas but NOT floor pool textures — simulates partial asset load.
+    const wallOnlyKeys = new Set([pack.wallAutotile.textureKey]);
+    const { scene, rt } = createPackScene(wallOnlyKeys);
+    const floorMap = makeFloorMap([TerrainType.STONE_WALL], 1, 1);
+
+    const result = buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    // Wall stamp happens (wall texture is loaded), but underdraw is skipped (floor textures missing).
+    expect(result.packWallCount).toBe(1);
+    expect(result.packFloorCount).toBe(0);
+    expect(rt.stamps).toHaveLength(1);
+    expect(rt.stamps[0]!.key).toBe(pack.wallAutotile.textureKey);
   });
 });

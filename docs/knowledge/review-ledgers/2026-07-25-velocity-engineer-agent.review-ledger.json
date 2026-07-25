@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "velocity-engineer-agent",
+  "task_title": "Velocity engineer agent and A/B trial lab",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gpt-5.5) on the A/B lab design. 4 blocking + 2 non-blocking: benchmark overfitting, insufficient leak prevention, primary-metric mismatch, survivorship-biased corpus, censoring bias, junctioned node_modules. Divergence: minor but real - the lab was demoted from arbiter to pre-screen and a field-signal requirement was added; leak handling was redesigned from prevention to detection after the proposed prevention was empirically disproven."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "clean": false,
+          "models": ["gpt-5.5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "notes": "Both High severity, both the silent-zero class. (1) isUsable did not exclude trials with error set, so a crashed launch whose verifier passed anyway entered the medians as a zero-turn zero-token fastest run. (2) ContextMetrics could not distinguish no-context-used from event-log-missing, so an unmeasured arm won every context comparison. Fixed: isUsable now requires !error; added ContextMetrics.available gating summarizeArm/buildComparisons plus explicit warnings. 4 regression tests added."
+        },
+        {
+          "round": 2,
+          "clean": true,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Verified both round-1 fixes complete; confirmed stats correctness (Cliff delta tie handling, bootstrap percentile indexing, assertOneFactor). Found one remaining instance of the same root cause: summarizeArm computed passed/passRate off raw verifierPassed, so a crashed or leaked trial still inflated the arm pass rate. Fixed to count usable over attempted; 2 regression tests added, one stale test updated. Reviewer confirmed nothing else outstanding."
+        }
+      ]
+    }
+  }
+}

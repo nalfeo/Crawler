@@ -579,11 +579,18 @@ export function buildSummary(raw) {
       p50: 0,
       p95: 0,
       max: 0,
+      // Context cost, not just wall-clock cost. A tool can be fast and still be
+      // the reason a session compacts.
+      totalResultBytes: 0,
+      maxResultBytes: 0,
       _durations: [],
     };
     row.count += 1;
     row.totalMs += t.durationMs;
     row.max = Math.max(row.max, t.durationMs);
+    const bytes = t.resultSizeBytes || 0;
+    row.totalResultBytes += bytes;
+    row.maxResultBytes = Math.max(row.maxResultBytes, bytes);
     if (t.success === false) row.failures += 1;
     row._durations.push(t.durationMs);
     byToolName.set(t.name, row);
@@ -602,6 +609,9 @@ export function buildSummary(raw) {
         p95: p(0.95),
         max: r.max,
         failures: r.failures,
+        totalResultBytes: r.totalResultBytes,
+        avgResultBytes: Math.round(r.totalResultBytes / r.count),
+        maxResultBytes: r.maxResultBytes,
       };
     })
     .sort((a, b) => b.totalMs - a.totalMs);
@@ -741,6 +751,13 @@ export function buildSummary(raw) {
     hooks: raw.hooks,
     longestTools,
     toolAggregates,
+    // Same rows, ranked by context cost instead of latency. Time-ranked and
+    // context-ranked orders differ sharply (a 200ms grep can return 300KB),
+    // and context cost is what drives compaction.
+    contextSinks: [...toolAggregates]
+      .filter((t) => t.totalResultBytes > 0)
+      .sort((a, b) => b.totalResultBytes - a.totalResultBytes)
+      .slice(0, 10),
     hookAggregates,
     usages: raw.usages,
     modelBreakdown,

@@ -683,6 +683,38 @@ describe('buildCompletionComment', () => {
     );
   });
 
+  it('uses resolveForExternalRead when store delegates it (e.g. CachingRunStore wrapping Azure)', () => {
+    // Simulate a CachingRunStore that has resolveForExternalRead forwarded
+    // from the inner Azure store — the regression scenario: without the fix,
+    // buildCompletionComment falls back to plain blob URLs (no SAS token).
+    const innerStore = makeStore();
+    const cachingLikeStore: RunStore = {
+      ...innerStore,
+      resolve(key) {
+        return `https://private.blob.core.windows.net/container/${key}`;
+      },
+      resolveForExternalRead(key) {
+        return `https://private.blob.core.windows.net/container/${key}?sas=token123`;
+      },
+    };
+    const result = {
+      summary: {
+        brief: 'war-pick',
+        runId: 'run-7',
+        attempts: 1,
+        variantCount: 2,
+        chosen: null,
+        candidates: [],
+      },
+      summaryPath: 'war-pick/run-7/summary.json',
+    } as never;
+    const comment = buildCompletionComment(result, cachingLikeStore);
+    expect(comment).toContain('?sas=token123');
+    expect(comment).not.toContain(
+      '![Spritesheet](https://private.blob.core.windows.net/container/war-pick/run-7/sheet-00.png)',
+    );
+  });
+
   it('includes the chosen variant image embed with pass status when a chosen candidate exists', () => {
     const store = makeStore();
     const result = {

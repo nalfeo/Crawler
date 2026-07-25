@@ -64,6 +64,14 @@ const DOT_NPC_RADIUS = 0.62;
 const ROOM_MARKER_SIZE = 1.6;
 const STAIRS_MARKER_SIZE = 1.1;
 const WAYPOINT_MARKER_SIZE = 1.8;
+/** Size (in dial-local pixels) of each leg of the radar edge arrow. */
+const RADAR_EDGE_ARROW_SIZE = 3;
+/** Inset from RADAR_CLIP_RADIUS for the radar edge arrow tip. */
+const RADAR_EDGE_ARROW_INSET = 10;
+/** Size (in screen pixels) of each leg of the overlay viewport-edge arrow. */
+const OVERLAY_EDGE_ARROW_SIZE = 6;
+/** Inset (screen pixels) from the viewport boundary for the overlay edge arrow. */
+const OVERLAY_EDGE_ARROW_INSET = 10;
 
 /** Terrain colour palette for minimap (same hues as main terrain, darker). */
 const MINI_COLORS: Readonly<Record<number, number>> = {
@@ -163,18 +171,23 @@ export function createHudMinimap(scene: Phaser.Scene): {
    * top-right corner, so without this it punches through wide panels.
    */
   setHudVisible(visible: boolean): void;
+  getOverlayViewportBounds(): ScreenBounds | null;
   /**
    * Test/automation affordance: world-space bounds of the fullscreen-overlay
    * close button while the overlay is open, or null when it is closed. Lets e2e
    * harnesses tap the close button at its real (responsive) position.
    */
   getOverlayCloseBounds(): ScreenBounds | null;
+  /** Screen-space bounds of the overlay waypoint edge arrow when drawn. */
+  getOverlayWaypointArrowBounds(): ScreenBounds | null;
   /**
    * Screen-space bounds of the docked radar dial when visible, or null when it
    * is hidden (e.g. suppressed by an open character panel). Lets deterministic
    * e2e assert the minimap does not punch through a full-screen panel.
    */
   getDockedBounds(): ScreenBounds | null;
+  /** Screen-space bounds of the docked radar waypoint edge arrow when drawn. */
+  getRadarWaypointArrowBounds(): ScreenBounds | null;
   destroy(): void;
 } {
   // --- Round radar minimap chrome (top-right corner) ------------------------
@@ -324,6 +337,15 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setDepth(HUD_DEPTH + 4)
     .setVisible(false);
 
+  // Screen-space overlay arrows — drawn in screen coordinates (not tile space)
+  // so they stay pinned to the viewport boundary regardless of pan/zoom state.
+  // Shown only when the overlay is open and a waypoint is outside the viewport.
+  const overlayArrowGraphics = scene.add
+    .graphics()
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 5)
+    .setVisible(false);
+
   // Fixed screen-space content for the docked radar dial. Terrain + blips are
   // composited here every frame and clipped with the annulus cutout (erase).
   const radarRt = scene.add
@@ -351,6 +373,24 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let dragging = false;
   let lastPinchDist = 0;
   let lastTerritoryPaletteSignature = '';
+  let hudRadarScale = 1;
+  let lastOverlayWaypointArrowBounds: ScreenBounds | null = null;
+  let lastRadarWaypointArrowBounds: ScreenBounds | null = null;
+
+  function triangleBounds(
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    cx: number,
+    cy: number,
+  ): ScreenBounds {
+    const minX = Math.min(ax, bx, cx);
+    const maxX = Math.max(ax, bx, cx);
+    const minY = Math.min(ay, by, cy);
+    const maxY = Math.max(ay, by, cy);
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }
 
   function getGameSize(): { width: number; height: number } {
     // HUD geometry is laid out in design space (1280×720). After the HiDPI
@@ -386,6 +426,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     // without touching the per-tile clip math in drawRadar.
     const navLayout = resolveNavigationHudLayout(getUiScale(scene), 1);
     const radarScale = navLayout.radarScale;
+    hudRadarScale = radarScale;
     const scaledRadius = HUD_RADAR_RADIUS * radarScale;
     const scaledCx = navLayout.radarBounds.x + navLayout.radarBounds.width / 2;
     const scaledCy = navLayout.radarBounds.y + HUD_RADAR_DIAMETER * radarScale * 0.5;
@@ -486,11 +527,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
       terrainRt?.setVisible(Boolean(lastFloorMap));
       territoryRt?.setVisible(Boolean(lastFloorMap));
       dotGraphics.setVisible(Boolean(lastFloorMap));
+      overlayArrowGraphics.setVisible(Boolean(lastFloorMap));
       applyViewTransform();
     } else {
       // Docked radar: the clipped radarRt is the only visible content.
       terrainRt?.setVisible(false);
       dotGraphics.setVisible(false);
+      overlayArrowGraphics.setVisible(false);
       radarRt.setVisible(Boolean(lastFloorMap));
       applyHudTransform();
       territoryRt?.setVisible(false);
@@ -522,6 +565,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       terrainRt?.setVisible(false);
       territoryRt?.setVisible(false);
       dotGraphics.setVisible(false);
+      overlayArrowGraphics.setVisible(false);
     } else {
       // Restore the correct docked/overlay state; the next sync() redraws.
       setOverlayVisible(overlayOpen);
@@ -708,6 +752,75 @@ export function createHudMinimap(scene: Phaser.Scene): {
   }
 
   /**
+   * Draws viewport-edge arrows in screen space for quest waypoints that are
+   * outside the visible area of the full-screen overlay. Uses `overlayArrowGraphics`
+   * (not tile-space dotGraphics) so arrows stay pinned to the viewport boundary
+   * regardless of current pan/zoom state.
+   */
+  function drawOverlayArrows(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
+    overlayArrowGraphics.clear();
+    lastOverlayWaypointArrowBounds = null;
+    if (!viewState) {
+      return;
+    }
+    const waypoint = getTrackedQuestWaypoint(world, playerEid);
+    if (!waypoint) {
+      return;
+    }
+    const wpTile = floorMap.worldToTile(waypoint.x, waypoint.y);
+    const snappedZoom = Math.max(0.25, Math.round(viewState.zoom * 2) / 2);
+    const wpScreenX = viewport.centerX + (wpTile.x + 0.5 - viewState.centerX) * snappedZoom;
+    const wpScreenY = viewport.centerY + (wpTile.y + 0.5 - viewState.centerY) * snappedZoom;
+    if (isInsideViewport(wpScreenX, wpScreenY, viewport)) {
+      return; // waypoint dot is already visible on the overlay map
+    }
+    // Compute direction from viewport center to waypoint screen position.
+    const dx = wpScreenX - viewport.centerX;
+    const dy = wpScreenY - viewport.centerY;
+    const dist = Math.hypot(dx, dy);
+    if (dist === 0) {
+      return;
+    }
+    const nx = dx / dist;
+    const ny = dy / dist;
+    // Rectangle-edge intersection: inset the half-extents so the tip sits a
+    // fixed perpendicular distance from whichever edge it hits, regardless of
+    // the approach angle (subtracting from t would shift along the ray, giving
+    // inconsistent inset near corners).
+    const vRX = viewport.width / 2 - OVERLAY_EDGE_ARROW_INSET;
+    const vRY = viewport.height / 2 - OVERLAY_EDGE_ARROW_INSET;
+    if (vRX <= 0 || vRY <= 0) {
+      return;
+    }
+    const tH = nx !== 0 ? vRX / Math.abs(nx) : Infinity;
+    const tV = ny !== 0 ? vRY / Math.abs(ny) : Infinity;
+    const t = Math.min(tH, tV);
+    const tipX = viewport.centerX + nx * t;
+    const tipY = viewport.centerY + ny * t;
+    const perpX = -ny * OVERLAY_EDGE_ARROW_SIZE;
+    const perpY = nx * OVERLAY_EDGE_ARROW_SIZE;
+    const backX = tipX - nx * OVERLAY_EDGE_ARROW_SIZE * 2;
+    const backY = tipY - ny * OVERLAY_EDGE_ARROW_SIZE * 2;
+    overlayArrowGraphics.fillStyle(DOT_WAYPOINT, 0.92);
+    overlayArrowGraphics.beginPath();
+    overlayArrowGraphics.moveTo(tipX, tipY);
+    overlayArrowGraphics.lineTo(backX - perpX, backY - perpY);
+    overlayArrowGraphics.lineTo(backX + perpX, backY + perpY);
+    overlayArrowGraphics.closePath();
+    overlayArrowGraphics.fillPath();
+    overlayArrowGraphics.lineStyle(1, 0x020617, 0.7);
+    overlayArrowGraphics.strokePath();
+    lastOverlayWaypointArrowBounds = triangleBounds(
+      tipX,
+      tipY,
+      backX - perpX,
+      backY - perpY,
+      backX + perpX,
+      backY + perpY,
+    );
+  }
+
+  /**
    * Renders the docked radar dial: terrain tiles + entity blips composited into
    * `radarRt` in dial-local pixels (player centred), with terrain analytically
    * clipped to the dial circle. Screen-space, deterministic, no masks.
@@ -718,6 +831,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     floorMap: FloorMap,
     visited: Uint8Array,
   ): void {
+    lastRadarWaypointArrowBounds = null;
     const tileFt = floorMap.config.tileSizeFt;
     let ptx = lastPlayerWorldX / tileFt;
     let pty = lastPlayerWorldY / tileFt;
@@ -853,6 +967,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
 
     // Quest waypoint blip — primary tracked objective, always shown.
+    // If the waypoint is outside the radar dial, a small edge arrow points toward it.
     const radarWaypoint = getTrackedQuestWaypoint(world, playerEid);
     if (radarWaypoint) {
       const wpTile = floorMap.worldToTile(radarWaypoint.x, radarWaypoint.y);
@@ -862,6 +977,45 @@ export function createHudMinimap(scene: Phaser.Scene): {
         const half = WAYPOINT_MARKER_SIZE * scale * 0.5;
         radarScratch.fillStyle(DOT_WAYPOINT, 1);
         radarScratch.fillRect(wx - half, wy - half, half * 2, half * 2);
+      } else {
+        // Draw a small triangle arrow at the dial edge pointing toward the waypoint.
+        const adx = wx - cx;
+        const ady = wy - cy;
+        const adist = Math.hypot(adx, ady);
+        if (adist > 0) {
+          const nx = adx / adist;
+          const ny = ady / adist;
+          const edgeR = RADAR_CLIP_RADIUS - RADAR_EDGE_ARROW_INSET;
+          const tipX = cx + nx * edgeR;
+          const tipY = cy + ny * edgeR;
+          const perpX = -ny * RADAR_EDGE_ARROW_SIZE;
+          const perpY = nx * RADAR_EDGE_ARROW_SIZE;
+          const backX = tipX - nx * RADAR_EDGE_ARROW_SIZE * 2;
+          const backY = tipY - ny * RADAR_EDGE_ARROW_SIZE * 2;
+          radarScratch.fillStyle(DOT_WAYPOINT, 1);
+          radarScratch.beginPath();
+          radarScratch.moveTo(tipX, tipY);
+          radarScratch.lineTo(backX - perpX, backY - perpY);
+          radarScratch.lineTo(backX + perpX, backY + perpY);
+          radarScratch.closePath();
+          radarScratch.fillPath();
+          const localBounds = triangleBounds(
+            tipX,
+            tipY,
+            backX - perpX,
+            backY - perpY,
+            backX + perpX,
+            backY + perpY,
+          );
+          const radarOriginX = hudRadarCenterX - HUD_RADAR_RADIUS * hudRadarScale;
+          const radarOriginY = hudRadarCenterY - HUD_RADAR_RADIUS * hudRadarScale;
+          lastRadarWaypointArrowBounds = {
+            x: radarOriginX + localBounds.x * hudRadarScale,
+            y: radarOriginY + localBounds.y * hudRadarScale,
+            width: localBounds.width * hudRadarScale,
+            height: localBounds.height * hudRadarScale,
+          };
+        }
       }
     }
 
@@ -1186,10 +1340,12 @@ export function createHudMinimap(scene: Phaser.Scene): {
     if (terrainRt) {
       if (overlayOpen) {
         drawDots(world, playerEid, floorMap, visited);
+        drawOverlayArrows(world, playerEid, floorMap);
         applyViewTransform();
         terrainRt.setVisible(true);
         territoryRt?.setVisible(true);
         dotGraphics.setVisible(true);
+        overlayArrowGraphics.setVisible(true);
         radarRt.setVisible(false);
       } else {
         drawRadar(world, playerEid, floorMap, visited);
@@ -1197,6 +1353,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
         terrainRt.setVisible(false);
         territoryRt?.setVisible(false);
         dotGraphics.setVisible(false);
+        overlayArrowGraphics.setVisible(false);
         radarRt.setVisible(true);
       }
     }
@@ -1214,6 +1371,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     terrainRt?.destroy();
     territoryRt?.destroy();
     dotGraphics.destroy();
+    overlayArrowGraphics.destroy();
     hudMapBg.destroy();
     hudRingOuter.destroy();
     hudRingGold.destroy();
@@ -1274,11 +1432,17 @@ export function createHudMinimap(scene: Phaser.Scene): {
     closeOverlay,
     isOverlayOpen: () => overlayOpen,
     setHudVisible,
+    getOverlayViewportBounds: (): ScreenBounds | null => {
+      if (!overlayOpen || masterHidden) return null;
+      return { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height };
+    },
     getOverlayCloseBounds: (): ScreenBounds | null => {
       if (!overlayOpen) return null;
       const b = closeButtonBg.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
+    getOverlayWaypointArrowBounds: (): ScreenBounds | null =>
+      overlayOpen && !masterHidden ? lastOverlayWaypointArrowBounds : null,
     getDockedBounds: (): ScreenBounds | null => {
       if (masterHidden || !hudMapBg.visible) return null;
       const dial = hudMapBg.getBounds();
@@ -1289,6 +1453,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const bottom = Math.max(dial.bottom, label.bottom);
       return { x, y, width: right - x, height: bottom - y };
     },
+    getRadarWaypointArrowBounds: (): ScreenBounds | null =>
+      !masterHidden && hudMapBg.visible ? lastRadarWaypointArrowBounds : null,
     destroy,
   };
 }
