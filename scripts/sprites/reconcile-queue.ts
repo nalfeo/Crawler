@@ -171,6 +171,43 @@ const MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS = [
   'merge-train-landed',
 ] as const;
 
+/**
+ * True when `labels` carries any label under which the train has
+ * deliberately revoked/withheld enrollment (or already landed the PR) — see
+ * `MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS` above for the per-label rationale.
+ */
+function hasMergeTrainExcludeLabel(labels: readonly string[]): boolean {
+  return labels.some((label) =>
+    (MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS as readonly string[]).includes(label),
+  );
+}
+
+/**
+ * Re-ensure the `merge-train` enrollment label on an ALREADY-EXISTING promote
+ * PR (one this cycle did not just create), unless the train has deliberately
+ * revoked/withheld enrollment or already landed it. Used both by the normal
+ * update path (existing open PR found up front) and by the create-race
+ * fallback path (an existing PR discovered only after `gh pr create` failed
+ * because a concurrent run/dispatch already opened one) — both cases reuse a
+ * PR that may not carry our label yet, so both must re-ensure it the same way.
+ */
+async function reEnsureMergeTrainLabel(
+  exec: Exec,
+  repoRoot: string,
+  repo: string | undefined,
+  pr: OpenPromotePr,
+): Promise<void> {
+  if (hasMergeTrainExcludeLabel(pr.labels)) return;
+  await mustGh(exec, repoRoot, [
+    'pr',
+    'edit',
+    String(pr.number),
+    ...repoArgs(repo),
+    '--add-label',
+    MERGE_TRAIN_LABEL,
+  ]);
+}
+
 /** git args that write to a specific worktree/cwd. */
 async function runGit(
   exec: Exec,
@@ -727,29 +764,18 @@ export async function runReconcile(
             }`,
           );
         }
-        // Race-fallback: the re-queried PR may have been opened without the
-        // enrollment label (concurrent writer or a create that failed after
-        // creation but before label application). Apply the same
-        // exclusion-aware re-ensure logic as the update path.
-        const raceFallbackHasExcludeLabel = reQueried.labels.some((label) =>
-          (MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS as readonly string[]).includes(label),
-        );
-        if (!raceFallbackHasExcludeLabel) {
-          await mustGh(deps.exec, repoRoot, [
-            'pr',
-            'edit',
-            String(reQueried.number),
-            ...repoArgs(repo),
-            '--add-label',
-            MERGE_TRAIN_LABEL,
-          ]);
-        }
+        // This PR was NOT created by the `--label` call above (our create
+        // attempt failed) — it was opened by a concurrent run/dispatch, so it
+        // may not carry `merge-train` yet. Re-ensure it the same way the
+        // normal update path does, so this race can't silently reproduce the
+        // blocked-forever bug this reconciler is meant to fix.
+        await reEnsureMergeTrainLabel(deps.exec, repoRoot, repo, reQueried);
         prNumber = reQueried.number;
         created = false;
       }
     } else {
       // Update the existing open PR's title/body to describe the current batch.
-      const editArgs = [
+      await mustGh(deps.exec, repoRoot, [
         'pr',
         'edit',
         String(existing.number),
@@ -758,19 +784,13 @@ export async function runReconcile(
         title,
         '--body',
         body,
-      ];
+      ]);
       // Re-ensure the enrollment label EVERY cycle: `crawler-ci[bot]` has been
       // observed stripping it mid-cycle (see #1916's event log), so a
       // one-time apply at create is insufficient. Only skip when the train
       // has deliberately revoked/withheld enrollment (or landed the PR) —
       // see MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS above.
-      const hasExcludeLabel = existing.labels.some((label) =>
-        (MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS as readonly string[]).includes(label),
-      );
-      if (!hasExcludeLabel) {
-        editArgs.push('--add-label', MERGE_TRAIN_LABEL);
-      }
-      await mustGh(deps.exec, repoRoot, editArgs);
+      await reEnsureMergeTrainLabel(deps.exec, repoRoot, repo, existing);
       prNumber = existing.number;
       created = false;
     }

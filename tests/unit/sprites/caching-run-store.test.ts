@@ -71,6 +71,22 @@ async function waitUntil(
   return false;
 }
 
+async function rmDirWithRetry(dir: string, attempts = 15, delayMs = 100): Promise<void> {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const retryable = code === 'EBUSY' || code === 'EPERM' || code === 'ENOTEMPTY';
+      if (!retryable || attempt === attempts) {
+        throw error;
+      }
+      await delay(delayMs);
+    }
+  }
+}
+
 /** Counts every operation and delegates to a real inner store. */
 class CountingStore implements RunStore {
   readonly backend = 'azure-blob' as const;
@@ -401,9 +417,9 @@ beforeEach(() => {
   store = new CachingRunStore({ inner, cache });
 });
 
-afterEach(() => {
-  rmSync(innerDir, { recursive: true, force: true });
-  rmSync(cacheDir, { recursive: true, force: true });
+afterEach(async () => {
+  await rmDirWithRetry(innerDir);
+  await rmDirWithRetry(cacheDir);
 });
 
 describe('isCacheableKey', () => {

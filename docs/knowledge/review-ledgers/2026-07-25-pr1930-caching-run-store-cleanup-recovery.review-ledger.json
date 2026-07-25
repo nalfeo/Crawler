@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "pr1930-caching-run-store-cleanup-recovery",
+  "task_title": "Recover PR #1930 sprite pipeline test cleanup flake",
+  "estimated_apples": 2,
+  "stages": {}
+}
