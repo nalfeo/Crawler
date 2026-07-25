@@ -17,6 +17,9 @@ import {
 const execFileAsync = promisify(execFile);
 const MAX_BUFFER = 20 * 1024 * 1024;
 const MAX_ACTIVE_RUNS = 25;
+const MAX_ASSET_ISSUE_PAGES = 5;
+const ASSET_COMMENT_WINDOW = 100;
+const RECENT_PIPELINE_RUNS = 3;
 export const RUN_STATUSES = ['queued', 'in_progress', 'waiting', 'pending', 'requested'];
 const TRAIN_COMMENT_LABELS = new Set([
   QUEUE_LABEL,
@@ -99,6 +102,19 @@ async function runGhJson(repository, endpoint, signal) {
   }
 }
 
+async function runGhGraphql(query, variables, signal) {
+  const args = ['api', 'graphql', '-f', `query=${query}`];
+  for (const [name, value] of Object.entries(variables)) {
+    if (value !== null && value !== undefined) args.push('-F', `${name}=${value}`);
+  }
+  const output = await runCommand('gh', args, { signal });
+  try {
+    return JSON.parse(output);
+  } catch {
+    throw new Error('GitHub CLI returned invalid GraphQL JSON.');
+  }
+}
+
 async function paginateArray(repository, endpoint, signal, maxPages = 10) {
   const values = [];
   let apiCalls = 0;
@@ -146,6 +162,177 @@ async function listJobs(repository, runId, signal) {
   return {
     jobs: response.jobs,
     truncated: Number(response.total_count ?? response.jobs.length) > response.jobs.length,
+  };
+}
+
+const ASSET_REQUEST_ISSUES_QUERY = `
+    query AssetRequestIssues($owner: String!, $name: String!, $cursor: String) {
+      repository(owner: $owner, name: $name) {
+        issues(
+          first: 100
+          after: $cursor
+          states: OPEN
+          labels: ["asset-request"]
+          orderBy: { field: CREATED_AT, direction: ASC }
+        ) {
+          nodes {
+            number
+            title
+            url
+            createdAt
+            updatedAt
+            comments(last: ${ASSET_COMMENT_WINDOW}) {
+              totalCount
+              pageInfo { hasPreviousPage }
+              nodes {
+                id
+                body
+                createdAt
+                updatedAt
+                url
+                author { login }
+              }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }
+  `;
+
+export async function loadAssetRequestIssues(repository, signal, queryGraphql = runGhGraphql) {
+  const [owner, name] = repository.split('/');
+  if (!owner || !name) throw new Error('Repository must use owner/name format.');
+  const issues = [];
+  let cursor = null;
+  let apiCalls = 0;
+  let truncated = false;
+  for (let page = 1; page <= MAX_ASSET_ISSUE_PAGES; page += 1) {
+    const response = await queryGraphql(
+      ASSET_REQUEST_ISSUES_QUERY,
+      { owner, name, cursor },
+      signal,
+    );
+    apiCalls += 1;
+    const connection = response.data?.repository?.issues;
+    if (!Array.isArray(connection?.nodes)) {
+      throw new Error('GitHub GraphQL did not return open asset-request issues.');
+    }
+    issues.push(...connection.nodes);
+    if (!connection.pageInfo?.hasNextPage) return { issues, apiCalls, truncated: false };
+    cursor = connection.pageInfo.endCursor;
+    if (!cursor) throw new Error('GitHub GraphQL omitted the next asset-request issue cursor.');
+    if (page === MAX_ASSET_ISSUE_PAGES) truncated = true;
+  }
+  return { issues, apiCalls, truncated };
+}
+
+export function selectLatestRunWithStep(runs, stepPattern) {
+  return (
+    runs.find((run) =>
+      (run.jobs ?? []).some((job) =>
+        (job.steps ?? []).some((step) => stepPattern.test(step.name ?? '')),
+      ),
+    ) ?? null
+  );
+}
+
+async function loadRecentWorkflow(
+  repository,
+  workflowFile,
+  knownRuns,
+  signal,
+  requiredStepPattern = null,
+) {
+  const response = await runGhJson(
+    repository,
+    `actions/workflows/${encodeURIComponent(workflowFile)}/runs?per_page=${RECENT_PIPELINE_RUNS}&page=1`,
+    signal,
+  );
+  if (!Array.isArray(response.workflow_runs)) {
+    throw new Error(`GitHub API did not return workflow runs for ${workflowFile}.`);
+  }
+  const recentRuns = response.workflow_runs
+    .sort(
+      (left, right) =>
+        (Date.parse(right.created_at ?? '') || 0) - (Date.parse(left.created_at ?? '') || 0) ||
+        right.id - left.id,
+    )
+    .slice(0, RECENT_PIPELINE_RUNS);
+  let apiCalls = 1;
+  if (recentRuns.length === 0) {
+    return {
+      workflowFile,
+      recentRuns,
+      latestRun: null,
+      truncated: false,
+      apiCalls,
+    };
+  }
+  let latestRun;
+  if (requiredStepPattern) {
+    const candidates = await mapWithConcurrency(recentRuns, RECENT_PIPELINE_RUNS, async (run) => {
+      const known = knownRuns.find((entry) => entry.id === run.id && !entry.jobsError);
+      if (known) {
+        return {
+          run: {
+            ...run,
+            jobs: known.jobs,
+            jobsTruncated: Boolean(known.jobsTruncated),
+          },
+          apiCalls: 0,
+        };
+      }
+      const result = await listJobs(repository, run.id, signal);
+      return {
+        run: { ...run, jobs: result.jobs, jobsTruncated: result.truncated },
+        apiCalls: 1,
+      };
+    });
+    apiCalls += candidates.reduce((sum, candidate) => sum + candidate.apiCalls, 0);
+    latestRun =
+      selectLatestRunWithStep(
+        candidates.map((candidate) => candidate.run),
+        requiredStepPattern,
+      ) ?? candidates[0].run;
+  } else {
+    const latest = recentRuns[0];
+    const known = knownRuns.find((run) => run.id === latest.id && !run.jobsError);
+    if (known) {
+      latestRun = {
+        ...latest,
+        jobs: known.jobs,
+        jobsTruncated: Boolean(known.jobsTruncated),
+      };
+    } else {
+      const result = await listJobs(repository, latest.id, signal);
+      latestRun = { ...latest, jobs: result.jobs, jobsTruncated: result.truncated };
+      apiCalls += 1;
+    }
+  }
+  return {
+    workflowFile,
+    recentRuns,
+    latestRun,
+    truncated: Number(response.total_count ?? recentRuns.length) > recentRuns.length,
+    apiCalls,
+  };
+}
+
+async function loadCanonicalAssetRefs(repository, signal) {
+  const refs = await runGhJson(repository, 'git/matching-refs/heads/assets/', signal);
+  if (!Array.isArray(refs)) throw new Error('GitHub API did not return canonical asset refs.');
+  return {
+    refs: refs
+      .filter((entry) =>
+        ['refs/heads/assets/queue', 'refs/heads/assets/promote'].includes(entry.ref),
+      )
+      .map((entry) => ({
+        ref: entry.ref,
+        sha: entry.object?.sha ?? null,
+        url: entry.object?.url ?? null,
+      })),
+    apiCalls: 1,
   };
 }
 
@@ -295,6 +482,45 @@ export async function loadRepositoryState(repository, signal) {
     }
   });
 
+  const assetResults = await Promise.allSettled([
+    loadAssetRequestIssues(repository, signal),
+    loadRecentWorkflow(
+      repository,
+      'asset-request.yml',
+      runs,
+      signal,
+      /ingest asset-request issues/i,
+    ),
+    loadRecentWorkflow(repository, 'sprite-queue-reconciler.yml', runs, signal),
+    loadCanonicalAssetRefs(repository, signal),
+  ]);
+  signal?.throwIfAborted();
+  const assetErrors = [];
+  const assetNames = [
+    'Open asset-request issues',
+    'Asset Request Pipeline runs',
+    'Sprite queue reconciler runs',
+    'Canonical asset branches',
+  ];
+  for (let index = 0; index < assetResults.length; index += 1) {
+    const result = assetResults[index];
+    if (result.status === 'fulfilled') {
+      apiCalls += result.value.apiCalls;
+    } else {
+      const error = `${assetNames[index]}: ${sanitizeErrorText(result.reason?.message ?? result.reason)}`;
+      assetErrors.push(error);
+      partialErrors.push(error);
+    }
+  }
+
+  const issueResult =
+    assetResults[0].status === 'fulfilled'
+      ? assetResults[0].value
+      : { issues: [], truncated: false };
+  const assetWorkflow = assetResults[1].status === 'fulfilled' ? assetResults[1].value : null;
+  const reconcilerWorkflow = assetResults[2].status === 'fulfilled' ? assetResults[2].value : null;
+  const assetRefs = assetResults[3].status === 'fulfilled' ? assetResults[3].value.refs : [];
+
   return {
     repository,
     openPullRequests: openPullResult.values.filter(
@@ -305,6 +531,17 @@ export async function loadRepositoryState(repository, signal) {
     commentsByPr,
     commentFetchFailed,
     runs,
+    assetRequests: {
+      issues: issueResult.issues,
+      issuesTruncated: issueResult.truncated,
+      assetWorkflow,
+      reconcilerWorkflow,
+      refs: assetRefs,
+      pullRequests: openPullResult.values.filter((pullRequest) =>
+        ['assets/queue', 'assets/promote'].includes(pullRequest.head?.ref),
+      ),
+      errors: assetErrors,
+    },
     activeRunsTruncated,
     partialErrors,
     apiCalls,
