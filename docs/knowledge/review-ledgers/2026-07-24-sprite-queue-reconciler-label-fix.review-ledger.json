@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "sprite-queue-reconciler-label-fix",
+  "task_title": "Fix merge-train label enrollment gap in the sprite-queue reconciler (PR2 follow-up)",
+  "estimated_apples": 2,
+  "stages": {}
+}

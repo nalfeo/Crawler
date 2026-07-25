@@ -122,6 +122,55 @@ const DEFAULT_QUEUE_BRANCH = 'assets/queue';
 const DEFAULT_PROMOTE_BRANCH = 'assets/promote';
 const DEFAULT_BASE_BRANCH = 'main';
 
+/**
+ * Merge-train label constants. These MUST mirror
+ * `.github/scripts/merge-train/state.mjs` exactly (source of truth) — see
+ * that file for the full label lifecycle.
+ *
+ * The ONLY merge gate on `main` is the "Merge Train Required Checks" ruleset,
+ * which requires the `merge-train` STATUS context. That status is posted only
+ * by the merge-train GitHub App after it ADMITS a PR, and admission requires
+ * the PR to carry the `merge-train` LABEL (`QUEUE_LABEL`,
+ * `queueEntries()`/`promotionStaleReason()` in `state.mjs`/`reconcile-lib.mjs`).
+ * There is no auto-labeler for `assets/promote` PRs, so without re-ensuring
+ * this label the reconciler's armed `--auto --squash` PRs sit BLOCKED
+ * forever — silently defeating the whole hourly-reconcile feature.
+ */
+const MERGE_TRAIN_LABEL = 'merge-train';
+
+/**
+ * Labels under which the train has DELIBERATELY revoked/withheld enrollment.
+ * Re-adding `merge-train` while any of these is present would fight the
+ * train's own decision instead of respecting it. Confirmed by reading
+ * `.github/scripts/merge-train/reconcile-lib.mjs` and `reconcile.mjs`:
+ *
+ *   - `merge-train-blocked` / `merge-train-recovery-pending`: the train
+ *     explicitly REMOVES `merge-train` whenever it sets either of these
+ *     (`reconcile-lib.mjs` `applyLandedRecoveryDecision` and the
+ *     retry/blocked paths) — re-adding it here would re-enroll a PR the
+ *     train just intentionally pulled from the queue.
+ *   - `merge-train-noop` / `merge-train-validation-failed`: always set
+ *     ALONGSIDE `merge-train-blocked` in the same call (`reconcile.mjs`
+ *     lines setting BLOCKED_LABEL together with each), so excluding on
+ *     `merge-train-blocked` alone would already cover these, but they are
+ *     listed explicitly so the exclusion is self-documenting and does not
+ *     silently depend on that co-occurrence continuing to hold.
+ *   - `merge-train-landed`: the one PERMANENT label — only ever added, never
+ *     removed (see the comment in `state.mjs`). Once present the PR's change
+ *     has already landed on `main`; re-adding `merge-train` is pointless and
+ *     the skip here is effectively final for that PR.
+ *
+ * For the non-terminal labels, skipping the re-add is only for THIS cycle —
+ * the reconciler re-evaluates fresh state on the next run.
+ */
+const MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS = [
+  'merge-train-blocked',
+  'merge-train-recovery-pending',
+  'merge-train-noop',
+  'merge-train-validation-failed',
+  'merge-train-landed',
+] as const;
+
 /** git args that write to a specific worktree/cwd. */
 async function runGit(
   exec: Exec,
@@ -325,9 +374,16 @@ function repoArgs(repo: string | undefined): string[] {
   return repo ? ['--repo', repo] : [];
 }
 
+/** Result of locating the open promote PR: its number and current labels. */
+interface OpenPromotePr {
+  readonly number: number;
+  /** Label names currently on the PR (used to decide whether to re-ensure `MERGE_TRAIN_LABEL`). */
+  readonly labels: readonly string[];
+}
+
 /**
  * Find the single open PR for `promoteBranch → baseBranch` **in the base repo**.
- * Returns its number, or null when none is open.
+ * Returns its number + current labels, or null when none is open.
  *
  * SECURITY: `gh pr list --head <branch>` filters by branch NAME only — it cannot
  * scope the head to the base repository, so a fork PR whose head branch is also
@@ -344,7 +400,7 @@ async function findOpenPromotePr(
   repo: string | undefined,
   promoteBranch: string,
   baseBranch: string,
-): Promise<number | null> {
+): Promise<OpenPromotePr | null> {
   const out = await mustGh(exec, cwd, [
     'pr',
     'list',
@@ -356,16 +412,23 @@ async function findOpenPromotePr(
     '--state',
     'open',
     '--json',
-    'number,headRefName,isCrossRepository',
+    'number,headRefName,isCrossRepository,labels',
     '--limit',
     '100',
   ]);
-  let parsed: Array<{ number?: number; headRefName?: string; isCrossRepository?: boolean }>;
+  let parsed: Array<{
+    number?: number;
+    headRefName?: string;
+    isCrossRepository?: boolean;
+    // `gh`'s `labels` JSON field is an array of `{ name }` objects, not bare strings.
+    labels?: Array<{ name?: string }>;
+  }>;
   try {
     parsed = JSON.parse(out.trim() || '[]') as Array<{
       number?: number;
       headRefName?: string;
       isCrossRepository?: boolean;
+      labels?: Array<{ name?: string }>;
     }>;
   } catch (err) {
     throw new ReconcileError(
@@ -373,14 +436,20 @@ async function findOpenPromotePr(
       `Could not parse gh pr list JSON: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  const numbers = parsed
+  const matches = parsed
     .filter((p) => p.isCrossRepository !== true && p.headRefName === promoteBranch)
-    .map((p) => p.number)
-    .filter((n): n is number => typeof n === 'number');
+    .filter((p): p is typeof p & { number: number } => typeof p.number === 'number');
   // Deterministic: pick the lowest-numbered open PR if (unexpectedly) more than
   // one exists, so re-runs converge on the same PR instead of flapping.
-  numbers.sort((a, b) => a - b);
-  return numbers.length > 0 ? numbers[0]! : null;
+  matches.sort((a, b) => a.number - b.number);
+  const first = matches[0];
+  if (!first) return null;
+  return {
+    number: first.number,
+    labels: (first.labels ?? [])
+      .map((l) => l.name)
+      .filter((n): n is string => typeof n === 'string'),
+  };
 }
 
 /**
@@ -602,6 +671,8 @@ export async function runReconcile(
     if (existing === null) {
       // Create. Handle the create-race (a concurrent run or a manual dispatch
       // opened it between our list and create) by re-querying and reusing.
+      // A brand-new PR can never carry any of the train's revocation labels
+      // yet, so the enrollment label is always safe to apply at create time.
       const createResult = await deps.exec(
         'gh',
         [
@@ -616,6 +687,8 @@ export async function runReconcile(
           title,
           '--body',
           body,
+          '--label',
+          MERGE_TRAIN_LABEL,
         ],
         { cwd: repoRoot },
       );
@@ -633,7 +706,7 @@ export async function runReconcile(
             `gh pr create reported success but no open ${promoteBranch} → ${baseBranch} PR was found.`,
           );
         }
-        prNumber = reQueried;
+        prNumber = reQueried.number;
         created = true;
       } else {
         // Create failed — most commonly because a PR already exists (race). Fall
@@ -654,22 +727,51 @@ export async function runReconcile(
             }`,
           );
         }
-        prNumber = reQueried;
+        // Race-fallback: the re-queried PR may have been opened without the
+        // enrollment label (concurrent writer or a create that failed after
+        // creation but before label application). Apply the same
+        // exclusion-aware re-ensure logic as the update path.
+        const raceFallbackHasExcludeLabel = reQueried.labels.some((label) =>
+          (MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS as readonly string[]).includes(label),
+        );
+        if (!raceFallbackHasExcludeLabel) {
+          await mustGh(deps.exec, repoRoot, [
+            'pr',
+            'edit',
+            String(reQueried.number),
+            ...repoArgs(repo),
+            '--add-label',
+            MERGE_TRAIN_LABEL,
+          ]);
+        }
+        prNumber = reQueried.number;
         created = false;
       }
     } else {
       // Update the existing open PR's title/body to describe the current batch.
-      await mustGh(deps.exec, repoRoot, [
+      const editArgs = [
         'pr',
         'edit',
-        String(existing),
+        String(existing.number),
         ...repoArgs(repo),
         '--title',
         title,
         '--body',
         body,
-      ]);
-      prNumber = existing;
+      ];
+      // Re-ensure the enrollment label EVERY cycle: `crawler-ci[bot]` has been
+      // observed stripping it mid-cycle (see #1916's event log), so a
+      // one-time apply at create is insufficient. Only skip when the train
+      // has deliberately revoked/withheld enrollment (or landed the PR) —
+      // see MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS above.
+      const hasExcludeLabel = existing.labels.some((label) =>
+        (MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS as readonly string[]).includes(label),
+      );
+      if (!hasExcludeLabel) {
+        editArgs.push('--add-label', MERGE_TRAIN_LABEL);
+      }
+      await mustGh(deps.exec, repoRoot, editArgs);
+      prNumber = existing.number;
       created = false;
     }
 
