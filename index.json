@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5476e367beced69fea994a11a896a2f6988969e4",
+    "commitDate": "2026-07-25T19:12:43Z",
+    "commitSubject": "fix(ci): scope conflict coordination and sync authoring branches (#2031)",
+    "capturedAt": "2026-07-25T20:32:10.938Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30171422596",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/5476e367beced69fea994a11a896a2f6988969e4.json"
+  },
+  {
     "commit": "b769f88542ae3f66c7d4c6bbb18ff8bd06a0ac8a",
     "commitDate": "2026-07-25T18:59:54Z",
     "commitSubject": "perf(agent): add `perf:profile` so the Perf Optimizer measures its target instead of guessing (#2030)",
