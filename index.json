@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ee68060002011dfd453aa268bc6f9b945b9afdcd",
+    "commitDate": "2026-07-25T07:13:59Z",
+    "commitSubject": "feat(agent): add perf-optimizer agent + skill with a deterministic gameplay-neutrality gate (#1958)",
+    "capturedAt": "2026-07-25T08:32:30.757Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30149285731",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/ee68060002011dfd453aa268bc6f9b945b9afdcd.json"
+  },
+  {
     "commit": "2581672278b53de7341fff8ca76a1ed680d646f1",
     "commitDate": "2026-07-25T05:01:24Z",
     "commitSubject": "fix(sprite-pipeline): recover legacy asset-request checkpoints instead of deadlocking (#1943)",
