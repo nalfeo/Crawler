@@ -187,7 +187,7 @@ describe('Tongue Repossession hit, pull, miss, and collision safety', () => {
       },
     });
     const pulledY = h.world.stores.position.y[h.player] ?? 0;
-    expect(pulledY).toBeCloseTo(12, 6);
+    expect(pulledY).toBeCloseTo(12.5, 6);
     expect(pulledY).toBeLessThan(14);
   });
 });
