@@ -131,12 +131,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     for (let i = 0; i < count; i += 1) {
       const angle = (i / count) * Math.PI * 2 + rand() * 0.3;
       const dist = radiusPx * (0.6 + rand() * 0.8);
-      const spark = scene.add.circle(
-        x,
-        y,
-        2 + rand() * 2,
-        i % 2 === 0 ? colors[0] : colors[1],
-      );
+      const spark = scene.add.circle(x, y, 2 + rand() * 2, i % 2 === 0 ? colors[0] : colors[1]);
       spark.setDepth(BURST_DEPTH);
       spark.setBlendMode('ADD');
       ignoreUi(spark);
@@ -172,13 +167,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       BURST_DEPTH,
     );
     spawnRing(x, y, radiusPx * 0.2, radiusPx, COLOR_BRONZE, BURST_LIFETIME_MS, BURST_DEPTH);
-    spawnSparkBurst(
-      x,
-      y,
-      radiusPx,
-      [COLOR_VERDIGRIS, COLOR_BRONZE] as const,
-      BURST_SPARK_COUNT,
-    );
+    spawnSparkBurst(x, y, radiusPx, [COLOR_VERDIGRIS, COLOR_BRONZE] as const, BURST_SPARK_COUNT);
   }
 
   /** Squick-specific sewer-green burst for UNDERCITY MOB CALL resolutions. */
@@ -193,7 +182,15 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       BURST_LIFETIME_MS,
       BURST_DEPTH,
     );
-    spawnRing(x, y, radiusPx * 0.25, radiusPx * 1.05, COLOR_SICKLY_MIST, BURST_LIFETIME_MS, BURST_DEPTH);
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.25,
+      radiusPx * 1.05,
+      COLOR_SICKLY_MIST,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
     spawnRing(x, y, radiusPx * 0.05, radiusPx * 0.45, COLOR_BRONZE, BURST_LIFETIME_MS, BURST_DEPTH);
     spawnSparkBurst(
       x,

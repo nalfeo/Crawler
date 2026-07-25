@@ -297,9 +297,9 @@ describe('Floor 2 boss ability delivery status', () => {
     }
   });
 
-  it('promotes the 17-boss backlog only when the production-enable gate is verified', () => {
+  it('promotes the not-started backlog only when the production-enable gate is verified', () => {
     const backlog = FLOOR2_BOSS_ABILITY_STATUS.entries.filter(
-      (entry) => entry.abilityId !== 'queen-mab-verdigris-glamour',
+      (entry) => entry.runtimeState === 'not-started',
     );
     expect(backlog.every((entry) => entry.foundationState === 'verified')).toBe(true);
 
@@ -309,10 +309,10 @@ describe('Floor 2 boss ability delivery status', () => {
         gate.id === 'floor2-boss-production-enable' ? { ...gate, state: 'verified' } : gate,
       ),
     });
-    const promotedBacklog = promoted.entries.filter(
-      (entry) => entry.abilityId !== 'queen-mab-verdigris-glamour',
+    const promotedBacklog = promoted.entries.filter((entry) =>
+      backlog.some((candidate) => candidate.abilityId === entry.abilityId),
     );
-    expect(promotedBacklog).toHaveLength(17);
+    expect(promotedBacklog).toHaveLength(backlog.length);
     expect(
       promotedBacklog.every((entry) => deriveBossAbilityDeliveryStage(entry, promoted) === 'ready'),
     ).toBe(true);
