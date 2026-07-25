@@ -100,4 +100,36 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
     const debug = ai.getOpportunisticDebug();
     expect(Math.hypot(debug.dodgeX, debug.dodgeY)).toBeGreaterThan(0);
   });
+
+  it('uses radial-projectile telegraphs as danger cues and sidesteps out of a spoke lane', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 8, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.position.x[player] = 8;
+    world.stores.position.y[player] = 0;
+    world.mobAbilities.cues.push({
+      abilityId: 'king-skritt-roman-candle-coronation',
+      casterEid: 77,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'radial-projectiles',
+        casterX: 0,
+        casterY: 0,
+        count: 12,
+        spokeLengthFt: 28,
+        offsetDeg: 0,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'ROMAN-CANDLE CORONATION — All hail the Unburnt!',
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const debug = ai.getOpportunisticDebug();
+    expect(Math.hypot(debug.dodgeX, debug.dodgeY)).toBeGreaterThan(0);
+    expect(Math.abs(debug.dodgeY)).toBeGreaterThan(Math.abs(debug.dodgeX));
+  });
 });

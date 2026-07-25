@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { startThemeEquipmentReviewServer } from '../lib/server.mjs';
 
-async function fixture() {
+async function fixture(overrides = {}) {
   const commands = [];
   const runCommand = async (command) => {
     commands.push(command);
@@ -10,16 +10,25 @@ async function fixture() {
     if (command.action === 'artifact') {
       return { contentType: 'image/png', base64: Buffer.from('png').toString('base64') };
     }
+    if (command.action === 'list') {
+      return { sets: [{ id: 'classic-fantasy' }, { id: 'pirate' }], storeStatus: 'ok' };
+    }
+    if (command.action === 'save-plan') return { saved: true, planPath: 'x.json' };
     return { id: 'classic-fantasy', stateRevision: 2 };
   };
+  const dispatched = [];
   const server = await startThemeEquipmentReviewServer({
     instanceId: 'review-1',
     setId: 'classic-fantasy',
     renderHtml: ({ token }) => `<html>${token}</html>`,
     runCommand,
-    dispatchWorkflow: async (action) => ({ dispatched: true, action }),
+    dispatchWorkflow: async (action, setId) => {
+      dispatched.push({ action, setId });
+      return { dispatched: true, action, setId, ref: 'refs/heads/feature' };
+    },
+    ...overrides,
   });
-  return { ...server, commands };
+  return { ...server, commands, dispatched };
 }
 
 test('requires the per-instance token for data access', async () => {
@@ -132,6 +141,162 @@ test('proxies only artifact identities through the trusted command bridge', asyn
       setId: 'classic-fantasy',
       itemId: 'iron-sword',
       artifactId: 'iron-sword-sheet-r0-raw',
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test('opens with no set selected and refuses state until one is chosen', async () => {
+  const server = await fixture({ setId: null });
+  const headers = {
+    'X-Canvas-Token': server.token,
+    'Content-Type': 'application/json',
+    Origin: null,
+  };
+  headers.Origin = server.url.slice(0, -1);
+  try {
+    assert.equal(server.getSetId(), null);
+    const denied = await fetch(`${server.url}api/state`, {
+      headers: { 'X-Canvas-Token': server.token },
+    });
+    assert.equal(denied.status, 409);
+    assert.equal((await denied.json()).error, 'no-set-selected');
+
+    const dispatchDenied = await fetch(`${server.url}api/dispatch`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ action: 'init' }),
+    });
+    assert.equal(dispatchDenied.status, 409);
+    assert.equal(server.dispatched.length, 0);
+
+    const artifactDenied = await fetch(`${server.url}api/artifact?itemId=a&artifactId=b`, {
+      headers: { 'X-Canvas-Token': server.token },
+    });
+    assert.equal(artifactDenied.status, 409);
+  } finally {
+    await server.close();
+  }
+});
+
+test('selects a set only from the server-computed allowlist', async () => {
+  const server = await fixture({ setId: null });
+  const headers = {
+    'X-Canvas-Token': server.token,
+    'Content-Type': 'application/json',
+    Origin: server.url.slice(0, -1),
+  };
+  try {
+    const traversal = await fetch(`${server.url}api/select`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ setId: '../../etc/passwd' }),
+    });
+    assert.equal(traversal.status, 400);
+
+    const unknown = await fetch(`${server.url}api/select`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ setId: 'not-authored' }),
+    });
+    assert.equal(unknown.status, 404);
+    assert.equal(server.getSetId(), null);
+
+    const accepted = await fetch(`${server.url}api/select`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ setId: 'pirate' }),
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal(server.getSetId(), 'pirate');
+
+    const dispatch = await fetch(`${server.url}api/dispatch`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ action: 'init' }),
+    });
+    assert.equal(dispatch.status, 200);
+    assert.deepEqual(server.dispatched.at(-1), { action: 'init', setId: 'pirate' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('validates a caller-supplied initial set id against the same allowlist', async () => {
+  const unknown = await fixture({ setId: 'not-authored' });
+  const authored = await fixture({ setId: 'pirate' });
+  try {
+    // An arbitrary kebab-case id from canvas open input must not bind the
+    // instance; the canvas falls back to its set index instead.
+    assert.equal(unknown.getSetId(), null);
+    const state = await fetch(`${unknown.url}api/state`, {
+      headers: { 'X-Canvas-Token': unknown.token },
+    });
+    assert.equal(state.status, 409);
+
+    assert.equal(authored.getSetId(), 'pirate');
+  } finally {
+    await unknown.close();
+    await authored.close();
+  }
+});
+
+test('save-plan forwards only the plan and overwrite flag, never a path', async () => {
+  const server = await fixture();
+  const headers = {
+    'X-Canvas-Token': server.token,
+    'Content-Type': 'application/json',
+    Origin: server.url.slice(0, -1),
+  };
+  try {
+    const response = await fetch(`${server.url}api/save-plan`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        plan: { id: 'pirate' },
+        overwrite: true,
+        planPath: '../../../evil.json',
+        setId: 'other-set',
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(server.commands.at(-1), {
+      action: 'save-plan',
+      plan: { id: 'pirate' },
+      overwrite: true,
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test('synth-roster forwards only the four brief fields', async () => {
+  const server = await fixture();
+  const headers = {
+    'X-Canvas-Token': server.token,
+    'Content-Type': 'application/json',
+    Origin: server.url.slice(0, -1),
+  };
+  try {
+    const response = await fetch(`${server.url}api/synth-roster`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        setId: 'edo-samurai',
+        displayName: 'Edo Samurai',
+        themeDesignLanguage: 'Lacquered indigo plate with silk cord lacing and muted gold crests.',
+        notes: 'Favor polearms.',
+        plan: { id: 'injected' },
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(server.commands.at(-1), {
+      action: 'synth-roster',
+      setId: 'edo-samurai',
+      displayName: 'Edo Samurai',
+      themeDesignLanguage: 'Lacquered indigo plate with silk cord lacing and muted gold crests.',
+      notes: 'Favor polearms.',
     });
   } finally {
     await server.close();

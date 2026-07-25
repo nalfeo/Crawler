@@ -2602,20 +2602,51 @@ export class BehaviorTreeAI implements AIInputProvider {
       };
       for (const cue of ctx.world.mobAbilities.cues) {
         if (cue.phase !== 'telegraph') continue;
-        if (cue.geometry.kind === 'circle') {
-          if (maybeDodgeCircle(cue.geometry)) return BTStatus.SUCCESS;
+        const { geometry } = cue;
+        if (geometry.kind === 'radial-projectiles') {
+          const relX = ctx.playerX - geometry.casterX;
+          const relY = ctx.playerY - geometry.casterY;
+          const radialDist = Math.hypot(relX, relY);
+          if (radialDist <= geometry.spokeLengthFt) {
+            const stepDeg = 360 / geometry.count;
+            const playerAngleDeg = ((((Math.atan2(relY, relX) * 180) / Math.PI) % 360) + 360) % 360;
+            let nearestDeltaDeg = 180;
+            let nearestSpokeRad = 0;
+            for (let i = 0; i < geometry.count; i += 1) {
+              const spokeDeg = (i / geometry.count) * 360 + geometry.offsetDeg;
+              const deltaDeg = ((playerAngleDeg - spokeDeg + 540) % 360) - 180;
+              const absDeltaDeg = Math.abs(deltaDeg);
+              if (absDeltaDeg < nearestDeltaDeg) {
+                nearestDeltaDeg = absDeltaDeg;
+                nearestSpokeRad = (spokeDeg * Math.PI) / 180;
+              }
+            }
+            const laneHalfWidthDeg =
+              (Math.atan2(PROJECTILE_DODGE_CLEARANCE_FT, Math.max(radialDist, 1e-6)) * 180) /
+              Math.PI;
+            if (nearestDeltaDeg <= Math.min(stepDeg * 0.45, laneHalfWidthDeg)) {
+              const spokeDirX = Math.cos(nearestSpokeRad);
+              const spokeDirY = Math.sin(nearestSpokeRad);
+              const cross = relX * spokeDirY - relY * spokeDirX;
+              const side = cross >= 0 ? 1 : -1;
+              this.dodgeVecX = -spokeDirY * side * PROJECTILE_DODGE_VECTOR_SCALE;
+              this.dodgeVecY = spokeDirX * side * PROJECTILE_DODGE_VECTOR_SCALE;
+              return BTStatus.SUCCESS;
+            }
+          }
           continue;
         }
-        for (const circle of cue.geometry.circles) {
+        // circle / spawn-circles / multi-circle
+        const cueCirles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        for (const circle of cueCirles) {
           if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
         }
       }
       for (const zone of ctx.world.mobAbilities.ownedZones) {
-        if (zone.geometry.kind === 'circle') {
-          if (maybeDodgeCircle(zone.geometry)) return BTStatus.SUCCESS;
-          continue;
-        }
-        for (const circle of zone.geometry.circles) {
+        const { geometry } = zone;
+        if (geometry.kind === 'radial-projectiles') continue;
+        const zoneCirles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        for (const circle of zoneCirles) {
           if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
         }
       }

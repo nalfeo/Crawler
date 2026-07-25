@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "theme-set-index-and-roster-synthesis",
+  "task_title": "Theme equipment set index, create-new-theme flow, and model-proposed rosters",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gpt-5.4) on the set-index + roster-synthesis design. 3 blocking + 1 non-blocking, all adopted: (1) save-plan must derive its target path server-side from the validated plan.id and accept no path field from the client; (2) workflow dispatch must pin --ref, because `gh workflow run` without one silently targets the DEFAULT branch, and init must verify the plan blob exists on that remote ref; (3) authored plans must become immutable once durable state exists for the set id, since the phase state machine is keyed to the roster it was initialized with; (4) non-blocking - the index must distinguish 'no durable state' from 'store unavailable'. Divergence: minor - the storage split and phased flow were unchanged, but the security posture of save-plan and dispatch was materially tightened before implementation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "clean": false,
+          "models": ["gpt-5.4"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "notes": "Two blocking, one non-blocking, all trust-boundary bypasses. (1) The allowlist was only enforced on /api/select, so a canvas opened with input.setId bound an arbitrary id with no validation. (2) assertPlanOnRef fell through to `cat-file origin/<ref>` when `git fetch` failed, so a stale tracking ref could pass a plan that is no longer on the remote branch. (3) TOCTOU between the store.has() immutability check and the plan write, since init runs on GitHub outside this process's serializer. Fixed: initial setId now goes through selectSet(); fetch fails closed; savePlan snapshots, writes, re-checks, and rolls back on a lost race. 3 regression tests added."
+        },
+        {
+          "round": 2,
+          "clean": true,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "notes": "Reviewer verified all three round-1 fixes and found a residual defect in each, plus two new findings. (1) The startup allowlist check ran after listen(), so an abandoned startup leaked a listening server with no close handle - moved before listen(). (2) FETCH_HEAD is shared per repository, so a concurrent git process could make the blob check evaluate the wrong tip - now fetches into a private per-call ref and deletes it in a finally. (3) A throwing store.has() re-check bypassed the rollback entirely, leaving the write on disk - rollback now also runs on a throwing re-check. (4) New blocking: `process.exitCode` alone could leave the CLI hanging on pooled sockets until the bridge's 4-minute spawn timeout - added an unref'd 500ms forced-exit guard, measured at 6.0s for a synth run and 2.5s for a list. (5) New non-blocking: Node's ENOENT messages leaked absolute filesystem paths to the browser - error bodies are now scrubbed of repoRoot and homedir. 2 further regression tests added; reviewer confirmed XSS escaping, command-injection safety, save-plan path derivation, and the bounded repair loop were all clean."
+        }
+      ]
+    }
+  }
+}
