@@ -22,7 +22,8 @@ export const ANCHOR_DERIVABLE_SENSOR = 'anchor-derivable';
  * so the scorer can include it in `Scorecard.breakdown` unchanged.
  */
 export type AnchorDerivableResult =
-  (SensorResult & { ok: true; anchor: DerivedAnchor }) | (SensorResult & { ok: false });
+  | (SensorResult & { ok: true; anchor: DerivedAnchor })
+  | (SensorResult & { ok: false });
 
 export function anchorDerivable(
   image: RgbaImage,

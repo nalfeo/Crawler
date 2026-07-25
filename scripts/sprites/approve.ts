@@ -211,7 +211,8 @@ interface RunSummaryShape {
       readonly centerOfGravity?: { readonly x: number; readonly y: number } | null;
     } | null;
     readonly judgeScorecard?:
-      (Readonly<Record<string, unknown>> & { readonly minScore?: number }) | null;
+      | (Readonly<Record<string, unknown>> & { readonly minScore?: number })
+      | null;
   }>;
   readonly postprocessOverrides?: {
     readonly profilePath?: string | null;

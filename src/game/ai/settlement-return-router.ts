@@ -63,7 +63,13 @@ export type SettlementReturnStatus =
   | 'cooldown';
 
 export type SettlementReturnDecisionKind =
-  'trigger' | 'defer' | 'abort-danger' | 'abort-unreachable' | 'arrive' | 'maintenance' | 'resume';
+  | 'trigger'
+  | 'defer'
+  | 'abort-danger'
+  | 'abort-unreachable'
+  | 'arrive'
+  | 'maintenance'
+  | 'resume';
 
 export interface SettlementReturnDecision {
   readonly kind: SettlementReturnDecisionKind;

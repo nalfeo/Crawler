@@ -53,7 +53,8 @@ function killFirstPresentBossOnce(): (world: GameWorld) => void {
 describe('Boss chest lifecycle — real headless pipeline', () => {
   it('creates an available Floor 2 boss chest with a resolved reward bundle when a boss dies', async () => {
     let observed:
-      { chestCount: number; state: string | undefined; bundleCount: number } | undefined;
+      | { chestCount: number; state: string | undefined; bundleCount: number }
+      | undefined;
 
     await runHeadless(new BehaviorTreeAI({ seed: 61 }), {
       seed: 61,

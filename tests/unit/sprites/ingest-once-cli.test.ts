@@ -181,14 +181,15 @@ describe('withAuthorAllowList', () => {
   it('applies the allow list to getIssue as well (fail-closed)', async () => {
     const inner = {
       listOpenAssetRequestIssues: vi.fn(async () => []),
-      getIssue: vi.fn(async (n: number): Promise<OpenAssetRequestIssue | null> =>
-        n === 100
-          ? { number: 100, body: 'x', authorLogin: 'nalfeo' }
-          : n === 200
-            ? { number: 200, body: 'y', authorLogin: 'drive-by' }
-            : n === 300
-              ? { number: 300, body: 'z' } // no author → reject
-              : null,
+      getIssue: vi.fn(
+        async (n: number): Promise<OpenAssetRequestIssue | null> =>
+          n === 100
+            ? { number: 100, body: 'x', authorLogin: 'nalfeo' }
+            : n === 200
+              ? { number: 200, body: 'y', authorLogin: 'drive-by' }
+              : n === 300
+                ? { number: 300, body: 'z' } // no author → reject
+                : null,
       ),
       comment: vi.fn(async () => {}),
     };

@@ -32,7 +32,11 @@ export type Floor1BossRewardSpellId = (typeof FLOOR1_BOSS_REWARD_SPELL_IDS)[numb
 export const DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID: Floor1BossRewardSpellId = 'heal';
 
 export type AbilityTriggerKind =
-  'skill_usage' | 'enemy_cluster' | 'low_health' | 'low_health_crowded' | 'health_deficit_at_least';
+  | 'skill_usage'
+  | 'enemy_cluster'
+  | 'low_health'
+  | 'low_health_crowded'
+  | 'health_deficit_at_least';
 
 export type AbilityTriggerCondition =
   | {
