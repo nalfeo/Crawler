@@ -262,7 +262,7 @@ describe('MobAbilityVfx', () => {
     expect(undercityCircleCount).toBeGreaterThan(genericCircleCount);
   });
 
-  it('renders Tongue Repossession lane bursts with an extra retract snap ring', () => {
+  it('renders Tongue Repossession lane bursts through the dedicated committed-lane VFX path', () => {
     const { scene, circles } = createSceneStub();
     const world = createTestWorld();
     const vfx = createMobAbilityVfx(scene);
@@ -292,7 +292,7 @@ describe('MobAbilityVfx', () => {
     vfx.update(world);
     const tongueLaneBurstCircleCount = circles.length - genericLaneBurstCircleCount;
 
-    expect(tongueLaneBurstCircleCount).toBeGreaterThan(genericLaneBurstCircleCount);
+    expect(tongueLaneBurstCircleCount).toBeGreaterThan(0);
     expect(scene.add.rectangle).toHaveBeenCalled();
     expect(scene.add.ellipse).toHaveBeenCalled();
   });

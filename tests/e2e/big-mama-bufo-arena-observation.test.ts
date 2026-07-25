@@ -77,6 +77,8 @@ interface ArenaProbe {
   } | null;
 }
 
+type LaneProbe = NonNullable<ArenaProbe['lane']>;
+
 function countChangedPixels(
   beforeBuffer: Buffer,
   afterBuffer: Buffer,
@@ -161,6 +163,19 @@ async function stepToFrame(page: Page, targetFrame: number): Promise<ArenaProbe>
       const laneCue = scene.world.mobAbilities?.cues?.find(
         (cue) => cue?.geometry?.kind === 'lane',
       )?.geometry;
+      const lane: LaneProbe | null =
+        laneCue?.kind === 'lane'
+          ? {
+              originX: laneCue.originX,
+              originY: laneCue.originY,
+              endX: laneCue.endX,
+              endY: laneCue.endY,
+              dirX: laneCue.dirX,
+              dirY: laneCue.dirY,
+              widthFt: laneCue.widthFt,
+              lengthFt: laneCue.lengthFt,
+            }
+          : null;
       return {
         frame: scene.world.frameCount,
         cueCount: scene.world.mobAbilities?.cues?.length ?? 0,
@@ -168,7 +183,7 @@ async function stepToFrame(page: Page, targetFrame: number): Promise<ArenaProbe>
         announcementText,
         playerX: scene.world.stores.position.x[playerEid] ?? 0,
         playerY: scene.world.stores.position.y[playerEid] ?? 0,
-        lane: laneCue?.kind === 'lane' ? laneCue : null,
+        lane,
       } satisfies ArenaProbe;
     },
     { targetFrame, deltaMs: DELTA_MS, announcement: ANNOUNCEMENT },

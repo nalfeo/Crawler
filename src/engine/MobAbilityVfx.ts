@@ -21,7 +21,7 @@
  * particles, a persistent Tarnished indicator, and a cleanup/expiry poof. The
  * announcement itself is rendered by `HudAnnouncementBanner`.
  */
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import {
   BAMBOO_FED_BERSERK_ABILITY_ID,
