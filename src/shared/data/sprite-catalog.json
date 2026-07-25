@@ -3518,6 +3518,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-floor-worn-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-floor-worn-var-0",
+    "description": "Generated sprite from brief: welcome-room-floor-worn.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-worn-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-worn-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-rug-var-0",
     "kind": "sprite",
     "label": "welcome-room-rug-var-0",
