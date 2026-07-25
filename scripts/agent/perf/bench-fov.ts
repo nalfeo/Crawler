@@ -1,9 +1,9 @@
 /**
  * Interleaved A/B microbench + equivalence oracle for `fovSystem`.
  *
- * Why this exists: FOV is the single largest self-time cost in the headless sim
- * (~19.6% self / ~21.8% total per `npm run perf:profile`). Any optimization there
- * must be proven (a) faster and (b) *byte-identical* in the visibility it
+ * Why this exists: FOV is still a performance-sensitive pass (~1.88% total in
+ * headless sim per `npm run perf:profile`), and any optimization there must be
+ * proven (a) faster and (b) *byte-identical* in the visibility it
  * produces, because visibility feeds enemy AI and therefore the whole downstream
  * simulation.
  *

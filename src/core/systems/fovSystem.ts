@@ -13,10 +13,10 @@
  *
  * ## Performance shape
  *
- * This is the largest single cost in the headless simulation (~19.6% self,
- * ~21.8% inclusive per `npm run perf:profile`), because a shadowcast at
- * `subFactor` 2 walks ~4x the cells of a tile-resolution one and the callback
- * fires for every lit sub-tile. All per-pass working state (the rot-js FOV
+ * fovSystem accounts for ~1.88% of headless simulation time per
+ * `npm run perf:profile`. The ~19.6% self / ~21.8% inclusive `rot.js:compute`
+ * frame that initially looked like shadowcasting is `AStar.compute`
+ * (pathfinding), not FOV. All per-pass working state (the rot-js FOV
  * instance, its two closures, and the corner-seam memo) is therefore built
  * **once per FloorMap** and reused instead of being reallocated every frame.
  *
