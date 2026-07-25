@@ -1430,6 +1430,57 @@
     "row": 0
   },
   {
+    "id": "generated:flame-tongs-v1-var-0",
+    "kind": "sprite",
+    "label": "flame-tongs-v1-var-0",
+    "description": "Generated sprite from brief: flame-tongs-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "flame-tongs-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/flame-tongs-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:flame-tongs-v1-var-1",
+    "kind": "sprite",
+    "label": "flame-tongs-v1-var-1",
+    "description": "Generated sprite from brief: flame-tongs-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "flame-tongs-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/flame-tongs-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:flame-tongs-v1-var-15",
+    "kind": "sprite",
+    "label": "flame-tongs-v1-var-15",
+    "description": "Generated sprite from brief: flame-tongs-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "flame-tongs-v1-var-15",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/flame-tongs-v1-var-15.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:flame-tongs-var-0",
     "kind": "sprite",
     "label": "flame-tongs-var-0",
