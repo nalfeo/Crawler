@@ -87,6 +87,29 @@ describe('runQueueCommit (control flow)', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('allows the trusted publisher capability under CI', async () => {
+    const { exec, calls } = makeFakeExec(happyResponder);
+    const result = await runQueueCommit(
+      '/repo',
+      [asset()],
+      controlDeps(exec, {
+        env: {
+          CI: 'true',
+          GITHUB_ACTIONS: 'true',
+          GITHUB_WORKFLOW_REF: 'nalfeo/Crawler/.github/workflows/asset-request.yml@refs/heads/main',
+          SPRITES_ALLOW_CI_ASSET_PUBLISH: 'true',
+        },
+      }),
+      {
+        message: 'm',
+        ciAuthorization: { caller: 'asset-request-publisher' },
+      },
+    );
+
+    expect(result.status).toBe('committed');
+    expect(calls.some((call) => call.args[0] === 'push')).toBe(true);
+  });
+
   it('rejects unsafe asset paths before touching git', async () => {
     const { exec, calls } = makeFakeExec(() => ({}));
     for (const bad of ['../evil.png', '/abs/evil.png', 'generated/../../etc.png', 'a\\b.png']) {
@@ -171,7 +194,7 @@ describe('runQueueCommit (control flow)', () => {
     expect(pushLines[0]!.includes('--force')).toBe(false);
   });
 
-  it('fetches the queue branch (not the base) when it already exists', async () => {
+  it('fetches the queue branch and aligns it with current main when it already exists', async () => {
     const { exec, calls } = makeFakeExec((_command, args) => {
       if (args[0] === 'ls-remote') return { stdout: 'deadbeef\trefs/heads/assets/queue\n' };
       if (args[0] === 'diff') return { code: 1 };
@@ -186,8 +209,21 @@ describe('runQueueCommit (control flow)', () => {
       ),
     ).toBe(true);
     expect(
-      line.some((l) => l.includes(':refs/queue-commit/base-qc-xyz') && l.includes('+main')),
-    ).toBe(false);
+      line.some((l) => l === 'git fetch --no-tags origin +main:refs/queue-commit/main-qc-xyz'),
+    ).toBe(true);
+    expect(line.some((l) => l === 'git merge --no-edit refs/queue-commit/main-qc-xyz')).toBe(true);
+  });
+
+  it('classifies a queue/main merge conflict as a permanent destination conflict', async () => {
+    const { exec } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: 'deadbeef\trefs/heads/assets/queue\n' };
+      if (args[0] === 'merge') return { code: 1, stderr: 'CONFLICT (content): manifest.json' };
+      return {};
+    });
+
+    await expect(
+      runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm', maxAttempts: 3 }),
+    ).rejects.toMatchObject({ kind: 'destination-conflict' });
   });
 
   it('returns a no-op (no commit/push) when nothing is staged', async () => {
@@ -225,6 +261,52 @@ describe('runQueueCommit (control flow)', () => {
     // Two full fetch cycles => the union re-ran against the fresh tip.
     expect(calls.filter((c) => c.args[0] === 'fetch')).toHaveLength(2);
     expect(pushCount).toBe(2);
+  });
+
+  it('revalidates the destination inside every CAS retry', async () => {
+    let pushCount = 0;
+    let validationCount = 0;
+    const { exec } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: '' };
+      if (args[0] === 'diff') return { code: 1 };
+      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      if (args[0] === 'push') {
+        pushCount++;
+        return pushCount === 1
+          ? { code: 1, stderr: '! [rejected] (non-fast-forward)' }
+          : { code: 0 };
+      }
+      return {};
+    });
+
+    await runQueueCommit('/repo', [asset()], controlDeps(exec), {
+      message: 'm',
+      validateDestination: async () => {
+        validationCount++;
+      },
+    });
+
+    expect(validationCount).toBe(2);
+  });
+
+  it('copies assets from an explicit disposable staging root', async () => {
+    const { exec } = makeFakeExec(happyResponder);
+    const copySources: string[] = [];
+    await runQueueCommit(
+      '/repo',
+      [asset()],
+      controlDeps(exec, {
+        copyArtSurface: async (sourceRoot) => {
+          copySources.push(sourceRoot);
+        },
+      }),
+      {
+        message: 'm',
+        sourceRoot: '/staged/approvals',
+      },
+    );
+
+    expect(copySources).toEqual(['/staged/approvals']);
   });
 
   it('throws push-retries-exhausted when the branch keeps advancing', async () => {

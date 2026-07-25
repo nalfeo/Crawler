@@ -8,12 +8,17 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 interface AssetRequestWorkflow {
   concurrency?: { queue?: string; 'cancel-in-progress'?: boolean };
+  permissions?: Record<string, string>;
   jobs: Record<
     string,
     {
       steps?: Array<{
         name?: string;
+        uses?: string;
+        if?: string;
+        run?: string;
         env?: Record<string, string>;
+        with?: Record<string, string>;
       }>;
     }
   >;
@@ -66,5 +71,27 @@ describe('asset-request workflow capacity', () => {
       scripts?: Record<string, string>;
     };
     expect(packageJson.scripts?.['setup:azure:github']).toContain('-SyncGitHubSecrets');
+  });
+
+  it('runs the trusted publisher after every non-cancelled drain with scoped write capability', () => {
+    const workflow = loadWorkflow();
+    expect(workflow.permissions).toMatchObject({
+      contents: 'write',
+      issues: 'write',
+      'pull-requests': 'write',
+    });
+    const checkout = workflow.jobs.drain?.steps?.find(
+      (step) => step.uses === 'actions/checkout@v4',
+    );
+    expect(checkout?.with?.token).toBe('${{ secrets.CRAWLER_CI_PAT }}');
+    const publish = workflow.jobs.drain?.steps?.find(
+      (step) => step.name === 'Publish selected variants',
+    );
+    expect(publish?.if).toBe('always() && !cancelled()');
+    expect(publish?.run).toContain('npm run sprites:publish-selected');
+    expect(publish?.env).toMatchObject({
+      GH_TOKEN: '${{ secrets.CRAWLER_CI_PAT }}',
+      SPRITES_ALLOW_CI_ASSET_PUBLISH: 'true',
+    });
   });
 });

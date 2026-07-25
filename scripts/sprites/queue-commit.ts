@@ -40,7 +40,12 @@ export type QueueCommitStatus = 'committed' | 'noop';
 
 export class QueueCommitError extends Error {
   constructor(
-    readonly kind: 'ci-refused' | 'invalid-asset-path' | 'git-failed' | 'push-retries-exhausted',
+    readonly kind:
+      | 'ci-refused'
+      | 'destination-conflict'
+      | 'invalid-asset-path'
+      | 'git-failed'
+      | 'push-retries-exhausted',
     message: string,
   ) {
     super(message);
@@ -109,6 +114,25 @@ export interface QueueCommitOptions {
   readonly baseBranch?: string;
   /** Max push attempts under concurrent advance. Defaults to 5. */
   readonly maxAttempts?: number;
+  /**
+   * Art source root. Defaults to `repoRoot`; the CI publisher points this at a
+   * disposable, fully validated staging tree while git still runs in repoRoot.
+   */
+  readonly sourceRoot?: string;
+  /**
+   * Narrow CI capability for the trusted asset-request publisher. Ordinary
+   * CLI/sidecar callers omit this and remain hard-refused under CI.
+   */
+  readonly ciAuthorization?: { readonly caller: 'asset-request-publisher' };
+  /**
+   * Optional same-key conflict guard. Runs inside every CAS attempt against the
+   * freshly fetched and main-aligned destination before any asset is copied.
+   */
+  readonly validateDestination?: (
+    sourceRoot: string,
+    destinationRoot: string,
+    assets: readonly CheckinAsset[],
+  ) => Promise<void>;
 }
 
 const DEFAULT_MAX_ATTEMPTS = 5;
@@ -218,7 +242,7 @@ export async function runQueueCommit(
   options: QueueCommitOptions,
 ): Promise<QueueCommitResult> {
   const env = deps.env ?? process.env;
-  if (env.CI !== undefined) {
+  if (env.CI !== undefined && !isAuthorizedAssetPublisher(env, options)) {
     throw new QueueCommitError(
       'ci-refused',
       'Per Constitutional §3, queue-commit is local-only: it pushes locally-approved ' +
@@ -232,6 +256,7 @@ export async function runQueueCommit(
   const queueBranch = options.queueBranch ?? 'assets/queue';
   const baseBranch = options.baseBranch ?? 'main';
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  const sourceRoot = options.sourceRoot ?? repoRoot;
   const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
@@ -276,6 +301,7 @@ export async function runQueueCommit(
       // overwritten, not a blocker.
       const scratchId = (worktree.split(/[\\/]/).pop() || 'base').replace(/[^A-Za-z0-9._-]/g, '-');
       const baseRef = `refs/queue-commit/base-${scratchId}`;
+      const mainRef = `refs/queue-commit/main-${scratchId}`;
       try {
         await mustGit(deps.exec, repoRoot, [
           'fetch',
@@ -283,12 +309,39 @@ export async function runQueueCommit(
           remote,
           `+${fetchRef}:${baseRef}`,
         ]);
+        if (branchExists) {
+          await mustGit(deps.exec, repoRoot, [
+            'fetch',
+            '--no-tags',
+            remote,
+            `+${baseBranch}:${mainRef}`,
+          ]);
+        }
         // Detached checkout of the freshly-fetched tip: we push by refspec and
         // never check the queue branch out by name, so there is no
         // "branch already checked out" clash with the caller's worktree.
         await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
+        if (branchExists) {
+          const merge = await runGit(deps.exec, worktree, ['merge', '--no-edit', mainRef]);
+          if (merge.code !== 0) {
+            throw new QueueCommitError(
+              'destination-conflict',
+              `assets/queue could not merge current ${baseBranch}: ${merge.stderr || merge.stdout}`,
+            );
+          }
+        }
+        if (options.validateDestination) {
+          try {
+            await options.validateDestination(sourceRoot, worktree, assets);
+          } catch (error) {
+            throw new QueueCommitError(
+              'destination-conflict',
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        }
         // UNION the live asset entries onto the tip's manifest/catalog + copy PNGs.
-        await deps.copyArtSurface(repoRoot, worktree, assets);
+        await deps.copyArtSurface(sourceRoot, worktree, assets);
         // Fixed allowlist: only generated art + the catalog can ever be staged.
         await mustGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
 
@@ -354,6 +407,11 @@ export async function runQueueCommit(
         } catch {
           /* best-effort */
         }
+        try {
+          await runGit(deps.exec, repoRoot, ['update-ref', '-d', mainRef]);
+        } catch {
+          /* best-effort */
+        }
       }
 
       if (attempt < maxAttempts) {
@@ -366,4 +424,14 @@ export async function runQueueCommit(
         `(last rejection: ${lastRejection || 'unknown'}). A concurrent writer kept advancing the branch.`,
     );
   });
+}
+
+function isAuthorizedAssetPublisher(env: NodeJS.ProcessEnv, options: QueueCommitOptions): boolean {
+  return (
+    options.ciAuthorization?.caller === 'asset-request-publisher' &&
+    env.SPRITES_ALLOW_CI_ASSET_PUBLISH === 'true' &&
+    env.GITHUB_ACTIONS === 'true' &&
+    typeof env.GITHUB_WORKFLOW_REF === 'string' &&
+    env.GITHUB_WORKFLOW_REF.includes('/.github/workflows/asset-request.yml@')
+  );
 }

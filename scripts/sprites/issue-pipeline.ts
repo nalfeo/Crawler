@@ -1,8 +1,9 @@
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { z } from 'zod';
 import { SPRITE_TYPES, type Brief } from './brief-schema.js';
-import { runFull, type RunFullResult } from './run-full.js';
+import type { GenerateOneResult } from './generate-one.js';
 import { synthesizeBrief } from './synthesize-brief.js';
 import type { IssueAssetRequest } from './queue/types.js';
 import type { ImageProvider } from './provider/types.js';
@@ -14,8 +15,13 @@ import { loadBrief } from './load-brief.js';
 import type { RunStore } from './store/types.js';
 import { briefDirectoryForType } from './brief-paths.js';
 import { mirrorBriefToStore } from './brief-durability.js';
-import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-ingester-controller.js';
 import { resolveAssetRequestSizeVariant, resolveAssetRequestMobRole } from './asset-request.js';
+import {
+  createIssueCheckpointController,
+  markIssuePipelineTerminal,
+  runCheckpointStage,
+} from './issue-pipeline-checkpoint.js';
+import { runResumableAssetRun } from './resumable-asset-run.js';
 
 export interface IssuePipelineIssueApi {
   comment(issueNumber: number, body: string): Promise<void>;
@@ -42,15 +48,46 @@ export interface RunIssuePipelineOptions {
   readonly env?: NodeJS.ProcessEnv;
 }
 
-interface IssueRunStatus {
-  readonly issueNumber: number;
-  readonly fingerprint: string;
-  readonly stage: string;
-  readonly updatedAt: string;
-  readonly details?: Record<string, unknown>;
-}
+const synthesizedCandidateSchema = z
+  .object({
+    id: z.string(),
+    type: z.string(),
+    description: z.string(),
+    embellishmentSeeds: z.array(z.string()),
+    synthesisRationale: z.string(),
+    yaml: z.string(),
+  })
+  .strict();
 
-const ISSUE_STATUS_PREFIX = ISSUE_STATUS_KEY_PREFIX;
+const synthesisOutputSchema = z
+  .object({
+    name: z.string(),
+    type: z.enum(SPRITE_TYPES),
+    sizeVariant: z.string(),
+    providerLabel: z.string(),
+    promptHash: z.string(),
+    candidates: z.array(synthesizedCandidateSchema).min(1),
+  })
+  .strict();
+
+const briefSelectionOutputSchema = z
+  .object({
+    selectedIndex: z.number().int().nonnegative(),
+    rationale: z.string(),
+    modelDeployment: z.string(),
+    candidate: synthesizedCandidateSchema,
+  })
+  .strict();
+
+const promotionOutputSchema = z
+  .object({
+    briefId: z.string(),
+    briefPath: z.string(),
+    yaml: z.string(),
+    synthModel: z.string(),
+    selectorModel: z.string(),
+  })
+  .strict();
 
 /**
  * Infer sprite type from asset name using common naming patterns.
@@ -83,20 +120,17 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   readonly briefId: string;
   readonly runId: string;
   readonly summaryPath: string;
+  readonly selectedIndexes: readonly number[];
+  readonly outcome: 'selected-pending-publish' | 'quality-stopped';
 }> {
   const { request } = options;
-  const now = () => new Date().toISOString();
-  const statusKey = `${ISSUE_STATUS_PREFIX}/${request.issueNumber}-${request.fingerprint}.json`;
-  const setStatus = async (stage: string, details?: Record<string, unknown>): Promise<void> => {
-    const doc: IssueRunStatus = {
-      issueNumber: request.issueNumber,
-      fingerprint: request.fingerprint,
-      stage,
-      updatedAt: now(),
-      ...(details ? { details } : {}),
-    };
-    await options.store.put(statusKey, Buffer.from(`${JSON.stringify(doc, null, 2)}\n`));
-  };
+  const now = () => new Date();
+  const checkpoint = createIssueCheckpointController({
+    store: options.store,
+    issueNumber: request.issueNumber,
+    fingerprint: request.fingerprint,
+    now,
+  });
   const comment = (text: string) => options.issueApi.comment(request.issueNumber, text);
   // Progress comments show live pipeline status. They are suppressed on
   // redeliveries (see postProgressComments) so a transient failure that recurs
@@ -106,10 +140,6 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   const progressComment = (text: string): Promise<void> =>
     postProgress ? comment(text) : Promise.resolve();
 
-  await setStatus('synthesizing');
-  await progressComment(
-    `🧪 Started asset-request pipeline for \`${request.name}\`.\n\nStage: synthesize`,
-  );
   const sizeVariant = resolveAssetRequestSizeVariant(request);
   const mobRole = resolveAssetRequestMobRole(request);
   // Resolve mobRole first: a type-omitted boss request (e.g. "countess-boss")
@@ -117,88 +147,159 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   // boss_presence judge axis are activated.
   const spriteType =
     request.type || (mobRole === 'boss' ? 'enemy' : inferSpriteTypeFromName(request.name));
-  const synth = await synthesizeBrief({
-    name: request.name,
-    briefHint: request.briefSentence,
-    type: spriteType as Brief['type'],
-    floor: request.floor ?? 1,
-    sizeVariant,
-    ...(mobRole ? { mobRole } : {}),
-    candidates: 3,
-    partial: true,
-    provider: options.synthProvider,
-    repoRoot: options.repoRoot,
-    env: options.env ?? process.env,
-  });
-  if (synth.written.length === 0) {
-    throw new Error(`No synthesized candidates were written for issue #${request.issueNumber}`);
-  }
-
-  await setStatus('selecting-brief');
-  const selected = await options.briefSelectorProvider.selectBrief({
-    name: request.name,
-    briefSentence: request.briefSentence,
-    floor: request.floor ?? 1,
-    candidates: synth.written.map((c, idx) => ({ index: idx, description: c.description })),
-  });
-  const winner = synth.written[selected.index];
-  if (!winner) {
-    throw new Error(`Brief selector picked out-of-range index ${selected.index}`);
-  }
-  await progressComment(
-    `🧠 Selected candidate ${selected.index + 1}/${synth.written.length} ` +
-      `using \`${selected.modelDeployment}\`: ${selected.rationale}`,
+  const synthesis = await runCheckpointStage(
+    checkpoint,
+    'synthesize',
+    synthesisOutputSchema,
+    async () => {
+      await progressComment(
+        `🧪 Started asset-request pipeline for \`${request.name}\`.\n\nStage: synthesize`,
+      );
+      const result = await synthesizeBrief({
+        name: request.name,
+        briefHint: request.briefSentence,
+        type: spriteType as Brief['type'],
+        floor: request.floor ?? 1,
+        sizeVariant,
+        ...(mobRole ? { mobRole } : {}),
+        candidates: 3,
+        partial: true,
+        provider: options.synthProvider,
+        repoRoot: options.repoRoot,
+        env: options.env ?? process.env,
+      });
+      if (result.written.length === 0) {
+        throw new Error(`No synthesized candidates were written for issue #${request.issueNumber}`);
+      }
+      return {
+        name: result.name,
+        type: result.type,
+        sizeVariant: result.sizeVariant,
+        providerLabel: result.providerLabel,
+        promptHash: result.promptHash,
+        candidates: result.written.map((candidate) => ({
+          id: candidate.id,
+          type: candidate.type,
+          description: candidate.description,
+          embellishmentSeeds: [...candidate.embellishmentSeeds],
+          synthesisRationale: candidate.synthesisRationale,
+          yaml: readFileSync(candidate.yamlPath, 'utf8'),
+        })),
+      };
+    },
   );
 
-  await setStatus('promoting-brief', {
-    selectedIndex: selected.index,
-    synthModel: synth.providerLabel,
-    selectorModel: selected.modelDeployment,
-  });
-  const promotedRel = path.join(
-    'briefs',
-    'draft',
-    briefDirectoryForType(synth.type),
-    `${synth.name}.yaml`,
+  const briefSelection = await runCheckpointStage(
+    checkpoint,
+    'select-brief',
+    briefSelectionOutputSchema,
+    async () => {
+      const selected = await options.briefSelectorProvider.selectBrief({
+        name: request.name,
+        briefSentence: request.briefSentence,
+        floor: request.floor ?? 1,
+        candidates: synthesis.output.candidates.map((candidate, index) => ({
+          index,
+          description: candidate.description,
+        })),
+      });
+      const candidate = synthesis.output.candidates[selected.index];
+      if (!candidate) {
+        throw new Error(`Brief selector picked out-of-range index ${selected.index}`);
+      }
+      await progressComment(
+        `🧠 Selected candidate ${selected.index + 1}/${synthesis.output.candidates.length} ` +
+          `using \`${selected.modelDeployment}\`: ${selected.rationale}`,
+      );
+      return {
+        selectedIndex: selected.index,
+        rationale: selected.rationale,
+        modelDeployment: selected.modelDeployment,
+        candidate,
+      };
+    },
   );
-  const promotedAbs = path.resolve(options.repoRoot, promotedRel);
+
+  const promotion = await runCheckpointStage(
+    checkpoint,
+    'promote',
+    promotionOutputSchema,
+    async () => {
+      const promotedRel = path
+        .join(
+          'briefs',
+          'draft',
+          briefDirectoryForType(synthesis.output.type),
+          `${synthesis.output.name}.yaml`,
+        )
+        .replace(/\\/g, '/');
+      const promotedAbs = path.resolve(options.repoRoot, promotedRel);
+      mkdirSync(path.dirname(promotedAbs), { recursive: true });
+      writeFileSync(promotedAbs, briefSelection.output.candidate.yaml, 'utf8');
+      enableJudge(promotedAbs, options.repoRoot, options.visionProvider !== null);
+      await mirrorBriefToStore(options.store, options.repoRoot, promotedAbs);
+      await progressComment(
+        `📌 Promoted brief to \`${promotedRel}\`.\n\nStage: generate → postprocess → judge`,
+      );
+      return {
+        briefId: synthesis.output.name,
+        briefPath: promotedRel,
+        yaml: readFileSync(promotedAbs, 'utf8'),
+        synthModel: synthesis.output.providerLabel,
+        selectorModel: briefSelection.output.modelDeployment,
+      };
+    },
+  );
+
+  const promotedAbs = path.resolve(options.repoRoot, promotion.output.briefPath);
   mkdirSync(path.dirname(promotedAbs), { recursive: true });
-  copyFileSync(winner.yamlPath, promotedAbs);
-  const judgeEnabled = options.visionProvider !== null;
-  enableJudge(promotedAbs, options.repoRoot, judgeEnabled);
-  // Mirror the final promoted brief into Azure so the local sidecar can
-  // load it after the CI runner (which wrote the file) shuts down.
-  await mirrorBriefToStore(options.store, options.repoRoot, promotedAbs);
+  writeFileSync(promotedAbs, promotion.output.yaml, 'utf8');
+  const loaded = loadBrief(promotedAbs, { projectRoot: options.repoRoot });
 
-  await progressComment(
-    `📌 Promoted brief to \`${promotedRel}\`.\n\nStage: generate → postprocess` +
-      `${judgeEnabled ? ' → judge' : ' (judge disabled: no vision deployment configured)'}`,
-  );
-  await setStatus('running-pipeline', { briefPath: promotedRel });
-  const result = await runFull({
+  const completedRun = await runResumableAssetRun({
+    checkpoint,
     briefPath: promotedAbs,
-    provider: options.imageProvider,
-    textProvider: options.textProvider,
-    visionProvider: options.visionProvider,
+    loaded,
     repoRoot: options.repoRoot,
     store: options.store,
+    imageProvider: options.imageProvider,
+    textProvider: options.textProvider,
+    visionProvider: options.visionProvider,
     env: options.env ?? process.env,
+    now,
   });
 
-  await attachIssueMetadata(options.store, result.summary.brief, result.summary.runId, {
+  await attachIssueMetadata(options.store, completedRun.briefId, completedRun.runId, {
     issueNumber: request.issueNumber,
     issueFingerprint: request.fingerprint,
-    synthModel: synth.providerLabel,
-    briefSelectorModel: selected.modelDeployment,
+    synthModel: promotion.output.synthModel,
+    briefSelectorModel: promotion.output.selectorModel,
   });
-  await setStatus('completed', { briefId: result.summary.brief, runId: result.summary.runId });
 
-  const completionComment = buildCompletionComment(result, options.store);
-  await comment(completionComment);
+  const finalResult: Pick<GenerateOneResult, 'summary' | 'summaryPath'> = {
+    summary: completedRun.summary,
+    summaryPath: completedRun.summaryPath,
+  };
+  const outcome =
+    completedRun.selectedIndexes.length > 0 ? 'selected-pending-publish' : 'quality-stopped';
+  await markIssuePipelineTerminal(checkpoint, outcome, {
+    briefId: completedRun.briefId,
+    runId: completedRun.runId,
+    selectedIndexes: completedRun.selectedIndexes,
+    selectedAt: completedRun.selectedAt,
+    promotedBriefPath: promotion.output.briefPath,
+    promotedBriefYaml: promotion.output.yaml,
+  });
+
+  await comment(
+    buildCompletionComment(finalResult, options.store, completedRun.selectedIndexes, outcome),
+  );
   return {
-    briefId: result.summary.brief,
-    runId: result.summary.runId,
-    summaryPath: result.summaryPath,
+    briefId: completedRun.briefId,
+    runId: completedRun.runId,
+    summaryPath: completedRun.summaryPath,
+    selectedIndexes: completedRun.selectedIndexes,
+    outcome,
   };
 }
 
@@ -258,7 +359,12 @@ async function attachIssueMetadata(
  * (Azure) can return scoped signed URLs suitable for GitHub's image proxy.
  * Falls back to `store.resolve()` when the store has no external-read resolver.
  */
-export function buildCompletionComment(result: RunFullResult, store: RunStore): string {
+export function buildCompletionComment(
+  result: Pick<GenerateOneResult, 'summary' | 'summaryPath'>,
+  store: RunStore,
+  selectedIndexes?: readonly number[],
+  outcome: 'selected-pending-publish' | 'quality-stopped' = 'selected-pending-publish',
+): string {
   const briefId = result.summary.brief;
   const runId = result.summary.runId;
   const resolveForComment = (key: string): string =>
@@ -270,27 +376,43 @@ export function buildCompletionComment(result: RunFullResult, store: RunStore): 
   const lastAttemptIndex = (result.summary.attempts ?? 1) - 1;
   const sheetFile = `sheet-${String(lastAttemptIndex).padStart(2, '0')}.png`;
   const sheetUrl = resolveForComment(`${briefId}/${runId}/${sheetFile}`);
+  const legacyChosen = selectedIndexes === undefined ? result.summary.chosen : null;
+  const displayedIndexes =
+    selectedIndexes ??
+    (legacyChosen === null || legacyChosen === undefined ? [] : [legacyChosen.index]);
 
   let body =
     `✅ Asset-request pipeline complete.\n\n` +
     `- brief: \`${briefId}\`\n` +
     `- run: \`${runId}\`\n` +
-    `- summary: \`${result.summaryPath}\`\n\n` +
+    `- summary: \`${result.summaryPath}\`\n` +
+    (outcome === 'quality-stopped'
+      ? `- selection: no acceptable variants; human intervention required (the sheet will not be regenerated)\n\n`
+      : `- selected for publication: ${displayedIndexes.map((index) => `variant ${index + 1}`).join(', ')}\n\n`) +
     `### Spritesheet\n\n` +
     `![Spritesheet](${sheetUrl})`;
 
-  // Embed the top-ranked (chosen) variant when the pipeline produced one.
-  const chosen = result.summary.chosen;
-  if (chosen !== null && chosen !== undefined) {
-    const chosenEntry = result.summary.candidates.find((c) => c.index === chosen.index);
-    if (chosenEntry?.processedPath) {
-      const variantNum = chosen.index + 1;
+  for (const selectedIndex of displayedIndexes) {
+    const selectedEntry = result.summary.candidates.find(
+      (candidate) => candidate.index === selectedIndex,
+    );
+    if (selectedEntry?.processedPath) {
+      const variantNum = selectedIndex + 1;
       const total = result.summary.variantCount;
-      const passLabel = chosen.combinedPassed ? '✅' : '⚠️';
-      const altText = `Chosen variant ${variantNum}/${total} (score ${chosen.score}/${chosen.outOf}) ${passLabel}`;
-      const processedFile = `${String(chosen.index).padStart(2, '0')}.png`;
+      const altText =
+        `Selected variant ${variantNum}/${total} ` +
+        `(sensor failures ${selectedEntry.outOf - selectedEntry.score})`;
+      const processedFile = `${String(selectedIndex).padStart(2, '0')}.png`;
       const processedUrl = resolveForComment(`${briefId}/${runId}/processed/${processedFile}`);
-      body += `\n\n### Chosen variant (${variantNum}/${total})\n\n![${altText}](${processedUrl})`;
+      if (legacyChosen?.index === selectedIndex) {
+        const passLabel = legacyChosen.combinedPassed ? '✅' : '⚠️';
+        const legacyAlt =
+          `Chosen variant ${variantNum}/${total} ` +
+          `(score ${legacyChosen.score}/${legacyChosen.outOf}) ${passLabel}`;
+        body += `\n\n### Chosen variant (${variantNum}/${total})\n\n![${legacyAlt}](${processedUrl})`;
+      } else {
+        body += `\n\n### Selected variant (${variantNum}/${total})\n\n![${altText}](${processedUrl})`;
+      }
     }
   }
 

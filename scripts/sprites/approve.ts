@@ -211,8 +211,7 @@ interface RunSummaryShape {
       readonly centerOfGravity?: { readonly x: number; readonly y: number } | null;
     } | null;
     readonly judgeScorecard?:
-      | (Readonly<Record<string, unknown>> & { readonly minScore?: number })
-      | null;
+      (Readonly<Record<string, unknown>> & { readonly minScore?: number }) | null;
   }>;
   readonly postprocessOverrides?: {
     readonly profilePath?: string | null;
@@ -245,6 +244,11 @@ export interface ApproveVariantOptions {
   readonly publicAssetsDir: string;
   /** Absolute path to the repo root, used to compute `sourceRun` relative path. */
   readonly repoRoot: string;
+  /**
+   * Stable repo-relative source identity for rematerialized runs. When omitted,
+   * derives the path from `runDir` exactly as before.
+   */
+  readonly sourceRunOverride?: string;
   /** Clock injection for deterministic tests. Defaults to `() => new Date()`. */
   readonly now?: () => Date;
   /** Injected fs for tests. Defaults to `node:fs`. */
@@ -281,6 +285,9 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   }
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const sourceRun = options.sourceRunOverride
+    ? normalizeSourceRunOverride(options.sourceRunOverride)
+    : toRepoRelativePosix(options.repoRoot, options.runDir);
   const rawBriefId = summary.brief;
   if (!rawBriefId) {
     throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
@@ -378,7 +385,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     // Forward slashes so the engine can pass this straight to a URL/loader.
     assetPath: `generated/${variantId}.png`,
     approvedAt: now().toISOString(),
-    sourceRun: toRepoRelativePosix(options.repoRoot, options.runDir),
+    sourceRun,
     variantIndex: options.variantIndex,
     anchor: anchors.hold,
     anchors,
@@ -820,6 +827,23 @@ function padIndex(index: number): string {
 function toRepoRelativePosix(repoRoot: string, abs: string): string {
   const rel = path.relative(repoRoot, abs);
   return rel.split(path.sep).join('/');
+}
+
+function normalizeSourceRunOverride(value: string): string {
+  const normalized = value.replace(/\\/g, '/');
+  const segments = normalized.split('/');
+  if (
+    normalized.length === 0 ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:\//.test(normalized) ||
+    segments.some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new ApproveError(
+      'summary-invalid',
+      `sourceRunOverride must be a safe repo-relative path, got: ${value}`,
+    );
+  }
+  return normalized;
 }
 
 /**

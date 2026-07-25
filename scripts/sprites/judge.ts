@@ -62,7 +62,9 @@ import {
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v8';
+const PROMPT_TEMPLATE_VERSION = 'v9';
+
+export const JUDGE_HARD_BLOCK_PHRASE = 'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME';
 
 export type Evaluator =
   | 'design_language'
@@ -119,6 +121,24 @@ export interface JudgeScorecard {
   readonly minScore: number;
   /** Evaluator names that auto-rejected (`< 3`). Empty when `passed`. */
   readonly rejectedBy: ReadonlyArray<Evaluator>;
+  /**
+   * True when the judge response used the v9+ hard-block contract. Legacy
+   * cached/artifact scorecards omit the fields entirely; callers must treat
+   * those as unevaluated and therefore ineligible for deterministic
+   * auto-selection.
+   */
+  readonly hardBlockEvaluated?: boolean;
+  /** True only when the judge explicitly hard-blocked the candidate. */
+  readonly hardBlocked?: boolean;
+  /**
+   * Exact hard-block instruction phrase when blocked, otherwise null. Legacy
+   * scorecards surface null.
+   */
+  readonly hardBlockInstruction?: string | null;
+  /** Judge rationale for the hard-block verdict, or null on legacy scorecards. */
+  readonly hardBlockRationale?: string | null;
+  /** Top-level judge confidence in `[0,1]`, or null on legacy scorecards. */
+  readonly confidence?: number | null;
   /** Provider usage stats when surfaced. Null when the call didn't return them. */
   readonly usage: {
     readonly promptTokens: number;
@@ -178,7 +198,7 @@ const evaluatorPayloadSchema = z
   })
   .strict();
 
-const baseJudgeResponseSchema = z
+const legacyJudgeResponseSchema = z
   .object({
     design_language: evaluatorPayloadSchema,
     reference_style_match: evaluatorPayloadSchema,
@@ -190,6 +210,46 @@ const baseJudgeResponseSchema = z
     theme_adherence: evaluatorPayloadSchema.optional(),
   })
   .strict();
+
+const hardBlockPayloadSchema = z
+  .object({
+    blocked: z.boolean(),
+    instruction: z.string().nullable(),
+    rationale: z.string().min(1).max(500),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.blocked) {
+      if (value.instruction !== JUDGE_HARD_BLOCK_PHRASE) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['instruction'],
+          message: `instruction must be exactly ${JSON.stringify(JUDGE_HARD_BLOCK_PHRASE)} when blocked`,
+        });
+      }
+      return;
+    }
+    if (value.instruction !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['instruction'],
+        message: 'instruction must be null when blocked is false',
+      });
+    }
+  });
+
+const judgeResponseSchema = legacyJudgeResponseSchema
+  .extend({
+    confidence: z.number().min(0).max(1),
+    hard_block: hardBlockPayloadSchema,
+  })
+  .strict();
+
+type LegacyJudgeResponse = z.infer<typeof legacyJudgeResponseSchema>;
+type JudgeResponse = z.infer<typeof judgeResponseSchema>;
+type ParsedJudgeResponse =
+  | { success: true; data: LegacyJudgeResponse | JudgeResponse; hardBlockEvaluated: boolean }
+  | { success: false; error: z.ZodError };
 
 /**
  * `theme_adherence` is REQUIRED in the parsed response when the brief
@@ -204,9 +264,27 @@ function parseJudgeResponse(
   value: unknown,
   brief: Brief,
   hasAddendum: boolean,
-): ReturnType<typeof baseJudgeResponseSchema.safeParse> {
-  const parsed = baseJudgeResponseSchema.safeParse(value);
-  if (!parsed.success) return parsed;
+): ParsedJudgeResponse {
+  const parsed = judgeResponseSchema.safeParse(value);
+  if (parsed.success) {
+    const validated = validateOptionalAxes(parsed.data, brief, hasAddendum);
+    return validated.success
+      ? { success: true, data: validated.data, hardBlockEvaluated: true }
+      : validated;
+  }
+  const legacyParsed = legacyJudgeResponseSchema.safeParse(value);
+  if (!legacyParsed.success) return parsed;
+  const validated = validateOptionalAxes(legacyParsed.data, brief, hasAddendum);
+  return validated.success
+    ? { success: true, data: validated.data, hardBlockEvaluated: false }
+    : validated;
+}
+
+function validateOptionalAxes<T extends LegacyJudgeResponse | JudgeResponse>(
+  data: T,
+  brief: Brief,
+  hasAddendum: boolean,
+): { success: true; data: T } | { success: false; error: z.ZodError } {
   const expectedOptionalAxes = new Map<string, boolean>([
     ['theme_adherence', hasAddendum],
     [
@@ -218,8 +296,8 @@ function parseJudgeResponse(
     ['presentation', ['equipment', 'item', 'prop'].includes(brief.type)],
   ]);
   for (const [axis, required] of expectedOptionalAxes) {
-    const value = parsed.data[axis as keyof typeof parsed.data];
-    if (required && value === undefined) {
+    const axisValue = (data as Record<string, unknown>)[axis];
+    if (required && axisValue === undefined) {
       return {
         success: false,
         error: new z.ZodError([
@@ -229,9 +307,9 @@ function parseJudgeResponse(
             message: `${axis} is required for this brief`,
           },
         ]),
-      } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
+      };
     }
-    if (!required && value !== undefined) {
+    if (!required && axisValue !== undefined) {
       return {
         success: false,
         error: new z.ZodError([
@@ -241,10 +319,50 @@ function parseJudgeResponse(
             message: `${axis} is not allowed for this brief`,
           },
         ]),
-      } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
+      };
     }
   }
-  return parsed;
+  return { success: true, data };
+}
+
+function normalizeLegacyJudgeResponse(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const obj = value as Record<string, unknown>;
+  if (
+    obj.style_match !== undefined &&
+    obj.design_language === undefined &&
+    obj.reference_style_match === undefined
+  ) {
+    const { style_match, ...rest } = obj;
+    return {
+      ...rest,
+      design_language: style_match,
+      reference_style_match: style_match,
+    };
+  }
+  return value;
+}
+
+function normalizeLegacyScorecard(scorecard: JudgeScorecard): JudgeScorecard {
+  if (scorecard.hardBlockEvaluated !== true) {
+    return {
+      ...scorecard,
+      hardBlockEvaluated: false,
+      hardBlocked: false,
+      hardBlockInstruction: null,
+      hardBlockRationale: null,
+      confidence: null,
+    };
+  }
+  return {
+    ...scorecard,
+    hardBlockEvaluated: true,
+    hardBlocked: scorecard.hardBlocked === true,
+    hardBlockInstruction: scorecard.hardBlocked === true ? JUDGE_HARD_BLOCK_PHRASE : null,
+    hardBlockRationale:
+      typeof scorecard.hardBlockRationale === 'string' ? scorecard.hardBlockRationale : null,
+    confidence: typeof scorecard.confidence === 'number' ? scorecard.confidence : null,
+  };
 }
 
 /**
@@ -329,7 +447,10 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
       // run — same model verdict, but slot in the right index for the
       // sidecar/summary. Everything else (scores, rationales, usage,
       // model) is replayed verbatim from cache.
-      const replayed: JudgeScorecard = { ...hit, variantIndex: options.variantIndex };
+      const replayed: JudgeScorecard = normalizeLegacyScorecard({
+        ...hit,
+        variantIndex: options.variantIndex,
+      });
       if (options.processedDir) {
         writeSidecar(options.processedDir, options.variantIndex, replayed);
       }
@@ -376,31 +497,16 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     );
   }
 
-  function normalizeLegacyJudgeResponse(value: unknown): unknown {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-    const obj = value as Record<string, unknown>;
-    if (
-      obj.style_match !== undefined &&
-      obj.design_language === undefined &&
-      obj.reference_style_match === undefined
-    ) {
-      const { style_match, ...rest } = obj;
-      return {
-        ...rest,
-        design_language: style_match,
-        reference_style_match: style_match,
-      };
-    }
-    return value;
-  }
-
-  const scorecard = buildScorecard({
-    variantIndex: options.variantIndex,
-    payload: parsed.data,
-    modelDeployment: response.modelDeployment,
-    usage: response.usage,
-    now: now(),
-  });
+  const scorecard = normalizeLegacyScorecard(
+    buildScorecard({
+      variantIndex: options.variantIndex,
+      payload: parsed.data,
+      hardBlockEvaluated: parsed.hardBlockEvaluated,
+      modelDeployment: response.modelDeployment,
+      usage: response.usage,
+      now: now(),
+    }),
+  );
 
   if (options.processedDir) {
     writeSidecar(options.processedDir, options.variantIndex, scorecard);
@@ -423,7 +529,8 @@ function writeSidecar(processedDir: string, variantIndex: number, card: JudgeSco
 
 function buildScorecard(args: {
   variantIndex: number;
-  payload: z.infer<typeof baseJudgeResponseSchema>;
+  payload: LegacyJudgeResponse | JudgeResponse;
+  hardBlockEvaluated: boolean;
   modelDeployment: string;
   usage: {
     readonly promptTokens: number;
@@ -450,6 +557,8 @@ function buildScorecard(args: {
   ];
   const rejectedBy = evaluators.filter(([, r]) => r.score < 3).map(([name]) => name);
   const minScore = Math.min(...evaluators.map(([, r]) => r.score));
+  const hardBlock = args.hardBlockEvaluated ? (args.payload as JudgeResponse).hard_block : null;
+  const confidence = args.hardBlockEvaluated ? (args.payload as JudgeResponse).confidence : null;
   return {
     variantIndex: args.variantIndex,
     modelDeployment: args.modelDeployment,
@@ -466,6 +575,11 @@ function buildScorecard(args: {
     passed: rejectedBy.length === 0,
     minScore,
     rejectedBy,
+    hardBlockEvaluated: args.hardBlockEvaluated,
+    hardBlocked: hardBlock?.blocked ?? false,
+    hardBlockInstruction: hardBlock?.instruction ?? null,
+    hardBlockRationale: hardBlock?.rationale ?? null,
+    confidence,
     usage: args.usage,
   };
 }
@@ -597,6 +711,14 @@ function buildSystemInstructions(
     'Anything scoring below 3 auto-rejects the variant. Use the full 1-5 scale; do not',
     'default to 3 for borderline cases — pick 2 (fail) or 4 (pass) and justify briefly.',
     '',
+    'Hard-block contract: set hard_block.blocked=true ONLY when the candidate is so',
+    'fundamentally unusable, off-brief, broken, or unacceptable that it must never ship',
+    `in-game. When blocked, hard_block.instruction MUST be exactly ${JSON.stringify(
+      JUDGE_HARD_BLOCK_PHRASE,
+    )}. When not blocked, hard_block.blocked=false and hard_block.instruction=null.`,
+    'hard_block.rationale must briefly explain why. Also provide a top-level',
+    'confidence number from 0 to 1 for the overall verdict.',
+    '',
     'Rationale per axis: 1-2 sentences max. Be specific (e.g. "outline too thin compared',
     'to references" not "looks wrong"). No prose outside the JSON.',
     '',
@@ -605,9 +727,13 @@ function buildSystemInstructions(
     '',
     'Respond with STRICT JSON only — no prose, no markdown — matching this shape:',
     '{',
+    '  "confidence": 0.85,',
+    '  "hard_block": { "blocked": false, "instruction": null, "rationale": "..." },',
     ...responseFields.map(
       (field, index) =>
-        `  "${field}": { "score": 3, "rationale": "..." }${index < responseFields.length - 1 ? ',' : ''}`,
+        `  "${field}": { "score": 3, "rationale": "..." }${
+          index < responseFields.length - 1 ? ',' : ''
+        }`,
     ),
     '}',
   ].join('\n');
@@ -639,7 +765,10 @@ function buildUserPrompt(brief: Brief, referenceCount: number, hasAddendum: bool
     '',
     refSummary,
     '',
-    `Return your ${judgeAxisCount(brief, hasAddendum)} scores and rationales as a strict JSON object.`,
+    `Return your ${judgeAxisCount(
+      brief,
+      hasAddendum,
+    )} scores and rationales, plus top-level confidence (0..1) and hard_block, as a strict JSON object.`,
   );
   return lines.filter((s) => s !== '').join('\n');
 }

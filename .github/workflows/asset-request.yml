@@ -17,7 +17,7 @@
 #      re-labels or re-opens the issue as themselves, or a manual
 #      `gh workflow run asset-request.yml`. Both paths make the maintainer
 #      the acting sender, which is auditable.
-#   4. Azure keys are wired at STEP level (only on the two `run:` steps that
+#   4. Azure keys are wired at STEP level (only on the three `run:` steps that
 #      need them), not job level — so `actions/checkout`, `actions/setup-node`,
 #      and any npm install-script don't inherit high-value credentials.
 #   5. Secrets stay scoped to THIS workflow (not `copilot-setup-steps.yml`) so
@@ -43,10 +43,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   # Required so `gh issue list` and the worker's failure-comment path can read
   # + comment on asset-request issues.
   issues: write
+  pull-requests: write
 
 # Serialize workers so two runs don't race on the same Azure queue message.
 # Azure Storage Queue is at-least-once and its visibility timeout keeps things
@@ -93,7 +94,12 @@ jobs:
     timeout-minutes: 25
 
     steps:
+      # Use the owner-scoped token for the generated-art push/PR so those events
+      # trigger normal pull_request CI. Events created by GITHUB_TOKEN do not
+      # recursively start workflows.
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CRAWLER_CI_PAT }}
 
       - uses: ./.github/actions/setup-node
 
@@ -237,3 +243,23 @@ jobs:
           # synth + judge, which are the two calls the drain worker needs.
           SPRITES_ALLOW_CI_PIPELINE: 'true'
         run: npm run sprites:worker
+
+      # Publishing is deliberately sequential and runs even when the current
+      # drain observed an unrelated failure. It authoritatively scans every
+      # completed checkpoint, stages approvals outside the checkout, CAS-unions
+      # them onto assets/queue, and creates or updates the one canonical art PR.
+      - name: Publish selected variants
+        if: always() && !cancelled()
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
+          LOG_LEVEL: info
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          SPRITES_ALLOW_CI_ASSET_PUBLISH: 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm run sprites:publish-selected

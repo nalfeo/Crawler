@@ -6,11 +6,25 @@ import type { IssueAssetRequest } from '../../../scripts/sprites/queue/types.js'
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
 import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
 
+const { mockRunFull } = vi.hoisted(() => ({
+  mockRunFull: vi.fn(),
+}));
+
 vi.mock('../../../scripts/sprites/synthesize-brief.js', () => ({
   synthesizeBrief: vi.fn(),
 }));
-vi.mock('../../../scripts/sprites/run-full.js', () => ({
-  runFull: vi.fn(),
+vi.mock('../../../scripts/sprites/resumable-asset-run.js', () => ({
+  runResumableAssetRun: async (...args: unknown[]) => {
+    const result = await mockRunFull(...args);
+    return {
+      ...result,
+      briefId: result.briefId ?? result.summary.brief,
+      runId: result.runId ?? result.summary.runId,
+      selectedIndexes: result.selectedIndexes ?? [],
+      selectedAt: result.selectedAt ?? '2026-06-28T00:00:00.000Z',
+      rejected: result.rejected ?? [],
+    };
+  },
 }));
 vi.mock('../../../scripts/sprites/load-brief.js', () => ({
   loadBrief: vi.fn(),
@@ -20,12 +34,10 @@ import {
   buildCompletionComment,
   runIssuePipeline,
 } from '../../../scripts/sprites/issue-pipeline.js';
-import { runFull } from '../../../scripts/sprites/run-full.js';
 import { synthesizeBrief } from '../../../scripts/sprites/synthesize-brief.js';
 import { loadBrief } from '../../../scripts/sprites/load-brief.js';
 
 const mockSynthesizeBrief = vi.mocked(synthesizeBrief);
-const mockRunFull = vi.mocked(runFull);
 const mockLoadBrief = vi.mocked(loadBrief);
 
 function makeStore(): RunStore & { mem: Map<string, Buffer> } {

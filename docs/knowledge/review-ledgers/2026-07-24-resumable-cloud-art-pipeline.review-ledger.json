@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "resumable-cloud-art-pipeline",
+  "task_title": "Resumable cloud art pipeline",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 15,
+      "resolved_count": 15,
+      "plan_divergence": "minor",
+      "notes": "Seven review passes hardened the same checkpoint-plus-publisher architecture: separated terminal generation from publish state; made approvals deterministic with stable sourceRun/timestamps; rematerialized briefs; required authoritative scans; added fail-closed full-payload collision checks against batch/main/queue; staged approvals transactionally; validated inside every queue CAS attempt and again against current main before PR reconciliation; introduced permanent destination-conflict handling; and comment+close any stale canonical PR on conflict."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

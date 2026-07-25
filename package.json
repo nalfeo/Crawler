@@ -70,6 +70,7 @@
     "sprites:plan-drafts": "tsx scripts/sprites/plan-drafts-cli.ts",
     "sprites:enqueue": "tsx scripts/sprites/queue-cli.ts",
     "sprites:worker": "tsx scripts/sprites/worker-cli.ts",
+    "sprites:publish-selected": "tsx scripts/sprites/asset-request-publisher-cli.ts",
     "sprites:ingest-once": "tsx scripts/sprites/ingest-once-cli.ts",
     "sprites:sync-catalog": "tsx scripts/sprites/sync-catalog.ts",
     "sprites:normalize-item-art": "tsx scripts/sprites/normalize-item-art-names.ts",
