@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d0e265b76aae70b7472096c50f884a543eee4485",
+    "commitDate": "2026-07-25T07:42:06Z",
+    "commitSubject": "Add reusable themed equipment forge (#1971)",
+    "capturedAt": "2026-07-25T09:05:34.883Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30150130479",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/d0e265b76aae70b7472096c50f884a543eee4485.json"
+  },
+  {
     "commit": "19e467b9039346e95ced9c02c0b478fa1d8f9b44",
     "commitDate": "2026-07-25T07:28:37Z",
     "commitSubject": "fix(sprite-pipeline): forward resolveForExternalRead through CachingRunStore (#1949)",
