@@ -2983,6 +2983,57 @@
     "row": 0
   },
   {
+    "id": "generated:sawblade-launcher-v1-var-1",
+    "kind": "sprite",
+    "label": "sawblade-launcher-v1-var-1",
+    "description": "Generated sprite from brief: sawblade-launcher-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "sawblade-launcher-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/sawblade-launcher-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:sawblade-launcher-v1-var-2",
+    "kind": "sprite",
+    "label": "sawblade-launcher-v1-var-2",
+    "description": "Generated sprite from brief: sawblade-launcher-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "sawblade-launcher-v1-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/sawblade-launcher-v1-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:sawblade-launcher-v1-var-8",
+    "kind": "sprite",
+    "label": "sawblade-launcher-v1-var-8",
+    "description": "Generated sprite from brief: sawblade-launcher-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "sawblade-launcher-v1-var-8",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/sawblade-launcher-v1-var-8.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:scavenger-harness-var-0",
     "kind": "sprite",
     "label": "scavenger-harness-var-0",
