@@ -184,11 +184,36 @@ describe('MobAbilityVfx', () => {
     // (instead of the old resolvedCasts polling which broke when byEntity was
     // cleared before PhaserBridge.sync ran).
     world.mobAbilities.cues.length = 0;
-    world.mobAbilities.pendingBursts.push({ kind: 'circle', x: 40, y: 40, radiusFt: 12 });
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+    });
     vfx.update(world);
 
     // Resolution burst emits rings (circles/tweened objects).
     expect(circles.length).toBeGreaterThan(circlesBeforeBurst);
+  });
+
+  it('dispatches Squick bursts through the undercity-specific renderer path', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const vfx = createMobAbilityVfx(scene);
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+    });
+    vfx.update(world);
+    const genericCircleCount = circles.length;
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'plague-boss-squick-undercity-mob-call',
+      geometry: { kind: 'circle', x: 42, y: 39, radiusFt: 12 },
+    });
+    vfx.update(world);
+    const undercityCircleCount = circles.length - genericCircleCount;
+
+    expect(undercityCircleCount).toBeGreaterThan(genericCircleCount);
   });
 
   it('retires telegraph graphics when the cue ends', () => {

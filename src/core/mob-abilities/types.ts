@@ -174,7 +174,7 @@ export interface MobAbilityRuntime {
    * the caster died in the same simulation step that called `clearMobAbility`
    * (which would remove the caster from `byEntity` before `PhaserBridge.sync`).
    */
-  readonly pendingBursts: Array<MobAbilityGeometry>;
+  readonly pendingBursts: Array<MobAbilityBurst>;
   /**
    * Per-EID generation token, set on each `registerMobAbility` and cleared on
    * `clearMobAbility`. Compared against `MobAbilityInstanceState.registrationToken`
@@ -198,6 +198,11 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
   };
 }
 
+export interface MobAbilityBurst {
+  readonly abilityId: string;
+  readonly geometry: MobAbilityGeometry;
+}
+
 /** Stable per-cast source key for status effects owned by a caster's ability. */
 export function mobAbilitySourceId(abilityId: string, casterEid: number): string {
   return `mob-ability:${abilityId}:${casterEid}`;
@@ -216,8 +221,11 @@ const MOB_ABILITY_BURST_CAP = 256;
  * when full). Follows the same bounded-queue pattern as `pushVfxEvent` and
  * `pushAnnouncement`.
  */
-export function pushMobAbilityBurst(bursts: MobAbilityGeometry[], geom: MobAbilityGeometry): void {
-  bursts.push(geom);
+export function pushMobAbilityBurst(
+  bursts: MobAbilityBurst[],
+  burst: MobAbilityBurst,
+): void {
+  bursts.push(burst);
   if (bursts.length > MOB_ABILITY_BURST_CAP) {
     bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
   }

@@ -20,6 +20,7 @@ interface SquickArenaScene {
     simSpeed: number;
   };
   respawn(): void;
+  clearEnemies(): void;
   update(time: number, delta: number): void;
   world: {
     state: string;
@@ -28,6 +29,7 @@ interface SquickArenaScene {
     announcements: Array<{ kind: string; text?: string }>;
     mobAbilities?: {
       cues?: unknown[];
+      pendingBursts?: unknown[];
       byEntity?: Map<
         number,
         { resolvedCasts: number; ownedEntityGenerations?: Map<number, number> }
@@ -88,7 +90,9 @@ async function stepToFrame(page: Page, targetFrame: number) {
       const cueCount = scene.world.mobAbilities?.cues?.length ?? 0;
       const announcement =
         scene.world.announcements.find((event) => event.kind === 'bossAbilityCast')?.text ?? null;
-      const casterInst = [...(scene.world.mobAbilities?.byEntity?.values?.() ?? [])][0];
+      const casterEntry = [...(scene.world.mobAbilities?.byEntity?.entries?.() ?? [])][0];
+      const casterEid = casterEntry?.[0] ?? null;
+      const casterInst = casterEntry?.[1];
       const resolvedCasts = casterInst?.resolvedCasts ?? 0;
       const ownedMinions = casterInst?.ownedEntityGenerations?.size ?? 0;
       return {
@@ -96,11 +100,33 @@ async function stepToFrame(page: Page, targetFrame: number) {
         elapsedMs: scene.world.elapsedMs,
         cueCount,
         announcement,
+        casterEid,
         resolvedCasts,
         ownedMinions,
       };
     },
     { targetFrame, deltaMs: DELTA_MS },
+  );
+}
+
+async function clearEnemiesAndObserveCleanup(page: Page, casterEid: number) {
+  return page.evaluate(
+    ({ casterEid, deltaMs }) => {
+      const scene = (window as unknown as { __arenaScene?: SquickArenaScene }).__arenaScene;
+      if (!scene) throw new Error('CombatArenaScene missing');
+      scene.clearEnemies();
+      scene.world.state = 'playing';
+      scene.update(0, deltaMs);
+      scene.world.state = 'paused';
+      const runtime = scene.world.mobAbilities;
+      return {
+        byEntitySize: runtime?.byEntity?.size ?? 0,
+        hasCasterInstance: runtime?.byEntity?.has?.(casterEid) ?? false,
+        cueCount: runtime?.cues?.length ?? 0,
+        pendingBurstCount: runtime?.pendingBursts?.length ?? 0,
+      };
+    },
+    { casterEid, deltaMs: DELTA_MS },
   );
 }
 
@@ -139,5 +165,12 @@ describe('Squick arena observation', () => {
     const secondResolution = await stepToFrame(page, SECOND_RESOLUTION_FRAME);
     expect(secondResolution.resolvedCasts).toBe(2);
     expect(secondResolution.ownedMinions).toBeLessThanOrEqual(6);
+    expect(secondResolution.casterEid).not.toBeNull();
+
+    const cleanup = await clearEnemiesAndObserveCleanup(page, secondResolution.casterEid!);
+    expect(cleanup.byEntitySize).toBe(0);
+    expect(cleanup.hasCasterInstance).toBe(false);
+    expect(cleanup.cueCount).toBe(0);
+    expect(cleanup.pendingBurstCount).toBe(0);
   }, 120_000);
 });

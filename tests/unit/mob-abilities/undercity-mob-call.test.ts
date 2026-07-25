@@ -32,6 +32,7 @@ const DELTA = GAME.DELTA_MS;
 const FIRST_TELEGRAPH_FRAME = 660; // 11,000ms
 const FIRST_RESOLUTION_FRAME = 750; // +1,500ms
 const SECOND_RESOLUTION_FRAME = 1500;
+const THIRD_RESOLUTION_FRAME = 2250;
 const SQUICK_KEY = 'ratfolk-boss';
 const EXPECTED_ANNOUNCEMENT = 'UNDERCITY MOB CALL — The guild always collects!';
 
@@ -157,16 +158,17 @@ describe('Undercity Mob Call — summon and cap ownership', () => {
   it('summons only remaining slots when fewer than three cap slots remain', () => {
     const h = buildHarness();
     arm(h.world, h.squick);
-    step(h.world, FIRST_RESOLUTION_FRAME);
+    step(h.world, SECOND_RESOLUTION_FRAME);
     const inst = instance(h.world, h.squick);
-    const owned = [...inst.ownedEntityGenerations.keys()];
-    // Make only one slot available.
+    expect(inst.ownedEntityGenerations.size).toBe(6);
+    const owned = [...inst.ownedEntityGenerations.keys()].slice(0, 2);
+    // Free exactly two slots.
     h.world.stores.health.current[owned[0]!] = 0;
     h.world.stores.health.current[owned[1]!] = 0;
     step(h.world, 1); // prune dead-owned entries
-    expect(inst.ownedEntityGenerations.size).toBe(1);
-    step(h.world, SECOND_RESOLUTION_FRAME - FIRST_RESOLUTION_FRAME - 1);
     expect(inst.ownedEntityGenerations.size).toBe(4);
+    step(h.world, THIRD_RESOLUTION_FRAME - SECOND_RESOLUTION_FRAME - 1);
+    expect(inst.ownedEntityGenerations.size).toBe(6);
   });
 
   it('releases ownership immediately when owned minions die or despawn', () => {

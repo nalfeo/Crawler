@@ -298,7 +298,10 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
     // burst even if the caster dies later in the same simulation step (which
     // would remove byEntity[casterEid] before PhaserBridge.sync runs).
     // Bounded push prevents unbounded headless growth (VFX is the sole drain).
-    pushMobAbilityBurst(world.mobAbilities.pendingBursts, geometry);
+    pushMobAbilityBurst(world.mobAbilities.pendingBursts, {
+      abilityId: def.abilityId,
+      geometry,
+    });
   }
   // Re-arm: cooldown is anchored AFTER resolution.
   inst.phase = 'cooldown';
