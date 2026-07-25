@@ -1,5 +1,16 @@
 [
   {
+    "commit": "34734fdb9ad4da7bce6c644c9e4f6d45f0276a7e",
+    "commitDate": "2026-07-25T10:20:28Z",
+    "commitSubject": "Implement Squick UNDERCITY MOB CALL on typed mob-ability runtime with deterministic cap/cadence enforcement (#1962)",
+    "capturedAt": "2026-07-25T11:44:21.082Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30154625751",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/34734fdb9ad4da7bce6c644c9e4f6d45f0276a7e.json"
+  },
+  {
     "commit": "d725bcf951867bf13901b035ebc8baa16b86780c",
     "commitDate": "2026-07-25T09:42:12Z",
     "commitSubject": "Implement Big Panda Wei’s typed BAMBOO-FED BERSERK runtime slice with canonical arena wiring (#1960)",
