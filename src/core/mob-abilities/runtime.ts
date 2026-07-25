@@ -208,7 +208,7 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
   // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
   let targetEid: number | null = null;
   let targetGeneration: number | null = null;
-  let committedGeometry: MobAbilityInstanceState['committedGeometry'] = null;
+  let committedGeometry: MobAbilityInstanceState['committedGeometry'];
   if (def.geometry.kind === 'circle') {
     targetEid = findDefaultTarget(world);
     if (targetEid === null) {
