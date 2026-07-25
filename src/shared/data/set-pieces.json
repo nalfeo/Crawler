@@ -13964,13 +13964,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-potted-plant",
-                "label": "Potted Plant",
-                "prompt": "A small potted houseplant in a chipped terracotta pot — a few broad, slightly wilted green leaves gone dusty from seasons in a windowless dungeon reception. Warm desaturated pixel-art palette, clear low silhouette readable at about 2.5 feet tall. Cozy scene-dressing decoration for the reality-show welcome room.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["decoration", "plant", "welcome-room", "cozy", "pixel-dungeon"]
+                "source": "catalog",
+                "spriteId": "welcome-room-potted-plant-var-0"
               },
               "widthFt": 2.5,
               "heightFt": 2.5
@@ -13987,13 +13982,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-side-table",
-                "label": "Broker Side Table",
-                "prompt": "A small weathered dark-wood side table, waist-high — the kind a spell broker keeps a potion and a guttering candle on. Warm desaturated dungeon palette, pixel-art, about a 2.5-foot footprint with a clean readable silhouette. Cozy scene-dressing furniture for the reality-show welcome room.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["furniture", "table", "welcome-room", "cozy", "pixel-dungeon"]
+                "source": "catalog",
+                "spriteId": "welcome-room-side-table-var-12"
               },
               "widthFt": 2.5,
               "heightFt": 2.5
@@ -14019,13 +14009,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-lounge-stool",
-                "label": "Lounge Stool",
-                "prompt": "A short round wooden stool with a faded, sat-flat cushion — a contestant's waiting-room stool worn down season after season. Warm desaturated dungeon palette, pixel-art, about 2.5 feet tall with a clear silhouette. Cozy scene-dressing furniture for the reality-show welcome room.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["furniture", "stool", "welcome-room", "cozy", "pixel-dungeon"]
+                "source": "catalog",
+                "spriteId": "welcome-room-lounge-stool-var-1"
               },
               "widthFt": 2.5,
               "heightFt": 2.5
@@ -14087,13 +14072,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-show-poster",
-                "label": "Show Poster",
-                "prompt": "A curling promotional poster for the dungeon show, taped crooked to the stone wall: a grinning contestant silhouette and a season number, corners peeled. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 2,
-                "heightTiles": 2,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-show-poster-var-0"
               },
               "widthFt": 3,
               "heightFt": 4,
@@ -14134,13 +14114,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-camera-rig",
-                "label": "Wall Camera Rig",
-                "prompt": "A boxy wall-mounted television camera on a swivel bracket, lens catching the light, a red tally lamp lit, cable drooping down the wall. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-camera-rig-var-4"
               },
               "widthFt": 2.5,
               "heightFt": 2.5,
@@ -14247,13 +14222,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-crate-stack",
-                "label": "Stacked Crates",
-                "prompt": "Two mismatched wooden shipping crates stacked askew, stencilled with a faded production logo, lid gapped and straw poking out. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 2,
-                "heightTiles": 2,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-crate-stack-var-3"
               },
               "widthFt": 3,
               "heightFt": 3.5
@@ -14303,13 +14273,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-wall-shelf",
-                "label": "Wall Shelf",
-                "prompt": "A short plank shelf on iron brackets carrying a leaning row of ledgers and a stub candle, dust on the top edge. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 2,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-wall-shelf-var-0"
               },
               "widthFt": 3,
               "heightFt": 1.5
@@ -14359,13 +14324,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-cable-coil",
-                "label": "Coiled Cable",
-                "prompt": "A loose coil of thick black production cable dumped against the wall, taped down at one end with gaffer tape gone grey. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-cable-coil-var-0"
               },
               "widthFt": 2.5,
               "heightFt": 1.5
@@ -14405,13 +14365,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-crate-single",
-                "label": "Single Crate",
-                "prompt": "A single squat wooden crate with a pried-open lid, one board split, packing straw spilling over the edge. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-crate-single-var-0"
               },
               "widthFt": 2.5,
               "heightFt": 2.5
@@ -14430,13 +14385,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-wall-shelf",
-                "label": "Wall Shelf",
-                "prompt": "A short plank shelf on iron brackets carrying a leaning row of ledgers and a stub candle, dust on the top edge. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 2,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-wall-shelf-var-0"
               },
               "widthFt": 3,
               "heightFt": 1.5,
@@ -14465,13 +14415,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-trash-bin",
-                "label": "Dented Bin",
-                "prompt": "A dented metal bin overflowing with crumpled call sheets and a snapped clapperboard, lid resting crooked on top. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-trash-bin-var-0"
               },
               "widthFt": 2,
               "heightFt": 2.5
@@ -14490,13 +14435,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-crate-single",
-                "label": "Single Crate",
-                "prompt": "A single squat wooden crate with a pried-open lid, one board split, packing straw spilling over the edge. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-crate-single-var-0"
               },
               "widthFt": 2.5,
               "heightFt": 2.5
@@ -14515,13 +14455,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-cable-coil",
-                "label": "Coiled Cable",
-                "prompt": "A loose coil of thick black production cable dumped against the wall, taped down at one end with gaffer tape gone grey. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-cable-coil-var-0"
               },
               "widthFt": 2.5,
               "heightFt": 1.5,
@@ -14541,13 +14476,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-cable-coil",
-                "label": "Coiled Cable",
-                "prompt": "A loose coil of thick black production cable dumped against the wall, taped down at one end with gaffer tape gone grey. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-cable-coil-var-0"
               },
               "widthFt": 2.5,
               "heightFt": 1.5
@@ -14566,13 +14496,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-crate-stack",
-                "label": "Stacked Crates",
-                "prompt": "Two mismatched wooden shipping crates stacked askew, stencilled with a faded production logo, lid gapped and straw poking out. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 2,
-                "heightTiles": 2,
-                "tags": ["welcome-room", "reality-show", "pixel-dungeon", "scene-dressing"]
+                "source": "catalog",
+                "spriteId": "welcome-room-crate-stack-var-3"
               },
               "widthFt": 3,
               "heightFt": 3.5,
@@ -14612,17 +14537,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-floor-worn",
-                "label": "Worn Carpet Tile",
-                "prompt": "A carpet tile worn down to the backing along a traffic line, nap flattened and colour faded. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "floor", "reality-show", "pixel-dungeon"],
-                "placeholder": {
-                  "source": "catalog",
-                  "spriteId": "welcome-room-rug-var-0"
-                }
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-worn-var-0"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14641,17 +14557,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-floor-worn",
-                "label": "Worn Carpet Tile",
-                "prompt": "A carpet tile worn down to the backing along a traffic line, nap flattened and colour faded. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "floor", "reality-show", "pixel-dungeon"],
-                "placeholder": {
-                  "source": "catalog",
-                  "spriteId": "welcome-room-rug-var-0"
-                }
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-worn-var-0"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14670,17 +14577,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-floor-worn",
-                "label": "Worn Carpet Tile",
-                "prompt": "A carpet tile worn down to the backing along a traffic line, nap flattened and colour faded. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "floor", "reality-show", "pixel-dungeon"],
-                "placeholder": {
-                  "source": "catalog",
-                  "spriteId": "welcome-room-rug-var-0"
-                }
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-worn-var-0"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14699,17 +14597,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-floor-stain",
-                "label": "Stained Carpet Tile",
-                "prompt": "A carpet tile with an old dark spill stain and a scorch mark at one corner. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "floor", "reality-show", "pixel-dungeon"],
-                "placeholder": {
-                  "source": "catalog",
-                  "spriteId": "welcome-room-rug-var-0"
-                }
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-stain-var-2"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14728,17 +14617,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-floor-stain",
-                "label": "Stained Carpet Tile",
-                "prompt": "A carpet tile with an old dark spill stain and a scorch mark at one corner. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "floor", "reality-show", "pixel-dungeon"],
-                "placeholder": {
-                  "source": "catalog",
-                  "spriteId": "welcome-room-rug-var-0"
-                }
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-stain-var-2"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14757,17 +14637,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-floor-tape",
-                "label": "Taped Mark Tile",
-                "prompt": "A carpet tile marked with a stage-crew gaffer-tape cross, the tape lifting at one edge. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "floor", "reality-show", "pixel-dungeon"],
-                "placeholder": {
-                  "source": "catalog",
-                  "spriteId": "welcome-room-rug-var-0"
-                }
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-tape-var-0"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14786,17 +14657,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-floor-tape",
-                "label": "Taped Mark Tile",
-                "prompt": "A carpet tile marked with a stage-crew gaffer-tape cross, the tape lifting at one edge. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "floor", "reality-show", "pixel-dungeon"],
-                "placeholder": {
-                  "source": "catalog",
-                  "spriteId": "welcome-room-rug-var-0"
-                }
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-tape-var-0"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14815,17 +14677,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-floor-seam",
-                "label": "Seamed Carpet Tile",
-                "prompt": "A carpet tile where two runs of carpet meet badly, edges frayed and curling. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "floor", "reality-show", "pixel-dungeon"],
-                "placeholder": {
-                  "source": "catalog",
-                  "spriteId": "welcome-room-rug-var-0"
-                }
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-seam-var-0"
               },
               "widthFt": 2,
               "heightFt": 2
@@ -14844,17 +14697,8 @@
           "layers": [
             {
               "sprite": {
-                "source": "custom",
-                "requestId": "welcome-room-floor-seam",
-                "label": "Seamed Carpet Tile",
-                "prompt": "A carpet tile where two runs of carpet meet badly, edges frayed and curling. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.",
-                "widthTiles": 1,
-                "heightTiles": 1,
-                "tags": ["welcome-room", "floor", "reality-show", "pixel-dungeon"],
-                "placeholder": {
-                  "source": "catalog",
-                  "spriteId": "welcome-room-rug-var-0"
-                }
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-seam-var-0"
               },
               "widthFt": 2,
               "heightFt": 2

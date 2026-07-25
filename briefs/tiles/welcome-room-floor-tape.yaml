@@ -7,7 +7,15 @@ description: |
 
   This prop must sit beside the already-approved welcome-room art without clashing: welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope, welcome-sign-left-v1 and prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass hardware, hard dark outline, muted and dusty, never bright or saturated.
 
-  CRITICAL: this is a WARM ORANGE CARPET tile, not stone, not cave rock, not sewer tile. Woven carpet nap texture in the room's warm orange-to-maroon range, matching and sitting seamlessly beside welcome-room-rug. It must tile edge-to-edge seamlessly at 16px with no border, no frame, no vignette and no transparent margin — the pattern must run right off all four edges so a grid of these reads as one continuous carpet.
+  CRITICAL: this is a WARM ORANGE CARPET tile, not stone, not cave rock, not sewer tile. COLOUR TARGET (measured from the actual rendered room floor): the carpet base must be a PALE, LIGHT, SANDY WARM ORANGE around #eaa56c — roughly the colour of terracotta sand in daylight. Previous rounds came back far too dark and too saturated (#933c1a, #a76521, a dark brick red) and rendered as obvious dark patches punched into the light orange floor, which is exactly the failure these tiles were commissioned to remove. Lighten and desaturate substantially: the average pixel of the tile must sit close to #eaa56c, with weave noise only a shade or two either side of it, and any stain/wear/seam detail kept as a LOCAL accent rather than darkening the whole tile. Do NOT match the deep maroon welcome-room-rug — the rug sits ON TOP of this carpet and is deliberately much darker. It must tile edge-to-edge seamlessly at 16px with no border, no frame, no vignette and no transparent margin — the pattern must run right off all four edges so a grid of these reads as one continuous carpet.
+  SHEET LAYOUT: render every cell on ONE single flat uniform background colour,
+  identical in all cells — no checkerboard, no alternating cell backgrounds, no
+  per-cell frames or gutters of differing colour.
+
+  The gaffer tape is DULL, DUSTY, DESATURATED CLOTH TAPE — a muted greyed
+  ochre, close in value to the carpet and only slightly lighter. It must not be
+  a bright saturated yellow; the previous round read as fluorescent highlighter
+  yellow, far outside the room's muted palette.
 tags:
   - welcome-room
   - floor

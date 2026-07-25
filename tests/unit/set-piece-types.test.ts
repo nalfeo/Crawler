@@ -605,34 +605,29 @@ describe('welcome-room authored set piece', () => {
 
   it('wires the hero props to their shipped generated catalog art', () => {
     const room = getSetPieceDef('welcome-room')!;
-    // Props whose art has not been generated yet are honest custom requests:
-    // they render as labeled boxes and sit in the custom art-request queue until
-    // bespoke art exists — never as arbitrary Kenney tile frames masquerading as
-    // furniture, and never as a plausible-but-wrong catalog reuse.
+    // Every prop's art has now been generated, approved and wired, so the room
+    // has no outstanding custom art-request left: it must render entirely as
+    // real art, never as labeled pending-art boxes. Props must also never fall
+    // back to arbitrary Kenney tile frames masquerading as furniture, nor to a
+    // plausible-but-wrong catalog reuse.
     const requestIds = collectCustomArtRequests([room])
       .map((req) => req.requestId)
       .sort();
-    expect(requestIds).toEqual([
-      'welcome-room-cable-coil',
-      'welcome-room-camera-rig',
-      'welcome-room-crate-single',
-      'welcome-room-crate-stack',
-      'welcome-room-floor-seam',
-      'welcome-room-floor-stain',
-      'welcome-room-floor-tape',
-      'welcome-room-floor-worn',
-      'welcome-room-lounge-stool',
-      'welcome-room-potted-plant',
-      'welcome-room-show-poster',
-      'welcome-room-side-table',
-      'welcome-room-trash-bin',
-      'welcome-room-wall-shelf',
-    ]);
-    // Those three queued decor props must NOT resolve to raw Kenney sheet
-    // frames anymore — each base layer is now an honest custom request.
-    for (const id of ['potted-plant', 'broker-side-table', 'lounge-stool']) {
-      const base = room.props.find((p) => p.id === id)!.layers[0]!.sprite;
-      expect(base.source).toBe('custom');
+    expect(requestIds).toEqual([]);
+    // The formerly-queued decor props now resolve to their own bespoke,
+    // approved generated art — keyed by the bare request id they were briefed
+    // under, which is what keeps generated art from orphaning.
+    const wiredDecor: ReadonlyArray<readonly [string, string]> = [
+      ['potted-plant', 'welcome-room-potted-plant'],
+      ['broker-side-table', 'welcome-room-side-table'],
+      ['lounge-stool', 'welcome-room-lounge-stool'],
+    ];
+    for (const [propId, requestId] of wiredDecor) {
+      const base = room.props.find((p) => p.id === propId)!.layers[0]!.sprite;
+      expect(base.source).toBe('catalog');
+      expect((base as { spriteId: string }).spriteId).toMatch(
+        new RegExp(`^${requestId}-var-\\d+$`),
+      );
     }
     // No hero prop is a placeholder — the reception/hero furniture is all shipped.
     for (const id of [
