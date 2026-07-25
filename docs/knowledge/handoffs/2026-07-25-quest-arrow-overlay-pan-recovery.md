@@ -17,6 +17,7 @@ hud-ux
 - Replaced the one-shot pan expectation with a bounded pan loop that re-queries the exported overlay-arrow bounds after each drag and stops once the arrow is actually gone.
 - Dropped the stale “old arrow box contains no gold pixels” assertion because once the waypoint becomes visible near the same edge, that probe can legitimately overlap the visible waypoint marker even though the edge arrow is gone.
 - Added a fresh 2🍎 review ledger for this recovery session.
+- After the recovery commit was ready, the publish gate refused to push until a repo-wide Prettier check passed for 29 already-changed branch files; those files were formatted without behavioral edits so the branch can publish.
 
 ## Verification
 
@@ -26,7 +27,8 @@ hud-ux
   - aggregate fallout: `ci` job `89680967070`, `Merge gate` job `89680959624`
 - `npm run test:e2e -- tests/e2e/minimap-overlay.test.ts` ✅ (3 consecutive passes after the fix)
 - `npm run verify:fast` ✅
+- `npx prettier --write <29 files reported by the publish gate>` ✅
 
 ## Remaining work / notes
 
-- Run `npm run verify:pr-prereqs` on the updated branch (with `origin/main` fetched locally) and then final PR validation before pushing.
+- Re-run `npm run verify:fast` after the forced formatting-only cleanup, then secret scan + final PR validation + publish.

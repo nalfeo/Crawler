@@ -243,11 +243,7 @@ export const bossAbilityStatusPackSchema = z
 
 export type BossAbilityStatusPack = z.infer<typeof bossAbilityStatusPackSchema>;
 export type BossAbilityDeliveryStage =
-  | 'blocked'
-  | 'designed'
-  | 'in-progress'
-  | 'ready'
-  | 'verified';
+  'blocked' | 'designed' | 'in-progress' | 'ready' | 'verified';
 
 function validateStatusCoverage(pack: BossAbilityStatusPack, catalog: BossAbilityCatalog): void {
   const remainingAbilityIds = new Set(catalog.entries.map((ability) => ability.id));

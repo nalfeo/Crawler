@@ -106,10 +106,7 @@ export interface SettlementMaintenanceDecision {
 }
 
 export type SettlementMaintenanceTerminationReason =
-  | 'no-opportunity'
-  | 'already-processed'
-  | 'action-cap-equipment'
-  | 'exhausted';
+  'no-opportunity' | 'already-processed' | 'action-cap-equipment' | 'exhausted';
 
 export interface SettlementMaintenanceResult {
   /** True only when the planner actually ran its decision loops this call. */
