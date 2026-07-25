@@ -196,6 +196,18 @@ const sensorOverridesSchema = z
   .strict()
   .default({});
 
+export const briefThemeSchema = z
+  .object({
+    setId: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-z0-9][a-z0-9-]*$/, 'theme.setId must be lowercase kebab-case'),
+    displayName: z.string().trim().min(1).max(80),
+    designLanguage: z.string().trim().min(10).max(2_000),
+  })
+  .strict();
+
 export const briefSchema = z
   .object({
     type: z.enum(SPRITE_TYPES),
@@ -204,6 +216,7 @@ export const briefSchema = z
       .string()
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'name must be lowercase kebab-case'),
+    theme: briefThemeSchema.optional(),
     size: sizeSchema,
     palette: paletteSchema,
     anchor: anchorSchema,
@@ -371,6 +384,7 @@ export const briefSchema = z
   });
 
 export type Brief = z.infer<typeof briefSchema>;
+export type BriefTheme = NonNullable<Brief['theme']>;
 // SpriteType inferred via Brief['type']; no separate alias needed yet.
 export type RgbTriple = readonly [number, number, number];
 export type PaletteColors = readonly RgbTriple[];
@@ -401,6 +415,7 @@ export const minimalBriefSchema = z
       .string()
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'name must be lowercase kebab-case'),
+    theme: briefThemeSchema.optional(),
     description: z.string().trim().min(1).optional(),
     // Optional size-variant directive. Scales the per-type defaults
     // (size / anchor / native canvas) at load time so a brief can be wide,

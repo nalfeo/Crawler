@@ -9,7 +9,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { buildUserPrompt } from '../../../scripts/sprites/provider/azure-chat-synth.js';
+import {
+  buildSystemPrompt,
+  buildUserPrompt,
+} from '../../../scripts/sprites/provider/azure-chat-synth.js';
 import type { SynthesizeBriefRequest } from '../../../scripts/sprites/provider/synth-types.js';
 
 function makeRequest(overrides: Partial<SynthesizeBriefRequest> = {}): SynthesizeBriefRequest {
@@ -52,5 +55,21 @@ describe('buildUserPrompt', () => {
   it('asks the model to classify when no type is supplied', () => {
     const prompt = buildUserPrompt(makeRequest({ type: null }));
     expect(prompt).toContain('Sprite type: classify from the name.');
+  });
+
+  it('places explicit theme identity in the user prompt and design language in the system prompt', () => {
+    const request = makeRequest({
+      theme: {
+        setId: 'classic-fantasy',
+        displayName: 'Classic Fantasy',
+        designLanguage:
+          'Practical late-medieval steel, leather, wool, and carved hardwood with restrained heraldry.',
+      },
+    });
+
+    expect(buildUserPrompt(request)).toContain('Theme set: Classic Fantasy (classic-fantasy).');
+    expect(buildSystemPrompt(request)).toContain(
+      'Collection design language: Practical late-medieval steel',
+    );
   });
 });

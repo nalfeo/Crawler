@@ -52,11 +52,17 @@
  * of grinding to the 100k-frame default.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
+import {
+  FLOOR1_TIME_BUDGET_MS,
+  GATE_MAX_FRAMES,
+  GATE_SEEDS,
+  GATE_WALL_TIME_CAP_MS,
+  GATE_WEAPONS,
+} from '../../scripts/agent/perf/floor1-gate-sample.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { isOfficialWin } from '../../src/game/ai/scoring.js';
 import type { RunStats } from '../../src/game/ai/types.js';
-import { GAME } from '../../src/shared/constants.js';
 import {
   FLOOR1_TUTORIAL_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
@@ -65,19 +71,16 @@ import {
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
 } from '../../src/shared/quest-types.js';
 
-/** Floor 1 AI budget: the AI must clear the floor in under six minutes (240×140 map). */
-const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
-const HEADLESS_WALL_TIME_CAP_MS = 30 * 60 * 1000;
-
 /**
- * Frame cap for the gate. One frame is `GAME.DELTA_MS` (1000/60 ms) of game
- * time, so this allows the run to advance slightly past the 6-minute AI budget
- * (~6.6 min of game time). A legitimate clear finishes well before the budget;
- * a regression that never clears stops here deterministically (bounded wall
- * time) and is then caught by the `outcome`/budget assertions rather than
- * running to the 100k-frame default (~27 min of game time).
+ * The sample constants ({@link GATE_SEEDS}, {@link GATE_WEAPONS},
+ * {@link GATE_MAX_FRAMES}, {@link FLOOR1_TIME_BUDGET_MS}) live in
+ * `scripts/agent/perf/floor1-gate-sample.ts` rather than here, so the
+ * gameplay-neutrality fingerprint (`npm run perf:fingerprint`) provably covers
+ * the exact runs this blocking gate enforces. Editing them there changes what
+ * CI gates on.
  */
-const MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
+const HEADLESS_WALL_TIME_CAP_MS = GATE_WALL_TIME_CAP_MS;
+const MAX_FRAMES = GATE_MAX_FRAMES;
 
 /** Every Floor 1 quest that must be completed for an honest full clear. */
 const REQUIRED_QUEST_IDS = [
@@ -100,7 +103,7 @@ const REQUIRED_QUEST_IDS = [
  * bow 8/8 (100%), bat 7/8 (88%). Thresholds below sit under measured so a
  * single prefix loss does not fail CI, while a real regression still trips it.
  */
-const SAMPLE_SEEDS = Array.from({ length: 8 }, (_, i) => i + 1) as readonly number[];
+const SAMPLE_SEEDS = GATE_SEEDS;
 
 /**
  * Per-weapon minimum win-rate. Floors sit one loss below the measured 1–8 rates
@@ -113,15 +116,6 @@ const MIN_WIN_RATE: Readonly<Record<string, number>> = {
   bow: 0.875,
   'baseball-bat': 0.75,
 };
-
-/**
- * Starter weapons the gate proves Floor 1 is winnable with. Each is forced as
- * the AI's equipped weapon (world generation is unchanged — only the combat
- * style differs), exercising three distinct damage models: the sword (full
- * damage anywhere in its arc), the bow (leading ranged projectiles), and the
- * baseball-bat (knockback with a tip sweet-spot / 40% shaft falloff).
- */
-const GATE_WEAPONS = ['sword', 'bow', 'baseball-bat'] as const;
 
 /**
  * Per-combo wall-clock budget for the `beforeAll` that runs the whole weapon

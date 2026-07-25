@@ -83,14 +83,18 @@ export function extractPreamble(markdown: string): string {
  * as an array of prompt blocks (each prefixed with a blank line separator).
  * Returns an empty array when no addenda apply (e.g. Floor 1 non-enemy sprites).
  */
-function designLanguageAddendaBlocks(name: string, floor: number): string[] {
-  const addenda = resolveDesignLanguageAddenda(name, floor);
+function designLanguageAddendaBlocks(
+  name: string,
+  floor: number,
+  themeOverride?: string,
+): string[] {
+  const addenda = resolveDesignLanguageAddenda(name, floor, themeOverride);
   const blocks: string[] = [];
   if (addenda.floor !== undefined) {
     blocks.push('', `## World context\n${addenda.floor}`);
   }
   if (addenda.theme !== undefined) {
-    blocks.push('', `## Faction theme\n${addenda.theme}`);
+    blocks.push('', `## Theme design language\n${addenda.theme}`);
   }
   return blocks;
 }
@@ -105,7 +109,7 @@ function designLanguageAddendaBlocks(name: string, floor: number): string[] {
  */
 export function buildPrompt(brief: Brief, styleGuide: string): string {
   const rules = typeRulesBlock(brief);
-  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor);
+  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor, brief.theme?.designLanguage);
   return [
     styleGuide,
     '',
@@ -134,7 +138,7 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   const count = variants ?? variantCount(brief);
   const rules = typeRulesBlock(brief);
   const variationsBlock = thematicVariationsBlock(brief.variations);
-  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor);
+  const addenda = designLanguageAddendaBlocks(brief.name, brief.floor, brief.theme?.designLanguage);
   return [
     styleGuide,
     '',

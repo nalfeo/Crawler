@@ -1,0 +1,49 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "perf-optimizer-agent",
+  "task_title": "Perf Optimizer agent + gameplay-neutrality fingerprint gate",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Reviewer scoped the neutrality claim to headless RunStats rather than whole-game proof, required surface-specific observation for render/load work, and flagged the 24-run local sample against AGENTS.md r15. All three addressed: docs reworded, render/load observation table added, explicit documented r15 exception. Also adopted: exact-key allowlist over regex stripping, sample metadata on fingerprints, and a shared gate-constant module.",
+      "clean": true,
+      "models": ["gpt-5.5"]
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "NaN/Infinity and Map/Set collapsed to identical JSON tokens (hash collisions); narrowed --check against a full-gate baseline misreported uncovered runs as gameplay drift; process.exitCode instead of process.exit for a gate tool."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Map/Set guard was type-specific, so Date/RegExp/Error/class instances still canonicalized to {} and shared a hash. Replaced with a structural plain-object (prototype) check."
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Confirmed the collision class is fully closed with no false positives against real RunStats, verified the extracted Floor-1 gate constants are numerically identical to main, and verified every npm script, path and CLI flag cited in the agent/skill docs exists. No findings."
+        }
+      ],
+      "completed": true
+    }
+  }
+}

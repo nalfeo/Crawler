@@ -84,6 +84,24 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/shocking\/wonderful apex/i);
   });
 
+  it('includes an authored theme design language for floor 1 equipment', () => {
+    const out = buildPrompt(
+      makeBrief({
+        type: 'equipment',
+        theme: {
+          setId: 'classic-fantasy',
+          displayName: 'Classic Fantasy',
+          designLanguage:
+            'Practical late-medieval steel, leather, wool, and carved hardwood with restrained heraldry.',
+        },
+      }),
+      FAKE_STYLE_GUIDE,
+    );
+
+    expect(out).toContain('## Theme design language');
+    expect(out).toContain('Practical late-medieval steel');
+  });
+
   it('keeps item briefs explicitly inanimate', () => {
     const out = buildPrompt(makeBrief({ type: 'item' }), FAKE_STYLE_GUIDE);
     expect(out).toMatch(/Keep the item inanimate/i);
