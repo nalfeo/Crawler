@@ -197,7 +197,12 @@ describe('compareFingerprints', () => {
       {
         weapon: 'sword',
         seed: 1,
-        stats: statsFixture({ levelUps: [{ level: 2, atMs: 999 }, { level: 3, atMs: 1500 }] }),
+        stats: statsFixture({
+          levelUps: [
+            { level: 2, atMs: 999 },
+            { level: 3, atMs: 1500 },
+          ],
+        }),
       },
     ]);
     const comparison = compareFingerprints(baseline, current);
