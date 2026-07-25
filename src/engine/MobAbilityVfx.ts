@@ -54,6 +54,10 @@ const COLOR_BERSERK_RED = 0xff4d4d;
 const COLOR_BERSERK_DUST = 0xc98b56;
 const COLOR_BERSERK_ENVELOPE = 0xff6b6b;
 const COLOR_BERSERK_LEAF = 0x8bd17c;
+const COLOR_TONGUE_FLESH = 0xff8c82;
+const COLOR_TONGUE_MUCUS = 0xb7f171;
+const COLOR_TONGUE_SWAMP = 0x6ea54d;
+const COLOR_TONGUE_DUST = 0xb98a5c;
 
 const BURST_LIFETIME_MS = 560;
 const CAST_START_LIFETIME_MS = 320;
@@ -299,10 +303,10 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     gfx.fillStyle(fillColor, 0.12 + 0.28 * progress);
     gfx.fillPoints(
       [
-        { x: left0x, y: left0y },
-        { x: left1x, y: left1y },
-        { x: right1x, y: right1y },
-        { x: right0x, y: right0y },
+        new Phaser.Math.Vector2(left0x, left0y),
+        new Phaser.Math.Vector2(left1x, left1y),
+        new Phaser.Math.Vector2(right1x, right1y),
+        new Phaser.Math.Vector2(right0x, right0y),
       ],
       true,
     );
@@ -504,6 +508,205 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     }
   }
 
+  function trackTransientShape(shape: Phaser.GameObjects.Shape): void {
+    transientCircles.add(shape);
+  }
+
+  function spawnTongueRepossessionBurst(geom: {
+    originX: number;
+    originY: number;
+    endX: number;
+    endY: number;
+    dirX: number;
+    dirY: number;
+    widthFt: number;
+  }): void {
+    if (!enabled) return;
+    const originX = ftToPx(geom.originX);
+    const originY = ftToPx(geom.originY);
+    const endX = ftToPx(geom.endX);
+    const endY = ftToPx(geom.endY);
+    const widthPx = ftToPx(geom.widthFt);
+    const dx = endX - originX;
+    const dy = endY - originY;
+    const lengthPx = Math.hypot(dx, dy);
+    if (lengthPx <= Number.EPSILON) return;
+
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const centerX = originX + dx * 0.5;
+    const centerY = originY + dy * 0.5;
+    spawnRing(
+      originX,
+      originY,
+      widthPx * 0.25,
+      widthPx * 0.95,
+      COLOR_HOSTILE_RED,
+      220,
+      BURST_DEPTH,
+    );
+    spawnRing(
+      endX,
+      endY,
+      widthPx * 0.35,
+      widthPx * 2.2,
+      COLOR_HOSTILE_RED,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+
+    if (canAddRectangle) {
+      const tongue = scene.add.rectangle(
+        centerX,
+        centerY,
+        lengthPx,
+        widthPx * 0.82,
+        COLOR_TONGUE_FLESH,
+      );
+      tongue.setAngle?.(angleDeg);
+      tongue.setDepth(BURST_DEPTH);
+      tongue.setBlendMode('ADD');
+      ignoreUi(tongue);
+      trackTransientShape(tongue);
+      const tween = scene.tweens.add({
+        targets: tongue,
+        x: originX + dx * 0.34,
+        y: originY + dy * 0.34,
+        scaleX: { from: 1, to: 0.28 },
+        alpha: { from: 0.78, to: 0 },
+        duration: BURST_LIFETIME_MS,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          transientCircles.delete(tongue);
+          transientTweens.delete(tongue);
+          tongue.destroy();
+        },
+      });
+      transientTweens.set(tongue, tween);
+    }
+
+    if (canAddRectangle) {
+      for (const offset of [0.28, 0.58]) {
+        const strip = scene.add.rectangle(
+          originX + dx * offset,
+          originY + dy * offset,
+          lengthPx * 0.22,
+          Math.max(2, widthPx * 0.18),
+          COLOR_TONGUE_MUCUS,
+        );
+        strip.setAngle?.(angleDeg);
+        strip.setDepth(BURST_DEPTH);
+        strip.setBlendMode('ADD');
+        ignoreUi(strip);
+        trackTransientShape(strip);
+        const tween = scene.tweens.add({
+          targets: strip,
+          alpha: { from: 0.72, to: 0 },
+          scaleX: { from: 1, to: 0.18 },
+          duration: BURST_LIFETIME_MS * 0.8,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            transientCircles.delete(strip);
+            transientTweens.delete(strip);
+            strip.destroy();
+          },
+        });
+        transientTweens.set(strip, tween);
+      }
+    }
+
+    for (let i = 1; i <= 4; i += 1) {
+      const t = i / 5;
+      const dust = scene.add.circle(
+        originX + dx * t,
+        originY + dy * t,
+        Math.max(2, widthPx * 0.16),
+      );
+      dust.setFillStyle(COLOR_TONGUE_DUST, 0.4);
+      dust.setDepth(BURST_DEPTH);
+      dust.setBlendMode('ADD');
+      ignoreUi(dust);
+      trackTransientShape(dust);
+      const tween = scene.tweens.add({
+        targets: dust,
+        x: originX + dx * t - geom.dirY * widthPx * 0.3,
+        y: originY + dy * t + geom.dirX * widthPx * 0.3,
+        alpha: { from: 0.4, to: 0 },
+        scale: { from: 1, to: 0.3 },
+        duration: BURST_LIFETIME_MS * 0.55,
+        ease: 'Sine.easeOut',
+        onComplete: () => {
+          transientCircles.delete(dust);
+          transientTweens.delete(dust);
+          dust.destroy();
+        },
+      });
+      transientTweens.set(dust, tween);
+    }
+
+    if (canAddEllipse) {
+      for (let i = 0; i < 4; i += 1) {
+        const spread = (i - 1.5) * widthPx * 0.25;
+        const spray = scene.add.ellipse(
+          endX,
+          endY,
+          widthPx * 0.45,
+          widthPx * 0.22,
+          COLOR_TONGUE_SWAMP,
+        );
+        spray.setAngle?.(angleDeg + i * 9 - 13.5);
+        spray.setDepth(BURST_DEPTH);
+        spray.setBlendMode('ADD');
+        ignoreUi(spray);
+        trackTransientShape(spray);
+        const tween = scene.tweens.add({
+          targets: spray,
+          x: endX + geom.dirX * widthPx * 0.9 - geom.dirY * spread,
+          y: endY + geom.dirY * widthPx * 0.9 + geom.dirX * spread,
+          alpha: { from: 0.72, to: 0 },
+          scaleX: { from: 1, to: 1.8 },
+          scaleY: { from: 1, to: 0.2 },
+          duration: BURST_LIFETIME_MS * 0.7,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            transientCircles.delete(spray);
+            transientTweens.delete(spray);
+            spray.destroy();
+          },
+        });
+        transientTweens.set(spray, tween);
+      }
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      const t = 0.72 + i * 0.12;
+      const bubble = scene.add.circle(
+        originX + dx * t,
+        originY + dy * t,
+        Math.max(2.2, widthPx * (0.17 - i * 0.02)),
+        COLOR_TONGUE_MUCUS,
+      );
+      bubble.setDepth(BURST_DEPTH);
+      bubble.setBlendMode('ADD');
+      ignoreUi(bubble);
+      trackTransientShape(bubble);
+      const tween = scene.tweens.add({
+        targets: bubble,
+        x: originX + dx * Math.max(0.18, t - 0.38),
+        y: originY + dy * Math.max(0.18, t - 0.38),
+        alpha: { from: 0.9, to: 0 },
+        scale: { from: 1, to: 0.15 },
+        duration: BURST_LIFETIME_MS * 0.65,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          transientCircles.delete(bubble);
+          transientTweens.delete(bubble);
+          bubble.destroy();
+        },
+      });
+      transientTweens.set(bubble, tween);
+    }
+  }
+
   function hasMobAbilityDebuff(world: GameWorld, eid: number): boolean {
     for (const e of getStatusEffects(world, eid)) {
       if (e.sourceId.startsWith(MOB_ABILITY_SOURCE_PREFIX)) return true;
@@ -603,18 +806,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
           spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
         }
       } else if (burst.abilityId === TONGUE_REPOSSESSION_ABILITY_ID) {
-        const endX = ftToPx(geom.endX);
-        const endY = ftToPx(geom.endY);
-        spawn(endX, endY, ftToPx(geom.widthFt * 1.8));
-        spawnRing(
-          endX,
-          endY,
-          ftToPx(geom.widthFt * 0.6),
-          ftToPx(geom.widthFt * 2.2),
-          COLOR_HOSTILE_RED,
-          BURST_LIFETIME_MS,
-          BURST_DEPTH,
-        );
+        spawnTongueRepossessionBurst(geom);
       } else {
         spawn(ftToPx(geom.endX), ftToPx(geom.endY), ftToPx(geom.widthFt * 1.8));
       }

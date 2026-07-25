@@ -34,7 +34,24 @@ interface BufoArenaScene {
         y: Float32Array;
       };
     };
-    mobAbilities?: { cues?: unknown[] };
+    mobAbilities?: {
+      cues?: Array<{
+        geometry?:
+          | {
+              kind: 'lane';
+              originX: number;
+              originY: number;
+              endX: number;
+              endY: number;
+              dirX: number;
+              dirY: number;
+              widthFt: number;
+              lengthFt: number;
+            }
+          | { kind: string };
+      }>;
+      byEntity?: Map<number, unknown>;
+    };
   };
   children?: {
     list?: Array<{ type?: string; visible?: boolean }>;
@@ -48,6 +65,16 @@ interface ArenaProbe {
   readonly announcementText: string | null;
   readonly playerX: number;
   readonly playerY: number;
+  readonly lane: {
+    originX: number;
+    originY: number;
+    endX: number;
+    endY: number;
+    dirX: number;
+    dirY: number;
+    widthFt: number;
+    lengthFt: number;
+  } | null;
 }
 
 function countChangedPixels(
@@ -131,6 +158,9 @@ async function stepToFrame(page: Page, targetFrame: number): Promise<ArenaProbe>
         throw new Error(`unexpected announcement text: ${announcementText}`);
       }
       const playerEid = scene.playerEid;
+      const laneCue = scene.world.mobAbilities?.cues?.find(
+        (cue) => cue?.geometry?.kind === 'lane',
+      )?.geometry;
       return {
         frame: scene.world.frameCount,
         cueCount: scene.world.mobAbilities?.cues?.length ?? 0,
@@ -138,6 +168,7 @@ async function stepToFrame(page: Page, targetFrame: number): Promise<ArenaProbe>
         announcementText,
         playerX: scene.world.stores.position.x[playerEid] ?? 0,
         playerY: scene.world.stores.position.y[playerEid] ?? 0,
+        lane: laneCue?.kind === 'lane' ? laneCue : null,
       } satisfies ArenaProbe;
     },
     { targetFrame, deltaMs: DELTA_MS, announcement: ANNOUNCEMENT },
@@ -194,21 +225,34 @@ describe('Big Mama Bufo arena observation', () => {
     expect(missResolution.playerX).toBeCloseTo(55, 3);
     expect(missResolution.playerY).toBeCloseTo(40, 3);
 
+    await stepToFrame(page, TELEGRAPH_2 - 1);
+
     await page.evaluate(() => {
       const scene = (window as unknown as { __arenaScene?: BufoArenaScene }).__arenaScene;
       if (!scene) throw new Error('CombatArenaScene missing for second telegraph setup');
+      const [casterEid] = scene.world.mobAbilities?.byEntity?.keys?.() ?? [];
+      if (casterEid === undefined) throw new Error('Bufo caster missing before second telegraph');
       const playerEid = scene.playerEid;
-      scene.world.stores.position.x[playerEid] = 40;
-      scene.world.stores.position.y[playerEid] = 40;
+      const casterX = scene.world.stores.position.x[casterEid] ?? 0;
+      const casterY = scene.world.stores.position.y[casterEid] ?? 0;
+      scene.world.stores.position.x[playerEid] = casterX;
+      scene.world.stores.position.y[playerEid] = casterY + 20;
     });
 
     const telegraph2 = await stepToFrame(page, TELEGRAPH_2);
     expect(telegraph2.cueCount).toBe(1);
     expect(telegraph2.announcementText).toBe(ANNOUNCEMENT);
+    expect(telegraph2.lane).not.toBeNull();
 
     const hitResolution = await stepToFrame(page, RESOLUTION_2);
     expect(hitResolution.cueCount).toBe(0);
-    expect(hitResolution.playerX).toBeCloseTo(40, 3);
-    expect(hitResolution.playerY).toBeCloseTo(15, 3);
+    expect(hitResolution.playerX).toBeCloseTo(
+      telegraph2.lane!.originX + telegraph2.lane!.dirX * 5,
+      3,
+    );
+    expect(hitResolution.playerY).toBeCloseTo(
+      telegraph2.lane!.originY + telegraph2.lane!.dirY * 5,
+      3,
+    );
   }, 120_000);
 });

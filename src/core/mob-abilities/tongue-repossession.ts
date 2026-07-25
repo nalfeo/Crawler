@@ -8,6 +8,7 @@ import {
   type BossAbilityDef,
 } from '../../shared/boss-abilities.js';
 import type { GameWorld } from '../world.js';
+import { activateMobAbilityRecovery } from './runtime.js';
 import type { MobAbilityResolveContext, MobAbilityRuntimeDefinition } from './types.js';
 
 export const TONGUE_REPOSSESSION_ABILITY_ID = 'big-mama-bufo-tongue-repossession';
@@ -29,7 +30,10 @@ interface TongueRepossessionTuning {
   readonly maxRangeFt: number;
   readonly pullEndDistanceFt: number;
   readonly damageAmount: number;
+  readonly missRecoveryMs: number;
 }
+
+const PULL_SUBSTEP_FT = 0.125;
 
 function designValue(ability: BossAbilityDef, id: string): CatalogDesignValue {
   const found = ability.effect.designValues.find((value) => value.id === id);
@@ -90,6 +94,7 @@ function readTuning(ability: BossAbilityDef): TongueRepossessionTuning {
     maxRangeFt: telegraphMaxRangeFt,
     pullEndDistanceFt,
     damageAmount: DAMAGE_PROFILE_AMOUNTS[damageProfile],
+    missRecoveryMs: ability.telegraph.durationMs,
   };
 }
 
@@ -145,28 +150,34 @@ function moveToSafePullPosition(
   fromX: number,
   fromY: number,
 ): void {
-  if (isFootprintPassable(world, eid, desiredX, desiredY)) {
-    world.stores.position.x[eid] = desiredX;
-    world.stores.position.y[eid] = desiredY;
-    return;
+  const dx = desiredX - fromX;
+  const dy = desiredY - fromY;
+  const distance = Math.hypot(dx, dy);
+  if (distance <= Number.EPSILON) return;
+
+  const steps = Math.max(1, Math.ceil(distance / PULL_SUBSTEP_FT));
+  let safeX = fromX;
+  let safeY = fromY;
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    const candidateX = fromX + dx * t;
+    const candidateY = fromY + dy * t;
+    if (!isFootprintPassable(world, eid, candidateX, candidateY)) {
+      break;
+    }
+    safeX = candidateX;
+    safeY = candidateY;
   }
-  const STEPS = 24;
-  for (let i = 1; i <= STEPS; i += 1) {
-    const t = i / STEPS;
-    const candidateX = desiredX + (fromX - desiredX) * t;
-    const candidateY = desiredY + (fromY - desiredY) * t;
-    if (!isFootprintPassable(world, eid, candidateX, candidateY)) continue;
-    world.stores.position.x[eid] = candidateX;
-    world.stores.position.y[eid] = candidateY;
-    return;
-  }
+  world.stores.position.x[eid] = safeX;
+  world.stores.position.y[eid] = safeY;
 }
 
 function makeResolveHandler(tuning: TongueRepossessionTuning) {
   return function resolveTongueRepossession(world: GameWorld, ctx: MobAbilityResolveContext): void {
     if (ctx.geometry.kind !== 'lane' || ctx.targetEid === null) return;
     const target = ctx.targetEid;
-    if (!hasComponent(world.ecs, target, Player) || !hasComponent(world.ecs, target, Position)) return;
+    if (!hasComponent(world.ecs, target, Player) || !hasComponent(world.ecs, target, Position))
+      return;
     const targetX = world.stores.position.x[target] ?? 0;
     const targetY = world.stores.position.y[target] ?? 0;
     const halfWidth = getBodyHalfWidth(world, target, 'tongueRepossession');
@@ -183,6 +194,12 @@ function makeResolveHandler(tuning: TongueRepossessionTuning) {
     );
     const hitRadius = laneHalfWidth + bodyRadius;
     if (hitSq > hitRadius * hitRadius) {
+      activateMobAbilityRecovery(world, {
+        abilityId: ctx.abilityId,
+        casterEid: ctx.casterEid,
+        sourceId: ctx.sourceId,
+        durationMs: tuning.missRecoveryMs,
+      });
       return;
     }
 

@@ -25,6 +25,7 @@ import {
   type FamilyId,
   type GameWorld,
 } from '../../core/index.js';
+import { getBodyHalfHeight, getBodyHalfWidth } from '../../core/physics-body.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
 import type { InputState } from '../../shared/input.js';
 import {
@@ -2601,8 +2602,13 @@ export class BehaviorTreeAI implements AIInputProvider {
           const offX = ctx.playerX - closestX;
           const offY = ctx.playerY - closestY;
           const laneHalfWidth = geometry.widthFt * 0.5;
+          const playerBodyRadius = Math.max(
+            getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
+            getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
+          );
+          const hitClearance = laneHalfWidth + playerBodyRadius;
           const offDistSq = offX * offX + offY * offY;
-          if (offDistSq > laneHalfWidth * laneHalfWidth) continue;
+          if (offDistSq > hitClearance * hitClearance) continue;
           const offDist = Math.sqrt(offDistSq);
           if (offDist > Number.EPSILON) {
             this.dodgeVecX = (offX / offDist) * PROJECTILE_DODGE_VECTOR_SCALE;

@@ -703,7 +703,7 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
     name: 'F2: Big Mama Bufo (Tongue Repossession)',
     floor: 'floor2',
     description:
-      "Big Mama Bufo solo, with TONGUE REPOSSESSION armed through the canonical mob-ability runtime: 8s eligibility, 1.25s hostile-red lane locked to the player's position, moderate hit damage, and pull to 5ft in front of Bufo.",
+      "Big Mama Bufo solo, with TONGUE REPOSSESSION armed through the canonical mob-ability runtime: 8s eligibility, 1.25s hostile-red lane locked to the player's position, moderate hit damage, pull to 5ft in front of Bufo, and a brief miss recovery punish window.",
     entries: [],
     customSpawnFn: spawnBigMamaBufoArena,
   },

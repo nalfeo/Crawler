@@ -99,6 +99,7 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   if (inst === undefined) return;
   runtime.byEntity.delete(casterEid);
   runtime.registrationTokens.delete(casterEid);
+  runtime.recoveriesByEntity.delete(casterEid);
 
   // Drop any committed cue for this caster.
   for (let i = runtime.cues.length - 1; i >= 0; i -= 1) {
@@ -139,6 +140,7 @@ export function setMobAbilitiesEnabled(world: GameWorld, enabled: boolean): void
 export function activateMobAbilityEncounter(world: GameWorld): void {
   const runtime = world.mobAbilities;
   runtime.encounterActive = true;
+  runtime.recoveriesByEntity.clear();
   for (const inst of runtime.byEntity.values()) {
     inst.phase = 'cooldown';
     inst.timerMs = inst.definition.firstEligibleAfterMs;
@@ -164,6 +166,7 @@ export function disableMobAbilityEncounter(world: GameWorld): void {
   // pendingBursts so that per-caster death still renders the resolution VFX.
   runtime.pendingBursts.length = 0;
   runtime.activeBuffsByEntity.clear();
+  runtime.recoveriesByEntity.clear();
 }
 
 /** A caster is valid iff it still exists, is alive, and is still its own boss. */
@@ -333,6 +336,19 @@ function tickActiveBuffs(world: GameWorld): void {
       continue;
     }
     buff.remainingMs = next;
+  }
+}
+
+function tickRecoveries(world: GameWorld): void {
+  const runtime = world.mobAbilities;
+  const dtMs = GAME.DELTA_MS;
+  for (const [eid, recovery] of runtime.recoveriesByEntity) {
+    const next = recovery.remainingMs - dtMs;
+    if (next <= TIMER_EPSILON_MS) {
+      runtime.recoveriesByEntity.delete(eid);
+      continue;
+    }
+    recovery.remainingMs = next;
   }
 }
 
@@ -513,6 +529,40 @@ export function getMobAbilityActiveAura(world: GameWorld, eid: number): MobAbili
   return { kind: 'circle', x: pos.x, y: pos.y, radiusFt: buff.auraRadiusFt };
 }
 
+export interface ActivateMobAbilityRecoveryInput {
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly durationMs: number;
+}
+
+export function activateMobAbilityRecovery(
+  world: GameWorld,
+  recovery: ActivateMobAbilityRecoveryInput,
+): void {
+  if (!(Number.isFinite(recovery.durationMs) && recovery.durationMs > 0)) return;
+  const existing = world.mobAbilities.recoveriesByEntity.get(recovery.casterEid);
+  if (existing !== undefined && existing.abilityId === recovery.abilityId) {
+    existing.remainingMs = Math.max(existing.remainingMs, recovery.durationMs);
+    return;
+  }
+  world.mobAbilities.recoveriesByEntity.set(recovery.casterEid, {
+    abilityId: recovery.abilityId,
+    sourceId: recovery.sourceId,
+    remainingMs: recovery.durationMs,
+  });
+}
+
+export function getMobAbilityRecoveryRemainingMs(world: GameWorld, eid: number): number {
+  const recovery = world.mobAbilities.recoveriesByEntity.get(eid);
+  if (recovery === undefined) return 0;
+  if (recovery.remainingMs <= TIMER_EPSILON_MS) {
+    world.mobAbilities.recoveriesByEntity.delete(eid);
+    return 0;
+  }
+  return recovery.remainingMs;
+}
+
 /** Default target selection: the living player singleton (catalog `player-position`). */
 function findDefaultTarget(world: GameWorld): number | null {
   const players = query(world.ecs, [Player, Position]);
@@ -536,6 +586,7 @@ export function mobAbilitySystem(world: GameWorld): void {
   runtime.cues.length = 0;
   if (!runtime.enabled || !runtime.encounterActive) return;
   tickActiveBuffs(world);
+  tickRecoveries(world);
   if (runtime.byEntity.size === 0) return;
 
   const dtMs = GAME.DELTA_MS;

@@ -293,6 +293,8 @@ describe('MobAbilityVfx', () => {
     const tongueLaneBurstCircleCount = circles.length - genericLaneBurstCircleCount;
 
     expect(tongueLaneBurstCircleCount).toBeGreaterThan(genericLaneBurstCircleCount);
+    expect(scene.add.rectangle).toHaveBeenCalled();
+    expect(scene.add.ellipse).toHaveBeenCalled();
   });
 
   it('retires telegraph graphics when the cue ends', () => {

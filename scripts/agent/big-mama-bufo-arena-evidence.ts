@@ -2,6 +2,7 @@ import { createGameWorld } from '../../src/core/world.js';
 import {
   activateMobAbilityEncounter,
   createTongueRepossessionDefinition,
+  type MobAbilityLaneGeometry,
   mobAbilitySystem,
   registerMobAbility,
   setEnemyAppearanceKey,
@@ -132,9 +133,11 @@ function runHitAndMissLaneProof() {
     statusEffectSystem(missWorld);
     mobAbilitySystem(missWorld);
   }
-  const laneBeforeSidestep = {
-    ...(missWorld.mobAbilities.byEntity.get(missBufo)?.committedGeometry as Record<string, unknown>),
-  };
+  const committedGeometry = missWorld.mobAbilities.byEntity.get(missBufo)?.committedGeometry;
+  if (committedGeometry?.kind !== 'lane') {
+    throw new Error('expected a committed lane before sidestep evidence capture');
+  }
+  const laneBeforeSidestep: MobAbilityLaneGeometry = { ...committedGeometry };
   missWorld.stores.position.x[missPlayer] = 55;
   missWorld.stores.position.y[missPlayer] = 40;
   for (let i = TELEGRAPH_1; i < RESOLUTION_1; i += 1) {
@@ -164,7 +167,9 @@ console.log(`resolution frames: ${arena.resolutions.join(', ')}`);
 console.log(`announcement text: ${arenaCasts[0]?.text ?? '(none)'}`);
 
 console.log('\n=== LANE PROOF ===');
-console.log(`hit pull position: (${laneProof.hitPos.x.toFixed(3)}, ${laneProof.hitPos.y.toFixed(3)})`);
+console.log(
+  `hit pull position: (${laneProof.hitPos.x.toFixed(3)}, ${laneProof.hitPos.y.toFixed(3)})`,
+);
 console.log(
   `miss kept sidestep: (${laneProof.missPos.x.toFixed(3)}, ${laneProof.missPos.y.toFixed(3)})`,
 );
@@ -189,7 +194,8 @@ const laneOk =
 const normalOk =
   normal.mobAbilities.enabled === false &&
   normal.announcements.filter((entry) => entry.kind === 'bossAbilityCast').length === 0;
-const announcementOk = arenaCasts.length === 2 && arenaCasts.every((event) => event.text === EXPECTED_TEXT);
+const announcementOk =
+  arenaCasts.length === 2 && arenaCasts.every((event) => event.text === EXPECTED_TEXT);
 
 console.log('\n=== GATE ===');
 console.log(`arena two-cast cadence (480/555/1035/1110): ${cadenceOk ? 'PASS' : 'FAIL'}`);

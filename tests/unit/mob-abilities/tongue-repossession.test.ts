@@ -5,6 +5,7 @@ import {
   activateMobAbilityEncounter,
   createTongueRepossessionDefinition,
   disableMobAbilityEncounter,
+  getMobAbilityRecoveryRemainingMs,
   mobAbilitySystem,
   registerMobAbility,
   setEnemyAppearanceKey,
@@ -34,12 +35,12 @@ const SECOND_RESOLUTION_FRAME = 1110;
 
 type World = ReturnType<typeof createTestWorld>;
 
-function buildHarness(px = 40, py = 40, bx = 40, by = 10) {
+function buildHarness(px = 40, py = 40, bx = 40, by = 10, aiType = AI_TYPE.CHASE) {
   const world = createTestWorld();
   const player = spawnPlayer(world, px, py);
   world.stores.health.current[player] = 100_000;
   world.stores.health.max[player] = 100_000;
-  const bufo = spawnBehaviorEnemy(world, bx, by, 200, AI_TYPE.CHASE, 0.17, 60, 0);
+  const bufo = spawnBehaviorEnemy(world, bx, by, 200, aiType, 0.17, 60, 0);
   setEnemyAppearanceKey(world, bufo, BUFO_KEY);
   return { world, player, bufo, def: createTongueRepossessionDefinition() };
 }
@@ -56,6 +57,20 @@ function stepRuntime(world: World, frames: number): void {
     world.elapsedMs += DELTA;
     statusEffectSystem(world);
     mobAbilitySystem(world);
+  }
+}
+
+function stepFullSimulation(
+  world: World,
+  inputState: ReturnType<typeof createInputState>,
+  frames: number,
+): void {
+  for (let i = 0; i < frames; i += 1) {
+    world.frameCount += 1;
+    world.elapsedMs += DELTA;
+    runCoreSimulationStep(world, inputState, {
+      preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
+    });
   }
 }
 
@@ -99,7 +114,9 @@ describe('Tongue Repossession cadence and lock semantics', () => {
     }
     expect(telegraphs).toEqual([FIRST_TELEGRAPH_FRAME, SECOND_TELEGRAPH_FRAME]);
     expect(resolutions).toEqual([FIRST_RESOLUTION_FRAME, SECOND_RESOLUTION_FRAME]);
-    expect(h.world.announcements.filter((event) => event.kind === 'bossAbilityCast')).toHaveLength(2);
+    expect(h.world.announcements.filter((event) => event.kind === 'bossAbilityCast')).toHaveLength(
+      2,
+    );
   });
 
   it('locks one committed lane at telegraph start and never retargets after lock', () => {
@@ -162,6 +179,32 @@ describe('Tongue Repossession hit, pull, miss, and collision safety', () => {
     });
   });
 
+  it('miss path creates a brief recovery window before Bufo resumes pursuit', () => {
+    const h = buildHarness(40, 40, 40, 10, AI_TYPE.RANGED);
+    arm(h.world, h.bufo);
+    const inputState = createInputState();
+    stepFullSimulation(h.world, inputState, FIRST_TELEGRAPH_FRAME);
+    h.world.stores.position.x[h.player] = 55;
+    h.world.stores.position.y[h.player] = 40;
+    stepFullSimulation(h.world, inputState, FIRST_RESOLUTION_FRAME - FIRST_TELEGRAPH_FRAME);
+
+    const missRecoveryMs = getMobAbilityRecoveryRemainingMs(h.world, h.bufo);
+    expect(missRecoveryMs).toBeGreaterThan(0);
+    const lockedX = h.world.stores.position.x[h.bufo] ?? 0;
+    const lockedY = h.world.stores.position.y[h.bufo] ?? 0;
+    const recoveryFrames = Math.ceil(h.def.telegraphDurationMs / DELTA) - 1;
+
+    stepFullSimulation(h.world, inputState, recoveryFrames);
+    expect(h.world.stores.position.x[h.bufo]).toBeCloseTo(lockedX, 6);
+    expect(h.world.stores.position.y[h.bufo]).toBeCloseTo(lockedY, 6);
+    expect(h.world.stores.enemyBehavior.telegraphActive[h.bufo]).toBe(0);
+
+    stepFullSimulation(h.world, inputState, 12);
+    const resumedDx = (h.world.stores.position.x[h.bufo] ?? 0) - lockedX;
+    const resumedDy = (h.world.stores.position.y[h.bufo] ?? 0) - lockedY;
+    expect(Math.hypot(resumedDx, resumedDy)).toBeGreaterThan(0);
+  });
+
   it('pull fallback respects collision validity and never places the player in blocked geometry', () => {
     const h = buildHarness(20, 12, 20, 10);
     h.world.floorMap = {
@@ -214,9 +257,9 @@ describe('Tongue Repossession cleanup and canonical arena gate', () => {
       });
     }
     expect(normal.world.mobAbilities.enabled).toBe(false);
-    expect(normal.world.announcements.filter((event) => event.kind === 'bossAbilityCast')).toHaveLength(
-      0,
-    );
+    expect(
+      normal.world.announcements.filter((event) => event.kind === 'bossAbilityCast'),
+    ).toHaveLength(0);
 
     const arenaWorld = createTestWorld();
     const roomPreset = getRoomPreset('boss-arena');
@@ -232,7 +275,15 @@ describe('Tongue Repossession cleanup and canonical arena gate', () => {
     const rng = new SeededRandom(42);
     const cx = arenaWorld.floorMap.widthFt / 2;
     const cy = arenaWorld.floorMap.heightFt * 0.35;
-    const spawned = spawnPresetAroundCenter(arenaWorld, arenaWorld.floorMap, preset, cx, cy, rng, 14);
+    const spawned = spawnPresetAroundCenter(
+      arenaWorld,
+      arenaWorld.floorMap,
+      preset,
+      cx,
+      cy,
+      rng,
+      14,
+    );
     const bufo = spawned[0];
     expect(bufo).toBeDefined();
     const resolutions: number[] = [];

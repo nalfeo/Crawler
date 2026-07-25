@@ -55,9 +55,7 @@ export interface MobAbilityLaneGeometry {
 }
 
 export type MobAbilityGeometry =
-  | MobAbilityCircleGeometry
-  | MobAbilitySpawnCirclesGeometry
-  | MobAbilityLaneGeometry;
+  MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry | MobAbilityLaneGeometry;
 
 export type MobAbilityTargetingMode = 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
@@ -218,6 +216,8 @@ export interface MobAbilityRuntime {
   readonly pendingBursts: Array<MobAbilityBurst>;
   /** Active self-buffs authored by ability handlers and ticked by the runtime. */
   readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
+  /** Active recovery windows that temporarily suppress caster movement/attacks. */
+  readonly recoveriesByEntity: Map<number, MobAbilityRecoveryState>;
   /**
    * Per-EID generation token, set on each `registerMobAbility` and cleared on
    * `clearMobAbility`. Compared against `MobAbilityInstanceState.registrationToken`
@@ -238,6 +238,12 @@ export interface MobAbilityActiveBuffState {
   remainingMs: number;
 }
 
+export interface MobAbilityRecoveryState {
+  readonly abilityId: string;
+  readonly sourceId: string;
+  remainingMs: number;
+}
+
 /** Create the default-off, empty runtime state for a fresh world. */
 export function createMobAbilityRuntime(): MobAbilityRuntime {
   return {
@@ -247,6 +253,7 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     cues: [],
     pendingBursts: [],
     activeBuffsByEntity: new Map(),
+    recoveriesByEntity: new Map(),
     registrationTokens: new Map(),
     nextToken: 0,
   };
