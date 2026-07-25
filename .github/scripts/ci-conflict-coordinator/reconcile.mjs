@@ -9,7 +9,13 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
-import { applyRawLabelDecision, formatRawLabelOutcome, LIFECYCLE_MARKER, nonBlockingPhases, parseLifecycleComment } from '../ci-recovery/pr-lifecycle.mjs';
+import {
+  applyRawLabelDecision,
+  formatRawLabelOutcome,
+  LIFECYCLE_MARKER,
+  nonBlockingPhases,
+  parseLifecycleComment,
+} from '../ci-recovery/pr-lifecycle.mjs';
 import {
   parseEnabledFlag,
   resolveAdmissionChecks,
@@ -657,12 +663,13 @@ const fileLists = await mapLimit(eligible, 8, async (pull) => {
   ];
 });
 const pulls = eligible.map((pull, index) => normalizePull(pull, fileLists[index]));
-const managedNumbers = pulls
-  .filter((pull) => pull.labelNames.has(COORDINATED_LABEL))
+const coordinatorLabels = [COORDINATED_LABEL, LEADER_LABEL, ESCALATION_LABEL, ORDER_WAIT_LABEL];
+const labeledManagedNumbers = pulls
+  .filter((pull) => coordinatorLabels.some((label) => pull.labelNames.has(label)))
   .map((pull) => pull.number);
 const stateCandidateNumbers = [
   ...new Set([
-    ...managedNumbers,
+    ...labeledManagedNumbers,
     ...pulls.filter((pull) => pull.ciFiles.length > 0).map((pull) => pull.number),
   ]),
 ];
@@ -672,7 +679,7 @@ const commentEntries = await mapLimit(stateCandidateNumbers, 8, async (number) =
 ]);
 const commentsByNumber = new Map(commentEntries);
 const existingStates = [];
-const existingStateByNumber = new Map();
+const commentedManagedNumbers = [];
 for (const [number, comments] of commentEntries) {
   const managed = singleManagedComment(
     comments,
@@ -683,9 +690,10 @@ for (const [number, comments] of commentEntries) {
   );
   if (managed) {
     existingStates.push(managed.state);
-    existingStateByNumber.set(number, managed.state);
+    commentedManagedNumbers.push(number);
   }
 }
+const managedNumbers = [...new Set([...labeledManagedNumbers, ...commentedManagedNumbers])];
 
 const discoveredClusters = discoverCoordinationClusters(pulls, existingStates);
 const discoveredNumbers = new Set(discoveredClusters.flat().map((pull) => pull.number));
@@ -703,14 +711,20 @@ const groups = mergeCoordinationGroups({
 const pullByNumber = new Map(pulls.map((pull) => [pull.number, pull]));
 const groupedNumbers = new Set(groups.flatMap((group) => group.pulls.map((pull) => pull.number)));
 for (const number of managedNumbers) {
-  if (groupedNumbers.has(number) || existingStateByNumber.has(number)) continue;
+  if (groupedNumbers.has(number)) continue;
   const pull = pullByNumber.get(number);
   if (!pull) continue;
   await removeLabel(pull, ORDER_WAIT_LABEL);
   await removeLabel(pull, COORDINATED_LABEL);
   await removeLabel(pull, LEADER_LABEL);
   await removeLabel(pull, ESCALATION_LABEL);
-  process.stdout.write(`released orphaned coordinator labels pr=#${number} reason=missing-state\n`);
+  process.stdout.write(
+    `released orphaned coordinator labels pr=#${number} reason=out-of-scope-or-stale\n`,
+  );
+}
+if (groups.length === 0) {
+  process.stdout.write('No CI conflict clusters found after cleanup\n');
+  process.exit(0);
 }
 const mainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object
   .sha;

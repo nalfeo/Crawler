@@ -20,6 +20,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { branchFiles, branchAddedFiles } from '../lib/git.mjs';
+import { attemptMainSync } from '../../../../scripts/agent/sync-main.mjs';
 
 // Files we never want committed.
 const FORBIDDEN_PATTERNS = [
@@ -106,7 +107,22 @@ function checkCrossSystemAdr(files) {
   return `Diff touches ${hitCount} architectural layers (src/core, src/engine, src/game). Per memory policy, every change affecting 2+ systems requires an ADR under docs/knowledge/adr/. Create one documenting: context, decision, consequences (positive/negative/risks), and alternatives considered.`;
 }
 
-function evaluatePreflightChecks({ files, addedFiles, cwd }) {
+function checkMainSync(cwd, sync = attemptMainSync) {
+  try {
+    const result = sync({ cwd, reason: 'pre-publish' });
+    if (result.status !== 'success') {
+      return `Pre-publish main sync did not complete: ${result.message} Publication remains allowed, but synchronize before relying on this branch state.`;
+    }
+    if (result.branchChanged) {
+      return 'Pre-publish main sync rebased the branch. Rerun affected validation on the new HEAD; publication remains allowed.';
+    }
+    return null;
+  } catch (error) {
+    return `Pre-publish main sync crashed: ${error.message}. Publication remains allowed; synchronize manually.`;
+  }
+}
+
+function evaluatePreflightChecks({ files, addedFiles, cwd, warnings = [] }) {
   const denyParts = [];
 
   const handoffIssue = checkHandoff(files, addedFiles);
@@ -126,11 +142,13 @@ function evaluatePreflightChecks({ files, addedFiles, cwd }) {
     return {
       decision: 'deny',
       reason,
+      ...(warnings.length > 0 ? { additionalContext: warnings.join('\n\n') } : {}),
     };
   }
 
   return {
     decision: 'allow',
+    ...(warnings.length > 0 ? { additionalContext: warnings.join('\n\n') } : {}),
   };
 }
 
@@ -143,6 +161,9 @@ export default {
   },
   async check(toolArgs, ctx) {
     const cwd = ctx?.cwd || process.cwd();
+    const warnings = [];
+    const syncWarning = checkMainSync(cwd);
+    if (syncWarning) warnings.push(syncWarning);
 
     let files;
     let addedFiles;
@@ -152,7 +173,10 @@ export default {
     } catch (err) {
       return {
         decision: 'allow',
-        additionalContext: `pr-preflight: skipped git-based checks (${err.message}). Verify branch state manually.`,
+        additionalContext: [
+          ...warnings,
+          `pr-preflight: skipped git-based checks (${err.message}). Verify branch state manually.`,
+        ].join('\n\n'),
       };
     }
 
@@ -160,6 +184,7 @@ export default {
       files,
       addedFiles,
       cwd,
+      warnings,
     });
   },
 };
@@ -169,6 +194,7 @@ export {
   checkForbiddenPaths,
   checkLabGate,
   checkCrossSystemAdr,
+  checkMainSync,
   evaluatePreflightChecks,
   HANDOFF_DATED_RE,
   TRIVIAL_PATH_RE,

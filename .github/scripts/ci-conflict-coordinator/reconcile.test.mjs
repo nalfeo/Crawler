@@ -15,6 +15,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { makeCoordinatorState, renderCoordinatorComment } from './state.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
@@ -414,6 +415,91 @@ function buildRoutes({
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+test('coordinator removes every stale label from an out-of-scope persisted member', async (t) => {
+  const { tmpDir, workDir, pr1Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+  const coordinatorLabels = [
+    'ci-conflict-coordinated',
+    'ci-conflict-leader',
+    'ci-conflict-escalation',
+    'ci-conflict-order-wait',
+  ];
+  const statePull = {
+    number: 1,
+    title: 'Out-of-scope PR',
+    headSha: pr1Sha,
+    ciFiles: ['.github/workflows/ci.yml'],
+  };
+  const staleState = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-stale',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [statePull],
+    proofs: [],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  const pull = {
+    number: 1,
+    state: 'open',
+    draft: false,
+    auto_merge: null,
+    node_id: 'PR_1',
+    base: { ref: 'main' },
+    head: {
+      sha: pr1Sha,
+      ref: 'pr1',
+      repo: { full_name: `${OWNER}/${REPO}` },
+    },
+    labels: coordinatorLabels.map((name) => ({ name })),
+    created_at: '2026-07-01T00:00:00Z',
+    title: 'Out-of-scope PR',
+  };
+  const routes = {
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      status: 422,
+      body: { message: 'already exists' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pull] }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/1/files`]: () => ({
+      body: [{ filename: 'src/game/ignored.ts' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/1/comments`]: () => ({
+      body: [
+        {
+          id: 1001,
+          body: renderCoordinatorComment(staleState),
+          performed_via_github_app: { id: Number(APP_ID) },
+          user: { login: 'trusted-app[bot]' },
+          author_association: 'NONE',
+        },
+      ],
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/1/labels`]: () => ({
+      status: 204,
+      body: null,
+    }),
+  };
+  const { server, port, mutatingCalls } = await startServer(routes);
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+  assert.equal(code, 0, stderr);
+  assert.match(stdout, /reason=out-of-scope-or-stale/);
+  const labelDeletes = mutatingCalls.filter(
+    (call) =>
+      call.method === 'DELETE' && call.url.startsWith(`/repos/${OWNER}/${REPO}/issues/1/labels/`),
+  );
+  assert.equal(labelDeletes.length, coordinatorLabels.length);
+});
 
 test('coordinator closes superseded duplicate and confirms on revalidation (no drift)', async (t) => {
   const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
