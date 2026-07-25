@@ -1,5 +1,16 @@
 [
   {
+    "commit": "108e1c555940a16735d5185a1a6a7a096db4e8b0",
+    "commitDate": "2026-07-25T07:54:47Z",
+    "commitSubject": "fix(terrain): stamp floor-pool underdraw beneath pack-wall blob47 tiles (#1968)",
+    "capturedAt": "2026-07-25T09:11:45.977Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30150398757",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/108e1c555940a16735d5185a1a6a7a096db4e8b0.json"
+  },
+  {
     "commit": "d0e265b76aae70b7472096c50f884a543eee4485",
     "commitDate": "2026-07-25T07:42:06Z",
     "commitSubject": "Add reusable themed equipment forge (#1971)",
