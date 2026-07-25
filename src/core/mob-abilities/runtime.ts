@@ -422,6 +422,11 @@ function tickOwnedZones(world: GameWorld): void {
   const zones = world.mobAbilities.ownedZones;
   for (let i = zones.length - 1; i >= 0; i -= 1) {
     const zone = zones[i]!;
+    const inst = world.mobAbilities.byEntity.get(zone.casterEid);
+    if (inst === undefined || !isCasterValid(world, zone.casterEid, inst)) {
+      zones.splice(i, 1);
+      continue;
+    }
     zone.elapsedMs += dtMs;
     while (zone.elapsedMs + TIMER_EPSILON_MS >= zone.nextTickAtMs) {
       zone.tick(world, zone);
@@ -486,8 +491,10 @@ export function mobAbilitySystem(world: GameWorld): void {
   runtime.cues.length = 0;
   if (!runtime.enabled || !runtime.encounterActive) return;
   tickActiveBuffs(world);
-  tickOwnedZones(world);
-  if (runtime.byEntity.size === 0) return;
+  if (runtime.byEntity.size === 0) {
+    tickOwnedZones(world);
+    return;
+  }
 
   const dtMs = GAME.DELTA_MS;
 
@@ -530,4 +537,5 @@ export function mobAbilitySystem(world: GameWorld): void {
       });
     }
   }
+  tickOwnedZones(world);
 }

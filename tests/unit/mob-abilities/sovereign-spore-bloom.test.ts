@@ -193,6 +193,18 @@ describe('Sovereign Spore Bloom damage and zone lifecycle', () => {
     expect(disabled.world.mobAbilities.ownedZones).toHaveLength(0);
     expect(disabled.world.mobAbilities.byEntity.size).toBe(0);
   });
+
+  it('does not apply a post-death cloud tick at the next tick boundary', () => {
+    const h = buildHarness();
+    arm(h);
+    stepRuntime(h.world, FIRST_RESOLUTION_FRAME);
+    const hpAfterResolve = h.world.stores.health.current[h.player] ?? 0;
+    stepRuntime(h.world, CLOUD_TICK_FRAMES - 1);
+    h.world.stores.health.current[h.sovereign] = 0;
+    stepRuntime(h.world, 1);
+    expect(h.world.mobAbilities.ownedZones).toHaveLength(0);
+    expect(h.world.stores.health.current[h.player]).toBe(hpAfterResolve);
+  });
 });
 
 describe('Sovereign Spore Bloom canonical combat arena', () => {
