@@ -138,8 +138,15 @@ export function itemArtIdentitySet(): ReadonlySet<string> {
   // colliding with / breaking) that live world-node art. The inventory Materials
   // icon still resolves fine: `resolveItemSprite` is version-tolerant and matches
   // the versioned key at runtime regardless of this set.
+  //
+  // Only exclude the itemId when it equals the harvestable node id (e.g.
+  // `azure-mushroom` → `azure-mushroom`). When they differ (e.g. `iron-vein` →
+  // `iron-ore`), the item ships its own separate icon art and must stay in the
+  // identity set so it is bare-keyed normally.
   for (const harvestable of HARVESTABLE_DEFS) {
-    identity.delete(harvestable.itemId);
+    if (harvestable.itemId === harvestable.id) {
+      identity.delete(harvestable.itemId);
+    }
   }
   cachedItemArtIdentitySet = identity;
   return identity;

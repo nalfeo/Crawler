@@ -2247,20 +2247,29 @@ export class MainGameScene extends Phaser.Scene {
     const t0 = performance.now();
 
     // Build light source list: player torch first, then any PropLight entities.
-    const lightSources: { x: number; y: number; radiusPx: number; intensity: number }[] = [
-      { x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity },
-    ];
+    const lightSources: {
+      x: number;
+      y: number;
+      radiusPx: number;
+      intensity: number;
+      colorHex?: number;
+    }[] = [{ x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity }];
     const secondarySourceKeyParts: string[] = [];
     for (const propEid of query(this.world.ecs, [Prop, PropLight, Position])) {
       const sourceX = ftToPx(this.world.stores.position.x[propEid] ?? 0);
       const sourceY = ftToPx(this.world.stores.position.y[propEid] ?? 0);
       const sourceRadius = this.world.stores.propLight.radiusPx[propEid] ?? 0;
       const sourceIntensity = this.world.stores.propLight.intensity[propEid] ?? 0;
+      const r = this.world.stores.propLight.colorR[propEid] ?? 0;
+      const g = this.world.stores.propLight.colorG[propEid] ?? 0;
+      const b = this.world.stores.propLight.colorB[propEid] ?? 0;
+      const colorHex = (r << 16) | (g << 8) | b;
       lightSources.push({
         x: sourceX,
         y: sourceY,
         radiusPx: sourceRadius,
         intensity: sourceIntensity,
+        colorHex,
       });
       secondarySourceKeyParts.push(`p:${sourceX},${sourceY},${sourceRadius},${sourceIntensity}`);
     }

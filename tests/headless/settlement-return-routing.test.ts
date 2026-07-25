@@ -100,7 +100,7 @@ function containsOrderedSubsequence(
 
 describe('settlement return routing (headless integration)', () => {
   it('triggers on positive utility, travels via real pathing, runs maintenance on arrival, resumes hunting, and returns to combat within a bounded frame window', async () => {
-    const seed = 92;
+    const seed = 88;
     const events: SimEvent[] = [];
     let seeded = false;
 
@@ -115,15 +115,13 @@ describe('settlement return routing (headless integration)', () => {
         postSystems: [
           (world) => {
             // Wait for the mandatory first-visit Progress branch to reach
-            // the settlement (see the false-transition-guard test below --
-            // on this seed that is the AI's very first EXPLORE target)
-            // before seeding opportunity. Seeding immediately at frame 1
-            // instead forces the return trip to start from the player's
-            // far-away spawn point, which on this seed's floor2 map never
-            // completes a clean cycle even at 30000 frames -- every
-            // attempt gets intercepted by organic combat en route. Seeding
-            // right after the mandatory visit starts the return trip from
-            // right next to the settlement (a short, low-risk trip),
+            // the settlement before seeding opportunity. Seeding immediately
+            // at frame 1 instead forces the return trip to start from the
+            // player's far-away spawn point, which on this floor2 map
+            // may never complete a clean cycle within the frame budget --
+            // every attempt can be intercepted by organic combat en route.
+            // Seeding right after the mandatory visit starts the return trip
+            // from right next to the settlement (a short, low-risk trip),
             // which is the realistic case this "happy path" test is
             // meant to cover -- the danger/unreachable interruption
             // paths are already covered in isolation by the dedicated

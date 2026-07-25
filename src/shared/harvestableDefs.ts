@@ -84,7 +84,50 @@ export const HARVESTABLE_DEFS: readonly HarvestableDef[] = [
     tint: 0x446688,
     maxPerFloor: 5,
   },
+  // --- Floor 2: Industrial-Cave ore / gem nodes (indices 6–8) ---
+  // Always append — never reorder — to keep defIndex values stable.
+  {
+    id: 'iron-vein',
+    label: 'Iron Vein',
+    itemId: 'iron-ore',
+    durationMs: 4_500,
+    tint: 0x7a7a8c,
+    maxPerFloor: 6,
+  },
+  {
+    id: 'copper-seam',
+    label: 'Copper Seam',
+    itemId: 'copper-ore',
+    durationMs: 4_000,
+    tint: 0xb87333,
+    maxPerFloor: 6,
+  },
+  {
+    id: 'gem-cluster',
+    label: 'Gem Cluster',
+    itemId: 'void-crystal',
+    durationMs: 7_000,
+    tint: 0x9955ff,
+    maxPerFloor: 3,
+    lightEmission: { radiusFt: 8, intensity: 0.35 },
+  },
 ] as const;
+
+/**
+ * Stable boundary between Floor 1 and Floor 2 harvestable defs.
+ * Floor 1 spawner must iterate `defIndex < FLOOR2_HARVESTABLE_START_INDEX`.
+ * Floor 2 spawner must iterate `FLOOR2_HARVESTABLE_START_INDEX <= defIndex < FLOOR2_HARVESTABLE_END_INDEX`.
+ * Must equal the array index of the first Floor 2 def (iron-vein, index 6).
+ */
+export const FLOOR2_HARVESTABLE_START_INDEX = 6;
+
+/**
+ * Exclusive upper bound for Floor 2 harvestable defs.
+ * Floor 2 spawner must iterate `defIndex < FLOOR2_HARVESTABLE_END_INDEX`.
+ * Any Floor 3+ defs appended after index 8 will NOT spawn on Floor 2.
+ * Must equal the array index of the first Floor 3 def (i.e. 9 while Floor 3 has no defs).
+ */
+export const FLOOR2_HARVESTABLE_END_INDEX = 9;
 
 /** Look up a harvestable def by its stable slug ID. */
 export function getHarvestableDef(id: string): HarvestableDef | undefined {

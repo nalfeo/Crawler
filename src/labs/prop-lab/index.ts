@@ -24,6 +24,7 @@ import { SeededRandom } from '../../shared/random.js';
 import { createGameWorld } from '../../core/world.js';
 import { placePropsForFloor, type PropPlacerConfig } from '../../game/systems/propPlacer.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
+import type { BiomeTag } from '../../shared/biome-tags.js';
 import { Prop, PropLight, Position } from '../../core/components.js';
 import { registerLab } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
@@ -41,6 +42,7 @@ interface PropLabSettings {
   heightTiles: number;
   cellSize: number;
   density: number;
+  biomeTag: BiomeTag;
   showCaveOverlay: boolean;
   showLightRadii: boolean;
 }
@@ -100,7 +102,7 @@ function render(canvas: HTMLCanvasElement, settings: PropLabSettings): void {
   const world = createGameWorld({ seed: settings.seed, floor: 1, entityCapacityMode: 'test' });
 
   const placerConfig: PropPlacerConfig = {
-    biomeTag: 'dungeon',
+    biomeTag: settings.biomeTag,
     densityMultiplier: settings.density,
   };
 
@@ -202,6 +204,7 @@ registerLab(LAB_ID, {
       heightTiles: saved?.heightTiles ?? DEFAULT_HEIGHT,
       cellSize: saved?.cellSize ?? 8,
       density: saved?.density ?? 1.0,
+      biomeTag: saved?.biomeTag ?? 'dungeon',
       showCaveOverlay: saved?.showCaveOverlay ?? true,
       showLightRadii: saved?.showLightRadii ?? true,
     };
@@ -223,6 +226,10 @@ registerLab(LAB_ID, {
 
     gui.add(settings, 'seed', 1, 999999, 1).name('Seed').onChange(schedule);
     gui.add(settings, 'density', 0.1, 5.0, 0.05).name('Density mult').onChange(schedule);
+    gui
+      .add(settings, 'biomeTag', ['dungeon', 'organic', 'tech', 'void', 'cave'])
+      .name('Biome tag')
+      .onChange(schedule);
     gui.add(settings, 'cellSize', 4, 16, 1).name('Cell size (px)').onChange(schedule);
     gui.add(settings, 'showCaveOverlay').name('Cave overlay').onChange(schedule);
     gui.add(settings, 'showLightRadii').name('Light radii').onChange(schedule);

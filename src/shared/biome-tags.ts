@@ -1,1 +1,1 @@
-export type BiomeTag = 'dungeon' | 'organic' | 'tech' | 'void';
+export type BiomeTag = 'dungeon' | 'organic' | 'tech' | 'void' | 'cave';

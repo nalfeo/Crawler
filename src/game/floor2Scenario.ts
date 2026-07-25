@@ -108,6 +108,13 @@ import {
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
+import { spawnHarvestableNode } from '../core/helpers.js';
+import {
+  FLOOR2_HARVESTABLE_START_INDEX,
+  FLOOR2_HARVESTABLE_END_INDEX,
+  HARVESTABLE_DEFS,
+} from '../shared/harvestableDefs.js';
+import { placePropsForFloor } from './systems/propPlacer.js';
 import {
   scaleAmbientSpawnStats,
   pruneAmbientOutOfRange,
@@ -784,6 +791,62 @@ export function confirmFloor2StairDescend(
 }
 
 /**
+ * Spawn Floor 2 harvestable ore and gem nodes across passable tiles in normal
+ * and spawn rooms. Only the Floor 2 entries in HARVESTABLE_DEFS (indices
+ * FLOOR2_HARVESTABLE_START_INDEX and above) are considered — Floor 1 mushroom/
+ * flower/lichen defs are never placed here. Each def spawns between 2 and
+ * maxPerFloor nodes, spaced ≥3 ft apart.
+ *
+ * Accepts an explicit `rng` so callers can pass an isolated SeededRandom
+ * derived from world.seed without consuming the main world.rng stream (which
+ * would shift AI decisions and break headless telemetry invariants).
+ */
+function spawnFloor2HarvestableNodes(world: GameWorld, rng: SeededRandom): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+
+  const normalRooms = floorMap.roomGraph
+    .getAll()
+    .filter((room) => room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN);
+
+  if (normalRooms.length === 0) return;
+
+  for (
+    let defIndex = FLOOR2_HARVESTABLE_START_INDEX;
+    defIndex < FLOOR2_HARVESTABLE_END_INDEX;
+    defIndex++
+  ) {
+    const def = HARVESTABLE_DEFS[defIndex]!;
+    const count = 2 + rng.nextInt(0, def.maxPerFloor - 2);
+
+    const placed: Array<{ x: number; y: number }> = [];
+
+    const maxAttempts = count * 12;
+    for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
+      const room = normalRooms[rng.nextInt(0, normalRooms.length - 1)]!;
+      const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+
+      const tx = bx + 1 + rng.nextInt(0, Math.max(0, bw - 3));
+      const ty = by + 1 + rng.nextInt(0, Math.max(0, bh - 3));
+
+      if (!floorMap.tileMap.isPassable(tx, ty)) continue;
+
+      const pos = floorMap.tileToWorld(tx, ty);
+
+      const tooClose = placed.some((p) => {
+        const ddx = p.x - pos.x;
+        const ddy = p.y - pos.y;
+        return ddx * ddx + ddy * ddy < 9;
+      });
+      if (tooClose) continue;
+
+      placed.push(pos);
+      spawnHarvestableNode(world, pos.x, pos.y, defIndex);
+    }
+  }
+}
+
+/**
  * Floor 2 scenario initializer used by scenario wiring (Slice 8).
  */
 export function initializeFloor2Scenario(
@@ -1035,6 +1098,22 @@ export function initializeFloor2Scenario(
   if (floor2Config?.governor?.autoVictoryOnStart === true) {
     latchFloor2Victory(world);
   }
+
+  // Place ambient scene-dressing props (mining carts, support beams, cave
+  // rubble, pipe sections, lanterns, glowing crystals) using an isolated RNG
+  // seeded from world.seed so the main world.rng stream is unaffected and
+  // headless simulation results stay deterministic and unchanged.
+  if (manifest.props !== undefined) {
+    const propsRng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor2-props`));
+    placePropsForFloor(world, world.floorMap!, manifest.props, propsRng);
+  }
+
+  // Spawn Floor 2 harvestable ore / gem nodes after map and settlement are
+  // fully set up so room roles are final before tile sampling.  Uses an
+  // isolated RNG so the main world.rng stream is unaffected.
+  const harvestRng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor2-harvestables`));
+  spawnFloor2HarvestableNodes(world, harvestRng);
+
   world.state = 'playing';
   world.floorObjectiveTick = floor2ObjectiveTick;
 }

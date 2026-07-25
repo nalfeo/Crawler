@@ -294,6 +294,10 @@ const GENERATED_BRIEF_BY_HARVESTABLE: Readonly<Record<string, string>> = {
   'moonbloom-flower': 'moonbloom-flower-v1',
   'frost-lichen': 'frost-lichen-v1',
   'shadow-lichen': 'shadow-lichen-v1',
+  // Floor 2: industrial-cave ore / gem nodes (indices 6–8).
+  'iron-vein': 'iron-vein-v1',
+  'copper-seam': 'copper-seam-v1',
+  'gem-cluster': 'gem-cluster-v1',
 };
 
 /**

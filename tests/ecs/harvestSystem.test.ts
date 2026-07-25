@@ -12,7 +12,10 @@ import { spawnPlayer, spawnHarvestableNode } from '../../src/core/helpers.js';
 import { harvestSystem, HARVEST_RANGE_FT } from '../../src/core/systems/harvestSystem.js';
 import { Harvestable } from '../../src/core/components.js';
 import { getItemCount } from '../../src/shared/inventory.js';
-import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
+import {
+  HARVESTABLE_DEFS,
+  FLOOR2_HARVESTABLE_START_INDEX,
+} from '../../src/shared/harvestableDefs.js';
 import { GAME } from '../../src/shared/constants.js';
 import type { GameWorld } from '../../src/core/world.js';
 
@@ -134,12 +137,34 @@ describe('harvestSystem', () => {
   });
 
   it('can harvest all 6 floor-1 node types', () => {
-    for (let i = 0; i < HARVESTABLE_DEFS.length; i++) {
+    for (let i = 0; i < FLOOR2_HARVESTABLE_START_INDEX; i++) {
       const def = HARVESTABLE_DEFS[i]!;
       const w = createTestWorld({ seed: i + 1 });
       const pEid = spawnPlayer(w, 0, 0);
       const eid = spawnHarvestableNode(w, 0, 0, i);
       const neededTicks = Math.ceil(def.durationMs / GAME.DELTA_MS);
+
+      for (let t = 0; t < neededTicks; t++) {
+        harvestSystem(w);
+      }
+
+      expect(entityExists(w.ecs, eid)).toBe(false);
+      const bag = w.inventories.get(pEid)!;
+      expect(getItemCount(bag, def.itemId)).toBe(1);
+    }
+  });
+
+  it('can harvest all floor-2 node types (iron-vein, copper-seam, gem-cluster)', () => {
+    // gem-cluster has durationMs=7000 which due to Float32 accumulation needs
+    // Math.ceil(durationMs/DELTA_MS)+1 ticks. Use the same +1 buffer for all
+    // Floor 2 defs to be safe.
+    for (let i = FLOOR2_HARVESTABLE_START_INDEX; i < HARVESTABLE_DEFS.length; i++) {
+      const def = HARVESTABLE_DEFS[i]!;
+      const w = createTestWorld({ seed: i + 1 });
+      const pEid = spawnPlayer(w, 0, 0);
+      const eid = spawnHarvestableNode(w, 0, 0, i);
+      // +1 tick buffer accounts for Float32 accumulation rounding in progressMs.
+      const neededTicks = Math.ceil(def.durationMs / GAME.DELTA_MS) + 1;
 
       for (let t = 0; t < neededTicks; t++) {
         harvestSystem(w);

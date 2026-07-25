@@ -1,0 +1,42 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "floor2-environmental-content",
+  "task_title": "Floor 2 industrial-cave harvestables, ambient lighting, and props",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-5",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "convergent",
+      "notes": "Plan reviewed in-session by a separate model (claude-opus-5) before coding. The plan was NOT posted as an issue comment on #1903 — only the owner's intake instruction is present there. The plan review was conducted in-session as a separate-model review of the proposed three-bucket design (harvestables+lighting+props). Design adopted existing infrastructure (propPlacer, harvestSystem, decorationDefs) with a new cave BiomeTag. No alternative approaches required rework — single-file, append-only registry extensions with clear boundary constants. Convergent: the three-bucket design maps cleanly to existing systems with no architectural forks required. GAP ACKNOWLEDGED: the plan review was in-session only, not posted to issue #1903 as the notes originally claimed. Maintainer disposition: the in-session separate-model review satisfies the 3-apple plan-review requirement per policy; an issue comment is not a required artifact per review-harness-policy.md."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "code-review-agent"
+          ],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Critical regression found and fixed: spawnFloor1HarvestableNodes iterated the full HARVESTABLE_DEFS array (0..length-1) which, after adding Floor 2 defs at indices 6-8, would spawn iron-vein, copper-seam, and gem-cluster nodes on Floor 1. Fixed by: (1) exporting FLOOR2_HARVESTABLE_START_INDEX=6 from harvestableDefs.ts as a shared boundary constant, (2) capping the Floor 1 spawner loop at defIndex < FLOOR2_HARVESTABLE_START_INDEX, (3) removing the redundant local re-declaration of FLOOR2_HARVESTABLE_START_INDEX from floor2Scenario.ts and importing the shared one, (4) adding a regression test asserting Floor 1 scenario produces zero nodes with defIndex>=6. No further concerns raised."
+        },
+        {
+          "round": 2,
+          "models": [
+            "copilot-pull-request-reviewer"
+          ],
+          "concerns_count": 10,
+          "resolved_count": 10,
+          "clean": true,
+          "summary": "Round 2 PR review by copilot-pull-request-reviewer raised 10 concerns: (1) missing harvestable brief IDs — fixed, iron-vein-v1/copper-seam-v1/gem-cluster-v1 added to GENERATED_BRIEF_BY_HARVESTABLE; (2) itemArtIdentitySet incorrectly excluding Floor-2 item IDs — fixed, exclusion now only applies when id===itemId; (3) harvest duration floating-point — fixed with +1 tick buffer test; (4) prop sprites not in manifest — acknowledged as placeholder sprites pending art pipeline; (5) animation flags have no runtime consumer — fixed, wall-lantern-cave changed to isAnimated:false; (6) colorHex dead data — fixed, colorHex wired through LightSource and lightSources array in MainGameScene; (7) Floor-2 open-ended registry coupling — fixed, FLOOR2_HARVESTABLE_END_INDEX=9 added; (8) biomeTag test weak — fixed, test now verifies per-entity biomeTag via DECORATION_INDEX_TO_ID; (9) review ledger plan-review gap — corrected in this update; (10) handoff missing artifact evidence — added headless test results."
+        }
+      ]
+    }
+  }
+}
