@@ -1,11 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bucketBySize,
   computeStageTimings,
   deriveFindings,
+  fetchMergedPrs,
   type BottleneckReport,
   type StageTiming,
 } from '../../../scripts/agent/velocity/bottleneck-scan';
+
+vi.mock('node:child_process', () => ({
+  execFileSync: vi.fn(),
+}));
 
 const HOUR = 3600_000;
 const START = Date.parse('2026-07-01T00:00:00.000Z');
@@ -120,6 +126,78 @@ describe('bucketBySize', () => {
     expect(buckets.find((b) => b.bucket === '≤100 lines')?.medianLeadTimeH).toBe(2);
     expect(buckets.find((b) => b.bucket === '>2000 lines')?.medianLeadTimeH).toBe(40);
     expect(buckets.find((b) => b.bucket === '501–2000 lines')?.prs).toBe(0);
+  });
+});
+
+describe('fetchMergedPrs', () => {
+  beforeEach(() => {
+    vi.mocked(execFileSync).mockReset();
+  });
+
+  it('pages merged PR fetches below the GitHub GraphQL node ceiling', () => {
+    const firstPage = Array.from({ length: 25 }, (_, index) => ({
+      number: index + 1,
+      title: `PR ${index + 1}`,
+      createdAt: at(0),
+      mergedAt: at(10 - index * 0.01),
+      additions: 1,
+      deletions: 0,
+      changedFiles: 1,
+    }));
+    const oldest = firstPage.at(-1)!.mergedAt;
+    const secondPage = [
+      firstPage.at(-1),
+      {
+        number: 26,
+        title: 'PR 26',
+        createdAt: at(0),
+        mergedAt: oldest,
+        additions: 1,
+        deletions: 0,
+        changedFiles: 1,
+      },
+      {
+        number: 27,
+        title: 'PR 27',
+        createdAt: at(0),
+        mergedAt: at(1),
+        additions: 1,
+        deletions: 0,
+        changedFiles: 1,
+      },
+    ];
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce(JSON.stringify(firstPage))
+      .mockReturnValueOnce(JSON.stringify(secondPage))
+      .mockReturnValueOnce(JSON.stringify([]));
+
+    const prs = fetchMergedPrs('repo-root', 27);
+
+    expect(prs.map((pr) => pr.number)).toEqual(Array.from({ length: 27 }, (_, index) => index + 1));
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+    const secondArgs = vi.mocked(execFileSync).mock.calls[1]![1] as string[];
+    expect(secondArgs).toContain('--search');
+    expect(secondArgs).toContain(`merged:<${new Date(Date.parse(oldest) + 1).toISOString()}`);
+  });
+
+  it('stops instead of looping forever when a page adds no unseen PRs', () => {
+    const repeated = [
+      {
+        number: 1,
+        title: 'PR 1',
+        createdAt: at(0),
+        mergedAt: at(1),
+        additions: 1,
+        deletions: 0,
+        changedFiles: 1,
+      },
+    ];
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce(JSON.stringify(repeated))
+      .mockReturnValueOnce(JSON.stringify(repeated));
+
+    expect(fetchMergedPrs('repo-root', 2).map((pr) => pr.number)).toEqual([1]);
+    expect(execFileSync).toHaveBeenCalledTimes(2);
   });
 });
 

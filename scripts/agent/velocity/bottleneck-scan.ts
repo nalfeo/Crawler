@@ -269,6 +269,12 @@ export function deriveFindings(report: Omit<BottleneckReport, 'findings'>): stri
  */
 const PR_PAGE_SIZE = 25;
 
+function nextMergedBeforeCursor(oldestMergedAt: string): string | undefined {
+  const parsed = Date.parse(oldestMergedAt);
+  if (!Number.isFinite(parsed)) return undefined;
+  return new Date(parsed + 1).toISOString();
+}
+
 function fetchMergedPrPage(root: string, limit: number, before?: string): PrRecord[] {
   const args = [
     'pr',
@@ -314,7 +320,8 @@ export function fetchMergedPrs(root: string, limit: number): PrRecord[] {
       .filter((at): at is string => typeof at === 'string' && at.length > 0)
       .sort()[0];
     if (!oldest) break;
-    cursor = oldest;
+    cursor = nextMergedBeforeCursor(oldest);
+    if (!cursor) break;
   }
 
   return collected.slice(0, limit);
