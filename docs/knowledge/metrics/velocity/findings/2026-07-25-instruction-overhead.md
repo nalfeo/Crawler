@@ -36,12 +36,14 @@ null result, it is a category error: instruction files enter the session as **sy
 context**, not as tool results. Deleting 65 KB of instructions cannot move a counter that
 only sums tool output.
 
-**2. There is no input-token telemetry at all.**
+**2. This trial configuration emitted no input-token telemetry.**
 Searched a full 560 KB transcript for `inputTokens`, `promptTokens`, `cachedTokens`,
-`totalTokens` — **zero matches**. `assistant.message` carries `outputTokens` only, and the
-`result` event's `usage` block carries `premiumRequests`, durations, and code-change counts.
-The instruction tax is purely an input cost, so it is currently **unmeasurable except
-through billing**.
+`totalTokens` — **zero matches**. The existing analyzer can ingest
+`assistant.message.inputTokens` and `assistant.usage.inputTokens` when those fields are
+emitted, but this run emitted none. `assistant.message` carried `outputTokens` only, and the
+`result` event's `usage` block carried `premiumRequests`, durations, and code-change counts.
+The instruction tax is purely an input cost, so it is currently **unmeasurable in this trial
+configuration except through billing**.
 
 **3. The one metric that does include input cost is swamped by noise.**
 `nanoAiu` is a billing proxy that necessarily includes input. Between-arm difference: ~1%.

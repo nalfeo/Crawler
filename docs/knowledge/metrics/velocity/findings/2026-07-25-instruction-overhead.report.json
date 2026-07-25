@@ -387,5 +387,8 @@
     }
   ],
   "verdict": "INCONCLUSIVE — no metric produced a bootstrap interval that excludes zero at the available sample size. This is not evidence of \"no effect\"; it is an absence of evidence. Increase trials per arm or pick a task where the hypothesised effect is larger.",
-  "warnings": []
+  "warnings": [
+    "Residual risk: trials are not network-sandboxed, so a determined path to a public mirror of the solution can exist.",
+    "Residual risk: the model may have memorised this public repository during training, which cannot be falsified from inside this harness."
+  ]
 }
