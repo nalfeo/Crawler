@@ -35,6 +35,7 @@ import {
 } from '../../shared/terrain-pack-variants.js';
 import { TERRAIN_PACK_CELL_PX } from '../../shared/terrain-pack-types.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
+import type { TerrainPackId } from '../../shared/terrain-pack-types.js';
 import {
   resolveDoorRenderMode,
   GENERATED_DOOR_TEXTURE_KEY,
@@ -275,6 +276,14 @@ export interface MainGameSceneOptions {
    * the global defaults.
    */
   lightingConfig?: Partial<LightingConfig>;
+  /**
+   * Registry-backed terrain pack id for this floor (e.g. Floor 2's
+   * `industrial-cave`). Set by `createFloorMainSceneOptions` from the floor
+   * manifest's `terrainPackId`. When present, `drawFloorTerrain` forwards it to
+   * {@link buildTerrainLayer} so WALL/FLOOR/CORRIDOR tiles stamp the pack's
+   * atlas/pool textures; when omitted (Floor 1) the legacy path renders.
+   */
+  terrainPackId?: TerrainPackId;
   /** Floor-specific Director narration copy. */
   director?: {
     intro: string;
@@ -403,7 +412,17 @@ export class MainGameScene extends Phaser.Scene {
     generatedCount: number;
     spriteCount: number;
     colorCount: number;
-  } = { generatedCount: 0, spriteCount: 0, colorCount: 0 };
+    packWallCount: number;
+    packFloorCount: number;
+    packCorridorCount: number;
+  } = {
+    generatedCount: 0,
+    spriteCount: 0,
+    colorCount: 0,
+    packWallCount: 0,
+    packFloorCount: 0,
+    packCorridorCount: 0,
+  };
 
   /**
    * Diagnostic door-render counts from the last `updateDoorOverlay()` pass. Read
@@ -1838,6 +1857,9 @@ export class MainGameScene extends Phaser.Scene {
     generatedCount: number;
     spriteCount: number;
     colorCount: number;
+    packWallCount: number;
+    packFloorCount: number;
+    packCorridorCount: number;
   } {
     return this.terrainRenderSummary;
   }
@@ -2109,15 +2131,25 @@ export class MainGameScene extends Phaser.Scene {
       this.fovSubFactor = floorMap.setSubFactor(this.fovSubFactor);
     }
 
-    const terrainPackId = this.options.floorId
-      ? getFloorManifest(this.options.floorId)?.terrainPackId
-      : undefined;
-    const { rt, generatedCount, spriteCount, colorCount } = buildTerrainLayer(this, floorMap, {
-      terrainPackId,
-    });
+    const {
+      rt,
+      generatedCount,
+      spriteCount,
+      colorCount,
+      packWallCount,
+      packFloorCount,
+      packCorridorCount,
+    } = buildTerrainLayer(this, floorMap, { terrainPackId: this.options.terrainPackId });
     rt.setDepth(-20);
     this.mapRt = rt;
-    this.terrainRenderSummary = { generatedCount, spriteCount, colorCount };
+    this.terrainRenderSummary = {
+      generatedCount,
+      spriteCount,
+      colorCount,
+      packWallCount,
+      packFloorCount,
+      packCorridorCount,
+    };
 
     if (colorCount > 0) {
       logger.debug('Terrain layer: tiles using color fallback', {

@@ -26,6 +26,7 @@
     "floorDensity": 0.35,
     "tileSizeFt": 4.0
   },
+  "terrainPackId": "industrial-cave",
   "enemyPackId": "floor2-families",
   "player": {
     "hpBonus": 30,

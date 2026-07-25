@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "floor-2-equip-i2",
+  "task_title": "Floor 2 equipment integration validation",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review approved_with_changes: made the hard gate explicit, refined the seam matrix to per-pipeline rows, made helper reuse explicit, and separated gate-green validation from PR logistics."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Reviewer flagged a false-Floor-2 setup and a false-green slot-cap assertion gap; the integration test was updated to initialize the real Floor 2 scenario, assert enablement flags, and prove the capped active set stays intact while generated grants remain owned-but-unequipped."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final code review found no remaining code issues once the review rounds were recorded in the ledger."
+        }
+      ]
+    }
+  }
+}

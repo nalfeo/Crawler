@@ -1,0 +1,104 @@
+name: Sprite queue reconciler
+
+# Hourly reconciler that lands durable, approved/edited sprite art from the
+# long-lived `assets/queue` branch back into `main` (PR2 of the durable
+# sprite-edit persistence feature; see
+# docs/knowledge/adr/2026-07-24-sprite-queue-reconciler.md).
+#
+# Each cycle harvests the art surface from `assets/queue` onto CURRENT
+# `origin/main` in a throwaway worktree, force-updates the sole-writer,
+# bot-owned `assets/promote` branch to that commit, opens/updates exactly ONE
+# art-only `assets/promote -> main` PR, and arms `gh pr merge --auto --squash`.
+# The promote diff is art-surface-only *by construction* (built on current main,
+# only the ASSET_SURFACE_PATHS allowlist is checked out), and a defense-in-depth
+# guard REFUSES + escalates (exit 30) if it ever sees a non-art path.
+#
+# action_required stall avoidance: `CRAWLER_CI_PAT` is a classic user PAT (human
+# identity), NOT a GitHub App token. GitHub only parks a workflow run in
+# `action_required` when the triggering push came from a *GitHub App* token, so
+# the reconciler's PAT-identity push to `assets/promote` lets the promote PR's
+# CI run normally and the armed auto-merge proceeds. We run `gh auth setup-git`
+# so `git push` uses the PAT credentials (checkout keeps persist-credentials
+# false so the default GITHUB_TOKEN is never used for the push).
+
+on:
+  schedule:
+    # Top of every hour.
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+# Single serial lane: the reconciler is the ONLY writer of `assets/promote`, so
+# cycles must never overlap. Do NOT cancel an in-flight cycle mid-push (it holds
+# the cross-process check-in lock and could leave a half-updated promote ref);
+# queue the next run behind it instead.
+concurrency:
+  group: sprite-queue-reconciler
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  reconcile:
+    name: Reconcile assets/queue into main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          # Use the owner-scoped PAT (not the default GITHUB_TOKEN) for every
+          # git operation so pushes carry a human identity and never park CI in
+          # action_required.
+          persist-credentials: false
+
+      - name: Setup Node with cached node_modules
+        uses: ./.github/actions/setup-node
+
+      - name: Authenticate git with CRAWLER_CI_PAT
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
+        run: gh auth setup-git
+
+      - name: Run reconciler
+        id: reconcile
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
+        run: |
+          set +e
+          npm run --silent sprites:reconcile-queue -- \
+            --repo-root . \
+            --repo "${{ github.repository }}"
+          code=$?
+          echo "exit_code=$code" >>"$GITHUB_OUTPUT"
+          if [ "$code" -eq 0 ]; then
+            echo "Reconciler completed (noop or PR opened/armed)."
+            exit 0
+          fi
+          exit "$code"
+
+      - name: Escalate untrusted-diff refusal
+        # Exit 30 = the defense-in-depth guard saw a non-art path in the promote
+        # diff and REFUSED to push/arm (fail-closed). This should be impossible
+        # by construction, so treat it as a security incident: open an issue.
+        if: ${{ failure() && steps.reconcile.outputs.exit_code == '30' }}
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
+        run: |
+          set -euo pipefail
+          body="The hourly sprite-queue reconciler exited 30 (untrusted-diff): the staged \`assets/promote -> main\` diff contained a path OUTSIDE the art-surface allowlist (\`public/assets/generated/**\`, \`src/shared/data/sprite-catalog.json\`). The reconciler fail-closed and did NOT push \`assets/promote\` or arm auto-merge. This is structurally impossible (promote is built on current main with only the allowlist checked out), so it indicates a path-escape or bug in \`scripts/sprites/reconcile-queue.ts\`. Investigate before re-running. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # Best-effort labels: creation must not fail if a label is absent.
+          if ! gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "🚨 sprite-queue-reconciler refused: non-art path in promote diff" \
+            --label "security" \
+            --body "$body"; then
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "🚨 sprite-queue-reconciler refused: non-art path in promote diff" \
+              --body "$body"
+          fi

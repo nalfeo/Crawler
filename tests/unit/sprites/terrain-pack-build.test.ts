@@ -11,9 +11,14 @@
  *   - deterministic output bytes/hash across rebuild
  */
 import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
-import { buildIndustrialCavePack } from '../../../scripts/sprites/terrain-packs/build-industrial-cave.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  buildIndustrialCavePack,
+  writeIndustrialCavePack,
+} from '../../../scripts/sprites/terrain-packs/build-industrial-cave.js';
 import {
   buildCaelesFixturePack,
   verifySha256,
@@ -530,5 +535,95 @@ describe('validateTerrainPack — malformed manifest produces structured issues,
     const validation = validateTerrainPack(manifest, malformedBytes);
     expect(validation.ok).toBe(false);
     expect(validation.issues.some((i) => i.code === 'atlas-decode-error')).toBe(true);
+  });
+});
+
+describe('writeIndustrialCavePack — overwrite guard (TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE)', () => {
+  let tmpDir: string;
+  let savedEnv: string | undefined;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'industrial-cave-guard-test-'));
+    savedEnv = process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE;
+    delete process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE;
+  });
+
+  afterEach(() => {
+    if (savedEnv === undefined) {
+      delete process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE;
+    } else {
+      process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE = savedEnv;
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function anyFilesWritten(dir: string): boolean {
+    // Recursively check whether any file was written under dir
+    const check = (d: string): boolean => {
+      const entries = fs.readdirSync(d, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          if (check(path.join(d, entry.name))) return true;
+        } else {
+          return true;
+        }
+      }
+      return false;
+    };
+    return check(dir);
+  }
+
+  it('does NOT write when the env var is unset', () => {
+    // No env var set (deleted in beforeEach)
+    writeIndustrialCavePack(tmpDir);
+    expect(anyFilesWritten(tmpDir)).toBe(false);
+  });
+
+  it('does NOT write when the env var is "0"', () => {
+    process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE = '0';
+    writeIndustrialCavePack(tmpDir);
+    expect(anyFilesWritten(tmpDir)).toBe(false);
+  });
+
+  it('does NOT write when the env var is "false"', () => {
+    process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE = 'false';
+    writeIndustrialCavePack(tmpDir);
+    expect(anyFilesWritten(tmpDir)).toBe(false);
+  });
+
+  it('does NOT write when the env var is "FALSE" (case-insensitive)', () => {
+    process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE = 'FALSE';
+    writeIndustrialCavePack(tmpDir);
+    expect(anyFilesWritten(tmpDir)).toBe(false);
+  });
+
+  it('DOES write when the env var is "1"', () => {
+    process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE = '1';
+    writeIndustrialCavePack(tmpDir);
+    expect(anyFilesWritten(tmpDir)).toBe(true);
+  });
+
+  it('DOES write when the env var is "true"', () => {
+    process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE = 'true';
+    writeIndustrialCavePack(tmpDir);
+    expect(anyFilesWritten(tmpDir)).toBe(true);
+  });
+
+  it('DOES write when the env var is "TRUE" (case-insensitive)', () => {
+    process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE = 'TRUE';
+    writeIndustrialCavePack(tmpDir);
+    expect(anyFilesWritten(tmpDir)).toBe(true);
+  });
+
+  it('DOES write when the env var is " 1 " (with surrounding whitespace — trimmed)', () => {
+    process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE = ' 1 ';
+    writeIndustrialCavePack(tmpDir);
+    expect(anyFilesWritten(tmpDir)).toBe(true);
+  });
+
+  it('DOES write when the env var is " True " (mixed case + whitespace — trimmed + lowercased)', () => {
+    process.env.TERRAIN_PACKS_ALLOW_PROCEDURAL_OVERWRITE = ' True ';
+    writeIndustrialCavePack(tmpDir);
+    expect(anyFilesWritten(tmpDir)).toBe(true);
   });
 });

@@ -58,9 +58,11 @@ export class BootScene extends Phaser.Scene {
       });
     }
 
-    // Queue all terrain-pack images (wall atlas, floor/corridor pool variants,
-    // and door textures) at boot so every pack-backed floor (e.g. Floor 2's
-    // `industrial-cave`) has its assets ready before MainGameScene renders.
+    // Queue every registered runtime terrain pack's atlas/pool/door textures.
+    // Phaser auto-runs the preload() loader before create(), so these are
+    // resident before MainGameScene bakes terrain — without this, a floor that
+    // wires `terrainPackId` (e.g. Floor 2 → industrial-cave) silently falls
+    // through the renderer's `textures.exists()` guard to the legacy path.
     preloadTerrainPacks(this.load);
 
     // Seed an empty registry so consumers (e.g. InventoryUI) always read

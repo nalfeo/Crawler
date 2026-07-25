@@ -91,7 +91,7 @@ describe('Floor 1 / Floor 2 manifest wiring', () => {
     expect(floor1Manifest.terrainPackId).toBeUndefined();
   });
 
-  it('Floor 2 manifest wires industrial-cave as its runtime terrain pack', () => {
+  it('Floor 2 manifest wires the industrial-cave terrain pack', () => {
     expect(floor2Manifest.terrainPackId).toBe('industrial-cave');
   });
 });
