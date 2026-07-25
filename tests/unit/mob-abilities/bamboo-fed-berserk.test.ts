@@ -200,7 +200,6 @@ describe('Bamboo-Fed Berserk active buff modifiers', () => {
       geometry: { kind: 'circle', x: 40, y: 10, radiusFt: 10 },
       targetEid: null,
     });
-    const before = h.world.mobAbilities.activeBuffsByEntity.get(h.wei)!.remainingMs;
     stepRuntime(h.world, 20);
     def.resolve(h.world, {
       abilityId: def.abilityId,
@@ -271,7 +270,7 @@ describe('Bamboo-Fed Berserk seam consumption', () => {
 
   it('knockback displacement is reduced while buffed', () => {
     const baseline = buildHarness(40, 40, 40, 40);
-    baseline.world.floorMap = undefined;
+    baseline.world.floorMap = null;
     baseline.world.stores.weight.value[baseline.wei] = 120;
     addComponent(
       baseline.world.ecs,
@@ -282,7 +281,7 @@ describe('Bamboo-Fed Berserk seam consumption', () => {
     const baselineStep = (baseline.world.stores.position.x[baseline.wei] ?? 0) - 40;
 
     const buffed = buildHarness(40, 40, 40, 40);
-    buffed.world.floorMap = undefined;
+    buffed.world.floorMap = null;
     const def = createBambooFedBerserkDefinition();
     def.resolve(buffed.world, {
       abilityId: def.abilityId,
