@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7380e3e71592ffa6a33f9eb0882614263b617da0",
+    "commitDate": "2026-07-25T01:28:07Z",
+    "commitSubject": "fix(sprite-pipeline): enroll assets/promote PRs in the merge-train label (#1925)",
+    "capturedAt": "2026-07-25T02:47:27.824Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30138957827",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/7380e3e71592ffa6a33f9eb0882614263b617da0.json"
+  },
+  {
     "commit": "4f002dfa3e30ba402fa6eee08474f0c0750ca1c2",
     "commitDate": "2026-07-25T01:15:23Z",
     "commitSubject": "feat(engine): add particle effects to reward unlock sequence (#1910)",
