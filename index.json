@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5cab6b1d48e56b75d555dd59a291c400e5a16c1d",
+    "commitDate": "2026-07-25T02:28:23Z",
+    "commitSubject": "feat: retire Foundry backend, standardize asset pipeline on Azure OpenAI, fix CI recovery loop incident filing (#1909)",
+    "capturedAt": "2026-07-25T03:47:22.455Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30140772717",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/5cab6b1d48e56b75d555dd59a291c400e5a16c1d.json"
+  },
+  {
     "commit": "fed0cee70ef2c0e661775f7b865cf5fd1a5d1fe5",
     "commitDate": "2026-07-25T02:03:16Z",
     "commitSubject": "feat: Floor 2 industrial-cave harvestables, ambient lighting, and props (#1911)",
