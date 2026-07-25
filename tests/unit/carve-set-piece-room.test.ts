@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
-import { carveSetPieceRoom } from '../../src/core/map/carveSetPieceRoom.js';
+import {
+  carveConnectorToReachable,
+  carveSetPieceRoom,
+} from '../../src/core/map/carveSetPieceRoom.js';
 import {
   BiomeType,
   RoomRole,
@@ -238,3 +241,104 @@ describe('carveSetPieceRoom', () => {
     expect(leftDoor).toBeDefined();
   });
 });
+
+describe('carveConnectorToReachable', () => {
+  const CW = 12;
+  const CH = 5;
+
+  /**
+   * Build a 1-tile-tall corridor world: spawn floor at the far left, a target
+   * floor tile at the far right, everything else rock. The connector must tunnel
+   * across the rock to link them.
+   */
+  function buildCorridorMap(): { floorMap: FloorMap; reachable: Uint8Array } {
+    const flags = new Uint8Array(CW * CH); // all rock
+    const terrain = new Uint8Array(CW * CH).fill(TerrainType.STONE_WALL);
+    const setFloor = (x: number, y: number): void => {
+      flags[y * CW + x] = TilePresets.FLOOR;
+      terrain[y * CW + x] = TerrainType.STONE_FLOOR;
+    };
+    // Spawn-reachable region: the whole left column strip at y=2, x=0..2.
+    for (let x = 0; x <= 2; x += 1) setFloor(x, 2);
+    // Target start tile (the "door") at x=9,y=2 — isolated in rock.
+    setFloor(9, 2);
+    const tileMap = new TileMap(CW, CH, flags);
+    const graph = new RoomGraph();
+    const floorMap = new FloorMap(
+      { ...CFG, widthTiles: CW, heightTiles: CH },
+      tileMap,
+      graph,
+      terrain,
+      { x: 0, y: 2 },
+    );
+    // Reachable mask = the spawn strip only.
+    const reachable = new Uint8Array(CW * CH);
+    for (let x = 0; x <= 2; x += 1) reachable[2 * CW + x] = 1;
+    return { floorMap, reachable };
+  }
+
+  it('carves a straight tunnel to the nearest reachable tile', () => {
+    const { floorMap, reachable } = buildCorridorMap();
+    const ok = carveConnectorToReachable(floorMap, 9, 2, reachable);
+    expect(ok).toBe(true);
+    // Every tile between the reachable strip (x=2) and the start (x=9) on y=2 is
+    // now floor, so a spawn flood reaches the start tile.
+    for (let x = 2; x <= 9; x += 1) {
+      expect(floorMap.tileMap.isPassable(x, 2)).toBe(true);
+    }
+  });
+
+  it('never routes through avoided tiles (lock-bypass safety)', () => {
+    const { floorMap, reachable } = buildCorridorMap();
+    // Forbid the entire y=2 straight-line corridor between start and target, so the
+    // only way to connect is to detour through an adjacent row. This proves the
+    // avoidance guard is honoured — the connector must not carve any forbidden tile.
+    const avoid = new Set<number>();
+    for (let x = 3; x <= 8; x += 1) avoid.add(2 * CW + x);
+    const ok = carveConnectorToReachable(floorMap, 9, 2, reachable, avoid);
+    expect(ok).toBe(true);
+    // No forbidden tile was carved into floor.
+    for (const idx of avoid) {
+      const x = idx % CW;
+      const y = (idx - x) / CW;
+      expect(floorMap.tileMap.isPassable(x, y)).toBe(false);
+    }
+    // Yet the start tile is still connected to the reachable strip via the detour.
+    const flood = reachableFromSpawnGeneric(floorMap, CW, CH);
+    expect(flood[2 * CW + 9]).toBe(1);
+  });
+});
+
+/** Generic flood used by the connector tests (parameterised width/height). */
+function reachableFromSpawnGeneric(floorMap: FloorMap, w: number, h: number): Uint8Array {
+  const flags = floorMap.tileMap.flags;
+  const visited = new Uint8Array(w * h);
+  const start = floorMap.playerSpawn.y * w + floorMap.playerSpawn.x;
+  const open = (idx: number): boolean =>
+    (flags[idx]! & TileFlags.PASSABLE) !== 0 || (flags[idx]! & TileFlags.DOOR) !== 0;
+  if (!open(start)) return visited;
+  const q = [start];
+  visited[start] = 1;
+  let head = 0;
+  while (head < q.length) {
+    const idx = q[head]!;
+    head += 1;
+    const x = idx % w;
+    const y = (idx - x) / w;
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const n = ny * w + nx;
+      if (visited[n] === 1 || !open(n)) continue;
+      visited[n] = 1;
+      q.push(n);
+    }
+  }
+  return visited;
+}

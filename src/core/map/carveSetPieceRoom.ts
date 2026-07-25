@@ -148,6 +148,13 @@ function edgeRingTiles(
  * edge), prefer the first tile whose outward neighbour is a spawn-reachable
  * passable floor tile. Falls back to the authored tile when no eligible edge tile
  * faces reachable floor (the connector backstop then guarantees reachability).
+ *
+ * PRECONDITION: `reachable` must be a settled spawn-reachability mask computed
+ * BEFORE this carve mutates the tilemap (see `resolveDoorTiles`, which snapshots
+ * it via `floodFromSpawn` prior to restoring the interior / punching doors).
+ * Resolving a dynamic door against a half-mutated map would let the carve's own
+ * in-progress wall/door writes bias the "nearest reachable floor" scan, breaking
+ * the deterministic, order-independent choice this function guarantees.
  */
 function chooseDynamicDoorTile(
   slot: SetPieceResolvedDoorSlot,
@@ -175,6 +182,9 @@ function floodFromSpawn(floorMap: FloorMap): Uint8Array {
   const h = floorMap.height;
   const flags = floorMap.tileMap.flags;
   const visited = new Uint8Array(w * h);
+  if (!floorMap.tileMap.inBounds(floorMap.playerSpawn.x, floorMap.playerSpawn.y)) {
+    return visited;
+  }
   const spawnIdx = floorMap.playerSpawn.y * w + floorMap.playerSpawn.x;
   const isOpen = (idx: number): boolean => {
     const f = flags[idx]!;
@@ -206,13 +216,17 @@ function floodFromSpawn(floorMap: FloorMap): Uint8Array {
  * Carve a deterministic connector (BFS shortest path, fixed neighbour order) from
  * `(startX, startY)` through any tiles to the nearest tile flagged in `reachable`,
  * turning the path into corridor floor. Door tiles on the path are left intact.
- * Returns `false` only if no reachable tile exists (a disconnected floor).
+ * Tiles whose index is present in `avoid` are never traversed, so a caller can
+ * forbid the tunnel from routing through a gated region's interior (which would
+ * otherwise open an unintended bypass around a locked door). Returns `false` only
+ * if no reachable tile exists (a disconnected floor).
  */
-function carveConnectorToReachable(
+export function carveConnectorToReachable(
   floorMap: FloorMap,
   startX: number,
   startY: number,
   reachable: Uint8Array,
+  avoid?: ReadonlySet<number>,
 ): boolean {
   const w = floorMap.width;
   const h = floorMap.height;
@@ -238,6 +252,9 @@ function carveConnectorToReachable(
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
       const nIdx = ny * w + nx;
       if (visited[nIdx] === 1) continue;
+      // Never route through a forbidden tile (e.g. a locked room's interior) —
+      // except the reachable target itself, which we stop on above.
+      if (avoid !== undefined && avoid.has(nIdx) && reachable[nIdx] !== 1) continue;
       visited[nIdx] = 1;
       prev[nIdx] = idx;
       queue.push(nIdx);
@@ -325,15 +342,16 @@ export function carveSetPieceRoom(
   sealRoomPerimeter(floorMap, updated);
 
   // 6. Connectivity backstop — guarantee the interior is spawn-reachable. Test an
-  //    interior tile; if unreachable, carve a connector from the primary door.
+  //    interior tile; if unreachable, carve a connector from the primary door. The
+  //    primary door stays DOOR_CLOSED (as sealed above): a closed door is already
+  //    traversable by the flood, and carveConnectorToReachable carves floor by
+  //    position regardless of flags, so re-opening it here would only leave the
+  //    door inconsistently OPEN vs the other sealed doors.
   const reachableAfter = floodFromSpawn(floorMap);
   const interiorX = originX + Math.floor(fpW / 2);
   const interiorY = originY + Math.floor(fpH / 2);
   if (reachableAfter[interiorY * w + interiorX] !== 1) {
     const primary = doors[0]!;
-    // Open the primary door and carve outward from it to reachable floor.
-    floorMap.tileMap.setFlags(primary.x, primary.y, TilePresets.DOOR_OPEN);
-    floorMap.terrain[primary.y * w + primary.x] = TerrainType.DOOR;
     carveConnectorToReachable(floorMap, primary.x, primary.y, reachableBefore);
   }
 

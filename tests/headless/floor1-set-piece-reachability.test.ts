@@ -9,8 +9,14 @@ import { checkFloor1SetPieceReachability } from '../../src/game/set-piece-reacha
  * feedback and guards against regressions in `npm run verify`. Seeds are a fixed
  * deterministic panel — NO cherry-picking (rule #12): a single sealed room here
  * is a real bug, not a seed to swap out.
+ *
+ * Seed 21 is a pinned regression: the generator places the welcome-office hub so
+ * it is only reachable THROUGH an initially-locked quest door. The lock-aware hub
+ * reachability repair in `initializeFloor1Scenario` must carve a direct unlocked
+ * connector so the hub (and its quest NPCs) is reachable in the locked initial
+ * state; without it the three quest NPCs scatter outside the carved room.
  */
-const SEED_PANEL = [1, 2, 3, 7, 19, 32, 42, 100, 777, 2024] as const;
+const SEED_PANEL = [1, 2, 3, 7, 19, 21, 30, 32, 42, 69, 100, 777, 2024] as const;
 
 describe('Floor 1 set-piece reachability (prefab welcome-room)', () => {
   for (const seed of SEED_PANEL) {

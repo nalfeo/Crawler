@@ -105,6 +105,15 @@ export interface FloorScenarioState {
   /** EID of the dropped fetch item, or null once collected/not spawned. */
   questItemEid: number | null;
   /**
+   * Room id of the welcome-office hub (the carved set-piece prefab room), or
+   * null if it could not be resolved. STABLE: unlike `objective.welcomeOfficePos`
+   * — which is tightened to the tutorial-goon's live tile after NPC placement and
+   * is explicitly NOT a room anchor — this is the fixed identity of the hub room,
+   * so consumers (HUD markers, the reachability gate) can resolve the room
+   * without depending on a mutable NPC-target tile.
+   */
+  welcomeRoomId?: number | null;
+  /**
    * Door entity IDs guarding each boss room, keyed by the same boss ID used in
    * `FloorObjectiveState.bossBattles` ('slime-rat', 'staircase', …).
    */

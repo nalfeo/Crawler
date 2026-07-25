@@ -131,24 +131,50 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
   const isReachable = (tx: number, ty: number): boolean =>
     floorMap.tileMap.inBounds(tx, ty) && reachable[ty * w + tx] === 1;
 
-  // Resolve the carved set-piece room via the welcome-office objective tile.
-  const officeTile = floorMap.worldToTile(
-    scenario.objective.welcomeOfficePos.x,
-    scenario.objective.welcomeOfficePos.y,
-  );
-  const roomId = floorMap.roomGraph.getRoomAt(officeTile.x, officeTile.y);
-  const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
+  // Resolve the carved set-piece room via the STABLE hub-room id the scenario
+  // records at carve time (`scenario.welcomeRoomId`). We do NOT key off
+  // `objective.welcomeOfficePos`: that field is overwritten to the spawned
+  // tutorial-goon NPC tile after placement (floorScenario ~1793), which can fall
+  // on the ring or just outside the interior, making `getRoomAt` return the wrong
+  // room (or -1) and producing a FALSE gate failure (code-review: seed 21). We
+  // also do NOT use the SAFE role: the generator pre-assigns SAFE to its own safe
+  // room (dungeon/roles.ts), so there are TWO SAFE rooms and role lookup returns
+  // the generator's, not the carved welcome office. The recorded room id is the
+  // one carveSetPieceRoom resized in place, so it is unambiguous even when a
+  // generator room coincidentally matches the 10x9 footprint (floor1 config
+  // allows rooms that small).
+  const welcomeRoomId = scenario.welcomeRoomId;
+  const room =
+    typeof welcomeRoomId === 'number' && welcomeRoomId >= 0
+      ? floorMap.roomGraph.get(welcomeRoomId)
+      : undefined;
   if (!room) {
     return {
       seed,
       pass: false,
-      failures: [`no welcome-room resolved at office tile (${officeTile.x},${officeTile.y})`],
+      failures: [
+        `no welcome-room resolved (scenario.welcomeRoomId=${String(welcomeRoomId)}); the carve could not find the hub room`,
+      ],
       doorCount: 0,
       npcCount: 0,
     };
   }
 
   const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+
+  // 0. The prefab carve actually happened (not the render-only fallback). When
+  //    the carve fits, the room's bounds equal the prefab footprint EXACTLY
+  //    (see carveSetPieceRoom); the legacy fallback leaves the generator's
+  //    arbitrary bounds. Asserting bounds == footprint turns a silent no-fit
+  //    fallback — which would still be "reachable" via mapgen's own walls — into
+  //    a hard gate failure, so the sweep proves the AUTHORITATIVE carve, not just
+  //    reachability. A real no-fit is a carve bug to fix (grow-into-rock / pick
+  //    another hub), never a threshold to weaken (rule #11).
+  if (bw !== def.width || bh !== def.height) {
+    failures.push(
+      `welcome-room did not carve to the prefab footprint: bounds ${bw}x${bh} != footprint ${def.width}x${def.height} (no-fit fallback shipped the legacy room)`,
+    );
+  }
 
   // 1. The room interior is reachable from spawn: require at least one interior
   //    (inside-the-ring) floor tile to be in the flood set.
@@ -195,6 +221,31 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
   }
   if (npcCount === 0) {
     failures.push('no NPC anchors found inside the welcome-room bounds');
+  }
+
+  // 4. The carve stranded no OTHER room. Rewriting the hub's geometry + doors
+  //    could wall off a corridor that was some other room's only approach, so
+  //    assert every room in the graph still has >=1 interior tile reachable from
+  //    spawn (the flood treats closed AND locked doors as traversable, so this is
+  //    a pure topology check, independent of gameplay gating). The generator's
+  //    own reachability pass guarantees this pre-carve; a failure here is a
+  //    carve-induced regression (plan-review concern #2), not a pre-existing gap.
+  for (const other of floorMap.roomGraph.getAll()) {
+    let anyReachable = false;
+    const ob = other.bounds;
+    for (let ty = ob.y + 1; ty < ob.y + ob.height - 1 && !anyReachable; ty += 1) {
+      for (let tx = ob.x + 1; tx < ob.x + ob.width - 1; tx += 1) {
+        if (floorMap.tileMap.isPassable(tx, ty) && isReachable(tx, ty)) {
+          anyReachable = true;
+          break;
+        }
+      }
+    }
+    if (!anyReachable) {
+      failures.push(
+        `room ${other.id} (bounds ${ob.x},${ob.y} ${ob.width}x${ob.height}) is not reachable from spawn after the carve`,
+      );
+    }
   }
 
   return { seed, pass: failures.length === 0, failures, doorCount: doors.length, npcCount };
