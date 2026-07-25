@@ -77,6 +77,7 @@ function main(): void {
   }
 
   const failed = seeds.length - passed;
+  const degraded = results.filter((r) => !r.carved).length;
   const summary = {
     kind: 'set-piece-reachability' as const,
     floor: 'floor1',
@@ -85,6 +86,13 @@ function main(): void {
     passed,
     failed,
     passRate: passed / seeds.length,
+    /**
+     * Count of seeds where the prefab degraded to the legacy render-only fallback
+     * (room bounds != footprint) instead of an authoritative carve. Expected
+     * steady state is 0; any non-zero value also fails the sweep (see check #0 in
+     * the gate) and signals carve tiers 1–2 are under-powered.
+     */
+    degraded,
     results,
   };
 
@@ -97,10 +105,18 @@ function main(): void {
     `\nSet-piece reachability: ${passed}/${seeds.length} seeds passed ` +
       `(${((passed / seeds.length) * 100).toFixed(1)}%).`,
   );
+  console.log(
+    `Prefab carve degradations (render-only fallback): ${degraded}/${seeds.length} ` +
+      `(expected 0${degraded > 0 ? ' — carve tiers 1–2 under-powered' : ' ✅'}).`,
+  );
 
   if (failed > 0) {
+    const degradedNote =
+      degraded > 0
+        ? ` ${degraded} of them degraded to the render-only fallback (bounds != footprint).`
+        : '';
     console.error(
-      `\nHARD GATE FAILED: ${failed} seed(s) had an unreachable set-piece room. ` +
+      `\nHARD GATE FAILED: ${failed} seed(s) had an unreachable set-piece room.${degradedNote} ` +
         `A single sealed room fails the sweep (rule #12) — fix the carve, do NOT ` +
         `cherry-pick seeds.`,
     );

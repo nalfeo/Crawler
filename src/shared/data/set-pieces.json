@@ -10510,7 +10510,7 @@
           "kind": "wall",
           "x": 4,
           "y": 1,
-          "height": 5,
+          "height": 4,
           "layers": [
             {
               "sprite": {

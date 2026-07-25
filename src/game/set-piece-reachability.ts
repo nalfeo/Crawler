@@ -36,6 +36,15 @@ export interface SetPieceReachabilityResult {
   readonly doorCount: number;
   /** Number of NPC anchors found inside the set-piece room bounds. */
   readonly npcCount: number;
+  /**
+   * Whether the prefab was authoritatively CARVED (room bounds == footprint) vs.
+   * degraded to the legacy render-only fallback (bounds != footprint). Surfaced
+   * as a first-class signal so the sweep can report degradation as a number:
+   * `carved: false` is a hard failure (see check #0) AND the expected steady
+   * state is zero degradations. A non-zero count means carve tiers 1–2 are
+   * under-powered, never an acceptable resting place.
+   */
+  readonly carved: boolean;
 }
 
 /**
@@ -112,6 +121,7 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
       failures: ['floor map or scenario missing after init'],
       doorCount: 0,
       npcCount: 0,
+      carved: false,
     };
   }
 
@@ -123,6 +133,7 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
       failures: ['welcome-room set piece not registered'],
       doorCount: 0,
       npcCount: 0,
+      carved: false,
     };
   }
 
@@ -157,10 +168,16 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
       ],
       doorCount: 0,
       npcCount: 0,
+      carved: false,
     };
   }
 
   const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+
+  // Whether the prefab carved authoritatively (bounds == footprint) or degraded
+  // to the render-only fallback. Recorded as a first-class signal (check #0 below
+  // also turns `carved: false` into a hard failure).
+  const carved = bw === def.width && bh === def.height;
 
   // 0. The prefab carve actually happened (not the render-only fallback). When
   //    the carve fits, the room's bounds equal the prefab footprint EXACTLY
@@ -170,7 +187,7 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
   //    a hard gate failure, so the sweep proves the AUTHORITATIVE carve, not just
   //    reachability. A real no-fit is a carve bug to fix (grow-into-rock / pick
   //    another hub), never a threshold to weaken (rule #11).
-  if (bw !== def.width || bh !== def.height) {
+  if (!carved) {
     failures.push(
       `welcome-room did not carve to the prefab footprint: bounds ${bw}x${bh} != footprint ${def.width}x${def.height} (no-fit fallback shipped the legacy room)`,
     );
@@ -248,5 +265,5 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
     }
   }
 
-  return { seed, pass: failures.length === 0, failures, doorCount: doors.length, npcCount };
+  return { seed, pass: failures.length === 0, failures, doorCount: doors.length, npcCount, carved };
 }

@@ -1427,6 +1427,17 @@ function carveWelcomeRoomPrefab(
   // id and then asserts bounds == footprint, so a no-fit is a hard gate failure
   // rather than a silently-shipped legacy room.
   if (!result.fitted || !result.bounds) {
+    // Loud, structured degradation signal (parent-session pushback): a no-fit
+    // falls back to the legacy render-only stamp so Floor 1 stays winnable, but
+    // that is NOT an acceptable resting state — it means the prefab is not
+    // authoritative for its room. Zero degradations is the expected steady state;
+    // the reachability sweep also reports this as a first-class number and fails
+    // hard on it. Emitting here makes it observable in game/headless logs too.
+    // (console.warn touches no RNG/entity ids, so determinism is preserved.)
+    console.warn(
+      `[set-piece:degraded] welcome-room prefab did not carve (reason=${result.reason ?? 'unknown'}); ` +
+        `shipping legacy render-only fallback for room ${room.id}. Carve tiers 1–2 under-powered.`,
+    );
     return { fitted: false, welcomeRoomId: room.id };
   }
   const centreTileX = result.bounds.x + Math.floor(result.bounds.width / 2);

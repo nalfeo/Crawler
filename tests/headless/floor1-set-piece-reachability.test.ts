@@ -33,6 +33,14 @@ describe('Floor 1 set-piece reachability (prefab welcome-room)', () => {
         result.npcCount,
         `seed ${seed}: expected >= 1 in-room NPC anchor`,
       ).toBeGreaterThanOrEqual(1);
+      // Zero degradations is the expected steady state (parent-session pushback):
+      // every seed must AUTHORITATIVELY carve (bounds == footprint), never fall
+      // back to the legacy render-only stamp. A `carved: false` here means carve
+      // tiers 1–2 are under-powered — fix the carve, do not swap the seed.
+      expect(
+        result.carved,
+        `seed ${seed}: prefab degraded to the render-only fallback (bounds != footprint)`,
+      ).toBe(true);
     });
   }
 });
