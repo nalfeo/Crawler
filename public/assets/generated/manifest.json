@@ -14919,8 +14919,8 @@
       "briefId": "welcome-room-floor-worn",
       "spriteName": "welcome-room-floor-worn-var-0",
       "assetPath": "generated/welcome-room-floor-worn-var-0.png",
-      "approvedAt": "2026-07-25T06:45:03.765Z",
-      "sourceRun": "generated/runs/welcome-room-floor-worn/2026-07-25T06-39-25-0b51019a",
+      "approvedAt": "2026-07-25T07:17:01.484Z",
+      "sourceRun": "generated/runs/welcome-room-floor-worn/2026-07-25T06-59-11-21cdc2fe",
       "variantIndex": 0,
       "anchor": {
         "x": 127,
@@ -14978,26 +14978,26 @@
       "judgeScorecard": {
         "variantIndex": 0,
         "modelDeployment": "gpt-4o",
-        "judgedAt": "2026-07-25T06:40:30.828Z",
+        "judgedAt": "2026-07-25T07:00:16.614Z",
         "designLanguage": {
           "score": 4,
-          "rationale": "The candidate adheres to the dark-fantasy aesthetic and matches the warm, desaturated palette of the welcome-room set. The wear band is now more subtle and blends better with the surrounding carpet, but the overall texture could still be slightly more cohesive with the references."
+          "rationale": "The worn traffic line is present and the overall design aligns with the dark-fantasy dungeon aesthetic. The wear is subtle and believable, though the transition between worn and unworn areas could be slightly softer."
         },
         "referenceStyleMatch": {
           "score": 4,
-          "rationale": "The rendering style is consistent with the references in terms of outline, palette depth, and shading. However, the wear band's texture could be slightly more refined to better match the approved welcome-room-floor-tape tile."
+          "rationale": "The texture and color palette are consistent with the references, and the worn effect is well-integrated. However, the wear band could be slightly more blended to better match the style of the references."
         },
         "styleMatch": {
           "score": 4,
-          "rationale": "The rendering style is consistent with the references in terms of outline, palette depth, and shading. However, the wear band's texture could be slightly more refined to better match the approved welcome-room-floor-tape tile."
+          "rationale": "The texture and color palette are consistent with the references, and the worn effect is well-integrated. However, the wear band could be slightly more blended to better match the style of the references."
         },
         "briefMatch": {
           "score": 5,
-          "rationale": "The candidate successfully depicts a worn carpet tile with a visible traffic line, as described in the brief. The wear band is now low contrast, desaturated, and blends into the surrounding nap."
+          "rationale": "The candidate successfully depicts a worn carpet tile with a visible traffic line, using the specified warm orange palette and avoiding the previously rejected issues of borders and high-contrast wear."
         },
         "readability": {
           "score": 4,
-          "rationale": "The silhouette is clear and the wear band is visible at game scale. However, the wear band could be slightly more distinct in its texture to enhance readability further."
+          "rationale": "The silhouette is clear and the wear band is visible at game scale. However, the wear band could be slightly less prominent to improve subtlety and better match the brief's low-contrast requirement."
         },
         "passed": true,
         "minScore": 4,
@@ -15005,19 +15005,19 @@
         "hardBlockEvaluated": true,
         "hardBlocked": false,
         "hardBlockInstruction": null,
-        "hardBlockRationale": "The candidate addresses the previous feedback and is a significant improvement, but there are still minor issues to refine.",
+        "hardBlockRationale": "The candidate is functional and addresses the brief's requirements, though it has minor issues that could be improved.",
         "confidence": 0.9,
         "usage": {
-          "promptTokens": 4063,
-          "completionTokens": 327,
-          "totalTokens": 4390
+          "promptTokens": 4220,
+          "completionTokens": 313,
+          "totalTokens": 4533
         }
       },
       "type": "tile",
-      "contentHash": "07d3693ce63491461f69f503ea3249603a530a8b01473a6702bec78e609c2fa4",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T06-39-25-0b51019a\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T06-39-25-0b51019a\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T06-39-25-0b51019a\\postprocess.pipeline.effective.yaml",
+      "contentHash": "6962c1cef7b995927c084ffb969fac3b60d3d778a3dd1bc1fc5a91750477c552",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T06-59-11-21cdc2fe\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T06-59-11-21cdc2fe\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T06-59-11-21cdc2fe\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
