@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f906ffb56140099a20a583215689b3c2156a0b81",
+    "commitDate": "2026-07-25T00:08:03Z",
+    "commitSubject": "Wire Floor 2 terrain-pack `doorSet` into `MainGameScene` door overlay rendering (#1904)",
+    "capturedAt": "2026-07-25T01:35:18.315Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30136025338",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/f906ffb56140099a20a583215689b3c2156a0b81.json"
+  },
+  {
     "commit": "c5cd05e578eb43dd3563b7629c06deaa56a24a6c",
     "commitDate": "2026-07-24T22:09:01Z",
     "commitSubject": "Lock CI-recovery capacity/prioritization invariants and add runtime dispatch-cap knobs (#1861)",
