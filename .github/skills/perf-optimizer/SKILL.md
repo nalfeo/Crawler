@@ -70,14 +70,64 @@ to compare it against a full-gate baseline, and it never satisfies the PR gate.
 > asks. If you want a wider seed range, that remains a sweep — dispatch
 > `ai-sweep.yml`.
 
-### 3. Measure the cost you intend to remove
+### 3. Attribute the cost — BLOCKING GATE
 
-See `references/measurement-recipes.md` for the exact commands per surface. The
-rule: you must be able to point at a number and say "this is the waste". If you
-cannot measure it, you cannot claim you removed it.
+**You may not choose a target before running this.** The first run of this agent
+skipped straight to a plausible-looking hot function, optimized it 3x, and
+delivered ~2% — because a 21% target was sitting one profile away, untouched.
+That failure is why this step is a gate rather than advice.
 
-Reject targets whose measured share of the surface's total cost is small enough
-that a perfect fix is inside noise. Write down the share before optimizing.
+For **simulation CPU** (frame time, AI, ECS, pathfinding, combat):
+
+```bash
+npm run perf:profile
+```
+
+~35s. Profiles the default panel (seeds 1-3 x sword, full runs) under
+`--cpu-prof`, merges them, and ranks every function by **self** and **total**
+time. Use `--seeds`/`--weapons` to widen, `--sort total` to rank by subsystem,
+`--json` to keep the data.
+
+Read **both** columns. Each alone misleads:
+
+- **self%** finds hot leaves, but hides a subsystem spread across many helpers.
+- **total%** finds expensive subsystems, but over-credits every ancestor.
+
+Real example from this repo: `findTilePath` is **1.96% self but 26.31% total** —
+the single most expensive subsystem in the sim, and completely invisible to a
+self-time ranking.
+
+If the run reports a large **startup overhead** warning, the ranking is
+contaminated by module loading and is not representative — profile longer/more
+runs before trusting it.
+
+**Surface scoping.** The headless runner measures _simulation CPU only_ — there
+is no renderer, texture upload, DOM, asset decode, or browser GC in it. It is
+authoritative for sim work and says nothing about the rest. For render or load
+work, take a Chrome DevTools performance trace against `npm run dev` instead
+(see `references/measurement-recipes.md`); `perf:profile` does not substitute.
+
+**Record before optimizing** — these go in the PR body:
+
+1. the target's **share** (self and total) and which scope your fix can affect
+2. the **predicted ceiling** on the end-to-end win:
+   ```bash
+   npm run perf:profile -- --ceiling <share>:<speedup>
+   ```
+   Amdahl against the share your change can actually reach. A 2.9% target made
+   3x faster caps at **1.9%** end-to-end — under the noise floor before you
+   write a line.
+
+**Reject the target if its ceiling is inside noise.** As a rule of thumb that
+means a share under ~3-5%. Two qualifications, both of which have teeth:
+
+- **Documented exception:** an isolated, low-risk fix to a GC or frame-spike
+  problem can be worth taking below the bar, because a p99 stutter does not show
+  up in a mean. Say so explicitly and measure the spike, not the mean.
+- **Never bundle to clear the bar.** Stacking several sub-threshold changes so
+  their combined share looks respectable defeats attribution (step 5) and is
+  exactly the failure mode this gate exists to prevent. If each piece is
+  individually too small, the answer is a bigger target, not a bigger diff.
 
 ### 4. Find the waste
 
@@ -144,7 +194,11 @@ Neutral (yours):
 - caching a pure function's result, keyed correctly
 - hoisting an invariant out of a loop
 - replacing an O(n²) scan with a spatial index that returns the **same set**
-- reusing buffers/objects instead of allocating per frame
+- reusing buffers/objects instead of allocating per frame — **neutral only if
+  the reuse cannot leak.** A shared buffer is gameplay-neutral right up until a
+  caller retains a reference to it and observes it mutate later. See
+  `references/hunting-grounds.md` A3 for the four acceptable mechanisms; pick
+  one and name it in the PR.
 - deferring/lazy-loading an asset the current scene doesn't use
 - removing a redundant second pass over the same data
 - reordering independent work that has no observable ordering effect

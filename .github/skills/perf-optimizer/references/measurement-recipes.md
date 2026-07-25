@@ -17,7 +17,44 @@ number you can put in a PR body.
 
 ---
 
-## Surface: steady-state frame time (headless, deterministic workload)
+## FIRST: attribute the cost (do this before any recipe below)
+
+Every recipe below measures whether a change helped. **None of them tells you
+what to change.** That is a separate step, and skipping it is how the first run
+of this agent optimized a 2.9% target while a 21% one sat untouched.
+
+```bash
+npm run perf:profile
+```
+
+~35s. Runs the headless sim under V8's sampling profiler across seeds 1-3 x
+sword, merges the profiles, and ranks functions by **self** and **total** time.
+
+| flag                  | effect                                        |
+| --------------------- | --------------------------------------------- |
+| `--seeds 1-8`         | widen the panel (comma/range syntax)          |
+| `--weapons sword,bow` | widen weapon coverage                         |
+| `--sort total`        | rank by subsystem cost instead of hot leaves  |
+| `--top 40`            | show more rows                                |
+| `--json [path]`       | write the summary to stdout, or to a file     |
+| `--max-frames <n>`    | truncate runs (**inflates startup overhead**) |
+| `--ceiling <s>:<x>`   | Amdahl ceiling for share `s` at speedup `x`   |
+
+Then, before optimizing:
+
+```bash
+npm run perf:profile -- --ceiling 2.9:3     # => 1.93
+```
+
+If the ceiling is inside noise, pick a different target. See SKILL.md step 3 for
+the full gate, including the two exceptions and the anti-bundling rule.
+
+**This covers simulation CPU only** — no renderer, asset decode, DOM, or browser
+GC exists in the headless runner. For render/load surfaces, attribute with a
+Chrome DevTools performance trace against `npm run dev` instead (the load recipe
+below), then come back here to verify the win.
+
+---
 
 The headless runner replays a full deterministic Floor-1 run, so it is the most
 repeatable proxy for simulation cost.

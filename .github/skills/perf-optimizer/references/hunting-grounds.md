@@ -10,6 +10,47 @@ surface-specific observation the fingerprint cannot give you.
 
 ---
 
+## Measured sim profile (starting hints only)
+
+The real ranked cost of a headless Floor 1 run. This is a **starting hint, not a
+target list** — it goes stale as the code changes.
+
+**Re-profile before choosing anything from it** (`npm run perf:profile`, ~35s).
+The numbers below are also inflated ~1.12x by Node/tsx startup, which is a fixed
+cost of the harness rather than game work.
+
+- **Captured:** 2026-07-25 at commit `30d39bfd1`
+- **Command:** `npm run perf:profile -- --top 18` (default panel: seeds 1-3 x
+  sword, full runs)
+- **Sample:** 3 runs, ranked by self time, `timeDeltas` timing source
+
+| self%  | total%     | function                           | location                                 |
+| ------ | ---------- | ---------------------------------- | ---------------------------------------- |
+| 21.52% | 24.28%     | `compute` (FOV shadowcasting)      | `rot-js`, via `fovSystem.ts:76`          |
+| 5.20%  | 5.28%      | `hasClearLineOfSight`              | `src/game/ai/bt-ai-geometry.ts`          |
+| 4.37%  | 4.40%      | `computeFlowField`                 | `src/core/map/flow-field.ts`             |
+| 4.30%  | 17.91%     | `planObjectiveRoute`               | `src/game/ai/objective-route-planner.ts` |
+| 2.54%  | 2.54%      | (garbage collector)                |                                          |
+| 2.18%  | 2.47%      | `floodReachabilityDepth`           | `src/game/ai/bt-ai-provider.ts`          |
+| 1.96%  | **26.31%** | `findTilePath`                     | `src/core/map/pathfinding.ts`            |
+| 1.69%  | 1.69%      | `insert`                           | `src/core/collision.ts`                  |
+| 1.68%  | 3.49%      | `_castVisibility` (FOV internals)  | `rot-js`                                 |
+| 1.29%  | 1.32%      | `computeEffectiveStatsFromLoadout` | `src/core/effective-stats.ts`            |
+| 1.09%  | 2.41%      | `applyEffectiveStats`              | `src/core/effective-stats.ts`            |
+
+Two things this table is here to teach:
+
+- **`findTilePath` is 1.96% self but 26.31% total.** It is the most expensive
+  subsystem in the simulation and it is nearly invisible if you rank by self time
+  alone. Always read both columns.
+- **`compute` (FOV) is ~21% self and runs every frame** from `fovSystem.ts:76`,
+  while visibility only changes when something moves or a door opens — the
+  textbook A1 shape. Meanwhile the pair of `effective-stats` entries totals
+  ~2.4%, and that pair is what the agent's first run optimized. A 3x win there
+  was capped at ~1.9% before a line was written.
+
+---
+
 ## A. Steady-state frame time
 
 ### A1. Per-frame recomputation of event-driven values
@@ -62,7 +103,32 @@ real GC pressure and shows up as frame-time spikes, not average cost.
 the hottest paths, preallocated result buffers.
 
 **Risk:** low for behavior, **high for aliasing bugs** — a reused buffer that
-escapes the frame is a correctness disaster. Make reuse strictly local.
+escapes its intended lifetime is a correctness disaster that no test of the
+optimized function itself will catch. A reentrancy guard is **not** sufficient:
+it catches nesting, but not a returned alias, a stored reference, or async
+retention across a frame boundary.
+
+"Make it strictly local" is not always available — the measured 3x win in
+`applyEffectiveStats` (PR #1973) required module-level scratch, because
+function-local buffers reallocate per call and that was the cost being removed.
+
+So pick and **name in the PR** one of these four mechanisms:
+
+1. **Function-local** — the buffer never outlives the call. Free, always
+   correct, but forfeits the win when per-call allocation _is_ the cost.
+2. **Encapsulated non-escaping** — module/closure-level scratch that is provably
+   never returned, stored, or captured. The proof is the enumeration: list every
+   exit path from the function and show none of them hand out the buffer.
+3. **Copy-on-return** — shared scratch internally, but the value handed back is a
+   fresh copy. Keeps most of the win when the result is much smaller than the
+   working set.
+4. **Reentrancy/lease guard** — an explicit in-use flag in `try/finally` that
+   throws on nested entry. Use this **in addition to** 2 or 3, never instead of
+   them; it converts silent corruption into a loud, actionable failure.
+
+Whichever you choose, add a regression test that would fail if the buffer
+escaped — assert on a retained reference after a second call, not just on the
+return value of one call.
 
 ### A4. Pathfinding
 

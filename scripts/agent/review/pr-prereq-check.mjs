@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* global console */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { evaluatePreflightChecks } from '../../../.github/extensions/copilot-guards/guards/pr-preflight.mjs';
@@ -52,8 +52,21 @@ function normalizeSlug(slug) {
 }
 
 function captureTelemetry(cwd, slug) {
-  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  return execFileSync(npmCommand, ['run', 'telemetry:capture', '--', slug], {
+  const isWindows = process.platform === 'win32';
+  if (isWindows) {
+    // Node >= 18.20/20.12 refuses to execFile a .cmd without a shell (the
+    // CVE-2024-27980 mitigation), which surfaces as a bare `spawnSync npm.cmd
+    // EINVAL`. Pass one pre-built command string rather than `shell: true` plus
+    // an args array, which additionally triggers DEP0190. `slug` is already
+    // normalized to [a-z0-9-] by normalizeSlug, so there is nothing here for a
+    // shell to interpret.
+    return execSync(`npm run telemetry:capture -- ${slug}`, {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  }
+  return execFileSync('npm', ['run', 'telemetry:capture', '--', slug], {
     cwd,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
