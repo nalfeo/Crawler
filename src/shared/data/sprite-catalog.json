@@ -553,6 +553,57 @@
     "row": 0
   },
   {
+    "id": "generated:blood-lance-v1-var-2",
+    "kind": "sprite",
+    "label": "blood-lance-v1-var-2",
+    "description": "Generated sprite from brief: blood-lance-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "blood-lance-v1-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/blood-lance-v1-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:blood-lance-v1-var-4",
+    "kind": "sprite",
+    "label": "blood-lance-v1-var-4",
+    "description": "Generated sprite from brief: blood-lance-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "blood-lance-v1-var-4",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/blood-lance-v1-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:blood-lance-v1-var-9",
+    "kind": "sprite",
+    "label": "blood-lance-v1-var-9",
+    "description": "Generated sprite from brief: blood-lance-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "blood-lance-v1-var-9",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/blood-lance-v1-var-9.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:boarding-axe-var-0",
     "kind": "sprite",
     "label": "boarding-axe-var-0",
