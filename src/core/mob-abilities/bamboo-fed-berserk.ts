@@ -92,9 +92,7 @@ function readTuning(ability: BossAbilityDef): BerserkTuning {
   );
   const knockbackResistanceMultiplier = KNOCKBACK_RESISTANCE_BY_DESCRIPTOR[knockbackDescriptor];
   if (knockbackResistanceMultiplier === undefined) {
-    throw new Error(
-      `Bamboo-Fed Berserk has unknown knockback-resistance "${knockbackDescriptor}"`,
-    );
+    throw new Error(`Bamboo-Fed Berserk has unknown knockback-resistance "${knockbackDescriptor}"`);
   }
   const stacking = asBoolean(designValue(ability, 'stacking'), 'stacking', 'flag');
   if (stacking) {

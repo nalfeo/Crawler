@@ -156,11 +156,7 @@ describe('Bamboo-Fed Berserk cadence and telegraph', () => {
     const h = buildHarness();
     arm(h);
     stepRuntime(h.world, FIRST_TELEGRAPH_FRAME);
-    addComponent(
-      h.world.ecs,
-      h.wei,
-      set(Knockback, { dirX: 1, dirY: 0, speed: 2, remaining: 2 }),
-    );
+    addComponent(h.world.ecs, h.wei, set(Knockback, { dirX: 1, dirY: 0, speed: 2, remaining: 2 }));
     const xBefore = h.world.stores.position.x[h.wei] ?? 0;
     h.world.frameCount += 1;
     h.world.elapsedMs += DELTA;
@@ -249,7 +245,8 @@ describe('Bamboo-Fed Berserk seam consumption', () => {
     baseline.world.elapsedMs = 1000;
     const playerHpBefore = baseline.world.stores.health.current[baseline.player] ?? 0;
     damageSystem(baseline.world, collisionResultFor(baseline.player, baseline.wei));
-    const baselineDelta = playerHpBefore - (baseline.world.stores.health.current[baseline.player] ?? 0);
+    const baselineDelta =
+      playerHpBefore - (baseline.world.stores.health.current[baseline.player] ?? 0);
 
     const buffed = buildHarness(40, 40, 40, 40);
     const def = createBambooFedBerserkDefinition();

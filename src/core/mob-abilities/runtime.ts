@@ -291,7 +291,11 @@ function syncTelegraphGeometryToCaster(
   };
 }
 
-function pinCasterDuringTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
+function pinCasterDuringTelegraph(
+  world: GameWorld,
+  casterEid: number,
+  inst: MobAbilityInstanceState,
+): void {
   if (!inst.definition.lockCasterDuringTelegraph) return;
   if (!hasComponent(world.ecs, casterEid, Velocity)) return;
   world.stores.velocity.x[casterEid] = 0;
@@ -356,7 +360,11 @@ export function activateMobAbilitySelfBuff(
   buff: ActivateMobAbilitySelfBuffInput,
 ): void {
   const existing = world.mobAbilities.activeBuffsByEntity.get(buff.casterEid);
-  if (existing && existing.abilityId === buff.abilityId && existing.remainingMs > TIMER_EPSILON_MS) {
+  if (
+    existing &&
+    existing.abilityId === buff.abilityId &&
+    existing.remainingMs > TIMER_EPSILON_MS
+  ) {
     return;
   }
   const state: MobAbilityActiveBuffState = {

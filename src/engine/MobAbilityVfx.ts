@@ -23,7 +23,11 @@
  */
 import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { BAMBOO_FED_BERSERK_ABILITY_ID, getMobAbilityActiveAura, getStatusEffects } from '../core/index.js';
+import {
+  BAMBOO_FED_BERSERK_ABILITY_ID,
+  getMobAbilityActiveAura,
+  getStatusEffects,
+} from '../core/index.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { ftToPx } from '../shared/units.js';
 
@@ -236,7 +240,12 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     }
   }
 
-  function drawBerserkAura(gfx: Phaser.GameObjects.Graphics, cx: number, cy: number, radiusPx: number): void {
+  function drawBerserkAura(
+    gfx: Phaser.GameObjects.Graphics,
+    cx: number,
+    cy: number,
+    radiusPx: number,
+  ): void {
     gfx.clear();
     gfx.lineStyle(3, COLOR_BERSERK_RED, 0.8);
     gfx.strokeCircle(cx, cy, radiusPx);
@@ -375,7 +384,12 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     }
   }
 
-  function spawnBerserkFootstepDust(x: number, y: number, radiusPx: number, seedBase: number): void {
+  function spawnBerserkFootstepDust(
+    x: number,
+    y: number,
+    radiusPx: number,
+    seedBase: number,
+  ): void {
     if (!enabled) return;
     const rand = makeDeterministicRand(seedBase);
     for (let i = 0; i < 4; i += 1) {
@@ -487,7 +501,15 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         scene.cameras.main?.shake?.(120, 0.0035);
       }
       if (lastPos && (Math.abs(lastPos.x - cx) > 0.25 || Math.abs(lastPos.y - cy) > 0.25)) {
-        spawnRing(lastPos.x, lastPos.y, radiusPx * 0.45, radiusPx * 0.75, COLOR_BERSERK_RED, 120, BURST_DEPTH);
+        spawnRing(
+          lastPos.x,
+          lastPos.y,
+          radiusPx * 0.45,
+          radiusPx * 0.75,
+          COLOR_BERSERK_RED,
+          120,
+          BURST_DEPTH,
+        );
         spawnBerserkFootstepDust(
           lastPos.x,
           lastPos.y,
