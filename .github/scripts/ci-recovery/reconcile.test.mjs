@@ -11822,3 +11822,225 @@ test('conflict episode marker is posted before the conflict-only rebase dispatch
     'expected the second pass to request the reviewer after recording the marker',
   );
 });
+
+// ---------------------------------------------------------------------------
+// R07 (ci-conflict-order-wait) pre-exit outdated-thread cleanup
+//
+// Regression tests for the defect where the reconciler would exit via R07 (or
+// R06) without ever fetching review data, leaving outdated unresolved threads
+// permanently stuck while the ci-conflict-order-wait label was present.
+// ---------------------------------------------------------------------------
+
+test('dry-run: R07 ci-conflict-order-wait exit still runs outdated-thread cleanup', async (t) => {
+  const reviewCommentId = '3650258853';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: 'ci-conflict-order-wait' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({
+      body: gqlReviewThreads([
+        {
+          id: 'thread-outdated-r07',
+          isResolved: false,
+          isOutdated: true,
+          path: 'scripts/agent/data/boss-abilities.floor2.status.json',
+          line: 42,
+          comments: {
+            nodes: [
+              {
+                id: 'comment-outdated-r07',
+                body: 'This file needs updating.',
+                author: { login: 'copilot-pull-request-reviewer' },
+                authorAssociation: 'NONE',
+                url: threadUrl,
+              },
+            ],
+          },
+        },
+      ]),
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread cleanup should run BEFORE the skip exit.
+  assert.match(stdout, /would-post outdated-marker thread=thread-outdated-r07/);
+  assert.match(stdout, /would-resolve thread=thread-outdated-r07/);
+  // The R07 skip should still fire after cleanup.
+  assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
+  // No mutations in dry-run mode.
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('live: R07 ci-conflict-order-wait exit posts outdated-marker and resolves thread before skipping', async (t) => {
+  const reviewCommentId = '3650258853';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: 'ci-conflict-order-wait' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      body: { id: 99999, body: '✅ Addressed in abc123' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-r07-live',
+            isResolved: false,
+            isOutdated: true,
+            path: 'scripts/agent/data/boss-abilities.floor2.status.json',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-r07-live',
+                  body: 'This file needs updating.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Verify the outdated-marker reply was posted.
+  const replyCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url ===
+        `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`,
+  );
+  assert.ok(replyCall, 'expected a reply to be posted on the outdated review thread');
+  assert.ok(
+    String(replyCall.body?.body || '').includes('✅ Addressed in'),
+    'reply should contain the addressed marker',
+  );
+  assert.ok(
+    String(replyCall.body?.body || '')
+      .toLowerCase()
+      .includes('outdated'),
+    'reply should mention the outdated reason',
+  );
+
+  // Verify the thread was resolved via GraphQL.
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === 'thread-outdated-r07-live',
+  );
+  assert.ok(resolveCall, 'expected the outdated thread to be resolved via GraphQL mutation');
+
+  assert.match(stdout, /posted outdated-marker thread=thread-outdated-r07-live/);
+  assert.match(stdout, /resolved thread=thread-outdated-r07-live/);
+  // The R07 skip should still fire after cleanup.
+  assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
+});
+
+test('dry-run: R06 merge-train-owned exit still runs outdated-thread cleanup', async (t) => {
+  const reviewCommentId = '3650258900';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: 'merge-train' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({
+      body: gqlReviewThreads([
+        {
+          id: 'thread-outdated-r06',
+          isResolved: false,
+          isOutdated: true,
+          path: 'src/game/enemies/goblin.ts',
+          line: 99,
+          comments: {
+            nodes: [
+              {
+                id: 'comment-outdated-r06',
+                body: 'Goblin needs refactoring.',
+                author: { login: 'copilot-pull-request-reviewer' },
+                authorAssociation: 'NONE',
+                url: threadUrl,
+              },
+            ],
+          },
+        },
+      ]),
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread cleanup should run BEFORE the skip exit.
+  assert.match(stdout, /would-post outdated-marker thread=thread-outdated-r06/);
+  assert.match(stdout, /would-resolve thread=thread-outdated-r06/);
+  // The R06 skip should still fire after cleanup.
+  assert.match(stdout, /skip pr=#42 reason=merge-train-owned/);
+  // No mutations in dry-run mode.
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
