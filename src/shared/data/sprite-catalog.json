@@ -3251,6 +3251,57 @@
     "row": 0
   },
   {
+    "id": "generated:shock-baton-v1-var-0",
+    "kind": "sprite",
+    "label": "shock-baton-v1-var-0",
+    "description": "Generated sprite from brief: shock-baton-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "shock-baton-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/shock-baton-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:shock-baton-v1-var-5",
+    "kind": "sprite",
+    "label": "shock-baton-v1-var-5",
+    "description": "Generated sprite from brief: shock-baton-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "shock-baton-v1-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/shock-baton-v1-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:shock-baton-v1-var-8",
+    "kind": "sprite",
+    "label": "shock-baton-v1-var-8",
+    "description": "Generated sprite from brief: shock-baton-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "shock-baton-v1-var-8",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/shock-baton-v1-var-8.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:slime-king-v1-var-4",
     "kind": "sprite",
     "label": "slime-king-v1-var-4",
