@@ -17,6 +17,7 @@ import {
 } from '../../src/game/systems/abilitySystem.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
+  equipmentAbilityGrantSourceId,
   learnedAbilityGrantSourceId,
 } from '../../src/shared/abilities.js';
 import {
@@ -26,6 +27,7 @@ import {
 } from '../../src/shared/generated-equipment-types.js';
 import { createInputState } from '../../src/shared/input.js';
 import { hasGeneratedEquipmentReference } from '../../src/shared/inventory.js';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('generated equipment real-pipeline integration', () => {
@@ -81,6 +83,7 @@ describe('generated equipment real-pipeline integration', () => {
     expect(world.floor2EquipmentFlags.floor2EquipmentCatalog).toBe(true);
     expect(world.floor2EquipmentFlags.floor2EquipmentRewards).toBe(true);
     const input = createInputState();
+    const floor2Options = createFloorMainSceneOptions('floor2');
     const bag = world.inventories.get(player)!;
     const prefilledActiveAbilityIds = [
       'battle-focus',
@@ -218,7 +221,9 @@ describe('generated equipment real-pipeline integration', () => {
       ).ok,
     ).toBe(true);
 
-    runSimulationStep(world, input);
+    runSimulationStep(world, input, floor2Options);
+
+    const baselineStats = getEffectiveStats(world, player);
 
     expect(
       equipFromBag(
@@ -229,7 +234,8 @@ describe('generated equipment real-pipeline integration', () => {
       ).ok,
     ).toBe(true);
 
-    runSimulationStep(world, input);
+    runSimulationStep(world, input, floor2Options);
+    runSimulationStep(world, input, floor2Options);
 
     const equippedWithGrants = getEquipmentState(world, player)!.equipped;
     const grantedState = getOrCreateAbilityState(world, player);
@@ -244,6 +250,14 @@ describe('generated equipment real-pipeline integration', () => {
     expect(grantedState.equippedActiveAbilityIds).not.toContain('vampiric-touch');
     expect(grantedState.ownedActiveAbilityIds).toContain('vampiric-touch');
     expect(grantedState.passiveAbilityIds).toContain('veteran-instinct');
+    expect(getEffectiveStats(world, player).armor).toBe(baselineStats.armor + 2);
+    expect(getEffectiveStats(world, player).pickupRange).toBe(baselineStats.pickupRange + 0.75);
+    expect(grantedState.grantOwnership.activeSourcesByAbilityId.get('vampiric-touch')).toEqual(
+      new Set([equipmentAbilityGrantSourceId(grantedTwoHander.instanceId, 0)]),
+    );
+    expect(grantedState.grantOwnership.passiveSourcesByAbilityId.get('veteran-instinct')).toEqual(
+      new Set([equipmentAbilityGrantSourceId(grantedTwoHander.instanceId, 1)]),
+    );
 
     expect(
       equipFromBag(
@@ -254,7 +268,8 @@ describe('generated equipment real-pipeline integration', () => {
       ).ok,
     ).toBe(true);
 
-    runSimulationStep(world, input);
+    runSimulationStep(world, input, floor2Options);
+    runSimulationStep(world, input, floor2Options);
 
     const equippedAfterDisplace = getEquipmentState(world, player)!.equipped;
     const revokedState = getOrCreateAbilityState(world, player);
@@ -272,6 +287,8 @@ describe('generated equipment real-pipeline integration', () => {
     );
     expect(revokedState.ownedActiveAbilityIds).not.toContain('vampiric-touch');
     expect(revokedState.passiveAbilityIds).not.toContain('veteran-instinct');
+    expect(getEffectiveStats(world, player).armor).toBe(baselineStats.armor);
+    expect(getEffectiveStats(world, player).pickupRange).toBe(baselineStats.pickupRange);
     expect(
       revokedState.grantOwnership.activeSourcesByAbilityId.get('vampiric-touch'),
     ).toBeUndefined();
