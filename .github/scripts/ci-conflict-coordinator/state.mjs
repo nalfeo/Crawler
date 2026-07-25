@@ -21,12 +21,8 @@ export const MAX_OVERLAP_FILES = 20;
 // active slot provided no healthy owner is found.
 export const DISPATCH_LEASE_MS = 30 * 60 * 1000; // 30 minutes
 
-const CI_PATH_PREFIXES = [
-  '.github/actions/',
-  '.github/scripts/',
-  '.github/workflows/',
-  'scripts/agent/',
-];
+const CI_WORKFLOW_PREFIX = '.github/workflows/';
+const CI_SCRIPT_DIRECTORY_RE = /^\.github\/scripts\/ci-[^/]+\//;
 
 function compact(value) {
   return String(value ?? '')
@@ -46,7 +42,7 @@ function hash(value) {
 
 export function isCiCoordinationPath(filePath) {
   const candidate = normalizedPath(filePath);
-  return CI_PATH_PREFIXES.some((prefix) => candidate.startsWith(prefix));
+  return candidate.startsWith(CI_WORKFLOW_PREFIX) || CI_SCRIPT_DIRECTORY_RE.test(candidate);
 }
 
 export function ciFilesFor(paths) {
@@ -178,7 +174,9 @@ export function mergeCoordinationGroups({ discoveredClusters, existingStates, op
   }
 
   for (const state of existingStates) {
-    const openMembers = state.members.filter((number) => openByNumber.has(number));
+    const openMembers = state.members.filter(
+      (number) => (openByNumber.get(number)?.ciFiles.length ?? 0) > 0,
+    );
     if (state.originalSize < MIN_CLUSTER_SIZE || openMembers.length === 0) continue;
     seeds.push({
       numbers: new Set(openMembers),

@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "conflict-coordination-sync",
+  "task_title": "Scope conflict coordination and synchronize authoring branches",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted activity-aware cadence guard that accumulates bounded intervals between agent tool calls and attempts sync after 30 active minutes; dirty worktrees warn until checkpointed. Cleanup candidates now union all four coordinator labels plus trusted managed comments and only grouped eligible members retain labels. Pre-publish branch changes emit validation-invalidated warnings and instructions require final validation after sync. PR preflight keeps deny reasons and sync warnings separate, including mixed outcomes. No different architecture required."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
