@@ -7,9 +7,13 @@
  * corridors to those doors. This module proves the carve never strands a room:
  * for a given floor seed it initialises the real Floor 1 scenario (the same
  * `initializeFloor1Scenario` production path the game + headless runner use — NOT
- * a lab), then floods the map from the player spawn over passable/door tiles and
- * asserts that the welcome-room set piece is reachable and that every door on the
- * room AND every NPC anchor inside it is pathable.
+ * a lab), then floods the map from the player spawn and asserts that the
+ * welcome-room set piece is reachable and that every door on the room AND every
+ * NPC anchor inside it is pathable. The welcome-hub checks flood LOCK-AWARE
+ * (around the doors A* treats as walls at floor start), so a hub reachable only
+ * through an initially-locked quest door — the seed-21 failure mode — fails the
+ * gate; a separate topology-only flood asserts the carve stranded no other room
+ * by walls.
  *
  * It is pure of RNG and I/O (the only randomness is the seeded floor generation),
  * so a sweep over N seeds is fully reproducible. The hard gate (rule #12) is
@@ -25,6 +29,7 @@ import { TileFlags } from '../shared/map-types.js';
 import { generatedEquipmentRunKeyFromSeed } from '../shared/generated-equipment-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { initializeFloor1Scenario, WELCOME_ROOM_SET_PIECE_ID } from './floorScenario.js';
+import { getNavigationBlockedDoors } from '../core/door-navigation.js';
 import { getSetPieceDef } from '../shared/set-piece-types.js';
 
 /** Per-seed reachability outcome. `pass` is false when any failure is recorded. */
@@ -49,10 +54,16 @@ export interface SetPieceReachabilityResult {
 
 /**
  * Flood-fill the tiles reachable from the player spawn over passable OR door
- * tiles (a closed door is openable, so it is traversable for reachability).
- * Fixed 4-neighbour scan order — no RNG.
+ * tiles. Fixed 4-neighbour scan order — no RNG.
+ *
+ * `blockedDoorTiles` (tile indices `y*w+x`) are door tiles that must be treated
+ * as walls — the LOCKED-unsatisfied doors A* treats as impassable at floor start
+ * (staircase / slime-rat gates). Pass it to build a LOCK-AWARE mask (the true
+ * floor-start player invariant: reachable without any key). Omit it (or pass an
+ * empty set) for a pure-TOPOLOGY mask that treats closed AND locked doors as
+ * traversable — used for the "no room sealed by walls" check.
  */
-function floodFromSpawn(floorMap: FloorMap): Uint8Array {
+function floodFromSpawn(floorMap: FloorMap, blockedDoorTiles?: ReadonlySet<number>): Uint8Array {
   const w = floorMap.width;
   const h = floorMap.height;
   const flags = floorMap.tileMap.flags;
@@ -63,7 +74,9 @@ function floodFromSpawn(floorMap: FloorMap): Uint8Array {
   }
   const isOpen = (idx: number): boolean => {
     const f = flags[idx]!;
-    return (f & TileFlags.PASSABLE) !== 0 || (f & TileFlags.DOOR) !== 0;
+    if ((f & TileFlags.PASSABLE) !== 0) return true;
+    if ((f & TileFlags.DOOR) !== 0) return !(blockedDoorTiles?.has(idx) ?? false);
+    return false;
   };
   const startIdx = spawn.y * w + spawn.x;
   if (!isOpen(startIdx)) {
@@ -138,9 +151,27 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
   }
 
   const w = floorMap.width;
-  const reachable = floodFromSpawn(floorMap);
+  // LOCK-AWARE reachability for the welcome-hub checks (1–3). The tutorial hub
+  // MUST be reachable from spawn at floor start WITHOUT unlocking anything — that
+  // is the real player invariant and the exact seed-21 failure mode (a hub
+  // reachable only through an initially-locked quest door reads as "reachable" to
+  // a pure-topology flood but is sealed to the player). We snapshot the doors A*
+  // itself treats as walls (`getNavigationBlockedDoors` — the same locked-door
+  // model the game + AI consume) and flood around them. Pure read, no RNG, no
+  // system tick required (the verdict derives from the lock config set at init).
+  const blockedDoorTiles = new Set<number>();
+  for (const info of getNavigationBlockedDoors(world)) {
+    blockedDoorTiles.add(info.tileY * w + info.tileX);
+  }
+  const reachable = floodFromSpawn(floorMap, blockedDoorTiles);
   const isReachable = (tx: number, ty: number): boolean =>
     floorMap.tileMap.inBounds(tx, ty) && reachable[ty * w + tx] === 1;
+  // TOPOLOGY-ONLY reachability for the no-strand check (#4): closed AND locked
+  // doors are traversable, so this asserts pure wall-connectivity independent of
+  // gameplay gating (locked rooms are INTENTIONALLY gated, not stranded).
+  const reachableTopo = floodFromSpawn(floorMap);
+  const isReachableTopo = (tx: number, ty: number): boolean =>
+    floorMap.tileMap.inBounds(tx, ty) && reachableTopo[ty * w + tx] === 1;
 
   // Resolve the carved set-piece room via the STABLE hub-room id the scenario
   // records at carve time (`scenario.welcomeRoomId`). We do NOT key off
@@ -206,7 +237,7 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
   }
   if (!interiorReachable) {
     failures.push(
-      `welcome-room interior (bounds ${bx},${by} ${bw}x${bh}) is not reachable from spawn`,
+      `welcome-room interior (bounds ${bx},${by} ${bw}x${bh}) is not reachable from spawn at floor start (lock-aware: not sealed behind an initially-locked door)`,
     );
   }
 
@@ -243,8 +274,10 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
   // 4. The carve stranded no OTHER room. Rewriting the hub's geometry + doors
   //    could wall off a corridor that was some other room's only approach, so
   //    assert every room in the graph still has >=1 interior tile reachable from
-  //    spawn (the flood treats closed AND locked doors as traversable, so this is
-  //    a pure topology check, independent of gameplay gating). The generator's
+  //    spawn. This uses the TOPOLOGY-only flood (closed AND locked doors
+  //    traversable), so it is a pure wall-connectivity check independent of
+  //    gameplay gating — locked rooms are INTENTIONALLY gated, not stranded, and
+  //    must not fail here just because their door starts locked. The generator's
   //    own reachability pass guarantees this pre-carve; a failure here is a
   //    carve-induced regression (plan-review concern #2), not a pre-existing gap.
   for (const other of floorMap.roomGraph.getAll()) {
@@ -252,7 +285,7 @@ export function checkFloor1SetPieceReachability(seed: number): SetPieceReachabil
     const ob = other.bounds;
     for (let ty = ob.y + 1; ty < ob.y + ob.height - 1 && !anyReachable; ty += 1) {
       for (let tx = ob.x + 1; tx < ob.x + ob.width - 1; tx += 1) {
-        if (floorMap.tileMap.isPassable(tx, ty) && isReachable(tx, ty)) {
+        if (floorMap.tileMap.isPassable(tx, ty) && isReachableTopo(tx, ty)) {
           anyReachable = true;
           break;
         }
