@@ -165,6 +165,22 @@ function labelBounds(label: { x: number; y: number; width: number; height: numbe
   };
 }
 
+/**
+ * Project a direction angle onto the rectangular inset boundary. Returns the
+ * point on the boundary (centred at CX, CY) that a ray in direction `angle`
+ * would hit first. Using the rectangle instead of the old ellipse keeps each
+ * arrow pinned to exactly one screen edge (right/top/left/bottom), preventing
+ * side-to-side bouncing as the player moves.
+ */
+function rectEdgePt(angle: number): { x: number; y: number } {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const tH = cos !== 0 ? RX / Math.abs(cos) : Infinity;
+  const tV = sin !== 0 ? RY / Math.abs(sin) : Infinity;
+  const t = Math.min(tH, tV);
+  return { x: CX + cos * t, y: CY + sin * t };
+}
+
 /** Pure screen-space layout used by the Phaser widget and unit tests. */
 export function resolveDirectionArrowStates(
   waypoints: readonly QuestWaypoint[],
@@ -193,14 +209,12 @@ export function resolveDirectionArrowStates(
     const targetAngle = Math.atan2(dy, dx);
     const distanceFt = Math.hypot(dx, dy);
     const labelText = wrapWaypointText(`${waypoint.label}  ${formatWaypointDistance(distanceFt)}`);
-    let screenX = CX + Math.cos(targetAngle) * RX;
-    let screenY = CY + Math.sin(targetAngle) * RY;
+    let { x: screenX, y: screenY } = rectEdgePt(targetAngle);
     let label = labelLayout(screenX, screenY, labelText);
     const maxAttempts = Math.max(48, waypoints.length * 12);
     for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
       const displayAngle = targetAngle + fanOffset(attempt);
-      const candidateX = CX + Math.cos(displayAngle) * RX;
-      const candidateY = CY + Math.sin(displayAngle) * RY;
+      const { x: candidateX, y: candidateY } = rectEdgePt(displayAngle);
       const candidateLabel = labelLayout(candidateX, candidateY, labelText);
       const avoidsHud = forbiddenRegions.every(
         (region) =>
