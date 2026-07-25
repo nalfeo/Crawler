@@ -246,7 +246,6 @@ describe('Sovereign Cap arena observation', () => {
     expect(telegraphDiff).toBeGreaterThan(0.002);
 
     const resolved = await stepToFrame(page, RESOLUTION_FRAME);
-    const resolvedShot = await page.locator('#lab-canvas canvas').screenshot();
     expect(resolved.cueCount).toBe(0);
     expect(resolved.zoneCount).toBe(1);
     expect(resolved.playerHp).toBeLessThan(before.playerHp);
@@ -256,14 +255,19 @@ describe('Sovereign Cap arena observation', () => {
     expect(cloudCircles).not.toBeNull();
     expect(cloudCircles?.length).toBe(3);
 
-    // Verify all three cloud circle rims are visible near creation.
-    if (cloudCircles) {
-      assertCloudRimsVisible(beforeShot, resolvedShot, cloudCircles);
-    }
-
+    // Advance to the first cloud tick before checking visuals. The extra page.evaluate
+    // round-trip between stepToFrame calls gives Phaser's requestAnimationFrame render
+    // loop a chance to paint the newly-created cloud zone Graphics onto the WebGL canvas
+    // before the screenshot is taken.
     const cloudTick = await stepToFrame(page, CLOUD_TICK_FRAME);
+    const cloudTickShot = await page.locator('#lab-canvas canvas').screenshot();
     expect(cloudTick.zoneCount).toBe(1);
     expect(cloudTick.playerHp).toBeLessThan(resolved.playerHp);
+
+    // Verify all three cloud circle rims are visible at the first tick (near creation).
+    if (cloudCircles) {
+      assertCloudRimsVisible(beforeShot, cloudTickShot, cloudCircles);
+    }
 
     // Verify all three rims are still visible near expiry (just before cleanup).
     const preExpireFrame = CLOUD_EXPIRE_FRAME - 1;
