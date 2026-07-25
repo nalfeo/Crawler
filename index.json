@@ -1,5 +1,16 @@
 [
   {
+    "commit": "1e78f7dc6744040bebb5639cef3cde2f2351e8d9",
+    "commitDate": "2026-07-25T21:18:46Z",
+    "commitSubject": "feat(mob-abilities): implement King Skritt ROMAN-CANDLE CORONATION (#2017)",
+    "capturedAt": "2026-07-25T22:40:05.899Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30175770766",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/1e78f7dc6744040bebb5639cef3cde2f2351e8d9.json"
+  },
+  {
     "commit": "506fc0393a8ee918ed0c7e1f0f4486391322f212",
     "commitDate": "2026-07-25T21:06:26Z",
     "commitSubject": "perf(core): 2.1× faster fovSystem pass with byte-identical output (#2042)",
