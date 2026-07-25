@@ -67,7 +67,11 @@ function run(label: string, arm: boolean) {
         (sum, inst) => sum + inst.ownedEntityGenerations.size,
         0,
       );
-      resolutions.push({ frame: world.frameCount, elapsedMs: round(world.elapsedMs), ownedMinions });
+      resolutions.push({
+        frame: world.frameCount,
+        elapsedMs: round(world.elapsedMs),
+        ownedMinions,
+      });
       totalResolvedCasts = resolved;
     }
   }
@@ -110,7 +114,9 @@ const normalOk = normal.casts === 0 && normal.resolutions.length === 0;
 
 console.log('\n=== GATE ===');
 console.log(`arena two-cast cadence (660/750/1410/1500)  : ${arenaOk ? 'PASS' : 'FAIL'}`);
-console.log(`arena second-cast minion cap <= 6           : ${(arena.resolutions[1]?.ownedMinions ?? 0) <= 6 ? 'PASS' : 'FAIL'}`);
+console.log(
+  `arena second-cast minion cap <= 6           : ${(arena.resolutions[1]?.ownedMinions ?? 0) <= 6 ? 'PASS' : 'FAIL'}`,
+);
 console.log(`normal-game zero casts                       : ${normalOk ? 'PASS' : 'FAIL'}`);
 
 if (!arenaOk || !normalOk) {

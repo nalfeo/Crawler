@@ -96,7 +96,9 @@ function resolveAiType(aiType: string): number {
 
 function makeResolveHandler(ability: BossAbilityDef) {
   const tuning = readTuning(ability);
-  const archetype = floor2EnemyPack.archetypes.find((candidate) => candidate.id === tuning.summonArchetypeId);
+  const archetype = floor2EnemyPack.archetypes.find(
+    (candidate) => candidate.id === tuning.summonArchetypeId,
+  );
   if (archetype === undefined) {
     throw new Error(`Undercity Mob Call summon archetype "${tuning.summonArchetypeId}" is missing`);
   }
@@ -134,7 +136,11 @@ function makeResolveHandler(ability: BossAbilityDef) {
       });
       setEnemyAppearanceKey(world, eid, archetype.id);
       setComponent(world.ecs, eid, Damage, { amount: 1 });
-      addComponent(world.ecs, eid, set(FamilyMembership, { familyId: RATFOLK_FAMILY_INDEX, isBoss: 0 }));
+      addComponent(
+        world.ecs,
+        eid,
+        set(FamilyMembership, { familyId: RATFOLK_FAMILY_INDEX, isBoss: 0 }),
+      );
       ctx.registerOwnedEntity?.(eid);
     }
   };

@@ -95,7 +95,9 @@ describe('Undercity Mob Call — cadence and locked circles', () => {
     step(h.world, SECOND_RESOLUTION_FRAME);
     const inst = instance(h.world, h.squick);
     expect(inst.resolvedCasts).toBe(2);
-    expect(h.world.announcements.filter((event) => event.kind === 'bossAbilityCast')).toHaveLength(2);
+    expect(h.world.announcements.filter((event) => event.kind === 'bossAbilityCast')).toHaveLength(
+      2,
+    );
   });
 
   it('locks three spawn circles at telegraph start and does not track caster movement', () => {
@@ -105,15 +107,18 @@ describe('Undercity Mob Call — cadence and locked circles', () => {
     const inst = instance(h.world, h.squick);
     expect(inst.phase).toBe('telegraph');
     expect(inst.committedGeometry?.kind).toBe('spawn-circles');
-    const before = (inst.committedGeometry as { circles: Array<{ x: number; y: number }> }).circles.map(
-      (circle) => ({ x: circle.x, y: circle.y }),
-    );
+    if (inst.committedGeometry?.kind !== 'spawn-circles') {
+      throw new Error('expected spawn-circle geometry');
+    }
+    const before = inst.committedGeometry.circles.map((circle) => ({ x: circle.x, y: circle.y }));
     h.world.stores.position.x[h.squick] = 200;
     h.world.stores.position.y[h.squick] = 200;
     step(h.world, 5);
-    const after = (instance(h.world, h.squick).committedGeometry as {
-      circles: Array<{ x: number; y: number }>;
-    }).circles.map((circle) => ({ x: circle.x, y: circle.y }));
+    const committedAfter = instance(h.world, h.squick).committedGeometry;
+    if (committedAfter?.kind !== 'spawn-circles') {
+      throw new Error('expected spawn-circle geometry');
+    }
+    const after = committedAfter.circles.map((circle) => ({ x: circle.x, y: circle.y }));
     expect(after).toEqual(before);
   });
 });
@@ -186,7 +191,11 @@ describe('Undercity Mob Call — cleanup contracts', () => {
     expect(instance(h.world, h.squick).ownedEntityGenerations.size).toBeGreaterThan(0);
     clearMobAbility(h.world, h.squick);
     expect(h.world.mobAbilities.byEntity.has(h.squick)).toBe(false);
-    expect(h.world.announcements.some((a) => a.eventId?.startsWith(`${sourceId}:cast-`))).toBe(false);
+    expect(
+      h.world.announcements.some(
+        (a) => a.kind === 'bossAbilityCast' && a.eventId.startsWith(`${sourceId}:cast-`),
+      ),
+    ).toBe(false);
   });
 
   it('tears down runtime state on encounter disable', () => {
@@ -216,7 +225,15 @@ describe('Undercity Mob Call — canonical pipeline hard gate', () => {
     const rng = new SeededRandom(42);
     const cx = arenaWorld.floorMap.widthFt / 2;
     const cy = arenaWorld.floorMap.heightFt * 0.35;
-    const spawned = spawnPresetAroundCenter(arenaWorld, arenaWorld.floorMap, preset, cx, cy, rng, 14);
+    const spawned = spawnPresetAroundCenter(
+      arenaWorld,
+      arenaWorld.floorMap,
+      preset,
+      cx,
+      cy,
+      rng,
+      14,
+    );
     const squick = spawned[0];
     expect(squick).toBeDefined();
     const inputState = createInputState();
@@ -251,8 +268,8 @@ describe('Undercity Mob Call — canonical pipeline hard gate', () => {
       });
     }
     expect(normalWorld.mobAbilities.enabled).toBe(false);
-    expect(normalWorld.announcements.filter((event) => event.kind === 'bossAbilityCast')).toHaveLength(
-      0,
-    );
+    expect(
+      normalWorld.announcements.filter((event) => event.kind === 'bossAbilityCast'),
+    ).toHaveLength(0);
   });
 });

@@ -28,7 +28,10 @@ interface SquickArenaScene {
     announcements: Array<{ kind: string; text?: string }>;
     mobAbilities?: {
       cues?: unknown[];
-      byEntity?: Map<number, { resolvedCasts: number; ownedEntityGenerations?: Map<number, number> }>;
+      byEntity?: Map<
+        number,
+        { resolvedCasts: number; ownedEntityGenerations?: Map<number, number> }
+      >;
     };
   };
 }
