@@ -85,7 +85,9 @@ describe('computeStageTimings', () => {
     ]);
     expect(timing?.reworkH).toBe(0);
     expect(timing?.mergeQueueH).toBe(1);
-    expect((timing?.reviewQueueH ?? 0) + (timing?.reworkH ?? 0) + (timing?.mergeQueueH ?? 0)).toBe(5);
+    expect((timing?.reviewQueueH ?? 0) + (timing?.reworkH ?? 0) + (timing?.mergeQueueH ?? 0)).toBe(
+      5,
+    );
   });
 
   it('never starts merge queue before PR creation when commit metadata is older', () => {
