@@ -1,5 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
+import { homedir } from 'node:os';
 
 const MAX_BODY_BYTES = 32 * 1024;
 const MUTATING_PATHS = new Set([
@@ -7,19 +8,65 @@ const MUTATING_PATHS = new Set([
   '/api/review-set',
   '/api/advance',
   '/api/dispatch',
+  '/api/select',
+  '/api/synth-roster',
+  '/api/save-plan',
 ]);
 
 export async function startThemeEquipmentReviewServer(options) {
-  const { instanceId, setId, renderHtml, runCommand, dispatchWorkflow, log = () => {} } = options;
+  const {
+    instanceId,
+    setId: initialSetId,
+    repoRoot,
+    renderHtml,
+    runCommand,
+    dispatchWorkflow,
+    log = () => {},
+  } = options;
   const token = randomBytes(32).toString('base64url');
   const clients = new Set();
   let port = 0;
+  let setId = null;
+
+  /**
+   * Resolve a client-supplied set id against a server-computed allowlist
+   * (authored plans plus sets that already have durable state). The
+   * client never influences a filesystem or store path directly.
+   */
+  async function selectSet(requested) {
+    if (typeof requested !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(requested)) {
+      throw new HttpError(400, 'invalid-set-id');
+    }
+    const index = await runCommand({ action: 'list' });
+    const known = new Set((index.sets ?? []).map((entry) => entry.id));
+    if (!known.has(requested)) throw new HttpError(404, `unknown-set:${requested}`);
+    setId = requested;
+    return { selected: setId };
+  }
+
+  /**
+   * Node puts absolute filesystem paths into errors like ENOENT. The log
+   * keeps the raw message; the browser gets a repo-relative one so a canvas
+   * page never learns the machine's directory layout.
+   */
+  function scrubPaths(message) {
+    let text = String(message ?? '');
+    const roots = [repoRoot, homedir()].filter((root) => typeof root === 'string' && root.length);
+    for (const root of roots) {
+      for (const variant of new Set([root, root.split('\\').join('/')])) {
+        text = text.split(variant).join('<repo>');
+      }
+    }
+    return text;
+  }
 
   const server = createServer((req, res) => {
     handle(req, res).catch((error) => {
       log(`request failed: ${error?.message ?? error}`, 'warn');
       if (!res.headersSent)
-        writeJson(res, statusForError(error), { error: error?.message ?? String(error) });
+        writeJson(res, statusForError(error), {
+          error: scrubPaths(error?.message ?? String(error)),
+        });
       else res.destroy();
     });
   });
@@ -54,11 +101,23 @@ export async function startThemeEquipmentReviewServer(options) {
         return;
       }
     }
+    if (method === 'GET' && url.pathname === '/api/sets') {
+      writeJson(res, 200, { ...(await runCommand({ action: 'list' })), currentSetId: setId });
+      return;
+    }
     if (method === 'GET' && url.pathname === '/api/state') {
+      if (!setId) {
+        writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
       writeJson(res, 200, await runCommand({ action: 'state', setId }));
       return;
     }
     if (method === 'GET' && url.pathname === '/api/artifact') {
+      if (!setId) {
+        writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
       const result = await runCommand({
         action: 'artifact',
         setId,
@@ -87,6 +146,49 @@ export async function startThemeEquipmentReviewServer(options) {
     }
     if (method === 'POST' && MUTATING_PATHS.has(url.pathname)) {
       const body = await readJsonBody(req);
+      if (url.pathname === '/api/select') {
+        writeJson(res, 200, await selectSet(body.setId));
+        return;
+      }
+      if (url.pathname === '/api/synth-roster') {
+        // Only the four brief fields cross the boundary; nothing here
+        // can select a path, a set, or a store key.
+        writeJson(
+          res,
+          200,
+          await runCommand({
+            action: 'synth-roster',
+            setId: body.setId,
+            displayName: body.displayName,
+            themeDesignLanguage: body.themeDesignLanguage,
+            ...(body.notes ? { notes: body.notes } : {}),
+          }),
+        );
+        return;
+      }
+      if (url.pathname === '/api/save-plan') {
+        // The destination file is derived downstream from the validated
+        // `plan.id`; no path is accepted from the client.
+        const result = await runCommand({
+          action: 'save-plan',
+          plan: body.plan,
+          overwrite: body.overwrite === true,
+        });
+        writeJson(res, 200, result);
+        return;
+      }
+      if (url.pathname === '/api/dispatch') {
+        if (!setId) {
+          writeJson(res, 409, { error: 'no-set-selected' });
+          return;
+        }
+        writeJson(res, 200, await dispatchWorkflow(body.action, setId));
+        return;
+      }
+      if (!setId) {
+        writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
       const result =
         url.pathname === '/api/review-item'
           ? await runCommand({
@@ -103,15 +205,13 @@ export async function startThemeEquipmentReviewServer(options) {
                 review: body.review,
                 expectedRevision: body.expectedRevision,
               })
-            : url.pathname === '/api/advance'
-              ? await runCommand({
-                  action: 'advance',
-                  setId,
-                  expectedRevision: body.expectedRevision,
-                })
-              : await dispatchWorkflow(body.action);
+            : await runCommand({
+                action: 'advance',
+                setId,
+                expectedRevision: body.expectedRevision,
+              });
       writeJson(res, 200, result);
-      if (url.pathname !== '/api/dispatch') broadcast(result);
+      broadcast(result);
       return;
     }
     writeJson(res, 404, { error: 'not-found' });
@@ -128,6 +228,19 @@ export async function startThemeEquipmentReviewServer(options) {
     }
   }
 
+  // A caller-supplied initial set id is untrusted input, exactly like one
+  // POSTed to /api/select, so it is bound only if it survives the same
+  // server-computed allowlist. This runs *before* listen(): if the command
+  // bridge fails or hangs, no socket has been opened, so an abandoned
+  // startup cannot leak a listening server the caller has no handle to.
+  if (initialSetId != null) {
+    try {
+      await selectSet(initialSetId);
+    } catch (error) {
+      log(`ignoring unknown initial set "${initialSetId}": ${error?.message ?? error}`, 'warn');
+    }
+  }
+
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => {
@@ -140,7 +253,12 @@ export async function startThemeEquipmentReviewServer(options) {
   return {
     url: `http://127.0.0.1:${port}/`,
     token,
-    pushState: async (state) => broadcast(state ?? (await runCommand({ action: 'state', setId }))),
+    getSetId: () => setId,
+    pushState: async (state) => {
+      if (state) return broadcast(state);
+      if (!setId) return;
+      broadcast(await runCommand({ action: 'state', setId }));
+    },
     close: () =>
       new Promise((resolve) => {
         for (const client of clients) client.end();
@@ -207,11 +325,20 @@ function readJsonBody(req) {
 }
 
 function statusForError(error) {
+  if (error instanceof HttpError) return error.status;
   const message = error?.message ?? String(error);
   if (message.includes('revision-conflict')) return 409;
   if (message.includes('exceeds')) return 413;
   if (message.includes('must be valid JSON')) return 400;
   return 422;
+}
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.name = 'HttpError';
+    this.status = status;
+  }
 }
 
 function writeJson(res, status, body) {

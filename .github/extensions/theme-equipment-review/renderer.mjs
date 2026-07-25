@@ -43,6 +43,16 @@ export function renderHtml(bootstrap) {
     .error { color: var(--true-color-red,#f85149); white-space: pre-wrap; }
     .gate-list { margin: 8px 0 0; padding-left: 20px; }
     .spinner { padding: 40px; text-align: center; color: var(--text-color-muted,#8b949e); }
+    label { display: block; margin: 10px 0 0; font-weight: 600; }
+    label .muted { font-weight: 400; }
+    input[type=text] { font: inherit; width: 100%; margin: 4px 0 0; border: 1px solid var(--border-color-default,#30363d); border-radius: 7px; padding: 7px; background: var(--background-color-default,#0d1117); color: inherit; }
+    .primary { border-color: var(--true-color-blue,#58a6ff); }
+    .meter { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+    .meter .pill.ok { border-color: var(--true-color-green,#3fb950); }
+    .meter .pill.bad { border-color: var(--true-color-red,#f85149); }
+    .roster { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .roster th, .roster td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border-color-default,#30363d); vertical-align: top; }
+    .json-editor { min-height: 260px; font: var(--text-code-inline,12px)/1.5 var(--font-mono,monospace); }
   </style>
 </head>
 <body>
@@ -51,10 +61,16 @@ export function renderHtml(bootstrap) {
     const bootstrap = ${jsonForHtml(bootstrap)};
     const apiHeaders = { 'X-Canvas-Token': bootstrap.token };
     let state = null;
+    let index = null;
+    let view = 'index';
+    let currentSetId = bootstrap.setId ?? null;
+    let draft = null;
     let selectedPhase = null;
     let busy = false;
     const app = document.querySelector('#app');
     const phases = ['roster','briefs','sprite-sheets','variant-approval','complete'];
+    const MIN_WEAPON_TYPES = 5;
+    const MIN_SLOTS = 11;
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
     async function request(path, options = {}) {
@@ -67,15 +83,251 @@ export function renderHtml(bootstrap) {
       return payload;
     }
 
+    async function loadIndex() {
+      app.className = 'spinner';
+      app.textContent = 'Loading theme sets…';
+      try {
+        index = await request('/api/sets');
+        currentSetId = index.currentSetId ?? currentSetId;
+      } catch (error) {
+        index = { sets: [], storeStatus: 'unavailable', storeError: error.message, planDir: 'data/theme-equipment-sets' };
+      }
+      view = 'index';
+      renderIndex();
+    }
+
+    async function openSet(setId) {
+      app.className = 'spinner';
+      app.textContent = 'Loading ' + setId + '…';
+      try {
+        await request('/api/select', { method: 'POST', body: JSON.stringify({ setId }) });
+        currentSetId = setId;
+      } catch (error) {
+        alert(error.message);
+        return renderIndex();
+      }
+      await load();
+    }
+
     async function load() {
       try {
         state = await request('/api/state');
-        selectedPhase ??= state.phase === 'complete' ? 'variant-approval' : state.phase;
+        selectedPhase = state.phase === 'complete' ? 'variant-approval' : state.phase;
+        view = 'board';
         render();
       } catch (error) {
-        app.className = 'error';
-        app.textContent = error.message + '\\n\\nIf this set lives in Azure, refresh .env.local with npm run setup:azure:env.';
+        state = null;
+        view = 'board';
+        renderUninitialized(error.message);
       }
+    }
+
+    function stateBadge(entry) {
+      const status = entry.state?.status ?? 'unknown';
+      if (status === 'ready') return 'phase ' + esc(entry.state.phase) + ' · r' + entry.state.stateRevision;
+      if (status === 'none') return 'not initialized';
+      if (status === 'invalid') return 'state invalid';
+      return 'state unknown';
+    }
+
+    function renderIndex() {
+      app.className = '';
+      const sets = index?.sets ?? [];
+      app.innerHTML =
+        '<header><h1>Theme equipment sets</h1>' +
+        '<div class="subtitle">Authored plans live in ' + esc(index?.planDir ?? 'data/theme-equipment-sets') + '; durable state lives in the run store.</div>' +
+        '<div class="controls" style="margin:12px 0"><button class="primary" data-create>+ New theme</button><button data-refresh-index>Refresh</button></div></header>' +
+        '<main>' +
+        (index?.storeStatus === 'unavailable'
+          ? '<section class="panel"><p class="error">Run store unavailable: ' + esc(index.storeError || '') + '</p><p class="muted">Set-state badges below are unknown. Refresh credentials with npm run setup:azure:env if this set lives in Azure.</p></section>'
+          : '') +
+        (sets.length
+          ? '<section class="grid">' + sets.map(setCard).join('') + '</section>'
+          : '<section class="panel"><p class="muted">No authored theme sets yet. Create one to synthesize its roster.</p></section>') +
+        '</main>';
+      document.querySelector('[data-create]')?.addEventListener('click', () => {
+        draft = { setId: '', displayName: '', themeDesignLanguage: '', notes: '', plan: null, planText: '', error: null, saved: null };
+        view = 'create';
+        renderCreate();
+      });
+      document.querySelector('[data-refresh-index]')?.addEventListener('click', loadIndex);
+      document.querySelectorAll('[data-open]').forEach(button =>
+        button.addEventListener('click', () => openSet(button.dataset.open)));
+    }
+
+    function setCard(entry) {
+      const coverage = entry.planCoverage;
+      return '<article class="card">' +
+        '<div class="card-head"><div><strong>' + esc(entry.displayName) + '</strong><div class="muted">' + esc(entry.id) + '</div></div>' +
+        '<span class="badge">' + stateBadge(entry) + '</span></div>' +
+        (entry.plan.status === 'invalid' ? '<p class="error">Plan invalid: ' + esc(entry.plan.error || '') + '</p>' : '') +
+        (entry.plan.status === 'missing' ? '<p class="muted">Durable state exists but no authored plan file is present.</p>' : '') +
+        (coverage
+          ? '<div class="metrics"><span class="pill">' + coverage.itemCount + ' items</span>' +
+            '<span class="pill">' + coverage.weaponTypeCount + '/' + MIN_WEAPON_TYPES + '+ weapon types</span>' +
+            '<span class="pill">' + coverage.coveredSlotCount + '/' + MIN_SLOTS + '+ slots</span></div>'
+          : '') +
+        '<div class="controls"><button data-open="' + esc(entry.id) + '">Open</button></div>' +
+      '</article>';
+    }
+
+    function coverageOf(plan) {
+      const weapons = Array.isArray(plan?.weapons) ? plan.weapons : [];
+      const equipment = Array.isArray(plan?.equipment) ? plan.equipment : [];
+      return {
+        itemCount: weapons.length + equipment.length,
+        weaponTypeCount: new Set(weapons.map(w => w?.weaponType).filter(Boolean)).size,
+        coveredSlotCount: new Set(equipment.flatMap(e => Array.isArray(e?.slots) ? e.slots : []).filter(Boolean)).size,
+      };
+    }
+
+    function renderCreate() {
+      app.className = '';
+      let parsed = null;
+      let parseError = null;
+      if (draft.planText.trim()) {
+        try { parsed = JSON.parse(draft.planText); } catch (error) { parseError = error.message; }
+      }
+      const coverage = parsed ? coverageOf(parsed) : null;
+      app.innerHTML =
+        '<header><h1>New theme set</h1><div class="subtitle">The model proposes a roster; you review and edit it before it is written to the repo.</div>' +
+        '<div class="controls" style="margin:12px 0"><button data-back>← All sets</button></div></header>' +
+        '<main><section class="panel">' +
+        '<label>Set id <span class="muted">lowercase-kebab, becomes the plan filename</span>' +
+        '<input type="text" data-field="setId" value="' + esc(draft.setId) + '" placeholder="edo-samurai"></label>' +
+        '<label>Display name<input type="text" data-field="displayName" value="' + esc(draft.displayName) + '" placeholder="Edo Samurai"></label>' +
+        '<label>Theme design language <span class="muted">yours, never model-derived — drives every downstream art prompt (40+ chars)</span>' +
+        '<textarea data-field="themeDesignLanguage" placeholder="Lacquered plate in deep indigo and oxblood, silk cord lacing, muted gold family crests, weathered steel with a soft satin sheen.">' + esc(draft.themeDesignLanguage) + '</textarea></label>' +
+        '<label>Notes for the roster model <span class="muted">optional</span>' +
+        '<textarea data-field="notes" placeholder="Favor polearms and paired blades; no firearms.">' + esc(draft.notes) + '</textarea></label>' +
+        '<div class="controls"><button class="primary" data-synth ' + (busy ? 'disabled' : '') + '>' + (busy ? 'Synthesizing…' : 'Synthesize roster') + '</button></div>' +
+        (draft.error ? '<p class="error">' + esc(draft.error) + '</p>' : '') +
+        '</section>' +
+        (draft.planText
+          ? '<section class="panel"><div class="panel-head"><div><strong>Proposed roster</strong><div class="muted">Edit the JSON directly; coverage updates live and is re-validated server-side on save.</div></div></div>' +
+            '<div class="meter">' +
+            (parseError
+              ? '<span class="pill bad">JSON invalid: ' + esc(parseError) + '</span>'
+              : '<span class="pill">' + coverage.itemCount + ' items</span>' +
+                '<span class="pill ' + (coverage.weaponTypeCount >= MIN_WEAPON_TYPES ? 'ok' : 'bad') + '">' + coverage.weaponTypeCount + ' / ' + MIN_WEAPON_TYPES + ' weapon types</span>' +
+                '<span class="pill ' + (coverage.coveredSlotCount >= MIN_SLOTS ? 'ok' : 'bad') + '">' + coverage.coveredSlotCount + ' / ' + MIN_SLOTS + ' slots</span>') +
+            '</div>' +
+            (parsed ? rosterTable(parsed) : '') +
+            '<textarea class="json-editor" data-plan-text>' + esc(draft.planText) + '</textarea>' +
+            '<div class="controls"><button class="primary" data-save ' + (busy || parseError ? 'disabled' : '') + '>Save plan to repo</button>' +
+            '<label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" data-overwrite> overwrite existing file</label></div>' +
+            (draft.saved
+              ? '<p class="muted">Wrote <strong>' + esc(draft.saved.planPath) + '</strong>. Commit and push it to this branch, then open the set and initialize it on GitHub — the workflow reads the plan from the pushed ref, not your working tree.</p>'
+              : '') +
+          '</section>'
+          : '') +
+        '</main>';
+      wireCreate();
+    }
+
+    function rosterTable(plan) {
+      const rows = [
+        ...(Array.isArray(plan.weapons) ? plan.weapons : []).map(w => ({ id: w?.id, name: w?.displayName, kind: 'weapon', detail: w?.weaponType })),
+        ...(Array.isArray(plan.equipment) ? plan.equipment : []).map(e => ({ id: e?.id, name: e?.displayName, kind: 'equipment', detail: Array.isArray(e?.slots) ? e.slots.join(', ') : '' })),
+      ];
+      if (!rows.length) return '';
+      return '<details open><summary>' + rows.length + ' items</summary><table class="roster">' +
+        '<thead><tr><th>Id</th><th>Name</th><th>Kind</th><th>Weapon type / slots</th></tr></thead><tbody>' +
+        rows.map(r => '<tr><td>' + esc(r.id) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.kind) + '</td><td>' + esc(r.detail) + '</td></tr>').join('') +
+        '</tbody></table></details>';
+    }
+
+    function wireCreate() {
+      document.querySelector('[data-back]')?.addEventListener('click', loadIndex);
+      document.querySelectorAll('[data-field]').forEach(input =>
+        input.addEventListener('input', () => { draft[input.dataset.field] = input.value; }));
+      const planEditor = document.querySelector('[data-plan-text]');
+      let meterTimer = null;
+      planEditor?.addEventListener('input', () => {
+        draft.planText = planEditor.value;
+        clearTimeout(meterTimer);
+        meterTimer = setTimeout(() => { renderCreate(); }, 300);
+      });
+      planEditor?.addEventListener('change', () => { draft.planText = planEditor.value; renderCreate(); });
+      document.querySelector('[data-synth]')?.addEventListener('click', synthRoster);
+      document.querySelector('[data-save]')?.addEventListener('click', savePlan);
+    }
+
+    async function synthRoster() {
+      if (busy) return;
+      draft.error = null;
+      draft.saved = null;
+      busy = true;
+      renderCreate();
+      try {
+        const result = await request('/api/synth-roster', {
+          method: 'POST',
+          body: JSON.stringify({
+            setId: draft.setId.trim(),
+            displayName: draft.displayName.trim(),
+            themeDesignLanguage: draft.themeDesignLanguage.trim(),
+            ...(draft.notes.trim() ? { notes: draft.notes.trim() } : {}),
+          }),
+        });
+        draft.plan = result.plan;
+        draft.planText = JSON.stringify(result.plan, null, 2);
+      } catch (error) {
+        draft.error = error.message;
+      } finally {
+        busy = false;
+        renderCreate();
+      }
+    }
+
+    async function savePlan() {
+      if (busy) return;
+      let plan;
+      try {
+        plan = JSON.parse(draft.planText);
+      } catch (error) {
+        draft.error = 'Roster JSON is invalid: ' + error.message;
+        return renderCreate();
+      }
+      const overwrite = document.querySelector('[data-overwrite]')?.checked === true;
+      draft.error = null;
+      busy = true;
+      renderCreate();
+      try {
+        draft.saved = await request('/api/save-plan', { method: 'POST', body: JSON.stringify({ plan, overwrite }) });
+      } catch (error) {
+        draft.error = error.message;
+      } finally {
+        busy = false;
+        renderCreate();
+      }
+    }
+
+    function renderUninitialized(message) {
+      const missing = /was not found/.test(message);
+      app.className = '';
+      app.innerHTML =
+        '<header><h1>' + esc(currentSetId) + '</h1>' +
+        '<div class="subtitle">' + (missing ? 'No durable state yet' : 'State unavailable') + '</div>' +
+        '<div class="controls" style="margin:12px 0"><button data-back>← All sets</button></div></header>' +
+        '<main><section class="panel">' +
+        '<p class="error">' + esc(message) + '</p>' +
+        (missing
+          ? '<p class="muted">Initialize the durable set from its authored plan (data/theme-equipment-sets/' + esc(currentSetId) + '.json). The workflow reads the plan from the pushed branch, so commit and push it first.</p>' +
+            '<div class="controls"><button data-dispatch="init">Initialize set on GitHub</button><button data-refresh>Refresh</button></div>'
+          : '<p class="muted">If this set lives in Azure, refresh .env.local with npm run setup:azure:env.</p>' +
+            '<div class="controls"><button data-refresh>Refresh</button></div>') +
+        '</section></main>';
+      document.querySelector('[data-back]')?.addEventListener('click', loadIndex);
+      document.querySelector('[data-refresh]')?.addEventListener('click', load);
+      document.querySelector('[data-dispatch]')?.addEventListener('click', async () => {
+        if (!confirm('Dispatch init for ' + currentSetId + ' on GitHub?')) return;
+        try {
+          const result = await request('/api/dispatch', { method: 'POST', body: JSON.stringify({ action: 'init' }) });
+          alert('Initialization dispatched on ref ' + (result.ref || 'unknown') + '. Refresh after the run completes.');
+        } catch (error) {
+          alert(error.message);
+        }
+      });
     }
 
     function reviewButtons(review, scope, id = '') {
@@ -117,7 +369,8 @@ export function renderHtml(bootstrap) {
       app.className = '';
       app.innerHTML =
         '<header><h1>' + esc(state.displayName) + '</h1><div class="subtitle">' + esc(state.id) + ' · durable revision ' + state.stateRevision + '</div>' +
-        '<div class="metrics"><span class="pill">Phase: ' + esc(state.phase) + '</span><span class="pill">Weapons ' + state.coverage.weaponTypeCount + '/5+</span><span class="pill">Slots ' + state.coverage.coveredSlotCount + '/11+</span><span class="pill">Publication ' + esc(state.publication.status) + '</span></div>' +
+        '<div class="metrics"><span class="pill">Phase: ' + esc(state.phase) + '</span><span class="pill">Weapons ' + state.coverage.weaponTypeCount + '/' + MIN_WEAPON_TYPES + '+</span><span class="pill">Slots ' + state.coverage.coveredSlotCount + '/' + MIN_SLOTS + '+</span><span class="pill">Publication ' + esc(state.publication.status) + '</span>' +
+        '<button data-back>← All sets</button></div>' +
         '<nav class="tabs">' + phases.map(p => '<button class="tab ' + (p === selectedPhase ? 'active' : '') + '" data-phase="' + p + '">' + esc(p) + '</button>').join('') + '</nav></header>' +
         '<main>' +
         (selectedRecord ? '<section class="panel"><div class="panel-head"><div><strong>Collection cohesion</strong><div class="muted">' +
@@ -142,6 +395,7 @@ export function renderHtml(bootstrap) {
     }
 
     function wire() {
+      document.querySelector('[data-back]')?.addEventListener('click', loadIndex);
       document.querySelectorAll('[data-phase]').forEach(button => button.addEventListener('click', () => {
         selectedPhase = button.dataset.phase;
         render();
@@ -161,21 +415,23 @@ export function renderHtml(bootstrap) {
       document.querySelector('[data-refresh]')?.addEventListener('click', load);
       document.querySelectorAll('[data-dispatch]').forEach(button => button.addEventListener('click', async () => {
         if (!confirm('Dispatch ' + button.dataset.dispatch + ' for ' + state.id + ' on GitHub?')) return;
-        await mutate('/api/dispatch', { action: button.dataset.dispatch }, false);
-        alert('Workflow dispatched. Refresh after the run completes.');
+        const result = await mutate('/api/dispatch', { action: button.dataset.dispatch }, false);
+        if (result) alert('Workflow dispatched on ref ' + (result.ref || 'unknown') + '. Refresh after the run completes.');
       }));
     }
 
     async function mutate(path, body, receivesState = true) {
-      if (busy) return;
+      if (busy) return null;
       busy = true;
       render();
       try {
         const result = await request(path, { method: 'POST', body: JSON.stringify(body) });
         if (receivesState) state = result;
+        return result;
       } catch (error) {
         alert(error.message);
         if (error.message.includes('revision-conflict')) await load();
+        return null;
       } finally {
         busy = false;
         render();
@@ -209,9 +465,13 @@ export function renderHtml(bootstrap) {
     const events = new EventSource('/events?token=' + encodeURIComponent(bootstrap.token));
     events.onmessage = event => {
       const payload = JSON.parse(event.data);
-      if (payload.type === 'state') { state = payload.state; render(); }
+      if (payload.type === 'state' && view === 'board' && payload.state?.id === currentSetId) {
+        state = payload.state;
+        selectedPhase ??= state.phase === 'complete' ? 'variant-approval' : state.phase;
+        render();
+      }
     };
-    load();
+    if (currentSetId) load(); else loadIndex();
   </script>
 </body>
 </html>`;
