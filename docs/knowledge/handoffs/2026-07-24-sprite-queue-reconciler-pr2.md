@@ -117,6 +117,39 @@ gating auto-skips the heavy gameplay gates. No new/blanket skip was added.
 - Determinism: no `Date.now()`/`Math.random()` in core — `now` injected; gh/network
   mocked via injected exec.
 
+## Post-review hardening (round 3)
+
+Two issues surfaced after the initial 2-round code review and were fixed on this
+branch:
+
+1. **Preserve-main-only-art regression (data-loss, High).** A regression test —
+   art that reached `main` via the legacy asset-PR flow and is therefore absent
+   from `assets/queue` must NOT be deleted by promotion — exposed that the
+   do-we-act delta (`git diff --diff-filter=AM origin/main origin/assets/queue`)
+   ran WITHOUT `--no-renames`. Git's rename heuristic paired the intended-`D`
+   (main-only asset, deleted-in-queue) with a content-identical intended-`A`
+   (genuinely-new queue art) into one `R` entry, which `--diff-filter=AM` drops —
+   silently omitting real queue art from the promotion. **Fix:** add
+   `--no-renames` to the delta diff (and to the staged `--cached --name-only`
+   changedPaths diff for determinism/guard robustness; the mode-guard `--raw`
+   diff already had it). Root-caused and verified with a deterministic real-git
+   repro of both the preserve-main-only and normal-promote scenarios.
+
+2. **brace-expansion deps reconciliation (merge hygiene, Medium).** `main` landed
+   the authoritative brace-expansion npm-audit exception independently
+   (`fa546158b`, advisory source 1124334, `<=5.0.7`, no patched release on the MS
+   proxy). A parallel change had bumped the `brace-expansion` override to `^5.0.8`
+   (404 on the MS proxy → latent local `npm ci` break). **Fix:** revert the
+   override to `^5.0.7`, restore the lockfile from `main`, and drop the duplicate
+   audit exception + tests so this PR no longer touches security files — the gate
+   passes via main's landed exception.
+
+**This segment's verification:** local `npm ci` / `npm run verify:fast` are
+blocked by unrelated MS-proxy mirror lag (postcss@8.5.23, find-my-way@9.7.0 both
+404 — inherited from `main`, out of PR2 scope), so the reconciler fix was proven
+with a deterministic standalone real-git repro of the failing scenario, and CI on
+the PR merge ref is the authority for the full suite.
+
 ## Observe-before-done
 
 This is CI-automation/tooling with **no `src/core|engine|game` runtime or shipped

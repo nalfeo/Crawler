@@ -29,8 +29,16 @@
           "models": ["gpt-5.4"],
           "concerns_count": 1,
           "resolved_count": 1,
+          "clean": false,
+          "notes": "gpt-5.4 (high) confirming review. Verified all 5 round-1 fixes correct, and found 1 new High: the trust guard was path-only, so a file->symlink (120000) / gitlink (160000) / mode-only exec (100755) type-change at an allowlisted path (e.g. manifest.json) would pass and auto-land a non-regular-file entry to main (reproduced locally). FIXED by adding assertArtSurfaceModes: parses git diff --cached --raw and rejects any staged entry whose dst mode is not a regular file (100644) or a deletion (000000), re-enforcing the path allowlist on the raw diff; wired as step 5b in runReconcile after the name-only guard; 6 unit tests added (symlink/gitlink/exec/non-art rejection + regular-file/deletion accept). Not marked clean because a later concurrent hardening pass surfaced a further regression (round 3)."
+        },
+        {
+          "round": 3,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 2,
+          "resolved_count": 2,
           "clean": true,
-          "notes": "gpt-5.4 (high) confirming review. Verified all 5 round-1 fixes correct, and found 1 new High: the trust guard was path-only, so a file->symlink (120000) / gitlink (160000) / mode-only exec (100755) type-change at an allowlisted path (e.g. manifest.json) would pass and auto-land a non-regular-file entry to main (reproduced locally). FIXED by adding assertArtSurfaceModes: parses git diff --cached --raw and rejects any staged entry whose dst mode is not a regular file (100644) or a deletion (000000), re-enforcing the path allowlist on the raw diff; wired as step 5b in runReconcile after the name-only guard; 6 unit tests added (symlink/gitlink/exec/non-art rejection + regular-file/deletion accept). No further concerns; clean."
+          "notes": "Post-round-2 hardening. A concurrent review pass added a preserve-main-only-art regression test (h) — a sprite that reached main via the legacy asset-PR flow, absent from queue, must NOT be deleted by promotion — which failed CI. (High, data-loss) Root-caused with a deterministic real-git repro: the do-we-act delta used `git diff --diff-filter=AM base queue` WITHOUT --no-renames, so git's rename heuristic paired the intended-D (main-only asset, deleted-in-queue) with a content-identical intended-A (genuinely-new queue art) into a single R entry, which --diff-filter=AM drops — silently omitting real queue art from the promotion AND leaving the delete-half unhandled. FIXED by adding --no-renames to the delta diff (and, for determinism/guard-robustness, to the staged --cached --name-only changedPaths diff; the mode-guard --raw diff already had it). Verified both the (h) preserve-main-only scenario and the normal-promote scenario now produce the correct promote diff via the real-git repro. (Medium, deps/merge-hygiene) A parallel PR bumped the brace-expansion override to ^5.0.8, which 404s on the MS npm proxy (proxy latest is 5.0.7) — a latent local `npm ci` break — and main had meanwhile landed the authoritative brace-expansion audit-exception (fa546158b, source 1124334). RESOLVED by reverting override to ^5.0.7 + restoring the lockfile from main and dropping the now-duplicate audit exception/tests, so this PR no longer touches security files and the gate passes via main's landed exception. Both concerns resolved; clean."
         }
       ]
     }

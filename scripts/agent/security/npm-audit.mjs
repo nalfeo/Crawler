@@ -8,19 +8,18 @@ const SEVERITY_ORDER = ['info', 'low', 'moderate', 'high', 'critical'];
 
 export const AUDIT_EXCEPTIONS = [
   {
+    packageName: 'brace-expansion',
+    source: 1124334,
+    url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+    expiresOn: '2026-07-31',
+    reason: 'No patched brace-expansion release is available yet.',
+  },
+  {
     packageName: 'fast-uri',
     source: 1124064,
     url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
     expiresOn: '2026-07-29',
     reason: 'Microsoft npm proxy does not yet mirror fixed 3.x release 3.1.4.',
-  },
-  {
-    packageName: 'brace-expansion',
-    source: 1124334,
-    url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
-    expiresOn: '2026-08-21',
-    reason:
-      'MS npm proxy latest brace-expansion is 5.0.7 and advisory range is <=5.0.7 — no fixed version available to override to yet. Transitive dev-only (eslint/minimatch/@typescript-eslint/@stryker toolchain), not shipped runtime. Revisit when the proxy mirrors a fixed >5.0.7 release (mirror the find-my-way removal pattern).',
   },
 ];
 
@@ -128,8 +127,7 @@ function main() {
           (exception) =>
             `Temporary audit exception through ${exception.expiresOn}: ${exception.url}`,
         )
-        .join('\n')}\n` +
-        `Suppressed derived findings: ${ignored.join(', ')}\n`,
+        .join('\n')}\n` + `Suppressed derived findings: ${ignored.join(', ')}\n`,
     );
   }
   if (blocking.length > 0) {

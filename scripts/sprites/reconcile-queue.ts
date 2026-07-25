@@ -454,8 +454,15 @@ export async function runReconcile(
     //    they are art that reached main via an independent flow (e.g. the legacy
     //    asset-PR) that queue never saw; promoting a D would revert them, which
     //    is a data-loss bug. We only promote what queue positively contributes.
+    //    --no-renames is REQUIRED: git's rename heuristic would otherwise pair a
+    //    file deleted-in-queue (a main-only asset, our intended D) with a
+    //    content-identical file added-in-queue (genuinely-new queue art, our
+    //    intended A) into a single R entry — which --diff-filter=AM drops,
+    //    silently omitting real queue art from the promotion. Disabling rename
+    //    detection keeps A and D independent and the delta deterministic.
     const delta = await mustGit(deps.exec, repoRoot, [
       'diff',
+      '--no-renames',
       '--name-only',
       '--diff-filter=AM',
       baseRef,
@@ -499,7 +506,15 @@ export async function runReconcile(
       }
 
       // The authoritative set of paths this promotion will change vs main.
-      const stagedNames = await mustGit(deps.exec, worktree, ['diff', '--cached', '--name-only']);
+      // --no-renames for the same determinism/robustness reason as the delta
+      // diff above: never let a rename heuristic collapse staged art paths into
+      // an R entry the guard would then have to unpick.
+      const stagedNames = await mustGit(deps.exec, worktree, [
+        'diff',
+        '--cached',
+        '--no-renames',
+        '--name-only',
+      ]);
       changedPaths = parseNameOnly(stagedNames);
 
       // 5. TRUST-BOUNDARY GUARD (defense-in-depth). Refuse + escalate on ANY
