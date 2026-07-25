@@ -36,6 +36,7 @@ import {
   Rotation,
   Player,
   Health,
+  Harvestable,
   BroadcastScore,
   Size,
   Sprite,
@@ -751,7 +752,6 @@ function resolveRoutableNpcSpawnPosition(
 function spawnFloor1HarvestableNodes(world: GameWorld): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
-  const spawnRoom = floorMap.spawnRoom;
 
   // Gather candidate tiles from all normal rooms.
   const normalRooms = floorMap.roomGraph
@@ -759,66 +759,6 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
     .filter((room) => room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN);
 
   if (normalRooms.length === 0) return;
-  const spawnRoomBlockedTiles = new Set<string>();
-  if (spawnRoom) {
-    for (const eid of query(world.ecs, [Position])) {
-      const tile = floorMap.worldToTile(
-        world.stores.position.x[eid] ?? 0,
-        world.stores.position.y[eid] ?? 0,
-      );
-      if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
-        spawnRoomBlockedTiles.add(tileKey(tile.x, tile.y));
-      }
-    }
-  }
-  const findSpawnRoomHarvestableTile = (
-    room: RoomData,
-    startTx: number,
-    startTy: number,
-    placed: ReadonlyArray<{ x: number; y: number }>,
-  ): TilePoint | null => {
-    const minX = room.bounds.x + 1;
-    const minY = room.bounds.y + 1;
-    const maxX = room.bounds.x + room.bounds.width - 2;
-    const maxY = room.bounds.y + room.bounds.height - 2;
-    const isLegalTile = (tx: number, ty: number): boolean => {
-      if (
-        tx < minX ||
-        tx > maxX ||
-        ty < minY ||
-        ty > maxY ||
-        !floorMap.tileMap.isPassable(tx, ty) ||
-        spawnRoomBlockedTiles.has(tileKey(tx, ty))
-      ) {
-        return false;
-      }
-      const pos = floorMap.tileToWorld(tx, ty);
-      return !placed.some((p) => {
-        const dx = p.x - pos.x;
-        const dy = p.y - pos.y;
-        return dx * dx + dy * dy < 9;
-      });
-    };
-    if (isLegalTile(startTx, startTy)) {
-      return { x: startTx, y: startTy };
-    }
-    const maxRadius = Math.max(room.bounds.width, room.bounds.height);
-    for (let radius = 1; radius <= maxRadius; radius += 1) {
-      for (let dy = -radius; dy <= radius; dy += 1) {
-        for (let dx = -radius; dx <= radius; dx += 1) {
-          if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
-            continue;
-          }
-          const tx = startTx + dx;
-          const ty = startTy + dy;
-          if (isLegalTile(tx, ty)) {
-            return { x: tx, y: ty };
-          }
-        }
-      }
-    }
-    return null;
-  };
 
   // Cap loop at FLOOR2_HARVESTABLE_START_INDEX so Floor 2 ore/gem defs are
   // never spawned on Floor 1.
@@ -833,40 +773,127 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
     // We allow multiple attempts per node to avoid clustering.
     const maxAttempts = count * 12;
     for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
-      const roomIndex = world.rng.nextInt(0, normalRooms.length - 1);
-      const forceSpawnRoomPlacement = defIndex === 0 && placed.length === 0 && spawnRoom !== null;
-      const room = forceSpawnRoomPlacement ? spawnRoom : normalRooms[roomIndex]!;
+      const room = normalRooms[world.rng.nextInt(0, normalRooms.length - 1)]!;
       const { x: bx, y: by, width: bw, height: bh } = room.bounds;
 
       // Pick a random tile inside the room interior (1 tile margin from walls).
       const tx = bx + 1 + world.rng.nextInt(0, Math.max(0, bw - 3));
       const ty = by + 1 + world.rng.nextInt(0, Math.max(0, bh - 3));
-      const tile = forceSpawnRoomPlacement
-        ? findSpawnRoomHarvestableTile(room, tx, ty, placed)
-        : floorMap.tileMap.isPassable(tx, ty)
-          ? { x: tx, y: ty }
-          : null;
-      if (!tile) continue;
-      const pos = floorMap.tileToWorld(tile.x, tile.y);
+
+      if (!floorMap.tileMap.isPassable(tx, ty)) continue;
+
+      const pos = floorMap.tileToWorld(tx, ty);
 
       // Avoid placing two nodes of the same type too close together (≥ 3 ft apart).
-      const tooClose =
-        forceSpawnRoomPlacement
-          ? false
-          : placed.some((p) => {
-              const ddx = p.x - pos.x;
-              const ddy = p.y - pos.y;
-              return ddx * ddx + ddy * ddy < 9;
-            });
+      const tooClose = placed.some((p) => {
+        const ddx = p.x - pos.x;
+        const ddy = p.y - pos.y;
+        return ddx * ddx + ddy * ddy < 9;
+      });
       if (tooClose) continue;
 
       placed.push(pos);
-      if (forceSpawnRoomPlacement) {
-        spawnRoomBlockedTiles.add(tileKey(tile.x, tile.y));
-      }
       spawnHarvestableNode(world, pos.x, pos.y, defIndex);
     }
   }
+
+  const spawnRoom = floorMap.spawnRoom;
+  if (!spawnRoom) {
+    return;
+  }
+  const hasSpawnRoomHarvestable = Array.from(query(world.ecs, [Harvestable, Position])).some(
+    (eid) => {
+      const tile = floorMap.worldToTile(
+        world.stores.position.x[eid] ?? 0,
+        world.stores.position.y[eid] ?? 0,
+      );
+      return isTileWithinRoomBounds(spawnRoom, tile.x, tile.y);
+    },
+  );
+  if (hasSpawnRoomHarvestable) {
+    return;
+  }
+
+  const blockedTiles = new Set<string>();
+  for (const eid of query(world.ecs, [Position])) {
+    const tile = floorMap.worldToTile(
+      world.stores.position.x[eid] ?? 0,
+      world.stores.position.y[eid] ?? 0,
+    );
+    if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
+      blockedTiles.add(tileKey(tile.x, tile.y));
+    }
+  }
+
+  const minX = spawnRoom.bounds.x + 1;
+  const minY = spawnRoom.bounds.y + 1;
+  const maxX = spawnRoom.bounds.x + spawnRoom.bounds.width - 2;
+  const maxY = spawnRoom.bounds.y + spawnRoom.bounds.height - 2;
+  const isLegalSpawnRoomTile = (tx: number, ty: number): boolean =>
+    tx >= minX &&
+    tx <= maxX &&
+    ty >= minY &&
+    ty <= maxY &&
+    floorMap.tileMap.isPassable(tx, ty) &&
+    !blockedTiles.has(tileKey(tx, ty));
+  const spawnTile = floorMap.playerSpawn;
+  const doorTiles = spawnRoom.doors ?? [];
+  let guaranteeTile: TilePoint | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestSpawnDistanceSq = Number.NEGATIVE_INFINITY;
+  for (let ty = minY; ty <= maxY; ty += 1) {
+    for (let tx = minX; tx <= maxX; tx += 1) {
+      if (!isLegalSpawnRoomTile(tx, ty)) {
+        continue;
+      }
+      const spawnDistanceSq = (tx - spawnTile.x) ** 2 + (ty - spawnTile.y) ** 2;
+      const nearestDoorDistanceSq =
+        doorTiles.length === 0
+          ? Number.POSITIVE_INFINITY
+          : Math.min(...doorTiles.map((door) => (tx - door.x) ** 2 + (ty - door.y) ** 2));
+      const score = Math.min(spawnDistanceSq, nearestDoorDistanceSq);
+      if (
+        score > bestScore ||
+        (score === bestScore && spawnDistanceSq > bestSpawnDistanceSq) ||
+        (score === bestScore &&
+          spawnDistanceSq === bestSpawnDistanceSq &&
+          (guaranteeTile === null ||
+            ty < guaranteeTile.y ||
+            (ty === guaranteeTile.y && tx < guaranteeTile.x)))
+      ) {
+        guaranteeTile = { x: tx, y: ty };
+        bestScore = score;
+        bestSpawnDistanceSq = spawnDistanceSq;
+      }
+    }
+  }
+  if (!guaranteeTile) {
+    return;
+  }
+
+  const guaranteePos = floorMap.tileToWorld(guaranteeTile.x, guaranteeTile.y);
+  let relocatedEid: number | null = null;
+  let farthestDistanceSq = Number.NEGATIVE_INFINITY;
+  for (const eid of query(world.ecs, [Harvestable, Position])) {
+    const tile = floorMap.worldToTile(
+      world.stores.position.x[eid] ?? 0,
+      world.stores.position.y[eid] ?? 0,
+    );
+    if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
+      continue;
+    }
+    const distanceSq = (tile.x - spawnTile.x) ** 2 + (tile.y - spawnTile.y) ** 2;
+    if (distanceSq > farthestDistanceSq) {
+      farthestDistanceSq = distanceSq;
+      relocatedEid = eid;
+    }
+  }
+  if (relocatedEid === null) {
+    return;
+  }
+
+  world.stores.position.x[relocatedEid] = guaranteePos.x;
+  world.stores.position.y[relocatedEid] = guaranteePos.y;
 }
 
 function chooseObjectiveTiles(world: GameWorld): {
