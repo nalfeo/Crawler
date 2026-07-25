@@ -3492,6 +3492,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-call-sheet-var-3",
+    "kind": "sprite",
+    "label": "welcome-room-call-sheet-var-3",
+    "description": "Generated sprite from brief: welcome-room-call-sheet.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-call-sheet-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-call-sheet-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-camera-rig-var-4",
     "kind": "sprite",
     "label": "welcome-room-camera-rig-var-4",
@@ -3539,6 +3552,32 @@
     "spriteId": "welcome-room-desk-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-desk-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-exit-sign-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-exit-sign-var-0",
+    "description": "Generated sprite from brief: welcome-room-exit-sign.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-exit-sign-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-exit-sign-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-floor-path-var-5",
+    "kind": "sprite",
+    "label": "welcome-room-floor-path-var-5",
+    "description": "Generated sprite from brief: welcome-room-floor-path.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-path-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-path-var-5.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -3687,6 +3726,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-merchant-board-var-6",
+    "kind": "sprite",
+    "label": "welcome-room-merchant-board-var-6",
+    "description": "Generated sprite from brief: welcome-room-merchant-board.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-merchant-board-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-merchant-board-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-potted-plant-var-0",
     "kind": "sprite",
     "label": "welcome-room-potted-plant-var-0",
@@ -3773,6 +3825,19 @@
     "spriteId": "welcome-room-velvet-rope-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-velvet-rope-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-wall-banner-var-6",
+    "kind": "sprite",
+    "label": "welcome-room-wall-banner-var-6",
+    "description": "Generated sprite from brief: welcome-room-wall-banner.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-wall-banner-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-wall-banner-var-6.png",
     "frame": 0,
     "col": 0,
     "row": 0
