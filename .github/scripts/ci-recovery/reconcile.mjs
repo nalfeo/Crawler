@@ -1747,6 +1747,83 @@ if (hasMergeConflict) {
     url: pr.html_url,
   });
 }
+// When a PR carries the merge-train-validation-failed label but is NOT in conflict,
+// the automation cannot make progress by dispatching Copilot — there is no code
+// defect for Copilot to fix; the label is cleared only when the head moves past the
+// labeled failure (headMovedSinceState) or on a :synchronize event.  Dispatching an
+// auto-rebase here creates a new head commit that triggers the label-clearing path on
+// the next reconcile, so the PR re-enters the merge train without exhausting the
+// Copilot dispatch budget on an irresolvable blocker.
+if (
+  mergeTrainEnabled &&
+  validationFailed &&
+  !hasMergeConflict &&
+  trigger !== 'auto-rebase-conflict' &&
+  trigger !== 'auto-rebase-failure' &&
+  rebaseFailureBackoffActive
+) {
+  process.stdout.write(
+    `wait pr=#${prNumber} reason=validation-rebase-pending attempt=${rebaseDispatchAttemptsForHead}\n`,
+  );
+  process.exit(0);
+}
+if (
+  mergeTrainEnabled &&
+  validationFailed &&
+  !hasMergeConflict &&
+  autoRebaseFailed &&
+  rebaseFailureBackoffActive
+) {
+  process.stdout.write(
+    `wait pr=#${prNumber} reason=validation-rebase-retry-backoff attempt=${rebaseDispatchAttemptsForHead}\n`,
+  );
+  process.exit(0);
+}
+if (
+  mergeTrainEnabled &&
+  validationFailed &&
+  !hasMergeConflict &&
+  trigger !== 'auto-rebase-conflict' &&
+  !rebaseRetryAttemptsExhausted &&
+  (!rebaseDispatchPendingForHead || !rebaseFailureBackoffActive)
+) {
+  const trainComment = comments.find((comment) =>
+    hasLeadingMarker(comment.body, '<!-- crawler-merge-train:v1 -->'),
+  );
+  const validationBlocker = {
+    kind: 'merge-train-validation',
+    id: pr.head.sha,
+    summary: 'This PR was the first failing addition in a bisected merge-train candidate.',
+    url: trainComment?.html_url || pr.html_url,
+  };
+  const rebaseState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint: blockerFingerprint([validationBlocker]),
+    owner: 'none',
+    status: 'idle',
+    trigger: 'rebase-dispatched',
+    blockers: [validationBlocker],
+    attempt: rebaseDispatchAttemptsForHead + 1,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists) {
+    stopIfReleaseConvergedElsewhere(await release('rebase-dispatched', rebaseState));
+  } else {
+    const waitingTransition = await prepareWaitingExit();
+    await updateState(rebaseState);
+    await completeWaitingExit(waitingTransition);
+  }
+  await assertExpectedMetadataUnchanged('auto-rebase-dispatch');
+  await dispatchWorkflow('auto-rebase-prs.yml', {
+    pr_number: String(prNumber),
+    expected_head_sha: pr.head.sha,
+    expected_base_ref: pr.base?.ref ?? '',
+    trigger: 'ci-recovery-validation',
+  });
+  process.stdout.write(`dispatched validation-recovery rebase pr=#${prNumber}\n`);
+  process.exit(0);
+}
 if (mergeTrainEnabled && validationFailed) {
   const trainComment = comments.find((comment) =>
     hasLeadingMarker(comment.body, '<!-- crawler-merge-train:v1 -->'),

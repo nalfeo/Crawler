@@ -56,4 +56,14 @@ describe('CI recovery auto-rebase callback fencing', () => {
     expect(raw).toContain('.baseRefName == $base');
     expect(raw).toContain('.headRefOid == $expected');
   });
+
+  it('forces head movement for ci-recovery-validation no-op rebases', () => {
+    const raw = readFileSync(WORKFLOW_PATH, 'utf8');
+    expect(raw).toContain('DISPATCH_TRIGGER_INPUT: ${{ inputs.trigger }}');
+    expect(raw).toContain('[ "$DISPATCH_TRIGGER_INPUT" = "ci-recovery-validation" ]');
+    expect(raw).toContain('[ "$rebased_head" = "$expected_head" ]');
+    expect(raw).toContain(
+      'git commit --allow-empty -m "chore(ci-recovery): retrigger validation recovery for PR #$number"',
+    );
+  });
 });

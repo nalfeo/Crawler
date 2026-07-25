@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-24",
+  "session_slug": "ci-recovery-merge-train-validation-rebase",
+  "task_title": "Fix CI recovery loop: dispatch validation-recovery rebase for merge-train-validation-failed PRs",
+  "estimated_apples": 1,
+  "stages": {}
+}
