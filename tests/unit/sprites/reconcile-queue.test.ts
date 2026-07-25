@@ -507,6 +507,8 @@ interface FakePr {
   isCrossRepository: boolean;
   /** The SHA passed to `--match-head-commit` when arming auto-merge. */
   matchHeadCommit?: string;
+  /** Label names currently on the PR. */
+  labels: string[];
 }
 
 /** In-memory `gh` PR store. `failCreateWhenExists` simulates the create-race. */
@@ -523,7 +525,7 @@ class FakeGh {
    */
   createRaceInsert = false;
   /** Pre-seed an open PR (used to exercise the create-race reuse path). */
-  seedOpen(head: string, base: string, isCrossRepository = false): number {
+  seedOpen(head: string, base: string, isCrossRepository = false, labels: string[] = []): number {
     const number = this.next++;
     this.prs.push({
       number,
@@ -534,6 +536,7 @@ class FakeGh {
       body: '',
       autoMerge: false,
       isCrossRepository,
+      labels: [...labels],
     });
     return number;
   }
@@ -574,6 +577,7 @@ class FakeGh {
             number: p.number,
             headRefName: p.head,
             isCrossRepository: p.isCrossRepository,
+            labels: p.labels.map((name) => ({ name })),
           })),
         ),
       );
@@ -601,6 +605,7 @@ class FakeGh {
           body: flags.body ?? '',
           autoMerge: false,
           isCrossRepository: false,
+          labels: [],
         });
         return err(`a pull request for branch "${flags.head}" already exists`);
       }
@@ -614,6 +619,7 @@ class FakeGh {
         body: flags.body ?? '',
         autoMerge: false,
         isCrossRepository: false,
+        labels: flags.label !== undefined ? [flags.label] : [],
       });
       return ok(`https://github.com/o/r/pull/${number}\n`);
     }
@@ -623,6 +629,9 @@ class FakeGh {
       if (!pr) return err(`no PR ${number}`);
       if (flags.title !== undefined) pr.title = flags.title;
       if (flags.body !== undefined) pr.body = flags.body;
+      if (flags['add-label'] !== undefined && !pr.labels.includes(flags['add-label'])) {
+        pr.labels.push(flags['add-label']);
+      }
       return ok();
     }
     if (sub === 'merge') {
@@ -899,5 +908,74 @@ describe('runReconcile (real git)', () => {
     expect(diff.some((p) => p.includes('queue-added-sprite'))).toBe(true);
     // The main-only asset must NOT be deleted (must NOT appear in the diff at all).
     expect(diff.some((p) => p.includes('main-only-sprite'))).toBe(false);
+  });
+
+  // ---------------------------------------------------------------------
+  // merge-train label enrollment (the reconciler's armed --auto --squash
+  // is worthless without this: the ONLY merge gate on `main` requires the
+  // `merge-train` status, which is posted only after the merge-train App
+  // admits a PR, and admission is gated on the PR carrying the `merge-train`
+  // LABEL — see .github/scripts/merge-train/state.mjs).
+  // ---------------------------------------------------------------------
+
+  it('(i) labels a newly-created promote PR with merge-train', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(result.created).toBe(true);
+    expect(gh.prs[0]!.labels).toContain('merge-train');
+    expect(gh.prs[0]!.labels).not.toContain('human-approval-required');
+  });
+
+  it('(j) re-ensures merge-train on an existing PR that has no exclusion label', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    // Simulate `crawler-ci[bot]` having stripped `merge-train` mid-cycle: the
+    // PR is open, un-labeled, and carries no train state label.
+    const seeded = gh.seedOpen('assets/promote', 'main', false, []);
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(result.created).toBe(false);
+    expect(result.prNumber).toBe(seeded);
+    expect(gh.prs[0]!.labels).toContain('merge-train');
+  });
+
+  it('(k) does NOT re-add merge-train while the train has it merge-train-blocked', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    // The train deliberately removed `merge-train` and set `merge-train-blocked`
+    // (see reconcile-lib.mjs's applyLandedRecoveryDecision / blocked paths).
+    // Re-adding `merge-train` here would fight that intentional decision.
+    gh.seedOpen('assets/promote', 'main', false, ['merge-train-blocked']);
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(gh.prs[0]!.labels).not.toContain('merge-train');
+    expect(gh.prs[0]!.labels).toContain('merge-train-blocked');
+  });
+
+  it('(l) does NOT re-add merge-train once the PR carries the terminal merge-train-landed label', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    // merge-train-landed is permanent (only ever added, never removed) — once
+    // present the PR's change already landed on main; re-adding merge-train
+    // is pointless.
+    gh.seedOpen('assets/promote', 'main', false, ['merge-train-landed']);
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(gh.prs[0]!.labels).not.toContain('merge-train');
+    expect(gh.prs[0]!.labels).toContain('merge-train-landed');
   });
 });
