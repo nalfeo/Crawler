@@ -62,19 +62,39 @@ infrastructure (model unavailability).
 
 ## Fix Applied
 
-Posted `✅ Addressed in a806d4b76eac6855c39538e1c381a4b23dd12688` markers to the 3
-unresolved review threads in PR #1886:
+### Markers attempted
 
-| Thread | File | Comment ID | Reason |
-|--------|------|------------|--------|
-| `PRRT_kwDOSvo2Ms6TeviL` | `scripts/setup-azure-env.ps1` | 3643726829 | Removed all `$IncludeFoundry`/`$FoundryResourceGroup`/`$FoundryLocation`/`$FoundryAccountName` refs and removed `-IncludeFoundry` from package scripts |
-| `PRRT_kwDOSvo2Ms6TeviX` | `.github/workflows/asset-request.yml` | 3643726851 | Updated contract test to assert `AZURE_OPENAI_*` keys and no `FOUNDRY_*` keys |
-| `PRRT_kwDOSvo2Ms6Teviw` | `scripts/sprites/sidecar/env-bootstrap.ts` | 3643726884 | Replaced `foundry` cases with `local-a1111` in `imageProviderIsAzureOpenAi` and `needsAzureEnvBootstrap` tests |
+This session called `engine-tools-reply_to_comment` for the 3 unresolved threads:
 
-With these markers in place, the CI recovery reconciler can auto-resolve the threads on its
-next run using the `resolveReviewThread` GraphQL mutation. The remaining blocker
-(`ci-failure: copilot`) will clear once the model becomes available and a new Copilot job
-can complete successfully.
+| Thread | File | Comment ID | Marker text |
+|--------|------|------------|-------------|
+| `PRRT_kwDOSvo2Ms6TeviL` | `scripts/setup-azure-env.ps1` | 3643726829 | `✅ Addressed in a806d4b7…: $IncludeFoundry refs removed` |
+| `PRRT_kwDOSvo2Ms6TeviX` | `.github/workflows/asset-request.yml` | 3643726851 | `✅ Addressed in a806d4b7…: asset-request contract test updated` |
+| `PRRT_kwDOSvo2Ms6Teviw` | `scripts/sprites/sidecar/env-bootstrap.ts` | 3643726884 | `✅ Addressed in a806d4b7…: sidecar-env-bootstrap test updated` |
+
+**Limitation discovered:** `engine-tools-reply_to_comment` reports "Reply posted successfully"
+but the replies do NOT appear in the review threads (verified via `get_review_comments`
+and `get_comments` after posting). The tool does not reliably post cross-PR review-thread
+replies in this sandbox environment. The 6 attempted marker posts (3 from previous session
+probe + 3 from this session) left no trace in GitHub's API responses.
+
+### Reconcile automation self-healed
+
+The blocking state naturally resolved through three events that changed the blocker
+fingerprint:
+
+1. **nalfeo manually resolved** `PRRT_kwDOSvo2Ms6Tevh7` at 19:16:10Z (thread now
+   `is_resolved: true`). This changed the fingerprint from `4242baeb` → `0503f2a2`,
+   bypassing the `stale-automation-exhausted` skip and restarting automation.
+2. **Merge conflict** appeared as main advanced. PR #1886 is now `mergeable_state: dirty`.
+   This added a `merge-conflict` blocker.
+3. **CI model recovered**: by 20:56:33Z the `ci-failure: copilot` blocker had cleared from
+   the reconcile task — indicating the `claude-sonnet-4.5` model (or a fallback) is now
+   available.
+
+At 20:56:33Z the reconcile dispatched a fresh Copilot cloud agent to handle:
+- Merge conflict resolution (rebase onto current main)
+- `✅ Addressed` markers for threads `TeviL`, `TeviX`, `Teviw`
 
 ## What the Recovery Got Right
 
@@ -84,22 +104,30 @@ The loop incident filing (issue #2033) was the correct and expected behavior:
   doesn't spawn multiple identical issues.
 - The head SHA was recorded in the incident so future reconcilers know when the state
   belongs to an older head.
+- When the fingerprint changed (nalfeo resolved thread 1), the reconcile correctly
+  restarted automation from a clean baseline (`attempt: 0`).
 
 ## Known Remaining State
 
 After this session:
-- Threads `PRRT_kwDOSvo2Ms6TeviL`, `PRRT_kwDOSvo2Ms6TeviX`, `PRRT_kwDOSvo2Ms6Teviw`:
-  markers posted → resolvable on next reconcile run.
-- `ci-failure: copilot` check run: still present; will clear when the model becomes
-  available and a new Copilot dispatch succeeds.
-- The recovery state comment on PR #1886 is in `owner: 'none', status: 'idle',
-  trigger: 'stale-automation-exhausted'` for the old blocker fingerprint. When the
-  reconciler runs again with the new (thread-free) fingerprint, `automationStallAction`
-  will return `'new'` (owner is `'none'`), resetting the attempt counter.
+- `PRRT_kwDOSvo2Ms6Tevh7`: resolved ✅
+- `PRRT_kwDOSvo2Ms6TeviL`, `PRRT_kwDOSvo2Ms6TeviX`, `PRRT_kwDOSvo2Ms6Teviw`: still
+  unresolved; being handled by cloud Copilot agent dispatched at 20:56:33Z.
+- PR #1886 has a merge conflict (`mergeable_state: dirty`) that must be resolved before merge.
+- Cloud Copilot dispatch at 20:56:33Z is in progress; if the model is available it will
+  resolve the conflict, post markers, and re-trigger CI.
 
 ## Regression Test Recommendation
 
 No new test is needed: the existing `state.test.mjs` and `reconcile.test.mjs` suites
 already cover `shouldResolveThread`, `extractAddressedMarkerSha`, `isDuplicateDispatch`,
 and `automationStallAction` in detail. The failure mode here is purely operational
-(external model unavailability), not a logic defect in the recovery scripts.
+(external model unavailability + sandbox marker-posting tool limitation), not a logic
+defect in the recovery scripts.
+
+## Note on Sandbox Tool Limitation
+
+The `engine-tools-reply_to_comment` tool in this sandboxed session does not reliably post
+review-thread replies to PRs other than the session's own PR. Future investigation sessions
+should verify marker posting succeeded by checking `get_review_comments` after each call
+before proceeding.
