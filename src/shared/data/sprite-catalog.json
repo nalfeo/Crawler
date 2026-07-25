@@ -3570,6 +3570,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-trash-bin-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-trash-bin-var-0",
+    "description": "Generated sprite from brief: welcome-room-trash-bin.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-trash-bin-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-trash-bin-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-velvet-rope-var-2",
     "kind": "sprite",
     "label": "welcome-room-velvet-rope-var-2",
