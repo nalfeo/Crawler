@@ -4115,6 +4115,57 @@
     "row": 0
   },
   {
+    "id": "generated:tinker-grips-v1-var-0",
+    "kind": "sprite",
+    "label": "tinker-grips-v1-var-0",
+    "description": "Generated sprite from brief: tinker-grips-v1.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "tinker-grips-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/tinker-grips-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:tinker-grips-v1-var-2",
+    "kind": "sprite",
+    "label": "tinker-grips-v1-var-2",
+    "description": "Generated sprite from brief: tinker-grips-v1.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "tinker-grips-v1-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/tinker-grips-v1-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:tinker-grips-v1-var-3",
+    "kind": "sprite",
+    "label": "tinker-grips-v1-var-3",
+    "description": "Generated sprite from brief: tinker-grips-v1.",
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "tinker-grips-v1-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/tinker-grips-v1-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:toadkin-boss-var-0",
     "kind": "sprite",
     "label": "toadkin-boss-var-0",
