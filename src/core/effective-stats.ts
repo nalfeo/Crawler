@@ -196,31 +196,7 @@ export function uniqueEquippedDefs(
   world: GameWorld,
   equipmentState: EquipmentState | undefined,
 ): Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> {
-  const defs: Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> = [];
-  if (!equipmentState) return defs;
-  const seen = new Set<EquipmentInstanceId>();
-  for (const slotId of Object.keys(equipmentState.equipped)) {
-    const instId = equipmentState.equipped[slotId] ?? null;
-    if (instId === null || seen.has(instId)) continue;
-    seen.add(instId);
-    if (typeof instId === 'number') {
-      const inst = equipmentState.instances.get(instId);
-      if (!inst) continue;
-      defs.push({
-        instanceId: instId,
-        statBonuses: inst.def.statBonuses,
-        weightLb: inst.def.weightLb,
-      });
-    } else {
-      const generated = requireGeneratedEquipmentInstance(world, instId);
-      defs.push({
-        instanceId: instId,
-        statBonuses: generated.frozen.statBonuses,
-        weightLb: generated.frozen.weightLb,
-      });
-    }
-  }
-  return defs;
+  return writeUniqueEquippedDefsInto([], new Set<EquipmentInstanceId>(), world, equipmentState);
 }
 
 /**

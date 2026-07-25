@@ -44,6 +44,7 @@ import {
   uniqueEquippedDefs,
 } from '../../../src/core/effective-stats.js';
 import {
+  equip,
   getEquipmentState,
   initializeBaseStats,
 } from '../../../src/core/systems/equipmentSystem.js';
@@ -52,6 +53,7 @@ import {
   PRIMARY_STATS,
   type LegacyStatModifierLike,
 } from '../../../src/shared/stats.js';
+import { getEquipmentDefForStarterWeapon } from '../../../src/shared/equipmentDefs.js';
 import type { GameWorld } from '../../../src/core/world.js';
 import type { StatId, PrimaryStatId } from '../../../src/shared/stats.js';
 import type { EquipmentState } from '../../../src/shared/equipment-types.js';
@@ -141,6 +143,15 @@ function main(): void {
   world.stores.health.max[eid] = 170;
   world.stores.health.current[eid] = 170;
   initializeBaseStats(world, eid);
+
+  // Equip a starter sword to represent the steady-state Floor 1 path:
+  // `writeUniqueEquippedDefsInto` still allocates a wrapper object per
+  // equipped instance, so an empty loadout would understate per-call cost.
+  const swordDef = getEquipmentDefForStarterWeapon('sword');
+  if (!swordDef) throw new Error('iron-sword def not found — equipmentDefs.ts changed?');
+  const equipResult = equip(world, eid, swordDef, { force: true });
+  if (!equipResult.ok) throw new Error('Failed to equip starter sword in bench');
+
   const state = getEquipmentState(world, eid);
 
   // Warm up both paths so the first measured round isn't a JIT outlier.

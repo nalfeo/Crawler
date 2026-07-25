@@ -79,8 +79,13 @@ targeted unit tests in `tests/ecs/effective-stats.test.ts` (7 pre-existing +
   would alias them. Also used by `computeEquippedWeightLb`.
 - Added module-level scratch buffers `_scratchBase`, `_scratchCore`,
   `_scratchEff`, `_scratchDefs`, `_scratchSeen` above `applyEffectiveStats`.
-- `applyEffectiveStats` uses those scratch buffers exclusively; the per-frame
-  hot path allocates **zero** fresh objects.
+- `applyEffectiveStats` reuses five module-level scratch containers
+  (`_scratchBase`, `_scratchCore`, `_scratchEff`, `_scratchDefs`,
+  `_scratchSeen`) instead of allocating them fresh each call. Residual
+  allocations that remain: one wrapper object per equipped item inside
+  `writeUniqueEquippedDefsInto`, plus `Object.keys` (slot enumeration) and
+  `Object.entries` (bonus iteration) arrays — these are acknowledged as
+  follow-up leads in the Leads section below.
 - **Non-reentrancy guard:** `_applyEffectiveStatsInUse` boolean gate around
   the body inside a `try/finally`. Throws with an actionable message if a
   future refactor adds a nested caller (the safety argument for scratch reuse
