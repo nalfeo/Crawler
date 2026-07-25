@@ -58,6 +58,7 @@ import {
   resolveEquipmentIconSpec,
   type ResolvedEquipmentIconSpec,
 } from './generated-equipment-icon.js';
+import { createRewardOpeningVfx, type RewardOpeningVfx } from './RewardOpeningVfx.js';
 import { getItemById } from '../shared/items.js';
 import { createLogger } from '../shared/logger.js';
 
@@ -266,6 +267,8 @@ export function createRewardOpeningUI(
   let revealItems: RevealItemDisplay[] = [];
   let lastRenderedPhase: RewardOpeningPhase | null = null;
 
+  const vfx: RewardOpeningVfx = createRewardOpeningVfx(scene);
+
   function computeExcitement(): RewardExcitement {
     if (!presentation || !world) {
       return { tierWeight: 0, rarityWeight: 0, score: 0, bucket: 'modest' };
@@ -369,6 +372,14 @@ export function createRewardOpeningUI(
 
     if (lastRenderedPhase !== sequenceState.phase) {
       lastRenderedPhase = sequenceState.phase;
+      const reducedMotion = sequenceState.config.reducedMotion;
+      const cx = GAME.WIDTH / 2;
+      const cy = GAME.HEIGHT / 2;
+      if (sequenceState.phase === 'anticipation') {
+        vfx.onAnticipationStart(cx, cy, excitement.bucket, reducedMotion);
+      } else if (sequenceState.phase === 'summary') {
+        vfx.onSummaryBurst(cx, cy, excitement.bucket, reducedMotion);
+      }
       if (!options?.suppressPhaseChangeHook) {
         hooks.onPhaseChange?.(sequenceState.phase, excitement.bucket);
       }
@@ -391,6 +402,9 @@ export function createRewardOpeningUI(
     sequenceState = null;
     lastRenderedPhase = null;
     clearItemObjects();
+    // Kill any in-flight VFX immediately so particles don't linger over the
+    // game world after the overlay is dismissed.
+    vfx.destroy();
     container.setVisible(false);
     if (wasOpen) {
       hooks.onVisibilityChange?.(false);
@@ -515,6 +529,19 @@ export function createRewardOpeningUI(
       // opposite of "no same-tick stacking" (adversarial plan review finding,
       // extended by follow-up review to cover normal-mode large deltas).
       if (next.phase === 'revealing' && next.revealedCount > previousRevealedCount) {
+        // VFX: fire a spark burst for EVERY newly-revealed item in this batch
+        // (unlike the audio hook below, stacking per-item VFX is intentional —
+        // each item should have its own visual pop at its position).
+        const reducedMotion = next.config.reducedMotion;
+        for (let i = previousRevealedCount; i < next.revealedCount; i++) {
+          const item = revealItems[i] as RevealItemDisplay | undefined;
+          if (item) {
+            const startX = GAME.WIDTH / 2 - ((next.revealedCount - 1) * 90) / 2;
+            const itemX = startX + i * 90;
+            const itemY = GAME.HEIGHT / 2 - 20;
+            vfx.onItemRevealed(itemX, itemY, item.color, excitement.bucket, reducedMotion);
+          }
+        }
         const batchSize = next.revealedCount - previousRevealedCount;
         if (batchSize > 1) {
           let bestIndex = previousRevealedCount;
