@@ -166,3 +166,30 @@ test('due sync failure warns without throwing and remains due', (t) => {
   assert.equal(result.due, true);
   assert.match(result.warning, /30-active-minute sync remains due/);
 });
+
+test('recent failed attempt is throttled without calling runSync again', (t) => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'crawler-main-throttle-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const now = ACTIVE_SYNC_INTERVAL_MS + 60_000;
+  writeSyncState(cwd, {
+    schema: 'crawler-main-sync/v1',
+    activeAuthoringMs: ACTIVE_SYNC_INTERVAL_MS,
+    lastActivityAt: new Date(now - 60_000).toISOString(),
+    lastAttemptAt: new Date(now - 60_000).toISOString(),
+    lastResult: 'deferred-dirty',
+    lastMessage: 'dirty worktree',
+  });
+
+  let syncCalled = false;
+  const result = trackAuthoringActivity({
+    cwd,
+    now,
+    runSync: () => {
+      syncCalled = true;
+      return { status: 'deferred-dirty', branchChanged: false, message: 'dirty worktree' };
+    },
+  });
+
+  assert.equal(syncCalled, false, 'runSync should not be called within throttle window');
+  assert.equal(result.due, true);
+});

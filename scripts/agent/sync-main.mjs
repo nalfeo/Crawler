@@ -111,6 +111,20 @@ export function attemptMainSync({
       return result;
     }
 
+    // Check dirtiness before the network fetch: a dirty worktree cannot be
+    // rebased and the fetch is wasted work. Skip the fetch when dirty.
+    if (branch !== 'main' && runGit(cwd, ['status', '--porcelain'])) {
+      const result = {
+        status: 'deferred-dirty',
+        reason,
+        branchChanged: false,
+        message:
+          'Main sync deferred because the worktree is dirty; checkpoint the work, then sync.',
+      };
+      writeSyncState(cwd, resultState(state, result, now));
+      return result;
+    }
+
     runGit(cwd, ['fetch', 'origin', 'main:refs/remotes/origin/main', '--quiet']);
     const mainSha = runGit(cwd, ['rev-parse', 'refs/remotes/origin/main']);
     const headBefore = runGit(cwd, ['rev-parse', 'HEAD']);
@@ -221,7 +235,20 @@ export function trackAuthoringActivity({
     return { due: false, activeAuthoringMs, warning: null };
   }
 
-  const syncResult = runSync({ cwd, reason: 'periodic-active', now });
+  // Throttle repeated sync attempts: if a recent non-success attempt was
+  // recorded, skip calling runSync to avoid a git fetch (or any other work)
+  // on every tool call while the worktree stays in the same state.
+  const lastAttemptAt = timestamp(state.lastAttemptAt);
+  const recentFailedAttempt =
+    lastAttemptAt !== null &&
+    state.lastResult &&
+    state.lastResult !== 'success' &&
+    now - lastAttemptAt < SYNC_REMINDER_INTERVAL_MS;
+
+  const syncResult = recentFailedAttempt
+    ? { status: state.lastResult, branchChanged: false, message: state.lastMessage ?? 'Sync pending.' }
+    : runSync({ cwd, reason: 'periodic-active', now });
+
   if (syncResult.status === 'success') {
     return {
       due: true,

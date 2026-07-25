@@ -153,55 +153,6 @@ test('managed groups continue after open membership falls below three', () => {
     updatedAt: '2026-07-20T00:00:00Z',
   });
 
-  test('persisted groups drop members that no longer touch coordination paths', () => {
-    const eligible = makePull(1, ['.github/workflows/ci.yml']);
-    const outOfScope = makePull(2, ['src/game/ignored.ts']);
-    const state = makeCoordinatorState({
-      prNumber: 1,
-      groupId: 'ci-conflict-existing',
-      originalMembers: [1, 2, 3],
-      leaderNumber: 1,
-      activeNumber: 1,
-      order: [eligible, outOfScope],
-      proofs: [],
-      overlapFiles: ['.github/workflows/ci.yml'],
-      updatedAt: '2026-07-20T00:00:00Z',
-    });
-    const groups = mergeCoordinationGroups({
-      discoveredClusters: [],
-      existingStates: [state],
-      openPulls: [eligible, outOfScope],
-    });
-
-    assert.deepEqual(
-      groups[0].pulls.map((pull) => pull.number),
-      [1],
-    );
-  });
-
-  test('persisted groups disappear when every open member becomes out of scope', () => {
-    const pulls = [makePull(1, ['src/game/one.ts']), makePull(2, ['scripts/agent/two.mjs'])];
-    const state = makeCoordinatorState({
-      prNumber: 1,
-      groupId: 'ci-conflict-existing',
-      originalMembers: [1, 2, 3],
-      leaderNumber: 1,
-      activeNumber: 1,
-      order: pulls,
-      proofs: [],
-      overlapFiles: ['.github/workflows/ci.yml'],
-      updatedAt: '2026-07-20T00:00:00Z',
-    });
-
-    assert.deepEqual(
-      mergeCoordinationGroups({
-        discoveredClusters: [],
-        existingStates: [state],
-        openPulls: pulls,
-      }),
-      [],
-    );
-  });
   const groups = mergeCoordinationGroups({
     discoveredClusters: [],
     existingStates: [state],
@@ -214,6 +165,56 @@ test('managed groups continue after open membership falls below three', () => {
     [1, 2],
   );
   assert.deepEqual(groups[0].originalMembers, [1, 2, 3]);
+});
+
+test('persisted groups drop members that no longer touch coordination paths', () => {
+  const eligible = makePull(1, ['.github/workflows/ci.yml']);
+  const outOfScope = makePull(2, ['src/game/ignored.ts']);
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-existing',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [eligible, outOfScope],
+    proofs: [],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  const groups = mergeCoordinationGroups({
+    discoveredClusters: [],
+    existingStates: [state],
+    openPulls: [eligible, outOfScope],
+  });
+
+  assert.deepEqual(
+    groups[0].pulls.map((pull) => pull.number),
+    [1],
+  );
+});
+
+test('persisted groups disappear when every open member becomes out of scope', () => {
+  const pulls = [makePull(1, ['src/game/one.ts']), makePull(2, ['scripts/agent/two.mjs'])];
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-existing',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: pulls,
+    proofs: [],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+
+  assert.deepEqual(
+    mergeCoordinationGroups({
+      discoveredClusters: [],
+      existingStates: [state],
+      openPulls: pulls,
+    }),
+    [],
+  );
 });
 
 test('fresh two-PR overlap stays below threshold without persisted managed state', () => {
