@@ -434,6 +434,15 @@ function tileKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
+function isTileWithinRoomBounds(room: RoomData, tx: number, ty: number): boolean {
+  return (
+    tx >= room.bounds.x &&
+    tx < room.bounds.x + room.bounds.width &&
+    ty >= room.bounds.y &&
+    ty < room.bounds.y + room.bounds.height
+  );
+}
+
 /**
  * Minimum Chebyshev tile distance between two NPCs placed in the same room. A
  * value of 3 leaves at least two empty tiles between any pair, so shared-room
@@ -742,6 +751,7 @@ function resolveRoutableNpcSpawnPosition(
 function spawnFloor1HarvestableNodes(world: GameWorld): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
+  const spawnRoom = floorMap.spawnRoom;
 
   // Gather candidate tiles from all normal rooms.
   const normalRooms = floorMap.roomGraph
@@ -749,6 +759,66 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
     .filter((room) => room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN);
 
   if (normalRooms.length === 0) return;
+  const spawnRoomBlockedTiles = new Set<string>();
+  if (spawnRoom) {
+    for (const eid of query(world.ecs, [Position])) {
+      const tile = floorMap.worldToTile(
+        world.stores.position.x[eid] ?? 0,
+        world.stores.position.y[eid] ?? 0,
+      );
+      if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
+        spawnRoomBlockedTiles.add(tileKey(tile.x, tile.y));
+      }
+    }
+  }
+  const findSpawnRoomHarvestableTile = (
+    room: RoomData,
+    startTx: number,
+    startTy: number,
+    placed: ReadonlyArray<{ x: number; y: number }>,
+  ): TilePoint | null => {
+    const minX = room.bounds.x + 1;
+    const minY = room.bounds.y + 1;
+    const maxX = room.bounds.x + room.bounds.width - 2;
+    const maxY = room.bounds.y + room.bounds.height - 2;
+    const isLegalTile = (tx: number, ty: number): boolean => {
+      if (
+        tx < minX ||
+        tx > maxX ||
+        ty < minY ||
+        ty > maxY ||
+        !floorMap.tileMap.isPassable(tx, ty) ||
+        spawnRoomBlockedTiles.has(tileKey(tx, ty))
+      ) {
+        return false;
+      }
+      const pos = floorMap.tileToWorld(tx, ty);
+      return !placed.some((p) => {
+        const dx = p.x - pos.x;
+        const dy = p.y - pos.y;
+        return dx * dx + dy * dy < 9;
+      });
+    };
+    if (isLegalTile(startTx, startTy)) {
+      return { x: startTx, y: startTy };
+    }
+    const maxRadius = Math.max(room.bounds.width, room.bounds.height);
+    for (let radius = 1; radius <= maxRadius; radius += 1) {
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
+            continue;
+          }
+          const tx = startTx + dx;
+          const ty = startTy + dy;
+          if (isLegalTile(tx, ty)) {
+            return { x: tx, y: ty };
+          }
+        }
+      }
+    }
+    return null;
+  };
 
   // Cap loop at FLOOR2_HARVESTABLE_START_INDEX so Floor 2 ore/gem defs are
   // never spawned on Floor 1.
@@ -763,26 +833,37 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
     // We allow multiple attempts per node to avoid clustering.
     const maxAttempts = count * 12;
     for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
-      const room = normalRooms[world.rng.nextInt(0, normalRooms.length - 1)]!;
+      const roomIndex = world.rng.nextInt(0, normalRooms.length - 1);
+      const forceSpawnRoomPlacement = defIndex === 0 && placed.length === 0 && spawnRoom !== null;
+      const room = forceSpawnRoomPlacement ? spawnRoom : normalRooms[roomIndex]!;
       const { x: bx, y: by, width: bw, height: bh } = room.bounds;
 
       // Pick a random tile inside the room interior (1 tile margin from walls).
       const tx = bx + 1 + world.rng.nextInt(0, Math.max(0, bw - 3));
       const ty = by + 1 + world.rng.nextInt(0, Math.max(0, bh - 3));
-
-      if (!floorMap.tileMap.isPassable(tx, ty)) continue;
-
-      const pos = floorMap.tileToWorld(tx, ty);
+      const tile = forceSpawnRoomPlacement
+        ? findSpawnRoomHarvestableTile(room, tx, ty, placed)
+        : floorMap.tileMap.isPassable(tx, ty)
+          ? { x: tx, y: ty }
+          : null;
+      if (!tile) continue;
+      const pos = floorMap.tileToWorld(tile.x, tile.y);
 
       // Avoid placing two nodes of the same type too close together (≥ 3 ft apart).
-      const tooClose = placed.some((p) => {
-        const ddx = p.x - pos.x;
-        const ddy = p.y - pos.y;
-        return ddx * ddx + ddy * ddy < 9;
-      });
+      const tooClose =
+        forceSpawnRoomPlacement
+          ? false
+          : placed.some((p) => {
+              const ddx = p.x - pos.x;
+              const ddy = p.y - pos.y;
+              return ddx * ddx + ddy * ddy < 9;
+            });
       if (tooClose) continue;
 
       placed.push(pos);
+      if (forceSpawnRoomPlacement) {
+        spawnRoomBlockedTiles.add(tileKey(tile.x, tile.y));
+      }
       spawnHarvestableNode(world, pos.x, pos.y, defIndex);
     }
   }
