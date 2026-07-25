@@ -1,5 +1,16 @@
 [
   {
+    "commit": "04650ba3e6ae39a764a4298be80fd5c761d4169c",
+    "commitDate": "2026-07-25T00:57:44Z",
+    "commitSubject": "feat(ci): introduce authoritative PR-lifecycle FSM (fixes D1/D5/D9/D11) (#1913)",
+    "capturedAt": "2026-07-25T02:14:54.324Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30137871020",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/04650ba3e6ae39a764a4298be80fd5c761d4169c.json"
+  },
+  {
     "commit": "093473da95366bb67e952a4e686728f9f8f6493f",
     "commitDate": "2026-07-25T00:35:16Z",
     "commitSubject": "feat(sprites): hourly assets/queue → main reconciler (PR2 of durable sprite-edit persistence) (#1916)",
