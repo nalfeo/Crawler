@@ -206,7 +206,7 @@
       "abilityId": "king-skritt-roman-candle-coronation",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "in-progress",
       "bossArt": {
         "runtimeBriefId": "kobold-boss",
         "approvedAssetId": "kobold-boss-var-0",
@@ -215,18 +215,18 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "in-progress",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
+      "arenaLabState": "in-progress",
+      "arenaLabPresetId": "f2-king-skritt",
       "arenaLabEvidence": null,
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
+      "implementationIssue": 1955,
       "implementationPullRequest": null,
       "blockers": [
         "floor2-boss-production-enable"
