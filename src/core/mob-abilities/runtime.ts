@@ -245,6 +245,7 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
     const targetingMode = normalizedTargetingMode(def);
     let targetEid: number | null;
     let pos: { x: number; y: number } | null = null;
+    let casterPos: { x: number; y: number } | null = null;
 
     if (targetingMode === 'self') {
       targetEid = casterEid;
@@ -255,6 +256,9 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
       if (targetEid !== null) {
         pos = targetPosition(world, targetEid);
       }
+    }
+    if (def.geometry.kind === 'lane') {
+      casterPos = targetPosition(world, casterEid);
     }
     if (pos === null) {
       // No valid target/origin to lock onto — skip this cast and re-arm cooldown.
@@ -269,12 +273,42 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
       targetingMode === 'self' || targetEid === null
         ? null
         : (world.entityRenderGeneration[targetEid] ?? 0);
-    inst.committedGeometry = {
-      kind: 'circle',
-      x: pos.x,
-      y: pos.y,
-      radiusFt: def.geometry.radiusFt,
-    };
+    if (def.geometry.kind === 'lane') {
+      if (casterPos === null) {
+        inst.phase = 'cooldown';
+        inst.timerMs = def.cooldownMs;
+        return;
+      }
+      const dx = pos.x - casterPos.x;
+      const dy = pos.y - casterPos.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance <= Number.EPSILON) {
+        inst.phase = 'cooldown';
+        inst.timerMs = def.cooldownMs;
+        return;
+      }
+      const dirX = dx / distance;
+      const dirY = dy / distance;
+      const lengthFt = Math.min(def.geometry.maxRangeFt, distance);
+      inst.committedGeometry = {
+        kind: 'lane',
+        originX: casterPos.x,
+        originY: casterPos.y,
+        endX: casterPos.x + dirX * lengthFt,
+        endY: casterPos.y + dirY * lengthFt,
+        dirX,
+        dirY,
+        widthFt: def.geometry.widthFt,
+        lengthFt,
+      };
+    } else {
+      inst.committedGeometry = {
+        kind: 'circle',
+        x: pos.x,
+        y: pos.y,
+        radiusFt: def.geometry.radiusFt,
+      };
+    }
   }
 
   // Announcement is emitted exactly once, here, per cast.
@@ -308,15 +342,25 @@ function syncTelegraphGeometryToCaster(
   inst: MobAbilityInstanceState,
 ): void {
   if (inst.committedGeometry === null) return;
-  if (inst.committedGeometry.kind !== 'circle') return;
+  if (inst.committedGeometry.kind !== 'circle' && inst.committedGeometry.kind !== 'lane') return;
   if (normalizedOriginMode(inst.definition) !== 'follows-caster') return;
   const pos = targetPosition(world, casterEid);
   if (pos === null) return;
+  if (inst.committedGeometry.kind === 'circle') {
+    inst.committedGeometry = {
+      kind: 'circle',
+      x: pos.x,
+      y: pos.y,
+      radiusFt: inst.committedGeometry.radiusFt,
+    };
+    return;
+  }
   inst.committedGeometry = {
-    kind: 'circle',
-    x: pos.x,
-    y: pos.y,
-    radiusFt: inst.committedGeometry.radiusFt,
+    ...inst.committedGeometry,
+    originX: pos.x,
+    originY: pos.y,
+    endX: pos.x + inst.committedGeometry.dirX * inst.committedGeometry.lengthFt,
+    endY: pos.y + inst.committedGeometry.dirY * inst.committedGeometry.lengthFt,
   };
 }
 

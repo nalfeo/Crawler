@@ -18,6 +18,7 @@ import {
   activateMobAbilityEncounter,
   createUndercityMobCallDefinition,
   createBambooFedBerserkDefinition,
+  createTongueRepossessionDefinition,
   createVerdigrisGlamourDefinition,
   registerMobAbility,
   setMobAbilitiesEnabled,
@@ -528,6 +529,7 @@ const F2_QUEEN_MAB = floor2EnemyPack.archetypes.find((a) => a.id === 'faerie-bos
 /** Plague-Boss Squick — the ratfolk boss that owns Undercity Mob Call. */
 const F2_SQUICK = floor2EnemyPack.archetypes.find((a) => a.id === 'ratfolk-boss')!;
 const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-boss')!;
+const F2_BIG_MAMA_BUFO = floor2EnemyPack.archetypes.find((a) => a.id === 'toadkin-boss')!;
 
 /**
  * Spawn Queen Mab and arm Verdigris Glamour through the CANONICAL mob-ability
@@ -589,6 +591,22 @@ function spawnBigPandaWeiArena(
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   setMobAbilitiesEnabled(world, true);
   registerMobAbility(world, eid, createBambooFedBerserkDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnBigMamaBufoArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_BIG_MAMA_BUFO);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createTongueRepossessionDefinition());
   activateMobAbilityEncounter(world);
   return [eid];
 }
@@ -679,6 +697,15 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
       'Big Panda Wei solo, with Bamboo-Fed Berserk armed through the canonical mob-ability runtime: 10s eligibility, 1.5s self-following aura telegraph while planted, then 4s +40% move speed, +40% melee damage, and heavy knockback resistance.',
     entries: [],
     customSpawnFn: spawnBigPandaWeiArena,
+  },
+  {
+    id: 'f2-big-mama-bufo',
+    name: 'F2: Big Mama Bufo (Tongue Repossession)',
+    floor: 'floor2',
+    description:
+      "Big Mama Bufo solo, with TONGUE REPOSSESSION armed through the canonical mob-ability runtime: 8s eligibility, 1.25s hostile-red lane locked to the player's position, moderate hit damage, and pull to 5ft in front of Bufo.",
+    entries: [],
+    customSpawnFn: spawnBigMamaBufoArena,
   },
   // ── Custom / blank ───────────────────────────────────────────────────────
   {

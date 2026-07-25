@@ -276,8 +276,9 @@ describe('Floor 2 boss ability delivery status', () => {
     const records = buildBossAbilityStatusRecords();
     expect(records.every((record) => record.stage === 'blocked')).toBe(true);
 
-    // Queen Mab and Big Panda Wei runtime/telegraph/arena slices are verified,
-    // but both stay blocked overall behind the separate production-enable gate
+    // Queen Mab, Squick, Big Panda Wei, and Big Mama Bufo runtime/telegraph/arena
+    // slices are verified,
+    // but all stay blocked overall behind the separate production-enable gate
     // for real-game enablement/balance.
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
     expect(queen?.status.arenaLabState).toBe('verified');
@@ -292,13 +293,18 @@ describe('Floor 2 boss ability delivery status', () => {
     expect(panda?.status.arenaLabState).toBe('verified');
     expect(panda?.status.runtimeState).toBe('verified');
     expect(panda?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
-    // The other 15 abilities remain blocked purely by the production-enable
+    const bufo = records.find((record) => record.ability.bossArchetypeId === 'toadkin-boss');
+    expect(bufo?.status.arenaLabState).toBe('verified');
+    expect(bufo?.status.runtimeState).toBe('verified');
+    expect(bufo?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    // The other 14 abilities remain blocked purely by the production-enable
     // gate; arena slices must not promote them to ready.
     for (const record of records.filter(
       (candidate) =>
         candidate.ability.bossArchetypeId !== 'faerie-boss' &&
         candidate.ability.bossArchetypeId !== 'ratfolk-boss' &&
-        candidate.ability.bossArchetypeId !== 'panda-boss',
+        candidate.ability.bossArchetypeId !== 'panda-boss' &&
+        candidate.ability.bossArchetypeId !== 'toadkin-boss',
     )) {
       expect(record.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     }

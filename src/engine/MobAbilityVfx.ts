@@ -61,6 +61,7 @@ const CLEANUP_LIFETIME_MS = 300;
 const CROWN_RUNE_COUNT = 8;
 const BURST_SPARK_COUNT = 18;
 const UNDERCITY_BURST_SPARK_COUNT = 24;
+const TONGUE_REPOSSESSION_ABILITY_ID = 'big-mama-bufo-tongue-repossession';
 
 export function createMobAbilityVfx(scene: Phaser.Scene): {
   update(world: GameWorld): void;
@@ -268,6 +269,47 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     }
   }
 
+  function drawLaneTelegraph(
+    gfx: Phaser.GameObjects.Graphics,
+    originX: number,
+    originY: number,
+    endX: number,
+    endY: number,
+    widthPx: number,
+    progress: number,
+  ): void {
+    const dx = endX - originX;
+    const dy = endY - originY;
+    const len = Math.hypot(dx, dy);
+    if (len <= Number.EPSILON) return;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const halfW = widthPx * 0.5;
+    const left0x = originX + nx * halfW;
+    const left0y = originY + ny * halfW;
+    const right0x = originX - nx * halfW;
+    const right0y = originY - ny * halfW;
+    const left1x = endX + nx * halfW;
+    const left1y = endY + ny * halfW;
+    const right1x = endX - nx * halfW;
+    const right1y = endY - ny * halfW;
+    gfx.fillStyle(COLOR_HOSTILE_RED, 0.12 + 0.28 * progress);
+    gfx.fillPoints(
+      [
+        { x: left0x, y: left0y },
+        { x: left1x, y: left1y },
+        { x: right1x, y: right1y },
+        { x: right0x, y: right0y },
+      ],
+      true,
+    );
+    gfx.lineStyle(2 + 2 * progress, COLOR_HOSTILE_RED, 0.92);
+    gfx.lineBetween(left0x, left0y, left1x, left1y);
+    gfx.lineBetween(right0x, right0y, right1x, right1y);
+    gfx.lineStyle(2, COLOR_CROWN_RUNE, 0.45 + 0.4 * progress);
+    gfx.lineBetween(originX, originY, endX, endY);
+  }
+
   /** Redraw the persistent Tarnished indicator under a debuffed entity. */
   function drawTarnish(gfx: Phaser.GameObjects.Graphics, cx: number, cy: number): void {
     gfx.clear();
@@ -472,18 +514,35 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // ── Telegraph circles ──────────────────────────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
-      const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
-      if (circles.length === 0) continue;
       liveCasters.add(cue.casterEid);
-      const first = circles[0]!;
-      const firstCx = ftToPx(first.x);
-      const firstCy = ftToPx(first.y);
-      const firstRadiusPx = ftToPx(first.radiusFt);
-      lastGeom.set(cue.casterEid, { x: firstCx, y: firstCy, r: firstRadiusPx });
+      if (cue.geometry.kind === 'lane') {
+        const midX = (cue.geometry.originX + cue.geometry.endX) * 0.5;
+        const midY = (cue.geometry.originY + cue.geometry.endY) * 0.5;
+        lastGeom.set(cue.casterEid, {
+          x: ftToPx(midX),
+          y: ftToPx(midY),
+          r: ftToPx(cue.geometry.widthFt * 0.5),
+        });
+      } else {
+        const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
+        if (circles.length === 0) continue;
+        const first = circles[0]!;
+        const firstCx = ftToPx(first.x);
+        const firstCy = ftToPx(first.y);
+        const firstRadiusPx = ftToPx(first.radiusFt);
+        lastGeom.set(cue.casterEid, { x: firstCx, y: firstCy, r: firstRadiusPx });
+      }
       if (!castStartSeen.has(cue.casterEid)) {
         castStartSeen.add(cue.casterEid);
-        for (const circle of circles) {
-          spawnCastStart(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        if (cue.geometry.kind === 'lane') {
+          const cx = ftToPx(cue.geometry.originX);
+          const cy = ftToPx(cue.geometry.originY);
+          spawnCastStart(cx, cy, ftToPx(cue.geometry.widthFt));
+        } else {
+          const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
+          for (const circle of circles) {
+            spawnCastStart(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+          }
         }
       }
       if (!enabled) continue;
@@ -496,15 +555,28 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         telegraphGfx.set(cue.casterEid, gfx);
       }
       gfx.clear();
-      for (const circle of circles) {
-        drawTelegraph(
+      if (cue.geometry.kind === 'lane') {
+        drawLaneTelegraph(
           gfx,
-          ftToPx(circle.x),
-          ftToPx(circle.y),
-          ftToPx(circle.radiusFt),
+          ftToPx(cue.geometry.originX),
+          ftToPx(cue.geometry.originY),
+          ftToPx(cue.geometry.endX),
+          ftToPx(cue.geometry.endY),
+          ftToPx(cue.geometry.widthFt),
           cue.telegraphProgress,
-          cue.dangerColor,
         );
+      } else {
+        const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
+        for (const circle of circles) {
+          drawTelegraph(
+            gfx,
+            ftToPx(circle.x),
+            ftToPx(circle.y),
+            ftToPx(circle.radiusFt),
+            cue.telegraphProgress,
+            cue.dangerColor,
+          );
+        }
       }
     }
 
@@ -522,10 +594,25 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         const cy = ftToPx(geom.y);
         const r = ftToPx(geom.radiusFt);
         spawn(cx, cy, r);
-      } else {
+      } else if (geom.kind === 'spawn-circles') {
         for (const circle of geom.circles) {
           spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
         }
+      } else if (burst.abilityId === TONGUE_REPOSSESSION_ABILITY_ID) {
+        const endX = ftToPx(geom.endX);
+        const endY = ftToPx(geom.endY);
+        spawn(endX, endY, ftToPx(geom.widthFt * 1.8));
+        spawnRing(
+          endX,
+          endY,
+          ftToPx(geom.widthFt * 0.6),
+          ftToPx(geom.widthFt * 2.2),
+          COLOR_HOSTILE_RED,
+          BURST_LIFETIME_MS,
+          BURST_DEPTH,
+        );
+      } else {
+        spawn(ftToPx(geom.endX), ftToPx(geom.endY), ftToPx(geom.widthFt * 1.8));
       }
     }
 

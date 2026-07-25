@@ -2582,12 +2582,37 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
 
       // Mob-ability circle avoidance: if the player is inside a committed
-      // telegraph circle, flee outward using the same committed geometry the
+      // telegraph geometry, flee outward using the same committed geometry the
       // renderer draws — no information advantage over what the player sees.
       // Runs only when no projectile threat is in the dodge horizon.
       for (const cue of ctx.world.mobAbilities.cues) {
         if (cue.phase !== 'telegraph') continue;
         const { geometry } = cue;
+        if (geometry.kind === 'lane') {
+          const segX = geometry.endX - geometry.originX;
+          const segY = geometry.endY - geometry.originY;
+          const segLenSq = segX * segX + segY * segY;
+          if (segLenSq <= Number.EPSILON) continue;
+          const relX = ctx.playerX - geometry.originX;
+          const relY = ctx.playerY - geometry.originY;
+          const t = Math.max(0, Math.min(1, (relX * segX + relY * segY) / segLenSq));
+          const closestX = geometry.originX + segX * t;
+          const closestY = geometry.originY + segY * t;
+          const offX = ctx.playerX - closestX;
+          const offY = ctx.playerY - closestY;
+          const laneHalfWidth = geometry.widthFt * 0.5;
+          const offDistSq = offX * offX + offY * offY;
+          if (offDistSq > laneHalfWidth * laneHalfWidth) continue;
+          const offDist = Math.sqrt(offDistSq);
+          if (offDist > Number.EPSILON) {
+            this.dodgeVecX = (offX / offDist) * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = (offY / offDist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          } else {
+            this.dodgeVecX = -geometry.dirY * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = geometry.dirX * PROJECTILE_DODGE_VECTOR_SCALE;
+          }
+          return BTStatus.SUCCESS;
+        }
         const circles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
         for (const circle of circles) {
           const dx = ctx.playerX - circle.x;

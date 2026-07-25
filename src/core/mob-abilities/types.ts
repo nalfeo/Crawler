@@ -42,7 +42,22 @@ export interface MobAbilitySpawnCirclesGeometry {
   readonly circles: readonly MobAbilityCircleGeometry[];
 }
 
-export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry;
+export interface MobAbilityLaneGeometry {
+  readonly kind: 'lane';
+  readonly originX: number;
+  readonly originY: number;
+  readonly endX: number;
+  readonly endY: number;
+  readonly dirX: number;
+  readonly dirY: number;
+  readonly widthFt: number;
+  readonly lengthFt: number;
+}
+
+export type MobAbilityGeometry =
+  | MobAbilityCircleGeometry
+  | MobAbilitySpawnCirclesGeometry
+  | MobAbilityLaneGeometry;
 
 export type MobAbilityTargetingMode = 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
@@ -101,6 +116,11 @@ export interface MobAbilityRuntimeDefinition {
   /** Committed geometry footprint authored by this ability. */
   readonly geometry:
     | { readonly kind: 'circle'; readonly radiusFt: number }
+    | {
+        readonly kind: 'lane';
+        readonly widthFt: number;
+        readonly maxRangeFt: number;
+      }
     | {
         readonly kind: 'spawn-circles';
         readonly count: number;

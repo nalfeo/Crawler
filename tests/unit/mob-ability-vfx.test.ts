@@ -11,6 +11,7 @@ function createGraphicsStub() {
     fillStyle: vi.fn(),
     strokeCircle: vi.fn(),
     fillCircle: vi.fn(),
+    fillPoints: vi.fn(),
     lineBetween: vi.fn(),
     setDepth: vi.fn().mockReturnThis(),
     setBlendMode: vi.fn().mockReturnThis(),
@@ -144,6 +145,39 @@ describe('MobAbilityVfx', () => {
     const telegraphGfx = graphicsObjects[0];
     expect(telegraphGfx).toBeDefined();
     expect(telegraphGfx!.strokeCircle).toHaveBeenCalledTimes(3);
+  });
+
+  it('draws committed lane telegraphs using the same locked endpoints', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'big-mama-bufo-tongue-repossession',
+      casterEid: 19,
+      phase: 'telegraph',
+      telegraphProgress: 0.4,
+      geometry: {
+        kind: 'lane',
+        originX: 10,
+        originY: 20,
+        endX: 30,
+        endY: 20,
+        dirX: 1,
+        dirY: 0,
+        widthFt: 3,
+        lengthFt: 20,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: "TONGUE REPOSSESSION — Big Mama wants what's hers!",
+    });
+    world.mobAbilities.byEntity.set(19, mockInstance());
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.fillPoints).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.lineBetween).toHaveBeenCalled();
   });
 
   it('draws the Tarnished indicator ring for debuffed entities', () => {
