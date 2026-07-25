@@ -54,6 +54,34 @@ than to overall noise.
 `npm run health:check` includes a `bench-regression` step — check it after your
 change so you learn whether you moved a tracked number.
 
+### When to microbench a single function
+
+Reach for a function-level microbench when the target is a small share of the
+surface's wall time. If a function is <5% of frame time, even a large per-call
+win lands **inside noise** end-to-end — the end-to-end delta will not be a
+defensible number, and reporting it as one gets the whole change rejected.
+In that case the per-call number is your headline and the end-to-end number is
+explicitly reported as "inside noise", not as the win.
+
+**Microbenches on this codebase must be same-process and interleaved.** Run
+`before` and `after` alternately in one process for N paired rounds and compare
+medians. Separate process runs are not comparable here: observed per-call
+medians for the same code vary by ~2.7× run-to-run, which is wider than most
+wins you will find. A real win shows **non-overlapping** distributions — the
+worst `after` sample beats the best `before` sample. If they overlap, you do
+not have a result yet.
+
+To get the `before` side, extract the pre-change file from git rather than
+stashing, so both versions are importable at once:
+
+```bash
+git show <base-sha>:src/path/to/file.ts > src/path/to/tmp-file-before.ts
+```
+
+Delete the temp file and any scratch copies when done — but
+**commit the bench itself**. A deleted bench means the next agent cannot
+reproduce your headline number, and the win becomes unauditable (rule #4).
+
 ## Surface: boot, build, and first frame
 
 ```bash

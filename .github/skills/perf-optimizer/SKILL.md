@@ -52,7 +52,8 @@ npm run perf:fingerprint -- --write files/perf-baseline.json
 
 This replays the same sample the blocking Floor-1 gate uses (seeds 1–8 ×
 sword/bow/baseball-bat) and hashes the full `RunStats` of every run with
-wall-clock fields stripped. It takes several minutes. Start it early.
+wall-clock fields stripped. Budget **1–3 minutes** (~80s on an idle machine;
+~2 minutes under load). Start it early.
 
 While iterating you can narrow the sample for a fast signal:
 
