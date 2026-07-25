@@ -4,6 +4,17 @@
 
 Accepted
 
+> **Acceptance flow superseded in part by
+> [`2026-07-24-sprite-queue-reconciler.md`](2026-07-24-sprite-queue-reconciler.md)
+> (2026-07-24).** The old approve → `sprites:checkin` (push `asset/<slug>` + file
+> an `asset-checkin` issue) → `sprites:asset-pr` union acceptance path is replaced
+> by the durable `assets/queue` → sole-writer `assets/promote` → `main` reconciler
+> (feature ADR
+> [`2026-07-23-durable-asset-queue-persistence.md`](2026-07-23-durable-asset-queue-persistence.md)).
+> This ADR's sidecar-owned **approve** operation, its per-instance loopback token,
+> and its idempotency contract are unaffected. The old union + `asset-checkin`
+> issue flow is retired in PR3, not here.
+
 ## Date
 
 2026-07-20
