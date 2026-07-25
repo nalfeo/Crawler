@@ -1,5 +1,16 @@
 [
   {
+    "commit": "093473da95366bb67e952a4e686728f9f8f6493f",
+    "commitDate": "2026-07-25T00:35:16Z",
+    "commitSubject": "feat(sprites): hourly assets/queue → main reconciler (PR2 of durable sprite-edit persistence) (#1916)",
+    "capturedAt": "2026-07-25T01:58:45.746Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30137141365",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/093473da95366bb67e952a4e686728f9f8f6493f.json"
+  },
+  {
     "commit": "f906ffb56140099a20a583215689b3c2156a0b81",
     "commitDate": "2026-07-25T00:08:03Z",
     "commitSubject": "Wire Floor 2 terrain-pack `doorSet` into `MainGameScene` door overlay rendering (#1904)",
