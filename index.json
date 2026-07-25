@@ -1,5 +1,16 @@
 [
   {
+    "commit": "506fc0393a8ee918ed0c7e1f0f4486391322f212",
+    "commitDate": "2026-07-25T21:06:26Z",
+    "commitSubject": "perf(core): 2.1× faster fovSystem pass with byte-identical output (#2042)",
+    "capturedAt": "2026-07-25T22:27:21.823Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30175351465",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/506fc0393a8ee918ed0c7e1f0f4486391322f212.json"
+  },
+  {
     "commit": "a660636c50aee17cd0a72305b734a7b2c2f0607c",
     "commitDate": "2026-07-25T19:21:54Z",
     "commitSubject": "Add theme-equipment set index, create-theme flow, and model-proposed rosters (#2032)",
