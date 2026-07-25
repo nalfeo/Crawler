@@ -2581,6 +2581,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }
 
+<<<<<<< HEAD
       // Mob-ability circle avoidance: if the player is inside committed
       // telegraph OR active persistent-zone circles, flee outward using the same
       // geometry consumed by renderer and damage resolution.
@@ -2618,6 +2619,38 @@ export class BehaviorTreeAI implements AIInputProvider {
         for (const circle of zone.geometry.circles) {
           if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
         }
+=======
+      // Mob-ability circle avoidance: if the player is inside a committed
+      // telegraph circle, flee outward using the same committed geometry the
+      // renderer draws — no information advantage over what the player sees.
+      // Runs only when no projectile threat is in the dodge horizon.
+      for (const cue of ctx.world.mobAbilities.cues) {
+        if (cue.phase !== 'telegraph') continue;
+        const { geometry } = cue;
+        const circles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        for (const circle of circles) {
+          const dx = ctx.playerX - circle.x;
+          const dy = ctx.playerY - circle.y;
+          // Use squared distance to match the damage resolver exactly (no sqrt).
+          // The resolver uses `if (dx² + dy² > r²) continue;` so damage hits when
+          // dx² + dy² <= r². The AI must avoid using the SAME geometry contract,
+          // so it continues (skips avoidance) only when strictly outside: dx² + dy² > r².
+          const distSq = dx * dx + dy * dy;
+          const r2 = circle.radiusFt * circle.radiusFt;
+          if (distSq > r2) continue;
+          // Compute unit vector for dodge direction.
+          const dist = Math.sqrt(distSq);
+          if (dist > Number.EPSILON) {
+            this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          } else {
+            // Player is exactly at the circle center — flee along kite orbit tangent.
+            this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = 0;
+          }
+          return BTStatus.SUCCESS;
+        }
+>>>>>>> origin/main
       }
 
       // Enemy-body dodging remains suspended during retreat and engagement:

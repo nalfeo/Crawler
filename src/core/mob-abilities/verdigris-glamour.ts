@@ -210,6 +210,11 @@ function makeResolveHandler(ability: BossAbilityDef) {
   const tuning = readTarnishedTuning(ability);
   return function resolveVerdigrisGlamour(world: GameWorld, ctx: MobAbilityResolveContext): void {
     const { geometry, casterEid, sourceId } = ctx;
+<<<<<<< HEAD
+=======
+    if (geometry.kind !== 'circle') return;
+    const r2 = geometry.radiusFt * geometry.radiusFt;
+>>>>>>> origin/main
     // Every damageable entity inside the committed circle (except the caster)
     // takes moderate damage and is Tarnished. Entities outside are untouched.
     for (const eid of query(world.ecs, [Position, Health])) {

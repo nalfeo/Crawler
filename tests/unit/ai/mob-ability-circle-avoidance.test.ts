@@ -36,6 +36,7 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
     expect(debug.dodgeY).toBeCloseTo(0, 10);
   });
 
+<<<<<<< HEAD
   it('treats active sovereign cloud zones as dangerous and dodges outward', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
@@ -61,6 +62,30 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
       elapsedMs: 0,
       nextTickAtMs: 500,
       tick: () => {},
+=======
+  it('uses spawn-circle telegraphs as danger cues and dodges from the committed circle', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 10, 10);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.position.x[player] = 10;
+    world.stores.position.y[player] = 10;
+    world.mobAbilities.cues.push({
+      abilityId: 'plague-boss-squick-undercity-mob-call',
+      casterEid: 88,
+      phase: 'telegraph',
+      telegraphProgress: 0.4,
+      geometry: {
+        kind: 'spawn-circles',
+        circles: [
+          { kind: 'circle', x: 10, y: 10, radiusFt: 4 },
+          { kind: 'circle', x: 18, y: 10, radiusFt: 4 },
+          { kind: 'circle', x: 14, y: 17, radiusFt: 4 },
+        ],
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'UNDERCITY MOB CALL — The guild always collects!',
+>>>>>>> origin/main
     });
 
     const ai = new BehaviorTreeAI({ seed: 42 });
