@@ -22,6 +22,7 @@
  * running the (multi-minute) headless sample.
  */
 import { createHash } from 'node:crypto';
+import { canonicalJson } from '../../../src/shared/canonical-json.js';
 
 /**
  * Exact top-level `RunStats` keys excluded from the fingerprint because they
@@ -167,6 +168,10 @@ function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
 }
 
+function canonicalString(value: unknown): string {
+  return canonicalJson(value);
+}
+
 function normalizeSample(sample: FingerprintSample): FingerprintSample {
   return {
     seeds: [...sample.seeds].sort((a, b) => a - b),
@@ -196,14 +201,14 @@ export function buildFingerprint(
     const label = runLabel(run);
     const canonical = canonicalizeStats(run.stats, label);
     payload[label] = canonical;
-    runHashes[label] = sha256(JSON.stringify(canonical));
+    runHashes[label] = sha256(canonicalString(canonical));
   }
 
   return {
     version: FINGERPRINT_VERSION,
     sample: normalizeSample(sample),
     runs: sorted.map(runLabel),
-    hash: sha256(JSON.stringify(runHashes)),
+    hash: sha256(canonicalString(runHashes)),
     runHashes,
     payload,
   };
@@ -257,7 +262,29 @@ function sampleMismatchReason(baseline: Fingerprint, current: Fingerprint): stri
 }
 
 function diffValues(baseline: unknown, current: unknown, path: string, out: FieldDrift[]): void {
-  if (JSON.stringify(baseline) === JSON.stringify(current)) {
+  if (Object.is(baseline, current)) {
+    return;
+  }
+  if (Array.isArray(baseline) && Array.isArray(current)) {
+    if (baseline.length !== current.length) {
+      out.push({
+        path: path === '' ? 'length' : `${path}.length`,
+        baseline: baseline.length,
+        current: current.length,
+      });
+    }
+    for (let index = 0; index < Math.max(baseline.length, current.length); index += 1) {
+      const childPath = `${path}[${index}]`;
+      if (index >= baseline.length) {
+        out.push({ path: childPath, baseline: undefined, current: current[index] });
+        continue;
+      }
+      if (index >= current.length) {
+        out.push({ path: childPath, baseline: baseline[index], current: undefined });
+        continue;
+      }
+      diffValues(baseline[index], current[index], childPath, out);
+    }
     return;
   }
   const bothPlainObjects =

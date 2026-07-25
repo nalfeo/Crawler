@@ -1,6 +1,6 @@
 ---
 name: perf-optimizer
-description: Find and land gameplay-neutral resource optimizations in Crawler — faster frames, faster loads, less wasted work, with provably identical gameplay. Use when asked to "make the game run faster", "cut load time", "find where we're wasting time", "profile the runtime", "fix frame-time spikes", "shrink the bundle", "reduce GC pressure", or "hunt a perf regression". Covers measuring first, the hunting-grounds catalog of where waste hides in this codebase, and the mandatory byte-identical `RunStats` neutrality check before PR.
+description: Find and land gameplay-neutral resource optimizations in Crawler — faster frames, faster loads, less wasted work, with byte-identical covered `RunStats`. Use when asked to "make the game run faster", "cut load time", "find where we're wasting time", "profile the runtime", "fix frame-time spikes", "shrink the bundle", "reduce GC pressure", or "hunt a perf regression". Covers measuring first, the hunting-grounds catalog of where waste hides in this codebase, and the mandatory RunStats fingerprint neutrality check before PR.
 ---
 
 # Perf Optimizer
@@ -63,12 +63,11 @@ npm run perf:fingerprint -- --seeds 1-2 --weapons sword --write files/quick.json
 A narrowed sample is **local iteration only** — the tool labels it as such, refuses
 to compare it against a full-gate baseline, and it never satisfies the PR gate.
 
-> **Why this 24-run sample runs locally.** AGENTS.md r15 sends sweeps of >10 runs
-> to GitHub infrastructure. This is an explicit, narrow exception: it is not a
-> sampling sweep but a _deterministic before/after comparison_, and both halves
-> must run on the same machine and build for the comparison to mean anything. It
-> stays a fixed 24-run sample. If you want a wider seed range, that **is** a sweep
-> — dispatch `ai-sweep.yml` and r15 applies.
+> **Execution policy for the 24-run sample.** AGENTS.md r15 defaults any >10-run
+> workload to GitHub infrastructure. Run the full 24-run baseline/check on
+> GitHub-backed execution by default; only run it locally when a human explicitly
+> asks. If you want a wider seed range, that remains a sweep — dispatch
+> `ai-sweep.yml`.
 
 ### 3. Measure the cost you intend to remove
 

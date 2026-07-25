@@ -78,12 +78,10 @@ the neutrality-check procedure. Do not improvise a profiling methodology.
      `npm run review:visual` or an e2e/`ui-probe` check for anything visual, and a
      first-frame / trace measurement for load work. Say which one you did.
 
-   **Broad-sweep exception (AGENTS.md r15).** r15 defaults sweeps of >10 runs to
-   GitHub infrastructure. The 24-run fingerprint sample is an explicit, narrow
-   exception: it is not a sampling sweep but a _deterministic before/after
-   comparison_, and both halves must run on the same machine and the same build
-   for the comparison to mean anything. Run it locally. It stays a single fixed
-   24-run sample — if you find yourself wanting a wider seed range, that is a
+   **Broad-run policy (AGENTS.md r15).** r15 defaults workloads of >10 runs to
+   GitHub infrastructure. Treat the 24-run fingerprint sample the same way:
+   execute it on GitHub-backed infrastructure by default, and run it locally
+   only when a human explicitly asks. If you want a wider seed range, that is a
    sweep and r15 applies: dispatch `ai-sweep.yml`.
 
 3. **Never update the baseline to make drift go away.** A changed fingerprint means

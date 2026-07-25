@@ -191,6 +191,24 @@ describe('compareFingerprints', () => {
     ]);
   });
 
+  it('recurses into arrays and reports element-level drift', () => {
+    const baseline = fp([{ weapon: 'sword', seed: 1, stats: statsFixture() }]);
+    const current = fp([
+      {
+        weapon: 'sword',
+        seed: 1,
+        stats: statsFixture({ levelUps: [{ level: 2, atMs: 999 }, { level: 3, atMs: 1500 }] }),
+      },
+    ]);
+    const comparison = compareFingerprints(baseline, current);
+    expect(comparison.identical).toBe(false);
+    expect(comparison.drifts[0]?.fields).toEqual([
+      { path: 'levelUps.length', baseline: 1, current: 2 },
+      { path: 'levelUps[0].atMs', baseline: 500, current: 999 },
+      { path: 'levelUps[1]', baseline: undefined, current: { level: 3, atMs: 1500 } },
+    ]);
+  });
+
   it('flags runs present in only one fingerprint', () => {
     const baseline = fp([{ weapon: 'sword', seed: 1, stats: statsFixture() }]);
     const current = fp([{ weapon: 'bow', seed: 1, stats: statsFixture() }]);
