@@ -42,12 +42,17 @@ export interface SetPieceReachabilityResult {
   /** Number of NPC anchors found inside the set-piece room bounds. */
   readonly npcCount: number;
   /**
-   * Whether the prefab was authoritatively CARVED (room bounds == footprint) vs.
-   * degraded to the legacy render-only fallback (bounds != footprint). Surfaced
-   * as a first-class signal so the sweep can report degradation as a number:
-   * `carved: false` is a hard failure (see check #0) AND the expected steady
-   * state is zero degradations. A non-zero count means carve tiers 1–2 are
-   * under-powered, never an acceptable resting place.
+   * Whether the prefab was authoritatively CARVED, taken from the persisted
+   * ground truth `scenario.welcomeRoomCarved` (`welcomeCarve.fitted`), NOT from
+   * the `bounds == footprint` proxy — a coincidentally footprint-sized generator
+   * room could satisfy that proxy while shipping the render-only fallback, a
+   * false-green. `bounds == footprint` survives only as defense-in-depth (check
+   * #0a) for the distinct fitted-but-inconsistent-bounds bug class. Do NOT
+   * "simplify" this back to the bounds proxy — that reintroduces the false-pass
+   * (rule #11). Surfaced as a first-class signal so the sweep can report
+   * degradation as a number: `carved: false` is a hard failure (see check #0)
+   * AND the expected steady state is zero degradations. A non-zero count means
+   * carve tiers 1–2 are under-powered, never an acceptable resting place.
    */
   readonly carved: boolean;
 }
