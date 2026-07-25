@@ -62,6 +62,7 @@ import {
   unrecordedConflictEpisode,
 } from './review-request.mjs';
 import { evaluatePhase, formatLifecycleOutcome, LIFECYCLE_MARKER, parseLifecycleComment } from './pr-lifecycle.mjs';
+import { DISPATCH_ACTION, selectEarlyAction } from './dispatch-table.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -1187,60 +1188,182 @@ if (!mergeTrainEnabled) {
   }
 }
 
-if (labelExists && state?.owner === 'shepherd' && !isLeaseExpired(state, now)) {
-  process.stdout.write(`skip pr=#${prNumber} reason=active-shepherd-lease\n`);
-  process.exit(0);
-}
-if (labelExists && state?.owner === 'shepherd') {
-  stopIfReleaseConvergedElsewhere(await release('expired-shepherd-lease'));
-}
+// ── Phase A: early dispatch table (D5 structural invariant) ─────────────────
+// All facts below are computable from the initial PR+state fetch with no
+// additional API calls (cheap context).  Declaring them here makes them
+// available to the Phase A dispatch table AND to later pipeline sections.
+//
+// Key structural guarantee (D5): in the dispatch table, RELEASE rows (R04/R05)
+// are ordered before OWNER-BLIND SKIP rows (R06/R07), enforced by a runtime
+// assertion in dispatch-table.mjs.  This makes it structurally impossible for a
+// stale automation lock to be stranded behind an owner-blind early exit.
+//
+// Conflict-rebase decisions (R08-R11) are also evaluated here, before the
+// expensive thread fetch, because they depend only on cheap PR+state facts.
+// R12 (exhausted retries) is not an early exit; it falls through to add a
+// merge-conflict blocker and is dispatched by the terminal table.
 
-// Reclaim a stale AUTOMATION lease that would otherwise strand its ci-owner
-// lock. The automation stale-lock GC (the isDuplicateDispatch block far below)
-// runs AFTER the merge-train-owned, ci-conflict-order-wait and hasMergeConflict
-// `process.exit(0)` short-circuits, so a conflicted or merge-train-owned
-// automation-owned PR could never reach it — its lock stayed held indefinitely
-// even though the lease-reaper re-dispatched it every sweep (observed: #1759
-// held ci-owner-pr-1759 for ~37h). Release it here, before those exits, but
-// ONLY for PRs that would short-circuit before the GC so the mergeable-PR
-// reaper path (attempt-ceiling retry via stale-automation-retry) is left
-// completely unchanged.
-if (
-  labelExists &&
-  state?.owner === 'automation' &&
-  ['active', 'dispatched', 'escalated'].includes(state.status)
-) {
-  const automationProgressAt = Date.parse(state.progressAt || state.updatedAt);
-  const automationLeaseStale =
-    Number.isFinite(automationProgressAt) &&
-    now.getTime() - automationProgressAt >= AUTOMATION_STALE_MINUTES * 60 * 1000;
-  const prHasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
-  const trainShortCircuits =
-    mergeTrainEnabled &&
-    !pendingHumanApproval &&
-    ((pr.labels || []).some((label) => label.name === QUEUE_LABEL) ||
-      shouldWaitForCiConflictOrder(pr.labels));
-  if (automationLeaseStale && (prHasMergeConflict || trainShortCircuits)) {
-    stopIfReleaseConvergedElsewhere(await release('stale-automation-conflict-reclaim'));
-    process.stdout.write(
-      `released stale automation lock pr=#${prNumber} reason=conflict-or-train-short-circuit\n`,
-    );
-    process.exit(0);
+const hasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
+const rebaseDispatchPendingForHead =
+  state?.headSha === pr.head.sha && state?.trigger === 'rebase-dispatched';
+const rebaseDispatchAttemptsForHead =
+  rebaseDispatchPendingForHead && Number.isInteger(state?.attempt) ? state.attempt : 0;
+const rebaseRetryAttemptsExhausted = rebaseDispatchAttemptsForHead >= REBASE_FAILURE_MAX_ATTEMPTS;
+const autoRebaseFailed = trigger === 'auto-rebase-failure';
+// Exponential backoff (60s/120s/240s, bounded at REBASE_FAILURE_MAX_ATTEMPTS attempts) gates
+// *every* trigger that observes a pending rebase-dispatched retry -- not only the explicit
+// `auto-rebase-failure` webhook. Previously only that exact trigger honored the backoff; any
+// other trigger (in particular the 10-minute `schedule` sweep) skipped straight past the
+// intended 60/120/240s cadence and only re-evaluated after a flat 15-minute pending timeout,
+// which (once elapsed) also redispatched past REBASE_FAILURE_MAX_ATTEMPTS with no bound at
+// all. Keying the backoff off the persisted attempt count/timestamp (not the invoking
+// trigger) makes the cadence real for scheduled sweeps while keeping retries strictly bounded.
+const rebaseFailureBackoffActive =
+  rebaseDispatchPendingForHead &&
+  !rebaseRetryAttemptsExhausted &&
+  now.getTime() - Date.parse(state.updatedAt) <
+    calculateRebaseFailureBackoffMs(rebaseDispatchAttemptsForHead);
+
+{
+  const earlyAutomationProgressAtMs =
+    labelExists &&
+    state?.owner === 'automation' &&
+    ['active', 'dispatched', 'escalated'].includes(state?.status)
+      ? Date.parse(state.progressAt || state.updatedAt)
+      : NaN;
+  let earlyCtx = {
+    labelExists,
+    owner: state?.owner ?? 'none',
+    status: state?.status ?? 'idle',
+    shepherdLeaseExpired: labelExists && state?.owner === 'shepherd' && isLeaseExpired(state, now),
+    automationLeaseStale:
+      Number.isFinite(earlyAutomationProgressAtMs) &&
+      now.getTime() - earlyAutomationProgressAtMs >= AUTOMATION_STALE_MINUTES * 60 * 1000,
+    mergeTrainEnabled,
+    pendingHumanApproval,
+    hasMergeConflict,
+    hasQueueLabel: (pr.labels || []).some((label) => label.name === QUEUE_LABEL),
+    hasCiConflictOrderWait: shouldWaitForCiConflictOrder(pr.labels),
+    trainShortCircuits:
+      mergeTrainEnabled &&
+      !pendingHumanApproval &&
+      ((pr.labels || []).some((label) => label.name === QUEUE_LABEL) ||
+        shouldWaitForCiConflictOrder(pr.labels)),
+    trigger,
+    rebaseDispatchPendingForHead,
+    rebaseDispatchAttemptsForHead,
+    rebaseFailureBackoffActive,
+    rebaseRetryAttemptsExhausted,
+    autoRebaseFailed,
+  };
+
+  // R04 is non-terminal (release and continue): release the expired shepherd
+  // lease, update the context, then re-evaluate the remaining table rows so
+  // that R06/R07 or conflict-rebase rows can still fire for this reconcile pass.
+  let earlyRow = selectEarlyAction(earlyCtx);
+  if (earlyRow?.action === DISPATCH_ACTION.RELEASE_EXPIRED_SHEPHERD) {
+    stopIfReleaseConvergedElsewhere(await release('expired-shepherd-lease'));
+    // release() sets module-level labelExists = false; mirror that into earlyCtx.
+    earlyCtx = {
+      ...earlyCtx,
+      labelExists: false,
+      owner: 'none',
+      status: 'idle',
+      shepherdLeaseExpired: false,
+    };
+    earlyRow = selectEarlyAction(earlyCtx);
   }
-}
 
-if (
-  mergeTrainEnabled &&
-  !pendingHumanApproval &&
-  (pr.labels || []).some((label) => label.name === QUEUE_LABEL)
-) {
-  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
-  process.exit(0);
-}
+  if (earlyRow) {
+    switch (earlyRow.action) {
+      case DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_CONFLICT:
+        // R05: stale automation lock — released before any owner-blind exit (D5 fix)
+        stopIfReleaseConvergedElsewhere(await release('stale-automation-conflict-reclaim'));
+        process.stdout.write(
+          `released stale automation lock pr=#${prNumber} reason=conflict-or-train-short-circuit\n`,
+        );
+        process.exit(0);
+        break;
 
-if (mergeTrainEnabled && !pendingHumanApproval && shouldWaitForCiConflictOrder(pr.labels)) {
-  process.stdout.write(`skip pr=#${prNumber} reason=ci-conflict-order-wait\n`);
-  process.exit(0);
+      case DISPATCH_ACTION.SKIP_ACTIVE_SHEPHERD:
+        // R03: active shepherd lease — owner-aware exit, safe to skip immediately
+        process.stdout.write(`skip pr=#${prNumber} reason=active-shepherd-lease\n`);
+        process.exit(0);
+        break;
+
+      case DISPATCH_ACTION.SKIP_MERGE_TRAIN_OWNED:
+        // R06: merge-train-owned (owner-blind — D5 invariant guarantees R05 ran first)
+        process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
+        process.exit(0);
+        break;
+
+      case DISPATCH_ACTION.SKIP_CI_CONFLICT_ORDER_WAIT:
+        // R07: ci-conflict-order-wait (owner-blind — D5 invariant guarantees R05 ran first)
+        process.stdout.write(`skip pr=#${prNumber} reason=ci-conflict-order-wait\n`);
+        process.exit(0);
+        break;
+
+      case DISPATCH_ACTION.WAIT_CONFLICT_REBASE_PENDING:
+        // R09: a conflict-only rebase was already dispatched for this head; wait
+        process.stdout.write(
+          `wait pr=#${prNumber} reason=conflict-rebase-pending attempt=${rebaseDispatchAttemptsForHead}\n`,
+        );
+        process.exit(0);
+        break;
+
+      case DISPATCH_ACTION.WAIT_CONFLICT_REBASE_BACKOFF:
+        // R10: conflict-rebase retry is in exponential backoff; wait
+        process.stdout.write(
+          `wait pr=#${prNumber} reason=conflict-rebase-retry-backoff attempt=${rebaseDispatchAttemptsForHead}\n`,
+        );
+        process.exit(0);
+        break;
+
+      case DISPATCH_ACTION.RETRY_CONFLICT_REBASE:
+      case DISPATCH_ACTION.DISPATCH_CONFLICT_REBASE: {
+        // R11/R08: dispatch (or retry) a conflict-only rebase
+        const conflictBlocker = {
+          kind: 'merge-conflict',
+          id: pr.head.sha,
+          summary: 'The PR conflicts with main and requires a conflict-only rebase.',
+          url: pr.html_url,
+        };
+        const rebaseState = makeState({
+          prNumber,
+          headSha: pr.head.sha,
+          fingerprint: blockerFingerprint([conflictBlocker]),
+          owner: 'none',
+          status: 'idle',
+          trigger: 'rebase-dispatched',
+          blockers: [conflictBlocker],
+          attempt: rebaseDispatchAttemptsForHead + 1,
+          updatedAt: now.toISOString(),
+        });
+        if (earlyCtx.labelExists) {
+          stopIfReleaseConvergedElsewhere(await release('rebase-dispatched', rebaseState));
+        } else {
+          const waitingTransition = await prepareWaitingExit();
+          await updateState(rebaseState);
+          await completeWaitingExit(waitingTransition);
+        }
+        await assertExpectedMetadataUnchanged('auto-rebase-dispatch');
+        await dispatchWorkflow('auto-rebase-prs.yml', {
+          pr_number: String(prNumber),
+          expected_head_sha: pr.head.sha,
+          expected_base_ref: pr.base?.ref ?? '',
+          trigger: 'ci-recovery-conflict',
+        });
+        process.stdout.write(`dispatched conflict-only rebase pr=#${prNumber}\n`);
+        process.exit(0);
+        break;
+      }
+
+      default:
+        throw new Error(
+          `dispatch-table: unexpected early action ${earlyRow.action} for pr=#${prNumber}`,
+        );
+    }
+  }
 }
 
 const review = await listReviewThreads(readToken, owner, repo, prNumber);
@@ -1574,7 +1697,6 @@ for (const thread of unresolvedThreads) {
 }
 
 const blockers = [];
-const hasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
 const conflictEpisode = unrecordedConflictEpisode({ pr, hasMergeConflict, comments });
 if (conflictEpisode) {
   const marker = conflictEpisodeMarker(conflictEpisode);
@@ -1660,84 +1782,6 @@ if (
   // recreate the stale no-op/validation blocker for the new head.
   trainNoop = false;
   validationFailed = false;
-}
-const rebaseDispatchPendingForHead =
-  state?.headSha === pr.head.sha && state?.trigger === 'rebase-dispatched';
-const rebaseDispatchAttemptsForHead =
-  rebaseDispatchPendingForHead && Number.isInteger(state?.attempt) ? state.attempt : 0;
-const rebaseRetryAttemptsExhausted = rebaseDispatchAttemptsForHead >= REBASE_FAILURE_MAX_ATTEMPTS;
-const autoRebaseFailed = trigger === 'auto-rebase-failure';
-// Exponential backoff (60s/120s/240s, bounded at REBASE_FAILURE_MAX_ATTEMPTS attempts) gates
-// *every* trigger that observes a pending rebase-dispatched retry -- not only the explicit
-// `auto-rebase-failure` webhook. Previously only that exact trigger honored the backoff; any
-// other trigger (in particular the 10-minute `schedule` sweep) skipped straight past the
-// intended 60/120/240s cadence and only re-evaluated after a flat 15-minute pending timeout,
-// which (once elapsed) also redispatched past REBASE_FAILURE_MAX_ATTEMPTS with no bound at
-// all. Keying the backoff off the persisted attempt count/timestamp (not the invoking
-// trigger) makes the cadence real for scheduled sweeps while keeping retries strictly bounded.
-const rebaseFailureBackoffActive =
-  rebaseDispatchPendingForHead &&
-  !rebaseRetryAttemptsExhausted &&
-  now.getTime() - Date.parse(state.updatedAt) <
-    calculateRebaseFailureBackoffMs(rebaseDispatchAttemptsForHead);
-if (
-  mergeTrainEnabled &&
-  hasMergeConflict &&
-  trigger !== 'auto-rebase-conflict' &&
-  trigger !== 'auto-rebase-failure' &&
-  rebaseFailureBackoffActive
-) {
-  process.stdout.write(
-    `wait pr=#${prNumber} reason=conflict-rebase-pending attempt=${rebaseDispatchAttemptsForHead}\n`,
-  );
-  process.exit(0);
-}
-if (mergeTrainEnabled && hasMergeConflict && autoRebaseFailed && rebaseFailureBackoffActive) {
-  process.stdout.write(
-    `wait pr=#${prNumber} reason=conflict-rebase-retry-backoff attempt=${rebaseDispatchAttemptsForHead}\n`,
-  );
-  process.exit(0);
-}
-if (
-  mergeTrainEnabled &&
-  hasMergeConflict &&
-  trigger !== 'auto-rebase-conflict' &&
-  !rebaseRetryAttemptsExhausted &&
-  (!rebaseDispatchPendingForHead || !rebaseFailureBackoffActive)
-) {
-  const conflictBlocker = {
-    kind: 'merge-conflict',
-    id: pr.head.sha,
-    summary: 'The PR conflicts with main and requires a conflict-only rebase.',
-    url: pr.html_url,
-  };
-  const rebaseState = makeState({
-    prNumber,
-    headSha: pr.head.sha,
-    fingerprint: blockerFingerprint([conflictBlocker]),
-    owner: 'none',
-    status: 'idle',
-    trigger: 'rebase-dispatched',
-    blockers: [conflictBlocker],
-    attempt: rebaseDispatchAttemptsForHead + 1,
-    updatedAt: now.toISOString(),
-  });
-  if (labelExists) {
-    stopIfReleaseConvergedElsewhere(await release('rebase-dispatched', rebaseState));
-  } else {
-    const waitingTransition = await prepareWaitingExit();
-    await updateState(rebaseState);
-    await completeWaitingExit(waitingTransition);
-  }
-  await assertExpectedMetadataUnchanged('auto-rebase-dispatch');
-  await dispatchWorkflow('auto-rebase-prs.yml', {
-    pr_number: String(prNumber),
-    expected_head_sha: pr.head.sha,
-    expected_base_ref: pr.base?.ref ?? '',
-    trigger: 'ci-recovery-conflict',
-  });
-  process.stdout.write(`dispatched conflict-only rebase pr=#${prNumber}\n`);
-  process.exit(0);
 }
 if (hasMergeConflict) {
   blockers.push({

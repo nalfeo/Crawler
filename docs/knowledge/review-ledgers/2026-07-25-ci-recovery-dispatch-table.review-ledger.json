@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "ci-recovery-dispatch-table",
+  "task_title": "CI-recovery: dispatch table replaces 2,541-LOC cascade (Issue 1858)",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A: multi-pass/reducer FSM — adopted as structural improvement (pipeline passes). Alt B: single flat table with full upfront context — rejected: wastes API calls for early-exit PRs. Alt C: named rule functions/centralised finaliser — incorporated as the terminal dispatch table. Design refined: (1) ownership cleanup (R01-R02) becomes dedicated pass, not dispatch rows; (2) Phase A expanded to include closing-issues fetch for pendingHumanApproval so R06/R07 guards are correctly gated; (3) multi-pass pipeline made explicit: preamble, ownership-cleanup, lease-ops, waiting-cleanup, human-approval, early-decisions (R03-R12 via table), expensive-facts, side-effects, terminal-dispatch; (4) terminal dispatch table covers only TERMINAL actions (admission-wait, queue, arm-auto-merge, GC skip/release, dispatch-copilot) — non-terminal effects remain in pipeline passes; (5) row ordering assertion added to dispatch-table.mjs (runtime + test); (6) every-combination claim narrowed to terminal recovery decision; (7) throws on unmapped combination for internal invariant violations only."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}
