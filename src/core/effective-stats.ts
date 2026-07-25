@@ -269,29 +269,51 @@ const _scratchEff = {} as Record<StatId, number>;
 const _scratchDefs: Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> = [];
 const _scratchSeen = new Set<EquipmentInstanceId>();
 
+// Enforced non-reentrancy: the safety argument for reusing module-level
+// scratch depends on there being no nested/concurrent call. A comment claiming
+// that won't survive future refactors — this guard turns a nested call into
+// a loud throw instead of silent stat corruption. Overhead is two boolean
+// writes per call (negligible vs the ~3.6us body), so it stays on in
+// production. If a future refactor legitimately needs re-entry (e.g. a
+// preview path calling into the live path), promote the buffers to a small
+// per-caller pool instead of removing this guard.
+let _applyEffectiveStatsInUse = false;
+
 export function applyEffectiveStats(
   world: GameWorld,
   entity: number,
   equipmentState: EquipmentState | undefined,
   activeModifiers: readonly LegacyStatModifierLike[] = [],
 ): void {
-  const stores = world.stores;
-  for (const statId of ALL_STAT_IDS) {
-    _scratchBase[statId] = stores.baseStats[statId][entity] ?? 0;
+  if (_applyEffectiveStatsInUse) {
+    throw new Error(
+      'applyEffectiveStats called re-entrantly; module-level scratch buffers ' +
+        'would alias. Refactor the new call site to snapshot into its own buffer ' +
+        '(see computeEffectiveStatsFromLoadoutInto) or promote the scratch to a pool.',
+    );
   }
-  for (const p of PRIMARY_STATS) {
-    _scratchCore[p] = stores.coreStatPoints[p][entity] ?? 0;
-  }
+  _applyEffectiveStatsInUse = true;
+  try {
+    const stores = world.stores;
+    for (const statId of ALL_STAT_IDS) {
+      _scratchBase[statId] = stores.baseStats[statId][entity] ?? 0;
+    }
+    for (const p of PRIMARY_STATS) {
+      _scratchCore[p] = stores.coreStatPoints[p][entity] ?? 0;
+    }
 
-  computeEffectiveStatsFromLoadoutInto(
-    _scratchEff,
-    _scratchBase,
-    _scratchCore,
-    writeUniqueEquippedDefsInto(_scratchDefs, _scratchSeen, world, equipmentState),
-    activeModifiers,
-  );
+    computeEffectiveStatsFromLoadoutInto(
+      _scratchEff,
+      _scratchBase,
+      _scratchCore,
+      writeUniqueEquippedDefsInto(_scratchDefs, _scratchSeen, world, equipmentState),
+      activeModifiers,
+    );
 
-  for (const statId of ALL_STAT_IDS) {
-    stores.effectiveStats[statId][entity] = _scratchEff[statId];
+    for (const statId of ALL_STAT_IDS) {
+      stores.effectiveStats[statId][entity] = _scratchEff[statId];
+    }
+  } finally {
+    _applyEffectiveStatsInUse = false;
   }
 }
