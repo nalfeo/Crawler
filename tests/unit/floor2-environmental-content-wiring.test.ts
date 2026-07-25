@@ -42,11 +42,11 @@ describe('Floor 2 environmental content wiring', () => {
     expect(source).toContain('manifest.props');
   });
 
-  it('floor2Scenario.ts uses FLOOR2_HARVESTABLE_START_INDEX to slice Floor-2 defs', () => {
+  it('floor2Scenario.ts uses FLOOR2_HARVESTABLE_START_INDEX and FLOOR2_HARVESTABLE_END_INDEX to slice Floor-2 defs', () => {
     const source = readFileSync('src/game/floor2Scenario.ts', 'utf-8');
     expect(source).toContain('FLOOR2_HARVESTABLE_START_INDEX');
     expect(source).toContain('defIndex = FLOOR2_HARVESTABLE_START_INDEX');
-    expect(source).toContain('defIndex < HARVESTABLE_DEFS.length');
+    expect(source).toContain('defIndex < FLOOR2_HARVESTABLE_END_INDEX');
   });
 
   it('floor2.manifest.json has a props block with biomeTag "cave"', () => {

@@ -69,6 +69,11 @@ export interface LightSource {
   y: number;
   radiusPx: number;
   intensity: number;
+  /**
+   * Packed 0xRRGGBB light colour. Stored for future RGB rendering pipeline
+   * support; the current scalar light-field computation uses intensity only.
+   */
+  colorHex?: number;
 }
 
 function clamp(value: number, min: number, max: number): number {

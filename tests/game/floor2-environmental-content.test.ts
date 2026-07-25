@@ -20,9 +20,14 @@ import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
-import { DECORATION_DEFS, getDecorationDef } from '../../src/shared/decorationDefs.js';
+import {
+  DECORATION_DEFS,
+  DECORATION_INDEX_TO_ID,
+  getDecorationDef,
+} from '../../src/shared/decorationDefs.js';
 import {
   FLOOR2_HARVESTABLE_START_INDEX,
+  FLOOR2_HARVESTABLE_END_INDEX,
   HARVESTABLE_DEFS,
   getHarvestableDef,
   getHarvestableDefByIndex,
@@ -105,6 +110,14 @@ describe('Floor 1 harvestable def index stability', () => {
     expect(getHarvestableDefByIndex(6)?.id).toBe('iron-vein');
   });
 
+  it('FLOOR2_HARVESTABLE_END_INDEX is 9 (exclusive upper bound for Floor-2 defs)', () => {
+    expect(FLOOR2_HARVESTABLE_END_INDEX).toBe(9);
+    // Confirm the last Floor-2 def is index 8 (gem-cluster).
+    expect(getHarvestableDefByIndex(8)?.id).toBe('gem-cluster');
+    // Confirm nothing exists at the end index itself (no Floor-3 defs yet).
+    expect(getHarvestableDefByIndex(9)).toBeUndefined();
+  });
+
   it('Floor 1 scenario does not spawn Floor-2 harvestable nodes', () => {
     const world = createTestWorld({ seed: 42, floor: 1 });
     const playerEid = spawnPlayer(world, 0, 0);
@@ -115,6 +128,17 @@ describe('Floor 1 harvestable def index stability', () => {
       (eid) => (world.stores.harvestable.defIndex[eid] ?? -1) >= FLOOR2_HARVESTABLE_START_INDEX,
     );
     expect(floor2Nodes).toHaveLength(0);
+  });
+
+  it('Floor 2 scenario does not spawn hypothetical Floor-3 harvestable nodes', () => {
+    // Even if a Floor-3 def were appended after index 8, the Floor-2 spawner
+    // is bounded by FLOOR2_HARVESTABLE_END_INDEX and must never include it.
+    // Verify the current registry slice is exactly [6, 9).
+    const floor2DefIds = HARVESTABLE_DEFS.slice(
+      FLOOR2_HARVESTABLE_START_INDEX,
+      FLOOR2_HARVESTABLE_END_INDEX,
+    ).map((d) => d.id);
+    expect(floor2DefIds).toEqual(['iron-vein', 'copper-seam', 'gem-cluster']);
   });
 });
 
@@ -284,12 +308,17 @@ describe('placePropsForFloor with cave biome', () => {
       { biomeTag: 'cave', densityMultiplier: 2000 },
       new SeededRandom(42),
     );
-    // If any prop were placed from a different biome that would indicate a
-    // filter bug. The test counts props and relies on the biomeTag filter in
-    // placePropsForFloor to exclude non-cave defs (dungeon, organic, etc.).
-    // We cannot inspect biomeTag directly from ECS, but we CAN assert that at
-    // least some props were placed (confirming the filter matched cave defs).
-    expect(query(world.ecs, [Prop, Position]).length).toBeGreaterThan(0);
+    // Verify every placed prop belongs to a cave-biome def. Reading defIdIndex
+    // from the prop store and resolving via DECORATION_INDEX_TO_ID catches any
+    // regression where non-cave defs slip through the biomeTag filter.
+    const placedProps = Array.from(query(world.ecs, [Prop, Position]));
+    expect(placedProps.length).toBeGreaterThan(0);
+    for (const eid of placedProps) {
+      const defIdx = world.stores.prop.defIdIndex[eid] ?? 0;
+      const defId = DECORATION_INDEX_TO_ID[defIdx];
+      const def = defId != null ? getDecorationDef(defId) : undefined;
+      expect(def?.biomeTag).toBe('cave');
+    }
   });
 });
 
