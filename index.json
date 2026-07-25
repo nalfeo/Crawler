@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4f002dfa3e30ba402fa6eee08474f0c0750ca1c2",
+    "commitDate": "2026-07-25T01:15:23Z",
+    "commitSubject": "feat(engine): add particle effects to reward unlock sequence (#1910)",
+    "capturedAt": "2026-07-25T02:36:15.587Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30138488506",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/4f002dfa3e30ba402fa6eee08474f0c0750ca1c2.json"
+  },
+  {
     "commit": "04650ba3e6ae39a764a4298be80fd5c761d4169c",
     "commitDate": "2026-07-25T00:57:44Z",
     "commitSubject": "feat(ci): introduce authoritative PR-lifecycle FSM (fixes D1/D5/D9/D11) (#1913)",
