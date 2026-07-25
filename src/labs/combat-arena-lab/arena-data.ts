@@ -20,6 +20,7 @@ import {
   createBambooFedBerserkDefinition,
   createDonPacoBigGobDefinition,
   createVerdigrisGlamourDefinition,
+  createRomanCandleCoronationDefinition,
   registerMobAbility,
   setMobAbilitiesEnabled,
 } from '../../core/index.js';
@@ -529,6 +530,8 @@ const F2_QUEEN_MAB = floor2EnemyPack.archetypes.find((a) => a.id === 'faerie-bos
 /** Plague-Boss Squick — the ratfolk boss that owns Undercity Mob Call. */
 const F2_SQUICK = floor2EnemyPack.archetypes.find((a) => a.id === 'ratfolk-boss')!;
 const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-boss')!;
+/** King Skritt the Unburnt — the kobold boss that owns Roman Candle Coronation. */
+const F2_KING_SKRITT = floor2EnemyPack.archetypes.find((a) => a.id === 'kobold-boss')!;
 const F2_DON_PACO = floor2EnemyPack.archetypes.find((a) => a.id === 'llama-boss')!;
 
 /**
@@ -591,6 +594,28 @@ function spawnBigPandaWeiArena(
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   setMobAbilitiesEnabled(world, true);
   registerMobAbility(world, eid, createBambooFedBerserkDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+/**
+ * Spawn King Skritt the Unburnt and arm ROMAN-CANDLE CORONATION through the
+ * canonical mob-ability runtime. Twelve straight non-homing crown-flame
+ * projectiles radiate along telegraphed spokes; every other cast rotates the
+ * whole pattern by exactly 15 degrees.
+ */
+function spawnKingSkryttArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_KING_SKRITT);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createRomanCandleCoronationDefinition());
   activateMobAbilityEncounter(world);
   return [eid];
 }
@@ -697,6 +722,15 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
       'Big Panda Wei solo, with Bamboo-Fed Berserk armed through the canonical mob-ability runtime: 10s eligibility, 1.5s self-following aura telegraph while planted, then 4s +40% move speed, +40% melee damage, and heavy knockback resistance.',
     entries: [],
     customSpawnFn: spawnBigPandaWeiArena,
+  },
+  {
+    id: 'f2-king-skritt',
+    name: 'F2: King Skritt the Unburnt (Roman Candle Coronation)',
+    floor: 'floor2',
+    description:
+      'King Skritt the Unburnt solo, with ROMAN-CANDLE CORONATION armed through the canonical mob-ability runtime: 8s eligibility, 1.3s twelve-spoke hostile-red telegraph, twelve simultaneous crown-flame projectiles, alternating 15-degree rotation every other cast.',
+    entries: [],
+    customSpawnFn: spawnKingSkryttArena,
   },
   {
     id: 'f2-don-paco',

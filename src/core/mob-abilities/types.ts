@@ -42,6 +42,30 @@ export interface MobAbilitySpawnCirclesGeometry {
   readonly circles: readonly MobAbilityCircleGeometry[];
 }
 
+/**
+ * Committed radial-projectiles geometry, locked once at telegraph start.
+ * Describes twelve (or N) spoke paths radiating from the caster's position,
+ * with a deterministic rotational offset derived from the cast ordinal.
+ * The renderer draws spokes from casterX/casterY; the resolve handler launches
+ * one projectile per spoke along the committed direction.
+ */
+export interface MobAbilityRadialProjectilesGeometry {
+  readonly kind: 'radial-projectiles';
+  /** World-space caster origin locked at telegraph start (feet). */
+  readonly casterX: number;
+  readonly casterY: number;
+  /** Number of evenly-spaced spokes. */
+  readonly count: number;
+  /** Visual/danger length of each spoke (feet). */
+  readonly spokeLengthFt: number;
+  /**
+   * Rotational offset applied to all spokes (degrees, 0..360). Derived
+   * deterministically from the cast ordinal at telegraph-start time:
+   * even ordinals → 0, odd ordinals → alternateOffsetDeg from the definition.
+   */
+  readonly offsetDeg: number;
+}
+
 export interface MobAbilityProjectileFanPath {
   readonly kind: 'projectile-path';
   readonly startX: number;
@@ -64,6 +88,7 @@ export interface MobAbilityProjectileFanGeometry {
 export type MobAbilityGeometry =
   | MobAbilityCircleGeometry
   | MobAbilitySpawnCirclesGeometry
+  | MobAbilityRadialProjectilesGeometry
   | MobAbilityProjectileFanGeometry;
 
 export type MobAbilityTargetingMode = 'player-direction' | 'player-position' | 'self';
@@ -128,6 +153,20 @@ export interface MobAbilityRuntimeDefinition {
         readonly count: number;
         readonly radiusFt: number;
         readonly distanceFromCasterFt: number;
+      }
+    | {
+        readonly kind: 'radial-projectiles';
+        /** Number of evenly-spaced spokes (e.g. 12). */
+        readonly count: number;
+        /** Visual/danger length of each spoke used for telegraph rendering (feet). */
+        readonly spokeLengthFt: number;
+        /**
+         * Degrees to rotate the spoke pattern on every other cast.
+         * Cast ordinal 0, 2, 4… → 0°; ordinal 1, 3, 5… → this value.
+         * Must be in (0, 360). Derived deterministically from `resolvedCasts` at
+         * telegraph-start; never uses `Math.random()` or wall-clock time.
+         */
+        readonly alternateOffsetDeg: number;
       }
     | {
         readonly kind: 'projectile-fan';
@@ -327,6 +366,10 @@ export function circlesForMobAbilityGeometry(
       return [geometry];
     case 'spawn-circles':
       return geometry.circles;
+    case 'radial-projectiles':
+      // Radial-projectile spokes are rendered as lines, not circles;
+      // callers that draw spokes handle this geometry kind explicitly.
+      return [];
     case 'projectile-fan':
       return geometry.paths.map((path) => ({
         kind: 'circle',

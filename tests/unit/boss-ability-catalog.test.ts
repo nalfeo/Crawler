@@ -310,9 +310,14 @@ describe('Floor 2 boss ability delivery status', () => {
     );
   });
 
-  it('derives all current work as blocked without storing an overall stage', () => {
+  it('derives the current backlog as blocked with the active king-skritt slice in progress', () => {
     const records = buildBossAbilityStatusRecords();
-    expect(records.every((record) => record.stage === 'blocked')).toBe(true);
+    const stageCounts = records.reduce<Record<string, number>>((counts, record) => {
+      counts[record.stage] = (counts[record.stage] ?? 0) + 1;
+      return counts;
+    }, {});
+    expect(stageCounts).toMatchObject({ blocked: 17, 'in-progress': 1 });
+    expect(Object.keys(stageCounts).sort()).toEqual(['blocked', 'in-progress']);
 
     // Queen Mab and Big Panda Wei runtime/telegraph/arena slices are verified,
     // but both stay blocked overall behind the separate production-enable gate
@@ -564,7 +569,7 @@ describe('Floor 2 boss ability delivery status', () => {
   it('prints a complete non-failing backlog report', () => {
     const report = formatBossAbilityStatusReport();
     expect(report).toContain('Floor 2 boss abilities: 18');
-    expect(report).toContain('Stages: blocked=18');
+    expect(report).toContain('Stages: blocked=17, in-progress=1');
     for (const ability of FLOOR2_BOSS_ABILITY_CATALOG.entries) {
       expect(report).toContain(`${ability.bossName} — ${ability.attackName}`);
     }

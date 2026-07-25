@@ -25,6 +25,7 @@ import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import {
   BAMBOO_FED_BERSERK_ABILITY_ID,
+  ROMAN_CANDLE_CORONATION_ABILITY_ID,
   DON_PACO_BIG_GOB_ABILITY_ID,
   circlesForMobAbilityGeometry,
   getMobAbilityActiveAura,
@@ -46,6 +47,9 @@ const BURST_DEPTH = WORLD_VFX_DEPTH.spellCast;
 
 const COLOR_HOSTILE_RED = 0xef4444;
 const COLOR_CROWN_RUNE = 0xffd166;
+const COLOR_MOLTEN_ORANGE = 0xff8c00;
+const COLOR_EMBER_GOLD = 0xffcc44;
+const COLOR_CHAR_SMOKE = 0x888888;
 const COLOR_VERDIGRIS = 0x3fbf7f;
 const COLOR_BRONZE = 0xb08d57;
 const COLOR_SEWER_GREEN = 0x22c55e;
@@ -68,6 +72,7 @@ const CLEANUP_LIFETIME_MS = 300;
 const CROWN_RUNE_COUNT = 8;
 const BURST_SPARK_COUNT = 18;
 const UNDERCITY_BURST_SPARK_COUNT = 24;
+const CORONATION_BURST_SPARK_COUNT = 28;
 
 export function createMobAbilityVfx(scene: Phaser.Scene): {
   update(world: GameWorld): void;
@@ -88,6 +93,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const berserkAuraLastPos = new Map<number, { x: number; y: number }>();
   const berserkAuraLastPulseFrame = new Map<number, number>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
+  const coronationProjectileLastPos = new Map<number, { x: number; y: number }>();
   const castStartSeen = new Set<number>();
   let projectileGfx: Phaser.GameObjects.Graphics | undefined;
   let slickGfx: Phaser.GameObjects.Graphics | undefined;
@@ -556,12 +562,154 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     return false;
   }
 
+  /**
+   * Draw twelve hostile-red radial spoke paths for the ROMAN-CANDLE CORONATION
+   * telegraph. Each spoke runs from the caster centre to a tip at `spokeLengthPx`
+   * in the direction determined by the spoke index and `offsetDeg`.
+   * Urgency builds as `progress` approaches 1: lines thicken, alpha rises,
+   * and a small arrowhead marks each tip.
+   */
+  function drawRadialTelegraph(
+    gfx: Phaser.GameObjects.Graphics,
+    cx: number,
+    cy: number,
+    count: number,
+    spokeLengthPx: number,
+    offsetDeg: number,
+    progress: number,
+  ): void {
+    const thickness = 2 + 3 * progress;
+    const alpha = 0.7 + 0.3 * progress;
+    gfx.lineStyle(thickness, COLOR_HOSTILE_RED, alpha);
+    for (let i = 0; i < count; i += 1) {
+      const angleDeg = (i / count) * 360 + offsetDeg;
+      const angleRad = (angleDeg * Math.PI) / 180;
+      const tx = cx + Math.cos(angleRad) * spokeLengthPx;
+      const ty = cy + Math.sin(angleRad) * spokeLengthPx;
+      gfx.lineBetween(cx, cy, tx, ty);
+      // Arrowhead at tip (two short lines converging to the spoke tip).
+      const arrowLen = 6 + 4 * progress;
+      const arrowAngle = Math.PI / 5;
+      gfx.lineBetween(
+        tx,
+        ty,
+        tx - arrowLen * Math.cos(angleRad - arrowAngle),
+        ty - arrowLen * Math.sin(angleRad - arrowAngle),
+      );
+      gfx.lineBetween(
+        tx,
+        ty,
+        tx - arrowLen * Math.cos(angleRad + arrowAngle),
+        ty - arrowLen * Math.sin(angleRad + arrowAngle),
+      );
+    }
+    // Crown halo at the caster centre — pulses outward as urgency builds.
+    gfx.lineStyle(2, COLOR_CROWN_RUNE, 0.55 + 0.45 * progress);
+    gfx.strokeCircle(cx, cy, 6 + 6 * progress);
+    // Inner corona fill (very faint, just a glow hint).
+    gfx.fillStyle(COLOR_HOSTILE_RED, 0.06 + 0.1 * progress);
+    gfx.fillCircle(cx, cy, 5 + 5 * progress);
+  }
+
+  /**
+   * Gratuitous coronation burst fired at ROMAN-CANDLE CORONATION resolution:
+   * crown flame jets, ember halo, upward sparks, molten-orange trails, char
+   * flakes, and a central coronation flash.
+   */
+  function spawnCoronationBurst(cx: number, cy: number, spokeLengthPx: number): void {
+    if (!enabled) return;
+    // Central coronation flash: expanding crown-gold ring.
+    spawnRing(
+      cx,
+      cy,
+      spokeLengthPx * 0.08,
+      spokeLengthPx * 0.55,
+      COLOR_CROWN_RUNE,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    // Inner molten-orange pulse.
+    spawnRing(
+      cx,
+      cy,
+      spokeLengthPx * 0.04,
+      spokeLengthPx * 0.3,
+      COLOR_MOLTEN_ORANGE,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    // Hostile-red outer shockwave.
+    spawnRing(
+      cx,
+      cy,
+      spokeLengthPx * 0.12,
+      spokeLengthPx * 0.75,
+      COLOR_HOSTILE_RED,
+      BURST_LIFETIME_MS * 0.8,
+      BURST_DEPTH,
+    );
+    // Upward ember sparks from the centre.
+    spawnSparkBurst(
+      cx,
+      cy,
+      spokeLengthPx * 0.45,
+      [COLOR_EMBER_GOLD, COLOR_MOLTEN_ORANGE] as const,
+      CORONATION_BURST_SPARK_COUNT,
+    );
+    // Char flake haze (desaturated smoke ring).
+    spawnRing(
+      cx,
+      cy,
+      spokeLengthPx * 0.1,
+      spokeLengthPx * 0.4,
+      COLOR_CHAR_SMOKE,
+      BURST_LIFETIME_MS * 1.1,
+      BURST_DEPTH,
+    );
+  }
+
   function update(world: GameWorld): void {
     const runtime = world.mobAbilities;
+    const liveCoronationProjectiles = new Set<number>();
 
     // ── Telegraph circles ──────────────────────────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
+      // ── Radial-projectile spokes (Roman Candle Coronation) ───────────────
+      if (cue.geometry.kind === 'radial-projectiles') {
+        liveCasters.add(cue.casterEid);
+        const geom = cue.geometry;
+        const casterCx = ftToPx(geom.casterX);
+        const casterCy = ftToPx(geom.casterY);
+        const spokeLengthPx = ftToPx(geom.spokeLengthFt);
+        lastGeom.set(cue.casterEid, { x: casterCx, y: casterCy, r: spokeLengthPx });
+        if (!castStartSeen.has(cue.casterEid)) {
+          castStartSeen.add(cue.casterEid);
+          spawnCastStart(casterCx, casterCy, spokeLengthPx * 0.25);
+        }
+        if (!enabled) continue;
+        let gfx = telegraphGfx.get(cue.casterEid);
+        if (gfx === undefined) {
+          gfx = scene.add.graphics();
+          gfx.setDepth(TELEGRAPH_DEPTH);
+          gfx.setBlendMode('ADD');
+          ignoreUi(gfx);
+          telegraphGfx.set(cue.casterEid, gfx);
+        }
+        gfx.clear();
+        drawRadialTelegraph(
+          gfx,
+          casterCx,
+          casterCy,
+          geom.count,
+          spokeLengthPx,
+          geom.offsetDeg,
+          cue.telegraphProgress,
+        );
+        continue;
+      }
+
+      // ── Circle / spawn-circles / projectile-fan ──────────────────────────
       const circles = circlesForMobAbilityGeometry(cue.geometry);
       if (circles.length === 0) continue;
       liveCasters.add(cue.casterEid);
@@ -711,19 +859,55 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       slickGfx = undefined;
     }
 
+    // Track Roman Candle projectile positions from authoritative runtime ownership.
+    for (const inst of runtime.byEntity.values()) {
+      if (inst.definition.abilityId !== ROMAN_CANDLE_CORONATION_ABILITY_ID) continue;
+      for (const [eid, generation] of inst.ownedEntityGenerations) {
+        if ((world.entityRenderGeneration[eid] ?? -1) !== generation) continue;
+        const x = world.stores.position.x[eid];
+        const y = world.stores.position.y[eid];
+        if (x === undefined || y === undefined) continue;
+        liveCoronationProjectiles.add(eid);
+        coronationProjectileLastPos.set(eid, { x: ftToPx(x), y: ftToPx(y) });
+      }
+    }
+    // Emit cinders when tracked coronation projectiles actually despawn/collide.
+    for (const [eid, lastPos] of [...coronationProjectileLastPos.entries()]) {
+      if (liveCoronationProjectiles.has(eid)) continue;
+      spawnRing(
+        lastPos.x,
+        lastPos.y,
+        3,
+        10,
+        COLOR_MOLTEN_ORANGE,
+        BURST_LIFETIME_MS * 0.55,
+        BURST_DEPTH,
+      );
+      coronationProjectileLastPos.delete(eid);
+    }
+
     // ── Resolution bursts (drain the durable pending-burst queue) ─────────
     // The core runtime pushes committed geometry here when a cast resolves, so
     // bursts survive even if the caster is cleared (killed/despawned) later in
     // the same simulation step before PhaserBridge.sync runs.
     while (runtime.pendingBursts.length > 0) {
       const burst = runtime.pendingBursts.shift()!;
+      const geom = burst.geometry;
+      if (geom.kind === 'radial-projectiles') {
+        // Coronation burst: spoke-tip cinders + central flash.
+        spawnCoronationBurst(
+          ftToPx(geom.casterX),
+          ftToPx(geom.casterY),
+          ftToPx(geom.spokeLengthFt),
+        );
+        continue;
+      }
       const spawn =
         burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID
           ? spawnUndercityBurst
           : burst.abilityId === DON_PACO_BIG_GOB_ABILITY_ID
             ? spawnBigGobBurst
             : spawnBurst;
-      const geom = burst.geometry;
       if (geom.kind === 'circle') {
         const cx = ftToPx(geom.x);
         const cy = ftToPx(geom.y);
@@ -885,6 +1069,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     berserkAuraSeen.clear();
     slickLastGeom.clear();
     lastGeom.clear();
+    coronationProjectileLastPos.clear();
     castStartSeen.clear();
   }
 
