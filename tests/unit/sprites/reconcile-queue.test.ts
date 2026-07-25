@@ -821,6 +821,9 @@ describe('runReconcile (real git)', () => {
     expect(gh.prs).toHaveLength(1);
     expect(gh.prs[0]!.head).toBe('assets/promote');
     expect(gh.prs[0]!.autoMerge).toBe(true);
+    // Race-recovered PR must carry merge-train — it was opened without the
+    // label by the concurrent writer and the reconciler must re-ensure it.
+    expect(gh.prs[0]!.labels).toContain('merge-train');
   });
 
   it('(f) ignores a cross-repository (fork) PR reusing the promote branch name', async () => {

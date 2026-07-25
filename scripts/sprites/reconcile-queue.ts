@@ -727,6 +727,23 @@ export async function runReconcile(
             }`,
           );
         }
+        // Race-fallback: the re-queried PR may have been opened without the
+        // enrollment label (concurrent writer or a create that failed after
+        // creation but before label application). Apply the same
+        // exclusion-aware re-ensure logic as the update path.
+        const raceFallbackHasExcludeLabel = reQueried.labels.some((label) =>
+          (MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS as readonly string[]).includes(label),
+        );
+        if (!raceFallbackHasExcludeLabel) {
+          await mustGh(deps.exec, repoRoot, [
+            'pr',
+            'edit',
+            String(reQueried.number),
+            ...repoArgs(repo),
+            '--add-label',
+            MERGE_TRAIN_LABEL,
+          ]);
+        }
         prNumber = reQueried.number;
         created = false;
       }
