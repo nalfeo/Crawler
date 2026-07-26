@@ -517,7 +517,6 @@ export async function computeClosingIssueNumbers(
   return closing.sort((a, b) => a - b);
 }
 
-
 /** Result of locating the open promote PR: its number and current labels. */
 interface OpenPromotePr {
   readonly number: number;

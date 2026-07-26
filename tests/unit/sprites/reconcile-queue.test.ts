@@ -230,7 +230,11 @@ describe('computeClosingIssueNumbers', () => {
       exec,
       '/repo',
       'origin/main',
-      ['public/assets/generated/a-var-1.png', 'public/assets/generated/b-var-1.png', 'public/assets/generated/b-var-2.png'],
+      [
+        'public/assets/generated/a-var-1.png',
+        'public/assets/generated/b-var-1.png',
+        'public/assets/generated/b-var-2.png',
+      ],
       undefined,
     );
     expect(result).toEqual([10, 20]);
@@ -285,9 +289,7 @@ describe('computeClosingIssueNumbers', () => {
 
   it('falls back to changedPaths-only when git ls-tree fails', async () => {
     // ls-tree fails → mainPaths is empty → only changedPaths coverage applies.
-    const issueJson = JSON.stringify([
-      { number: 7, body: makeIssueBody(['generated/x.png']) },
-    ]);
+    const issueJson = JSON.stringify([{ number: 7, body: makeIssueBody(['generated/x.png']) }]);
     const exec = makeClosingExec(issueJson, [], false, /* lsTreeFails */ true);
     const result = await computeClosingIssueNumbers(
       exec,
@@ -302,9 +304,7 @@ describe('computeClosingIssueNumbers', () => {
 
   it('does NOT close an issue with an empty asset list', async () => {
     // A malformed or empty-assets issue payload must not be closed vacuously.
-    const issueJson = JSON.stringify([
-      { number: 1, body: makeIssueBody([]) },
-    ]);
+    const issueJson = JSON.stringify([{ number: 1, body: makeIssueBody([]) }]);
     const exec = makeClosingExec(issueJson);
     const result = await computeClosingIssueNumbers(exec, '/repo', 'origin/main', [], undefined);
     expect(result).toEqual([]);
@@ -338,7 +338,11 @@ describe('computeClosingIssueNumbers', () => {
       exec,
       '/repo',
       'origin/main',
-      ['public/assets/generated/a.png', 'public/assets/generated/b.png', 'public/assets/generated/c.png'],
+      [
+        'public/assets/generated/a.png',
+        'public/assets/generated/b.png',
+        'public/assets/generated/c.png',
+      ],
       undefined,
     );
     expect(result).toEqual([5, 15, 30]);
@@ -1231,10 +1235,7 @@ describe('runReconcile (real git)', () => {
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
     const gh = new FakeGh();
     // Register an asset-checkin issue whose single asset matches what we just queued.
-    gh.seedCheckinIssue(
-      42,
-      makeIssueBody(['generated/skull-mace-var-2.png']),
-    );
+    gh.seedCheckinIssue(42, makeIssueBody(['generated/skull-mace-var-2.png']));
 
     const result = await runReconcile(liveDir, realDeps(gh));
     expect(result.status).toBe('pr-open');
