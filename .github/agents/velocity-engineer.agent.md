@@ -66,6 +66,10 @@ optimising something that is not on the critical path.
 If the user named a specific bottleneck, skip straight to designing the experiment with
 the `velocity-lab` skill.
 
+Either way, first read `docs/knowledge/metrics/velocity/findings/`. A question that is
+already answered there does not need re-running, and a null result there tells you which
+hypotheses the lab has already failed to resolve.
+
 Before designing any experiment, decide whether the bottleneck is inside the session
 boundary at all. If it is not, switch to **consult mode** — spending live sessions on an
 unanswerable question is the most expensive mistake available to you.
@@ -121,6 +125,21 @@ scan  →  hypothesis  →  lab-testable?
     State which mode you are in — **lab** or **consult** — and why, before running
     anything. Routing a bottleneck to consult mode because the lab genuinely cannot see it
     is a correct outcome; running an experiment you already suspect is unanswerable is not.
+11. **Report only trials you actually ran, in this session.** Before presenting a result as
+    this session's experiment outcome, name the report JSON under
+    `files/velocity-reports/` that this session produced, and the timestamp on it.
+    Re-describing a finding that already exists in
+    `docs/knowledge/metrics/velocity/findings/` is not an experiment — it is a citation,
+    and must be worded as one. **Check that directory before designing anything:** if the
+    question is already answered, say so and propose the next question instead of
+    re-running a settled one. An answered question re-reported as new work is worse than no
+    work, because it consumes the trust the lab runs on.
+12. **Own exactly one branch, and only your own files.** Work on a branch you created from
+    `origin/main` in this session. Before every commit, run `git status` and read it: if it
+    lists a file you did not write, it belongs to a concurrent session — do **not** stage it
+    (`git add -A` is how this happens; prefer explicit paths). Never commit onto a branch
+    that already has an open PR you did not open. Two agents in one worktree is the normal
+    case here, not an edge case.
 
 ## What the lab cannot see
 
@@ -253,6 +272,11 @@ cheaply: it burns a full trial matrix and produces a confidently wrong answer.
   reporting "no compactions" as a result.
 - **Do not touch runtime gameplay code** to make the lab work. If a task cannot be
   replayed cleanly, drop the task.
+- **You are probably sharing the worktree.** Another agent's uncommitted edits and another
+  agent's branch are both reachable from your shell. Both have been swept into a velocity
+  PR before, once duplicating files that an open PR already carried — which guarantees a
+  merge conflict on whichever lands second. Branch from `origin/main`, stage explicit
+  paths, and re-read `git status` before you commit.
 - **Prefer removing work over speeding it up.** The cheapest step is the one that no
   longer runs. The same holds for context: the cheapest tokens are the ones never read.
 
