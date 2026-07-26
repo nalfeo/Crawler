@@ -1,7 +1,7 @@
 {
   "id": "classic-fantasy-basic-leather",
   "displayName": "Classic Fantasy [Basic Leather]",
-  "themeDesignLanguage": "Plain undyed-to-mid-brown boiled and oiled leather: simple panelled hide, visible saddle stitching, plain iron buckles and rivets, coarse linen or wool backing where cloth is needed. Utterly unornamented - no engraving, filigree, heraldry, gemstones, gilding, fur trim, or maker marks. Metal appears only as functional fittings and blade/head stock: plain grey iron, matte and slightly pitted, never polished, never brass or steel-blue. Wood is bare ash or oak, oiled, straight-grained, no carving or inlay. Silhouettes are the textbook generic form of each item as a player would picture it from the name alone: light, flexible, quiet gear for rogues, rangers, bards, hunters and scouts who wear leather rather than plate. Excludes: plate armour, chainmail, magic glow, sci-fi materials, modern fasteners, and any decorative flourish whatsoever.",
+  "themeDesignLanguage": "Plain undyed-to-mid-brown boiled and oiled leather: simple panelled hide, visible saddle stitching, plain iron buckles and rivets, coarse linen or wool backing where cloth is needed - plain undyed oatmeal, grey or brown homespun, never dyed, patterned or trimmed. Utterly unornamented - no engraving, filigree, heraldry, gemstones, gilding, fur trim, or maker marks. Metal appears only as functional fittings and blade/head stock: plain grey iron, matte and slightly pitted, never polished, never brass or steel-blue. Wood is bare ash or oak, oiled, straight-grained, no carving or inlay. Silhouettes are the textbook generic form of each item as a player would picture it from the name alone: light, flexible, quiet gear for rogues, rangers, bards, hunters and scouts who wear leather rather than plate. Excludes: plate armour, chainmail, magic glow, sci-fi materials, modern fasteners, and any decorative flourish whatsoever.",
   "weapons": [
     {
       "id": "iron-dagger",
@@ -46,8 +46,8 @@
       "slots": ["neck"]
     },
     {
-      "id": "leather-cloak",
-      "displayName": "Leather Cloak",
+      "id": "cloth-cloak",
+      "displayName": "Cloth Cloak",
       "slots": ["back"]
     },
     {
@@ -56,19 +56,14 @@
       "slots": ["shoulders"]
     },
     {
-      "id": "leather-mask",
-      "displayName": "Leather Mask",
-      "slots": ["face"]
+      "id": "leather-arm-wraps",
+      "displayName": "Leather Arm Wraps",
+      "slots": ["leftArm", "rightArm"]
     },
     {
-      "id": "leather-bracer-left",
-      "displayName": "Leather Bracer",
-      "slots": ["leftWrist"]
-    },
-    {
-      "id": "leather-bracer-right",
-      "displayName": "Leather Bracer",
-      "slots": ["rightWrist"]
+      "id": "leather-bracers",
+      "displayName": "Leather Bracers",
+      "slots": ["leftWrist", "rightWrist"]
     },
     {
       "id": "leather-tunic",
@@ -96,14 +91,9 @@
       "slots": ["feet"]
     },
     {
-      "id": "iron-ring-left",
+      "id": "iron-ring",
       "displayName": "Iron Ring",
-      "slots": ["ringLeft"]
-    },
-    {
-      "id": "iron-ring-right",
-      "displayName": "Iron Ring",
-      "slots": ["ringRight"]
+      "slots": ["ringLeft", "ringRight"]
     }
   ]
 }
