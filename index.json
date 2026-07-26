@@ -1,5 +1,16 @@
 [
   {
+    "commit": "adaa4c26602a5385933e0cbdfb0b922cf83d3923",
+    "commitDate": "2026-07-26T00:10:24Z",
+    "commitSubject": "fix(ci-recovery): resolve outdated review threads before R06/R07 early exits (#2058)",
+    "capturedAt": "2026-07-26T01:32:45.387Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30181026474",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/adaa4c26602a5385933e0cbdfb0b922cf83d3923.json"
+  },
+  {
     "commit": "bbcbf61a65933c0362a5b5806010e0fdcb0c64bf",
     "commitDate": "2026-07-25T23:59:59Z",
     "commitSubject": "fix(ci-recovery): auto-resolve stale-marker threads where trusted SHA is a 7-char-prefix typo of head (#2055)",
