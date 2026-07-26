@@ -51,7 +51,8 @@
  * — running in CI (the hourly workflow) is the entire point of PR2.
  */
 
-import { ASSET_SURFACE_PATHS, type Exec } from './checkin.js';
+import { parseAssetIssueBody } from './asset-issues.js';
+import { ASSET_CHECKIN_LABEL, ASSET_SURFACE_PATHS, type Exec } from './checkin.js';
 
 /** How the reconcile cycle resolved. */
 export type ReconcileStatus = 'noop' | 'pr-open';
@@ -80,6 +81,12 @@ export interface ReconcileResult {
   readonly promoteCommit?: string;
   /** Art-surface paths that differ between queue and main (the batch). */
   readonly changedPaths?: readonly string[];
+  /**
+   * Issue numbers for open `asset-checkin` issues whose complete asset payload
+   * is fully covered by this promotion (and will therefore be closed by it).
+   * Empty when no issues are fully covered or the issue list query fails.
+   */
+  readonly closingIssueNumbers?: readonly number[];
 }
 
 export interface ReconcileDeps {
@@ -380,12 +387,13 @@ function buildPrContent(
   queueBranch: string,
   promoteBranch: string,
   baseBranch: string,
+  closingIssueNumbers: readonly number[] = [],
 ): { title: string; body: string } {
   const iso = now.toISOString();
   const count = changedPaths.length;
   const title = `chore(assets): reconcile queued sprite edits (${count} art path${count === 1 ? '' : 's'})`;
   const list = changedPaths.map((p) => `- \`${p}\``).join('\n');
-  const body = [
+  const parts = [
     `Automated art-only reconciliation of the durable \`${queueBranch}\` branch into`,
     `\`${baseBranch}\` (durable sprite-edit persistence, PR2).`,
     '',
@@ -402,7 +410,12 @@ function buildPrContent(
     '(`scripts/sprites/reconcile-queue.ts`). See',
     'ADR `2026-07-24-sprite-queue-reconciler`.</sub>',
     '',
-  ].join('\n');
+  ];
+  // Auto-close each fully-covered tracking issue when the PR merges.
+  for (const n of closingIssueNumbers) {
+    parts.push(`Closes #${n}`);
+  }
+  const body = parts.join('\n');
   return { title, body };
 }
 
@@ -410,6 +423,100 @@ function buildPrContent(
 function repoArgs(repo: string | undefined): string[] {
   return repo ? ['--repo', repo] : [];
 }
+
+/**
+ * Determine which open `asset-checkin` issues are fully covered by the current
+ * promotion and should therefore be closed when the promotion PR merges.
+ *
+ * An issue is "fully covered" when every asset in its payload maps to a path
+ * that is either:
+ *   (a) in `changedPaths` (being promoted by this PR), or
+ *   (b) already present in `baseRef` on the server (previously landed via
+ *       another promotion PR).
+ *
+ * Partially covered issues — some assets not yet in the queue or not yet
+ * promoted — are excluded so they are never closed prematurely.
+ *
+ * Non-fatal: if the issue list query or the `git ls-tree` call fails for any
+ * reason (network, auth, malformed JSON) the function returns `[]` rather than
+ * propagating an error, so a transient gh outage never aborts a reconcile cycle.
+ *
+ * Exported for deterministic unit testing with a faked exec.
+ */
+export async function computeClosingIssueNumbers(
+  exec: Exec,
+  repoRoot: string,
+  baseRef: string,
+  changedPaths: readonly string[],
+  repo: string | undefined,
+): Promise<readonly number[]> {
+  // 1. List open asset-checkin issues.
+  const issueResult = await exec(
+    'gh',
+    [
+      'issue',
+      'list',
+      ...repoArgs(repo),
+      '--label',
+      ASSET_CHECKIN_LABEL,
+      '--state',
+      'open',
+      '--json',
+      'number,body',
+      '--limit',
+      '200',
+    ],
+    { cwd: repoRoot },
+  );
+  if (issueResult.code !== 0) return [];
+
+  let rawIssues: Array<{ number?: unknown; body?: unknown }>;
+  try {
+    rawIssues = JSON.parse(issueResult.stdout.trim() || '[]') as Array<{
+      number?: unknown;
+      body?: unknown;
+    }>;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(rawIssues) || rawIssues.length === 0) return [];
+
+  // 2. Get art paths already present in baseRef (previously landed).
+  //    Non-fatal on error: we fall back to changedPaths-only coverage.
+  const lsResult = await exec(
+    'git',
+    ['ls-tree', '--name-only', '-r', baseRef, '--', ...ASSET_SURFACE_PATHS],
+    { cwd: repoRoot },
+  );
+  const mainPaths = new Set<string>(
+    lsResult.code === 0
+      ? lsResult.stdout
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => l !== '')
+      : [],
+  );
+
+  // 3. Union: paths covered AFTER this PR merges = changedPaths ∪ existing-in-main.
+  const coveredPaths = new Set<string>([...changedPaths, ...mainPaths]);
+
+  // 4. Keep only issues whose complete asset set is fully covered.
+  const closing: number[] = [];
+  for (const raw of rawIssues) {
+    if (typeof raw.number !== 'number') continue;
+    if (typeof raw.body !== 'string') continue;
+    const payload = parseAssetIssueBody(raw.body);
+    if (payload === null || payload.assets.length === 0) continue;
+
+    const allCovered = payload.assets.every((asset) =>
+      coveredPaths.has(`public/assets/${asset.assetPath}`),
+    );
+    if (allCovered) closing.push(raw.number);
+  }
+
+  return closing.sort((a, b) => a - b);
+}
+
 
 /** Result of locating the open promote PR: its number and current labels. */
 interface OpenPromotePr {
@@ -694,6 +801,15 @@ export async function runReconcile(
     }
 
     // 7. Open or update the ONE promote → main PR (idempotent; never duplicate).
+    //    Compute closing issue numbers non-fatally (transient gh failure must
+    //    never abort the reconcile cycle; we just omit the closing keywords).
+    const closingIssueNumbers = await computeClosingIssueNumbers(
+      deps.exec,
+      repoRoot,
+      baseRef,
+      changedPaths,
+      repo,
+    );
     const { title, body } = buildPrContent(
       changedPaths,
       promoteCommit,
@@ -701,6 +817,7 @@ export async function runReconcile(
       queueBranch,
       promoteBranch,
       baseBranch,
+      closingIssueNumbers,
     );
     const existing = await findOpenPromotePr(deps.exec, repoRoot, repo, promoteBranch, baseBranch);
     let prNumber: number;
@@ -822,6 +939,7 @@ export async function runReconcile(
       armed: true,
       promoteCommit,
       changedPaths,
+      closingIssueNumbers,
     };
   });
 }

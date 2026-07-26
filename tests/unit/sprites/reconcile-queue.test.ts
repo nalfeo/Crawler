@@ -27,10 +27,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { planAssetCheckin } from '../../../scripts/sprites/checkin.js';
 import type { Exec, ExecResult } from '../../../scripts/sprites/checkin.js';
 import {
   assertArtSurfaceModes,
   assertArtSurfaceOnly,
+  computeClosingIssueNumbers,
   isArtSurfacePath,
   ReconcileError,
   runReconcile,
@@ -158,6 +160,192 @@ describe('assertArtSurfaceModes (mode-aware type-change guard)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Layer 1.5: computeClosingIssueNumbers — pure-unit with faked exec
+// ---------------------------------------------------------------------------
+
+/** Build a realistic issue body containing an asset-checkin payload. */
+function makeIssueBody(assetPaths: readonly string[]): string {
+  const assets = assetPaths.map((assetPath) => ({
+    assetPath,
+    manifestKey: assetPath.replace('generated/', '').replace('.png', ''),
+    briefId: null,
+    variantIndex: null,
+  }));
+  return planAssetCheckin({ assets, now: FIXED_NOW, slug: 'test-slug' }).issueBody;
+}
+
+/**
+ * Build a fake exec for `computeClosingIssueNumbers` that returns:
+ * - `issueJson` for `gh issue list`
+ * - `mainPaths` for `git ls-tree`
+ */
+function makeClosingExec(
+  issueJson: string,
+  mainPaths: readonly string[] = [],
+  issueListFails = false,
+  lsTreeFails = false,
+): Exec {
+  return (command, args) => {
+    if (command === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+      if (issueListFails) return Promise.resolve({ stdout: '', stderr: 'error', code: 1 });
+      return Promise.resolve({ stdout: issueJson, stderr: '', code: 0 });
+    }
+    if (command === 'git' && args[0] === 'ls-tree') {
+      if (lsTreeFails) return Promise.resolve({ stdout: '', stderr: 'error', code: 1 });
+      return Promise.resolve({ stdout: mainPaths.join('\n'), stderr: '', code: 0 });
+    }
+    return Promise.resolve({ stdout: '', stderr: `unexpected ${command} ${args[0]}`, code: 1 });
+  };
+}
+
+describe('computeClosingIssueNumbers', () => {
+  it('returns [] when there are no open asset-checkin issues', async () => {
+    const exec = makeClosingExec('[]');
+    const result = await computeClosingIssueNumbers(exec, '/repo', 'origin/main', [], undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('closes one issue whose assets are all in changedPaths', async () => {
+    const issueJson = JSON.stringify([
+      { number: 42, body: makeIssueBody(['generated/skull-mace-var-2.png']) },
+    ]);
+    const exec = makeClosingExec(issueJson);
+    const result = await computeClosingIssueNumbers(
+      exec,
+      '/repo',
+      'origin/main',
+      ['public/assets/generated/skull-mace-var-2.png'],
+      undefined,
+    );
+    expect(result).toEqual([42]);
+  });
+
+  it('closes multiple issues when all their assets are in changedPaths', async () => {
+    const issueJson = JSON.stringify([
+      { number: 10, body: makeIssueBody(['generated/a-var-1.png']) },
+      { number: 20, body: makeIssueBody(['generated/b-var-1.png', 'generated/b-var-2.png']) },
+    ]);
+    const exec = makeClosingExec(issueJson);
+    const result = await computeClosingIssueNumbers(
+      exec,
+      '/repo',
+      'origin/main',
+      ['public/assets/generated/a-var-1.png', 'public/assets/generated/b-var-1.png', 'public/assets/generated/b-var-2.png'],
+      undefined,
+    );
+    expect(result).toEqual([10, 20]);
+  });
+
+  it('does NOT close a partially-covered issue (some assets missing from changedPaths)', async () => {
+    const issueJson = JSON.stringify([
+      { number: 99, body: makeIssueBody(['generated/a.png', 'generated/b.png']) },
+    ]);
+    const exec = makeClosingExec(issueJson);
+    // Only 'a.png' is being promoted; 'b.png' is neither in changedPaths nor on main.
+    const result = await computeClosingIssueNumbers(
+      exec,
+      '/repo',
+      'origin/main',
+      ['public/assets/generated/a.png'],
+      undefined,
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('closes an issue whose remaining assets are already on main (previously landed)', async () => {
+    // Issue has [a.png, b.png]. 'a.png' is being promoted now; 'b.png' was
+    // previously promoted (present in main). Together the issue is fully covered.
+    const issueJson = JSON.stringify([
+      { number: 55, body: makeIssueBody(['generated/a.png', 'generated/b.png']) },
+    ]);
+    const exec = makeClosingExec(issueJson, [
+      'public/assets/generated/b.png', // already on main
+    ]);
+    const result = await computeClosingIssueNumbers(
+      exec,
+      '/repo',
+      'origin/main',
+      ['public/assets/generated/a.png'], // being promoted now
+      undefined,
+    );
+    expect(result).toEqual([55]);
+  });
+
+  it('returns [] (non-fatal) when the gh issue list call fails', async () => {
+    const exec = makeClosingExec('', [], /* issueListFails */ true);
+    const result = await computeClosingIssueNumbers(exec, '/repo', 'origin/main', [], undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] (non-fatal) when the issue list JSON is malformed', async () => {
+    const exec = makeClosingExec('not-valid-json');
+    const result = await computeClosingIssueNumbers(exec, '/repo', 'origin/main', [], undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('falls back to changedPaths-only when git ls-tree fails', async () => {
+    // ls-tree fails → mainPaths is empty → only changedPaths coverage applies.
+    const issueJson = JSON.stringify([
+      { number: 7, body: makeIssueBody(['generated/x.png']) },
+    ]);
+    const exec = makeClosingExec(issueJson, [], false, /* lsTreeFails */ true);
+    const result = await computeClosingIssueNumbers(
+      exec,
+      '/repo',
+      'origin/main',
+      ['public/assets/generated/x.png'],
+      undefined,
+    );
+    // changedPaths covers the asset, so the issue is still closed.
+    expect(result).toEqual([7]);
+  });
+
+  it('does NOT close an issue with an empty asset list', async () => {
+    // A malformed or empty-assets issue payload must not be closed vacuously.
+    const issueJson = JSON.stringify([
+      { number: 1, body: makeIssueBody([]) },
+    ]);
+    const exec = makeClosingExec(issueJson);
+    const result = await computeClosingIssueNumbers(exec, '/repo', 'origin/main', [], undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('skips issues with missing or non-parseable payloads', async () => {
+    const issueJson = JSON.stringify([
+      { number: 1, body: 'just text, no payload marker' },
+      { number: 2, body: makeIssueBody(['generated/valid.png']) },
+    ]);
+    const exec = makeClosingExec(issueJson);
+    const result = await computeClosingIssueNumbers(
+      exec,
+      '/repo',
+      'origin/main',
+      ['public/assets/generated/valid.png'],
+      undefined,
+    );
+    // Only issue #2 has a valid payload and is fully covered.
+    expect(result).toEqual([2]);
+  });
+
+  it('returns issue numbers in ascending order', async () => {
+    const issueJson = JSON.stringify([
+      { number: 30, body: makeIssueBody(['generated/c.png']) },
+      { number: 5, body: makeIssueBody(['generated/a.png']) },
+      { number: 15, body: makeIssueBody(['generated/b.png']) },
+    ]);
+    const exec = makeClosingExec(issueJson);
+    const result = await computeClosingIssueNumbers(
+      exec,
+      '/repo',
+      'origin/main',
+      ['public/assets/generated/a.png', 'public/assets/generated/b.png', 'public/assets/generated/c.png'],
+      undefined,
+    );
+    expect(result).toEqual([5, 15, 30]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Layer 2: control-flow (faked exec)
 // ---------------------------------------------------------------------------
 
@@ -222,6 +410,9 @@ function makeFakeExec(config: FakeExecConfig): {
       if (args[0] === 'rev-parse') {
         return respond({ stdout: 'psha\n' });
       }
+      if (args[0] === 'ls-tree') {
+        return respond({ stdout: '' });
+      }
       return respond({});
     }
     if (command === 'gh') {
@@ -230,6 +421,9 @@ function makeFakeExec(config: FakeExecConfig): {
       }
       if (args[0] === 'pr' && args[1] === 'create') {
         return respond({ stdout: 'https://github.com/o/r/pull/1\n' });
+      }
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return respond({ stdout: '[]' });
       }
       return respond({});
     }
@@ -526,6 +720,13 @@ class FakeGh {
   createRaceInsert = false;
   /** Labels the create-race-inserted PR carries (see `createRaceInsert`). */
   createRaceLabels: string[] = [];
+  /**
+   * Open `asset-checkin` issues available to `gh issue list`. Each entry is the
+   * raw JSON object returned by `gh issue list --json number,body`. Populated via
+   * `seedCheckinIssue`.
+   */
+  checkinIssues: Array<{ number: number; body: string }> = [];
+
   /** Pre-seed an open PR (used to exercise the create-race reuse path). */
   seedOpen(head: string, base: string, isCrossRepository = false, labels: string[] = []): number {
     const number = this.next++;
@@ -543,9 +744,24 @@ class FakeGh {
     return number;
   }
 
+  /** Pre-seed an open asset-checkin issue (for issue-closure tests). */
+  seedCheckinIssue(number: number, body: string): void {
+    this.checkinIssues.push({ number, body });
+  }
+
   handle(args: readonly string[]): ExecResult {
     const ok = (stdout = ''): ExecResult => ({ stdout, stderr: '', code: 0 });
     const err = (stderr: string): ExecResult => ({ stdout: '', stderr, code: 1 });
+
+    // Dispatch on the top-level gh subcommand.
+    if (args[0] === 'issue') {
+      const sub = args[1];
+      if (sub === 'list') {
+        return ok(JSON.stringify(this.checkinIssues));
+      }
+      return err(`unexpected gh issue ${sub}`);
+    }
+
     if (args[0] !== 'pr') return err(`unexpected gh ${args.join(' ')}`);
     const sub = args[1];
     const rest = args.slice(2);
@@ -1000,5 +1216,96 @@ describe('runReconcile (real git)', () => {
     expect(result.status).toBe('pr-open');
     expect(gh.prs[0]!.labels).not.toContain('merge-train');
     expect(gh.prs[0]!.labels).toContain('merge-train-landed');
+  });
+
+  // ---------------------------------------------------------------------
+  // Issue-closure: promotion PRs must include Closes #N for every
+  // asset-checkin issue whose complete payload is represented by the
+  // promotion (acceptance criteria from issue #2065).
+  // ---------------------------------------------------------------------
+
+  it('(m) PR body includes Closes #N for a fully-covered asset-checkin issue', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    // Seed the queue with one art asset.
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    // Register an asset-checkin issue whose single asset matches what we just queued.
+    gh.seedCheckinIssue(
+      42,
+      makeIssueBody(['generated/skull-mace-var-2.png']),
+    );
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(result.closingIssueNumbers).toContain(42);
+    expect(gh.prs[0]!.body).toContain('Closes #42');
+  });
+
+  it('(n) PR body includes Closes for multiple fully-covered issues', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['a-var-1', 'b-var-1']);
+    const gh = new FakeGh();
+    gh.seedCheckinIssue(10, makeIssueBody(['generated/a-var-1.png']));
+    gh.seedCheckinIssue(20, makeIssueBody(['generated/b-var-1.png']));
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(result.closingIssueNumbers).toEqual([10, 20]);
+    expect(gh.prs[0]!.body).toContain('Closes #10');
+    expect(gh.prs[0]!.body).toContain('Closes #20');
+  });
+
+  it('(o) does NOT include Closes for a partially-covered issue', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    // Queue only asset 'a'; asset 'b' (also listed in the issue) is not queued.
+    seedQueueWithArt(liveDir, ['a-var-1']);
+    const gh = new FakeGh();
+    // The issue lists two assets; only one is being promoted.
+    gh.seedCheckinIssue(99, makeIssueBody(['generated/a-var-1.png', 'generated/b-var-1.png']));
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(result.closingIssueNumbers).toEqual([]);
+    expect(gh.prs[0]!.body).not.toContain('Closes #99');
+  });
+
+  it('(p) includes Closes for an issue whose remaining asset is already on main', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    // Land 'b-var-1' on main directly (simulates a previous promotion).
+    addArtDirectlyToMain(liveDir, ['b-var-1']);
+    // Now queue 'a-var-1' (the other asset in the multi-asset issue).
+    seedQueueWithArt(liveDir, ['a-var-1']);
+    const gh = new FakeGh();
+    // Issue covers both assets; 'b-var-1' is already on main, 'a-var-1' is being promoted.
+    gh.seedCheckinIssue(55, makeIssueBody(['generated/a-var-1.png', 'generated/b-var-1.png']));
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+    expect(result.closingIssueNumbers).toContain(55);
+    expect(gh.prs[0]!.body).toContain('Closes #55');
+  });
+
+  it('(q) idempotent: re-run produces the same Closes lines without duplication', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    gh.seedCheckinIssue(7, makeIssueBody(['generated/skull-mace-var-2.png']));
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    expect(gh.prs[0]!.body).toContain('Closes #7');
+    // Count occurrences — idempotent means exactly one.
+    expect(gh.prs[0]!.body.match(/Closes #7/g)?.length).toBe(1);
+
+    // Re-run (PR still open, same art still pending) — body is re-written via edit.
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('pr-open');
+    expect(gh.prs[0]!.body).toContain('Closes #7');
+    expect(gh.prs[0]!.body.match(/Closes #7/g)?.length).toBe(1);
   });
 });
