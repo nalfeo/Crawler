@@ -58,6 +58,15 @@ import { BiomeType, TilePresets, type MapConfig } from '../../../src/shared/map-
 import { SeededRandom } from '../../../src/shared/random.js';
 
 const DEFAULT_ROUNDS = 9;
+/**
+ * Rotated untimed sweeps per variant before timing starts.
+ *
+ * One sweep is NOT enough: V8 tiering is still in flight during the first timed
+ * rounds, and a round-2 review reproduced medians of 4.71x, 8.13x and 8.42x for
+ * the same code across three process invocations because of it. Report a range
+ * across repetitions rather than a single run's median.
+ */
+const WARMUP_SWEEPS = 4;
 const WARMUP_RUN_FRAMES = 1200;
 const DEFAULT_MAX_PATH_LENGTH = 4_096;
 
@@ -698,7 +707,19 @@ function runPanel(
     return;
   }
   const samples = variants.map(() => [] as number[]);
-  for (let i = 0; i < variants.length; i++) timeVariant(cases, variants[i]!.run);
+  /*
+   * Warm up with SEVERAL rotated sweeps, not one. A single sweep leaves V8 in a
+   * lower tier for the first timed rounds, which is what made an earlier version
+   * of this bench report a median anywhere between 4.7x and 8.4x across process
+   * invocations. Rotating the warmup the same way the timed rounds rotate keeps
+   * the tiering pressure symmetric across variants.
+   */
+  for (let w = 0; w < WARMUP_SWEEPS; w++) {
+    for (let i = 0; i < variants.length; i++) {
+      const idx = (w + i) % variants.length;
+      timeVariant(cases, variants[idx]!.run);
+    }
+  }
 
   for (let r = 0; r < rounds; r++) {
     for (let i = 0; i < variants.length; i++) {

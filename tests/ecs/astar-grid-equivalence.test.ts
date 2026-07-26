@@ -27,6 +27,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   __getGridAStarScratchDepthForTests,
+  __getGridAStarScratchPoolSizeForTests,
   __resetGridAStarScratchForTests,
   computeGridPath,
   type GridPassableFn,
@@ -292,27 +293,60 @@ describe('computeGridPath — scratch pool safety', () => {
   const rows = ['.....', '.###.', '.....'];
 
   it('stays correct when a predicate reenters the search', () => {
-    const expected = referencePath(0, 0, 4, 2, gridPredicate(rows));
+    // A LONG outer map, so the outer search still has a large live open list
+    // when the nested call fires. If the pool ever handed both searches the same
+    // scratch, the inner `beginSearch()` would reset the outer's open list and
+    // the outer path would come out short, empty or wrong.
+    const outerRows = [
+      '...................',
+      '.#################.',
+      '...................',
+    ];
+    const innerRows = ['...', '.#.', '...'];
+    const expected = referencePath(0, 0, 18, 2, gridPredicate(outerRows));
+    expect(expected.length).toBeGreaterThan(20);
 
-    let sawNestedDepth = 0;
+    let depthDuringNestedSearch = -1;
     let nested = 0;
     const reentrant: GridPassableFn = (x, y) => {
-      if (nested === 0 && x === 1 && y === 0) {
+      // Fires on the first expansion, while the outer open list is live.
+      if (nested === 0 && x === 17 && y === 2) {
         nested += 1;
-        // A nested search on a DIFFERENT map, so a shared scratch buffer would
-        // corrupt the outer search's closed set or its open list.
-        const inner = subjectPath(3, 3, 0, 0, 2, 2, gridPredicate(['...', '.#.', '...']));
+        const inner: Step[] = [];
+        computeGridPath(
+          3,
+          3,
+          0,
+          0,
+          2,
+          2,
+          (ix, iy) => {
+            // Sampled from INSIDE the nested search — after it returns, its
+            // `finally` has already released the slot, so an after-the-fact read
+            // could not distinguish a second slot from a reused outer one.
+            depthDuringNestedSearch = Math.max(
+              depthDuringNestedSearch,
+              __getGridAStarScratchDepthForTests(),
+            );
+            return gridPredicate(innerRows)(ix, iy);
+          },
+          (ix, iy) => {
+            inner.push({ x: ix, y: iy });
+          },
+        );
         expect(inner[0]).toEqual({ x: 0, y: 0 });
-        sawNestedDepth = Math.max(sawNestedDepth, __getGridAStarScratchDepthForTests());
         nested -= 1;
       }
-      return gridPredicate(rows)(x, y);
+      return gridPredicate(outerRows)(x, y);
     };
 
-    expect(subjectPath(5, 3, 0, 0, 4, 2, reentrant)).toEqual(expected);
-    // Proves the nested call really took a *second* pool slot rather than
-    // sharing the outer search's scratch.
-    expect(sawNestedDepth).toBe(1);
+    __resetGridAStarScratchForTests();
+    expect(subjectPath(19, 3, 0, 0, 18, 2, reentrant)).toEqual(expected);
+    expect(depthDuringNestedSearch).toBe(2);
+    // The depth counter alone would still read 2 for a pool that always handed
+    // back slot 0. The POOL SIZE is what proves a second, distinct scratch
+    // object was allocated for the nested search.
+    expect(__getGridAStarScratchPoolSizeForTests()).toBe(2);
     expect(__getGridAStarScratchDepthForTests()).toBe(0);
   });
 

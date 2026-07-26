@@ -34,12 +34,21 @@ steady-state allocation**. Reentrancy takes the next pool slot down; a
 **Per-call speedup (the honest headline).** `scripts/agent/perf/bench-pathfinding.ts`
 runs all variants **in one process, interleaved, alternating which leads each
 round**, and reports **paired per-round ratios** (a machine-wide stall inflates
-every variant together, so paired ratios survive it):
+every variant together, so paired ratios survive it).
 
-| fixture (real Floor-1, 240×140)   | median | **worst round** | rounds won |
-| --------------------------------- | ------ | --------------- | ---------- |
-| reachable searches (300/round)    | 8.42x  | **2.10x**       | 9/9        |
-| unreachable/sealed (40/round)     | 8.10x  | **2.37x**       | 9/9        |
+A round-2 review caught the first version of this bench reporting medians of
+**4.71x, 8.13x and 8.42x for identical code** across three process invocations —
+one untimed warmup sweep left V8 still tiering during the early timed rounds. The
+bench now does **4 rotated warmup sweeps**, and the numbers below are the range
+across **three separate process invocations**, not one run:
+
+| fixture (real Floor-1, 240×140) | median across 3 runs | **worst single round** | rounds won |
+| ------------------------------- | -------------------- | ---------------------- | ---------- |
+| reachable searches (300/round)  | **7.45 – 8.11x**     | **4.58x**              | 27/27      |
+| unreachable/sealed (40/round)   | **6.82 – 7.38x**     | **5.24x**              | 27/27      |
+
+**Report the worst round, not the best: this change is worth ≥4.6x per call, and
+about 7–8x typically.**
 
 **Profile share** (`npm run perf:profile`, 3 headless Floor-1 runs):
 
@@ -49,15 +58,16 @@ every variant together, so paired ratios survive it):
 
 **Honest end-to-end: ≈14% less headless-sim CPU (≈1.16x).** Normalising on the
 unchanged work (`1 − 0.1616` before vs `1 − 0.0255` after) puts the in-situ
-speedup of the search machinery at **≈7.4x**, which independently corroborates
-the bench's 8.42x median. The end-to-end figure is capped by Amdahl — the
-subsystem was 19% of the sim, so even an infinitely fast A\* could not have
-returned more than ~19%.
+speedup of the search machinery at **≈7.4x**, which lands inside the bench's
+7.45–8.11x median range — two independent measurements agreeing. The end-to-end
+figure is capped by Amdahl: the subsystem was 19% of the sim, so even an
+infinitely fast A\* could not have returned more than ~19%.
 
 **Ablation.** A `CLOSEDSET` bench variant (rot-js's open list kept verbatim, only
-the string-keyed closed set replaced) reaches 6.12x. So the string-keyed `_done`
-object was the dominant cost and the heap contributed the remaining ~2.3x. That
-measurement retired the plan-review's "just swap the closed set" alternative.
+the string-keyed closed set replaced) reaches **5.2 – 5.8x**. So the string-keyed
+`_done` object was the dominant cost and the heap contributes a further ~1.4x on
+top. That measurement retired the plan-review's "just swap the closed set"
+alternative — it would have left roughly a third of the win on the table.
 
 ## Byte-identical gameplay — the hard gate
 
@@ -124,12 +134,24 @@ Each of these mutations was applied and the suite re-run:
 | reverse neighbour order to W, S, E, N | **12 failed** |
 | prune the redundant OOB/closed passability probes | **12 failed** |
 | drop the `try/finally` scratch release | **2 failed** |
+| make the pool always hand back slot 0 (no reentrancy isolation) | **runaway → OOM** |
 
-The last one exists because the multi-model review correctly flagged that the
-original throwing-predicate tests were **vacuous**: a leaked pool depth just makes
-the next search allocate a fresh, correctly-sized slot and still return the right
-path. `__getGridAStarScratchDepthForTests()` was added so the assertion pins the
-release itself.
+The last two exist because the multi-model review found the original pool tests
+**vacuous**, twice over:
+
+1. A throwing predicate that leaked pool depth still passed, because the next
+   search just allocated a fresh, correctly-sized slot and returned the right
+   path. `__getGridAStarScratchDepthForTests()` was added so the assertion pins
+   the `finally` itself.
+2. The first depth fix was *still* vacuous for reentrancy: a pool that always
+   handed back slot 0 would increment and decrement the same counter, so
+   `depth === 2` proved nothing. Verified by applying that mutation and watching
+   the suite pass. The fix is `__getGridAStarScratchPoolSizeForTests()` plus a
+   longer outer map so the nested call fires while the outer open list is still
+   live — with a shared slot the outer search now never terminates.
+
+Both were found by **applying the mutation and watching the test pass**, not by
+assuming it would fail.
 
 ## Gotchas for the next session
 
@@ -138,7 +160,13 @@ release itself.
   (this session restarted the baseline once for exactly that reason).
 - Cross-process benchmarking already produced one bogus 4.5x claim in this repo.
   `bench-pathfinding.ts` follows `bench-fov.ts`: same process, interleaved,
-  alternating lead, **paired** per-round ratios. Report the worst round.
+  alternating lead, **paired** per-round ratios. But same-process is not enough on
+  its own — **one untimed warmup sweep left V8 mid-tiering and swung the median
+  between 4.7x and 8.4x for identical code.** Warm up several rotated sweeps, run
+  the whole script more than once, and publish a range plus the worst round.
+- A microbench assertion about a resource *counter* can be vacuous even when the
+  resource is broken. Assert on the thing that actually differs (here: pool size,
+  not depth), and always confirm by applying the mutation.
 - `Int32Array` fields need `Int32Array<ArrayBuffer>` on helper signatures under
   this tsconfig, or TS2322 fires on `SharedArrayBuffer` variance.
 - Review agents can leave stray files at the repo root (`test-vitest.test.ts`,

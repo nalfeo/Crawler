@@ -397,3 +397,15 @@ export function __resetGridAStarScratchForTests(): void {
 export function __getGridAStarScratchDepthForTests(): number {
   return scratchDepth;
 }
+
+/**
+ * Test-only hook: number of distinct pooled scratch objects.
+ *
+ * The depth counter alone does **not** prove reentrancy isolation — a broken
+ * pool that always handed back slot 0 would still increment and decrement the
+ * depth. Only the pool size distinguishes "took a second slot" from "reused the
+ * first one".
+ */
+export function __getGridAStarScratchPoolSizeForTests(): number {
+  return scratchPool.length;
+}
