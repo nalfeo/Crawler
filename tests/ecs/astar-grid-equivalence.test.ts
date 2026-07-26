@@ -26,6 +26,7 @@ import { Path } from 'rot-js';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  __getGridAStarScratchDepthForTests,
   __resetGridAStarScratchForTests,
   computeGridPath,
   type GridPassableFn,
@@ -293,6 +294,7 @@ describe('computeGridPath — scratch pool safety', () => {
   it('stays correct when a predicate reenters the search', () => {
     const expected = referencePath(0, 0, 4, 2, gridPredicate(rows));
 
+    let sawNestedDepth = 0;
     let nested = 0;
     const reentrant: GridPassableFn = (x, y) => {
       if (nested === 0 && x === 1 && y === 0) {
@@ -301,12 +303,17 @@ describe('computeGridPath — scratch pool safety', () => {
         // corrupt the outer search's closed set or its open list.
         const inner = subjectPath(3, 3, 0, 0, 2, 2, gridPredicate(['...', '.#.', '...']));
         expect(inner[0]).toEqual({ x: 0, y: 0 });
+        sawNestedDepth = Math.max(sawNestedDepth, __getGridAStarScratchDepthForTests());
         nested -= 1;
       }
       return gridPredicate(rows)(x, y);
     };
 
     expect(subjectPath(5, 3, 0, 0, 4, 2, reentrant)).toEqual(expected);
+    // Proves the nested call really took a *second* pool slot rather than
+    // sharing the outer search's scratch.
+    expect(sawNestedDepth).toBe(1);
+    expect(__getGridAStarScratchDepthForTests()).toBe(0);
   });
 
   it('does not leak pool depth when a predicate throws', () => {
@@ -316,10 +323,12 @@ describe('computeGridPath — scratch pool safety', () => {
     };
     for (let i = 0; i < 3; i++) {
       expect(() => subjectPath(5, 3, 0, 0, 4, 2, throwing)).toThrow(boom);
+      // Asserting the DEPTH is what pins the `finally` release. Re-checking the
+      // path alone would be vacuous: a leaked depth level just makes the next
+      // search allocate a fresh, correctly-sized slot and still return the
+      // right answer.
+      expect(__getGridAStarScratchDepthForTests(), `after throw #${i + 1}`).toBe(0);
     }
-    // If the `finally` release were missing, each throw would have advanced the
-    // pool depth permanently and this would now run on a cold, mis-sized slot —
-    // still correct, but the equivalence check below is what proves recovery.
     expectEquivalent(rows, 0, 0, 4, 2);
   });
 
@@ -331,8 +340,19 @@ describe('computeGridPath — scratch pool safety', () => {
           throw boom;
         }),
       ).toThrow(boom);
+      expect(__getGridAStarScratchDepthForTests(), `after throw #${i + 1}`).toBe(0);
     }
     expectEquivalent(rows, 0, 0, 4, 2);
+  });
+
+  it('releases pool depth on every early return', () => {
+    // The guard clauses return BEFORE `acquireScratch`, so these must not move
+    // the depth either — a future refactor that hoists the acquire above them
+    // would be caught here.
+    subjectPath(3, 3, -1, 0, 2, 2, gridPredicate(rows));
+    subjectPath(0, 0, 0, 0, 0, 0, () => true);
+    subjectPath(3, 3, 0.5, 0, 2, 2, gridPredicate(rows));
+    expect(__getGridAStarScratchDepthForTests()).toBe(0);
   });
 });
 

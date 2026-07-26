@@ -6,18 +6,29 @@
   "estimated_apples": 5,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck review returned REJECT-as-specified with 3 blocking + 4 non-blocking findings and 3 alternatives (keep rot-js and only swap the closed set; stable bucketed monotone priority queue instead of a heap; upstream a patch to rot-js). Blocking fixes forced into the design: (1) findTilePath keeps a rot-js fallback for non-integer coordinates because TileMap.inBounds accepts them; (2) the passability predicate must be probed for all four N/E/S/W neighbours before any enqueue, matching rot-js _getNeighbors, because isTilePassable is caller-supplied and not required to be pure; (3) validation must diff probe traces, not just returned paths. Divergence is minor: the heap+typed-array core survived, two compatibility constraints were added. Alternative 1 was priced empirically as the CLOSEDSET bench variant (6.12x vs 8.42x) and rejected as leaving half the win on the table; alternative 2 deferred pending that measurement; alternative 3 rejected as unshippable on this timeline."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-opus-4.8"
+          ],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Line-by-line audit against rot-js 2.2.1 semantics read directly from node_modules. Attacked heap sift-up/sift-down FIFO fidelity, generation-stamp aliasing across same-tile-count/different-shape maps, MAX_GENERATION wrap, prevTile-chain vs item.prev-object-chain equivalence under duplicate pushes, the y*width+x index guard against a predicate returning true for x=-1, scratch-pool reentrancy and throw safety, Int32 range, the non-integer fallback, and test vacuity. No counterexample found. Independently re-ran the equivalence suite (31/31) and the differential oracle (4350 comparisons byte-identical)."
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,

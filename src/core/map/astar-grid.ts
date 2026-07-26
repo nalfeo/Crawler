@@ -383,3 +383,17 @@ export function __resetGridAStarScratchForTests(): void {
   scratchPool.length = 0;
   scratchDepth = 0;
 }
+
+/**
+ * Test-only hook: current scratch-pool depth, which must be 0 whenever no
+ * search is running.
+ *
+ * Without this, a test that only re-checks path correctness after a throwing
+ * predicate is **vacuous** with respect to the `finally` release: a leaked depth
+ * level merely makes the next search allocate a fresh, correctly-sized slot, so
+ * it still returns the right path. Asserting the depth is what actually pins the
+ * release.
+ */
+export function __getGridAStarScratchDepthForTests(): number {
+  return scratchDepth;
+}
