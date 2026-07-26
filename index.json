@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5dd8e486056a9dd575f402ec3bc5ebbcf1082615",
+    "commitDate": "2026-07-26T22:33:05Z",
+    "commitSubject": "fix(ci-recovery): route idle waiting PRs back to repair sweeps (#2073)",
+    "capturedAt": "2026-07-26T23:53:28.044Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30223736541",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/5dd8e486056a9dd575f402ec3bc5ebbcf1082615.json"
+  },
+  {
     "commit": "b18923f4498c8a79e6c638f9e56f3d2b0df11e2c",
     "commitDate": "2026-07-26T22:15:35Z",
     "commitSubject": "fix(perf): attribute node_modules profiler frames to their project caller (#2068)",
