@@ -1,5 +1,16 @@
 [
   {
+    "commit": "bbcbf61a65933c0362a5b5806010e0fdcb0c64bf",
+    "commitDate": "2026-07-25T23:59:59Z",
+    "commitSubject": "fix(ci-recovery): auto-resolve stale-marker threads where trusted SHA is a 7-char-prefix typo of head (#2055)",
+    "capturedAt": "2026-07-26T01:22:25.023Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30180651892",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/bbcbf61a65933c0362a5b5806010e0fdcb0c64bf.json"
+  },
+  {
     "commit": "7bd4421919cfdfd04ffb12e59f2396ffe371043b",
     "commitDate": "2026-07-25T23:00:09Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (3 art paths) (#2060)",
