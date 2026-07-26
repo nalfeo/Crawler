@@ -271,8 +271,21 @@ export function isCiFixPr(pullRequest) {
 // Returns true if the PR carries a label that indicates it is blocked by an
 // external mechanism and must not receive a CI Recovery dispatch slot.
 export function isDispatchBlocked(pullRequest) {
-  return (pullRequest.labels || []).some((label) =>
-    DISPATCH_BLOCKED_LABEL_NAMES.has(label.name),
+  return (pullRequest.labels || []).some((label) => DISPATCH_BLOCKED_LABEL_NAMES.has(label.name));
+}
+
+// Genuine waiting PRs stay hidden from broad sweeps. Once reconcile has already
+// converged a waiting PR back to an idle/no-owner state, broad repair sweeps may
+// surface it again so the existing exact repair-dispatch path can reacquire it.
+export function isRepairWakeEligible(pullRequest) {
+  const labels = pullRequest.labels || [];
+  if (!labels.some((label) => label.name === WAITING_LABEL)) return false;
+  if (labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX))) {
+    return false;
+  }
+  if (labels.some((label) => label.name === WAITING_TRANSITION_LABEL)) return false;
+  return (
+    pullRequest.recoveryState?.owner === 'none' && pullRequest.recoveryState?.status === 'idle'
   );
 }
 
@@ -335,10 +348,7 @@ export function collectPrNumbers({
 
   const normalizedRepo = repository.toLowerCase();
   for (const pullRequest of scheduledPulls) {
-    if (
-      !pullRequest.draft &&
-      pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
-    ) {
+    if (!pullRequest.draft && pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo) {
       const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
       if (Number.isInteger(number) && number > 0) {
         pullsByNumber.set(number, pullRequest);
@@ -372,7 +382,7 @@ export function collectPrNumbers({
     if (!isWaiting) return false;
     const hasOwner = labels.some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX));
     const hasTransition = labels.some((l) => l.name === WAITING_TRANSITION_LABEL);
-    return hasOwner || hasTransition;
+    return hasOwner || hasTransition || isRepairWakeEligible(pr);
   });
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
@@ -424,9 +434,11 @@ export function eligibleTrainRecoveryPulls({
       const waiting = labels.some((label) => label.name === WAITING_LABEL);
       const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
       const owned = labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX));
+      const repairWakeEligible = isRepairWakeEligible(pullRequest);
       const shouldExcludeByLabels =
         hasQueueLabel ||
-        (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
+        (!directlyTriggered &&
+          (hasOptOutLabel || (waiting && !owned && !waitingTransition && !repairWakeEligible)));
       return (
         pullRequest.state === 'open' &&
         !pullRequest.draft &&
@@ -868,14 +880,8 @@ export function resolveGlobalDispatchCaps(env = process.env) {
     IDLE_CAP_MAX,
   );
   return {
-    maxBudgetTrainBusy: parsePositiveInt(
-      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY,
-      trainCap,
-    ),
-    maxBudgetTrainIdle: parsePositiveInt(
-      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE,
-      idleCap,
-    ),
+    maxBudgetTrainBusy: parsePositiveInt(env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY, trainCap),
+    maxBudgetTrainIdle: parsePositiveInt(env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE, idleCap),
     globalTrainDispatchCap: parsePositiveInt(env.CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP, trainCap),
     maxDispatchPerRun: parsePositiveInt(
       env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,

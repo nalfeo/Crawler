@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-26",
+  "session_slug": "ci-harness-d3-repair-transition",
+  "task_title": "First-class repair transition for D3",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Alt A: teach shouldRequestReview about repairs — rejected because it collapses review and repair wakes. Alt B: add a second bespoke repair dispatcher — rejected because reconcile already owns exact @copilot dispatch + automation lease state and duplicating it risks storming. Chosen plan tightened the target to the router/reconcile idle-repair seam, preserved shouldRequestReview returning null for blocked PRs, and explicitly carries forward stale-automation-exhausted / progressKey suppression as the no-storm mechanism."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewed the router/characterization diff for D3 repair wake eligibility. Verified idle waiting PRs re-enter repair-window sweeps only when recoveryState is already idle/no-owner, genuine waits remain excluded, and expected_head_sha/base + stale-automation-exhausted suppression stay in reconcile unchanged."
+        }
+      ]
+    }
+  }
+}
