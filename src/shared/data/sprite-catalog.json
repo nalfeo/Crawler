@@ -3596,6 +3596,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-chore-rota-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-chore-rota-var-2",
+    "description": "Generated sprite from brief: welcome-room-chore-rota.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-chore-rota-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-chore-rota-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-crate-single-var-0",
     "kind": "sprite",
     "label": "welcome-room-crate-single-var-0",
