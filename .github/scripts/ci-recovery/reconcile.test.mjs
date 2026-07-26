@@ -11985,6 +11985,168 @@ test('live: R07 ci-conflict-order-wait exit posts outdated-marker and resolves t
   assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
 });
 
+test('live: R07 ci-conflict-order-wait still skips cleanly when post-outdated-marker metadata re-fetch fails', async (t) => {
+  const reviewCommentId = '3650258854';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  let pullGets = 0;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullGets += 1;
+      if (pullGets >= 2) {
+        return { status: 500, body: { message: 'metadata refresh failed' } };
+      }
+      return {
+        body: {
+          ...basePr(),
+          base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+          labels: [{ name: 'ci-conflict-order-wait' }],
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({
+      body: gqlReviewThreads([
+        {
+          id: 'thread-outdated-r07-refresh-fail',
+          isResolved: false,
+          isOutdated: true,
+          path: 'scripts/agent/data/boss-abilities.floor2.status.json',
+          line: 42,
+          comments: {
+            nodes: [
+              {
+                id: 'comment-outdated-r07-refresh-fail',
+                body: 'This file needs updating.',
+                author: { login: 'copilot-pull-request-reviewer' },
+                authorAssociation: 'NONE',
+                url: threadUrl,
+              },
+            ],
+          },
+        },
+      ]),
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(stdout, /skip outdated-marker thread=thread-outdated-r07-refresh-fail reason=reply-failed/);
+  assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
+  assert.doesNotMatch(
+    stderr,
+    /unexpected-(error|rejection)|UnhandledPromiseRejection|unhandledRejection/i,
+  );
+  assert.equal(
+    mutatingCalls.length,
+    0,
+    'metadata guard failure should prevent reply/resolve mutations but preserve clean skip exit',
+  );
+});
+
+test('live: R07 ci-conflict-order-wait still skips cleanly when resolve-thread metadata re-fetch fails', async (t) => {
+  let pullGets = 0;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullGets += 1;
+      if (pullGets >= 2) {
+        return { status: 500, body: { message: 'metadata refresh failed' } };
+      }
+      return {
+        body: {
+          ...basePr(),
+          base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+          labels: [{ name: 'ci-conflict-order-wait' }],
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-r07-resolve-refresh-fail',
+            isResolved: false,
+            isOutdated: true,
+            path: 'scripts/agent/data/boss-abilities.floor2.status.json',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-r07-resolve-refresh-fail',
+                  body: 'This file needs updating.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3650258855`,
+                },
+                {
+                  id: 'comment-addressed-r07-resolve-refresh-fail',
+                  body: `✅ Addressed in ${HEAD_SHA}: prior fix marker`,
+                  author: { login: 'copilot' },
+                  authorAssociation: 'OWNER',
+                  url: '',
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stderr,
+    /resolve-thread-failed thread=thread-outdated-r07-resolve-refresh-fail err=GitHub GET \/repos\/test-owner\/test-repo\/pulls\/42 failed \(500\): metadata refresh failed/,
+  );
+  assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
+  assert.doesNotMatch(
+    stderr,
+    /unexpected-(error|rejection)|UnhandledPromiseRejection|unhandledRejection/i,
+  );
+  assert.equal(
+    mutatingCalls.length,
+    0,
+    'metadata guard failure should prevent thread-resolution mutation but preserve clean skip exit',
+  );
+});
+
 test('dry-run: R06 merge-train-owned exit still runs outdated-thread cleanup', async (t) => {
   const reviewCommentId = '3650258900';
   const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;

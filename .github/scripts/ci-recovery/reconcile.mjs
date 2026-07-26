@@ -1319,8 +1319,8 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
     }
     const markerBody = `✅ Addressed in ${earlyHeadSha}: thread outdated — reviewed lines no longer present at this location`;
     if (live) {
-      await assertExpectedMetadataUnchanged('post-outdated-marker');
       try {
+        await assertExpectedMetadataUnchanged('post-outdated-marker');
         await request(
           pat,
           `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
@@ -1354,8 +1354,8 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
   for (const thread of earlyUnresolved) {
     if (!shouldResolveThread(thread, earlyHeadSha, emptyReachable)) continue;
     if (live) {
-      await assertExpectedMetadataUnchanged('resolve-thread');
       try {
+        await assertExpectedMetadataUnchanged('resolve-thread');
         await graphql(
           pat,
           `
