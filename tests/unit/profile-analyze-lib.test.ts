@@ -395,6 +395,72 @@ describe('dependency-frame attribution', () => {
     expect(merged.functions.every((f) => f.selfMs > 0 || f.totalMs > 0)).toBe(true);
   });
 
+  it('attributes a zero-self-time dependency frame to its project caller', () => {
+    // With --sort total, a dep frame whose cost is entirely in a child still
+    // appears in the table.  It must show its project caller, not
+    // "no project caller".
+    const summary = summarizeProfile({
+      nodes: [
+        node(1, '(root)', { children: [2] }),
+        node(2, 'findTilePath', {
+          url: 'file:///repo/src/core/map/pathfinding.ts',
+          children: [3],
+        }),
+        // openList has zero self time; all three samples land in its child.
+        node(3, 'openList', {
+          url: 'file:///repo/node_modules/rot-js/dist/rot.js',
+          line: 10,
+          children: [4],
+        }),
+        node(4, 'compute', {
+          url: 'file:///repo/node_modules/rot-js/dist/rot.js',
+          line: 20,
+        }),
+      ],
+      samples: [4, 4, 4],
+      timeDeltas: [1000, 1000, 1000],
+    });
+    const mid = summary.functions.find((f) => f.functionName === 'openList')!;
+
+    expect(mid.selfMs).toBe(0);
+    // Despite zero self time, the project caller is identified via subtree cost.
+    expect(mid.owners).toBeDefined();
+    expect(mid.owners?.[0]?.functionName).toBe('findTilePath');
+    expect(mid.owners?.[0]?.selfMs).toBeGreaterThan(0);
+  });
+
+  it('shows project caller for a zero-self-time dep frame when formatted', () => {
+    const output = formatSummary(
+      summarizeProfile({
+        nodes: [
+          node(1, '(root)', { children: [2] }),
+          node(2, 'findTilePath', {
+            url: 'file:///repo/src/core/map/pathfinding.ts',
+            children: [3],
+          }),
+          node(3, 'openList', {
+            url: 'file:///repo/node_modules/rot-js/dist/rot.js',
+            line: 10,
+            children: [4],
+          }),
+          node(4, 'compute', {
+            url: 'file:///repo/node_modules/rot-js/dist/rot.js',
+            line: 20,
+          }),
+        ],
+        samples: [4, 4, 4],
+        timeDeltas: [1000, 1000, 1000],
+      }),
+      { sortBy: 'total', top: 25 },
+    );
+
+    // The zero-self-time openList row must name its caller, not print
+    // "no project caller".
+    expect(output).toContain('← findTilePath');
+    expect(output).not.toContain('no project caller');
+  });
+
+
   it('prints the owner beside the dependency row and warns about bare names', () => {
     const output = formatSummary(summarizeProfile(rotJsProfile()), { top: 5 });
 

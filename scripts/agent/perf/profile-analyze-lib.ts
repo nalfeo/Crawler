@@ -59,7 +59,15 @@ export interface CpuProfile {
 export interface DependencyOwner {
   readonly functionName: string;
   readonly location: string;
-  /** Self time of the dependency frame reached through this caller. */
+  /**
+   * Cost attributed to this caller for the dependency frame.
+   *
+   * For dependency nodes that have self time, this is the self time reached
+   * through this caller (the common case). For dependency nodes with zero self
+   * time whose cost is entirely in their children (visible only when sorted by
+   * total%), this is the inclusive subtree time, used for ranking which caller
+   * is dominant when there are several.
+   */
   readonly selfMs: number;
 }
 
@@ -304,10 +312,14 @@ export function summarizeProfile(profile: CpuProfile): ProfileSummary {
     }
   }
   for (const node of profile.nodes) {
-    const self = selfMsByNode.get(node.id) ?? 0;
-    if (self <= 0) continue;
     const { key, location } = frameKey(node.callFrame);
     if (!isDependencyFrame(location)) continue;
+    const self = selfMsByNode.get(node.id) ?? 0;
+    // For nodes with no self time (cost entirely in children), use the
+    // subtree (inclusive) time so zero-self dependency frames that appear in a
+    // total-sorted table are still attributed to their nearest project caller.
+    const ownerCost = self > 0 ? self : (subtreeMs.get(node.id) ?? 0);
+    if (ownerCost <= 0) continue;
 
     // Walk up to the first project frame. `seen` guards a malformed cycle.
     const seen = new Set<number>([node.id]);
@@ -323,7 +335,7 @@ export function summarizeProfile(profile: CpuProfile): ProfileSummary {
           byOwner = new Map<string, number>();
           ownersByKey.set(key, byOwner);
         }
-        byOwner.set(ancestorFrame.key, (byOwner.get(ancestorFrame.key) ?? 0) + self);
+        byOwner.set(ancestorFrame.key, (byOwner.get(ancestorFrame.key) ?? 0) + ownerCost);
         metaByKey.set(ancestorFrame.key, {
           name: ancestorFrame.name,
           location: ancestorFrame.location,

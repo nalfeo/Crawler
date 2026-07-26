@@ -137,9 +137,16 @@ So, before a dependency frame becomes your target:
 - Read the `← caller` the profiler prints beside it and **write that name down**.
   Your PR must say _"`findTilePath` → rot-js `AStar.compute`"_, never bare
   _"rot-js `compute`"_.
-- **Sanity-check by containment.** A frame's total% can never exceed the total%
-  of any function it sits inside. `fovSystem` at 1.88% total cannot contain a
-  22.66% frame — that arithmetic alone falsifies the misattribution instantly.
+- **Sanity-check by containment — but only when ownership is 100%.** When the
+  profiler prints `← caller (100%)` with no `+N more`, that single caller owns
+  all of the dependency frame's attributed cost, so its total% forms a hard
+  ceiling: the dependency's total% cannot exceed the caller's total% without
+  misattribution. `fovSystem` at 1.88% total cannot contain a 22.66% frame —
+  that arithmetic alone falsifies the misattribution instantly. **This check
+  does not apply to multi-caller rows** (`← caller (X%) +N more`): a 12%
+  dependency reached 50/50 from two 6% callers legitimately exceeds either
+  individual caller; compare against the *sum* of all `← caller` shares
+  instead.
 - If you still cannot tell, open the dependency's source at the printed line
   (`node_modules/rot-js/dist/rot.js:5356`) and read which class the method is
   attached to. It takes thirty seconds and it is decisive.
