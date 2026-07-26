@@ -1,5 +1,16 @@
 [
   {
+    "commit": "38ed8b0bfbf25081fb728af2e28540d5fd561105",
+    "commitDate": "2026-07-26T22:04:07Z",
+    "commitSubject": "chore(assets): reconcile queued sprite edits (8 art paths) (#2072)",
+    "capturedAt": "2026-07-26T23:16:29.018Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30222511264",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/38ed8b0bfbf25081fb728af2e28540d5fd561105.json"
+  },
+  {
     "commit": "1076c5ce70e8cdfed755099669f4910ae7813ace",
     "commitDate": "2026-07-26T20:46:28Z",
     "commitSubject": "fix(agent): stop the velocity engineer re-reporting old results and cross-contaminating branches (#2067)",
