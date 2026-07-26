@@ -67,6 +67,7 @@ export function renderHtml(bootstrap) {
     let draft = null;
     let selectedPhase = null;
     let busy = false;
+    let dispatchNotice = null;
     const app = document.querySelector('#app');
     const phases = ['roster','briefs','sprite-sheets','variant-approval','complete'];
     const MIN_WEAPON_TYPES = 5;
@@ -310,22 +311,53 @@ export function renderHtml(bootstrap) {
         '<div class="subtitle">' + (missing ? 'No durable state yet' : 'State unavailable') + '</div>' +
         '<div class="controls" style="margin:12px 0"><button data-back>← All sets</button></div></header>' +
         '<main><section class="panel">' +
+        (dispatchNotice
+          ? '<p class="' + (dispatchNotice.tone === 'error' ? 'error' : 'muted') + '">' + esc(dispatchNotice.text) + '</p>'
+          : '') +
         '<p class="error">' + esc(message) + '</p>' +
         (missing
           ? '<p class="muted">Initialize the durable set from its authored plan (data/theme-equipment-sets/' + esc(currentSetId) + '.json). The workflow reads the plan from the pushed branch, so commit and push it first.</p>' +
-            '<div class="controls"><button data-dispatch="init">Initialize set on GitHub</button><button data-refresh>Refresh</button></div>'
+            '<div class="controls"><button data-dispatch="init" ' + (busy ? 'disabled' : '') + '>' + (busy ? 'Dispatching…' : 'Initialize set on GitHub') + '</button><button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div>'
           : '<p class="muted">If this set lives in Azure, refresh .env.local with npm run setup:azure:env.</p>' +
             '<div class="controls"><button data-refresh>Refresh</button></div>') +
         '</section></main>';
-      document.querySelector('[data-back]')?.addEventListener('click', loadIndex);
+      document.querySelector('[data-back]')?.addEventListener('click', () => { dispatchNotice = null; loadIndex(); });
       document.querySelector('[data-refresh]')?.addEventListener('click', load);
       document.querySelector('[data-dispatch]')?.addEventListener('click', async () => {
+        if (busy) return;
         if (!confirm('Dispatch init for ' + currentSetId + ' on GitHub?')) return;
+        // Dispatching takes several seconds (git rev-parse, fetch,
+        // cat-file, then gh workflow run). Without a busy state the button
+        // looks inert while it is working, which is exactly how a
+        // successful init came across as doing nothing.
+        const dispatchedSetId = currentSetId;
+        // "← All sets" stays live during the dispatch, so a late result must
+        // not repaint this pane over whatever the user navigated to. The
+        // null-state term matters too: a still-running watch can push state
+        // over SSE mid-dispatch, and render() has already drawn the board by
+        // the time this resolves.
+        const stillHere = () => view === 'board' && currentSetId === dispatchedSetId && state === null;
+        busy = true;
+        dispatchNotice = { tone: 'info', text: 'Dispatching init…' };
+        renderUninitialized(message);
+        let notice;
         try {
           const result = await request('/api/dispatch', { method: 'POST', body: JSON.stringify({ action: 'init' }) });
-          alert('Initialization dispatched on ref ' + (result.ref || 'unknown') + '. Refresh after the run completes.');
+          notice = {
+            tone: 'info',
+            text: 'Initialization dispatched on ref ' + (result.ref || 'unknown') +
+              '. The workflow runs on GitHub and takes a few minutes; this pane switches to the board on its own once the set exists.',
+          };
         } catch (error) {
-          alert(error.message);
+          notice = { tone: 'error', text: error.message };
+        } finally {
+          busy = false;
+          if (stillHere()) {
+            dispatchNotice = notice;
+            renderUninitialized(message);
+          } else {
+            dispatchNotice = null;
+          }
         }
       });
     }

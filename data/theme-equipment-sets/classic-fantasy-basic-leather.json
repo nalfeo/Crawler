@@ -1,0 +1,109 @@
+{
+  "id": "classic-fantasy-basic-leather",
+  "displayName": "Classic Fantasy [Basic Leather]",
+  "themeDesignLanguage": "Plain undyed-to-mid-brown boiled and oiled leather: simple panelled hide, visible saddle stitching, plain iron buckles and rivets, coarse linen or wool backing where cloth is needed. Utterly unornamented - no engraving, filigree, heraldry, gemstones, gilding, fur trim, or maker marks. Metal appears only as functional fittings and blade/head stock: plain grey iron, matte and slightly pitted, never polished, never brass or steel-blue. Wood is bare ash or oak, oiled, straight-grained, no carving or inlay. Silhouettes are the textbook generic form of each item as a player would picture it from the name alone: light, flexible, quiet gear for rogues, rangers, bards, hunters and scouts who wear leather rather than plate. Excludes: plate armour, chainmail, magic glow, sci-fi materials, modern fasteners, and any decorative flourish whatsoever.",
+  "weapons": [
+    {
+      "id": "iron-dagger",
+      "displayName": "Iron Dagger",
+      "weaponType": "dagger"
+    },
+    {
+      "id": "iron-shortsword",
+      "displayName": "Iron Shortsword",
+      "weaponType": "sword"
+    },
+    {
+      "id": "wooden-bow",
+      "displayName": "Wooden Bow",
+      "weaponType": "bow"
+    },
+    {
+      "id": "iron-spear",
+      "displayName": "Iron Spear",
+      "weaponType": "spear"
+    },
+    {
+      "id": "iron-handaxe",
+      "displayName": "Iron Handaxe",
+      "weaponType": "axe"
+    },
+    {
+      "id": "wooden-club",
+      "displayName": "Wooden Club",
+      "weaponType": "club"
+    }
+  ],
+  "equipment": [
+    {
+      "id": "leather-cap",
+      "displayName": "Leather Cap",
+      "slots": ["head"]
+    },
+    {
+      "id": "leather-collar",
+      "displayName": "Leather Collar",
+      "slots": ["neck"]
+    },
+    {
+      "id": "leather-cloak",
+      "displayName": "Leather Cloak",
+      "slots": ["back"]
+    },
+    {
+      "id": "leather-shoulder-pads",
+      "displayName": "Leather Shoulder Pads",
+      "slots": ["shoulders"]
+    },
+    {
+      "id": "leather-mask",
+      "displayName": "Leather Mask",
+      "slots": ["face"]
+    },
+    {
+      "id": "leather-bracer-left",
+      "displayName": "Leather Bracer",
+      "slots": ["leftWrist"]
+    },
+    {
+      "id": "leather-bracer-right",
+      "displayName": "Leather Bracer",
+      "slots": ["rightWrist"]
+    },
+    {
+      "id": "leather-tunic",
+      "displayName": "Leather Tunic",
+      "slots": ["chest"]
+    },
+    {
+      "id": "leather-gloves",
+      "displayName": "Leather Gloves",
+      "slots": ["gloves"]
+    },
+    {
+      "id": "leather-belt",
+      "displayName": "Leather Belt",
+      "slots": ["belt"]
+    },
+    {
+      "id": "leather-pants",
+      "displayName": "Leather Pants",
+      "slots": ["legs"]
+    },
+    {
+      "id": "leather-boots",
+      "displayName": "Leather Boots",
+      "slots": ["feet"]
+    },
+    {
+      "id": "iron-ring-left",
+      "displayName": "Iron Ring",
+      "slots": ["ringLeft"]
+    },
+    {
+      "id": "iron-ring-right",
+      "displayName": "Iron Ring",
+      "slots": ["ringRight"]
+    }
+  ]
+}
