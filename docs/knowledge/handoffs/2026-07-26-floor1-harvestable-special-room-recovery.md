@@ -13,6 +13,9 @@ focused regression update, and the required recovery-session artifacts.
   `RoomRole.NORMAL` rooms.
 - Removed the later spawn-room relocation/guarantee path that had been added on
   this branch.
+- Re-baselined the deterministic collision-pair parity fixture for seeds 7 and
+  137 to match the new special-room-exclusion behavior after verifying the
+  updated slice stays byte-stable across back-to-back runs.
 - Updated focused regression coverage to assert harvestables never land in
   special rooms and never occupy the player spawn tile.
 
@@ -25,6 +28,7 @@ focused regression update, and the required recovery-session artifacts.
 ## Verification
 
 - `npx vitest run --project unit tests/game/floor1-harvestable-spawn-room.test.ts` ✅
+- `npx vitest run --project headless tests/headless/collision-pair-parity.test.ts` ✅
 - `npm run verify:fast` ✅
 - `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-07-26-floor1-harvestable-special-room-recovery.review-ledger.json` ✅
 - `npm run verify:pr-prereqs` ✅

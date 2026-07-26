@@ -228,6 +228,17 @@ interface CollisionFingerprint {
 // back-to-back invocations, so we re-baseline to the new deterministic value and
 // track any gameplay significance separately from this test.
 //   seed  42:  8/267.30000019073486/10/6   →  6/246.44999980926514/10/8
+//
+// 2026-07-26 re-baseline — Floor 1 harvestables excluded from all special rooms
+//
+// Floor 1 harvestables no longer use any special-room candidate (including the
+// boss-stair room); placement is now restricted to `RoomRole.NORMAL` only. That
+// intentionally changes where early AI detours and nearby combat opportunities
+// occur in this 1500-frame slice, so seeds 7 and 137 drift while 13/42 remain
+// unchanged. Re-baseline pinned only after the test's two-invocation determinism
+// check stayed green on the new branch head.
+//   seed   7:  3/145.74999713897705/10/0   →  3/140.7499976158142/10/0
+//   seed 137:  8/298.67000061273575/10/0   →  3/204.19999891519547/50/2
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
@@ -241,7 +252,7 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 3,
-    damageDealt: 145.74999713897705,
+    damageDealt: 140.7499976158142,
     damageTaken: 10,
     finalScore: 0,
   },
@@ -256,10 +267,10 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 8,
-    damageDealt: 298.67000061273575,
-    damageTaken: 10,
-    finalScore: 0,
+    kills: 3,
+    damageDealt: 204.19999891519547,
+    damageTaken: 50,
+    finalScore: 2,
   },
 };
 
