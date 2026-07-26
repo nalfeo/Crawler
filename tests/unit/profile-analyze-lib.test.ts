@@ -460,7 +460,6 @@ describe('dependency-frame attribution', () => {
     expect(output).not.toContain('no project caller');
   });
 
-
   it('prints the owner beside the dependency row and warns about bare names', () => {
     const output = formatSummary(summarizeProfile(rotJsProfile()), { top: 5 });
 
