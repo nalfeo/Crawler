@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest';
+/**
+ * Unit tests for the action_required retrigger helpers.
+ *
+ * Lives beside the module under test as ESM rather than in tests/unit as
+ * TypeScript: the CI-recovery scripts are untyped `.mjs`, so importing them from
+ * a TS test file fails `noImplicitAny` (TS7016). `.github/scripts/ci-recovery/
+ * *.test.mjs` is already wired into `npm run test:guards`.
+ */
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
 
-import {
-  classifyParkedRun,
-  pushEmptyCommit,
-  // @ts-expect-error CI scripts are authored as ESM JavaScript, not typed app modules.
-} from '../../.github/scripts/ci-recovery/action-required-retrigger.mjs';
+import { classifyParkedRun, pushEmptyCommit } from './action-required-retrigger.mjs';
 
 const baseRun = {
   id: 123,
@@ -21,50 +26,54 @@ const basePull = {
 
 describe('action-required retrigger classification', () => {
   it('accepts latest parked required same-repo PR workflow runs', () => {
-    expect(
+    assert.equal(
       classifyParkedRun({
         run: baseRun,
         pull: basePull,
         latestRun: baseRun,
         repository: 'nalfeo/Crawler',
       }),
-    ).toBeNull();
+      null,
+    );
   });
 
   it('rejects stale parked runs after a newer run exists', () => {
-    expect(
+    assert.equal(
       classifyParkedRun({
         run: baseRun,
         pull: basePull,
         latestRun: { ...baseRun, id: 124 },
         repository: 'nalfeo/Crawler',
       }),
-    ).toBe('stale-run');
+      'stale-run',
+    );
   });
 
   it('rejects non-required workflows and moved PR heads', () => {
-    expect(
+    assert.equal(
       classifyParkedRun({
         run: { ...baseRun, path: '.github/workflows/merge-train.yml' },
         pull: basePull,
         latestRun: { ...baseRun, path: '.github/workflows/merge-train.yml' },
         repository: 'nalfeo/Crawler',
       }),
-    ).toBe('workflow-not-required');
-    expect(
+      'workflow-not-required',
+    );
+    assert.equal(
       classifyParkedRun({
         run: baseRun,
         pull: { ...basePull, head: { ...basePull.head, sha: 'def' } },
         latestRun: baseRun,
         repository: 'nalfeo/Crawler',
       }),
-    ).toBe('head-moved');
+      'head-moved',
+    );
   });
 });
 
 describe('pushEmptyCommit', () => {
   it('fetches the validated sha and pushes with a force-with-lease bound to it', () => {
-    const calls: unknown[][] = [];
+    const calls = [];
     const result = pushEmptyCommit(
       {
         number: 42,
@@ -78,21 +87,27 @@ describe('pushEmptyCommit', () => {
         owner: 'nalfeo',
         repo: 'Crawler',
         retriggerPat: 'test-token',
-        git: (args: unknown[]) => {
+        git: (args) => {
           calls.push(args);
           return '';
         },
       },
     );
 
-    expect(result).toBe('pushed');
-    expect(calls).toContainEqual(['fetch', 'origin', 'a'.repeat(40)]);
-    expect(calls).toContainEqual([
-      'push',
-      `--force-with-lease=refs/heads/feature/retrigger:${'a'.repeat(40)}`,
-      'origin',
-      'HEAD:refs/heads/feature/retrigger',
-    ]);
+    assert.equal(result, 'pushed');
+    assert.deepEqual(
+      calls.find((args) => args[0] === 'fetch'),
+      ['fetch', 'origin', 'a'.repeat(40)],
+    );
+    assert.deepEqual(
+      calls.find((args) => args[0] === 'push'),
+      [
+        'push',
+        `--force-with-lease=refs/heads/feature/retrigger:${'a'.repeat(40)}`,
+        'origin',
+        'HEAD:refs/heads/feature/retrigger',
+      ],
+    );
   });
 
   it('treats force-with-lease drift as a safe skip', () => {
@@ -109,10 +124,9 @@ describe('pushEmptyCommit', () => {
         owner: 'nalfeo',
         repo: 'Crawler',
         retriggerPat: 'test-token',
-        git: (args: unknown[]) => {
+        git: (args) => {
           if (args[0] === 'push') {
             const error = new Error('stale info');
-            // @ts-expect-error test fixture simulates execFileSync error shape.
             error.stderr = 'stale info';
             throw error;
           }
@@ -121,6 +135,6 @@ describe('pushEmptyCommit', () => {
       },
     );
 
-    expect(result).toBe('lease-miss');
+    assert.equal(result, 'lease-miss');
   });
 });
