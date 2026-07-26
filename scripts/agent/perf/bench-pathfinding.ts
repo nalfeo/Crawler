@@ -164,8 +164,7 @@ function computeAblationPath(
   const generation = ablationGeneration;
 
   const todo: AblationItem[] = [];
-  const distance = (x: number, y: number): number =>
-    Math.abs(x - startX) + Math.abs(y - startY);
+  const distance = (x: number, y: number): number => Math.abs(x - startX) + Math.abs(y - startY);
 
   const add = (x: number, y: number, prev: AblationItem | null): void => {
     const h = distance(x, y);

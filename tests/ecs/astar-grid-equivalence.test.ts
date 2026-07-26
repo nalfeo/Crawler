@@ -297,11 +297,7 @@ describe('computeGridPath — scratch pool safety', () => {
     // when the nested call fires. If the pool ever handed both searches the same
     // scratch, the inner `beginSearch()` would reset the outer's open list and
     // the outer path would come out short, empty or wrong.
-    const outerRows = [
-      '...................',
-      '.#################.',
-      '...................',
-    ];
+    const outerRows = ['...................', '.#################.', '...................'];
     const innerRows = ['...', '.#.', '...'];
     const expected = referencePath(0, 0, 18, 2, gridPredicate(outerRows));
     expect(expected.length).toBeGreaterThan(20);
