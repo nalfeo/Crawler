@@ -271,8 +271,21 @@ export function isCiFixPr(pullRequest) {
 // Returns true if the PR carries a label that indicates it is blocked by an
 // external mechanism and must not receive a CI Recovery dispatch slot.
 export function isDispatchBlocked(pullRequest) {
-  return (pullRequest.labels || []).some((label) =>
-    DISPATCH_BLOCKED_LABEL_NAMES.has(label.name),
+  return (pullRequest.labels || []).some((label) => DISPATCH_BLOCKED_LABEL_NAMES.has(label.name));
+}
+
+// Genuine waiting PRs stay hidden from broad sweeps. Once reconcile has already
+// converged a waiting PR back to an idle/no-owner state, broad repair sweeps may
+// surface it again so the existing exact repair-dispatch path can reacquire it.
+export function isRepairWakeEligible(pullRequest) {
+  const labels = pullRequest.labels || [];
+  if (!labels.some((label) => label.name === WAITING_LABEL)) return false;
+  if (labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX))) {
+    return false;
+  }
+  if (labels.some((label) => label.name === WAITING_TRANSITION_LABEL)) return false;
+  return (
+    pullRequest.recoveryState?.owner === 'none' && pullRequest.recoveryState?.status === 'idle'
   );
 }
 
@@ -335,10 +348,7 @@ export function collectPrNumbers({
 
   const normalizedRepo = repository.toLowerCase();
   for (const pullRequest of scheduledPulls) {
-    if (
-      !pullRequest.draft &&
-      pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
-    ) {
+    if (!pullRequest.draft && pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo) {
       const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
       if (Number.isInteger(number) && number > 0) {
         pullsByNumber.set(number, pullRequest);
@@ -372,7 +382,7 @@ export function collectPrNumbers({
     if (!isWaiting) return false;
     const hasOwner = labels.some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX));
     const hasTransition = labels.some((l) => l.name === WAITING_TRANSITION_LABEL);
-    return hasOwner || hasTransition;
+    return hasOwner || hasTransition || isRepairWakeEligible(pr);
   });
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
@@ -424,9 +434,11 @@ export function eligibleTrainRecoveryPulls({
       const waiting = labels.some((label) => label.name === WAITING_LABEL);
       const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
       const owned = labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX));
+      const repairWakeEligible = isRepairWakeEligible(pullRequest);
       const shouldExcludeByLabels =
         hasQueueLabel ||
-        (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
+        (!directlyTriggered &&
+          (hasOptOutLabel || (waiting && !owned && !waitingTransition && !repairWakeEligible)));
       return (
         pullRequest.state === 'open' &&
         !pullRequest.draft &&
@@ -868,14 +880,8 @@ export function resolveGlobalDispatchCaps(env = process.env) {
     IDLE_CAP_MAX,
   );
   return {
-    maxBudgetTrainBusy: parsePositiveInt(
-      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY,
-      trainCap,
-    ),
-    maxBudgetTrainIdle: parsePositiveInt(
-      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE,
-      idleCap,
-    ),
+    maxBudgetTrainBusy: parsePositiveInt(env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY, trainCap),
+    maxBudgetTrainIdle: parsePositiveInt(env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE, idleCap),
     globalTrainDispatchCap: parsePositiveInt(env.CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP, trainCap),
     maxDispatchPerRun: parsePositiveInt(
       env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
@@ -1058,6 +1064,46 @@ export async function runFromEnv(env = process.env) {
           }).length,
       },
     );
+  }
+
+  // Bounded hydration pass for waiting/no-owner repair-wake candidates.
+  // hydrateRecoveryOwnership only covers owner-labelled PRs (it filters by
+  // OWNER_LABEL_PREFIX internally). isRepairWakeEligible requires the
+  // ABSENCE of an owner label, so those PRs always arrive at collectPrNumbers
+  // with recoveryState === undefined in production — making the predicate
+  // permanently false. This separate pass loads the recovery state comment
+  // for waiting/no-owner/no-transition candidates so isRepairWakeEligible
+  // can become true for a PR that reconcile has already converged to idle.
+  if (isRepairWindowSweepEvent({ payload, eventName, trainEnabled })) {
+    const waitingNoOwnerCandidates = scheduledPulls.filter(
+      (pr) =>
+        (pr.labels || []).some((l) => l.name === WAITING_LABEL) &&
+        !(pr.labels || []).some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX)) &&
+        !(pr.labels || []).some((l) => l.name === WAITING_TRANSITION_LABEL) &&
+        pr.recoveryState === undefined &&
+        pr.recoveryStateUnreadable === undefined,
+    );
+    if (waitingNoOwnerCandidates.length > 0) {
+      const hydratedWaiting = await Promise.all(
+        waitingNoOwnerCandidates.slice(0, OWNERSHIP_HYDRATION_BATCH_SIZE).map(async (pr) => {
+          try {
+            const comments = await requestWithBackoff(
+              () => paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`),
+              { label: `repair-wake-load-state-${pr.number}` },
+            );
+            return { ...pr, recoveryState: recoveryStateFromComments(comments) };
+          } catch (error) {
+            return {
+              ...pr,
+              recoveryState: null,
+              recoveryStateUnreadable: String(error?.message || error),
+            };
+          }
+        }),
+      );
+      const patchByNumber = new Map(hydratedWaiting.map((pr) => [pr.number, pr]));
+      scheduledPulls = scheduledPulls.map((pr) => patchByNumber.get(pr.number) ?? pr);
+    }
   }
 
   // Lease-reaper pass (Fix A / issue #1783): runs on every scheduled sweep
