@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-// @ts-expect-error CI scripts are authored as ESM JavaScript, not typed app modules.
 import {
   classifyParkedRun,
   pushEmptyCommit,

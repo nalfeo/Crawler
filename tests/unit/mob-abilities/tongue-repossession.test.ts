@@ -193,7 +193,7 @@ describe('Tongue Repossession hit, pull, miss, and collision safety', () => {
     expect(missRecoveryMs).toBeGreaterThan(0);
     const lockedX = h.world.stores.position.x[h.bufo] ?? 0;
     const lockedY = h.world.stores.position.y[h.bufo] ?? 0;
-    const recoveryFrames = Math.ceil(h.def.telegraphDurationMs / DELTA) - 1;
+    const recoveryFrames = Math.max(0, Math.ceil(missRecoveryMs / DELTA) - 1);
 
     stepFullSimulation(h.world, inputState, recoveryFrames);
     expect(h.world.stores.position.x[h.bufo]).toBeCloseTo(lockedX, 6);

@@ -349,26 +349,28 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
         widthFt: def.geometry.widthFt,
         lengthFt,
       };
-    } else if (def.geometry.kind === 'circle') {
-      inst.committedGeometry = {
-        kind: 'circle',
-        x: pos.x,
-        y: pos.y,
-        radiusFt: def.geometry.radiusFt,
-      };
     } else {
-      inst.committedGeometry = def.commitGeometry?.({
+      const committedGeometry = def.commitGeometry?.({
         world,
         casterEid,
         targetEid: targetingMode === 'self' ? null : targetEid,
         lockedX: pos.x,
         lockedY: pos.y,
-      }) ?? {
-        kind: 'circle',
-        x: pos.x,
-        y: pos.y,
-        radiusFt: def.geometry.radiusFt,
-      };
+      });
+      if (committedGeometry !== undefined) {
+        inst.committedGeometry = committedGeometry;
+      } else if (def.geometry.kind === 'circle') {
+        inst.committedGeometry = {
+          kind: 'circle',
+          x: pos.x,
+          y: pos.y,
+          radiusFt: def.geometry.radiusFt,
+        };
+      } else {
+        inst.phase = 'cooldown';
+        inst.timerMs = def.cooldownMs;
+        return;
+      }
     }
   }
 
