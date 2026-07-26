@@ -44,8 +44,20 @@
  * - The closed set is **first-write-wins** at pop time.
  * - Neighbours are visited in `DIRS[4]` order — **N, E, S, W** — which feeds
  *   the insertion sequence and so is load-bearing for tie-breaking.
+ * - The passability predicate is called **exactly once per neighbour per
+ *   expansion, for all four directions, in N/E/S/W order, before any of them
+ *   is enqueued** — including for out-of-bounds and already-closed tiles.
+ *   rot-js builds its whole neighbour list before testing the closed set, and
+ *   `PathfindingOptions.isTilePassable` is a caller-supplied function with no
+ *   enforced purity, so skipping "redundant" probes would be observable to a
+ *   stateful predicate. The redundant calls are kept deliberately.
  *
  * ## Allocation strategy
+ *
+ * The search itself performs **no steady-state allocation**: scratch is reused
+ * across calls and only reallocated when the map's tile count changes or the
+ * open list outgrows its capacity. (The caller still allocates its own result;
+ * this module allocates none of it.)
  *
  * Per hunting-grounds A3 the mechanism here is **(2) encapsulated
  * non-escaping**: all scratch lives in module-level {@link GridAStarScratch}
@@ -56,7 +68,8 @@
  * Reentrancy is handled by a **depth-indexed pool** rather than a throwing
  * guard: if a passability predicate ever re-entered {@link computeGridPath},
  * the nested call takes the next scratch slot down, so it is merely slower —
- * never corrupt.
+ * never corrupt. The slot is released in a `finally`, so a predicate or visitor
+ * that throws cannot leak depth.
  */
 
 /** Predicate deciding whether the search may step onto a tile. */
@@ -103,6 +116,8 @@ class GridAStarScratch {
   heap = new Int32Array(INITIAL_ENTRY_CAPACITY);
   entryCount = 0;
   heapSize = 0;
+  /** Per-expansion N/E/S/W passability probes; reused, never escapes. */
+  readonly neighborPassable = new Uint8Array(4);
 
   /** Ensure the per-tile arrays match this map's tile count. */
   sizeForMap(tileCount: number): void {
@@ -128,7 +143,7 @@ class GridAStarScratch {
   /** Double the open-list capacity. */
   private growEntries(): void {
     const next = this.entryTile.length * 2;
-    const grow = (src: Int32Array): Int32Array => {
+    const grow = (src: Int32Array<ArrayBuffer>): Int32Array<ArrayBuffer> => {
       const out = new Int32Array(next);
       out.set(src);
       return out;
@@ -253,19 +268,19 @@ function releaseScratch(): void {
  *
  * @param width  Grid width in tiles; must be > 0.
  * @param height Grid height in tiles; must be > 0.
- * @param isPassable Must return `false` for every coordinate outside
- *   `[0, width) × [0, height)`. Out-of-bounds neighbours are skipped before
- *   the predicate is consulted, so a predicate that admitted them would
- *   diverge from rot-js. Must be pure for the duration of one call.
+ * @param isPassable Called once per neighbour per expansion, for all four
+ *   directions in N/E/S/W order, before any of them is enqueued — exactly as
+ *   rot-js does. It may be stateful; this module does not skip probes to save
+ *   work. It is expected to return `false` for every coordinate outside
+ *   `[0, width) × [0, height)` (as `isTileTraversable` does); out-of-bounds
+ *   neighbours are additionally rejected here so a tile index is always safe
+ *   to compute.
  *
- * All six coordinates must be integers. Non-integer input yields no path:
- * tile indices address typed arrays, so a fractional coordinate has no slot to
- * stamp and the search could not terminate. rot-js tolerated such input only
- * by accident — `TileMap.isPassable` reads `flags[y * width + x]`, which is
- * `undefined` at a fractional index and passes its bit test, so rot-js would
- * flood the whole fractional lattice and return nothing anyway. Every caller
- * derives tiles via `worldToTile` (`Math.floor`), so this path is unreachable
- * in practice.
+ * All six coordinates must be integers — tile indices address typed arrays, so
+ * a fractional coordinate has no slot to stamp and the search could not
+ * terminate. Non-integer input returns without visiting; `findTilePath` routes
+ * such calls to its rot-js fallback instead, so this guard is a safety net
+ * rather than a behavioural contract change.
  */
 export function computeGridPath(
   width: number,
@@ -317,19 +332,26 @@ export function computeGridPath(
       const x = tile - y * width;
       const nextG = scratch.entryG[e]! + 1;
 
+      // rot-js's `_getNeighbors` probes ALL four directions before the caller
+      // checks the closed set, so every probe happens first, in N/E/S/W order,
+      // even for out-of-bounds or already-closed tiles. A caller-supplied
+      // `isTilePassable` is not required to be pure, so this call pattern is
+      // reproduced exactly rather than pruned.
+      const passable = scratch.neighborPassable;
+      passable[0] = isPassable(x, y - 1) ? 1 : 0;
+      passable[1] = isPassable(x + 1, y) ? 1 : 0;
+      passable[2] = isPassable(x, y + 1) ? 1 : 0;
+      passable[3] = isPassable(x - 1, y) ? 1 : 0;
+
       for (let d = 0; d < 4; d++) {
+        if (passable[d] === 0) continue;
         const nx = x + DIR_X[d]!;
         const ny = y + DIR_Y[d]!;
-        // rot-js relies on the passability callback to reject out-of-bounds
-        // tiles; rejecting them here first is equivalent and keeps the tile
-        // index safe to compute.
+        // `isTileTraversable` already rejects out-of-bounds tiles, so this is
+        // a safety net that keeps the tile index in range for any predicate.
         if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
         const neighborTile = ny * width + nx;
-        // rot-js filters by passability first and skips closed tiles second.
-        // The predicate is pure, so testing closed first adds exactly the same
-        // entries in exactly the same order while skipping redundant probes.
         if (stamp[neighborTile] === generation) continue;
-        if (!isPassable(nx, ny)) continue;
         scratch.push(neighborTile, nextG, Math.abs(nx - startX) + Math.abs(ny - startY), tile);
       }
     }

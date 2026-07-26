@@ -1,3 +1,5 @@
+import { Path } from 'rot-js';
+
 import type { FloorMap } from './FloorMap.js';
 import { computeGridPath } from './astar-grid.js';
 
@@ -87,24 +89,42 @@ export function findTilePath(
 
   const result: TilePoint[] = [];
   let visited = 0;
+  const passable = (x: number, y: number): boolean =>
+    isTileTraversable(floorMap, x, y, traversalMode, isTilePassable);
+  const visit = (x: number, y: number): void => {
+    if (visited < maxPathLength) {
+      result.push({ x, y });
+    }
+    visited += 1;
+  };
 
-  // Search order, tie-breaking, and emitted order are byte-identical to the
-  // rot-js `Path.AStar` this replaced — see `astar-grid.ts` for the contract.
-  computeGridPath(
-    floorMap.tileMap.width,
-    floorMap.tileMap.height,
-    start.x,
-    start.y,
-    goal.x,
-    goal.y,
-    (x: number, y: number) => isTileTraversable(floorMap, x, y, traversalMode, isTilePassable),
-    (x: number, y: number) => {
-      if (visited < maxPathLength) {
-        result.push({ x, y });
-      }
-      visited += 1;
-    },
-  );
+  if (
+    Number.isInteger(start.x) &&
+    Number.isInteger(start.y) &&
+    Number.isInteger(goal.x) &&
+    Number.isInteger(goal.y)
+  ) {
+    // Search order, tie-breaking, and emitted order are byte-identical to the
+    // rot-js `Path.AStar` below — see `astar-grid.ts` for the contract.
+    computeGridPath(
+      floorMap.tileMap.width,
+      floorMap.tileMap.height,
+      start.x,
+      start.y,
+      goal.x,
+      goal.y,
+      passable,
+      visit,
+    );
+  } else {
+    // `TileMap.inBounds` accepts fractional coordinates, so a caller supplying a
+    // permissive `isTilePassable` override (or FLYING traversal over a barrier-free
+    // region) can legitimately search a fractional lattice that no tile-indexed
+    // grid can represent. Preserve the historical rot-js behaviour verbatim for
+    // that case rather than silently changing the result.
+    const astar = new Path.AStar(goal.x, goal.y, passable, { topology: 4 });
+    astar.compute(start.x, start.y, visit);
+  }
 
   if (result.length === 0) {
     return [];
