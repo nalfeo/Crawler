@@ -1,5 +1,5 @@
-import { Path } from 'rot-js';
 import type { FloorMap } from './FloorMap.js';
+import { computeGridPath } from './astar-grid.js';
 
 export const PATH_TRAVERSAL = {
   GROUND: 0,
@@ -85,21 +85,26 @@ export function findTilePath(
     return [{ x: start.x, y: start.y }];
   }
 
-  const astar = new Path.AStar(
-    goal.x,
-    goal.y,
-    (x: number, y: number) => isTileTraversable(floorMap, x, y, traversalMode, isTilePassable),
-    { topology: 4 },
-  );
   const result: TilePoint[] = [];
   let visited = 0;
 
-  astar.compute(start.x, start.y, (x: number, y: number) => {
-    if (visited < maxPathLength) {
-      result.push({ x, y });
-    }
-    visited += 1;
-  });
+  // Search order, tie-breaking, and emitted order are byte-identical to the
+  // rot-js `Path.AStar` this replaced — see `astar-grid.ts` for the contract.
+  computeGridPath(
+    floorMap.tileMap.width,
+    floorMap.tileMap.height,
+    start.x,
+    start.y,
+    goal.x,
+    goal.y,
+    (x: number, y: number) => isTileTraversable(floorMap, x, y, traversalMode, isTilePassable),
+    (x: number, y: number) => {
+      if (visited < maxPathLength) {
+        result.push({ x, y });
+      }
+      visited += 1;
+    },
+  );
 
   if (result.length === 0) {
     return [];
