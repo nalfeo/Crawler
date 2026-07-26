@@ -3830,6 +3830,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-kitchenette-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-kitchenette-var-0",
+    "description": "Generated sprite from brief: welcome-room-kitchenette.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-kitchenette-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-kitchenette-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-laundry-line-var-0",
     "kind": "sprite",
     "label": "welcome-room-laundry-line-var-0",
