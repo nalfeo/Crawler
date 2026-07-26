@@ -3219,6 +3219,19 @@
     "row": 0
   },
   {
+    "id": "generated:tile-stone-floor-v2-var-5",
+    "kind": "sprite",
+    "label": "tile-stone-floor-v2-var-5",
+    "description": "Generated sprite from brief: tile-stone-floor-v2.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "tile-stone-floor-v2-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/tile-stone-floor-v2-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:tile-stone-wall-v1-var-5",
     "kind": "sprite",
     "label": "tile-stone-wall-v1-var-5",
