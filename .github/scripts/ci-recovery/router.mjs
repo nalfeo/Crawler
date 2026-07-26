@@ -1066,6 +1066,46 @@ export async function runFromEnv(env = process.env) {
     );
   }
 
+  // Bounded hydration pass for waiting/no-owner repair-wake candidates.
+  // hydrateRecoveryOwnership only covers owner-labelled PRs (it filters by
+  // OWNER_LABEL_PREFIX internally). isRepairWakeEligible requires the
+  // ABSENCE of an owner label, so those PRs always arrive at collectPrNumbers
+  // with recoveryState === undefined in production — making the predicate
+  // permanently false. This separate pass loads the recovery state comment
+  // for waiting/no-owner/no-transition candidates so isRepairWakeEligible
+  // can become true for a PR that reconcile has already converged to idle.
+  if (isRepairWindowSweepEvent({ payload, eventName, trainEnabled })) {
+    const waitingNoOwnerCandidates = scheduledPulls.filter(
+      (pr) =>
+        (pr.labels || []).some((l) => l.name === WAITING_LABEL) &&
+        !(pr.labels || []).some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX)) &&
+        !(pr.labels || []).some((l) => l.name === WAITING_TRANSITION_LABEL) &&
+        pr.recoveryState === undefined &&
+        pr.recoveryStateUnreadable === undefined,
+    );
+    if (waitingNoOwnerCandidates.length > 0) {
+      const hydratedWaiting = await Promise.all(
+        waitingNoOwnerCandidates.slice(0, OWNERSHIP_HYDRATION_BATCH_SIZE).map(async (pr) => {
+          try {
+            const comments = await requestWithBackoff(
+              () => paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`),
+              { label: `repair-wake-load-state-${pr.number}` },
+            );
+            return { ...pr, recoveryState: recoveryStateFromComments(comments) };
+          } catch (error) {
+            return {
+              ...pr,
+              recoveryState: null,
+              recoveryStateUnreadable: String(error?.message || error),
+            };
+          }
+        }),
+      );
+      const patchByNumber = new Map(hydratedWaiting.map((pr) => [pr.number, pr]));
+      scheduledPulls = scheduledPulls.map((pr) => patchByNumber.get(pr.number) ?? pr);
+    }
+  }
+
   // Lease-reaper pass (Fix A / issue #1783): runs on every scheduled sweep
   // OUTSIDE the dispatch budget. Ensures all owner-labeled PRs have been
   // hydrated (train-mode hydration above may stop early at targetDispatchable;

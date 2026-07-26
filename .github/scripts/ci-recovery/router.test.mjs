@@ -3027,3 +3027,120 @@ test('runFromEnv respects runtime busy/global caps under a simulated schedule bu
     `expected run output to show the bounded budget; stdout: ${stdout}`,
   );
 });
+
+test('runFromEnv hydrates waiting/no-owner candidates and dispatches repair wake via schedule', async (t) => {
+  // Exercises the waiting-candidate hydration pass added in runFromEnv:
+  // a PR that carries only ci-recovery-waiting (no owner label, no
+  // waiting-transition) with a persisted idle/no-owner recovery state must be
+  // loaded from comments and re-surfaced by the repair-window sweep so the
+  // existing reconcile path can reacquire it.  This is the end-to-end
+  // production subprocess path that pure unit tests cannot cover because they
+  // inject recoveryState manually and skip the HTTP hydration step.
+  const OWNER = 'test-owner';
+  const REPO = 'test-repo';
+  const TOKEN = 'x-test-token';
+  const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+  // PR #20: ci-recovery-waiting, no owner label, no waiting-transition label.
+  // Its state comment records owner=none,status=idle → should become
+  // repair-wake-eligible after the new hydration pass loads the comment.
+  const pr20 = {
+    number: 20,
+    state: 'open',
+    draft: false,
+    base: { ref: 'main' },
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [{ name: 'ci-recovery-waiting' }],
+    head: { sha: 'head-20', repo: { full_name: `${OWNER}/${REPO}` } },
+  };
+
+  const idleStateComment = {
+    id: 1,
+    body: renderStateComment(
+      makeState({
+        prNumber: 20,
+        headSha: 'head-20',
+        fingerprint: 'repair-gap-fixture',
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation',
+        blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+        attempt: 1,
+        updatedAt,
+      }),
+    ),
+  };
+
+  const dispatches = [];
+  const commentRequestsFor20 = [];
+  let visibleRuns = 0;
+
+  const { server, port } = await startRouterMockServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pr20] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/20/comments`]: () => {
+      commentRequestsFor20.push(1);
+      return { body: [idleStateComment] };
+    },
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/runs`]: (url) => {
+      const parsed = new URL(`http://127.0.0.1${url}`);
+      if (parsed.searchParams.get('status')) {
+        // countOutstandingWorkflowRuns: 0 outstanding → positive dispatch budget
+        return { body: { total_count: 0, workflow_runs: [] } };
+      }
+      // listRecentOutstandingRunIds (per_page=100): return newly visible runs
+      // after dispatch so waitForDispatchedRunsVisible converges immediately.
+      return {
+        body: {
+          workflow_runs: Array.from({ length: visibleRuns }, (_, index) => ({
+            id: index + 1,
+            status: 'queued',
+          })),
+        },
+      };
+    },
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
+      dispatches.push(body?.inputs ?? {});
+      visibleRuns = dispatches.length;
+      return { status: 204 };
+    },
+  });
+  t.after(() => server.close());
+
+  const eventDir = await mkdtemp(join(tmpdir(), 'router-repair-wake-'));
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({ repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } }),
+  );
+  t.after(() => rm(eventDir, { recursive: true, force: true }));
+
+  const { code, stdout, stderr } = await runRouterScript(port, {
+    GITHUB_TOKEN: TOKEN,
+    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_PATH: eventPath,
+  });
+
+  if (!assertRouterExit(t, code, stderr)) return;
+
+  // (a) The router fetched PR #20's comments to evaluate isRepairWakeEligible.
+  assert.ok(
+    commentRequestsFor20.length >= 1,
+    `comments for PR #20 must be fetched during the waiting-candidate hydration pass; stdout: ${stdout}`,
+  );
+
+  // (b) PR #20 must be dispatched by the normal repair loop (not the reaper,
+  // which only targets owner-labeled PRs).
+  const repairDispatches = dispatches.filter((inputs) => inputs.trigger !== 'lease-reaper');
+  assert.equal(
+    repairDispatches.length,
+    1,
+    `exactly one repair dispatch expected for idle waiting PR #20; stdout: ${stdout}`,
+  );
+  assert.equal(repairDispatches[0].pr_number, '20', 'repair-wake PR #20 must be dispatched');
+  assert.match(
+    stdout,
+    /dispatched pr=#20/,
+    `dispatch log line expected for PR #20; stdout: ${stdout}`,
+  );
+});

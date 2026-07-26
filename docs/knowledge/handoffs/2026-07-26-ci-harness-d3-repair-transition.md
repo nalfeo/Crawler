@@ -69,28 +69,37 @@ What the tests prove:
 - Existing reconcile invariants remain covered unchanged, including exact
   `expected_head_sha` / `expected_base_ref` binding and
   `stale-automation-exhausted` / duplicate-progress no-storm behavior.
+- **End-to-end subprocess test** (`runFromEnv hydrates waiting/no-owner
+  candidates and dispatches repair wake via schedule`): exercises the complete
+  production HTTP path — the mock server returns the PR without an injected
+  `recoveryState`, the router fetches comments via the API, parses the idle
+  state, and dispatches reconcile. This is the production execution path that
+  pure unit tests (which inject `recoveryState` directly) cannot cover.
 
 Live observation status:
 
-- I attempted to find a real open PR already in the exact target state for this
-  fix: **broken + idle recovery state + `ci-recovery-waiting` label**.
-- Current repository state did not provide one. The open waiting PRs I inspected
-  (for example #2057, #2066, #2023, #1996, #1972) are all persisted as
-  `owner=none,status=waiting,trigger=admission-wait`, not idle repair states.
-- The open PRs I found with idle recovery state (for example #2016, #1923,
-  #2022, #1939) do not currently carry `ci-recovery-waiting`.
-- Because there was no live PR in the exact precondition state, I could not
-  truthfully observe a production repair dispatch without manufacturing state in
-  the repository. I preserved deterministic evidence instead of weakening the
-  gate.
+- The repair-wake unit tests and the new `runFromEnv` subprocess integration
+  test provide deterministic end-to-end evidence that the production path
+  works. The reviewer noted that the issue's acceptance criteria also require a
+  **live production observation** (a real broken, idle PR receiving a repair
+  comment + acquired lease on the next scheduled sweep).
+- No live PR in the exact precondition state (`ci-recovery-waiting` + persisted
+  `owner=none,status=idle`) was available at the time of this session. The open
+  waiting PRs inspected (e.g. #2057, #2066, #2023, #1996, #1972) were all
+  persisted as `owner=none,status=waiting,trigger=admission-wait`, not idle
+  repair states. Open PRs with idle state (e.g. #2016, #1923, #2022, #1939)
+  did not carry `ci-recovery-waiting`.
+- **Issue #1859 remains open** pending live production observation. The issue
+  should be closed by a maintainer only after observing a real broken, idle
+  `ci-recovery-waiting` PR being repaired on the next scheduled sweep after
+  this fix is deployed.
 
 ## Follow-up
 
-1. After this patch is deployed, the next real PR that reaches
-   `ci-recovery-waiting` with persisted `owner=none,status=idle` should now be
-   eligible for one exact repair dispatch on the next repair-window sweep.
-2. If maintainers want a production proof after merge, monitor the next such PR
-   for:
-   - one `@copilot` repair task comment, and
+1. After this patch is deployed, monitor the next real PR that reaches
+   `ci-recovery-waiting` with persisted `owner=none,status=idle` for:
+   - one `@copilot` repair task comment dispatched on the next sweep, and
    - one acquired automation owner lease,
      with no repeated storming once progress fingerprints stop changing.
+2. Once that production observation is made, close issue #1859 with a link to
+   the evidence.

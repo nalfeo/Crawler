@@ -4,6 +4,8 @@
   "session_slug": "ci-harness-d3-repair-transition",
   "task_title": "First-class repair transition for D3",
   "estimated_apples": 3,
+  "apples_rescored_from": 4,
+  "rescore_reason": "The linked issue estimated 4🍎, but all changes are confined to CI recovery automation scripts (.github/scripts/ci-recovery/router.mjs and its tests) — no runtime gameplay, shipped game data, or multi-system architectural change. The tooling-only complexity cap (AGENTS.md: 'Work confined to developer/agent tooling, canvases, automation, or asset-pipeline tooling is estimated at no more than 3🍎 regardless of file count') applies. The actual diff is a single bounded hydration pass plus a subprocess integration test, consistent with 3🍎.",
   "stages": {
     "plan_review": {
       "completed": true,
