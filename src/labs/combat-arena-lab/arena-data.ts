@@ -601,7 +601,6 @@ function spawnBigPandaWeiArena(
   return [eid];
 }
 
-function spawnBigMamaBufoArena(
 function spawnSovereignCapArena(
   world: GameWorld,
   map: FloorMap,

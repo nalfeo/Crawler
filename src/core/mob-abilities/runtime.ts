@@ -349,15 +349,14 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
         widthFt: def.geometry.widthFt,
         lengthFt,
       };
-    } else {
+    } else if (def.geometry.kind === 'circle') {
       inst.committedGeometry = {
         kind: 'circle',
         x: pos.x,
         y: pos.y,
         radiusFt: def.geometry.radiusFt,
       };
-    }
-    else {
+    } else {
       inst.committedGeometry = def.commitGeometry?.({
         world,
         casterEid,
