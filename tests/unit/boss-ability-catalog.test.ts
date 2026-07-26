@@ -281,8 +281,8 @@ describe('Floor 2 boss ability delivery status', () => {
     expect(stageCounts).toMatchObject({ blocked: 17, 'in-progress': 1 });
     expect(Object.keys(stageCounts).sort()).toEqual(['blocked', 'in-progress']);
 
-    // Queen Mab and Big Panda Wei runtime/telegraph/arena slices are verified,
-    // but both stay blocked overall behind the separate production-enable gate
+    // Queen Mab, Big Panda Wei, and Sovereign Cap runtime/telegraph/arena slices are verified,
+    // but all stay blocked overall behind the separate production-enable gate
     // for real-game enablement/balance.
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
     expect(queen?.status.arenaLabState).toBe('verified');
@@ -297,13 +297,18 @@ describe('Floor 2 boss ability delivery status', () => {
     expect(panda?.status.arenaLabState).toBe('verified');
     expect(panda?.status.runtimeState).toBe('verified');
     expect(panda?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
-    // The other 15 abilities remain blocked purely by the production-enable
+    const sovereign = records.find((record) => record.ability.bossArchetypeId === 'myconid-boss');
+    expect(sovereign?.status.arenaLabState).toBe('verified');
+    expect(sovereign?.status.runtimeState).toBe('verified');
+    expect(sovereign?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    // The other abilities remain blocked purely by the production-enable
     // gate; arena slices must not promote them to ready.
     for (const record of records.filter(
       (candidate) =>
         candidate.ability.bossArchetypeId !== 'faerie-boss' &&
         candidate.ability.bossArchetypeId !== 'ratfolk-boss' &&
-        candidate.ability.bossArchetypeId !== 'panda-boss',
+        candidate.ability.bossArchetypeId !== 'panda-boss' &&
+        candidate.ability.bossArchetypeId !== 'myconid-boss',
     )) {
       expect(record.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     }

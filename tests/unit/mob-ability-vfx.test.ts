@@ -283,6 +283,34 @@ describe('MobAbilityVfx', () => {
     expect(cleanupPoof!.y).toBe(ftToPx(20));
   });
 
+  it('draws persistent sovereign cloud rims for runtime-owned zones', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.ownedZones.push({
+      id: 42,
+      abilityId: 'sovereign-cap-spore-bloom',
+      casterEid: 9,
+      sourceId: 'mob-ability:sovereign-cap-spore-bloom:9',
+      geometry: {
+        kind: 'multi-circle',
+        circles: [
+          { kind: 'circle', x: 30, y: 30, radiusFt: 8 },
+          { kind: 'circle', x: 35, y: 28, radiusFt: 8 },
+          { kind: 'circle', x: 25, y: 28, radiusFt: 8 },
+        ],
+      },
+      durationMs: 4000,
+      tickIntervalMs: 500,
+      elapsedMs: 1500,
+      nextTickAtMs: 2000,
+      tick: () => {},
+    });
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+    const cloudGfx = graphicsObjects[0]!;
+    expect(cloudGfx.strokeCircle).toHaveBeenCalledWith(ftToPx(30), ftToPx(30), ftToPx(8));
+  });
+
   it('emits deterministic berserk motif shapes for active bamboo-fed buffs', () => {
     const { scene } = createSceneStub();
     const world = createTestWorld();

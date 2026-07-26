@@ -181,6 +181,12 @@ describe('combat-arena-lab wiring', () => {
     expect(presetWithBoss).toBeDefined();
   });
 
+  it('includes the sovereign-cap boss ability preset', () => {
+    const preset = ARENA_ENEMY_PRESETS.find((p) => p.id === 'f2-sovereign-cap');
+    expect(preset).toBeDefined();
+    expect(preset?.customSpawnFn).toBeTypeOf('function');
+  });
+
   it('includes the canonical Squick boss-ability preset', () => {
     const preset = getEnemyPreset('f2-squick');
     expect(preset.id).toBe('f2-squick');

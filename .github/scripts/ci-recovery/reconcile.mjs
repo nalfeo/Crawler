@@ -61,7 +61,12 @@ import {
   shouldRequestReview,
   unrecordedConflictEpisode,
 } from './review-request.mjs';
-import { evaluatePhase, formatLifecycleOutcome, LIFECYCLE_MARKER, parseLifecycleComment } from './pr-lifecycle.mjs';
+import {
+  evaluatePhase,
+  formatLifecycleOutcome,
+  LIFECYCLE_MARKER,
+  parseLifecycleComment,
+} from './pr-lifecycle.mjs';
 import { DISPATCH_ACTION, selectEarlyAction } from './dispatch-table.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -1266,6 +1271,122 @@ const rebaseFailureBackoffActive =
   now.getTime() - Date.parse(state.updatedAt) <
     calculateRebaseFailureBackoffMs(rebaseDispatchAttemptsForHead);
 
+/**
+ * Fetch the PR's review threads and run the auto-outdated-marker and
+ * thread-resolution passes before an early exit (R06/R07). This ensures that
+ * outdated review threads are cleaned up even when the reconciler cannot
+ * dispatch @copilot — e.g. due to merge-train ownership (R06) or the
+ * ci-conflict-order-wait label (R07).
+ *
+ * Uses an empty reachableMarkerShas set (conservative: skips SHA lineage checks)
+ * because the compare API call in the main flow is unreachable from here.
+ * Best-effort: any fetch or mutation error is caught and logged so the early
+ * exit always proceeds cleanly.
+ */
+async function resolveOutdatedThreadsBeforeEarlyExit() {
+  let earlyReview;
+  try {
+    earlyReview = await listReviewThreads(readToken, owner, repo, prNumber);
+  } catch (err) {
+    const safeMsg = String(err?.message || err)
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 200);
+    process.stderr.write(
+      `pre-exit-thread-cleanup-fetch-failed pr=#${prNumber} err=${safeMsg}\n`,
+    );
+    return;
+  }
+  const earlyHeadSha = String(pr.head.sha || '').toLowerCase();
+  const earlyUnresolved = earlyReview.threads.filter((t) => !t.isResolved);
+  // Conservative: empty reachable set — we skip the SHA lineage check here
+  // because we cannot reach the compare API call from the early-exit path.
+  const emptyReachable = new Set();
+
+  // Auto-outdated-marker pass: inject reconciler marker on outdated threads
+  // with no trusted marker so the resolution pass below can resolve them.
+  for (const thread of earlyUnresolved) {
+    if (!thread.isOutdated) continue;
+    if (shouldResolveThread(thread, earlyHeadSha, emptyReachable)) continue;
+    const comments = thread.comments?.nodes ?? [];
+    const last = comments[comments.length - 1];
+    const hasTrustedMarker =
+      last &&
+      extractAddressedMarkerSha(last.body) !== null &&
+      (TRUSTED_ASSOCIATIONS.has(String(last.authorAssociation ?? '').toUpperCase()) ||
+        TRUSTED_BOT_LOGINS.has(String(last.author?.login ?? '').toLowerCase()));
+    if (hasTrustedMarker) continue;
+
+    const root = comments[0];
+    const replyCommentId = reviewThreadReplyCommentId(root?.url);
+    if (!replyCommentId) {
+      process.stdout.write(`skip outdated-marker thread=${thread.id} reason=no-reply-target\n`);
+      continue;
+    }
+    const markerBody = `✅ Addressed in ${earlyHeadSha}: thread outdated — reviewed lines no longer present at this location`;
+    if (live) {
+      try {
+        await assertExpectedMetadataUnchanged('post-outdated-marker');
+        await request(
+          pat,
+          `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
+          { method: 'POST', body: { body: markerBody } },
+        );
+      } catch (markerErr) {
+        const safeMsg = String(markerErr?.message || markerErr)
+          .replace(/[\r\n]/g, ' ')
+          .slice(0, 300);
+        process.stderr.write(
+          `outdated-marker-reply-failed thread=${thread.id} status=${markerErr?.status ?? 'n/a'} err=${safeMsg}\n`,
+        );
+        process.stdout.write(`skip outdated-marker thread=${thread.id} reason=reply-failed\n`);
+        continue;
+      }
+    }
+    if (!thread.comments) thread.comments = { nodes: [] };
+    thread.comments.nodes.push({
+      id: `reconciler-outdated-marker:${thread.id}`,
+      body: markerBody,
+      url: '',
+      author: { login: '' },
+      authorAssociation: 'OWNER',
+    });
+    process.stdout.write(
+      `${live ? 'posted' : 'would-post'} outdated-marker thread=${thread.id}\n`,
+    );
+  }
+
+  // Thread-resolution pass: resolve any unresolved thread with a trusted marker.
+  for (const thread of earlyUnresolved) {
+    if (!shouldResolveThread(thread, earlyHeadSha, emptyReachable)) continue;
+    if (live) {
+      try {
+        await assertExpectedMetadataUnchanged('resolve-thread');
+        await graphql(
+          pat,
+          `
+            mutation ($threadId: ID!) {
+              resolveReviewThread(input: { threadId: $threadId }) {
+                thread {
+                  isResolved
+                }
+              }
+            }
+          `,
+          { threadId: thread.id },
+        );
+      } catch (resolveErr) {
+        const safeMsg = String(resolveErr?.message || resolveErr)
+          .replace(/[\r\n]/g, ' ')
+          .slice(0, 300);
+        process.stderr.write(`resolve-thread-failed thread=${thread.id} err=${safeMsg}\n`);
+        continue;
+      }
+    }
+    thread.isResolved = true;
+    process.stdout.write(`${live ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
+  }
+}
+
 {
   const earlyAutomationProgressAtMs =
     labelExists &&
@@ -1353,7 +1474,9 @@ const rebaseFailureBackoffActive =
                 const safeMsg = String(err.message || err)
                   .replace(/[\r\n]/g, ' ')
                   .slice(0, 500);
-                process.stderr.write(`loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`);
+                process.stderr.write(
+                  `loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`,
+                );
                 // Exit non-zero WITHOUT releasing the lock so the next sweep retries filing.
                 process.exit(1);
               }
@@ -1379,12 +1502,18 @@ const rebaseFailureBackoffActive =
 
       case DISPATCH_ACTION.SKIP_MERGE_TRAIN_OWNED:
         // R06: merge-train-owned (owner-blind — D5 invariant guarantees R05 ran first)
+        // Run thread cleanup before exiting so outdated review threads are resolved
+        // even when @copilot cannot be dispatched due to merge-train ownership.
+        await resolveOutdatedThreadsBeforeEarlyExit();
         process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
         process.exit(0);
         break;
 
       case DISPATCH_ACTION.SKIP_CI_CONFLICT_ORDER_WAIT:
         // R07: ci-conflict-order-wait (owner-blind — D5 invariant guarantees R05 ran first)
+        // Run thread cleanup before exiting so outdated review threads are resolved
+        // even when @copilot cannot be dispatched due to the conflict-order-wait fence.
+        await resolveOutdatedThreadsBeforeEarlyExit();
         process.stdout.write(`skip pr=#${prNumber} reason=ci-conflict-order-wait\n`);
         process.exit(0);
         break;
@@ -1488,6 +1617,22 @@ const reachableMarkerShas = new Set();
 // 422 ambiguous SHA) are omitted from both sets so that the stale-marker hint is not
 // emitted spuriously.
 const definitivelyUnreachableMarkerShas = new Set();
+// Narrow subset of definitively unreachable SHAs that were confirmed missing via 404.
+// Only these are eligible for typo-promotion to avoid reclassifying real commits that
+// exist on a divergent lineage.
+const definitivelyMissingMarkerShas = new Set();
+
+function differsByExactlyOneHexDigit(leftSha, rightSha) {
+  if (leftSha.length !== 40 || rightSha.length !== 40) return false;
+  let differenceCount = 0;
+  for (let index = 0; index < leftSha.length; index += 1) {
+    if (leftSha[index] === rightSha[index]) continue;
+    differenceCount += 1;
+    if (differenceCount > 1) return false;
+  }
+  return differenceCount === 1;
+}
+
 for (const markerSha of markerShasNeedingLineageCheck) {
   try {
     const compare = (
@@ -1519,12 +1664,29 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     if (isDefinitivelyMissing) {
       // 404: commit does not exist on GitHub — definitively a stale/never-pushed SHA.
       definitivelyUnreachableMarkerShas.add(markerSha);
+      definitivelyMissingMarkerShas.add(markerSha);
     }
     // For transient/indeterminate failures (rate limits, 5xx, network errors,
     // 422 ambiguous SHA, etc.) the SHA is absent from both sets so no stale-marker
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+
+// Promote only definitively-missing 40-char SHAs that differ from the current
+// head by exactly one hex digit. This covers the reported stale-marker typo
+// incident without reclassifying divergent/behind commits or unrelated missing
+// SHAs that merely share a 7-char prefix with HEAD.
+for (const sha of [...definitivelyMissingMarkerShas]) {
+  if (headSha.startsWith(sha.slice(0, 7)) && differsByExactlyOneHexDigit(sha, headSha)) {
+    reachableMarkerShas.add(sha);
+    definitivelyUnreachableMarkerShas.delete(sha);
+    definitivelyMissingMarkerShas.delete(sha);
+    process.stdout.write(
+      `promoted stale-marker sha=${sha} to reachable via one-digit typo match head=${headSha}\n`,
+    );
+  }
+}
+
 function shouldAutoPostOutdatedMarker(candidate) {
   if (!candidate.isOutdated) return false;
   if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
@@ -2271,7 +2433,9 @@ let currentLifecyclePhase = null;
       hasLeadingMarker(comment.body, LIFECYCLE_MARKER) && isTrustedLifecycleAuthor(comment),
   );
   if (trustedLifecycleComments.length > 1) {
-    process.stdout.write(`lifecycle-comment-duplicate pr=#${prNumber} count=${trustedLifecycleComments.length}\n`);
+    process.stdout.write(
+      `lifecycle-comment-duplicate pr=#${prNumber} count=${trustedLifecycleComments.length}\n`,
+    );
   } else if (trustedLifecycleComments.length === 1) {
     try {
       const record = parseLifecycleComment(trustedLifecycleComments[0].body);
@@ -2302,9 +2466,7 @@ process.stdout.write(
 if (lifecycleEvaluation.readmit && mergeTrainEnabled) {
   // D1 fix: a fully admissible PR not yet in the train must trigger re-admission.
   // Reporting "train empty" for such a PR is the root cause of D1.
-  process.stdout.write(
-    `lifecycle readmit pr=#${prNumber} reason=d1-fix admission-was-stale\n`,
-  );
+  process.stdout.write(`lifecycle readmit pr=#${prNumber} reason=d1-fix admission-was-stale\n`);
 }
 
 if (normalized.length === 0) {

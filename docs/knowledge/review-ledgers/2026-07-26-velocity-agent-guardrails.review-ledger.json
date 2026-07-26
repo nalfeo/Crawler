@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-26",
+  "session_slug": "velocity-agent-guardrails",
+  "task_title": "Velocity-engineer guardrails + ci-recovery test relocation",
+  "estimated_apples": 1,
+  "stages": {}
+}
