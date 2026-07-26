@@ -3570,6 +3570,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-carpet-var-4",
+    "kind": "sprite",
+    "label": "welcome-room-carpet-var-4",
+    "description": "Generated sprite from brief: welcome-room-carpet.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-carpet-var-4",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-carpet-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-chair-turned-var-0",
     "kind": "sprite",
     "label": "welcome-room-chair-turned-var-0",
