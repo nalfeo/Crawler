@@ -219,6 +219,54 @@ describe('real-world scale', () => {
   });
 });
 
+describe('scale sanity', () => {
+  const withHeight = (id: string, heightFt: number, spriteId = id) =>
+    prop({
+      id,
+      kind: 'furniture',
+      x: 1,
+      y: 1,
+      layers: [{ sprite: { source: 'catalog', spriteId }, widthFt: 2, heightFt }],
+    });
+
+  it('fails a bookcase squashed to a floor-depth height', () => {
+    // The exact shipped bug: heightFt authored as a floor footprint, so every
+    // upright object was flattened and the room read as small and sparse.
+    const check = checkOf(def({ props: [withHeight('broker-bookcase', 4)] }), 'scale-sanity');
+    expect(check.pass).toBe(false);
+    expect(check.detail).toContain('too short');
+  });
+
+  it('passes a bookcase at a believable standing height', () => {
+    expect(checkOf(def({ props: [withHeight('broker-bookcase', 6.5)] }), 'scale-sanity').pass).toBe(
+      true,
+    );
+  });
+
+  it('fails an object authored taller than its real-world band', () => {
+    const check = checkOf(def({ props: [withHeight('lounge-stool', 6)] }), 'scale-sanity');
+    expect(check.pass).toBe(false);
+    expect(check.detail).toContain('too tall');
+  });
+
+  it('judges by the sprite, not a misleading prop name', () => {
+    // `crate-bottom-right` draws the crate-STACK sprite. Judging it against the
+    // single-crate band would report a false failure at a correct 5.4 ft.
+    expect(
+      checkOf(
+        def({ props: [withHeight('crate-bottom-right', 5.4, 'welcome-room-crate-stack-var-3')] }),
+        'scale-sanity',
+      ).pass,
+    ).toBe(true);
+  });
+
+  it('passes props it has no opinion about', () => {
+    expect(checkOf(def({ props: [withHeight('mystery-widget', 42)] }), 'scale-sanity').pass).toBe(
+      true,
+    );
+  });
+});
+
 describe('focal point', () => {
   it('fails when every prop is the same size', () => {
     const props = Array.from({ length: 4 }, (_, i) =>
@@ -438,5 +486,131 @@ describe('scoreSetPiece', () => {
     expect(strict.pass).toBe(false);
     expect(lenient.pass).toBe(true);
     expect(strict.actual).toBeCloseTo(lenient.actual);
+  });
+});
+
+describe('wall anchoring clearance', () => {
+  /** Two same-size large props so the median makes both "large". */
+  const roomWith = (ax: number, ay: number, bx: number, by: number): SetPieceDef =>
+    def({
+      width: 9,
+      height: 9,
+      props: [
+        prop({
+          id: 'bulk-a',
+          kind: 'furniture',
+          x: ax,
+          y: ay,
+          layers: [{ sprite: { source: 'catalog', spriteId: 's' }, widthFt: 6, heightFt: 6 }],
+        }),
+        prop({
+          id: 'bulk-b',
+          kind: 'furniture',
+          x: bx,
+          y: by,
+          layers: [{ sprite: { source: 'catalog', spriteId: 's' }, widthFt: 6, heightFt: 6 }],
+        }),
+      ],
+    });
+
+  it('counts a prop ONE tile off the wall as anchored', () => {
+    // A counter with someone standing behind it. Also the only arrangement
+    // possible once a real wall ring occupies the perimeter.
+    expect(checkOf(roomWith(1, 1, 7, 7), 'wall-anchoring').actual).toBe(1);
+  });
+
+  it('does not count a prop adrift in the middle', () => {
+    // 2+ tiles of clearance is the composition failure this check exists for.
+    expect(checkOf(roomWith(4, 4, 7, 7), 'wall-anchoring').actual).toBe(0.5);
+  });
+
+  it('honours a stricter maxWallGapTiles', () => {
+    const strict: CompositionThresholds = { ...DEFAULT_THRESHOLDS, maxWallGapTiles: 0 };
+    expect(checkOf(roomWith(1, 1, 7, 7), 'wall-anchoring', strict).actual).toBe(0);
+  });
+});
+
+describe('height band resolution', () => {
+  const scoreOne = (p: SetPiecePropDef) => checkOf(def({ props: [p] }), 'scale-sanity');
+
+  it('judges a wall torch against the bracket band, not the brazier band', () => {
+    // The shared sprite id is ambiguous; the prop id is the more specific source.
+    // Preferring the sprite unconditionally reported a false failure here.
+    const p = prop({
+      id: 'wall-torch-broker',
+      kind: 'decoration',
+      layers: [
+        {
+          sprite: { source: 'catalog', spriteId: 'prop-torch-v1-var-8' },
+          widthFt: 1.4,
+          heightFt: 2.8,
+        },
+      ],
+    });
+    expect(scoreOne(p).pass).toBe(true);
+  });
+
+  it('still judges a stack by its sprite when the prop id says single crate', () => {
+    // The reverse direction: here the SPRITE is the more specific source.
+    const p = prop({
+      id: 'crate-bottom-right',
+      kind: 'decoration',
+      layers: [
+        {
+          sprite: { source: 'catalog', spriteId: 'welcome-room-crate-stack-var-3' },
+          widthFt: 3.9,
+          heightFt: 4.5,
+        },
+      ],
+    });
+    expect(scoreOne(p).pass).toBe(true);
+  });
+
+  it('flags a genuinely squashed standing torch', () => {
+    const p = prop({
+      id: 'standing-lamp-hall',
+      kind: 'decoration',
+      layers: [{ sprite: { source: 'catalog', spriteId: 'x' }, widthFt: 1.4, heightFt: 2 }],
+    });
+    expect(scoreOne(p).pass).toBe(false);
+  });
+});
+
+describe('edge treatment inward reach', () => {
+  /**
+   * A 5x5 room whose whole ring is dressed by props sitting ONE tile inside it —
+   * the only arrangement possible once mapgen writes a real structural wall ring
+   * over the perimeter (floor-standing crates stand beside a wall, never in it).
+   */
+  const ringOfProps = (inset: number): SetPieceDef => {
+    const size = 5;
+    const props: SetPiecePropDef[] = [];
+    const lo = inset;
+    const hi = size - 1 - inset;
+    for (let y = lo; y <= hi; y += 1) {
+      for (let x = lo; x <= hi; x += 1) {
+        if (x !== lo && x !== hi && y !== lo && y !== hi) continue;
+        props.push(prop({ id: `crate-${x}-${y}`, kind: 'decoration', x, y }));
+      }
+    }
+    return def({ width: size, height: size, props });
+  };
+
+  it('counts floor-standing props one tile inside the ring as edge dressing', () => {
+    // Regression: requiring literal ring OCCUPANCY made this check
+    // unsatisfiable-by-construction for the very dressing its remedy asks for.
+    expect(checkOf(ringOfProps(1), 'perimeter').actual).toBe(1);
+  });
+
+  it('does not count props two tiles inside the ring', () => {
+    // The reach is deliberately ONE tile: two tiles in is not edge dressing.
+    // Without this the fix would be a blanket loosening rather than a correction.
+    expect(checkOf(ringOfProps(2), 'perimeter').actual).toBe(0);
+  });
+
+  it('still counts props sitting directly on the ring', () => {
+    // Wall-MOUNTED decor (posters, sconces, banners) legitimately occupies the
+    // ring, and must keep counting after the inward-reach change.
+    expect(checkOf(ringOfProps(0), 'perimeter').actual).toBe(1);
   });
 });

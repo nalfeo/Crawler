@@ -534,6 +534,20 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
      */
     private expectedPersistentPlaceholderCount = 0;
 
+    /**
+     * The floor map + baked terrain RenderTexture from the last bake, kept so
+     * the terrain can be RE-baked once generated tile textures finish loading.
+     *
+     * create() must bake immediately (so the room is never blank), but at that
+     * point `warmGeneratedSprites()` has not resolved, so every generated tile
+     * key is missing and `buildTerrainLayer` falls through to its flat-colour
+     * path. Without a re-bake the lab shows a solid colour floor that the real
+     * game never renders — which silently invalidates any visual review done
+     * here. Re-baking on load-complete makes the lab floor the game floor.
+     */
+    private bakedFloorMap: FloorMap | null = null;
+    private terrainRt: Phaser.GameObjects.RenderTexture | null = null;
+
     constructor() {
       super({ key: SCENE_KEY });
     }
@@ -586,6 +600,8 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       // Bake terrain to a single flat RenderTexture beneath the entity plane.
       const terrain = buildTerrainLayer(this, floorMap);
       terrain.rt.setDepth(-20);
+      this.bakedFloorMap = floorMap;
+      this.terrainRt = terrain.rt;
 
       // Stamp the set piece: pure, deterministic tile → world-feet placement.
       const stamp = stampSetPiece(def, { roomBounds, tileSizeFt: TILE_SIZE_FT });
@@ -765,6 +781,19 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       });
     }
 
+    /**
+     * Rebuild the terrain RenderTexture now that generated tile art is loaded.
+     * Safe to call when the scene has been torn down or never baked.
+     */
+    private rebakeTerrain(): void {
+      const floorMap = this.bakedFloorMap;
+      if (!floorMap || !this.scene.isActive()) return;
+      this.terrainRt?.destroy();
+      const terrain = buildTerrainLayer(this, floorMap);
+      terrain.rt.setDepth(-20);
+      this.terrainRt = terrain.rt;
+    }
+
     private async warmGeneratedSprites(): Promise<void> {
       try {
         const registry = await fetchGeneratedSpriteRegistry();
@@ -772,6 +801,9 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         if (registry.size === 0 || !this.load) return;
         const queued = preloadGeneratedSprites(this.load, registry);
         if (queued.length === 0) return;
+        // Re-bake terrain once the generated tile textures are resident; the
+        // create()-time bake could only reach the flat-colour fallback.
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => this.rebakeTerrain());
         this.load.start();
       } catch (error) {
         logger.warn('Generated sprite load failed; continuing with built-in sprites', {

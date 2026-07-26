@@ -284,10 +284,11 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
       ((layer.offsetX ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt + (layer.offsetXFt ?? 0);
     const offsetYFt =
       ((layer.offsetY ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt + (layer.offsetYFt ?? 0);
-    // Render box in feet. An explicit `widthFt`/`heightFt` (validated as a pair)
-    // wins — the sprite is contain-fit inside it, so realistic sizing never
-    // stretches the art. Otherwise the base layer fills the prop footprint and
-    // accent layers keep their own (smaller) extent.
+    // Render box in feet. `heightFt` is AUTHORITATIVE for upright props: the
+    // renderer scales the sprite so its apparent vertical height matches, and the
+    // width follows the art's own aspect. Floor decals contain-fit both dims.
+    // Otherwise the base layer fills the prop footprint and accent layers keep
+    // their own (smaller) extent.
     let boxWidthFt: number;
     let boxHeightFt: number;
     if (layer.widthFt !== undefined && layer.heightFt !== undefined) {
@@ -306,7 +307,12 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
       depth: setPieceZToDepth(z) + index * LAYER_DEPTH_EPSILON,
       widthFt: boxWidthFt,
       heightFt: boxHeightFt,
+      // Floor decals lie in the ground plane, so both declared feet are real
+      // ground extents and the renderer must contain-fit them. Upright props are
+      // height-authoritative so a conservative width can never flatten them.
+      ...(prop.kind === 'floor' ? { floorPlane: true } : {}),
       ...(layer.scale !== undefined ? { scale: layer.scale } : {}),
+      ...(layer.anchorBase !== undefined ? { anchorBase: layer.anchorBase } : {}),
       ...(layer.flipX !== undefined ? { flipX: layer.flipX } : {}),
       ...(layer.flipY !== undefined ? { flipY: layer.flipY } : {}),
       ...(layer.rotationDeg !== undefined ? { rotationDeg: layer.rotationDeg } : {}),

@@ -1423,14 +1423,23 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           const npcInstance = world.npcs.get(eid);
           const npcWidthFt = world.stores.sprite.width[eid] ?? 0;
           const npcHeightFt = world.stores.sprite.height[eid] ?? 0;
-          if (
-            Number.isFinite(npcWidthFt) &&
-            npcWidthFt > 0 &&
-            Number.isFinite(npcHeightFt) &&
-            npcHeightFt > 0 &&
-            typeof img.setDisplaySize === 'function'
-          ) {
-            img.setDisplaySize(ftToPx(npcWidthFt), ftToPx(npcHeightFt));
+          if (Number.isFinite(npcHeightFt) && npcHeightFt > 0) {
+            // Height-authoritative, aspect-preserving — same rule as set-piece
+            // props. `setDisplaySize` used to STRETCH the character into the
+            // declared box, so a 5.71x5 ft anchor on a square portrait sprite
+            // squashed the NPC 14% wide AND capped its apparent height below the
+            // authored feet. `heightFt` is the human yardstick every prop is
+            // scaled against, so it must survive verbatim.
+            const nativeH = img.height;
+            if (nativeH > 0 && typeof img.setScale === 'function') {
+              img.setScale(ftToPx(npcHeightFt) / nativeH);
+            } else if (
+              Number.isFinite(npcWidthFt) &&
+              npcWidthFt > 0 &&
+              typeof img.setDisplaySize === 'function'
+            ) {
+              img.setDisplaySize(ftToPx(npcWidthFt), ftToPx(npcHeightFt));
+            }
           }
           if (typeof img.setDepth === 'function') {
             if (Number.isFinite(npcInstance?.z ?? NaN) && npcInstance?.z !== undefined) {
@@ -1798,15 +1807,35 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             }
           }
           img.setPosition(propX, propY);
-          // Contain-fit: a uniform scale that fits the native sprite INSIDE the
-          // feet box while preserving its aspect ratio. No tile in this game is
-          // designed to stretch, so we never call setDisplaySize on real art
-          // (which would distort a 1.26:1 desk into its 3:1 footprint box).
-          // Fall back to setDisplaySize only for a degenerate zero-size frame.
+          // Anchor: tall props (`anchorBase`) stand ON their floor position, so
+          // growing `heightFt` extends them UPWARD instead of sinking half the
+          // object through the floor. Default stays centre-anchored so existing
+          // authored rooms do not shift. Set every frame because a visual is
+          // reused by list index and a prop may change its anchor on a reset.
+          if (typeof img.setOrigin === 'function') {
+            img.setOrigin(0.5, sp.anchorBase === true ? 1 : 0.5);
+          }
+          // Scale: `heightFt` is AUTHORITATIVE for upright props — the sprite is
+          // scaled so its apparent vertical height matches the declared feet, and
+          // its width follows the art's own aspect ratio. We do NOT contain-fit
+          // upright props, because `Math.min` silently discards whichever declared
+          // dimension is the looser fit: a torch authored at 1.5x3 ft against a
+          // square 64x64 canvas rendered at 1.5 ft, throwing away HALF its height.
+          // 13 of the welcome room's 31 props were losing 5-50% of their authored
+          // height that way, which is what made every room read as squashed.
+          //
+          // Floor decals (rugs, stains, tape) are the exception: they lie IN the
+          // floor plane, so both of their declared feet are real ground extents
+          // and must both be honoured. Those keep the aspect-preserving contain-fit.
           const nativeW = img.width;
           const nativeH = img.height;
           if (nativeW > 0 && nativeH > 0) {
-            img.setScale(Math.min(spWidthPx / nativeW, spHeightPx / nativeH));
+            const heightAuthoritative = sp.floorPlane !== true;
+            img.setScale(
+              heightAuthoritative
+                ? spHeightPx / nativeH
+                : Math.min(spWidthPx / nativeW, spHeightPx / nativeH),
+            );
           } else {
             img.setDisplaySize(spWidthPx, spHeightPx);
           }

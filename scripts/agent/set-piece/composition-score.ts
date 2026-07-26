@@ -80,12 +80,25 @@ export interface CompositionThresholds {
   readonly focalDominanceRatio: number;
   /**
    * Minimum share of *large* props (footprint at or above the median) whose
-   * footprint touches the wall ring. The strongest recurring law in the study
-   * set: mass goes against the walls, the middle stays readable.
+   * footprint sits on or within {@link maxWallGapTiles} of the wall ring. The
+   * strongest recurring law in the study set: mass goes against the walls, the
+   * middle stays readable.
    */
   readonly minLargePropsWallAnchored: number;
+  /**
+   * How many tiles of clearance still counts as "against the wall" for
+   * {@link minLargePropsWallAnchored}.
+   *
+   * Must be >= 1. Once a set piece owns a real shell the perimeter ring is wall
+   * tiles, so a strict ring-membership test can never be satisfied; and a counter
+   * with someone standing behind it (reception desk, shop table, bar) legitimately
+   * sits one tile proud of the wall. 2+ tiles of clearance is genuinely adrift.
+   */
+  readonly maxWallGapTiles: number;
   /** Corridor width, in tiles, that must connect every anchor. */
   readonly circulationWidthTiles: number;
+  /** Share of type-recognised props whose declared height must be plausible. */
+  readonly minPlausibleHeightShare: number;
 }
 
 /**
@@ -103,8 +116,88 @@ export const DEFAULT_THRESHOLDS: CompositionThresholds = Object.freeze({
   minFeetDeclared: 1,
   focalDominanceRatio: 2.5,
   minLargePropsWallAnchored: 0.6,
+  maxWallGapTiles: 1,
   circulationWidthTiles: 2,
+  /** Share of non-floor props whose declared height must be humanly plausible. */
+  minPlausibleHeightShare: 1,
 });
+
+/**
+ * Real-world VERTICAL height bands in feet, keyed by a substring of the prop id.
+ * `heightFt` is apparent vertical height (front-elevation art), so these are the
+ * heights you'd measure standing next to the object — not floor depths.
+ *
+ * This table exists because the shipped pack authored `heightFt` as if it were a
+ * floor footprint, which collapsed every tall object (bookcases at 4 ft, 3-crate
+ * stacks at 3.5 ft) and made rooms read as small and sparse. `real-world-scale`
+ * only proves the numbers are PRESENT; this proves they are BELIEVABLE.
+ */
+const HEIGHT_BANDS: ReadonlyArray<readonly [RegExp, number, number]> = Object.freeze([
+  [/bookcase|bookshelf|shelf-unit|cabinet|wardrobe/, 5, 8],
+  [/crate-stack|barrel-stack|stack/, 4, 7],
+  // A bracket torch on a wall is a different object from a standing brazier:
+  // ~2-3 ft of sconce + flame vs a 5 ft floor-standing pole. Must precede the
+  // generic torch band or every wall torch reads as a squashed brazier.
+  [/wall-torch|torch-bracket|sconce-torch/, 1.5, 3.5],
+  [/torch|lamp-post|standing-lamp/, 4, 8],
+  // A banner hung flat on a wall is commonly a 2.5-3 ft strip; only a full drop
+  // curtain reaches ceiling height.
+  [/banner|curtain/, 2.5, 8],
+  [/door|archway/, 6, 8],
+  [/desk|counter|workbench/, 2.2, 4],
+  [/table/, 2, 3.5],
+  [/chair|stool|bench/, 1.2, 3.5],
+  [/crate|barrel|chest|bin|sack/, 1.5, 3.5],
+  [/plant|shrub|fern/, 1.5, 5],
+  [/sconce|switch|sign|poster|plaque|frame|clock|board|call-sheet|clipboard/, 0.75, 4.5],
+  [/rug|carpet|mat|cable|tape|stain|seam|scuff/, 0.05, 1],
+]);
+
+/**
+ * Index of the first {@link HEIGHT_BANDS} entry matching `id`, or -1.
+ * The table is ordered specific -> general (`crate-stack` before `crate`,
+ * `wall-torch` before `torch`), so a lower index means a more specific match.
+ */
+function heightBandIndexFor(id: string): number {
+  const lower = id.toLowerCase();
+  return HEIGHT_BANDS.findIndex(([pattern]) => pattern.test(lower));
+}
+
+/**
+ * Resolve a prop's height band from BOTH its sprite ids and its own id, keeping
+ * the MOST SPECIFIC match (lowest band index) rather than preferring one source.
+ *
+ * Neither source is reliably better than the other:
+ *  - the sprite is ground truth for what is depicted, so a prop named
+ *    `crate-bottom-right` drawing `...-crate-stack-var-3` must be judged as a
+ *    stack, not as a single crate;
+ *  - but a generic sprite can be *less* specific than the prop id. A wall bracket
+ *    torch drawing the shared `prop-torch-v1-var-8` is still a wall torch, and
+ *    judging it against the standing-brazier band reports a false failure.
+ * Taking the most specific match over the union satisfies both.
+ */
+function heightBandForProp(prop: SetPiecePropDef): readonly [number, number] | null {
+  const candidates: number[] = [];
+  const consider = (id: string | null): void => {
+    if (id === null) return;
+    const i = heightBandIndexFor(id);
+    if (i !== -1) candidates.push(i);
+  };
+  consider(prop.id);
+  for (const layer of prop.layers) {
+    const ref: unknown = layer.sprite;
+    consider(
+      typeof ref === 'string'
+        ? ref
+        : typeof (ref as { spriteId?: unknown } | null)?.spriteId === 'string'
+          ? (ref as { spriteId: string }).spriteId
+          : null,
+    );
+  }
+  if (candidates.length === 0) return null;
+  const entry = HEIGHT_BANDS[Math.min(...candidates)];
+  return entry ? [entry[1], entry[2]] : null;
+}
 
 export interface CheckResult {
   readonly id: string;
@@ -177,8 +270,14 @@ function layerHasFeet(layer: SpriteLayer): boolean {
   return typeof layer.widthFt === 'number' && typeof layer.heightFt === 'number';
 }
 
-/** Footprint area in square feet, preferring declared feet over tile extent. */
-function propAreaSqFt(prop: SetPiecePropDef): number {
+/**
+ * FACADE area in square feet — `widthFt * heightFt` is the object's elevation
+ * (front-face) area, NOT its floor area. Crawler's prop art is front-elevation,
+ * so `heightFt` is apparent vertical height; a 3x7 ft door has a facade area of
+ * 21 sq ft and a floor footprint of almost nothing. Use this only to compare
+ * *visual mass* (focal point, "large" props); use tile extent for floor cover.
+ */
+function propFacadeAreaSqFt(prop: SetPiecePropDef): number {
   let best = 0;
   for (const layer of prop.layers) {
     if (layerHasFeet(layer)) best = Math.max(best, (layer.widthFt ?? 0) * (layer.heightFt ?? 0));
@@ -240,6 +339,26 @@ function checkStacking(
   };
 }
 
+/**
+ * Edge treatment: how much of the room's boundary carries dressing.
+ *
+ * A ring tile counts as dressed if it OR its inward neighbour carries a
+ * perimeter-kind prop. The inward reach is essential, not a loosening: this
+ * check's own remedy text recommends "stacked crates along the walls", and
+ * crates stand on the FLOOR *beside* a wall, never inside it. Once a set piece
+ * carries a real structural wall ring (mapgen writes those tiles), the only
+ * things that can occupy a ring tile are wall-MOUNTED decor — posters, shelves,
+ * sconces, banners. Requiring literal ring occupancy would therefore score every
+ * floor-standing edge prop as zero and make the check unsatisfiable for exactly
+ * the dressing it asks for.
+ *
+ * The reach is deliberately ONE tile, not `maxWallGapTiles`: this is about the
+ * boundary reading as dressed, so a prop two tiles in is genuinely not edge
+ * dressing and should not count. A ring CORNER additionally reaches its
+ * diagonal-inward neighbour, because that single tile is the only floor cell
+ * tucked into the corner — a crate there dresses both adjoining walls, and
+ * without the diagonal every room would forfeit its four corners outright.
+ */
 function checkPerimeter(
   def: SetPieceDef,
   perimeterDressed: ReadonlySet<string>,
@@ -252,7 +371,15 @@ function checkPerimeter(
       const onRing = x === 0 || y === 0 || x === def.width - 1 || y === def.height - 1;
       if (!onRing) continue;
       ringTiles += 1;
-      if (perimeterDressed.has(cellKey(x, y))) dressed += 1;
+      // Step inward from whichever edge(s) this tile lies on.
+      const dx = x === 0 ? 1 : x === def.width - 1 ? -1 : 0;
+      const dy = y === 0 ? 1 : y === def.height - 1 ? -1 : 0;
+      const inward: Array<readonly [number, number]> = [[x, y]];
+      if (dx !== 0) inward.push([x + dx, y]);
+      if (dy !== 0) inward.push([x, y + dy]);
+      // Corner: the diagonal is the tile actually nestled in the corner.
+      if (dx !== 0 && dy !== 0) inward.push([x + dx, y + dy]);
+      if (inward.some(([cx, cy]) => perimeterDressed.has(cellKey(cx, cy)))) dressed += 1;
     }
   }
   const actual = ringTiles === 0 ? 0 : dressed / ringTiles;
@@ -366,6 +493,52 @@ function checkAntiGrid(def: SetPieceDef, t: CompositionThresholds): CheckResult 
 }
 
 /**
+ * `real-world-scale` only proves the feet numbers are PRESENT. This proves they
+ * are BELIEVABLE, by comparing each prop's declared VERTICAL height against a
+ * real-world band for its type ({@link HEIGHT_BANDS}).
+ *
+ * This check exists because of a concrete failure: the field was documented as a
+ * floor footprint, so authors gave tall objects small heights (a 3-crate stack
+ * at 3.5 ft, a bookcase at 4 ft). Every vertical object was squashed, and the
+ * room read as small and sparse while still passing all eleven other checks —
+ * a density gate cannot see a collapsed third dimension.
+ */
+function checkScaleSanity(def: SetPieceDef, t: CompositionThresholds): CheckResult {
+  const props = def.props.filter(isOccupying);
+  const judged: string[] = [];
+  const bad: string[] = [];
+  for (const prop of props) {
+    const band = heightBandForProp(prop);
+    if (band === null) continue;
+    const [min, max] = band;
+    let height = 0;
+    for (const layer of prop.layers) {
+      if (layerHasFeet(layer)) height = Math.max(height, layer.heightFt ?? 0);
+    }
+    if (height === 0) continue;
+    judged.push(prop.id);
+    if (height < min) bad.push(`${prop.id} ${height}ft (too short, expect ${min}-${max}ft)`);
+    else if (height > max) bad.push(`${prop.id} ${height}ft (too tall, expect ${min}-${max}ft)`);
+  }
+  const actual = judged.length === 0 ? 1 : (judged.length - bad.length) / judged.length;
+  const pass = actual >= t.minPlausibleHeightShare;
+  const sample = bad.slice(0, 5).join('; ');
+  return {
+    id: 'scale-sanity',
+    label: 'Believable heights',
+    pass,
+    actual,
+    threshold: t.minPlausibleHeightShare,
+    detail: pass
+      ? `All ${judged.length} recognised props declare a plausible vertical height.`
+      : `${bad.length}/${judged.length} props declare an implausible height. ` +
+        `heightFt is APPARENT VERTICAL HEIGHT (front-elevation art), not floor depth — ` +
+        `a person is ~6 ft, a door 7 ft, a 3-crate stack ~5.5 ft. Squashing tall objects ` +
+        `is what makes a room read as small and sparse. Fix: ${sample}${bad.length > 5 ? ', …' : ''}`,
+  };
+}
+
+/**
  * The strongest "does it fit" signal. Props sized only by tile extent get
  * stretched to the tile grid; props with declared feet render at believable
  * real-world scale (a 1.5 ft sconce beside a 5 ft desk).
@@ -418,17 +591,29 @@ function checkWallAnchoring(def: SetPieceDef, t: CompositionThresholds): CheckRe
     };
   }
 
-  const sorted = [...props].map(propAreaSqFt).sort((a, b) => a - b);
+  const sorted = [...props].map(propFacadeAreaSqFt).sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   const median =
     sorted.length % 2 === 0
       ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
       : (sorted[mid] ?? 0);
 
-  const large = props.filter((p) => propAreaSqFt(p) >= median);
+  const large = props.filter((p) => propFacadeAreaSqFt(p) >= median);
+  // Anchored = the prop sits ON or WITHIN `maxWallGapTiles` of the perimeter ring.
+  //
+  // This deliberately does NOT require ring membership. Two reasons, both real:
+  //  1. Once a set piece owns a real shell (see `shell-integrity`), the perimeter
+  //     ring is WALL TILES. A prop can never occupy it, so a membership test would
+  //     be unsatisfiable for every room that passes the shell check.
+  //  2. The commonest hand-made interior arrangement is a counter with a person
+  //     standing behind it. That person needs a tile. A membership test calls every
+  //     shop counter, reception desk and bar "floating", which is simply wrong.
+  // A gap of 1 tile (2 ft) is standing room; 2+ tiles is genuinely adrift in the
+  // middle of the room, which is the composition failure this check exists to catch.
+  const gap = Math.max(0, Math.floor(t.maxWallGapTiles));
   const touchesWall = (prop: SetPiecePropDef): boolean =>
     propCells(prop, def).some(
-      (c) => c.x === 0 || c.y === 0 || c.x === def.width - 1 || c.y === def.height - 1,
+      (c) => Math.min(c.x, c.y, def.width - 1 - c.x, def.height - 1 - c.y) <= gap,
     );
 
   const anchored = large.filter(touchesWall);
@@ -458,7 +643,7 @@ function checkWallAnchoring(def: SetPieceDef, t: CompositionThresholds): CheckRe
 function checkFocalPoint(def: SetPieceDef, t: CompositionThresholds): CheckResult {
   const areas = def.props
     .filter(isOccupying)
-    .map(propAreaSqFt)
+    .map(propFacadeAreaSqFt)
     .sort((a, b) => b - a);
   if (areas.length < 2) {
     return {
@@ -765,6 +950,7 @@ export function scoreSetPiece(
     checkFloorVariety(def, thresholds),
     checkAntiGrid(def, thresholds),
     checkRealWorldScale(def, thresholds),
+    checkScaleSanity(def, thresholds),
     checkFocalPoint(def, thresholds),
     checkWallAnchoring(def, thresholds),
     checkCirculation(def, thresholds),

@@ -137,11 +137,36 @@ export interface SpriteLayer {
   /**
    * Explicit render box in FEET for this layer, overriding the tile-derived
    * size. The sprite is contain-fit inside this box (aspect preserved, never
-   * stretched), so authoring a realistic footprint (a 1.5 ft sconce, a 5 ft
-   * desk) no longer distorts the art. Both must be supplied together.
+   * stretched). Both must be supplied together.
+   *
+   * IMPORTANT — what these two numbers mean. Crawler's prop art is drawn as a
+   * **front elevation** (the welcome desk has "WELCOME" painted on its front
+   * face), so the sprite's vertical pixels are the object's *real vertical
+   * height*, NOT its depth across the floor:
+   *
+   * - `widthFt`  = true horizontal width, as you'd measure it in the world.
+   * - `heightFt` = **apparent vertical height** — how tall the object stands
+   *   (a door is 3x7 ft, an adult ~2x6 ft, a 3-crate stack ~3x5.5 ft).
+   *
+   * The object's FLOOR FOOTPRINT is a separate concept and lives on the prop
+   * as `width`/`height` in TILES. Do NOT author `heightFt` as a floor depth:
+   * that is what collapsed every tall object in the shipped pack (bookcases at
+   * 4 ft, crate stacks at 3.5 ft) and made rooms read as small and sparse.
+   *
+   * `widthFt * heightFt` is therefore a FACADE area, never a floor area.
    */
   readonly widthFt?: number;
   readonly heightFt?: number;
+  /**
+   * Anchor the sprite by its BASE (bottom-centre) instead of its centre, so the
+   * object stands on its floor position and grows upward as `heightFt`
+   * increases. Required for anything tall enough that centre-anchoring would
+   * sink half of it through the floor (bookcases, crate stacks, torches, doors).
+   *
+   * Opt-in: omitted/false preserves the historical centre-anchored behaviour so
+   * existing rooms do not shift.
+   */
+  readonly anchorBase?: boolean;
   /** Uniform scale multiplier (1 = native), applied on top of the render box. */
   readonly scale?: number;
   /** Mirror the sprite horizontally / vertically (e.g. mirror a paired sconce). */
@@ -355,6 +380,7 @@ const spriteLayerSchema = z
     offsetYFt: z.number().optional(),
     widthFt: z.number().finite().positive().optional(),
     heightFt: z.number().finite().positive().optional(),
+    anchorBase: z.boolean().optional(),
     scale: z.number().finite().positive().optional(),
     flipX: z.boolean().optional(),
     flipY: z.boolean().optional(),

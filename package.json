@@ -137,7 +137,8 @@
     "health:check": "vitest run --project unit --coverage --reporter=dot && tsx scripts/agent/health/coverage-trend.ts && tsx scripts/agent/health/untested-systems.ts && tsx scripts/agent/health/extended-property.ts && tsx scripts/agent/health/governor-playthroughs.ts && tsx scripts/agent/health/balance-regression.ts && tsx scripts/agent/health/bench-regression.ts",
     "perf:profile": "tsx scripts/agent/perf/profile-headless.ts",
     "setpiece:score": "tsx scripts/agent/set-piece/composition-score-cli.ts",
-    "setpiece:reachability-sweep": "tsx scripts/agent/set-piece/reachability-sweep.ts"
+    "setpiece:reachability-sweep": "tsx scripts/agent/set-piece/reachability-sweep.ts",
+    "check:tile-mattes": "tsx scripts/sprites/check-tile-seams.ts"
   },
   "keywords": [
     "game",
