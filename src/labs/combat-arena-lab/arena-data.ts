@@ -535,7 +535,6 @@ const F2_BIG_MAMA_BUFO = floor2EnemyPack.archetypes.find((a) => a.id === 'toadki
 const F2_SOVEREIGN_CAP = floor2EnemyPack.archetypes.find((a) => a.id === 'myconid-boss')!;
 /** King Skritt the Unburnt — the kobold boss that owns Roman Candle Coronation. */
 const F2_KING_SKRITT = floor2EnemyPack.archetypes.find((a) => a.id === 'kobold-boss')!;
-const F2_BIG_MAMA_BUFO = floor2EnemyPack.archetypes.find((a) => a.id === 'toadkin-boss')!;
 
 /**
  * Spawn Queen Mab and arm Verdigris Glamour through the CANONICAL mob-ability

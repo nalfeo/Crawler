@@ -75,7 +75,6 @@ const CLEANUP_LIFETIME_MS = 300;
 const CROWN_RUNE_COUNT = 8;
 const BURST_SPARK_COUNT = 18;
 const UNDERCITY_BURST_SPARK_COUNT = 24;
-const TONGUE_REPOSSESSION_ABILITY_ID = 'big-mama-bufo-tongue-repossession';
 const CORONATION_BURST_SPARK_COUNT = 28;
 const TONGUE_REPOSSESSION_ABILITY_ID = 'big-mama-bufo-tongue-repossession';
 
