@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b18923f4498c8a79e6c638f9e56f3d2b0df11e2c",
+    "commitDate": "2026-07-26T22:15:35Z",
+    "commitSubject": "fix(perf): attribute node_modules profiler frames to their project caller (#2068)",
+    "capturedAt": "2026-07-26T23:35:14.245Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30223156163",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/b18923f4498c8a79e6c638f9e56f3d2b0df11e2c.json"
+  },
+  {
     "commit": "38ed8b0bfbf25081fb728af2e28540d5fd561105",
     "commitDate": "2026-07-26T22:04:07Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (8 art paths) (#2072)",
