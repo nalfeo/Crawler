@@ -280,6 +280,136 @@ describe('formatSummary', () => {
   });
 });
 
+/**
+ * Regression suite for the target-misidentification defect.
+ *
+ * A profile once reported `compute @ node_modules/rot-js/dist/rot.js:5356` at
+ * ~20% self. That is `AStar.compute` (pathfinding), but the bare name was read
+ * as `RecursiveShadowcasting.compute` (FOV) — a system that turned out to be
+ * 1.88% of the run. A whole optimization pass went to the wrong target. These
+ * tests pin the attribution that makes the confusion visible.
+ */
+describe('dependency-frame attribution', () => {
+  /** src/pathfinding -> rot-js `compute`, and src/fov -> a different rot-js frame. */
+  function rotJsProfile(): CpuProfile {
+    return {
+      nodes: [
+        node(1, '(root)', { children: [2, 4] }),
+        node(2, 'findTilePath', { url: 'file:///repo/src/core/map/pathfinding.ts', children: [3] }),
+        node(3, 'compute', { url: 'file:///repo/node_modules/rot-js/dist/rot.js', line: 5355 }),
+        node(4, 'fovSystem', {
+          url: 'file:///repo/src/core/systems/fovSystem.ts',
+          children: [5],
+        }),
+        node(5, 'compute', { url: 'file:///repo/node_modules/rot-js/dist/rot.js', line: 2000 }),
+      ],
+      samples: [3, 3, 3, 3, 3, 3, 3, 3, 3, 5],
+      timeDeltas: Array.from({ length: 10 }, () => 1000),
+    };
+  }
+
+  it('names the project caller of a dependency frame', () => {
+    const summary = summarizeProfile(rotJsProfile());
+    const hot = summary.functions.find((f) => f.location.endsWith('rot.js:5356'))!;
+
+    expect(hot.functionName).toBe('compute');
+    expect(hot.owners?.map((o) => o.functionName)).toEqual(['findTilePath']);
+    expect(hot.owners?.[0]!.selfMs).toBeCloseTo(9, 6);
+  });
+
+  it('keeps two same-named dependency frames attributed to different owners', () => {
+    // This is the exact confusion that caused the misfire: one bundled file,
+    // one function name, two entirely unrelated subsystems paying for it.
+    const summary = summarizeProfile(rotJsProfile());
+    const byLine = summary.functions.filter((f) => f.functionName === 'compute');
+
+    expect(byLine).toHaveLength(2);
+    const owners = byLine.map((f) => f.owners?.[0]?.functionName).sort();
+    expect(owners).toEqual(['findTilePath', 'fovSystem']);
+  });
+
+  it('does not attribute owners to project-owned or native frames', () => {
+    const summary = summarizeProfile(rotJsProfile());
+
+    expect(costFor(summary, 'findTilePath').owners).toBeUndefined();
+    expect(costFor(summary, 'fovSystem').owners).toBeUndefined();
+  });
+
+  it('walks past intermediate dependency frames to the nearest project caller', () => {
+    const summary = summarizeProfile({
+      nodes: [
+        node(1, '(root)', { children: [2] }),
+        node(2, 'findTilePath', { url: 'file:///repo/src/core/map/pathfinding.ts', children: [3] }),
+        node(3, '_add', { url: 'file:///repo/node_modules/rot-js/dist/rot.js', children: [4] }),
+        node(4, 'push', { url: 'file:///repo/node_modules/rot-js/dist/rot.js', line: 10 }),
+      ],
+      samples: [4, 4],
+      timeDeltas: [1000, 1000],
+    });
+    const leaf = summary.functions.find((f) => f.functionName === 'push')!;
+
+    expect(leaf.owners?.[0]!.functionName).toBe('findTilePath');
+  });
+
+  it('splits one dependency frame across several project callers', () => {
+    const summary = summarizeProfile({
+      nodes: [
+        node(1, '(root)', { children: [2, 4] }),
+        node(2, 'findTilePath', { url: 'file:///repo/src/a.ts', children: [3] }),
+        node(3, 'compute', { url: 'file:///repo/node_modules/rot-js/dist/rot.js', line: 5355 }),
+        node(4, 'planRoute', { url: 'file:///repo/src/b.ts', children: [5] }),
+        node(5, 'compute', { url: 'file:///repo/node_modules/rot-js/dist/rot.js', line: 5355 }),
+      ],
+      samples: [3, 3, 3, 5],
+      timeDeltas: Array.from({ length: 4 }, () => 1000),
+    });
+    // Same key (same name + location), so both nodes fold into one row.
+    const hot = summary.functions.find((f) => f.functionName === 'compute')!;
+
+    expect(hot.owners).toHaveLength(2);
+    // Ranked by cost, so the dominant caller is always first.
+    expect(hot.owners![0]!.functionName).toBe('findTilePath');
+    expect(hot.owners![0]!.selfMs).toBeCloseTo(3, 6);
+    expect(hot.owners![1]!.functionName).toBe('planRoute');
+  });
+
+  it('preserves and sums owners through mergeSummaries', () => {
+    const merged = mergeSummaries([
+      summarizeProfile(rotJsProfile()),
+      summarizeProfile(rotJsProfile()),
+    ]);
+    const hot = merged.functions.find((f) => f.location.endsWith('rot.js:5356'))!;
+
+    expect(hot.owners?.[0]!.functionName).toBe('findTilePath');
+    expect(hot.owners?.[0]!.selfMs).toBeCloseTo(18, 6);
+  });
+
+  it('does not invent rows for callers during a merge', () => {
+    const merged = mergeSummaries([
+      summarizeProfile(rotJsProfile()),
+      summarizeProfile(rotJsProfile()),
+    ]);
+    const names = merged.functions.map((f) => f.key);
+
+    expect(new Set(names).size).toBe(names.length);
+    expect(merged.functions.every((f) => f.selfMs > 0 || f.totalMs > 0)).toBe(true);
+  });
+
+  it('prints the owner beside the dependency row and warns about bare names', () => {
+    const output = formatSummary(summarizeProfile(rotJsProfile()), { top: 5 });
+
+    expect(output).toContain('← findTilePath');
+    expect(output).toMatch(/THIRD-PARTY frames/);
+  });
+
+  it('stays quiet when no dependency frame is on screen', () => {
+    const output = formatSummary(summarizeProfile(simpleProfile()));
+
+    expect(output).not.toContain('THIRD-PARTY');
+    expect(output).not.toContain('←');
+  });
+});
+
 describe('classifyRunTermination', () => {
   /** Shape of the headless CLI's completion block (headless-runner-cli.ts:87). */
   function runOutput(outcome: string): string {

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-// @ts-expect-error CI scripts are authored as ESM JavaScript, not typed app modules.
 import {
   classifyParkedRun,
   pushEmptyCommit,
+  // @ts-expect-error CI scripts are authored as ESM JavaScript, not typed app modules.
 } from '../../.github/scripts/ci-recovery/action-required-retrigger.mjs';
 
 const baseRun = {

@@ -51,6 +51,18 @@ export interface CpuProfile {
   readonly timeDeltas?: readonly number[];
 }
 
+/**
+ * A project-owned function that reached a dependency frame.
+ *
+ * See {@link FunctionCost.owners} for why this exists.
+ */
+export interface DependencyOwner {
+  readonly functionName: string;
+  readonly location: string;
+  /** Self time of the dependency frame reached through this caller. */
+  readonly selfMs: number;
+}
+
 /** Attributed cost for one function, aggregated across every node for it. */
 export interface FunctionCost {
   /** Stable identity: function name + source location. */
@@ -62,6 +74,21 @@ export interface FunctionCost {
   readonly selfPct: number;
   readonly totalMs: number;
   readonly totalPct: number;
+  /**
+   * For a `node_modules/**` frame only: which project-owned functions called
+   * it, ranked by the self time reached through each. `undefined` for
+   * project-owned and native frames.
+   *
+   * A bundled dependency's frame names are **not** self-describing. `rot-js`
+   * ships FOV, pathfinding, mapgen and RNG in one `dist/rot.js`, so a row
+   * reading `compute @ node_modules/rot-js/dist/rot.js:5356` is genuinely
+   * ambiguous — that one is `AStar.compute`, not
+   * `RecursiveShadowcasting.compute`. Picking a target from the bare name cost
+   * a full optimization pass aimed at a 1.88% system while the real 25% one sat
+   * untouched. Attributing every dependency frame to the project code that
+   * called it makes that class of mistake impossible to make silently.
+   */
+  readonly owners?: readonly DependencyOwner[];
 }
 
 /** Ranked attribution for one or more merged profiles. */
@@ -111,6 +138,39 @@ function isHarnessFrame(location: string): boolean {
     location.startsWith('node_modules/esbuild/') ||
     location.startsWith('node_modules/tsx/')
   );
+}
+
+/**
+ * Is this frame third-party bundled code, whose function names carry no
+ * reliable information about which of our systems is paying for it?
+ */
+function isDependencyFrame(location: string): boolean {
+  return location.startsWith('node_modules/');
+}
+
+/** Is this frame code we own, and can therefore attribute a dependency to? */
+function isProjectFrame(location: string): boolean {
+  return (
+    location.startsWith('src/') || location.startsWith('scripts/') || location.startsWith('tests/')
+  );
+}
+
+/** Build `owners` lists from a per-dependency-key map of caller → self ms. */
+function buildOwners(
+  byOwnerKey: Map<string, number>,
+  ownerMeta: Map<string, { name: string; location: string }>,
+): DependencyOwner[] {
+  const owners: DependencyOwner[] = [];
+  for (const [ownerKey, selfMs] of byOwnerKey) {
+    const meta = ownerMeta.get(ownerKey) ?? { name: '(unknown)', location: NATIVE_LOCATION };
+    owners.push({ functionName: meta.name, location: meta.location, selfMs });
+  }
+  owners.sort(
+    (a, b) =>
+      b.selfMs - a.selfMs ||
+      `${a.functionName}${a.location}`.localeCompare(`${b.functionName}${b.location}`),
+  );
+  return owners;
 }
 
 /**
@@ -223,12 +283,55 @@ export function summarizeProfile(profile: CpuProfile): ProfileSummary {
   const selfByKey = new Map<string, number>();
   const totalByKey = new Map<string, number>();
   const metaByKey = new Map<string, { name: string; location: string }>();
+  /** dependency frame key -> project caller key -> self ms reached that way. */
+  const ownersByKey = new Map<string, Map<string, number>>();
 
   for (const node of profile.nodes) {
     const { key, name, location } = frameKey(node.callFrame);
     metaByKey.set(key, { name, location });
     const self = selfMsByNode.get(node.id) ?? 0;
     if (self > 0) selfByKey.set(key, (selfByKey.get(key) ?? 0) + self);
+  }
+
+  // Attribute dependency frames to the nearest project-owned function on their
+  // ancestor chain. Without this, `compute @ node_modules/rot-js/dist/rot.js`
+  // is unactionable — the name alone cannot tell you whether you are looking at
+  // pathfinding, FOV, or mapgen.
+  const parentById = new Map<number, number>();
+  for (const node of profile.nodes) {
+    for (const child of node.children ?? []) {
+      if (!parentById.has(child) && nodesById.has(child)) parentById.set(child, node.id);
+    }
+  }
+  for (const node of profile.nodes) {
+    const self = selfMsByNode.get(node.id) ?? 0;
+    if (self <= 0) continue;
+    const { key, location } = frameKey(node.callFrame);
+    if (!isDependencyFrame(location)) continue;
+
+    // Walk up to the first project frame. `seen` guards a malformed cycle.
+    const seen = new Set<number>([node.id]);
+    let cursor = parentById.get(node.id);
+    while (cursor !== undefined && !seen.has(cursor)) {
+      seen.add(cursor);
+      const ancestor = nodesById.get(cursor);
+      if (!ancestor) break;
+      const ancestorFrame = frameKey(ancestor.callFrame);
+      if (isProjectFrame(ancestorFrame.location)) {
+        let byOwner = ownersByKey.get(key);
+        if (!byOwner) {
+          byOwner = new Map<string, number>();
+          ownersByKey.set(key, byOwner);
+        }
+        byOwner.set(ancestorFrame.key, (byOwner.get(ancestorFrame.key) ?? 0) + self);
+        metaByKey.set(ancestorFrame.key, {
+          name: ancestorFrame.name,
+          location: ancestorFrame.location,
+        });
+        break;
+      }
+      cursor = parentById.get(cursor);
+    }
   }
 
   // Inclusive pass: credit a node's whole subtree to its function only if that
@@ -277,6 +380,7 @@ export function summarizeProfile(profile: CpuProfile): ProfileSummary {
     const meta = metaByKey.get(key) ?? { name: '(unknown)', location: NATIVE_LOCATION };
     const selfMs = selfByKey.get(key) ?? 0;
     const totalMsForKey = totalByKey.get(key) ?? 0;
+    const byOwner = ownersByKey.get(key);
     functions.push({
       key,
       functionName: meta.name,
@@ -285,6 +389,7 @@ export function summarizeProfile(profile: CpuProfile): ProfileSummary {
       selfPct: totalMs > 0 ? (100 * selfMs) / totalMs : 0,
       totalMs: totalMsForKey,
       totalPct: totalMs > 0 ? (100 * totalMsForKey) / totalMs : 0,
+      ...(byOwner && byOwner.size > 0 ? { owners: buildOwners(byOwner, metaByKey) } : {}),
     });
   }
   functions.sort((a, b) => b.selfMs - a.selfMs || a.key.localeCompare(b.key));
@@ -330,6 +435,10 @@ export function mergeSummaries(summaries: readonly ProfileSummary[]): ProfileSum
   const selfByKey = new Map<string, number>();
   const totalByKey = new Map<string, number>();
   const metaByKey = new Map<string, { name: string; location: string }>();
+  const ownersByKey = new Map<string, Map<string, number>>();
+  /** Owner identities live apart from `metaByKey` so merging cannot emit a row
+   * for a caller that had no cost of its own. */
+  const ownerMeta = new Map<string, { name: string; location: string }>();
 
   for (const summary of summaries) {
     totalMs += summary.totalMs;
@@ -339,6 +448,18 @@ export function mergeSummaries(summaries: readonly ProfileSummary[]): ProfileSum
       selfByKey.set(fn.key, (selfByKey.get(fn.key) ?? 0) + fn.selfMs);
       totalByKey.set(fn.key, (totalByKey.get(fn.key) ?? 0) + fn.totalMs);
       metaByKey.set(fn.key, { name: fn.functionName, location: fn.location });
+      for (const owner of fn.owners ?? []) {
+        // Re-key owners the same way frames are keyed so a caller that appears
+        // in several runs merges into one row instead of splitting.
+        const ownerKey = `${owner.functionName}\u0000${owner.location}`;
+        let byOwner = ownersByKey.get(fn.key);
+        if (!byOwner) {
+          byOwner = new Map<string, number>();
+          ownersByKey.set(fn.key, byOwner);
+        }
+        byOwner.set(ownerKey, (byOwner.get(ownerKey) ?? 0) + owner.selfMs);
+        ownerMeta.set(ownerKey, { name: owner.functionName, location: owner.location });
+      }
     }
   }
 
@@ -346,6 +467,7 @@ export function mergeSummaries(summaries: readonly ProfileSummary[]): ProfileSum
   for (const [key, meta] of metaByKey) {
     const selfMs = selfByKey.get(key) ?? 0;
     const totalMsForKey = totalByKey.get(key) ?? 0;
+    const byOwner = ownersByKey.get(key);
     functions.push({
       key,
       functionName: meta.name,
@@ -354,6 +476,7 @@ export function mergeSummaries(summaries: readonly ProfileSummary[]): ProfileSum
       selfPct: totalMs > 0 ? (100 * selfMs) / totalMs : 0,
       totalMs: totalMsForKey,
       totalPct: totalMs > 0 ? (100 * totalMsForKey) / totalMs : 0,
+      ...(byOwner && byOwner.size > 0 ? { owners: buildOwners(byOwner, ownerMeta) } : {}),
     });
   }
   functions.sort((a, b) => b.selfMs - a.selfMs || a.key.localeCompare(b.key));
@@ -435,11 +558,43 @@ export function formatSummary(summary: ProfileSummary, options: FormatOptions = 
   lines.push('');
   lines.push('   self%    total%  function                              location');
   lines.push('  ------  --------  ------------------------------------  --------');
+  let sawDependencyRow = false;
   for (const fn of ranked.slice(0, top)) {
+    let location = fn.location;
+    if (isDependencyFrame(fn.location) && !isHarnessFrame(fn.location)) {
+      sawDependencyRow = true;
+      location = `${fn.location}  ${describeOwners(fn)}`;
+    }
     lines.push(
       `  ${fn.selfPct.toFixed(2).padStart(5)}%  ${fn.totalPct.toFixed(2).padStart(6)}%  ` +
-        `${fn.functionName.slice(0, 36).padEnd(36)}  ${fn.location}`,
+        `${fn.functionName.slice(0, 36).padEnd(36)}  ${location}`,
+    );
+  }
+  if (sawDependencyRow) {
+    lines.push('');
+    lines.push(
+      '⚠️  Rows above marked `← caller` are THIRD-PARTY frames. Their function names',
+      '   are not self-describing — one bundled dist file can hold several unrelated',
+      '   subsystems (rot-js ships FOV, pathfinding, mapgen and RNG as one `compute`-',
+      '   naming soup). Target the `← caller` you see there, NOT the bare name, and',
+      '   record that caller when you write the share down.',
     );
   }
   return lines.join('\n');
+}
+
+/**
+ * Render a dependency frame's project-owned callers as `← name (pct%)`.
+ *
+ * Shows the dominant caller plus a count of the rest, because the actionable
+ * question is only ever "which of OUR systems is paying for this".
+ */
+function describeOwners(fn: FunctionCost): string {
+  const owners = fn.owners ?? [];
+  if (owners.length === 0) return '← (no project caller — harness or native)';
+  const totalOwnedMs = owners.reduce((sum, o) => sum + o.selfMs, 0);
+  const top = owners[0]!;
+  const pct = totalOwnedMs > 0 ? (100 * top.selfMs) / totalOwnedMs : 0;
+  const rest = owners.length > 1 ? ` +${owners.length - 1} more` : '';
+  return `← ${top.functionName} (${pct.toFixed(0)}%${rest})`;
 }

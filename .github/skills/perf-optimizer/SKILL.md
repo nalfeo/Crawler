@@ -110,13 +110,39 @@ work, take a Chrome DevTools performance trace against `npm run dev` instead
 **Record before optimizing** — these go in the PR body:
 
 1. the target's **share** (self and total) and which scope your fix can affect
-2. the **predicted ceiling** on the end-to-end win:
+2. the target's **identity**, if it is a third-party frame (see below)
+3. the **predicted ceiling** on the end-to-end win:
    ```bash
    npm run perf:profile -- --ceiling <share>:<speedup>
    ```
    Amdahl against the share your change can actually reach. A 2.9% target made
    3x faster caps at **1.9%** end-to-end — under the noise floor before you
    write a line.
+
+**A `node_modules/**`row is not a target until you name its caller.** Bundled
+dependency frames are printed with a`← caller`marker for exactly this reason.
+Their function names carry no subsystem information:`rot-js`ships FOV,
+pathfinding, mapgen _and_ RNG in one`dist/rot.js`, and several of them expose a
+method called `compute`.
+
+This is not hypothetical. A hunt targeted `compute @
+node_modules/rot-js/dist/rot.js:5356` at **19.58% self**, read as
+`RecursiveShadowcasting.compute` (FOV). It is `AStar.compute` (pathfinding).
+`fovSystem` is **1.88%** of the run. A full 4🍎 pass — plan review, differential
+oracle, fingerprint gate, multi-model review — landed a real 2.1x win worth
+~1% end-to-end, while the actual 25% target sat untouched.
+
+So, before a dependency frame becomes your target:
+
+- Read the `← caller` the profiler prints beside it and **write that name down**.
+  Your PR must say _"`findTilePath` → rot-js `AStar.compute`"_, never bare
+  _"rot-js `compute`"_.
+- **Sanity-check by containment.** A frame's total% can never exceed the total%
+  of any function it sits inside. `fovSystem` at 1.88% total cannot contain a
+  22.66% frame — that arithmetic alone falsifies the misattribution instantly.
+- If you still cannot tell, open the dependency's source at the printed line
+  (`node_modules/rot-js/dist/rot.js:5356`) and read which class the method is
+  attached to. It takes thirty seconds and it is decisive.
 
 **Reject the target if its ceiling is inside noise.** As a rule of thumb that
 means a share under ~3-5%. Two qualifications, both of which have teeth:
