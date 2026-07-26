@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { automationStallAction, isDuplicateDispatch, isLeaseExpired } from './state.mjs';
 import { shouldRequestReview } from './review-request.mjs';
+import { isRepairWakeEligible } from './router.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = path.join(DIR, 'characterization', 'reconcile-decision-fixtures.json');
@@ -67,8 +68,7 @@ test('characterization fixture coverage points resolve to concrete existing reco
     const sources = [reconcileSource, reviewRequestSource];
     const source = sources.find(
       (s) =>
-        s.includes(`test('${decision.coverageBy}'`) ||
-        s.includes(`test("${decision.coverageBy}"`),
+        s.includes(`test('${decision.coverageBy}'`) || s.includes(`test("${decision.coverageBy}"`),
     );
     assert.ok(source != null, `missing coverage test: ${decision.coverageBy}`);
 
@@ -100,7 +100,11 @@ test('lease-transition fixture matrix remains deterministic and offline', () => 
       );
     }
     if (entry.expected.isDuplicateDispatch !== undefined) {
-      assert.equal(isDuplicateDispatch(state, entry.fingerprint), entry.expected.isDuplicateDispatch, entry.name);
+      assert.equal(
+        isDuplicateDispatch(state, entry.fingerprint),
+        entry.expected.isDuplicateDispatch,
+        entry.name,
+      );
     }
     if (entry.expected.stallAction !== undefined) {
       assert.equal(
@@ -124,8 +128,7 @@ test('absorbed regressions inventory includes the required superseded PRs', () =
   }
 });
 
-
-test('review-wake gap fixtures pin shouldRequestReview behavior (D3)', () => {
+test('wake-gap fixtures pin separate review and repair behavior (D3)', () => {
   const fixture = loadFixture();
   for (const entry of fixture.review_wake_gap_fixtures) {
     const comments = (entry.input.comments || []).map((body, index) => ({
@@ -141,11 +144,30 @@ test('review-wake gap fixtures pin shouldRequestReview behavior (D3)', () => {
       blockers: entry.input.blockers,
       comments,
     });
-    if (entry.expected === null) {
+    const expectedReview =
+      entry.expected && typeof entry.expected === 'object' && 'review' in entry.expected
+        ? entry.expected.review
+        : entry.expected;
+    if (expectedReview === null) {
       assert.equal(decision, null, entry.name);
     } else {
-      assert.equal(decision?.reason, entry.expected.reason, entry.name);
-      assert.equal(decision?.requestReviewer, entry.expected.requestReviewer, entry.name);
+      assert.equal(decision?.reason, expectedReview.reason, entry.name);
+      assert.equal(decision?.requestReviewer, expectedReview.requestReviewer, entry.name);
+    }
+    if (
+      entry.expected &&
+      typeof entry.expected === 'object' &&
+      'repairEligible' in entry.expected
+    ) {
+      assert.equal(
+        isRepairWakeEligible({
+          ...entry.input.pr,
+          labels: entry.input.pr.labels || [],
+          recoveryState: entry.input.recoveryState ?? null,
+        }),
+        entry.expected.repairEligible,
+        `${entry.name} repair wake`,
+      );
     }
   }
 });

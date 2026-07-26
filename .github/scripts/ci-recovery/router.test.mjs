@@ -26,6 +26,7 @@ import {
   identifyReapablePrs,
   isCiFixPr,
   isDispatchBlocked,
+  isRepairWakeEligible,
   isRepairWindowSweepEvent,
   isRetryableError,
   listRecentOutstandingRunIds,
@@ -523,7 +524,7 @@ test('flag-off schedule: blocked PRs excluded even when directly triggered by ev
   assert.ok(numbers.includes(43), 'unblocked PR must be included');
 });
 
-test('flag-off schedule: ci-recovery-waiting PR excluded even when directly triggered', () => {
+test('flag-off schedule: genuine ci-recovery-waiting PR stays excluded even when directly triggered', () => {
   const waitingPr = {
     number: 55,
     draft: false,
@@ -542,8 +543,41 @@ test('flag-off schedule: ci-recovery-waiting PR excluded even when directly trig
 
   assert.ok(
     !numbers.includes(55),
-    'ci-recovery-waiting PR must be excluded even if directly triggered',
+    'genuine ci-recovery-waiting PR must stay excluded even if directly triggered',
   );
+  assert.equal(isRepairWakeEligible(waitingPr), false);
+});
+
+test('flag-off schedule: idle repair waiting PR can re-enter the exact repair path', () => {
+  const waitingPr = {
+    number: 55,
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [{ name: 'ci-recovery-waiting' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    recoveryState: makeState({
+      prNumber: 55,
+      headSha: 'head-55',
+      fingerprint: 'repair-gap-fixture',
+      owner: 'none',
+      status: 'idle',
+      trigger: 'stale-automation',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: '2026-07-01T01:00:00Z',
+    }),
+  };
+
+  const numbers = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [waitingPr],
+    maxDispatchPerRun: 8,
+  });
+
+  assert.deepEqual(numbers, [55]);
+  assert.equal(isRepairWakeEligible(waitingPr), true);
 });
 
 test('flag-off schedule: all blocked label variants are excluded', () => {
@@ -802,6 +836,66 @@ test('train sweeps skip genuine waiting PRs while exact direct events preserve t
     }),
     [9],
   );
+});
+
+test('repair-window sweeps re-include idle repair waits without widening genuine waits', () => {
+  const repairableWait = {
+    number: 42,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [{ name: 'ci-recovery-waiting' }],
+    recoveryState: makeState({
+      prNumber: 42,
+      headSha: 'head-42',
+      fingerprint: 'repair-window-gap',
+      owner: 'none',
+      status: 'idle',
+      trigger: 'stale-automation',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: '2026-07-01T01:00:00Z',
+    }),
+  };
+  const genuineWait = {
+    ...repairableWait,
+    number: 43,
+    recoveryState: makeState({
+      prNumber: 43,
+      headSha: 'head-43',
+      fingerprint: 'still-waiting',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'waiting',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: '2026-07-01T01:00:00Z',
+    }),
+  };
+
+  for (const [payload, eventName] of [
+    [{}, 'schedule'],
+    [
+      {
+        repository: { default_branch: 'main' },
+        workflow_run: { name: 'CI', head_branch: 'main', pull_requests: [] },
+      },
+      'workflow_run',
+    ],
+  ]) {
+    assert.deepEqual(
+      collectPrNumbers({
+        payload,
+        eventName,
+        repository: 'nalfeo/Crawler',
+        scheduledPulls: [repairableWait, genuineWait],
+        trainEnabled: true,
+      }),
+      [42],
+    );
+  }
 });
 
 test('train undirected sweeps select at most the six oldest eligible PRs', () => {
@@ -1502,10 +1596,10 @@ test('resolveGlobalDispatchCaps enforces positive-int parsing with invariant def
   assert.deepEqual(
     pickInvariantDispatchCaps(
       resolveGlobalDispatchCaps({
-      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: ' 7 ',
-      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '9',
-      CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '3',
-      CI_RECOVERY_MAX_DISPATCH_PER_RUN: '11',
+        CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: ' 7 ',
+        CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '9',
+        CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '3',
+        CI_RECOVERY_MAX_DISPATCH_PER_RUN: '11',
       }),
     ),
     {
@@ -1518,10 +1612,10 @@ test('resolveGlobalDispatchCaps enforces positive-int parsing with invariant def
   assert.deepEqual(
     pickInvariantDispatchCaps(
       resolveGlobalDispatchCaps({
-      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '7garbage',
-      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '1.5',
-      CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '1e2',
-      CI_RECOVERY_MAX_DISPATCH_PER_RUN: '9007199254740993',
+        CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '7garbage',
+        CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '1.5',
+        CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: '1e2',
+        CI_RECOVERY_MAX_DISPATCH_PER_RUN: '9007199254740993',
       }),
     ),
     {
@@ -1534,10 +1628,10 @@ test('resolveGlobalDispatchCaps enforces positive-int parsing with invariant def
   assert.deepEqual(
     pickInvariantDispatchCaps(
       resolveGlobalDispatchCaps({
-      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '0',
-      CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '-1',
-      CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: 'nope',
-      CI_RECOVERY_MAX_DISPATCH_PER_RUN: '',
+        CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY: '0',
+        CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE: '-1',
+        CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP: 'nope',
+        CI_RECOVERY_MAX_DISPATCH_PER_RUN: '',
       }),
     ),
     {
@@ -1593,17 +1687,65 @@ test('computeDispatchBudget accepts explicit trainCap/idleCap overrides', () => 
   // be independently overridden and the function uses them rather than the
   // module-level defaults.
   // headroom=20-9-0-0=11, min(trainCap=3, 11)=3 (not default max 5)
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 0, trainCap: 3, idleCap: 10 }), 3);
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 0,
+      trainCap: 3,
+      idleCap: 10,
+    }),
+    3,
+  );
   // headroom=20-3-0-0=17, min(idleCap=10, 17)=10 (not default max 8)
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 0, trainCap: 3, idleCap: 10 }), 10);
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount: 0,
+      trainCap: 3,
+      idleCap: 10,
+    }),
+    10,
+  );
   // headroom=20-9-0-3=8, min(trainCap=3, 8)=3 (outstanding reduces headroom, not the cap)
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 3, trainCap: 3, idleCap: 10 }), 3);
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 3,
+      trainCap: 3,
+      idleCap: 10,
+    }),
+    3,
+  );
   // headroom=20-3-0-7=10, min(idleCap=10, 10)=10
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 7, trainCap: 3, idleCap: 10 }), 10);
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount: 7,
+      trainCap: 3,
+      idleCap: 10,
+    }),
+    10,
+  );
   // headroom=20-3-0-10=7, min(idleCap=10, 7)=7 (headroom-capped below idleCap)
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: false, outstandingCount: 10, trainCap: 3, idleCap: 10 }), 7);
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: false,
+      outstandingCount: 10,
+      trainCap: 3,
+      idleCap: 10,
+    }),
+    7,
+  );
   // headroom=20-9-0-11=0, budget floors at 0
-  assert.equal(computeDispatchBudget({ trainQueueNonEmpty: true, outstandingCount: 11, trainCap: 3, idleCap: 10 }), 0);
+  assert.equal(
+    computeDispatchBudget({
+      trainQueueNonEmpty: true,
+      outstandingCount: 11,
+      trainCap: 3,
+      idleCap: 10,
+    }),
+    0,
+  );
 });
 
 test('resolveGlobalDispatchCaps falls back to hardcoded defaults when env vars are absent', () => {
@@ -1617,8 +1759,8 @@ test('resolveGlobalDispatchCaps reads CI_GLOBAL_TRAIN_DISPATCH_CAP from env', ()
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '10' })),
     {
-    trainCap: 10,
-    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      trainCap: 10,
+      idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
     },
   );
 });
@@ -1627,8 +1769,8 @@ test('resolveGlobalDispatchCaps reads CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP from env
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '7' })),
     {
-    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
-    idleCap: 7,
+      trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+      idleCap: 7,
     },
   );
 });
@@ -1636,10 +1778,10 @@ test('resolveGlobalDispatchCaps reads CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP from env
 test('resolveGlobalDispatchCaps reads both caps independently from env', () => {
   assert.deepEqual(
     pickLegacyDispatchCaps(
-    resolveGlobalDispatchCaps({
-      CI_GLOBAL_TRAIN_DISPATCH_CAP: '8',
-      CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '12',
-    }),
+      resolveGlobalDispatchCaps({
+        CI_GLOBAL_TRAIN_DISPATCH_CAP: '8',
+        CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '12',
+      }),
     ),
     { trainCap: 8, idleCap: 12 },
   );
@@ -1649,22 +1791,22 @@ test('resolveGlobalDispatchCaps ignores non-positive and non-numeric env values'
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: 'bad' })),
     {
-    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
-    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+      idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
     },
   );
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '0' })),
     {
-    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
-    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+      idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
     },
   );
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '-1' })),
     {
-    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
-    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+      idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
     },
   );
 });
@@ -1676,15 +1818,17 @@ test('resolveGlobalDispatchCaps: strict parse rejects trailing non-digit chars (
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '10oops' })),
     {
-    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
-    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+      idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
     },
   );
   assert.deepEqual(
-    pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '5bad' })),
+    pickLegacyDispatchCaps(
+      resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '5bad' }),
+    ),
     {
-    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
-    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+      idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
     },
   );
 });
@@ -1696,45 +1840,45 @@ test('resolveGlobalDispatchCaps: out-of-range values are clamped to runner-safet
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '999' })),
     {
-    trainCap: 10,
-    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      trainCap: 10,
+      idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
     },
   );
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '11' })),
     {
-    trainCap: 10,
-    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      trainCap: 10,
+      idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
     },
   );
   // Idle cap documented safe max = 20 (ci-config-knobs.md).
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '999' })),
     {
-    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
-    idleCap: 20,
+      trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+      idleCap: 20,
     },
   );
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '21' })),
     {
-    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
-    idleCap: 20,
+      trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+      idleCap: 20,
     },
   );
   // Values at the max boundary pass through unchanged.
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_TRAIN_DISPATCH_CAP: '10' })),
     {
-    trainCap: 10,
-    idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
+      trainCap: 10,
+      idleCap: GLOBAL_IDLE_TRAIN_DISPATCH_CAP,
     },
   );
   assert.deepEqual(
     pickLegacyDispatchCaps(resolveGlobalDispatchCaps({ CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP: '20' })),
     {
-    trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
-    idleCap: 20,
+      trainCap: GLOBAL_TRAIN_DISPATCH_CAP,
+      idleCap: 20,
     },
   );
 });
@@ -2881,5 +3025,122 @@ test('runFromEnv respects runtime busy/global caps under a simulated schedule bu
     stdout,
     /dispatch cap applied sent=3 total_eligible=10 cap=8 budget=3 outstanding=0/,
     `expected run output to show the bounded budget; stdout: ${stdout}`,
+  );
+});
+
+test('runFromEnv hydrates waiting/no-owner candidates and dispatches repair wake via schedule', async (t) => {
+  // Exercises the waiting-candidate hydration pass added in runFromEnv:
+  // a PR that carries only ci-recovery-waiting (no owner label, no
+  // waiting-transition) with a persisted idle/no-owner recovery state must be
+  // loaded from comments and re-surfaced by the repair-window sweep so the
+  // existing reconcile path can reacquire it.  This is the end-to-end
+  // production subprocess path that pure unit tests cannot cover because they
+  // inject recoveryState manually and skip the HTTP hydration step.
+  const OWNER = 'test-owner';
+  const REPO = 'test-repo';
+  const TOKEN = 'x-test-token';
+  const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+  // PR #20: ci-recovery-waiting, no owner label, no waiting-transition label.
+  // Its state comment records owner=none,status=idle → should become
+  // repair-wake-eligible after the new hydration pass loads the comment.
+  const pr20 = {
+    number: 20,
+    state: 'open',
+    draft: false,
+    base: { ref: 'main' },
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [{ name: 'ci-recovery-waiting' }],
+    head: { sha: 'head-20', repo: { full_name: `${OWNER}/${REPO}` } },
+  };
+
+  const idleStateComment = {
+    id: 1,
+    body: renderStateComment(
+      makeState({
+        prNumber: 20,
+        headSha: 'head-20',
+        fingerprint: 'repair-gap-fixture',
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation',
+        blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+        attempt: 1,
+        updatedAt,
+      }),
+    ),
+  };
+
+  const dispatches = [];
+  const commentRequestsFor20 = [];
+  let visibleRuns = 0;
+
+  const { server, port } = await startRouterMockServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pr20] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/20/comments`]: () => {
+      commentRequestsFor20.push(1);
+      return { body: [idleStateComment] };
+    },
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/runs`]: (url) => {
+      const parsed = new URL(`http://127.0.0.1${url}`);
+      if (parsed.searchParams.get('status')) {
+        // countOutstandingWorkflowRuns: 0 outstanding → positive dispatch budget
+        return { body: { total_count: 0, workflow_runs: [] } };
+      }
+      // listRecentOutstandingRunIds (per_page=100): return newly visible runs
+      // after dispatch so waitForDispatchedRunsVisible converges immediately.
+      return {
+        body: {
+          workflow_runs: Array.from({ length: visibleRuns }, (_, index) => ({
+            id: index + 1,
+            status: 'queued',
+          })),
+        },
+      };
+    },
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
+      dispatches.push(body?.inputs ?? {});
+      visibleRuns = dispatches.length;
+      return { status: 204 };
+    },
+  });
+  t.after(() => server.close());
+
+  const eventDir = await mkdtemp(join(tmpdir(), 'router-repair-wake-'));
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({ repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } }),
+  );
+  t.after(() => rm(eventDir, { recursive: true, force: true }));
+
+  const { code, stdout, stderr } = await runRouterScript(port, {
+    GITHUB_TOKEN: TOKEN,
+    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_PATH: eventPath,
+  });
+
+  if (!assertRouterExit(t, code, stderr)) return;
+
+  // (a) The router fetched PR #20's comments to evaluate isRepairWakeEligible.
+  assert.ok(
+    commentRequestsFor20.length >= 1,
+    `comments for PR #20 must be fetched during the waiting-candidate hydration pass; stdout: ${stdout}`,
+  );
+
+  // (b) PR #20 must be dispatched by the normal repair loop (not the reaper,
+  // which only targets owner-labeled PRs).
+  const repairDispatches = dispatches.filter((inputs) => inputs.trigger !== 'lease-reaper');
+  assert.equal(
+    repairDispatches.length,
+    1,
+    `exactly one repair dispatch expected for idle waiting PR #20; stdout: ${stdout}`,
+  );
+  assert.equal(repairDispatches[0].pr_number, '20', 'repair-wake PR #20 must be dispatched');
+  assert.match(
+    stdout,
+    /dispatched pr=#20/,
+    `dispatch log line expected for PR #20; stdout: ${stdout}`,
   );
 });
