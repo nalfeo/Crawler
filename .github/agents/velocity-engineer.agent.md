@@ -125,9 +125,10 @@ scan  →  hypothesis  →  lab-testable?
     State which mode you are in — **lab** or **consult** — and why, before running
     anything. Routing a bottleneck to consult mode because the lab genuinely cannot see it
     is a correct outcome; running an experiment you already suspect is unanswerable is not.
-11. **Report only trials you actually ran, in this session.** Before presenting any result,
-    name the report JSON under `files/velocity-reports/` that this session produced, and
-    the timestamp on it. Re-describing a finding that already exists in
+11. **Report only trials you actually ran, in this session.** Before presenting a result as
+    this session's experiment outcome, name the report JSON under
+    `files/velocity-reports/` that this session produced, and the timestamp on it.
+    Re-describing a finding that already exists in
     `docs/knowledge/metrics/velocity/findings/` is not an experiment — it is a citation,
     and must be worded as one. **Check that directory before designing anything:** if the
     question is already answered, say so and propose the next question instead of

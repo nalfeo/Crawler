@@ -28,7 +28,8 @@ Untangling cost two PR rewrites, a `git rm` pass, and two branch updates (PRs #2
 
 ## What shipped
 
-`.github/agents/velocity-engineer.agent.md` only — no runtime code, no tooling change.
+Two non-runtime changes shipped — no tooling behavior changed outside the existing CI test
+surface.
 
 - **First action** now requires reading `docs/knowledge/metrics/velocity/findings/` before
   designing anything. An answered question does not need re-running, and a recorded null
@@ -41,6 +42,10 @@ Untangling cost two PR rewrites, a `git rm` pass, and two branch updates (PRs #2
   rather than `git add -A`; never commit onto a branch with an open PR you did not open.
 - **Guardrails** gained a bullet stating plainly that sharing the worktree with another
   agent is the normal case here, with the concrete failure it caused.
+- **CI regression test relocation.** Moved the `action-required-retrigger` regression from
+  `tests/unit/ci-action-required-retrigger.test.ts` to
+  `.github/scripts/ci-recovery/action-required-retrigger.test.mjs`, preserving the 5
+  assertions while restoring `npm run verify:fast` typechecking on `main`.
 
 ## Notes for the next session
 
