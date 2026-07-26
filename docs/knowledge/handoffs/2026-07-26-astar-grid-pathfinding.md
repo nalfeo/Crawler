@@ -63,11 +63,14 @@ speedup of the search machinery at **≈7.4x**, which lands inside the bench's
 figure is capped by Amdahl: the subsystem was 19% of the sim, so even an
 infinitely fast A\* could not have returned more than ~19%.
 
-**Ablation.** A `CLOSEDSET` bench variant (rot-js's open list kept verbatim, only
-the string-keyed closed set replaced) reaches **5.2 – 5.8x**. So the string-keyed
-`_done` object was the dominant cost and the heap contributes a further ~1.4x on
-top. That measurement retired the plan-review's "just swap the closed set"
-alternative — it would have left roughly a third of the win on the table.
+**Ablation.** A `CLOSEDSET` bench variant (multi-change ablation: rot-js's open list
+kept verbatim, the string-keyed closed set replaced **and** the `_getNeighbors` array
+allocation removed) reaches **5.2 – 5.8x**. This measures the combined effect of both
+changes rather than isolating the dict replacement alone; the heap contributes the
+remaining ~1.4x beyond that baseline. The dict was the larger cost of the two, but the
+exact decomposition requires a purer ablation (kept rot-js's two-phase neighbor
+collect-then-check) that was not measured. The 5.2–5.8x figure is a lower bound on
+the dict-only gain.
 
 ## Byte-identical gameplay — the hard gate
 

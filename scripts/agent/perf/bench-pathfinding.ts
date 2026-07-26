@@ -13,11 +13,13 @@
  *   - BASELINE  — the pre-optimization rot-js-backed `findTilePath`, inlined
  *                 verbatim below so the comparison stays reproducible without
  *                 shipping dead code in the game.
- *   - CLOSEDSET — rot-js's exact algorithm and open list (sorted array +
- *                 `splice` + `shift` + per-push objects), with ONLY the
- *                 string-keyed `_done` object swapped for a generation-stamped
- *                 typed array. Isolates how much of the win is the string keys
- *                 rather than the queue.
+ *   - CLOSEDSET — multi-change ablation: rot-js's open list (sorted array +
+ *                 `splice` + `shift` + per-push objects), with (a) the
+ *                 string-keyed `_done` object swapped for a
+ *                 generation-stamped typed array AND (b) the `_getNeighbors`
+ *                 array allocation removed (a direct loop interleaves
+ *                 passability and closed-set checks). Measures the combined
+ *                 gain from both changes, not the dict change in isolation.
  *   - CURRENT   — the live `findTilePath` (binary heap + typed arrays).
  *   - PRUNED    — CURRENT, but skipping passability probes for out-of-bounds
  *                 and already-closed neighbours. NOT shipped: `isTilePassable`
@@ -126,10 +128,13 @@ function findTilePathBaseline(
 }
 
 /* ------------------------------------------------------------------ *
- * ABLATION 1 (CLOSEDSET) — rot-js's algorithm and open list verbatim,
- * with only the string-keyed `_done` object replaced by a
- * generation-stamped typed array. Answers "was the dictionary the cost,
- * or was it the O(n^2) queue?".
+ * ABLATION 1 (CLOSEDSET) — multi-change ablation: combines (a) the
+ * string-keyed `_done` object replaced by a generation-stamped typed
+ * array AND (b) the `_getNeighbors` array allocation removed (a direct
+ * loop replaces the two-phase collect-then-check of rot-js). Measures
+ * the combined effect of both changes, NOT the closed-set replacement
+ * in isolation. The reported 5.2–5.8x is therefore a lower bound on
+ * the dict-only gain rather than an exact decomposition.
  * ------------------------------------------------------------------ */
 
 interface AblationItem {
