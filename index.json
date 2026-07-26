@@ -1,5 +1,16 @@
 [
   {
+    "commit": "1076c5ce70e8cdfed755099669f4910ae7813ace",
+    "commitDate": "2026-07-26T20:46:28Z",
+    "commitSubject": "fix(agent): stop the velocity engineer re-reporting old results and cross-contaminating branches (#2067)",
+    "capturedAt": "2026-07-26T22:07:12.699Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30220079335",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/1076c5ce70e8cdfed755099669f4910ae7813ace.json"
+  },
+  {
     "commit": "adaa4c26602a5385933e0cbdfb0b922cf83d3923",
     "commitDate": "2026-07-26T00:10:24Z",
     "commitSubject": "fix(ci-recovery): resolve outdated review threads before R06/R07 early exits (#2058)",
