@@ -1,5 +1,13 @@
 # QA Engineer
 
+> Owns the evidence that the game still works: automated tests, coverage,
+> property-based invariants, and the discipline that every confirmed bug becomes
+> a permanent regression test.
+
+## Agent
+
+[`qa-engineer`](../../../.github/agents/qa-engineer.agent.md)
+
 ## Responsibilities
 
 - Own automated tests, regression coverage, property-based invariants, snapshots, and coverage enforcement.
@@ -16,10 +24,25 @@
 
 ## Tools & Workflows
 
-- **Plan-first + review harness:** Before writing any code, output your **full plan** in the session. Then run the apple-scaled review harness — separate-model **plan review** (≥3🍎; **adversarial** at >3🍎: enumerate ≥2 alternatives and argue against the chosen design, and record `plan_divergence`), **code-review loop** until no concerns _or_ a 2-round cap then human escalation (≥3🍎), and **multi-model review + adjudication** (>3🍎) — recording each required stage in the review ledger the `pr-review-ledger` guard checks before PR. See [`.github/skills/review-harness/`](../../../.github/skills/review-harness/SKILL.md).
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, the apple-scaled review harness + ledger, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
 - Write unit, integration, property-based, and snapshot tests where each is the best fit.
 - Track game invariants and encode them as deterministic automated checks.
 - Validate that the Governor agent can play the game headlessly for smoke and regression coverage.
+- Prefer promoting a recurring bug class into a **deterministic** check
+  (`tests/e2e/helpers/pixels.ts`, `ui-probe.ts`, or a headless assertion) over
+  re-testing it by hand. Never an LLM-as-judge in CI.
+- Follow `.github/instructions/tests.instructions.md` for path-specific rules.
+
+## Skills
+
+- [`playwright-generate-test`](../../../.github/skills/playwright-generate-test/SKILL.md)
+  — turn a reproduced scenario into a deterministic e2e test.
+- [`playwright-explore-website`](../../../.github/skills/playwright-explore-website/SKILL.md)
+  — explore a surface before deciding what to assert.
+- [`task-pack-builder`](../../../.github/skills/task-pack-builder/SKILL.md) —
+  extract a merged PR's tests into a frozen, replayable verifier.
+- [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — required
+  before any code-touching PR at ≥3🍎.
 
 ## Quality Criteria
 
