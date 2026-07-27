@@ -84,7 +84,29 @@ description: |
   light head, LIGHT torso and arms, dark legs. Three distinct value masses, never one
   flat blob.
 
+  COLOUR ASSIGNMENT IS EXPLICIT. Quantization is strict, so every colour below is a
+  palette entry and each one belongs to ONE material. Do not borrow across materials:
+
+  - SKIN (face, neck, bare forearms, hands) uses the WARM TAN ramp ONLY:
+    rgb(88,56,38) shadow, rgb(134,92,62) mid, rgb(180,136,98) light,
+    rgb(220,180,140) highlight. His skin is TAN AND DESATURATED, the colour of
+    unbleached leather. It is NOT orange, NOT amber, NOT gold, NOT yellow.
+  - AMBER rgb(236,146,26) and rgb(255,200,74) are the LAMINATE BADGE ACCENT and
+    NOTHING ELSE. Together they occupy a handful of pixels on the badge. They must
+    NEVER appear on skin, hair, cloth or the clipboard. They are the two brightest
+    entries in the palette purely because a small badge needs to pop — brightness
+    here does NOT mean "use this for the face".
+  - TROUSERS AND SHOES use the NAVY ramp: rgb(30,32,46), rgb(48,52,72),
+    rgb(68,74,100). The legs must show at least two of these three so they read as
+    cloth with form.
+  - rgb(16,14,18) is the OUTLINE colour. It is a one-pixel contour line, never a
+    fill. The lower body must NOT be a solid mass of it.
+
   HARD NEGATIVES:
+  - Do NOT paint the face, neck, arms or hands orange, amber, gold or yellow. Skin is
+    the tan ramp. This is the single most common failure on this brief.
+  - Do NOT fill the trousers, shoes or lower body with the near-black outline colour.
+    The legs are NAVY with visible tonal steps, not a black silhouette.
   - Do NOT draw realistic, lanky, long-limbed, seven-heads-tall or adult-proportioned
     anatomy. Do NOT make the head small. A small head is a FAILURE in this brief.
   - Do NOT draw gritty, grimy, painterly, photorealistic or dark-fantasy rendering.
@@ -126,9 +148,10 @@ description: |
   turned a few degrees off straight-on, both eyes visible, shoulders nearly square.
 
   MATERIAL AND PALETTE: light bone/taupe production polo (dominant mass), dark navy
-  trousers, dark grey headset and shoes, warm skin, a deep crimson lanyard strap, one
-  saturated amber laminate badge. Flat fills, 2-3 tonal stops per material, clean dark
-  outline. Never candy-glossy, never glowing.
+  trousers, dark grey headset and shoes, TAN DESATURATED skin from the warm tan ramp
+  (never orange or amber), a deep crimson lanyard strap, one small saturated amber
+  laminate badge — the amber belongs to that badge alone. Flat fills, 2-3 tonal stops
+  per material, clean dark outline. Never candy-glossy, never glowing.
 
   Rendered in the game at roughly 6.6 feet tall (1 tile = 4 feet). Keep detail count
   low enough that the badge, the headset and the slump all survive when he is only

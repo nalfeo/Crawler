@@ -94,7 +94,28 @@ description: |
   and arms, mid apron, dark trousers and shoes. The dark masses together must cover
   LESS area than the light ones.
 
+  COLOUR ASSIGNMENT IS EXPLICIT. Quantization is strict, so every colour below is a
+  palette entry and each one belongs to ONE material. Do not borrow across materials:
+
+  - SKIN (face, neck, bald scalp, bare forearms, hands) uses the PALE CLAMMY ramp
+    ONLY: rgb(94,82,64) shadow, rgb(148,128,100) mid, rgb(196,178,148) light,
+    rgb(238,232,216) sweat highlight. His skin is PALE, GREYISH AND WASHED-OUT — the
+    colour of someone who has not seen daylight in a month. It is NOT gold, NOT
+    mustard, NOT yellow, NOT amber, NOT tan, NOT sunlit.
+  - GOLD rgb(198,150,44) is the METAL ACCENT for his ring and pouch clasp and NOTHING
+    ELSE. It is a handful of pixels. It must NEVER appear on skin, scalp, face, arms
+    or cloth. Do not use it to warm up the skin.
+  - SHIRT uses the cream/bone end of the neutral ramp; APRON uses the olive ramp
+    rgb(70,74,44) / rgb(104,110,62) / rgb(140,148,86); TROUSERS AND SHOES use the
+    brown ramp rgb(46,40,36) / rgb(76,64,50) / rgb(110,94,70).
+  - TEAL rgb(18,84,96) / rgb(30,142,152) / rgb(92,208,206) belongs to the BOTTLES
+    alone and is the only saturated thing on the sprite.
+  - rgb(18,16,16) is the OUTLINE colour: a one-pixel contour, never a fill.
+
   HARD NEGATIVES:
+  - Do NOT paint the face, scalp, neck, arms or hands gold, mustard, yellow or amber.
+    His skin is the PALE CLAMMY ramp. This is the single most common failure on this
+    brief — a gold-faced merchant is an automatic reject.
   - Do NOT draw realistic, tall, long-limbed, seven-heads-tall or adult-proportioned
     anatomy. Do NOT make the head small. A small head is a FAILURE in this brief.
   - Do NOT draw gritty, grimy, painterly, photorealistic or dark-fantasy rendering.
@@ -137,9 +158,11 @@ description: |
   turned a few degrees off straight-on, both eyes visible, shoulders nearly square.
 
   MATERIAL AND PALETTE: light cream shirt (largest mass), mid olive apron, dark brown
-  trousers and shoes, pale clammy skin with a near-white sweat highlight, a warm gold
-  ring and pouch, and saturated glowing teal bottles. Flat fills, 2-3 tonal stops per
-  material, clean dark outline. Never candy-glossy, never a wet gradient sheen.
+  trousers and shoes, PALE GREYISH CLAMMY skin from the pale skin ramp with a
+  near-white sweat highlight (never gold, mustard or yellow), a small warm gold ring
+  and pouch clasp — the gold belongs to that metal alone — and saturated glowing teal
+  bottles. Flat fills, 2-3 tonal stops per material, clean dark outline. Never
+  candy-glossy, never a wet gradient sheen.
 
   Rendered in the game at roughly 6.6 feet tall (1 tile = 4 feet). Keep detail count
   low enough that the teal bottles, the apron and the craned head all survive when he

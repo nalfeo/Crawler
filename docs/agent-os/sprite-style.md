@@ -19,6 +19,60 @@ The generator MUST follow every constraint below. Each is also enforced by a det
 7. **No multiple subjects per cell.** If the brief asks for a sword, the cell shows one sword — not "a sword on a shield" or "a sword next to a coin".
 8. **No anti-aliasing.** Edges are hard. Color transitions are 1-pixel boundaries between palette entries.
 
+## Bind every material to its ramp when `paletteMode: strict`
+
+**Strict quantization does not tell the model which palette entry means which
+material.** It only guarantees the shipped pixels are palette entries. If a palette
+contains a small saturated warm accent (a badge, a gold ring, a lamp), the model will
+reach for it whenever it wants "warm" or "bright" — and skin is the usual casualty.
+
+This is not hypothetical: it fired on **both** Welcome Room NPCs, and the VLM judge
+scored the broken art **5/5/5/5 both times**. The judge does not detect skin-hue
+substitution, so no automated layer catches it — only the eyeball gate does.
+
+| brief                | intended for the accent                   | what the model painted with it | measured                    |
+| -------------------- | ----------------------------------------- | ------------------------------ | --------------------------- |
+| `welcome-goon-v3`    | amber laminate badge `rgb(236,146,26)`    | the face                       | skin was hot orange         |
+| `sweaty-merchant-v3` | gold ring + pouch clasp `rgb(198,150,44)` | the whole head                 | head 91% gold, 9% skin ramp |
+
+Note the structural tell in the goon palette: the two **brightest** entries were both
+amber accents, while the skin ramp topped out well below them. Asked for a bright warm
+face, the nearest palette entry was the badge colour. A palette whose brightest entry
+is an accent rather than skin is primed for this failure.
+
+**The fix is prose, not a looser sensor.** Give every material an explicit ramp by RGB,
+say what the accent is _and is not_ for, and add the failure as a hard negative:
+
+```text
+COLOUR ASSIGNMENT IS EXPLICIT. Quantization is strict, so every colour below is a
+palette entry and each one belongs to ONE material. Do not borrow across materials:
+
+- SKIN (face, neck, bare forearms, hands) uses the WARM TAN ramp ONLY:
+  rgb(88,56,38) shadow, rgb(134,92,62) mid, rgb(180,136,98) light,
+  rgb(220,180,140) highlight. It is NOT orange, NOT amber, NOT gold.
+- AMBER rgb(236,146,26) is the LAMINATE BADGE ACCENT and NOTHING ELSE. It must
+  NEVER appear on skin, hair or cloth. It is the brightest entry in the palette
+  purely because a small badge needs to pop — brightness here does NOT mean
+  "use this for the face".
+- rgb(16,14,18) is the OUTLINE colour: a one-pixel contour, never a fill.
+
+HARD NEGATIVES:
+- Do NOT paint the face, neck, arms or hands orange, amber, gold or yellow.
+  This is the single most common failure on this brief.
+```
+
+Verifying it is cheap and deterministic — count palette-exact pixels in the head region
+rather than trusting the judge:
+
+```text
+head: gold=419 skinramp= 39   <- rejected
+head: gold= 15 skinramp=350   <- correct
+```
+
+Also bind the near-black entry to **outline only**. The goon's lower body came back as a
+749-pixel solid mass of `rgb(16,14,18)` because "dark legs" plus an available near-black
+reads as permission to fill with it.
+
 ## Visual conventions
 
 These are softer guidelines — the model should follow them, but downstream sensors don't enforce them. Reference images do most of the work here:
