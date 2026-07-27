@@ -7,7 +7,7 @@
 
 ## Systems touched
 
-ci-recovery
+ci-policy
 
 ## Root cause
 
