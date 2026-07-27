@@ -294,7 +294,7 @@ async function loadRecentWorkflow(
       selectLatestRunWithStep(
         candidates.map((candidate) => candidate.run),
         requiredStepPattern,
-      ) ?? candidates[0].run;
+      ) ?? null;
   } else {
     const latest = recentRuns[0];
     const known = knownRuns.find((run) => run.id === latest.id && !run.jobsError);
@@ -310,11 +310,16 @@ async function loadRecentWorkflow(
       apiCalls += 1;
     }
   }
+  // executableRunNotFound is true when runs exist but none contained the required
+  // step pattern — the fallback to the newest non-matching run is intentionally
+  // withheld so callers see null rather than a misleading skipped/non-executable run.
+  const executableRunNotFound = requiredStepPattern !== null && latestRun === null && recentRuns.length > 0;
   return {
     workflowFile,
     recentRuns,
     latestRun,
     truncated: Number(response.total_count ?? recentRuns.length) > recentRuns.length,
+    executableRunNotFound,
     apiCalls,
   };
 }
@@ -537,8 +542,10 @@ export async function loadRepositoryState(repository, signal) {
       assetWorkflow,
       reconcilerWorkflow,
       refs: assetRefs,
-      pullRequests: openPullResult.values.filter((pullRequest) =>
-        ['assets/queue', 'assets/promote'].includes(pullRequest.head?.ref),
+      pullRequests: openPullResult.values.filter(
+        (pullRequest) =>
+          ['assets/queue', 'assets/promote'].includes(pullRequest.head?.ref) &&
+          pullRequest.head?.repo?.full_name === repository,
       ),
       errors: assetErrors,
     },

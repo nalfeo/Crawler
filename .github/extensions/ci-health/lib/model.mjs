@@ -18,6 +18,11 @@ const QUEUED_JOB_STATES = new Set(['pending', 'queued', 'requested', 'waiting'])
 const QUEUED_RUN_STATES = new Set(['queued', 'waiting', 'pending', 'requested']);
 const ASSET_ACTIVE_STALE_MS = 60 * 60 * 1000;
 const WORKFLOW_ACTIVE_STALE_MS = 30 * 60 * 1000;
+// Only comments posted by the workflow's automation identity are treated as
+// authoritative pipeline markers. This prevents public fork contributors from
+// spoofing completion/failure state or injecting summary URLs by posting a
+// comment that matches one of the recognised prefixes.
+const TRUSTED_ASSET_COMMENT_LOGINS = new Set(['github-actions[bot]']);
 
 function labelNames(pullRequest) {
   return new Set((pullRequest.labels ?? []).map((label) => label.name));
@@ -89,6 +94,15 @@ function assetCommentMarker(comment) {
   }
   if (/^✅ Asset-request pipeline complete\./u.test(body)) {
     const selected = body.match(/^- selected for publication:\s*(.+)$/im)?.[1];
+    if (/^- selection: no acceptable variants/im.test(body)) {
+      return {
+        ...base,
+        kind: 'terminal',
+        stage: 'quality-stopped',
+        state: 'failed',
+        detail: 'No acceptable variants; human intervention required.',
+      };
+    }
     return {
       ...base,
       kind: 'terminal',
@@ -120,6 +134,7 @@ export function parseAssetRequestComments(comments, { historyTruncated = false, 
           timestamp(right.createdAt ?? right.updatedAt) ||
         String(left.id ?? '').localeCompare(String(right.id ?? '')),
     )
+    .filter((comment) => TRUSTED_ASSET_COMMENT_LOGINS.has(comment.author?.login ?? ''))
     .map(assetCommentMarker)
     .filter(Boolean);
   const newestAttemptIndex = ordered.findLastIndex((marker) => marker.kind === 'attempt');
@@ -218,11 +233,9 @@ function canonicalAssetState(rawState, now) {
     state = 'queue-review';
     detail = `Canonical queue PR #${queuePr.number} is awaiting review or reconciliation.`;
     url = queuePr.html_url;
-  } else if (refs.has('refs/heads/assets/queue')) {
-    state = 'queue-without-pr';
-    detail = 'The assets/queue branch exists without an open canonical PR.';
-    url = `https://github.com/${rawState.repository}/tree/assets/queue`;
   } else if (runActive) {
+    // Overlay reconciler activity before inspecting topology: an active run
+    // explains why no PR exists yet without false-positive queue-without-pr.
     state =
       durationMs(latestRun.run_started_at ?? latestRun.created_at, null, now) >
       WORKFLOW_ACTIVE_STALE_MS
@@ -230,8 +243,26 @@ function canonicalAssetState(rawState, now) {
         : latestRun.status;
     detail = 'The downstream Sprite queue reconciler is active.';
   } else if (latestRun?.conclusion && latestRun.conclusion !== 'success') {
+    // Overlay reconciler failures before topology: a failed run is the primary
+    // signal; bare branch existence is incidental in this state.
     state = latestRun.conclusion;
     detail = 'The latest downstream Sprite queue reconciler did not succeed.';
+    url = latestRun.html_url ?? url;
+  } else if (refs.has('refs/heads/assets/queue')) {
+    // The assets/queue branch is deliberately never reset after a reconciler
+    // run, so its bare existence is not evidence of pending work. When the
+    // reconciler last ran successfully (or hasn't run at all), report idle so
+    // the steady-state repository does not permanently show as failing.
+    // queue-without-pr is only emitted when the reconciler has not yet
+    // confirmed that the queue is current with main (no successful run on
+    // record), giving operators a prompt to investigate without masking a
+    // healthy no-op.
+    if (latestRun?.conclusion !== 'success') {
+      state = 'queue-without-pr';
+      detail =
+        'The assets/queue branch exists without an open canonical PR; no successful reconciler run on record.';
+      url = `https://github.com/${rawState.repository}/tree/assets/queue`;
+    }
   }
   return {
     state,
@@ -357,6 +388,11 @@ export function buildAssetPipelineState(rawState) {
       ...(assetRequests.errors ?? []),
       ...(issues.some((issue) => issue.attribution === 'partial')
         ? ['One or more issue statuses have truncated comment history.']
+        : []),
+      ...(assetRequests.assetWorkflow?.executableRunNotFound
+        ? [
+            'No executable Asset Request Pipeline run was found in the last few runs; observable stage data may be stale.',
+          ]
         : []),
     ],
   };
