@@ -3882,6 +3882,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-floor-plate-clean-v2-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-floor-plate-clean-v2-var-0",
+    "description": "Generated sprite from brief: welcome-room-floor-plate-clean-v2.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-plate-clean-v2-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-plate-clean-v2-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-floor-plate-clean-var-2",
     "kind": "sprite",
     "label": "welcome-room-floor-plate-clean-var-2",
