@@ -34,6 +34,7 @@ import {
   queuePositionAfterRecovery,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
+  EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
   stalledAdmissionEligiblePulls,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
@@ -79,7 +80,6 @@ const { trainCap: resolvedTrainCap } = resolveGlobalDispatchCaps(process.env);
 const EMPTY_TRAIN_INCIDENT_LABEL = 'ci-incident';
 const EMPTY_TRAIN_INCIDENT_TITLE = 'CI incident: Merge train empty with admission-eligible backlog';
 const EMPTY_TRAIN_INCIDENT_MARKER = '<!-- crawler-merge-train-empty-incident:v1 -->';
-const EMPTY_TRAIN_LIVENESS_THRESHOLD_MS = 60 * 60 * 1000;
 
 if (!owner || !repo || !token || !Number.isInteger(trustedAppId)) {
   throw new Error('Merge train requires GITHUB_REPOSITORY, a GitHub token, and MERGE_TRAIN_APP_ID');
@@ -206,25 +206,47 @@ function renderEmptyTrainIncidentBody({ now, stalledPulls }) {
   ].join('\n');
 }
 
+async function listOpenIncidentIssues() {
+  const encodedLabel = encodeURIComponent(EMPTY_TRAIN_INCIDENT_LABEL);
+  return paginate(token, `/repos/${owner}/${repo}/issues?state=open&labels=${encodedLabel}&per_page=100`);
+}
+
+function findManagedEmptyTrainIncident(openIncidents) {
+  return openIncidents.find(
+    (issue) =>
+      issue.title === EMPTY_TRAIN_INCIDENT_TITLE &&
+      String(issue.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER),
+  );
+}
+
+async function closeManagedEmptyTrainIncidentIfAny(reason) {
+  const openIncidents = await listOpenIncidentIssues();
+  const existing = findManagedEmptyTrainIncident(openIncidents);
+  if (!existing) return;
+  const suffix = String(reason || '').trim();
+  const body = suffix
+    ? `${String(existing.body || '').trim()}\n\n- Auto-resolved: ${suffix}`
+    : existing.body;
+  await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+    method: 'PATCH',
+    body: { state: 'closed', body },
+  });
+  process.stdout.write(`closed empty-train incident issue=#${existing.number}\n`);
+}
+
 async function upsertEmptyTrainIncident(stalledPulls, now = new Date()) {
   if (stalledPulls.length === 0) return;
-  const encodedLabel = encodeURIComponent(EMPTY_TRAIN_INCIDENT_LABEL);
-  const openIncidents = await paginate(
-    token,
-    `/repos/${owner}/${repo}/issues?state=open&labels=${encodedLabel}&per_page=100`,
-  );
+  const openIncidents = await listOpenIncidentIssues();
   const body = renderEmptyTrainIncidentBody({ now, stalledPulls });
-  const existing = openIncidents.find((issue) => issue.title === EMPTY_TRAIN_INCIDENT_TITLE);
+  const existing = findManagedEmptyTrainIncident(openIncidents);
   if (existing) {
-    if (String(existing.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER)) {
-      await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
-        method: 'PATCH',
-        body: { body },
-      });
-      process.stdout.write(
-        `updated empty-train incident issue=#${existing.number} stalled=${stalledPulls.length}\n`,
-      );
-    }
+    await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+      method: 'PATCH',
+      body: { body },
+    });
+    process.stdout.write(
+      `updated empty-train incident issue=#${existing.number} stalled=${stalledPulls.length}\n`,
+    );
     return;
   }
   const created = await request(token, `/repos/${owner}/${repo}/issues`, {
@@ -720,8 +742,8 @@ if (queued.length === 0) {
     if (pull.state !== 'open' || pull.draft) return false;
     if (pull.base?.ref !== 'main') return false;
     if (pull.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) return false;
-    const createdAtMs = Date.parse(String(pull.created_at || ''));
-    return Number.isFinite(createdAtMs) && now.getTime() - createdAtMs >= EMPTY_TRAIN_LIVENESS_THRESHOLD_MS;
+    const updatedAtMs = Date.parse(String(pull.updated_at || pull.created_at || ''));
+    return Number.isFinite(updatedAtMs) && now.getTime() - updatedAtMs >= EMPTY_TRAIN_LIVENESS_THRESHOLD_MS;
   });
   const admissionByNumber = new Map();
   for (const pull of staleCandidates) {
@@ -736,10 +758,13 @@ if (queued.length === 0) {
   });
   if (stalled.length > 0) {
     await upsertEmptyTrainIncident(stalled, now);
+  } else {
+    await closeManagedEmptyTrainIncidentIfAny('queue empty condition cleared before threshold');
   }
   process.stdout.write('Merge train is empty\n');
   process.exit(0);
 }
+await closeManagedEmptyTrainIncidentIfAny('merge train has queued entries again');
 
 const admitted = [];
 for (const pr of queued) {

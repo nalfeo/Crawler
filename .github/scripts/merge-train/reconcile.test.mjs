@@ -183,9 +183,9 @@ test('deleteCandidateBundle is idempotent and rejects ref drift', () => {
 test('stalledAdmissionEligiblePulls triggers only when admitted PRs are stale past the threshold', () => {
   const now = new Date('2026-07-27T16:00:00Z');
   const pulls = [
-    { number: 11, created_at: '2026-07-27T14:30:00Z' }, // stale
-    { number: 12, created_at: '2026-07-27T15:40:00Z' }, // fresh
-    { number: 13, created_at: '2026-07-27T14:20:00Z' }, // stale but not admitted
+    { number: 11, created_at: '2026-07-27T14:30:00Z', updated_at: '2026-07-27T14:30:00Z' }, // stale
+    { number: 12, created_at: '2026-07-27T15:40:00Z', updated_at: '2026-07-27T15:40:00Z' }, // fresh
+    { number: 13, created_at: '2026-07-27T14:20:00Z', updated_at: '2026-07-27T14:20:00Z' }, // stale but not admitted
   ];
   const admissionByNumber = new Map([
     [11, true],
@@ -203,6 +203,29 @@ test('stalledAdmissionEligiblePulls triggers only when admitted PRs are stale pa
   assert.deepEqual(
     stalled.map((pull) => pull.number),
     [11],
+  );
+});
+
+test('stalledAdmissionEligiblePulls keys liveness to updated_at when present', () => {
+  const now = new Date('2026-07-27T16:00:00Z');
+  const pulls = [
+    // Old PR, but recently updated when it became admission-eligible.
+    { number: 31, created_at: '2026-07-26T09:00:00Z', updated_at: '2026-07-27T15:45:00Z' },
+    { number: 32, created_at: '2026-07-26T09:00:00Z', updated_at: '2026-07-27T14:00:00Z' },
+  ];
+  const admissionByNumber = new Map([
+    [31, true],
+    [32, true],
+  ]);
+  const stalled = stalledAdmissionEligiblePulls({
+    pulls,
+    admissionByNumber,
+    now,
+    thresholdMs: EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+  });
+  assert.deepEqual(
+    stalled.map((pull) => pull.number),
+    [32],
   );
 });
 

@@ -120,6 +120,13 @@ export function queuePositionAfterRecovery(index, recovery) {
 
 export const EMPTY_TRAIN_LIVENESS_THRESHOLD_MS = 60 * 60 * 1000;
 
+function stallAnchorMs(pull) {
+  const updatedAtMs = Date.parse(String(pull?.updated_at || ''));
+  if (Number.isFinite(updatedAtMs) && updatedAtMs > 0) return updatedAtMs;
+  const createdAtMs = Date.parse(String(pull?.created_at || ''));
+  return Number.isFinite(createdAtMs) && createdAtMs > 0 ? createdAtMs : Number.NaN;
+}
+
 export function stalledAdmissionEligiblePulls({
   pulls,
   queuedNumbers = new Set(),
@@ -133,13 +140,13 @@ export function stalledAdmissionEligiblePulls({
     .filter((pull) => {
       if (!pull || queuedNumbers.has(pull.number)) return false;
       if (admissionByNumber.get(pull.number) !== true) return false;
-      const createdAtMs = Date.parse(String(pull.created_at || ''));
-      if (!Number.isFinite(createdAtMs) || createdAtMs <= 0) return false;
-      return nowMs - createdAtMs >= thresholdMs;
+      const anchorMs = stallAnchorMs(pull);
+      if (!Number.isFinite(anchorMs) || anchorMs <= 0) return false;
+      return nowMs - anchorMs >= thresholdMs;
     })
     .sort(
       (left, right) =>
-        Date.parse(String(left.created_at || '')) - Date.parse(String(right.created_at || '')) ||
+        stallAnchorMs(left) - stallAnchorMs(right) ||
         left.number - right.number,
     );
 }

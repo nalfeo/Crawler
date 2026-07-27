@@ -757,6 +757,125 @@ test('invariant: every writable recovery status is dispatch-reachable through so
   }
 });
 
+test('repair wake invariant: schedule sweep reaches ownerless idle/waiting states but excludes genuine waiting blockers', () => {
+  const now = '2026-07-27T00:00:00Z';
+  const idle = {
+    number: 3201,
+    state: 'open',
+    draft: false,
+    created_at: now,
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    recoveryState: makeState({
+      prNumber: 3201,
+      headSha: 'head-3201',
+      fingerprint: 'idle',
+      owner: 'none',
+      status: 'idle',
+      trigger: 'stale-automation',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: now,
+    }),
+  };
+  const waitingNoBlockers = {
+    ...idle,
+    number: 3202,
+    recoveryState: makeState({
+      prNumber: 3202,
+      headSha: 'head-3202',
+      fingerprint: 'waiting-no-blockers',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'admission-wait',
+      blockers: [],
+      attempt: 0,
+      updatedAt: now,
+    }),
+  };
+  const waitingBlocked = {
+    ...idle,
+    number: 3203,
+    recoveryState: makeState({
+      prNumber: 3203,
+      headSha: 'head-3203',
+      fingerprint: 'waiting-blocked',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'waiting',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: now,
+    }),
+  };
+
+  const numbers = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [idle, waitingNoBlockers, waitingBlocked],
+    trainEnabled: true,
+    now: new Date(now),
+  });
+
+  assert.ok(numbers.includes(3201), 'idle waiting PR should be repair-sweep reachable');
+  assert.ok(numbers.includes(3202), 'ownerless waiting+no-blockers PR should be repair-sweep reachable');
+  assert.ok(!numbers.includes(3203), 'genuine waiting-with-blockers PR should remain hidden');
+});
+
+test('repair window: waiting-transition PRs stay prioritized even when sweep backlog exceeds window', () => {
+  const transitionA = {
+    number: 3301,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting-transition' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const transitionB = {
+    number: 3302,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-02T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting-transition' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const sweep = Array.from({ length: 6 }, (_, index) => ({
+    number: 3310 + index,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(3 + index).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  }));
+
+  const earlyWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [transitionA, transitionB, ...sweep],
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:00:00Z'),
+  });
+  const rotatedWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [transitionA, transitionB, ...sweep],
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:14:00Z'),
+  });
+
+  assert.ok(earlyWindow.includes(3301) && earlyWindow.includes(3302));
+  assert.ok(rotatedWindow.includes(3301) && rotatedWindow.includes(3302));
+  assert.equal(earlyWindow.length, 6);
+  assert.equal(rotatedWindow.length, 6);
+});
+
 test('repair window: an explicitly dispatched conflict-fenced PR is still honored', () => {
   const fencedPr = {
     number: 2003,

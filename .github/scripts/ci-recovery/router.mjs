@@ -310,16 +310,25 @@ function ageOrder(left, right) {
 
 function selectRepairWindowPulls({ direct, waitingTransitions, sweep, now = new Date() }) {
   const targetSize = Math.max(REPAIR_WINDOW_SIZE, direct.length);
-  const remaining = Math.max(targetSize - direct.length, 0);
-  if (remaining === 0) return direct;
-
-  const nonDirect = [...waitingTransitions, ...sweep].sort(ageOrder);
+  const remainingAfterDirect = Math.max(targetSize - direct.length, 0);
+  if (remainingAfterDirect === 0) return direct;
+  const prioritizedTransitions = [...waitingTransitions]
+    .sort(ageOrder)
+    .slice(0, remainingAfterDirect);
+  const remainingAfterTransitions = Math.max(
+    remainingAfterDirect - prioritizedTransitions.length,
+    0,
+  );
+  if (remainingAfterTransitions === 0) {
+    return [...direct, ...prioritizedTransitions];
+  }
+  const sweepOrdered = [...sweep].sort(ageOrder);
   const rotation =
     Number.isFinite(now.getTime()) && now.getTime() > 0
       ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
       : 0;
-  const rotated = rotateList(nonDirect, rotation);
-  return [...direct, ...rotated.slice(0, remaining)];
+  const rotated = rotateList(sweepOrdered, rotation);
+  return [...direct, ...prioritizedTransitions, ...rotated.slice(0, remainingAfterTransitions)];
 }
 
 // Labels meaning an external mechanism currently owns this PR's progress, so a
