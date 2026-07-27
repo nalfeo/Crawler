@@ -3024,6 +3024,19 @@
     "row": 0
   },
   {
+    "id": "generated:sweaty-merchant-v2-var-7",
+    "kind": "sprite",
+    "label": "sweaty-merchant-v2-var-7",
+    "description": "Generated sprite from brief: sweaty-merchant-v2.",
+    "tags": ["character", "generated", "pipeline-approved"],
+    "spriteId": "sweaty-merchant-v2-var-7",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/sweaty-merchant-v2-var-7.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:the-stairs-v2-var-0",
     "kind": "sprite",
     "label": "the-stairs-v2-var-0",
