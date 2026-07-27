@@ -25,7 +25,27 @@ description: |
   screen, with NO tilt, NO rotation, NO oblique angle and NO perspective. Modern
   high-quality pixel art, silhouette readable at 16px.
 
-  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  ROUND 2 STILL FAILED ON PROPORTION — READ THE NEXT PARAGRAPH TWICE. Round 1
+  came back at 0.72-0.89 : 1 and round 2 at 0.82 : 1, i.e. a nearly SQUARE
+  doorway both times. At 7 ft tall that is a five-to-six-foot-wide door, which is
+  a gate, not a door.
+
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The door's
+  drawn bounding box INCLUDING its stone frame must be approximately 120 PIXELS
+  WIDE and 240 PIXELS TALL. Round 2 drew about 200 x 240 — the height was right,
+  the WIDTH WAS NEARLY DOUBLE what it should be. Cut the width almost in half:
+  - Take the width of the door in your sketch and check it fits TWICE inside its
+    own height. Round 2 fitted only 1.2 times. If it does not fit twice, the
+    door is too wide and must be pulled in.
+  - The stone JAMBS are SLIM — a narrow band up each side, roughly as wide as ONE
+    timber plank. They are NOT fat pillars, NOT stacked blocks two courses wide,
+    and NOT a chunky architrave.
+  - The LINTEL is a shallow slab, not a deep block, and it does NOT overhang far
+    past the jambs.
+  - The door LEAF itself is a tall narrow slab of only THREE or FOUR planks — not
+    five or six. Fewer, narrower planks is the fastest way to get the width down.
+
+  REAL-WORLD SIZE / PROPORTIONS.
   The door is approximately 3.5 FEET WIDE x 7 FEET TALL — a person is 6.6 ft
   tall, so this is a door a person walks through with a little headroom. Its
   bounding box must be TWICE AS TALL AS IT IS WIDE (width : height = 1 : 2) — a

@@ -22,7 +22,32 @@ description: |
   elevation, NO vertical height and NO shadow under it. Modern high-quality pixel
   art, readable at game scale.
 
-  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  ROUND 3 WENT BACKWARDS ON BOTH AXES: 0.59-0.63 : 1 and a muddy dark brown slab
+  with one big pale blotch in the middle that read as a crate lid. Both the width
+  and the colour must come back.
+
+  THE COLOUR IS NOW LOCKED BY THE PIPELINE. Every opaque pixel will be snapped to
+  the palette in data/palettes/welcome-room-faded-runner.json — a deliberately
+  desaturated, chalky, greyed-off faded-maroon ramp. Do not try to paint brick
+  red, rust, terracotta or brown: those hues will be snapped to the faded ramp
+  anyway. Just draw a threadbare dusty rose-grey carpet and let the lock hold it.
+
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The runner's
+  drawn bounding box inside that cell must be approximately 78 PIXELS WIDE and
+  236 PIXELS TALL.
+
+  ROUND 2 GOT THE WIDTH EXACTLY RIGHT (78 px) BUT DREW IT FAR TOO SHORT — only
+  172 px tall, leaving a big empty band above and below. KEEP THE WIDTH AT 78 PX
+  AND MAKE IT MUCH LONGER: the top end of the runner must start within about 10
+  pixels of the TOP edge of the cell and the bottom end must finish within about
+  10 pixels of the BOTTOM edge. It runs almost the entire height of the cell.
+  Do NOT centre a short stubby strip in the middle of the cell.
+
+  Round 1 had also come back at 0.55 : 1 with a big PALE TAN PANEL filling the
+  middle and a decorative border frame around it — an ornate area rug, the exact
+  "steals the eye" failure this brief exists to fix. Do not reintroduce that.
+
+  REAL-WORLD SIZE / PROPORTIONS.
   The runner is approximately 4 FEET WIDE x 12 FEET LONG. Its bounding box must
   be THREE TIMES AS LONG AS IT IS WIDE (width : length = 1 : 3) — a long narrow
   strip running vertically up the cell. Compose it inside the square cell like
@@ -43,11 +68,16 @@ description: |
   - A plain rectangular strip of carpet with slightly IRREGULAR, FRAYED long
     edges — loose threads and nibbled bites out of the border, not a clean ruled
     rectangle.
-  - A simple woven BORDER STRIPE running down each long edge, faded almost into
-    the field colour.
+  - A single thin woven PINSTRIPE running down each long edge, one or two pixels
+    wide, faded almost into the field colour. It is a hairline, NOT a wide
+    decorative border band, and it does NOT enclose a separate inner panel.
   - WORN BALD PATCHES down the CENTRE LINE, where the pile has been walked flat
-    and through to the backing: an irregular, broken, lighter grey-tan track
-    running most of the length, heaviest near the middle, never a clean stripe.
+    and through to the backing. These are IRREGULAR, BROKEN, PATCHY and only
+    slightly lighter than the surrounding carpet — a scatter of blotches that
+    comes and goes down the length, never a clean stripe, never a solid pale
+    panel, never edge-to-edge. The bald track must cover well under half the
+    strip's width and must read as WEAR, not as a design element. If the middle
+    of the runner looks like a distinct lighter rectangle, it is WRONG.
   - Scattered dark scuffs, one flattened dirty patch, one small dull stain, and a
     slight ripple/rucked kink along one edge where it has been kicked out of
     line.
@@ -58,16 +88,24 @@ description: |
   tape. It is one long, tired, threadbare corridor runner.
 
   COLOUR — MUTED AND DESATURATED. THIS IS THE MOST IMPORTANT COLOUR NOTE IN THE
-  BRIEF. The existing rug in this room is a saturated red slab that steals the
-  eye away from the characters; this replacement must NOT do that. Think
-  SUN-BLEACHED HOTEL CORRIDOR RUNNER, not fresh red carpet: a faded, dusty,
-  greyed-off maroon / oxblood that has gone brown-pink with age, with the bald
-  track a pale grey-tan and the shadows a deep desaturated plum-brown. Every
-  colour is knocked back toward grey. It sits on cool grey stone
+  BRIEF, AND ROUND 2 FAILED IT: it came back a strong warm BRICK RED, which is
+  still a saturated slab that steals the eye. The existing rug in this room has
+  exactly that problem and this replacement exists to fix it. Knock the colour
+  WAY back toward grey: think SUN-BLEACHED HOTEL CORRIDOR RUNNER left in a window
+  for twenty years — a dusty greyed-off maroon / oxblood gone brown-pink and
+  chalky, closer to a dull mushroom-mauve than to red, with the bald track a pale
+  grey-tan and the shadows a deep desaturated plum-brown. If a colour looks like
+  fresh brick, terracotta, rust or scarlet, it is TOO SATURATED — desaturate it
+  further. Every colour is knocked back toward grey. It sits on cool grey stone
   (tile-stone-floor-v2-var-2) and must read as quiet background dressing that the
   eye passes over on the way to the NPCs. BANNED: saturated red, bright red,
-  scarlet, crimson, pure white, pure black, gold, orange, neon, magenta, purple,
-  cyan, blue, green, and any glossy or velvet sheen.
+  brick red, terracotta, scarlet, crimson, pure white, pure black, gold, orange,
+  neon, magenta, purple, cyan, blue, green, and any glossy or velvet sheen.
+
+  IT MUST READ AS TEXTILE, NOT AS A PLANK. Round 2 over-corrected into a flat
+  featureless slab that read as a door panel. Visible woven pile texture dithered
+  across the whole field, frayed nibbled long edges, a stubby uneven fringe at
+  both short ends, irregular blotchy wear. Carpet, not wood, not stone, not metal.
 
   LIGHTING: light comes from the UPPER LEFT, consistently, but the runner is FLAT
   ON THE GROUND, so lighting shows only as a very slight overall gradient of wear
@@ -94,6 +132,16 @@ description: |
 size:
   width: 64
   height: 192
+palette:
+  id: welcome-room-faded-runner
+postprocessing:
+  # ROUND 4: three rounds of prose failed to pull the colour off warm brick red
+  # (judge agreed — most variants were rejected on brief_match). Same failure and
+  # same fix as welcome-room-floor-scuff round 1: snap every opaque pixel to a
+  # locked, deliberately desaturated faded-maroon ramp so a saturated slab is
+  # physically impossible in the output. This constrains the OUTPUT, it does not
+  # loosen any sensor or the judge bar.
+  paletteMode: strict
 anchor:
   x: 32
   y: 96

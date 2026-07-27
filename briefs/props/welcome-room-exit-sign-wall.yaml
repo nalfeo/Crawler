@@ -34,7 +34,27 @@ description: |
   short MOUNTING BRACKET or two small BOLTS visible at its TOP edge where it is
   fixed to the wall above, so the eye immediately reads "hanging on a wall".
 
-  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  ROUND 2 STILL FAILED ON PROPORTION — READ THE NEXT PARAGRAPH TWICE. Round 1
+  came back at 1.23 : 1 and round 2 at 1.41 : 1 — still an almost square
+  lantern-shaped box. The housing keeps being drawn far too deep top-to-bottom.
+
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The sign's
+  drawn bounding box INCLUDING the bracket must be approximately 240 PIXELS WIDE
+  and 96 PIXELS TALL. Round 2 drew about 240 x 170 — the width was right, the
+  HEIGHT WAS NEARLY DOUBLE what it should be. Cut the height almost in half:
+  - Take the height of the sign in your sketch and check it fits TWO AND A HALF
+    times inside its own width. Round 2 fitted only 1.4 times.
+  - The HOUSING is a SHALLOW letterbox slab. Its frame is a THIN border — a few
+    pixels of dark metal on each side — not a thick chunky bezel, and there is no
+    second inner frame inside the first.
+  - The glowing PANEL fills nearly the whole housing and is itself a long thin
+    letterbox: the running figure's full height is about the height of the panel,
+    and there is very little empty panel above or below the glyph.
+  - The BRACKET is a LOW-PROFILE TAB: it may rise no more than about 14 pixels
+    above the top of the housing — a small flat lug or two bolt heads, never a
+    tall handle, never a hanging loop, never a chain.
+
+  REAL-WORLD SIZE / PROPORTIONS.
   The sign is approximately 2.5 FEET WIDE x 1 FOOT TALL. Its bounding box must be
   TWO AND A HALF TIMES AS WIDE AS IT IS TALL (width : height = 2.5 : 1) — a long,
   flat, letterbox slab. Compose it inside the square cell like this:
