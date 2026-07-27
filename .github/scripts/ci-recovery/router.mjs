@@ -275,8 +275,19 @@ export function isDispatchBlocked(pullRequest) {
 }
 
 // Genuine waiting PRs stay hidden from broad sweeps. Once reconcile has already
-// converged a waiting PR back to an idle/no-owner state, broad repair sweeps may
+// converged a waiting PR back to an unowned state, broad repair sweeps may
 // surface it again so the existing exact repair-dispatch path can reacquire it.
+//
+// 2026-07-27 incident: production parks admission-gated PRs as
+// `owner=none,status=waiting,blockers=[]` (trigger `admission-wait`). Only
+// `status=idle` was accepted here, so that state was excluded from every sweep
+// and had no owner to advance it -- 17 of 31 open PRs became permanently
+// unreachable (oldest parked >2 days) and the merge train ran empty.
+//
+// A `waiting` PR that still records blockers is a genuine wait: something is
+// actively blocking it and reconcile parked it deliberately, so it stays
+// hidden. A `waiting` PR with no owner and no blockers has nothing left to wait
+// on and must be re-surfaced.
 export function isRepairWakeEligible(pullRequest) {
   const labels = pullRequest.labels || [];
   if (!labels.some((label) => label.name === WAITING_LABEL)) return false;
@@ -284,9 +295,31 @@ export function isRepairWakeEligible(pullRequest) {
     return false;
   }
   if (labels.some((label) => label.name === WAITING_TRANSITION_LABEL)) return false;
-  return (
-    pullRequest.recoveryState?.owner === 'none' && pullRequest.recoveryState?.status === 'idle'
-  );
+  const state = pullRequest.recoveryState;
+  if (state?.owner !== 'none') return false;
+  if (state.status === 'idle') return true;
+  return state.status === 'waiting' && (state.blockers || []).length === 0;
+}
+
+// Labels meaning an external mechanism currently owns this PR's progress, so a
+// CI Recovery dispatch cannot advance it. This is DISPATCH_BLOCKED_LABEL_NAMES
+// minus WAITING_LABEL: `ci-recovery-waiting` is CI Recovery's own parking
+// label and is handled by the repair-wake predicate above, not here.
+//
+// 2026-07-27 incident: these were never applied on the train-enabled sweep
+// path, so PRs fenced by the conflict coordinator (which reconcile skips
+// unconditionally with `skip pr=#N reason=ci-conflict-order-wait`) and PRs
+// awaiting human approval occupied slots in the bounded REPAIR_WINDOW_SIZE
+// sweep, burning every dispatch on guaranteed no-ops.
+const EXTERNALLY_BLOCKED_LABEL_NAMES = new Set(
+  [...DISPATCH_BLOCKED_LABEL_NAMES].filter((name) => name !== WAITING_LABEL),
+);
+
+// Returns true if an external mechanism (conflict coordinator, merge-train
+// block, validation failure, or human approval) currently gates this PR,
+// making a broad-sweep CI Recovery dispatch a guaranteed no-op.
+export function isExternallyBlocked(pullRequest) {
+  return (pullRequest.labels || []).some((label) => EXTERNALLY_BLOCKED_LABEL_NAMES.has(label.name));
 }
 
 export function collectPrNumbers({
@@ -435,10 +468,16 @@ export function eligibleTrainRecoveryPulls({
       const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
       const owned = labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX));
       const repairWakeEligible = isRepairWakeEligible(pullRequest);
+      // Externally blocked PRs are skipped unconditionally by reconcile, so they
+      // must not consume one of the bounded REPAIR_WINDOW_SIZE slots. Directly
+      // triggered PRs still pass through so explicit dispatches stay honored.
+      const externallyBlocked = isExternallyBlocked(pullRequest);
       const shouldExcludeByLabels =
         hasQueueLabel ||
         (!directlyTriggered &&
-          (hasOptOutLabel || (waiting && !owned && !waitingTransition && !repairWakeEligible)));
+          (hasOptOutLabel ||
+            externallyBlocked ||
+            (waiting && !owned && !waitingTransition && !repairWakeEligible)));
       return (
         pullRequest.state === 'open' &&
         !pullRequest.draft &&
