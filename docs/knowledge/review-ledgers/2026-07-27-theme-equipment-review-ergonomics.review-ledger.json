@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "theme-equipment-review-ergonomics",
+  "task_title": "Theme-equipment review canvas ergonomics fixes",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "major_fork",
+      "notes": "Change 3 re-architected from in-place brief overwrite to a proper artifact mutation (bump revision, write new selectedBriefKey, mint new selected-brief artifact, reset set-level briefs review). 4 blocking + 1 non-blocking concerns all resolved: pre-CAS write now non-destructive to a new revision key; revision IS bumped; artifact-path invalidation keeps Change 1s narrowed verdict reset sound; validation failure THROWS (non-2xx, no broadcast) instead of returning an error envelope; pure validateBriefYaml (no disk writes) replaces materializeAndLoadBrief. Changes 1/2/4 confirmed sound."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

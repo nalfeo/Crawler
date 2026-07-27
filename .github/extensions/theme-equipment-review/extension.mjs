@@ -197,6 +197,44 @@ const canvas = createCanvas({
         }),
     },
     {
+      name: 'approve_remaining',
+      description:
+        'Up-vote every eligible, not-yet-reviewed item in the current phase in one write. Skips rejected and artifact-ineligible items and reports them.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { expectedRevision: { type: 'integer', minimum: 0 } },
+        required: ['expectedRevision'],
+      },
+      handler: (ctx) =>
+        mutateAndPush(ctx, {
+          action: 'approve-remaining',
+          expectedRevision: ctx.input.expectedRevision,
+        }),
+    },
+    {
+      name: 'save_and_approve_brief',
+      description:
+        'Persist an edited selected-brief YAML as a new brief revision and up-vote the item, in one write. Rejects invalid YAML before persisting.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          itemId: { type: 'string', pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' },
+          briefText: { type: 'string', minLength: 1, maxLength: 200000 },
+          expectedRevision: { type: 'integer', minimum: 0 },
+        },
+        required: ['itemId', 'briefText', 'expectedRevision'],
+      },
+      handler: (ctx) =>
+        mutateAndPush(ctx, {
+          action: 'save-and-approve-brief',
+          itemId: ctx.input.itemId,
+          briefText: ctx.input.briefText,
+          expectedRevision: ctx.input.expectedRevision,
+        }),
+    },
+    {
       name: 'dispatch_workflow',
       description:
         'Dispatch durable set initialization, paid phase generation, or atomic publication to the trusted GitHub workflow.',

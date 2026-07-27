@@ -41,6 +41,10 @@ export function renderHtml(bootstrap) {
     .up.active { border-color: var(--true-color-green,#3fb950); }
     .down.active { border-color: var(--true-color-red,#f85149); }
     .error { color: var(--true-color-red,#f85149); white-space: pre-wrap; }
+    .brief-edit { min-height: 220px; font: var(--text-code-inline,12px)/1.5 var(--font-mono,monospace); white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+    .brief-error { color: var(--true-color-red,#f85149); white-space: pre-wrap; font-size: 12px; margin: 4px 0 0; }
+    .bulk-skips { margin: 8px 0 0; font-size: 13px; }
+    .bulk-skips ul { margin: 4px 0 0; padding-left: 20px; color: var(--text-color-muted,#8b949e); }
     .gate-list { margin: 8px 0 0; padding-left: 20px; }
     .spinner { padding: 40px; text-align: center; color: var(--text-color-muted,#8b949e); }
     label { display: block; margin: 10px 0 0; font-weight: 600; }
@@ -67,6 +71,8 @@ export function renderHtml(bootstrap) {
     let draft = null;
     let selectedPhase = null;
     let busy = false;
+    let lastBulkResult = null;
+    const BULK_NOUNS = { roster: 'items', briefs: 'briefs', 'sprite-sheets': 'sheets', 'variant-approval': 'items' };
     const app = document.querySelector('#app');
     const phases = ['roster','briefs','sprite-sheets','variant-approval','complete'];
     const MIN_WEAPON_TYPES = 5;
@@ -113,6 +119,7 @@ export function renderHtml(bootstrap) {
       try {
         state = await request('/api/state');
         selectedPhase = state.phase === 'complete' ? 'variant-approval' : state.phase;
+        lastBulkResult = null;
         view = 'board';
         render();
       } catch (error) {
@@ -340,6 +347,14 @@ export function renderHtml(bootstrap) {
     }
 
     function artifactHtml(item, artifact) {
+      if (artifact.kind === 'selected-brief' && selectedPhase === 'briefs' && selectedPhase === state.phase) {
+        return '<div class="artifact">' +
+          '<strong>' + esc(artifact.kind) + '</strong>' +
+          '<textarea class="brief-edit" spellcheck="false" data-brief-item="' + esc(item.id) + '" data-artifact="' + esc(artifact.id) + '">Loading…</textarea>' +
+          '<div class="brief-error" data-brief-error="' + esc(item.id) + '"></div>' +
+          (artifact.summary ? '<pre>' + esc(artifact.summary) + '</pre>' : '') +
+        '</div>';
+      }
       const previewable = ['raw-sheet','approved-variant','selected-brief'].includes(artifact.kind);
       return '<div class="artifact">' +
         '<strong>' + esc(artifact.kind) + '</strong>' +
@@ -382,9 +397,11 @@ export function renderHtml(bootstrap) {
         '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Approved items remain frozen; rejected items alone regenerate.</div></div>' +
         '<div class="controls">' +
           (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>Run / rerun unresolved items on GitHub</button>' : '') +
+          (state.phase !== 'complete' && state.bulkApprove && state.bulkApprove.count > 0 ? '<button class="primary" data-approve-remaining ' + (busy || selectedPhase !== state.phase ? 'disabled' : '') + '>Approve remaining ' + state.bulkApprove.count + ' ' + esc(BULK_NOUNS[state.phase] || 'items') + '</button>' : '') +
           (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
           (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>Publish complete set atomically on GitHub</button>' : '') +
           '<button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div></div>' +
+          (lastBulkResult && lastBulkResult.skipped && lastBulkResult.skipped.length ? '<div class="bulk-skips"><strong>Skipped ' + lastBulkResult.skipped.length + ':</strong><ul>' + lastBulkResult.skipped.map(s => '<li>' + esc(s.reason) + '</li>').join('') + '</ul></div>' : '') +
           (!state.gate.canAdvance && state.gate.reasons.length ? '<ul class="gate-list">' + state.gate.reasons.map(r => '<li>' + esc(r.message) + '</li>').join('') + '</ul>' : '') +
         '</section>' +
         (selectedPhase === 'complete' ? '<section class="panel">The complete set is held until one atomic publication workflow succeeds.</section>' :
@@ -398,12 +415,25 @@ export function renderHtml(bootstrap) {
       document.querySelector('[data-back]')?.addEventListener('click', loadIndex);
       document.querySelectorAll('[data-phase]').forEach(button => button.addEventListener('click', () => {
         selectedPhase = button.dataset.phase;
+        lastBulkResult = null;
         render();
+      }));
+      document.querySelectorAll('.brief-edit').forEach(area => area.addEventListener('input', () => {
+        const dirty = area.dataset.loaded === '1' && area.value !== area.dataset.original;
+        const upButton = document.querySelector('[data-review="item"][data-id="' + CSS.escape(area.dataset.briefItem) + '"][data-verdict="up"]');
+        if (upButton) upButton.textContent = dirty ? '💾 Save and Approve' : '👍 Approve';
       }));
       document.querySelectorAll('[data-review]').forEach(button => button.addEventListener('click', async () => {
         const scope = button.dataset.review;
         const id = button.dataset.id;
         const verdict = button.dataset.verdict === 'clear' ? null : button.dataset.verdict;
+        if (scope === 'item' && verdict === 'up') {
+          const briefEl = document.querySelector('.brief-edit[data-brief-item="' + CSS.escape(id) + '"]');
+          if (briefEl && briefEl.dataset.loaded === '1' && briefEl.value !== briefEl.dataset.original) {
+            await saveAndApproveBrief(id, briefEl);
+            return;
+          }
+        }
         const feedbackEl = document.querySelector('[data-feedback="' + (scope === 'item' ? CSS.escape(id) : 'collection') + '"]');
         await mutate(scope === 'item' ? '/api/review-item' : '/api/review-set', {
           ...(scope === 'item' ? { itemId: id } : {}),
@@ -411,6 +441,13 @@ export function renderHtml(bootstrap) {
           expectedRevision: state.stateRevision,
         });
       }));
+      document.querySelector('[data-approve-remaining]')?.addEventListener('click', async () => {
+        const result = await mutate('/api/approve-remaining', { expectedRevision: state.stateRevision });
+        if (result && result.bulkResult) {
+          lastBulkResult = result.bulkResult;
+          render();
+        }
+      });
       document.querySelector('[data-advance]')?.addEventListener('click', () => mutate('/api/advance', { expectedRevision: state.stateRevision }));
       document.querySelector('[data-refresh]')?.addEventListener('click', load);
       document.querySelectorAll('[data-dispatch]').forEach(button => button.addEventListener('click', async () => {
@@ -418,6 +455,29 @@ export function renderHtml(bootstrap) {
         const result = await mutate('/api/dispatch', { action: button.dataset.dispatch }, false);
         if (result) alert('Workflow dispatched on ref ' + (result.ref || 'unknown') + '. Refresh after the run completes.');
       }));
+    }
+
+    async function saveAndApproveBrief(itemId, briefEl) {
+      if (busy) return;
+      const errEl = document.querySelector('[data-brief-error="' + CSS.escape(itemId) + '"]');
+      if (errEl) errEl.textContent = '';
+      busy = true;
+      try {
+        const result = await request('/api/save-and-approve-brief', {
+          method: 'POST',
+          body: JSON.stringify({ itemId, briefText: briefEl.value, expectedRevision: state.stateRevision }),
+        });
+        state = result;
+        lastBulkResult = null;
+        busy = false;
+        render();
+      } catch (error) {
+        busy = false;
+        // Keep the dirty draft: surface the error inline and do NOT re-render.
+        if (errEl) errEl.textContent = error.message;
+        else alert(error.message);
+        if (error.message.includes('revision-conflict')) await load();
+      }
     }
 
     async function mutate(path, body, receivesState = true) {
@@ -439,6 +499,21 @@ export function renderHtml(bootstrap) {
     }
 
     async function loadPreviews() {
+      for (const area of document.querySelectorAll('.brief-edit')) {
+        if (area.dataset.loaded === '1') continue;
+        try {
+          const url = '/api/artifact?itemId=' + encodeURIComponent(area.dataset.briefItem) + '&artifactId=' + encodeURIComponent(area.dataset.artifact);
+          const response = await fetch(url, { headers: apiHeaders });
+          if (!response.ok) throw new Error(await response.text());
+          const text = await response.text();
+          area.value = text;
+          area.dataset.original = text;
+          area.dataset.loaded = '1';
+        } catch (error) {
+          area.value = '';
+          area.placeholder = 'Brief unavailable: ' + error.message;
+        }
+      }
       for (const target of document.querySelectorAll('.preview')) {
         try {
           const url = '/api/artifact?itemId=' + encodeURIComponent(target.dataset.item) + '&artifactId=' + encodeURIComponent(target.dataset.artifact);

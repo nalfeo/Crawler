@@ -7,11 +7,14 @@ import { z } from 'zod';
 import { createRunStore } from './store/index.js';
 import type { RunStore } from './store/types.js';
 import {
+  applyEditedThemeSetBrief,
   applyThemeSetItemReview,
   applyThemeSetPhaseHumanReview,
+  approveRemainingThemeSetPhase,
   advanceThemeSetPhase,
   canAdvanceThemeSet,
   loadThemeEquipmentSetState,
+  planApproveRemaining,
   saveThemeEquipmentSetState,
   themeEquipmentSetPlanSchema,
   themeEquipmentSetStateKey,
@@ -20,6 +23,8 @@ import {
   type ThemeEquipmentSetState,
   type ThemeSetMutationResult,
 } from './theme-equipment-set.js';
+import { enableJudge, selectedBriefKey } from './theme-equipment-brief.js';
+import { validateBriefYaml } from './load-brief.js';
 import {
   synthesizeThemeRoster,
   validateRosterProposal,
@@ -89,6 +94,20 @@ const commandSchema = z.discriminatedUnion('action', [
     .strict(),
   baseCommandSchema
     .extend({
+      action: z.literal('approve-remaining'),
+      expectedRevision: z.number().int().nonnegative(),
+    })
+    .strict(),
+  baseCommandSchema
+    .extend({
+      action: z.literal('save-and-approve-brief'),
+      itemId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+      briefText: z.string().min(1).max(200_000),
+      expectedRevision: z.number().int().nonnegative(),
+    })
+    .strict(),
+  baseCommandSchema
+    .extend({
       action: z.literal('artifact'),
       itemId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
       artifactId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
@@ -140,6 +159,12 @@ export async function executeThemeEquipmentReviewCommand(
   }
 
   assertExpectedRevision(state, command.expectedRevision);
+  if (command.action === 'approve-remaining') {
+    return approveRemaining(state, command.expectedRevision, deps);
+  }
+  if (command.action === 'save-and-approve-brief') {
+    return saveAndApproveBrief(state, command, deps);
+  }
   const mutation =
     command.action === 'item-review'
       ? applyThemeSetItemReview(state, command.itemId, command.review)
@@ -147,6 +172,98 @@ export async function executeThemeEquipmentReviewCommand(
         ? applyThemeSetPhaseHumanReview(state, command.review)
         : advanceThemeSetPhase(state);
   const next = requireMutation(mutation);
+  const saved = await saveThemeEquipmentSetState(deps.store, next, {
+    expectedRevision: command.expectedRevision,
+    now: deps.now,
+  });
+  return presentState(saved);
+}
+
+/**
+ * "Approve remaining" — up-vote every eligible, un-reviewed item in the current
+ * phase in ONE compare-and-swap write. Skips rejected / ineligible items and
+ * reports them. When nothing is approvable, writes nothing (avoids revision
+ * churn) but still returns the skip report so the canvas can explain why.
+ */
+async function approveRemaining(
+  state: ThemeEquipmentSetState,
+  expectedRevision: number,
+  deps: ThemeEquipmentReviewCliDeps,
+): Promise<Record<string, unknown>> {
+  const result = approveRemainingThemeSetPhase(state);
+  if (!result.ok) {
+    throw new Error(result.reasons.map((reason) => reason.message).join('; '));
+  }
+  const presented = result.changed
+    ? presentState(
+        await saveThemeEquipmentSetState(deps.store, result.state, {
+          expectedRevision,
+          now: deps.now,
+        }),
+      )
+    : presentState(result.state);
+  return {
+    ...presented,
+    bulkResult: {
+      approved: result.approvedIds,
+      alreadyUp: result.alreadyUpIds,
+      skipped: result.skipped,
+    },
+  };
+}
+
+/**
+ * "Save and Approve" a hand-edited brief. Validates the edited YAML (schema +
+ * palette) BEFORE any write — a failure throws so the server returns a non-2xx
+ * error and never persists a broken brief. On success it writes the enabled
+ * YAML to a NEW revision key (the live brief is never overwritten), mints a
+ * fresh `selected-brief` artifact pointing at it, and applies the edit +
+ * up-vote in one compare-and-swap state write.
+ */
+async function saveAndApproveBrief(
+  state: ThemeEquipmentSetState,
+  command: { setId: string; itemId: string; briefText: string; expectedRevision: number },
+  deps: ThemeEquipmentReviewCliDeps,
+): Promise<Record<string, unknown>> {
+  if (state.phase !== 'briefs') {
+    throw new Error(
+      `Brief edits are only allowed during phase "briefs" (current: "${state.phase}").`,
+    );
+  }
+  const item = state.items.find((candidate) => candidate.id === command.itemId);
+  if (!item) throw new Error(`Theme set item "${command.itemId}" was not found.`);
+
+  // enableJudge parses the YAML (throws on malformed input); validateBriefYaml
+  // then checks schema + palette. Both run BEFORE any store write.
+  const enabledYaml = enableJudge(command.briefText);
+  const validated = validateBriefYaml(enabledYaml, { projectRoot: deps.repoRoot });
+
+  const newRevision = item.revision + 1;
+  const key = selectedBriefKey(state, item, newRevision);
+  await deps.store.put(key, Buffer.from(enabledYaml));
+
+  const uri = deps.store.resolve(key);
+  const base = `${item.id}-brief-r${newRevision}`;
+  const artifact = {
+    id: `${base}-selected`,
+    kind: 'selected-brief',
+    uri,
+    summary: `Hand-edited brief (revision ${newRevision}).`,
+    provenance: 'hand-edit',
+    briefId: validated.brief.name,
+  };
+  const evidence = {
+    id: `${base}-edit`,
+    kind: 'brief-edit',
+    uri,
+    summary: `Maintainer hand-edited the selected brief for "${item.id}".`,
+    provenance: 'hand-edit',
+    briefId: validated.brief.name,
+  };
+
+  const next = requireMutation(
+    applyEditedThemeSetBrief(state, command.itemId, { artifact, evidence }),
+  );
   const saved = await saveThemeEquipmentSetState(deps.store, next, {
     expectedRevision: command.expectedRevision,
     now: deps.now,
@@ -165,6 +282,7 @@ export function presentState(state: ThemeEquipmentSetState): Record<string, unkn
   return {
     ...state,
     gate: advance,
+    bulkApprove: planApproveRemaining(state),
     coverage: {
       weaponTypes: [...weaponTypes].sort(),
       weaponTypeCount: weaponTypes.size,

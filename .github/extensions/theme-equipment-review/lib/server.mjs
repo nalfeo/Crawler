@@ -7,6 +7,8 @@ const MUTATING_PATHS = new Set([
   '/api/review-item',
   '/api/review-set',
   '/api/advance',
+  '/api/approve-remaining',
+  '/api/save-and-approve-brief',
   '/api/dispatch',
   '/api/select',
   '/api/synth-roster',
@@ -187,6 +189,32 @@ export async function startThemeEquipmentReviewServer(options) {
       }
       if (!setId) {
         writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
+      if (!setId) {
+        writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
+      if (url.pathname === '/api/approve-remaining') {
+        const bulk = await runCommand({
+          action: 'approve-remaining',
+          setId,
+          expectedRevision: body.expectedRevision,
+        });
+        writeJson(res, 200, bulk);
+        broadcast(bulk);
+        return;
+      }
+      if (url.pathname === '/api/save-and-approve-brief') {
+        const edited = await runCommand({
+          action: 'save-and-approve-brief',
+          setId,
+          itemId: body.itemId,
+          briefText: body.briefText,
+          expectedRevision: body.expectedRevision,
+        });
+        writeJson(res, 200, edited);
+        broadcast(edited);
         return;
       }
       const result =
