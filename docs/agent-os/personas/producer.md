@@ -17,6 +17,10 @@
   needs an ADR (any decision affecting 2+ systems) before code is written.
 - Guarantee memory discipline: exactly **one coordinating handoff** per
   orchestrated task that records which personas were used and why.
+- Produce a validated planning contract before delegation: one hard measurable
+  gate, ranked tiebreakers, confidence, and an acyclic dependency graph.
+- Optimize in this order: planning correctness, autonomous handoff, then wall
+  time. Never trade an invalid plan for parallelism.
 
 ## Constraints
 
@@ -29,6 +33,8 @@
 - Must not let a multi-persona task fragment into multiple conflicting handoffs;
   produce one coordinating handoff that links any sub-work.
 - Must not inflate or skip the apple estimate to make sequencing easier.
+- Must not delegate while the hard gate is missing or the dependency graph is
+  invalid.
 - For fundamental game systems, must require a build-vs-buy check in the slice
   plan: evaluate industry-standard libraries/frameworks first, and capture
   rationale if a custom implementation is selected.
@@ -44,6 +50,9 @@
   draft the ADR before the implementation it governs.
 - Hand each slice off with the adopted persona's quality bar in mind, then verify
   the seams between slices (imports, layer boundaries, registration points).
+- Treat `scripts/agent/producer.ts` as the executable contract: validate slice
+  IDs, dependency edges, cycles, apple limits, and delegation readiness before
+  spawning work.
 - Unless the human explicitly pre-declared that a PR should remain local, publish
   it ready for review with complete handoff context and end the owning session
   immediately. CI Recovery and cloud Copilot own post-publication blockers; do
@@ -57,6 +66,8 @@
 - A single coordinating handoff captures the persona routing and decisions.
 - ADRs exist for any decision affecting 2+ systems.
 - The shipped work reads as one coherent change, not a pile of disconnected edits.
+- Representative complex requests achieve at least 90% correct routing and
+  dependency plans without human restructuring.
 
 ## Collaborates with
 
