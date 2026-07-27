@@ -100,6 +100,17 @@ export function queueEntries(pullRequests, repository) {
     );
 }
 
+export function blockedTrainEntries(pullRequests, repository) {
+  return pullRequests.filter(
+    (pr) =>
+      pr.state === 'open' &&
+      !pr.draft &&
+      pr.base?.ref === 'main' &&
+      pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+      (pr.labels || []).some((label) => label.name === BLOCKED_LABEL),
+  );
+}
+
 export function shouldWaitForCiConflictOrder(labels) {
   return (labels || []).some((label) => label.name === CI_CONFLICT_ORDER_WAIT_LABEL);
 }

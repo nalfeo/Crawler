@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 import { hydrateRecoveryOwnership, recoveryBacklogEntries } from './ci-recovery/router.mjs';
 import { paginate, request } from './ci-recovery/github.mjs';
-import { queueEntries } from './merge-train/state.mjs';
+import { queueEntries, blockedTrainEntries } from './merge-train/state.mjs';
 
 export const SWEEP_POOL_SIZE = 10;
 export const ACCOUNT_RUNNER_LIMIT = 20;
@@ -81,6 +81,7 @@ export function enrichMatrix(entries, slots, scalarKey = 'value') {
 export function countLatentBacklog({ pullRequests, repository, now = new Date() }) {
   const numbers = new Set([
     ...queueEntries(pullRequests, repository).map((pullRequest) => pullRequest.number),
+    ...blockedTrainEntries(pullRequests, repository).map((pullRequest) => pullRequest.number),
     ...recoveryBacklogEntries(pullRequests, repository, now).map(
       (pullRequest) => pullRequest.number,
     ),
