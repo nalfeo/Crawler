@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { isHealthyRecoveryOwner } from '../ci-recovery/state.mjs';
+import { isHealthyRecoveryOwner, isHealthyShepherdLease } from '../ci-recovery/state.mjs';
 
 export const COORDINATOR_MARKER = '<!-- crawler-ci-conflict-coordinator:v1 -->';
 export const COORDINATOR_DATA_PREFIX = '<!-- crawler-ci-conflict-coordinator-data:';
@@ -306,6 +306,13 @@ export function dispatchKey({ groupId, active, baseSha, order }) {
 
 export function hasHealthyRecoveryOwner({ prNumber, recoveryState, headSha, now }) {
   return isHealthyRecoveryOwner({ prNumber, state: recoveryState, headSha, now });
+}
+
+// Only a live shepherd lease may hold the coordinator's active slot fenced.
+// Routine automation ownership must NOT, or the coordinator deadlocks against
+// its own dispatch (see isHealthyShepherdLease and issue #2095).
+export function hasHealthyShepherdLease({ prNumber, recoveryState, now }) {
+  return isHealthyShepherdLease({ prNumber, state: recoveryState, now });
 }
 
 export function shouldDispatchActiveSlot({
