@@ -108,6 +108,35 @@ wins you will find. A real win shows **non-overlapping** distributions — the
 worst `after` sample beats the best `before` sample. If they overlap, you do
 not have a result yet.
 
+**Warm up with SEVERAL rotated sweeps before the first timed round.** One
+warmup sweep is not enough: V8 is still tiering up during the early timed
+rounds, and whichever variant runs first absorbs that cost. This is not
+theoretical — an earlier version of `bench-pathfinding.ts` with a single warmup
+sweep reported medians of **4.71x, 8.13x, and 8.42x for byte-identical code**
+across three invocations. Rotate the warmup the same way the timed rounds
+rotate (`variants[(w + i) % variants.length]`) so tiering pressure lands
+symmetrically on every variant.
+
+**Report paired per-round ratios, not a ratio of aggregate medians.** Compute
+`before/after` _within_ each round, then take the median of those ratios. A
+machine-wide stall inflates every variant in that round together, so pairing
+cancels it; comparing separately-aggregated medians does not, and makes a
+consistent win look like overlapping noise. Report **rounds won** (`9/9`) and
+the **worst single round** — the worst round is your defensible headline, never
+the best.
+
+**Run the finished bench in at least two separate process invocations and
+publish the range**, not one run's median. A single invocation's median is
+itself a sample.
+
+Do not benchmark while review agents or other sessions are running — an
+observed baseline worst round went 208us -> 1138us purely from a busy machine.
+
+`scripts/agent/perf/bench-fov.ts` and `scripts/agent/perf/bench-pathfinding.ts`
+are the reference implementations of this whole pattern: inlined verbatim
+baseline, ablation variants, rotating lead, rotated warmup, lockstep
+byte-exact equivalence oracle, and paired per-round ratio reporting.
+
 To get the `before` side, extract the pre-change file from git rather than
 stashing, so both versions are importable at once:
 

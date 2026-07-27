@@ -145,7 +145,7 @@ So, before a dependency frame becomes your target:
   that arithmetic alone falsifies the misattribution instantly. **This check
   does not apply to multi-caller rows** (`← caller (X%) +N more`): a 12%
   dependency reached 50/50 from two 6% callers legitimately exceeds either
-  individual caller; compare against the *sum* of all `← caller` shares
+  individual caller; compare against the _sum_ of all `← caller` shares
   instead.
 - If you still cannot tell, open the dependency's source at the printed line
   (`node_modules/rot-js/dist/rot.js:5356`) and read which class the method is
@@ -220,6 +220,15 @@ State, in the PR and handoff:
 - the exact command that measures it
 - fingerprint hash and that the check was clean on the **full** gate sample
 
+For a microbench, the headline must be the **worst paired round**, with
+**rounds won** and a **range across ≥2 separate process invocations** — not a
+single run's best or median. See "When to microbench a single function" in
+`references/measurement-recipes.md`; under-warmed benches have reported a 1.8x
+spread on byte-identical code.
+
+If the target was <5% of the surface, say so and report the end-to-end number
+as inside noise rather than as the win.
+
 ## Gameplay-neutral vs. not — the line
 
 Neutral (yours):
@@ -235,6 +244,15 @@ Neutral (yours):
 - deferring/lazy-loading an asset the current scene doesn't use
 - removing a redundant second pass over the same data
 - reordering independent work that has no observable ordering effect
+- replacing a dependency's algorithm with an **exactly-equivalent** in-repo one.
+  This is neutral only if you reproduce its tie-breaking, iteration order, and
+  side-effect call pattern exactly, and prove it with a **differential oracle**
+  (run both against thousands of fixtures, compare results element-by-element)
+  on top of the fingerprint. `src/core/map/astar-grid.ts` is the worked example:
+  its header documents the exact-ordering contract it must honour, and it keeps
+  the original dependency as a fallback for the input shape the fast path cannot
+  represent. If you cannot state that contract, you are not doing this — you are
+  doing the "different result" case below.
 
 **Not neutral (hand off, do not land):**
 
