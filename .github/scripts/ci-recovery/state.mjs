@@ -9,13 +9,6 @@ export const DEFAULT_LEASE_TTL_MINUTES = 30;
 export const DEFAULT_LEASE_GRACE_MINUTES = 5;
 export const AUTOMATION_STALE_MINUTES = 30;
 
-export function isClosedOrMergedPullState(value) {
-  const normalized = String(value ?? '')
-    .trim()
-    .toLowerCase();
-  return normalized === 'closed' || normalized === 'merged';
-}
-
 // A check-run named "merge-train" is only real promotion provenance when it
 // was published by the trusted repository App and its external_id is a
 // fingerprint-shaped SHA-256 hex digest (see ci.yml, security-review.yml, and

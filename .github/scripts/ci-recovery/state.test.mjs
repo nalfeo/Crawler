@@ -13,7 +13,6 @@ import {
   hasSubstantiveCopilotReview,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
-  isClosedOrMergedPullState,
   isHealthyRecoveryOwner,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
@@ -34,13 +33,6 @@ import {
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
-
-test('classifies closed/merged PR states for orphan-fence reclamation', () => {
-  assert.equal(isClosedOrMergedPullState('closed'), true);
-  assert.equal(isClosedOrMergedPullState('merged'), true);
-  assert.equal(isClosedOrMergedPullState('OPEN'), false);
-  assert.equal(isClosedOrMergedPullState(undefined), false);
-});
 
 test('requires a submitted substantive Copilot code review', () => {
   const review = {

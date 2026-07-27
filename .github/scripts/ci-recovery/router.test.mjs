@@ -2830,27 +2830,6 @@ test('identifyReapablePrs excludes shepherd-owned PRs', () => {
   );
 });
 
-test('identifyReapablePrs includes owner-labeled closed/merged PRs', () => {
-  const closedPr = {
-    number: 21,
-    state: 'closed',
-    labels: [{ name: 'ci-owner-pr-21' }],
-  };
-  const mergedPr = {
-    number: 22,
-    state: 'merged',
-    labels: [{ name: 'ci-owner-pr-22' }],
-  };
-  const openHealthyPr = {
-    number: 23,
-    state: 'open',
-    labels: [{ name: 'ci-owner-pr-23' }],
-    recoveryState: automationOwnerState(23, new Date(Date.now() - 5 * 60 * 1000).toISOString(), 1),
-  };
-  const reapable = identifyReapablePrs([closedPr, mergedPr, openHealthyPr]);
-  assert.deepEqual(reapable, [21, 22]);
-});
-
 test('identifyReapablePrs excludes unhydrated (no recoveryState and no recoveryStateUnreadable) PRs', () => {
   // An owned PR whose state comment was not loaded (recoveryState is undefined
   // and recoveryStateUnreadable is undefined).

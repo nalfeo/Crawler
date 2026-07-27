@@ -4,7 +4,6 @@ import { pathToFileURL } from 'node:url';
 import { paginate, request } from './github.mjs';
 import {
   AUTOMATION_STALE_MINUTES,
-  isClosedOrMergedPullState,
   isHealthyRecoveryOwner,
   OWNER_LABEL_PREFIX,
   ownerLabel,
@@ -553,10 +552,7 @@ export function hasHealthyOwnerForSweep(pullRequest, now = new Date()) {
 //      by the normal dispatch path because the budget stays at zero while they
 //      are stuck.
 //
-//   2. Owner-labeled PRs already closed/merged: the ownership fence is orphaned
-//      by definition and must be reclaimed without waiting for a PR-scoped event.
-//
-//   3. Owner-labeled PRs whose state is unreadable (recoveryStateUnreadable is
+//   2. Owner-labeled PRs whose state is unreadable (recoveryStateUnreadable is
 //      set) or null after hydration.  The reconciler already handles orphan
 //      cleanup for these, but it can only run if dispatched; under a zero budget
 //      they are similarly stuck.
@@ -582,7 +578,6 @@ export function identifyReapablePrs(scheduledPulls, now = new Date()) {
         String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
       );
       if (!owned) return false;
-      if (isClosedOrMergedPullState(pullRequest.state)) return true;
       const state = pullRequest.recoveryState;
       // Owner-labeled PR whose state was unreadable after hydration: always
       // eligible so the reconciler can run its orphan-cleanup path.
