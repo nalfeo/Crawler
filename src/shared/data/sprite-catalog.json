@@ -3687,6 +3687,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-exit-sign-wall-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-exit-sign-wall-var-2",
+    "description": "Generated sprite from brief: welcome-room-exit-sign-wall.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-exit-sign-wall-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-exit-sign-wall-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-floor-path-var-5",
     "kind": "sprite",
     "label": "welcome-room-floor-path-var-5",
