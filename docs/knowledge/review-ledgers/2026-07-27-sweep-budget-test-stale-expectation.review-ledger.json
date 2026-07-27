@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "sweep-budget-test-stale-expectation",
+  "task_title": "Fix stale sweep-budget test expectation for externally-blocked PR exclusion",
+  "estimated_apples": 1,
+  "stages": {}
+}
