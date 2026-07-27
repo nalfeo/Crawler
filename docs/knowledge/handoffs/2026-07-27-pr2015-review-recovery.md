@@ -34,3 +34,4 @@ Removed the invalid review-ledger scaffold from PR #2015 so the branch no longer
 
 1. Remove `Fixes #1953` from PR #2015 body.
 2. Re-run CI recovery once PR metadata is corrected.
+3. Re-trigger `CI Recovery Router` on the branch to supersede zero-log `route` failures from review-event runs.
