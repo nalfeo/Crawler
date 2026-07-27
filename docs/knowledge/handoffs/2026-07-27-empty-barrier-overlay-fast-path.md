@@ -128,6 +128,15 @@ version stamp exists to prevent. A boolean flag is worse again: a missed
 mutation path fails as a permanently-false flag, indistinguishable from "no
 barriers exist".
 
+One honest qualifier on that decisive path, raised on review: at that specific
+site `scenario-presets.ts` calls `attachBarriersToFloorMap(world)` immediately
+after the reassignment, which would in practice clear a hypothetical cache. So
+the bypass is latent today rather than live. It does **not** rescue the stamp —
+depending on that adjacency is exactly the bookkeeping discipline the gate
+exists to avoid, and it holds only until someone reorders those two lines or
+adds a second reassignment site without the follow-up call. The conclusion
+stands; the supporting detail is one notch weaker than "this breaks today".
+
 The shipped gate has **no cache at all**. It reads the same object the closure
 is about to consult, so there is no invalidation surface to get wrong and none
 of the 6 paths above needs to know the gate exists. Strictly stronger than a
