@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fbab38dd3aa60161a9c345f0512b129c335e2103",
+    "commitDate": "2026-07-27T08:07:04Z",
+    "commitSubject": "ci-recovery: wire D5 terminal dispatch table into reconcile.mjs (clean-room replacement for #1923, #2044) (#2100)",
+    "capturedAt": "2026-07-27T09:14:44.622Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30249295193",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/fbab38dd3aa60161a9c345f0512b129c335e2103.json"
+  },
+  {
     "commit": "22a0e2ff5537ddd4474e2d593fc8fa93b7aadca7",
     "commitDate": "2026-07-27T07:32:55Z",
     "commitSubject": "feat(sprites): add 61 approved assets (1 check-in) (#2099)",
