@@ -3726,6 +3726,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-floor-plate-cable-run-var-4",
+    "kind": "sprite",
+    "label": "welcome-room-floor-plate-cable-run-var-4",
+    "description": "Generated sprite from brief: welcome-room-floor-plate-cable-run.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-plate-cable-run-var-4",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-plate-cable-run-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-floor-plate-clean-var-2",
     "kind": "sprite",
     "label": "welcome-room-floor-plate-clean-var-2",
