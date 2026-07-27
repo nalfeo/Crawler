@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { decompose, renderTriage, triage, validateDecomposition } from '../../scripts/agent/producer';
+import {
+  decompose,
+  renderTriage,
+  triage,
+  validateDecomposition,
+} from '../../scripts/agent/producer';
 
 // ---------------------------------------------------------------------------
 // triage() — six classification paths
