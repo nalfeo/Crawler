@@ -457,7 +457,7 @@ export interface PlanningContract {
 }
 
 const SUCCESS_GATE_PATTERN =
-  /\b(?:success|target|at least|minimum|within|reach|achieve|maintain|win\s*rate|coverage|fps|latency|all\s+tests?|zero\s+(?:regressions?|failures?))\b/i;
+  /(?:\b(?:success|target|at least|minimum|within|reach|achieve|maintain)\b.{0,50}\b\d+(?:\.\d+)?\s*(?:%|ms|s|seconds?|minutes?|runs?|tests?)\b|\b\d+(?:\.\d+)?\s*%\s*(?:win\s*rate|coverage)\b|\b(?:all\s+tests?|zero\s+(?:regressions?|failures?))\b|\b(?:fps|latency)\s*(?:>=|<=|at least|below|under)\s*\d+)/i;
 
 function inferPlanningContract(request: string, slices: SliceDecomposition[]): PlanningContract {
   const hasGate = SUCCESS_GATE_PATTERN.test(request);
@@ -496,7 +496,7 @@ function inferPlanningContract(request: string, slices: SliceDecomposition[]): P
 }
 
 export function validateDecomposition(result: DecompositionResult): string[] {
-  const errors = [...result.contract.validationErrors];
+  const errors: string[] = [];
   const ids = new Set(result.slices.map((slice) => slice.id));
   const visiting = new Set<string>();
   const visited = new Set<string>();
@@ -666,8 +666,9 @@ export function decompose(request: string): DecompositionResult {
     escalations: [],
     contract: inferPlanningContract(request, slices),
   };
-  result.contract.validationErrors.push(...validateDecomposition(result));
-  result.contract.validationErrors = [...new Set(result.contract.validationErrors)];
+  result.contract.validationErrors = [
+    ...new Set([...result.contract.validationErrors, ...validateDecomposition(result)]),
+  ];
   result.contract.readyForDelegation =
     result.contract.gateStatus === 'READY' && result.contract.validationErrors.length === 0;
   return result;

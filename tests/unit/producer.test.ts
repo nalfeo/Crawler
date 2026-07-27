@@ -194,6 +194,16 @@ describe('decompose()', () => {
     expect(result.contract.readyForDelegation).toBe(false);
   });
 
+  it('does not treat a metric noun without a target as a success gate', () => {
+    for (const request of [
+      'Show fps counter on the debug overlay',
+      'Improve test coverage for the loot module',
+      'Reduce latency in enemy AI pathfinding',
+    ]) {
+      expect(decompose(request).contract.gateStatus).toBe('MISSING');
+    }
+  });
+
   it('accepts a measurable hard gate and exposes confidence', () => {
     const result = decompose('Add a boss and reach 90% win rate across 100 runs');
     expect(result.contract.gateStatus).toBe('READY');
@@ -209,6 +219,12 @@ describe('decompose()', () => {
       expect(slice.dependencies).not.toContain(slice.id);
       for (const dependency of slice.dependencies) expect(ids).toContain(dependency);
     }
+  });
+
+  it('keeps validation pure when called repeatedly', () => {
+    const result = decompose('Add a boss and reach 90% win rate across 100 runs');
+    result.contract.validationErrors.push('stale diagnostic');
+    expect(validateDecomposition(result)).toEqual([]);
   });
 
   it('routes pure mechanics without inventing runtime plumbing', () => {
