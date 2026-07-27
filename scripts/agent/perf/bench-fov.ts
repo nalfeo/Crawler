@@ -34,6 +34,7 @@ import { TileFlags } from '../../../src/shared/map-types.js';
 const DEFAULT_POSITIONS = 400;
 const DEFAULT_ROUNDS = 9;
 const WARMUP_RUN_FRAMES = 2500;
+const WARMUP_SWEEPS = 4;
 const DEFAULT_FOV_RADIUS = 25;
 
 /* ------------------------------------------------------------------ *
@@ -451,10 +452,16 @@ async function main(): Promise<void> {
   const ablationMs: number[] = [];
   const currentMs: number[] = [];
 
-  // Warm all paths before measuring.
-  timeVariant(timingWorld, positions, fovSystemBaseline);
-  timeVariant(timingWorld, positions, fovSystemAblation);
-  timeVariant(timingWorld, positions, fovSystem);
+  // Warm all paths before measuring. Several ROTATED sweeps, not one fixed-order
+  // sweep: a single sweep leaves V8 tiering during the early timed rounds and the
+  // lead variant absorbs the cost. An under-warmed bench reported 4.71x/8.13x/8.42x
+  // for byte-identical code — see references/measurement-recipes.md.
+  const warmVariants = [fovSystemBaseline, fovSystemAblation, fovSystem];
+  for (let w = 0; w < WARMUP_SWEEPS; w++) {
+    for (let i = 0; i < warmVariants.length; i++) {
+      timeVariant(timingWorld, positions, warmVariants[(w + i) % warmVariants.length]!);
+    }
+  }
 
   const run = [
     (): void => void baselineMs.push(timeVariant(timingWorld, positions, fovSystemBaseline)),
@@ -506,7 +513,7 @@ async function main(): Promise<void> {
     );
   };
 
-  console.log('\n  Paired per-round ratios (immune to machine-wide stalls):');
+  console.log('\n  Paired per-round ratios (control for shared round-level drift):');
   reportPaired('ABLATION vs BASELINE', pairedRatios(baselineMs, ablationMs));
   reportPaired('CURRENT  vs ABLATION', pairedRatios(ablationMs, currentMs));
   reportPaired('CURRENT  vs BASELINE', pairedRatios(baselineMs, currentMs));
