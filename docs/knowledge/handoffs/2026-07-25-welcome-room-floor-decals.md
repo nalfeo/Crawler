@@ -20,17 +20,10 @@ Baseline measurement of the four checked-in PNGs confirmed it mechanically:
 ## Root cause (the important finding)
 
 **The defect was the brief `type`, not the brief prose.** `scripts/sprites/build-prompt.ts`
-<<<<<<< Updated upstream
 hardcodes tile-specific prompt blocks at L232/254/313/371/455 that demand _"fill it
 edge-to-edge"_, _"make edges tile seamlessly"_, _"do not center a floating icon"_ and
 _"no transparent padding and no subject margin"_; L414 also suppresses sheet gutters for
-=======
-hardcodes tile-specific prompt blocks at L232/254/313/371/455 that demand _"fill it
-edge-to-edge"_, _"make edges tile seamlessly"_, _"do not center a floating icon"_ and
-_"no transparent padding and no subject margin"_; L414 also suppresses sheet gutters for
-
-> > > > > > > Stashed changes
-> > > > > > > tiles. No amount of brief wording can beat that scaffolding.
+tiles. No amount of brief wording can beat that scaffolding.
 
 Switching all four briefs to `type: prop` (and `git mv`-ing them to `briefs/props/`) flips
 every one of those: transparent-background prompt, 10% margin, gutters, and it **activates**
@@ -53,22 +46,12 @@ Note: `paletteMode: strict` resolves the palette from `data/palettes/<brief.pale
 
 ## Results
 
-<<<<<<< Updated upstream
-| asset | old id | new id | alpha0 | coverage | outer-10% ring | border1px | raggedness |
+| asset | old id   | new id   | alpha0 | coverage | outer-10% ring | border1px | raggedness |
 | ----- | -------- | -------- | ------ | -------- | -------------- | --------- | ---------- |
-| worn | `-var-0` | `-var-3` | 84.8% | 15.2% | 2 | 0 | 0.276 |
-| stain | `-var-2` | `-var-1` | 78.8% | 21.2% | 15 | 0 | 0.214 |
-| tape | `-var-0` | `-var-1` | 73.3% | 26.7% | 10 | 0 | 0.200 |
-| seam | `-var-0` | `-var-9` | 84.4% | 15.6% | 8 | 0 | 0.303 |
-=======
-| asset | old id | new id | alpha0 | coverage | outer-10% ring | border1px | raggedness |
-|---|---|---|---|---|---|---|---|
-| worn | `-var-0` | `-var-3` | 84.8% | 15.2% | 2 | 0 | 0.276 |
-| stain | `-var-2` | `-var-1` | 78.8% | 21.2% | 15 | 0 | 0.214 |
-| tape | `-var-0` | `-var-1` | 73.3% | 26.7% | 10 | 0 | 0.200 |
-| seam | `-var-0` | `-var-9` | 84.4% | 15.6% | 8 | 0 | 0.303 |
-
-> > > > > > > Stashed changes
+| worn  | `-var-0` | `-var-3` | 84.8%  | 15.2%    | 2              | 0         | 0.276      |
+| stain | `-var-2` | `-var-1` | 78.8%  | 21.2%    | 15             | 0         | 0.214      |
+| tape  | `-var-0` | `-var-1` | 73.3%  | 26.7%    | 10             | 0         | 0.200      |
+| seam  | `-var-0` | `-var-9` | 84.4%  | 15.6%    | 8              | 0         | 0.303      |
 
 All four ids changed, so the four `spriteId` values in `src/shared/data/set-pieces.json`
 were retargeted (bare catalog ids — the `generated:` prefix renders a grey box with zero

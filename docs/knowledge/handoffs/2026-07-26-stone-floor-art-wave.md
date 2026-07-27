@@ -26,11 +26,6 @@
 - `data/palettes/stone-floor-grey.json` — new palette file for scuff palette lock
 
 **NOT touched (human doing wiring):**
-<<<<<<< Updated upstream
-
-=======
-
-> > > > > > > Stashed changes
 
 - `src/engine/sprites/tile-visuals.ts` — human will update line 241 to reference `tile-stone-floor-v2-var-2` (or preferred variant)
 - `src/shared/data/set-pieces.json` — human will wire carpet sprite ids
@@ -41,20 +36,11 @@
 
 ### PRIORITY 1: Replacement stone-floor tileset ✅
 
-<<<<<<< Updated upstream
-| Sprite ID | Dimensions | Edge-ring magenta | Seam test |
+| Sprite ID                   | Dimensions | Edge-ring magenta | Seam test              |
 | --------------------------- | ---------- | ----------------- | ---------------------- |
-| `tile-stone-floor-v2-var-2` | 256×256 | **0.00%** | **0.0% discontinuity** |
-| `tile-stone-floor-v2-var-5` | 256×256 | **0.00%** | **0.0% discontinuity** |
-| `tile-stone-floor-v2-var-7` | 256×256 | **0.00%** | **0.0% discontinuity** |
-=======
-| Sprite ID | Dimensions | Edge-ring magenta | Seam test |
-|-----------|-----------|-------------------|-----------|
-| `tile-stone-floor-v2-var-2` | 256×256 | **0.00%** | **0.0% discontinuity** |
-| `tile-stone-floor-v2-var-5` | 256×256 | **0.00%** | **0.0% discontinuity** |
-| `tile-stone-floor-v2-var-7` | 256×256 | **0.00%** | **0.0% discontinuity** |
-
-> > > > > > > Stashed changes
+| `tile-stone-floor-v2-var-2` | 256×256    | **0.00%**         | **0.0% discontinuity** |
+| `tile-stone-floor-v2-var-5` | 256×256    | **0.00%**         | **0.0% discontinuity** |
+| `tile-stone-floor-v2-var-7` | 256×256    | **0.00%**         | **0.0% discontinuity** |
 
 All 3 variants: 7/7 sensors + judge PASS (scores 4/5/5/5). Cool-grey palette, worn flagstone, top-down floor plane. Sharply distinct from the warm-brown `tile-stone-wall-v1-var-5`.
 
@@ -63,37 +49,20 @@ All 3 variants: 7/7 sensors + judge PASS (scores 4/5/5/5). Cool-grey palette, wo
 **Before/after:** Old tile 85.95% magenta border → new tiles 0.00%.
 
 **Wiring needed (human):** Update `src/engine/sprites/tile-visuals.ts:241`:
-<<<<<<< Updated upstream
 
 ```ts
 textureKey: 'tile-stone-floor-v2-var-2'; // or var-5 or var-7 — all are clean
 ```
 
-=======
-
-```ts
-textureKey: 'tile-stone-floor-v2-var-2'; // or var-5 or var-7 — all are clean
-```
-
-> > > > > > > Stashed changes
 > > > > > > > The human has 3 variants to pick from for repetition.
 
 ### PRIORITY 2a: Welcome-room carpet ✅
 
-<<<<<<< Updated upstream
-| Sprite ID | Dimensions | Edge-ring magenta | Notes |
+| Sprite ID                   | Dimensions | Edge-ring magenta | Notes                |
 | --------------------------- | ---------- | ----------------- | -------------------- |
-| `welcome-room-carpet-var-0` | 128×165 | **0.00%** | Portrait-oriented ⚠️ |
-| `welcome-room-carpet-var-4` | 128×157 | **0.00%** | Portrait-oriented ⚠️ |
-| `welcome-room-carpet-var-6` | 128×156 | **0.00%** | Portrait-oriented ⚠️ |
-=======
-| Sprite ID | Dimensions | Edge-ring magenta | Notes |
-|-----------|-----------|-------------------|-------|
-| `welcome-room-carpet-var-0` | 128×165 | **0.00%** | Portrait-oriented ⚠️ |
-| `welcome-room-carpet-var-4` | 128×157 | **0.00%** | Portrait-oriented ⚠️ |
-| `welcome-room-carpet-var-6` | 128×156 | **0.00%** | Portrait-oriented ⚠️ |
-
-> > > > > > > Stashed changes
+| `welcome-room-carpet-var-0` | 128×165    | **0.00%**         | Portrait-oriented ⚠️ |
+| `welcome-room-carpet-var-4` | 128×157    | **0.00%**         | Portrait-oriented ⚠️ |
+| `welcome-room-carpet-var-6` | 128×156    | **0.00%**         | Portrait-oriented ⚠️ |
 
 All 3 variants: 7/7 sensors + judge PASS (scores 4/4/5/4 to 4/4/5/5).
 
@@ -101,25 +70,13 @@ All 3 variants: 7/7 sensors + judge PASS (scores 4/4/5/4 to 4/4/5/5).
 
 ### PRIORITY 2b: Floor scuff decal ⚠️ Partial
 
-<<<<<<< Updated upstream
-| Sprite ID | Dimensions | Edge-ring magenta | Opaque pixels |
+| Sprite ID                        | Dimensions | Edge-ring magenta | Opaque pixels |
 | -------------------------------- | ---------- | ----------------- | ------------- |
-| `welcome-room-floor-scuff-var-4` | 64×64 | **0.00%** | 28 (0.68%) |
-=======
-| Sprite ID | Dimensions | Edge-ring magenta | Opaque pixels |
-|-----------|-----------|-------------------|---------------|
-| `welcome-room-floor-scuff-var-4` | 64×64 | **0.00%** | 28 (0.68%) |
-
-> > > > > > > Stashed changes
+| `welcome-room-floor-scuff-var-4` | 64×64      | **0.00%**         | 28 (0.68%)    |
 
 1 variant approved. Sensor score: 6/7 (opaque-ratio 0.007 is technically below the brief's min=0.005... wait, 0.007 > 0.005 so it passes). Judge: 3/5 minimum axis (3/4/3/4). **This is a real but extremely subtle effect** — 28 opaque pixels of cool-grey on a 64×64 canvas. At 16px game rendering, this yields approximately 1-2 visible dark specks. The human should evaluate whether this reads as intended in-game.
 
 **⚠️ Note:** Only 1 variant approved vs the target of 2+. The brief proved extremely difficult:
-<<<<<<< Updated upstream
-
-=======
-
-> > > > > > > Stashed changes
 
 - Round 1: model generated warm-toned, bold marks → judge hard-blocked (0/16)
 - Round 2: model generated sparse stipple (0.5% opaque) → sensor fail on old min=0.04 threshold; 2 judge-passing variants (including var-4, opaque-ratio 0.007)
@@ -130,23 +87,12 @@ All 3 variants: 7/7 sensors + judge PASS (scores 4/4/5/4 to 4/4/5/5).
 
 ## PR / check-in status
 
-<<<<<<< Updated upstream
-| Item | Branch | Issue | PR | Status |
+| Item                            | Branch                                  | Issue | PR    | Status                       |
 | ------------------------------- | --------------------------------------- | ----- | ----- | ---------------------------- |
-| Floor tiles v2 (3) + carpet (3) | `assets/checkin-20260726-214001-77879e` | #2070 | #2071 | **Auto-merge armed ✅** |
-| Floor scuff var-4 | (pending — blocked until #2070 closes) | TBD | TBD | **Needs second checkin run** |
+| Floor tiles v2 (3) + carpet (3) | `assets/checkin-20260726-214001-77879e` | #2070 | #2071 | **Auto-merge armed ✅**      |
+| Floor scuff var-4               | (pending — blocked until #2070 closes)  | TBD   | TBD   | **Needs second checkin run** |
 
 **Action for human or next agent:** After PR #2071 merges and closes issue #2070, run:
-
-=======
-| Item | Branch | Issue | PR | Status |
-|------|--------|-------|-----|--------|
-| Floor tiles v2 (3) + carpet (3) | `assets/checkin-20260726-214001-77879e` | #2070 | #2071 | **Auto-merge armed ✅** |
-| Floor scuff var-4 | (pending — blocked until #2070 closes) | TBD | TBD | **Needs second checkin run** |
-
-**Action for human or next agent:** After PR #2071 merges and closes issue #2070, run:
-
-> > > > > > > Stashed changes
 
 ```bash
 # Load env first
@@ -169,11 +115,7 @@ npx tsx scripts/sprites/checkin-cli.ts
 4. **Stale git worktrees.** Several temp worktrees exist from approve/checkin operations:
    - `C:/Users/nalfeo/AppData/Local/Temp/asset-pr-jKWyp1` — batch worktree (safe to remove)
    - `C:/Users/nalfeo/AppData/Local/Temp/asset-queue-commit-SqIZGB` — approve queue worktree (safe to remove)
-     <<<<<<< Updated upstream
      Clean up: `git worktree remove --force <path>`
-     =======
-     Clean up: `git worktree remove --force <path>`
-     > > > > > > > Stashed changes
 
 5. **Human wiring tasks (do NOT modify in this session):**
    - `src/engine/sprites/tile-visuals.ts:241` — update to `tile-stone-floor-v2-var-2`
@@ -183,23 +125,12 @@ npx tsx scripts/sprites/checkin-cli.ts
 
 ## Apple scoring
 
-<<<<<<< Updated upstream
-| Phase | Estimate | Actual |
+| Phase                      | Estimate | Actual                      |
 | -------------------------- | -------- | --------------------------- |
-| Brief authoring (3 briefs) | 0.5🍎 | 0.5🍎 |
-| Generation + judgment | 2🍎 | 3.5🍎 (scuff took 4 rounds) |
-| Approval + check-in | 0.5🍎 | 0.5🍎 |
-| Asset PR + auto-merge | 0.5🍎 | 0.5🍎 |
-| **Total** | **~4🍎** | **~5🍎** |
-=======
-| Phase | Estimate | Actual |
-|-------|----------|--------|
-| Brief authoring (3 briefs) | 0.5🍎 | 0.5🍎 |
-| Generation + judgment | 2🍎 | 3.5🍎 (scuff took 4 rounds) |
-| Approval + check-in | 0.5🍎 | 0.5🍎 |
-| Asset PR + auto-merge | 0.5🍎 | 0.5🍎 |
-| **Total** | **~4🍎** | **~5🍎** |
-
-> > > > > > > Stashed changes
+| Brief authoring (3 briefs) | 0.5🍎    | 0.5🍎                       |
+| Generation + judgment      | 2🍎      | 3.5🍎 (scuff took 4 rounds) |
+| Approval + check-in        | 0.5🍎    | 0.5🍎                       |
+| Asset PR + auto-merge      | 0.5🍎    | 0.5🍎                       |
+| **Total**                  | **~4🍎** | **~5🍎**                    |
 
 Overage was entirely the scuff decal brief (4 generation rounds, none cleanly passing all gates).
