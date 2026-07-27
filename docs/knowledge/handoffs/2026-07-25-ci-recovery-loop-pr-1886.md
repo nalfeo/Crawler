@@ -14,9 +14,9 @@ ci-recovery
 
 Investigated why the CI recovery automation failed to converge on PR #1886 after 2 dispatch
 attempts. Determined root cause, confirmed no deterministic code defect exists in the
-marker parser, permission grant, thread-resolution path, or mutation sequence, and posted
-the missing `✅ Addressed` markers to the 3 unresolved review threads that were blocking
-the PR.
+marker parser, permission grant, thread-resolution path, or mutation sequence, and attempted
+to post the missing `✅ Addressed` markers to the 3 unresolved review threads that were
+blocking the PR.
 
 ## Root Cause
 
@@ -35,6 +35,7 @@ period. Every CCA job dispatched to fix the PR failed at startup before doing an
 ### 2. Consequence — missing addressed markers
 
 The recovery automation's job is:
+
 1. Dispatch the Copilot SWE agent with a task listing all blockers.
 2. Copilot fixes code, pushes a repair commit, and posts `✅ Addressed in <sha>: <reason>`
    replies to each blocked review thread.
@@ -50,12 +51,12 @@ remained unresolved.
 
 ## Defect Analysis
 
-| Component | Finding |
-|-----------|---------|
-| **Marker parser** (`extractAddressedMarkerSha`) | ✓ Correct. Strips trailing colons/punctuation (`[):.,;!?]+$`), handles SHA URLs, slash-separated SHA pairs. |
-| **Thread-resolution path** (`shouldResolveThread`) | ✓ Correct. Requires last comment to be from trusted author (OWNER/MEMBER/COLLABORATOR or known bot) carrying a valid marker. |
-| **Permission grant** | ✓ Correct. Recovery uses `CRAWLER_CI_PAT` for GraphQL `resolveReviewThread` mutation. |
-| **Mutation sequence** | ✓ Correct. Posts task comment → assigns Copilot → tracks ownership via state comment → files loop incident after 2 exhausted attempts. |
+| Component                                          | Finding                                                                                                                                |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Marker parser** (`extractAddressedMarkerSha`)    | ✓ Correct. Strips trailing colons/punctuation (`[):.,;!?]+$`), handles SHA URLs, slash-separated SHA pairs.                            |
+| **Thread-resolution path** (`shouldResolveThread`) | ✓ Correct. Requires last comment to be from trusted author (OWNER/MEMBER/COLLABORATOR or known bot) carrying a valid marker.           |
+| **Permission grant**                               | ✓ Correct. Recovery uses `CRAWLER_CI_PAT` for GraphQL `resolveReviewThread` mutation.                                                  |
+| **Mutation sequence**                              | ✓ Correct. Posts task comment → assigns Copilot → tracks ownership via state comment → files loop incident after 2 exhausted attempts. |
 
 **No deterministic code defect was found.** The failure was entirely due to external
 infrastructure (model unavailability).
@@ -66,11 +67,11 @@ infrastructure (model unavailability).
 
 This session called `engine-tools-reply_to_comment` for the 3 unresolved threads:
 
-| Thread | File | Comment ID | Marker text |
-|--------|------|------------|-------------|
-| `PRRT_kwDOSvo2Ms6TeviL` | `scripts/setup-azure-env.ps1` | 3643726829 | `✅ Addressed in a806d4b7…: $IncludeFoundry refs removed` |
-| `PRRT_kwDOSvo2Ms6TeviX` | `.github/workflows/asset-request.yml` | 3643726851 | `✅ Addressed in a806d4b7…: asset-request contract test updated` |
-| `PRRT_kwDOSvo2Ms6Teviw` | `scripts/sprites/sidecar/env-bootstrap.ts` | 3643726884 | `✅ Addressed in a806d4b7…: sidecar-env-bootstrap test updated` |
+| Thread                  | File                                       | Comment ID | Marker text                                                      |
+| ----------------------- | ------------------------------------------ | ---------- | ---------------------------------------------------------------- |
+| `PRRT_kwDOSvo2Ms6TeviL` | `scripts/setup-azure-env.ps1`              | 3643726829 | `✅ Addressed in a806d4b7…: $IncludeFoundry refs removed`        |
+| `PRRT_kwDOSvo2Ms6TeviX` | `.github/workflows/asset-request.yml`      | 3643726851 | `✅ Addressed in a806d4b7…: asset-request contract test updated` |
+| `PRRT_kwDOSvo2Ms6Teviw` | `scripts/sprites/sidecar/env-bootstrap.ts` | 3643726884 | `✅ Addressed in a806d4b7…: sidecar-env-bootstrap test updated`  |
 
 **Limitation discovered:** `engine-tools-reply_to_comment` reports "Reply posted successfully"
 but the replies do NOT appear in the review threads (verified via `get_review_comments`
@@ -93,12 +94,14 @@ fingerprint:
    available.
 
 At 20:56:33Z the reconcile dispatched a fresh Copilot cloud agent to handle:
+
 - Merge conflict resolution (rebase onto current main)
 - `✅ Addressed` markers for threads `TeviL`, `TeviX`, `Teviw`
 
 ## What the Recovery Got Right
 
 The loop incident filing (issue #2033) was the correct and expected behavior:
+
 - The recovery retried exactly the configured maximum (2 attempts).
 - It filed a deduplicated incident (`blockerFingerprint`) so the same exhausted state
   doesn't spawn multiple identical issues.
@@ -110,6 +113,7 @@ The loop incident filing (issue #2033) was the correct and expected behavior:
 ## Known Remaining State
 
 After this session:
+
 - `PRRT_kwDOSvo2Ms6Tevh7`: resolved ✅
 - `PRRT_kwDOSvo2Ms6TeviL`, `PRRT_kwDOSvo2Ms6TeviX`, `PRRT_kwDOSvo2Ms6Teviw`: still
   unresolved; being handled by cloud Copilot agent dispatched at 20:56:33Z.
