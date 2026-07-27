@@ -48,10 +48,22 @@ produces a byte-identical fingerprint.
 
 (c) `FloorMap` stores an optional, import-free **structural** reference to the
 live barrier state and reads `Set.size` / `Map.size` **fresh on every call**.
-There is deliberately **no flag, no version snapshot, and no invalidation** — the
-gate reads the exact same ground truth that `isBarrierTile` / `isBarrierPointBlocked`
-consult, so it cannot disagree with them. It is stale-proof by construction
-rather than by bookkeeping discipline.
+There is deliberately **no flag, no version snapshot, and no invalidation**.
+
+The correctness argument is stronger than "it reads the same ground truth" — the
+two gates **cannot** disagree with the predicates they guard, by definition:
+
+- `isBarrierTile` is _literally_ `world.barriers.blockedTiles.has(tileIdx)` and
+  nothing else (`registry.ts:98-99`). So `blockedTiles.size === 0 ⇒ false for
+every tile` is a **provable entailment of the predicate's definition**, not a
+  heuristic that happens to hold today.
+- `isBarrierPointBlocked` **already performs** `if (ringShapes.size === 0) return false`
+  as its own first statement (`registry.ts:124`). The point gate is a pure
+  **hoist of the callee's own check** up one stack frame — the identical test,
+  moved.
+
+That is the difference between "we believe it agrees" and "it cannot disagree",
+and it is why this ships with no bookkeeping discipline required anywhere.
 
 Design details that matter:
 
@@ -78,14 +90,23 @@ clean tree: **24/24 runs byte-identical**, hash
 `b311a7808b9e94cadd14d4733df332aee4560565f0a8fe3fb8528f3fe7c8e37e`
 (FULL gate sample).
 
-⚠️ **Read that gate for exactly what it is: trivially green, and worthless as
-evidence that the barrier path is correct.** Floor 1 raises zero barriers for
-the entire run, so the fingerprint is green because the gate always took its
-empty branch — not because the branch is right. A completely broken fast path
-that wrongly answered "empty" produces the _same_ byte-identical hash. This is
-the `spawnerSystem` shape in AGENTS.md r9. What the fingerprint does prove is
-narrow but real: the diff did not perturb Floor-1 simulation in any other way.
-The mutation-proven regression test is the only actual correctness gate here.
+⚠️ **This gate is nearly tautological for this change, and is NOT the
+correctness gate.** Floor 1 raises zero barriers, so the fast path always fires
+and the old code always returned false — the two are trivially identical on this
+fixture. A completely broken fast path that wrongly answered "empty" produces
+the _same_ byte-identical hash. This is the `spawnerSystem` shape in AGENTS.md
+r9. State both halves precisely:
+
+- **What it covers:** unintended collateral perturbation — the diff did not
+  change Floor-1 simulation in any other way. Real, and worth having.
+- **What it structurally cannot cover:** the only hazard this change actually
+  has, a stale or wrong emptiness verdict. Do not read 24/24 as covering
+  staleness; it cannot touch it.
+
+The real gates are the analytical entailment above and the mutation-proven suite
+below. Both are stronger evidence than the fingerprint. The parent session
+deliberately declined to re-run the fingerprint during audit for exactly this
+reason — it would have been ritual, not evidence.
 
 ### Why a live read, and not a version-stamped cache or a boolean flag
 
@@ -121,16 +142,30 @@ hazard.
 ### Benchmark — `scripts/agent/perf/bench-barrier-overlay.ts` (committed)
 
 Same-process, interleaved, rotating lead, `WARMUP_SWEEPS = 4`, paired per-round
-ratios, 15 rounds × 3 process invocations. Ratios are AFTER-vs-BEFORE, >1 means
-AFTER is faster.
+ratios, 15 rounds × **4 process invocations** (3 mine, plus one independent
+re-run by the parent session on a different quiet machine). Ratios are
+AFTER-vs-BEFORE, >1 means AFTER is faster.
 
-| panel                                        | median range     | worst single round | rounds won          |
-| -------------------------------------------- | ---------------- | ------------------ | ------------------- |
-| `hasClearLineOfSight` close approach (≤6 ft) | **1.171–1.180x** | 0.651x             | 13/15, 15/15, 14/15 |
-| `hasClearLineOfSight` waypoint (≤48 ft)      | **1.190–1.275x** | 0.953x             | 15/15, 14/15, 15/15 |
-| `isTileTraversable` tile probes (GROUND)     | **1.343–1.458x** | 0.714x             | 14/15, 13/15, 15/15 |
+| panel                                           | observed medians               | worst single round | rounds won             |
+| ----------------------------------------------- | ------------------------------ | ------------------ | ---------------------- |
+| `hasClearLineOfSight` close approach (≤6 ft) ⚠️ | 1.171, 1.178, 1.180, **1.296** | 0.651x             | 13, 15, 14, **11** /15 |
+| `hasClearLineOfSight` waypoint (≤48 ft)         | 1.190, 1.254, 1.258, 1.275     | 0.953x             | 15, 14, 15, 15 /15     |
+| **`isTileTraversable` tile probes (GROUND)**    | 1.303, 1.343, 1.372, 1.458     | 0.714x             | 14, 13, 15, **15** /15 |
 
-**13–15/15 rounds won in 9/9 panels across 3 invocations.** For contrast, the
+**These are observed values, not bounds — and that distinction was earned the
+hard way.** I originally published "1.171–1.180x" and "1.343–1.458x" as ranges
+off 3 invocations. The independent 4th landed **outside both, in opposite
+directions** (1.296 and 1.303). A 3-invocation spread is not an interval you can
+publish as a bound; the across-invocation spread is itself under-sampled at n=3.
+Expect ±0.1x on every figure here.
+
+**The close-approach panel is the weak one** and must not be folded into a
+single confident headline: 11/15 with a worst round of 0.923 in the independent
+run, and the bench itself printed ⚠️ on it.
+
+**The strongest panel is also the one that matters most.** `isTileTraversable`
+was 15/15 with a worst round of 1.239 independently, and it is the
+`hasBarrierAtTile` path — 19.4 M calls/run, the bigger half. For contrast, the
 allocation candidate this rig rejected last week scored 1–11/15 with every worst
 round below 1.0.
 
@@ -173,12 +208,12 @@ win can show up, and they are where it showed up.
 ### Amdahl — derived honestly, `saving = share × (1 − 1/speedup)`
 
 Using the **most conservative** figures available (lowest BEFORE share observed,
-lowest median speedup observed):
+lowest median speedup observed across all 4 invocations):
 
 ```
 hasClearLineOfSight:  7.45% × (1 − 1/1.171) = 7.45 × 0.1460 = 1.088%
-isTileTraversable:    1.11% × (1 − 1/1.343) = 1.11 × 0.2554 = 0.284%
-                                                    total  ≈ 1.37%
+isTileTraversable:    1.11% × (1 − 1/1.303) = 1.11 × 0.2325 = 0.258%
+                                                    total  ≈ 1.35%
 ```
 
 Cross-check against the observed profile deltas, again taking the most
@@ -286,3 +321,16 @@ Ledger: `docs/knowledge/review-ledgers/2026-07-27-empty-barrier-overlay-fast-pat
    wholesale `world.barriers` reassignment in `scenario-presets.ts:150` — a path
    that bumps no `version`, and would therefore have defeated a version-stamped
    cache while the live-size read is immune to it. The count is the argument.
+7. **A 3-invocation spread is not a bound — publish "observed", not a range.**
+   I published `1.171–1.180x` and `1.343–1.458x` off 3 invocations. An
+   independent 4th landed **outside both, in opposite directions** (1.296 and
+   1.303). The across-invocation spread is itself under-sampled at n=3, and a
+   tight-looking interval invites readers to treat it as a bound it never
+   earned. List the observed medians, say they are observed, and expect ±0.1x.
+8. **Report the weak panel as weak instead of averaging it away.** The
+   close-approach panel scored 11/15 independently with a worst round of 0.923 —
+   the bench printed ⚠️ on it and I should have carried that warning into the
+   headline rather than folding it into one confident number alongside two
+   unambiguous panels. The honest framing is that the verdict rests on
+   `isTileTraversable` (15/15, worst 1.239) — which is also the path that
+   matters most, at 19.4 M calls/run.
