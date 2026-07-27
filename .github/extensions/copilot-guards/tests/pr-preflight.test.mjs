@@ -4,6 +4,8 @@ import {
   checkHandoff,
   checkForbiddenPaths,
   checkCrossSystemAdr,
+  checkMainSync,
+  evaluatePreflightChecks,
   HANDOFF_DATED_RE,
   TRIVIAL_PATH_RE,
 } from '../guards/pr-preflight.mjs';
@@ -107,4 +109,57 @@ test('checkCrossSystemAdr silent when ADR added', () => {
     'docs/knowledge/adr/0001-cross-cutting-change.md',
   ]);
   assert.equal(r, null);
+});
+
+test('checkMainSync is silent when pre-publish sync is current', () => {
+  const warning = checkMainSync('/repo', () => ({
+    status: 'success',
+    branchChanged: false,
+    message: 'current',
+  }));
+  assert.equal(warning, null);
+});
+
+test('checkMainSync warns without denying when sync is deferred', () => {
+  const warning = checkMainSync('/repo', () => ({
+    status: 'deferred-dirty',
+    branchChanged: false,
+    message: 'dirty worktree',
+  }));
+  assert.match(warning, /Publication remains allowed/);
+  assert.match(warning, /dirty worktree/);
+});
+
+test('checkMainSync invalidates prior validation when the branch changed', () => {
+  const warning = checkMainSync('/repo', () => ({
+    status: 'success',
+    branchChanged: true,
+    message: 'rebased',
+  }));
+  assert.match(warning, /Rerun affected validation/);
+});
+
+test('preflight preserves sync warning alongside an unrelated deny', () => {
+  const result = evaluatePreflightChecks({
+    files: ['src/core/foo.ts'],
+    addedFiles: [],
+    cwd: '/repo',
+    warnings: ['sync deferred'],
+  });
+  assert.equal(result.decision, 'deny');
+  assert.match(result.reason, /No new handoff/);
+  assert.equal(result.additionalContext, 'sync deferred');
+});
+
+test('preflight allows a sync warning when no hard findings exist', () => {
+  const result = evaluatePreflightChecks({
+    files: ['docs/foo.md'],
+    addedFiles: [],
+    cwd: '/repo',
+    warnings: ['sync deferred'],
+  });
+  assert.deepEqual(result, {
+    decision: 'allow',
+    additionalContext: 'sync deferred',
+  });
 });

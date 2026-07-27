@@ -26,6 +26,7 @@ import {
   discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
+  hasHealthyShepherdLease,
   isCoordinatorStateSemanticallyEqual,
   makeCoordinatorState,
   mergeCoordinationGroups,
@@ -55,20 +56,22 @@ function makePull(number, files, overrides = {}) {
   };
 }
 
-test('CI scope covers workflows, scripts, actions, and agent automation', () => {
+test('CI scope is limited to workflows and ci-prefixed script directories', () => {
   assert.deepEqual(
     ciFilesFor([
       '.github/workflows/ci.yml',
-      '.github/scripts/recover.mjs',
+      '.github/scripts/ci-recovery/reconcile.mjs',
+      '.github/scripts/ci-conflict-coordinator/state.mjs',
+      '.github/scripts/ci-recovery.mjs',
+      '.github/scripts/merge-train/reconcile.mjs',
       '.github/actions/setup/action.yml',
       'scripts/agent/verify-fast.sh',
       'src/game/ignored.ts',
     ]),
     [
-      '.github/actions/setup/action.yml',
-      '.github/scripts/recover.mjs',
+      '.github/scripts/ci-conflict-coordinator/state.mjs',
+      '.github/scripts/ci-recovery/reconcile.mjs',
       '.github/workflows/ci.yml',
-      'scripts/agent/verify-fast.sh',
     ],
   );
 });
@@ -100,9 +103,9 @@ test('cluster threshold excludes two PRs and includes three', () => {
 test('overlap clusters are transitive across different CI files', () => {
   const clusters = clusterPullRequests([
     makePull(1, ['.github/workflows/ci.yml']),
-    makePull(2, ['.github/workflows/ci.yml', 'scripts/agent/preflight.sh']),
-    makePull(3, ['scripts/agent/preflight.sh']),
-    makePull(4, ['.github/scripts/unrelated.mjs']),
+    makePull(2, ['.github/workflows/ci.yml', '.github/scripts/ci-recovery/reconcile.mjs']),
+    makePull(3, ['.github/scripts/ci-recovery/reconcile.mjs']),
+    makePull(4, ['.github/scripts/merge-train/reconcile.mjs']),
   ]);
   assert.deepEqual(
     clusters.map((cluster) => cluster.map((pull) => pull.number)),
@@ -150,6 +153,7 @@ test('managed groups continue after open membership falls below three', () => {
     overlapFiles: ['.github/workflows/ci.yml'],
     updatedAt: '2026-07-20T00:00:00Z',
   });
+
   const groups = mergeCoordinationGroups({
     discoveredClusters: [],
     existingStates: [state],
@@ -162,6 +166,56 @@ test('managed groups continue after open membership falls below three', () => {
     [1, 2],
   );
   assert.deepEqual(groups[0].originalMembers, [1, 2, 3]);
+});
+
+test('persisted groups drop members that no longer touch coordination paths', () => {
+  const eligible = makePull(1, ['.github/workflows/ci.yml']);
+  const outOfScope = makePull(2, ['src/game/ignored.ts']);
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-existing',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [eligible, outOfScope],
+    proofs: [],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  const groups = mergeCoordinationGroups({
+    discoveredClusters: [],
+    existingStates: [state],
+    openPulls: [eligible, outOfScope],
+  });
+
+  assert.deepEqual(
+    groups[0].pulls.map((pull) => pull.number),
+    [1],
+  );
+});
+
+test('persisted groups disappear when every open member becomes out of scope', () => {
+  const pulls = [makePull(1, ['src/game/one.ts']), makePull(2, ['scripts/agent/two.mjs'])];
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-existing',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: pulls,
+    proofs: [],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+
+  assert.deepEqual(
+    mergeCoordinationGroups({
+      discoveredClusters: [],
+      existingStates: [state],
+      openPulls: pulls,
+    }),
+    [],
+  );
 });
 
 test('fresh two-PR overlap stays below threshold without persisted managed state', () => {
@@ -250,6 +304,52 @@ test('healthy shepherd lease suppresses ordered recovery dispatch', () => {
       now: new Date('2026-07-20T00:10:00Z'),
     }),
     false,
+  );
+});
+
+// Regression: 2026-07-27 merge-train outage. The coordinator's active-slot fence
+// used hasHealthyRecoveryOwner, which is true for ordinary automation ownership.
+// Since the coordinator dispatches that automation itself, the active slot became
+// permanently unsafe, activeNumber stuck at null, and a 12-PR cluster with a clean
+// leader could never promote. Only a live shepherd lease may fence the slot. #2095
+test('routine automation ownership does not count as a shepherd lease (active-slot fence)', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const recoveryState = makeRecoveryState({
+    prNumber: 7,
+    headSha: active.headSha,
+    fingerprint: 'f'.repeat(64),
+    owner: 'automation',
+    status: 'dispatched',
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  const now = new Date('2026-07-20T00:05:00Z');
+  // Still a healthy owner for dispatch-suppression purposes...
+  assert.equal(
+    hasHealthyRecoveryOwner({ prNumber: 7, recoveryState, headSha: active.headSha, now }),
+    true,
+  );
+  // ...but it must NOT fence the active slot.
+  assert.equal(hasHealthyShepherdLease({ prNumber: 7, recoveryState, now }), false);
+});
+
+test('live shepherd lease still fences the active slot', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const recoveryState = makeRecoveryState({
+    prNumber: 7,
+    headSha: active.headSha,
+    fingerprint: 'f'.repeat(64),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: 'lease-7',
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  assert.equal(
+    hasHealthyShepherdLease({
+      prNumber: 7,
+      recoveryState,
+      now: new Date('2026-07-20T00:10:00Z'),
+    }),
+    true,
   );
 });
 

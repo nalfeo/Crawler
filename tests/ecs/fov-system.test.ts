@@ -231,14 +231,16 @@ describe('FOV System', () => {
     const eid = addEntity(world.ecs);
     addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
     addComponent(world.ecs, eid, Player);
-    const transparency = vi.spyOn(floorMap.tileMap, 'isTransparent');
+    // `clearVisibility` runs exactly once per real shadowcast pass, so it is the
+    // observable for "did the system recompute?" — the inner transparency probe
+    // reads the flags array directly and is not independently observable.
+    const cleared = vi.spyOn(floorMap, 'clearVisibility');
 
     fovSystem(world);
-    const firstPassCalls = transparency.mock.calls.length;
+    expect(cleared).toHaveBeenCalledTimes(1);
     fovSystem(world);
 
-    expect(firstPassCalls).toBeGreaterThan(0);
-    expect(transparency).toHaveBeenCalledTimes(firstPassCalls);
+    expect(cleared).toHaveBeenCalledTimes(1);
   });
 
   it('recomputes visibility after a transparency mutation at the same origin', () => {
@@ -247,14 +249,14 @@ describe('FOV System', () => {
     const eid = addEntity(world.ecs);
     addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
     addComponent(world.ecs, eid, Player);
-    const transparency = vi.spyOn(floorMap.tileMap, 'isTransparent');
+    const cleared = vi.spyOn(floorMap, 'clearVisibility');
 
     fovSystem(world);
-    const firstPassCalls = transparency.mock.calls.length;
+    expect(cleared).toHaveBeenCalledTimes(1);
     floorMap.tileMap.setFlags(11, 10, TilePresets.WALL);
     fovSystem(world);
 
-    expect(transparency.mock.calls.length).toBeGreaterThan(firstPassCalls);
+    expect(cleared).toHaveBeenCalledTimes(2);
   });
 
   it('should handle player at map edge gracefully', () => {

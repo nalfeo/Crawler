@@ -17,11 +17,12 @@ Loaded automatically because it lives under `.github/extensions/`.
 | `shell-gh-pr-create`         | `powershell`, `bash`                    | **deny** | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.                                                                                                                 |
 | `shell-rm-rf-repo`           | `powershell`, `bash`                    | **deny** | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`.                                      |
 | `shell-unsafe-port-kill`     | `powershell`                            | **deny** | `Get-NetTCPConnection` / `Win32_Process` + `Stop-Process` server-kill commands on legacy shared ports unless they are scoped to the current worktree path.                                                             |
+| `authoring-main-sync`        | all except `create_pull_request`        | allow    | Measures active authoring intervals and safely rebases after 30 active minutes when clean; otherwise adds a non-blocking checkpoint/sync reminder.                                                                     |
 | `edit-determinism`           | `edit`, `create` (src/core,game,shared) | **deny** | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored.                                                                                                |
 | `edit-phaser-in-core`        | `edit`, `create` (src/core)             | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                                                                                                                                       |
 | `edit-repo-md-junk`          | `create` (`*.md`)                       | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.                                                                                                                |
 | `edit-guard-self-protection` | `edit`, `create` (this extension)       | **ask**  | Modifications to `.github/extensions/copilot-guards/**` unless `COPILOT_GUARDS_EDIT=1`.                                                                                                                                |
-| `pr-preflight`               | `create_pull_request`                   | **deny** | Aggregated PR checks (handoff, lab-gate, forbidden paths, cross-system ADR warning).                                                                                                                                   |
+| `pr-preflight`               | `create_pull_request`                   | **deny** | Aggregated PR checks plus a non-blocking pre-publish main-sync attempt.                                                                                                                                                |
 | `pr-review-ledger`           | `create_pull_request`                   | **deny** | Code-touching PR without a valid, complete **review ledger** for its declared apple tier. Docs/art/deps-only diffs are skipped. See [review-harness-policy](../../../docs/agent-os/policies/review-harness-policy.md). |
 
 ### `pr-preflight` checks in detail
@@ -32,6 +33,7 @@ Loaded automatically because it lives under `.github/extensions/`.
 | Lab gate         | Runs `scripts/agent/lab-gate-check.sh` **only** when the diff touches `src/core/systems/**` or `src/labs/**`. Cached.     |
 | Forbidden paths  | Hard-deny on `.env*`, `*.pem`, `*.key`, `id_rsa*`, `.copilot/`, `session-state/`, `generated/`, `*.log`, `node_modules/`. |
 | Cross-system ADR | Hard deny when the diff spans 2+ of `src/core`, `src/engine`, `src/game` without an ADR in the branch.                    |
+| Main sync        | Safely rebases a clean branch before publication; failures and dirty worktrees warn but never deny by themselves.         |
 
 For earlier feedback in the local completion loop (without waiting for
 `create_pull_request`), run `npm run verify:pr-prereqs` (included in
@@ -122,6 +124,29 @@ Fixture guard ids used by this extension's own tests (e.g. `boom`, `shell-bad`,
 `pr-hard`) are quarantined by the analyzer, so guard-dev sessions never skew the
 real fire-rate. Dispatcher tests write telemetry only to a temp dir, never the
 repo-root artifact.
+
+### Guards are loaded once per session — reload after syncing main
+
+**The extension host loads guards once, when the session starts.** A guard that
+lands on `main` after your session began is **not** running in your session, even
+after you `git pull`. It is not merely missing from telemetry — it is not
+protecting you.
+
+**Run `extensions_reload` immediately after every `git pull`/rebase onto main.**
+
+This was found empirically: a long-running session started 2026-07-25T06:08 and
+`authoring-main-sync` merged at 19:12 the same day. Over the next two days that
+session recorded **10 guard events, all PR-time**. A single `extensions_reload`
+took it to 12 within seconds, with `authoring-main-sync` firing on the very next
+`grep` and `powershell` call.
+
+The fingerprint of this bug in the committed corpus: **68 of 71** per-session
+telemetry files contain only `pr-preflight`/`pr-review-ledger` events (2–14
+events), while the 3 files with real per-tool coverage (176/238/371 events) all
+contain `authoring-main-sync`. The two guard sets never co-occur — which is what
+"the session predates the guard" looks like at scale, not a sampling artifact.
+So near-empty telemetry is a **signal to reload**, not evidence of a quiet
+session.
 
 ### Dispatcher semantics
 

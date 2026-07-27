@@ -1,0 +1,32 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "ci-recovery-d5-terminal-dispatch",
+  "date": "2026-07-27",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 238,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 238
+    }
+  },
+  "tools": {
+    "create": 1,
+    "edit": 24,
+    "get_changes_overview": 1,
+    "glob": 4,
+    "grep": 50,
+    "powershell": 59,
+    "read_powershell": 2,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "rg": 14,
+    "str_replace": 1,
+    "str_replace_editor": 1,
+    "task": 2,
+    "view": 77
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

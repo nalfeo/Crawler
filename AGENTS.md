@@ -11,6 +11,7 @@
 7. Write a handoff file before ending implementation sessions (merge-intent changes); investigation sessions without merge-intent fixes may skip this
 8. If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to write a committed per-session summary under `docs/knowledge/metrics/guard-telemetry/` (the durable, contamination-filtered collection path). The trimmed handoff template no longer carries a telemetry block — the committed summary file is the record.
 
+- **Synchronize during authoring:** Preflight runs `npm run sync:main -- --reason session-start`. The `authoring-main-sync` guard measures bounded intervals between active agent tool calls and attempts another local rebase after 30 active minutes. If work is dirty, checkpoint it and run `npm run sync:main -- --reason periodic`; the reminder is non-blocking and remains due until synchronization succeeds. Run `npm run sync:main -- --reason pre-publish` before final validation and PR publication. If it changes HEAD, rerun affected validation. Synchronization never pushes, and missing/stale evidence alone never blocks publication.
 - **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
 - **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
 - **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.
@@ -63,6 +64,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Sprite sync catalog       | `npm run sprites:sync-catalog`            |
 | Sprite metadata           | `npm run sprites:metadata`                |
 | Scope changed files       | `npm run scope`                           |
+| Sync branch with main     | `npm run sync:main`                       |
 | Fast verify               | `npm run verify:fast`                     |
 | Full verify               | `npm run verify`                          |
 | Full verify + headless    | `VERIFY_FULL=1 npm run verify`            |
@@ -95,6 +97,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Verify labs layer         | `npm run verify:labs`                     |
 | Perf baseline             | `npm run perf:baseline`                   |
 | Gameplay fingerprint      | `npm run perf:fingerprint`                |
+| Sim CPU profile           | `npm run perf:profile`                    |
 | Benchmarks                | `npm run bench`                           |
 | Unit test coverage        | `npm run test:coverage`                   |
 | AI hill-climb sweep       | `npm run ai:hill-climb`                   |
@@ -276,6 +279,17 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   <!-- Source handoff: 2026-06-24-safe-room-zoom-shepherd.md -->
 
 ## Known Environment Quirks
+
+- **Copilot guards load once per session — `extensions_reload` after syncing
+  main.** A guard merged to `main` after your session started is not running in
+  your session, and `git pull` does not change that: the extension host loaded
+  the guard set at session start. This is a safety hole, not just a telemetry
+  gap. Empirically confirmed — a session that predated `authoring-main-sync`
+  recorded 10 guard events over two days (all PR-time) and began firing it
+  immediately after one `extensions_reload`. 68 of 71 committed telemetry files
+  show the same near-empty PR-time-only signature. Treat sparse
+  `files/guard-telemetry.jsonl` as a prompt to reload.
+  <!-- Source handoff: 2026-07-27-perf-skill-benchmark-warmup.md -->
 
 - **`scripts/agent/lab-gate-check.sh` is slow on Windows Git Bash.** It was
   refactored to O(systems + labs) (lab base-names are precomputed once via bash

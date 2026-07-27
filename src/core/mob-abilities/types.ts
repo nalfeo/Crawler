@@ -42,7 +42,50 @@ export interface MobAbilitySpawnCirclesGeometry {
   readonly circles: readonly MobAbilityCircleGeometry[];
 }
 
-export type MobAbilityGeometry = MobAbilityCircleGeometry | MobAbilitySpawnCirclesGeometry;
+/** Multi-circle geometry committed by a custom `commitGeometry` hook (e.g. Sovereign Cap triangle). */
+export interface MobAbilityMultiCircleGeometry {
+  readonly kind: 'multi-circle';
+  readonly circles: readonly MobAbilityCircleGeometry[];
+}
+
+/**
+ * Committed radial-projectiles geometry, locked once at telegraph start.
+ * Describes twelve (or N) spoke paths radiating from the caster's position,
+ * with a deterministic rotational offset derived from the cast ordinal.
+ * The renderer draws spokes from casterX/casterY; the resolve handler launches
+ * one projectile per spoke along the committed direction.
+ */
+export interface MobAbilityRadialProjectilesGeometry {
+  readonly kind: 'radial-projectiles';
+  /** World-space caster origin locked at telegraph start (feet). */
+  readonly casterX: number;
+  readonly casterY: number;
+  /** Number of evenly-spaced spokes. */
+  readonly count: number;
+  /** Visual/danger length of each spoke (feet). */
+  readonly spokeLengthFt: number;
+  /**
+   * Rotational offset applied to all spokes (degrees, 0..360). Derived
+   * deterministically from the cast ordinal at telegraph-start time:
+   * even ordinals → 0, odd ordinals → alternateOffsetDeg from the definition.
+   */
+  readonly offsetDeg: number;
+}
+
+export type MobAbilityGeometry =
+  | MobAbilityCircleGeometry
+  | MobAbilitySpawnCirclesGeometry
+  | MobAbilityMultiCircleGeometry
+  | MobAbilityRadialProjectilesGeometry;
+
+/** Flatten any geometry variant to an array of individual circles. Radial-projectile geometry has no circles — returns empty. */
+export function mobAbilityGeometryCircles(
+  geometry: MobAbilityGeometry,
+): readonly MobAbilityCircleGeometry[] {
+  if (geometry.kind === 'circle') return [geometry];
+  if (geometry.kind === 'radial-projectiles') return [];
+  return geometry.circles;
+}
 
 export type MobAbilityTargetingMode = 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
@@ -106,7 +149,29 @@ export interface MobAbilityRuntimeDefinition {
         readonly count: number;
         readonly radiusFt: number;
         readonly distanceFromCasterFt: number;
+      }
+    | {
+        readonly kind: 'radial-projectiles';
+        /** Number of evenly-spaced spokes (e.g. 12). */
+        readonly count: number;
+        /** Visual/danger length of each spoke used for telegraph rendering (feet). */
+        readonly spokeLengthFt: number;
+        /**
+         * Degrees to rotate the spoke pattern on every other cast.
+         * Cast ordinal 0, 2, 4… → 0°; ordinal 1, 3, 5… → this value.
+         * Must be in (0, 360). Derived deterministically from `resolvedCasts` at
+         * telegraph-start; never uses `Math.random()` or wall-clock time.
+         */
+        readonly alternateOffsetDeg: number;
       };
+  /** Optional custom geometry commit from a locked origin position (e.g. triangle around player). */
+  readonly commitGeometry?: (ctx: {
+    readonly world: GameWorld;
+    readonly casterEid: number;
+    readonly targetEid: number | null;
+    readonly lockedX: number;
+    readonly lockedY: number;
+  }) => MobAbilityGeometry;
   /** Targeting mode for telegraph lock semantics (player-position or self). */
   readonly targetingMode?: MobAbilityTargetingMode;
   /** Origin lock mode for telegraph geometry. */
@@ -198,6 +263,8 @@ export interface MobAbilityRuntime {
   readonly pendingBursts: Array<MobAbilityBurst>;
   /** Active self-buffs authored by ability handlers and ticked by the runtime. */
   readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
+  /** Runtime-owned persistent zones (e.g. Sovereign Cap toxic clouds). */
+  readonly ownedZones: MobAbilityOwnedZone[];
   /**
    * Per-EID generation token, set on each `registerMobAbility` and cleared on
    * `clearMobAbility`. Compared against `MobAbilityInstanceState.registrationToken`
@@ -206,6 +273,8 @@ export interface MobAbilityRuntime {
   readonly registrationTokens: Map<number, number>;
   /** Monotonically increasing counter; incremented on each registration. */
   nextToken: number;
+  /** Monotonically increasing persistent-zone id counter. */
+  nextZoneId: number;
 }
 
 export interface MobAbilityActiveBuffState {
@@ -218,6 +287,21 @@ export interface MobAbilityActiveBuffState {
   remainingMs: number;
 }
 
+export type MobAbilityOwnedZoneTick = (world: GameWorld, zone: MobAbilityOwnedZone) => void;
+
+export interface MobAbilityOwnedZone {
+  readonly id: number;
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly geometry: MobAbilityGeometry;
+  readonly durationMs: number;
+  readonly tickIntervalMs: number;
+  nextTickAtMs: number;
+  elapsedMs: number;
+  readonly tick: MobAbilityOwnedZoneTick;
+}
+
 /** Create the default-off, empty runtime state for a fresh world. */
 export function createMobAbilityRuntime(): MobAbilityRuntime {
   return {
@@ -227,8 +311,10 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     cues: [],
     pendingBursts: [],
     activeBuffsByEntity: new Map(),
+    ownedZones: [],
     registrationTokens: new Map(),
     nextToken: 0,
+    nextZoneId: 0,
   };
 }
 

@@ -1,0 +1,49 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "sovereign-cap-spore-bloom",
+  "task_title": "Implement Sovereign Cap Spore Bloom runtime slice",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "copilot-pull-request-reviewer",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review by copilot-pull-request-reviewer on PR #2012. Compared (A) multi-circle committed geometry (chosen) vs (B) reusing main's spawn-circles geometry type — reviewer correctly identified the naming collision and that spawn-circles geometry was being added separately on main; (C) zone-tick-after-resolve (initial) vs zone-tick-before-resolve (correct) — reviewer found the off-by-one-frame bug; (D) Verdigris/bronze burst renderer for all abilities vs per-ability dispatched burst renderers — reviewer required Sovereign-specific fungal/spore burst. Resolved: types.ts now carries both spawn-circles and multi-circle; ticking order moved before resolve; spawnSporeBurst added with COLOR_SPORE_RIM/SPORE_FOG/SPORE_PUFF colors; PR link and E2E visual assertions also addressed."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": [
+            "copilot-pull-request-reviewer",
+            "claude-sonnet-5"
+          ],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5",
+      "rounds": [
+        {
+          "models": [
+            "copilot-pull-request-reviewer",
+            "claude-sonnet-5"
+          ],
+          "concerns_count": 7,
+          "valid_count": 7,
+          "resolved_count": 7,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
