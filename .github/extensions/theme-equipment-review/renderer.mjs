@@ -325,7 +325,6 @@ export function renderHtml(bootstrap) {
       document.querySelector('[data-refresh]')?.addEventListener('click', load);
       document.querySelector('[data-dispatch]')?.addEventListener('click', async () => {
         if (busy) return;
-        if (!confirm('Dispatch init for ' + currentSetId + ' on GitHub?')) return;
         // Dispatching takes several seconds (git rev-parse, fetch,
         // cat-file, then gh workflow run). Without a busy state the button
         // looks inert while it is working, which is exactly how a

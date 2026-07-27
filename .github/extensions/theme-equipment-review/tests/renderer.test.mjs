@@ -13,7 +13,8 @@ test('renders the four review phases, revision controls, coverage, and workflow 
     'variant-approval',
     'expectedRevision',
     'coveredSlotCount',
-    'Run / rerun unresolved items on GitHub',
+    "work.withArtifacts ? 'Regenerate' : 'Generate'",
+    'Re-judge collection cohesion on GitHub',
     'Publish complete set atomically on GitHub',
     'Initialize set on GitHub',
   ]) {

@@ -88,6 +88,7 @@ export async function startThemeEquipmentReviewServer(options) {
       try {
         state = await runCommand({ action: 'state', setId: watchedSetId });
       } catch (error) {
+        if (cancelled) return;
         const message = error?.message ?? String(error);
         // "Not there yet" is the only error worth waiting on. A store or
         // credential failure will not resolve itself, and retrying it for
