@@ -303,13 +303,8 @@ export function isRepairWakeEligible(pullRequest) {
 
 // Labels meaning an external mechanism currently owns this PR's progress, so a
 // CI Recovery dispatch cannot advance it. This is DISPATCH_BLOCKED_LABEL_NAMES
-// minus WAITING_LABEL and minus BLOCKED_LABEL:
-//   - `ci-recovery-waiting` is CI Recovery's own parking label and is handled
-//     by the repair-wake predicate above, not here.
-//   - `merge-train-blocked` PRs are NOT guaranteed no-ops for CI Recovery —
-//     reconcile.mjs has explicit logic to fix train blocks (cumulative-conflict
-//     resolution, label removal on synchronize), so these must remain eligible
-//     for dispatch.
+// minus WAITING_LABEL: `ci-recovery-waiting` is CI Recovery's own parking
+// label and is handled by the repair-wake predicate above, not here.
 //
 // 2026-07-27 incident: these were never applied on the train-enabled sweep
 // path, so PRs fenced by the conflict coordinator (which reconcile skips
@@ -317,16 +312,12 @@ export function isRepairWakeEligible(pullRequest) {
 // awaiting human approval occupied slots in the bounded REPAIR_WINDOW_SIZE
 // sweep, burning every dispatch on guaranteed no-ops.
 const EXTERNALLY_BLOCKED_LABEL_NAMES = new Set(
-  [...DISPATCH_BLOCKED_LABEL_NAMES].filter(
-    (name) => name !== WAITING_LABEL && name !== BLOCKED_LABEL,
-  ),
+  [...DISPATCH_BLOCKED_LABEL_NAMES].filter((name) => name !== WAITING_LABEL),
 );
 
-// Returns true if an external mechanism (conflict coordinator or human
-// approval) currently gates this PR, making a broad-sweep CI Recovery
-// dispatch a guaranteed no-op.  Note: merge-train-blocked is intentionally
-// NOT externally blocked — CI Recovery handles it via train-conflict
-// resolution logic in reconcile.mjs.
+// Returns true if an external mechanism (conflict coordinator, merge-train
+// block, validation failure, or human approval) currently gates this PR,
+// making a broad-sweep CI Recovery dispatch a guaranteed no-op.
 export function isExternallyBlocked(pullRequest) {
   return (pullRequest.labels || []).some((label) => EXTERNALLY_BLOCKED_LABEL_NAMES.has(label.name));
 }
