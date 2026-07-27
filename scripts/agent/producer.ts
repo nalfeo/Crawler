@@ -533,7 +533,7 @@ export function decompose(request: string): DecompositionResult {
   if (/combat|damage|hit|attack|enemy/.test(req)) systemsInvolved.push('combat');
   if (/enemy|ai|behavior|pathfind/.test(req)) systemsInvolved.push('ai');
   if (
-    /system|component|pipeline|runtime|wire|wiring|headless|scene|ecs/.test(req) &&
+    /component|pipeline|runtime|wire|wiring|headless|scene|ecs/.test(req) &&
     systemsInvolved.length > 0
   ) {
     systemsInvolved.push('core');
