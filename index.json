@@ -1,5 +1,16 @@
 [
   {
+    "commit": "04027ee531d271d9773432a14273c445dba6a1d1",
+    "commitDate": "2026-07-27T03:55:13Z",
+    "commitSubject": "feat(sprites): add 60 approved assets (1 check-in) (#2090)",
+    "capturedAt": "2026-07-27T04:57:50.532Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30235843430",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/04027ee531d271d9773432a14273c445dba6a1d1.json"
+  },
+  {
     "commit": "6f3984951e032056a134f61a99d5a245bf57a0b4",
     "commitDate": "2026-07-27T00:30:27Z",
     "commitSubject": "feat(sprites): add 67 approved assets (1 check-in) (#2084)",
