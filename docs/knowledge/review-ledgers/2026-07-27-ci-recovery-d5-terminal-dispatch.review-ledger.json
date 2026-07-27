@@ -14,8 +14,17 @@
       "notes": "Separate-model plan review (rubber-duck agent, gpt-5.4, high reasoning) verdict approved_with_changes. 5 non-blocking concerns raised, all addressed: (1) narrowed R33 catch-all guard to require stallAction in retry/progressed instead of any duplicate-dispatch context; (2) bounded the terminal for(;;) loop to MAX_TERMINAL_PASSES=2 with an explicit post-loop safety-net throw, and moved stateProgressKey computation inside the loop so it is recomputed fresh each pass instead of once before it; (3) added a static source-inspection test proving selectTerminalAction is imported from dispatch-table.mjs and invoked at exactly one call site in reconcile.mjs, closing the gap where the prior wiring-proof test only proved output equivalence; (4) documented a row-to-evidence matrix in the PR/handoff mapping each of the 9 terminal rows to unit test, reconcile-level test, and/or live dry-run coverage; (5) added assertTerminalTableInvariant (mirroring the early tables assertEarlyTableInvariant) validating non-terminal-row uniqueness/placement, has-blockers sub-path ordering, DISPATCH finality, and R28 precedence, wired into buildTerminalDecisionTable(). Full focused suite re-run after hardening: 293 tests, 261 pass, 32 skipped (pre-existing Windows flake), 0 fail."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["code-review-agent (background subagent)"],
+          "concerns_count": 1,
+          "clean": true,
+          "resolved_count": 1,
+          "round": 1,
+          "notes": "code-review agent (background, deep-trace of full diff) found 1 Medium issue: assertTerminalTableInvariant did not check that R28 (no-blockers catch-all, ARM_AUTO_MERGE) comes after both R26 (WAIT_ADMISSION) and R27 (QUEUE_MERGE_TRAIN) -- a reorder placing R28 first would silently make R26/R27 unreachable dead code via find()-first-match semantics. Fixed: added the R26/R27 precedence check to assertTerminalTableInvariant, plus a dedicated regression test reproducing the exact scenario the reviewer found. All other checked areas (row-by-row cascade equivalence, MAX_TERMINAL_PASSES=2 sufficiency via release()/labelExists trace, R33 narrowing correctness, single-call-site wiring, invariant-test isolation, R05/R08 non-regression, throttle/fence/lifecycle preservation, determinism) reported clean with concrete verification evidence. Re-ran full focused suite after the fix: 294 tests, 265 pass, 0 fail, 29 skipped (pre-existing Windows flake)."
+        }
+      ]
     }
   }
 }

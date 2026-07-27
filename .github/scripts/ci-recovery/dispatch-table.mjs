@@ -493,7 +493,8 @@ export function buildTerminalDecisionTable() {
  * Assert the D5 structural invariant on the terminal-decision table:
  * exactly one non-terminal row (R33), the has-blockers sub-path rows appear
  * in their required dependency order, R28 precedes the has-blockers
- * sub-path, and DISPATCH is the unconditional final row.
+ * sub-path (and both R26 and R27), and DISPATCH is the unconditional final
+ * row.
  *
  * This is a lightweight, always-executed counterpart to the exhaustive
  * per-row/id-order unit tests in dispatch-table.test.mjs: it catches a
@@ -546,6 +547,21 @@ export function assertTerminalTableInvariant(rows) {
     throw new Error(
       `dispatch-table D5 terminal invariant violated: R28 (no-blockers catch-all) must precede every ` +
         `has-blockers sub-path row.`,
+    );
+  }
+
+  // R28 (ARM_AUTO_MERGE) is itself an unconditional catch-all for the
+  // no-blockers sub-path, matched via Array.prototype.find()'s first-match
+  // semantics. If it were ever reordered ahead of R26 (WAIT_ADMISSION) or
+  // R27 (QUEUE_MERGE_TRAIN), those two rows would become permanently
+  // unreachable dead code and every no-blockers PR would silently skip
+  // admission-wait / merge-train queueing (code review, 2026-07-27).
+  const r26Idx = ids.indexOf('R26');
+  const r27Idx = ids.indexOf('R27');
+  if (r26Idx === -1 || r27Idx === -1 || r28Idx <= r26Idx || r28Idx <= r27Idx) {
+    throw new Error(
+      `dispatch-table D5 terminal invariant violated: R28 (no-blockers catch-all) must come AFTER ` +
+        `both R26 (WAIT_ADMISSION) and R27 (QUEUE_MERGE_TRAIN), or those rows become unreachable.`,
     );
   }
 }

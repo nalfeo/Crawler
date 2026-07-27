@@ -638,3 +638,20 @@ test('assertTerminalTableInvariant: throws when R28 does not precede the has-blo
   [reordered[r28Idx], reordered[gcExhaustedIdx]] = [reordered[gcExhaustedIdx], reordered[r28Idx]];
   assert.throws(() => assertTerminalTableInvariant(reordered), /must precede/);
 });
+
+test('assertTerminalTableInvariant: throws when R28 is moved ahead of R26/R27 (code review, 2026-07-27)', () => {
+  // R28 (ARM_AUTO_MERGE) is an unconditional catch-all for the no-blockers
+  // sub-path, matched via Array.prototype.find()'s first-match semantics.
+  // If R28 were ever reordered ahead of R26 (WAIT_ADMISSION) or R27
+  // (QUEUE_MERGE_TRAIN), those two rows would become permanently
+  // unreachable dead code — every no-blockers PR would silently skip
+  // admission-wait / merge-train queueing. This case is distinct from (and
+  // not caught by) the R28-vs-has-blockers-subpath check above, since here
+  // R28 still precedes GC-EXHAUSTED-SKIP; only its position relative to
+  // R26/R27 is wrong.
+  const rows = buildTerminalDecisionTable();
+  const withoutR28 = rows.filter((row) => row.id !== 'R28');
+  const r28Row = rows.find((row) => row.id === 'R28');
+  const reordered = [r28Row, ...withoutR28];
+  assert.throws(() => assertTerminalTableInvariant(reordered), /must come AFTER/);
+});
