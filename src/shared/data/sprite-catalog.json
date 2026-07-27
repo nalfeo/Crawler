@@ -3648,6 +3648,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-goon-v3-var-1",
+    "kind": "sprite",
+    "label": "welcome-goon-v3-var-1",
+    "description": "Generated sprite from brief: welcome-goon-v3.",
+    "tags": ["character", "generated", "pipeline-approved"],
+    "spriteId": "welcome-goon-v3-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-goon-v3-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-bookcase-var-0",
     "kind": "sprite",
     "label": "welcome-room-bookcase-var-0",
