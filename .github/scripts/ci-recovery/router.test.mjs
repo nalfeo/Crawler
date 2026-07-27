@@ -61,6 +61,21 @@ const workflowPath = new URL('../../workflows/ci-recovery-router.yml', import.me
 const workflow = parse(await readFile(workflowPath, 'utf8'));
 const routeJob = workflow.jobs.route;
 
+test('periodic cadence is centralized in ci-liveness-sweep', async () => {
+  assert.equal(
+    workflow.on?.schedule,
+    undefined,
+    'ci-recovery-router.yml should be event-driven + workflow_dispatch only',
+  );
+  const livenessWorkflow = await readFile(
+    new URL('../../workflows/ci-liveness-sweep.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(livenessWorkflow, /cron:\s*'\*\/10 \* \* \* \*'/);
+  assert.match(livenessWorkflow, /workflow_id:\s*'ci-recovery-router\.yml'/);
+  assert.match(livenessWorkflow, /workflow_id:\s*'ci-recovery\.yml'/);
+});
+
 function pickInvariantDispatchCaps(resolved) {
   return {
     maxBudgetTrainBusy: resolved.maxBudgetTrainBusy,
@@ -2813,6 +2828,27 @@ test('identifyReapablePrs excludes shepherd-owned PRs', () => {
     [],
     'shepherd-owned PRs must never be reaped by the automation reaper',
   );
+});
+
+test('identifyReapablePrs includes owner-labeled closed/merged PRs', () => {
+  const closedPr = {
+    number: 21,
+    state: 'closed',
+    labels: [{ name: 'ci-owner-pr-21' }],
+  };
+  const mergedPr = {
+    number: 22,
+    state: 'merged',
+    labels: [{ name: 'ci-owner-pr-22' }],
+  };
+  const openHealthyPr = {
+    number: 23,
+    state: 'open',
+    labels: [{ name: 'ci-owner-pr-23' }],
+    recoveryState: automationOwnerState(23, new Date(Date.now() - 5 * 60 * 1000).toISOString(), 1),
+  };
+  const reapable = identifyReapablePrs([closedPr, mergedPr, openHealthyPr]);
+  assert.deepEqual(reapable, [21, 22]);
 });
 
 test('identifyReapablePrs excludes unhydrated (no recoveryState and no recoveryStateUnreadable) PRs', () => {

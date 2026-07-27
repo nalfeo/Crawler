@@ -12,8 +12,6 @@ on:
   workflow_run:
     workflows: ['CI']
     types: [completed]
-  schedule:
-    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 permissions:
