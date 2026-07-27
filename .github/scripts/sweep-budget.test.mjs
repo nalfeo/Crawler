@@ -60,12 +60,12 @@ test('latent backlog deduplicates merge-train and recovery demand by PR number',
     head: { repo: { full_name: repository } },
   };
   const pullRequests = [
-    { ...base, number: 1, labels: [{ name: 'merge-train' }] },
-    { ...base, number: 2, labels: [] },
-    { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] },
-    { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
+    { ...base, number: 1, labels: [{ name: 'merge-train' }] }, // counted via queueEntries
+    { ...base, number: 2, labels: [] }, // counted via recoveryBacklogEntries
+    { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] }, // excluded: isExternallyBlocked
+    { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] }, // excluded: hasOptOutLabel
   ];
-  assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
+  assert.equal(countLatentBacklog({ pullRequests, repository }), 2);
 });
 
 test('runner inspection excludes all broad sweeps and counts queued non-sweep runs', async () => {
