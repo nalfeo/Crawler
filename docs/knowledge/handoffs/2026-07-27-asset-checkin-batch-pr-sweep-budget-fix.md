@@ -46,6 +46,6 @@ sprite-pipeline, ci-tooling
 
 ## References
 
-- Closes #2122, #2111 (via PR #2124)
+- Issue #2122 and #2111 are closed exclusively by PR #2124 (asset batch). PR #2123 does not close any issues.
 - PR #2124: https://github.com/nalfeo/Crawler/pull/2124
 - PR #2123: https://github.com/nalfeo/Crawler/pull/2123
