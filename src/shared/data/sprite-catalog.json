@@ -3518,6 +3518,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-goon-v2-var-3",
+    "kind": "sprite",
+    "label": "welcome-goon-v2-var-3",
+    "description": "Generated sprite from brief: welcome-goon-v2.",
+    "tags": ["character", "generated", "pipeline-approved"],
+    "spriteId": "welcome-goon-v2-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-goon-v2-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-goon-v2-var-7",
     "kind": "sprite",
     "label": "welcome-goon-v2-var-7",
