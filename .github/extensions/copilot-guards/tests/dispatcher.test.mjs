@@ -293,3 +293,46 @@ test('guard telemetry is written under the isolated temp cwd, never the repo roo
     'dispatch tests must not use the repo root as cwd',
   );
 });
+
+// Chronicle attributability: the permissionDecisionReason must embed both
+// guard-id and tool-name so session-store queries can attribute denials even
+// when `tool_start_name` is NULL for pre-empted tool calls.
+test('denial reason embeds guard-id and tool-name for session-store attribution', async () => {
+  const result = await dispatch(
+    [
+      {
+        id: 'shell-attr',
+        category: 'shell',
+        matches: () => true,
+        check: () => ({ decision: 'deny', reason: 'attribution test' }),
+      },
+    ],
+    'bash',
+    {},
+    noopCtx,
+  );
+  assert.equal(result.permissionDecision, 'deny');
+  // Format: [copilot-guards/<id> | tool:<tool>] <reason>
+  assert.match(result.permissionDecisionReason, /\[copilot-guards\/shell-attr \| tool:bash\]/);
+  assert.match(result.permissionDecisionReason, /attribution test/);
+});
+
+test('pr aggregate denial reason embeds tool-name for session-store attribution', async () => {
+  const result = await dispatch(
+    [
+      {
+        id: 'pr-attr',
+        category: 'pr',
+        matches: () => true,
+        check: () => ({ decision: 'deny', reason: 'pr attribution test' }),
+      },
+    ],
+    'create_pull_request',
+    {},
+    noopCtx,
+  );
+  assert.equal(result.permissionDecision, 'deny');
+  // PR aggregate embeds [copilot-guards/pr | tool:create_pull_request] in the header
+  assert.match(result.permissionDecisionReason, /\[copilot-guards\/pr \| tool:create_pull_request\]/);
+  assert.match(result.permissionDecisionReason, /pr attribution test/);
+});
