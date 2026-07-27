@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5f11f52d74eef021abc36e35f23eb5c16b41f879",
+    "commitDate": "2026-07-27T11:42:27Z",
+    "commitSubject": "fix: add INDEX.md to .prettierignore to fix Docs Update Loop CI (#2078)",
+    "capturedAt": "2026-07-27T12:51:56.771Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30263591047",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/5f11f52d74eef021abc36e35f23eb5c16b41f879.json"
+  },
+  {
     "commit": "fbab38dd3aa60161a9c345f0512b129c335e2103",
     "commitDate": "2026-07-27T08:07:04Z",
     "commitSubject": "ci-recovery: wire D5 terminal dispatch table into reconcile.mjs (clean-room replacement for #1923, #2044) (#2100)",
