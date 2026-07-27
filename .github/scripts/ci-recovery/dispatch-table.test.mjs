@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   assertEarlyTableInvariant,
+  assertTerminalTableInvariant,
   buildEarlyDecisionTable,
   buildTerminalDecisionTable,
   DISPATCH_ACTION,
@@ -563,4 +564,77 @@ test('selectTerminalAction: the two catch-all rows (R28, DISPATCH) are load-bear
     undefined,
     'expected no row to match once both catch-all rows are removed',
   );
+});
+
+test('selectTerminalAction: R33 no longer absorbs an unrecognised stallAction (narrowed guard, plan review 2026-07-27)', () => {
+  // R33 used to match on isDuplicateDispatch alone; it now requires
+  // stallAction to be explicitly 'retry' or 'progressed' so a future/unknown
+  // stallAction value falls through instead of being silently swallowed here.
+  const ctx = {
+    ...baseTerminalCtx,
+    labelExists: true,
+    isDuplicateDispatch: true,
+    stallAction: 'new',
+  };
+  const row = selectTerminalAction(ctx);
+  assert.notStrictEqual(row.id, 'R33');
+  // With isDuplicateDispatch true, GC-COPILOT-PROGRESS is excluded by its own
+  // guard, so this falls all the way to the DISPATCH catch-all.
+  assert.strictEqual(row.id, 'DISPATCH');
+});
+
+// ─── terminal table structural invariant (assertTerminalTableInvariant) ────
+
+test('assertTerminalTableInvariant: does not throw for the real table', () => {
+  assert.doesNotThrow(() => assertTerminalTableInvariant(buildTerminalDecisionTable()));
+});
+
+test('assertTerminalTableInvariant: throws when more than one row is marked non-terminal', () => {
+  const rows = buildTerminalDecisionTable().map((row) =>
+    row.id === 'GC-COPILOT-PROGRESS' ? { ...row, nonTerminal: true } : row,
+  );
+  assert.throws(() => assertTerminalTableInvariant(rows), /exactly one non-terminal row/);
+});
+
+test('assertTerminalTableInvariant: throws when the non-terminal row is not R33', () => {
+  const rows = buildTerminalDecisionTable().map((row) => ({
+    ...row,
+    nonTerminal: row.id === 'DISPATCH',
+  }));
+  assert.throws(() => assertTerminalTableInvariant(rows), /exactly one non-terminal row/);
+});
+
+test('assertTerminalTableInvariant: throws when has-blockers sub-path rows are reordered', () => {
+  const rows = buildTerminalDecisionTable();
+  const r33Idx = rows.findIndex((row) => row.id === 'R33');
+  const gcProgressIdx = rows.findIndex((row) => row.id === 'GC-COPILOT-PROGRESS');
+  const reordered = [...rows];
+  [reordered[r33Idx], reordered[gcProgressIdx]] = [reordered[gcProgressIdx], reordered[r33Idx]];
+  assert.throws(() => assertTerminalTableInvariant(reordered), /must appear in the order/);
+});
+
+test('assertTerminalTableInvariant: throws when DISPATCH is not the final row', () => {
+  // Append a trailing dummy row after DISPATCH so the required-order check
+  // (which only cares about relative order, unaffected by appending) stays
+  // satisfied and this isolates the dedicated "DISPATCH must be last" check.
+  const rows = [
+    ...buildTerminalDecisionTable(),
+    {
+      id: 'EXTRA-UNREACHABLE',
+      dClass: 'core',
+      action: DISPATCH_ACTION.DISPATCH_COPILOT,
+      description: 'dummy row appended after DISPATCH to test finality',
+      guard: () => false,
+    },
+  ];
+  assert.throws(() => assertTerminalTableInvariant(rows), /must be the/);
+});
+
+test('assertTerminalTableInvariant: throws when R28 does not precede the has-blockers sub-path', () => {
+  const rows = buildTerminalDecisionTable();
+  const r28Idx = rows.findIndex((row) => row.id === 'R28');
+  const gcExhaustedIdx = rows.findIndex((row) => row.id === 'GC-EXHAUSTED-SKIP');
+  const reordered = [...rows];
+  [reordered[r28Idx], reordered[gcExhaustedIdx]] = [reordered[gcExhaustedIdx], reordered[r28Idx]];
+  assert.throws(() => assertTerminalTableInvariant(reordered), /must precede/);
 });

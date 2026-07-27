@@ -371,7 +371,7 @@ export function selectEarlyAction(ctx) {
  * @returns {Array<{id: string, dClass: string, action: string, description: string, guard: (ctx: TerminalContext) => boolean, nonTerminal?: boolean}>}
  */
 export function buildTerminalDecisionTable() {
-  return [
+  const rows = [
     // ── No-blockers sub-path ──────────────────────────────────────────────
     {
       id: 'R26',
@@ -447,7 +447,19 @@ export function buildTerminalDecisionTable() {
       description:
         'duplicate dispatch not yet exhausted (stallAction retry/progressed): release and re-evaluate (non-terminal, mirrors R04)',
       nonTerminal: true,
-      guard: (ctx) => ctx.blockersPresent && ctx.labelExists && ctx.isDuplicateDispatch,
+      // Explicit stallAction allow-list (rather than "any remaining
+      // isDuplicateDispatch context"): automationStallAction() returns a closed
+      // enum {'new','progressed','wait','release','retry'}; 'wait' and 'release'
+      // are already peeled off by GC-DUPLICATE-WAIT/R34 above, so only
+      // 'retry'/'progressed' are expected here. Naming them explicitly (plan
+      // review, 2026-07-27) means a future stallAction value falls through to
+      // GC-COPILOT-PROGRESS/DISPATCH instead of being silently absorbed by a
+      // broad catch-most guard.
+      guard: (ctx) =>
+        ctx.blockersPresent &&
+        ctx.labelExists &&
+        ctx.isDuplicateDispatch &&
+        (ctx.stallAction === 'retry' || ctx.stallAction === 'progressed'),
     },
     {
       id: 'GC-COPILOT-PROGRESS',
@@ -472,6 +484,70 @@ export function buildTerminalDecisionTable() {
       guard: (ctx) => ctx.blockersPresent,
     },
   ];
+
+  assertTerminalTableInvariant(rows);
+  return rows;
+}
+
+/**
+ * Assert the D5 structural invariant on the terminal-decision table:
+ * exactly one non-terminal row (R33), the has-blockers sub-path rows appear
+ * in their required dependency order, R28 precedes the has-blockers
+ * sub-path, and DISPATCH is the unconditional final row.
+ *
+ * This is a lightweight, always-executed counterpart to the exhaustive
+ * per-row/id-order unit tests in dispatch-table.test.mjs: it catches a
+ * structural regression (a reordered or duplicated row) at table-build time,
+ * not only when the specific unit test happens to run (plan review,
+ * 2026-07-27).
+ *
+ * @param {Array<{id: string, action: string, nonTerminal?: boolean}>} rows
+ * @throws {Error} if the invariant is violated
+ */
+export function assertTerminalTableInvariant(rows) {
+  const nonTerminalRows = rows.filter((row) => row.nonTerminal === true);
+  if (nonTerminalRows.length !== 1 || nonTerminalRows[0].id !== 'R33') {
+    throw new Error(
+      `dispatch-table D5 terminal invariant violated: expected exactly one non-terminal row ` +
+        `(R33/RELEASE_STALE_AUTOMATION_RETRY), found [${nonTerminalRows.map((row) => row.id).join(', ')}].`,
+    );
+  }
+
+  const ids = rows.map((row) => row.id);
+  const requiredOrder = [
+    'GC-EXHAUSTED-SKIP',
+    'R34',
+    'GC-DUPLICATE-WAIT',
+    'R33',
+    'GC-COPILOT-PROGRESS',
+    'DISPATCH',
+  ];
+  const positions = requiredOrder.map((id) => ids.indexOf(id));
+  const allOrdered = positions.every((pos, i) => pos !== -1 && (i === 0 || pos > positions[i - 1]));
+  if (!allOrdered) {
+    throw new Error(
+      `dispatch-table D5 terminal invariant violated: has-blockers sub-path rows must appear in the ` +
+        `order ${requiredOrder.join(' -> ')} (exhaustion/duplicate checks before the retry loop, ` +
+        `before the fresh-progress skip, before the unconditional dispatch catch-all). ` +
+        `Actual order: [${ids.join(', ')}].`,
+    );
+  }
+
+  if (ids[ids.length - 1] !== 'DISPATCH') {
+    throw new Error(
+      `dispatch-table D5 terminal invariant violated: DISPATCH (has-blockers catch-all) must be the ` +
+        `final row; found at index ${ids.indexOf('DISPATCH')} of ${ids.length}.`,
+    );
+  }
+
+  const r28Idx = ids.indexOf('R28');
+  const gcExhaustedIdx = ids.indexOf('GC-EXHAUSTED-SKIP');
+  if (r28Idx === -1 || gcExhaustedIdx === -1 || r28Idx >= gcExhaustedIdx) {
+    throw new Error(
+      `dispatch-table D5 terminal invariant violated: R28 (no-blockers catch-all) must precede every ` +
+        `has-blockers sub-path row.`,
+    );
+  }
 }
 
 /**

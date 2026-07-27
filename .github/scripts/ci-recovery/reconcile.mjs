@@ -2488,12 +2488,23 @@ function getOrDeriveProgressKey(recoveryState) {
   }
   return null;
 }
-const stateProgressKey = getOrDeriveProgressKey(state);
 let dispatchAttemptBase = 0;
 let dispatchProgressAt = now.toISOString();
 
+// Bounded to 2 passes (plan review, 2026-07-27): pass 1 evaluates the
+// as-loaded state; if R33 (RELEASE_STALE_AUTOMATION_RETRY, non-terminal)
+// fires, release() reassigns module-level `state`/`labelExists` in place, so
+// pass 2 re-reads the now-cleared lock and is guaranteed terminal (R33's own
+// guard requires `labelExists`, which release() always clears). The explicit
+// cap turns that reasoning into a runtime assertion instead of leaving an
+// unbounded `for (;;)` relying on the invariant holding forever.
+const MAX_TERMINAL_PASSES = 2;
 let terminalRow;
-for (;;) {
+for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
+  // Recomputed every pass (not hoisted) so a mid-loop release() that changes
+  // `state` is reflected in the exhausted-state comparison, not just in
+  // owner/status/stallAction.
+  const stateProgressKey = getOrDeriveProgressKey(state);
   const terminalCtx = {
     blockersPresent: normalized.length > 0,
     admissionWaitingCount: admissionWaiting.length,
@@ -2551,6 +2562,18 @@ for (;;) {
     }
     stopIfReleaseConvergedElsewhere(await release('stale-automation-retry'));
   }
+}
+if (terminalRow.action === DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_RETRY) {
+  // Structural safety net (plan review, 2026-07-27): R33 must resolve within
+  // MAX_TERMINAL_PASSES because release() unconditionally clears
+  // labelExists, and R33's guard requires labelExists. Reaching here means
+  // that invariant broke — fail loudly instead of silently falling through
+  // every branch below (none of which handle this action) and no-op'ing.
+  throw new Error(
+    `reconcile: terminal dispatch did not converge after ${MAX_TERMINAL_PASSES} passes ` +
+      `(still RELEASE_STALE_AUTOMATION_RETRY for pr=#${prNumber}). This indicates release() ` +
+      `failed to clear labelExists/state as expected.`,
+  );
 }
 
 if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {

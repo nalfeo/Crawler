@@ -1721,6 +1721,43 @@ test('D5 wiring proof: the live terminal-cascade exit for stale-automation-exhau
   );
 });
 
+test('D5 wiring strength: selectTerminalAction is called from exactly one site in reconcile.mjs (no parallel/duplicate cascade)', async () => {
+  // Plan review (2026-07-27) flagged the subprocess-vs-direct-call comparison
+  // above as behaviorally strong but not a mechanical proof that reconcile.mjs
+  // actually invokes selectTerminalAction (a coincidentally-matching parallel
+  // implementation would also pass it). This static check closes that gap
+  // cheaply: read reconcile.mjs's own source and assert selectTerminalAction
+  // is imported from dispatch-table.mjs and invoked at exactly one call site
+  // inside the terminal-decision loop — so there is mechanically nowhere
+  // else in the file the terminal cascade could live.
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const reconcilePath = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
+  const source = await readFile(reconcilePath, 'utf8');
+  // Count actual invocations (name immediately followed by an open paren) so
+  // the import statement and explanatory comments referencing the name don't
+  // inflate the count — only a real call site matches this pattern.
+  const invocations = source.match(/selectTerminalAction\(/g) ?? [];
+  assert.equal(
+    invocations.length,
+    1,
+    `expected selectTerminalAction( to be invoked exactly once in reconcile.mjs, found ${invocations.length} ` +
+      `— a second call site would indicate a reintroduced parallel/duplicate terminal cascade`,
+  );
+  assert.match(
+    source,
+    /import \{[^}]*\bselectTerminalAction\b[^}]*\} from '\.\/dispatch-table\.mjs';/,
+    'expected selectTerminalAction to be imported from dispatch-table.mjs (the single source of truth ' +
+      'for the terminal decision table), not reimplemented locally',
+  );
+  assert.match(
+    source,
+    /terminalRow = selectTerminalAction\(terminalCtx\);/,
+    'expected the single call site to assign directly into terminalRow (the value every downstream ' +
+      'if/else-if branch in the terminal cascade switches on)',
+  );
+});
+
 for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] of [
   ['repository label only', true, false],
   ['PR attachment only', false, true],
