@@ -5,16 +5,17 @@ import { isSizeVariant, type SizeVariant } from '../size-variants.js';
 import type { RunStore } from '../store/types.js';
 import type { AssetRequestIssueApi, OpenAssetRequestIssue } from './asset-request-issue-api.js';
 import { ISSUE_STATUS_KEY_PREFIX } from './issue-status-key.js';
-
-const INGEST_STATE_KEY = 'workflow-state/asset-request-ingest.json';
+import { INGEST_STATE_KEY } from './ingest-state-key.js';
 
 // Re-exported for backward-compatible imports (tests + the CLI pin against
-// this constant via this module's path). The canonical declaration lives in
-// `./issue-status-key.js` — a dependency-free module — so this controller can
-// import `ISSUE_PIPELINE_CHECKPOINT_VERSION` from `issue-pipeline-checkpoint.js`
-// above without creating an import cycle (that module in turn imports the
-// prefix from `./issue-status-key.js`, never from this file).
-export { ISSUE_STATUS_KEY_PREFIX };
+// these constants via this module's path). The canonical declarations live in
+// `./issue-status-key.js` and `./ingest-state-key.js` — dependency-free
+// modules — so this controller can import `ISSUE_PIPELINE_CHECKPOINT_VERSION`
+// from `issue-pipeline-checkpoint.js` above without creating an import cycle
+// (that module in turn imports the prefix from `./issue-status-key.js`, never
+// from this file), and so `store/cache-policy.js` can classify the ingest
+// ledger as a coordination document without importing this controller.
+export { ISSUE_STATUS_KEY_PREFIX, INGEST_STATE_KEY };
 
 export async function isIssueRequestRejectedIngestState(
   store: RunStore,

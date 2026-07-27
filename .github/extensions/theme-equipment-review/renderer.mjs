@@ -380,6 +380,44 @@ export function renderHtml(bootstrap) {
       '</div>';
     }
 
+    const PHASE_NOUNS = {
+      'roster': 'roster entries',
+      'briefs': 'briefs',
+      'sprite-sheets': 'sprite sheets',
+      'variant-approval': 'variant sets',
+    };
+
+    /**
+     * What a run-phase dispatch would actually do right now, for the CURRENT
+     * phase (run-phase always targets state.phase, never the tab the user is
+     * browsing). The runner regenerates items explicitly rejected, generates
+     * items that have no artifacts yet, and ALWAYS re-judges collection
+     * cohesion at the end — so a zero-item run is still meaningful work.
+     */
+    function runPhaseWork() {
+      const phase = state.phase;
+      let rejected = 0;
+      let missing = 0;
+      for (const item of state.items) {
+        const record = item.phases[phase];
+        if (!record) continue;
+        if (record.review.verdict === 'down') rejected++;
+        else if (!record.artifacts.length && !item.frozenPhases.includes(phase)) missing++;
+      }
+      return { rejected, missing, noun: PHASE_NOUNS[phase] || 'items' };
+    }
+
+    function runPhaseLabel() {
+      if (busy) return 'Dispatching…';
+      const work = runPhaseWork();
+      if (work.rejected && work.missing) {
+        return 'Run ' + (work.rejected + work.missing) + ' ' + work.noun + ' on GitHub (' + work.rejected + ' rejected, ' + work.missing + ' missing)';
+      }
+      if (work.rejected) return 'Regenerate ' + work.rejected + ' rejected ' + work.noun + ' on GitHub';
+      if (work.missing) return 'Generate ' + work.missing + ' ' + work.noun + ' on GitHub';
+      return 'Re-judge collection cohesion on GitHub';
+    }
+
     function itemCard(item) {
       const record = item.phases[selectedPhase];
       const review = record.review;
@@ -411,12 +449,13 @@ export function renderHtml(bootstrap) {
           (selectedRecord.collectionJudge ? '<p>' + esc(selectedRecord.collectionJudge.rationale) + '</p>' : '') +
           (selectedPhase === state.phase ? '<textarea maxlength="2000" data-feedback="collection" placeholder="Optional whole-set feedback">' + esc(selectedRecord.humanReview.feedback || '') + '</textarea>' + reviewButtons(selectedRecord.humanReview,'collection') : '') +
         '</section>' : '') +
-        '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Approved items remain frozen; rejected items alone regenerate.</div></div>' +
+        '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Approved items remain frozen; rejected items alone regenerate. Run generates artifacts on GitHub (minutes); Advance only moves the phase pointer once the gate is open.</div></div>' +
         '<div class="controls">' +
-          (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>Run / rerun unresolved items on GitHub</button>' : '') +
+          (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>' + esc(runPhaseLabel()) + '</button>' : '') +
           (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
-          (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>Publish complete set atomically on GitHub</button>' : '') +
+          (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>' + (busy ? 'Dispatching…' : 'Publish complete set atomically on GitHub') + '</button>' : '') +
           '<button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div></div>' +
+          (dispatchNotice ? '<p class="' + (dispatchNotice.tone === 'error' ? 'error' : 'muted') + '">' + esc(dispatchNotice.text) + '</p>' : '') +
           (!state.gate.canAdvance && state.gate.reasons.length ? '<ul class="gate-list">' + state.gate.reasons.map(r => '<li>' + esc(r.message) + '</li>').join('') + '</ul>' : '') +
         '</section>' +
         (selectedPhase === 'complete' ? '<section class="panel">The complete set is held until one atomic publication workflow succeeds.</section>' :
@@ -427,7 +466,7 @@ export function renderHtml(bootstrap) {
     }
 
     function wire() {
-      document.querySelector('[data-back]')?.addEventListener('click', loadIndex);
+      document.querySelector('[data-back]')?.addEventListener('click', () => { dispatchNotice = null; loadIndex(); });
       document.querySelectorAll('[data-phase]').forEach(button => button.addEventListener('click', () => {
         selectedPhase = button.dataset.phase;
         render();
@@ -446,9 +485,32 @@ export function renderHtml(bootstrap) {
       document.querySelector('[data-advance]')?.addEventListener('click', () => mutate('/api/advance', { expectedRevision: state.stateRevision }));
       document.querySelector('[data-refresh]')?.addEventListener('click', load);
       document.querySelectorAll('[data-dispatch]').forEach(button => button.addEventListener('click', async () => {
-        if (!confirm('Dispatch ' + button.dataset.dispatch + ' for ' + state.id + ' on GitHub?')) return;
-        const result = await mutate('/api/dispatch', { action: button.dataset.dispatch }, false);
-        if (result) alert('Workflow dispatched on ref ' + (result.ref || 'unknown') + '. Refresh after the run completes.');
+        if (busy) return;
+        const action = button.dataset.dispatch;
+        const dispatchedSetId = state.id;
+        // A dispatch takes several seconds (git rev-parse, fetch, cat-file,
+        // then gh workflow run) and the workflow itself runs for minutes.
+        // Without an inline busy state + notice the button looks inert, which
+        // is exactly how a successful run came across as doing nothing.
+        const stillHere = () => view === 'board' && state !== null && state.id === dispatchedSetId;
+        busy = true;
+        dispatchNotice = { tone: 'info', text: 'Dispatching ' + action + '…' };
+        render();
+        let notice;
+        try {
+          const result = await request('/api/dispatch', { method: 'POST', body: JSON.stringify({ action }) });
+          notice = {
+            tone: 'info',
+            text: action + ' dispatched on ref ' + (result.ref || 'unknown') +
+              '. The workflow runs on GitHub and takes a few minutes; this pane updates on its own as the durable revision advances.',
+          };
+        } catch (error) {
+          notice = { tone: 'error', text: error.message };
+        } finally {
+          busy = false;
+          dispatchNotice = stillHere() ? notice : null;
+          render();
+        }
       }));
     }
 

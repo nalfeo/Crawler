@@ -1154,6 +1154,24 @@ export async function saveThemeEquipmentSetState(
     }
   } else {
     // Fallback: check-then-write (test doubles and stores without ETag support).
+    //
+    // This path is NOT a cross-process lock — the read and the write are two
+    // separate operations, so a concurrent writer can commit in between and be
+    // silently overwritten. It is only sound on a store that is not shared
+    // across machines. A shared backend reaching here means conditional-write
+    // support was lost somewhere in the store stack (a wrapper that failed to
+    // forward `getWithETag`/`putConditional` will do exactly this), which would
+    // downgrade every save to an unconditional overwrite. Fail loudly BEFORE
+    // writing rather than corrupting the authoritative document.
+    if (store.backend === 'azure-blob') {
+      throw new Error(
+        `Refusing to save ${key}: the ${store.backend} store does not expose atomic ` +
+          `conditional writes (conditionalWrites=${store.conditionalWrites ?? 'unsupported'}), ` +
+          'so revision checks could not be enforced and a concurrent writer could be ' +
+          'silently overwritten. This usually means a store wrapper is not forwarding ' +
+          'getWithETag/putConditional.',
+      );
+    }
     const stored = await loadThemeEquipmentSetState(store, state.id);
     const actualRevision = stored?.stateRevision ?? null;
     if (
