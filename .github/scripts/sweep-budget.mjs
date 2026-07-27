@@ -1,7 +1,11 @@
 import { appendFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-import { hydrateRecoveryOwnership, recoveryBacklogEntries } from './ci-recovery/router.mjs';
+import {
+  hydrateRecoveryOwnership,
+  isExternallyBlocked,
+  recoveryBacklogEntries,
+} from './ci-recovery/router.mjs';
 import { paginate, request } from './ci-recovery/github.mjs';
 import { queueEntries } from './merge-train/state.mjs';
 
@@ -79,11 +83,27 @@ export function enrichMatrix(entries, slots, scalarKey = 'value') {
 }
 
 export function countLatentBacklog({ pullRequests, repository, now = new Date() }) {
+  const repo = repository.toLowerCase();
+  // Externally blocked PRs (e.g. merge-train-blocked, ci-conflict-order-wait) are excluded
+  // from recoveryBacklogEntries because CI Recovery cannot advance them. They still need
+  // runner capacity eventually, so they must be counted here for sweep budget accuracy.
+  const blockedNumbers = pullRequests
+    .filter(
+      (pr) =>
+        pr.state === 'open' &&
+        !pr.draft &&
+        pr.base?.ref === 'main' &&
+        pr.head?.repo?.full_name?.toLowerCase() === repo &&
+        isExternallyBlocked(pr) &&
+        !(pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out'),
+    )
+    .map((pr) => pr.number);
   const numbers = new Set([
     ...queueEntries(pullRequests, repository).map((pullRequest) => pullRequest.number),
     ...recoveryBacklogEntries(pullRequests, repository, now).map(
       (pullRequest) => pullRequest.number,
     ),
+    ...blockedNumbers,
   ]);
   return numbers.size;
 }
