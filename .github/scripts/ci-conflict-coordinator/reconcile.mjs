@@ -38,6 +38,7 @@ import {
   discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
+  hasHealthyShepherdLease,
   isCoordinatorStateSemanticallyEqual,
   makeCoordinatorState,
   mergeCoordinationGroups,
