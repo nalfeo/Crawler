@@ -24,6 +24,8 @@ interface TriageResult {
   verdict: 'RECOMMENDED' | 'RISKY' | 'NOT_RECOMMENDED';
   verdictReason: string;
   escalation?: string;
+  confidence?: number;
+  nextAction?: string;
   message: string;
   blockers?: string[];
   questions?: string[];
@@ -424,6 +426,81 @@ interface DecompositionResult {
   criticalPath: string[];
   parallelizableGroups: string[][];
   escalations: string[];
+  contract: PlanningContract;
+}
+
+export interface PlanningContract {
+  hardGate: string | null;
+  gateStatus: 'READY' | 'MISSING';
+  rankedTiebreakers: string[];
+  confidence: number;
+  readyForDelegation: boolean;
+  validationErrors: string[];
+}
+
+const SUCCESS_GATE_PATTERN =
+  /\b(?:\d+%|\d+(?:\.\d+)?\s*(?:ms|s|sec|seconds|minutes?|runs?|tests?)|zero\s+(?:regressions?|failures?)|all\s+tests?|pass(?:es|ing)?|win\s*rate|coverage|fps|latency)\b/i;
+
+function inferPlanningContract(request: string, slices: SliceDecomposition[]): PlanningContract {
+  const hasGate = SUCCESS_GATE_PATTERN.test(request);
+  const hardGate = hasGate
+    ? `Verify the request's stated measurable condition: "${request}".`
+    : null;
+  const validationErrors: string[] = [];
+  const ids = new Set<string>();
+
+  for (const slice of slices) {
+    if (ids.has(slice.id)) validationErrors.push(`Duplicate slice id: ${slice.id}`);
+    ids.add(slice.id);
+    if (slice.apples < 1 || slice.apples > 3) {
+      validationErrors.push(`${slice.id} exceeds the 1–3🍎 slice limit.`);
+    }
+    for (const dependency of slice.dependencies) {
+      if (!ids.has(dependency) && !slices.some((candidate) => candidate.id === dependency)) {
+        validationErrors.push(`${slice.id} depends on unknown slice ${dependency}.`);
+      }
+      if (dependency === slice.id) validationErrors.push(`${slice.id} depends on itself.`);
+    }
+  }
+
+  return {
+    hardGate,
+    gateStatus: hardGate ? 'READY' : 'MISSING',
+    rankedTiebreakers: [
+      'Preserve deterministic runtime behavior and existing gameplay contracts.',
+      'Keep each slice independently verifiable at its layer boundary.',
+      'Prefer parallel work only when dependencies are explicit and acyclic.',
+    ],
+    confidence: Math.max(0, Math.min(1, (hasGate ? 0.8 : 0.55) + (slices.length > 0 ? 0.1 : 0))),
+    readyForDelegation: Boolean(hardGate) && validationErrors.length === 0,
+    validationErrors,
+  };
+}
+
+export function validateDecomposition(result: DecompositionResult): string[] {
+  const errors = [...result.contract.validationErrors];
+  const ids = new Set(result.slices.map((slice) => slice.id));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  const visit = (id: string): void => {
+    if (visiting.has(id)) {
+      errors.push(`Dependency cycle detected at ${id}.`);
+      return;
+    }
+    if (visited.has(id)) return;
+    visiting.add(id);
+    const slice = result.slices.find((candidate) => candidate.id === id);
+    for (const dependency of slice?.dependencies ?? []) {
+      if (!ids.has(dependency)) errors.push(`${id} depends on unknown slice ${dependency}.`);
+      else visit(dependency);
+    }
+    visiting.delete(id);
+    visited.add(id);
+  };
+
+  result.slices.forEach((slice) => visit(slice.id));
+  return [...new Set(errors)];
 }
 
 /**
@@ -556,14 +633,20 @@ export function decompose(request: string): DecompositionResult {
 
   const totalApples = slices.reduce((sum, s) => sum + s.apples, 0);
 
-  return {
+  const result: DecompositionResult = {
     feature: request,
     slices,
     totalApples,
     criticalPath,
     parallelizableGroups,
     escalations: [],
+    contract: inferPlanningContract(request, slices),
   };
+  result.contract.validationErrors.push(...validateDecomposition(result));
+  result.contract.validationErrors = [...new Set(result.contract.validationErrors)];
+  result.contract.readyForDelegation =
+    result.contract.gateStatus === 'READY' && result.contract.validationErrors.length === 0;
+  return result;
 }
 
 /**
