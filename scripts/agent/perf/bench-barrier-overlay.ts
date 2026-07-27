@@ -437,6 +437,15 @@ async function main(): Promise<void> {
       `${world.barriers.blockedTiles.size} blocked tile(s), ` +
       `${world.barriers.ringShapes.size} ring shape(s).`,
   );
+  if (world.barriers.blockedTiles.size > 0 || world.barriers.ringShapes.size > 0) {
+    throw new Error(
+      `bench-barrier-overlay: warmup left a non-empty registry ` +
+        `(${world.barriers.blockedTiles.size} blocked tile(s), ` +
+        `${world.barriers.ringShapes.size} ring shape(s)). ` +
+        `The AFTER variant's fast path will not fire and the bench measures the wrong path. ` +
+        `Investigate why barriers were raised during the headless run.`,
+    );
+  }
 
   const beforeMap = cloneAs(FloorMapBefore, real);
   const afterMap = cloneAs(FloorMapAfter, real);
