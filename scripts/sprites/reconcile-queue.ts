@@ -87,6 +87,8 @@ export interface ReconcileResult {
    * Empty when no issues are fully covered or the issue list query fails.
    */
   readonly closingIssueNumbers?: readonly number[];
+  /** True when issue-closure discovery completed successfully. */
+  readonly closingIssueDiscoveryComplete?: boolean;
 }
 
 export interface ReconcileDeps {
@@ -177,6 +179,8 @@ const MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS = [
   'merge-train-validation-failed',
   'merge-train-landed',
 ] as const;
+const ISSUE_LIST_INITIAL_LIMIT = 200;
+const ISSUE_LIST_MAX_LIMIT = 5000;
 
 /**
  * True when `labels` carries any label under which the train has
@@ -348,6 +352,7 @@ export function assertArtSurfaceModes(rawStdout: string, baseBranch = DEFAULT_BA
         `Refusing to arm auto-merge: unparseable staged raw-diff line "${line}".`,
       );
     }
+
     const fields = line.slice(1, tabIdx).trim().split(/\s+/);
     const dstMode = fields[1];
     const status = fields[4] ?? '?';
@@ -428,18 +433,14 @@ function repoArgs(repo: string | undefined): string[] {
  * Determine which open `asset-checkin` issues are fully covered by the current
  * promotion and should therefore be closed when the promotion PR merges.
  *
- * An issue is "fully covered" when every asset in its payload maps to a path
- * that is either:
- *   (a) in `changedPaths` (being promoted by this PR), or
- *   (b) already present in `baseRef` on the server (previously landed via
- *       another promotion PR).
+ * An issue is "fully covered" when every asset in its payload is present in the
+ * post-promotion tree (`promotedRef`) and its payload `contentHash` exactly
+ * matches the manifest entry for that path. Hash-less legacy payload entries are
+ * treated as ambiguous and excluded (fail closed).
  *
- * Partially covered issues — some assets not yet in the queue or not yet
- * promoted — are excluded so they are never closed prematurely.
- *
- * Non-fatal: if the issue list query or the `git ls-tree` call fails for any
- * reason (network, auth, malformed JSON) the function returns `[]` rather than
- * propagating an error, so a transient gh outage never aborts a reconcile cycle.
+ * The function returns `{ complete: false }` on discovery failures (issue list,
+ * promoted tree, manifest parse) so callers can defer merge arming rather than
+ * silently dropping `Closes #N` keywords.
  *
  * Exported for deterministic unit testing with a faked exec.
  */
@@ -447,74 +448,114 @@ export async function computeClosingIssueNumbers(
   exec: Exec,
   repoRoot: string,
   baseRef: string,
-  changedPaths: readonly string[],
   repo: string | undefined,
-): Promise<readonly number[]> {
-  // 1. List open asset-checkin issues.
-  const issueResult = await exec(
-    'gh',
-    [
-      'issue',
-      'list',
-      ...repoArgs(repo),
-      '--label',
-      ASSET_CHECKIN_LABEL,
-      '--state',
-      'open',
-      '--json',
-      'number,body',
-      '--limit',
-      '200',
-    ],
-    { cwd: repoRoot },
-  );
-  if (issueResult.code !== 0) return [];
+  // `promotedRef` is the post-harvest tree we are about to publish/merge.
+  // Defaults to `baseRef` in unit tests that don't pass it explicitly.
+  promotedRef = baseRef,
+): Promise<{ readonly issueNumbers: readonly number[]; readonly complete: boolean }> {
+  const listOpenIssues = async (): Promise<
+    | {
+        readonly ok: true;
+        readonly issues: Array<{ number?: unknown; body?: unknown }>;
+      }
+    | { readonly ok: false }
+  > => {
+    // `gh issue list` has a caller-provided cap (`--limit`). Re-query with a
+    // larger limit until the returned count is strictly below that limit, which
+    // proves we have the complete open set up to `ISSUE_LIST_MAX_LIMIT`.
+    let limit = ISSUE_LIST_INITIAL_LIMIT;
+    while (true) {
+      const issueResult = await exec(
+        'gh',
+        [
+          'issue',
+          'list',
+          ...repoArgs(repo),
+          '--label',
+          ASSET_CHECKIN_LABEL,
+          '--state',
+          'open',
+          '--json',
+          'number,body',
+          '--limit',
+          String(limit),
+        ],
+        { cwd: repoRoot },
+      );
+      if (issueResult.code !== 0) return { ok: false };
+      let rawIssues: Array<{ number?: unknown; body?: unknown }>;
+      try {
+        rawIssues = JSON.parse(issueResult.stdout.trim() || '[]') as Array<{
+          number?: unknown;
+          body?: unknown;
+        }>;
+      } catch {
+        return { ok: false };
+      }
+      if (!Array.isArray(rawIssues)) return { ok: false };
+      if (rawIssues.length < limit) return { ok: true, issues: rawIssues };
+      if (limit >= ISSUE_LIST_MAX_LIMIT) return { ok: false };
+      limit = Math.min(limit * 2, ISSUE_LIST_MAX_LIMIT);
+    }
+  };
 
-  let rawIssues: Array<{ number?: unknown; body?: unknown }>;
-  try {
-    rawIssues = JSON.parse(issueResult.stdout.trim() || '[]') as Array<{
-      number?: unknown;
-      body?: unknown;
-    }>;
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(rawIssues) || rawIssues.length === 0) return [];
+  const listed = await listOpenIssues();
+  if (!listed.ok) return { issueNumbers: [], complete: false };
+  if (listed.issues.length === 0) return { issueNumbers: [], complete: true };
 
-  // 2. Get art paths already present in baseRef (previously landed).
-  //    Non-fatal on error: we fall back to changedPaths-only coverage.
+  // Inspect the exact post-promotion tree, not just path names:
+  // an asset is closable only when path + manifest contentHash both match.
   const lsResult = await exec(
     'git',
-    ['ls-tree', '--name-only', '-r', baseRef, '--', ...ASSET_SURFACE_PATHS],
+    ['ls-tree', '--name-only', '-r', promotedRef, '--', ...ASSET_SURFACE_PATHS],
     { cwd: repoRoot },
   );
-  const mainPaths = new Set<string>(
-    lsResult.code === 0
-      ? lsResult.stdout
-          .split('\n')
-          .map((l) => l.trim())
-          .filter((l) => l !== '')
-      : [],
+  if (lsResult.code !== 0) return { issueNumbers: [], complete: false };
+  const promotedPaths = new Set<string>(
+    lsResult.stdout
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l !== ''),
   );
 
-  // 3. Union: paths covered AFTER this PR merges = changedPaths ∪ existing-in-main.
-  const coveredPaths = new Set<string>([...changedPaths, ...mainPaths]);
+  const manifestResult = await exec(
+    'git',
+    ['show', `${promotedRef}:public/assets/generated/manifest.json`],
+    { cwd: repoRoot },
+  );
+  if (manifestResult.code !== 0) return { issueNumbers: [], complete: false };
+  let parsedManifest: { entries?: Record<string, unknown> };
+  try {
+    parsedManifest = JSON.parse(manifestResult.stdout) as { entries?: Record<string, unknown> };
+  } catch {
+    return { issueNumbers: [], complete: false };
+  }
+  const manifestEntries = parsedManifest.entries ?? {};
+  const manifestHashes = new Map<string, string>();
+  for (const entry of Object.values(manifestEntries)) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const assetPath = (entry as { assetPath?: unknown }).assetPath;
+    const contentHash = (entry as { contentHash?: unknown }).contentHash;
+    if (typeof assetPath !== 'string' || typeof contentHash !== 'string') continue;
+    manifestHashes.set(assetPath, contentHash);
+  }
 
-  // 4. Keep only issues whose complete asset set is fully covered.
   const closing: number[] = [];
-  for (const raw of rawIssues) {
+  for (const raw of listed.issues) {
     if (typeof raw.number !== 'number') continue;
     if (typeof raw.body !== 'string') continue;
     const payload = parseAssetIssueBody(raw.body);
     if (payload === null || payload.assets.length === 0) continue;
-
-    const allCovered = payload.assets.every((asset) =>
-      coveredPaths.has(`public/assets/${asset.assetPath}`),
-    );
+    const allCovered = payload.assets.every((asset) => {
+      if (typeof asset.contentHash !== 'string' || asset.contentHash === '') return false;
+      const fullPath = `public/assets/${asset.assetPath}`;
+      if (!promotedPaths.has(fullPath)) return false;
+      return manifestHashes.get(asset.assetPath) === asset.contentHash;
+    });
     if (allCovered) closing.push(raw.number);
   }
 
-  return closing.sort((a, b) => a - b);
+  return { issueNumbers: closing.sort((a, b) => a - b), complete: true };
 }
 
 /** Result of locating the open promote PR: its number and current labels. */
@@ -802,13 +843,14 @@ export async function runReconcile(
     // 7. Open or update the ONE promote → main PR (idempotent; never duplicate).
     //    Compute closing issue numbers non-fatally (transient gh failure must
     //    never abort the reconcile cycle; we just omit the closing keywords).
-    const closingIssueNumbers = await computeClosingIssueNumbers(
+    const closingIssueDiscovery = await computeClosingIssueNumbers(
       deps.exec,
       repoRoot,
       baseRef,
-      changedPaths,
       repo,
+      promoteCommit,
     );
+    const closingIssueNumbers = closingIssueDiscovery.issueNumbers;
     const { title, body } = buildPrContent(
       changedPaths,
       promoteCommit,
@@ -911,34 +953,34 @@ export async function runReconcile(
       created = false;
     }
 
-    // 8. Arm auto-merge (squash). Idempotent: re-arming an already-armed PR is a
-    //    no-op on GitHub's side. `--match-head-commit <promoteCommit>` makes the
-    //    arm ABORT if the promote head SHA has drifted since we pushed it —
-    //    arm-time drift defense. NOTE: this validates only at ARM time, not at
-    //    the eventual merge; full merge-time protection requires a branch ruleset
-    //    restricting `assets/promote` pushes to the reconciler identity (see the
-    //    ADR Risks section). The sole-writer promote branch + single concurrency
-    //    lane is the primary guarantee here.
-    await mustGh(deps.exec, repoRoot, [
-      'pr',
-      'merge',
-      String(prNumber),
-      ...repoArgs(repo),
-      '--auto',
-      '--squash',
-      '--match-head-commit',
-      promoteCommit,
-    ]);
+    // 8. Arm auto-merge (squash) only when issue-closure discovery completed.
+    // If discovery fails, defer arming so the next cycle can restore the PR body
+    // closure contract before merge.
+    let armed = false;
+    if (closingIssueDiscovery.complete) {
+      await mustGh(deps.exec, repoRoot, [
+        'pr',
+        'merge',
+        String(prNumber),
+        ...repoArgs(repo),
+        '--auto',
+        '--squash',
+        '--match-head-commit',
+        promoteCommit,
+      ]);
+      armed = true;
+    }
 
     return {
       status: 'pr-open',
       promoteBranch,
       prNumber,
       created,
-      armed: true,
+      armed,
       promoteCommit,
       changedPaths,
       closingIssueNumbers,
+      closingIssueDiscoveryComplete: closingIssueDiscovery.complete,
     };
   });
 }
