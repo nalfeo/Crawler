@@ -247,12 +247,17 @@ Neutral (yours):
 - replacing a dependency's algorithm with an **exactly-equivalent** in-repo one.
   This is neutral only if you reproduce its tie-breaking, iteration order, and
   side-effect call pattern exactly, and prove it with a **differential oracle**
-  (run both against thousands of fixtures, compare results element-by-element)
-  on top of the fingerprint. `src/core/map/astar-grid.ts` is the worked example:
-  its header documents the exact-ordering contract it must honour, and it keeps
-  the original dependency as a fallback for the input shape the fast path cannot
-  represent. If you cannot state that contract, you are not doing this — you are
-  doing the "different result" case below.
+  on top of the fingerprint. The oracle must compare **both** halves of the
+  contract across thousands of fixtures: returned results element-by-element,
+  **and** the observable side-effect trace — the ordered sequence of calls made
+  to any caller-supplied callback. Comparing results alone is not enough: a
+  variant that prunes "redundant" callback invocations returns identical paths
+  while changing what a stateful callback observes. `src/core/map/astar-grid.ts`
+  is the worked example — it documents its ordering contract in the header,
+  compares ordered passability-probe traces, and keeps the original dependency
+  as a fallback for the input shape the fast path cannot represent. If you
+  cannot state that contract, you are not doing this — you are doing the
+  "different result" case below.
 
 **Not neutral (hand off, do not land):**
 

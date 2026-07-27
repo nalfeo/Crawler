@@ -101,12 +101,15 @@ In that case the per-call number is your headline and the end-to-end number is
 explicitly reported as "inside noise", not as the win.
 
 **Microbenches on this codebase must be same-process and interleaved.** Run
-`before` and `after` alternately in one process for N paired rounds and compare
-medians. Separate process runs are not comparable here: observed per-call
-medians for the same code vary by ~2.7× run-to-run, which is wider than most
-wins you will find. A real win shows **non-overlapping** distributions — the
-worst `after` sample beats the best `before` sample. If they overlap, you do
-not have a result yet.
+`before` and `after` alternately in one process for N paired rounds. Separate
+process runs are not comparable here: observed per-call medians for the same
+code vary by ~2.7× run-to-run, which is wider than most wins you will find.
+
+**The authoritative pass criterion is the paired one below**, not raw
+distribution overlap. Raw `before`/`after` distributions can overlap while every
+individual round still shows a win — that is a real result, and the older
+"worst `after` must beat the best `before`" phrasing wrongly rejects it. Use
+raw non-overlap only as a quick sanity signal, never as the gate.
 
 **Warm up with SEVERAL rotated sweeps before the first timed round.** One
 warmup sweep is not enough: V8 is still tiering up during the early timed
@@ -118,12 +121,19 @@ rotate (`variants[(w + i) % variants.length]`) so tiering pressure lands
 symmetrically on every variant.
 
 **Report paired per-round ratios, not a ratio of aggregate medians.** Compute
-`before/after` _within_ each round, then take the median of those ratios. A
-machine-wide stall inflates every variant in that round together, so pairing
-cancels it; comparing separately-aggregated medians does not, and makes a
-consistent win look like overlapping noise. Report **rounds won** (`9/9`) and
-the **worst single round** — the worst round is your defensible headline, never
-the best.
+`before/after` _within_ each round, then take the median of those ratios.
+Pairing controls **shared round-level drift** — thermal state, background load,
+tiering — because those affect the variants measured close together in the same
+round. It does **not** make the measurement immune to noise: a transient GC or
+scheduler stall can land on a single variant and skew one round on its own.
+That is exactly why the pass criterion is a distribution of paired ratios, not
+one round.
+
+**Pass criterion:** the median paired ratio is the win, and it is a win only if
+the change wins a large majority of rounds — report **rounds won** (`9/9`) and
+the **worst single round**. A stall-skewed round shows up as an outlier in that
+spread rather than silently moving the headline. The worst round is your
+defensible headline, never the best.
 
 **Run the finished bench in at least two separate process invocations and
 publish the range**, not one run's median. A single invocation's median is
