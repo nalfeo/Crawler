@@ -3700,6 +3700,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-floor-runner-var-10",
+    "kind": "sprite",
+    "label": "welcome-room-floor-runner-var-10",
+    "description": "Generated sprite from brief: welcome-room-floor-runner.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-runner-var-10",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-runner-var-10.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-floor-scuff-var-4",
     "kind": "sprite",
     "label": "welcome-room-floor-scuff-var-4",
