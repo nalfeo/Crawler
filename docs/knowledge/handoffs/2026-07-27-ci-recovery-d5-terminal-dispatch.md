@@ -21,6 +21,18 @@ one remaining gap was the **terminal** dispatch table (R26–R34 + the
 GC-\* rows) — it existed only as test-only scaffolding/design reference in
 PR #2044, not wired into the runtime driver.
 
+**Why manual clean-room, not automated conflict resolution**: the CI conflict
+coordinator itself could not resolve this cluster — both #1923 and #2044 were
+repeatedly skipped as `ci-conflict-order-wait` with no active slot and every
+candidate already escalated (an all-escalated/no-active-slot dead end). That
+gap in the coordinator's own recovery path is tracked separately as issue
+**#2095** ("CI conflict coordinator needs an executable recovery path for
+all-escalated clusters") — filed as the automation follow-up explaining why
+this manual clean-room session was required. **This PR does not implement any
+part of #2095's coordinator redesign; #2095 is out of scope here and is
+deliberately left for separate work.** This PR's scope is limited to #1858's
+D5 terminal-dispatch-table gate.
+
 This PR adds `buildTerminalDecisionTable()` / `selectTerminalAction(ctx)` /
 `assertTerminalTableInvariant(rows)` to
 `.github/scripts/ci-recovery/dispatch-table.mjs`, and replaces the entire
@@ -144,6 +156,9 @@ checks) apply uniformly to all 9 rows regardless of which are exercised live.
 - PR #1923 and PR #2044 remain open; this PR supersedes both but does not
   close them (per instruction) — they should be closed once this replacement
   merges.
+- Issue #2095 (conflict coordinator's all-escalated/no-active-slot dead end)
+  remains open and unaddressed by this PR — deliberately out of scope. It is
+  the automation-side follow-up; see the "Why manual clean-room" note above.
 
 ## Recommended next steps
 
