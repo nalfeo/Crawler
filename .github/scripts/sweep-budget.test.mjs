@@ -60,12 +60,37 @@ test('latent backlog deduplicates merge-train and recovery demand by PR number',
     head: { repo: { full_name: repository } },
   };
   const pullRequests = [
+    // Counted once by the merge-train queue (carries the queue label).
     { ...base, number: 1, labels: [{ name: 'merge-train' }] },
+    // Counted once by the recovery backlog (unlabelled, so nothing excludes it).
     { ...base, number: 2, labels: [] },
+    // Excluded from BOTH: no queue label for the train, and `merge-train-blocked`
+    // is an externally-blocked label, so the recovery backlog skips it rather than
+    // letting it consume a bounded REPAIR_WINDOW_SIZE slot.
     { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] },
+    // Excluded from both: no queue label, and explicitly opted out of recovery.
     { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
   ];
-  assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
+  assert.equal(countLatentBacklog({ pullRequests, repository }), 2);
+});
+
+// Pins the externally-blocked exclusion on its own, so a future change to
+// EXTERNALLY_BLOCKED_LABEL_NAMES fails here with an unambiguous message instead
+// of silently shifting the aggregate count in the test above.
+test('latent backlog excludes externally-blocked PRs from the recovery backlog', () => {
+  const repository = 'nalfeo/Crawler';
+  const base = {
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-21T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: repository } },
+  };
+  const blocked = [{ ...base, number: 10, labels: [{ name: 'merge-train-blocked' }] }];
+  assert.equal(countLatentBacklog({ pullRequests: blocked, repository }), 0);
+
+  const unblocked = [{ ...base, number: 10, labels: [] }];
+  assert.equal(countLatentBacklog({ pullRequests: unblocked, repository }), 1);
 });
 
 test('runner inspection excludes all broad sweeps and counts queued non-sweep runs', async () => {
