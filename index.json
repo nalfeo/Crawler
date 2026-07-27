@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c6d8d04b20e3f512b0f6d3715fb314e4a2b96dfb",
+    "commitDate": "2026-07-27T04:10:49Z",
+    "commitSubject": "Redesign Producer orchestration around validated planning contracts (#2086)",
+    "capturedAt": "2026-07-27T05:20:59.335Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30236824859",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/c6d8d04b20e3f512b0f6d3715fb314e4a2b96dfb.json"
+  },
+  {
     "commit": "04027ee531d271d9773432a14273c445dba6a1d1",
     "commitDate": "2026-07-27T03:55:13Z",
     "commitSubject": "feat(sprites): add 60 approved assets (1 check-in) (#2090)",
