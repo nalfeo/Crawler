@@ -169,13 +169,13 @@ export function evaluateAdmission(prFacts, config = {}) {
 export function isTrustedTrainPromotionCheck(check, trustedAppId) {
   return Boolean(
     check &&
-      check.name === 'merge-train' &&
-      check.status === 'completed' &&
-      check.conclusion === 'success' &&
-      Number.isInteger(trustedAppId) &&
-      Number(check.app?.id) === trustedAppId &&
-      typeof check.external_id === 'string' &&
-      TRAIN_PROMOTION_FINGERPRINT_SHAPE.test(check.external_id),
+    check.name === 'merge-train' &&
+    check.status === 'completed' &&
+    check.conclusion === 'success' &&
+    Number.isInteger(trustedAppId) &&
+    Number(check.app?.id) === trustedAppId &&
+    typeof check.external_id === 'string' &&
+    TRAIN_PROMOTION_FINGERPRINT_SHAPE.test(check.external_id),
   );
 }
 
@@ -454,9 +454,9 @@ export function assertOwnershipInvariant({ labelExists, state }) {
 export function isDuplicateDispatch(state, fingerprint) {
   return Boolean(
     state &&
-      state.owner === 'automation' &&
-      ['active', 'dispatched', 'escalated'].includes(state.status) &&
-      state.fingerprint === fingerprint,
+    state.owner === 'automation' &&
+    ['active', 'dispatched', 'escalated'].includes(state.status) &&
+    state.fingerprint === fingerprint,
   );
 }
 
@@ -492,6 +492,25 @@ export function automationStallAction({
   // stale-retry logic) so legacy states always receive a single retry.
   const stallAttempt = state.progressKey ? state.attempt : 0;
   return stallAttempt >= 2 ? 'release' : 'retry';
+}
+
+// True only for a live *shepherd* lease — a human/session-driven owner that is
+// actively editing the branch. Routine `automation` ownership is deliberately
+// excluded.
+//
+// Incident 2026-07-27: the conflict coordinator's `activeSafe` gate used
+// `isHealthyRecoveryOwner`, which also returns true for ordinary
+// `owner=automation` states. Because the coordinator dispatches CI recovery for
+// its own active slot, every dispatch immediately made the slot "healthy",
+// which forced `activeSafe=false`, left `activeNumber=null`, and re-fenced the
+// whole group. A 12-PR cluster sat with `ORDER_WAIT` on every member and a
+// clean (`proof=applied`) leader that could never promote. Splitting the
+// shepherd case out restores the behaviour the coordinator comment always
+// described. See issue #2095.
+export function isHealthyShepherdLease({ prNumber, state, now = new Date() }) {
+  if (!state || state.prNumber !== prNumber) return false;
+  if (state.owner !== 'shepherd') return false;
+  return state.status === 'active' && !isLeaseExpired(state, now);
 }
 
 export function isHealthyRecoveryOwner({ prNumber, state, headSha = null, now = new Date() }) {
