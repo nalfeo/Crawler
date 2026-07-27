@@ -108,6 +108,24 @@ describe('headingSet and sectionBody', () => {
   it('does not treat a section name as a regular expression', () => {
     expect(sectionBody(doc, 'A.ent')).toBeNull();
   });
+
+  it('ignores level-2 headings that appear inside fenced code blocks', () => {
+    const fenced = [
+      '## Responsibilities',
+      '',
+      '```md',
+      '## Agent',
+      '```',
+      '',
+      '## Agent',
+      '',
+      'real content',
+    ].join('\n');
+    expect([...headingSet(fenced)]).toEqual(['Responsibilities', 'Agent']);
+    expect(sectionBody(fenced, 'Responsibilities')).toContain('```md');
+    expect(sectionBody(fenced, 'Responsibilities')).toContain('## Agent');
+    expect(sectionBody(fenced, 'Responsibilities')).not.toContain('real content');
+  });
 });
 
 describe('referencedAgents', () => {
@@ -122,6 +140,12 @@ describe('referencedAgents', () => {
 
   it('returns an empty list when no agent is named', () => {
     expect(referencedAgents('No agents here, just `docs/x.md`.')).toEqual([]);
+  });
+
+  it('requires a real .md boundary so near-miss filenames are not matched', () => {
+    expect(referencedAgents('reviewer.agent.mdx')).toEqual([]);
+    expect(referencedAgents('reviewer.agent.md.bak')).toEqual([]);
+    expect(referencedAgents('(reviewer.agent.md)')).toEqual(['reviewer.agent.md']);
   });
 });
 
@@ -210,6 +234,12 @@ describe('frontmatterDescription', () => {
     expect(frontmatterDescription('---\ndescription: x\n')).toBeNull();
     expect(frontmatterDescription('---\nname: X\n---\n')).toBeNull();
     expect(frontmatterDescription("---\ndescription: ''\n---\n")).toBeNull();
+  });
+
+  it('returns null for non-string, empty-block, or invalid YAML description values', () => {
+    expect(frontmatterDescription('---\ndescription: null\n---\n')).toBeNull();
+    expect(frontmatterDescription('---\ndescription: >\n---\n')).toBeNull();
+    expect(frontmatterDescription("---\ndescription: 'unterminated\n---\n")).toBeNull();
   });
 
   it('ignores a description that appears only in the body', () => {

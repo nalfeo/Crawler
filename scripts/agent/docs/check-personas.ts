@@ -204,10 +204,22 @@ async function main(): Promise<void> {
         });
       }
     }
+    const canonicalPersona = canonicalOwner.get(agent);
+    if (canonicalPersona !== undefined && !personas.includes(canonicalPersona)) {
+      report.error(
+        `Agent \`${agent}\` is canonically owned by \`${canonicalPersona}\` but does not backlink to it.`,
+        {
+          file: rel,
+          remediation: `Add \`${PERSONA_DIR}/${canonicalPersona}\` to this agent doc so persona↔agent ownership stays bidirectional.`,
+        },
+      );
+    }
   }
 
   // 6. No orphan agents: each agent is a persona's agent or a listed sibling.
-  const readmeAgents = referencedAgents(readmeText);
+  const personaIndex = sectionBody(readmeText, 'Persona Index') ?? '';
+  const agentIndex = sectionBody(readmeText, 'Agent Index') ?? '';
+  const readmeAgents = referencedAgents(`${personaIndex}\n${agentIndex}`);
   for (const agent of agentFiles) {
     if (claimedByPersona.has(agent)) continue;
     if (readmeAgents.includes(agent)) continue;

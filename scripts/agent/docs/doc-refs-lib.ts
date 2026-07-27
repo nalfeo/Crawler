@@ -1,3 +1,5 @@
+import { parseDocument } from 'yaml';
+
 /**
  * doc-refs-lib.ts — Pure reference-extraction helpers shared by the docs guards
  * (`check-paths.ts`, `check-personas.ts`).
@@ -88,7 +90,11 @@ export function resolveLinkTarget(doc: string, target: string): string | null {
 /** The set of `## <heading>` names present in a Markdown document. */
 export function headingSet(text: string): Set<string> {
   const headings = new Set<string>();
+  let fence: string | null = null;
   for (const line of text.split('\n')) {
+    const wasInFence = fence !== null;
+    fence = nextFenceState(fence, line);
+    if (wasInFence || fence !== null) continue;
     const match = /^##\s+(.+?)\s*$/.exec(line);
     if (match && match[1]) headings.add(match[1]);
   }
@@ -99,17 +105,32 @@ export function headingSet(text: string): Set<string> {
 export function sectionBody(text: string, name: string): string | null {
   const lines = text.split('\n');
   const heading = new RegExp(`^##\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`);
-  const start = lines.findIndex((line) => heading.test(line));
+  let fence: string | null = null;
+  let start = -1;
+  for (const [index, line] of lines.entries()) {
+    const wasInFence = fence !== null;
+    fence = nextFenceState(fence, line);
+    if (wasInFence || fence !== null) continue;
+    if (heading.test(line)) {
+      start = index;
+      break;
+    }
+  }
   if (start < 0) return null;
-  const rest = lines.slice(start + 1);
-  const end = rest.findIndex((line) => /^##\s+/.test(line));
-  return (end < 0 ? rest : rest.slice(0, end)).join('\n');
+  const body: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const wasInFence = fence !== null;
+    fence = nextFenceState(fence, line);
+    if (!wasInFence && fence === null && /^##\s+/.test(line)) break;
+    body.push(line);
+  }
+  return body.join('\n');
 }
 
 /** Every distinct `<name>.agent.md` referenced in a chunk of Markdown, in order. */
 export function referencedAgents(text: string): string[] {
   const found: string[] = [];
-  const re = /([a-z0-9-]+\.agent\.md)/g;
+  const re = /([a-z0-9-]+\.agent\.md)(?![a-z0-9.-])/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m[1] && !found.includes(m[1])) found.push(m[1]);
@@ -154,12 +175,17 @@ export function referencedPersonas(text: string): string[] {
 
 /** Non-empty `description:` from a leading YAML frontmatter block, or `null`. */
 export function frontmatterDescription(text: string): string | null {
-  if (!text.startsWith('---')) return null;
-  const end = text.indexOf('\n---', 3);
-  if (end < 0) return null;
-  const block = text.slice(3, end);
-  const match = /^description:\s*(.+)$/m.exec(block);
+  const match = /^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)/.exec(text);
   if (!match || !match[1]) return null;
-  const value = match[1].trim().replace(/^['"]|['"]$/g, '');
-  return value.length > 0 ? value : null;
+  let parsed;
+  try {
+    parsed = parseDocument(match[1]);
+  } catch {
+    return null;
+  }
+  if (parsed.errors.length > 0) return null;
+  const value = parsed.get('description');
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
