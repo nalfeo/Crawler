@@ -3518,6 +3518,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-bunk-bed-var-6",
+    "kind": "sprite",
+    "label": "welcome-room-bunk-bed-var-6",
+    "description": "Generated sprite from brief: welcome-room-bunk-bed.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-bunk-bed-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-bunk-bed-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-cable-coil-var-0",
     "kind": "sprite",
     "label": "welcome-room-cable-coil-var-0",
@@ -3583,6 +3596,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-carpet-var-6",
+    "kind": "sprite",
+    "label": "welcome-room-carpet-var-6",
+    "description": "Generated sprite from brief: welcome-room-carpet.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-carpet-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-carpet-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-chair-turned-var-0",
     "kind": "sprite",
     "label": "welcome-room-chair-turned-var-0",
@@ -3591,6 +3617,19 @@
     "spriteId": "welcome-room-chair-turned-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-chair-turned-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-chore-rota-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-chore-rota-var-2",
+    "description": "Generated sprite from brief: welcome-room-chore-rota.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-chore-rota-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-chore-rota-var-2.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -3635,6 +3674,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-door-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-door-var-2",
+    "description": "Generated sprite from brief: welcome-room-door.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-door-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-door-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-exit-sign-var-0",
     "kind": "sprite",
     "label": "welcome-room-exit-sign-var-0",
@@ -3648,6 +3700,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-exit-sign-wall-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-exit-sign-wall-var-2",
+    "description": "Generated sprite from brief: welcome-room-exit-sign-wall.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-exit-sign-wall-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-exit-sign-wall-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-floor-path-var-5",
     "kind": "sprite",
     "label": "welcome-room-floor-path-var-5",
@@ -3656,6 +3721,71 @@
     "spriteId": "welcome-room-floor-path-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-floor-path-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-floor-plate-cable-run-var-4",
+    "kind": "sprite",
+    "label": "welcome-room-floor-plate-cable-run-var-4",
+    "description": "Generated sprite from brief: welcome-room-floor-plate-cable-run.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-plate-cable-run-var-4",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-plate-cable-run-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-floor-plate-clean-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-floor-plate-clean-var-2",
+    "description": "Generated sprite from brief: welcome-room-floor-plate-clean.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-plate-clean-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-plate-clean-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-floor-plate-scuffed-var-6",
+    "kind": "sprite",
+    "label": "welcome-room-floor-plate-scuffed-var-6",
+    "description": "Generated sprite from brief: welcome-room-floor-plate-scuffed.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-plate-scuffed-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-plate-scuffed-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-floor-plate-tape-mark-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-floor-plate-tape-mark-var-0",
+    "description": "Generated sprite from brief: welcome-room-floor-plate-tape-mark.",
+    "tags": ["tile", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-plate-tape-mark-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-plate-tape-mark-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-floor-runner-var-10",
+    "kind": "sprite",
+    "label": "welcome-room-floor-runner-var-10",
+    "description": "Generated sprite from brief: welcome-room-floor-runner.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-floor-runner-var-10",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-floor-runner-var-10.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -3804,6 +3934,45 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-history-board-var-3",
+    "kind": "sprite",
+    "label": "welcome-room-history-board-var-3",
+    "description": "Generated sprite from brief: welcome-room-history-board.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-history-board-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-history-board-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-kitchenette-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-kitchenette-var-0",
+    "description": "Generated sprite from brief: welcome-room-kitchenette.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-kitchenette-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-kitchenette-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-laundry-line-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-laundry-line-var-0",
+    "description": "Generated sprite from brief: welcome-room-laundry-line.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-laundry-line-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-laundry-line-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-lounge-stool-var-1",
     "kind": "sprite",
     "label": "welcome-room-lounge-stool-var-1",
@@ -3825,6 +3994,19 @@
     "spriteId": "welcome-room-merchant-board-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-merchant-board-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-mini-fridge-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-mini-fridge-var-2",
+    "description": "Generated sprite from brief: welcome-room-mini-fridge.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-mini-fridge-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-mini-fridge-var-2.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -3890,6 +4072,19 @@
     "spriteId": "welcome-room-side-table-var-12",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-side-table-var-12.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-stanchion-pair-var-4",
+    "kind": "sprite",
+    "label": "welcome-room-stanchion-pair-var-4",
+    "description": "Generated sprite from brief: welcome-room-stanchion-pair.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-stanchion-pair-var-4",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-stanchion-pair-var-4.png",
     "frame": 0,
     "col": 0,
     "row": 0

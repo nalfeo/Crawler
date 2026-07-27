@@ -14229,6 +14229,116 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "welcome-room-bunk-bed-var-6": {
+      "briefId": "welcome-room-bunk-bed",
+      "spriteName": "welcome-room-bunk-bed-var-6",
+      "assetPath": "generated/welcome-room-bunk-bed-var-6.png",
+      "approvedAt": "2026-07-26T23:51:44.956Z",
+      "sourceRun": "generated/runs/welcome-room-bunk-bed/2026-07-26T23-38-22-56dd7acc",
+      "variantIndex": 6,
+      "anchor": {
+        "x": 48,
+        "y": 38,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 48,
+          "y": 38,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 48,
+          "y": 38,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 48,
+            "y": 38
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 6,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-26T23:40:26.759Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The bunk bed design effectively conveys the intended narrative of contested living space. The neat and messy tiers are clearly differentiated, and the salvaged, worn aesthetic fits the Crawler design language. However, the personal encrustation on the messy tier could be slightly more pronounced to enhance the storytelling."
+        },
+        "referenceStyleMatch": {
+          "score": 5,
+          "rationale": "The sprite matches the approved references in terms of outline weight, palette depth, shading, and overall rendering style. The muted colors and restrained use of highlights are consistent with the Crawler aesthetic."
+        },
+        "styleMatch": {
+          "score": 5,
+          "rationale": "The sprite matches the approved references in terms of outline weight, palette depth, shading, and overall rendering style. The muted colors and restrained use of highlights are consistent with the Crawler aesthetic."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite accurately depicts a two-tier bunk bed with a neat and messy tier, mismatched bedding, and a salvaged aesthetic. The proportions and perspective are correct, and the ladder is placed on one side as specified."
+        },
+        "readability": {
+          "score": 4,
+          "rationale": "The silhouette is clear, and the two tiers are distinguishable at game scale. However, the air gap between the tiers could be slightly more pronounced to enhance clarity further."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is a grounded, world-space object with a clear base and appropriate proportions. It adheres to the specified dimensions and fills the cell as required."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 4741,
+          "completionTokens": 391,
+          "totalTokens": 5132
+        }
+      },
+      "type": "prop",
+      "contentHash": "b22dcbee5cdfd8419fa8b35fe846a1e2b255ed92c9fba20145e0b6daf993db23",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-bunk-bed\\2026-07-26T23-38-22-56dd7acc\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-bunk-bed\\2026-07-26T23-38-22-56dd7acc\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-bunk-bed\\2026-07-26T23-38-22-56dd7acc\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "welcome-room-cable-coil-var-0": {
       "briefId": "welcome-room-cable-coil",
       "spriteName": "welcome-room-cable-coil-var-0",
@@ -14779,6 +14889,116 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "welcome-room-carpet-var-6": {
+      "briefId": "welcome-room-carpet",
+      "spriteName": "welcome-room-carpet-var-6",
+      "assetPath": "generated/welcome-room-carpet-var-6.png",
+      "approvedAt": "2026-07-26T21:34:04.119Z",
+      "sourceRun": "generated/runs/welcome-room-carpet/2026-07-26T21-10-52-db84f4f6",
+      "variantIndex": 6,
+      "anchor": {
+        "x": 64,
+        "y": 74,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 64,
+          "y": 74,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 64,
+          "y": 74,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 64,
+            "y": 74
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 6,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-26T21:13:08.083Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The design captures the essence of a worn, threadbare carpet in a derelict dungeon setting. The threadbare patches, frayed edges, and worn center lane are well-executed, but the overall design could push the 'deranged reality-show' theme further for a perfect score."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering aligns well with the reference sprites in terms of outline, shading, and palette. However, the border stripe could be slightly more integrated into the overall design to better match the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering aligns well with the reference sprites in terms of outline, shading, and palette. However, the border stripe could be slightly more integrated into the overall design to better match the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite clearly depicts a threadbare red runner carpet with all the specified details, including the worn patches, frayed edges, and border stripe."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette and details are clear at game scale, and the threadbare patches and frayed edges are easily distinguishable on the dark floor tile."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is a flat, top-down view of a carpet with no perspective issues. The edges are clean, and the fringe is well-contained within the canvas."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The candidate is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 4419,
+          "completionTokens": 372,
+          "totalTokens": 4791
+        }
+      },
+      "type": "prop",
+      "contentHash": "c15b292e6736db877ce23d479d90048ddce63036bef8a55f19bbc56a52536771",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-carpet\\2026-07-26T21-10-52-db84f4f6\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-carpet\\2026-07-26T21-10-52-db84f4f6\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-carpet\\2026-07-26T21-10-52-db84f4f6\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "welcome-room-chair-turned-var-0": {
       "briefId": "welcome-room-chair-turned",
       "spriteName": "welcome-room-chair-turned-var-0",
@@ -14886,6 +15106,116 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-chore-rota-var-2": {
+      "briefId": "welcome-room-chore-rota",
+      "spriteName": "welcome-room-chore-rota-var-2",
+      "assetPath": "generated/welcome-room-chore-rota-var-2.png",
+      "approvedAt": "2026-07-26T23:38:48.620Z",
+      "sourceRun": "generated/runs/welcome-room-chore-rota/2026-07-26T23-26-39-570e1869",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 47,
+        "y": 43,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 47,
+          "y": 43,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 47,
+          "y": 43,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 47,
+            "y": 43
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 2,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-26T23:27:47.232Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept of a worn, hand-ruled chore rota board with visible signs of anger and neglect fits well within the darkly humorous and deranged reality-show aesthetic of Crawler. The details like the crooked hanging and the scratched-out marks add personality and narrative depth. However, the board could benefit from slightly more exaggerated damage or wear to enhance its storytelling potential."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The sprite matches the reference style in terms of outline weight, palette, and shading. The muted colors and restrained use of highlights and shadows align well with the approved references. However, the wood texture could use slightly more refinement to better match the level of detail in the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The sprite matches the reference style in terms of outline weight, palette, and shading. The muted colors and restrained use of highlights and shadows align well with the approved references. However, the wood texture could use slightly more refinement to better match the level of detail in the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite accurately depicts a wall-mounted chore rota board with all the specified details, including the hand-ruled grid, tally marks, crossed-out entries, and a slightly crooked hanging. The proportions and orientation are correct, and the absence of readable text is consistent with the brief."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and distinct at game scale, and the board's details are legible without compromising the overall readability. The slight thickness along the lower and right edges effectively conveys its physicality as a mounted object."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is a grounded, self-contained object with a clear top-down perspective and appropriate tile footprint. It adheres to the brief's requirements for transparency and avoids any unnecessary background elements."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 4613,
+          "completionTokens": 430,
+          "totalTokens": 5043
+        }
+      },
+      "type": "prop",
+      "contentHash": "b5d21a8163459f6f399588d6e2b79f71b5456c826fe0e97bb7f178445df9325d",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chore-rota\\2026-07-26T23-26-39-570e1869\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chore-rota\\2026-07-26T23-26-39-570e1869\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chore-rota\\2026-07-26T23-26-39-570e1869\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
@@ -15143,6 +15473,116 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "welcome-room-door-var-2": {
+      "briefId": "welcome-room-door",
+      "spriteName": "welcome-room-door-var-2",
+      "assetPath": "generated/welcome-room-door-var-2.png",
+      "approvedAt": "2026-07-27T03:45:00.129Z",
+      "sourceRun": "generated/runs/welcome-room-door/2026-07-27T03-32-46-40e6f724",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 47,
+        "y": 120,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 47,
+          "y": 120,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 47,
+          "y": 64,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-derivable",
+          "anchor": {
+            "x": 47,
+            "y": 120
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 2,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T03:34:05.775Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The design captures the essence of a heavy, grimy dungeon door with clear iron banding, a ring handle, and a stone frame. The proportions are now correct, and the door feels appropriately unwelcoming. However, the stone frame could use slightly more wear and texture to better match the Crawler aesthetic."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering is consistent with the references in terms of outline weight, shading, and palette. However, the stone frame's texture could be slightly more detailed to better match the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering is consistent with the references in terms of outline weight, shading, and palette. However, the stone frame's texture could be slightly more detailed to better match the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The candidate matches the brief's description, including the correct proportions, materials, and details such as the iron banding, rivets, and ring handle. The door is clearly a single, closed, heavy wooden door in a stone frame."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The door and its frame are easily recognizable, and the key details such as the iron bands and handle are legible."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The door is presented as a grounded, world-space object with a clear base and top-down perspective. The proportions are correct, and the door occupies the appropriate space within the cell."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The candidate is a significant improvement over previous iterations and meets the brief's requirements in terms of proportions and design. Minor adjustments could enhance its adherence to the reference style, but it is not fundamentally flawed.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 5007,
+          "completionTokens": 425,
+          "totalTokens": 5432
+        }
+      },
+      "type": "prop",
+      "contentHash": "4c44770ce60701c89456ecfdfc0d50336c2e618b32b64e5382d8232d75d52d37",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-door\\2026-07-27T03-32-46-40e6f724\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-door\\2026-07-27T03-32-46-40e6f724\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-door\\2026-07-27T03-32-46-40e6f724\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "welcome-room-exit-sign-var-0": {
       "briefId": "welcome-room-exit-sign",
       "spriteName": "welcome-room-exit-sign-var-0",
@@ -15253,6 +15693,116 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "welcome-room-exit-sign-wall-var-2": {
+      "briefId": "welcome-room-exit-sign-wall",
+      "spriteName": "welcome-room-exit-sign-wall-var-2",
+      "assetPath": "generated/welcome-room-exit-sign-wall-var-2.png",
+      "approvedAt": "2026-07-27T03:44:37.830Z",
+      "sourceRun": "generated/runs/welcome-room-exit-sign-wall/2026-07-27T03-18-53-e69c85ca",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 40,
+        "y": 54,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 40,
+          "y": 54,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 40,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 40,
+            "y": 32
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 2,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T03:20:13.883Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept aligns well with the Crawler design language. The sign is appropriately grimy and worn, with a clear sense of neglect and decay. The pictogram and arrow are simple and readable, and the overall aesthetic fits the dark, retro-futurist dungeon theme. However, the grime and damage could be slightly more exaggerated to enhance the 'half-dead' look."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The muted tones and restrained use of highlights are consistent with the references. However, the grime and damage could be slightly more nuanced to better match the level of detail in the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The muted tones and restrained use of highlights are consistent with the references. However, the grime and damage could be slightly more nuanced to better match the level of detail in the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite adheres closely to the brief. The proportions are correct, the mounting bracket is low-profile, and the sign is drawn flat-on with no perspective distortion. The pictogram and arrow are present and correctly rendered, and the sign reads as a wall-mounted fixture."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and readable at game scale. The sign's proportions and mounting bracket immediately convey that it is a wall-mounted fixture, not a placard lying on the floor. The pictogram and arrow are legible and distinct."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is a self-contained, grounded object with a clear top-down perspective. It fits well within the cell and adheres to the specified dimensions and placement. The transparent background is clean and consistent with the brief."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.9,
+        "usage": {
+          "promptTokens": 4377,
+          "completionTokens": 458,
+          "totalTokens": 4835
+        }
+      },
+      "type": "prop",
+      "contentHash": "63481d1c0988d64e7318de3f2078874d72d9c7ddf9e02f733c7421a375bc64e9",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-exit-sign-wall\\2026-07-27T03-18-53-e69c85ca\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-exit-sign-wall\\2026-07-27T03-18-53-e69c85ca\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-exit-sign-wall\\2026-07-27T03-18-53-e69c85ca\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "welcome-room-floor-path-var-5": {
       "briefId": "welcome-room-floor-path",
       "spriteName": "welcome-room-floor-path-var-5",
@@ -15360,6 +15910,540 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-path\\2026-07-25T21-02-56-215dc2ec\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-path\\2026-07-25T21-02-56-215dc2ec\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-path\\2026-07-25T21-02-56-215dc2ec\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-floor-plate-cable-run-var-4": {
+      "briefId": "welcome-room-floor-plate-cable-run",
+      "spriteName": "welcome-room-floor-plate-cable-run-var-4",
+      "assetPath": "generated/welcome-room-floor-plate-cable-run-var-4.png",
+      "approvedAt": "2026-07-27T07:10:50.992Z",
+      "sourceRun": "generated/runs/welcome-room-floor-plate-cable-run/2026-07-27T06-48-17-cd3b4673",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 127,
+            "y": 127
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 4,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T06:50:23.567Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept of a cable run with taped-down straps is clear and fits the dark-fantasy dungeon studio aesthetic. The grime and adhesive marks add a sense of wear and realism, but the cable's curve could be slightly more natural."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the references in terms of outline, palette, and shading. The tonal range and desaturation are consistent with the style, but the tape's yellow could be slightly more muted to better align with the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the references in terms of outline, palette, and shading. The tonal range and desaturation are consistent with the style, but the tape's yellow could be slightly more muted to better align with the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The candidate fully matches the brief, including the cool grey concrete base, flat cable, and acid-yellow tape straps. The grime and adhesive ghosts are appropriately subtle."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette of the cable and tape is clear and distinct at game scale. The elements are well-integrated into the tile without any visual integrity defects."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The candidate adheres to the brief and is stylistically consistent with the references. Minor improvements could enhance the overall quality.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 4618,
+          "completionTokens": 300,
+          "totalTokens": 4918
+        }
+      },
+      "type": "tile",
+      "contentHash": "8cca5f367cd556d3efeeb807fd7dd07911ddc1072191fac24b2abb433199c031",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-cable-run\\2026-07-27T06-48-17-cd3b4673\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-cable-run\\2026-07-27T06-48-17-cd3b4673\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-cable-run\\2026-07-27T06-48-17-cd3b4673\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-floor-plate-clean-var-2": {
+      "briefId": "welcome-room-floor-plate-clean",
+      "spriteName": "welcome-room-floor-plate-clean-var-2",
+      "assetPath": "generated/welcome-room-floor-plate-clean-var-2.png",
+      "approvedAt": "2026-07-27T07:08:10.080Z",
+      "sourceRun": "generated/runs/welcome-room-floor-plate-clean/2026-07-27T06-41-49-43a58f72",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 127,
+            "y": 127
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 2,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T06:43:20.519Z",
+        "designLanguage": {
+          "score": 5,
+          "rationale": "The concept adheres to the brief's requirements for a quiet, believable studio-grade floor plate. The asymmetrical wear and subtle surface tooth are appropriate for the setting and match the intended tone of the welcome-room."
+        },
+        "referenceStyleMatch": {
+          "score": 5,
+          "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, shading stops, and production finish. The muted tones and subtle texture align well with the established style."
+        },
+        "styleMatch": {
+          "score": 5,
+          "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, shading stops, and production finish. The muted tones and subtle texture align well with the established style."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The candidate accurately depicts a cool grey concrete-composite studio panel with asymmetrical wear and no dramatic damage, as specified in the brief. It avoids all prohibited elements like borders, text, and perspective."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette reads clearly at game scale, and the surface detail is legible without overwhelming the tile. There are no visual integrity defects, and the tile integrates seamlessly into the readability composite."
+        },
+        "passed": true,
+        "minScore": 5,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The candidate meets the brief requirements and is stylistically consistent with the references.",
+        "confidence": 0.95,
+        "usage": {
+          "promptTokens": 4338,
+          "completionTokens": 308,
+          "totalTokens": 4646
+        }
+      },
+      "type": "tile",
+      "contentHash": "8a7f9400732d295cff01613b5f2474e9dbf5ea12f85e7cc97d86df983fac1744",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-clean\\2026-07-27T06-41-49-43a58f72\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-clean\\2026-07-27T06-41-49-43a58f72\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-clean\\2026-07-27T06-41-49-43a58f72\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-floor-plate-scuffed-var-6": {
+      "briefId": "welcome-room-floor-plate-scuffed",
+      "spriteName": "welcome-room-floor-plate-scuffed-var-6",
+      "assetPath": "generated/welcome-room-floor-plate-scuffed-var-6.png",
+      "approvedAt": "2026-07-27T07:09:29.600Z",
+      "sourceRun": "generated/runs/welcome-room-floor-plate-scuffed/2026-07-27T07-03-11-676f216f",
+      "variantIndex": 6,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 127,
+            "y": 127
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 6,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T07:05:34.019Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The scuffed floor plate concept aligns well with the Crawler design language, featuring subtle wear and asymmetry that avoids generic grim fantasy tropes. The scuffs and drag marks are appropriately understated and believable."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the reference style in terms of palette, tonal range, and edge treatment. The muted greys and subtle wear details are consistent with the approved sprites, though the scuff marks could be slightly more refined to match the polish of the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the reference style in terms of palette, tonal range, and edge treatment. The muted greys and subtle wear details are consistent with the approved sprites, though the scuff marks could be slightly more refined to match the polish of the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The candidate adheres closely to the brief, including the specified scuff marks, drag marks, and asymmetrical wear. The cool grey tone and lack of saturated colors are executed as instructed."
+        },
+        "readability": {
+          "score": 4,
+          "rationale": "The tile reads clearly at game scale, with the scuffs and drag marks visible but not overpowering. The silhouette is intact, and the details do not blend into the floor excessively. Slightly more contrast in the scuff marks could enhance readability further."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The candidate is functional and adheres to the brief, but minor adjustments could improve its integration with the references.",
+        "confidence": 0.9,
+        "usage": {
+          "promptTokens": 4605,
+          "completionTokens": 342,
+          "totalTokens": 4947
+        }
+      },
+      "type": "tile",
+      "contentHash": "c39e615d0030e2ac7f090c7748cb6535ef230e36e5e24c1231dfd9c36b7dc21a",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-scuffed\\2026-07-27T07-03-11-676f216f\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-scuffed\\2026-07-27T07-03-11-676f216f\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-scuffed\\2026-07-27T07-03-11-676f216f\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-floor-plate-tape-mark-var-0": {
+      "briefId": "welcome-room-floor-plate-tape-mark",
+      "spriteName": "welcome-room-floor-plate-tape-mark-var-0",
+      "assetPath": "generated/welcome-room-floor-plate-tape-mark-var-0.png",
+      "approvedAt": "2026-07-27T07:10:32.196Z",
+      "sourceRun": "generated/runs/welcome-room-floor-plate-tape-mark/2026-07-27T06-56-43-bb2ed085",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 127,
+        "y": 255,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 127,
+          "y": 255,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 127,
+          "y": 127,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 127,
+            "y": 127
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 0,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T06:57:55.291Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept of crossed tape strips on a studio floor is clear and fits the darkly humorous, improvised aesthetic of Crawler. The irregularity of the tape strips adds a hand-laid feel, but the execution could push the 'grubby' and 'aged' qualities further."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering aligns well with the references in terms of outline weight, palette depth, and shading. However, the tape's texture could better integrate with the floor's subtle wear and grime."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering aligns well with the references in terms of outline weight, palette depth, and shading. However, the tape's texture could better integrate with the floor's subtle wear and grime."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The candidate adheres closely to the brief, with two distinct, overlapping tape strips that are irregular and visibly aged. The tape is dull acid yellow and clearly contrasts with the cool grey floor."
+        },
+        "readability": {
+          "score": 4,
+          "rationale": "The tape mark is clearly visible and recognizable at game scale. However, the edges of the tape could be slightly more distinct to enhance the silhouette and avoid blending into the floor texture."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The candidate is functional but has minor issues that can be improved.",
+        "confidence": 0.9,
+        "usage": {
+          "promptTokens": 4865,
+          "completionTokens": 304,
+          "totalTokens": 5169
+        }
+      },
+      "type": "tile",
+      "contentHash": "30793e0a065aa1a0987107e088a645ea4aa707f06526098d5512d614a4be0f1c",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-tape-mark\\2026-07-27T06-56-43-bb2ed085\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-tape-mark\\2026-07-27T06-56-43-bb2ed085\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-tape-mark\\2026-07-27T06-56-43-bb2ed085\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-floor-runner-var-10": {
+      "briefId": "welcome-room-floor-runner",
+      "spriteName": "welcome-room-floor-runner-var-10",
+      "assetPath": "generated/welcome-room-floor-runner-var-10.png",
+      "approvedAt": "2026-07-27T03:43:05.980Z",
+      "sourceRun": "generated/runs/welcome-room-floor-runner/2026-07-27T03-38-25-39577cb7",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 50,
+        "y": 95,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 50,
+          "y": 95,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 50,
+          "y": 95,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 50,
+            "y": 95
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 10,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T03:40:42.786Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The design captures the worn, threadbare aesthetic of a long-used floor runner. The frayed edges, faded pinstripes, and irregular bald patches align with the dark-fantasy, derelict tone of Crawler. However, the wear pattern could be slightly more varied to enhance the sense of age and use."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering style matches the references in terms of outline treatment, palette depth, and shading. The muted, desaturated colors fit the established style, but the texture could use slightly more refinement to better integrate with the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering style matches the references in terms of outline treatment, palette depth, and shading. The muted, desaturated colors fit the established style, but the texture could use slightly more refinement to better integrate with the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The candidate adheres closely to the brief: it is a long, narrow, worn floor runner with frayed edges, faded pinstripes, and irregular bald patches. The proportions and muted color palette are accurate, and the design avoids the prohibited elements like ornate patterns or bright colors."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and distinct at game scale, and the worn texture reads well against the dark floor tile. The frayed edges and pinstripes are visible without being overly distracting."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The runner is presented as a flat, top-down decal with no unnecessary elements like shadows or borders. The proportions and placement within the cell are accurate, and the transparent background is clean."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The candidate meets the brief requirements and is usable in-game with minor improvements.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 5711,
+          "completionTokens": 398,
+          "totalTokens": 6109
+        }
+      },
+      "type": "prop",
+      "contentHash": "0fe35dc1cb899c70f31b41921d1dc0870c2398d9977fbe081afc210599827625",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-runner\\2026-07-27T03-38-25-39577cb7\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-runner\\2026-07-27T03-38-25-39577cb7\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-runner\\2026-07-27T03-38-25-39577cb7\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
@@ -16515,6 +17599,336 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "welcome-room-history-board-var-3": {
+      "briefId": "welcome-room-history-board",
+      "spriteName": "welcome-room-history-board-var-3",
+      "assetPath": "generated/welcome-room-history-board-var-3.png",
+      "approvedAt": "2026-07-27T03:44:02.129Z",
+      "sourceRun": "generated/runs/welcome-room-history-board/2026-07-27T03-04-05-b4254264",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 41,
+        "y": 56,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 41,
+          "y": 56,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 41,
+          "y": 56,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 41,
+            "y": 56
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 3,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T03:05:44.317Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept of a history board with scratched marks and crude figures fits well within the darkly humorous and deranged reality-show aesthetic of Crawler. The hearts and crossed-out marks add a layer of narrative depth and emotional resonance. However, the board could benefit from slightly more exaggerated wear and tear to enhance its 'battered' look."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the approved references in terms of outline weight, shading, and palette. The muted colors and restrained use of maroon for the hearts align with the established style. However, the wood texture could use slightly more tonal variation to match the richness of the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering matches the approved references in terms of outline weight, shading, and palette. The muted colors and restrained use of maroon for the hearts align with the established style. However, the wood texture could use slightly more tonal variation to match the richness of the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite unambiguously depicts the described history board, including the three distinct stick figures, tally marks, hearts, and chore-rota strip. All required elements are present and clearly identifiable."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and the marks on the board are bold and legible at game scale. The stick figures and hearts are distinguishable, and the overall design avoids clutter or fine details that would compromise readability."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The board is a grounded, wall-mounted object with a slight thickness that gives it a physical presence. The perspective and proportions are appropriate, and the sprite avoids any floating or extraneous elements."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 4948,
+          "completionTokens": 424,
+          "totalTokens": 5372
+        }
+      },
+      "type": "prop",
+      "contentHash": "eb646ca42dbc9269db8d35807793bb584bbb3cee95990169cedd8b7396359192",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-history-board\\2026-07-27T03-04-05-b4254264\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-history-board\\2026-07-27T03-04-05-b4254264\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-history-board\\2026-07-27T03-04-05-b4254264\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-kitchenette-var-0": {
+      "briefId": "welcome-room-kitchenette",
+      "spriteName": "welcome-room-kitchenette-var-0",
+      "assetPath": "generated/welcome-room-kitchenette-var-0.png",
+      "approvedAt": "2026-07-26T23:52:16.616Z",
+      "sourceRun": "generated/runs/welcome-room-kitchenette/2026-07-26T23-40-41-a32c3717",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 40,
+        "y": 81,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 40,
+          "y": 81,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 40,
+          "y": 45,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-derivable",
+          "anchor": {
+            "x": 40,
+            "y": 81
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 0,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-26T23:41:43.235Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The design captures the essence of a grimy, institutional break-room kitchenette with mismatched mugs, a battered kettle, and a scuffed counter. The shelf and counter are distinct, and the overall aesthetic fits the dark humor and derelict tone of Crawler. However, the grime and wear could be slightly more pronounced to enhance the 'long-used' feel."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. However, the grime and wear could be slightly more detailed to better align with the references' level of texture."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. However, the grime and wear could be slightly more detailed to better align with the references' level of texture."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite includes all the required elements: a scuffed counter, a hotplate, a kettle, mismatched mugs, and a shelf with jars and a mug. The proportions and layout match the brief's specifications."
+        },
+        "readability": {
+          "score": 4,
+          "rationale": "The silhouette is clear and distinct at game scale, with good separation between the counter, shelf, and objects. However, the kettle's spout and handle could be slightly more defined for better clarity."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is well-grounded, with the counter reaching the bottom of the cell and the shelf positioned in the top third. The negative space is well-utilized, and the sprite adheres to the required proportions and transparency guidelines."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 4945,
+          "completionTokens": 426,
+          "totalTokens": 5371
+        }
+      },
+      "type": "prop",
+      "contentHash": "21a384a83b065fac95071ffa9663bc34d3de5024c1ff3ffaee0fe81f43276dd0",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-kitchenette\\2026-07-26T23-40-41-a32c3717\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-kitchenette\\2026-07-26T23-40-41-a32c3717\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-kitchenette\\2026-07-26T23-40-41-a32c3717\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-laundry-line-var-0": {
+      "briefId": "welcome-room-laundry-line",
+      "spriteName": "welcome-room-laundry-line-var-0",
+      "assetPath": "generated/welcome-room-laundry-line-var-0.png",
+      "approvedAt": "2026-07-26T23:39:45.232Z",
+      "sourceRun": "generated/runs/welcome-room-laundry-line/2026-07-26T23-30-54-ecd3afb0",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 64,
+        "y": 31,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 64,
+          "y": 31,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 64,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 64,
+            "y": 31
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 0,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-26T23:32:15.145Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The concept of a sagging washing line with damp, worn garments fits the darkly humorous and derelict aesthetic of Crawler. The garments and their arrangement convey the intended mood of domestic intrusion into a workplace. However, the design could benefit from slightly more exaggerated sagging or asymmetry to enhance the sense of weight and neglect."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The sprite uses a hard 1-pixel outline, appropriate shading stops, and a muted palette that aligns well with the references. However, the cord's outline could be slightly more consistent with the references' line weight."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The sprite uses a hard 1-pixel outline, appropriate shading stops, and a muted palette that aligns well with the references. However, the cord's outline could be slightly more consistent with the references' line weight."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite unambiguously depicts a sagging washing line with damp, worn costume and uniform pieces, as described in the brief. The garments are appropriately varied and include the specified maroon tabard as an accent."
+        },
+        "readability": {
+          "score": 4,
+          "rationale": "The silhouette is clear and the garments are distinguishable at game scale. However, the cord's sag could be more pronounced to enhance the visual cue of weight and tension."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite adheres to the specified proportions and layout, with the cord spanning the full width and the garments hanging downwards. The background is fully transparent, and the sprite is presented as a single, cohesive object."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.9,
+        "usage": {
+          "promptTokens": 4128,
+          "completionTokens": 416,
+          "totalTokens": 4544
+        }
+      },
+      "type": "prop",
+      "contentHash": "5da788e9a1cba34362381449603f64fd88eb9ea1ec2f84da812339cb474745b3",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-laundry-line\\2026-07-26T23-30-54-ecd3afb0\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-laundry-line\\2026-07-26T23-30-54-ecd3afb0\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-laundry-line\\2026-07-26T23-30-54-ecd3afb0\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "welcome-room-lounge-stool-var-1": {
       "briefId": "welcome-room-lounge-stool",
       "spriteName": "welcome-room-lounge-stool-var-1",
@@ -16732,6 +18146,116 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-merchant-board\\2026-07-25T21-28-08-f8b18374\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-merchant-board\\2026-07-25T21-28-08-f8b18374\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-merchant-board\\2026-07-25T21-28-08-f8b18374\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-mini-fridge-var-2": {
+      "briefId": "welcome-room-mini-fridge",
+      "spriteName": "welcome-room-mini-fridge-var-2",
+      "assetPath": "generated/welcome-room-mini-fridge-var-2.png",
+      "approvedAt": "2026-07-27T00:09:56.691Z",
+      "sourceRun": "generated/runs/welcome-room-mini-fridge/2026-07-27T00-02-09-a00b6bd3",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 51,
+        "y": 90,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 51,
+          "y": 90,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 46,
+          "y": 47,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-derivable",
+          "anchor": {
+            "x": 51,
+            "y": 90
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 2,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T00:04:16.806Z",
+        "designLanguage": {
+          "score": 5,
+          "rationale": "The concept of a grubby, padlocked mini-fridge with passive-aggressive sticky notes is clear and fits the darkly humorous tone of Crawler. The design is cohesive and well-executed, with a strong sense of personality and narrative."
+        },
+        "referenceStyleMatch": {
+          "score": 5,
+          "rationale": "The sprite matches the approved references in terms of outline weight, shading, palette, and overall rendering style. The muted colors and restrained use of highlights and shadows are consistent with the Crawler aesthetic."
+        },
+        "styleMatch": {
+          "score": 5,
+          "rationale": "The sprite matches the approved references in terms of outline weight, shading, palette, and overall rendering style. The muted colors and restrained use of highlights and shadows are consistent with the Crawler aesthetic."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite accurately depicts a small, grubby mini-fridge with a padlock and sticky notes, as described in the brief. The proportions are correct, and the details like the grime, dents, and sticky notes are well-represented."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and easily distinguishable at 16px. The padlock and sticky notes are prominent and readable, and the overall shape of the fridge is immediately recognizable."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is a grounded, self-contained object with a clear base and appropriate perspective. It adheres to the specified dimensions and fills the cell as required, with no extraneous elements or floating components."
+        },
+        "passed": true,
+        "minScore": 5,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.95,
+        "usage": {
+          "promptTokens": 4933,
+          "completionTokens": 398,
+          "totalTokens": 5331
+        }
+      },
+      "type": "prop",
+      "contentHash": "7339026f484d71307835785ae1689285e16f8958d47f569f20d98368e0f0b7d9",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-mini-fridge\\2026-07-27T00-02-09-a00b6bd3\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-mini-fridge\\2026-07-27T00-02-09-a00b6bd3\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-mini-fridge\\2026-07-27T00-02-09-a00b6bd3\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
@@ -17130,6 +18654,116 @@
       "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-side-table\\2026-07-25T06-03-29-87d2f53d\\postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-side-table\\2026-07-25T06-03-29-87d2f53d\\postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-side-table\\2026-07-25T06-03-29-87d2f53d\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "welcome-room-stanchion-pair-var-4": {
+      "briefId": "welcome-room-stanchion-pair",
+      "spriteName": "welcome-room-stanchion-pair-var-4",
+      "assetPath": "generated/welcome-room-stanchion-pair-var-4.png",
+      "approvedAt": "2026-07-27T04:43:23.032Z",
+      "sourceRun": "generated/runs/welcome-room-stanchion-pair/2026-07-27T04-37-48-935a355a",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 63,
+        "y": 47,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 63,
+          "y": 47,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 63,
+          "y": 47,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 63,
+            "y": 47
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 4,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-27T04:39:36.733Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The design aligns well with the Crawler aesthetic, featuring a clear and authored concept with a dark-fantasy feel. The muted colors and worn textures fit the theme, but the posts could have slightly more visual interest or unique detailing to enhance the authored contradiction."
+        },
+        "referenceStyleMatch": {
+          "score": 5,
+          "rationale": "The sprite matches the reference style in terms of outline weight, palette depth, shading, and overall finish. The materials and colors are consistent with the approved references."
+        },
+        "styleMatch": {
+          "score": 5,
+          "rationale": "The sprite matches the reference style in terms of outline weight, palette depth, shading, and overall finish. The materials and colors are consistent with the approved references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite accurately depicts two stanchion posts with weighted bases, vertical posts, ball finials, and a drooping velvet rope. The negative space is preserved as required, and the rope does not touch the floor."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and immediately recognizable as two upright stanchion posts with a rope. The bases, posts, and rope are distinct and legible at game scale, with no visual integrity defects."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is a grounded, world-space object with a clear base and appropriate perspective. It fits well within the specified tile footprint and adheres to the brief's spatial requirements."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+        "confidence": 0.95,
+        "usage": {
+          "promptTokens": 4393,
+          "completionTokens": 388,
+          "totalTokens": 4781
+        }
+      },
+      "type": "prop",
+      "contentHash": "cd4065837e45444909461d3fc090230a54e231e0a73fc97bfbc645e63c648e8f",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-stanchion-pair\\2026-07-27T04-37-48-935a355a\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-stanchion-pair\\2026-07-27T04-37-48-935a355a\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-stanchion-pair\\2026-07-27T04-37-48-935a355a\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
