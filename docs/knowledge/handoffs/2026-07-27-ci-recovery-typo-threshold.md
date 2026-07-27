@@ -37,10 +37,13 @@ genuinely different commit than a single transcription slip.
 
 - `.github/scripts/ci-recovery/reconcile.mjs` — replace function, update log message, update comment
 - `.github/scripts/ci-recovery/reconcile.test.mjs` — update 3 existing assertions, add 2 new tests
-- `.github/scripts/ci-recovery/router.mjs` — fix `EXTERNALLY_BLOCKED_LABEL_NAMES` to exclude
-  `BLOCKED_LABEL` ('merge-train-blocked'): CI Recovery DOES handle these PRs (train-conflict
-  resolution in reconcile.mjs), so they must remain eligible for dispatch on the `trainEnabled:true`
-  sweep path. This fixes the pre-existing `sweep-budget.test.mjs` test failure on main.
+- `.github/scripts/sweep-budget.test.mjs` — update stale test assertions to reflect correct behavior:
+  `merge-train-blocked` PRs are correctly excluded from latent backlog (they cannot be dispatched),
+  and old test was vacuous for its own deduplication claim. Adopted same fix as PR #2120.
+
+Note: `router.mjs` was initially changed to restore `merge-train-blocked` to the backlog count, but
+this was incorrect — the `492bb4be8` behavior is correct and the test was stale. The router.mjs
+change was reverted; only the test was updated (aligned with PR #2120 by @nalfeo).
 
 ## Verification
 
@@ -48,7 +51,7 @@ genuinely different commit than a single transcription slip.
 - `node --test .github/scripts/ci-recovery/state.test.mjs` → **43/43 pass**
 - `node --test .github/scripts/ci-recovery/dispatch-table.test.mjs` → **46/46 pass**
 - `node --test .github/scripts/ci-recovery/characterization.test.mjs` → **5/5 pass**
-- `node --test .github/scripts/sweep-budget.test.mjs` → **9/9 pass** (pre-existing failure on main fixed)
+- `node --test .github/scripts/sweep-budget.test.mjs` → **11/11 pass** (pre-existing failure on main fixed)
 
 ## Systems touched
 
