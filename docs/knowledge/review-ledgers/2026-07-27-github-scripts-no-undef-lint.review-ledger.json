@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "github-scripts-no-undef-lint",
+  "task_title": "Harden .github/scripts no-undef lint",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Plan review required broadening beyond verify:fast alone: update ESLint config for .github/scripts Node globals/no-undef, extend package.json lint surfaces or equivalent CI-invoked lint path so merge-gate CI covers .github/scripts, add verify-fast path-classification regressions for supported .github/scripts/**/*.mjs vs unsupported external .mjs, and make the spawned coordinator fixture assert a behavior unique to trusted state-present recovery (fresh matching shepherd lease suppresses dispatch / keeps fencing)."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}
