@@ -71,13 +71,52 @@ Design details that matter:
 
 ## Evidence
 
-### Neutrality — the load-bearing gate
+### Neutrality — trivially green, and NOT a correctness gate
 
 `npm run perf:fingerprint --check` against a baseline recorded from a verified
 clean tree: **24/24 runs byte-identical**, hash
 `b311a7808b9e94cadd14d4733df332aee4560565f0a8fe3fb8528f3fe7c8e37e`
-(FULL gate sample). Unlike the preceding hunt this gate is _not_ vacuous — there
-is a real `src/` diff behind it.
+(FULL gate sample).
+
+⚠️ **Read that gate for exactly what it is: trivially green, and worthless as
+evidence that the barrier path is correct.** Floor 1 raises zero barriers for
+the entire run, so the fingerprint is green because the gate always took its
+empty branch — not because the branch is right. A completely broken fast path
+that wrongly answered "empty" produces the _same_ byte-identical hash. This is
+the `spawnerSystem` shape in AGENTS.md r9. What the fingerprint does prove is
+narrow but real: the diff did not perturb Floor-1 simulation in any other way.
+The mutation-proven regression test is the only actual correctness gate here.
+
+### Why a live read, and not a version-stamped cache or a boolean flag
+
+The invalidation surface was enumerated rather than assumed. Into
+`blockedTiles` / `ringShapes` there are:
+
+- **2 writers** — `registerHandle` (`registry.ts:53,56`) and `dropBarrier`
+  (`registry.ts:85,89`). Both bump `version`.
+- **5 public entry points** — `createRingBarrier`, `createRingWallBarrier`,
+  `createRoomBarrier`, `createPolyBarrier` (all funnel into `registerHandle`),
+  plus `dropBarrier`.
+- **1 path that bypasses `version` entirely** — wholesale `world.barriers`
+  reassignment (`src/labs/ai-runner-lab/scenario-presets.ts:150`).
+
+That last one is decisive. A fresh registry starts at `version: 0`, so a
+version-stamped cache holding stamp `0` against a _reassigned_ registry also at
+`0` compares equal and **goes stale silently** — the exact failure mode a
+version stamp exists to prevent. A boolean flag is worse again: a missed
+mutation path fails as a permanently-false flag, indistinguishable from "no
+barriers exist".
+
+The shipped gate has **no cache at all**. It reads the same object the closure
+is about to consult, so there is no invalidation surface to get wrong and none
+of the 6 paths above needs to know the gate exists. Strictly stronger than a
+version stamp, not an alternative to it.
+
+**Why not "don't install a lookup that can never fire":** considered, rejected.
+Whether a lookup can fire is not knowable at attach time — barriers appear
+mid-run. Installing conditionally would need re-installation on every registry
+mutation: a _larger_ diff touching all 6 paths, reintroducing the staleness
+hazard.
 
 ### Benchmark — `scripts/agent/perf/bench-barrier-overlay.ts` (committed)
 
@@ -181,6 +220,11 @@ Four deliberate mutations were run and each confirmed red:
 | **M2** crossed wires (tile gated on `ringShapes.size`, and vice versa) | copy-paste error         | **7 red** (4 in this file)                                             |
 | **M3** fast path removed entirely                                      | optimization lost        | **1 red** — correctly _only_ the skip assertion, not a correctness one |
 | **M4** `world` presence args dropped from `attachBarriersToFloorMap`   | wiring silently unhooked | **2 red**                                                              |
+| **M5** emptiness verdict cached on first query instead of re-read      | invalidation removed     | **5 red**                                                              |
+
+M1 and M5 are the two required hazard mutations — force-empty and never-re-read.
+Both fail loudly. M5 takes down both mid-run barrier tests plus the explicit
+`never caches a per-call answer across mutations` test.
 
 M4 was added in response to a code-review finding: the original tests re-installed
 spy lookups _through_ the wiring contract, so they proved `FloorMap`'s gate worked
@@ -230,3 +274,15 @@ Ledger: `docs/knowledge/review-ledgers/2026-07-27-empty-barrier-overlay-fast-pat
    way is what turned "suspiciously clean single pair" into non-overlapping
    ranges, and a control row (`computeGridPath`) is what showed the shift wasn't
    a global rescale.
+5. **Verify your mutation actually applied before believing that it passed.**
+   M5's first attempt patched with CRLF line endings against an LF file. The
+   `String.Replace` silently matched nothing, the suite came back 36/36 green,
+   and the obvious reading would have been "M5 passes, so the test is
+   decorative". Printing the count of installed mutation sites — not just the
+   test outcome — is what caught it. A no-op mutation and a genuinely weak test
+   look identical from the test output alone.
+6. **Enumerate the invalidation surface before choosing a caching strategy.**
+   Counting the writers into `blockedTiles`/`ringShapes` is what surfaced the
+   wholesale `world.barriers` reassignment in `scenario-presets.ts:150` — a path
+   that bumps no `version`, and would therefore have defeated a version-stamped
+   cache while the live-size read is immune to it. The count is the argument.
