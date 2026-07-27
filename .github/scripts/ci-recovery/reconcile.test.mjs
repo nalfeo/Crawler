@@ -5616,6 +5616,12 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     taskCommentCall.body.body.includes('then run `git rev-parse HEAD`'),
     'task comment should require deriving the marker SHA from post-push HEAD',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'Use an available validator model from this set: `claude-sonnet-4.6`, `gpt-5.4`, `gpt-5.3-codex`, `gemini-3.1-pro-preview` (do not use `claude-sonnet-4.5`)',
+    ),
+    'task comment should pin review-thread validation to currently available model ids',
+  );
   assert.equal(
     taskCommentCall.body.body.includes('✅ Addressed in <sha>'),
     false,
