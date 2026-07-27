@@ -390,32 +390,40 @@ export function renderHtml(bootstrap) {
     /**
      * What a run-phase dispatch would actually do right now, for the CURRENT
      * phase (run-phase always targets state.phase, never the tab the user is
-     * browsing). The runner regenerates items explicitly rejected, generates
-     * items that have no artifacts yet, and ALWAYS re-judges collection
-     * cohesion at the end — so a zero-item run is still meaningful work.
+     * browsing).
+     *
+     * This MIRRORS isThemeSetItemResolvedForPhase in
+     * scripts/sprites/theme-equipment-set.ts: the runner regenerates every item
+     * that is not frozen and not up-reviewed — including an item that already
+     * has artifacts but has not been reviewed yet. Counting only artifact-less
+     * items would understate the work and tell the user "re-judge only" right
+     * before a click regenerated all 18 briefs.
      */
     function runPhaseWork() {
       const phase = state.phase;
+      let unresolved = 0;
       let rejected = 0;
-      let missing = 0;
+      let withArtifacts = 0;
       for (const item of state.items) {
         const record = item.phases[phase];
         if (!record) continue;
+        if (item.revisionStatus === 'frozen' || item.frozenPhases.includes(phase) || record.review.verdict === 'up') continue;
+        unresolved++;
         if (record.review.verdict === 'down') rejected++;
-        else if (!record.artifacts.length && !item.frozenPhases.includes(phase)) missing++;
+        if (record.artifacts.length) withArtifacts++;
       }
-      return { rejected, missing, noun: PHASE_NOUNS[phase] || 'items' };
+      return { unresolved, rejected, withArtifacts, noun: PHASE_NOUNS[phase] || 'items' };
     }
 
     function runPhaseLabel() {
       if (busy) return 'Dispatching…';
       const work = runPhaseWork();
-      if (work.rejected && work.missing) {
-        return 'Run ' + (work.rejected + work.missing) + ' ' + work.noun + ' on GitHub (' + work.rejected + ' rejected, ' + work.missing + ' missing)';
-      }
-      if (work.rejected) return 'Regenerate ' + work.rejected + ' rejected ' + work.noun + ' on GitHub';
-      if (work.missing) return 'Generate ' + work.missing + ' ' + work.noun + ' on GitHub';
-      return 'Re-judge collection cohesion on GitHub';
+      // A zero-item run is still meaningful: run-phase always re-judges
+      // collection cohesion at the end.
+      if (!work.unresolved) return 'Re-judge collection cohesion on GitHub';
+      const verb = work.withArtifacts ? 'Regenerate' : 'Generate';
+      const detail = work.rejected && work.rejected < work.unresolved ? ' (' + work.rejected + ' rejected)' : '';
+      return verb + ' ' + work.unresolved + ' ' + work.noun + ' on GitHub' + detail;
     }
 
     function itemCard(item) {
@@ -449,7 +457,7 @@ export function renderHtml(bootstrap) {
           (selectedRecord.collectionJudge ? '<p>' + esc(selectedRecord.collectionJudge.rationale) + '</p>' : '') +
           (selectedPhase === state.phase ? '<textarea maxlength="2000" data-feedback="collection" placeholder="Optional whole-set feedback">' + esc(selectedRecord.humanReview.feedback || '') + '</textarea>' + reviewButtons(selectedRecord.humanReview,'collection') : '') +
         '</section>' : '') +
-        '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Approved items remain frozen; rejected items alone regenerate. Run generates artifacts on GitHub (minutes); Advance only moves the phase pointer once the gate is open.</div></div>' +
+        '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Up-reviewed and frozen items are skipped; every other item regenerates. Run generates artifacts on GitHub (minutes); Advance only moves the phase pointer once the gate is open.</div></div>' +
         '<div class="controls">' +
           (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>' + esc(runPhaseLabel()) + '</button>' : '') +
           (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
@@ -508,8 +516,16 @@ export function renderHtml(bootstrap) {
           notice = { tone: 'error', text: error.message };
         } finally {
           busy = false;
-          dispatchNotice = stillHere() ? notice : null;
-          render();
+          // Only repaint the pane we started from. "← All sets" stays live
+          // during the dispatch, so a late result must not paint the board
+          // over the index the user navigated to — and render() dereferences
+          // state, which is null on an uninitialized set.
+          if (stillHere()) {
+            dispatchNotice = notice;
+            render();
+          } else {
+            dispatchNotice = null;
+          }
         }
       }));
     }

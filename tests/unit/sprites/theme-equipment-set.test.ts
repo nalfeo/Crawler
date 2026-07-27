@@ -438,6 +438,48 @@ describe('theme equipment set persistence', () => {
       ),
     ).rejects.toThrow(/revision conflict/);
   });
+
+  it('refuses to write a shared backend that lacks ATOMIC conditional writes', async () => {
+    // A wrapper can expose getWithETag/putConditional while the underlying
+    // guarantee is weaker than server-side compare-and-swap (CachingRunStore
+    // mirrors its inner store's capability). Feature detection alone would
+    // happily take the CAS path and silently overwrite a concurrent writer, so
+    // the capability flag — not method presence — must decide.
+    const store = makeStore();
+    const nonAtomic: RunStore = {
+      ...store,
+      backend: 'azure-blob',
+      conditionalWrites: 'best-effort',
+      async getWithETag(key) {
+        return { data: await store.get(key), etag: 'etag-1' };
+      },
+      async putConditional(key, data) {
+        await store.put(key, data);
+      },
+    };
+
+    await expect(
+      saveThemeEquipmentSetState(nonAtomic, makeState(), {
+        expectedRevision: null,
+        now: () => new Date(NOW),
+      }),
+    ).rejects.toThrow(/does not provide atomic conditional writes/);
+    // Refused BEFORE any write — the authoritative document is untouched.
+    expect(store.mem.size).toBe(0);
+  });
+
+  it('refuses a shared backend with no conditional-write methods at all', async () => {
+    const store = makeStore();
+    const plain: RunStore = { ...store, backend: 'azure-blob' };
+
+    await expect(
+      saveThemeEquipmentSetState(plain, makeState(), {
+        expectedRevision: null,
+        now: () => new Date(NOW),
+      }),
+    ).rejects.toThrow(/does not provide atomic conditional writes/);
+    expect(store.mem.size).toBe(0);
+  });
 });
 
 describe('theme equipment set publication defaults', () => {
