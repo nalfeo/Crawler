@@ -30,6 +30,12 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
+import {
+  frontmatterDescription,
+  headingSet,
+  referencedAgents,
+  sectionBody,
+} from './doc-refs-lib.js';
 
 const PERSONA_DIR = 'docs/agent-os/personas';
 const README = `${PERSONA_DIR}/README.md`;
@@ -59,48 +65,6 @@ function listAgentFiles(): ReadonlyArray<string> {
   } catch {
     return [];
   }
-}
-
-function headingSet(text: string): Set<string> {
-  const headings = new Set<string>();
-  for (const line of text.split('\n')) {
-    const match = /^##\s+(.+?)\s*$/.exec(line);
-    if (match && match[1]) headings.add(match[1]);
-  }
-  return headings;
-}
-
-/** Extract the body of a `## <name>` section, up to the next `##` heading. */
-function sectionBody(text: string, name: string): string | null {
-  const lines = text.split('\n');
-  const start = lines.findIndex((line) => new RegExp(`^##\\s+${name}\\s*$`).test(line));
-  if (start < 0) return null;
-  const rest = lines.slice(start + 1);
-  const end = rest.findIndex((line) => /^##\s+/.test(line));
-  return (end < 0 ? rest : rest.slice(0, end)).join('\n');
-}
-
-/** Every `<name>.agent.md` referenced anywhere in a chunk of Markdown, in order. */
-function referencedAgents(text: string): string[] {
-  const found: string[] = [];
-  const re = /([a-z0-9-]+\.agent\.md)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    if (m[1] && !found.includes(m[1])) found.push(m[1]);
-  }
-  return found;
-}
-
-/** Non-empty `description:` in the leading YAML frontmatter block. */
-function frontmatterDescription(text: string): string | null {
-  if (!text.startsWith('---')) return null;
-  const end = text.indexOf('\n---', 3);
-  if (end < 0) return null;
-  const block = text.slice(3, end);
-  const match = /^description:\s*(.+)$/m.exec(block);
-  if (!match || !match[1]) return null;
-  const value = match[1].trim().replace(/^['"]|['"]$/g, '');
-  return value.length > 0 ? value : null;
 }
 
 async function main(): Promise<void> {

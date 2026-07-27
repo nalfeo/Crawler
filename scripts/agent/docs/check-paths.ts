@@ -30,6 +30,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
+import { globParentDir, looksLikePath, resolveLinkTarget } from './doc-refs-lib.js';
 
 const DOC_FILES = ['AGENTS.md', 'README.md', '.github/copilot-instructions.md'];
 const DOC_DIRS = [
@@ -38,23 +39,6 @@ const DOC_DIRS = [
   'docs/agent-os/policies',
   'docs/agent-os/personas',
 ];
-
-const PATH_PREFIXES = [
-  './',
-  '/',
-  'src/',
-  'scripts/',
-  'tests/',
-  'docs/',
-  '.github/',
-  '.specify/',
-  'public/',
-  'briefs/',
-  'data/',
-  'tools/',
-];
-
-const PATH_EXTS = ['.ts', '.tsx', '.md', '.json', '.yml', '.yaml', '.sh'];
 
 const ALLOWLIST = new Set<string>([
   // External URLs / fragments that look path-y
@@ -71,20 +55,6 @@ const ALLOWLIST = new Set<string>([
 const BACKTICK = /`([^`\n]+)`/g;
 const MD_LINK = /\[[^\]\n]*\]\(([^)\s]+)\)/g;
 
-function looksLikePath(s: string): boolean {
-  if (s.includes(' ')) return false;
-  if (s.startsWith('http') || s.startsWith('npm ') || s.startsWith('bash ')) return false;
-  // Template placeholders like `<slug>` or `YYYY-MM-DD-` — these are
-  // documentation patterns, not real paths.
-  if (s.includes('<') || s.includes('>')) return false;
-  if (/\bYYYY\b/.test(s) || /<[^>]+>/.test(s)) return false;
-  if (PATH_PREFIXES.some((p) => s.startsWith(p))) return true;
-  // Extension-only matches must also contain a separator so bare filenames
-  // mentioned in prose (e.g. `ci.yml`, `package.json`) aren't flagged.
-  if (PATH_EXTS.some((ext) => s.endsWith(ext)) && s.includes('/')) return true;
-  return false;
-}
-
 function existsOnDisk(rel: string): boolean {
   // Trim trailing slashes for stat
   const normalized = rel.replace(/\/+$/, '');
@@ -97,44 +67,10 @@ function existsOnDisk(rel: string): boolean {
 }
 
 function parentDirExists(globPath: string): boolean {
-  // For `foo/bar/*`, `foo/bar/**/*.ts`, or `foo/bar/quests.*.json`, check that
-  // the deepest non-wildcard *directory* (`foo/bar`) exists.
-  const firstWildcard = globPath.search(/[*?{]/);
-  if (firstWildcard < 0) return existsOnDisk(globPath);
-  const head = globPath.slice(0, firstWildcard);
-  const lastSlash = head.lastIndexOf('/');
-  if (lastSlash < 0) return true;
-  const parent = head.slice(0, lastSlash);
-  if (!parent) return true;
-  return existsOnDisk(parent);
+  const parent = globParentDir(globPath);
+  return parent === null ? true : existsOnDisk(parent);
 }
 
-/**
- * Resolve a Markdown link target to a repo-relative path, or `null` when the
- * target is not a checkable local file reference (external URL, pure anchor,
- * mail link, or a template placeholder).
- */
-function resolveLinkTarget(doc: string, target: string): string | null {
-  if (!target || target.startsWith('#')) return null;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return null; // http:, mailto:, etc.
-  if (target.includes('<') || target.includes('>')) return null;
-  const withoutAnchor = target.split('#')[0];
-  if (!withoutAnchor) return null;
-  const decoded = decodeURIComponent(withoutAnchor);
-  const docDir = doc.includes('/') ? doc.slice(0, doc.lastIndexOf('/')) : '';
-  const base = decoded.startsWith('/') ? decoded.slice(1) : `${docDir}/${decoded}`;
-  const segments: string[] = [];
-  for (const segment of base.split('/')) {
-    if (segment === '' || segment === '.') continue;
-    if (segment === '..') {
-      if (segments.length === 0) return null; // escapes the repo root
-      segments.pop();
-      continue;
-    }
-    segments.push(segment);
-  }
-  return segments.length > 0 ? segments.join('/') : null;
-}
 
 async function listDocs(): Promise<string[]> {
   const all = new Set<string>();
