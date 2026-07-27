@@ -50,7 +50,7 @@ test('matrix enrichment preserves objects and wraps scalar entries', () => {
   ]);
 });
 
-test('latent backlog deduplicates merge-train and recovery demand by PR number', () => {
+test('latent backlog deduplicates merge-train demand while excluding blocked and opt-out recovery PRs', () => {
   const repository = 'nalfeo/Crawler';
   const base = {
     state: 'open',
@@ -65,7 +65,7 @@ test('latent backlog deduplicates merge-train and recovery demand by PR number',
     { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] },
     { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
   ];
-  assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
+  assert.equal(countLatentBacklog({ pullRequests, repository }), 2);
 });
 
 test('runner inspection excludes all broad sweeps and counts queued non-sweep runs', async () => {

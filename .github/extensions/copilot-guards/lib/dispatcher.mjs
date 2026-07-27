@@ -194,26 +194,30 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
  *   -- extract tool:     regexp_extract(..., '\| tool:([^\]]+)\]', 1)
  */
 function formatDeny(id, toolName, reason) {
-  return `[copilot-guards/${id} | tool:${toolName}] ${reason}`;
+  return `${formatGuardMarker(id, toolName)} ${reason}`;
 }
 
 function formatPrAggregate(denies, asks, toolName) {
   const header =
     denies.length > 0
-      ? `[copilot-guards/pr | tool:${toolName}] PR preflight failed. Fix the following before retrying create_pull_request:`
-      : `[copilot-guards/pr | tool:${toolName}] PR preflight needs confirmation before continuing with create_pull_request:`;
+      ? 'PR preflight failed. Fix the following before retrying create_pull_request:'
+      : 'PR preflight needs confirmation before continuing with create_pull_request:';
   const lines = [header];
   for (const d of denies) {
-    lines.push(`  ❌ [${d.id}] ${d.reason}`);
+    lines.push(`  ❌ ${formatGuardMarker(d.id, toolName)} ${d.reason}`);
   }
   for (const a of asks) {
-    lines.push(`  ❓ [${a.id}] ${a.reason}`);
+    lines.push(`  ❓ ${formatGuardMarker(a.id, toolName)} ${a.reason}`);
   }
   lines.push('');
   lines.push(
     'To bypass a specific guard (legitimate edge cases only): set COPILOT_GUARDS_DISABLE=<guard-id> in the environment.',
   );
   return lines.join('\n');
+}
+
+function formatGuardMarker(id, toolName) {
+  return `[copilot-guards/${id} | tool:${toolName}]`;
 }
 
 async function safeLog(ctx, msg, opts) {

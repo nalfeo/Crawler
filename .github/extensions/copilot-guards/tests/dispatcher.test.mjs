@@ -78,8 +78,14 @@ test('dispatch aggregates pr-category denies', async () => {
     noopCtx,
   );
   assert.equal(result.permissionDecision, 'deny');
-  assert.match(result.permissionDecisionReason, /pr-a/);
-  assert.match(result.permissionDecisionReason, /pr-b/);
+  assert.match(
+    result.permissionDecisionReason,
+    /❌ \[copilot-guards\/pr-a \| tool:create_pull_request\] issue A/,
+  );
+  assert.match(
+    result.permissionDecisionReason,
+    /❌ \[copilot-guards\/pr-b \| tool:create_pull_request\] issue B/,
+  );
 });
 
 test('dispatch fail-closed deny on crash', async () => {
@@ -317,7 +323,7 @@ test('denial reason embeds guard-id and tool-name for session-store attribution'
   assert.match(result.permissionDecisionReason, /attribution test/);
 });
 
-test('pr aggregate denial reason embeds tool-name for session-store attribution', async () => {
+test('pr aggregate denial reason embeds one parseable marker per guard', async () => {
   const result = await dispatch(
     [
       {
@@ -332,7 +338,12 @@ test('pr aggregate denial reason embeds tool-name for session-store attribution'
     noopCtx,
   );
   assert.equal(result.permissionDecision, 'deny');
-  // PR aggregate embeds [copilot-guards/pr | tool:create_pull_request] in the header
-  assert.match(result.permissionDecisionReason, /\[copilot-guards\/pr \| tool:create_pull_request\]/);
-  assert.match(result.permissionDecisionReason, /pr attribution test/);
+  assert.match(
+    result.permissionDecisionReason,
+    /❌ \[copilot-guards\/pr-attr \| tool:create_pull_request\] pr attribution test/,
+  );
+  assert.doesNotMatch(
+    result.permissionDecisionReason,
+    /\[copilot-guards\/pr \| tool:create_pull_request\]/,
+  );
 });
