@@ -22,8 +22,17 @@ import {
   type SpriteRef,
 } from '../../../src/shared/set-piece-types.js';
 
-/** One tile is 16px and there are 8px per foot, so a tile is exactly 2 feet. */
-export const FEET_PER_TILE = 2;
+/**
+ * One tile is 4 feet — `FloorConfig.tileSizeFt` is 4 everywhere in the game
+ * (`DEFAULT_FLOOR_CONFIG`, every lab, and `stampSetPiece`'s caller), and at
+ * `PIXELS_PER_FOOT = 8` that is 32 world px per tile.
+ *
+ * This was 2 for the gate's first iteration, which silently halved every
+ * real-world-scale, footprint-area and layer-offset computation and made the
+ * gate report a 40ft-wide room as 20ft. Do not "simplify" it back: derive it
+ * from the same 4 the floor config uses, never from the sprite pixel size.
+ */
+export const FEET_PER_TILE = 4;
 
 /**
  * Prop kinds that count as *dressing* the room.
@@ -96,7 +105,17 @@ export interface CompositionThresholds {
    */
   readonly maxWallGapTiles: number;
   /** Corridor width, in tiles, that must connect every anchor. */
-  readonly circulationWidthTiles: number;
+  /**
+   * Minimum clear lane between anchors, **in feet**.
+   *
+   * This was authored as `circulationWidthTiles: 2` back when the gate wrongly
+   * believed a tile was 2 ft — i.e. the intent was always "four feet of
+   * clearance", a real doorway/aisle. At the true 4 ft/tile that literal `2`
+   * silently demanded an 8 ft hospital corridor, which no believable room-sized
+   * interior can satisfy once furniture is massed against the walls. Stating it
+   * in feet preserves the original intent and stops it drifting again.
+   */
+  readonly circulationWidthFt: number;
   /** Share of type-recognised props whose declared height must be plausible. */
   readonly minPlausibleHeightShare: number;
 }
@@ -117,7 +136,7 @@ export const DEFAULT_THRESHOLDS: CompositionThresholds = Object.freeze({
   focalDominanceRatio: 2.5,
   minLargePropsWallAnchored: 0.6,
   maxWallGapTiles: 1,
-  circulationWidthTiles: 2,
+  circulationWidthFt: 4,
   /** Share of non-floor props whose declared height must be humanly plausible. */
   minPlausibleHeightShare: 1,
 });
@@ -244,6 +263,64 @@ function propCells(prop: SetPiecePropDef, def: SetPieceDef): Cell[] {
   const y0 = Math.floor(prop.y);
   const x1 = Math.ceil(prop.x + w) - 1;
   const y1 = Math.ceil(prop.y + h) - 1;
+  const cells: Cell[] = [];
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      if (x >= 0 && y >= 0 && x < def.width && y < def.height) cells.push({ x, y });
+    }
+  }
+  return cells;
+}
+
+/**
+ * Tiles a prop visually COVERS once rendered, derived from its declared feet.
+ *
+ * This is deliberately different from {@link propCells}. `prop.width`/`prop.height`
+ * are the authored *floor footprint* in tiles, and in practice almost every prop
+ * is authored as the schema default 1x1 regardless of what it actually is — a
+ * 1.6 ft wall sconce, a 1.4 ft exit sign and a 2 ft strip of floor tape each
+ * claim a full tile, which at 4 ft/tile is 16 sq ft apiece. Scoring density off
+ * that measures placeholder rectangles, not props: `welcome-room` reported 61%
+ * occupancy while both the human and the visual judge read the room as sparse.
+ *
+ * The renderer does not use the tile footprint for size at all — it draws the
+ * sprite at `widthFt` x `heightFt` (see `PhaserBridge` set-piece loop), centred
+ * horizontally on the footprint and, for upright props, growing UPWARD from the
+ * footprint's base (`anchorBase`). Reproducing that here is what makes the
+ * density, stacking and edge-treatment checks agree with the screenshot.
+ *
+ * Falls back to the authored footprint when a prop declares no feet — those
+ * props already fail the `real-world-scale` check, so they are not silently
+ * excused here.
+ */
+function propRenderCells(prop: SetPiecePropDef, def: SetPieceDef): Cell[] {
+  const footW = Math.max(prop.width ?? 1, Number.EPSILON);
+  const footH = Math.max(prop.height ?? 1, Number.EPSILON);
+
+  let widthFt = 0;
+  let heightFt = 0;
+  for (const layer of prop.layers) {
+    if (!layerHasFeet(layer)) continue;
+    // Largest declared layer wins: composite props (table + potion + receipt)
+    // are visually bounded by their base object, not by their garnish.
+    if ((layer.widthFt ?? 0) * (layer.heightFt ?? 0) > widthFt * heightFt) {
+      widthFt = layer.widthFt ?? 0;
+      heightFt = layer.heightFt ?? 0;
+    }
+  }
+  if (widthFt <= 0 || heightFt <= 0) return propCells(prop, def);
+
+  const wTiles = widthFt / FEET_PER_TILE;
+  const hTiles = heightFt / FEET_PER_TILE;
+  const left = prop.x + footW / 2 - wTiles / 2;
+  // Floor decals lie flat and are centred on the footprint; everything else is a
+  // front elevation standing on the footprint's leading edge and rising from it.
+  const top = prop.kind === 'floor' ? prop.y + footH / 2 - hTiles / 2 : prop.y + footH - hTiles;
+
+  const x0 = Math.floor(left);
+  const y0 = Math.floor(top);
+  const x1 = Math.ceil(left + wTiles) - 1;
+  const y1 = Math.ceil(top + hTiles) - 1;
   const cells: Cell[] = [];
   for (let y = y0; y <= y1; y += 1) {
     for (let x = x0; x <= x1; x += 1) {
@@ -695,7 +772,7 @@ function buildSolidGrid(def: SetPieceDef): boolean[][] {
  */
 function checkCirculation(def: SetPieceDef, t: CompositionThresholds): CheckResult {
   const solid = buildSolidGrid(def);
-  const w = t.circulationWidthTiles;
+  const w = Math.max(1, Math.ceil(t.circulationWidthFt / FEET_PER_TILE));
 
   // A tile is "wide-walkable" when it belongs to some free w x w block.
   const wide: boolean[][] = Array.from({ length: def.height }, () =>
@@ -917,9 +994,11 @@ export function scoreSetPiece(
   const perimeterDressed = new Set<string>();
 
   for (const prop of def.props) {
-    const cells = propCells(prop, def);
+    // Density, stacking and edge treatment are about what the room LOOKS like,
+    // so they run off the rendered extent, not the authored tile footprint.
+    const renderCells = propRenderCells(prop, def);
     if (isOccupying(prop)) {
-      for (const cell of cells) {
+      for (const cell of renderCells) {
         const key = cellKey(cell.x, cell.y);
         occupancyCount.set(key, (occupancyCount.get(key) ?? 0) + 1);
       }
@@ -939,7 +1018,7 @@ export function scoreSetPiece(
       }
     }
     if (PERIMETER_KINDS.has(prop.kind)) {
-      for (const cell of cells) perimeterDressed.add(cellKey(cell.x, cell.y));
+      for (const cell of renderCells) perimeterDressed.add(cellKey(cell.x, cell.y));
     }
   }
 

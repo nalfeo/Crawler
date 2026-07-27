@@ -10,7 +10,11 @@
       "width": 10,
       "height": 8,
       "description": "A cramped New York slice joint lifted straight off the corner, grease stains and all.",
-      "tags": ["nyc", "restaurant", "named"],
+      "tags": [
+        "nyc",
+        "restaurant",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -1386,7 +1390,10 @@
                 "requestId": "brick-pizza-oven",
                 "label": "Brick pizza oven",
                 "prompt": "A wood-fired brick pizza oven with a glowing arched mouth, 16x16 pixel art top-down.",
-                "tags": ["food", "appliance"],
+                "tags": [
+                  "food",
+                  "appliance"
+                ],
                 "placeholder": {
                   "source": "sheet",
                   "sheetKey": "kenney-tiny-town",
@@ -1414,7 +1421,10 @@
                 "prompt": "Hot pink and cyan neon sign reading JIMMY'S in a retro cursive script, glowing, pixel art.",
                 "widthTiles": 4,
                 "heightTiles": 1,
-                "tags": ["neon", "signage"]
+                "tags": [
+                  "neon",
+                  "signage"
+                ]
               }
             }
           ],
@@ -1516,7 +1526,11 @@
       "width": 9,
       "height": 7,
       "description": "A 24-hour bodega with a bulletproof counter, lottery tickets, and a very judgmental cat.",
-      "tags": ["nyc", "shop", "named"],
+      "tags": [
+        "nyc",
+        "shop",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -2613,7 +2627,9 @@
                 "requestId": "cash-register",
                 "label": "Cash register",
                 "prompt": "A chunky retro cash register, beige with green buttons, 16x16 pixel art.",
-                "tags": ["retail"]
+                "tags": [
+                  "retail"
+                ]
               },
               "offsetX": 2,
               "offsetY": -4
@@ -2691,7 +2707,11 @@
       "width": 12,
       "height": 6,
       "description": "An express platform ripped from underground, complete with flickering lights and one stalled train.",
-      "tags": ["nyc", "transit", "named"],
+      "tags": [
+        "nyc",
+        "transit",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -3932,7 +3952,9 @@
                 "requestId": "subway-turnstile",
                 "label": "Subway turnstile",
                 "prompt": "A metal subway turnstile with rotating arms, top-down 16x16 pixel art.",
-                "tags": ["transit"]
+                "tags": [
+                  "transit"
+                ]
               }
             }
           ],
@@ -4027,7 +4049,10 @@
       "width": 10,
       "height": 7,
       "description": "A chrome-and-vinyl diner booth set, bottomless coffee not guaranteed.",
-      "tags": ["diner", "named"],
+      "tags": [
+        "diner",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -5243,7 +5268,10 @@
                 "requestId": "coffee-mug",
                 "label": "Coffee mug",
                 "prompt": "A small white diner coffee mug with steam, 16x16 pixel art.",
-                "tags": ["food", "prop"]
+                "tags": [
+                  "food",
+                  "prop"
+                ]
               },
               "offsetX": 5,
               "offsetY": -2,
@@ -5341,7 +5369,11 @@
       "width": 9,
       "height": 8,
       "description": "A highway mini-mart with roller-grill hot dogs and a wall of energy drinks.",
-      "tags": ["roadside", "shop", "named"],
+      "tags": [
+        "roadside",
+        "shop",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -6565,7 +6597,10 @@
                 "label": "Glass-door drink cooler",
                 "prompt": "A tall glass-door refrigerator full of colorful drink bottles, top-down 16x16 pixel art tileable vertically.",
                 "heightTiles": 4,
-                "tags": ["retail", "appliance"]
+                "tags": [
+                  "retail",
+                  "appliance"
+                ]
               }
             }
           ],
@@ -6679,7 +6714,10 @@
       "maxWidth": 11,
       "maxHeight": 9,
       "description": "An exam room kit: paper-covered table, eye chart, and the lingering smell of antiseptic.",
-      "tags": ["medical", "themed"],
+      "tags": [
+        "medical",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -7631,7 +7669,10 @@
                 "label": "Medical exam table",
                 "prompt": "A padded medical exam table with paper roll, light blue, top-down 16x16 pixel art.",
                 "widthTiles": 2,
-                "tags": ["medical", "furniture"]
+                "tags": [
+                  "medical",
+                  "furniture"
+                ]
               }
             }
           ],
@@ -7666,7 +7707,10 @@
                 "requestId": "eye-chart",
                 "label": "Snellen eye chart",
                 "prompt": "A wall-mounted Snellen eye chart poster, big E at top, 16x16 pixel art.",
-                "tags": ["medical", "signage"]
+                "tags": [
+                  "medical",
+                  "signage"
+                ]
               }
             }
           ],
@@ -7744,7 +7788,10 @@
       "maxWidth": 11,
       "maxHeight": 8,
       "description": "A waiting room of stiff chairs, a fish tank, and ten-year-old magazines.",
-      "tags": ["medical", "themed"],
+      "tags": [
+        "medical",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -8584,7 +8631,9 @@
                 "requestId": "magazine-stack",
                 "label": "Magazine stack",
                 "prompt": "A small stack of dog-eared magazines, top-down 16x16 pixel art.",
-                "tags": ["prop"]
+                "tags": [
+                  "prop"
+                ]
               },
               "offsetX": 3,
               "offsetY": -2,
@@ -8605,7 +8654,9 @@
                 "requestId": "waiting-room-fish-tank",
                 "label": "Fish tank",
                 "prompt": "A glowing aquarium with a few orange fish and bubbles, top-down 16x16 pixel art.",
-                "tags": ["decoration"]
+                "tags": [
+                  "decoration"
+                ]
               }
             }
           ],
@@ -8668,7 +8719,11 @@
       "maxWidth": 10,
       "maxHeight": 8,
       "description": "Folding tables, a temperamental vending machine, and a microwave with a history.",
-      "tags": ["office", "industrial", "themed"],
+      "tags": [
+        "office",
+        "industrial",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -9400,7 +9455,9 @@
                 "label": "Snack vending machine",
                 "prompt": "A red snack vending machine with a glass front and glowing buttons, top-down 16x16 pixel art.",
                 "heightTiles": 2,
-                "tags": ["appliance"]
+                "tags": [
+                  "appliance"
+                ]
               }
             }
           ],
@@ -9495,7 +9552,11 @@
       "maxWidth": 12,
       "maxHeight": 10,
       "description": "A maze of grey cubicles, dying potted plants, and a single motivational poster.",
-      "tags": ["office", "corporate", "themed"],
+      "tags": [
+        "office",
+        "corporate",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -10452,7 +10513,10 @@
                 "requestId": "desktop-computer",
                 "label": "Desktop computer",
                 "prompt": "A beige CRT desktop computer and monitor, top-down 16x16 pixel art.",
-                "tags": ["office", "prop"]
+                "tags": [
+                  "office",
+                  "prop"
+                ]
               },
               "offsetX": 2,
               "offsetY": -3,
@@ -10580,7 +10644,10 @@
       "maxWidth": 10,
       "maxHeight": 9,
       "description": "A cozy living room kit: couch, coffee table, and a TV permanently tuned to the reality show.",
-      "tags": ["home", "themed"],
+      "tags": [
+        "home",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -11556,7 +11623,9 @@
                 "requestId": "tv-remote",
                 "label": "TV remote",
                 "prompt": "A small black TV remote control, top-down 16x16 pixel art.",
-                "tags": ["prop"]
+                "tags": [
+                  "prop"
+                ]
               },
               "offsetX": 5,
               "offsetY": -1,
@@ -11580,7 +11649,9 @@
                 "label": "CRT television",
                 "prompt": "A boxy CRT television showing a glowing reality-show broadcast, top-down 16x16 pixel art.",
                 "widthTiles": 2,
-                "tags": ["appliance"]
+                "tags": [
+                  "appliance"
+                ]
               }
             }
           ],
@@ -11658,7 +11729,10 @@
       "maxWidth": 10,
       "maxHeight": 9,
       "description": "Rows of humming machines, a wall of detergent, and one sock that never makes it home.",
-      "tags": ["services", "themed"],
+      "tags": [
+        "services",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -12491,7 +12565,9 @@
                 "label": "Washing machine",
                 "prompt": "A front-loading washing machine with a round glass door, top-down 16x16 pixel art tileable horizontally.",
                 "widthTiles": 4,
-                "tags": ["appliance"]
+                "tags": [
+                  "appliance"
+                ]
               }
             }
           ],
@@ -12590,7 +12666,10 @@
       "maxWidth": 12,
       "maxHeight": 9,
       "description": "Tiny desks, a chalkboard of half-erased equations, and a cubby of forgotten lunches.",
-      "tags": ["school", "themed"],
+      "tags": [
+        "school",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -13661,7 +13740,10 @@
                 "label": "Chalkboard",
                 "prompt": "A green chalkboard with faint white equations and a wooden frame, 16x16 pixel art tileable horizontally.",
                 "widthTiles": 4,
-                "tags": ["education", "signage"]
+                "tags": [
+                  "education",
+                  "signage"
+                ]
               }
             }
           ],
@@ -13704,7 +13786,9 @@
                 "requestId": "apple-on-desk",
                 "label": "Apple",
                 "prompt": "A shiny red apple, top-down 16x16 pixel art.",
-                "tags": ["prop"]
+                "tags": [
+                  "prop"
+                ]
               },
               "offsetX": 5,
               "offsetY": -2,
@@ -13798,66 +13882,663 @@
       "name": "Welcome Room",
       "theme": "reality-show",
       "sizing": "exact",
-      "width": 10,
-      "height": 9,
+      "width": 7,
+      "height": 7,
       "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off — the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
-      "tags": ["reality-show", "welcome", "floor1", "named"],
+      "tags": [
+        "reality-show",
+        "welcome",
+        "floor1",
+        "named"
+      ],
       "placement": {
         "verticalAlign": "top"
       },
       "props": [
         {
+          "id": "shop-table",
+          "kind": "furniture",
+          "x": 0.85,
+          "y": 2.1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-shop-table-var-0"
+              },
+              "widthFt": 6.14,
+              "heightFt": 3.5
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "purple-potion-bottle-v1-var-4"
+              },
+              "widthFt": 0.77,
+              "heightFt": 0.77,
+              "offsetXFt": 1,
+              "offsetYFt": -1.25
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "autograph-book-placeholder"
+              },
+              "widthFt": 0.96,
+              "heightFt": 0.96,
+              "offsetXFt": -2,
+              "offsetYFt": -1
+            }
+          ],
+          "width": 1.5,
+          "height": 0.75,
+          "z": 30,
+          "sceneLayer": "default"
+        },
+        {
+          "id": "welcome-desk",
+          "kind": "furniture",
+          "x": 4.05,
+          "y": 2.1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-desk-var-0"
+              },
+              "widthFt": 9.24,
+              "heightFt": 4
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "autograph-book-placeholder"
+              },
+              "widthFt": 1.44,
+              "heightFt": 1.44,
+              "offsetXFt": -2.5,
+              "offsetYFt": -1.5
+            }
+          ],
+          "width": 2.25,
+          "z": 30,
+          "sceneLayer": "default",
+          "height": 0.75
+        },
+        {
+          "id": "broker-bookcase",
+          "kind": "furniture",
+          "x": 0.95,
+          "y": 5.05,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-bookcase-var-0"
+              },
+              "widthFt": 4.74,
+              "heightFt": 6.8,
+              "anchorBase": true
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "purple-potion-bottle-v1-var-4"
+              },
+              "widthFt": 1.18,
+              "heightFt": 1.18,
+              "offsetXFt": 1,
+              "offsetYFt": -4.6
+            }
+          ],
+          "z": 9,
+          "sceneLayer": "default",
+          "width": 1.25,
+          "height": 0.5
+        },
+        {
+          "id": "broker-side-table",
+          "kind": "furniture",
+          "x": 2.15,
+          "y": 4.4,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-side-table-var-12"
+              },
+              "widthFt": 2.6,
+              "heightFt": 2.6
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "purple-potion-bottle-v1-var-4"
+              },
+              "widthFt": 1.04,
+              "heightFt": 1.04,
+              "offsetYFt": -1.25
+            }
+          ],
+          "z": 30,
+          "sceneLayer": "default",
+          "width": 0.75,
+          "height": 0.5
+        },
+        {
+          "id": "bunk-bed",
+          "kind": "furniture",
+          "x": 4.3,
+          "y": 3.7,
+          "width": 1.75,
+          "height": 1,
+          "z": 30,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-bunk-bed-var-6"
+              },
+              "widthFt": 6.6,
+              "heightFt": 5.5
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "kitchenette",
+          "kind": "furniture",
+          "x": 4.5,
+          "y": 4.9,
+          "width": 1.25,
+          "height": 1,
+          "z": 30,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-kitchenette-var-0"
+              },
+              "widthFt": 5,
+              "heightFt": 5.5
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "mini-fridge",
+          "kind": "furniture",
+          "x": 4.15,
+          "y": 5.3,
+          "width": 0.75,
+          "height": 0.5,
+          "z": 30,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-mini-fridge-var-2"
+              },
+              "widthFt": 2.88,
+              "heightFt": 3
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "trash-bin-right",
+          "kind": "decoration",
+          "x": 5.5,
+          "y": 5.4,
+          "width": 0.5,
+          "height": 0.5,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-trash-bin-var-0"
+              },
+              "widthFt": 2.4,
+              "heightFt": 3,
+              "anchorBase": true
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "potted-plant",
+          "kind": "decoration",
+          "x": 5.55,
+          "y": 1.1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-potted-plant-var-0"
+              },
+              "widthFt": 3.2,
+              "heightFt": 3.2,
+              "anchorBase": true
+            }
+          ],
+          "z": 30,
+          "sceneLayer": "default",
+          "width": 0.75,
+          "height": 0.75
+        },
+        {
+          "id": "lounge-stool",
+          "kind": "furniture",
+          "x": 5.55,
+          "y": 4.05,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-lounge-stool-var-1"
+              },
+              "widthFt": 2.2,
+              "heightFt": 2.2
+            }
+          ],
+          "z": 30,
+          "sceneLayer": "default",
+          "width": 0.5,
+          "height": 0.5
+        },
+        {
+          "id": "chair-turned-away",
+          "kind": "furniture",
+          "x": 1.85,
+          "y": 5.35,
+          "z": 9,
+          "sceneLayer": "default",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-chair-turned-var-0"
+              },
+              "widthFt": 3.2,
+              "heightFt": 3.2,
+              "anchorBase": true
+            }
+          ],
+          "width": 0.75,
+          "height": 0.75
+        },
+        {
           "id": "welcome-rug",
           "kind": "floor",
-          "x": 4.5,
-          "y": 2.5,
+          "x": 3.7,
+          "y": 2.95,
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
                 "spriteId": "welcome-room-rug-var-0"
               },
-              "widthFt": 8,
+              "widthFt": 7,
               "heightFt": 4
             }
           ],
-          "width": 2,
+          "width": 1.75,
           "z": 0,
+          "sceneLayer": "default",
+          "height": 1
+        },
+        {
+          "id": "velvet-rope",
+          "kind": "decoration",
+          "x": 2.15,
+          "y": 3.05,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-velvet-rope-var-2"
+              },
+              "widthFt": 5,
+              "heightFt": 3.4,
+              "rotationDeg": 90,
+              "flipX": true,
+              "flipY": true
+            }
+          ],
+          "z": 40,
+          "sceneLayer": "default",
+          "width": 1.25,
+          "height": 0.5
+        },
+        {
+          "id": "floor-seam-1",
+          "kind": "floor",
+          "x": 2.8,
+          "y": 5.35,
+          "width": 0.5,
+          "height": 0.5,
+          "z": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-seam-var-9"
+              },
+              "widthFt": 2,
+              "heightFt": 2
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "bunk-mat",
+          "kind": "floor",
+          "x": 4.15,
+          "y": 3.95,
+          "width": 1,
+          "height": 1.25,
+          "z": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              },
+              "widthFt": 3.99,
+              "heightFt": 4.9
+            }
+          ],
           "sceneLayer": "default"
         },
         {
           "id": "welcome-banner",
           "kind": "decoration",
-          "x": 4.25,
-          "y": 0,
+          "x": 4,
+          "y": 0.15,
+          "z": 10,
+          "sceneLayer": "default",
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-sign-left-v1-var-0"
+                "spriteId": "welcome-room-wall-banner-var-6"
               },
-              "widthFt": 4,
-              "heightFt": 4,
+              "widthFt": 3.2,
+              "heightFt": 3.2,
+              "anchorBase": true
+            }
+          ],
+          "width": 0.75,
+          "height": 0.75
+        },
+        {
+          "id": "poster-left",
+          "kind": "decoration",
+          "x": 1.6,
+          "y": 0.15,
+          "width": 0.75,
+          "height": 1,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-show-poster-var-0"
+              },
+              "widthFt": 2.63,
+              "heightFt": 3.5,
               "offsetYFt": -4
             }
           ],
-          "width": 1.5,
-          "z": 6,
+          "sceneLayer": "default"
+        },
+        {
+          "id": "camera-rig-left",
+          "kind": "decoration",
+          "x": 2.85,
+          "y": 0.15,
+          "width": 1.25,
+          "height": 1.25,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-camera-rig-var-4"
+              },
+              "widthFt": 5,
+              "heightFt": 5,
+              "offsetYFt": -3.5,
+              "anchorBase": true
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "wall-shelf-left",
+          "kind": "decoration",
+          "x": 0.85,
+          "y": 0.15,
+          "width": 1.25,
+          "height": 0.75,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-wall-shelf-var-0"
+              },
+              "widthFt": 5.38,
+              "heightFt": 2.69
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "autograph-book-placeholder"
+              },
+              "widthFt": 1.8,
+              "heightFt": 1.8,
+              "offsetXFt": 1,
+              "offsetYFt": -1
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "sconce-right-inner",
+          "kind": "decoration",
+          "x": 5.3,
+          "y": 0.15,
+          "width": 0.5,
+          "height": 0.5,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-wall-sconce-v1-var-4"
+              },
+              "widthFt": 1.6,
+              "heightFt": 1.6,
+              "offsetYFt": -4,
+              "flipX": true
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "sconce-far-left",
+          "kind": "decoration",
+          "x": 0.1,
+          "y": 0.7,
+          "width": 0.5,
+          "height": 0.5,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-wall-sconce-v1-var-2"
+              },
+              "widthFt": 1.6,
+              "heightFt": 1.6,
+              "offsetYFt": -4
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "merchant-board",
+          "kind": "decoration",
+          "x": 0.1,
+          "y": 1.4,
+          "z": 30,
+          "sceneLayer": "default",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-merchant-board-var-6"
+              },
+              "widthFt": 3,
+              "heightFt": 3,
+              "anchorBase": true
+            }
+          ],
+          "width": 0.75,
+          "height": 0.75
+        },
+        {
+          "id": "call-sheet",
+          "kind": "decoration",
+          "x": 0.1,
+          "y": 2.7,
+          "z": 30,
+          "sceneLayer": "default",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-call-sheet-var-3"
+              },
+              "widthFt": 1,
+              "heightFt": 1.3,
+              "anchorBase": true
+            }
+          ],
+          "width": 0.25,
+          "height": 0.25
+        },
+        {
+          "id": "wall-torch-broker",
+          "kind": "decoration",
+          "x": 0.1,
+          "y": 5.1,
+          "width": 0.25,
+          "height": 0.75,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-torch-v1-var-14"
+              },
+              "widthFt": 1.4,
+              "heightFt": 2.8,
+              "offsetXFt": 0.5,
+              "anchorBase": true
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "sconce-far-right",
+          "kind": "decoration",
+          "x": 6.05,
+          "y": 0.9,
+          "width": 0.5,
+          "height": 0.5,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-wall-sconce-v1-var-6"
+              },
+              "widthFt": 1.6,
+              "heightFt": 1.6,
+              "offsetYFt": -4,
+              "flipX": true
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "wall-shelf-right",
+          "kind": "decoration",
+          "x": 5.75,
+          "y": 1.9,
+          "width": 1.25,
+          "height": 0.75,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-wall-shelf-var-0"
+              },
+              "widthFt": 5.38,
+              "heightFt": 2.69,
+              "flipX": false
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "purple-potion-bottle-v1-var-4"
+              },
+              "widthFt": 1.8,
+              "heightFt": 1.8,
+              "offsetYFt": -1.25
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
+          "id": "wall-torch-stage-right",
+          "kind": "decoration",
+          "x": 6.05,
+          "y": 3.6,
+          "width": 0.25,
+          "height": 0.75,
+          "z": 20,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-torch-v1-var-8"
+              },
+              "widthFt": 1.4,
+              "heightFt": 2.8,
+              "offsetYFt": -4,
+              "anchorBase": true
+            }
+          ],
           "sceneLayer": "default"
         },
         {
           "id": "sconce-left-inner",
           "kind": "decoration",
-          "x": 2.25,
-          "y": 0.25,
+          "x": 2.2,
+          "y": 0.15,
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
                 "spriteId": "prop-wall-sconce-v1-var-1"
               },
-              "widthFt": 1.5,
-              "heightFt": 1.5,
+              "widthFt": 1.6,
+              "heightFt": 1.6,
               "offsetYFt": -4
             }
           ],
@@ -13867,848 +14548,62 @@
           "sceneLayer": "default"
         },
         {
-          "id": "broker-bookcase",
-          "kind": "furniture",
-          "x": 8,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-bookcase-var-0"
-              },
-              "widthFt": 4,
-              "heightFt": 4
-            },
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
-              },
-              "widthFt": 1,
-              "heightFt": 1,
-              "offsetXFt": 1,
-              "offsetYFt": -1.5
-            }
-          ],
-          "z": 9,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "welcome-desk",
-          "kind": "furniture",
-          "x": 3.75,
-          "y": 2.25,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-desk-var-0"
-              },
-              "widthFt": 8,
-              "heightFt": 4
-            },
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "autograph-book-placeholder"
-              },
-              "widthFt": 1.25,
-              "heightFt": 1.25,
-              "offsetXFt": -2.5,
-              "offsetYFt": -1.5
-            }
-          ],
-          "width": 2,
+          "id": "exit-sign",
+          "kind": "decoration",
+          "x": 3.35,
+          "y": 6.05,
           "z": 30,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "shop-table",
-          "kind": "furniture",
-          "x": 1,
-          "y": 6,
+          "sceneLayer": "default",
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-shop-table-var-0"
+                "spriteId": "welcome-room-exit-sign-var-0"
               },
-              "widthFt": 8,
-              "heightFt": 5
-            },
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
-              },
-              "widthFt": 1,
-              "heightFt": 1,
-              "offsetXFt": 1,
-              "offsetYFt": -1.25
-            },
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "autograph-book-placeholder"
-              },
-              "widthFt": 1.25,
-              "heightFt": 1.25,
-              "offsetXFt": -2,
-              "offsetYFt": -1
+              "widthFt": 1.4,
+              "heightFt": 1.4,
+              "anchorBase": true
             }
           ],
-          "width": 2,
-          "height": 1.25,
-          "z": 30,
-          "sceneLayer": "default"
+          "width": 0.25,
+          "height": 0.25
         },
         {
-          "id": "potted-plant",
-          "kind": "decoration",
-          "x": 0.1,
-          "y": 4.2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-potted-plant-var-0"
-              },
-              "widthFt": 2.5,
-              "heightFt": 2.5
-            }
-          ],
-          "z": 30,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "broker-side-table",
-          "kind": "furniture",
-          "x": 8,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-side-table-var-12"
-              },
-              "widthFt": 2.5,
-              "heightFt": 2.5
-            },
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
-              },
-              "widthFt": 1,
-              "heightFt": 1,
-              "offsetYFt": -1.25
-            }
-          ],
-          "z": 30,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "lounge-stool",
-          "kind": "furniture",
-          "x": 9,
-          "y": 1.3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-lounge-stool-var-1"
-              },
-              "widthFt": 2.5,
-              "heightFt": 2.5
-            }
-          ],
-          "z": 30,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "velvet-rope",
-          "kind": "decoration",
-          "x": 3,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-velvet-rope-var-2"
-              },
-              "widthFt": 5,
-              "heightFt": 4.06,
-              "rotationDeg": 90,
-              "flipX": true,
-              "flipY": true
-            }
-          ],
-          "z": 40,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "copy-velvet-rope-1783661837863-0",
-          "kind": "decoration",
-          "x": 6,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-velvet-rope-var-2"
-              },
-              "widthFt": 5,
-              "heightFt": 4.06,
-              "rotationDeg": 90,
-              "flipX": true,
-              "flipY": true
-            }
-          ],
-          "z": 40,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "poster-left",
-          "kind": "decoration",
-          "x": 0.15,
-          "y": 0,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-show-poster-var-0"
-              },
-              "widthFt": 3,
-              "heightFt": 4,
-              "offsetYFt": -4
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "sconce-far-left",
-          "kind": "decoration",
-          "x": 1.1,
-          "y": 0.15,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-2"
-              },
-              "widthFt": 1.5,
-              "heightFt": 1.5,
-              "offsetYFt": -4
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "camera-rig-left",
-          "kind": "decoration",
-          "x": 3.4,
-          "y": 0.1,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-camera-rig-var-4"
-              },
-              "widthFt": 2.5,
-              "heightFt": 2.5,
-              "offsetYFt": -3.5
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "sconce-right-inner",
-          "kind": "decoration",
-          "x": 6.1,
-          "y": 0.2,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-4"
-              },
-              "widthFt": 1.5,
-              "heightFt": 1.5,
-              "offsetYFt": -4,
-              "flipX": true
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "stage-torch-right",
-          "kind": "decoration",
-          "x": 7.35,
-          "y": 0.1,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-torch-v1-var-8"
-              },
-              "widthFt": 1.5,
-              "heightFt": 3,
-              "offsetYFt": -4
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "poster-right",
-          "kind": "decoration",
-          "x": 8.2,
-          "y": 0,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-sign-left-v2-var-4"
-              },
-              "widthFt": 3,
-              "heightFt": 3,
-              "offsetYFt": -4,
-              "flipX": true
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "sconce-far-right",
-          "kind": "decoration",
-          "x": 9,
-          "y": 0.15,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-wall-sconce-v1-var-6"
-              },
-              "widthFt": 1.5,
-              "heightFt": 1.5,
-              "offsetYFt": -4,
-              "flipX": true
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "crate-stack-left",
-          "kind": "decoration",
-          "x": 0,
-          "y": 1.2,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-crate-stack-var-3"
-              },
-              "widthFt": 3,
-              "heightFt": 3.5
-            },
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
-              },
-              "widthFt": 1,
-              "heightFt": 1,
-              "offsetXFt": 0.5,
-              "offsetYFt": -2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "call-sheet-left",
-          "kind": "decoration",
-          "x": 0.1,
-          "y": 2.4,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-sign-left-v1-var-5"
-              },
-              "widthFt": 2,
-              "heightFt": 2.5,
-              "offsetXFt": -0.5
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "wall-shelf-left",
-          "kind": "decoration",
-          "x": 0,
-          "y": 3.1,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-wall-shelf-var-0"
-              },
-              "widthFt": 3,
-              "heightFt": 1.5
-            },
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "autograph-book-placeholder"
-              },
-              "widthFt": 1,
-              "heightFt": 1,
-              "offsetXFt": 1,
-              "offsetYFt": -1
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "merchant-sign",
-          "kind": "decoration",
-          "x": 0.15,
-          "y": 6.4,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-sign-left-v2-var-6"
-              },
-              "widthFt": 2.5,
-              "heightFt": 2.5,
-              "offsetXFt": -0.5
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "cable-coil-left",
-          "kind": "decoration",
-          "x": 0.1,
-          "y": 7.2,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-cable-coil-var-0"
-              },
-              "widthFt": 2.5,
-              "heightFt": 1.5
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "broker-torch",
-          "kind": "decoration",
-          "x": 9,
-          "y": 2.6,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-torch-v1-var-14"
-              },
-              "widthFt": 1.5,
-              "heightFt": 3,
-              "offsetXFt": 0.5
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "crate-right-upper",
-          "kind": "decoration",
-          "x": 9,
-          "y": 3.4,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-crate-single-var-0"
-              },
-              "widthFt": 2.5,
-              "heightFt": 2.5
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "wall-shelf-right",
-          "kind": "decoration",
-          "x": 9,
-          "y": 5.2,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-wall-shelf-var-0"
-              },
-              "widthFt": 3,
-              "heightFt": 1.5,
-              "flipX": true
-            },
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "purple-potion-bottle-v1-var-4"
-              },
-              "widthFt": 1,
-              "heightFt": 1,
-              "offsetYFt": -1.25
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "trash-bin-right",
-          "kind": "decoration",
-          "x": 9,
-          "y": 6.35,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-trash-bin-var-0"
-              },
-              "widthFt": 2,
-              "heightFt": 2.5
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "crate-bottom-left",
+          "id": "chore-rota",
           "kind": "decoration",
           "x": 1.2,
-          "y": 8,
-          "width": 1,
-          "height": 1,
-          "z": 20,
+          "y": 6.05,
+          "width": 0.75,
+          "height": 0.75,
+          "z": 10,
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-crate-single-var-0"
+                "spriteId": "welcome-room-chore-rota-var-2"
               },
-              "widthFt": 2.5,
+              "widthFt": 3,
               "heightFt": 2.5
             }
           ],
           "sceneLayer": "default"
         },
         {
-          "id": "cable-run-bottom",
+          "id": "laundry-line",
           "kind": "decoration",
-          "x": 2.4,
-          "y": 8,
-          "width": 1,
-          "height": 1,
-          "z": 20,
+          "x": 4.5,
+          "y": 6.05,
+          "width": 1.5,
+          "height": 0.75,
+          "z": 10,
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-cable-coil-var-0"
+                "spriteId": "welcome-room-laundry-line-var-0"
               },
-              "widthFt": 2.5,
-              "heightFt": 1.5,
-              "flipX": true
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "cable-run-bottom-right",
-          "kind": "decoration",
-          "x": 6.6,
-          "y": 8,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-cable-coil-var-0"
-              },
-              "widthFt": 2.5,
-              "heightFt": 1.5
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "crate-bottom-right",
-          "kind": "decoration",
-          "x": 7.8,
-          "y": 8,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-crate-stack-var-3"
-              },
-              "widthFt": 3,
-              "heightFt": 3.5,
-              "flipX": true
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "exit-sign-bottom",
-          "kind": "decoration",
-          "x": 0.1,
-          "y": 8,
-          "width": 1,
-          "height": 1,
-          "z": 20,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-sign-left-v1-var-13"
-              },
-              "widthFt": 2,
-              "heightFt": 2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-worn-1",
-          "kind": "floor",
-          "x": 2,
-          "y": 2,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-worn-var-3"
-              },
-              "widthFt": 2,
-              "heightFt": 2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-worn-2",
-          "kind": "floor",
-          "x": 7,
-          "y": 6,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-worn-var-3"
-              },
-              "widthFt": 2,
-              "heightFt": 2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-worn-3",
-          "kind": "floor",
-          "x": 3,
-          "y": 5,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-worn-var-3"
-              },
-              "widthFt": 2,
-              "heightFt": 2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-stain-1",
-          "kind": "floor",
-          "x": 6,
-          "y": 4,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-stain-var-1"
-              },
-              "widthFt": 2,
-              "heightFt": 2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-stain-2",
-          "kind": "floor",
-          "x": 1,
-          "y": 3,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-stain-var-1"
-              },
-              "widthFt": 2,
-              "heightFt": 2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-tape-1",
-          "kind": "floor",
-          "x": 2,
-          "y": 7,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-tape-var-1"
-              },
-              "widthFt": 2,
-              "heightFt": 2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-tape-2",
-          "kind": "floor",
-          "x": 7,
-          "y": 3,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-tape-var-1"
-              },
-              "widthFt": 2,
-              "heightFt": 2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-seam-1",
-          "kind": "floor",
-          "x": 5,
-          "y": 6,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-seam-var-9"
-              },
-              "widthFt": 2,
-              "heightFt": 2
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-seam-2",
-          "kind": "floor",
-          "x": 6,
-          "y": 7,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-seam-var-9"
-              },
-              "widthFt": 2,
-              "heightFt": 2
+              "widthFt": 6,
+              "heightFt": 3
             }
           ],
           "sceneLayer": "default"
@@ -14718,6 +14613,108 @@
           "kind": "wall",
           "x": 0,
           "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-1",
+          "kind": "wall",
+          "x": 0,
+          "y": 1,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-2",
+          "kind": "wall",
+          "x": 0,
+          "y": 2,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-3",
+          "kind": "wall",
+          "x": 0,
+          "y": 3,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-4",
+          "kind": "wall",
+          "x": 0,
+          "y": 4,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-5",
+          "kind": "wall",
+          "x": 0,
+          "y": 5,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-0-6",
+          "kind": "wall",
+          "x": 0,
+          "y": 6,
           "sceneLayer": "walls",
           "layers": [
             {
@@ -14748,10 +14745,44 @@
           ]
         },
         {
+          "id": "__auto-wall-1-6",
+          "kind": "wall",
+          "x": 1,
+          "y": 6,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
           "id": "__auto-wall-2-0",
           "kind": "wall",
           "x": 2,
           "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-2-6",
+          "kind": "wall",
+          "x": 2,
+          "y": 6,
           "sceneLayer": "walls",
           "layers": [
             {
@@ -14799,10 +14830,44 @@
           ]
         },
         {
+          "id": "__auto-wall-4-6",
+          "kind": "wall",
+          "x": 4,
+          "y": 6,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
           "id": "__auto-wall-5-0",
           "kind": "wall",
           "x": 5,
           "y": 0,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-5-6",
+          "kind": "wall",
+          "x": 5,
+          "y": 6,
           "sceneLayer": "walls",
           "layers": [
             {
@@ -14833,384 +14898,10 @@
           ]
         },
         {
-          "id": "__auto-wall-7-0",
-          "kind": "wall",
-          "x": 7,
-          "y": 0,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-8-0",
-          "kind": "wall",
-          "x": 8,
-          "y": 0,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-9-0",
-          "kind": "wall",
-          "x": 9,
-          "y": 0,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-0-1",
-          "kind": "wall",
-          "x": 0,
-          "y": 1,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-9-1",
-          "kind": "wall",
-          "x": 9,
-          "y": 1,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-0-2",
-          "kind": "wall",
-          "x": 0,
-          "y": 2,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-9-2",
-          "kind": "wall",
-          "x": 9,
-          "y": 2,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-0-3",
-          "kind": "wall",
-          "x": 0,
-          "y": 3,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-9-3",
-          "kind": "wall",
-          "x": 9,
-          "y": 3,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-0-4",
-          "kind": "wall",
-          "x": 0,
-          "y": 4,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-9-4",
-          "kind": "wall",
-          "x": 9,
-          "y": 4,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-0-5",
-          "kind": "wall",
-          "x": 0,
-          "y": 5,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-9-5",
-          "kind": "wall",
-          "x": 9,
-          "y": 5,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-0-6",
-          "kind": "wall",
-          "x": 0,
-          "y": 6,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-9-6",
-          "kind": "wall",
-          "x": 9,
-          "y": 6,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-0-7",
-          "kind": "wall",
-          "x": 0,
-          "y": 7,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-9-7",
-          "kind": "wall",
-          "x": 9,
-          "y": 7,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-0-8",
-          "kind": "wall",
-          "x": 0,
-          "y": 8,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-1-8",
-          "kind": "wall",
-          "x": 1,
-          "y": 8,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-2-8",
-          "kind": "wall",
-          "x": 2,
-          "y": 8,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-3-8",
-          "kind": "wall",
-          "x": 3,
-          "y": 8,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-4-8",
-          "kind": "wall",
-          "x": 4,
-          "y": 8,
-          "sceneLayer": "walls",
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ]
-        },
-        {
-          "id": "__auto-wall-6-8",
+          "id": "__auto-wall-6-1",
           "kind": "wall",
           "x": 6,
-          "y": 8,
+          "y": 1,
           "sceneLayer": "walls",
           "layers": [
             {
@@ -15224,10 +14915,10 @@
           ]
         },
         {
-          "id": "__auto-wall-7-8",
+          "id": "__auto-wall-6-2",
           "kind": "wall",
-          "x": 7,
-          "y": 8,
+          "x": 6,
+          "y": 2,
           "sceneLayer": "walls",
           "layers": [
             {
@@ -15241,10 +14932,10 @@
           ]
         },
         {
-          "id": "__auto-wall-8-8",
+          "id": "__auto-wall-6-3",
           "kind": "wall",
-          "x": 8,
-          "y": 8,
+          "x": 6,
+          "y": 3,
           "sceneLayer": "walls",
           "layers": [
             {
@@ -15258,10 +14949,44 @@
           ]
         },
         {
-          "id": "__auto-wall-9-8",
+          "id": "__auto-wall-6-4",
           "kind": "wall",
-          "x": 9,
-          "y": 8,
+          "x": 6,
+          "y": 4,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-6-5",
+          "kind": "wall",
+          "x": 6,
+          "y": 5,
+          "sceneLayer": "walls",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-tiny-dungeon",
+                "col": 4,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "__auto-wall-6-6",
+          "kind": "wall",
+          "x": 6,
+          "y": 6,
           "sceneLayer": "walls",
           "layers": [
             {
@@ -15277,8 +15002,8 @@
         {
           "id": "door",
           "kind": "door",
-          "x": 5,
-          "y": 8,
+          "x": 3,
+          "y": 6,
           "layers": [
             {
               "sprite": {
@@ -15287,8 +15012,8 @@
                 "col": 4,
                 "row": 2
               },
-              "widthFt": 3,
-              "heightFt": 3
+              "widthFt": 3.5,
+              "heightFt": 7
             }
           ],
           "sceneLayer": "default"
@@ -15298,13 +15023,13 @@
         {
           "id": "welcome-goon",
           "npcTypeId": "tutorial-goon",
-          "x": 5.25,
-          "y": 1.5,
+          "x": 4.2,
+          "y": 1.1,
           "anchorRole": "welcome",
           "sceneLayer": "default",
           "z": 5,
-          "widthFt": 4,
-          "heightFt": 5,
+          "widthFt": 6.6,
+          "heightFt": 6.6,
           "rotationDeg": 0,
           "flipX": false,
           "flipY": false
@@ -15312,27 +15037,27 @@
         {
           "id": "welcome-merchant",
           "npcTypeId": "shopkeeper",
-          "x": 1.75,
-          "y": 5.375,
+          "x": 1.05,
+          "y": 1.1,
           "anchorRole": "shop",
           "sceneLayer": "default",
           "z": 4,
-          "widthFt": 4,
-          "heightFt": 5
+          "widthFt": 6.6,
+          "heightFt": 6.6
         },
         {
           "id": "welcome-spell-broker",
           "npcTypeId": "spell-quest-giver",
-          "x": 7.25,
-          "y": 4.5,
+          "x": 1.05,
+          "y": 4.25,
           "anchorRole": "spell",
           "sceneLayer": "default",
           "spriteOverride": {
             "source": "catalog",
             "spriteId": "spell-broker-v2-var-3"
           },
-          "widthFt": 5.7142857142857135,
-          "heightFt": 5,
+          "widthFt": 6.6,
+          "heightFt": 6.6,
           "rotationDeg": 0,
           "flipX": false,
           "flipY": false

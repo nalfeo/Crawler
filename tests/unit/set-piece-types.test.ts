@@ -538,10 +538,10 @@ describe('welcome-room authored set piece', () => {
   const chebyshev = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
     Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 
-  it('is a fixed 10x9 reality-show room', () => {
+  it('is a fixed 7x7 reality-show room', () => {
     const room = getSetPieceDef('welcome-room')!;
     expect(room.sizing).toBe('exact');
-    expect(getSetPieceFootprint(room)).toEqual({ width: 10, height: 9 });
+    expect(getSetPieceFootprint(room)).toEqual({ width: 7, height: 7 });
     expect(room.theme).toBe('reality-show');
   });
 
@@ -552,6 +552,19 @@ describe('welcome-room authored set piece', () => {
     expect(findSetPieceNpcByAnchor(room, 'spell')?.npcTypeId).toBe('spell-quest-giver');
   });
 
+  /**
+   * A tile is 4 ft, so 3 tiles is 12 ft — deliberately wider than
+   * `NPC_INTERACT_RANGE_FT` (10 ft). `npcSystem` sets `nearbyPlayer`
+   * independently per NPC with no nearest-NPC arbitration, so two NPCs closer
+   * than the interact range would both light up at once and the player could
+   * not tell which one they are about to talk to.
+   *
+   * This is also what forces the room to be at least 7x7: an NPC is 6.6 ft =
+   * 1.65 tiles and `stampSetPiece` requires its whole footprint inside the
+   * interior, leaving a usable span of `size - 3.65` per axis. Three points
+   * pairwise 3 apart need >= 3 of span on BOTH axes, so both sides need
+   * >= 6.65 tiles. Do not shrink the room to make a dressing pass fit.
+   */
   it('spaces the three NPCs at least 3 tiles apart (Chebyshev)', () => {
     const room = getSetPieceDef('welcome-room')!;
     const goon = findSetPieceNpcByAnchor(room, 'welcome')!;

@@ -1,0 +1,119 @@
+# ASPECT NOTE (Asset Forge, 2026-07-25): the set-piece renderer is now
+# HEIGHT-AUTHORITATIVE (PhaserBridge scales by heightFt / nativeHeightPx and the
+# rendered WIDTH follows the PNG canvas aspect), so the canvas aspect ratio IS
+# the object's real-world proportions. This sign is ~2 ft wide x 0.9 ft tall,
+# hence a 96x44 canvas (2.18:1). 96 >= 2*44, so resizeSpriteStrategy() returns
+# 'width': the output width is locked at 96 and the height follows the DRAWN
+# subject's aspect, i.e. the shipped canvas is aspect-true by construction.
+# `sizeVariant: wide` reshapes the sheet into 2:1 cells so the model composes
+# into a genuinely wide cell instead of a square one.
+type: prop
+name: welcome-room-exit-sign
+sizeVariant: wide
+description: |
+  A small illuminated EXIT SIGN of the kind bolted above a doorway. Front
+  elevation 3/4 view, looking straight at the face of the wall — the same view as
+  the already-approved welcome-room-desk (which has "WELCOME" painted on its
+  FRONT face). Modern high-quality pixel art, silhouette readable at 16px.
+
+  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  The sign is approximately 2 FEET WIDE x 0.9 FEET TALL. Its bounding box must be
+  MORE THAN TWICE AS WIDE AS IT IS TALL (width : height = 2.2 : 1) — a long, flat,
+  letterbox slab. Compose it inside the cell like this:
+  - The sign spans the FULL WIDTH of the cell, hard edge to hard edge, leaving
+    only the small standard margin at left and right.
+  - VERTICALLY IT IS SHORT. Leave a band of EMPTY BACKGROUND across the top
+    quarter and the bottom quarter of the cell. Every painted pixel — including
+    the mounting bracket at the top and the drip of grime at the bottom — must sit
+    inside the MIDDLE HALF of the cell's height.
+  - If it looks squarish, or like a lantern, or like a box, it is wrong. If it
+    looks almost too long and too thin, it is right.
+  - Within that flat strip, the sign fills roughly 80-90% of the area. It must NOT
+    be a small object floating in the middle of a big empty cell.
+
+  WHAT IT IS: a rectangular boxy light fitting with the word EXIT across its face
+  in large chunky capitals, back-lit from inside so the letters glow dully
+  through a grubby translucent panel. It hangs from a short bracket or two small
+  bolts at its top edge.
+
+  IT IS FILTHY AND HALF DEAD — this is the whole point of the prop:
+  - ONE SIDE OF THE LIGHT IS DEAD. The half of the panel nearer one end is
+    noticeably darker than the other, so the letters on that side are dim and
+    hard to read while the letters on the live side are brighter. This
+    left-to-right imbalance must be obvious.
+  - The housing is scuffed, dented on one corner, and its casing is cracked.
+  - Years of dust and greasy smoke have furred the top surface and streaked down
+    the face; there is a dark drip stain running off the bottom edge.
+  - One mounting bolt is missing so it hangs a couple of degrees crooked.
+
+  IT IS NOT: a lantern, a torch, a sconce, a candle, a window, a picture frame, a
+  nameplate, a road sign, a shop sign, a banner, a book, or a crate. It is one
+  small wall-mounted lit sign. One object. Nothing else.
+
+  THE LETTERING: the word EXIT reads across the panel in large, chunky, blocky
+  capitals, letter-spaced across the full width. Keep the letters few-pixel-simple
+  so they survive at small size — legibility of the WORD matters more than
+  crispness of each glyph.
+
+  MOOD — a grimy reality-TV dungeon set, threadbare and over-used. Three NPCs are
+  stuck living in this reception room, forbidden by dungeon rules from leaving.
+  This sign points at a door they are not allowed to use, and nobody has cleaned
+  or repaired it in years. Tired, dusty, dim, faintly cruel. Nothing crisp,
+  nothing new, nothing bright.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. This must sit beside the
+  already-approved welcome-room-desk, welcome-room-bookcase, welcome-room-rug,
+  welcome-room-velvet-rope, welcome-room-show-poster and prop-wall-sconce-v1
+  without clashing: deep maroon, dark walnut, tarnished brass, muted and dusty,
+  never bright and never saturated. The housing is a dark walnut-brown metal with
+  tarnished brass bolts; the lit panel is a dulled, dirty off-cream that has gone
+  amber with grime, and the letters read as a knocked-back dark shape against it.
+  The dead half is a flat greyed brown. BANNED: neon, pure white, pure black,
+  saturated red, saturated green, emergency green, saturated yellow, orange, teal,
+  cyan, blue, magenta, purple, any glow bloom or halo, and any speckle of a hue
+  outside the maroon / walnut / brass / dirty-cream family. A bright saturated
+  green or red emergency-exit look is an automatic rejection — this is a dungeon
+  set dressed to look like one, not modern building signage.
+
+  RENDERING: hard dark contour around the housing in the house prop style, muted
+  interior shading, lit from above. This prop is WALL-MOUNTED: it hangs above a
+  doorway and does not rest on the floor.
+
+  BACKGROUND: fully transparent. Draw ONLY the sign and its bracket. Do NOT paint
+  the stone wall behind it, the doorway below it, a backing panel, frame, border,
+  vignette or any glow spill onto the wall — the wall is already painted
+  underneath this art in the game. Every pixel that is not sign must be fully
+  transparent.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the sign's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, and do not draw any panel, border or frame behind the sign.
+size:
+  width: 96
+  height: 44
+anchor:
+  x: 48
+  y: 40
+sensors:
+  # A boxy sign is a deliberately near-rectangular flat object, so it fills far
+  # more of its bounding box than the `prop` default range [0.10, 0.65], which is
+  # tuned for irregular grounded props. Same reasoning and 0.85 cap as the
+  # already-approved welcome-room-show-poster and the sibling wall-banner brief:
+  # a genuine background-removal failure lands at ~0.95-1.0 and is still caught.
+  opaqueRatio:
+    min: 0.40
+    max: 0.88
+  # Wall-mounted: it hangs, so bottom-center grip is meaningless.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - wall-mounted
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

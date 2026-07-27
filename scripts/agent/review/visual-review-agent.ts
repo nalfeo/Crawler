@@ -605,7 +605,10 @@ Return ONLY this JSON schema:
 }
 
 async function captureScreenshot(
-  opts: Pick<CliOptions, 'labUrl' | 'setupFile' | 'skipProbeWait' | 'waitMs' | 'clip' | 'viewport'>,
+  opts: Pick<
+    CliOptions,
+    'labUrl' | 'setupFile' | 'skipProbeWait' | 'waitMs' | 'clip' | 'viewport' | 'probeTimeoutMs'
+  >,
   outPath: string,
   cropsDir: string | null,
 ): Promise<CaptureResult> {
