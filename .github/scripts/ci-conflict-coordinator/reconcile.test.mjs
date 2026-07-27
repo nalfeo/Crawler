@@ -233,6 +233,7 @@ function buildRoutes({
   pr1Sha,
   pr2Sha,
   pr3Sha,
+  pr1Labels = [],
   livePr1Sha = pr1Sha,
   postClosePr3Sha,
   postClosePr3Status = 200,
@@ -301,7 +302,7 @@ function buildRoutes({
       body: [
         // PR3 has 2 CI files → ranks first
         pr3Pull(pr3Sha),
-        livePull(1, pr1Sha),
+        livePull(1, pr1Sha, { labels: pr1Labels }),
         livePull(2, pr2Sha),
       ],
     }),
@@ -335,7 +336,9 @@ function buildRoutes({
     },
 
     // Live PR reads for PR1 (leader): can drift after the initial snapshot.
-    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({ body: livePull(1, livePr1Sha) }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({
+      body: livePull(1, livePr1Sha, { labels: pr1Labels }),
+    }),
 
     // Live PR reads for PR2
     [`GET /repos/${OWNER}/${REPO}/pulls/2`]: () => ({ body: livePull(2, pr2Sha) }),
@@ -620,7 +623,7 @@ test('coordinator keeps every member fenced and suppresses dispatch when the act
     status: 'active',
     leaseId: 'test-shepherd-lease',
     blockers: [],
-    updatedAt: '2026-07-27T17:00:00.000Z',
+    updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
   });
 
   const trustedRecoveryComment = {
@@ -631,7 +634,13 @@ test('coordinator keeps every member fenced and suppresses dispatch when the act
     author_association: 'NONE',
   };
 
-  const routes = buildRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha });
+  const routes = buildRoutes({
+    mainSha,
+    pr1Sha,
+    pr2Sha,
+    pr3Sha,
+    pr1Labels: [{ name: 'ci-owner-pr-1' }],
+  });
   routes[`GET /repos/${OWNER}/${REPO}/issues/1/comments`] = () => ({
     body: [trustedRecoveryComment],
   });
