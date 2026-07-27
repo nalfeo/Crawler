@@ -580,6 +580,158 @@ test('flag-off schedule: idle repair waiting PR can re-enter the exact repair pa
   assert.equal(isRepairWakeEligible(waitingPr), true);
 });
 
+// 2026-07-27 production stall: the admission-wait path parks ownerless PRs as
+// `owner=none,status=waiting`, not `status=idle`. Accepting only `idle` made 17
+// of 31 open PRs permanently unreachable by any sweep (oldest parked >2 days)
+// and left the merge train empty indefinitely.
+test('repair wake: ownerless admission-wait (status=waiting) PR is sweep-eligible', () => {
+  const waitingPr = {
+    number: 2080,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-27T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    recoveryState: makeState({
+      prNumber: 2080,
+      headSha: 'acea0cb6',
+      fingerprint: 'admission-wait-fixture',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'admission-wait',
+      blockers: [],
+      attempt: 0,
+      updatedAt: '2026-07-27T04:37:47Z',
+    }),
+  };
+
+  assert.equal(isRepairWakeEligible(waitingPr), true);
+
+  const numbers = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [waitingPr],
+    maxDispatchPerRun: 8,
+    trainEnabled: true,
+  });
+
+  assert.deepEqual(numbers, [2080]);
+});
+
+test('repair wake: a waiting PR carrying an owner label stays hidden', () => {
+  const ownedPr = {
+    number: 2081,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-27T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-owner-pr-2081' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    recoveryState: makeState({
+      prNumber: 2081,
+      headSha: 'head-2081',
+      fingerprint: 'owned-fixture',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'admission-wait',
+      blockers: [],
+      attempt: 0,
+      updatedAt: '2026-07-27T04:37:47Z',
+    }),
+  };
+
+  assert.equal(isRepairWakeEligible(ownedPr), false);
+});
+
+// 2026-07-27 production stall: reconcile unconditionally skips conflict-fenced
+// PRs (`skip pr=#N reason=ci-conflict-order-wait`), yet they still consumed
+// slots in the bounded REPAIR_WINDOW_SIZE sweep, starving healthy PRs.
+test('repair window: conflict-fenced PRs do not consume sweep slots', () => {
+  const fenced = (number, labelName) => ({
+    number,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-0${number - 1999}T00:00:00Z`,
+    base: { ref: 'main' },
+    labels: [{ name: labelName }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  });
+  const healthy = {
+    number: 2096,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-20T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+
+  const numbers = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [
+      fenced(2001, 'ci-conflict-order-wait'),
+      fenced(2002, 'ci-conflict-escalation'),
+      healthy,
+    ],
+    maxDispatchPerRun: 8,
+    trainEnabled: true,
+  });
+
+  assert.deepEqual(numbers, [2096]);
+});
+
+test('repair window: an explicitly dispatched conflict-fenced PR is still honored', () => {
+  const fencedPr = {
+    number: 2003,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-conflict-order-wait' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+
+  const numbers = collectPrNumbers({
+    payload: { pull_request: { number: 2003 } },
+    eventName: 'pull_request_target',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [fencedPr],
+    maxDispatchPerRun: 8,
+    trainEnabled: true,
+  });
+
+  assert.deepEqual(numbers, [2003]);
+});
+
+test('repair wake: an ownerless waiting PR with real blockers stays hidden', () => {
+  const genuineWait = {
+    number: 2079,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-27T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    recoveryState: makeState({
+      prNumber: 2079,
+      headSha: 'head-2079',
+      fingerprint: 'genuine-wait-fixture',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'waiting',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: '2026-07-27T04:37:47Z',
+    }),
+  };
+
+  assert.equal(isRepairWakeEligible(genuineWait), false);
+});
+
 test('flag-off schedule: all blocked label variants are excluded', () => {
   const blockedLabels = [
     'ci-conflict-order-wait',
