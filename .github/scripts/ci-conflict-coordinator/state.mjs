@@ -8,6 +8,7 @@ export const COORDINATED_LABEL = 'ci-conflict-coordinated';
 export const LEADER_LABEL = 'ci-conflict-leader';
 export const ESCALATION_LABEL = 'ci-conflict-escalation';
 export const ORDER_WAIT_LABEL = 'ci-conflict-order-wait';
+export const SYNTHESIS_LABEL = 'ci-conflict-synthesis';
 export const MIN_CLUSTER_SIZE = 3;
 // GitHub caps issue/PR comment bodies at 65 536 characters. A cluster sharing
 // hundreds of CI paths would breach that limit if we render or encode the full
@@ -20,6 +21,11 @@ export const MAX_OVERLAP_FILES = 20;
 // pass forever. After this lease expires the coordinator may re-dispatch the
 // active slot provided no healthy owner is found.
 export const DISPATCH_LEASE_MS = 30 * 60 * 1000; // 30 minutes
+// How long a synthesis dispatch is considered live. Once all cluster members are
+// ambiguous/escalated, the coordinator creates exactly one clean-room synthesis
+// issue. After this lease expires and the cluster is still all-escalated, the
+// coordinator may create a new synthesis issue.
+export const SYNTHESIS_LEASE_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 const CI_WORKFLOW_PREFIX = '.github/workflows/';
 const CI_SCRIPT_DIRECTORY_RE = /^\.github\/scripts\/ci-[^/]+\//;
@@ -330,6 +336,51 @@ export function shouldDispatchActiveSlot({
   return now.getTime() - new Date(lastDispatchAt).getTime() >= DISPATCH_LEASE_MS;
 }
 
+/**
+ * Returns true when every proof in the array has status `ambiguous` —
+ * meaning no PR in the cluster has a deterministic merge path and the
+ * coordinator's normal active-slot dispatch cannot make progress.
+ */
+export function isAllEscalated(proofs) {
+  if (!Array.isArray(proofs) || proofs.length === 0) return false;
+  return proofs.every((proof) => proof.status === 'ambiguous');
+}
+
+/**
+ * Compute a stable fingerprint for a synthesis dispatch. The key changes
+ * when the set of ambiguous PRs or their head SHAs change, so a force-push
+ * or cluster membership change results in a new key and allows re-dispatch.
+ *
+ * @param {{ groupId: string, ambiguousEntries: Array<{number: number, headSha: string}> }} opts
+ * @returns {string}
+ */
+export function computeSynthesisKey({ groupId, ambiguousEntries }) {
+  const sorted = [...(ambiguousEntries || [])]
+    .sort((a, b) => a.number - b.number)
+    .map(({ number, headSha }) => ({ number, headSha: compact(headSha) }));
+  return hash({ groupId: compact(groupId), ambiguous: sorted });
+}
+
+/**
+ * Returns true when a new synthesis issue should be created. Mirrors the
+ * same dedup + lease logic used by shouldDispatchActiveSlot.
+ *
+ * @param {{ priorSynthesisKey: string|null, nextSynthesisKey: string|null, synthesisDispatchAt: string|null, now: Date }} opts
+ * @returns {boolean}
+ */
+export function shouldDispatchSynthesis({
+  priorSynthesisKey,
+  nextSynthesisKey,
+  synthesisDispatchAt,
+  now,
+}) {
+  if (!nextSynthesisKey) return false;
+  if (priorSynthesisKey !== nextSynthesisKey) return true;
+  // Same key: only re-dispatch after the synthesis lease has expired.
+  if (!synthesisDispatchAt) return false;
+  return now.getTime() - new Date(synthesisDispatchAt).getTime() >= SYNTHESIS_LEASE_MS;
+}
+
 export function makeCoordinatorState({
   prNumber,
   groupId,
@@ -348,6 +399,13 @@ export function makeCoordinatorState({
   // Paired with lastDispatchKey to detect lost/cancelled runs and allow retry
   // after DISPATCH_LEASE_MS even when the key has not changed.
   lastDispatchAt = null,
+  // Synthesis state: set when all cluster members are ambiguous and the coordinator
+  // has created a clean-room synthesis issue.
+  synthesisDispatchKey = null,
+  synthesisDispatchAt = null,
+  synthesisIssueNumber = null,
+  // PR numbers targeted by the current synthesis task (the ambiguous PRs it replaces).
+  synthesisSupersededPrs = null,
   updatedAt,
 }) {
   const state = {
@@ -375,6 +433,15 @@ export function makeCoordinatorState({
     escalations: [...escalations].map(compact).filter(Boolean).sort(),
     lastDispatchKey: lastDispatchKey ? compact(lastDispatchKey) : null,
     lastDispatchAt: lastDispatchAt ? compact(lastDispatchAt) : null,
+    synthesisDispatchKey: synthesisDispatchKey ? compact(synthesisDispatchKey) : null,
+    synthesisDispatchAt: synthesisDispatchAt ? compact(synthesisDispatchAt) : null,
+    synthesisIssueNumber:
+      synthesisIssueNumber !== null && synthesisIssueNumber !== undefined
+        ? Number(synthesisIssueNumber)
+        : null,
+    synthesisSupersededPrs: Array.isArray(synthesisSupersededPrs)
+      ? [...synthesisSupersededPrs].map(Number).sort((a, b) => a - b)
+      : null,
     updatedAt: compact(updatedAt),
   };
   return validateCoordinatorState(state);
@@ -430,6 +497,31 @@ export function validateCoordinatorState(state) {
   ) {
     throw new Error('CI conflict state has invalid lastDispatchAt');
   }
+  // synthesisDispatchAt is optional but when present must be a valid ISO timestamp.
+  if (
+    state.synthesisDispatchAt !== undefined &&
+    state.synthesisDispatchAt !== null &&
+    Number.isNaN(Date.parse(state.synthesisDispatchAt))
+  ) {
+    throw new Error('CI conflict state has invalid synthesisDispatchAt');
+  }
+  // synthesisIssueNumber is optional but when present must be a positive integer.
+  if (
+    state.synthesisIssueNumber !== undefined &&
+    state.synthesisIssueNumber !== null &&
+    (!Number.isInteger(state.synthesisIssueNumber) || state.synthesisIssueNumber <= 0)
+  ) {
+    throw new Error('CI conflict state has invalid synthesisIssueNumber');
+  }
+  // synthesisSupersededPrs is optional but when present must be an array of positive integers.
+  if (
+    state.synthesisSupersededPrs !== undefined &&
+    state.synthesisSupersededPrs !== null &&
+    (!Array.isArray(state.synthesisSupersededPrs) ||
+      state.synthesisSupersededPrs.some((n) => !Number.isInteger(n) || n <= 0))
+  ) {
+    throw new Error('CI conflict state has invalid synthesisSupersededPrs');
+  }
   return state;
 }
 
@@ -481,6 +573,22 @@ export function renderCoordinatorComment(state) {
       : []),
     ...(state.escalations.length > 0
       ? ['', '### Escalations (PRs remain open)', ...state.escalations.map((item) => `- ${item}`)]
+      : []),
+    ...(state.synthesisDispatchKey
+      ? [
+          '',
+          '### Clean-room synthesis',
+          `- Synthesis task dispatched: ${state.synthesisDispatchAt ?? 'unknown'}`,
+          ...(state.synthesisIssueNumber
+            ? [`- Synthesis issue: #${state.synthesisIssueNumber}`]
+            : [`- Synthesis issue: pending`]),
+          ...(state.synthesisSupersededPrs?.length
+            ? [
+                `- Superseded PRs: ${state.synthesisSupersededPrs.map((n) => `#${n}`).join(', ')}`,
+              ]
+            : []),
+          `- Synthesis key: \`${state.synthesisDispatchKey.slice(0, 12)}\``,
+        ]
       : []),
     '',
     '_Managed by the trusted CI conflict coordinator. File overlap alone never closes a PR._',

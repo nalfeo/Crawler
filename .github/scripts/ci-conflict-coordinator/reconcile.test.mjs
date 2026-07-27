@@ -15,7 +15,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { makeCoordinatorState, renderCoordinatorComment } from './state.mjs';
+import { makeCoordinatorState, parseCoordinatorComment, renderCoordinatorComment } from './state.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
@@ -1043,5 +1043,321 @@ test('coordinator paginates check runs with filter=all and authenticates GraphQL
   assert.ok(
     observedCheckRunUrls.some((url) => url.includes('filter=all') && url.includes('page=2')),
     'must request paginated check runs with filter=all when page 1 is full',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// All-escalated synthesis path tests
+// ---------------------------------------------------------------------------
+
+/**
+ * Set up a git repo where all three PRs conflict with main on the same line,
+ * so every buildSupersessionProofs call returns status='ambiguous'.
+ *
+ *   base: ci.yml = "line1: original\n"
+ *   main: ci.yml = "line1: main-changed\n"   (advances from base)
+ *   pr1 : ci.yml = "line1: pr1-unique\n"      (branches from base; conflicts with main)
+ *   pr2 : ci.yml = "line1: pr2-unique\n"      (branches from base; conflicts with main)
+ *   pr3 : ci.yml = "line1: pr3-unique\n"      (branches from base; conflicts with main)
+ */
+function setupGitReposAllAmbiguous() {
+  const tmpDir = mkdtempSync(path.join(tmpdir(), 'crawler-coordinator-all-ambiguous-'));
+  const remoteDir = path.join(tmpDir, 'remote.git');
+  const workDir = path.join(tmpDir, 'work');
+  mkdirSync(remoteDir);
+  mkdirSync(workDir);
+
+  git(remoteDir, ['init', '--bare']);
+  git(workDir, ['init', '--initial-branch=main']);
+  git(workDir, ['remote', 'add', 'origin', remoteDir]);
+  git(workDir, ['config', 'user.email', 'test@example.com']);
+  git(workDir, ['config', 'user.name', 'Test']);
+
+  mkdirSync(path.join(workDir, '.github', 'workflows'), { recursive: true });
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'line1: original\n');
+  const baseSha = gitCommit(workDir, 'base');
+
+  // Advance main (changes the same line as every PR branch)
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'line1: main-changed\n');
+  const mainSha = gitCommit(workDir, 'main');
+  git(workDir, ['push', 'origin', 'main']);
+
+  // PR1: conflicts with main
+  git(workDir, ['checkout', '-b', 'pr1', baseSha]);
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'line1: pr1-unique\n');
+  const pr1Sha = gitCommit(workDir, 'pr1');
+  git(workDir, ['push', 'origin', 'pr1']);
+
+  // PR2: conflicts with main
+  git(workDir, ['checkout', '-b', 'pr2', baseSha]);
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'line1: pr2-unique\n');
+  const pr2Sha = gitCommit(workDir, 'pr2');
+  git(workDir, ['push', 'origin', 'pr2']);
+
+  // PR3: conflicts with main
+  git(workDir, ['checkout', '-b', 'pr3', baseSha]);
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'line1: pr3-unique\n');
+  const pr3Sha = gitCommit(workDir, 'pr3');
+  git(workDir, ['push', 'origin', 'pr3']);
+
+  git(workDir, ['checkout', 'main']);
+
+  return { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha };
+}
+
+/**
+ * Build mock routes for an all-ambiguous 3-PR cluster with no prior coordinator state.
+ */
+function buildAllAmbiguousRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha, priorCommentBodies = {} }) {
+  let synthesisIssueCount = 0;
+  let lastSynthesisBody = null;
+
+  function livePull(number, sha) {
+    return {
+      number,
+      state: 'open',
+      draft: false,
+      mergeable: false,
+      mergeable_state: 'dirty',
+      auto_merge: null,
+      node_id: `PR_${number}`,
+      base: { ref: 'main' },
+      head: { sha, repo: { full_name: `${OWNER}/${REPO}` } },
+      labels: [],
+      additions: 5,
+      deletions: 1,
+      changed_files: 1,
+      created_at: `2026-07-0${number}T00:00:00Z`,
+      title: `PR ${number} title`,
+    };
+  }
+
+  return {
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      status: 422,
+      body: { message: 'already exists' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({
+      body: [livePull(1, pr1Sha), livePull(2, pr2Sha), livePull(3, pr3Sha)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/1/files`]: () => ({
+      body: [{ filename: '.github/workflows/ci.yml' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/2/files`]: () => ({
+      body: [{ filename: '.github/workflows/ci.yml' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/3/files`]: () => ({
+      body: [{ filename: '.github/workflows/ci.yml' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/1/comments`]: () => ({
+      body: priorCommentBodies[1] ? [priorCommentBodies[1]] : [],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/2/comments`]: () => ({
+      body: priorCommentBodies[2] ? [priorCommentBodies[2]] : [],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3/comments`]: () => ({
+      body: priorCommentBodies[3] ? [priorCommentBodies[3]] : [],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/git/ref/heads/main`]: () => ({
+      body: { object: { sha: mainSha } },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits`]: () => ({ body: { check_runs: [] } }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({ body: livePull(1, pr1Sha) }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/2`]: () => ({ body: livePull(2, pr2Sha) }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/3`]: () => ({ body: livePull(3, pr3Sha) }),
+    [`POST /repos/${OWNER}/${REPO}/issues/1/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/issues/2/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/issues/3/labels`]: () => ({ body: [] }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues`]: () => ({ status: 204, body: null }),
+    [`POST /repos/${OWNER}/${REPO}/issues/1/comments`]: () => ({ body: { id: 1001 } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/2/comments`]: () => ({ body: { id: 1002 } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/3/comments`]: () => ({ body: { id: 1003 } }),
+    // Synthesis issue creation endpoint
+    [`POST /repos/${OWNER}/${REPO}/issues`]: (_url, body) => {
+      synthesisIssueCount += 1;
+      lastSynthesisBody = body;
+      return { status: 201, body: { number: 5000 + synthesisIssueCount, id: 99999 } };
+    },
+    [`POST /graphql`]: () => ({
+      body: {
+        data: {
+          repository: {
+            pullRequest: {
+              closingIssuesReferences: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [],
+              },
+            },
+          },
+        },
+      },
+    }),
+    _getSynthesisIssueCount: () => synthesisIssueCount,
+    _getLastSynthesisBody: () => lastSynthesisBody,
+  };
+}
+
+test('coordinator creates exactly one synthesis issue for an all-ambiguous cluster', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitReposAllAmbiguous();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const routes = buildAllAmbiguousRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha });
+  const { server, port, mutatingCalls } = await startServer(routes);
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  // Exactly one synthesis issue must have been created
+  const issueCreations = mutatingCalls.filter(
+    (c) => c.method === 'POST' && c.url === `/repos/${OWNER}/${REPO}/issues`,
+  );
+  assert.equal(issueCreations.length, 1, 'exactly one synthesis issue must be created');
+
+  // Issue must include the cluster ID and PR references
+  const issueBody = issueCreations[0].body;
+  assert.ok(
+    typeof issueBody.title === 'string' && issueBody.title.includes('synthesis'),
+    'synthesis issue title must mention synthesis',
+  );
+  assert.ok(
+    Array.isArray(issueBody.labels) && issueBody.labels.includes('ci-conflict-synthesis'),
+    'synthesis issue must carry the ci-conflict-synthesis label',
+  );
+  assert.ok(issueBody.body.includes('#1'), 'synthesis issue body must reference PR #1');
+  assert.ok(issueBody.body.includes('#2'), 'synthesis issue body must reference PR #2');
+  assert.ok(issueBody.body.includes('#3'), 'synthesis issue body must reference PR #3');
+
+  // Reconcile must log the synthesis dispatch
+  assert.match(stdout, /dispatched-synthesis group=/, 'stdout must log synthesis dispatch');
+
+  // No ci-recovery dispatch must have been attempted (all-escalated, no active slot)
+  const recoveryDispatches = mutatingCalls.filter(
+    (c) =>
+      c.method === 'POST' &&
+      c.url === `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`,
+  );
+  assert.equal(recoveryDispatches.length, 0, 'must not dispatch ci-recovery when all-escalated');
+});
+
+test('coordinator does not re-dispatch synthesis when prior state has active lease', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitReposAllAmbiguous();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  // Build a prior coordinator state with an active synthesis lease (dispatched 1 minute ago)
+  const recentAt = new Date(Date.now() - 60_000).toISOString();
+  const priorState = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-placeholder',  // will be replaced in the real run
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: null,
+    order: [],
+    proofs: [
+      { number: 1, status: 'ambiguous', fingerprint: 'a'.repeat(64), representedBy: [], reason: 'conflict' },
+      { number: 2, status: 'ambiguous', fingerprint: 'b'.repeat(64), representedBy: [], reason: 'conflict' },
+      { number: 3, status: 'ambiguous', fingerprint: 'c'.repeat(64), representedBy: [], reason: 'conflict' },
+    ],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    escalations: [],
+    synthesisDispatchKey: 'will-be-overwritten-by-live-key',
+    synthesisDispatchAt: recentAt,
+    synthesisIssueNumber: 9001,
+    synthesisSupersededPrs: [1, 2, 3],
+    updatedAt: recentAt,
+  });
+
+  // The prior coordinator comment body (trusted app author)
+  const priorCommentBody = renderCoordinatorComment(priorState);
+  const priorComment = {
+    id: 9001,
+    body: priorCommentBody,
+    performed_via_github_app: { id: Number(APP_ID) },
+    user: { login: 'trusted-app[bot]' },
+    author_association: 'NONE',
+  };
+
+  // Run reconcile once without prior state to capture the real synthesis key
+  // (so we can inject it as the "prior" key in the second run).
+  const captureRoutes = buildAllAmbiguousRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha });
+  let capturedSynthesisKey = null;
+  let capturedCommentBody = null;
+  const captureServer = await startServer({
+    ...captureRoutes,
+    [`POST /repos/${OWNER}/${REPO}/issues/1/comments`]: (_url, body) => {
+      capturedCommentBody = body?.body ?? null;
+      return { body: { id: 1001 } };
+    },
+  });
+  const run1 = await runScript(captureServer.port, workDir);
+  captureServer.server.close();
+
+  if (process.platform === 'win32' && run1.code === 3221226505 && /UV_HANDLE_CLOSING/.test(run1.stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(run1.code, 0, `first reconcile run failed\nstdout: ${run1.stdout}\nstderr: ${run1.stderr}`);
+  assert.ok(capturedCommentBody, 'first run must have written a coordinator comment');
+
+  // Parse the written comment to extract the real synthesis key
+  const writtenState = parseCoordinatorComment(capturedCommentBody);
+  assert.ok(writtenState.synthesisDispatchKey, 'first run must store synthesisDispatchKey');
+  capturedSynthesisKey = writtenState.synthesisDispatchKey;
+
+  // Build a prior comment that exactly matches the live synthesis key but with a
+  // recent synthesisDispatchAt (within the lease window).  Directly mutate the
+  // parsed state object instead of round-tripping through makeCoordinatorState's
+  // input contract (which expects raw pull objects, not the serialised form).
+  const matchingPriorState = { ...writtenState, synthesisDispatchAt: recentAt };
+  const matchingPriorComment = {
+    id: 9002,
+    body: renderCoordinatorComment(matchingPriorState),
+    performed_via_github_app: { id: Number(APP_ID) },
+    user: { login: 'trusted-app[bot]' },
+    author_association: 'NONE',
+  };
+
+  // Run 2: prior state already has the synthesis key → no re-dispatch
+  const run2Routes = buildAllAmbiguousRoutes({
+    mainSha,
+    pr1Sha,
+    pr2Sha,
+    pr3Sha,
+    priorCommentBodies: { 1: matchingPriorComment },
+  });
+  const { server: run2Server, port: run2Port, mutatingCalls: run2Mutations } = await startServer(run2Routes);
+  t.after(() => run2Server.close());
+
+  const run2 = await runScript(run2Port, workDir);
+
+  if (process.platform === 'win32' && run2.code === 3221226505 && /UV_HANDLE_CLOSING/.test(run2.stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(run2.code, 0, `second reconcile run failed\nstdout: ${run2.stdout}\nstderr: ${run2.stderr}`);
+
+  // No new synthesis issue must have been created on the second run
+  const issueCreations = run2Mutations.filter(
+    (c) => c.method === 'POST' && c.url === `/repos/${OWNER}/${REPO}/issues`,
+  );
+  assert.equal(
+    issueCreations.length,
+    0,
+    'must not create a new synthesis issue when prior synthesis lease is still active',
+  );
+
+  // Must log synthesis-active instead of dispatched-synthesis
+  assert.match(run2.stdout, /synthesis-active group=/, 'stdout must log synthesis-active for second sweep');
+  assert.ok(
+    !run2.stdout.includes('dispatched-synthesis'),
+    'second sweep must not log dispatched-synthesis',
   );
 });

@@ -20,12 +20,16 @@ import {
   COORDINATOR_MARKER,
   DISPATCH_LEASE_MS,
   MAX_OVERLAP_FILES,
+  SYNTHESIS_LABEL,
+  SYNTHESIS_LEASE_MS,
   changeStatsFromFiles,
   ciFilesFor,
   clusterPullRequests,
+  computeSynthesisKey,
   discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
+  isAllEscalated,
   isCoordinatorStateSemanticallyEqual,
   makeCoordinatorState,
   mergeCoordinationGroups,
@@ -34,6 +38,8 @@ import {
   renderCoordinatorComment,
   selectCoordination,
   shouldDispatchActiveSlot,
+  shouldDispatchSynthesis,
+  validateCoordinatorState,
 } from './state.mjs';
 
 const repository = 'nalfeo/Crawler';
@@ -758,4 +764,274 @@ test('renderCoordinatorComment round-trips overlapFilesCount through parse', () 
   // "…and N more" must be rendered for the truncated portion.
   const hiddenCount = 50 - MAX_OVERLAP_FILES;
   assert.ok(body.includes(`…and ${hiddenCount} more`));
+});
+
+// ---------------------------------------------------------------------------
+// isAllEscalated
+// ---------------------------------------------------------------------------
+
+test('isAllEscalated returns false for empty proof array', () => {
+  assert.equal(isAllEscalated([]), false);
+});
+
+test('isAllEscalated returns false when any proof is applied', () => {
+  assert.equal(
+    isAllEscalated([
+      { status: 'ambiguous' },
+      { status: 'applied' },
+    ]),
+    false,
+  );
+});
+
+test('isAllEscalated returns false when any proof is superseded', () => {
+  assert.equal(
+    isAllEscalated([
+      { status: 'ambiguous' },
+      { status: 'superseded' },
+    ]),
+    false,
+  );
+});
+
+test('isAllEscalated returns true when every proof is ambiguous', () => {
+  assert.equal(
+    isAllEscalated([
+      { status: 'ambiguous' },
+      { status: 'ambiguous' },
+      { status: 'ambiguous' },
+    ]),
+    true,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// computeSynthesisKey
+// ---------------------------------------------------------------------------
+
+test('computeSynthesisKey is stable for the same inputs', () => {
+  const key1 = computeSynthesisKey({
+    groupId: 'ci-conflict-abc',
+    ambiguousEntries: [
+      { number: 10, headSha: 'aaa' },
+      { number: 11, headSha: 'bbb' },
+    ],
+  });
+  const key2 = computeSynthesisKey({
+    groupId: 'ci-conflict-abc',
+    ambiguousEntries: [
+      { number: 11, headSha: 'bbb' },
+      { number: 10, headSha: 'aaa' },
+    ],
+  });
+  assert.equal(key1, key2, 'entry order must not affect the key');
+});
+
+test('computeSynthesisKey changes when a head SHA changes', () => {
+  const key1 = computeSynthesisKey({
+    groupId: 'ci-conflict-abc',
+    ambiguousEntries: [{ number: 10, headSha: 'aaa' }],
+  });
+  const key2 = computeSynthesisKey({
+    groupId: 'ci-conflict-abc',
+    ambiguousEntries: [{ number: 10, headSha: 'bbb' }],
+  });
+  assert.notEqual(key1, key2, 'changed head SHA must produce a different key');
+});
+
+test('computeSynthesisKey changes when the group ID changes', () => {
+  const entry = [{ number: 10, headSha: 'aaa' }];
+  assert.notEqual(
+    computeSynthesisKey({ groupId: 'ci-conflict-abc', ambiguousEntries: entry }),
+    computeSynthesisKey({ groupId: 'ci-conflict-xyz', ambiguousEntries: entry }),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// shouldDispatchSynthesis
+// ---------------------------------------------------------------------------
+
+test('shouldDispatchSynthesis returns false when nextSynthesisKey is null', () => {
+  assert.equal(
+    shouldDispatchSynthesis({
+      priorSynthesisKey: null,
+      nextSynthesisKey: null,
+      synthesisDispatchAt: null,
+      now: new Date('2026-01-01T00:00:00Z'),
+    }),
+    false,
+  );
+});
+
+test('shouldDispatchSynthesis returns true on first dispatch (no prior key)', () => {
+  assert.equal(
+    shouldDispatchSynthesis({
+      priorSynthesisKey: null,
+      nextSynthesisKey: 'newkey',
+      synthesisDispatchAt: null,
+      now: new Date('2026-01-01T00:00:00Z'),
+    }),
+    true,
+  );
+});
+
+test('shouldDispatchSynthesis returns true when key changed (cluster membership drift)', () => {
+  assert.equal(
+    shouldDispatchSynthesis({
+      priorSynthesisKey: 'oldkey',
+      nextSynthesisKey: 'newkey',
+      synthesisDispatchAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+      now: new Date('2026-01-01T00:01:00Z'),
+    }),
+    true,
+  );
+});
+
+test('shouldDispatchSynthesis returns false when key matches and lease is active', () => {
+  const dispatched = new Date('2026-01-01T00:00:00Z');
+  const now = new Date(dispatched.getTime() + SYNTHESIS_LEASE_MS - 1);
+  assert.equal(
+    shouldDispatchSynthesis({
+      priorSynthesisKey: 'samekey',
+      nextSynthesisKey: 'samekey',
+      synthesisDispatchAt: dispatched.toISOString(),
+      now,
+    }),
+    false,
+  );
+});
+
+test('shouldDispatchSynthesis returns true when key matches but lease has expired', () => {
+  const dispatched = new Date('2026-01-01T00:00:00Z');
+  const now = new Date(dispatched.getTime() + SYNTHESIS_LEASE_MS);
+  assert.equal(
+    shouldDispatchSynthesis({
+      priorSynthesisKey: 'samekey',
+      nextSynthesisKey: 'samekey',
+      synthesisDispatchAt: dispatched.toISOString(),
+      now,
+    }),
+    true,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// makeCoordinatorState / validateCoordinatorState with synthesis fields
+// ---------------------------------------------------------------------------
+
+test('makeCoordinatorState accepts and round-trips synthesis fields', () => {
+  const pull = makePull(1, ['.github/workflows/ci.yml']);
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-synth-test',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: null,
+    order: [],
+    proofs: [
+      { number: 1, status: 'ambiguous', fingerprint: 'a'.repeat(64), representedBy: [], reason: 'conflict' },
+      { number: 2, status: 'ambiguous', fingerprint: 'b'.repeat(64), representedBy: [], reason: 'conflict' },
+      { number: 3, status: 'ambiguous', fingerprint: 'c'.repeat(64), representedBy: [], reason: 'conflict' },
+    ],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    synthesisDispatchKey: 'testkey',
+    synthesisDispatchAt: '2026-07-27T00:00:00Z',
+    synthesisIssueNumber: 9999,
+    synthesisSupersededPrs: [1, 2, 3],
+    updatedAt: '2026-07-27T00:00:00Z',
+  });
+  assert.equal(state.synthesisDispatchKey, 'testkey');
+  assert.equal(state.synthesisDispatchAt, '2026-07-27T00:00:00Z');
+  assert.equal(state.synthesisIssueNumber, 9999);
+  assert.deepEqual(state.synthesisSupersededPrs, [1, 2, 3]);
+
+  const body = renderCoordinatorComment(state);
+  const parsed = parseCoordinatorComment(body);
+  assert.equal(parsed.synthesisDispatchKey, 'testkey');
+  assert.equal(parsed.synthesisIssueNumber, 9999);
+  assert.deepEqual(parsed.synthesisSupersededPrs, [1, 2, 3]);
+});
+
+test('makeCoordinatorState defaults synthesis fields to null', () => {
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-no-synth',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [makePull(1, ['.github/workflows/ci.yml'])],
+    proofs: [{ number: 1, status: 'applied', fingerprint: 'a'.repeat(64), representedBy: [] }],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-27T00:00:00Z',
+  });
+  assert.equal(state.synthesisDispatchKey, null);
+  assert.equal(state.synthesisDispatchAt, null);
+  assert.equal(state.synthesisIssueNumber, null);
+  assert.equal(state.synthesisSupersededPrs, null);
+});
+
+test('validateCoordinatorState rejects invalid synthesisIssueNumber', () => {
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-bad-synth',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: null,
+    order: [],
+    proofs: [],
+    overlapFiles: [],
+    updatedAt: '2026-07-27T00:00:00Z',
+  });
+  // Bypass factory normalisation to inject an invalid value.
+  state.synthesisIssueNumber = -1;
+  assert.throws(() => validateCoordinatorState(state), /invalid synthesisIssueNumber/);
+});
+
+test('renderCoordinatorComment includes synthesis section when synthesisDispatchKey is set', () => {
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-synth-render',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: null,
+    order: [],
+    proofs: [
+      { number: 1, status: 'ambiguous', fingerprint: 'a'.repeat(64), representedBy: [], reason: 'conflict' },
+    ],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    synthesisDispatchKey: 'renderkey123',
+    synthesisDispatchAt: '2026-07-27T00:00:00Z',
+    synthesisIssueNumber: 42,
+    synthesisSupersededPrs: [1, 2, 3],
+    updatedAt: '2026-07-27T00:00:00Z',
+  });
+  const body = renderCoordinatorComment(state);
+  assert.ok(body.includes('### Clean-room synthesis'), 'must include synthesis heading');
+  assert.ok(body.includes('#42'), 'must include synthesis issue number');
+  assert.ok(body.includes('#1, #2, #3'), 'must list superseded PRs');
+  assert.ok(body.includes('renderkey123'.slice(0, 12)), 'must include truncated key');
+});
+
+test('renderCoordinatorComment omits synthesis section when synthesisDispatchKey is null', () => {
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-no-synth-render',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [makePull(1, ['.github/workflows/ci.yml'])],
+    proofs: [{ number: 1, status: 'applied', fingerprint: 'a'.repeat(64), representedBy: [] }],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-27T00:00:00Z',
+  });
+  const body = renderCoordinatorComment(state);
+  assert.ok(!body.includes('Clean-room synthesis'), 'must not include synthesis section');
+});
+
+test('SYNTHESIS_LABEL is a non-empty string', () => {
+  assert.ok(typeof SYNTHESIS_LABEL === 'string' && SYNTHESIS_LABEL.length > 0);
+});
+
+test('SYNTHESIS_LEASE_MS is greater than DISPATCH_LEASE_MS', () => {
+  assert.ok(SYNTHESIS_LEASE_MS > DISPATCH_LEASE_MS, 'synthesis lease must outlast the active-slot dispatch lease');
 });

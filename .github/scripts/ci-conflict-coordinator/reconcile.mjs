@@ -33,11 +33,14 @@ import {
   ESCALATION_LABEL,
   LEADER_LABEL,
   ORDER_WAIT_LABEL,
+  SYNTHESIS_LABEL,
   changeStatsFromFiles,
   ciFilesFor,
+  computeSynthesisKey,
   discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
+  isAllEscalated,
   isCoordinatorStateSemanticallyEqual,
   makeCoordinatorState,
   mergeCoordinationGroups,
@@ -47,6 +50,7 @@ import {
   renderCoordinatorComment,
   selectCoordination,
   shouldDispatchActiveSlot,
+  shouldDispatchSynthesis,
   whoMustLandFirst,
 } from './state.mjs';
 
@@ -375,6 +379,58 @@ async function dispatchRecovery(pull, groupId) {
   );
 }
 
+/**
+ * Create a clean-room synthesis GitHub issue for an all-escalated cluster.
+ * Returns the created issue number.
+ *
+ * The issue carries the cluster ID, the PR numbers and titles being replaced,
+ * the shared CI file overlap, and the current main SHA so implementors have
+ * full context without needing to inspect each PR individually.
+ */
+async function createSynthesisIssue(group, mainSha, ambiguousPulls) {
+  const overlapFiles = overlappingFiles(group.pulls);
+  const fileLines = overlapFiles.slice(0, 10).map((f) => `- \`${f}\``);
+  if (overlapFiles.length > 10) {
+    fileLines.push(`- _…and ${overlapFiles.length - 10} more_`);
+  }
+  const prLines = ambiguousPulls.map((p) => `- #${p.number}: ${p.title}`);
+
+  const title = `CI conflict: clean-room synthesis for cluster \`${group.groupId}\``;
+  const body = [
+    '## Summary',
+    '',
+    `All members of CI conflict cluster \`${group.groupId}\` have unresolvable merge conflicts.`,
+    `A clean-room implementation from current \`main\` (\`${mainSha.slice(0, 12)}\`) is required`,
+    'because each conflicting branch contains contaminated or overlapping commits that cannot',
+    'be deterministically ordered.',
+    '',
+    '## Conflicting PRs to supersede',
+    ...prLines,
+    '',
+    '## Shared CI scope',
+    ...fileLines,
+    '',
+    '## Action required',
+    '',
+    'Implement the original requirements cleanly from the current `main` branch, excluding any',
+    'contaminated or unrelated commits from the conflicting branches. Once the replacement PR',
+    'merges, the coordinator will deterministically close or label the above PRs as superseded.',
+    '',
+    '_Automatically created by the CI conflict coordinator._',
+    `_Source cluster: \`${group.groupId}\` · Base: \`${mainSha.slice(0, 12)}\`_`,
+  ].join('\n');
+
+  const response = await request(token, `/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    body: {
+      title,
+      body,
+      labels: [SYNTHESIS_LABEL],
+    },
+  });
+  return response.data.number;
+}
+
 async function fetchLivePull(number) {
   return (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
 }
@@ -647,6 +703,7 @@ await Promise.all([
   ensureLabel(LEADER_LABEL, '1f6feb', 'Canonical leader for a coordinated CI conflict cluster'),
   ensureLabel(ESCALATION_LABEL, 'd1242f', 'CI conflict overlap requires maintainer resolution'),
   ensureLabel(ORDER_WAIT_LABEL, 'fbca04', 'Waiting for an earlier coordinated merge-train slot'),
+  ensureLabel(SYNTHESIS_LABEL, 'f9d0c4', 'Clean-room synthesis task created for an all-escalated CI conflict cluster'),
 ]);
 
 const openPulls = await paginate(token, `/repos/${owner}/${repo}/pulls?state=open`);
@@ -902,6 +959,49 @@ for (const group of groups) {
     );
   }
 
+  // All-escalated synthesis: when every remaining blocking PR has an ambiguous
+  // proof (no deterministic merge path), create exactly one clean-room synthesis
+  // GitHub issue carrying the cluster context. Subsequent sweeps suppress
+  // re-creation while the synthesis lease is live.
+  const allEscalated = isAllEscalated(proofs);
+  const ambiguousEntries = allEscalated
+    ? proofs.map((p) => ({ number: p.number, headSha: ranked.find((r) => r.number === p.number)?.headSha ?? '' }))
+    : [];
+  const nextSynthesisKey = allEscalated
+    ? computeSynthesisKey({ groupId: group.groupId, ambiguousEntries })
+    : null;
+  let synthesisDispatchKey = priorStates[0]?.synthesisDispatchKey ?? null;
+  let synthesisDispatchAt = priorStates[0]?.synthesisDispatchAt ?? null;
+  let synthesisIssueNumber = priorStates[0]?.synthesisIssueNumber ?? null;
+  let synthesisSupersededPrs = priorStates[0]?.synthesisSupersededPrs ?? null;
+
+  if (allEscalated) {
+    if (
+      shouldDispatchSynthesis({ priorSynthesisKey: synthesisDispatchKey, nextSynthesisKey, synthesisDispatchAt, now })
+    ) {
+      const ambiguousPulls = ranked.filter((r) => proofs.some((p) => p.number === r.number && p.status === 'ambiguous'));
+      synthesisIssueNumber = await createSynthesisIssue(group, mainSha, ambiguousPulls);
+      synthesisDispatchKey = nextSynthesisKey;
+      synthesisDispatchAt = now.toISOString();
+      synthesisSupersededPrs = ambiguousPulls.map((p) => p.number);
+      process.stdout.write(
+        `dispatched-synthesis group=${group.groupId} issue=#${synthesisIssueNumber} supersedes=${synthesisSupersededPrs.join(',')}\n`,
+      );
+    } else {
+      process.stdout.write(
+        `synthesis-active group=${group.groupId} key=${synthesisDispatchKey?.slice(0, 12) ?? 'none'}\n`,
+      );
+    }
+  } else {
+    // Cluster is no longer all-escalated: reset synthesis state so it is not
+    // shown in the coordinator comment and a future all-escalated transition
+    // gets a fresh synthesis dispatch.
+    synthesisDispatchKey = null;
+    synthesisDispatchAt = null;
+    synthesisIssueNumber = null;
+    synthesisSupersededPrs = null;
+  }
+
   const overlapFiles = overlappingFiles(group.pulls);
   for (const pull of group.pulls) {
     const state = makeCoordinatorState({
@@ -916,6 +1016,10 @@ for (const group of groups) {
       escalations,
       lastDispatchKey,
       lastDispatchAt,
+      synthesisDispatchKey,
+      synthesisDispatchAt,
+      synthesisIssueNumber,
+      synthesisSupersededPrs,
       updatedAt: now.toISOString(),
     });
     await updateCoordinatorComment(pull, groupComments.get(pull.number), state);

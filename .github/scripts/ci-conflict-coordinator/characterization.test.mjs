@@ -4,7 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { clusterPullRequests, selectCoordination, shouldDispatchActiveSlot } from './state.mjs';
+import { clusterPullRequests, selectCoordination, shouldDispatchActiveSlot, shouldDispatchSynthesis } from './state.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = path.join(DIR, 'characterization', 'verdict-fixtures.json');
@@ -15,7 +15,7 @@ function loadFixture() {
 
 test('ci-conflict characterization fixtures remain tagged and stable', () => {
   const fixture = loadFixture();
-  assert.equal(fixture.verdict_fixtures.length, 4);
+  assert.equal(fixture.verdict_fixtures.length, 5);
   for (const entry of fixture.verdict_fixtures) {
     assert.match(entry.id, /^CC\d{2}$/);
     assert.match(entry.dClass, /^D([1-9]|10)$/);
@@ -60,6 +60,19 @@ test('ci-conflict characterization fixture verdicts match current behavior', () 
           priorDispatchKey: entry.input.priorDispatchKey,
           nextKey: entry.input.nextKey,
           lastDispatchAt: entry.input.lastDispatchAt,
+          now: new Date(entry.input.now),
+        }),
+        entry.expected.dispatch,
+        entry.id,
+      );
+      continue;
+    }
+    if (entry.kind === 'shouldDispatchSynthesis') {
+      assert.equal(
+        shouldDispatchSynthesis({
+          priorSynthesisKey: entry.input.priorSynthesisKey,
+          nextSynthesisKey: entry.input.nextSynthesisKey,
+          synthesisDispatchAt: entry.input.synthesisDispatchAt,
           now: new Date(entry.input.now),
         }),
         entry.expected.dispatch,
