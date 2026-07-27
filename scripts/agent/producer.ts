@@ -135,11 +135,18 @@ export function triage(request: string): TriageResult {
   // Bug indicators: look for issue/problem keywords
   const bugKeywords =
     /crash|bug|error|fail|reproduce|diagnose|broken|can't|cannot|not working|should not|issue|glitch|problem|collision|walk through|stuck|blocked/;
+  const balanceKeywords =
+    /\b(?:balance|tuning|damage|health|economy|difficulty|drops?|spawn(?:\s+pressure|\s+rate)?|winrate|progression|xp|gold|currency|reward|cost|price)\b/;
+  const balanceChangeSignals =
+    /\d+%|playtest|\b(?:increase|decrease|reduce|boost|buff|nerf|harder|easier|more|less|faster|slower|higher|lower|change|adjust|rebalance|tune|set|deal|grant|raise|lower)\b|\b\d+\s*(?:damage|health|gold|xp|experience|currency|rewards?|seconds?|spawns?)\b/;
+  const cosmeticBalanceContexts =
+    /\b(?:ui|hud|menu|screen|overlay|popup|popups|log|report|filter|style|styles|visual|vfx|particle|audio|sound)\b/;
 
-  // Game balancing: explicit mention of balance + numbers/metrics (distinct quantitative signals)
+  // Game balancing: explicit gameplay-parameter changes require a human gate.
   if (
-    /balance|tuning|scale|damage|economy|difficulty|drops|spawn|winrate/.test(req) &&
-    /\d+%|playtest/.test(req)
+    balanceKeywords.test(req) &&
+    balanceChangeSignals.test(req) &&
+    !cosmeticBalanceContexts.test(req)
   ) {
     return {
       requestType: 'GAME_BALANCING',
@@ -457,29 +464,13 @@ export interface PlanningContract {
 }
 
 const SUCCESS_GATE_PATTERN =
-  /(?:\b(?:success|target|at least|minimum|within|reach|achieve|maintain)\b.{0,50}\b\d+(?:\.\d+)?\s*(?:%|ms|s|seconds?|minutes?|runs?|tests?)\b|\b\d+(?:\.\d+)?\s*%\s*(?:win\s*rate|coverage)\b|\b(?:all\s+tests?|zero\s+(?:regressions?|failures?))\b|\b(?:fps|latency)\s*(?:>=|<=|at least|below|under)\s*\d+)/i;
+  /(?:\b(?:success|target|at least|minimum|within|reach|achieve|maintain)\b.{0,50}\b\d+(?:\.\d+)?\s*(?:%|ms|s|seconds?|minutes?|runs?|tests?)\b|\b\d+(?:\.\d+)?\s*%\s*(?:win\s*rate|coverage)\b|\ball\s+tests?\s+(?:pass|passing|passed)\b|\b(?:reach|achieve|maintain|ensure|verify)\s+zero\s+(?:regressions?|failures?)\b|\b(?:fps|latency)\s*(?:>=|<=|at least|below|under)\s*\d+)/i;
 
 function inferPlanningContract(request: string, slices: SliceDecomposition[]): PlanningContract {
   const hasGate = SUCCESS_GATE_PATTERN.test(request);
   const hardGate = hasGate
     ? `Verify the request's stated measurable condition: "${request}".`
     : null;
-  const validationErrors: string[] = [];
-  const ids = new Set<string>();
-
-  for (const slice of slices) {
-    if (ids.has(slice.id)) validationErrors.push(`Duplicate slice id: ${slice.id}`);
-    ids.add(slice.id);
-    if (slice.apples < 1 || slice.apples > 3) {
-      validationErrors.push(`${slice.id} exceeds the 1–3🍎 slice limit.`);
-    }
-    for (const dependency of slice.dependencies) {
-      if (!ids.has(dependency) && !slices.some((candidate) => candidate.id === dependency)) {
-        validationErrors.push(`${slice.id} depends on unknown slice ${dependency}.`);
-      }
-      if (dependency === slice.id) validationErrors.push(`${slice.id} depends on itself.`);
-    }
-  }
 
   return {
     hardGate,
@@ -490,16 +481,31 @@ function inferPlanningContract(request: string, slices: SliceDecomposition[]): P
       'Prefer parallel work only when dependencies are explicit and acyclic.',
     ],
     confidence: Math.max(0, Math.min(1, (hasGate ? 0.8 : 0.55) + (slices.length > 0 ? 0.1 : 0))),
-    readyForDelegation: Boolean(hardGate) && validationErrors.length === 0,
-    validationErrors,
+    readyForDelegation: Boolean(hardGate),
+    validationErrors: [],
   };
 }
 
 export function validateDecomposition(result: DecompositionResult): string[] {
   const errors: string[] = [];
-  const ids = new Set(result.slices.map((slice) => slice.id));
+  const ids = new Set<string>();
   const visiting = new Set<string>();
   const visited = new Set<string>();
+
+  for (const slice of result.slices) {
+    if (ids.has(slice.id)) {
+      errors.push(`Duplicate slice id: ${slice.id}`);
+    }
+    ids.add(slice.id);
+    if (slice.apples < 1 || slice.apples > 3) {
+      errors.push(`${slice.id} exceeds the 1–3🍎 slice limit.`);
+    }
+    for (const dependency of slice.dependencies) {
+      if (dependency === slice.id) {
+        errors.push(`${slice.id} depends on itself.`);
+      }
+    }
+  }
 
   const visit = (id: string): void => {
     if (visiting.has(id)) {
@@ -532,12 +538,6 @@ export function decompose(request: string): DecompositionResult {
 
   if (/combat|damage|hit|attack|enemy/.test(req)) systemsInvolved.push('combat');
   if (/enemy|ai|behavior|pathfind/.test(req)) systemsInvolved.push('ai');
-  if (
-    /component|pipeline|runtime|wire|wiring|headless|scene|ecs/.test(req) &&
-    systemsInvolved.length > 0
-  ) {
-    systemsInvolved.push('core');
-  }
   if (/loot|drop|reward|chest|rare/.test(req)) systemsInvolved.push('loot');
   if (/progression|xp|level|tier|prestige/.test(req)) systemsInvolved.push('progression');
   if (/shop|buy|sell|currency|gold/.test(req)) systemsInvolved.push('economy');
@@ -547,6 +547,12 @@ export function decompose(request: string): DecompositionResult {
   if (/sound|audio|sfx|music/.test(req)) systemsInvolved.push('audio');
   if (/quest|objective|trigger|event/.test(req)) systemsInvolved.push('quests');
   if (/story|lore|dialogue|narrative/.test(req)) systemsInvolved.push('story');
+  if (
+    /component|pipeline|runtime|wire|wiring|headless|scene|ecs/.test(req) &&
+    systemsInvolved.length > 0
+  ) {
+    systemsInvolved.push('core');
+  }
 
   // Default to game/core systems if nothing specific matched
   if (systemsInvolved.length === 0) {

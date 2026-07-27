@@ -7,6 +7,9 @@ import {
   validateDecomposition,
 } from '../../scripts/agent/producer';
 
+type DecompositionResult = ReturnType<typeof decompose>;
+type Slice = DecompositionResult['slices'][number];
+
 // ---------------------------------------------------------------------------
 // triage() — six classification paths
 // ---------------------------------------------------------------------------
@@ -68,6 +71,30 @@ describe('triage()', () => {
     expect(result.requestType).toBe('GAME_BALANCING');
   });
 
+  it('classifies directional gameplay-parameter changes as GAME_BALANCING', () => {
+    for (const request of [
+      'Increase enemy damage on Floor 3',
+      'Add more gold drops from chests',
+      'Reduce player health regeneration',
+      'Add enemies that deal 10 damage',
+    ]) {
+      const result = triage(request);
+      expect(result.requestType).toBe('GAME_BALANCING');
+      expect(result.escalation).toBe('HUMAN_GATE');
+    }
+  });
+
+  it('does not classify cosmetic or reporting requests as GAME_BALANCING', () => {
+    for (const request of [
+      'Increase UI scale for readability',
+      'Add more damage popup styles',
+      'Create endless progression report',
+    ]) {
+      const result = triage(request);
+      expect(result.requestType).not.toBe('GAME_BALANCING');
+    }
+  });
+
   it('does not classify "bug in newly added feature" as DEBUGGING when feature keywords dominate', () => {
     // Feature keywords (add/new) suppress DEBUGGING detection — this is intentional
     const result = triage('There is a bug in the newly added loot system');
@@ -121,6 +148,12 @@ describe('decompose()', () => {
     const result = decompose('Improve enemy pathfinding behavior');
     const sysSlice = result.slices.find((s) => s.persona === 'Systems Engineer');
     expect(sysSlice).toBeDefined();
+  });
+
+  it('keeps runtime wiring paired with later-matched loot domains', () => {
+    const result = decompose('Add runtime wiring for loot drops');
+    expect(result.slices.find((s) => s.persona === 'Systems Engineer')).toBeDefined();
+    expect(result.slices.find((s) => s.persona === 'Game Designer')).toBeDefined();
   });
 
   it('caps apple tier at 3 for slices with many systems', () => {
@@ -204,9 +237,15 @@ describe('decompose()', () => {
       'Show fps counter on the debug overlay',
       'Improve test coverage for the loot module',
       'Reduce latency in enemy AI pathfinding',
+      'Add an "all tests" filter to the report',
     ]) {
       expect(decompose(request).contract.gateStatus).toBe('MISSING');
     }
+  });
+
+  it('accepts explicit all-tests-pass wording as a measurable success gate', () => {
+    const result = decompose('Ship the HUD refresh once all tests pass');
+    expect(result.contract.gateStatus).toBe('READY');
   });
 
   it('accepts a measurable hard gate and exposes confidence', () => {
@@ -230,6 +269,68 @@ describe('decompose()', () => {
     const result = decompose('Add a boss and reach 90% win rate across 100 runs');
     result.contract.validationErrors.push('stale diagnostic');
     expect(validateDecomposition(result)).toEqual([]);
+  });
+
+  it('reports dependency cycles', () => {
+    const result: DecompositionResult = {
+      ...decompose('Add a boss and reach 90% win rate across 100 runs'),
+      slices: [
+        {
+          id: 'slice-a',
+          name: 'A',
+          persona: 'Game Designer',
+          systems: ['combat'],
+          apples: 2,
+          description: 'A',
+          dependencies: ['slice-b'],
+        },
+        {
+          id: 'slice-b',
+          name: 'B',
+          persona: 'Systems Engineer',
+          systems: ['core'],
+          apples: 2,
+          description: 'B',
+          dependencies: ['slice-a'],
+        },
+      ],
+    };
+
+    expect(validateDecomposition(result)).toContain('Dependency cycle detected at slice-a.');
+  });
+
+  it('reports duplicate ids, dangling dependencies, self edges, and invalid apple tiers', () => {
+    const duplicateSlice: Slice = {
+      id: 'duplicate',
+      name: 'Duplicate A',
+      persona: 'Game Designer',
+      systems: ['loot'],
+      apples: 0,
+      description: 'Duplicate A',
+      dependencies: ['missing-slice', 'duplicate'],
+    };
+    const result: DecompositionResult = {
+      ...decompose('Add a boss and reach 90% win rate across 100 runs'),
+      slices: [
+        duplicateSlice,
+        {
+          ...duplicateSlice,
+          name: 'Duplicate B',
+          description: 'Duplicate B',
+          dependencies: [],
+          apples: 4,
+        },
+      ],
+    };
+
+    expect(validateDecomposition(result)).toEqual(
+      expect.arrayContaining([
+        'Duplicate slice id: duplicate',
+        'duplicate depends on unknown slice missing-slice.',
+        'duplicate depends on itself.',
+        'duplicate exceeds the 1–3🍎 slice limit.',
+      ]),
+    );
   });
 
   it('routes pure mechanics without inventing runtime plumbing', () => {
