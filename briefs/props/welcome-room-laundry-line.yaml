@@ -1,0 +1,137 @@
+# ASPECT NOTE (Asset Forge, 2026-07-26): height-authoritative renderer, so the
+# canvas aspect IS the real-world proportion. 1 tile = 4 ft (PIXELS_PER_FOOT = 8
+# => 32 world px per tile). This washing line is ~6 ft wide x 3 ft tall => 2:1,
+# hence a 128x64 canvas. 128 >= 2*64, so resizeSpriteStrategy() returns 'width':
+# the output width is locked at 128 and the height follows the DRAWN subject's
+# aspect, i.e. the shipped canvas is aspect-true by construction and the sagging
+# line cannot be letterboxed. `sizeVariant: wide` reshapes the sheet into 2:1
+# cells so the model composes into a genuinely wide cell instead of a square one.
+#
+# STRUNG, NOT GROUNDED: the line hangs between two fixings, so the `prop` default
+# bottom-centre grip anchor is the wrong anchor semantics (same reasoning as
+# welcome-room-wall-shelf). Centre-of-mass is the correct — and still fully
+# enforced — anchor sensor here.
+type: prop
+name: welcome-room-laundry-line
+sizeVariant: wide
+description: |
+  A SAGGING WASHING LINE strung across the corner of a TV set, hung with drying
+  costume and uniform pieces. Front-elevation 3/4 view, seen face-on the way you
+  would see a line strung across a room — the same view as the already-approved
+  welcome-room-desk (which has "WELCOME" painted on its FRONT face). This is a
+  FACADE, not a top-down floorplan: vertical pixels are real vertical height and
+  the garments HANG DOWNWARDS under gravity. Modern high-quality pixel art,
+  silhouette readable at 16px.
+
+  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  The run of line is approximately 6 FEET WIDE x 3 FEET TALL including the
+  hanging garments. Its bounding box must be EXACTLY TWICE AS WIDE AS IT IS TALL
+  (width : height = 2 : 1) — a long, low, letterbox composition. Compose it
+  inside the cell like this:
+  - The line spans the FULL WIDTH of the cell, hard edge to hard edge, leaving
+    only the small standard margin at left and right. Both ENDS of the cord must
+    reach those margins — the line is strung between two fixings that sit just
+    off-frame, so the cord runs off toward both side edges.
+  - VERTICALLY IT IS SHORT. The cord itself sits in the TOP QUARTER of the cell
+    and the garments hang below it, with the longest garment hem stopping above
+    the bottom margin. Nothing stands on the floor.
+  - If it looks squarish, or like a banner, or like a curtain, it is wrong. If it
+    looks almost too long and too low, it is right.
+
+  WHAT IT IS:
+  - A single thin cord with a REAL SAG: it dips lowest around the middle and
+    rises toward both ends in a shallow catenary curve. The sag is the whole
+    silhouette cue — a straight horizontal cord is wrong.
+  - FOUR TO SIX GARMENTS pegged along it, each hanging with its own weight and
+    its own droop, at slightly different heights, spaced unevenly with a wider
+    gap where somebody has taken something down. Between the garments the cord
+    is bare and the background shows through — that transparency is correct.
+  - The garments are COSTUME AND UNIFORM PIECES from a reality-show production,
+    not domestic laundry: a staff tabard, a limp uniform shirt, a long sash or
+    cloth strip, a pair of heavy work socks, a threadbare towel. Damp, heavy,
+    stretched, gone shapeless from too many washes; a couple still dripping.
+  - Small pegs where each garment meets the cord. One garment is pegged by a
+    single corner and hangs lopsided; one has slipped and is caught on the peg by
+    a fold.
+
+  IT IS NOT: a bunting string, a banner, a flag, a garland, a curtain, a net, a
+  cobweb, a row of hanging meat, a chain, a rope bridge, or a clothes rack. It is
+  a sagging washing line with damp clothes on it.
+
+  MOOD — DOMESTIC INTRUSION INTO A TV SET. Three NPCs are stuck living in this
+  reality-show reception room together, season after season, bored out of their
+  minds, forbidden by dungeon rules from leaving, harming each other or
+  complaining while the cameras roll. So their washing gets strung up in the half
+  of the room the camera rig does NOT cover. It should look faintly illicit — a
+  home crammed into a workplace — worn, grey, and never charming.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. It must sit beside
+  welcome-room-desk, welcome-room-bookcase, welcome-room-show-poster,
+  welcome-room-wall-banner, welcome-room-velvet-rope and prop-wall-sconce-v1
+  without clashing: cool grey worn stone, warm-brown walnut wood, desaturated
+  production-set greys and blacks, tarnished brass, deep maroon — muted and
+  dusty. The cord is a dull hemp brown-grey; the garments are washed-out greys,
+  bone, and dirty taupe, with ONE faded maroon tabard as the single sparing
+  saturated accent. BANNED: neon, pure white, pure black, saturated red,
+  saturated yellow, orange, teal, cyan, blue, green, magenta, purple, pastels,
+  and anything that reads as fresh clean laundry.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The left-facing folds
+  of every garment and the upper-left of the cord catch the highlight; the shadow
+  side of each fold falls to the lower right, and each garment shades the fold
+  behind it. Every prop in this wave shares that one light direction.
+
+  RENDERING: hard 1-pixel dark outline on every garment silhouette, 3-5 tone
+  stops per fabric, restrained dithering for damp weave — no mushy gradients, no
+  airbrush. The garments are SUPPORTED by the cord at their pegs; nothing floats
+  unattached. This prop is STRUNG: it hangs in the air and does NOT rest on the
+  floor.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, logos, labels,
+  captions, watermarks or signatures on any garment.
+
+  BACKGROUND: fully transparent. Draw ONLY the cord, the pegs and the garments.
+  Do NOT paint a wall behind them, a floor, a rectangular backing panel, a frame,
+  a border, a vignette, or any cast/contact/drop shadow — the wall is already
+  painted underneath this art in the game. Every pixel that is not cord, peg or
+  garment must be fully transparent, including all the gaps between garments.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the sprite palette so it
+  can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 128
+  height: 64
+anchor:
+  x: 64
+  y: 32
+sensors:
+  # A sagging line of separated garments covers far less of its bounding box than
+  # a solid grounded prop, and the gaps between garments are the point — the
+  # `prop` defaults (opaqueRatio floor of 0.10 assuming a solid object, and zero
+  # interior holes) would reject exactly the art this brief asks for. The floor
+  # is dropped to 0.06 (still far above an empty cell) and the CAP IS TIGHTENED
+  # to 0.55 so the dominant failure mode — the model painting a solid curtain or
+  # a filled banner instead of separated hanging garments — is rejected
+  # mechanically rather than by prose.
+  opaqueRatio:
+    min: 0.06
+    max: 0.55
+  interiorHoles:
+    maxPixels: 384
+  # Strung between two off-frame fixings: no grounded base, so a bottom-centre
+  # grip anchor is meaningless.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - living-area
+  - wall-mounted
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0
