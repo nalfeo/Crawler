@@ -3895,6 +3895,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-mini-fridge-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-mini-fridge-var-2",
+    "description": "Generated sprite from brief: welcome-room-mini-fridge.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-mini-fridge-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-mini-fridge-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-potted-plant-var-0",
     "kind": "sprite",
     "label": "welcome-room-potted-plant-var-0",
