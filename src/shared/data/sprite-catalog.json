@@ -4025,6 +4025,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-stanchion-pair-var-4",
+    "kind": "sprite",
+    "label": "welcome-room-stanchion-pair-var-4",
+    "description": "Generated sprite from brief: welcome-room-stanchion-pair.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-stanchion-pair-var-4",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-stanchion-pair-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-trash-bin-var-0",
     "kind": "sprite",
     "label": "welcome-room-trash-bin-var-0",
