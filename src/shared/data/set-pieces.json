@@ -13999,8 +13999,8 @@
         {
           "id": "broker-side-table",
           "kind": "furniture",
-          "x": 2.15,
-          "y": 4.4,
+          "x": 2,
+          "y": 5.5,
           "layers": [
             {
               "sprite": {
@@ -14020,7 +14020,7 @@
               "offsetYFt": -1.25
             }
           ],
-          "z": 30,
+          "z": 24,
           "sceneLayer": "default",
           "width": 0.75,
           "height": 0.5
@@ -14028,11 +14028,11 @@
         {
           "id": "bunk-bed",
           "kind": "furniture",
-          "x": 4.3,
-          "y": 3.7,
+          "x": 4.15,
+          "y": 3.5,
           "width": 1.75,
           "height": 1,
-          "z": 30,
+          "z": 14,
           "layers": [
             {
               "sprite": {
@@ -14048,11 +14048,11 @@
         {
           "id": "kitchenette",
           "kind": "furniture",
-          "x": 4.5,
-          "y": 4.9,
+          "x": 5,
+          "y": 5,
           "width": 1.25,
           "height": 1,
-          "z": 30,
+          "z": 20,
           "layers": [
             {
               "sprite": {
@@ -14068,19 +14068,19 @@
         {
           "id": "mini-fridge",
           "kind": "furniture",
-          "x": 4.15,
-          "y": 5.3,
-          "width": 0.75,
+          "x": 4,
+          "y": 5.4,
+          "width": 0.5,
           "height": 0.5,
-          "z": 30,
+          "z": 24,
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
                 "spriteId": "welcome-room-mini-fridge-var-2"
               },
-              "widthFt": 2.88,
-              "heightFt": 3
+              "widthFt": 1.9,
+              "heightFt": 2.12
             }
           ],
           "sceneLayer": "default"
@@ -14089,10 +14089,10 @@
           "id": "trash-bin-right",
           "kind": "decoration",
           "x": 5.5,
-          "y": 5.4,
+          "y": 5.45,
           "width": 0.5,
           "height": 0.5,
-          "z": 20,
+          "z": 22,
           "layers": [
             {
               "sprite": {
@@ -14130,8 +14130,8 @@
         {
           "id": "lounge-stool",
           "kind": "furniture",
-          "x": 5.55,
-          "y": 4.05,
+          "x": 5.75,
+          "y": 4,
           "layers": [
             {
               "sprite": {
@@ -14142,7 +14142,7 @@
               "heightFt": 2.2
             }
           ],
-          "z": 30,
+          "z": 16,
           "sceneLayer": "default",
           "width": 0.5,
           "height": 0.5
@@ -14234,8 +14234,8 @@
         {
           "id": "floor-seam-1",
           "kind": "floor",
-          "x": 2.8,
-          "y": 5.35,
+          "x": 3,
+          "y": 5,
           "width": 0.5,
           "height": 0.5,
           "z": 0,
@@ -14329,7 +14329,7 @@
               },
               "widthFt": 5,
               "heightFt": 5,
-              "offsetYFt": -3.5,
+              "offsetYFt": -1.2,
               "anchorBase": true
             }
           ],
@@ -14591,8 +14591,8 @@
         {
           "id": "exit-sign",
           "kind": "decoration",
-          "x": 3.19,
-          "y": 5.5,
+          "x": 3,
+          "y": 6,
           "z": 30,
           "sceneLayer": "default",
           "layers": [
@@ -14603,7 +14603,8 @@
               },
               "widthFt": 2.5,
               "heightFt": 1.77,
-              "anchorBase": true
+              "anchorBase": true,
+              "offsetYFt": -3.2
             }
           ],
           "width": 0.75,
