@@ -50,7 +50,7 @@
 type: character
 name: welcome-goon-v2
 description: |
-  A big, heavy-set MALE PRODUCTION-STAFF GREETER working the check-in desk of a
+  A TALL, RANGY MALE PRODUCTION-STAFF GREETER working the check-in desk of a
   televised dungeon reality show. He is a former bouncer who got stuck doing
   reception paperwork and has been down here far too long.
 
@@ -58,9 +58,21 @@ description: |
   TALL — a full-grown 6-foot-6 man, drawn realistically tall and lanky-shouldered
   in the torso and legs. His head is SMALL relative to his body: measure it, the
   head must be about one seventh of his total height, no more. Do NOT draw chibi,
-  super-deformed, two-head-tall, three-head-tall or big-head cartoon proportions.
-  Legs and torso carry most of the height. He may be broad and heavy — that suits
-  a goon — but he is TALL first and wide second.
+  super-deformed, two-head-tall, three-head-tall, four-head-tall, dwarf or
+  big-head cartoon proportions. Legs and torso carry most of the height. He is
+  TALL first and everything else second — he is a LEAN, LONG-LIMBED heavyweight,
+  NOT a squat, thick, barrel-shaped or dwarfish one.
+
+  BUILD HIM FROM THE FLOOR UP, IN THIS ORDER, AND KEEP THESE SHARES. Measured
+  against the 256-source-pixel height of his cell:
+   - The BOTTOM HALF of his total height is LEGS — at least 100 of those 256
+     source pixels, hip to knee to ankle, ending in boots planted on the floor.
+     Both knees must read. If the legs are shorter than the torso, he has FAILED.
+   - The MIDDLE THIRD is torso, arms and clipboard.
+   - His HEAD, chin to crown, is at most 34 of those 256 source pixels — one
+     seventh of him. A head bigger than that is an automatic failure.
+   - He is clearly TALLER THAN HE IS WIDE: his total drawn width must be well
+     under two thirds of his drawn height. A wide, blocky figure has FAILED.
 
   PRODUCTION IDENTITY IS THE SECOND PRIORITY, and it must be visible at game
   scale. Draw ALL THREE of these, large and unambiguous:
@@ -109,6 +121,10 @@ description: |
   - Do NOT draw a velvet rope, a doorway, a desk, furniture, or any second
     object other than the clipboard he is holding.
   - Do NOT draw a squat, wide, big-headed, chibi or dwarf-proportioned figure.
+    Round 10 of this brief failed on exactly that: the figures came back four and
+    a half heads tall with a drawn box 38 wide by 58 high (aspect 0.66), and the
+    visual judge hard-blocked the sheet as "too squat and wide". Lengthen the
+    LEGS to fix it — do not shrink the head by shrinking him overall.
   - Do NOT draw a drop shadow, cast shadow or dark ellipse on the ground under
     him. The background is empty.
   - Do NOT draw a jacket, coat, blazer, suit jacket, vest, waistcoat, hoodie or
