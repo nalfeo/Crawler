@@ -35,7 +35,9 @@ describe('CI liveness sweep workflow', () => {
     expect(job?.concurrency?.group).toBe('crawler-ci-liveness-sweep');
     expect(job?.concurrency?.queue).toBe('max');
     expect(job?.concurrency?.['cancel-in-progress']).toBe(false);
-    expect(job?.steps?.some((step) => step.name === 'Sweep closed/merged owner fences')).toBe(true);
+    expect(job?.steps?.some((step) => step.name === 'Reclaim closed/merged owner fences')).toBe(
+      true,
+    );
   });
 
   it('triggers router/coordinator and the closed-owner fence reconcile path', () => {
