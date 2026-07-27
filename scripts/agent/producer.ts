@@ -61,6 +61,8 @@ interface OrchestrationState {
   overall_progress: number;
   cloud_recovery_handoffs: number;
   blockers: string[];
+  contract_status?: PlanningContract['gateStatus'];
+  hard_gate?: string;
 }
 
 interface ProducerEvent {
@@ -144,6 +146,8 @@ export function triage(request: string): TriageResult {
       verdict: 'RISKY',
       verdictReason: 'Gameplay balance changes need human approval and baseline metrics first.',
       escalation: 'HUMAN_GATE',
+      confidence: 0.95,
+      nextAction: 'Collect baseline metrics and ask for approval.',
       message:
         '🎮 GAME BALANCING REQUEST\n\nThis is a gameplay balance decision. Requires human approval before implementation.\nNeed to collect baseline metrics, propose changes, and validate with playtesting.',
     };
@@ -155,6 +159,8 @@ export function triage(request: string): TriageResult {
       requestType: 'DEBUGGING',
       verdict: 'RECOMMENDED',
       verdictReason: 'Fixing a concrete bug is usually a good idea and low ambiguity.',
+      confidence: 0.9,
+      nextAction: 'Route to QA for reproduction and a real runtime artifact.',
       message:
         '🐛 DEBUGGING REQUEST\n\nThis is a diagnosis task. QA will reproduce and determine root cause.\nRoute to QA Engineer.',
     };
@@ -170,6 +176,8 @@ export function triage(request: string): TriageResult {
       verdict: 'RECOMMENDED',
       verdictReason: 'Investigation is a safe way to reduce uncertainty before changing behavior.',
       escalation: 'CONDITIONAL',
+      confidence: 0.85,
+      nextAction: 'Define the metric and evidence source before analysis.',
       message:
         '🔍 INVESTIGATION REQUEST\n\nThis is exploratory work. Will collect data and may spawn a follow-up task.\nRoute to QA Engineer + Game Designer for analysis.',
     };
@@ -182,6 +190,8 @@ export function triage(request: string): TriageResult {
       verdict: 'RECOMMENDED',
       verdictReason:
         'A feature request is reasonable to plan, but it still needs scope clarification first.',
+      confidence: 0.65,
+      nextAction: 'Ask for one measurable hard gate, then decompose.',
       message:
         '✨ FEATURE REQUEST\n\nThis is a feature/enhancement. Will decompose into slices and parallelize.\nProceed to clarification phase.',
       questions: [
@@ -200,6 +210,8 @@ export function triage(request: string): TriageResult {
       requestType: 'CHORE',
       verdict: 'RECOMMENDED',
       verdictReason: 'Non-gameplay cleanup is usually safe and suitable for direct execution.',
+      confidence: 0.85,
+      nextAction: 'Route to the owning engineering or DevOps persona.',
       message:
         '🧹 CHORE/REFACTOR REQUEST\n\nThis is a safe, non-gameplay change. Can be parallelized.\nRoute to Systems Engineer or DevOps.',
     };
@@ -211,6 +223,8 @@ export function triage(request: string): TriageResult {
     verdict: 'NOT_RECOMMENDED',
     verdictReason: 'The request is too ambiguous to execute safely without clarification.',
     escalation: 'CLARIFY',
+    confidence: 0.1,
+    nextAction: 'Ask the highest-value framing question before routing.',
     message:
       '❓ UNCLEAR REQUEST\n\nThe request is ambiguous. Need clarification before proceeding.',
     questions: [
@@ -231,6 +245,10 @@ export function renderTriage(request: string): string {
   const lines = [``, '🎯 PRODUCER TRIAGE', '', `Request: "${request}"`, ''];
   lines.push(`Type: ${result.requestType}`);
   lines.push(`Verdict: ${result.verdict} — ${result.verdictReason}`);
+  if (result.confidence !== undefined) {
+    lines.push(`Planning confidence: ${Math.round(result.confidence * 100)}%`);
+  }
+  if (result.nextAction) lines.push(`Next action: ${result.nextAction}`);
 
   if (result.escalation) {
     lines.push(`Escalation: ${result.escalation}`);
@@ -439,7 +457,7 @@ export interface PlanningContract {
 }
 
 const SUCCESS_GATE_PATTERN =
-  /\b(?:\d+%|\d+(?:\.\d+)?\s*(?:ms|s|sec|seconds|minutes?|runs?|tests?)|zero\s+(?:regressions?|failures?)|all\s+tests?|pass(?:es|ing)?|win\s*rate|coverage|fps|latency)\b/i;
+  /\b(?:success|target|at least|minimum|within|reach|achieve|maintain|win\s*rate|coverage|fps|latency|all\s+tests?|zero\s+(?:regressions?|failures?))\b/i;
 
 function inferPlanningContract(request: string, slices: SliceDecomposition[]): PlanningContract {
   const hasGate = SUCCESS_GATE_PATTERN.test(request);
@@ -514,6 +532,12 @@ export function decompose(request: string): DecompositionResult {
 
   if (/combat|damage|hit|attack|enemy/.test(req)) systemsInvolved.push('combat');
   if (/enemy|ai|behavior|pathfind/.test(req)) systemsInvolved.push('ai');
+  if (
+    /system|component|pipeline|runtime|wire|wiring|headless|scene|ecs/.test(req) &&
+    systemsInvolved.length > 0
+  ) {
+    systemsInvolved.push('core');
+  }
   if (/loot|drop|reward|chest|rare/.test(req)) systemsInvolved.push('loot');
   if (/progression|xp|level|tier|prestige/.test(req)) systemsInvolved.push('progression');
   if (/shop|buy|sell|currency|gold/.test(req)) systemsInvolved.push('economy');
@@ -678,6 +702,17 @@ function handleDecompose(request: string): void {
   console.log(`Total Apple Estimate: ${result.totalApples}🍎`);
   console.log(`Slices: ${result.slices.length}`);
   console.log(`Parallelizable Groups: ${result.parallelizableGroups.length}`);
+  console.log(
+    `Hard gate: ${result.contract.hardGate ?? 'MISSING — clarify a measurable success condition before delegation'}`,
+  );
+  console.log(`Planning confidence: ${Math.round(result.contract.confidence * 100)}%`);
+  console.log('Tiebreakers:');
+  result.contract.rankedTiebreakers.forEach((tiebreaker, index) =>
+    console.log(`  ${index + 1}. ${tiebreaker}`),
+  );
+  if (!result.contract.readyForDelegation) {
+    console.log('Delegation: BLOCKED until the planning contract is complete and valid.');
+  }
 
   if (result.totalApples > 12) {
     console.log(
@@ -735,7 +770,11 @@ function handleDecompose(request: string): void {
     slices: initialSlices,
     overall_progress: 0,
     cloud_recovery_handoffs: 0,
-    blockers: result.escalations,
+    blockers: result.contract.hardGate
+      ? result.escalations
+      : ['Define a measurable hard gate before delegating slices.'],
+    contract_status: result.contract.gateStatus,
+    hard_gate: result.contract.hardGate ?? undefined,
   };
   appendJsonlLine(ORCHESTRATION_FILE, state);
   const event: ProducerEvent = {

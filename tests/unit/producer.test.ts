@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { decompose, renderTriage, triage } from '../../scripts/agent/producer';
+import { decompose, renderTriage, triage, validateDecomposition } from '../../scripts/agent/producer';
 
 // ---------------------------------------------------------------------------
 // triage() — six classification paths
@@ -179,5 +179,41 @@ describe('decompose()', () => {
     const result = decompose('Add combat loot and audio');
     const expected = result.slices.reduce((s, sl) => s + sl.apples, 0);
     expect(result.totalApples).toBe(expected);
+  });
+
+  it('requires a measurable hard gate before delegation', () => {
+    const result = decompose('Add a new boss with custom AI and loot rewards');
+    expect(result.contract.gateStatus).toBe('MISSING');
+    expect(result.contract.readyForDelegation).toBe(false);
+    expect(result.contract.rankedTiebreakers).toHaveLength(3);
+  });
+
+  it('does not treat a gameplay parameter as a success gate', () => {
+    const result = decompose('Add a boss that spawns every 30 seconds');
+    expect(result.contract.gateStatus).toBe('MISSING');
+    expect(result.contract.readyForDelegation).toBe(false);
+  });
+
+  it('accepts a measurable hard gate and exposes confidence', () => {
+    const result = decompose('Add a boss and reach 90% win rate across 100 runs');
+    expect(result.contract.gateStatus).toBe('READY');
+    expect(result.contract.readyForDelegation).toBe(true);
+    expect(result.contract.confidence).toBeGreaterThanOrEqual(0.8);
+    expect(validateDecomposition(result)).toEqual([]);
+  });
+
+  it('does not emit duplicate or dangling dependencies', () => {
+    const result = decompose('Add a new boss with custom AI and loot rewards');
+    const ids = new Set(result.slices.map((slice) => slice.id));
+    for (const slice of result.slices) {
+      expect(slice.dependencies).not.toContain(slice.id);
+      for (const dependency of slice.dependencies) expect(ids).toContain(dependency);
+    }
+  });
+
+  it('routes pure mechanics without inventing runtime plumbing', () => {
+    const result = decompose('Implement a new attack combo system');
+    expect(result.slices.find((slice) => slice.persona === 'Game Designer')).toBeDefined();
+    expect(result.slices.find((slice) => slice.persona === 'Systems Engineer')).toBeUndefined();
   });
 });
