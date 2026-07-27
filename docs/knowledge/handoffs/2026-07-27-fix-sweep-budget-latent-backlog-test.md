@@ -10,9 +10,9 @@ ci-policy
 ## Summary
 
 `main` was red. `node --test .github/scripts/sweep-budget.test.mjs` failed on a
-clean `origin/main` (`2d05bd470`) — 1888 pass / **1 fail** — and that single
-failure blocked `Lightweight Checks` → `Merge gate` → `ci` on **every open PR**,
-including PR #2118. It was unrelated to any PR's own diff.
+clean `origin/main` (`2d05bd470`) with **8 passed / 1 failed** in that file, and
+that single failure blocked `Lightweight Checks` → `Merge gate` → `ci` on
+**every open PR**, including PR #2118. It was unrelated to any PR's own diff.
 
 Failing assertion: `latent backlog deduplicates merge-train and recovery demand
 by PR number` expected `countLatentBacklog(...) === 3`, got `2`.
