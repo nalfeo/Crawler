@@ -69,4 +69,5 @@ available) would identify exact wiring opportunities.
 The `sprites:asset-pr` script requires the `gh` CLI (blocked by DNS proxy in this
 environment) and also guards against CI execution (`CI=true`). Since all assets were
 already present in `main` with correct content, no merge was needed — closing the
-tracking issues via PR #2043's description is sufficient.
+tracking issues via PR #2043's description (`Fixes #1986` and `Fixes #2028`) is
+sufficient.
