@@ -71,7 +71,6 @@ function parentDirExists(globPath: string): boolean {
   return parent === null ? true : existsOnDisk(parent);
 }
 
-
 async function listDocs(): Promise<string[]> {
   const all = new Set<string>();
   for (const f of DOC_FILES) {

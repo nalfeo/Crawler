@@ -200,7 +200,9 @@ describe('frontmatterDescription', () => {
   });
 
   it('reads an unquoted description', () => {
-    expect(frontmatterDescription('---\ndescription: Reviews diffs.\n---\n')).toBe('Reviews diffs.');
+    expect(frontmatterDescription('---\ndescription: Reviews diffs.\n---\n')).toBe(
+      'Reviews diffs.',
+    );
   });
 
   it('returns null when frontmatter is missing, unterminated, or empty', () => {
