@@ -64,20 +64,18 @@ test('latent backlog deduplicates merge-train and recovery demand by PR number',
     { ...base, number: 1, labels: [{ name: 'merge-train' }] },
     // Counted once by the recovery backlog (unlabelled, so nothing excludes it).
     { ...base, number: 2, labels: [] },
-    // Excluded from BOTH: no queue label for the train, and `merge-train-blocked`
-    // is an externally-blocked label, so the recovery backlog skips it rather than
-    // letting it consume a bounded REPAIR_WINDOW_SIZE slot.
+    // Excluded from recovery backlog, but still counted as latent demand so
+    // sweep admission leaves headroom for externally blocked PR pressure.
     { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] },
     // Excluded from both: no queue label, and explicitly opted out of recovery.
     { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
   ];
-  assert.equal(countLatentBacklog({ pullRequests, repository }), 2);
+  assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
 });
 
-// Pins the externally-blocked exclusion on its own, so a future change to
-// EXTERNALLY_BLOCKED_LABEL_NAMES fails here with an unambiguous message instead
-// of silently shifting the aggregate count in the test above.
-test('latent backlog excludes externally-blocked PRs from the recovery backlog', () => {
+// Pins externally-blocked latent-demand accounting on its own, so future changes
+// fail with an unambiguous message instead of silently shifting aggregate counts.
+test('latent backlog still counts externally-blocked PRs as latent demand', () => {
   const repository = 'nalfeo/Crawler';
   const base = {
     state: 'open',
@@ -87,7 +85,7 @@ test('latent backlog excludes externally-blocked PRs from the recovery backlog',
     head: { repo: { full_name: repository } },
   };
   const blocked = [{ ...base, number: 10, labels: [{ name: 'merge-train-blocked' }] }];
-  assert.equal(countLatentBacklog({ pullRequests: blocked, repository }), 0);
+  assert.equal(countLatentBacklog({ pullRequests: blocked, repository }), 1);
 
   const unblocked = [{ ...base, number: 10, labels: [] }];
   assert.equal(countLatentBacklog({ pullRequests: unblocked, repository }), 1);
