@@ -59,6 +59,14 @@ threads with a second model, use
   persona's quality criteria.
 - Prefer concrete, actionable findings with a file/line and the rule violated.
 
+## Skills
+
+- [`security-review`](../../../.github/skills/security-review/SKILL.md) — for any
+  diff touching credentials, fetched content, dynamic execution, or prompt
+  surfaces.
+- [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — the
+  apple-scaled stage requirements and the ledger schema you are checking against.
+
 ## Quality Criteria
 
 - Every surfaced issue is real and actionable; signal-to-noise stays very high.

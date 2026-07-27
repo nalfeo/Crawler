@@ -566,12 +566,11 @@ export function decompose(request: string): DecompositionResult {
   // Persona-to-systems mapping (from routing matrix)
   const personaMapping: Record<string, string[]> = {
     'Game Designer': ['combat', 'loot', 'progression', 'economy', 'floor-generation'],
-    'Content Designer': ['quests'],
+    'Content Designer': ['quests', 'story'],
     'Graphics Designer': ['graphics'],
-    'Sound Designer': ['audio'],
-    'Story Designer': ['story'],
-    'UX Designer': ['ui'],
-    'Systems Engineer': ['ai', 'core'],
+    'UX Designer': ['ui', 'audio'],
+    'Game AI Engineer': ['ai'],
+    'Systems Engineer': ['core'],
   };
 
   // Group systems by persona
@@ -617,9 +616,9 @@ export function decompose(request: string): DecompositionResult {
   );
   const uiSlices = slices.filter((s) => s.persona === 'UX Designer');
   const graphicsSlices = slices.filter((s) => s.persona === 'Graphics Designer');
-  const audioSlices = slices.filter((s) => s.persona === 'Sound Designer');
+  const gameAiSlices = slices.filter((s) => s.persona === 'Game AI Engineer');
 
-  // UI depends on core
+  // UI (including audio feedback) depends on core
   for (const slice of uiSlices) {
     slice.dependencies = coreSlices.map((s) => s.id);
   }
@@ -629,12 +628,12 @@ export function decompose(request: string): DecompositionResult {
     slice.dependencies = coreSlices.map((s) => s.id);
   }
 
-  // Audio depends on core
-  for (const slice of audioSlices) {
+  // Enemy AI depends on core
+  for (const slice of gameAiSlices) {
     slice.dependencies = coreSlices.map((s) => s.id);
   }
 
-  // Story can be parallel (no dependencies unless it references game systems)
+  // Content/story can be parallel (no dependencies unless it references game systems)
 
   // Compute parallelizable groups
   const parallelizableGroups: string[][] = [];

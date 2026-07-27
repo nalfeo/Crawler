@@ -8,7 +8,14 @@
  *   - README.md
  *   - .github/copilot-instructions.md
  *   - .github/instructions/*.md
+ *   - .github/agents/*.md
  *   - docs/agent-os/policies/*.md
+ *   - docs/agent-os/personas/*.md
+ *
+ * Two kinds of reference are validated:
+ *   1. Backtick-quoted repo paths/globs (resolved from the repo root).
+ *   2. Relative Markdown link targets `[text](../foo/bar.md)` (resolved
+ *      against the linking document's own directory).
  *
  * Recognized as a "path" inside backticks:
  *   - Starts with `./`, `/`, `src/`, `scripts/`, `tests/`, `docs/`, `.github/`,
@@ -25,7 +32,12 @@ import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 
 const DOC_FILES = ['AGENTS.md', 'README.md', '.github/copilot-instructions.md'];
-const DOC_DIRS = ['.github/instructions', 'docs/agent-os/policies'];
+const DOC_DIRS = [
+  '.github/instructions',
+  '.github/agents',
+  'docs/agent-os/policies',
+  'docs/agent-os/personas',
+];
 
 const PATH_PREFIXES = [
   './',
@@ -57,6 +69,7 @@ const ALLOWLIST = new Set<string>([
 ]);
 
 const BACKTICK = /`([^`\n]+)`/g;
+const MD_LINK = /\[[^\]\n]*\]\(([^)\s]+)\)/g;
 
 function looksLikePath(s: string): boolean {
   if (s.includes(' ')) return false;
@@ -84,12 +97,43 @@ function existsOnDisk(rel: string): boolean {
 }
 
 function parentDirExists(globPath: string): boolean {
-  // For `foo/bar/*` or `foo/bar/**/*.ts`, check that `foo/bar` exists.
+  // For `foo/bar/*`, `foo/bar/**/*.ts`, or `foo/bar/quests.*.json`, check that
+  // the deepest non-wildcard *directory* (`foo/bar`) exists.
   const firstWildcard = globPath.search(/[*?{]/);
   if (firstWildcard < 0) return existsOnDisk(globPath);
-  const parent = globPath.slice(0, firstWildcard).replace(/\/+$/, '');
+  const head = globPath.slice(0, firstWildcard);
+  const lastSlash = head.lastIndexOf('/');
+  if (lastSlash < 0) return true;
+  const parent = head.slice(0, lastSlash);
   if (!parent) return true;
   return existsOnDisk(parent);
+}
+
+/**
+ * Resolve a Markdown link target to a repo-relative path, or `null` when the
+ * target is not a checkable local file reference (external URL, pure anchor,
+ * mail link, or a template placeholder).
+ */
+function resolveLinkTarget(doc: string, target: string): string | null {
+  if (!target || target.startsWith('#')) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return null; // http:, mailto:, etc.
+  if (target.includes('<') || target.includes('>')) return null;
+  const withoutAnchor = target.split('#')[0];
+  if (!withoutAnchor) return null;
+  const decoded = decodeURIComponent(withoutAnchor);
+  const docDir = doc.includes('/') ? doc.slice(0, doc.lastIndexOf('/')) : '';
+  const base = decoded.startsWith('/') ? decoded.slice(1) : `${docDir}/${decoded}`;
+  const segments: string[] = [];
+  for (const segment of base.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') {
+      if (segments.length === 0) return null; // escapes the repo root
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  return segments.length > 0 ? segments.join('/') : null;
 }
 
 async function listDocs(): Promise<string[]> {
@@ -152,6 +196,22 @@ async function main(): Promise<void> {
               'Update the doc to point at the new path, delete the stale reference, or add the file.',
           });
         }
+      }
+
+      // Relative Markdown link targets resolve against the linking doc's dir.
+      const linkRe = new RegExp(MD_LINK.source, 'g');
+      while ((match = linkRe.exec(line)) !== null) {
+        const target = match[1];
+        if (!target) continue;
+        const relTarget = resolveLinkTarget(doc, target);
+        if (relTarget === null) continue;
+        if (ALLOWLIST.has(relTarget)) continue;
+        if (existsOnDisk(relTarget)) continue;
+        report.error(`Markdown link target does not exist: \`${target}\``, {
+          file: doc,
+          line: idx + 1,
+          remediation: `Point the link at an existing file (resolved to \`${relTarget}\`) or remove it.`,
+        });
       }
     });
   }

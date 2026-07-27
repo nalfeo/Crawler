@@ -40,7 +40,7 @@ link back to this section instead of restating it.
   Plans stay in session chat; do not hide them in repo files unless the human
   explicitly asks for a file artifact.
 - **Declare an apple estimate** (🍎–🍎🍎🍎🍎🍎) before any code, and score the
-  actual at handoff. See [`policies/complexity-policy.md`](../policies/complexity-policy.md).
+  actual at handoff. See [`docs/agent-os/policies/complexity-policy.md`](../policies/complexity-policy.md).
 - **Run the apple-scaled review harness** and record a **review ledger**: a
   separate-model **plan review** at ≥3🍎 (**adversarial** at >3🍎 — enumerate ≥2
   alternatives and argue against the chosen design, recording `plan_divergence`),
@@ -49,7 +49,7 @@ link back to this section instead of restating it.
   `pr-review-ledger` guard hard-denies `create_pull_request` without a valid
   ledger for a code-touching change. See the
   [review-harness skill](../../../.github/skills/review-harness/SKILL.md) and
-  [`policies/review-harness-policy.md`](../policies/review-harness-policy.md).
+  [`docs/agent-os/policies/review-harness-policy.md`](../policies/review-harness-policy.md).
 - **Observe before done.** For any visual or runtime change, reading the diff is
   not verification. Reproduce the old behavior in a **real** artifact
   (`npm run dev`, a headless probe, or a pipeline `RunStats`), then re-observe
