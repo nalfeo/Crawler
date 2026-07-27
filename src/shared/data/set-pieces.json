@@ -14234,8 +14234,8 @@
         {
           "id": "floor-seam-1",
           "kind": "floor",
-          "x": 3,
-          "y": 5,
+          "x": 2,
+          "y": 4,
           "width": 0.5,
           "height": 0.5,
           "z": 0,
@@ -15054,8 +15054,8 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-door-var-2"
               },
-              "widthFt": 5.03,
-              "heightFt": 7
+              "widthFt": 5.75,
+              "heightFt": 8
             }
           ],
           "sceneLayer": "default"
