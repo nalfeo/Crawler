@@ -5647,6 +5647,108 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
   );
 });
 
+test('ci-only task body omits review-thread protocol and requires push-based progress', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'Lightweight Checks',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.ok(
+    taskCommentCall.body.body.includes('**CI-only protocol:**'),
+    'ci-only recovery task should include explicit CI-only guidance',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('do not reply to this task comment with status updates'),
+    'ci-only recovery task should forbid status-only task-comment replies',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**Review-thread protocol:**'),
+    false,
+    'ci-only recovery task should omit review-thread protocol text',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes(
+      'A top-level PR comment is never sufficient for a review-thread blocker',
+    ),
+    false,
+    'ci-only recovery task should omit review-thread-only marker instructions',
+  );
+});
+
 test('task body includes human-approval note when pendingHumanApproval is true', async (t) => {
   // When a PR has human-approval-required AND unresolved review threads, the
   // recovery agent MUST still fix the threads (the gate blocks merge only).
