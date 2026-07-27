@@ -44,23 +44,29 @@ value is ever read, making the `= null` initializer useless.
 
 ### Why the CI recovery automation could not make progress
 
-The automation itself worked correctly throughout:
-1. Dispatched Copilot agent 1: fixed typecheck regressions (`cd8fd69b`) —
-   missed the lint error
-2. Dispatched Copilot agent 2: fixed prettier formatting (`3435877a`) —
-   missed the lint error
+The blockers were exposed sequentially across advancing PR heads:
+1. At head `dc8876a`: CI job `89658302700` showed **Format check** failure;
+   **Typecheck & Lint** was skipped entirely. Dispatched agent 1 fixed
+   typecheck regressions (`cd8fd69b`) — the `no-useless-assignment` lint error
+   was not yet visible in CI at this head.
+2. At head `3435877`: CI job `89662952147` (appearing only after that head)
+   exposed the lint failure. Dispatched agent 2 fixed prettier formatting
+   (`3435877a`) by running local verification instead of fetching the specific
+   job log URL.
 3. After 2 failed attempts with the same blocker fingerprint
-   (`20e26aef10c09193...`), filed the loop incident (issue #1995)
+   (`20e26aef10c09193...`), the automation filed the loop incident (issue
+   #1995) via the `stale-automation-exhausted` path.
 
-The dispatched agents accessed the CI failure URL for the `Lightweight Checks`
-job but fixed adjacent issues (typecheck and prettier) instead of the primary
-lint failure. The task body correctly listed the job URL
-(`89662952147`) where the specific error was visible.
+The two dispatched agents fixed sequentially-exposed blockers across advancing
+heads — they did not both independently miss the same lint error. The retry
+accounting and blocker identity evolved as the PR head advanced, not as two
+identical misses. Whether this constitutes an automation defect requires
+re-evaluation of the retry state and blocker identity across those heads;
+**the original "no automation defect" conclusion in this handoff was premature
+without checking the job IDs at each head**.
 
-**No defect was found in the marker parser, permission grant,
-thread-resolution path, or mutation sequence.** The automation's
-`automationStallAction` correctly escalated after `stallAttempt >= 2` via the
-`stale-automation-exhausted` path.
+The automation's `automationStallAction` correctly escalated after
+`stallAttempt >= 2` via the `stale-automation-exhausted` path.
 
 ### Fix applied
 
@@ -84,8 +90,10 @@ lost. The fix was pushed directly to the PR #1960 branch
 - **Fix on PR #1960's branch directly**: Since the lint error only exists on
   the PR #1960 branch (not on main), the fix was applied there rather than
   cherry-picking to a new PR.
-- **No automation defect**: The CI recovery automation behaved correctly and no
-  changes to `reconcile.mjs` or `state.mjs` were needed.
+- **Automation defect assessment deferred**: The original "no automation defect"
+  conclusion was premature; the sequential blocker exposure across advancing
+  heads requires separate re-evaluation of the retry/state logic before closing
+  #1995.
 
 ## What's Next / Blockers
 
@@ -118,6 +126,8 @@ lost. The fix was pushed directly to the PR #1960 branch
   `ci-failure` kinds: "Fetch the CI job log URL listed for each ci-failure
   blocker FIRST, identify the specific failing step and error message, then fix
   that specific error before running local verification."
-- A regression test for `beginTelegraph` covering the self-targeting mode could
-  have caught this at development time by running `npm run lint` as part of PR
-  verification.
+- No new runtime behavioral test is needed for this ESLint-only defect: the
+  `no-useless-assignment` lint rule is already the regression guard. The missed
+  verification gate was running `verify:fast` (which lints changed TypeScript
+  files) before pushing; dispatched agents ran local typecheck/formatting checks
+  instead of fetching the specific CI job log to identify the exact failing rule.
