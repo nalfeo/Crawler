@@ -3518,6 +3518,19 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-bunk-bed-var-6",
+    "kind": "sprite",
+    "label": "welcome-room-bunk-bed-var-6",
+    "description": "Generated sprite from brief: welcome-room-bunk-bed.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-bunk-bed-var-6",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-bunk-bed-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-cable-coil-var-0",
     "kind": "sprite",
     "label": "welcome-room-cable-coil-var-0",
@@ -3604,6 +3617,19 @@
     "spriteId": "welcome-room-chair-turned-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-chair-turned-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-chore-rota-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-chore-rota-var-2",
+    "description": "Generated sprite from brief: welcome-room-chore-rota.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-chore-rota-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-chore-rota-var-2.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -3817,6 +3843,32 @@
     "row": 0
   },
   {
+    "id": "generated:welcome-room-kitchenette-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-kitchenette-var-0",
+    "description": "Generated sprite from brief: welcome-room-kitchenette.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-kitchenette-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-kitchenette-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-laundry-line-var-0",
+    "kind": "sprite",
+    "label": "welcome-room-laundry-line-var-0",
+    "description": "Generated sprite from brief: welcome-room-laundry-line.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-laundry-line-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-laundry-line-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-lounge-stool-var-1",
     "kind": "sprite",
     "label": "welcome-room-lounge-stool-var-1",
@@ -3838,6 +3890,19 @@
     "spriteId": "welcome-room-merchant-board-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-merchant-board-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-room-mini-fridge-var-2",
+    "kind": "sprite",
+    "label": "welcome-room-mini-fridge-var-2",
+    "description": "Generated sprite from brief: welcome-room-mini-fridge.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "welcome-room-mini-fridge-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-room-mini-fridge-var-2.png",
     "frame": 0,
     "col": 0,
     "row": 0
