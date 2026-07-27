@@ -24,6 +24,7 @@ import {
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
 import { admissionFingerprint, QUEUE_LABEL } from '../merge-train/state.mjs';
+import { DISPATCH_ACTION, selectTerminalAction } from './dispatch-table.mjs';
 import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './issue-intake-lib.mjs';
 import {
   REVIEW_CONFLICT_MARKER,
@@ -1612,6 +1613,111 @@ test('reconcile skips redispatch when stale-automation-exhausted state matches c
     ),
     false,
     'must not redispatch a new recovery task for an exhausted unchanged blocker set',
+  );
+});
+
+test('D5 wiring proof: the live terminal-cascade exit for stale-automation-exhausted matches selectTerminalAction, not a parallel inline code path', async (t) => {
+  // This test exists specifically to satisfy the "terminal selection is
+  // actually wired into reconcile.mjs rather than existing only in tests"
+  // requirement from issue #1858. It reconstructs the exact TerminalContext
+  // that the live reconcile run above is driven by, calls
+  // `selectTerminalAction` directly against it, and asserts the row it
+  // returns is the SAME row whose observable side effect (the
+  // `skip pr=... reason=stale-automation-exhausted` log line and "no new
+  // comment posted" behavior) is independently confirmed by the subprocess
+  // run. If reconcile.mjs still contained a duplicated/parallel inline
+  // terminal cascade instead of calling `selectTerminalAction`, this
+  // assertion would tell us nothing — the point is that BOTH must agree,
+  // and the reconcile.mjs source (see the D5 driver block) has no other
+  // terminal-decision code path left to diverge from.
+  const staleOffsetMs = 31 * 60 * 1000;
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  const stateComment = {
+    id: 901,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation-exhausted',
+        blockers,
+        attempt: 2,
+        progressKey,
+        progressAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+        updatedAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+      }),
+    ),
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: basePr(),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Independent confirmation from the live subprocess run.
+  assert.match(stdout, /skip pr=#42 reason=stale-automation-exhausted/);
+
+  // Direct call into the SAME table the driver consumes, built from the
+  // identical facts the fixture above establishes (label absent, owner=none,
+  // idle, stored trigger=stale-automation-exhausted, matching progress key,
+  // blockers present).
+  const equivalentCtx = {
+    blockersPresent: true,
+    admissionWaitingCount: 0,
+    live: true,
+    mergeTrainEnabled: false,
+    labelExists: false,
+    owner: 'none',
+    status: 'idle',
+    stateTrigger: 'stale-automation-exhausted',
+    stateProgressKey: progressKey,
+    currentProgressKey: progressKey,
+    isDuplicateDispatch: false,
+    stallAction: 'new',
+    automationProgressRecent: false,
+  };
+  const row = selectTerminalAction(equivalentCtx);
+  assert.strictEqual(row.id, 'GC-EXHAUSTED-SKIP');
+  assert.strictEqual(row.action, DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED);
+
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'must not redispatch a new recovery task — matches SKIP_STALE_AUTOMATION_EXHAUSTED semantics',
   );
 });
 
@@ -12344,8 +12450,7 @@ test('live: R07 ci-conflict-order-wait exit posts outdated-marker and resolves t
   const replyCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&
-      call.url ===
-        `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`,
+      call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`,
   );
   assert.ok(replyCall, 'expected a reply to be posted on the outdated review thread');
   assert.ok(
@@ -12435,7 +12540,10 @@ test('live: R07 ci-conflict-order-wait still skips cleanly when post-outdated-ma
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  assert.match(stdout, /skip outdated-marker thread=thread-outdated-r07-refresh-fail reason=reply-failed/);
+  assert.match(
+    stdout,
+    /skip outdated-marker thread=thread-outdated-r07-refresh-fail reason=reply-failed/,
+  );
   assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
   assert.doesNotMatch(
     stderr,

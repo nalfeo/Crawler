@@ -4,11 +4,19 @@
  * SCOPE:
  *   EARLY_DECISIONS table: ordered rows (R03–R12) that fire against cheap
  *   context before any expensive API calls (review threads, check runs).
- *   Returns the first matching row, or `null` to continue to the pipeline.
  *
- *   The terminal dispatch path (R26–R34/GC) remains inline in reconcile.mjs;
- *   wiring it into a data-driven table is deferred to a follow-up once the
- *   early-table D5 fix has stabilised and proven correct.
+ *   TERMINAL_DECISIONS table: ordered rows (R26–R34/GC) that fire once
+ *   blockers/admission facts are known — the "what do we do about this PR
+ *   right now" decision (wait for admission, queue/arm merge, GC a stale
+ *   automation lock, or dispatch @copilot).
+ *
+ *   Both tables return the first matching row via `selectEarlyAction`/
+ *   `selectTerminalAction`. The early table may return `null` (continue to
+ *   the main pipeline); the terminal table is exhaustive by construction
+ *   (its last row in each sub-path is an unconditional catch-all) and
+ *   `selectTerminalAction` throws if a context still fails to match, so an
+ *   unmapped owner/status/blocker/train-state combination fails loudly
+ *   instead of silently falling through.
  *
  * OUT OF SCOPE (handled by dedicated passes in the driver):
  *   - Startup guards: mode=off, draft, fork, metadata mismatch
@@ -17,7 +25,6 @@
  *   - Side-effect passes: thread resolution, stale-label clearing
  *   - Blocker construction, fingerprint computation
  *   - R15–R25: thread annotation/resolution, fence cleanup — within passes
- *   - R26–R34/GC: terminal dispatch — inline in reconcile.mjs for now
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * STRUCTURAL INVARIANT — D5 fix:
@@ -30,8 +37,19 @@
  *   `reconcile.test.mjs` independently verifies this by importing and calling
  *   `buildEarlyDecisionTable()`.
  *
+ * TERMINAL_DECISIONS ordering notes (see buildTerminalDecisionTable() for the
+ * full rationale of each row):
+ *   - GC (RELEASE_STALE_AUTOMATION_RETRY) is the terminal table's own
+ *     non-terminal row (mirrors R04): it releases a stale-but-not-yet-exhausted
+ *     automation lock and continues, exactly like R04 does for shepherd leases.
+ *   - SKIP_ACTIVE_COPILOT_PROGRESS's guard excludes `isDuplicateDispatch` cases
+ *     because production reaches that check only *after* the duplicate-dispatch
+ *     release has already fired (flipping `labelExists` false) — see the driver
+ *     wiring comment in reconcile.mjs for the full trace.
+ *
  * Design source: docs/knowledge/ci-recovery/2026-07-20-harness-holistic-review.md §7.4
  * Fixes: D5 (release-unreachable-behind-short-circuits) and all of §5.3.
+ * Terminal wiring closes issue #1858 (D5 dispatch table, terminal half).
  * See also: characterization/reconcile-decision-fixtures.json for R-id mapping.
  * ─────────────────────────────────────────────────────────────────────────────
  */
@@ -96,6 +114,13 @@ export const DISPATCH_ACTION = Object.freeze({
   SKIP_DUPLICATE_FINGERPRINT: 'skip-duplicate-fingerprint',
   /** GC: duplicate fingerprint, exhausted → release stale lock + file loop incident */
   RELEASE_STALE_AUTOMATION_EXHAUSTED: 'release-stale-automation-exhausted',
+  /**
+   * GC: duplicate fingerprint, not yet exhausted (stallAction 'retry' or the
+   * unreachable-in-practice 'progressed' case — see buildTerminalDecisionTable()):
+   * release the stale-but-not-exhausted lock and continue (non-terminal —
+   * driver re-evaluates the remaining table rows, mirrors R04).
+   */
+  RELEASE_STALE_AUTOMATION_RETRY: 'release-stale-automation-retry',
   /** GC: copilot still actively working the PR under a fresh lease */
   SKIP_ACTIVE_COPILOT_PROGRESS: 'skip-active-copilot-progress',
   /** Main path: dispatch @copilot to fix the listed blockers */
@@ -161,10 +186,7 @@ export function buildEarlyDecisionTable() {
       action: DISPATCH_ACTION.RELEASE_EXPIRED_SHEPHERD,
       description: 'expired shepherd lease reclaim (non-terminal: release and re-evaluate)',
       nonTerminal: true,
-      guard: (ctx) =>
-        ctx.labelExists &&
-        ctx.owner === 'shepherd' &&
-        ctx.shepherdLeaseExpired,
+      guard: (ctx) => ctx.labelExists && ctx.owner === 'shepherd' && ctx.shepherdLeaseExpired,
     },
     {
       id: 'R05',
@@ -186,20 +208,14 @@ export function buildEarlyDecisionTable() {
       dClass: 'D5',
       action: DISPATCH_ACTION.SKIP_ACTIVE_SHEPHERD,
       description: 'active shepherd lease short-circuit',
-      guard: (ctx) =>
-        ctx.labelExists &&
-        ctx.owner === 'shepherd' &&
-        !ctx.shepherdLeaseExpired,
+      guard: (ctx) => ctx.labelExists && ctx.owner === 'shepherd' && !ctx.shepherdLeaseExpired,
     },
     {
       id: 'R06',
       dClass: 'D1',
       action: DISPATCH_ACTION.SKIP_MERGE_TRAIN_OWNED,
       description: 'merge-train-owned short-circuit (owner-blind, after all release rows)',
-      guard: (ctx) =>
-        ctx.mergeTrainEnabled &&
-        !ctx.pendingHumanApproval &&
-        ctx.hasQueueLabel,
+      guard: (ctx) => ctx.mergeTrainEnabled && !ctx.pendingHumanApproval && ctx.hasQueueLabel,
     },
     {
       id: 'R07',
@@ -207,9 +223,7 @@ export function buildEarlyDecisionTable() {
       action: DISPATCH_ACTION.SKIP_CI_CONFLICT_ORDER_WAIT,
       description: 'ci-conflict-order wait short-circuit (owner-blind, after all release rows)',
       guard: (ctx) =>
-        ctx.mergeTrainEnabled &&
-        !ctx.pendingHumanApproval &&
-        ctx.hasCiConflictOrderWait,
+        ctx.mergeTrainEnabled && !ctx.pendingHumanApproval && ctx.hasCiConflictOrderWait,
     },
 
     // ── Conflict-rebase rows (R09/R10 wait guards BEFORE R08/R11 dispatch) ───
@@ -306,4 +320,179 @@ export function assertEarlyTableInvariant(rows) {
 export function selectEarlyAction(ctx) {
   const table = buildEarlyDecisionTable();
   return table.find((row) => row.guard(ctx)) ?? null;
+}
+
+/**
+ * Build the TERMINAL_DECISIONS ordered dispatch table (R26–R34/GC).
+ *
+ * This is the "what do we do about this PR right now" decision, evaluated
+ * once admission/blocker facts are known. Unlike the early table, it is
+ * exhaustive by construction: every sub-path ends in an unconditional
+ * catch-all row (ARM_AUTO_MERGE for the no-blockers path, DISPATCH_COPILOT
+ * for the has-blockers path), so `selectTerminalAction` never legitimately
+ * returns null — see its throw below for the "unmapped fails loudly"
+ * acceptance criterion.
+ *
+ * Row ordering rationale:
+ *   1. `blockersPresent === false` sub-path (R26–R28-family):
+ *      - WAIT_ADMISSION first: if checks/review are still pending, nothing
+ *        else in this sub-path may run.
+ *      - QUEUE_MERGE_TRAIN next: ONLY when `live` — production only queues
+ *        the merge train in live mode (`if (live && mergeTrainEnabled)`);
+ *        a dry-run with mergeTrainEnabled still falls through to the
+ *        auto-merge-arm branch. Omitting the `live` check here would be a
+ *        real behavioural regression versus current production code.
+ *      - ARM_AUTO_MERGE catch-all: every remaining no-blockers context
+ *        (train disabled, or dry-run with train enabled).
+ *   2. `blockersPresent === true` sub-path (GC + R33/R34 + dispatch):
+ *      - SKIP_STALE_AUTOMATION_EXHAUSTED: label already gone, state already
+ *        converged to the exhausted idle marker for this exact progress key
+ *        — re-dispatching would just recreate the lock GC already cleared.
+ *      - RELEASE_STALE_AUTOMATION_EXHAUSTED (R34, stallAction 'release'):
+ *        duplicate dispatch has exhausted its retry budget — file an
+ *        incident and release.
+ *      - SKIP_DUPLICATE_FINGERPRINT (stallAction 'wait'): duplicate dispatch
+ *        still within its liveness window — do nothing yet.
+ *      - RELEASE_STALE_AUTOMATION_RETRY (R33, non-terminal): duplicate
+ *        dispatch not yet exhausted (stallAction 'retry', or the
+ *        unreachable-in-practice 'progressed' case — `isDuplicateDispatch`
+ *        requires an exact fingerprint match, which `automationStallAction`'s
+ *        'progressed' branch requires to differ, so 'progressed' cannot
+ *        actually occur here; the driver still handles it verbatim as
+ *        defensive parity with the pre-refactor code). Release and
+ *        re-evaluate — mirrors R04's non-terminal pattern exactly.
+ *      - SKIP_ACTIVE_COPILOT_PROGRESS: only reachable once
+ *        RELEASE_STALE_AUTOMATION_RETRY has NOT fired (i.e. `!isDuplicateDispatch`)
+ *        — see the module doc comment for why this guard must exclude the
+ *        duplicate-dispatch case.
+ *      - DISPATCH_COPILOT catch-all: fresh acquire, blocker-fingerprint-changed
+ *        release-then-dispatch, or resume-an-interrupted-release-then-dispatch.
+ *
+ * @returns {Array<{id: string, dClass: string, action: string, description: string, guard: (ctx: TerminalContext) => boolean, nonTerminal?: boolean}>}
+ */
+export function buildTerminalDecisionTable() {
+  return [
+    // ── No-blockers sub-path ──────────────────────────────────────────────
+    {
+      id: 'R26',
+      dClass: 'D1',
+      action: DISPATCH_ACTION.WAIT_ADMISSION,
+      description: 'admission wait: required checks pending or review not yet submitted',
+      guard: (ctx) => !ctx.blockersPresent && ctx.admissionWaitingCount > 0,
+    },
+    {
+      id: 'R27',
+      dClass: 'D1',
+      action: DISPATCH_ACTION.QUEUE_MERGE_TRAIN,
+      description: 'clean PR, live merge-train mode: queue for the merge train',
+      guard: (ctx) =>
+        !ctx.blockersPresent &&
+        ctx.admissionWaitingCount === 0 &&
+        ctx.live &&
+        ctx.mergeTrainEnabled,
+    },
+    {
+      id: 'R28',
+      dClass: 'D1',
+      action: DISPATCH_ACTION.ARM_AUTO_MERGE,
+      description:
+        'clean PR, non-train mode (or dry-run with train enabled): arm auto-merge (catch-all for the no-blockers sub-path)',
+      guard: (ctx) => !ctx.blockersPresent,
+    },
+
+    // ── Has-blockers sub-path (GC first, then dispatch) ───────────────────
+    {
+      id: 'GC-EXHAUSTED-SKIP',
+      dClass: 'D5',
+      action: DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED,
+      description:
+        'label absent, state already converged to stale-automation-exhausted for this exact progress key: skip re-dispatch',
+      guard: (ctx) =>
+        ctx.blockersPresent &&
+        !ctx.labelExists &&
+        ctx.owner === 'none' &&
+        ctx.status === 'idle' &&
+        // NOTE: `ctx.stateTrigger` is the *stored recovery state's* trigger
+        // field (`state?.trigger`), distinct from the early table's
+        // `ctx.trigger` (the current invocation's RECOVERY_TRIGGER env var).
+        ctx.stateTrigger === 'stale-automation-exhausted' &&
+        ctx.stateProgressKey === ctx.currentProgressKey,
+    },
+    {
+      id: 'R34',
+      dClass: 'D4',
+      action: DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_EXHAUSTED,
+      description: 'duplicate dispatch reaches the stale-retry ceiling: file incident and release',
+      guard: (ctx) =>
+        ctx.blockersPresent &&
+        ctx.labelExists &&
+        ctx.isDuplicateDispatch &&
+        ctx.stallAction === 'release',
+    },
+    {
+      id: 'GC-DUPLICATE-WAIT',
+      dClass: 'D4',
+      action: DISPATCH_ACTION.SKIP_DUPLICATE_FINGERPRINT,
+      description: 'duplicate dispatch still within its liveness window: skip',
+      guard: (ctx) =>
+        ctx.blockersPresent &&
+        ctx.labelExists &&
+        ctx.isDuplicateDispatch &&
+        ctx.stallAction === 'wait',
+    },
+    {
+      id: 'R33',
+      dClass: 'D4',
+      action: DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_RETRY,
+      description:
+        'duplicate dispatch not yet exhausted (stallAction retry/progressed): release and re-evaluate (non-terminal, mirrors R04)',
+      nonTerminal: true,
+      guard: (ctx) => ctx.blockersPresent && ctx.labelExists && ctx.isDuplicateDispatch,
+    },
+    {
+      id: 'GC-COPILOT-PROGRESS',
+      dClass: 'D5',
+      action: DISPATCH_ACTION.SKIP_ACTIVE_COPILOT_PROGRESS,
+      description:
+        'copilot assigned and progressed recently under a fresh (non-duplicate) lease: back off and skip',
+      guard: (ctx) =>
+        ctx.blockersPresent &&
+        !ctx.isDuplicateDispatch &&
+        ctx.labelExists &&
+        ctx.owner === 'automation' &&
+        ['active', 'dispatched'].includes(ctx.status) &&
+        ctx.automationProgressRecent,
+    },
+    {
+      id: 'DISPATCH',
+      dClass: 'core',
+      action: DISPATCH_ACTION.DISPATCH_COPILOT,
+      description:
+        'dispatch @copilot to fix the listed blockers (catch-all for the has-blockers sub-path)',
+      guard: (ctx) => ctx.blockersPresent,
+    },
+  ];
+}
+
+/**
+ * Evaluate the terminal-decision table against a terminal context.
+ *
+ * @param {TerminalContext} ctx
+ * @returns {{ id: string, action: string, description: string, nonTerminal?: boolean }}
+ * @throws {Error} if no row matches — this table is exhaustive by
+ *   construction (ARM_AUTO_MERGE / DISPATCH_COPILOT are unconditional
+ *   catch-alls for their sub-path), so reaching this throw indicates a
+ *   context the table was never designed to represent. Failing loudly here
+ *   is the explicit acceptance-criterion behaviour for an unmapped context.
+ */
+export function selectTerminalAction(ctx) {
+  const table = buildTerminalDecisionTable();
+  const row = table.find((candidate) => candidate.guard(ctx));
+  if (!row) {
+    throw new Error(
+      `dispatch-table: no terminal decision row matched context ${JSON.stringify(ctx)}. ` +
+        `Every owner/status/blocker/train-state combination must map to exactly one terminal action.`,
+    );
+  }
+  return row;
 }
