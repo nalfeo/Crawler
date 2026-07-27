@@ -125,6 +125,29 @@ Fixture guard ids used by this extension's own tests (e.g. `boom`, `shell-bad`,
 real fire-rate. Dispatcher tests write telemetry only to a temp dir, never the
 repo-root artifact.
 
+### Guards are loaded once per session — reload after syncing main
+
+**The extension host loads guards once, when the session starts.** A guard that
+lands on `main` after your session began is **not** running in your session, even
+after you `git pull`. It is not merely missing from telemetry — it is not
+protecting you.
+
+**Run `extensions_reload` immediately after every `git pull`/rebase onto main.**
+
+This was found empirically: a long-running session started 2026-07-25T06:08 and
+`authoring-main-sync` merged at 19:12 the same day. Over the next two days that
+session recorded **10 guard events, all PR-time**. A single `extensions_reload`
+took it to 12 within seconds, with `authoring-main-sync` firing on the very next
+`grep` and `powershell` call.
+
+The fingerprint of this bug in the committed corpus: **68 of 71** per-session
+telemetry files contain only `pr-preflight`/`pr-review-ledger` events (2–14
+events), while the 3 files with real per-tool coverage (176/238/371 events) all
+contain `authoring-main-sync`. The two guard sets never co-occur — which is what
+"the session predates the guard" looks like at scale, not a sampling artifact.
+So near-empty telemetry is a **signal to reload**, not evidence of a quiet
+session.
+
 ### Dispatcher semantics
 
 - Shell/edit guards: first `deny` wins (fail fast on danger).

@@ -101,12 +101,51 @@ In that case the per-call number is your headline and the end-to-end number is
 explicitly reported as "inside noise", not as the win.
 
 **Microbenches on this codebase must be same-process and interleaved.** Run
-`before` and `after` alternately in one process for N paired rounds and compare
-medians. Separate process runs are not comparable here: observed per-call
-medians for the same code vary by ~2.7× run-to-run, which is wider than most
-wins you will find. A real win shows **non-overlapping** distributions — the
-worst `after` sample beats the best `before` sample. If they overlap, you do
-not have a result yet.
+`before` and `after` alternately in one process for N paired rounds. Separate
+process runs are not comparable here: observed per-call medians for the same
+code vary by ~2.7× run-to-run, which is wider than most wins you will find.
+
+**The authoritative pass criterion is the paired one below**, not raw
+distribution overlap. Raw `before`/`after` distributions can overlap while every
+individual round still shows a win — that is a real result, and the older
+"worst `after` must beat the best `before`" phrasing wrongly rejects it. Use
+raw non-overlap only as a quick sanity signal, never as the gate.
+
+**Warm up with SEVERAL rotated sweeps before the first timed round.** One
+warmup sweep is not enough: V8 is still tiering up during the early timed
+rounds, and whichever variant runs first absorbs that cost. This is not
+theoretical — an earlier version of `bench-pathfinding.ts` with a single warmup
+sweep reported medians of **4.71x, 8.13x, and 8.42x for byte-identical code**
+across three invocations. Rotate the warmup the same way the timed rounds
+rotate (`variants[(w + i) % variants.length]`) so tiering pressure lands
+symmetrically on every variant.
+
+**Report paired per-round ratios, not a ratio of aggregate medians.** Compute
+`before/after` _within_ each round, then take the median of those ratios.
+Pairing controls **shared round-level drift** — thermal state, background load,
+tiering — because those affect the variants measured close together in the same
+round. It does **not** make the measurement immune to noise: a transient GC or
+scheduler stall can land on a single variant and skew one round on its own.
+That is exactly why the pass criterion is a distribution of paired ratios, not
+one round.
+
+**Pass criterion:** the median paired ratio is the win, and it is a win only if
+the change wins a large majority of rounds — report **rounds won** (`9/9`) and
+the **worst single round**. A stall-skewed round shows up as an outlier in that
+spread rather than silently moving the headline. The worst round is your
+defensible headline, never the best.
+
+**Run the finished bench in at least two separate process invocations and
+publish the range**, not one run's median. A single invocation's median is
+itself a sample.
+
+Do not benchmark while review agents or other sessions are running — an
+observed baseline worst round went 208us -> 1138us purely from a busy machine.
+
+`scripts/agent/perf/bench-fov.ts` and `scripts/agent/perf/bench-pathfinding.ts`
+are the reference implementations of this whole pattern: inlined verbatim
+baseline, ablation variants, rotating lead, rotated warmup, lockstep
+byte-exact equivalence oracle, and paired per-round ratio reporting.
 
 To get the `before` side, extract the pre-change file from git rather than
 stashing, so both versions are importable at once:

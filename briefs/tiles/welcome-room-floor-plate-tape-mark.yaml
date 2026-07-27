@@ -1,0 +1,140 @@
+# welcome-room-floor-plate-tape-mark — Asset Forge, 2026-07-26.
+# Sibling of `welcome-room-floor-plate-clean`. See that brief's header for the
+# full `type: tile` / geometry / palette-lock rationale — it applies verbatim.
+#
+# THIS IS THE HERO VARIANT OF THE WAVE. The visual judge's #1 outstanding finding
+# on `welcome-room` is that the production-set fiction is barely visible, and the
+# floor is a huge share of the room's pixels. A gaffer-tape camera blocking mark
+# is the single strongest "this is a TV set" signal available on a floor, so this
+# tile carries the wave's whole narrative load and it must be UNMISTAKABLE at
+# true game scale — not merely legible at 4x zoom.
+#
+# This is also the one variant granted a saturated accent: the palette ramp
+# reserves three acid-yellow steps for the tape and everything else stays inside
+# the narrow desaturated mid band.
+type: tile
+name: welcome-room-floor-plate-tape-mark
+description: |
+  A single square FLOOR PLATE seen from DIRECTLY OVERHEAD — flat top-down, the
+  camera looking straight down at the ground. This is studio-grade sheet
+  flooring laid down over dungeon stone: the reception set of a televised
+  dungeon reality show.
+
+  THIS IS THE TAPE-MARK VARIANT OF A FOUR-PLATE FAMILY. It is the SAME plate as
+  its siblings — same base material, same value range, same perimeter treatment
+  — differing ONLY in the accumulated detail on top. Here that detail is A
+  GAFFER-TAPE CAMERA BLOCKING MARK: the classic T or X of tape stuck to a studio
+  floor so the talent knows exactly where to stand.
+
+  THE FAMILY LOCK — THIS PARAGRAPH IS VERBATIM IDENTICAL IN ALL FOUR BRIEFS OF
+  THIS FAMILY, AND THE FOUR PLATES ARE LAID DIRECTLY ADJACENT ON A GRID, SO THE
+  BASE SURFACE MUST MATCH EXACTLY:
+  The plate is COOL GREY CONCRETE-COMPOSITE STUDIO PANELLING — flat, matte and
+  slightly chalky, a MIDDLE grey with the faintest blue-green cast. Not pale, not
+  dark. It is NOT brown, NOT tan, NOT gold, NOT olive, NOT yellow, NOT ochre and
+  NOT warm wood. Dust and grime may push small patches a little warmer, but the
+  dominant impression of the whole tile must be COOL GREY. Fill the entire square
+  with it, edge to edge, with no transparent pixels anywhere.
+  The perimeter is a BARELY VISIBLE joint — a single one-step tonal shift a few
+  pixels in from the edge. Do NOT draw a dark keyline, a black frame, a border
+  outline, a bevel, a rim, a drop-shadowed edge or any hard contour around the
+  plate. A hard frame is what makes these read as a stamped repeating grid, which
+  is the exact defect this family exists to eliminate.
+  Vary the surface ASYMMETRICALLY: grain, dust and light wear must be noticeably
+  heavier toward one corner or one edge, never evenly distributed and never
+  mirror-symmetric, so neighbouring copies never look stamped.
+
+  THE MARK — READ THIS ENTIRE SECTION BEFORE DRAWING.
+
+  ROUND 2 FAILED AND IT FAILED THE SAME WAY EIGHT TIMES: the model drew a single
+  huge, clean, sharp-cornered, uniform-width GLYPH — a typographic capital T, X,
+  Y or plus sign — filling most of the plate. The visual judge rejected seven of
+  the eight outright. THAT IS NOT WHAT THIS IS. This is not a letter, not a
+  symbol, not a logo and not an icon. It is two grubby pieces of cloth tape that
+  a bored crew member stuck to the floor by hand, which happen to cross.
+
+  DRAW IT AS TWO SEPARATE PHYSICAL STRIPS:
+  - Draw strip one. Then draw strip two crossing over it. They are two distinct
+    objects that overlap, not one connected shape. Where they cross, one strip
+    lies visibly ON TOP of the other, with the lower strip's edge interrupted.
+  - Each strip has TWO VISIBLE BLUNT ENDS. The ends are ragged and slightly
+    uneven, as if torn or cut with a thumbnail — never crisp, never perfectly
+    square, never tapered to a point.
+  - Each strip is a slightly IRREGULAR band: its width wobbles by a pixel or two
+    along its length, it has a shallow kink or crease where a thumb pressed it
+    down, one or two corners are lifting away from the floor, and grit is caught
+    along its edges. A perfectly straight, perfectly uniform bar is a rejection.
+  - Set BOTH strips at loose diagonal angles. NEITHER strip may be parallel to a
+    plate edge, and the two strips must not meet at a clean right angle. Hand-
+    laid and slightly crooked, never machine-aligned.
+
+  SIZE — ONE MEASUREMENT ONLY, IN SOURCE PIXELS:
+  Each strip is roughly 120 of the 256 source pixels long — about half the plate.
+  Let each strip's width and the crossing angle be whatever looks honestly
+  hand-laid; do not stretch either strip to fill the cell. There must be a clear
+  margin of plain grey floor, roughly a quarter of the plate's width, between the
+  mark and every edge of the plate. The round-2 output spanned about 85% of the
+  plate, which is far too big.
+
+  The mark must still be instantly recognisable as a taped floor mark when the
+  whole tile is only a couple of dozen pixels on screen.
+
+  The tape is DULL ACID YELLOW: the only strongly-chromatic element permitted on
+  this tile. It is aged and grimy, not neon and not glossy — but it must be
+  clearly a different HUE from the grey floor, not merely a lighter grey.
+
+  EVERYTHING ELSE STAYS QUIET:
+  - Light surface tooth and a few faint scuffs around the mark, all inside the
+    narrow desaturated cool-grey band. Nothing else may compete with the tape.
+  - The tape strips are the ONLY yellow on this tile. The floor itself is never
+    yellow, never ochre, never gold, never olive. Well under a quarter of the
+    tile's pixels may be yellow.
+
+  FLAT TOP-DOWN, ABSOLUTELY NO PERSPECTIVE:
+  This is a flat ground plane and the tape is stuck flat onto it. Do NOT draw the
+  plate or the tape in 3/4 view. Do NOT give either a visible thickness, side
+  wall, bevelled rim, extruded edge or implied height. Do NOT draw a cast shadow,
+  a drop shadow, a contact shadow, or any shadow at all. Props are drawn
+  separately in 3/4 view and render upward from their footprint on top of this
+  tile, so any implied height or shadow here will look wrong underneath them.
+
+  EDGE DISCIPLINE:
+  Keep the tape mark clear of the tile edges — the whole mark sits well inside
+  the plate with untouched floor all around it, so nothing has to align with a
+  neighbouring tile. Do not run a tape strip off the edge of the plate.
+
+  NO TEXT of any kind. No numbers, no labels, no logos, no letters written on the
+  tape, no arrows, no symbols. TWO CROSSED STRIPS OF PHYSICAL TAPE are wanted; a
+  drawn letterform is an automatic rejection, and that includes a shape that
+  merely READS as a capital T, X, Y or plus sign because it is too clean, too
+  large, too symmetrical or too uniform in width.
+
+  Rendered in the game at exactly 4 x 4 feet — one full floor tile. The art must
+  read believably at that size: the tape must survive downsampling, so keep its
+  strips chunky and keep the rest of the detail count low.
+
+  It must sit beside the already-approved welcome-room art without clashing:
+  welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-rug, welcome-room-stanchion-pair, welcome-sign-left-v1 and
+  prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass, hard
+  dark outline, muted and dusty. The tape is the one permitted pop of colour.
+palette:
+  id: welcome-room-studio-floor
+postprocessing:
+  paletteMode: strict
+sensors:
+  # See the sibling brief: a flat floor plate has no single ground-contact point,
+  # so bottom-centre grip is meaningless. Contract choice, not a relaxed
+  # threshold — every other sensor keeps its default, `interiorHoles` stays 0.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - floor
+  - studio-set
+  - reality-show
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

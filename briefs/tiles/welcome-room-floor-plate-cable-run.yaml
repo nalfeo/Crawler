@@ -1,0 +1,118 @@
+# welcome-room-floor-plate-cable-run — Asset Forge, 2026-07-26.
+# Sibling of `welcome-room-floor-plate-clean`. See that brief's header for the
+# full `type: tile` / geometry / palette-lock rationale — it applies verbatim.
+#
+# Second-strongest "this is a TV set" signal after the tape mark: a taped-down
+# production cable run feeding the room's camera rig. The palette ramp reserves
+# two dark blue-slate steps for cable rubber and three acid-yellow steps for the
+# tape straps; everything else stays inside the narrow desaturated mid band.
+type: tile
+name: welcome-room-floor-plate-cable-run
+description: |
+  A single square FLOOR PLATE seen from DIRECTLY OVERHEAD — flat top-down, the
+  camera looking straight down at the ground. This is studio-grade sheet
+  flooring laid down over dungeon stone: the reception set of a televised
+  dungeon reality show.
+
+  THIS IS THE CABLE-RUN VARIANT OF A FOUR-PLATE FAMILY. It is the SAME plate as
+  its siblings — same base material, same value range, same perimeter treatment
+  — differing ONLY in the accumulated detail on top. Here that detail is A
+  LENGTH OF THICK PRODUCTION CABLE TAPED DOWN FLAT ACROSS THE PLATE, part of a
+  run feeding the room's camera rig.
+
+  THE FAMILY LOCK — THIS PARAGRAPH IS VERBATIM IDENTICAL IN ALL FOUR BRIEFS OF
+  THIS FAMILY, AND THE FOUR PLATES ARE LAID DIRECTLY ADJACENT ON A GRID, SO THE
+  BASE SURFACE MUST MATCH EXACTLY:
+  The plate is COOL GREY CONCRETE-COMPOSITE STUDIO PANELLING — flat, matte and
+  slightly chalky, a MIDDLE grey with the faintest blue-green cast. Not pale, not
+  dark. It is NOT brown, NOT tan, NOT gold, NOT olive, NOT yellow, NOT ochre and
+  NOT warm wood. Dust and grime may push small patches a little warmer, but the
+  dominant impression of the whole tile must be COOL GREY. Fill the entire square
+  with it, edge to edge, with no transparent pixels anywhere.
+  The perimeter is a BARELY VISIBLE joint — a single one-step tonal shift a few
+  pixels in from the edge. Do NOT draw a dark keyline, a black frame, a border
+  outline, a bevel, a rim, a drop-shadowed edge or any hard contour around the
+  plate. A hard frame is what makes these read as a stamped repeating grid, which
+  is the exact defect this family exists to eliminate.
+  Vary the surface ASYMMETRICALLY: grain, dust and light wear must be noticeably
+  heavier toward one corner or one edge, never evenly distributed and never
+  mirror-symmetric, so neighbouring copies never look stamped.
+
+  THE YELLOW BUDGET — READ THIS BEFORE DRAWING ANYTHING.
+  The previous round of this tile came back with roughly a SIXTH of the whole
+  plate painted saturated yellow-ochre, as a mottled field spread across the
+  entire floor. That is a rejection. On this tile, yellow appears ONLY on the two
+  or three small tape straps described below and NOWHERE ELSE. The floor around
+  the cable is COOL GREY CONCRETE. It is not yellow, not ochre, not gold, not
+  olive, not mustard, not brass and not brown-gold. Fewer than one pixel in ten
+  on this whole tile may be yellow.
+
+  WHAT TO DRAW ON TOP (this variant only):
+  - ONE thick black rubber cable crossing the plate in a long, lazy, slightly
+    curved line. It enters at one edge of the plate and leaves at another, so it
+    reads as part of a longer run rather than a loose offcut.
+  - The cable lies COMPLETELY FLAT and is pressed hard against the floor. It is a
+    dark, cool, desaturated blue-black rubber with one narrow lighter sheen line
+    running along its length to say "round rubber", and nothing more.
+  - TWO OR THREE SHORT STRAPS OF DULL ACID-YELLOW GAFFER TAPE laid ACROSS the
+    cable at intervals, pinning it down. Each strap is a blunt matte band wider
+    than the cable, overlapping onto the floor on both sides. These are the only
+    strongly-chromatic elements besides the cable itself.
+  - STAINS AND PATCHING around the run: a soft irregular darker halo where grime
+    has collected along the cable, one or two low-contrast adhesive ghosts where
+    older tape was pulled up, and a faint patched rectangle of slightly
+    mismatched panel.
+
+  FLAT TOP-DOWN, ABSOLUTELY NO PERSPECTIVE:
+  This is a flat ground plane. Do NOT draw the plate, the cable or the tape in
+  3/4 view. Do NOT give any of them a visible thickness, side wall, bevelled rim,
+  extruded edge or implied height, and do NOT let the cable arch, loop up, or
+  lift off the floor. Do NOT draw a cast shadow, a drop shadow, a contact shadow,
+  or any shadow at all — the cable is taped flat, so it does not cast one. Props
+  are drawn separately in 3/4 view and render upward from their footprint on top
+  of this tile, so any implied height or shadow here will look wrong underneath
+  them.
+
+  LOW CONTRAST AND DESATURATED elsewhere: outside the cable and its two or three
+  small tape straps, every tone stays inside a narrow mid-value band of cool
+  desaturated concrete greys. No glow, no gloss, no specular highlight.
+
+  EDGE DISCIPLINE:
+  The cable is the ONE element permitted to reach the plate edges, because a
+  cable run genuinely continues past the tile — but it must meet the edge
+  cleanly and squarely, and its position must not depend on a neighbouring tile
+  matching it. Everything else — straps, stains, patches — stays well inside the
+  plate. Do not draw a bold continuous grout line or a border stripe.
+
+  NO TEXT of any kind. No numbers, no labels, no logos, no cable markings, no
+  arrows, no symbols.
+
+  Rendered in the game at exactly 4 x 4 feet — one full floor tile. The art must
+  read believably at that size: keep the cable chunky enough to survive
+  downsampling and keep the surrounding detail count low.
+
+  It must sit beside the already-approved welcome-room art without clashing:
+  welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-rug, welcome-room-stanchion-pair, welcome-sign-left-v1 and
+  prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass, hard
+  dark outline, muted and dusty, never bright or saturated.
+palette:
+  id: welcome-room-studio-floor
+postprocessing:
+  paletteMode: strict
+sensors:
+  # See the sibling brief: a flat floor plate has no single ground-contact point,
+  # so bottom-centre grip is meaningless. Contract choice, not a relaxed
+  # threshold — every other sensor keeps its default, `interiorHoles` stays 0.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - floor
+  - studio-set
+  - reality-show
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

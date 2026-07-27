@@ -280,6 +280,17 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Known Environment Quirks
 
+- **Copilot guards load once per session — `extensions_reload` after syncing
+  main.** A guard merged to `main` after your session started is not running in
+  your session, and `git pull` does not change that: the extension host loaded
+  the guard set at session start. This is a safety hole, not just a telemetry
+  gap. Empirically confirmed — a session that predated `authoring-main-sync`
+  recorded 10 guard events over two days (all PR-time) and began firing it
+  immediately after one `extensions_reload`. 68 of 71 committed telemetry files
+  show the same near-empty PR-time-only signature. Treat sparse
+  `files/guard-telemetry.jsonl` as a prompt to reload.
+  <!-- Source handoff: 2026-07-27-perf-skill-benchmark-warmup.md -->
+
 - **`scripts/agent/lab-gate-check.sh` is slow on Windows Git Bash.** It was
   refactored to O(systems + labs) (lab base-names are precomputed once via bash
   parameter expansion instead of forking `basename`/`sed`/`tr` per system×lab
