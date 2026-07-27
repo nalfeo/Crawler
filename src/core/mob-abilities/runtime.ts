@@ -18,15 +18,18 @@
  * all release the caster's instance, its cue, and any status effects it owns.
  */
 
-import { entityExists, hasComponent, query } from 'bitecs';
+import { entityExists, hasComponent, query, removeComponent, removeEntity } from 'bitecs';
 import { GAME } from '../../shared/constants.js';
-import { Health, Player, Position } from '../components.js';
+import { EnemyProjectile, Health, Knockback, Player, Position, Velocity } from '../components.js';
 import { clearStatusEffects } from '../status-effects.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
 import type { GameWorld } from '../world.js';
 import {
   mobAbilitySourceId,
   pushMobAbilityBurst,
+  type MobAbilityOwnedZone,
+  type MobAbilityActiveBuffState,
+  type MobAbilityGeometry,
   type MobAbilityInstanceState,
   type MobAbilityRuntimeDefinition,
 } from './types.js';
@@ -43,6 +46,15 @@ const ANNOUNCEMENT_DURATION_MS = 2200;
  * single "simulation-step boundary" allowance the spec calls out.
  */
 const TIMER_EPSILON_MS = 1e-6;
+const MIN_OWNED_ZONE_TICK_INTERVAL_MS = 1;
+
+function normalizedTargetingMode(def: MobAbilityRuntimeDefinition): 'player-position' | 'self' {
+  return def.targetingMode ?? 'player-position';
+}
+
+function normalizedOriginMode(def: MobAbilityRuntimeDefinition): 'locked' | 'follows-caster' {
+  return def.originMode ?? 'locked';
+}
 
 /**
  * Register `definition` as an active ability owned by `casterEid`. Idempotent:
@@ -74,6 +86,7 @@ export function registerMobAbility(
     resolvedCasts: 0,
     announcementsEmitted: 0,
     registrationToken: token,
+    ownedEntityGenerations: new Map(),
   });
 }
 
@@ -86,6 +99,7 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   const runtime = world.mobAbilities;
   const inst = runtime.byEntity.get(casterEid);
   if (inst === undefined) return;
+  clearOwnedProjectiles(world, inst);
   runtime.byEntity.delete(casterEid);
   runtime.registrationTokens.delete(casterEid);
 
@@ -109,6 +123,22 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   const sourceId = mobAbilitySourceId(inst.definition.abilityId, casterEid);
   for (const eid of [...world.statusEffectsByEntity.keys()]) {
     clearStatusEffects(world, eid, (effect) => effect.sourceId === sourceId);
+  }
+  inst.ownedEntityGenerations.clear();
+  world.mobAbilities.activeBuffsByEntity.delete(casterEid);
+  clearMobAbilityOwnedZones(
+    world,
+    (zone) => zone.casterEid === casterEid || zone.sourceId === sourceId,
+  );
+}
+
+function clearOwnedProjectiles(world: GameWorld, inst: MobAbilityInstanceState): void {
+  for (const [eid, generation] of inst.ownedEntityGenerations) {
+    if (!entityExists(world.ecs, eid)) continue;
+    if ((world.entityRenderGeneration[eid] ?? -1) !== generation) continue;
+    if (!hasComponent(world.ecs, eid, EnemyProjectile)) continue;
+    removeEntity(world.ecs, eid);
+    world.enemyProjectileArchetypeKeys.delete(eid);
   }
 }
 
@@ -150,6 +180,8 @@ export function disableMobAbilityEncounter(world: GameWorld): void {
   // Note: caster-local clearMobAbility intentionally does NOT clear
   // pendingBursts so that per-caster death still renders the resolution VFX.
   runtime.pendingBursts.length = 0;
+  runtime.activeBuffsByEntity.clear();
+  runtime.ownedZones.length = 0;
 }
 
 /** A caster is valid iff it still exists, is alive, and is still its own boss. */
@@ -203,31 +235,98 @@ function isTargetValid(
 
 function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
-  // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
-  const targetEid = findDefaultTarget(world);
-  if (targetEid === null) {
-    inst.phase = 'cooldown';
-    inst.timerMs = def.cooldownMs;
-    return;
+  // Spawn-circle abilities commit deterministic caster-relative geometry directly.
+  if (def.geometry.kind === 'spawn-circles') {
+    const x = world.stores.position.x[casterEid];
+    const y = world.stores.position.y[casterEid];
+    if (x === undefined || y === undefined) {
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    const circles: Array<{ kind: 'circle'; x: number; y: number; radiusFt: number }> = [];
+    for (let i = 0; i < def.geometry.count; i += 1) {
+      const angle = (i / def.geometry.count) * Math.PI * 2;
+      circles.push({
+        kind: 'circle',
+        x: x + Math.cos(angle) * def.geometry.distanceFromCasterFt,
+        y: y + Math.sin(angle) * def.geometry.distanceFromCasterFt,
+        radiusFt: def.geometry.radiusFt,
+      });
+    }
+    inst.phase = 'telegraph';
+    inst.timerMs = def.telegraphDurationMs;
+    inst.committedTargetEid = null;
+    inst.committedTargetGeneration = null;
+    inst.committedGeometry = { kind: 'spawn-circles', circles };
+  } else if (def.geometry.kind === 'radial-projectiles') {
+    // Radial-projectile abilities lock caster position once at telegraph start
+    // and derive the rotational offset from the cast ordinal (resolvedCasts).
+    // No player target is needed — the geometry is purely caster-relative.
+    const casterX = world.stores.position.x[casterEid];
+    const casterY = world.stores.position.y[casterEid];
+    if (casterX === undefined || casterY === undefined) {
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    // Alternating offset: even cast ordinals use 0°, odd ordinals use alternateOffsetDeg.
+    // `inst.resolvedCasts` is the count of ALREADY resolved casts, so it equals the
+    // 0-based ordinal of the UPCOMING cast (0 = first, 1 = second, …).
+    const offsetDeg = inst.resolvedCasts % 2 === 0 ? 0 : def.geometry.alternateOffsetDeg;
+    inst.phase = 'telegraph';
+    inst.timerMs = def.telegraphDurationMs;
+    inst.committedTargetEid = null;
+    inst.committedTargetGeneration = null;
+    inst.committedGeometry = {
+      kind: 'radial-projectiles',
+      casterX,
+      casterY,
+      count: def.geometry.count,
+      spokeLengthFt: def.geometry.spokeLengthFt,
+      offsetDeg,
+    };
+  } else {
+    const targetingMode = normalizedTargetingMode(def);
+    let targetEid: number | null;
+    let pos: { x: number; y: number } | null = null;
+
+    if (targetingMode === 'self') {
+      targetEid = casterEid;
+      pos = targetPosition(world, casterEid);
+    } else {
+      // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
+      targetEid = findDefaultTarget(world);
+      if (targetEid !== null) {
+        pos = targetPosition(world, targetEid);
+      }
+    }
+    if (pos === null) {
+      // No valid target/origin to lock onto — skip this cast and re-arm cooldown.
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    inst.phase = 'telegraph';
+    inst.timerMs = def.telegraphDurationMs;
+    inst.committedTargetEid = targetingMode === 'self' ? null : targetEid;
+    inst.committedTargetGeneration =
+      targetingMode === 'self' || targetEid === null
+        ? null
+        : (world.entityRenderGeneration[targetEid] ?? 0);
+    inst.committedGeometry = def.commitGeometry?.({
+      world,
+      casterEid,
+      targetEid: targetingMode === 'self' ? null : targetEid,
+      lockedX: pos.x,
+      lockedY: pos.y,
+    }) ?? {
+      kind: 'circle',
+      x: pos.x,
+      y: pos.y,
+      radiusFt: def.geometry.radiusFt,
+    };
   }
-  const pos = targetPosition(world, targetEid);
-  if (pos === null) {
-    // No valid target to lock onto — skip this cast and re-arm the cooldown so
-    // the boss tries again next cycle instead of firing a phantom telegraph.
-    inst.phase = 'cooldown';
-    inst.timerMs = def.cooldownMs;
-    return;
-  }
-  inst.phase = 'telegraph';
-  inst.timerMs = def.telegraphDurationMs;
-  inst.committedTargetEid = targetEid;
-  inst.committedTargetGeneration = world.entityRenderGeneration[targetEid] ?? 0;
-  inst.committedGeometry = {
-    kind: 'circle',
-    x: pos.x,
-    y: pos.y,
-    radiusFt: def.geometry.radiusFt,
-  };
 
   // Announcement is emitted exactly once, here, per cast.
   pushAnnouncement(world.announcements, {
@@ -241,29 +340,87 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
   inst.announcementsEmitted += 1;
 }
 
+function tickActiveBuffs(world: GameWorld): void {
+  const runtime = world.mobAbilities;
+  const dtMs = GAME.DELTA_MS;
+  for (const [eid, buff] of runtime.activeBuffsByEntity) {
+    const next = buff.remainingMs - dtMs;
+    if (next <= TIMER_EPSILON_MS) {
+      runtime.activeBuffsByEntity.delete(eid);
+      continue;
+    }
+    buff.remainingMs = next;
+  }
+}
+
+function syncTelegraphGeometryToCaster(
+  world: GameWorld,
+  casterEid: number,
+  inst: MobAbilityInstanceState,
+): void {
+  if (inst.committedGeometry === null) return;
+  if (inst.committedGeometry.kind !== 'circle') return;
+  if (normalizedOriginMode(inst.definition) !== 'follows-caster') return;
+  const pos = targetPosition(world, casterEid);
+  if (pos === null) return;
+  if (inst.committedGeometry.kind !== 'circle') return;
+  inst.committedGeometry = {
+    kind: 'circle',
+    x: pos.x,
+    y: pos.y,
+    radiusFt: inst.committedGeometry.radiusFt,
+  };
+}
+
+function pinCasterDuringTelegraph(
+  world: GameWorld,
+  casterEid: number,
+  inst: MobAbilityInstanceState,
+): void {
+  if (!inst.definition.lockCasterDuringTelegraph) return;
+  if (!hasComponent(world.ecs, casterEid, Velocity)) return;
+  world.stores.velocity.x[casterEid] = 0;
+  world.stores.velocity.y[casterEid] = 0;
+  if (hasComponent(world.ecs, casterEid, Knockback)) {
+    removeComponent(world.ecs, casterEid, Knockback);
+  }
+}
+
 function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
   const geometry = inst.committedGeometry;
+  const countOwnedLiving = () => pruneOwnedEntities(world, inst);
+  const registerOwnedEntity = (eid: number): void => {
+    inst.ownedEntityGenerations.set(eid, world.entityRenderGeneration[eid] ?? 0);
+  };
+  const targetingMode = normalizedTargetingMode(def);
+  const canResolve =
+    def.geometry.kind === 'spawn-circles' ||
+    def.geometry.kind === 'radial-projectiles' ||
+    targetingMode === 'self' ||
+    isTargetValid(world, inst.committedTargetEid, inst.committedTargetGeneration);
   // Revalidate the locked target before resolution. If the player died,
   // despawned, or its ID was recycled during the 1.5s telegraph, skip the
   // resolve call and take the cancellation/cleanup path instead.
-  if (
-    geometry !== null &&
-    isTargetValid(world, inst.committedTargetEid, inst.committedTargetGeneration)
-  ) {
+  if (geometry !== null && canResolve) {
     def.resolve(world, {
       abilityId: def.abilityId,
       casterEid,
       sourceId: mobAbilitySourceId(def.abilityId, casterEid),
       geometry,
       targetEid: inst.committedTargetEid,
+      countOwnedLiving,
+      registerOwnedEntity,
     });
     inst.resolvedCasts += 1;
     // Enqueue a durable burst event so the VFX renderer can fire the resolution
     // burst even if the caster dies later in the same simulation step (which
     // would remove byEntity[casterEid] before PhaserBridge.sync runs).
     // Bounded push prevents unbounded headless growth (VFX is the sole drain).
-    pushMobAbilityBurst(world.mobAbilities.pendingBursts, geometry);
+    pushMobAbilityBurst(world.mobAbilities.pendingBursts, {
+      abilityId: def.abilityId,
+      geometry,
+    });
   }
   // Re-arm: cooldown is anchored AFTER resolution.
   inst.phase = 'cooldown';
@@ -271,6 +428,153 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
   inst.committedGeometry = null;
   inst.committedTargetEid = null;
   inst.committedTargetGeneration = null;
+}
+
+function pruneOwnedEntities(world: GameWorld, inst: MobAbilityInstanceState): number {
+  for (const [eid, generation] of [...inst.ownedEntityGenerations.entries()]) {
+    if (!entityExists(world.ecs, eid)) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if ((world.entityRenderGeneration[eid] ?? -1) !== generation) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if (hasComponent(world.ecs, eid, Health) && (world.stores.health.current[eid] ?? 0) <= 0) {
+      inst.ownedEntityGenerations.delete(eid);
+    }
+  }
+  return inst.ownedEntityGenerations.size;
+}
+
+export interface ActivateMobAbilitySelfBuffInput {
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly durationMs: number;
+  readonly movementSpeedMultiplier: number;
+  readonly meleeDamageMultiplier: number;
+  readonly knockbackResistanceMultiplier: number;
+  readonly auraRadiusFt: number;
+}
+
+/**
+ * Activates one authoritative self-buff state for the caster.
+ *
+ * Non-stacking/non-extension contract: if the same ability buff is already
+ * active on this caster, this call is a no-op.
+ */
+export function activateMobAbilitySelfBuff(
+  world: GameWorld,
+  buff: ActivateMobAbilitySelfBuffInput,
+): void {
+  const existing = world.mobAbilities.activeBuffsByEntity.get(buff.casterEid);
+  if (
+    existing &&
+    existing.abilityId === buff.abilityId &&
+    existing.remainingMs > TIMER_EPSILON_MS
+  ) {
+    return;
+  }
+  const state: MobAbilityActiveBuffState = {
+    abilityId: buff.abilityId,
+    sourceId: buff.sourceId,
+    movementSpeedMultiplier: buff.movementSpeedMultiplier,
+    meleeDamageMultiplier: buff.meleeDamageMultiplier,
+    knockbackResistanceMultiplier: buff.knockbackResistanceMultiplier,
+    auraRadiusFt: buff.auraRadiusFt,
+    remainingMs: buff.durationMs,
+  };
+  world.mobAbilities.activeBuffsByEntity.set(buff.casterEid, state);
+}
+
+export function registerMobAbilityOwnedZone(
+  world: GameWorld,
+  zone: Omit<MobAbilityOwnedZone, 'id' | 'elapsedMs' | 'nextTickAtMs'>,
+): number {
+  if (
+    !Number.isFinite(zone.tickIntervalMs) ||
+    zone.tickIntervalMs < MIN_OWNED_ZONE_TICK_INTERVAL_MS
+  ) {
+    throw new Error(
+      `Mob ability owned zone tickIntervalMs must be >= ${MIN_OWNED_ZONE_TICK_INTERVAL_MS} (received ${zone.tickIntervalMs})`,
+    );
+  }
+  if (!Number.isFinite(zone.durationMs) || zone.durationMs <= 0) {
+    throw new Error(`Mob ability owned zone durationMs must be > 0 (received ${zone.durationMs})`);
+  }
+  const id = world.mobAbilities.nextZoneId;
+  world.mobAbilities.nextZoneId += 1;
+  world.mobAbilities.ownedZones.push({
+    ...zone,
+    id,
+    elapsedMs: 0,
+    nextTickAtMs: zone.tickIntervalMs,
+  });
+  return id;
+}
+
+export function clearMobAbilityOwnedZones(
+  world: GameWorld,
+  predicate: (zone: MobAbilityOwnedZone) => boolean,
+): void {
+  const zones = world.mobAbilities.ownedZones;
+  for (let i = zones.length - 1; i >= 0; i -= 1) {
+    if (predicate(zones[i]!)) {
+      zones.splice(i, 1);
+    }
+  }
+}
+
+function tickOwnedZones(world: GameWorld): void {
+  const dtMs = GAME.DELTA_MS;
+  const zones = world.mobAbilities.ownedZones;
+  for (let i = zones.length - 1; i >= 0; i -= 1) {
+    const zone = zones[i]!;
+    const inst = world.mobAbilities.byEntity.get(zone.casterEid);
+    if (inst === undefined || !isCasterValid(world, zone.casterEid, inst)) {
+      zones.splice(i, 1);
+      continue;
+    }
+    zone.elapsedMs += dtMs;
+    while (zone.elapsedMs + TIMER_EPSILON_MS >= zone.nextTickAtMs) {
+      zone.tick(world, zone);
+      zone.nextTickAtMs += zone.tickIntervalMs;
+    }
+    if (zone.elapsedMs + TIMER_EPSILON_MS >= zone.durationMs) {
+      zones.splice(i, 1);
+    }
+  }
+}
+
+function activeBuff(world: GameWorld, eid: number): MobAbilityActiveBuffState | undefined {
+  const buff = world.mobAbilities.activeBuffsByEntity.get(eid);
+  if (buff === undefined) return undefined;
+  if (buff.remainingMs <= TIMER_EPSILON_MS) {
+    world.mobAbilities.activeBuffsByEntity.delete(eid);
+    return undefined;
+  }
+  return buff;
+}
+
+export function getMobAbilityMovementSpeedMultiplier(world: GameWorld, eid: number): number {
+  return activeBuff(world, eid)?.movementSpeedMultiplier ?? 1;
+}
+
+export function getMobAbilityMeleeDamageMultiplier(world: GameWorld, eid: number): number {
+  return activeBuff(world, eid)?.meleeDamageMultiplier ?? 1;
+}
+
+export function getMobAbilityKnockbackResistanceMultiplier(world: GameWorld, eid: number): number {
+  return activeBuff(world, eid)?.knockbackResistanceMultiplier ?? 1;
+}
+
+export function getMobAbilityActiveAura(world: GameWorld, eid: number): MobAbilityGeometry | null {
+  const buff = activeBuff(world, eid);
+  if (buff === undefined) return null;
+  const pos = targetPosition(world, eid);
+  if (pos === null) return null;
+  return { kind: 'circle', x: pos.x, y: pos.y, radiusFt: buff.auraRadiusFt };
 }
 
 /** Default target selection: the living player singleton (catalog `player-position`). */
@@ -295,6 +599,13 @@ export function mobAbilitySystem(world: GameWorld): void {
   const runtime = world.mobAbilities;
   runtime.cues.length = 0;
   if (!runtime.enabled || !runtime.encounterActive) return;
+  tickActiveBuffs(world);
+
+  // Tick pre-existing zones BEFORE processing new casts so that a zone
+  // registered in resolveCast this step is not immediately advanced.
+  // This keeps first-tick and expiry frame indices deterministic.
+  tickOwnedZones(world);
+
   if (runtime.byEntity.size === 0) return;
 
   const dtMs = GAME.DELTA_MS;
@@ -308,6 +619,7 @@ export function mobAbilitySystem(world: GameWorld): void {
       clearMobAbility(world, casterEid);
       continue;
     }
+    pruneOwnedEntities(world, inst);
 
     inst.timerMs -= dtMs;
     if (inst.timerMs <= TIMER_EPSILON_MS) {
@@ -316,6 +628,12 @@ export function mobAbilitySystem(world: GameWorld): void {
       } else {
         resolveCast(world, casterEid, inst);
       }
+    }
+    // Re-check after phase transitions so a cooldown→telegraph flip on this
+    // same tick still gets pinned immediately (no one-frame movement leak).
+    if (inst.phase === 'telegraph') {
+      syncTelegraphGeometryToCaster(world, casterEid, inst);
+      pinCasterDuringTelegraph(world, casterEid, inst);
     }
 
     // Publish committed cue state for the renderer (telegraph phase only).

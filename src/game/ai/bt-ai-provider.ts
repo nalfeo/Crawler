@@ -2581,34 +2581,74 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }
 
-      // Mob-ability circle avoidance: if the player is inside a committed
-      // telegraph circle, flee outward using the same committed geometry the
-      // renderer draws — no information advantage over what the player sees.
-      // Runs only when no projectile threat is in the dodge horizon.
-      for (const cue of ctx.world.mobAbilities.cues) {
-        if (cue.phase !== 'telegraph') continue;
-        const { geometry } = cue;
-        if (geometry.kind !== 'circle') continue;
-        const dx = ctx.playerX - geometry.x;
-        const dy = ctx.playerY - geometry.y;
-        // Use squared distance to match the damage resolver exactly (no sqrt).
-        // The resolver uses `if (dx² + dy² > r²) continue;` so damage hits when
-        // dx² + dy² <= r². The AI must avoid using the SAME geometry contract,
-        // so it continues (skips avoidance) only when strictly outside: dx² + dy² > r².
+      // Mob-ability circle avoidance: if the player is inside committed
+      // telegraph OR active persistent-zone circles, flee outward using the same
+      // geometry consumed by renderer and damage resolution.
+      const maybeDodgeCircle = (circle: { x: number; y: number; radiusFt: number }): boolean => {
+        const dx = ctx.playerX - circle.x;
+        const dy = ctx.playerY - circle.y;
         const distSq = dx * dx + dy * dy;
-        const r2 = geometry.radiusFt * geometry.radiusFt;
-        if (distSq > r2) continue;
-        // Compute unit vector for dodge direction.
+        const r2 = circle.radiusFt * circle.radiusFt;
+        if (distSq > r2) return false;
         const dist = Math.sqrt(distSq);
         if (dist > Number.EPSILON) {
           this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
           this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
         } else {
-          // Player is exactly at the circle center — flee along kite orbit tangent.
           this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
           this.dodgeVecY = 0;
         }
-        return BTStatus.SUCCESS;
+        return true;
+      };
+      for (const cue of ctx.world.mobAbilities.cues) {
+        if (cue.phase !== 'telegraph') continue;
+        const { geometry } = cue;
+        if (geometry.kind === 'radial-projectiles') {
+          const relX = ctx.playerX - geometry.casterX;
+          const relY = ctx.playerY - geometry.casterY;
+          const radialDist = Math.hypot(relX, relY);
+          if (radialDist <= geometry.spokeLengthFt) {
+            const stepDeg = 360 / geometry.count;
+            const playerAngleDeg = ((((Math.atan2(relY, relX) * 180) / Math.PI) % 360) + 360) % 360;
+            let nearestDeltaDeg = 180;
+            let nearestSpokeRad = 0;
+            for (let i = 0; i < geometry.count; i += 1) {
+              const spokeDeg = (i / geometry.count) * 360 + geometry.offsetDeg;
+              const deltaDeg = ((playerAngleDeg - spokeDeg + 540) % 360) - 180;
+              const absDeltaDeg = Math.abs(deltaDeg);
+              if (absDeltaDeg < nearestDeltaDeg) {
+                nearestDeltaDeg = absDeltaDeg;
+                nearestSpokeRad = (spokeDeg * Math.PI) / 180;
+              }
+            }
+            const laneHalfWidthDeg =
+              (Math.atan2(PROJECTILE_DODGE_CLEARANCE_FT, Math.max(radialDist, 1e-6)) * 180) /
+              Math.PI;
+            if (nearestDeltaDeg <= Math.min(stepDeg * 0.45, laneHalfWidthDeg)) {
+              const spokeDirX = Math.cos(nearestSpokeRad);
+              const spokeDirY = Math.sin(nearestSpokeRad);
+              const cross = relX * spokeDirY - relY * spokeDirX;
+              const side = cross >= 0 ? 1 : -1;
+              this.dodgeVecX = -spokeDirY * side * PROJECTILE_DODGE_VECTOR_SCALE;
+              this.dodgeVecY = spokeDirX * side * PROJECTILE_DODGE_VECTOR_SCALE;
+              return BTStatus.SUCCESS;
+            }
+          }
+          continue;
+        }
+        // circle / spawn-circles / multi-circle
+        const cueCirles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        for (const circle of cueCirles) {
+          if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
+        }
+      }
+      for (const zone of ctx.world.mobAbilities.ownedZones) {
+        const { geometry } = zone;
+        if (geometry.kind === 'radial-projectiles') continue;
+        const zoneCirles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        for (const circle of zoneCirles) {
+          if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
+        }
       }
 
       // Enemy-body dodging remains suspended during retreat and engagement:

@@ -1,0 +1,22 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "perf-skill-benchmark-warmup",
+  "date": "2026-07-27",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 8,
+  "guards": {
+    "pr-preflight": {
+      "allow": 4
+    },
+    "pr-review-ledger": {
+      "allow": 4
+    }
+  },
+  "tools": {
+    "create_pull_request": 8
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

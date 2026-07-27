@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "quest-arrow-fix",
+  "task_title": "Fix quest arrow bouncing and add minimap edge arrows",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Concern 1: overlay inset math fixed (subtract INSET from rectangle half-extents vRX/vRY instead of from t). Concern 2: minimap geometry is Phaser-coupled; added axial rectEdgePt tests to cover geometry; full minimap unit tests deferred (non-blocking, no test infrastructure for Phaser). Concern 3: tracked-only minimap semantics are intentional product decision (single tracked quest, not all quests). Concern 4: added axial direction tests (straight up/down/left/right) and corner-threshold tests."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-opus-4.8"
+          ],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -37,7 +37,68 @@ export interface MobAbilityCircleGeometry {
   readonly radiusFt: number;
 }
 
-export type MobAbilityGeometry = MobAbilityCircleGeometry;
+export interface MobAbilitySpawnCirclesGeometry {
+  readonly kind: 'spawn-circles';
+  readonly circles: readonly MobAbilityCircleGeometry[];
+}
+
+/** Multi-circle geometry committed by a custom `commitGeometry` hook (e.g. Sovereign Cap triangle). */
+export interface MobAbilityMultiCircleGeometry {
+  readonly kind: 'multi-circle';
+  readonly circles: readonly MobAbilityCircleGeometry[];
+}
+
+/**
+ * Committed radial-projectiles geometry, locked once at telegraph start.
+ * Describes twelve (or N) spoke paths radiating from the caster's position,
+ * with a deterministic rotational offset derived from the cast ordinal.
+ * The renderer draws spokes from casterX/casterY; the resolve handler launches
+ * one projectile per spoke along the committed direction.
+ */
+export interface MobAbilityRadialProjectilesGeometry {
+  readonly kind: 'radial-projectiles';
+  /** World-space caster origin locked at telegraph start (feet). */
+  readonly casterX: number;
+  readonly casterY: number;
+  /** Number of evenly-spaced spokes. */
+  readonly count: number;
+  /** Visual/danger length of each spoke (feet). */
+  readonly spokeLengthFt: number;
+  /**
+   * Rotational offset applied to all spokes (degrees, 0..360). Derived
+   * deterministically from the cast ordinal at telegraph-start time:
+   * even ordinals → 0, odd ordinals → alternateOffsetDeg from the definition.
+   */
+  readonly offsetDeg: number;
+}
+
+export type MobAbilityGeometry =
+  | MobAbilityCircleGeometry
+  | MobAbilitySpawnCirclesGeometry
+  | MobAbilityMultiCircleGeometry
+  | MobAbilityRadialProjectilesGeometry;
+
+/** Flatten any geometry variant to an array of individual circles. Radial-projectile geometry has no circles — returns empty. */
+export function mobAbilityGeometryCircles(
+  geometry: MobAbilityGeometry,
+): readonly MobAbilityCircleGeometry[] {
+  if (geometry.kind === 'circle') return [geometry];
+  if (geometry.kind === 'radial-projectiles') return [];
+  return geometry.circles;
+}
+
+export type MobAbilityTargetingMode = 'player-position' | 'self';
+export type MobAbilityOriginMode = 'locked' | 'follows-caster';
+
+export interface MobAbilitySelfBuffDefinition {
+  readonly durationMs: number;
+  readonly movementSpeedMultiplier: number;
+  readonly meleeDamageMultiplier: number;
+  /** Multiplier applied to realized knockback displacement (`< 1` = resistant). */
+  readonly knockbackResistanceMultiplier: number;
+  /** Visual-only active aura radius in feet (used by engine VFX). */
+  readonly auraRadiusFt: number;
+}
 
 /**
  * A named handler that applies one ability's committed effect at resolution.
@@ -55,6 +116,10 @@ export interface MobAbilityResolveContext {
   readonly geometry: MobAbilityGeometry;
   /** Target entity locked at telegraph start; `null`/invalid targets are tolerated. */
   readonly targetEid: number | null;
+  /** Current living ability-owned entity count for this caster. */
+  readonly countOwnedLiving?: () => number;
+  /** Register one newly spawned ability-owned entity for lifecycle tracking. */
+  readonly registerOwnedEntity?: (eid: number) => void;
 }
 
 /**
@@ -76,8 +141,45 @@ export interface MobAbilityRuntimeDefinition {
   readonly dangerColor: MobAbilityDangerColor;
   /** Exact, fully formatted announcement string emitted once per cast. */
   readonly announcementText: string;
-  /** Committed geometry footprint (radius etc.); position is locked at cast. */
-  readonly geometry: { readonly kind: 'circle'; readonly radiusFt: number };
+  /** Committed geometry footprint authored by this ability. */
+  readonly geometry:
+    | { readonly kind: 'circle'; readonly radiusFt: number }
+    | {
+        readonly kind: 'spawn-circles';
+        readonly count: number;
+        readonly radiusFt: number;
+        readonly distanceFromCasterFt: number;
+      }
+    | {
+        readonly kind: 'radial-projectiles';
+        /** Number of evenly-spaced spokes (e.g. 12). */
+        readonly count: number;
+        /** Visual/danger length of each spoke used for telegraph rendering (feet). */
+        readonly spokeLengthFt: number;
+        /**
+         * Degrees to rotate the spoke pattern on every other cast.
+         * Cast ordinal 0, 2, 4… → 0°; ordinal 1, 3, 5… → this value.
+         * Must be in (0, 360). Derived deterministically from `resolvedCasts` at
+         * telegraph-start; never uses `Math.random()` or wall-clock time.
+         */
+        readonly alternateOffsetDeg: number;
+      };
+  /** Optional custom geometry commit from a locked origin position (e.g. triangle around player). */
+  readonly commitGeometry?: (ctx: {
+    readonly world: GameWorld;
+    readonly casterEid: number;
+    readonly targetEid: number | null;
+    readonly lockedX: number;
+    readonly lockedY: number;
+  }) => MobAbilityGeometry;
+  /** Targeting mode for telegraph lock semantics (player-position or self). */
+  readonly targetingMode?: MobAbilityTargetingMode;
+  /** Origin lock mode for telegraph geometry. */
+  readonly originMode?: MobAbilityOriginMode;
+  /** When true, telegraph frames pin caster velocity to zero. */
+  readonly lockCasterDuringTelegraph?: boolean;
+  /** Optional self-buff payload consumed by runtime helper seams. */
+  readonly selfBuff?: MobAbilitySelfBuffDefinition;
   /** Named typed effect handler run at resolution. */
   readonly resolve: MobAbilityResolveHandler;
 }
@@ -119,6 +221,8 @@ export interface MobAbilityInstanceState {
   resolvedCasts: number;
   /** Count of announcements emitted (must equal `resolvedCasts + inFlight`). */
   announcementsEmitted: number;
+  /** Owned summoned entities for this caster's ability instance (eid -> generation). */
+  readonly ownedEntityGenerations: Map<number, number>;
   /**
    * Per-registration generation token. Monotonically increases with each
    * `registerMobAbility` call. The runtime validates this against
@@ -156,7 +260,11 @@ export interface MobAbilityRuntime {
    * the caster died in the same simulation step that called `clearMobAbility`
    * (which would remove the caster from `byEntity` before `PhaserBridge.sync`).
    */
-  readonly pendingBursts: Array<MobAbilityGeometry>;
+  readonly pendingBursts: Array<MobAbilityBurst>;
+  /** Active self-buffs authored by ability handlers and ticked by the runtime. */
+  readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
+  /** Runtime-owned persistent zones (e.g. Sovereign Cap toxic clouds). */
+  readonly ownedZones: MobAbilityOwnedZone[];
   /**
    * Per-EID generation token, set on each `registerMobAbility` and cleared on
    * `clearMobAbility`. Compared against `MobAbilityInstanceState.registrationToken`
@@ -165,6 +273,33 @@ export interface MobAbilityRuntime {
   readonly registrationTokens: Map<number, number>;
   /** Monotonically increasing counter; incremented on each registration. */
   nextToken: number;
+  /** Monotonically increasing persistent-zone id counter. */
+  nextZoneId: number;
+}
+
+export interface MobAbilityActiveBuffState {
+  readonly abilityId: string;
+  readonly sourceId: string;
+  readonly movementSpeedMultiplier: number;
+  readonly meleeDamageMultiplier: number;
+  readonly knockbackResistanceMultiplier: number;
+  readonly auraRadiusFt: number;
+  remainingMs: number;
+}
+
+export type MobAbilityOwnedZoneTick = (world: GameWorld, zone: MobAbilityOwnedZone) => void;
+
+export interface MobAbilityOwnedZone {
+  readonly id: number;
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly geometry: MobAbilityGeometry;
+  readonly durationMs: number;
+  readonly tickIntervalMs: number;
+  nextTickAtMs: number;
+  elapsedMs: number;
+  readonly tick: MobAbilityOwnedZoneTick;
 }
 
 /** Create the default-off, empty runtime state for a fresh world. */
@@ -175,9 +310,17 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     byEntity: new Map(),
     cues: [],
     pendingBursts: [],
+    activeBuffsByEntity: new Map(),
+    ownedZones: [],
     registrationTokens: new Map(),
     nextToken: 0,
+    nextZoneId: 0,
   };
+}
+
+export interface MobAbilityBurst {
+  readonly abilityId: string;
+  readonly geometry: MobAbilityGeometry;
 }
 
 /** Stable per-cast source key for status effects owned by a caster's ability. */
@@ -198,8 +341,8 @@ const MOB_ABILITY_BURST_CAP = 256;
  * when full). Follows the same bounded-queue pattern as `pushVfxEvent` and
  * `pushAnnouncement`.
  */
-export function pushMobAbilityBurst(bursts: MobAbilityGeometry[], geom: MobAbilityGeometry): void {
-  bursts.push(geom);
+export function pushMobAbilityBurst(bursts: MobAbilityBurst[], burst: MobAbilityBurst): void {
+  bursts.push(burst);
   if (bursts.length > MOB_ABILITY_BURST_CAP) {
     bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
   }
