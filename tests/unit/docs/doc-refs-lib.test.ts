@@ -5,6 +5,7 @@ import {
   globParentDir,
   headingSet,
   looksLikePath,
+  nextFenceState,
   referencedAgents,
   referencedPersonas,
   resolveLinkTarget,
@@ -134,12 +135,61 @@ describe('referencedPersonas', () => {
   });
 
   it('ignores the README index and de-duplicates', () => {
-    const text = 'docs/agent-os/personas/README.md and docs/agent-os/personas/reviewer.md twice: docs/agent-os/personas/reviewer.md';
+    const text =
+      'docs/agent-os/personas/README.md and docs/agent-os/personas/reviewer.md twice: docs/agent-os/personas/reviewer.md';
     expect(referencedPersonas(text)).toEqual(['reviewer.md']);
   });
 
   it('does not match persona-looking paths outside the personas directory', () => {
     expect(referencedPersonas('docs/agent-os/policies/reviewer.md')).toEqual([]);
+  });
+
+  it('requires a real .md boundary so near-miss filenames do not satisfy a backlink', () => {
+    expect(referencedPersonas('docs/agent-os/personas/reviewer.mdx')).toEqual([]);
+    expect(referencedPersonas('docs/agent-os/personas/reviewer.md.bak')).toEqual([]);
+    expect(referencedPersonas('(docs/agent-os/personas/reviewer.md)')).toEqual(['reviewer.md']);
+  });
+});
+
+describe('nextFenceState', () => {
+  it('opens and closes on matching markers', () => {
+    expect(nextFenceState(null, '```')).toBe('```');
+    expect(nextFenceState('```', '```')).toBeNull();
+    expect(nextFenceState(null, '~~~')).toBe('~~~');
+    expect(nextFenceState('~~~', '~~~')).toBeNull();
+  });
+
+  it('keeps an info string on the opening fence', () => {
+    expect(nextFenceState(null, '```ts')).toBe('```');
+    expect(nextFenceState('```', '```ts')).toBe('```');
+  });
+
+  it('does not close a ~~~ fence on a ``` line, or vice versa', () => {
+    expect(nextFenceState('~~~', '```')).toBe('~~~');
+    expect(nextFenceState('```', '~~~')).toBe('```');
+  });
+
+  it('requires the closing run to be at least as long as the opening run', () => {
+    expect(nextFenceState('````', '```')).toBe('````');
+    expect(nextFenceState('```', '````')).toBeNull();
+  });
+
+  it('leaves non-fence lines unchanged', () => {
+    expect(nextFenceState(null, 'see `docs/x.md`')).toBeNull();
+    expect(nextFenceState('```', 'inside the block')).toBe('```');
+  });
+
+  it('keeps a nested ``` inside a ~~~ block from resuming validation', () => {
+    const lines = ['~~~', 'text', '```', '`missing/path.md`', '~~~', 'real line'];
+    let fence: string | null = null;
+    const checked: string[] = [];
+    for (const line of lines) {
+      const wasInFence = fence !== null;
+      fence = nextFenceState(fence, line);
+      if (wasInFence || fence !== null) continue;
+      checked.push(line);
+    }
+    expect(checked).toEqual(['real line']);
   });
 });
 

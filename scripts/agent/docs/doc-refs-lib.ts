@@ -117,10 +117,34 @@ export function referencedAgents(text: string): string[] {
   return found;
 }
 
+/**
+ * CommonMark-style fence tracking: a fence closes only on a marker of the same
+ * character that is at least as long as the opening run. Returns the new fence
+ * state, or the unchanged state when the line is not a fence delimiter.
+ *
+ * `state` is `null` outside a fence, otherwise the open fence's marker run.
+ */
+export function nextFenceState(state: string | null, line: string): string | null {
+  const match = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+  if (!match || !match[1]) return state;
+  const marker = match[1];
+  if (state === null) {
+    // An opening ``` fence may carry an info string; a ~~~ fence may too.
+    return marker;
+  }
+  const sameChar = marker[0] === state[0];
+  const longEnough = marker.length >= state.length;
+  // A closing fence must be bare — no info string after the marker run.
+  const bare = (match[2] ?? '').trim() === '';
+  return sameChar && longEnough && bare ? null : state;
+}
+
 /** Every distinct persona doc referenced in a chunk of Markdown, in order. */
 export function referencedPersonas(text: string): string[] {
   const found: string[] = [];
-  const re = /docs\/agent-os\/personas\/([a-z0-9-]+\.md)/g;
+  // The negative lookahead stops `reviewer.mdx` / `reviewer.md.bak` from
+  // satisfying a backlink check that is meant to name a real persona doc.
+  const re = /docs\/agent-os\/personas\/([a-z0-9-]+\.md)(?![a-z0-9.-])/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m[1] && m[1] !== 'README.md' && !found.includes(m[1])) found.push(m[1]);

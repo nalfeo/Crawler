@@ -30,7 +30,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
-import { globParentDir, looksLikePath, resolveLinkTarget } from './doc-refs-lib.js';
+import { globParentDir, looksLikePath, nextFenceState, resolveLinkTarget } from './doc-refs-lib.js';
 
 const DOC_FILES = ['AGENTS.md', 'README.md', '.github/copilot-instructions.md'];
 const DOC_DIRS = [
@@ -106,15 +106,15 @@ async function main(): Promise<void> {
     const abs = fromRepo(doc);
     const text = readFileSync(abs, 'utf8');
     const lines = text.split('\n');
-    let inFence = false;
+    let fence: string | null = null;
     lines.forEach((line, idx) => {
       // Track fenced code blocks: content inside a fence is illustrative, not a
       // claim about the repo, so neither backticked paths nor links are checked.
-      if (/^\s*(```|~~~)/.test(line)) {
-        inFence = !inFence;
-        return;
-      }
-      if (inFence) return;
+      // A fence closes only on a matching marker, so a ``` line inside a ~~~
+      // block does not prematurely resume validation.
+      const wasInFence = fence !== null;
+      fence = nextFenceState(fence, line);
+      if (wasInFence || fence !== null) return;
       let match: RegExpExecArray | null;
       const re = new RegExp(BACKTICK.source, 'g');
       while ((match = re.exec(line)) !== null) {

@@ -565,7 +565,10 @@ export function decompose(request: string): DecompositionResult {
 
   // Persona-to-systems mapping (from routing matrix)
   const personaMapping: Record<string, string[]> = {
-    'Game Designer': ['combat', 'loot', 'progression', 'economy', 'floor-generation'],
+    // `game` is the generic gameplay bucket seeded when nothing specific
+    // matched; it is real design work, so it is mapped explicitly rather than
+    // relying on a catch-all fallback.
+    'Game Designer': ['game', 'combat', 'loot', 'progression', 'economy', 'floor-generation'],
     'Content Designer': ['quests', 'story'],
     'Graphics Designer': ['graphics'],
     'UX Designer': ['ui', 'audio'],
