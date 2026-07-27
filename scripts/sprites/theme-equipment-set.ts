@@ -1435,6 +1435,28 @@ export async function saveThemeEquipmentSetState(
   });
   const data = Buffer.from(`${JSON.stringify(nextState, null, 2)}\n`);
 
+  // A shared backend MUST have server-enforced compare-and-swap. Feature
+  // detection alone is not sufficient evidence of that: `LocalRunStore`
+  // implements both methods but checks the precondition with a separate `stat`
+  // before writing, and a wrapper can expose the methods while the underlying
+  // guarantee is weaker. Without atomic CAS, two writers can both observe
+  // `expectedRevision` as current and both commit, silently discarding one
+  // side's work. Refuse before reading or writing anything.
+  const supportsConditionalWrite =
+    typeof store.getWithETag === 'function' && typeof store.putConditional === 'function';
+  if (
+    store.backend === 'azure-blob' &&
+    !(supportsConditionalWrite && store.conditionalWrites === 'atomic')
+  ) {
+    throw new Error(
+      `Refusing to save ${key}: the ${store.backend} store does not provide atomic ` +
+        `conditional writes (conditionalWrites=${store.conditionalWrites ?? 'unsupported'}, ` +
+        `methods=${supportsConditionalWrite ? 'present' : 'missing'}), so revision checks ` +
+        'could not be enforced and a concurrent writer could be silently overwritten. ' +
+        'This usually means a store wrapper is not forwarding getWithETag/putConditional.',
+    );
+  }
+
   if (store.getWithETag && store.putConditional) {
     // Atomic compare-and-swap path: read ETag, validate revision, write with If-Match.
     let etag: string | undefined;
@@ -1471,25 +1493,11 @@ export async function saveThemeEquipmentSetState(
       throw error;
     }
   } else {
-    // Fallback: check-then-write (test doubles and stores without ETag support).
-    //
-    // This path is NOT a cross-process lock — the read and the write are two
+    // Fallback: check-then-write (test doubles and local stores without ETag
+    // support). This is NOT a cross-process lock — the read and the write are
     // separate operations, so a concurrent writer can commit in between and be
-    // silently overwritten. It is only sound on a store that is not shared
-    // across machines. A shared backend reaching here means conditional-write
-    // support was lost somewhere in the store stack (a wrapper that failed to
-    // forward `getWithETag`/`putConditional` will do exactly this), which would
-    // downgrade every save to an unconditional overwrite. Fail loudly BEFORE
-    // writing rather than corrupting the authoritative document.
-    if (store.backend === 'azure-blob') {
-      throw new Error(
-        `Refusing to save ${key}: the ${store.backend} store does not expose atomic ` +
-          `conditional writes (conditionalWrites=${store.conditionalWrites ?? 'unsupported'}), ` +
-          'so revision checks could not be enforced and a concurrent writer could be ' +
-          'silently overwritten. This usually means a store wrapper is not forwarding ' +
-          'getWithETag/putConditional.',
-      );
-    }
+    // silently overwritten. The atomicity gate above already refused every
+    // shared (`azure-blob`) backend, so only single-machine stores reach here.
     const stored = await loadThemeEquipmentSetState(store, state.id);
     const actualRevision = stored?.stateRevision ?? null;
     if (
