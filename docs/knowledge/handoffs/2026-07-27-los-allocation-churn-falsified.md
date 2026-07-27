@@ -19,7 +19,7 @@ was **allocation churn**: the sampling loop calls `FloorMap.isPassableAt` and
 **The hypothesis did not survive measurement.** Removing every one of those
 allocations measures at **0.897x-1.111x median** across seven process
 invocations, with a worst paired round of **0.338x** and **never a large
-majority of rounds won** (best was 11/15). There is no shipping-grade win here.
+majority of rounds won in any production-shaped panel** (best was 11/15). There is no shipping-grade win here.
 
 The likely reason is that V8's escape analysis already scalar-replaces the
 non-escaping `{x, y}` once these small methods inline — but that is an
@@ -110,8 +110,9 @@ still apply):
 - close: **1.051x** median, worst round 0.567x, 10/15 rounds won
 - waypoint: **1.080x** median, worst round 0.904x, 14/15 rounds won
 
-Even here it does not clear the bar, and this configuration is not shippable
-anyway.
+The waypoint panel passes the bench's consistency marker (median > 1, 14/15 rounds
+won) but this `--no-barriers` configuration is not production-shaped and is not
+shippable in any case. All production-shaped panels stay below 12/15 rounds won.
 
 ### Diagnostic: barrier-overlay share (`--barrier-share`)
 

@@ -12,10 +12,10 @@
  *
  * **That hypothesis did not survive measurement, and this bench is the
  * evidence.** Removing every one of those allocations measures at
- * **0.909x-1.111x median** across process invocations, worst paired round
- * **0.521x**, and the worst round is *below* 1.0x in every panel. One waypoint
- * panel did post a 1.111x median, but it did not repeat and only won 10/15
- * rounds, so there is no shipping-grade win here.
+ * **0.897x-1.111x median** across process invocations, worst paired round
+ * **0.338x**, and the worst round is *below* 1.0x in every production-shaped
+ * panel. One waypoint panel did post a 1.111x median, but it did not repeat
+ * and only won 11/15 rounds, so there is no shipping-grade win here.
  *
  * The likely reason is that V8's escape analysis already scalar-replaces the
  * non-escaping `{x, y}` once these small methods inline — but note that is an
@@ -26,7 +26,7 @@
  *
  * The `--barrier-share` diagnostic shows where the time actually goes: merely
  * *consulting* the barrier overlay from `isPassableAt` costs **1.438x-2.275x**
- * of this function's runtime (15/15 rounds won in all four panels, worst round
+ * of this function's runtime (15/15 rounds won in all eight panels, worst round
  * 1.085x) — i.e. roughly **30-56%** of `hasClearLineOfSight` is barrier
  * lookups, not tile math and not GC. On the Floor-1 combat fixture the barrier
  * registry is EMPTY, so that figure is the cost of an *always-false* overlay
@@ -818,7 +818,7 @@ async function main(): Promise<void> {
   const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'));
   const noBarriers = process.argv.includes('--no-barriers');
   const rounds = Number(positional[0] ?? DEFAULT_ROUNDS);
-  if (!Number.isFinite(rounds) || rounds <= 0) {
+  if (!Number.isFinite(rounds) || rounds <= 0 || !Number.isInteger(rounds)) {
     throw new Error(`bench-line-of-sight: invalid round count "${positional[0]}"`);
   }
 

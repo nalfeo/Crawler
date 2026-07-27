@@ -3,16 +3,10 @@
   "date": "2026-07-27",
   "session_slug": "los-allocation-churn-falsified",
   "task_title": "Falsify LOS allocation-churn hypothesis; add bench + barrier-share diagnostic",
-  "estimated_apples": 3,
+  "estimated_apples": 2,
+  "apples_rescored_from": 3,
+  "rescore_reason": "Investigation session: no src/ changes shipped. Actual deliverable was a bench script and negative-result writeup (2🍎). Original 3🍎 estimate assumed source changes would be evaluated and potentially landed; the measurement falsified the hypothesis before any src/ change was committed. The post-hoc adversarial audit conducted under plan_review was a result audit rather than a pre-implementation plan review, so the stage cannot be honestly marked complete. Rescoring to actual scope per policy's rescore path.",
   "stages": {
-    "plan_review": {
-      "completed": true,
-      "reviewer_model": "gpt-5.6-sol",
-      "concerns_count": 5,
-      "resolved_count": 5,
-      "plan_divergence": "convergent",
-      "notes": "Adversarial audit of the NEGATIVE result: asked specifically whether the harness could be biased against the candidate (the failure mode that would make a no-ship verdict wrong). Verdict APPROVE-WITH-CONCERNS; no blocking issue changes the ship-nothing-to-src decision. 5 concerns, all resolved: (1) reported range 0.91x-1.05x contradicted a recorded 1.111x and the worst-round>1 pass criterion was stricter than the skill recipe - range corrected to 0.897x-1.111x and the bench pass marker now keys on median + >=80pct rounds won; (2) candidate-disadvantaging confounds (extra dispatch in SCALAR-MAP, subclass transitive polymorphism, symmetric barrier delegation) - all three now enumerated in the bench header and a dedicated handoff section, conclusion restated as 'no shipping-grade production win' rather than clean mechanistic falsification; (3) FACTUAL ERROR found - the barrier-share lower-bound argument assumed live barriers block segments, but the Floor-1 fixture registry is empty; independently re-verified (0 handles / 0 blocked tiles / 0 ring shapes, identical sink counts 54180 vs 54180 and 14859 vs 14859) and the diagnostic now prints registry sizes and sink counts and states what it actually measures; (4) the 2.24pct Amdahl floor came from a synthetic segment mix not a production-weighted one - now explicitly caveated in the handoff with the instrumentation work required before quoting it; (5) escape-analysis causal claim overstated - now labelled an explanation, not a demonstration."
-    },
     "code_review": {
       "clean": true,
       "rounds": [

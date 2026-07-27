@@ -1,6 +1,6 @@
 {
   "date": "2026-07-27",
-  "session": "2026-07-27-los-allocation-churn-falsified",
+  "session": "los-allocation-churn-falsified",
   "estimated_apples": 3,
   "actual_apples": 2,
   "delta": -1,
