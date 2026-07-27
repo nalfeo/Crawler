@@ -117,6 +117,17 @@ export function referencedAgents(text: string): string[] {
   return found;
 }
 
+/** Every distinct persona doc referenced in a chunk of Markdown, in order. */
+export function referencedPersonas(text: string): string[] {
+  const found: string[] = [];
+  const re = /docs\/agent-os\/personas\/([a-z0-9-]+\.md)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m[1] && m[1] !== 'README.md' && !found.includes(m[1])) found.push(m[1]);
+  }
+  return found;
+}
+
 /** Non-empty `description:` from a leading YAML frontmatter block, or `null`. */
 export function frontmatterDescription(text: string): string | null {
   if (!text.startsWith('---')) return null;

@@ -19,15 +19,18 @@ These are two layers of the same system, and the distinction matters:
 | **Agent** (`.agent.md`)      | The **invocable entry point** — selectable in the agent picker, runs a loop | `.github/agents/`         |
 | **Skill** (`SKILL.md`)       | A **reusable procedure** an agent or persona invokes by name                | `.github/skills/`         |
 
-Every persona in the index below names exactly one agent, and every agent names
-its persona. That linkage is enforced deterministically by
-`npm run docs:check` (`scripts/agent/docs/check-personas.ts`) so the two layers
-cannot silently drift apart.
+Every persona in the index below names a **canonical agent** (the first agent in
+its `## Agent` section), no two personas claim the same canonical agent, and
+every agent links back to a persona doc that exists. `npm run docs:check`
+(`scripts/agent/docs/check-personas.ts`) enforces all of that deterministically —
+plus that every agent has a non-empty frontmatter `description` and that no agent
+is orphaned — so the two layers cannot silently drift apart.
 
-A few agents are **specialist siblings** with no persona of their own — they
-inherit a persona's doctrine and narrow it to one workflow (for example
-`perf-optimizer` under Systems Engineer, `velocity-engineer` under DevOps
-Engineer). Those are listed in the Agent Index at the bottom.
+A persona's `## Agent` section may name additional agents after the canonical
+one; those are **specialist siblings** that inherit its doctrine and narrow it to
+one workflow (for example `perf-optimizer` under Systems Engineer,
+`velocity-engineer` under DevOps Engineer). They are listed in the Agent Index at
+the bottom.
 
 ## Standing rules for every persona
 
@@ -179,6 +182,14 @@ recreate one only when its domain has real, scheduled work.
   `src/game/ai/**` actually contained the deterministic AI that must never use an
   LLM. Replaced by **Game AI Engineer**; the unimplemented Director-generation
   doctrine moved to the constitution and the Reviewer's AI-safety checklist.
+
+  **Ownership if load-time generation is ever built** (constitution Principle 6 —
+  LLM content may run only during floor-load transitions, never per-frame):
+  **Content Designer** owns the authored schema, fallback content, and voice;
+  **Systems Engineer** owns the load-time orchestration seam and determinism of
+  everything downstream of it; **DevOps Engineer** owns the model runtime and its
+  CI/offline story; **Reviewer** enforces that nothing leaks into the frame loop.
+  Do not recreate this persona unless that work is actually scheduled.
 - **Sound Designer** — 3 source files, 1 commit in 90 days, no audio pipeline,
   skill, or gate. Its constraints (no runaway voice counts, audio failure must
   never break gameplay) moved into **UX Designer**.

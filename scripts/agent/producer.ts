@@ -586,9 +586,11 @@ export function decompose(request: string): DecompositionResult {
       }
     }
     if (!assigned) {
-      // Default to Game Designer for unknown systems
-      if (!personaWork['Game Designer']) personaWork['Game Designer'] = [];
-      personaWork['Game Designer'].push(system);
+      // Unmapped systems are a routing gap, not game design. Surface them on
+      // the Producer slice so triage is explicit instead of silently landing
+      // on whichever persona happens to be listed first.
+      if (!personaWork['Producer']) personaWork['Producer'] = [];
+      personaWork['Producer'].push(system);
     }
   }
 

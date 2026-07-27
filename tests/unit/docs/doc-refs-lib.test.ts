@@ -6,6 +6,7 @@ import {
   headingSet,
   looksLikePath,
   referencedAgents,
+  referencedPersonas,
   resolveLinkTarget,
   sectionBody,
 } from '../../../scripts/agent/docs/doc-refs-lib.js';
@@ -120,6 +121,25 @@ describe('referencedAgents', () => {
 
   it('returns an empty list when no agent is named', () => {
     expect(referencedAgents('No agents here, just `docs/x.md`.')).toEqual([]);
+  });
+});
+
+describe('referencedPersonas', () => {
+  it('finds persona docs in both link targets and backticked paths', () => {
+    const text = [
+      'Adopt the [Reviewer persona](../../docs/agent-os/personas/reviewer.md).',
+      'See also `docs/agent-os/personas/qa-engineer.md`.',
+    ].join('\n');
+    expect(referencedPersonas(text)).toEqual(['reviewer.md', 'qa-engineer.md']);
+  });
+
+  it('ignores the README index and de-duplicates', () => {
+    const text = 'docs/agent-os/personas/README.md and docs/agent-os/personas/reviewer.md twice: docs/agent-os/personas/reviewer.md';
+    expect(referencedPersonas(text)).toEqual(['reviewer.md']);
+  });
+
+  it('does not match persona-looking paths outside the personas directory', () => {
+    expect(referencedPersonas('docs/agent-os/policies/reviewer.md')).toEqual([]);
   });
 });
 

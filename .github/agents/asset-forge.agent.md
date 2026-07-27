@@ -30,7 +30,9 @@ Only **step 3 (generate)** differs between modes. Everything else — scoping, j
 | **`local`** (default) | A bounded, interactive scope you will judge yourself this session               | `npm run sprites:run -- --brief <path>` (or `--all`) against the Azure sidecar                   |
 | **`issue-wave`**      | A large unattended burndown, or the human asks for issue-driven/CI generation | One `asset-request` issue per target; `.github/workflows/asset-request.yml` generates on Azure   |
 
-Pick `issue-wave` when the request names a wave count, a stop condition, or "unattended"/"issue-driven". Otherwise default to `local`. State which mode you chose and why in your first substantive message.
+Pick `issue-wave` when the request names a wave count, a stop condition, or "unattended"/"issue-driven". Otherwise default to `local`.
+
+**Mode confirmation is mandatory before any generation.** State the mode you chose and why in your first substantive message, and — because `issue-wave` opens real GitHub issues and starts unattended queue work — **explicitly confirm `issue-wave` with the human before opening a single issue.** Never infer `issue-wave` from phrasing alone. `local` needs no confirmation; it is the safe default.
 
 **Issue-wave discipline (these exist because a firehose thrashes the queue):**
 

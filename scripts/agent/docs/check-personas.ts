@@ -34,6 +34,7 @@ import {
   frontmatterDescription,
   headingSet,
   referencedAgents,
+  referencedPersonas,
   sectionBody,
 } from './doc-refs-lib.js';
 
@@ -131,10 +132,11 @@ async function main(): Promise<void> {
   }
 
   // 4. Persona -> agent wiring: every persona names at least one existing
-  //    agent, the first of which is its canonical entry point. Additional
-  //    named agents are specialist siblings and must also exist.
+  //    agent. The FIRST named agent is its canonical entry point and may be
+  //    claimed by only one persona; the rest are specialist siblings.
   const agentFiles = new Set(listAgentFiles());
   const claimedByPersona = new Set<string>();
+  const canonicalOwner = new Map<string, string>();
   for (const file of personaFiles) {
     const rel = `${PERSONA_DIR}/${file}`;
     const body = sectionBody(readFileSync(fromRepo(rel), 'utf8'), 'Agent');
@@ -157,17 +159,50 @@ async function main(): Promise<void> {
       }
       claimedByPersona.add(agent);
     }
+    const canonical = named[0];
+    if (canonical !== undefined && agentFiles.has(canonical)) {
+      const existing = canonicalOwner.get(canonical);
+      if (existing !== undefined) {
+        report.error(
+          `Agent \`${canonical}\` is claimed as the canonical agent of two personas (\`${existing}\` and \`${file}\`).`,
+          {
+            file: rel,
+            remediation:
+              'An agent has exactly one owning persona. List it as a non-first "specialist sibling" here, or give this persona its own agent.',
+          },
+        );
+      } else {
+        canonicalOwner.set(canonical, file);
+      }
+    }
   }
 
-  // 5. Agent frontmatter: `description` is required by the custom-agent spec.
+  // 5. Agent frontmatter: `description` is required by the custom-agent spec,
+  //    and every agent must link back to a persona doc that exists.
   for (const agent of agentFiles) {
     const rel = `${AGENT_DIR}/${agent}`;
-    if (frontmatterDescription(readFileSync(fromRepo(rel), 'utf8')) === null) {
+    const text = readFileSync(fromRepo(rel), 'utf8');
+    if (frontmatterDescription(text) === null) {
       report.error('Agent file has no non-empty `description` in its YAML frontmatter.', {
         file: rel,
         remediation:
           'Add a `description:` line describing when to select this agent — without it the agent is never selectable.',
       });
+    }
+    const personas = referencedPersonas(text);
+    if (personas.length === 0) {
+      report.error('Agent file does not name the persona whose doctrine it inherits.', {
+        file: rel,
+        remediation: `Reference an existing persona doc (e.g. \`${PERSONA_DIR}/reviewer.md\`) so the persona↔agent link is bidirectional.`,
+      });
+    }
+    for (const persona of personas) {
+      if (!known.has(persona)) {
+        report.error(`Agent references a missing persona doc: \`${PERSONA_DIR}/${persona}\`.`, {
+          file: rel,
+          remediation: `Point at an existing persona doc under \`${PERSONA_DIR}/\` or remove the stale reference.`,
+        });
+      }
     }
   }
 

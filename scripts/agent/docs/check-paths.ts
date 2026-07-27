@@ -106,9 +106,15 @@ async function main(): Promise<void> {
     const abs = fromRepo(doc);
     const text = readFileSync(abs, 'utf8');
     const lines = text.split('\n');
+    let inFence = false;
     lines.forEach((line, idx) => {
-      // Skip code fences and obvious shell command lines
-      if (line.trim().startsWith('```')) return;
+      // Track fenced code blocks: content inside a fence is illustrative, not a
+      // claim about the repo, so neither backticked paths nor links are checked.
+      if (/^\s*(```|~~~)/.test(line)) {
+        inFence = !inFence;
+        return;
+      }
+      if (inFence) return;
       let match: RegExpExecArray | null;
       const re = new RegExp(BACKTICK.source, 'g');
       while ((match = re.exec(line)) !== null) {
