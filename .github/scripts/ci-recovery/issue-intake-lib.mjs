@@ -21,6 +21,14 @@ const COPILOT_OPENER_LOGINS = new Set([
   'copilot-swe-agent[bot]',
   'app/copilot-swe-agent',
 ]);
+const COPILOT_ASSIGNMENT_PRIORITY = new Map([
+  ['copilot-swe-agent', 0],
+  ['copilot-swe-agent[bot]', 1],
+  ['app/copilot-swe-agent', 2],
+  ['copilot', 3],
+  ['copilot[bot]', 4],
+  ['app/copilot', 5],
+]);
 const PLAN_REQUIREMENT_REVIEWER_LOGINS = new Set([
   'copilot-pull-request-reviewer',
   'copilot-pull-request-reviewer[bot]',
@@ -31,6 +39,21 @@ const PLAN_REQUIREMENT_REVIEWER_LOGINS = new Set([
 // login list.
 export function isCopilotLogin(login) {
   return COPILOT_OPENER_LOGINS.has(String(login || '').toLowerCase());
+}
+
+export function selectCopilotActor(actors) {
+  let bestActor = null;
+  let bestPriority = Number.POSITIVE_INFINITY;
+  for (const actor of Array.isArray(actors) ? actors : []) {
+    const login = String(actor?.login || '').toLowerCase();
+    if (!isCopilotLogin(login)) continue;
+    const priority = COPILOT_ASSIGNMENT_PRIORITY.get(login) ?? 999;
+    if (priority < bestPriority) {
+      bestActor = actor;
+      bestPriority = priority;
+    }
+  }
+  return bestActor;
 }
 
 function hasTrustedCommentAuthor(comment) {
@@ -249,9 +272,7 @@ export async function getCopilotIssueAssignmentContext({
     { owner, repo, issueNumber },
   );
 
-  const copilot = (actors.repository?.suggestedActors?.nodes || []).find((actor) => {
-    return isCopilotLogin(actor.login);
-  });
+  const copilot = selectCopilotActor(actors.repository?.suggestedActors?.nodes || []);
 
   if (!copilot?.id) {
     throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');

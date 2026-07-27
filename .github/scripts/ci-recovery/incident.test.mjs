@@ -286,6 +286,60 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
   );
 });
 
+test('incident assignment prefers copilot-swe-agent when both Copilot actors are suggested', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
+      body: { number: 404, node_id: 'ISSUE_404' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const doc = String(parsed?.query ?? '');
+      if (doc.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [
+                    { login: 'copilot', __typename: 'Bot', id: 'BOT_LEGACY' },
+                    { login: 'copilot-swe-agent', __typename: 'Bot', id: 'BOT_PREFERRED' },
+                  ],
+                },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: {
+          data: { replaceActorsForAssignable: { assignable: { assignees: { nodes: [] } } } },
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, pushRun({ conclusion: 'failure', status: 'completed' }));
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const assignmentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === '/graphql' &&
+      String(call.body?.query || '').includes('replaceActorsForAssignable'),
+  );
+  assert.ok(assignmentCall, 'expected incident assignment mutation to be posted');
+  assert.deepEqual(
+    assignmentCall.body?.variables?.actorIds,
+    ['BOT_PREFERRED'],
+    'must assign copilot-swe-agent when both legacy and swe-agent actors are available',
+  );
+});
+
 for (const [label, overrides] of [
   ['in-progress (no conclusion yet)', { status: 'in_progress', conclusion: null }],
   ['failed', { status: 'completed', conclusion: 'failure' }],

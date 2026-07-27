@@ -7572,7 +7572,8 @@ test('legacy stale automation incomplete release gets one retry despite its cumu
   });
   const stateComment = { id: 8902, body: renderStateComment(staleAutomationState) };
   let repositoryLabelExists = false; // Already deleted by the previous run
-  const { server, port, mutatingCalls } = await startServer({
+  let assignedActorIds = null;
+  const { server, port } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
       body: { ...basePr(), labels: [] },
     }),
@@ -7606,13 +7607,21 @@ test('legacy stale automation incomplete release gets one retry despite its cumu
           body: {
             data: {
               repository: {
-                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+                suggestedActors: {
+                  nodes: [
+                    { id: 'BOT_legacy', login: 'copilot' },
+                    { id: 'BOT_preferred', login: 'copilot-swe-agent' },
+                  ],
+                },
               },
             },
           },
         };
       }
       if (query.trimStart().startsWith('mutation')) {
+        assignedActorIds = Array.isArray(body?.variables?.actorIds)
+          ? [...body.variables.actorIds]
+          : null;
         return {
           body: {
             data: {
@@ -7637,6 +7646,11 @@ test('legacy stale automation incomplete release gets one retry despite its cumu
 
   assert.match(stdout, /resuming interrupted release pr=#42 attempt=5/);
   assert.match(stdout, /assigned copilot pr=#42/);
+  assert.deepEqual(
+    assignedActorIds,
+    ['BOT_preferred'],
+    'reconcile must prefer copilot-swe-agent over legacy copilot when both are suggested',
+  );
 
   const finalState = parseStateComment(stateComment.body);
   assert.equal(finalState?.owner, 'automation');

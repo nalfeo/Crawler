@@ -4,6 +4,7 @@ import {
   isTrustedTrainPromotionCheck,
   shouldSkipRepoIncidentWorkflowRun,
 } from './state.mjs';
+import { selectCopilotActor } from './issue-intake-lib.mjs';
 import { parseEnabledFlag } from '../merge-train/state.mjs';
 
 const token = process.env.CRAWLER_CI_PAT || '';
@@ -192,11 +193,7 @@ const actors = await graphql(
   `,
   { owner, repo },
 );
-const copilot = (actors.repository?.suggestedActors?.nodes || []).find(
-  (actor) =>
-    String(actor.login || '').toLowerCase() === 'copilot-swe-agent' ||
-    String(actor.login || '').toLowerCase() === 'copilot',
-);
+const copilot = selectCopilotActor(actors.repository?.suggestedActors?.nodes || []);
 if (!copilot?.id) {
   throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
 }

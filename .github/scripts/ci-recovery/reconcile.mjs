@@ -52,6 +52,7 @@ import {
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
   reviewThreadPlanIssueNumbers,
+  selectCopilotActor,
 } from './issue-intake-lib.mjs';
 import {
   conflictEpisodeMarker,
@@ -2898,11 +2899,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       `,
       { owner, repo },
     );
-    const copilot = (actors.repository?.suggestedActors?.nodes || []).find(
-      (actor) =>
-        String(actor.login || '').toLowerCase() === 'copilot-swe-agent' ||
-        String(actor.login || '').toLowerCase() === 'copilot',
-    );
+    const copilot = selectCopilotActor(actors.repository?.suggestedActors?.nodes || []);
     if (!copilot?.id) {
       await updateState(
         makeState({

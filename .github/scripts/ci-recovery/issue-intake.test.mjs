@@ -17,6 +17,7 @@ import {
   removeIssueAssignees,
   reviewThreadPlanIssueNumbers,
   runIssueIntake,
+  selectCopilotActor,
 } from './issue-intake-lib.mjs';
 
 const issue = {
@@ -80,6 +81,14 @@ test('issue intake rejects missing issues and pull-request payloads', () => {
     }).eligible,
     false,
   );
+});
+
+test('selectCopilotActor prefers copilot-swe-agent over legacy copilot logins', () => {
+  const picked = selectCopilotActor([
+    { id: 'BOT_legacy', login: 'copilot' },
+    { id: 'BOT_preferred', login: 'copilot-swe-agent' },
+  ]);
+  assert.equal(picked?.id, 'BOT_preferred');
 });
 
 test('review plan issue selection fails closed on unmatched explicit issue references', () => {
