@@ -132,6 +132,15 @@ checks) apply uniformly to all 9 rows regardless of which are exercised live.
 - `npm run telemetry:capture`: 238 events captured.
 - `npm run sync:main`: rebased cleanly onto current `origin/main` (one
   unrelated intervening sprite check-in commit, no conflicts).
+- **Post-publication CI fix**: PR #2100's first CI run (30247493534) failed
+  the `tests/unit/ci-knobs-guard.test.ts` deterministic guard — the new
+  `MAX_TERMINAL_PASSES = 2` file-scope numeric constant introduced by the
+  terminal-loop bound (see hardening above) was unregistered. Fixed by adding
+  `MAX_TERMINAL_PASSES` to `STRUCTURAL_ALLOWLIST` in the guard test (a
+  structural safety bound on the R33/`release()` convergence invariant, not
+  an operational knob) and a corresponding row in the structural-constants
+  table in `docs/agent-os/policies/ci-config-knobs.md`. Focused guard test
+  (152/152) and `verify:fast` both re-run green after the fix.
 
 ## Files touched
 
@@ -144,6 +153,10 @@ checks) apply uniformly to all 9 rows regardless of which are exercised live.
   ordering/uniqueness/invariant/regression coverage).
 - `.github/scripts/ci-recovery/reconcile.test.mjs` — added a D5 wiring-proof
   test (single call site) and terminal-row exercise tests.
+- `tests/unit/ci-knobs-guard.test.ts` — registered `MAX_TERMINAL_PASSES` in
+  `STRUCTURAL_ALLOWLIST` (post-publication CI-fix follow-up).
+- `docs/agent-os/policies/ci-config-knobs.md` — added the
+  `MAX_TERMINAL_PASSES` row to the structural-constants table.
 - `docs/knowledge/review-ledgers/2026-07-27-ci-recovery-d5-terminal-dispatch.review-ledger.json`
 - `docs/knowledge/metrics/apples/2026-07-27-ci-recovery-d5-terminal-dispatch.json`
 - `docs/knowledge/metrics/guard-telemetry/2026-07-27-ci-recovery-d5-terminal-dispatch.json`
@@ -152,7 +165,7 @@ checks) apply uniformly to all 9 rows regardless of which are exercised live.
 
 - None outstanding. All required prior findings addressed, all review-harness
   stages complete and recorded, all tests green, dry-run shows zero verdict
-  drift.
+  drift, and the post-publication CI guard failure is fixed.
 - PR #1923 and PR #2044 remain open; this PR supersedes both but does not
   close them (per instruction) — they should be closed once this replacement
   merges.
