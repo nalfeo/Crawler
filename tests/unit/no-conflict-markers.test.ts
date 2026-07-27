@@ -34,7 +34,13 @@ describe('no unresolved merge-conflict markers', () => {
     // `-I` skips binary files; `-n` gives line numbers for an actionable failure.
     const result = spawnSync(
       'git',
-      ['grep', '-I', '-n', '-E', '^\\s*(<<<<<<<|>>>>>>>|(> ){7})\\s*(Updated upstream|Stashed changes|[A-Za-z0-9_./-]+)?\\s*$'],
+      [
+        'grep',
+        '-I',
+        '-n',
+        '-E',
+        '^\\s*(<<<<<<<|>>>>>>>|(> ){7})\\s*(Updated upstream|Stashed changes|[A-Za-z0-9_./-]+)?\\s*$',
+      ],
       { cwd: REPO_ROOT, encoding: 'utf8' },
     );
 
@@ -52,6 +58,9 @@ describe('no unresolved merge-conflict markers', () => {
       // any other file, and a conflict inside this file would break the parse.
       .filter((line) => !line.startsWith('tests/unit/no-conflict-markers.test.ts'));
 
-    expect(hits, 'unresolved merge-conflict markers found — resolve them, do not delete the check').toEqual([]);
+    expect(
+      hits,
+      'unresolved merge-conflict markers found — resolve them, do not delete the check',
+    ).toEqual([]);
   });
 });
