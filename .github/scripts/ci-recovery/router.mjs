@@ -301,6 +301,27 @@ export function isRepairWakeEligible(pullRequest) {
   return state.status === 'waiting' && (state.blockers || []).length === 0;
 }
 
+function ageOrder(left, right) {
+  return (
+    new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+    left.number - right.number
+  );
+}
+
+function selectRepairWindowPulls({ direct, waitingTransitions, sweep, now = new Date() }) {
+  const targetSize = Math.max(REPAIR_WINDOW_SIZE, direct.length);
+  const remaining = Math.max(targetSize - direct.length, 0);
+  if (remaining === 0) return direct;
+
+  const nonDirect = [...waitingTransitions, ...sweep].sort(ageOrder);
+  const rotation =
+    Number.isFinite(now.getTime()) && now.getTime() > 0
+      ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
+      : 0;
+  const rotated = rotateList(nonDirect, rotation);
+  return [...direct, ...rotated.slice(0, remaining)];
+}
+
 // Labels meaning an external mechanism currently owns this PR's progress, so a
 // CI Recovery dispatch cannot advance it. This is DISPATCH_BLOCKED_LABEL_NAMES
 // minus WAITING_LABEL: `ci-recovery-waiting` is CI Recovery's own parking
@@ -362,13 +383,8 @@ export function collectPrNumbers({
         !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
         !hasHealthyOwnerForSweep(pullRequest, now),
     );
-    return [...direct, ...waitingTransitions, ...sweep]
-      .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
-      .sort(
-        (left, right) =>
-          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-          left.number - right.number,
-      )
+    return selectRepairWindowPulls({ direct, waitingTransitions, sweep, now })
+      .sort(ageOrder)
       .map((pullRequest) => pullRequest.number);
   }
   const directNumbers = eventPrNumbers(payload);
@@ -486,11 +502,7 @@ export function eligibleTrainRecoveryPulls({
         !shouldExcludeByLabels
       );
     })
-    .sort(
-      (left, right) =>
-        new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-        left.number - right.number,
-    );
+    .sort(ageOrder);
 }
 
 export function recoveryBacklogEntries(scheduledPulls, repository, now = new Date()) {

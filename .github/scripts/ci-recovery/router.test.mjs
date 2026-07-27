@@ -54,6 +54,7 @@ import {
   automationProgressKey,
   blockerFingerprint,
   makeState,
+  RECOVERY_STATUSES,
   renderStateComment,
 } from './state.mjs';
 
@@ -682,6 +683,78 @@ test('repair window: conflict-fenced PRs do not consume sweep slots', () => {
   });
 
   assert.deepEqual(numbers, [2096]);
+});
+
+test('repair window: broad sweep rotates selection instead of pinning the oldest fixed prefix', () => {
+  const pulls = Array.from({ length: 8 }, (_, index) => ({
+    number: 3001 + index,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  }));
+
+  const firstWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: pulls,
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:00:00Z'),
+  });
+  const secondWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: pulls,
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:11:00Z'),
+  });
+
+  assert.deepEqual(firstWindow, [3001, 3002, 3003, 3004, 3005, 3006]);
+  assert.deepEqual(secondWindow, [3002, 3003, 3004, 3005, 3006, 3007]);
+});
+
+test('invariant: every writable recovery status is dispatch-reachable through some train path', () => {
+  const now = '2026-07-27T00:00:00Z';
+  const scheduledPulls = RECOVERY_STATUSES.map((status, index) => {
+    const prNumber = 3100 + index;
+    const labels = status === 'waiting' ? [{ name: 'ci-recovery-waiting' }] : [];
+    return {
+      number: prNumber,
+      state: 'open',
+      draft: false,
+      created_at: now,
+      base: { ref: 'main' },
+      labels,
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      recoveryState: makeState({
+        prNumber,
+        headSha: `head-${prNumber}`,
+        fingerprint: `status-${status}`,
+        owner: 'none',
+        status,
+        trigger: status === 'waiting' ? 'admission-wait' : status,
+        blockers: [],
+        attempt: 0,
+        updatedAt: now,
+      }),
+    };
+  });
+
+  for (const pull of scheduledPulls) {
+    const numbers = collectPrNumbers({
+      payload: { pull_request: { number: pull.number } },
+      eventName: 'pull_request_target',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [pull],
+      trainEnabled: true,
+      now: new Date(now),
+    });
+    assert.ok(numbers.includes(pull.number), `status=${pull.recoveryState.status} must be reachable`);
+  }
 });
 
 test('repair window: an explicitly dispatched conflict-fenced PR is still honored', () => {

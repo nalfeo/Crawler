@@ -8,6 +8,7 @@ import {
   deleteCandidateBundle,
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
+  EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
@@ -18,6 +19,7 @@ import {
   queuePositionAfterRecovery,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
+  stalledAdmissionEligiblePulls,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 
@@ -175,6 +177,59 @@ test('deleteCandidateBundle is idempotent and rejects ref drift', () => {
         git: () => `${'b'.repeat(40)}\t${refName}`,
       }),
     /changed before cleanup/,
+  );
+});
+
+test('stalledAdmissionEligiblePulls triggers only when admitted PRs are stale past the threshold', () => {
+  const now = new Date('2026-07-27T16:00:00Z');
+  const pulls = [
+    { number: 11, created_at: '2026-07-27T14:30:00Z' }, // stale
+    { number: 12, created_at: '2026-07-27T15:40:00Z' }, // fresh
+    { number: 13, created_at: '2026-07-27T14:20:00Z' }, // stale but not admitted
+  ];
+  const admissionByNumber = new Map([
+    [11, true],
+    [12, true],
+    [13, false],
+  ]);
+
+  const stalled = stalledAdmissionEligiblePulls({
+    pulls,
+    admissionByNumber,
+    now,
+    thresholdMs: EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+  });
+
+  assert.deepEqual(
+    stalled.map((pull) => pull.number),
+    [11],
+  );
+});
+
+test('stalledAdmissionEligiblePulls ignores queued entries and keeps deterministic ordering', () => {
+  const now = new Date('2026-07-27T16:00:00Z');
+  const pulls = [
+    { number: 21, created_at: '2026-07-27T13:00:00Z' },
+    { number: 19, created_at: '2026-07-27T12:00:00Z' },
+    { number: 20, created_at: '2026-07-27T12:00:00Z' },
+  ];
+  const admissionByNumber = new Map([
+    [19, true],
+    [20, true],
+    [21, true],
+  ]);
+  const queuedNumbers = new Set([21]);
+
+  const stalled = stalledAdmissionEligiblePulls({
+    pulls,
+    queuedNumbers,
+    admissionByNumber,
+    now,
+  });
+
+  assert.deepEqual(
+    stalled.map((pull) => pull.number),
+    [19, 20],
   );
 });
 

@@ -34,6 +34,7 @@ import {
   queuePositionAfterRecovery,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
+  stalledAdmissionEligiblePulls,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 import {
@@ -75,6 +76,10 @@ const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
 const { trainCap: resolvedTrainCap } = resolveGlobalDispatchCaps(process.env);
+const EMPTY_TRAIN_INCIDENT_LABEL = 'ci-incident';
+const EMPTY_TRAIN_INCIDENT_TITLE = 'CI incident: Merge train empty with admission-eligible backlog';
+const EMPTY_TRAIN_INCIDENT_MARKER = '<!-- crawler-merge-train-empty-incident:v1 -->';
+const EMPTY_TRAIN_LIVENESS_THRESHOLD_MS = 60 * 60 * 1000;
 
 if (!owner || !repo || !token || !Number.isInteger(trustedAppId)) {
   throw new Error('Merge train requires GITHUB_REPOSITORY, a GitHub token, and MERGE_TRAIN_APP_ID');
@@ -184,6 +189,55 @@ async function removeLabel(prNumber, name) {
   } catch (error) {
     if (error.status !== 404) throw error;
   }
+}
+
+function renderEmptyTrainIncidentBody({ now, stalledPulls }) {
+  const numbers = stalledPulls.map((pull) => `#${pull.number}`).join(', ');
+  return [
+    EMPTY_TRAIN_INCIDENT_MARKER,
+    '## Merge train liveness alarm',
+    '',
+    `- Observed: ${now.toISOString()}`,
+    `- Condition: merge train reported \`Merge train is empty\``,
+    `- Admission-eligible open PRs stalled >= 60m: ${stalledPulls.length}`,
+    `- PRs: ${numbers}`,
+    '',
+    'This issue is managed by `.github/scripts/merge-train/reconcile.mjs`.',
+  ].join('\n');
+}
+
+async function upsertEmptyTrainIncident(stalledPulls, now = new Date()) {
+  if (stalledPulls.length === 0) return;
+  const encodedLabel = encodeURIComponent(EMPTY_TRAIN_INCIDENT_LABEL);
+  const openIncidents = await paginate(
+    token,
+    `/repos/${owner}/${repo}/issues?state=open&labels=${encodedLabel}&per_page=100`,
+  );
+  const body = renderEmptyTrainIncidentBody({ now, stalledPulls });
+  const existing = openIncidents.find((issue) => issue.title === EMPTY_TRAIN_INCIDENT_TITLE);
+  if (existing) {
+    if (String(existing.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER)) {
+      await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+        method: 'PATCH',
+        body: { body },
+      });
+      process.stdout.write(
+        `updated empty-train incident issue=#${existing.number} stalled=${stalledPulls.length}\n`,
+      );
+    }
+    return;
+  }
+  const created = await request(token, `/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    body: {
+      title: EMPTY_TRAIN_INCIDENT_TITLE,
+      labels: [EMPTY_TRAIN_INCIDENT_LABEL],
+      body,
+    },
+  });
+  process.stdout.write(
+    `created empty-train incident issue=#${created.data.number} stalled=${stalledPulls.length}\n`,
+  );
 }
 
 async function updateStatus(prNumber, status) {
@@ -646,6 +700,11 @@ await ensureLabel(
   'First failing addition isolated by merge-train validation',
 );
 await ensureLabel(LANDED_LABEL, '0e8a16', "This PR's change landed on main via the merge train");
+await ensureLabel(
+  EMPTY_TRAIN_INCIDENT_LABEL,
+  'b60205',
+  'Automated merge-train liveness or CI incident',
+);
 
 // Crash-after-merge recovery runs first, every reconcile: it backfills the
 // durable landed signal for any PR that was really merged but whose
@@ -656,6 +715,28 @@ await reconcileLandedSignals();
 const pulls = await paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`);
 const queued = queueEntries(pulls, repository);
 if (queued.length === 0) {
+  const now = new Date();
+  const staleCandidates = pulls.filter((pull) => {
+    if (pull.state !== 'open' || pull.draft) return false;
+    if (pull.base?.ref !== 'main') return false;
+    if (pull.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) return false;
+    const createdAtMs = Date.parse(String(pull.created_at || ''));
+    return Number.isFinite(createdAtMs) && now.getTime() - createdAtMs >= EMPTY_TRAIN_LIVENESS_THRESHOLD_MS;
+  });
+  const admissionByNumber = new Map();
+  for (const pull of staleCandidates) {
+    const admission = await eligible(pull);
+    admissionByNumber.set(pull.number, admission.ok);
+  }
+  const stalled = stalledAdmissionEligiblePulls({
+    pulls: staleCandidates,
+    admissionByNumber,
+    now,
+    thresholdMs: EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+  });
+  if (stalled.length > 0) {
+    await upsertEmptyTrainIncident(stalled, now);
+  }
   process.stdout.write('Merge train is empty\n');
   process.exit(0);
 }
