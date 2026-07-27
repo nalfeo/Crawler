@@ -14169,9 +14169,29 @@
           "height": 0.75
         },
         {
+          "id": "floor-runner",
+          "kind": "floor",
+          "x": 2.6,
+          "y": 3.85,
+          "width": 1,
+          "height": 2.25,
+          "z": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-runner-var-10"
+              },
+              "widthFt": 4,
+              "heightFt": 8.6
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
           "id": "welcome-rug",
           "kind": "floor",
-          "x": 3.7,
+          "x": 4.05,
           "y": 2.95,
           "layers": [
             {
@@ -14431,6 +14451,27 @@
           "height": 0.25
         },
         {
+          "id": "history-board",
+          "kind": "decoration",
+          "x": 0.1,
+          "y": 3.15,
+          "width": 1,
+          "height": 1.25,
+          "z": 30,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-history-board-var-3"
+              },
+              "widthFt": 3.7,
+              "heightFt": 4.5,
+              "anchorBase": true
+            }
+          ],
+          "sceneLayer": "default"
+        },
+        {
           "id": "wall-torch-broker",
           "kind": "decoration",
           "x": 0.1,
@@ -14550,23 +14591,23 @@
         {
           "id": "exit-sign",
           "kind": "decoration",
-          "x": 3.35,
-          "y": 6.05,
+          "x": 3.19,
+          "y": 5.5,
           "z": 30,
           "sceneLayer": "default",
           "layers": [
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "welcome-room-exit-sign-var-0"
+                "spriteId": "welcome-room-exit-sign-wall-var-2"
               },
-              "widthFt": 1.4,
-              "heightFt": 1.4,
+              "widthFt": 2.5,
+              "heightFt": 1.77,
               "anchorBase": true
             }
           ],
-          "width": 0.25,
-          "height": 0.25
+          "width": 0.75,
+          "height": 0.5
         },
         {
           "id": "chore-rota",
@@ -14575,7 +14616,7 @@
           "y": 6.05,
           "width": 0.75,
           "height": 0.75,
-          "z": 10,
+          "z": 30,
           "layers": [
             {
               "sprite": {
@@ -14583,7 +14624,8 @@
                 "spriteId": "welcome-room-chore-rota-var-2"
               },
               "widthFt": 3,
-              "heightFt": 2.5
+              "heightFt": 2.5,
+              "anchorBase": true
             }
           ],
           "sceneLayer": "default"
@@ -14595,7 +14637,7 @@
           "y": 6.05,
           "width": 1.5,
           "height": 0.75,
-          "z": 10,
+          "z": 30,
           "layers": [
             {
               "sprite": {
@@ -14603,7 +14645,8 @@
                 "spriteId": "welcome-room-laundry-line-var-0"
               },
               "widthFt": 6,
-              "heightFt": 3
+              "heightFt": 3,
+              "anchorBase": true
             }
           ],
           "sceneLayer": "default"
@@ -15007,12 +15050,10 @@
           "layers": [
             {
               "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 2
+                "source": "catalog",
+                "spriteId": "welcome-room-door-var-2"
               },
-              "widthFt": 3.5,
+              "widthFt": 5.03,
               "heightFt": 7
             }
           ],
