@@ -7,6 +7,7 @@ import {
   buildTerminalDecisionRecord,
   DECISION_LOG_MARKER,
   formatDecisionLog,
+  sanitizeTrigger,
   terminalTaskCommentIntent,
 } from './decision-log.mjs';
 
@@ -182,4 +183,82 @@ test('buildTerminalDecisionRecord: non-dispatch action reports taskComment not-a
   });
   assert.equal(record.taskComment, 'not-applicable');
   assert.equal(record.action, DISPATCH_ACTION.WAIT_ADMISSION);
+});
+
+// ─── staleRetryCeilingReached (cap/ceiling determinant) ─────────────────────
+
+test("buildTerminalDecisionRecord: staleRetryCeilingReached true only when stallAction === 'release'", () => {
+  const base = {
+    common: COMMON,
+    row: { id: 'R99', action: DISPATCH_ACTION.DISPATCH_COPILOT },
+    terminalPass: 0,
+    fingerprint: 'fp',
+    blockerKinds: [],
+    blockerCount: 0,
+  };
+  // 'release' is the stale-automation exhaustion ceiling (stallAttempt >= 2).
+  const hit = buildTerminalDecisionRecord({
+    ...base,
+    ctx: { owner: 'automation', status: 'active', live: true, stallAction: 'release' },
+  });
+  assert.equal(hit.staleRetryCeilingReached, true);
+  // every other stallAction is under the ceiling.
+  for (const stallAction of ['retry', 'wait', 'progressed', 'new', 'none', undefined]) {
+    const rec = buildTerminalDecisionRecord({
+      ...base,
+      ctx: { owner: 'automation', status: 'active', live: true, stallAction },
+    });
+    assert.equal(rec.staleRetryCeilingReached, false, `stallAction=${stallAction}`);
+  }
+});
+
+// ─── sanitizeTrigger (bounded, raw-preserving) ──────────────────────────────
+
+test('sanitizeTrigger: preserves null and short raw values verbatim', () => {
+  assert.equal(sanitizeTrigger(null), null);
+  assert.equal(sanitizeTrigger(undefined), null);
+  assert.equal(sanitizeTrigger('pull_request_review'), 'pull_request_review');
+  assert.equal(sanitizeTrigger('schedule'), 'schedule');
+  // anomalous-but-short values are kept raw so a stall investigation can see them.
+  assert.equal(sanitizeTrigger('weird-unexpected-value'), 'weird-unexpected-value');
+});
+
+test('sanitizeTrigger: coerces non-strings and truncates unbounded input', () => {
+  assert.equal(sanitizeTrigger(42), '42');
+  const long = 'x'.repeat(500);
+  const out = sanitizeTrigger(long);
+  assert.ok(out.length <= 121, `truncated length ${out.length}`);
+  assert.ok(out.endsWith('…'));
+  assert.ok(out.startsWith('xxxx'));
+});
+
+test('buildTerminalDecisionRecord: sanitizes trigger and stateTrigger', () => {
+  const record = buildTerminalDecisionRecord({
+    common: { ...COMMON, trigger: 'y'.repeat(300) },
+    ctx: {
+      owner: 'none',
+      status: 'idle',
+      live: true,
+      stallAction: 'none',
+      stateTrigger: 'z'.repeat(300),
+    },
+    row: { id: 'R99', action: DISPATCH_ACTION.DISPATCH_COPILOT },
+    terminalPass: 0,
+    fingerprint: 'fp',
+    blockerKinds: [],
+    blockerCount: 0,
+  });
+  assert.ok(record.trigger.length <= 121 && record.trigger.endsWith('…'));
+  assert.ok(record.stateTrigger.length <= 121 && record.stateTrigger.endsWith('…'));
+  // absent stateTrigger stays null (parity with the pre-fix `?? null`).
+  const nullState = buildTerminalDecisionRecord({
+    common: COMMON,
+    ctx: { owner: 'none', status: 'idle', live: true, stallAction: 'none', stateTrigger: null },
+    row: { id: 'R99', action: DISPATCH_ACTION.DISPATCH_COPILOT },
+    terminalPass: 0,
+    fingerprint: 'fp',
+    blockerKinds: [],
+    blockerCount: 0,
+  });
+  assert.equal(nullState.stateTrigger, null);
 });

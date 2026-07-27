@@ -65,6 +65,35 @@ export function terminalTaskCommentIntent(action, live) {
 }
 
 /**
+ * Max characters retained for a logged trigger value.
+ */
+const MAX_TRIGGER_LEN = 120;
+
+/**
+ * Coerce a trigger value to a bounded, safe string for logging.
+ *
+ * `trigger` originates from the free-form `workflow_dispatch.inputs.trigger`
+ * string (`ci-recovery.yml`), and `stateTrigger` from the persisted
+ * `crawler-ci-state:v1` comment — neither is a strict enum. `JSON.stringify`
+ * already neutralizes control chars/quotes so the fixed-shape line cannot be
+ * broken or spoofed, but an unbounded value could still bloat the line, so we
+ * truncate. We deliberately keep the RAW (truncated) value rather than
+ * collapsing to an allowlisted enum: the whole diagnostic point of `trigger` is
+ * distinguishing a review event from the every-10-min sweep from a manual/anomalous
+ * dispatch, and mapping unknowns to "other" would hide exactly the anomaly a
+ * stall investigation is looking for (code review, 2026-07-27).
+ *
+ * @param {unknown} value
+ * @returns {string | null} null is preserved (absent stateTrigger); everything
+ *   else is coerced to a string and truncated to MAX_TRIGGER_LEN.
+ */
+export function sanitizeTrigger(value) {
+  if (value == null) return null;
+  const str = String(value);
+  return str.length > MAX_TRIGGER_LEN ? `${str.slice(0, MAX_TRIGGER_LEN)}…` : str;
+}
+
+/**
  * Serialize a decision record to a single greppable log line.
  *
  * The record is JSON.stringify'd, which escapes control characters and quotes,
@@ -84,7 +113,7 @@ export function formatDecisionLog(record) {
  * @property {number} prNumber
  * @property {string} headSha
  * @property {string} timestamp   ISO 8601 (reconcile's `now.toISOString()`)
- * @property {string} trigger     RECOVERY_TRIGGER (GitHub event_name: review event vs `schedule` sweep)
+ * @property {string} trigger     RECOVERY_TRIGGER (free-form reconciliation trigger: review event vs the every-10-min sweep vs manual) — bounded via sanitizeTrigger
  * @property {number} stateAttempt  the stored recovery state's attempt counter (`state?.attempt ?? 0`)
  * @property {boolean} shepherdLeaseExpired
  * @property {boolean} mergeTrainOwned  mergeTrainEnabled && the PR carries the merge-train queue label
@@ -102,7 +131,7 @@ export function buildEarlyDecisionRecord({ common, ctx, row }) {
     pr: common.prNumber,
     head: common.headSha,
     ts: common.timestamp,
-    trigger: common.trigger,
+    trigger: sanitizeTrigger(common.trigger),
     stage: 'early',
     row: row.id,
     action: row.action,
@@ -156,7 +185,7 @@ export function buildTerminalDecisionRecord({
     pr: common.prNumber,
     head: common.headSha,
     ts: common.timestamp,
-    trigger: common.trigger,
+    trigger: sanitizeTrigger(common.trigger),
     stage: 'terminal',
     row: row.id,
     action: row.action,
@@ -175,8 +204,15 @@ export function buildTerminalDecisionRecord({
     admissionWaitingCount: ctx.admissionWaitingCount,
     isDuplicateDispatch: Boolean(ctx.isDuplicateDispatch),
     stallAction: ctx.stallAction,
+    // Cap/ceiling that was hit (task requirement): the stale-automation retry
+    // ceiling. automationStallAction returns 'release' only once the per-
+    // progress-key retry count reaches its exhaustion threshold
+    // (stallAttempt >= 2, state.mjs); every other value is under the ceiling.
+    // Re-derived purely from the ctx.stallAction already in this snapshot — no
+    // new plumbing, no behavior change (code review, 2026-07-27).
+    staleRetryCeilingReached: ctx.stallAction === 'release',
     automationProgressRecent: Boolean(ctx.automationProgressRecent),
-    stateTrigger: ctx.stateTrigger ?? null,
+    stateTrigger: sanitizeTrigger(ctx.stateTrigger),
     fingerprint,
     progressKeyMatches: ctx.stateProgressKey === ctx.currentProgressKey,
     // 'planned' | 'dry-run' | 'not-applicable' — see terminalTaskCommentIntent
