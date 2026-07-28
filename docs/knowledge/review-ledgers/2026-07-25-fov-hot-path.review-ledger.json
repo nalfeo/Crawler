@@ -1,0 +1,65 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "fov-hot-path",
+  "task_title": "perf(core): reuse per-map FOV pass state and fuse visibility writes",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial red-team of the FOV reuse design. Verdict risky, 5 concerns (2 blocking). Alternatives argued: (1) stateless subset only, (2) origin-tile-keyed persistent seam memo, (3) purpose-built direct-array shadowcaster. All 5 resolved: reentrancy guard moved ahead of cache-hit/state-rebuild; bench oracle decontaminated (blank bitmaps + symmetric revision bump) since warmup ran the live fovSystem; FNV hash replaced with byte-exact lockstep comparison; coverage gap closed with a differential suite vs a verbatim reference (corners/edges, negative and past-edge origins, seam pillars, subFactor 1/2/4/8, mid-life subFactor change, transparency mutation at fixed origin, shared FloorMap); existing isTransparent-spy tests rewritten onto clearVisibility. Alternative (1) answered empirically with a committed 3-way ablation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["claude-opus-4.8", "gemini-3.1-pro-preview"],
+          "round": 1,
+          "resolved_count": 1,
+          "concerns_count": 1,
+          "clean": false
+        },
+        {
+          "models": ["gpt-5.6-terra"],
+          "round": 2,
+          "resolved_count": 0,
+          "concerns_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "concerns_count": 1,
+          "models": ["claude-opus-4.8", "gemini-3.1-pro-preview"],
+          "resolved_count": 1,
+          "round": 1,
+          "valid_count": 1,
+          "clean": false
+        },
+        {
+          "concerns_count": 0,
+          "models": ["gpt-5.6-terra", "claude-opus-4.8"],
+          "resolved_count": 0,
+          "round": 2,
+          "valid_count": 0,
+          "clean": true
+        }
+      ],
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "completed": true,
+      "valid_count": 1
+    }
+  }
+}

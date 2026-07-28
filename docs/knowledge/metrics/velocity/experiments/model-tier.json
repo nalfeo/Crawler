@@ -1,0 +1,22 @@
+{
+  "schema": "crawler-velocity-experiment/v1",
+  "id": "model-tier",
+  "hypothesis": "A small, well-scoped replay task does not need a frontier model. claude-haiku-4.5 should reach a passing verifier at a comparable pass rate to claude-sonnet-4.6, at materially lower nanoAiu cost. The decision-relevant outcome is pass RATE first and cost second: a cheap model that fails trials is not cheap. NOTE: the verifier only runs the PR's own tests, so a win means 'reaches green as reliably, for less', never 'produces equal-quality code'.",
+  "factor": "model",
+  "pack": "docs/knowledge/metrics/velocity/packs/smoke-blood-pool.json",
+  "trials": 4,
+  "maxAiCredits": 600,
+  "defaultModel": "claude-sonnet-4.6",
+  "arms": [
+    {
+      "id": "sonnet-4.6",
+      "description": "Status quo model for implementation sessions.",
+      "model": "claude-sonnet-4.6"
+    },
+    {
+      "id": "haiku-4.5",
+      "description": "Cheaper, faster tier. Environment is byte-identical to the control arm; only the model differs.",
+      "model": "claude-haiku-4.5"
+    }
+  ]
+}

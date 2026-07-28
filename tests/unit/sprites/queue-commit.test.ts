@@ -526,7 +526,17 @@ describe('runQueueCommit (control flow)', () => {
 // Layer 2: real git (temp bare origin + live clone)
 // ---------------------------------------------------------------------------
 
-const GIT_TIMEOUT_MS = 30_000;
+/**
+ * These four tests shell out to real `git` against a temp bare origin, so their
+ * wall time is dominated by process spawns rather than by the assertion. Vitest
+ * runs test FILES in parallel workers, so under a full-project run (~120 files)
+ * they contend for the machine with every other file's git/fs work: this file
+ * takes ~33s in isolation and ~76s under full load, which put the no-clobber
+ * test intermittently over a 30s budget. Raised to 60s — the property under test
+ * is "a concurrent writer's entry survives the retry", never "the retry is fast",
+ * so a generous budget costs nothing and removes a load-sensitive flake.
+ */
+const GIT_TIMEOUT_MS = 60_000;
 const PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03, 0xfe, 0xdc, 0xba, 0x98,
 ]);

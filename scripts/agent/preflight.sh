@@ -143,6 +143,16 @@ _resolve_node_bin() {
 }
 NODE_BIN="$(_resolve_node_bin 2>/dev/null || true)"
 
+_phase_start "main_sync"
+if [ -n "$NODE_BIN" ]; then
+  sync_note="$("$NODE_BIN" scripts/agent/sync-main.mjs --reason session-start 2>&1 || true)"
+  printf '   %s\n' "$sync_note"
+  _phase_end "$sync_note"
+else
+  printf '   ⚠ node unavailable — main sync deferred.\n'
+  _phase_skip "node unavailable"
+fi
+
 # ===========================================================================
 # Playwright Chromium cache detection
 # Reads the revision from node_modules/playwright-core/browsers.json and
@@ -362,4 +372,3 @@ _phase_end "handoff digest done"
 # Write timing artifact and final summary
 # ===========================================================================
 _write_timing_artifact
-

@@ -256,6 +256,33 @@ function createAzureChatProvider(
  * error the user must fix, not a graceful-degrade scenario.
  */
 export function createSynthProvider(options: CreateProviderOptions = {}): SynthProvider {
+  const config = resolveAzureChatConfig(options);
+  return new AzureOpenAISynthProvider({
+    endpoint: config.endpoint,
+    deployment: config.deployment,
+    apiKey: config.apiKey,
+    apiVersion: config.apiVersion,
+    timeoutMs: config.timeoutMs,
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+  });
+}
+
+export interface AzureChatConfig {
+  readonly endpoint: string;
+  readonly deployment: string;
+  readonly apiKey: string;
+  readonly apiVersion: string;
+  readonly timeoutMs: number;
+}
+
+/**
+ * Resolve the Azure OpenAI chat-completions connection used by every
+ * structured-text caller (brief synthesis, theme roster proposal).
+ * Throws with an actionable message when the environment is not
+ * configured — these callers exist to make chat calls, so a missing
+ * deployment is a configuration error, not a degrade-gracefully case.
+ */
+export function resolveAzureChatConfig(options: CreateProviderOptions = {}): AzureChatConfig {
   const env = options.env ?? process.env;
   const warn = options.warn ?? defaultWarn;
   const which = resolveBackend(
@@ -278,15 +305,13 @@ export function createSynthProvider(options: CreateProviderOptions = {}): SynthP
         `for the expected list.`,
     );
   }
-  const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
-  return new AzureOpenAISynthProvider({
+  return {
     endpoint,
     deployment: resolved.deployment,
     apiKey,
-    apiVersion,
+    apiVersion: env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION,
     timeoutMs: resolveProviderTimeoutMs(env),
-    ...(options.fetch ? { fetch: options.fetch } : {}),
-  });
+  };
 }
 
 export function createBriefSelectorProvider(

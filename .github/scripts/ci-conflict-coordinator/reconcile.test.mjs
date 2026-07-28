@@ -15,6 +15,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { makeCoordinatorState, renderCoordinatorComment } from './state.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
@@ -235,6 +236,7 @@ function buildRoutes({
   fenceReleaseStatus = 204,
   pr3HeadRef = undefined,
   pr3Labels = [],
+  pr3AutoMerge = null,
   pr3LabelsAfterGetCount = null,
   pr3LabelsAfter = [{ name: 'human-approval-required' }],
   pr3ClosingIssues = [],
@@ -276,6 +278,7 @@ function buildRoutes({
         ? { head: { ref: pr3HeadRef, sha, repo: { full_name: `${OWNER}/${REPO}` } } }
         : {}),
       ...(pr3Labels.length > 0 ? { labels: pr3Labels } : {}),
+      ...(pr3AutoMerge ? { auto_merge: pr3AutoMerge } : {}),
       ...extra,
     });
   }
@@ -415,6 +418,91 @@ function buildRoutes({
 // Tests
 // ---------------------------------------------------------------------------
 
+test('coordinator removes every stale label from an out-of-scope persisted member', async (t) => {
+  const { tmpDir, workDir, pr1Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+  const coordinatorLabels = [
+    'ci-conflict-coordinated',
+    'ci-conflict-leader',
+    'ci-conflict-escalation',
+    'ci-conflict-order-wait',
+  ];
+  const statePull = {
+    number: 1,
+    title: 'Out-of-scope PR',
+    headSha: pr1Sha,
+    ciFiles: ['.github/workflows/ci.yml'],
+  };
+  const staleState = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-stale',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [statePull],
+    proofs: [],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  const pull = {
+    number: 1,
+    state: 'open',
+    draft: false,
+    auto_merge: null,
+    node_id: 'PR_1',
+    base: { ref: 'main' },
+    head: {
+      sha: pr1Sha,
+      ref: 'pr1',
+      repo: { full_name: `${OWNER}/${REPO}` },
+    },
+    labels: coordinatorLabels.map((name) => ({ name })),
+    created_at: '2026-07-01T00:00:00Z',
+    title: 'Out-of-scope PR',
+  };
+  const routes = {
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      status: 422,
+      body: { message: 'already exists' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pull] }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/1/files`]: () => ({
+      body: [{ filename: 'src/game/ignored.ts' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/1/comments`]: () => ({
+      body: [
+        {
+          id: 1001,
+          body: renderCoordinatorComment(staleState),
+          performed_via_github_app: { id: Number(APP_ID) },
+          user: { login: 'trusted-app[bot]' },
+          author_association: 'NONE',
+        },
+      ],
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/1/labels`]: () => ({
+      status: 204,
+      body: null,
+    }),
+  };
+  const { server, port, mutatingCalls } = await startServer(routes);
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+  assert.equal(code, 0, stderr);
+  assert.match(stdout, /reason=out-of-scope-or-stale/);
+  const labelDeletes = mutatingCalls.filter(
+    (call) =>
+      call.method === 'DELETE' && call.url.startsWith(`/repos/${OWNER}/${REPO}/issues/1/labels/`),
+  );
+  assert.equal(labelDeletes.length, coordinatorLabels.length);
+});
+
 test('coordinator closes superseded duplicate and confirms on revalidation (no drift)', async (t) => {
   const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
   t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
@@ -464,7 +552,11 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
   );
   t.after(() => server.close());
 
-  const { code, stdout, stderr } = await runScript(port, workDir);
+  // Serialization is opt-in now, so this fencing characterization must pin the
+  // enforcement path explicitly.
+  const { code, stdout, stderr } = await runScript(port, workDir, {
+    CI_CONFLICT_COORDINATION_ENFORCE: '1',
+  });
 
   if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
     t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
@@ -515,6 +607,118 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
     undefined,
     'must not close another group member from the stale selection',
   );
+});
+
+test('coordinator discovers but does not serialize when enforcement is disabled (default)', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  // Same drift scenario as the fencing test above — the ONLY difference is that
+  // enforcement is left at its default (off). The fence must not be applied.
+  const driftedActiveSha = '6'.repeat(40);
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      livePr1Sha: driftedActiveSha,
+      // Seed a stranded fence label left behind by a previous enforcing run.
+      pr3Labels: [{ name: 'ci-conflict-order-wait' }],
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const fenceAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      /\/issues\/\d+\/labels$/.test(c.url) &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-order-wait'),
+  );
+  assert.equal(
+    fenceAdd,
+    undefined,
+    'must never apply ci-conflict-order-wait while enforcement is disabled',
+  );
+
+  // Discovery must still run: the coordinated label is how the group stays
+  // visible/reportable even though it is no longer serialized.
+  const coordinatedAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      /\/issues\/\d+\/labels$/.test(c.url) &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-coordinated'),
+  );
+  assert.ok(coordinatedAdd, 'discovery/reporting must keep working when enforcement is disabled');
+
+  // Removal (not just omission) is what drains labels stranded by a previous
+  // enforcing run, so no manual cleanup pass is required.
+  const fenceRemove = mutatingCalls.find(
+    (c) => c.method === 'DELETE' && /\/issues\/\d+\/labels\/ci-conflict-order-wait$/.test(c.url),
+  );
+  assert.ok(fenceRemove, 'must actively remove stranded ci-conflict-order-wait labels');
+});
+
+test('auto-merge stays disarmed for human-gated PRs even when enforcement is disabled', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  // PR3 needs human approval AND already has auto-merge armed. Disabling
+  // serialization must NOT leave it armed: GitHub would merge it the moment its
+  // checks pass, before CI recovery's independent human gate next runs.
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      pr3Labels: [{ name: 'human-approval-required' }],
+      pr3AutoMerge: { enabled_by: { login: 'nalfeo' } },
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const disarm = mutatingCalls.find(
+    (c) =>
+      typeof c.body?.query === 'string' &&
+      c.body.query.includes('disablePullRequestAutoMerge') &&
+      c.body?.variables?.pullRequestId === 'PR_3',
+  );
+  assert.ok(
+    disarm,
+    'must disarm auto-merge for a human-approval-gated PR regardless of enforcement mode',
+  );
+
+  // The fence itself must still be off — this asserts the safety carve-out did
+  // not silently re-enable serialization.
+  const fenceAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      /\/issues\/\d+\/labels$/.test(c.url) &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-order-wait'),
+  );
+  assert.equal(fenceAdd, undefined, 'the ownership carve-out must not re-enable serialization');
 });
 
 test('coordinator reopens duplicate when post-close drift is detected', async (t) => {

@@ -1,0 +1,72 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "floor2-terrain-variance",
+  "task_title": "Diversify Floor 2 terrain",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Rejected initial generic-overlay/runtime-transform plan. Alt A build-time derived transforms adopted in contract-driven form because it makes seam closure testable. Alt B authored-only rejected because the human explicitly approved combining new assets with deterministic transforms. Alt C mask-aware wall accent atlases adopted because generic 64px overlays are unsafe across blob47 topology. Replaced neighbor rerolls with pure disjoint parity buckets; added allowed-transform metadata plus seam/directional-light validation; split sparse accent density from per-accent representation; reordered contract before art; expanded tooling/tests; added structural stamp-cost cap and live histograms."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra", "gemini-3.1-pro-preview"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "Two reviewers over the full uncommitted diff, disjoint findings. TERRA (1, HIGH): import-floor2-materials.ts ended by PRINTING an instruction to run rebuild-shared-base-pools.ts next, so a half-run left committed art in an import-only state silently diverging from the derivation pipeline — exactly the state that shipped undetected earlier in this session. FIXED: main() now imports and chains applySharedBasePoolRestyle() directly, plus a new fixed-point test in tests/unit/sprites/terrain-pack-committed.test.ts. TERRA (2): review-ledger stages incomplete — that is this document, not a code defect. GEMINI (1, HIGH): the decal pass resolved sets from `anyPack = packsByFamily.stone ?? packsByFamily.cave` while ground-eligibility accepted BOTH stone and cave floors, so on a mixed-biome floor one pack's decals contaminate the other's ground and the second pack's decals are silently dropped — latent on single-pack Floor 2 but imminently live via the parallel floor1-biome-terrain-packs session. FIXED: family-aware decal passes with same-pack dedupe and an isMarkable() gate; corridors follow the same `stone ?? cave` resolution the corridor pool uses. GEMINI (2, MEDIUM): AABB upper bound used floor((edge - 1)/tile), subtracting a pixel from a continuous float and dropping a tile overlapped by <1px; FIXED to ceil(edge/tile) - 1. Gemini also claimed the decal logic had no unit tests — REJECTED as stale; the three wall-clip regression tests are in terrain-pack-renderer.test.ts, not terrain-renderer.test.ts where it looked."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-terra", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Re-review of the round-1 fixes. GEMINI: CLEAN — independently verified the dedupe stamps each pack exactly once, corridor attribution mirrors pool selection, isMarkable's bounds check prevents OOB reads, DECAL_MIN_GROUND_FRACTION's markableTiles/footprintTiles ratio still means what its comment says under family scoping, and ceil(edge/tile)-1 is correct at exact tile multiples. TERRA (MEDIUM): the new fixed-point guard's comment overclaimed — it said the guard catches 'any hand-edited PNG', but it only compares files the rebuild RE-EMITS, so ground-decal atlases and accents already within their chroma threshold (retuneWallAccents returns nothing for those) are not covered. FIXED: comment now states the true scope and names where that art IS guarded (three structural sibling tests in the same file), plus a new assertion that every non-base pool variant and the wall atlas appear in the emitted set, so the guard cannot silently degrade. That assertion proved load-bearing immediately: written without the index-0 exclusion it failed on floor-0.png, correctly identifying the shared base as an input rather than an output."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Narrow confirmation by the model that raised the round-2 finding, scoped to the fixed-point guard only. Verified against the actual emissions of rebuildSharedBasePools/retuneWallAccents/restyleWallAtlas that the stated scope is accurate, the index-0 exclusion does not wrongly exempt a re-emitted file, and the structural decal/accent sibling tests really would catch a meaningful hand-edit. No remaining concerns and no new defects."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "Adjudicated across both reviewers. All four substantive findings independently verified in source before acting: the mixed-biome bug by reading the anyPack resolution against isDecalGround's family-blind predicate, and the AABB formula against the exclusive-upper-bound cases (right=128.0 -> tile 1; right=128.0001 -> tile 2). One claim (missing decal unit tests) ruled INVALID as stale after locating the tests the reviewer had missed in a sibling file. The one behavioral risk of the two renderer fixes is that they could change placement on the existing single-pack floor; measured in the REAL booted scene before and after via a new packGroundDecalCount probe seam, the count was 2285 both times, so Floor 2 output is provably unchanged and only mixed-biome floors see new behavior."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-terra", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "All adjudicated-valid concerns resolved with regression coverage: a mixed-biome test asserting a stone-bound pack contributes 0 decals on an all-cave map while the cave-bound control does not, three wall-clip tests, and a fixed-point art guard with a non-vacuous coverage assertion. 156/156 terrain unit tests and 16/16 committed-art guards green; tsc and verify:fast clean; real-game decal count unchanged at 2285."
+        }
+      ]
+    }
+  }
+}

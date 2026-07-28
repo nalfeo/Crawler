@@ -9,7 +9,13 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
-import { applyRawLabelDecision, formatRawLabelOutcome, LIFECYCLE_MARKER, nonBlockingPhases, parseLifecycleComment } from '../ci-recovery/pr-lifecycle.mjs';
+import {
+  applyRawLabelDecision,
+  formatRawLabelOutcome,
+  LIFECYCLE_MARKER,
+  nonBlockingPhases,
+  parseLifecycleComment,
+} from '../ci-recovery/pr-lifecycle.mjs';
 import {
   parseEnabledFlag,
   resolveAdmissionChecks,
@@ -29,9 +35,11 @@ import {
   ORDER_WAIT_LABEL,
   changeStatsFromFiles,
   ciFilesFor,
+  coordinationEnforcementEnabled,
   discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
+  hasHealthyShepherdLease,
   isCoordinatorStateSemanticallyEqual,
   makeCoordinatorState,
   mergeCoordinationGroups,
@@ -270,6 +278,12 @@ function recoveryContext(pull, comments) {
           headSha: pull.headSha,
           now,
         })
+      : false,
+    // Distinct from `healthy`: only a live shepherd lease may fence the active
+    // slot or raise an escalation. Routine automation ownership must not — the
+    // coordinator dispatches that automation itself. See issue #2095.
+    shepherdLease: state
+      ? hasHealthyShepherdLease({ prNumber: pull.number, recoveryState: state, now })
       : false,
   };
 }
@@ -657,12 +671,13 @@ const fileLists = await mapLimit(eligible, 8, async (pull) => {
   ];
 });
 const pulls = eligible.map((pull, index) => normalizePull(pull, fileLists[index]));
-const managedNumbers = pulls
-  .filter((pull) => pull.labelNames.has(COORDINATED_LABEL))
+const coordinatorLabels = [COORDINATED_LABEL, LEADER_LABEL, ESCALATION_LABEL, ORDER_WAIT_LABEL];
+const labeledManagedNumbers = pulls
+  .filter((pull) => coordinatorLabels.some((label) => pull.labelNames.has(label)))
   .map((pull) => pull.number);
 const stateCandidateNumbers = [
   ...new Set([
-    ...managedNumbers,
+    ...labeledManagedNumbers,
     ...pulls.filter((pull) => pull.ciFiles.length > 0).map((pull) => pull.number),
   ]),
 ];
@@ -672,7 +687,7 @@ const commentEntries = await mapLimit(stateCandidateNumbers, 8, async (number) =
 ]);
 const commentsByNumber = new Map(commentEntries);
 const existingStates = [];
-const existingStateByNumber = new Map();
+const commentedManagedNumbers = [];
 for (const [number, comments] of commentEntries) {
   const managed = singleManagedComment(
     comments,
@@ -683,9 +698,10 @@ for (const [number, comments] of commentEntries) {
   );
   if (managed) {
     existingStates.push(managed.state);
-    existingStateByNumber.set(number, managed.state);
+    commentedManagedNumbers.push(number);
   }
 }
+const managedNumbers = [...new Set([...labeledManagedNumbers, ...commentedManagedNumbers])];
 
 const discoveredClusters = discoverCoordinationClusters(pulls, existingStates);
 const discoveredNumbers = new Set(discoveredClusters.flat().map((pull) => pull.number));
@@ -703,14 +719,20 @@ const groups = mergeCoordinationGroups({
 const pullByNumber = new Map(pulls.map((pull) => [pull.number, pull]));
 const groupedNumbers = new Set(groups.flatMap((group) => group.pulls.map((pull) => pull.number)));
 for (const number of managedNumbers) {
-  if (groupedNumbers.has(number) || existingStateByNumber.has(number)) continue;
+  if (groupedNumbers.has(number)) continue;
   const pull = pullByNumber.get(number);
   if (!pull) continue;
   await removeLabel(pull, ORDER_WAIT_LABEL);
   await removeLabel(pull, COORDINATED_LABEL);
   await removeLabel(pull, LEADER_LABEL);
   await removeLabel(pull, ESCALATION_LABEL);
-  process.stdout.write(`released orphaned coordinator labels pr=#${number} reason=missing-state\n`);
+  process.stdout.write(
+    `released orphaned coordinator labels pr=#${number} reason=out-of-scope-or-stale\n`,
+  );
+}
+if (groups.length === 0) {
+  process.stdout.write('No CI conflict clusters found after cleanup\n');
+  process.exit(0);
 }
 const mainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object
   .sha;
@@ -793,8 +815,8 @@ for (const group of groups) {
     }
     if (recovery.ownershipError) {
       escalations.push(`#${pull.number}: ${recovery.ownershipError}`);
-    } else if (recovery.healthy) {
-      escalations.push(`#${pull.number}: active CI recovery owner retained; no close or dispatch`);
+    } else if (recovery.shepherdLease) {
+      escalations.push(`#${pull.number}: active shepherd lease retained; no close or dispatch`);
     }
     if (humanApproval) {
       escalations.push(`#${pull.number}: ${humanApproval}`);
@@ -808,25 +830,49 @@ for (const group of groups) {
   // A healthy shepherd lease on the active slot must keep it fenced: remove
   // ORDER_WAIT only when there is no ownership error, active shepherd, or
   // outstanding repository-owner approval.
+  //
+  // Routine `automation` ownership is intentionally NOT a fence here. The
+  // coordinator dispatches CI recovery for its own active slot, so treating any
+  // healthy recovery owner as unsafe made the slot permanently unsafe the
+  // instant it was dispatched (issue #2095).
   const activeSafe =
     selection.active &&
     !activeRecovery?.ownershipError &&
-    !activeRecovery?.healthy &&
+    !activeRecovery?.shepherdLease &&
     !activeHumanApproval;
 
   // Fence every member before exposing one slot, so concurrent train runs can
   // observe zero active slots briefly but never two.
+  //
+  // With enforcement disabled (the default) we keep discovery/reporting but
+  // actively UNFENCE: ORDER_WAIT is removed from every member. Removing (rather
+  // than merely not-adding) is what drains labels stranded by a previous
+  // enforcing run — no manual cleanup pass is needed.
+  //
+  // SAFETY INVARIANT (independent of the kill switch): auto-merge is ALWAYS
+  // disarmed for a PR that a human must approve, that an agent actively owns
+  // (shepherd lease), or whose ownership record is corrupt. Those gates are
+  // enforced asynchronously by CI recovery / the merge train, so leaving an
+  // already-armed auto-merge in place would let GitHub merge the PR the moment
+  // its checks pass — before any of those reconcilers next run. Serialization
+  // is what we are switching off here; human/agent ownership gates are not.
+  const enforceCoordination = coordinationEnforcementEnabled(process.env);
   for (const pull of group.pulls) {
     await addLabel(pull, COORDINATED_LABEL);
-    await addLabel(pull, ORDER_WAIT_LABEL);
-    await disableAutoMerge(pull);
+    const ownershipGated =
+      Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
+      Boolean(recoveryByNumber.get(pull.number)?.shepherdLease) ||
+      Boolean(humanApprovalByNumber.get(pull.number));
+    if (enforceCoordination) {
+      await addLabel(pull, ORDER_WAIT_LABEL);
+      await disableAutoMerge(pull);
+    } else {
+      await removeLabel(pull, ORDER_WAIT_LABEL);
+      if (ownershipGated) await disableAutoMerge(pull);
+    }
     if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
     else await removeLabel(pull, LEADER_LABEL);
-    const escalated =
-      proofByNumber.get(pull.number)?.status === 'ambiguous' ||
-      Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
-      Boolean(recoveryByNumber.get(pull.number)?.healthy) ||
-      Boolean(humanApprovalByNumber.get(pull.number));
+    const escalated = proofByNumber.get(pull.number)?.status === 'ambiguous' || ownershipGated;
     if (escalated) await addLabel(pull, ESCALATION_LABEL);
     else await removeLabel(pull, ESCALATION_LABEL);
   }

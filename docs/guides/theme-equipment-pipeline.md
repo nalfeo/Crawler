@@ -20,22 +20,46 @@ whole-set approvals.
 
 ## Author a theme
 
-Copy `data/theme-equipment-sets/classic-fantasy.json` to a stable kebab-named plan. Author the design
-language directly; it should constrain materials, silhouette, palette, ornament, wear, and excluded
-motifs. Do not ask synthesis to invent the collection's visual identity.
+Open the **Theme Equipment Review** canvas with no `setId`. It boots into the set index, which lists
+every authored plan in `data/theme-equipment-sets/` alongside its durable state (`not initialized`,
+`phase … · r<n>`, or `state invalid`). Use **+ New theme** to author a set:
+
+1. Enter a kebab-case set id, a display name, and the **theme design language**. The design language
+   is human-authored by contract and drives every downstream art prompt — it should constrain
+   materials, silhouette, palette, ornament, wear, and excluded motifs. Synthesis never invents it.
+2. **Synthesize roster** asks a model for the item roster only. The proposal is validated with the
+   same authority that validates hand-written plans, so schema errors, duplicate ids, unknown slots,
+   and coverage shortfalls all fail identically. A bounded repair loop feeds the deterministic
+   failure back to the model; it hard-fails rather than relaxing coverage.
+3. Edit the proposed JSON directly. The coverage meter updates live and the server re-validates on
+   save.
+4. **Save plan to repo** writes `data/theme-equipment-sets/<set-id>.json`. The path is derived
+   server-side from the validated `plan.id`; the client cannot supply one.
+
+Copying an existing plan by hand remains fully supported — the index and the workflow do not care
+how the file was produced.
+
+Plans are **immutable once durable state exists** for that set id. Saving over a live set is refused
+with no override, because the workflow's state machine is keyed to the roster it was initialized
+with. To change a live roster, use a new set id.
 
 ## Run on GitHub
+
+Commit and push the plan before initializing. The workflow reads the plan from the pushed ref, not
+your working tree, and dispatch pins `--ref` to the current branch (dispatch without a pinned ref
+targets the default branch). Initialization verifies the plan blob exists on that remote ref and
+fails fast otherwise.
 
 Initialize:
 
 ```powershell
-gh workflow run theme-equipment.yml --field action=init --field set_id=<set-id> --field plan_path=data/theme-equipment-sets/<set-id>.json
+gh workflow run theme-equipment.yml --ref <branch> --field action=init --field set_id=<set-id> --field plan_path=data/theme-equipment-sets/<set-id>.json
 ```
 
 Generate or regenerate only unresolved items in the current phase:
 
 ```powershell
-gh workflow run theme-equipment.yml --field action=run-phase --field set_id=<set-id>
+gh workflow run theme-equipment.yml --ref <branch> --field action=run-phase --field set_id=<set-id>
 ```
 
 Advance and status operations are storage-only and do not require OpenAI credentials. The workflow
@@ -43,7 +67,8 @@ serializes operations per set ID and allows up to six hours for large sequential
 
 ## Review
 
-Open the **Theme Equipment Review** project canvas with `setId=<set-id>`. It displays:
+Open the **Theme Equipment Review** project canvas. With no `setId` it boots into the set index;
+opening a set (or passing `setId=<set-id>`) shows the review board, which displays:
 
 - all phase artifacts and image/YAML previews;
 - item thumbs, optional feedback, revision, and frozen/open status;
@@ -60,7 +85,7 @@ refresh rather than overwriting the newer revision.
 After the state reaches `complete`, dispatch:
 
 ```powershell
-gh workflow run theme-equipment.yml --field action=publish --field set_id=<set-id>
+gh workflow run theme-equipment.yml --ref <branch> --field action=publish --field set_id=<set-id>
 ```
 
 Publication stages the current generated-art manifest/catalog and complete source-run artifacts,

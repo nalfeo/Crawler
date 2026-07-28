@@ -1,0 +1,56 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-26",
+  "session_slug": "astar-grid-pathfinding",
+  "task_title": "Project-owned grid A* replacing rot-js Path.AStar in findTilePath",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck review returned REJECT-as-specified with 3 blocking + 4 non-blocking findings and 3 alternatives (keep rot-js and only swap the closed set; stable bucketed monotone priority queue instead of a heap; upstream a patch to rot-js). Blocking fixes forced into the design: (1) findTilePath keeps a rot-js fallback for non-integer coordinates because TileMap.inBounds accepts them; (2) the passability predicate must be probed for all four N/E/S/W neighbours before any enqueue, matching rot-js _getNeighbors, because isTilePassable is caller-supplied and not required to be pure; (3) validation must diff probe traces, not just returned paths. Divergence is minor: the heap+typed-array core survived, two compatibility constraints were added. Alternative 1 was priced empirically as the CLOSEDSET bench variant (6.12x vs 8.42x) and rejected as leaving half the win on the table; alternative 2 deferred pending that measurement; alternative 3 rejected as unshippable on this timeline."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Line-by-line audit against rot-js 2.2.1 semantics read directly from node_modules. Attacked heap sift-up/sift-down FIFO fidelity, generation-stamp aliasing across same-tile-count/different-shape maps, MAX_GENERATION wrap, prevTile-chain vs item.prev-object-chain equivalence under duplicate pushes, the y*width+x index guard against a predicate returning true for x=-1, scratch-pool reentrancy and throw safety, Int32 range, the non-integer fallback, and test vacuity. No counterexample found. Independently re-ran the equivalence suite (31/31) and the differential oracle (4350 comparisons byte-identical)."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Opus and Gemini found no counterexample to the ordering contract; both independently re-derived heap FIFO fidelity, prevTile-chain equivalence, generation-stamp non-aliasing and the y*width+x guard. GPT-5.6 Sol found one valid issue: the throwing-predicate/visitor tests were VACUOUS with respect to the try/finally, because a leaked pool depth merely makes the next search take a fresh correctly-sized slot and still return the right path. Adjudicated valid; fixed by exporting __getGridAStarScratchDepthForTests and asserting depth==0, confirmed non-vacuous by removing the finally (2 failures)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Sonnet 4.6 verified the round-1 fix and re-audited the full diff and bench methodology: no new findings. GPT-5.4 raised two valid Medium issues, both adjudicated valid and fixed. (1) The new reentrancy assertion sampled depth AFTER the nested call returned, so it could not observe the in-flight depth; sampling from inside the nested predicate was still vacuous, proven by mutating acquireScratch to always return slot 0 and watching the suite PASS. Fixed by exporting __getGridAStarScratchPoolSizeForTests and lengthening the outer map so a shared slot makes the outer search diverge; that mutation now hard-fails. (2) The bench headline was not reproducible: one untimed warmup sweep left V8 mid-tiering, and the same code produced medians of 4.71x/8.13x/8.42x across process invocations. Fixed by adding 4 rotated warmup sweeps and re-measuring across 3 separate invocations; the handoff now reports a range (7.45-8.11x reachable, 6.82-7.38x sealed) and the worst single round (4.58x) instead of a single-run median."
+        }
+      ]
+    }
+  }
+}

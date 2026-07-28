@@ -205,6 +205,17 @@ export const floorManifestDefSchema = z
      * a typo'd id fails this Zod enum, never silently falls back at runtime.
      */
     terrainPackId: runtimeTerrainPackIdSchema.optional(),
+    /**
+     * Optional pack assignment for floors that mix carved stone and cave
+     * terrain. An omitted family falls back to `terrainPackId`.
+     */
+    terrainPacks: z
+      .object({
+        stone: runtimeTerrainPackIdSchema.optional(),
+        cave: runtimeTerrainPackIdSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

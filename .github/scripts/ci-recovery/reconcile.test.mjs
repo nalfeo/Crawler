@@ -24,8 +24,13 @@ import {
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
 import { admissionFingerprint, QUEUE_LABEL } from '../merge-train/state.mjs';
+import { DISPATCH_ACTION, selectTerminalAction } from './dispatch-table.mjs';
 import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './issue-intake-lib.mjs';
-import { REVIEW_REQUEST_MARKER, reviewRequestMarker } from './review-request.mjs';
+import {
+  REVIEW_CONFLICT_MARKER,
+  REVIEW_REQUEST_MARKER,
+  reviewRequestMarker,
+} from './review-request.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
@@ -253,6 +258,18 @@ async function runScript(port, env) {
 
 function isWindowsAsyncCloseCrash(code, stderr) {
   return process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr);
+}
+
+// Parse the append-only CI_RECOVERY_DECISION observability lines out of a
+// reconcile run's stdout (see decision-log.mjs). Each such line is
+// `CI_RECOVERY_DECISION {json}`; returns the parsed JSON records in order.
+const DECISION_LINE_RE = /^CI_RECOVERY_DECISION (\{.*\})$/;
+function parseDecisionLines(stdout) {
+  return stdout
+    .split('\n')
+    .map((line) => DECISION_LINE_RE.exec(line.trim()))
+    .filter(Boolean)
+    .map((match) => JSON.parse(match[1]));
 }
 
 // The Windows UV_HANDLE_CLOSING shutdown assertion is a known Node/libuv
@@ -933,6 +950,14 @@ for (const attempt of [1, 2]) {
     const finalState = parseStateComment(stateComment.body);
     if (attempt === 1) {
       assert.match(stdout, /assigned copilot pr=#42/);
+      // Observability: a terminal decision line must record the dispatch, with a
+      // machine-readable action + task-comment intent (decision-log.mjs).
+      const decisions = parseDecisionLines(stdout);
+      const dispatch = decisions.find((d) => d.action === DISPATCH_ACTION.DISPATCH_COPILOT);
+      assert.ok(dispatch, 'expected a CI_RECOVERY_DECISION line for the copilot dispatch');
+      assert.equal(dispatch.stage, 'terminal');
+      assert.equal(dispatch.pr, PR_NUM);
+      assert.equal(dispatch.taskComment, 'planned');
       assert.equal(finalState.owner, 'automation');
       assert.equal(finalState.status, 'dispatched');
       assert.equal(finalState.attempt, 2);
@@ -1102,9 +1127,6 @@ test('stale automation lock on a conflicted PR is reclaimed before the conflict 
   );
 });
 
-// Regression fixture for #1886 (2026-07-24): exhausted conflict short-circuit must file
-// a loop incident. Previously the conflict short-circuit path exited WITHOUT filing an
-// incident even after attempt >= 2, leaving no actionable escalation for the broken PR.
 test('exhausted stale automation lock on conflicted PR files loop incident before conflict-reclaim release', async (t) => {
   const fingerprint = blockerFingerprint([]);
   const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
@@ -1319,9 +1341,9 @@ test('exhausted attempt count from old head does not file incident after head ch
   );
 });
 
-
 test('stale-automation-exhausted in dry-run logs would-file message without creating an issue', async (t) => {
   const failedCheck = {
+    id: 1,
     name: 'ci',
     status: 'completed',
     conclusion: 'failure',
@@ -1614,6 +1636,148 @@ test('reconcile skips redispatch when stale-automation-exhausted state matches c
   );
 });
 
+test('D5 wiring proof: the live terminal-cascade exit for stale-automation-exhausted matches selectTerminalAction, not a parallel inline code path', async (t) => {
+  // This test exists specifically to satisfy the "terminal selection is
+  // actually wired into reconcile.mjs rather than existing only in tests"
+  // requirement from issue #1858. It reconstructs the exact TerminalContext
+  // that the live reconcile run above is driven by, calls
+  // `selectTerminalAction` directly against it, and asserts the row it
+  // returns is the SAME row whose observable side effect (the
+  // `skip pr=... reason=stale-automation-exhausted` log line and "no new
+  // comment posted" behavior) is independently confirmed by the subprocess
+  // run. If reconcile.mjs still contained a duplicated/parallel inline
+  // terminal cascade instead of calling `selectTerminalAction`, this
+  // assertion would tell us nothing — the point is that BOTH must agree,
+  // and the reconcile.mjs source (see the D5 driver block) has no other
+  // terminal-decision code path left to diverge from.
+  const staleOffsetMs = 31 * 60 * 1000;
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  const stateComment = {
+    id: 901,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation-exhausted',
+        blockers,
+        attempt: 2,
+        progressKey,
+        progressAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+        updatedAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+      }),
+    ),
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: basePr(),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Independent confirmation from the live subprocess run.
+  assert.match(stdout, /skip pr=#42 reason=stale-automation-exhausted/);
+
+  // Direct call into the SAME table the driver consumes, built from the
+  // identical facts the fixture above establishes (label absent, owner=none,
+  // idle, stored trigger=stale-automation-exhausted, matching progress key,
+  // blockers present).
+  const equivalentCtx = {
+    blockersPresent: true,
+    admissionWaitingCount: 0,
+    live: true,
+    mergeTrainEnabled: false,
+    labelExists: false,
+    owner: 'none',
+    status: 'idle',
+    stateTrigger: 'stale-automation-exhausted',
+    stateProgressKey: progressKey,
+    currentProgressKey: progressKey,
+    isDuplicateDispatch: false,
+    stallAction: 'new',
+    automationProgressRecent: false,
+  };
+  const row = selectTerminalAction(equivalentCtx);
+  assert.strictEqual(row.id, 'GC-EXHAUSTED-SKIP');
+  assert.strictEqual(row.action, DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED);
+
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'must not redispatch a new recovery task — matches SKIP_STALE_AUTOMATION_EXHAUSTED semantics',
+  );
+});
+
+test('D5 wiring strength: selectTerminalAction is called from exactly one site in reconcile.mjs (no parallel/duplicate cascade)', async () => {
+  // Plan review (2026-07-27) flagged the subprocess-vs-direct-call comparison
+  // above as behaviorally strong but not a mechanical proof that reconcile.mjs
+  // actually invokes selectTerminalAction (a coincidentally-matching parallel
+  // implementation would also pass it). This static check closes that gap
+  // cheaply: read reconcile.mjs's own source and assert selectTerminalAction
+  // is imported from dispatch-table.mjs and invoked at exactly one call site
+  // inside the terminal-decision loop — so there is mechanically nowhere
+  // else in the file the terminal cascade could live.
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const reconcilePath = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
+  const source = await readFile(reconcilePath, 'utf8');
+  // Count actual invocations (name immediately followed by an open paren) so
+  // the import statement and explanatory comments referencing the name don't
+  // inflate the count — only a real call site matches this pattern.
+  const invocations = source.match(/selectTerminalAction\(/g) ?? [];
+  assert.equal(
+    invocations.length,
+    1,
+    `expected selectTerminalAction( to be invoked exactly once in reconcile.mjs, found ${invocations.length} ` +
+      `— a second call site would indicate a reintroduced parallel/duplicate terminal cascade`,
+  );
+  assert.match(
+    source,
+    /import \{[^}]*\bselectTerminalAction\b[^}]*\} from '\.\/dispatch-table\.mjs';/,
+    'expected selectTerminalAction to be imported from dispatch-table.mjs (the single source of truth ' +
+      'for the terminal decision table), not reimplemented locally',
+  );
+  assert.match(
+    source,
+    /terminalRow = selectTerminalAction\(terminalCtx\);/,
+    'expected the single call site to assign directly into terminalRow (the value every downstream ' +
+      'if/else-if branch in the terminal cascade switches on)',
+  );
+});
+
 for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] of [
   ['repository label only', true, false],
   ['PR attachment only', false, true],
@@ -1675,6 +1839,67 @@ for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] o
     );
   });
 }
+
+test('stale automation lock is reclaimed before the ci-recovery-opt-out exit', async (t) => {
+  const fingerprint = blockerFingerprint([]);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 880,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: [],
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: 'ci-recovery-opt-out' }, { name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 995 } }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(stdout, /released stale automation lock pr=#42 reason=pre-opt-out-reclaim/);
+  assert.match(stdout, /skip pr=#42 reason=opt-out/);
+  assert.equal(repositoryLabelExists, false, 'expected the stale ci-owner fence to be deleted');
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState.owner, 'none');
+  assert.equal(finalState.status, 'idle');
+  assert.equal(finalState.trigger, 'stale-automation-pre-opt-out-reclaim');
+});
 
 test('closed PR orphan cleanup releases ownership exactly once', async (t) => {
   let repositoryLabelExists = true;
@@ -1767,6 +1992,15 @@ test('admission wait after orphan cleanup does not release ownership twice', asy
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
   assert.match(stdout, /wait pr=#42 admission=/);
+  // Observability: a terminal decision line records the non-dispatch outcome so a
+  // stalled PR can be diagnosed even when @copilot is deliberately not summoned.
+  {
+    const decisions = parseDecisionLines(stdout);
+    const terminal = decisions.find((d) => d.stage === 'terminal');
+    assert.ok(terminal, 'expected a terminal CI_RECOVERY_DECISION line');
+    assert.equal(terminal.action, DISPATCH_ACTION.WAIT_ADMISSION);
+    assert.equal(terminal.taskComment, 'not-applicable');
+  }
   assert.equal(
     mutatingCalls.filter(
       (call) =>
@@ -4339,6 +4573,15 @@ test('disabled merge train still clears stale train labels before honoring an ac
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /skip pr=#42 reason=active-shepherd-lease/);
+  // Observability: an early short-circuit also emits a decision line (stage=early)
+  // so a run that never reaches the terminal table is still diagnosable.
+  {
+    const decisions = parseDecisionLines(stdout);
+    const early = decisions.find((d) => d.stage === 'early');
+    assert.ok(early, 'expected an early CI_RECOVERY_DECISION line');
+    assert.equal(early.action, DISPATCH_ACTION.SKIP_ACTIVE_SHEPHERD);
+    assert.equal(early.taskComment, 'not-applicable');
+  }
   const deletedLabels = mutatingCalls
     .filter((call) => call.method === 'DELETE')
     .map((call) => decodeURIComponent(call.url.split('/').at(-1)))
@@ -4832,6 +5075,82 @@ test('train mode still waits (does not retry) during bounded backoff for schedul
   assert.deepEqual(mutatingCalls, []);
 });
 
+test('train mode reclaims a stale automation lock before waiting on a queued conflict predecessor', async (t) => {
+  const predecessorNumber = 77;
+  const fingerprint = blockerFingerprint([]);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 907,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        trigger: `merge-train-cumulative-conflict:${predecessorNumber}`,
+        blockers: [],
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: LABEL }, { name: 'merge-train-blocked' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/pulls/${predecessorNumber}`]: () => ({
+      body: {
+        number: predecessorNumber,
+        state: 'open',
+        labels: [{ name: QUEUE_LABEL }],
+      },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /released stale automation lock pr=#42 reason=pre-train-predecessor-reclaim/,
+  );
+  assert.match(stdout, /wait pr=#42 reason=train-conflict-predecessor-pending predecessor=#77/);
+  assert.equal(repositoryLabelExists, false, 'expected the stale ci-owner fence to be deleted');
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState.owner, 'none');
+  assert.equal(finalState.status, 'idle');
+  assert.equal(finalState.trigger, 'stale-automation-pre-train-predecessor-reclaim');
+});
+
 // Regression coverage for the other half of the same finding: bounded
 // retries must stay bounded regardless of which trigger observes them. A
 // `schedule` sweep arriving after REBASE_FAILURE_MAX_ATTEMPTS attempts (but
@@ -4880,168 +5199,6 @@ test('train mode does not fan out past bounded retries for a schedule sweep once
     ).length,
     0,
     'must not redispatch (or wait indefinitely) once bounded retries are exhausted, regardless of trigger',
-  );
-});
-
-// Regression coverage for the CI recovery loop incident on PR #1876:
-// a PR with merge-train-validation-failed + merge-train-blocked labels but no
-// merge conflict would previously exhaust two Copilot dispatch attempts without
-// making progress, because the label-driven blocker has no code fix for Copilot
-// to apply.  The fix dispatches a validation-recovery auto-rebase instead, which
-// creates a new head commit that triggers the headMovedSinceState label-clearing
-// path on the subsequent synchronize-triggered reconcile.
-test('train mode dispatches validation-recovery rebase for merge-train-validation-failed PR without conflict', async (t) => {
-  const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: {
-        ...basePr(),
-        base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
-        mergeable: true,
-        mergeable_state: 'behind',
-        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
-      },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
-      status: 404,
-      body: { message: 'Not Found' },
-    }),
-    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
-    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
-      body: { id: 999, body: '' },
-    }),
-    [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
-      body: {},
-    }),
-  });
-
-  t.after(() => server.close());
-
-  const { code, stdout, stderr } = await runScript(port, {
-    RECOVERY_OPERATION: 'reconcile',
-    RECOVERY_TRIGGER: 'schedule:sweep',
-    CI_RECOVERY_MODE: 'live',
-    MERGE_TRAIN_ENABLED: 'true',
-  });
-
-  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(
-    stdout,
-    /dispatched validation-recovery rebase pr=#42/,
-    'expected validation-recovery rebase dispatch instead of Copilot task',
-  );
-  assert.equal(
-    mutatingCalls.filter(
-      (call) =>
-        call.method === 'POST' &&
-        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
-    ).length,
-    1,
-    'must dispatch exactly one rebase',
-  );
-  const dispatch = mutatingCalls.find(
-    (call) =>
-      call.method === 'POST' &&
-      call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
-  );
-  assert.equal(dispatch.body.inputs.expected_head_sha, HEAD_SHA);
-  assert.equal(dispatch.body.inputs.expected_base_ref, 'main');
-  assert.equal(dispatch.body.inputs.trigger, 'ci-recovery-validation');
-  assert.equal(
-    mutatingCalls.some(
-      (call) =>
-        call.method === 'POST' &&
-        call.url === `/repos/${OWNER}/${REPO}/labels` &&
-        call.body?.name === LABEL,
-    ),
-    false,
-    'validation-recovery rebase must not acquire a ci-owner label (it exits before that)',
-  );
-});
-
-test('train mode waits on a still-pending validation-recovery rebase for the same head', async (t) => {
-  const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: {
-        ...basePr(),
-        mergeable: true,
-        mergeable_state: 'behind',
-        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
-      },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
-      body: [validationRebaseDispatchedStateComment(950, new Date().toISOString())],
-    }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
-      status: 404,
-      body: { message: 'Not Found' },
-    }),
-    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
-  });
-
-  t.after(() => server.close());
-
-  const { code, stdout, stderr } = await runScript(port, {
-    RECOVERY_OPERATION: 'reconcile',
-    RECOVERY_TRIGGER: 'schedule',
-    CI_RECOVERY_MODE: 'live',
-    MERGE_TRAIN_ENABLED: 'true',
-  });
-
-  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(stdout, /wait pr=#42 reason=validation-rebase-pending/);
-  assert.deepEqual(mutatingCalls, []);
-});
-
-test('train mode escalates validation-recovery rebase to Copilot dispatch once bounded retries are exhausted', async (t) => {
-  const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: {
-        ...basePr(),
-        mergeable: true,
-        mergeable_state: 'behind',
-        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
-      },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
-      // Already retried REBASE_FAILURE_MAX_ATTEMPTS (3) times, still fresh.
-      body: [validationRebaseDispatchedStateComment(951, new Date().toISOString(), 3)],
-    }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
-      status: 404,
-      body: { message: 'Not Found' },
-    }),
-    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
-    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
-      body: { check_runs: [] },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
-  });
-
-  t.after(() => server.close());
-
-  const { code, stdout, stderr } = await runScript(port, {
-    RECOVERY_OPERATION: 'reconcile',
-    RECOVERY_TRIGGER: 'schedule',
-    CI_RECOVERY_MODE: 'dry-run',
-    MERGE_TRAIN_ENABLED: 'true',
-  });
-
-  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(
-    stdout,
-    /merge-train-validation/,
-    'expected the merge-train-validation blocker to surface after rebase exhaustion',
-  );
-  assert.match(stdout, /dry-run would-assign copilot/, 'expected fallthrough to Copilot escalation');
-  assert.equal(
-    mutatingCalls.filter(
-      (call) =>
-        call.method === 'POST' &&
-        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
-    ).length,
-    0,
-    'must not redispatch once bounded retries are exhausted',
   );
 });
 
@@ -5525,6 +5682,246 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
   assert.ok(
     taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
     'task comment should reserve the SHA-less marker for deterministic non-applicability',
+  );
+});
+
+test('ci-only task body omits review-thread protocol and requires push-based progress', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'Lightweight Checks',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.ok(
+    taskCommentCall.body.body.includes('**CI-only protocol:**'),
+    'ci-only recovery task should include explicit CI-only guidance',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('do not reply to this task comment with status updates'),
+    'ci-only recovery task should forbid status-only task-comment replies',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**Review-thread protocol:**'),
+    false,
+    'ci-only recovery task should omit review-thread protocol text',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes(
+      'A top-level PR comment is never sufficient for a review-thread blocker',
+    ),
+    false,
+    'ci-only recovery task should omit review-thread-only marker instructions',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('do not use it in an addressed marker'),
+    false,
+    'ci-only recovery task should omit addressed-marker hint from branch-head line',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('replies in each thread'),
+    false,
+    'ci-only recovery task should omit thread-reply instruction from human-approval note',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('review feedback'),
+    false,
+    'ci-only recovery task should omit review-feedback step from required-order line',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('thread resolution'),
+    false,
+    'ci-only recovery task should omit thread-resolution step from required-order line',
+  );
+});
+
+test('merge-train-noop task body uses generic repair protocol, not ci-only or review-thread', async (t) => {
+  // A merge-train-noop blocker means the PR squash diff is already in the
+  // train base — neither a CI failure nor a review-thread.  The task body
+  // must select the generic **Repair protocol** branch, not the CI-only branch.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-noop' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.ok(
+    taskCommentCall.body.body.includes('**Repair protocol:**'),
+    'merge-train-noop task should use generic repair protocol',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**CI-only protocol:**'),
+    false,
+    'merge-train-noop task should not use CI-only protocol',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**Review-thread protocol:**'),
+    false,
+    'merge-train-noop task should not use review-thread protocol',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('review feedback'),
+    false,
+    'merge-train-noop task should omit review-feedback from required-order line',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('thread resolution'),
+    false,
+    'merge-train-noop task should omit thread-resolution from required-order line',
   );
 });
 
@@ -8507,6 +8904,674 @@ test('non-outdated stale-marker thread includes recovery hint in blocker summary
     /outdated — deterministic non-applicability candidate/i,
   );
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+});
+
+test('stale-marker SHA that is a one-digit typo of head SHA (404) is auto-resolved', async (t) => {
+  // PR #2010 scenario: the recovery agent posted ✅ Addressed in <sha> but
+  // transcribed a single hex digit wrong at the end of the full 40-char SHA.
+  // The typo SHA returns 404 (definitively unreachable), still shares HEAD's
+  // 7-char abbreviation, and differs by exactly one hex digit overall — strong
+  // evidence of a transcription error rather than an absent fix. The reconciler
+  // must promote the SHA and auto-resolve the thread without dispatching a new
+  // LLM agent.
+  const typoSha = `${HEAD_SHA.slice(0, -1)}9`;
+  assert.ok(HEAD_SHA.startsWith(typoSha.slice(0, 7)), 'test invariant: prefixes must match');
+  assert.notEqual(typoSha, HEAD_SHA, 'test invariant: full SHAs must differ');
+
+  const threadId = 'PRRT_typo_sha_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation') && query.includes('resolveReviewThread')) {
+        return {
+          body: {
+            data: {
+              resolveReviewThread: { thread: { isResolved: true } },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/engine/MobAbilityVfx.ts',
+            line: 120,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_typo_reply',
+                  body: `✅ Addressed in \`${typoSha}\`: Added ADR-0040 documenting the phase contract.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    // Typo SHA returns 404 — it doesn't exist as a commit.
+    [`GET /repos/${OWNER}/${REPO}/compare/${typoSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1001 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    new RegExp(`promoted stale-marker sha=${typoSha} to reachable via near-typo match`),
+    'expected prefix-match promotion log line',
+  );
+  assert.match(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'thread with typo SHA prefix-matching the head must be auto-resolved',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /assigned copilot pr=#42/,
+    'must not dispatch a repair agent when the thread is auto-resolved',
+  );
+
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === threadId,
+  );
+  assert.ok(resolveCall, 'expected a resolveReviewThread mutation for the prefix-matched thread');
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.equal(taskCommentCall, undefined, 'must not post a task comment for the resolved thread');
+});
+
+test('stale-marker SHA that is a two-adjacent-digit typo of head SHA (404) is auto-resolved', async (t) => {
+  // PR #2010 incident: the recovery agent posted ✅ Addressed in <sha> but
+  // two adjacent hex digits were written as a decimal-adjacent substitution
+  // ("19" → "20") — the actual commit was "...f3fe19afef77" but the marker
+  // carried "...f3fe20afef77". The SHA returns 404 (definitively unreachable),
+  // shares HEAD's 7-char abbreviation, and the two differing digits are
+  // contiguous (adjacent positions). The reconciler must promote the SHA and
+  // auto-resolve the thread without dispatching a new LLM agent.
+  // HEAD_SHA = 'abc1234def5678901234567890abcdef12345678'
+  // Replace the last two chars "78" with "90" to produce a 2-adjacent-digit typo.
+  const typoSha = `${HEAD_SHA.slice(0, -2)}90`;
+  assert.ok(HEAD_SHA.startsWith(typoSha.slice(0, 7)), 'test invariant: prefixes must match');
+  assert.notEqual(typoSha, HEAD_SHA, 'test invariant: full SHAs must differ');
+  // Verify exactly 2 adjacent positions differ.
+  const diffs = [...HEAD_SHA].reduce((acc, ch, i) => (ch !== typoSha[i] ? [...acc, i] : acc), []);
+  assert.equal(diffs.length, 2, 'test invariant: exactly 2 positions differ');
+  assert.equal(diffs[1] - diffs[0], 1, 'test invariant: differing positions are adjacent');
+
+  const threadId = 'PRRT_two_digit_typo_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation') && query.includes('resolveReviewThread')) {
+        return {
+          body: {
+            data: {
+              resolveReviewThread: { thread: { isResolved: true } },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/core/mob-abilities/types.ts',
+            line: 23,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_two_digit_typo_reply',
+                  body: `✅ Addressed in \`${typoSha}\`: Added ADR-0076 documenting the lane/active-phase contract.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    // Typo SHA returns 404 — it doesn't exist as a commit.
+    [`GET /repos/${OWNER}/${REPO}/compare/${typoSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1002 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    new RegExp(`promoted stale-marker sha=${typoSha} to reachable via near-typo match`),
+    'expected near-typo promotion log line for 2-adjacent-digit typo',
+  );
+  assert.match(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'thread with 2-adjacent-digit typo SHA must be auto-resolved',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /assigned copilot pr=#42/,
+    'must not dispatch a repair agent when the thread is auto-resolved',
+  );
+
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === threadId,
+  );
+  assert.ok(
+    resolveCall,
+    'expected a resolveReviewThread mutation for the 2-adjacent-digit typo thread',
+  );
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.equal(
+    taskCommentCall,
+    undefined,
+    'must not post a task comment for the auto-resolved thread',
+  );
+});
+
+test('diverged/behind stale-marker SHA that shares head prefix is not auto-resolved', async (t) => {
+  const divergentSha = `${HEAD_SHA.slice(0, 7)}fffffff00000000000000000000000000`;
+  assert.ok(
+    HEAD_SHA.startsWith(divergentSha.slice(0, 7)),
+    'test invariant: prefixes must match for divergent SHA',
+  );
+  assert.notEqual(divergentSha, HEAD_SHA, 'test invariant: divergent SHA must differ from head');
+
+  const threadId = 'PRRT_divergent_prefix_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/engine/MobAbilityVfx.ts',
+            line: 120,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_divergent_reply',
+                  body: `✅ Addressed in \`${divergentSha}\`: Added ADR-0040 documenting the phase contract.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${divergentSha}...${HEAD_SHA}`]: () => ({
+      body: { status: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1002 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`promoted stale-marker sha=${divergentSha} to reachable via near-typo match`),
+  );
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'diverged/behind commits must stay unresolved even if their first 7 chars match HEAD',
+  );
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes(threadId),
+  );
+  assert.ok(taskCommentCall, 'expected stale-marker task comment for divergent lineage marker');
+});
+
+test('missing stale-marker SHA with same 7-char prefix but many differing digits is not auto-resolved', async (t) => {
+  const missingNonNearMatchSha = 'abc1234fffffffffffffffffffffffffffffffff';
+  assert.ok(
+    HEAD_SHA.startsWith(missingNonNearMatchSha.slice(0, 7)),
+    'test invariant: prefixes must match for missing non-near-match SHA',
+  );
+  assert.notEqual(
+    missingNonNearMatchSha,
+    HEAD_SHA,
+    'test invariant: missing non-near-match SHA must differ from head',
+  );
+
+  const threadId = 'PRRT_missing_prefix_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/engine/MobAbilityVfx.ts',
+            line: 120,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_missing_reply',
+                  body: `✅ Addressed in \`${missingNonNearMatchSha}\`: Added ADR-0040 documenting the phase contract.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${missingNonNearMatchSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1003 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(
+      `promoted stale-marker sha=${missingNonNearMatchSha} to reachable via near-typo match`,
+    ),
+  );
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'non-near-match missing SHAs must stay on the stale-marker hint path',
+  );
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes(threadId),
+  );
+  assert.ok(taskCommentCall, 'expected stale-marker task comment for missing non-near-match SHA');
+});
+
+test('two-digit typo with non-adjacent (non-contiguous) differing positions is not auto-resolved', async (t) => {
+  // Safety guard: a missing SHA that shares HEAD's 7-char prefix and differs
+  // by exactly 2 hex digits BUT at non-adjacent positions is NOT promoted.
+  // Two separated changed digits more likely indicate a genuinely different
+  // commit than a single transcription slip, so the promotion threshold
+  // requires contiguity (positions differ by exactly 1).
+  //
+  // Construct a SHA that changes characters at positions 0 and 2 (not adjacent):
+  // HEAD_SHA = 'abc1234def5678901234567890abcdef12345678'
+  // positions:   0123456...
+  // Change positions 7 and 9 (both within the first 7-char prefix would break
+  // the prefix guard; we need positions AFTER the 7-char boundary).
+  // positions 7 and 9: HEAD_SHA[7]='d', HEAD_SHA[9]='f'
+  // Change HEAD_SHA[7] 'd'→'e' and HEAD_SHA[9] 'f'→'0'.
+  const head = HEAD_SHA; // 'abc1234def5678901234567890abcdef12345678'
+  const nonAdjacentTypoSha = `${head.slice(0, 7)}e${head[8]}0${head.slice(10)}`;
+  assert.ok(
+    HEAD_SHA.startsWith(nonAdjacentTypoSha.slice(0, 7)),
+    'test invariant: prefixes must match',
+  );
+  assert.notEqual(nonAdjacentTypoSha, HEAD_SHA, 'test invariant: SHAs must differ');
+  const diffs = [...HEAD_SHA].reduce(
+    (acc, ch, i) => (ch !== nonAdjacentTypoSha[i] ? [...acc, i] : acc),
+    [],
+  );
+  assert.equal(diffs.length, 2, 'test invariant: exactly 2 positions differ');
+  assert.ok(diffs[1] - diffs[0] > 1, 'test invariant: differing positions are NOT adjacent');
+
+  const threadId = 'PRRT_non_adjacent_two_digit_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/core/mob-abilities/types.ts',
+            line: 23,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_non_adjacent_reply',
+                  body: `✅ Addressed in \`${nonAdjacentTypoSha}\`: Added ADR-0076.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${nonAdjacentTypoSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1004 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`promoted stale-marker sha=${nonAdjacentTypoSha} to reachable via near-typo match`),
+    'non-adjacent 2-digit differences must NOT be promoted',
+  );
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'non-adjacent 2-digit typo SHAs must stay on the stale-marker hint path',
+  );
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes(threadId),
+  );
+  assert.ok(
+    taskCommentCall,
+    'expected stale-marker task comment for non-adjacent 2-digit typo SHA',
+  );
 });
 
 test('outdated stale-marker thread stays on the stale-marker hint path', async (t) => {
@@ -11509,4 +12574,740 @@ test('waiting PR with zero blockers and green CI is re-admitted to merge train (
     ),
     'QUEUE_LABEL must be added on successful readmit',
   );
+});
+
+test('train mode dispatches validation-recovery rebase for merge-train-validation-failed PR without conflict', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+        mergeable: true,
+        mergeable_state: 'behind',
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /dispatched validation-recovery rebase pr=#42/,
+    'expected validation-recovery rebase dispatch instead of Copilot task',
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    1,
+    'must dispatch exactly one rebase',
+  );
+  const dispatch = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+  );
+  assert.equal(dispatch.body.inputs.expected_head_sha, HEAD_SHA);
+  assert.equal(dispatch.body.inputs.expected_base_ref, 'main');
+  assert.equal(dispatch.body.inputs.trigger, 'ci-recovery-validation');
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/labels` &&
+        call.body?.name === LABEL,
+    ),
+    false,
+    'validation-recovery rebase must not acquire a ci-owner label (it exits before that)',
+  );
+});
+
+test('train mode waits on a still-pending validation-recovery rebase for the same head', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        mergeable: true,
+        mergeable_state: 'behind',
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [validationRebaseDispatchedStateComment(950, new Date().toISOString())],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /wait pr=#42 reason=validation-rebase-pending/);
+  assert.deepEqual(mutatingCalls, []);
+});
+
+test('train mode waits during bounded backoff for validation-recovery auto-rebase failures', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        mergeable: true,
+        mergeable_state: 'behind',
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [validationRebaseDispatchedStateComment(951, new Date().toISOString(), 1)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'auto-rebase-failure',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /wait pr=#42 reason=validation-rebase-retry-backoff attempt=1/);
+  assert.deepEqual(mutatingCalls, []);
+});
+
+test('train mode escalates validation-recovery rebase to Copilot dispatch once bounded retries are exhausted', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        mergeable: true,
+        mergeable_state: 'behind',
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-validation-failed' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      // Already retried REBASE_FAILURE_MAX_ATTEMPTS (3) times, still fresh.
+      body: [validationRebaseDispatchedStateComment(951, new Date().toISOString(), 3)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'dry-run',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /merge-train-validation/,
+    'expected the merge-train-validation blocker to surface after rebase exhaustion',
+  );
+  assert.match(
+    stdout,
+    /dry-run would-assign copilot/,
+    'expected fallthrough to Copilot escalation',
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    0,
+    'must not redispatch once bounded retries are exhausted',
+  );
+});
+
+// Thread 4 regression: the conflict episode marker must be posted BEFORE the
+// R08 conflict-rebase dispatch so that the conflict-resolved review path is
+// available on the next reconcile pass even when R08 exits early.
+test('conflict episode marker is posted before the conflict-only rebase dispatch (R08)', async (t) => {
+  const BASE_SHA = '0000111122223333444455556666777788889999';
+  const firstPassCommentPosts = [];
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        base: { ref: 'main', sha: BASE_SHA, repo: { full_name: `${OWNER}/${REPO}` } },
+        mergeable: false,
+        mergeable_state: 'dirty',
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      firstPassCommentPosts.push(body.body);
+      return { body: { id: 999, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'pull_request_target:synchronize',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The conflict episode marker comment must have been posted.
+  const episodeMarkerIdx = firstPassCommentPosts.findIndex((body) =>
+    body.startsWith(REVIEW_CONFLICT_MARKER),
+  );
+  assert.ok(
+    episodeMarkerIdx >= 0,
+    'conflict episode marker must be posted before R08 rebase dispatch exits',
+  );
+
+  // The episode marker must be posted in the comments list (no rebase state comment expected here
+  // since the label is absent and the rebase dispatch writes state then exits).
+  // Verify the marker format matches the expected pattern.
+  assert.match(
+    firstPassCommentPosts[episodeMarkerIdx],
+    /<!-- crawler-review-conflict:v1 episode=[0-9a-f]+ head=[0-9a-f]+ base=[0-9a-f]+ -->/,
+    'conflict episode marker must have the expected format',
+  );
+
+  const conflictEpisodeMarkerBody = firstPassCommentPosts[episodeMarkerIdx];
+  const secondPassCommentPosts = [];
+  const {
+    server: secondPassServer,
+    port: secondPassPort,
+    mutatingCalls,
+  } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        base: { ref: 'main', sha: BASE_SHA, repo: { full_name: `${OWNER}/${REPO}` } },
+        mergeable: true,
+        mergeable_state: 'clean',
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [
+        {
+          id: 1000,
+          body: conflictEpisodeMarkerBody,
+          author_association: 'OWNER',
+        },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      secondPassCommentPosts.push(body.body);
+      return { body: { id: 1001 + secondPassCommentPosts.length, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/requested_reviewers`]: () => ({
+      body: {},
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => secondPassServer.close());
+
+  const {
+    code: secondPassCode,
+    stdout: secondPassStdout,
+    stderr: secondPassStderr,
+  } = await runScript(secondPassPort, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, secondPassCode, secondPassStderr, '', true)) return;
+
+  assert.match(
+    secondPassStdout,
+    /recorded review reason=conflict-resolved pr=#42/,
+    'expected the second pass to request a conflict-resolved review',
+  );
+  const conflictResolvedMarker = secondPassCommentPosts.find((body) =>
+    body.startsWith(REVIEW_REQUEST_MARKER),
+  );
+  assert.ok(conflictResolvedMarker, 'expected the second pass to post a review-request marker');
+  assert.match(
+    conflictResolvedMarker,
+    /reason=conflict-resolved episode=[0-9a-f]{64} -->$/,
+    'expected the second-pass marker to record the conflict-resolved episode',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/requested_reviewers`,
+    ),
+    true,
+    'expected the second pass to request the reviewer after recording the marker',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// R07 (ci-conflict-order-wait) pre-exit outdated-thread cleanup
+//
+// Regression tests for the defect where the reconciler would exit via R07 (or
+// R06) without ever fetching review data, leaving outdated unresolved threads
+// permanently stuck while the ci-conflict-order-wait label was present.
+// ---------------------------------------------------------------------------
+
+test('dry-run: R07 ci-conflict-order-wait exit still runs outdated-thread cleanup', async (t) => {
+  const reviewCommentId = '3650258853';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: 'ci-conflict-order-wait' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({
+      body: gqlReviewThreads([
+        {
+          id: 'thread-outdated-r07',
+          isResolved: false,
+          isOutdated: true,
+          path: 'scripts/agent/data/boss-abilities.floor2.status.json',
+          line: 42,
+          comments: {
+            nodes: [
+              {
+                id: 'comment-outdated-r07',
+                body: 'This file needs updating.',
+                author: { login: 'copilot-pull-request-reviewer' },
+                authorAssociation: 'NONE',
+                url: threadUrl,
+              },
+            ],
+          },
+        },
+      ]),
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread cleanup should run BEFORE the skip exit.
+  assert.match(stdout, /would-post outdated-marker thread=thread-outdated-r07/);
+  assert.match(stdout, /would-resolve thread=thread-outdated-r07/);
+  // The R07 skip should still fire after cleanup.
+  assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
+  // No mutations in dry-run mode.
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('live: R07 ci-conflict-order-wait exit posts outdated-marker and resolves thread before skipping', async (t) => {
+  const reviewCommentId = '3650258853';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: 'ci-conflict-order-wait' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      body: { id: 99999, body: '✅ Addressed in abc123' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-r07-live',
+            isResolved: false,
+            isOutdated: true,
+            path: 'scripts/agent/data/boss-abilities.floor2.status.json',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-r07-live',
+                  body: 'This file needs updating.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Verify the outdated-marker reply was posted.
+  const replyCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`,
+  );
+  assert.ok(replyCall, 'expected a reply to be posted on the outdated review thread');
+  assert.ok(
+    String(replyCall.body?.body || '').includes('✅ Addressed in'),
+    'reply should contain the addressed marker',
+  );
+  assert.ok(
+    String(replyCall.body?.body || '')
+      .toLowerCase()
+      .includes('outdated'),
+    'reply should mention the outdated reason',
+  );
+
+  // Verify the thread was resolved via GraphQL.
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === 'thread-outdated-r07-live',
+  );
+  assert.ok(resolveCall, 'expected the outdated thread to be resolved via GraphQL mutation');
+
+  assert.match(stdout, /posted outdated-marker thread=thread-outdated-r07-live/);
+  assert.match(stdout, /resolved thread=thread-outdated-r07-live/);
+  // The R07 skip should still fire after cleanup.
+  assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
+});
+
+test('live: R07 ci-conflict-order-wait still skips cleanly when post-outdated-marker metadata re-fetch fails', async (t) => {
+  const reviewCommentId = '3650258854';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  let pullGets = 0;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullGets += 1;
+      if (pullGets >= 2) {
+        return { status: 500, body: { message: 'metadata refresh failed' } };
+      }
+      return {
+        body: {
+          ...basePr(),
+          base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+          labels: [{ name: 'ci-conflict-order-wait' }],
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({
+      body: gqlReviewThreads([
+        {
+          id: 'thread-outdated-r07-refresh-fail',
+          isResolved: false,
+          isOutdated: true,
+          path: 'scripts/agent/data/boss-abilities.floor2.status.json',
+          line: 42,
+          comments: {
+            nodes: [
+              {
+                id: 'comment-outdated-r07-refresh-fail',
+                body: 'This file needs updating.',
+                author: { login: 'copilot-pull-request-reviewer' },
+                authorAssociation: 'NONE',
+                url: threadUrl,
+              },
+            ],
+          },
+        },
+      ]),
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /skip outdated-marker thread=thread-outdated-r07-refresh-fail reason=reply-failed/,
+  );
+  assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
+  assert.doesNotMatch(
+    stderr,
+    /unexpected-(error|rejection)|UnhandledPromiseRejection|unhandledRejection/i,
+  );
+  assert.equal(
+    mutatingCalls.length,
+    0,
+    'metadata guard failure should prevent reply/resolve mutations but preserve clean skip exit',
+  );
+});
+
+test('live: R07 ci-conflict-order-wait still skips cleanly when resolve-thread metadata re-fetch fails', async (t) => {
+  let pullGets = 0;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullGets += 1;
+      if (pullGets >= 2) {
+        return { status: 500, body: { message: 'metadata refresh failed' } };
+      }
+      return {
+        body: {
+          ...basePr(),
+          base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+          labels: [{ name: 'ci-conflict-order-wait' }],
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-r07-resolve-refresh-fail',
+            isResolved: false,
+            isOutdated: true,
+            path: 'scripts/agent/data/boss-abilities.floor2.status.json',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-r07-resolve-refresh-fail',
+                  body: 'This file needs updating.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3650258855`,
+                },
+                {
+                  id: 'comment-addressed-r07-resolve-refresh-fail',
+                  body: `✅ Addressed in ${HEAD_SHA}: prior fix marker`,
+                  author: { login: 'copilot' },
+                  authorAssociation: 'OWNER',
+                  url: '',
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stderr,
+    /resolve-thread-failed thread=thread-outdated-r07-resolve-refresh-fail err=GitHub GET \/repos\/test-owner\/test-repo\/pulls\/42 failed \(500\): metadata refresh failed/,
+  );
+  assert.match(stdout, /skip pr=#42 reason=ci-conflict-order-wait/);
+  assert.doesNotMatch(
+    stderr,
+    /unexpected-(error|rejection)|UnhandledPromiseRejection|unhandledRejection/i,
+  );
+  assert.equal(
+    mutatingCalls.length,
+    0,
+    'metadata guard failure should prevent thread-resolution mutation but preserve clean skip exit',
+  );
+});
+
+test('dry-run: R06 merge-train-owned exit still runs outdated-thread cleanup', async (t) => {
+  const reviewCommentId = '3650258900';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: 'merge-train' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({
+      body: gqlReviewThreads([
+        {
+          id: 'thread-outdated-r06',
+          isResolved: false,
+          isOutdated: true,
+          path: 'src/game/enemies/goblin.ts',
+          line: 99,
+          comments: {
+            nodes: [
+              {
+                id: 'comment-outdated-r06',
+                body: 'Goblin needs refactoring.',
+                author: { login: 'copilot-pull-request-reviewer' },
+                authorAssociation: 'NONE',
+                url: threadUrl,
+              },
+            ],
+          },
+        },
+      ]),
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread cleanup should run BEFORE the skip exit.
+  assert.match(stdout, /would-post outdated-marker thread=thread-outdated-r06/);
+  assert.match(stdout, /would-resolve thread=thread-outdated-r06/);
+  // The R06 skip should still fire after cleanup.
+  assert.match(stdout, /skip pr=#42 reason=merge-train-owned/);
+  // No mutations in dry-run mode.
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });

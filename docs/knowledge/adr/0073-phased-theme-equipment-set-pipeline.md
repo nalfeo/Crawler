@@ -58,6 +58,32 @@ state, and explicit human control.
   per-instance token, trusted loopback origin, JSON content type, bounded request body, and
   authoritative phase-gate revalidation.
 
+## Amendment 2026-07-25 — set index and model-proposed rosters
+
+The pipeline shipped agent-first: the canvas required a caller-supplied `setId`, so it could
+neither enumerate the sets that exist nor author a new one. In practice that made the human
+surface unusable without an agent turn for every step. This amendment adds four decisions.
+
+- **DEC-010**: The canvas opens without a `setId` and boots into a **set index** built by a
+  `list` command over the authored plan directory unioned with `theme-sets/` in the `RunStore`.
+  The index distinguishes "no durable state" from "store unavailable" so a storage outage never
+  renders as an uninitialized set. Set selection is validated against a server-computed allowlist
+  derived from that same `list`, so a client can never select an arbitrary id.
+- **DEC-011**: A model may propose the **item roster only**. `themeDesignLanguage` stays
+  human-authored; synthesis never derives a collection's visual identity. Proposals are validated
+  by re-running the same `buildThemeEquipmentSetStateFromPlan()` authority that validates
+  hand-written plans, so schema, duplicate-id, unknown-slot, and coverage rules have exactly one
+  judge. A bounded repair loop feeds the deterministic failure back to the model and hard-fails
+  rather than relaxing coverage thresholds.
+- **DEC-012**: `save-plan` derives its target path server-side from the validated `plan.id`. The
+  client supplies no path. Plans are **immutable once durable state exists** for that set id, with
+  no override flag — the phase state machine is keyed to the roster it was initialized with, so a
+  changed roster requires a new set id.
+- **DEC-013**: Workflow dispatch pins `--ref` to the resolved current branch and, for `init`,
+  verifies the plan blob exists on that remote ref before dispatching. `gh workflow run` without
+  a pinned ref silently targets the default branch, which would have run a set against a plan
+  that does not exist there.
+
 ## Consequences
 
 ### Positive

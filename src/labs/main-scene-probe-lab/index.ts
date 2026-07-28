@@ -102,6 +102,14 @@ interface MainSceneInternals {
   world?: GameWorld;
   playerEid?: number;
   bridge?: unknown;
+  /**
+   * Darkness/fog RenderTexture drawn over the terrain. Exposed to the probe
+   * purely so art observations can inspect terrain as authored: the torch
+   * radius is small enough that cave rock and wall lighting are unreadable in
+   * a normal screenshot, which previously led to a wall restyle being judged
+   * against the flagstone spawn room instead of the cave.
+   */
+  lightOverlayRt?: { visible: boolean };
   hudUi?: {
     isMapOverlayOpen(): boolean;
     getFamilyRelationshipsState(): {
@@ -171,6 +179,16 @@ interface MainSceneInternals {
     packWallCount: number;
     packFloorCount: number;
     packCorridorCount: number;
+    packSpecialFloorCount: number;
+    packFloorSourceCounts: Record<string, number>;
+    packFloorTransformCounts: Record<string, number>;
+    packFloorComboCounts: Record<string, number>;
+    packCorridorSourceCounts: Record<string, number>;
+    packCorridorTransformCounts: Record<string, number>;
+    packCorridorComboCounts: Record<string, number>;
+    packWallAccentedCount: number;
+    packWallAccentCounts: Record<string, number>;
+    packGroundDecalCount: number;
   };
   getDoorRenderSummary(): {
     closedPackCount: number;
@@ -351,6 +369,30 @@ export interface TerrainRenderSummary {
   readonly packFloorCount: number;
   /** CORRIDOR tiles stamped from a terrain-pack `corridorPool` variant. */
   readonly packCorridorCount: number;
+  /** Role-keyed special-room floor tiles stamped from a terrain pack. */
+  readonly packSpecialFloorCount: number;
+  /**
+   * Live diversity instrumentation (2026-07-25 terrain-variance refinement
+   * #4): per-source and per-transform stamp counts from the REAL bake, so an
+   * e2e probe can assert "all 8 sources used" / histogram shape against the
+   * actual booted scene rather than just a synthetic sample.
+   */
+  readonly packFloorSourceCounts: Record<string, number>;
+  readonly packFloorTransformCounts: Record<string, number>;
+  readonly packFloorComboCounts: Record<string, number>;
+  readonly packCorridorSourceCounts: Record<string, number>;
+  readonly packCorridorTransformCounts: Record<string, number>;
+  readonly packCorridorComboCounts: Record<string, number>;
+  /** Number of WALL tiles that additionally received an accent-atlas stamp. */
+  readonly packWallAccentedCount: number;
+  /** Per-accent-id stamp counts. */
+  readonly packWallAccentCounts: Record<string, number>;
+  /**
+   * Cross-tile ground decals stamped between the ground and cover paint passes.
+   * The only pack mechanism that can express a feature larger than one cell, so
+   * this is the seam proving decals actually placed in the REAL booted scene.
+   */
+  readonly packGroundDecalCount: number;
 }
 
 /**
@@ -419,6 +461,12 @@ export interface MainSceneProbeApi {
   advanceSimulationFrames(frames: number): void;
   /** Overwrite the player's FEET position and zero its velocity. */
   setPlayerFeet(x: number, y: number): void;
+  /**
+   * Show/hide the darkness+fog overlay. Art-observation affordance only —
+   * lets a screenshot show terrain as authored rather than as torch-lit.
+   * Returns false when the overlay does not exist yet.
+   */
+  setLightingOverlayVisible(visible: boolean): boolean;
   /** Seed an authoritative blood pool directly into the live world. */
   seedBloodPool(x: number, y: number, color: number): number | null;
   /** World + display-list summary for blood pools / bloody footprints. */
@@ -757,6 +805,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.advanceSimulationFrames?.(frames);
     },
 
+    setLightingOverlayVisible: (visible: boolean): boolean => {
+      const rt = getScene()?.lightOverlayRt;
+      if (!rt) return false;
+      rt.visible = visible;
+      return true;
+    },
+
     setPlayerFeet: (x: number, y: number) => {
       const scene = getScene();
       const world = scene?.world;
@@ -1038,6 +1093,16 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         packWallCount: summary?.packWallCount ?? 0,
         packFloorCount: summary?.packFloorCount ?? 0,
         packCorridorCount: summary?.packCorridorCount ?? 0,
+        packSpecialFloorCount: summary?.packSpecialFloorCount ?? 0,
+        packFloorSourceCounts: summary?.packFloorSourceCounts ?? {},
+        packFloorTransformCounts: summary?.packFloorTransformCounts ?? {},
+        packFloorComboCounts: summary?.packFloorComboCounts ?? {},
+        packCorridorSourceCounts: summary?.packCorridorSourceCounts ?? {},
+        packCorridorTransformCounts: summary?.packCorridorTransformCounts ?? {},
+        packCorridorComboCounts: summary?.packCorridorComboCounts ?? {},
+        packWallAccentedCount: summary?.packWallAccentedCount ?? 0,
+        packWallAccentCounts: summary?.packWallAccentCounts ?? {},
+        packGroundDecalCount: summary?.packGroundDecalCount ?? 0,
       };
     },
 

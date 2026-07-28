@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "mutation-proof-command",
+  "task_title": "Give the prove-your-test-can-fail rule a real command",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 15,
+      "resolved_count": 15,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer found existing Stryker 9.6.1 infra (nightly-mutation.yml, stryker.config.json) that the bespoke in-place mutation runner would have duplicated, and correctly flagged that SKILL.md has no mutation mandate today (the only match at line 241 is the word mutate in an unrelated aliasing caveat). 4 blocking findings against the bespoke design (crash-unsafe in-place edits; any-red-test being itself a vacuous kill criterion; no green baseline; whole-file EOL rewrite). All 4 are dissolved rather than patched by pivoting onto Stryker, which already sandboxes, type-checks, verifies a green baseline, and emits JSON. Verified both factual claims independently, plus the decisive one the reviewer did not make: all six observed vacuity defects live in files outside Stryker mutate globs (src/core/map/astar-grid.ts, src/core/map/FloorMap.ts, src/core/barriers, scripts/agent/perf, .github/scripts) - coverage is ~78 of 453 src .ts files."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true
+    }
+  }
+}

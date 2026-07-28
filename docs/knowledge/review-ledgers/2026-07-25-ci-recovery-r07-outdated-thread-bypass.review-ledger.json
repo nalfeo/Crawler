@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "ci-recovery-r07-outdated-thread-bypass",
+  "task_title": "CI recovery: R07/R06 pre-exit outdated-thread cleanup",
+  "estimated_apples": 1,
+  "stages": {}
+}
