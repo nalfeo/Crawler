@@ -12,6 +12,7 @@ import {
   loadBrief,
   loadBriefFromYaml,
   mergeMinimalIntoDefaults,
+  validateBriefYaml,
 } from '../../../scripts/sprites/load-brief.js';
 
 const SAMPLE_BRIEF_YAML = `
@@ -559,5 +560,37 @@ describe('loadBriefFromYaml', () => {
         loadPalette: () => [[0, 0, 0]],
       }),
     ).toThrow(/failed validation/);
+  });
+});
+
+describe('validateBriefYaml', () => {
+  const palette = (): [number, number, number][] => [
+    [0, 0, 0],
+    [255, 255, 255],
+  ];
+
+  it('accepts a valid brief and returns the parsed brief plus resolved palette', () => {
+    const loaded = validateBriefYaml(SAMPLE_BRIEF_YAML, { loadPalette: palette });
+
+    expect(loaded.brief.name).toBe('iron-sword');
+    expect(loaded.brief.type).toBe('weapon');
+    expect(loaded.palette).toEqual(palette());
+    expect(loaded.briefPath).toBe('<in-memory>');
+  });
+
+  it('throws on a schema violation without touching the disk', () => {
+    expect(() =>
+      validateBriefYaml('type: weapon\nname: BAD_NAME\n', { loadPalette: palette }),
+    ).toThrow(/failed minimal validation|failed validation/);
+  });
+
+  it('throws when the palette id cannot be resolved', () => {
+    expect(() =>
+      validateBriefYaml(SAMPLE_BRIEF_YAML, {
+        loadPalette: (id) => {
+          throw new Error(`Palette '${id}' not found`);
+        },
+      }),
+    ).toThrow(/Palette 'kenney-roguelike' not found/);
   });
 });

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "ci-recovery-stale-marker-prefix-fix",
+  "task_title": "ci-recovery: auto-resolve stale-marker threads where SHA is a typo of head prefix",
+  "estimated_apples": 2,
+  "stages": {}
+}

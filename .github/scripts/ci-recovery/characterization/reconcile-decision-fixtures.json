@@ -481,9 +481,33 @@
         "pr": {
           "state": "open",
           "draft": false,
+          "labels": [
+            {
+              "name": "ci-recovery-waiting"
+            }
+          ],
           "head": {
             "sha": "abc1234def5678901234567890abcdef12345678"
           }
+        },
+        "recoveryState": {
+          "version": 1,
+          "prNumber": 1859,
+          "headSha": "abc1234def5678901234567890abcdef12345678",
+          "fingerprint": "repair-gap-fixture",
+          "owner": "none",
+          "status": "idle",
+          "leaseId": null,
+          "trigger": "stale-automation",
+          "blockers": [
+            {
+              "kind": "ci-failure",
+              "id": "ci",
+              "summary": "CI failed"
+            }
+          ],
+          "attempt": 1,
+          "updatedAt": "2026-07-26T00:00:00Z"
         },
         "hasMergeConflict": false,
         "requiredChecksPassing": true,
@@ -494,8 +518,11 @@
         ],
         "comments": []
       },
-      "expected": null,
-      "coverageBy": "does not request review while another policy is blocking the PR"
+      "expected": {
+        "review": null,
+        "repairEligible": true
+      },
+      "coverageBy": "repair-window sweep re-enters exact repair dispatch without spending review budget"
     },
     {
       "name": "merge-conflict PR does not request review (repair-wake gap)",

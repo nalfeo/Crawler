@@ -236,6 +236,7 @@ function buildRoutes({
   fenceReleaseStatus = 204,
   pr3HeadRef = undefined,
   pr3Labels = [],
+  pr3AutoMerge = null,
   pr3LabelsAfterGetCount = null,
   pr3LabelsAfter = [{ name: 'human-approval-required' }],
   pr3ClosingIssues = [],
@@ -277,6 +278,7 @@ function buildRoutes({
         ? { head: { ref: pr3HeadRef, sha, repo: { full_name: `${OWNER}/${REPO}` } } }
         : {}),
       ...(pr3Labels.length > 0 ? { labels: pr3Labels } : {}),
+      ...(pr3AutoMerge ? { auto_merge: pr3AutoMerge } : {}),
       ...extra,
     });
   }
@@ -550,7 +552,11 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
   );
   t.after(() => server.close());
 
-  const { code, stdout, stderr } = await runScript(port, workDir);
+  // Serialization is opt-in now, so this fencing characterization must pin the
+  // enforcement path explicitly.
+  const { code, stdout, stderr } = await runScript(port, workDir, {
+    CI_CONFLICT_COORDINATION_ENFORCE: '1',
+  });
 
   if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
     t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
@@ -601,6 +607,118 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
     undefined,
     'must not close another group member from the stale selection',
   );
+});
+
+test('coordinator discovers but does not serialize when enforcement is disabled (default)', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  // Same drift scenario as the fencing test above — the ONLY difference is that
+  // enforcement is left at its default (off). The fence must not be applied.
+  const driftedActiveSha = '6'.repeat(40);
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      livePr1Sha: driftedActiveSha,
+      // Seed a stranded fence label left behind by a previous enforcing run.
+      pr3Labels: [{ name: 'ci-conflict-order-wait' }],
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const fenceAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      /\/issues\/\d+\/labels$/.test(c.url) &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-order-wait'),
+  );
+  assert.equal(
+    fenceAdd,
+    undefined,
+    'must never apply ci-conflict-order-wait while enforcement is disabled',
+  );
+
+  // Discovery must still run: the coordinated label is how the group stays
+  // visible/reportable even though it is no longer serialized.
+  const coordinatedAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      /\/issues\/\d+\/labels$/.test(c.url) &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-coordinated'),
+  );
+  assert.ok(coordinatedAdd, 'discovery/reporting must keep working when enforcement is disabled');
+
+  // Removal (not just omission) is what drains labels stranded by a previous
+  // enforcing run, so no manual cleanup pass is required.
+  const fenceRemove = mutatingCalls.find(
+    (c) => c.method === 'DELETE' && /\/issues\/\d+\/labels\/ci-conflict-order-wait$/.test(c.url),
+  );
+  assert.ok(fenceRemove, 'must actively remove stranded ci-conflict-order-wait labels');
+});
+
+test('auto-merge stays disarmed for human-gated PRs even when enforcement is disabled', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  // PR3 needs human approval AND already has auto-merge armed. Disabling
+  // serialization must NOT leave it armed: GitHub would merge it the moment its
+  // checks pass, before CI recovery's independent human gate next runs.
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      pr3Labels: [{ name: 'human-approval-required' }],
+      pr3AutoMerge: { enabled_by: { login: 'nalfeo' } },
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const disarm = mutatingCalls.find(
+    (c) =>
+      typeof c.body?.query === 'string' &&
+      c.body.query.includes('disablePullRequestAutoMerge') &&
+      c.body?.variables?.pullRequestId === 'PR_3',
+  );
+  assert.ok(
+    disarm,
+    'must disarm auto-merge for a human-approval-gated PR regardless of enforcement mode',
+  );
+
+  // The fence itself must still be off — this asserts the safety carve-out did
+  // not silently re-enable serialization.
+  const fenceAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      /\/issues\/\d+\/labels$/.test(c.url) &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-order-wait'),
+  );
+  assert.equal(fenceAdd, undefined, 'the ownership carve-out must not re-enable serialization');
 });
 
 test('coordinator reopens duplicate when post-close drift is detected', async (t) => {

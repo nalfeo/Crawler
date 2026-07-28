@@ -3,9 +3,28 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { createCliEntryResolver } from './cli-bundle.mjs';
 
 const execFileAsync = promisify(execFile);
-const SERIALIZED_ACTIONS = new Set(['state', 'item-review', 'set-review', 'advance', 'save-plan']);
+const cliEntryResolvers = new Map();
+
+function cliEntryResolverFor(repoRoot, log) {
+  let resolver = cliEntryResolvers.get(repoRoot);
+  if (!resolver) {
+    resolver = createCliEntryResolver({ repoRoot, log });
+    cliEntryResolvers.set(repoRoot, resolver);
+  }
+  return resolver;
+}
+const SERIALIZED_ACTIONS = new Set([
+  'state',
+  'item-review',
+  'set-review',
+  'advance',
+  'save-plan',
+  'approve-remaining',
+  'save-and-approve-brief',
+]);
 const SET_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Roster synthesis makes a chat call; give it more headroom than a state read. */
 const SYNTH_TIMEOUT_MS = 240_000;
@@ -70,12 +89,12 @@ function serializationKey(command) {
   return command.setId;
 }
 
-export async function runThemeEquipmentReviewCommand(command, repoRoot) {
-  const script = path.join(repoRoot, 'scripts', 'sprites', 'theme-equipment-review-cli.ts');
+export async function runThemeEquipmentReviewCommand(command, repoRoot, log) {
   const encoded = Buffer.from(JSON.stringify(command), 'utf8').toString('base64url');
   const env = loadRepoEnv(repoRoot);
+  const argv = await cliEntryResolverFor(repoRoot, log)();
   try {
-    const { stdout } = await execFileAsync('node', ['--import', 'tsx', script, encoded], {
+    const { stdout } = await execFileAsync('node', [...argv, encoded], {
       cwd: repoRoot,
       env,
       encoding: 'utf8',

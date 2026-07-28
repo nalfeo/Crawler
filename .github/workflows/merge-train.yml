@@ -84,4 +84,7 @@ jobs:
           MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
           MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,Security checks' }}
           CI_GLOBAL_TRAIN_DISPATCH_CAP: ${{ vars.CI_GLOBAL_TRAIN_DISPATCH_CAP || '5' }}
+          # Must match the coordinator's setting: this gates whether promotion
+          # re-derives coordinator slot ordering (which survives label removal).
+          CI_CONFLICT_COORDINATION_ENFORCE: ${{ vars.CI_CONFLICT_COORDINATION_ENFORCE || '0' }}
         run: node .github/scripts/merge-train/reconcile.mjs

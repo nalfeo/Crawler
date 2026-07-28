@@ -23,9 +23,11 @@ import {
   changeStatsFromFiles,
   ciFilesFor,
   clusterPullRequests,
+  coordinationEnforcementEnabled,
   discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
+  hasHealthyShepherdLease,
   isCoordinatorStateSemanticallyEqual,
   makeCoordinatorState,
   mergeCoordinationGroups,
@@ -303,6 +305,52 @@ test('healthy shepherd lease suppresses ordered recovery dispatch', () => {
       now: new Date('2026-07-20T00:10:00Z'),
     }),
     false,
+  );
+});
+
+// Regression: 2026-07-27 merge-train outage. The coordinator's active-slot fence
+// used hasHealthyRecoveryOwner, which is true for ordinary automation ownership.
+// Since the coordinator dispatches that automation itself, the active slot became
+// permanently unsafe, activeNumber stuck at null, and a 12-PR cluster with a clean
+// leader could never promote. Only a live shepherd lease may fence the slot. #2095
+test('routine automation ownership does not count as a shepherd lease (active-slot fence)', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const recoveryState = makeRecoveryState({
+    prNumber: 7,
+    headSha: active.headSha,
+    fingerprint: 'f'.repeat(64),
+    owner: 'automation',
+    status: 'dispatched',
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  const now = new Date('2026-07-20T00:05:00Z');
+  // Still a healthy owner for dispatch-suppression purposes...
+  assert.equal(
+    hasHealthyRecoveryOwner({ prNumber: 7, recoveryState, headSha: active.headSha, now }),
+    true,
+  );
+  // ...but it must NOT fence the active slot.
+  assert.equal(hasHealthyShepherdLease({ prNumber: 7, recoveryState, now }), false);
+});
+
+test('live shepherd lease still fences the active slot', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const recoveryState = makeRecoveryState({
+    prNumber: 7,
+    headSha: active.headSha,
+    fingerprint: 'f'.repeat(64),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: 'lease-7',
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  assert.equal(
+    hasHealthyShepherdLease({
+      prNumber: 7,
+      recoveryState,
+      now: new Date('2026-07-20T00:10:00Z'),
+    }),
+    true,
   );
 });
 
@@ -758,4 +806,36 @@ test('renderCoordinatorComment round-trips overlapFilesCount through parse', () 
   // "…and N more" must be rendered for the truncated portion.
   const hiddenCount = 50 - MAX_OVERLAP_FILES;
   assert.ok(body.includes(`…and ${hiddenCount} more`));
+});
+
+test('coordination enforcement defaults to OFF (discovery-only)', () => {
+  // The fence is a pessimistic lock with ~100:1 asymmetric cost, so absence of
+  // the flag must mean "do not serialize" rather than "serialize".
+  assert.equal(coordinationEnforcementEnabled({}), false);
+  assert.equal(
+    coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: undefined }),
+    false,
+  );
+  assert.equal(coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: '' }), false);
+  assert.equal(coordinationEnforcementEnabled(null), false);
+  assert.equal(coordinationEnforcementEnabled(undefined), false);
+});
+
+test('coordination enforcement is enabled only by an exact "1"', () => {
+  assert.equal(coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: '1' }), true);
+  // Surrounding whitespace from workflow YAML interpolation must still enable it.
+  assert.equal(coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: ' 1 ' }), true);
+});
+
+test('coordination enforcement rejects truthy-looking non-"1" values', () => {
+  // Fail OPEN: anything ambiguous must NOT re-arm the fence, because a false
+  // positive stalls an entire overlap group for hours while a false negative
+  // costs one rebase plus one parallel CI re-run.
+  for (const value of ['true', 'yes', 'on', 'enabled', '0', 'false', '2', '01']) {
+    assert.equal(
+      coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: value }),
+      false,
+      `expected ${JSON.stringify(value)} to leave enforcement disabled`,
+    );
+  }
 });

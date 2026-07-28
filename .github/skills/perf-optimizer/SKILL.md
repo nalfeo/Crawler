@@ -110,13 +110,46 @@ work, take a Chrome DevTools performance trace against `npm run dev` instead
 **Record before optimizing** — these go in the PR body:
 
 1. the target's **share** (self and total) and which scope your fix can affect
-2. the **predicted ceiling** on the end-to-end win:
+2. the target's **identity**, if it is a third-party frame (see below)
+3. the **predicted ceiling** on the end-to-end win:
    ```bash
    npm run perf:profile -- --ceiling <share>:<speedup>
    ```
    Amdahl against the share your change can actually reach. A 2.9% target made
    3x faster caps at **1.9%** end-to-end — under the noise floor before you
    write a line.
+
+**A `node_modules/**`row is not a target until you name its caller.** Bundled
+dependency frames are printed with a`← caller`marker for exactly this reason.
+Their function names carry no subsystem information:`rot-js`ships FOV,
+pathfinding, mapgen _and_ RNG in one`dist/rot.js`, and several of them expose a
+method called `compute`.
+
+This is not hypothetical. A hunt targeted `compute @
+node_modules/rot-js/dist/rot.js:5356` at **19.58% self**, read as
+`RecursiveShadowcasting.compute` (FOV). It is `AStar.compute` (pathfinding).
+`fovSystem` is **1.88%** of the run. A full 4🍎 pass — plan review, differential
+oracle, fingerprint gate, multi-model review — landed a real 2.1x win worth
+~1% end-to-end, while the actual 25% target sat untouched.
+
+So, before a dependency frame becomes your target:
+
+- Read the `← caller` the profiler prints beside it and **write that name down**.
+  Your PR must say _"`findTilePath` → rot-js `AStar.compute`"_, never bare
+  _"rot-js `compute`"_.
+- **Sanity-check by containment — but only when ownership is 100%.** When the
+  profiler prints `← caller (100%)` with no `+N more`, that single caller owns
+  all of the dependency frame's attributed cost, so its total% forms a hard
+  ceiling: the dependency's total% cannot exceed the caller's total% without
+  misattribution. `fovSystem` at 1.88% total cannot contain a 22.66% frame —
+  that arithmetic alone falsifies the misattribution instantly. **This check
+  does not apply to multi-caller rows** (`← caller (X%) +N more`): a 12%
+  dependency reached 50/50 from two 6% callers legitimately exceeds either
+  individual caller; compare against the _sum_ of all `← caller` shares
+  instead.
+- If you still cannot tell, open the dependency's source at the printed line
+  (`node_modules/rot-js/dist/rot.js:5356`) and read which class the method is
+  attached to. It takes thirty seconds and it is decisive.
 
 **Reject the target if its ceiling is inside noise.** As a rule of thumb that
 means a share under ~3-5%. Two qualifications, both of which have teeth:
@@ -179,13 +212,60 @@ that falsifies the check and violates AGENTS.md r11.
 checked a narrowed run against a full-gate baseline. Re-run with the same
 `--seeds`/`--weapons`/`--max-frames`.)
 
-### 7. Report
+### 7. Prove your regression test can fail — BLOCKING GATE
+
+A test that passes without exercising the behaviour it names is worth less than
+no test, because it _also_ consumes the reviewer's trust. This repo has a
+documented history of them (see "Proving your correctness test can fail" in
+`references/measurement-recipes.md`). Reading the test is not proof. Break the
+source on purpose and confirm the suite notices:
+
+```bash
+npm run test:mutate -- src/core/map/astar-grid.ts:295-335 \
+  --tests tests/ecs/astar-grid-equivalence.test.ts
+```
+
+Scope `--tests` to the file(s) covering your change. **This is not a nicety —
+suite size dominates runtime.** Stryker re-runs the configured suite once per
+mutant, so the full unit suite takes over an hour on a single file, while the
+same mutants against one covering test file finish in well under a minute.
+
+Exit 0 means every mutant was detected (or the surviving count is within the
+configured `--max-survivors` tolerance). Exit 1 means one of:
+
+- **survivors** — the tests pass with your source deliberately broken. Either
+  strengthen them, or state in the PR why the surviving mutants are
+  gameplay-irrelevant. Do not raise `--max-survivors` to go green (AGENTS.md r11).
+- **ignored mutants** — `// Stryker disable` comments or excluded mutators in
+  range prevented those mutants from ever being applied. The run may cover only
+  part of the target; inspect whether the disabled code should be tested.
+- **no-coverage mutants** — the tests you named never execute the code. A green
+  run here would have meant nothing.
+- **no report** — Stryker crashed. This is a failure, never a pass.
+
+Pass `--max-survivors <n>` only with an explicit written justification; it can
+never launder a no-coverage result into a pass.
+
+> A mutation that fails to apply and a test that genuinely cannot fail produce
+> identical output. If a suite comes back green under mutation, confirm the
+> mutant count in the summary is non-zero before concluding the test is weak.
+
+### 8. Report
 
 State, in the PR and handoff:
 
 - metric, before → after, units, and sample size
 - the exact command that measures it
 - fingerprint hash and that the check was clean on the **full** gate sample
+
+For a microbench, the headline must be the **worst paired round**, with
+**rounds won** and a **range across ≥2 separate process invocations** — not a
+single run's best or median. See "When to microbench a single function" in
+`references/measurement-recipes.md`; under-warmed benches have reported a 1.8x
+spread on byte-identical code.
+
+If the target was <5% of the surface, say so and report the end-to-end number
+as inside noise rather than as the win.
 
 ## Gameplay-neutral vs. not — the line
 
@@ -202,6 +282,20 @@ Neutral (yours):
 - deferring/lazy-loading an asset the current scene doesn't use
 - removing a redundant second pass over the same data
 - reordering independent work that has no observable ordering effect
+- replacing a dependency's algorithm with an **exactly-equivalent** in-repo one.
+  This is neutral only if you reproduce its tie-breaking, iteration order, and
+  side-effect call pattern exactly, and prove it with a **differential oracle**
+  on top of the fingerprint. The oracle must compare **both** halves of the
+  contract across thousands of fixtures: returned results element-by-element,
+  **and** the observable side-effect trace — the ordered sequence of calls made
+  to any caller-supplied callback. Comparing results alone is not enough: a
+  variant that prunes "redundant" callback invocations returns identical paths
+  while changing what a stateful callback observes. `src/core/map/astar-grid.ts`
+  is the worked example — it documents its ordering contract in the header,
+  compares ordered passability-probe traces, and keeps the original dependency
+  as a fallback for the input shape the fast path cannot represent. If you
+  cannot state that contract, you are not doing this — you are doing the
+  "different result" case below.
 
 **Not neutral (hand off, do not land):**
 
