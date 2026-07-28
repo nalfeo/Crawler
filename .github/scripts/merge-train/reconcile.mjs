@@ -928,6 +928,16 @@ if (plan.firstFailure !== -1) {
   );
 }
 
+if (plan.attribution) {
+  // Red-`main` attribution suppressed the ejection (`firstFailure: -1`), so the
+  // isolation block above logged nothing. Without this line an operator sees a
+  // failed composite, a partial prefix landing, and no explanation for why the
+  // failing PR was left in the queue.
+  process.stdout.write(
+    `main red attribution; ${plan.attribution}; ejected nothing, promoting proven-green prefix=${plan.greenPrefixLength}\n`,
+  );
+}
+
 if (plan.greenPrefixLength > 0) {
   await promotePrefix(plan.greenPrefixLength, plan.validationIndex);
 }

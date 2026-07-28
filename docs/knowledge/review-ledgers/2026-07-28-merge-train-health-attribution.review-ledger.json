@@ -7,7 +7,7 @@
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "",
+      "reviewer_model": "gpt-5.6-sol",
       "concerns_count": 5,
       "resolved_count": 5,
       "plan_divergence": "minor",
@@ -15,8 +15,26 @@
       "model": "gpt-5.6-sol"
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "clean": false,
+          "round": 1,
+          "notes": "High: the red-main branch read greenPrefixLength off the wrapped plan, so mid-bisection states (e.g. success/missing/missing/failure, which return action=validate) paused with greenPrefixLength=0 and stranded a proven-green repair prefix -> permanent deadlock. Fixed by scanning prefixStates directly, mirroring nextBisectStep green-scan semantics, and returning action=promote with validationIndex=greenPrefixLength-1. Regression test added.",
+          "resolved_count": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1
+        },
+        {
+          "clean": true,
+          "round": 2,
+          "notes": "No correctness findings. Independently re-verified green-prefix scan vs nextBisectStep contract, validationIndex/verifyCandidateEvidence satisfiability, loop bound, pause->exit(0) symmetry with pre-existing validate/wait branches, absence of any remaining red-main ejection path, reattestHealth having no live callers, and reconcile cron independence from ci.yml cron. One Low observability note (plan.attribution never logged) - implemented anyway as a stdout line on the promote-on-red-main path.",
+          "resolved_count": 0,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0
+        }
+      ],
+      "completed": true
     }
   }
 }
