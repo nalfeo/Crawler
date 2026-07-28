@@ -51,6 +51,7 @@ export function renderHtml(bootstrap) {
     .run-status { margin: 8px 0 0; font-size: 12.5px; line-height: 1.5; }
     .run-status .run-active { color: var(--true-color-blue,#58a6ff); font-weight: 600; }
     .run-status .run-progress-detail { margin-top: 3px; font-size: 12px; }
+    .run-lock-note { margin: 8px 0 0; padding: 8px 10px; font-size: 13px; border-radius: 6px; background: rgba(88,166,255,0.12); border: 1px solid rgba(88,166,255,0.4); }
     .filter-bar { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; }
     .filter-bar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
     .spinner { padding: 40px; text-align: center; color: var(--text-color-muted,#8b949e); }
@@ -137,6 +138,18 @@ export function renderHtml(bootstrap) {
     let runStatusInFlight = false;
     let runStatusTimer = null;
     let runStatusToken = 0;
+
+    // A run is "active" (in flight) when GitHub reports a run for this set whose
+    // status is not 'completed'. While active, every durable-state MUTATION on
+    // the board is locked (see render()): the runner reads state at revision R,
+    // does ~30 min of paid vision work, then commits ONE atomic CAS save at the
+    // end. A verdict/bulk/advance/brief mutation in that window either bumps
+    // stateRevision and makes the runner's final save fail (all paid work
+    // discarded) or silently overwrites the maintainer's change — both are
+    // data-loss footguns. Mirrors runStatusStrip()'s own active predicate.
+    function isRunActive() {
+      return !!(runStatus && runStatus.run && runStatus.run.status && runStatus.run.status !== 'completed');
+    }
     // Change 11: remember the last GitHub run we observed (by databaseId) so we
     // can auto-refresh the board once when it transitions active → completed,
     // instead of making the maintainer click Refresh. autoReloadedRunId guards
@@ -459,7 +472,7 @@ export function renderHtml(bootstrap) {
     }
 
     function reviewButtons(review, scope, id = '') {
-      const disabled = busy || selectedPhase !== state.phase || state.phase === 'complete';
+      const disabled = busy || isRunActive() || selectedPhase !== state.phase || state.phase === 'complete';
       return '<div class="controls">' +
         '<button class="up ' + (review.verdict === 'up' ? 'active' : '') + '" data-review="' + scope + '" data-id="' + esc(id) + '" data-verdict="up" ' + (disabled ? 'disabled' : '') + '>👍 Approve</button>' +
         '<button class="down ' + (review.verdict === 'down' ? 'active' : '') + '" data-review="' + scope + '" data-id="' + esc(id) + '" data-verdict="down" ' + (disabled ? 'disabled' : '') + '>👎 Reject</button>' +
@@ -543,11 +556,12 @@ export function renderHtml(bootstrap) {
         '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Approved items remain frozen; rejected items alone regenerate.</div></div>' +
         '<div class="controls">' +
           (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>' + esc(runPhaseLabel(state.runPhase, state.phase)) + '</button>' : '') +
-          (state.phase !== 'complete' && state.bulkApprove && state.bulkApprove.count > 0 ? '<button class="primary" data-approve-remaining ' + (busy ? 'disabled' : '') + '>Approve remaining ' + state.bulkApprove.count + ' ' + esc(BULK_NOUNS[state.phase] || 'items') + '</button>' : '') +
-          (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
+          (state.phase !== 'complete' && state.bulkApprove && state.bulkApprove.count > 0 ? '<button class="primary" data-approve-remaining ' + (busy || isRunActive() ? 'disabled' : '') + '>Approve remaining ' + state.bulkApprove.count + ' ' + esc(BULK_NOUNS[state.phase] || 'items') + '</button>' : '') +
+          (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy || isRunActive() ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
           (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>Publish complete set atomically on GitHub</button>' : '') +
           '</div></div>' +
           '<div class="run-status" id="run-status-strip" role="status" aria-live="polite" aria-atomic="true">' + runStatusStrip() + '</div>' +
+          (isRunActive() ? '<div class="run-lock-note">🔒 Review controls are locked while a run is in flight — changing a verdict, bulk-approving, or advancing now would be discarded when the run writes its results. They unlock automatically when the run finishes.</div>' : '') +
           (state.phase !== 'complete' && state.runPhase && state.runPhase.judgeOnly && state.runPhase.collectionJudgeMissing ? '<div class="judge-hint">Every item in this phase is approved, but the collection judge is missing — Advance stays locked until it lands. Click <strong>' + esc(runPhaseLabel(state.runPhase, state.phase)) + '</strong> to generate it (it regenerates nothing).</div>' : '') +
           (lastBulkResult && lastBulkResult.skipped && lastBulkResult.skipped.length ? '<div class="bulk-skips"><strong>Skipped ' + lastBulkResult.skipped.length + ':</strong><ul>' + lastBulkResult.skipped.map(s => '<li>' + esc(s.reason) + '</li>').join('') + '</ul></div>' : '') +
           (dispatchNotice ? '<p class="' + (dispatchNotice.tone === 'error' ? 'error' : 'muted') + '">' + esc(dispatchNotice.text) + '</p>' : '') +
@@ -678,6 +692,10 @@ export function renderHtml(bootstrap) {
       const setId = state.id;
       const token = ++runStatusToken;
       runStatusInFlight = true;
+      // Capture active-ness BEFORE this poll updates runStatus so we can detect a
+      // transition and re-render the controls (lock/unlock) — not just patch the
+      // strip. render() preserves drafts + scroll (Change 10), so this is cheap.
+      const prevActive = isRunActive();
       try {
         const result = await request('/api/run-status?setId=' + encodeURIComponent(setId));
         // Fence: ignore a late response if the user navigated or switched sets.
@@ -697,11 +715,14 @@ export function renderHtml(bootstrap) {
             return;
           }
         }
-        patchRunStatusStrip();
+        // On an active⇄inactive transition, re-render so the mutation controls
+        // lock/unlock in step with the run; otherwise just patch the strip.
+        if (isRunActive() !== prevActive) render(); else patchRunStatusStrip();
       } catch (error) {
         if (token !== runStatusToken || view !== 'board' || !state || state.id !== setId) return;
         runStatus = { available: false, errorKind: error.message };
-        patchRunStatusStrip();
+        // A broken run-status poll must never leave the controls stuck locked.
+        if (isRunActive() !== prevActive) render(); else patchRunStatusStrip();
       } finally {
         runStatusInFlight = false;
       }

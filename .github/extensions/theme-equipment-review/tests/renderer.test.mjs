@@ -227,3 +227,30 @@ test('Change 12: show-only-unapproved filter hides up-voted items with a truthfu
   assert.match(html, /showOnlyUnapproved = event\.target\.checked;\s*render\(\);/);
   assert.match(html, /showOnlyUnapproved = false;/);
 });
+
+test('run-active lock: durable-state mutations are disabled while a run is in flight', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  // A single predicate mirrors the strip's own active detection.
+  assert.match(html, /function isRunActive\(\)/);
+  assert.match(html, /runStatus\.run\.status !== 'completed'/);
+  // Every durable-state-MUTATING control folds isRunActive() into its disabled
+  // predicate: review thumbs (also the brief Save-and-Approve up-button),
+  // bulk approve, and advance. run-phase/refresh/back stay enabled.
+  assert.match(html, /const disabled = busy \|\| isRunActive\(\)/);
+  assert.match(html, /data-approve-remaining ' \+ \(busy \|\| isRunActive\(\) \? 'disabled'/);
+  assert.match(
+    html,
+    /data-advance ' \+ \(!state\.gate\.canAdvance \|\| busy \|\| isRunActive\(\) \? 'disabled'/,
+  );
+  // A visible note explains WHY the controls are locked (disabled buttons alone
+  // are the kind of unexplained dead-end the maintainer was burned by).
+  assert.match(html, /Review controls are locked while a run is in flight/);
+  // The poll re-renders (not just patches the strip) on an active⇄inactive
+  // transition so the controls actually lock/unlock; a broken poll never leaves
+  // them stuck locked.
+  assert.match(html, /const prevActive = isRunActive\(\);/);
+  assert.match(
+    html,
+    /if \(isRunActive\(\) !== prevActive\) render\(\); else patchRunStatusStrip\(\);/,
+  );
+});
