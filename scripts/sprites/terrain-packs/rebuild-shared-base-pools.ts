@@ -50,18 +50,10 @@ import {
 import { composeWallCellOutput } from './compose-wall-cell.js';
 import { generateQuadrantKit } from './quadrant-kit.js';
 import { TERRAIN_PACK_CELL_PX } from '../../../src/shared/terrain-pack-types.js';
+import { isFullyOpaqueWallAlpha, isWallAlpha } from './wall-opacity.js';
 
 const PACK_DIR = 'public/assets/terrain-packs/industrial-cave';
 const MANIFEST_PATH = 'src/shared/data/terrain-packs/industrial-cave.manifest.json';
-
-/**
- * Alpha at or above which a silhouette pixel counts as wall.
- *
- * Shared by the block lighting and the accent clip so both agree on where the
- * wall ends. Anti-aliased corner fringe below this reads as open space, which
- * is what makes an accent stop before the curve rather than jut past it.
- */
-const WALL_OPACITY_THRESHOLD = 128;
 
 /** Untouched border on all four sides — the shared-edge guarantee. */ export const BORDER_MARGIN_PX = 10;
 
@@ -179,74 +171,40 @@ const ACCENT_MAX_CHROMA = 28;
 const ACCENT_CHROMA_TOLERANCE = 1;
 
 /**
- * Pull wall-accent saturation down into the pack's palette range.
+ * Pull wall-accent saturation down into the pack's palette range, then clip the
+ * result to the canonical blob47 silhouette — one read, one write, per accent.
  *
- * Luminance-preserving: each channel moves toward the pixel's own gray, so
- * shape and shading survive and only colourfulness drops.
- */
-export function retuneWallAccents(): readonly WrittenFile[] {
-  const out: WrittenFile[] = [];
-  const files = fs
-    .readdirSync(PACK_DIR)
-    .filter((f) => f.startsWith('accent-') && f.endsWith('.png'))
-    .sort();
-
-  for (const file of files) {
-    const rel = path.join(PACK_DIR, file);
-    const img = decodePng(fs.readFileSync(rel));
-
-    let maxChroma = 0;
-    for (let i = 0; i < img.data.length; i += 4) {
-      if (img.data[i + 3]! === 0) continue;
-      const r = img.data[i]!;
-      const g = img.data[i + 1]!;
-      const b = img.data[i + 2]!;
-      const c = Math.max(r, g, b) - Math.min(r, g, b);
-      if (c > maxChroma) maxChroma = c;
-    }
-    if (maxChroma <= ACCENT_MAX_CHROMA + ACCENT_CHROMA_TOLERANCE) continue;
-
-    const k = ACCENT_MAX_CHROMA / maxChroma;
-    for (let i = 0; i < img.data.length; i += 4) {
-      if (img.data[i + 3]! === 0) continue;
-      const r = img.data[i]!;
-      const g = img.data[i + 1]!;
-      const b = img.data[i + 2]!;
-      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      img.data[i] = Math.round(gray + (r - gray) * k);
-      img.data[i + 1] = Math.round(gray + (g - gray) * k);
-      img.data[i + 2] = Math.round(gray + (b - gray) * k);
-    }
-    out.push({ relPath: rel, bytes: encodePng(img) });
-  }
-  return out;
-}
-
-/**
- * Re-clip every wall-accent atlas to the canonical blob47 silhouette.
+ * The two operations are FUSED deliberately. When they were separate passes the
+ * clip re-read each accent from disk, so it only saw the retuned bytes because
+ * the caller happened to have flushed them in between. That made `--dry-run`
+ * silently wrong (it never writes, so the clip measured stale art and the two
+ * passes double-counted the same file), and it left a window where a crash
+ * between the two writes committed retuned-but-spilling accents.
  *
- * WHY THIS EXISTS. The accent atlases are authored once against whatever
- * `wall-atlas.png` held at the time (see `buildWallAccentAtlas`), so they
- * inherit that atlas's silhouette permanently. When the wall silhouette is
- * corrected — as it is here, from 16 distinct shapes to the full 47 — every
- * accent keeps painting over the area the wall used to occupy and now spills
- * onto open floor. `validateCompatibleAccentTopology` fails that as
- * `accent-spill`.
+ * RETUNE. Luminance-preserving: each channel moves toward the pixel's own gray,
+ * so shape and shading survive and only colourfulness drops. The clamp targets
+ * an ABSOLUTE maximum, so re-running is a fixed point.
+ *
+ * CLIP. The accent atlases are authored once against whatever `wall-atlas.png`
+ * held at the time (see `buildWallAccentAtlas`), so they inherit that atlas's
+ * silhouette permanently. When the wall silhouette is corrected — as it is
+ * here, from 16 distinct shapes to the full 47 — every accent keeps painting
+ * over the area the wall used to occupy and now spills onto open floor.
+ * `validateCompatibleAccentTopology` fails that as `accent-spill`.
  *
  * Clipping is a pure INTERSECTION, so it can only ever remove accent coverage,
  * never invent it. That makes the step idempotent and safe to re-run, and it
  * keeps the accents correct for free the next time the silhouette changes.
  *
- * The cut is BINARY against the wall's own opacity threshold rather than a
- * `min()` blend. Accents are asserted elsewhere to be binary-alpha overlays
- * (`terrain-pack-committed.test.ts`), and blending would introduce partial
- * alphas along the anti-aliased fringe of a rounded corner. Cutting at the same
- * >=128 threshold the wall lighting uses keeps that invariant and is strictly
- * stronger than what `accent-spill` requires, at the cost of an accent stopping
- * a pixel short of a rounded corner's outermost fringe — invisible at play
- * scale, and accents are restrained interior detail by design anyway.
+ * The cut is BINARY and keeps a pixel only where the wall is FULLY opaque.
+ * Accents are asserted elsewhere to be binary-alpha overlays
+ * (`terrain-pack-committed.test.ts`), so a `min()` blend is not available; and
+ * a hard 255 accent sitting on a 128-254 wall pixel would paint an
+ * anti-aliased rounded corner back into a square. Cutting at full opacity costs
+ * an accent stopping a pixel short of the curve — invisible at play scale, and
+ * accents are restrained interior detail by design anyway.
  */
-export function reclipWallAccents(): readonly WrittenFile[] {
+export function processWallAccents(): readonly WrittenFile[] {
   const wall = composeCanonicalSilhouetteAtlas();
   const out: WrittenFile[] = [];
   const files = fs
@@ -259,17 +217,43 @@ export function reclipWallAccents(): readonly WrittenFile[] {
     const img = decodePng(fs.readFileSync(rel));
     if (img.width !== wall.width || img.height !== wall.height) {
       throw new Error(
-        `reclipWallAccents: ${file} is ${img.width}x${img.height}, expected ${wall.width}x${wall.height}`,
+        `processWallAccents: ${file} is ${img.width}x${img.height}, expected ${wall.width}x${wall.height}`,
       );
     }
-    let clipped = 0;
+    let changed = false;
+
+    let maxChroma = 0;
+    for (let i = 0; i < img.data.length; i += 4) {
+      if (img.data[i + 3]! === 0) continue;
+      const r = img.data[i]!;
+      const g = img.data[i + 1]!;
+      const b = img.data[i + 2]!;
+      const c = Math.max(r, g, b) - Math.min(r, g, b);
+      if (c > maxChroma) maxChroma = c;
+    }
+    if (maxChroma > ACCENT_MAX_CHROMA + ACCENT_CHROMA_TOLERANCE) {
+      const k = ACCENT_MAX_CHROMA / maxChroma;
+      for (let i = 0; i < img.data.length; i += 4) {
+        if (img.data[i + 3]! === 0) continue;
+        const r = img.data[i]!;
+        const g = img.data[i + 1]!;
+        const b = img.data[i + 2]!;
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        img.data[i] = Math.round(gray + (r - gray) * k);
+        img.data[i + 1] = Math.round(gray + (g - gray) * k);
+        img.data[i + 2] = Math.round(gray + (b - gray) * k);
+      }
+      changed = true;
+    }
+
     for (let i = 3; i < img.data.length; i += 4) {
       if (img.data[i]! === 0) continue;
-      if (wall.data[i]! >= WALL_OPACITY_THRESHOLD) continue;
+      if (isFullyOpaqueWallAlpha(wall.data[i]!)) continue;
       img.data[i] = 0;
-      clipped++;
+      changed = true;
     }
-    if (clipped === 0) continue;
+
+    if (!changed) continue;
     out.push({ relPath: rel, bytes: encodePng(img) });
   }
   return out;
@@ -515,9 +499,14 @@ function composeCanonicalSilhouetteAtlas(): RgbaImage {
  * defect. Deriving alpha from `composeWallCellOutput` makes the step
  * self-healing and keeps the silhouette a pure function of the mask set, which
  * is what `validateCompatibleCorners` gates on.
+ *
+ * `packDir` exists so a test can point the whole step at an isolated copy of
+ * the pack. Proving alpha is DERIVED rather than inherited requires feeding it
+ * a deliberately corrupted `wall-atlas.png` — and doing that to the committed
+ * one would race every other suite that reads the shipped sheet.
  */
-export function restyleWallAtlas(): readonly WrittenFile[] {
-  const atlasPath = path.join(PACK_DIR, 'wall-atlas.png');
+export function restyleWallAtlas(packDir: string = PACK_DIR): readonly WrittenFile[] {
+  const atlasPath = path.join(packDir, 'wall-atlas.png');
   const atlas = composeCanonicalSilhouetteAtlas();
   // Generated cave-rock art, imported from Azure output by
   // `import-floor2-materials.ts` and committed. Sampled by ABSOLUTE atlas
@@ -540,7 +529,7 @@ export function restyleWallAtlas(): readonly WrittenFile[] {
 
   const opaque = (x: number, y: number): boolean => {
     if (x < 0 || y < 0 || x >= atlas.width || y >= atlas.height) return false;
-    return atlas.data[(y * atlas.width + x) * 4 + 3]! >= WALL_OPACITY_THRESHOLD;
+    return isWallAlpha(atlas.data[(y * atlas.width + x) * 4 + 3]!);
   };
   /**
    * Steps to the nearest transparent pixel along one direction, capped.
@@ -1072,25 +1061,26 @@ export function applySharedBasePoolRestyle(): number {
   const atlasFiles = restyleWallAtlas();
   for (const file of atlasFiles) fs.writeFileSync(file.relPath, file.bytes);
 
-  const accentFiles = retuneWallAccents();
+  // Accents retune and clip in one in-memory pass, so there is no window where
+  // a crash commits retuned-but-spilling art. It reads the canonical silhouette
+  // directly rather than the atlas on disk, so its position relative to the
+  // atlas write does not matter.
+  const accentFiles = processWallAccents();
   for (const file of accentFiles) fs.writeFileSync(file.relPath, file.bytes);
-
-  // Last, and after the atlas: clipping reads the canonical silhouette and must
-  // see the retuned accent colours it is clipping.
-  const clippedAccentFiles = reclipWallAccents();
-  for (const file of clippedAccentFiles) fs.writeFileSync(file.relPath, file.bytes);
 
   const manifestRaw = fs.readFileSync(MANIFEST_PATH, 'utf8');
   const manifest = applyPoolWeights(JSON.parse(manifestRaw) as Record<string, unknown>);
   fs.writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
-  return poolFiles.length + atlasFiles.length + accentFiles.length + clippedAccentFiles.length;
+  return poolFiles.length + atlasFiles.length + accentFiles.length;
 }
 
 function main(): void {
   const dryRun = process.argv.includes('--dry-run');
 
   if (dryRun) {
-    const files = [...rebuildSharedBasePools(), ...retuneWallAccents(), ...reclipWallAccents()];
+    // Must mirror `applySharedBasePoolRestyle` exactly, or the preview lies
+    // about what a real run writes.
+    const files = [...rebuildSharedBasePools(), ...restyleWallAtlas(), ...processWallAccents()];
     console.log(
       `[rebuild-shared-base-pools] DRY RUN — would write ${files.length} PNG(s) + manifest.`,
     );

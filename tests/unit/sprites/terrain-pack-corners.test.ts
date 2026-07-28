@@ -19,9 +19,21 @@
  * a cardinal-only sheet, and assert both committed packs now pass at 1.0.
  */
 import path from 'node:path';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { validateCompatibleCorners } from '../../../scripts/sprites/terrain-packs/validate.js';
+import {
+  validateAuthoredSilhouetteExact,
+  validateCompatibleBoundaries,
+  validateCompatibleCorners,
+} from '../../../scripts/sprites/terrain-packs/validate.js';
 import {
   ATLAS_GRID_COLS,
   ATLAS_HEIGHT_PX,
@@ -494,19 +506,27 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
    * build repairs a corrupted atlas instead of laundering it.
    */
   it('restyleWallAtlas ignores the committed atlas alpha and rebuilds from the masks', () => {
-    // Reproduce the historical defect on disk: every cell filled edge to edge,
-    // which is precisely what the pack shipped when 47 mask slots collapsed
-    // onto 16 silhouettes. The old implementation copied this alpha VERBATIM,
-    // so a rebuild laundered the defect forward instead of repairing it.
-    const atlasPath = committedAtlasPath();
-    const original = readFileSync(atlasPath);
+    // Runs against an ISOLATED COPY of the pack, never the committed one. The
+    // assertion only means something if the atlas on disk is deliberately
+    // corrupted first, and corrupting the shipped sheet would race every other
+    // suite in this project that reads it.
+    const tempPack = mkdtempSync(path.join(tmpdir(), 'terrain-pack-'));
     try {
-      const corrupted = decodePng(original);
+      const sourcePack = path.dirname(committedAtlasPath());
+      for (const entry of readdirSync(sourcePack)) {
+        copyFileSync(path.join(sourcePack, entry), path.join(tempPack, entry));
+      }
+
+      // Reproduce the historical defect: every cell filled edge to edge, which
+      // is precisely what the pack shipped when 47 mask slots collapsed onto 16
+      // silhouettes. The old implementation copied this alpha VERBATIM, so a
+      // rebuild laundered the defect forward instead of repairing it.
+      const corrupted = decodePng(readFileSync(path.join(tempPack, 'wall-atlas.png')));
       for (let i = 3; i < corrupted.data.length; i += 4) corrupted.data[i] = 255;
-      writeFileSync(atlasPath, encodePng(corrupted));
+      writeFileSync(path.join(tempPack, 'wall-atlas.png'), encodePng(corrupted));
 
       const restyled = decodePng(
-        restyleWallAtlas().find((f) => f.relPath.endsWith('wall-atlas.png'))!.bytes,
+        restyleWallAtlas(tempPack).find((f) => f.relPath.endsWith('wall-atlas.png'))!.bytes,
       );
       const canonical = composeCanonicalAtlas();
 
@@ -522,7 +542,7 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
         'rebuild must restore the canonical silhouette from a fully-solid atlas',
       ).toBe(0);
     } finally {
-      writeFileSync(atlasPath, original);
+      rmSync(tempPack, { recursive: true, force: true });
     }
   });
 
@@ -563,5 +583,63 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
       }
       expect(spill, `${path.basename(accentPath)} spills outside the wall`).toBe(0);
     }
+  });
+});
+
+describe('exact-silhouette gate closes the interior blind spot', () => {
+  const { manifest, atlas: atlasBytes } = readCommittedPack('industrial-cave');
+
+  it('accepts the committed authored atlas', () => {
+    expect(validateAuthoredSilhouetteExact(manifest, decodePng(atlasBytes)).ok).toBe(true);
+  });
+
+  /**
+   * Both sampling gates read only the cell RIM — four cardinal edge bands and
+   * four corner squares. A defect sitting in the middle of a cell is invisible
+   * to them. This is not theoretical: the generator once carved the `concave`
+   * notch at the cell CENTRE instead of the outer corner, so mask 15 rendered
+   * as a donut and every gate passed it.
+   *
+   * Punching that exact defect back in must leave the perimeter gates green
+   * (proving they really are blind, so this test is load-bearing) while the
+   * exact gate rejects it.
+   */
+  it('rejects an interior-only hole that both perimeter gates pass', () => {
+    const atlas = decodePng(atlasBytes);
+    const holed: RgbaImage = { ...atlas, data: Buffer.from(atlas.data) };
+    const cell = manifest.wallAutotile.cellPx;
+    for (const { frameIndex } of manifest.wallAutotile.masks) {
+      const col = frameIndex % manifest.wallAutotile.gridCols;
+      const row = Math.floor(frameIndex / manifest.wallAutotile.gridCols);
+      for (let y = cell / 2 - 6; y < cell / 2 + 6; y += 1) {
+        for (let x = cell / 2 - 6; x < cell / 2 + 6; x += 1) {
+          holed.data[((row * cell + y) * atlas.width + (col * cell + x)) * 4 + 3] = 0;
+        }
+      }
+    }
+
+    expect(
+      validateCompatibleBoundaries(manifest, holed, { minEdgePassRate: 1.0 }).ok,
+      'edge gate is blind to interior defects — if this fails the test no longer proves anything',
+    ).toBe(true);
+    expect(
+      validateCompatibleCorners(manifest, holed, { minCornerPassRate: 1.0 }).ok,
+      'corner gate is blind to interior defects',
+    ).toBe(true);
+
+    const exact = validateAuthoredSilhouetteExact(manifest, holed);
+    expect(exact.ok, 'exact gate must catch what the perimeter gates cannot').toBe(false);
+    expect(exact.issues[0]?.code).toBe('authored-silhouette-mismatch');
+  });
+
+  it('does not constrain vendored packs', () => {
+    const vendored = {
+      ...manifest,
+      provenance: { ...manifest.provenance, kind: 'vendored' },
+    } as TerrainPackDef;
+    const atlas = decodePng(atlasBytes);
+    const broken: RgbaImage = { ...atlas, data: Buffer.from(atlas.data) };
+    for (let i = 3; i < broken.data.length; i += 4) broken.data[i] = 255;
+    expect(validateAuthoredSilhouetteExact(vendored, broken).ok).toBe(true);
   });
 });

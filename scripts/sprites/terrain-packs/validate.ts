@@ -60,6 +60,9 @@ import {
 import { signatureDistance } from './sample-signature.js';
 import { cropImage, decodePng, type RgbaImage } from './png-buffer.js';
 import { validateDeclaredTransforms } from './transform-eligibility.js';
+import { isWallAlpha } from './wall-opacity.js';
+import { composeWallCellOutput } from './compose-wall-cell.js';
+import { generateQuadrantKit } from './quadrant-kit.js';
 
 export interface ValidationIssue {
   readonly code: string;
@@ -352,6 +355,78 @@ export function validateCompatibleCorners(
 }
 
 /**
+ * Exact-silhouette validator — authored packs only.
+ *
+ * Both sampling gates above are PERIMETER gates. `validateCompatibleBoundaries`
+ * reads four cardinal edge bands, `validateCompatibleCorners` reads four corner
+ * squares; between them they touch eight small windows around a cell's rim and
+ * nothing else. A defect confined to a cell's interior — a donut hole, a stray
+ * block of erased pixels, a hand edit in the middle of the tile — scores a
+ * perfect 1.000 on both. That is not hypothetical: the procedural generator
+ * once carved the `concave` notch at the CELL CENTRE instead of the outer
+ * corner, rendering mask 15 as a donut, and every sampling gate passed it.
+ *
+ * For an authored pack the silhouette is not a judgement call — it is a pure
+ * function of the mask set, `composeWallCellOutput(maskId, kit)`. So compare it
+ * exactly: thresholded alpha, every pixel, no tolerance. This subsumes both
+ * perimeter gates for authored packs and closes the interior blind spot.
+ *
+ * Vendored packs are deliberately exempt: their art is external and only
+ * approximately mask-compatible, which is what the classifier gates exist to
+ * measure.
+ */
+export function validateAuthoredSilhouetteExact(
+  manifest: TerrainPackDef,
+  atlas: RgbaImage,
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  if (manifest.provenance.kind !== 'authored') return { ok: true, issues };
+
+  const { cellPx, gridCols } = manifest.wallAutotile;
+  const kit = generateQuadrantKit();
+
+  for (const { maskId, frameIndex } of manifest.wallAutotile.masks) {
+    const expected = composeWallCellOutput(maskId, kit);
+    if (expected.width !== cellPx || expected.height !== cellPx) {
+      fail(
+        issues,
+        'authored-silhouette-size',
+        `Canonical cell for mask ${maskId} is ${expected.width}x${expected.height} but the ` +
+          `manifest declares cellPx ${cellPx}`,
+      );
+      return { ok: false, issues };
+    }
+    const col = frameIndex % gridCols;
+    const row = Math.floor(frameIndex / gridCols);
+    const actual = cropImage(atlas, col * cellPx, row * cellPx, cellPx, cellPx);
+
+    let mismatches = 0;
+    let firstX = -1;
+    let firstY = -1;
+    for (let i = 3; i < expected.data.length; i += 4) {
+      if (isWallAlpha(actual.data[i] ?? 0) === isWallAlpha(expected.data[i]!)) continue;
+      mismatches += 1;
+      if (firstX < 0) {
+        const pixel = (i - 3) / 4;
+        firstX = pixel % cellPx;
+        firstY = Math.floor(pixel / cellPx);
+      }
+    }
+    if (mismatches > 0) {
+      fail(
+        issues,
+        'authored-silhouette-mismatch',
+        `Mask ${maskId} (frame ${frameIndex}) differs from its canonical silhouette in ` +
+          `${mismatches} pixel(s), first at (${firstX}, ${firstY}). An authored wall silhouette ` +
+          `must equal composeWallCellOutput(maskId) exactly — re-run the pack's rebuild script ` +
+          `rather than hand-editing wall-atlas.png.`,
+      );
+    }
+  }
+  return { ok: issues.length === 0, issues };
+}
+
+/**
  * Documented compatible-boundary pass-rate floors, per provenance kind.
  *
  * `authored` packs are provably edge-compatible by construction (the
@@ -429,6 +504,7 @@ export function validateTerrainPack(
     validateMaskCoverage(manifest),
     validateCompatibleBoundaries(manifest, atlas, boundaryOptions),
     validateCompatibleCorners(manifest, atlas, cornerOpts),
+    validateAuthoredSilhouetteExact(manifest, atlas),
   ]) {
     issues.push(...result.issues);
   }
@@ -875,8 +951,8 @@ export function validateCrossPackWallSilhouettes(
     const leftCell = cellFor(leftAtlas, leftManifest, leftFrame);
     const rightCell = cellFor(rightAtlas, rightManifest, rightFrame);
     for (let alphaIndex = 3; alphaIndex < leftCell.data.length; alphaIndex += 4) {
-      const leftOpaque = (leftCell.data[alphaIndex] ?? 0) >= 128;
-      const rightOpaque = (rightCell.data[alphaIndex] ?? 0) >= 128;
+      const leftOpaque = isWallAlpha(leftCell.data[alphaIndex] ?? 0);
+      const rightOpaque = isWallAlpha(rightCell.data[alphaIndex] ?? 0);
       if (leftOpaque !== rightOpaque) {
         const pixelIndex = (alphaIndex - 3) / 4;
         fail(
