@@ -108,6 +108,24 @@ the false _grouping_. Detailed recommendation posted to #2180:
   `merge-train/ci-conflict-order.mjs`, the `CI_CONFLICT_COORDINATION_ENFORCE` knob + its
   `ci-config-knobs.md` row, and leftover `CI_CONFLICT_ORDER_WAIT_LABEL` consumers.
 
+### Known residual (issue #2183, escalated in the review ledger)
+
+`ci-conflict-escalation` is an **accidental CI-recovery dispatch fence**:
+`DISPATCH_BLOCKED_LABEL_NAMES` (`ci-recovery/router.mjs:115-122`) blocks it but does
+**not** block `ci-lifecycle-quarantined` / `ci-lifecycle-abandoned`
+(`ci-recovery/pr-lifecycle.mjs:46-47`). So the escalation label is the only thing keeping
+a quarantined/abandoned PR from consuming a dispatch slot.
+
+Because of that, the all-non-blocking early-exit path deliberately does **not** drain
+`ESCALATION` — draining it would re-expose those PRs to dispatch. The consequence is that
+a grouping-derived escalation can never drain once every group member is quarantined or
+abandoned.
+
+This is **pre-existing, not a regression**: before this change that path drained _nothing_.
+The correct fix changes CI-recovery dispatch eligibility, which deserves its own review,
+so it is tracked in #2183 rather than smuggled into this minimal patch. The review ledger
+records this as `escalated_to_human` after round 2 rather than claiming a clean loop.
+
 ### Duplicate-PR investigation (#1939 vs #2003)
 
 An earlier recommendation to close #1939 as superseded by #2003 was **wrong, and wrong

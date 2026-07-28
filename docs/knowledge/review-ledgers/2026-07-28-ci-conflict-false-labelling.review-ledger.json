@@ -7,7 +7,7 @@
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "",
+      "reviewer_model": "gpt-5.6-sol",
       "concerns_count": 7,
       "resolved_count": 7,
       "plan_divergence": "major_fork",
@@ -16,7 +16,27 @@
     },
     "code_review": {
       "clean": false,
-      "rounds": []
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 0,
+          "clean": false
+        }
+      ],
+      "escalated_to_human": {
+        "after_round": 2,
+        "reason": "Round 2 surfaced a valid Medium finding whose correct fix changes CI-recovery DISPATCH ELIGIBILITY (adding ci-lifecycle-quarantined/-abandoned to DISPATCH_BLOCKED_LABEL_NAMES in router.mjs), outside the scope of this deliberately-minimal patch and deserving its own review. Verified pre-existing, not a regression: before this change the all-non-blocking early-exit path drained no labels at all. Tracked in issue #2183.",
+        "unresolved_concerns": 1
+      }
     }
   }
 }
