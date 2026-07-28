@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 import {
   hydrateRecoveryOwnership,
+  isExternallyBlocked,
   recoveryBacklogEntries,
 } from './ci-recovery/router.mjs';
 import { paginate, request } from './ci-recovery/github.mjs';
@@ -82,11 +83,19 @@ export function enrichMatrix(entries, slots, scalarKey = 'value') {
 }
 
 export function countLatentBacklog({ pullRequests, repository, now = new Date() }) {
+  const baseEligible = pullRequests.filter(
+    (pr) =>
+      pr.state === 'open' &&
+      !pr.draft &&
+      pr.base?.ref === 'main' &&
+      pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase(),
+  );
   const numbers = new Set([
     ...queueEntries(pullRequests, repository).map((pullRequest) => pullRequest.number),
     ...recoveryBacklogEntries(pullRequests, repository, now).map(
       (pullRequest) => pullRequest.number,
     ),
+    ...baseEligible.filter(isExternallyBlocked).map((pr) => pr.number),
   ]);
   return numbers.size;
 }
