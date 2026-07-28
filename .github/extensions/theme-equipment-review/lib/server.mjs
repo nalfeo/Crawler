@@ -191,10 +191,6 @@ export async function startThemeEquipmentReviewServer(options) {
         writeJson(res, 409, { error: 'no-set-selected' });
         return;
       }
-      if (!setId) {
-        writeJson(res, 409, { error: 'no-set-selected' });
-        return;
-      }
       if (url.pathname === '/api/approve-remaining') {
         const bulk = await runCommand({
           action: 'approve-remaining',
