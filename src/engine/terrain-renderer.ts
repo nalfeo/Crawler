@@ -261,7 +261,18 @@ export interface TerrainLayerResult {
   packLineworkTileCount: number;
   /** Number of props (switch stands, carts, valves) placed on linework tiles. */
   packLineworkPropCount: number;
+  /**
+   * Tiles where a pipe run dives below grade to pass under a track. Counted
+   * because "the pipe goes under the rail" is otherwise invisible to any
+   * headless check — the tile simply is not stamped.
+   */
   packLineworkBuriedCount: number;
+  /**
+   * A short prefix of those tiles, in TILE coordinates. Purely an observation
+   * aid: it lets a screenshot be aimed at a real crossing instead of hunting
+   * for one by eye.
+   */
+  packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
   /**
    * One entry per maximal connected component of every linework layer. This is
    * the seam the placement guard and the probe lab assert against: run count,
@@ -703,6 +714,9 @@ export function buildTerrainLayer(
   let packLineworkTileCount = 0;
   let packLineworkPropCount = 0;
   let packLineworkBuriedCount = 0;
+  /** Enough crossings to aim a camera at; not a complete record. */
+  const BURIED_SAMPLE_LIMIT = 8;
+  const packLineworkBuriedSample: { tx: number; ty: number }[] = [];
   const packLineworkRuns: LineworkRunStats[] = [];
   let packLineworkHubs: readonly LineworkHub[] = [];
   /** Wall-entry stamps deferred until after `paintTiles('cover')`. */
@@ -791,7 +805,14 @@ export function buildTerrainLayer(
             // corridor even where this one runs below grade.
             if ((plan.occupancy[index] ?? LINEWORK_EMPTY) !== LINEWORK_EMPTY) {
               lineworkTaken[index] = 1;
-              if (cell === LINEWORK_BURIED) packLineworkBuriedCount++;
+              if (cell === LINEWORK_BURIED) {
+                packLineworkBuriedCount++;
+                // A short sample makes the burial locatable from a probe, so a
+                // crossing can be screenshotted without guessing coordinates.
+                if (packLineworkBuriedSample.length < BURIED_SAMPLE_LIMIT) {
+                  packLineworkBuriedSample.push({ tx, ty });
+                }
+              }
             }
             continue;
           }
@@ -942,6 +963,7 @@ export function buildTerrainLayer(
     packLineworkTileCount,
     packLineworkPropCount,
     packLineworkBuriedCount,
+    packLineworkBuriedSample,
     packLineworkRuns,
     packLineworkHubs,
   };
