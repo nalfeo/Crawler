@@ -763,6 +763,7 @@ if (git(['rev-parse', 'refs/remotes/origin/main']) !== mainSha) {
   throw new Error('Fetched main does not match the API-observed main SHA');
 }
 
+const enforceCoordination = coordinationEnforcementEnabled(process.env);
 for (const group of groups) {
   const groupComments = new Map();
   for (const pull of group.pulls) {
@@ -832,6 +833,20 @@ for (const group of groups) {
 
     // All pulls in this group are non-blocking (quarantined/abandoned). Nothing to
     // coordinate — skip proof collection and selection for this group entirely.
+    //
+    // These PRs stay in groupedNumbers, so the orphan-drain loop above never sees
+    // them. Reconcile the grouping-derived labels here or they strand forever.
+    // ESCALATION_LABEL is deliberately left alone: it can encode a real ownership
+    // gate, and this path returns before ownership is evaluated. Removing it would
+    // also re-expose the PR to CI-recovery dispatch, which a quarantined/abandoned
+    // PR should not receive.
+    if (!enforceCoordination) {
+      for (const pull of group.pulls) {
+        await removeLabel(pull, ORDER_WAIT_LABEL);
+        await removeLabel(pull, COORDINATED_LABEL);
+        await removeLabel(pull, LEADER_LABEL);
+      }
+    }
     process.stdout.write(
       `skip group=${group.groupId} reason=all-pulls-non-blocking members=${group.pulls.map((p) => p.number).join(',')}\n`,
     );
@@ -904,8 +919,9 @@ for (const group of groups) {
   // Fence every member before exposing one slot, so concurrent train runs can
   // observe zero active slots briefly but never two.
   //
-  // With enforcement disabled (the default) we keep discovery/reporting but
-  // actively UNFENCE: ORDER_WAIT is removed from every member. Removing (rather
+  // With enforcement disabled (the default) we keep discovery/reporting via the
+  // coordinator comment, but actively UNFENCE and UNLABEL: ORDER_WAIT,
+  // COORDINATED and LEADER are all removed from every member. Removing (rather
   // than merely not-adding) is what drains labels stranded by a previous
   // enforcing run — no manual cleanup pass is needed.
   //
@@ -917,20 +933,32 @@ for (const group of groups) {
   // its checks pass — before any of those reconcilers next run. Serialization
   // is what we are switching off here; human/agent ownership gates are not.
   for (const pull of group.pulls) {
-    await addLabel(pull, COORDINATED_LABEL);
     const ownershipGated =
       Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
       Boolean(recoveryByNumber.get(pull.number)?.shepherdLease) ||
       Boolean(humanApprovalByNumber.get(pull.number));
     if (enforceCoordination) {
+      await addLabel(pull, COORDINATED_LABEL);
       await addLabel(pull, ORDER_WAIT_LABEL);
       await disableAutoMerge(pull);
+      if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
+      else await removeLabel(pull, LEADER_LABEL);
     } else {
+      // Unenforced (the default): grouping is advisory only, and the grouping
+      // predicate keys on CI-filename identity rather than any real conflict
+      // test (issue #2180), so these labels routinely assert conflicts that do
+      // not exist. Publishing them marks non-conflicting PRs as conflict-managed
+      // and misleads both humans and other reconcilers. Remove (rather than
+      // merely not-add) so labels stranded by an earlier enforcing run drain
+      // without a manual cleanup pass.
       await removeLabel(pull, ORDER_WAIT_LABEL);
+      await removeLabel(pull, COORDINATED_LABEL);
+      await removeLabel(pull, LEADER_LABEL);
       if (ownershipGated) await disableAutoMerge(pull);
     }
-    if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
-    else await removeLabel(pull, LEADER_LABEL);
+    // Ownership escalation is a real, grouping-independent signal and is never
+    // switched off. An `ambiguous` supersession proof, by contrast, is derived
+    // from group-mates, so it only escalates while enforcement is on.
     const escalated =
       ownershipGated ||
       (enforceCoordination && proofByNumber.get(pull.number)?.status === 'ambiguous');
@@ -947,6 +975,12 @@ for (const group of groups) {
     } else {
       selectionBindingDrift = bindingCheck.reason;
       escalations.push(bindingCheck.reason);
+      // Binding drift is a group-derived signal: it means a group-mate's head
+      // moved out from under the selection. With enforcement off there is no
+      // fence to protect, so escalating here would re-apply the very label the
+      // member loop above just drained (and would withhold CI-recovery dispatch
+      // from PRs that are not actually blocked). Keep the reason in `escalations`
+      // so the coordinator comment still reports it.
       if (enforceCoordination) {
         for (const pull of group.pulls) {
           await addLabel(pull, ESCALATION_LABEL);

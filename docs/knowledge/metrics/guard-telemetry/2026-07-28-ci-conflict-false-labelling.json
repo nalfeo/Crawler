@@ -1,0 +1,43 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "ci-conflict-false-labelling",
+  "date": "2026-07-28",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 444,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 428
+    },
+    "pr-preflight": {
+      "allow": 8
+    },
+    "pr-review-ledger": {
+      "allow": 6,
+      "skip": 1,
+      "deny": 1
+    }
+  },
+  "tools": {
+    "ask_user": 3,
+    "create": 4,
+    "create_issue": 8,
+    "create_pull_request": 16,
+    "edit": 48,
+    "glob": 1,
+    "grep": 13,
+    "powershell": 153,
+    "read_agent": 5,
+    "read_powershell": 1,
+    "rg": 64,
+    "skill": 1,
+    "sql": 3,
+    "task": 4,
+    "view": 115,
+    "web_fetch": 4,
+    "write_agent": 1
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

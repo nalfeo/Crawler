@@ -487,6 +487,47 @@ test('coordinator validates automation ownership against the live PR head', () =
   assert.match(source, /headSha:\s*pull\.headSha/);
 });
 
+test('grouping-derived labels are drained, not published, while enforcement is off', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  // The unenforced branch must REMOVE (not merely omit) every grouping-derived
+  // label, so labels stranded by an earlier enforcing run drain without a manual
+  // cleanup pass. The grouping predicate keys on CI-filename identity rather than
+  // any real conflict test (issue #2180), so publishing them marks PRs that do not
+  // conflict as conflict-managed.
+  const unenforced = source.slice(source.indexOf('Unenforced (the default)'));
+  assert.match(unenforced, /removeLabel\(pull, ORDER_WAIT_LABEL\)/);
+  assert.match(unenforced, /removeLabel\(pull, COORDINATED_LABEL\)/);
+  assert.match(unenforced, /removeLabel\(pull, LEADER_LABEL\)/);
+
+  // Selection-binding drift is group-derived. Escalating on it while unenforced
+  // would re-apply the label the member loop just drained and would withhold
+  // CI-recovery dispatch from PRs that are not actually blocked, so that
+  // escalation must stay gated behind enforcement.
+  const driftBlock = source.slice(
+    source.indexOf('selectionBindingDrift = bindingCheck.reason'),
+    source.indexOf('const priorStates'),
+  );
+  assert.match(driftBlock, /if \(enforceCoordination\) \{/);
+  assert.ok(
+    driftBlock.indexOf('if (enforceCoordination) {') <
+      driftBlock.indexOf('addLabel(pull, ESCALATION_LABEL)'),
+    'binding-drift escalation must be gated behind enforcement',
+  );
+
+  // Groups whose members are all non-blocking return early, before the member
+  // loop, and stay in groupedNumbers, so the orphan drain never sees them. They
+  // must reconcile their own labels or those labels strand forever.
+  const nonBlockingBlock = source.slice(
+    source.indexOf('reason=all-pulls-non-blocking') - 900,
+    source.indexOf('reason=all-pulls-non-blocking'),
+  );
+  assert.match(nonBlockingBlock, /removeLabel\(pull, ORDER_WAIT_LABEL\)/);
+  assert.match(nonBlockingBlock, /removeLabel\(pull, COORDINATED_LABEL\)/);
+  assert.match(nonBlockingBlock, /removeLabel\(pull, LEADER_LABEL\)/);
+});
 test('coordinator only trusts recovery state comments from trusted authors', () => {
   const source = readFileSync(
     path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
