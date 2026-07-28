@@ -135,6 +135,81 @@ function setupGitRepos() {
   return { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha };
 }
 
+/**
+ * Like setupGitRepos but gives PR1 and PR2 'applied' supersession proofs
+ * (no merge conflict with main).
+ *
+ * The non-conflicting property is achieved by having each PR branch *add* a
+ * brand-new workflow file rather than modify the files that main already
+ * changed. The three-way merge simply inserts the new file with no conflict,
+ * giving proof=applied.
+ *
+ *   base   : ci.yml="base", extra.yml="base"
+ *   main   : ci.yml="main", extra.yml="main"
+ *   PR1    : adds .github/workflows/pr1-unique.yml (ci.yml/extra.yml unchanged
+ *            from base) → proof=applied, no conflict with main's ci.yml change.
+ *            The mock file-list route for PR1 still claims ci.yml so the
+ *            cluster-detection overlap with PR3 is preserved.
+ *   PR2    : adds .github/workflows/pr2-unique.yml (same reasoning) →
+ *            proof=applied, no conflict with main's extra.yml change.
+ *   PR3    : same content as main in both files → proof=superseded
+ *
+ * Because neither PR1 nor PR2 is ambiguous the proof-labeling loop never adds
+ * ci-conflict-escalation, letting the selection-binding-drift escalation path
+ * be tested in isolation.
+ */
+function setupGitReposNonConflicting() {
+  const tmpDir = mkdtempSync(path.join(tmpdir(), 'crawler-coordinator-test-'));
+  const remoteDir = path.join(tmpDir, 'remote.git');
+  const workDir = path.join(tmpDir, 'work');
+  mkdirSync(remoteDir);
+  mkdirSync(workDir);
+
+  git(remoteDir, ['init', '--bare']);
+
+  git(workDir, ['init', '--initial-branch=main']);
+  git(workDir, ['remote', 'add', 'origin', remoteDir]);
+  git(workDir, ['config', 'user.email', 'test@example.com']);
+  git(workDir, ['config', 'user.name', 'Test']);
+
+  mkdirSync(path.join(workDir, '.github', 'workflows'), { recursive: true });
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'value: base\n');
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'extra.yml'), 'value: base\n');
+  const baseSha = gitCommit(workDir, 'base');
+
+  // Advance main: changes both existing files
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'value: main\n');
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'extra.yml'), 'value: main\n');
+  const mainSha = gitCommit(workDir, 'main');
+  git(workDir, ['push', 'origin', 'main']);
+
+  // PR1: adds a brand-new workflow file so the three-way merge (base=baseSha,
+  // ours=mainSha, theirs=pr1Sha) simply inserts the new file with no conflict.
+  // ci.yml and extra.yml are left at their base values; main's changes to those
+  // files are carried forward cleanly (ours-wins, no staged conflict).
+  git(workDir, ['checkout', '-b', 'pr1', baseSha]);
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'pr1-unique.yml'), 'pr1: unique\n');
+  const pr1Sha = gitCommit(workDir, 'pr1');
+  git(workDir, ['push', 'origin', 'pr1']);
+
+  // PR2: same strategy as PR1 — adds a distinct new workflow file
+  git(workDir, ['checkout', '-b', 'pr2', baseSha]);
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'pr2-unique.yml'), 'pr2: unique\n');
+  const pr2Sha = gitCommit(workDir, 'pr2');
+  git(workDir, ['push', 'origin', 'pr2']);
+
+  // PR3: superseded (same content as main in both files)
+  git(workDir, ['checkout', '-b', 'pr3', baseSha]);
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'value: main\n');
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'extra.yml'), 'value: main\n');
+  const pr3Sha = gitCommit(workDir, 'pr3');
+  git(workDir, ['push', 'origin', 'pr3']);
+
+  git(workDir, ['checkout', 'main']);
+
+  return { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha };
+}
+
 // ---------------------------------------------------------------------------
 // Mock HTTP server
 // ---------------------------------------------------------------------------
@@ -573,7 +648,13 @@ test('coordinator closes superseded duplicate and confirms on revalidation (no d
 });
 
 test('coordinator keeps every member fenced when the active-slot head drifts before exposure', async (t) => {
-  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  // Use the non-conflicting fixture so PR1 gets an 'applied' proof and becomes
+  // the active slot. That makes selection.active non-null and activeSafe=true,
+  // meaning the binding-drift check actually runs. With the single-line fixture
+  // PR1 is 'ambiguous', selection.active is null, and the drift path is never
+  // reached — escalation would be added by the proof-labeling step instead,
+  // making the assertion vacuous.
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitReposNonConflicting();
   t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
 
   const driftedActiveSha = '6'.repeat(40);
@@ -603,6 +684,18 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
       c.body.labels.includes('ci-conflict-order-wait'),
   );
   assert.ok(activeFenceAdd, 'expected active slot to be fenced before any exposure attempt');
+
+  // Pin that the binding-drift code path was actually reached before asserting
+  // on the resulting escalation label. Without this guard the assertion below
+  // would pass even if the drift-escalation block were removed, because the
+  // proof-labeling step can independently add ci-conflict-escalation when a
+  // proof is 'ambiguous'. The non-conflicting fixture gives PR1 an 'applied'
+  // proof, so this stdout log is the only way escalation can appear.
+  assert.match(
+    stdout,
+    /retain fenced/,
+    'binding-drift detection must log "retain fenced" before escalation is posted',
+  );
 
   const escalationAdd = mutatingCalls.find(
     (c) =>
@@ -649,7 +742,12 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
 });
 
 test('coordinator discovers but does not serialize when enforcement is disabled (default)', async (t) => {
-  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  // Use the non-conflicting fixture so PR1 gets an 'applied' proof and the
+  // binding-drift check actually runs (selection.active is non-null). With the
+  // original single-line fixture PR1 is 'ambiguous', so selection.active=null
+  // and activeSafe=false — the drift code is never reached, making the
+  // escalation-absent assertion vacuous.
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitReposNonConflicting();
   t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
 
   // Same drift scenario as the fencing test above — the ONLY difference is that
@@ -688,6 +786,18 @@ test('coordinator discovers but does not serialize when enforcement is disabled 
     fenceAdd,
     undefined,
     'must never apply ci-conflict-order-wait while enforcement is disabled',
+  );
+
+  // Pin that the binding-drift code path was reached. Without this guard the
+  // escalation-absent assertion below would pass vacuously (the drift block
+  // simply would not run at all with the original ambiguous-proof fixture
+  // because selection.active would be null). Now that the drift check runs,
+  // the absence of escalation truly exercises the enforceCoordination guard
+  // inside the drift block.
+  assert.match(
+    stdout,
+    /retain fenced/,
+    'binding-drift detection must log "retain fenced" even when enforcement is disabled',
   );
 
   const escalationAdd = mutatingCalls.find(
