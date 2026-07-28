@@ -135,21 +135,10 @@ export function clusterPullRequests(pullRequests, minimumSize = MIN_CLUSTER_SIZE
 
 export function discoverCoordinationClusters(
   pullRequests,
-  existingStates,
+  _existingStates,
   minimumSize = MIN_CLUSTER_SIZE,
 ) {
-  const managedMembers = new Set(
-    (existingStates || []).flatMap((state) => state.members || state.originalMembers || []),
-  );
-  return clusterPullRequests(pullRequests, 1).filter((component) =>
-    shouldCoordinateComponent(component, minimumSize, managedMembers),
-  );
-}
-
-function shouldCoordinateComponent(component, minimumSize, managedMembers) {
-  return (
-    component.length >= minimumSize || component.some((pull) => managedMembers.has(pull.number))
-  );
+  return clusterPullRequests(pullRequests, minimumSize);
 }
 
 export function overlappingFiles(pullRequests) {
@@ -199,7 +188,7 @@ export function mergeCoordinationGroups({ discoveredClusters, existingStates, op
     const openMembers = state.members.filter(
       (number) => (openByNumber.get(number)?.ciFiles.length ?? 0) > 0,
     );
-    if (state.originalSize < MIN_CLUSTER_SIZE || openMembers.length === 0) continue;
+    if (state.originalSize < MIN_CLUSTER_SIZE || openMembers.length < MIN_CLUSTER_SIZE) continue;
     seeds.push({
       numbers: new Set(openMembers),
       groupIds: new Set([state.groupId]),

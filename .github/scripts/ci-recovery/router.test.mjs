@@ -61,6 +61,28 @@ const workflowPath = new URL('../../workflows/ci-recovery-router.yml', import.me
 const workflow = parse(await readFile(workflowPath, 'utf8'));
 const routeJob = workflow.jobs.route;
 
+test('periodic cadence is centralized in ci-liveness-sweep', async () => {
+  assert.equal(
+    workflow.on?.schedule,
+    undefined,
+    'ci-recovery-router.yml should be event-driven + workflow_dispatch only',
+  );
+  const livenessWorkflow = await readFile(
+    new URL('../../workflows/ci-liveness-sweep.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(livenessWorkflow, /cron:\s*'\*\/10 \* \* \* \*'/);
+  assert.match(livenessWorkflow, /workflow_id:\s*'ci-recovery-router\.yml'/);
+  // Closed-fence reclaim is now routed through the router's reaper pass
+  // (selectReaperBatch combined pool) rather than dispatched directly from the
+  // liveness sweep. Verify the router script contains the closed-fence scan.
+  const routerScript = await readFile(
+    new URL('../ci-recovery/router.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(routerScript, /closed.*fence.*candidate|closedFenceCandidates/i);
+});
+
 function pickInvariantDispatchCaps(resolved) {
   return {
     maxBudgetTrainBusy: resolved.maxBudgetTrainBusy,

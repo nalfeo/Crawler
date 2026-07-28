@@ -1178,11 +1178,65 @@ export async function runFromEnv(env = process.env) {
 
     const reaperNow = new Date();
     const reaperPrNumbers = identifyReapablePrs(scheduledPulls, reaperNow);
+
+    // Closed-fence reclaim: find ci-owner-pr-* repo labels whose PR is no longer
+    // open. These represent owner fences left behind when a PR was closed or
+    // merged while owned. They are NOT in scheduledPulls (open-only), so they
+    // must be discovered via the repo-label listing and merged into the shared
+    // reaper pool BEFORE selectReaperBatch so the combined set benefits from the
+    // same fair-rotation and REAPER_LANE_CAP budget accounting as stale open PRs.
+    const scheduledSet = new Set(scheduledPulls.map((p) => p.number));
+    const closedFenceCandidates = [];
+    try {
+      const allLabels = await requestWithBackoff(
+        () => paginate(token, `/repos/${owner}/${repo}/labels`),
+        { label: 'closed-fence-label-scan' },
+      );
+      const fenceNumbers = [
+        ...new Set(
+          allLabels
+            .map((l) => String(l.name || ''))
+            .filter((n) => n.startsWith(OWNER_LABEL_PREFIX))
+            .map((n) => Number.parseInt(n.slice(OWNER_LABEL_PREFIX.length), 10))
+            .filter((n) => Number.isInteger(n) && n > 0 && !scheduledSet.has(n)),
+        ),
+      ].sort((a, b) => a - b);
+      // Probe each candidate's state. Bound to avoid excessive API calls; the
+      // sweep runs every 10 minutes so unprobed candidates are retried soon.
+      const CAP_PROBE = 10;
+      for (const number of fenceNumbers.slice(0, CAP_PROBE)) {
+        let pull;
+        try {
+          pull = (
+            await requestWithBackoff(
+              () => request(token, `/repos/${owner}/${repo}/pulls/${number}`),
+              { label: `closed-fence-probe-${number}` },
+            )
+          ).data;
+        } catch {
+          continue;
+        }
+        if (String(pull?.state || '').toLowerCase() !== 'open') {
+          closedFenceCandidates.push(number);
+        }
+      }
+    } catch (error) {
+      process.stdout.write(`closed-fence-scan-error: ${error?.message || error}\n`);
+    }
+
+    // Merge stale-open and closed-fence candidates into one pool and select via
+    // the shared rotation + cap so neither category can starve the other.
+    const combinedReaperPool = [...new Set([...reaperPrNumbers, ...closedFenceCandidates])];
     // Rotate the eligible list once per sweep window before applying the cap
     // (see selectReaperBatch) so the tail cannot starve when more than
     // REAPER_LANE_CAP locks are stale.
-    const reaperBatch = selectReaperBatch(reaperPrNumbers, reaperNow);
+    const reaperBatch = selectReaperBatch(combinedReaperPool, reaperNow);
     for (const reaperPrNumber of reaperBatch) {
+      // Closed-fence candidates use a distinct trigger so reconcile.mjs and
+      // telemetry can distinguish them from stale-lock reclaims.
+      const reaperTrigger = closedFenceCandidates.includes(reaperPrNumber)
+        ? 'liveness-sweep:closed-owner-fence'
+        : 'lease-reaper';
       // Use a direct request() -- do NOT wrap in requestWithBackoff. Same
       // rationale as the normal dispatch loop: non-idempotent POST, retries
       // would create duplicate runs.
@@ -1193,13 +1247,13 @@ export async function runFromEnv(env = process.env) {
           inputs: {
             operation: 'reconcile',
             pr_number: String(reaperPrNumber),
-            trigger: 'lease-reaper',
+            trigger: reaperTrigger,
             lease_id: '',
           },
         },
       });
       reaperDispatchedSet.add(reaperPrNumber);
-      process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=lease-reaper\n`);
+      process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=${reaperTrigger}\n`);
     }
     if (reaperBatch.length > 0) {
       process.stdout.write(

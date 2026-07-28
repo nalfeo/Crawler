@@ -218,7 +218,12 @@ if (mode === 'off') {
 
 const labelName = ownerLabel(prNumber);
 const pr = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)).data;
-if (pr.draft) {
+// Only skip draft PRs that are still open. A draft PR that was subsequently
+// closed or merged must proceed so the closed-state fence-release path at the
+// pr.state !== 'open' check below has a chance to run and delete the owner
+// fence. Without this guard the liveness-sweep:closed-owner-fence dispatch
+// exits here and the fence leaks until the next orphaned-fence sweep.
+if (pr.draft && String(pr.state || '').toLowerCase() === 'open') {
   process.stdout.write(`skip pr=#${prNumber} state=${pr.state} draft=${pr.draft}\n`);
   process.exit(0);
 }
