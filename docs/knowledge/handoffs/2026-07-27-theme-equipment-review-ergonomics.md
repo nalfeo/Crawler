@@ -254,5 +254,41 @@ label lie in the first place.
    `npm run verify:fast`, and the live judge-only verification (scratch set) after
    the rebase, since the label path is what's being touched.
 
-As of 2026-07-27 #2119 was OPEN/BLOCKED (auto-merge not armed), so no conflict
-existed yet; this note is for whoever performs the eventual rebase.
+### PERFORMED EARLY (2026-07-27) — cache fix cherry-picked, not waiting for #2119
+
+#2119 was stuck: the branch-protection ruleset requires a `merge-train` status
+context that only the merge train posts (via a bypass actor), so `gh pr merge
+--auto` can never satisfy it and the queue had an unknown ETA (tracked by issue
+#2107 / epic #1850). Because the live panel is genuinely unsafe for the maintainer's
+full Run flow without the cache fix (Defect B: a CI-side `state.json` write is not
+observed by the local cache, and the next local write clobbers the just-landed
+collection judge with no conflict error), the two store commits were cherry-picked
+onto this branch instead of waiting:
+
+- `6fdba7d73` → `a54b71af6` — stop caching mutable coordination docs + forward
+  conditional writes (Defect A + store-layer half of B). Adds
+  `scripts/sprites/store/cache-policy.ts`, `caching-store.ts` conditional-write
+  forwarding, `+18` lines to `theme-equipment-set.ts`.
+- `94000a869` → `2a3331dea` — gate the CAS path on `store.conditionalWrites ===
+'atomic'` (hoisted above branch selection) + regression tests; `+44` lines to
+  `theme-equipment-set.ts`.
+
+The `renderer.mjs` conflicts (both commits) were resolved with `git checkout --ours`
+— my whole renderer kept, ALL of #2119's renderer hunks dropped (client-side
+`runPhaseWork()`, zero-arg `runPhaseLabel()`, and the `dispatchNotice` UI). Verified
+no `runPhaseWork`/`dispatchNotice`/conflict markers survive; `node --check` passes.
+`planRunPhase` (`theme-equipment-set.ts` ~1014) coexists cleanly with the new
+atomic-CAS gate (~1449). `verify:fast` green; sprites suite 84 tests green.
+
+**Live re-verification (rule #9, fresh Azure read):** after the reviewer purged the
+four stale `cacache` entries AND with the cache-policy fix now on-branch, the panel
+on `classic-fantasy-basic-leather` renders "Approve remaining **16** briefs",
+"Regenerate 16 unresolved briefs + judge on GitHub", "Judge pending", Advance
+disabled — matching Azure rev 83 (16 approvable, judge missing, 2 up). Evidence:
+`files/visual-review/change6-cachefix-live-16briefs-judge-pending.png`. This also
+re-confirms Change 5's label logic against fresh state (16, judge-missing → judge
+regenerates nothing once all resolved).
+
+**When #2119 eventually merges:** git will see these store changes as already-applied
+(same commit content), so the merge/rebase is a no-op for them — no re-resolution
+needed. Only re-check that no NEW #2119 renderer code references the deleted helpers.
