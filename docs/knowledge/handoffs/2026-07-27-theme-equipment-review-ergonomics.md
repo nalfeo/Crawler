@@ -110,8 +110,9 @@ the running canvas with Playwright:
 
 - **(a)** Approving an item leaves the set-level Judge (4/5) and human approval
   intact — `verify-02-item-approved-collection-preserved.png`.
-- **(b)** "Approve remaining 14 briefs" approved 13 + 1 already-up = 14, **skipped
-  2** naming the rejected item and the briefless item, single revision bump, set
+- **(b)** "Approve remaining 13 briefs" approved 13, **skipped 2** (naming the
+  rejected item and the briefless item); the 1 already-`up` item was excluded
+  from the count per `planApproveRemaining` semantics, single revision bump, set
   review preserved — `verify-03-approve-remaining-skips.png`.
 - **(c)** Editing the textarea flipped the button to **"💾 Save and Approve"**
   (`verify-04-...png`); saving bumped `blade-of-embers` r0→r1 ("r1 frozen"),

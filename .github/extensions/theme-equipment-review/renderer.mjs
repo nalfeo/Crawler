@@ -73,6 +73,8 @@ export function renderHtml(bootstrap) {
     let selectedPhase = null;
     let busy = false;
     let lastBulkResult = null;
+    /** Per-item draft text keyed by item id; survives re-renders. */
+    const draftBriefs = new Map();
     const BULK_NOUNS = { roster: 'items', briefs: 'briefs', 'sprite-sheets': 'sheets', 'variant-approval': 'items' };
     // Truthful Run-button label, derived from the SAME server plan (state.runPhase,
     // computed via planRunPhase) that describes the work a run-phase dispatch does:
@@ -363,7 +365,7 @@ export function renderHtml(bootstrap) {
       if (artifact.kind === 'selected-brief' && selectedPhase === 'briefs' && selectedPhase === state.phase) {
         return '<div class="artifact">' +
           '<strong>' + esc(artifact.kind) + '</strong>' +
-          '<textarea class="brief-edit" spellcheck="false" data-brief-item="' + esc(item.id) + '" data-artifact="' + esc(artifact.id) + '">Loading…</textarea>' +
+          '<textarea class="brief-edit" spellcheck="false" data-brief-item="' + esc(item.id) + '" data-artifact="' + esc(artifact.id) + '" readonly>Loading…</textarea>' +
           '<div class="brief-error" data-brief-error="' + esc(item.id) + '"></div>' +
           (artifact.summary ? '<pre>' + esc(artifact.summary) + '</pre>' : '') +
         '</div>';
@@ -433,8 +435,14 @@ export function renderHtml(bootstrap) {
         render();
       }));
       document.querySelectorAll('.brief-edit').forEach(area => area.addEventListener('input', () => {
-        const dirty = area.dataset.loaded === '1' && area.value !== area.dataset.original;
-        const upButton = document.querySelector('[data-review="item"][data-id="' + CSS.escape(area.dataset.briefItem) + '"][data-verdict="up"]');
+        const itemId = area.dataset.briefItem;
+        if (area.value !== area.dataset.original) {
+          draftBriefs.set(itemId, area.value);
+        } else {
+          draftBriefs.delete(itemId);
+        }
+        const dirty = draftBriefs.has(itemId);
+        const upButton = document.querySelector('[data-review="item"][data-id="' + CSS.escape(itemId) + '"][data-verdict="up"]');
         if (upButton) upButton.textContent = dirty ? '💾 Save and Approve' : '👍 Approve';
       }));
       document.querySelectorAll('[data-review]').forEach(button => button.addEventListener('click', async () => {
@@ -443,7 +451,7 @@ export function renderHtml(bootstrap) {
         const verdict = button.dataset.verdict === 'clear' ? null : button.dataset.verdict;
         if (scope === 'item' && verdict === 'up') {
           const briefEl = document.querySelector('.brief-edit[data-brief-item="' + CSS.escape(id) + '"]');
-          if (briefEl && briefEl.dataset.loaded === '1' && briefEl.value !== briefEl.dataset.original) {
+          if (briefEl && briefEl.dataset.loaded === '1' && draftBriefs.has(id)) {
             await saveAndApproveBrief(id, briefEl);
             return;
           }
@@ -483,6 +491,7 @@ export function renderHtml(bootstrap) {
         });
         state = result;
         lastBulkResult = null;
+        draftBriefs.delete(itemId);
         busy = false;
         render();
       } catch (error) {
@@ -520,11 +529,21 @@ export function renderHtml(bootstrap) {
           const response = await fetch(url, { headers: apiHeaders });
           if (!response.ok) throw new Error(await response.text());
           const text = await response.text();
-          area.value = text;
           area.dataset.original = text;
           area.dataset.loaded = '1';
+          area.removeAttribute('readonly');
+          // Restore any draft the user typed before this render cycle.
+          const savedDraft = draftBriefs.get(area.dataset.briefItem);
+          if (savedDraft !== undefined) {
+            area.value = savedDraft;
+            const upButton = document.querySelector('[data-review="item"][data-id="' + CSS.escape(area.dataset.briefItem) + '"][data-verdict="up"]');
+            if (upButton) upButton.textContent = '💾 Save and Approve';
+          } else {
+            area.value = text;
+          }
         } catch (error) {
           area.value = '';
+          area.removeAttribute('readonly');
           area.placeholder = 'Brief unavailable: ' + error.message;
         }
       }

@@ -22,8 +22,10 @@ export function selectedBriefKey(
   state: ThemeEquipmentSetState,
   item: ThemeEquipmentSetItem,
   revision = item.revision,
+  nonce?: string,
 ): string {
-  return `theme-sets/${state.id}/artifacts/${item.id}/r${revision}/brief.yaml`;
+  const suffix = nonce ? `-${nonce}` : '';
+  return `theme-sets/${state.id}/artifacts/${item.id}/r${revision}/brief${suffix}.yaml`;
 }
 
 /** Extract the revision embedded in a `…-brief-r<N>-selected` artifact id. */

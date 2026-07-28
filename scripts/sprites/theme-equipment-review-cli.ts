@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
@@ -239,8 +240,12 @@ async function saveAndApproveBrief(
   const enabledYaml = enableJudge(command.briefText);
   const validated = validateBriefYaml(enabledYaml, { projectRoot: deps.repoRoot });
 
+  // Use a per-attempt nonce in the store key so two concurrent writers at the
+  // same item.revision each write to a distinct key. The CAS on the state
+  // record ensures only one writer wins; the other's key is silently orphaned.
   const newRevision = item.revision + 1;
-  const key = selectedBriefKey(state, item, newRevision);
+  const nonce = randomUUID().slice(0, 8);
+  const key = selectedBriefKey(state, item, newRevision, nonce);
   await deps.store.put(key, Buffer.from(enabledYaml));
 
   const uri = deps.store.resolve(key);
