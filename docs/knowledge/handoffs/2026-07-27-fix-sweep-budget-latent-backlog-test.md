@@ -95,3 +95,24 @@ An emergency direct-to-main path that skips the guard suite will keep doing
 this. The change itself was right and urgent; the gap is that nothing re-ran
 `.github/scripts/**` tests afterwards. Worth a post-merge check on
 direct-to-main pushes.
+
+## Amendment (2026-07-27, after rebase onto main)
+
+PRs #2131, #2136 and #2141 each re-aligned this test's expected counts after this
+branch was cut, so the count fix carried here is redundant and was dropped in favour
+of main's version. What survives is the part none of those five PRs addressed: the
+test named for deduplication could not observe deduplication.
+
+`eligibleTrainRecoveryPulls` excludes every queue-labelled PR (`hasQueueLabel ||`,
+`.github/scripts/ci-recovery/router.mjs:476`) and `queueEntries` selects exactly the
+queue-labelled PRs, so the two demand sources are **disjoint by construction**. With
+singly-classified fixtures the `Set` in `countLatentBacklog` can never collapse
+anything: replacing it with a plain array leaves the suite green.
+
+Split into three tests that each pin a distinct property — union accounting (renamed,
+no longer claiming to test dedup), dedup against a duplicated listing entry, and the
+disjointness invariant itself so that dropping `hasQueueLabel` from the recovery
+exclusions fails loudly instead of silently double-counting.
+
+Mutation-proved: swapping `new Set([...])`/`.size` for an array/`.length` (1 site,
+confirmed by `git diff --stat`) turns **exactly** the dedup test red and nothing else.
