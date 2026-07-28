@@ -280,6 +280,14 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Known Environment Quirks
 
+- **`claude-sonnet-4.5` is deprecated (since 2026-05-06) — do NOT use it.** If
+  any task call specifies `model="claude-sonnet-4.5"`, the session will fail
+  immediately at `session.create`. Use `claude-sonnet-4.6` or `claude-sonnet-5`
+  instead. This applies to all `task()` calls in skills and agent sessions.
+  If you need to update a legacy reference, replace `claude-sonnet-4.5` →
+  `claude-sonnet-4.6` everywhere in accessible configuration.
+  <!-- Source issue: #2209, handoffs 2026-07-25-ci-recovery-loop-pr-1886, 2026-07-27-ci-recovery-typo-threshold -->
+
 - **Copilot guards load once per session — `extensions_reload` after syncing
   main.** A guard merged to `main` after your session started is not running in
   your session, and `git pull` does not change that: the extension host loaded
