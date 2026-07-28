@@ -490,3 +490,50 @@ test('watches the set that was dispatched even if the selection changes mid-flig
     await server.close();
   }
 });
+
+test('run-status route reports not-wired when no runStatus provider is configured', async () => {
+  const server = await fixture();
+  try {
+    const res = await fetch(`${server.url}api/run-status`, {
+      headers: { 'X-Canvas-Token': server.token },
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { available: false, errorKind: 'not-wired' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('run-status route forwards the server-side set id to the provider', async () => {
+  const seen = [];
+  const server = await fixture({
+    runStatus: async (id) => {
+      seen.push(id);
+      return { available: true, run: null, ref: 'refs/heads/feature' };
+    },
+  });
+  try {
+    // A caller-supplied ?setId is ignored — the server uses its own selection.
+    const res = await fetch(`${server.url}api/run-status?setId=spoofed`, {
+      headers: { 'X-Canvas-Token': server.token },
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { available: true, run: null, ref: 'refs/heads/feature' });
+    assert.deepEqual(seen, ['classic-fantasy']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('run-status route returns 409 when no set is selected', async () => {
+  const server = await fixture({ setId: null });
+  try {
+    const res = await fetch(`${server.url}api/run-status`, {
+      headers: { 'X-Canvas-Token': server.token },
+    });
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), { error: 'no-set-selected' });
+  } finally {
+    await server.close();
+  }
+});

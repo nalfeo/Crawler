@@ -47,6 +47,9 @@ export function renderHtml(bootstrap) {
     .bulk-skips ul { margin: 4px 0 0; padding-left: 20px; color: var(--text-color-muted,#8b949e); }
     .gate-list { margin: 8px 0 0; padding-left: 20px; }
     .judge-hint { margin: 8px 0 0; padding: 8px 10px; font-size: 13px; border-radius: 6px; background: rgba(210,153,34,0.12); border: 1px solid rgba(210,153,34,0.4); }
+    .awaiting-note { margin: 6px 0 0; padding: 6px 8px; font-size: 12px; border-radius: 6px; color: var(--text-color-muted,#8b949e); background: rgba(139,148,158,0.1); border: 1px dashed rgba(139,148,158,0.35); }
+    .run-status { margin: 8px 0 0; font-size: 12.5px; line-height: 1.5; }
+    .run-status .run-active { color: var(--true-color-blue,#58a6ff); font-weight: 600; }
     .spinner { padding: 40px; text-align: center; color: var(--text-color-muted,#8b949e); }
     label { display: block; margin: 10px 0 0; font-weight: 600; }
     label .muted { font-weight: 400; }
@@ -75,20 +78,48 @@ export function renderHtml(bootstrap) {
     let lastBulkResult = null;
     /** Per-item draft text keyed by item id; survives re-renders. */
     const draftBriefs = new Map();
+    /**
+     * In-progress feedback text keyed by item id (or 'collection'); survives
+     * re-renders so reviewing one item never wipes another item's unsaved
+     * comment or jumps the scroll (Change 10).
+     */
+    const draftFeedback = new Map();
     const BULK_NOUNS = { roster: 'items', briefs: 'briefs', 'sprite-sheets': 'sheets', 'variant-approval': 'items' };
+    const ITEM_NOUN = { roster: 'item', briefs: 'brief', 'sprite-sheets': 'sprite sheet', 'variant-approval': 'approved variant' };
     // Truthful Run-button label, derived from the SAME server plan (state.runPhase,
     // computed via planRunPhase) that describes the work a run-phase dispatch does:
-    // a run regenerates every unresolved item and always judges the collection once.
-    // When nothing is unresolved it regenerates nothing and only produces the judge —
+    // a run (re)generates every unresolved item and always judges the collection once.
+    // A never-generated item is "generated"; an unresolved item that already has
+    // output is "regenerated"; when nothing is unresolved it only produces the judge —
     // so the label must say "judge", not "regenerate 0", or it lies about the work.
     function runPhaseLabel(plan, phase) {
       if (!plan || plan.phase === null) return 'Run / rerun unresolved items on GitHub';
-      if (plan.regenerateCount > 0) {
-        return 'Regenerate ' + plan.regenerateCount + ' unresolved ' + (BULK_NOUNS[phase] || 'items') + ' + judge on GitHub';
+      const noun = BULK_NOUNS[phase] || 'items';
+      const gen = plan.generateCount || 0;
+      const regen = plan.regenerateCount || 0;
+      if (gen > 0 && regen > 0) {
+        return 'Generate ' + gen + ' + regenerate ' + regen + ' ' + noun + ' + judge on GitHub';
+      }
+      if (gen > 0) {
+        return 'Generate ' + gen + ' ' + noun + ' + judge on GitHub';
+      }
+      if (regen > 0) {
+        return 'Regenerate ' + regen + ' unresolved ' + noun + ' + judge on GitHub';
       }
       return plan.collectionJudgeMissing ? 'Judge collection cohesion on GitHub' : 'Re-judge collection cohesion on GitHub';
     }
     let dispatchNotice = null;
+    /**
+     * Latest GitHub run-status for this set, fetched from /api/run-status and
+     * refreshed on a poll so the maintainer can see a dispatched run progress
+     * without leaving the board. null = not fetched yet. Shapes:
+     *   { available:true, run:{status,conclusion,url,createdAt,displayTitle}|null, ref }
+     *   { available:false, errorKind }
+     */
+    let runStatus = null;
+    let runStatusInFlight = false;
+    let runStatusTimer = null;
+    let runStatusToken = 0;
     const app = document.querySelector('#app');
     const phases = ['roster','briefs','sprite-sheets','variant-approval','complete'];
     const MIN_WEAPON_TYPES = 5;
@@ -106,6 +137,13 @@ export function renderHtml(bootstrap) {
     }
 
     async function loadIndex() {
+      stopRunStatusPoll();
+      // Leaving a set: drop its per-item feedback/brief drafts so they can never
+      // bleed into a different set opened later (drafts are keyed by item id, not
+      // by set id). Refresh/re-render within a set does NOT clear — that is what
+      // preserves an in-progress comment (Change 10).
+      draftFeedback.clear();
+      draftBriefs.clear();
       app.className = 'spinner';
       app.textContent = 'Loading theme sets…';
       try {
@@ -119,6 +157,10 @@ export function renderHtml(bootstrap) {
     }
 
     async function openSet(setId) {
+      // Switching to a different set: clear drafts keyed by item id so one set's
+      // unsent feedback/brief text cannot appear in another set.
+      draftFeedback.clear();
+      draftBriefs.clear();
       app.className = 'spinner';
       app.textContent = 'Loading ' + setId + '…';
       try {
@@ -133,6 +175,8 @@ export function renderHtml(bootstrap) {
 
     async function load() {
       try {
+        runStatus = null;
+        stopRunStatusPoll();
         state = await request('/api/state');
         selectedPhase = state.phase === 'complete' ? 'variant-approval' : state.phase;
         lastBulkResult = null;
@@ -409,22 +453,40 @@ export function renderHtml(bootstrap) {
       '</div>';
     }
 
+    function feedbackKey(scope, id) {
+      // Namespace item drafts under "item:" so an item whose id is literally
+      // "collection" cannot collide with the set-level collection textarea, and
+      // so a draft never leaks between scopes. The collection scope has a single
+      // fixed key.
+      return scope === 'item' ? 'item:' + id : 'collection';
+    }
+
+    function feedbackValue(key, serverValue) {
+      return draftFeedback.has(key) ? draftFeedback.get(key) : (serverValue || '');
+    }
+
     function itemCard(item) {
       const record = item.phases[selectedPhase];
       const review = record.review;
       const frozen = item.frozenPhases.includes(selectedPhase) || review.verdict === 'up';
       const descriptor = item.kind === 'weapon' ? item.weaponType : item.slots.join(', ');
+      const activeTab = selectedPhase === state.phase;
+      const awaits = activeTab && state.reviewStatus && state.reviewStatus[item.id] && state.reviewStatus[item.id].awaitsGeneration === true;
+      const controls = awaits
+        ? '<div class="awaiting-note">⏳ Awaiting generation — nothing to review yet. Click <strong>Run</strong> above to create this ' + esc(ITEM_NOUN[selectedPhase] || 'item') + '.</div>'
+        : '<textarea maxlength="2000" data-feedback="' + esc(feedbackKey('item', item.id)) + '" placeholder="Optional feedback for rejected-item iteration">' + esc(feedbackValue(feedbackKey('item', item.id), review.feedback)) + '</textarea>' +
+          reviewButtons(review, 'item', item.id);
       return '<article class="card ' + (review.verdict === 'up' ? 'approved' : review.verdict === 'down' ? 'rejected' : '') + '">' +
         '<div class="card-head"><div><strong>' + esc(item.displayName) + '</strong><div class="muted">' + esc(descriptor) + '</div></div>' +
         '<div><span class="badge">r' + item.revision + '</span> <span class="badge">' + (frozen ? 'frozen' : 'open') + '</span></div></div>' +
         '<div class="artifacts">' + (record.artifacts.length ? record.artifacts.map(a => artifactHtml(item,a)).join('') : '<span class="muted">No artifacts yet</span>') + '</div>' +
         (record.evidence.length ? '<details><summary>Evidence (' + record.evidence.length + ')</summary>' + record.evidence.map(e => '<pre>' + esc(e.summary || e.kind) + '</pre>').join('') + '</details>' : '') +
-        '<textarea maxlength="2000" data-feedback="' + esc(item.id) + '" placeholder="Optional feedback for rejected-item iteration">' + esc(review.feedback || '') + '</textarea>' +
-        reviewButtons(review, 'item', item.id) +
+        controls +
       '</article>';
     }
 
     function render() {
+      const restoreInteraction = captureInteraction();
       const currentRecord = state.phase === 'complete' ? state.phases['variant-approval'] : state.phases[state.phase];
       const selectedRecord = selectedPhase === 'complete' ? null : state.phases[selectedPhase];
       app.className = '';
@@ -438,7 +500,7 @@ export function renderHtml(bootstrap) {
           (selectedRecord.collectionJudge ? 'Judge ' + selectedRecord.collectionJudge.score + '/5 · ' + esc(selectedRecord.collectionJudge.provenance) : 'Judge pending') +
           '</div></div></div>' +
           (selectedRecord.collectionJudge ? '<p>' + esc(selectedRecord.collectionJudge.rationale) + '</p>' : '') +
-          (selectedPhase === state.phase ? '<textarea maxlength="2000" data-feedback="collection" placeholder="Optional whole-set feedback">' + esc(selectedRecord.humanReview.feedback || '') + '</textarea>' + reviewButtons(selectedRecord.humanReview,'collection') : '') +
+          (selectedPhase === state.phase ? '<textarea maxlength="2000" data-feedback="' + esc(feedbackKey('collection')) + '" placeholder="Optional whole-set feedback">' + esc(feedbackValue(feedbackKey('collection'), selectedRecord.humanReview.feedback)) + '</textarea>' + reviewButtons(selectedRecord.humanReview,'collection') : '') +
         '</section>' : '') +
         (selectedPhase === state.phase ?
         '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Approved items remain frozen; rejected items alone regenerate.</div></div>' +
@@ -448,6 +510,7 @@ export function renderHtml(bootstrap) {
           (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
           (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>Publish complete set atomically on GitHub</button>' : '') +
           '</div></div>' +
+          '<div class="run-status" id="run-status-strip">' + runStatusStrip() + '</div>' +
           (state.phase !== 'complete' && state.runPhase && state.runPhase.judgeOnly && state.runPhase.collectionJudgeMissing ? '<div class="judge-hint">Every item in this phase is approved, but the collection judge is missing — Advance stays locked until it lands. Click <strong>' + esc(runPhaseLabel(state.runPhase, state.phase)) + '</strong> to generate it (it regenerates nothing).</div>' : '') +
           (lastBulkResult && lastBulkResult.skipped && lastBulkResult.skipped.length ? '<div class="bulk-skips"><strong>Skipped ' + lastBulkResult.skipped.length + ':</strong><ul>' + lastBulkResult.skipped.map(s => '<li>' + esc(s.reason) + '</li>').join('') + '</ul></div>' : '') +
           (dispatchNotice ? '<p class="' + (dispatchNotice.tone === 'error' ? 'error' : 'muted') + '">' + esc(dispatchNotice.text) + '</p>' : '') +
@@ -458,7 +521,114 @@ export function renderHtml(bootstrap) {
           '<section class="grid">' + state.items.map(itemCard).join('') + '</section>') +
         '</main>';
       wire();
+      restoreInteraction();
       loadPreviews();
+      ensureRunStatusPoll();
+    }
+
+    /**
+     * Snapshot the pieces of interaction state that a full innerHTML rebuild would
+     * otherwise destroy — scroll offset and the caret in whatever textarea the
+     * maintainer is typing in — and return a restore fn to reapply them after the
+     * DOM is rebuilt. This is what keeps reviewing one item (or an SSE/poll push)
+     * from scroll-jumping or wiping an in-progress comment in another card. Draft
+     * TEXT itself is preserved separately via the draftFeedback/draftBriefs Maps.
+     */
+    function captureInteraction() {
+      const scroller = document.scrollingElement || document.documentElement;
+      const scrollTop = scroller ? scroller.scrollTop : 0;
+      const active = document.activeElement;
+      let focus = null;
+      if (active && active.tagName === 'TEXTAREA') {
+        let selector = null;
+        if (active.dataset.feedback) {
+          selector = '[data-feedback="' + CSS.escape(active.dataset.feedback) + '"]';
+        } else if (active.dataset.briefItem) {
+          selector = '.brief-edit[data-brief-item="' + CSS.escape(active.dataset.briefItem) + '"]';
+        }
+        if (selector) focus = { selector, start: active.selectionStart, end: active.selectionEnd };
+      }
+      return () => {
+        if (scroller) scroller.scrollTop = scrollTop;
+        if (!focus) return;
+        const el = document.querySelector(focus.selector);
+        if (!el) return;
+        el.focus();
+        try { el.setSelectionRange(focus.start, focus.end); } catch (_) { /* non-text input */ }
+      };
+    }
+
+    function formatWhen(iso) {
+      const t = Date.parse(iso);
+      if (Number.isNaN(t)) return String(iso);
+      const secs = Math.max(0, Math.round((Date.now() - t) / 1000));
+      if (secs < 60) return secs + 's ago';
+      const mins = Math.round(secs / 60);
+      if (mins < 60) return mins + 'm ago';
+      return Math.round(mins / 60) + 'h ago';
+    }
+
+    // Inner HTML for the run-status strip, derived from runStatus (fetched from
+    // /api/run-status). Distinguishes "no run found" from "status unavailable" so
+    // the maintainer can tell a quiet pipeline from a broken gh/auth path.
+    function runStatusStrip() {
+      if (runStatus === null) return '<span class="muted">Checking GitHub for recent runs…</span>';
+      if (runStatus.available === false) {
+        return '<span class="muted">Run status unavailable' + (runStatus.errorKind ? ' (' + esc(runStatus.errorKind) + ')' : '') + '. The board still updates live as the durable revision advances.</span>';
+      }
+      if (!runStatus.run) {
+        return '<span class="muted">No recent GitHub run for this set' + (runStatus.ref ? ' on ' + esc(runStatus.ref) : '') + ' yet.</span>';
+      }
+      const run = runStatus.run;
+      const active = run.status !== 'completed';
+      const label = active
+        ? '▶ ' + esc(run.status === 'queued' ? 'queued (waiting for a runner)' : (run.status || 'in progress')) + (run.status === 'queued' ? '' : '…')
+        : (run.conclusion === 'success' ? '✅ last run succeeded' : '⚠️ last run ' + esc(run.conclusion || 'finished'));
+      const when = run.createdAt ? ' · started ' + esc(formatWhen(run.createdAt)) : '';
+      const link = run.url ? ' · <a href="' + esc(run.url) + '" target="_blank" rel="noreferrer">view on GitHub ↗</a>' : '';
+      return '<span class="' + (active ? 'run-active' : '') + '">' + label + '</span><span class="muted">' + when + '</span>' + link;
+    }
+
+    function patchRunStatusStrip() {
+      const node = document.getElementById('run-status-strip');
+      if (node) node.innerHTML = runStatusStrip();
+    }
+
+    function stopRunStatusPoll() {
+      if (runStatusTimer) { clearInterval(runStatusTimer); runStatusTimer = null; }
+    }
+
+    // Poll run-status only while its strip is on-screen (active, non-complete
+    // phase tab). Starting is idempotent; the interval self-stops when the strip
+    // leaves the DOM or the board is closed.
+    function ensureRunStatusPoll() {
+      if (!document.getElementById('run-status-strip')) { stopRunStatusPoll(); return; }
+      if (runStatusTimer) return;
+      fetchRunStatus();
+      runStatusTimer = setInterval(() => {
+        if (view !== 'board' || !state || !document.getElementById('run-status-strip')) { stopRunStatusPoll(); return; }
+        fetchRunStatus();
+      }, 10000);
+    }
+
+    async function fetchRunStatus() {
+      if (runStatusInFlight || view !== 'board' || !state) return;
+      const setId = state.id;
+      const token = ++runStatusToken;
+      runStatusInFlight = true;
+      try {
+        const result = await request('/api/run-status?setId=' + encodeURIComponent(setId));
+        // Fence: ignore a late response if the user navigated or switched sets.
+        if (token !== runStatusToken || view !== 'board' || !state || state.id !== setId) return;
+        runStatus = result;
+        patchRunStatusStrip();
+      } catch (error) {
+        if (token !== runStatusToken || view !== 'board' || !state || state.id !== setId) return;
+        runStatus = { available: false, errorKind: error.message };
+        patchRunStatusStrip();
+      } finally {
+        runStatusInFlight = false;
+      }
     }
 
     function wire() {
@@ -467,6 +637,9 @@ export function renderHtml(bootstrap) {
         selectedPhase = button.dataset.phase;
         lastBulkResult = null;
         render();
+      }));
+      document.querySelectorAll('[data-feedback]').forEach(area => area.addEventListener('input', () => {
+        draftFeedback.set(area.dataset.feedback, area.value);
       }));
       document.querySelectorAll('.brief-edit').forEach(area => area.addEventListener('input', () => {
         const itemId = area.dataset.briefItem;
@@ -490,12 +663,15 @@ export function renderHtml(bootstrap) {
             return;
           }
         }
-        const feedbackEl = document.querySelector('[data-feedback="' + (scope === 'item' ? CSS.escape(id) : 'collection') + '"]');
-        await mutate(scope === 'item' ? '/api/review-item' : '/api/review-set', {
+        const feedbackEl = document.querySelector('[data-feedback="' + (scope === 'item' ? 'item:' + CSS.escape(id) : 'collection') + '"]');
+        const result = await mutate(scope === 'item' ? '/api/review-item' : '/api/review-set', {
           ...(scope === 'item' ? { itemId: id } : {}),
           review: { verdict, ...(feedbackEl?.value.trim() ? { feedback: feedbackEl.value.trim() } : {}) },
           expectedRevision: state.stateRevision,
         });
+        // The submitted feedback is now the server value; drop the local draft so
+        // it doesn't mask a later change. Other items' drafts stay untouched.
+        if (result) draftFeedback.delete(feedbackKey(scope, id));
       }));
       document.querySelector('[data-approve-remaining]')?.addEventListener('click', async () => {
         const result = await mutate('/api/approve-remaining', { expectedRevision: state.stateRevision });

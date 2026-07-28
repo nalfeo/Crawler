@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "theme-equipment-review-status-ux",
+  "task_title": "Theme-equipment review: generate/regenerate labels, gate thumbs on generation, run-status strip, non-disruptive review",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Changes 7-10. 0 blocking, 5 major all resolved: (1) run-status setId correlation via workflow run-name + distinct available/errorKind states; (2) two projections hasPhaseOutput vs validatePhaseArtifactsForUpVote never conflated; (3) variant-approval stays pipeline-only, awaiting-generation until approved-variant; (4) polling guards (timeout, single-inflight, set+ref fence, requery node); (5) roster hasPhaseOutput=true (entry is the output). Minors: reviewStatus active-tab-only, itemCard-only gating (not shared reviewButtons), invariant tests, databaseId int validation + rel=noreferrer."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "2 Medium findings, both fixed with regression tests. Finding 1: draftFeedback keyed only by raw item id + collection sentinel -> (a) collection draft leaked across set-switch, (b) an item id literally collection collided with the set-level box. Fix: feedbackKey(scope,id) namespaces items as item:<id>, keeps bare collection for the set box; drafts cleared in openSet + loadIndex but NOT load() (refresh must preserve). Finding 2: run-status correlation displayTitle.endsWith(space-dot-space+setId) was suffix-spoofable by a crafted set_id -> anchored regex ^Theme Equipment [^dot]+ dot <escaped-setId>$, setId regex-escaped."
+        }
+      ]
+    }
+  }
+}

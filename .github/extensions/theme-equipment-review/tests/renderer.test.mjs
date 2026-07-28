@@ -106,3 +106,70 @@ test('state arriving over SSE mid-dispatch wins over the uninitialized pane', ()
   // SSE handler drew must not be overwritten by the stale error pane.
   assert.match(html, /currentSetId === dispatchedSetId && state === null/);
 });
+
+test('Change 7: the Run label is derived from the server plan (generate vs regenerate)', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  // The label is a single function fed the server-computed plan, never a
+  // client-side re-implementation of the resolved-item predicate.
+  assert.match(html, /function runPhaseLabel\(plan, phase\)/);
+  assert.match(html, /'Generate ' \+ gen/);
+  assert.match(html, /'Regenerate ' \+ regen \+ ' unresolved '/);
+});
+
+test('Change 8: items awaiting generation show a note instead of review thumbs', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  assert.match(html, /awaitsGeneration === true/);
+  assert.match(html, /Awaiting generation/);
+  assert.match(html, /state\.reviewStatus/);
+});
+
+test('Change 9: a run-status strip polls /api/run-status without a full re-render', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  assert.match(html, /id="run-status-strip"/);
+  assert.match(html, /\/api\/run-status/);
+  assert.match(html, /ensureRunStatusPoll/);
+  // The poll patches only the strip node by id, never calling render().
+  assert.match(html, /function patchRunStatusStrip\(\)/);
+  assert.match(html, /Run status unavailable/);
+});
+
+test('Change 10: feedback drafts and scroll/caret survive a re-render', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  // Per-item draft feedback is preserved across renders so accepting one item
+  // never wipes another item's in-progress comment.
+  assert.match(html, /const draftFeedback = new Map\(\)/);
+  assert.match(html, /function captureInteraction\(\)/);
+  // The draft is dropped only once its own submit succeeds, keyed by the same
+  // scope-namespaced helper the textarea uses.
+  assert.match(html, /draftFeedback\.delete\(feedbackKey\(scope, id\)\)/);
+});
+
+test('feedback drafts are namespaced by scope so an item named "collection" cannot collide', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  // Item drafts live under an "item:" prefix; the set-level textarea keeps the
+  // bare "collection" key. Without the prefix an item whose id is literally
+  // "collection" would read/write the collection textarea's draft.
+  assert.match(html, /function feedbackKey\(scope, id\)/);
+  assert.match(html, /'item:' \+ id/);
+  assert.match(html, /feedbackKey\('item', item\.id\)/);
+});
+
+test('drafts are cleared when leaving or switching sets but not on same-set refresh', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  // Both the true set-switch (openSet) and returning to the index (loadIndex)
+  // clear the item-keyed drafts so they cannot bleed into another set. The
+  // same-set refresh path (load) must NOT clear — that is what preserves an
+  // in-progress comment across a re-render.
+  assert.match(
+    html,
+    /async function openSet\(setId\) \{\s*\/\/[\s\S]*?draftFeedback\.clear\(\);\s*draftBriefs\.clear\(\);/,
+  );
+  assert.match(
+    html,
+    /async function loadIndex\(\) \{[\s\S]*?draftFeedback\.clear\(\);\s*draftBriefs\.clear\(\);/,
+  );
+  // Guard: the refresh/load path stays clear-free.
+  const loadBody = html.slice(html.indexOf('async function load() {'));
+  const loadFn = loadBody.slice(0, loadBody.indexOf('function stateBadge'));
+  assert.ok(!/draftFeedback\.clear\(\)/.test(loadFn), 'load() must not clear drafts');
+});
