@@ -9451,8 +9451,7 @@ test('two-digit typo with non-adjacent (non-contiguous) differing positions is n
   // positions 7 and 9: HEAD_SHA[7]='d', HEAD_SHA[9]='f'
   // Change HEAD_SHA[7] 'd'→'e' and HEAD_SHA[9] 'f'→'0'.
   const head = HEAD_SHA; // 'abc1234def5678901234567890abcdef12345678'
-  const nonAdjacentTypoSha =
-    `${head.slice(0, 7)}e${head[8]}0${head.slice(10)}`;
+  const nonAdjacentTypoSha = `${head.slice(0, 7)}e${head[8]}0${head.slice(10)}`;
   assert.ok(
     HEAD_SHA.startsWith(nonAdjacentTypoSha.slice(0, 7)),
     'test invariant: prefixes must match',

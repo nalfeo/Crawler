@@ -186,10 +186,7 @@ test('rejects when the working-tree plan differs from the remote blob', async ()
     run(['push', '--quiet', 'origin', 'feature-branch']);
 
     // Overwrite the local working-tree plan without committing or pushing.
-    writeFileSync(
-      path.join(root, planPath),
-      `{"id":"classic-fantasy","updated":true}\n`,
-    );
+    writeFileSync(path.join(root, planPath), `{"id":"classic-fantasy","updated":true}\n`);
 
     // The remote still has the old content, so the working tree and the
     // remote blob diverge — initialization must be refused.
