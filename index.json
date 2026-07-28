@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5fa649de5642b9479821fa29ecae280c18d0edb5",
+    "commitDate": "2026-07-28T03:41:51Z",
+    "commitSubject": "fix(ci): unbreak main — repair the stale latent-backlog test and make it non-vacuous (#2120)",
+    "capturedAt": "2026-07-28T04:33:11.698Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30327055788",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/5fa649de5642b9479821fa29ecae280c18d0edb5.json"
+  },
+  {
     "commit": "f34efc79a153971c2d89990ac58255041ad4f330",
     "commitDate": "2026-07-28T03:19:06Z",
     "commitSubject": "Stop caching mutable coordination docs, forward conditional writes, and make the theme-equipment canvas honest (#2119)",
