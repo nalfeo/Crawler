@@ -48,12 +48,19 @@ const EXACT_VERSION_EXEMPTIONS = [
 ];
 
 /**
- * Regex for an "exact" npm version string:
+ * Regex for an "exact" npm version string, following SemVer 2.0.0:
  *   - No leading range operator (^, ~, >, <, =, *, x, X)
- *   - At minimum three dot-separated numeric components
- *   - Optionally followed by a pre-release tag and/or build metadata
+ *   - Three dot-separated numeric components, each without leading zeros
+ *   - Optional pre-release: hyphen + one or more dot-separated identifiers
+ *     composed of [0-9A-Za-z-] — hyphens within identifiers are allowed
+ *     (e.g. "1.0.0-beta-1") but underscores are not
+ *   - Optional build metadata: plus + same identifier format
+ *
+ * Examples accepted: "1.2.3", "0.0.0", "1.0.0-beta.1", "1.0.0-beta-1", "4.1.0+sha.abc"
+ * Examples rejected: "^1.2.3", "~1.2.3", "01.2.3", "1.0.0-alpha_1", "1.0.0-alpha."
  */
-const EXACT_SEMVER_RE = /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/;
+const EXACT_SEMVER_RE =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
 
 /**
  * Returns true if the given version string is considered an exact pin.
@@ -68,9 +75,11 @@ export function isExactVersion(version) {
  * Each violation: { field, name, version }
  *
  * @param {object} pkg - parsed package.json
+ * @param {Array} [exemptions] - optional list of exemptions to use instead of
+ *   EXACT_VERSION_EXEMPTIONS; useful for testing the exemption logic in isolation.
  * @returns {{ field: string, name: string, version: string }[]}
  */
-export function findRangeViolations(pkg) {
+export function findRangeViolations(pkg, exemptions = EXACT_VERSION_EXEMPTIONS) {
   const violations = [];
 
   const directFields = ['dependencies', 'devDependencies', 'optionalDependencies'];
@@ -78,7 +87,7 @@ export function findRangeViolations(pkg) {
     const entries = pkg[field];
     if (!entries || typeof entries !== 'object') continue;
     for (const [name, version] of Object.entries(entries)) {
-      if (isExempt(field, name, version)) continue;
+      if (isExempt(field, name, version, exemptions)) continue;
       if (!isExactVersion(version)) {
         violations.push({ field, name, version });
       }
@@ -88,7 +97,7 @@ export function findRangeViolations(pkg) {
   // overrides can be a flat map or a nested object (npm's "overrides" format allows
   // both `"qs": "6.15.2"` and `"pkg": { ".": "1.0.0", "dep": "2.0.0" }`).
   if (pkg.overrides && typeof pkg.overrides === 'object') {
-    checkOverrides(pkg.overrides, 'overrides', violations);
+    checkOverrides(pkg.overrides, 'overrides', violations, exemptions);
   }
 
   return violations;
@@ -98,16 +107,16 @@ export function findRangeViolations(pkg) {
  * Recursively validates overrides entries.
  * Nested overrides values can be either a version string or a nested object.
  */
-function checkOverrides(obj, field, violations) {
+function checkOverrides(obj, field, violations, exemptions) {
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === 'string') {
-      if (isExempt(field, key, value)) continue;
+      if (isExempt(field, key, value, exemptions)) continue;
       if (!isExactVersion(value)) {
         violations.push({ field, name: key, version: value });
       }
     } else if (value && typeof value === 'object') {
       // Nested overrides object: recurse
-      checkOverrides(value, `${field}/${key}`, violations);
+      checkOverrides(value, `${field}/${key}`, violations, exemptions);
     }
   }
 }
@@ -117,10 +126,8 @@ function checkOverrides(obj, field, violations) {
  * The version is part of the key so that a later change to a different specifier
  * on the same entry is NOT silently covered by the original exemption.
  */
-function isExempt(field, name, version) {
-  return EXACT_VERSION_EXEMPTIONS.some(
-    (e) => e.field === field && e.name === name && e.version === version,
-  );
+function isExempt(field, name, version, exemptions) {
+  return exemptions.some((e) => e.field === field && e.name === name && e.version === version);
 }
 
 /**
