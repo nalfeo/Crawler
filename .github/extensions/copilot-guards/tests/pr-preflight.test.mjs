@@ -143,9 +143,9 @@ test('checkMainSync invalidates prior validation when the branch changed', () =>
 test('checkIndexMdNotModified denies when INDEX.md is in the diff', () => {
   const result = checkIndexMdNotModified(['docs/knowledge/handoffs/INDEX.md']);
   assert.ok(result, 'expected deny when INDEX.md is modified');
-  assert.match(result, /INDEX\.md must not be committed to a PR branch/);
-  assert.match(result, /git restore --source=origin\/main/);
-  assert.match(result, /automation\/docs-update/);
+  assert.match(result, /INDEX\.md must not be committed to a feature PR branch/);
+  assert.match(result, /git restore --source=\$\(git merge-base origin\/main HEAD\)/);
+  assert.match(result, /automation\/docs-update PR/);
 });
 
 test('checkIndexMdNotModified denies when INDEX.md appears alongside other files', () => {
@@ -165,6 +165,21 @@ test('checkIndexMdNotModified allows diffs that do not touch INDEX.md', () => {
 test('checkIndexMdNotModified matches Windows-style paths', () => {
   const result = checkIndexMdNotModified(['docs\\knowledge\\handoffs\\INDEX.md']);
   assert.ok(result, 'expected deny for Windows-style path');
+});
+
+test('checkIndexMdNotModified allows automation/docs-update branch', () => {
+  const result = checkIndexMdNotModified(['docs/knowledge/handoffs/INDEX.md'], {
+    currentBranch: 'automation/docs-update',
+  });
+  assert.equal(result, null);
+});
+
+test('checkIndexMdNotModified supports explicit merge-base restoration source', () => {
+  const result = checkIndexMdNotModified(['docs/knowledge/handoffs/INDEX.md'], {
+    mergeBase: 'abc123def',
+  });
+  assert.ok(result, 'expected deny when INDEX.md is present');
+  assert.match(result, /git restore --source=abc123def/);
 });
 
 

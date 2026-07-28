@@ -79,11 +79,11 @@ Code review round 2 (claude-opus-4.8): clean.
 |-----------|--------|
 | Two PRs with handoffs don't conflict on INDEX.md | ✅ Guard prevents it; merge-train auto-resolves if it slips through |
 | INDEX.md stays correct on main | ✅ docs-update.yml already handles this (unchanged) |
-| No INDEX regeneration on the merge path | ✅ Guard + AGENTS.md instructions |
-| PRs' mergeStateStatus stays clean | ✅ Merge-train auto-resolution prevents DIRTY classification |
+| No INDEX regeneration on feature PR merge paths | ✅ Guard blocks feature branches from carrying INDEX.md; docs-update remains the dedicated automation PR path |
+| PRs' mergeStateStatus stays clean | ⚠️ Not yet directly observed with two concurrent stacked handoff PRs in this session |
 
 ## Unresolved issues
 
-None. The docs-update.yml trigger scope (concern 2 from plan review) was acknowledged
-as a separate concern — the staleness window (changes to build-system-index.ts won't
-retrigger INDEX.md rebuild) is pre-existing and out of scope for this issue.
+Live observation for the two-concurrent-PR `mergeStateStatus` criterion has not been
+captured in this session; this handoff now records that criterion as pending direct
+artifact evidence instead of inferred complete.
