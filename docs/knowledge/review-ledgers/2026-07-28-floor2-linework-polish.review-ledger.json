@@ -7,7 +7,7 @@
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "",
+      "reviewer_model": "gpt-5.6-sol",
       "concerns_count": 8,
       "resolved_count": 8,
       "plan_divergence": "minor",
@@ -15,8 +15,24 @@
       "model": "gpt-5.6-sol"
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 (gpt-5.6-sol) returned clean. Because it returned unusually fast, a second independent round was run with claude-sonnet-4.6 at high reasoning effort rather than accepting the first result. Round 2 independently verified: burial fixpoint termination and no-stranded-tile property, wall-entry reciprocity cascade under burial, LINEWORK_BURIED truthiness handling in groundMask/measureRuns, edge-lock preservation under both wearGain and capCurve, double-band collar clearance, propComponents determinism, binary alpha, layer-sort burial guarantee, SeededRandom usage, and shared-layer purity. Both rounds clean."
     }
   }
 }
