@@ -66,6 +66,7 @@ import {
   type FovPresetId,
 } from '../../engine/fov/fov-config.js';
 import { peekGroundFlowField } from '../../game/enemyAISystem.js';
+import { getRuntimeMobMotionProfile } from '../../shared/mob-motion.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -74,7 +75,7 @@ import {
   getQuestDef,
   objectiveTarget,
 } from '../../shared/quest-types.js';
-import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
+import { UI_DEPTH_CUTOFF, WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt } from '../../shared/units.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -673,6 +674,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let riskRewardFieldsGraphics: Phaser.GameObjects.Graphics | null = null;
   let fusedCandidatesGraphics: Phaser.GameObjects.Graphics | null = null;
   let navmeshGraphics: Phaser.GameObjects.Graphics | null = null;
+  let pausedEnemyHoverText: Phaser.GameObjects.Text | null = null;
   // NAVMESH-mode WASM readiness. recast init is async (~40ms) but the lab's
   // create() hook is synchronous, so we kick it off at bootstrap and gate the AI
   // tick until it resolves — otherwise a persisted NAVMESH default could poll the
@@ -1722,6 +1724,104 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       );
     }
     return flowFieldGraphics;
+  };
+
+  const ensurePausedEnemyHoverText = (): Phaser.GameObjects.Text | null => {
+    const scene = getPhaserScene();
+    if (!scene) {
+      return null;
+    }
+    if (!pausedEnemyHoverText || !pausedEnemyHoverText.scene) {
+      pausedEnemyHoverText = scene.add
+        .text(0, 0, '', {
+          fontFamily: '"Press Start 2P", ui-monospace, monospace',
+          fontSize: '10px',
+          color: '#e2e8f0',
+          backgroundColor: 'rgba(8, 17, 32, 0.92)',
+          padding: { x: 8, y: 6 },
+          lineSpacing: 4,
+        })
+        .setDepth(UI_DEPTH_CUTOFF)
+        .setScrollFactor(0)
+        .setVisible(false);
+    }
+    return pausedEnemyHoverText;
+  };
+
+  const resolveEnemyDisplayName = (world: GameWorld, eid: number): string => {
+    const archetypeId =
+      world.floorScenario?.enemyArchetypes.get(eid) ??
+      world.enemyAppearanceKeys.get(eid) ??
+      world.floorExtendedState?.ambientEnemyArchetypes?.get(eid);
+    const profile = archetypeId ? getRuntimeMobMotionProfile(archetypeId) : undefined;
+    return profile?.name ?? archetypeId ?? 'Enemy';
+  };
+
+  const syncPausedEnemyHoverTooltip = (): void => {
+    const text = ensurePausedEnemyHoverText();
+    const scene = getScene();
+    const phaserScene = getPhaserScene();
+    const world = scene?.world;
+    const simulationPaused = scene?.isSimulationPaused?.() ?? isPaused;
+    if (!text || !scene || !phaserScene || !world || !simulationPaused) {
+      if (text) {
+        text.setVisible(false);
+      }
+      return;
+    }
+
+    const pointer = phaserScene.input.activePointer;
+    const camera = phaserScene.cameras.main;
+    if (!pointer || !camera) {
+      text.setVisible(false);
+      return;
+    }
+
+    const worldPoint = camera.getWorldPoint(pointer.x, pointer.y);
+    let hoveredEnemy: {
+      eid: number;
+      currentHp: number;
+      maxHp: number;
+      name: string;
+    } | null = null;
+    let hoveredDistSq = Number.POSITIVE_INFINITY;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      const currentHp = world.stores.health.current[eid] ?? 0;
+      if (currentHp <= 0) {
+        continue;
+      }
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      const radiusFt = Math.max(world.stores.size.radius[eid] ?? 0, 1);
+      const dx = ex - pxToFt(worldPoint.x);
+      const dy = ey - pxToFt(worldPoint.y);
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radiusFt * radiusFt || distSq >= hoveredDistSq) {
+        continue;
+      }
+      hoveredDistSq = distSq;
+      hoveredEnemy = {
+        eid,
+        currentHp: Math.max(0, Math.round(currentHp)),
+        maxHp: Math.max(0, Math.round(world.stores.health.max[eid] ?? 0)),
+        name: resolveEnemyDisplayName(world, eid),
+      };
+    }
+
+    if (!hoveredEnemy) {
+      text.setVisible(false);
+      return;
+    }
+
+    text.setText(
+      `${hoveredEnemy.name}\n` +
+        `eid: ${hoveredEnemy.eid}\n` +
+        `health: ${hoveredEnemy.currentHp}/${hoveredEnemy.maxHp}`,
+    );
+    const maxX = Math.max(8, phaserScene.scale.width - text.width - 8);
+    const maxY = Math.max(8, phaserScene.scale.height - text.height - 8);
+    text.setPosition(Math.min(pointer.x + 16, maxX), Math.min(pointer.y + 16, maxY));
+    text.setVisible(true);
   };
 
   /**
@@ -2824,6 +2924,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     drawRiskRewardFieldsOverlay();
     drawFusedCandidateOverlay();
     drawNavmeshOverlay();
+    syncPausedEnemyHoverTooltip();
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
       const scene = getScene();
@@ -2864,6 +2965,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     fusedCandidatesGraphics = null;
     navmeshGraphics?.destroy();
     navmeshGraphics = null;
+    pausedEnemyHoverText?.destroy();
+    pausedEnemyHoverText = null;
     panelRoot.remove();
     game.destroy(true);
   };

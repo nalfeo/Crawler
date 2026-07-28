@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "paused-enemy-hover-ui-camera-recovery",
+  "task_title": "Route paused AI runner hover tooltip through UI camera",
+  "estimated_apples": 1,
+  "stages": {}
+}
