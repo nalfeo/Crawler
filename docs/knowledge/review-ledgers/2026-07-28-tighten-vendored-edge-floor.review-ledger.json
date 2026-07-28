@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "tighten-vendored-edge-floor",
+  "task_title": "Tighten the vendored edge-pass floor to 0.90",
+  "estimated_apples": 1,
+  "stages": {}
+}
