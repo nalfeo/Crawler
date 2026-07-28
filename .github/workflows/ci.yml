@@ -4,7 +4,14 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '0 * * * *'
+    # Daily full-CI backstop. This is the only unconditionally-full CI run in
+    # the system: the `changes` job below forces every scope flag off for
+    # schedule events, so it re-runs gates that a `detect-art-only.sh`
+    # misclassification could have skipped on a PR or push. It is NOT a
+    # main-health probe for the merge train -- promotion is gated solely on the
+    # validated composite candidate (ADR 0077) -- so hourly cadence is no
+    # longer needed for the train to make progress.
+    - cron: '0 6 * * *'
   pull_request:
     branches: [main]
     paths:
@@ -39,7 +46,6 @@ jobs:
   changes:
     name: Detect change scope
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule' || vars.MERGE_TRAIN_ENABLED == 'true'
     outputs:
       art_only: ${{ steps.scope.outputs.art_only }}
       docs_only: ${{ steps.scope.outputs.docs_only }}
@@ -521,11 +527,16 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ] &&
              [ "$train_enabled" = "true" ] &&
              [ "${{ needs.changes.outputs.train_promoted }}" = "true" ]; then
-            echo "✅ Main-push heavy CI deferred to the hourly health run"
-            exit 0
-          fi
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$train_enabled" = "false" ]; then
-            echo "✅ Hourly health run disabled with the merge train"
+            # Not a deferral: the merge train proves (landedCommitProofError,
+            # merge-train/reconcile-lib.mjs) that this landed commit's tree is
+            # byte-identical to the validated candidate prefix tree, and that
+            # candidate already passed the merge-train validation gate
+            # (static, unit, sprite, health, security). Re-running the heavy
+            # suite here would re-test an identical tree. Integration, headless,
+            # and E2E gates are covered unconditionally by the daily backstop
+            # schedule run (ci.yml schedule trigger), which forces all scope
+            # flags off regardless of change content.
+            echo "✅ Main-push heavy CI skipped: landed tree is byte-identical to the validated candidate tree"
             exit 0
           fi
 

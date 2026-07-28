@@ -792,7 +792,45 @@ for (const group of groups) {
   // PRs entirely (D11 structural guarantee in the coordinator runtime).
   const nbPhases = new Set(nonBlockingPhases());
   const blockingPulls = group.pulls.filter((pull) => !nbPhases.has(pull.lifecyclePhase));
+  const enforceCoordination = coordinationEnforcementEnabled(process.env);
   if (blockingPulls.length === 0) {
+    const recoveryByNumber = new Map(
+      group.pulls.map((pull) => [
+        pull.number,
+        recoveryContext(pull, groupComments.get(pull.number)),
+      ]),
+    );
+    const humanApprovalByNumber = new Map(
+      await mapLimit(group.pulls, 4, async (pull) => [
+        pull.number,
+        humanApprovalRejection({
+          pullRequest: {
+            labels: [...pull.labelNames].map((name) => ({ name })),
+            head: { ref: pull.headRef },
+          },
+          closingIssues: await listClosingIssues(token, owner, repo, pull.number),
+          comments: groupComments.get(pull.number) || [],
+          ownerLogin: owner,
+        }),
+      ]),
+    );
+
+    for (const pull of group.pulls) {
+      const ownershipGated =
+        Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
+        Boolean(recoveryByNumber.get(pull.number)?.shepherdLease) ||
+        Boolean(humanApprovalByNumber.get(pull.number));
+      await removeLabel(pull, ORDER_WAIT_LABEL);
+      await removeLabel(pull, COORDINATED_LABEL);
+      await removeLabel(pull, LEADER_LABEL);
+      if (ownershipGated) {
+        await addLabel(pull, ESCALATION_LABEL);
+        await disableAutoMerge(pull);
+      } else {
+        await removeLabel(pull, ESCALATION_LABEL);
+      }
+    }
+
     // All pulls in this group are non-blocking (quarantined/abandoned). Nothing to
     // coordinate — skip proof collection and selection for this group entirely.
     //
@@ -921,9 +959,9 @@ for (const group of groups) {
     // Ownership escalation is a real, grouping-independent signal and is never
     // switched off. An `ambiguous` supersession proof, by contrast, is derived
     // from group-mates, so it only escalates while enforcement is on.
-    const escalated = enforceCoordination
-      ? proofByNumber.get(pull.number)?.status === 'ambiguous' || ownershipGated
-      : ownershipGated;
+    const escalated =
+      ownershipGated ||
+      (enforceCoordination && proofByNumber.get(pull.number)?.status === 'ambiguous');
     if (escalated) await addLabel(pull, ESCALATION_LABEL);
     else await removeLabel(pull, ESCALATION_LABEL);
   }

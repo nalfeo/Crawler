@@ -176,6 +176,40 @@ test('flag-off schedule sweeps exclude blocked-labeled PRs from dispatch', () =>
   assert.ok(!numbers.includes(99), 'merge-train-blocked PR must be excluded');
 });
 
+test('flag-off schedule sweeps exclude lifecycle-quarantined/abandoned PRs from dispatch', () => {
+  const scheduledPulls = [
+    {
+      number: 1,
+      draft: false,
+      labels: [{ name: 'ci-lifecycle-quarantined' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2,
+      draft: false,
+      labels: [{ name: 'ci-lifecycle-abandoned' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 3,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+  const numbers = collectPrNumbers({
+    payload: { repository: { default_branch: 'main' } },
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    maxDispatchPerRun: 5,
+    trainEnabled: false,
+    now: new Date('1970-01-01T00:00:00Z'),
+  });
+
+  assert.deepEqual(numbers, [3]);
+});
+
 test('collectPrNumbers keeps event-scoped PR dispatch uncapped for non-schedule events', () => {
   const numbers = collectPrNumbers({
     payload: { pull_request: { number: 42 } },
@@ -457,6 +491,8 @@ test('DISPATCH_BLOCKED_LABEL_NAMES contains all required blocked labels', () => 
   for (const required of [
     'ci-conflict-order-wait',
     'ci-conflict-escalation',
+    'ci-lifecycle-quarantined',
+    'ci-lifecycle-abandoned',
     'merge-train-blocked',
     'merge-train-validation-failed',
     'human-approval-required',

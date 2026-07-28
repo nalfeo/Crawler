@@ -13,7 +13,7 @@ import {
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
-  mainHealthReason,
+  mainAttributionVerdict,
   mergeTrainGitEnvironment,
   promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
@@ -23,6 +23,7 @@ import {
   stalledAdmissionEligiblePulls,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
+import { planAttributedPrefixPromotion, planPrefixPromotion } from './state.mjs';
 
 const baseSha = 'a'.repeat(40);
 const candidateSha = 'b'.repeat(40);
@@ -936,34 +937,33 @@ function makeCiRun(overrides = {}) {
   };
 }
 
-test('mainHealthReason fails closed when no full-CI evidence exists for current main', () => {
-  assert.match(
-    mainHealthReason({ mainSha: baseSha, runs: [] }),
-    /no full-CI evidence yet for current main/,
-  );
-  // Evidence exists, but for a different (stale) main SHA -- still fails closed.
-  assert.match(
-    mainHealthReason({
-      mainSha: baseSha,
-      runs: [makeCiRun({ head_sha: candidateSha })],
-    }),
-    /no full-CI evidence yet for current main/,
-  );
+test('mainAttributionVerdict is unknown (fails OPEN) when no full-CI evidence exists for current main', () => {
+  // ADR 0077: absence of evidence attributes nothing. Unlike the promotion gate
+  // this replaced, `unknown` must NOT pause the attribution breaker.
+  const empty = mainAttributionVerdict({ mainSha: baseSha, runs: [] });
+  assert.equal(empty.verdict, 'unknown');
+  assert.match(empty.reason, /no full-CI evidence yet for current main/);
+  // Evidence exists, but for a different (stale) main SHA -- still unknown.
+  const stale = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ head_sha: candidateSha })],
+  });
+  assert.equal(stale.verdict, 'unknown');
+  assert.match(stale.reason, /no full-CI evidence yet for current main/);
 });
 
-test('mainHealthReason fails closed while the current main SHA is still pending', () => {
-  assert.match(
-    mainHealthReason({
-      mainSha: baseSha,
-      runs: [makeCiRun({ status: 'in_progress', conclusion: null })],
-    }),
-    /still in_progress/,
-  );
+test('mainAttributionVerdict is unknown while the current main SHA is still pending', () => {
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ status: 'in_progress', conclusion: null })],
+  });
+  assert.equal(verdict.verdict, 'unknown');
+  assert.match(verdict.reason, /still in_progress/);
 });
 
-test('mainHealthReason preserves completed green evidence across a newer pending duplicate', () => {
+test('mainAttributionVerdict preserves completed green evidence across a newer pending duplicate', () => {
   assert.equal(
-    mainHealthReason({
+    mainAttributionVerdict({
       mainSha: baseSha,
       runs: [
         makeCiRun({ created_at: '2024-01-01T00:00:00Z' }),
@@ -973,83 +973,242 @@ test('mainHealthReason preserves completed green evidence across a newer pending
           conclusion: null,
         }),
       ],
-    }),
-    null,
+    }).verdict,
+    'green',
   );
 });
 
-test('mainHealthReason blocks on a later completed failure despite older green evidence', () => {
-  assert.match(
-    mainHealthReason({
-      mainSha: baseSha,
-      runs: [
-        makeCiRun({ created_at: '2024-01-01T00:00:00Z' }),
-        makeCiRun({ created_at: '2024-01-01T01:00:00Z', conclusion: 'failure' }),
-        makeCiRun({
-          created_at: '2024-01-01T02:00:00Z',
-          status: 'in_progress',
-          conclusion: null,
-        }),
-      ],
-    }),
-    /concluded failure/,
-  );
+test('mainAttributionVerdict is red on a later completed failure despite older green evidence', () => {
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [
+      makeCiRun({ created_at: '2024-01-01T00:00:00Z' }),
+      makeCiRun({ created_at: '2024-01-01T01:00:00Z', conclusion: 'failure' }),
+      makeCiRun({
+        created_at: '2024-01-01T02:00:00Z',
+        status: 'in_progress',
+        conclusion: null,
+      }),
+    ],
+  });
+  assert.equal(verdict.verdict, 'red');
+  assert.match(verdict.reason, /concluded failure/);
 });
 
-test('mainHealthReason reports a genuine completed failure on the current main SHA', () => {
-  assert.match(
-    mainHealthReason({
-      mainSha: baseSha,
-      runs: [makeCiRun({ conclusion: 'failure' })],
-    }),
-    /concluded failure/,
-  );
+test('mainAttributionVerdict reports a genuine completed failure on the current main SHA', () => {
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ conclusion: 'failure' })],
+  });
+  assert.equal(verdict.verdict, 'red');
+  assert.match(verdict.reason, /concluded failure/);
 });
 
-test('mainHealthReason ignores a train fast-path push run and still fails closed', () => {
+test('mainAttributionVerdict treats timed_out as red (genuine failure evidence)', () => {
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ conclusion: 'timed_out' })],
+  });
+  assert.equal(verdict.verdict, 'red');
+  assert.match(verdict.reason, /concluded timed_out/);
+});
+
+test('mainAttributionVerdict treats cancelled as unknown, not red', () => {
+  // A manually cancelled run proves nothing about main. Classifying it as red
+  // would suppress bisection/ejection until the next daily backstop, exactly
+  // like the old promotion gate deadlock (ADR 0077).
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ conclusion: 'cancelled' })],
+  });
+  assert.equal(verdict.verdict, 'unknown');
+  assert.match(verdict.reason, /non-authoritative conclusion cancelled/);
+});
+
+test('mainAttributionVerdict falls through to an authoritative run when the newest is cancelled', () => {
+  // If there is an older completed authoritative run but the newest is cancelled,
+  // the newest takes the slot (find() picks first match of the sorted list);
+  // that one is unknown, not red. The caller re-runs when the next schedule run arrives.
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [
+      makeCiRun({ created_at: '2024-01-01T01:00:00Z', conclusion: 'cancelled' }),
+      makeCiRun({ created_at: '2024-01-01T00:00:00Z', conclusion: 'failure' }),
+    ],
+  });
+  // The most recently created authoritative run is the cancelled one → unknown
+  assert.equal(verdict.verdict, 'unknown');
+  assert.match(verdict.reason, /non-authoritative conclusion cancelled/);
+});
+
+test('mainAttributionVerdict ignores a train fast-path push run and stays unknown', () => {
   // Only evidence for the current SHA is a fast-path push run (docs_only
-  // shortcut); that is not authoritative full-CI evidence, so an
-  // otherwise-empty run list must still fail closed rather than pass open.
-  assert.match(
-    mainHealthReason({
-      mainSha: baseSha,
-      runs: [makeCiRun({ event: 'push', isTrainFastPath: true })],
-    }),
-    /no full-CI evidence yet for current main/,
-  );
+  // shortcut); that is not authoritative full-CI evidence, so the verdict must
+  // stay `unknown` rather than being read as green OR red.
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ event: 'push', isTrainFastPath: true })],
+  });
+  assert.equal(verdict.verdict, 'unknown');
+  assert.match(verdict.reason, /no full-CI evidence yet for current main/);
 });
 
-test('mainHealthReason allows promotion when non-train-fast-path evidence for current main is green', () => {
+test('mainAttributionVerdict is green when non-train-fast-path evidence for current main is green', () => {
   assert.equal(
-    mainHealthReason({
+    mainAttributionVerdict({
       mainSha: baseSha,
       runs: [makeCiRun({ event: 'push', isTrainFastPath: true }), makeCiRun({ event: 'schedule' })],
-    }),
-    null,
+    }).verdict,
+    'green',
   );
 });
 
-test('mainHealthReason considers a genuine push-triggered failure on the current main SHA (not just scheduled runs)', () => {
-  assert.match(
-    mainHealthReason({
-      mainSha: baseSha,
-      runs: [makeCiRun({ event: 'push', conclusion: 'failure', isTrainFastPath: false })],
-    }),
-    /concluded failure/,
-  );
+test('mainAttributionVerdict considers a genuine push-triggered failure on the current main SHA (not just scheduled runs)', () => {
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ event: 'push', conclusion: 'failure', isTrainFastPath: false })],
+  });
+  assert.equal(verdict.verdict, 'red');
+  assert.match(verdict.reason, /concluded failure/);
 });
 
-test('mainHealthReason picks the most recently created authoritative run for the current SHA', () => {
+test('mainAttributionVerdict picks the most recently created authoritative run for the current SHA', () => {
   assert.equal(
-    mainHealthReason({
+    mainAttributionVerdict({
       mainSha: baseSha,
       runs: [
         makeCiRun({ created_at: '2024-01-01T00:00:00Z', conclusion: 'failure' }),
         makeCiRun({ created_at: '2024-01-01T01:00:00Z', conclusion: 'success' }),
       ],
-    }),
-    null,
+    }).verdict,
+    'green',
   );
+});
+
+// --- planAttributedPrefixPromotion: main health as an ATTRIBUTION signal only ---
+// ADR 0077. BEFORE: promotion was gated a second time on `main` alone being
+// green, so a PR whose composite was green could not land while `main` was red
+// -- a PR that FIXED `main` could never merge. AFTER: the verdict is consulted
+// ONLY when the maximal composite failed, and only to suppress ejection.
+
+const RED = async () => ({ verdict: 'red', reason: 'latest completed full-CI run ... failure' });
+
+test('planAttributedPrefixPromotion never consults main health when the maximal composite is green', async () => {
+  let probes = 0;
+  const plan = await planAttributedPrefixPromotion({
+    prefixStates: ['success', 'success'],
+    mainVerdict: async () => {
+      probes += 1;
+      return { verdict: 'red', reason: 'main is red' };
+    },
+  });
+  // The deadlock fix: green composite promotes even though the probe would have
+  // said `main` is red -- and the probe is not even called.
+  assert.equal(probes, 0);
+  assert.equal(plan.action, 'promote');
+  assert.equal(plan.greenPrefixLength, 2);
+  assert.deepEqual(plan, planPrefixPromotion(['success', 'success']));
+});
+
+test('planAttributedPrefixPromotion ejects nothing while main is red', async () => {
+  // Bisection has isolated prefix 2 as the first failing addition. On a red
+  // `main` that attribution is unsound, so `firstFailure` must be suppressed.
+  const states = ['success', 'failure', 'failure'];
+  const unattributed = planPrefixPromotion(states);
+  assert.equal(unattributed.firstFailure, 1, 'precondition: today this ejects entry index 1');
+
+  const plan = await planAttributedPrefixPromotion({ prefixStates: states, mainVerdict: RED });
+  assert.equal(plan.firstFailure, -1);
+  // The already-proven green prefix still promotes, so a queued repair PR lands.
+  assert.equal(plan.action, 'promote');
+  assert.equal(plan.greenPrefixLength, 1);
+  assert.match(plan.attribution, /full-CI run/);
+});
+
+test('planAttributedPrefixPromotion promotes a proven-green prefix mid-bisection while main is red', async () => {
+  // Regression: bisection has proven prefix 1 green but has not yet resolved
+  // prefixes 2-3, so planPrefixPromotion asks for another `validate` round.
+  // Pausing there would strand a repair PR sitting at prefix 1 -- and `main`
+  // cannot go green until that repair lands, so the train would deadlock
+  // permanently, reinstating the very bug this change removes.
+  const states = ['success', 'missing', 'missing', 'failure'];
+  assert.equal(planPrefixPromotion(states).action, 'validate', 'precondition: mid-bisection');
+
+  const plan = await planAttributedPrefixPromotion({ prefixStates: states, mainVerdict: RED });
+  assert.equal(plan.action, 'promote');
+  assert.equal(plan.greenPrefixLength, 1);
+  assert.equal(plan.validationIndex, 0);
+  assert.equal(plan.firstFailure, -1);
+});
+
+test('planAttributedPrefixPromotion skips further bisection rounds entirely while main is red', async () => {
+  for (const [states, todayAction] of [
+    [['missing', 'missing', 'missing', 'failure'], 'validate'],
+    [['pending', 'pending', 'pending', 'failure'], 'wait'],
+    // Bisection has converged on green=0/red=1: today this ejects entry 0.
+    [['failure', 'failure'], 'promote'],
+  ]) {
+    assert.equal(
+      planPrefixPromotion(states).action,
+      todayAction,
+      `precondition: today this spends a ${todayAction} round`,
+    );
+    const plan = await planAttributedPrefixPromotion({ prefixStates: states, mainVerdict: RED });
+    assert.equal(plan.action, 'pause');
+    assert.equal(plan.firstFailure, -1);
+    assert.equal(plan.greenPrefixLength, 0);
+  }
+});
+
+test('planAttributedPrefixPromotion preserves bisection and ejection when main is green', async () => {
+  const states = ['success', 'failure', 'failure'];
+  const plan = await planAttributedPrefixPromotion({
+    prefixStates: states,
+    mainVerdict: async () => ({ verdict: 'green', reason: null }),
+  });
+  assert.deepEqual(plan, planPrefixPromotion(states));
+});
+
+test('planAttributedPrefixPromotion fails OPEN on an unknown verdict', async () => {
+  // Absence of evidence attributes nothing. After every train promotion the only
+  // run on the new `main` is the excluded fast-path attestation, so `unknown` is
+  // the steady state; pausing on it would stall ejection until the daily backstop.
+  const states = ['success', 'failure', 'failure'];
+  for (const verdict of ['unknown', undefined]) {
+    const plan = await planAttributedPrefixPromotion({
+      prefixStates: states,
+      mainVerdict: async () => ({ verdict, reason: 'no full-CI evidence yet' }),
+    });
+    assert.deepEqual(plan, planPrefixPromotion(states), `verdict=${verdict}`);
+  }
+});
+
+test('planAttributedPrefixPromotion is a noop on an empty queue without probing main', async () => {
+  let probes = 0;
+  const plan = await planAttributedPrefixPromotion({
+    prefixStates: [],
+    mainVerdict: async () => {
+      probes += 1;
+      return { verdict: 'red' };
+    },
+  });
+  assert.deepEqual(plan, { action: 'noop' });
+  assert.equal(probes, 0);
+});
+
+test('planAttributedPrefixPromotion fails open when the probe throws', async () => {
+  // A transient GitHub API error must NOT abort reconciliation. The design treats
+  // unavailable evidence as `unknown`, so a thrown probe falls through to the
+  // original bisection plan (ADR 0077).
+  const states = ['success', 'failure', 'failure'];
+  const plan = await planAttributedPrefixPromotion({
+    prefixStates: states,
+    mainVerdict: async () => {
+      throw new Error('GitHub API 503 Service Unavailable');
+    },
+  });
+  // Falls back to the normal plan — still ejects and bisects
+  assert.deepEqual(plan, planPrefixPromotion(states));
 });
 
 test('trainCheckTitle distinguishes queued, failed, and successful completed checks', () => {
@@ -1087,30 +1246,29 @@ test('isDisabledTrainScheduleRun fails closed when Detect change scope job is ab
   assert.equal(isDisabledTrainScheduleRun(jobs), true);
 });
 
-test('mainHealthReason fails closed when latest schedule run is a disabled-train no-op', () => {
+test('mainAttributionVerdict stays unknown when latest schedule run is a disabled-train no-op', () => {
   // A schedule run with isTrainFastPath:true (disabled-train no-op) must not
-  // count as authoritative evidence; the circuit breaker must still fail closed.
-  assert.match(
-    mainHealthReason({
-      mainSha: baseSha,
-      runs: [makeCiRun({ event: 'schedule', isTrainFastPath: true })],
-    }),
-    /no full-CI evidence yet for current main/,
-  );
+  // count as authoritative evidence in either direction.
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ event: 'schedule', isTrainFastPath: true })],
+  });
+  assert.equal(verdict.verdict, 'unknown');
+  assert.match(verdict.reason, /no full-CI evidence yet for current main/);
 });
 
-test('mainHealthReason allows promotion when a non-no-op schedule run is green', () => {
+test('mainAttributionVerdict is green when a non-no-op schedule run is green', () => {
   // A disabled-train no-op schedule run (isTrainFastPath:true) alongside a real
-  // enabled-train schedule run (isTrainFastPath:false, green) → allows promotion.
+  // enabled-train schedule run (isTrainFastPath:false, green) → green.
   assert.equal(
-    mainHealthReason({
+    mainAttributionVerdict({
       mainSha: baseSha,
       runs: [
         makeCiRun({ event: 'schedule', isTrainFastPath: true }),
         makeCiRun({ event: 'schedule', isTrainFastPath: false }),
       ],
-    }),
-    null,
+    }).verdict,
+    'green',
   );
 });
 
