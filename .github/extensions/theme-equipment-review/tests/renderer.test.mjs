@@ -173,3 +173,52 @@ test('drafts are cleared when leaving or switching sets but not on same-set refr
   const loadFn = loadBody.slice(0, loadBody.indexOf('function stateBadge'));
   assert.ok(!/draftFeedback\.clear\(\)/.test(loadFn), 'load() must not clear drafts');
 });
+
+test('Change 11: auto-refreshes the board once when a watched run finishes', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  // Transition memory + one-shot guard are declared.
+  assert.match(html, /let lastRunSeen = null/);
+  assert.match(html, /let autoReloadedRunId = null/);
+  // The auto-reload fires only on a real active -> completed transition of the
+  // same run, and only once per run id, then refreshes via draft-preserving load().
+  assert.match(html, /lastRunSeen\.status !== 'completed'/);
+  assert.match(html, /run\.status === 'completed' && autoReloadedRunId !== run\.databaseId/);
+  assert.match(html, /autoReloadedRunId = run\.databaseId;\s*await load\(\);/);
+  // Per-set memory is reset on a genuine set switch so a prior set's run cannot
+  // trigger a spurious reload.
+  assert.match(html, /lastRunSeen = null;\s*autoReloadedRunId = null;/);
+});
+
+test('Change 14: active run shows a truthful in-flight progress detail', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  // The in-flight detail helper exists and derives its item count from the SAME
+  // server plan (state.runPhase) as the Run-button label, so it cannot misreport
+  // how much work the active run is doing.
+  assert.match(html, /function runActiveDetail\(plan, phase\)/);
+  assert.match(html, /\(plan\.generateCount \|\| 0\) \+ \(plan\.regenerateCount \|\| 0\)/);
+  assert.match(html, /Producing the collection judge \(regenerating nothing\)/);
+  // It states the run is atomic (no per-item flipping) and points at the GitHub
+  // log, which is the only real-time per-item progress surface.
+  assert.match(html, /items will not flip one at a time/);
+  assert.match(html, /live per-item progress/);
+  // The detail is rendered only for an ACTIVE run, and the link relabels to make
+  // the live log discoverable while a run is in flight.
+  assert.match(html, /if \(!active\) return head;/);
+  assert.match(html, /watch live log ↗/);
+  assert.match(html, /run-progress-detail/);
+});
+
+test('Change 12: show-only-unapproved filter hides up-voted items with a truthful count', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  assert.match(html, /let showOnlyUnapproved = false/);
+  assert.match(html, /data-filter-unapproved/);
+  assert.match(html, /Show only unapproved/);
+  // Filter predicate and the approved-count label are derived from the SAME
+  // computation (itemPhaseVerdict === 'up'), so the label cannot misreport.
+  assert.match(html, /function itemPhaseVerdict\(item\)/);
+  assert.match(html, /state\.items\.filter\(i => itemPhaseVerdict\(i\) === 'up'\)\.length/);
+  assert.match(html, /state\.items\.filter\(i => itemPhaseVerdict\(i\) !== 'up'\)/);
+  // The toggle re-renders and is reset on set switch.
+  assert.match(html, /showOnlyUnapproved = event\.target\.checked;\s*render\(\);/);
+  assert.match(html, /showOnlyUnapproved = false;/);
+});

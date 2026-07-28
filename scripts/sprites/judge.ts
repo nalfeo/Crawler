@@ -215,7 +215,7 @@ const hardBlockPayloadSchema = z
   .object({
     blocked: z.boolean(),
     instruction: z.string().nullable(),
-    rationale: z.string().min(1).max(500),
+    rationale: z.string().min(1).max(500).nullable(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -225,6 +225,13 @@ const hardBlockPayloadSchema = z
           code: z.ZodIssueCode.custom,
           path: ['instruction'],
           message: `instruction must be exactly ${JSON.stringify(JUDGE_HARD_BLOCK_PHRASE)} when blocked`,
+        });
+      }
+      if (value.rationale === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rationale'],
+          message: 'rationale must explain the block when blocked is true',
         });
       }
       return;
@@ -717,7 +724,8 @@ function buildSystemInstructions(
     `in-game. When blocked, hard_block.instruction MUST be exactly ${JSON.stringify(
       JUDGE_HARD_BLOCK_PHRASE,
     )}. When not blocked, hard_block.blocked=false and hard_block.instruction=null.`,
-    'hard_block.rationale must briefly explain why. Also provide a top-level',
+    'When blocked, hard_block.rationale must briefly explain why; when not blocked,',
+    'hard_block.rationale may be null. Also provide a top-level',
     'confidence number from 0 to 1 for the overall verdict.',
     '',
     'Rationale per axis: 1-2 sentences max. Be specific (e.g. "outline too thin compared',

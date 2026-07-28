@@ -50,6 +50,9 @@ export function renderHtml(bootstrap) {
     .awaiting-note { margin: 6px 0 0; padding: 6px 8px; font-size: 12px; border-radius: 6px; color: var(--text-color-muted,#8b949e); background: rgba(139,148,158,0.1); border: 1px dashed rgba(139,148,158,0.35); }
     .run-status { margin: 8px 0 0; font-size: 12.5px; line-height: 1.5; }
     .run-status .run-active { color: var(--true-color-blue,#58a6ff); font-weight: 600; }
+    .run-status .run-progress-detail { margin-top: 3px; font-size: 12px; }
+    .filter-bar { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; }
+    .filter-bar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
     .spinner { padding: 40px; text-align: center; color: var(--text-color-muted,#8b949e); }
     label { display: block; margin: 10px 0 0; font-weight: 600; }
     label .muted { font-weight: 400; }
@@ -108,6 +111,20 @@ export function renderHtml(bootstrap) {
       }
       return plan.collectionJudgeMissing ? 'Judge collection cohesion on GitHub' : 'Re-judge collection cohesion on GitHub';
     }
+    // Change 14 (A): honest in-flight detail for an ACTIVE run. Derived from the
+    // SAME server plan (state.runPhase) as the Run label, so the item count it
+    // shows is exactly the work the active run is doing. run-phase writes durable
+    // state atomically at the very end, so the board cannot flip items one-by-one
+    // while a run is mid-flight; this line says so and points at the GitHub log,
+    // which is the only place per-item progress streams in real time.
+    function runActiveDetail(plan, phase) {
+      const noun = (plan && plan.phase !== null) ? (BULK_NOUNS[phase] || 'items') : 'items';
+      const total = plan ? ((plan.generateCount || 0) + (plan.regenerateCount || 0)) : 0;
+      const work = total > 0
+        ? 'Working through ' + total + ' ' + noun + ' + the collection judge'
+        : 'Producing the collection judge (regenerating nothing)';
+      return work + '. Results appear together when the run finishes — items will not flip one at a time. Watch the GitHub log for live per-item progress.';
+    }
     let dispatchNotice = null;
     /**
      * Latest GitHub run-status for this set, fetched from /api/run-status and
@@ -120,6 +137,15 @@ export function renderHtml(bootstrap) {
     let runStatusInFlight = false;
     let runStatusTimer = null;
     let runStatusToken = 0;
+    // Change 11: remember the last GitHub run we observed (by databaseId) so we
+    // can auto-refresh the board once when it transitions active → completed,
+    // instead of making the maintainer click Refresh. autoReloadedRunId guards
+    // against re-triggering on the same completed run.
+    let lastRunSeen = null;
+    let autoReloadedRunId = null;
+    // Change 12: when on, hide items already approved (verdict === 'up') so the
+    // maintainer sees only what still needs a decision.
+    let showOnlyUnapproved = false;
     const app = document.querySelector('#app');
     const phases = ['roster','briefs','sprite-sheets','variant-approval','complete'];
     const MIN_WEAPON_TYPES = 5;
@@ -161,6 +187,11 @@ export function renderHtml(bootstrap) {
       // unsent feedback/brief text cannot appear in another set.
       draftFeedback.clear();
       draftBriefs.clear();
+      // Change 11/12: run-transition memory and the unapproved filter are
+      // per-set; clear them so state from a previous set cannot leak in.
+      lastRunSeen = null;
+      autoReloadedRunId = null;
+      showOnlyUnapproved = false;
       app.className = 'spinner';
       app.textContent = 'Loading ' + setId + '…';
       try {
@@ -465,6 +496,11 @@ export function renderHtml(bootstrap) {
       return draftFeedback.has(key) ? draftFeedback.get(key) : (serverValue || '');
     }
 
+    function itemPhaseVerdict(item) {
+      const record = item.phases[selectedPhase];
+      return record && record.review ? record.review.verdict : null;
+    }
+
     function itemCard(item) {
       const record = item.phases[selectedPhase];
       const review = record.review;
@@ -518,7 +554,7 @@ export function renderHtml(bootstrap) {
         '</section>'
         : (selectedPhase !== 'complete' ? '<section class="panel"><div class="muted">Advancement controls for the active phase (<strong>' + esc(state.phase) + '</strong>) live on its own tab. This tab is ' + (phases.indexOf(selectedPhase) < phases.indexOf(state.phase) ? 'an earlier, completed phase' : 'a later phase, not yet active') + ' — review-only.</div></section>' : '')) +
         (selectedPhase === 'complete' ? '<section class="panel">The complete set is held until one atomic publication workflow succeeds.</section>' :
-          '<section class="grid">' + state.items.map(itemCard).join('') + '</section>') +
+          gridSection()) +
         '</main>';
       wire();
       restoreInteraction();
@@ -527,7 +563,28 @@ export function renderHtml(bootstrap) {
     }
 
     /**
-     * Snapshot the pieces of interaction state that a full innerHTML rebuild would
+     * Change 12: the item grid, with an optional "show only unapproved" filter.
+     * The filter predicate (verdict !== 'up') and the label count are derived
+     * from the SAME computation, so the label can never lie about what it hides
+     * (the truthful-label discipline that Change 4 established for bulk approve).
+     */
+    function gridSection() {
+      const approvedCount = state.items.filter(i => itemPhaseVerdict(i) === 'up').length;
+      const shown = showOnlyUnapproved
+        ? state.items.filter(i => itemPhaseVerdict(i) !== 'up')
+        : state.items;
+      const toggle = '<div class="filter-bar"><label><input type="checkbox" data-filter-unapproved ' +
+        (showOnlyUnapproved ? 'checked' : '') + (approvedCount === 0 ? ' disabled' : '') +
+        '> Show only unapproved</label><span class="muted"> (' + approvedCount + ' approved' +
+        (showOnlyUnapproved ? ' hidden' : '') + ')</span></div>';
+      const grid = shown.length
+        ? '<section class="grid">' + shown.map(itemCard).join('') + '</section>'
+        : '<section class="panel"><div class="muted">All items are approved for this phase — nothing left to review here.</div></section>';
+      return toggle + grid;
+    }
+
+    /**
+     * Capture the volatile interaction state we want to preserve rather than
      * otherwise destroy — scroll offset and the caret in whatever textarea the
      * maintainer is typing in — and return a restore fn to reapply them after the
      * DOM is rebuilt. This is what keeps reviewing one item (or an SSE/poll push)
@@ -585,8 +642,12 @@ export function renderHtml(bootstrap) {
         ? '▶ ' + esc(run.status === 'queued' ? 'queued (waiting for a runner)' : (run.status || 'in progress')) + (run.status === 'queued' ? '' : '…')
         : (run.conclusion === 'success' ? '✅ last run succeeded' : '⚠️ last run ' + esc(run.conclusion || 'finished'));
       const when = run.createdAt ? ' · started ' + esc(formatWhen(run.createdAt)) : '';
-      const link = run.url ? ' · <a href="' + esc(run.url) + '" target="_blank" rel="noreferrer">view on GitHub ↗</a>' : '';
-      return '<span class="' + (active ? 'run-active' : '') + '">' + label + '</span><span class="muted">' + when + '</span>' + link;
+      const linkText = active ? 'watch live log ↗' : 'view on GitHub ↗';
+      const link = run.url ? ' · <a href="' + esc(run.url) + '" target="_blank" rel="noreferrer">' + linkText + '</a>' : '';
+      const head = '<span class="' + (active ? 'run-active' : '') + '">' + label + '</span><span class="muted">' + when + '</span>' + link;
+      if (!active) return head;
+      const detail = state ? runActiveDetail(state.runPhase, state.phase) : '';
+      return head + (detail ? '<div class="run-progress-detail muted">' + esc(detail) + '</div>' : '');
     }
 
     function patchRunStatusStrip() {
@@ -621,6 +682,20 @@ export function renderHtml(bootstrap) {
         // Fence: ignore a late response if the user navigated or switched sets.
         if (token !== runStatusToken || view !== 'board' || !state || state.id !== setId) return;
         runStatus = result;
+        // Change 11: if a run we were watching just finished, refresh the durable
+        // board once so the maintainer sees the produced artifacts without
+        // clicking Refresh. load() preserves drafts and scroll (Change 10). Guard
+        // on autoReloadedRunId so we fire exactly once per completed run.
+        const run = result && result.run ? result.run : null;
+        if (run && run.databaseId != null) {
+          const wasActive = lastRunSeen && lastRunSeen.databaseId === run.databaseId && lastRunSeen.status !== 'completed';
+          lastRunSeen = { databaseId: run.databaseId, status: run.status };
+          if (wasActive && run.status === 'completed' && autoReloadedRunId !== run.databaseId) {
+            autoReloadedRunId = run.databaseId;
+            await load();
+            return;
+          }
+        }
         patchRunStatusStrip();
       } catch (error) {
         if (token !== runStatusToken || view !== 'board' || !state || state.id !== setId) return;
@@ -633,6 +708,10 @@ export function renderHtml(bootstrap) {
 
     function wire() {
       document.querySelector('[data-back]')?.addEventListener('click', () => { dispatchNotice = null; loadIndex(); });
+      document.querySelector('[data-filter-unapproved]')?.addEventListener('change', event => {
+        showOnlyUnapproved = event.target.checked;
+        render();
+      });
       document.querySelectorAll('[data-phase]').forEach(button => button.addEventListener('click', () => {
         selectedPhase = button.dataset.phase;
         lastBulkResult = null;
