@@ -5,6 +5,7 @@ import {
   checkForbiddenPaths,
   checkCrossSystemAdr,
   checkMainSync,
+  checkIndexMdNotModified,
   evaluatePreflightChecks,
   HANDOFF_DATED_RE,
   TRIVIAL_PATH_RE,
@@ -138,6 +139,34 @@ test('checkMainSync invalidates prior validation when the branch changed', () =>
   }));
   assert.match(warning, /Rerun affected validation/);
 });
+
+test('checkIndexMdNotModified denies when INDEX.md is in the diff', () => {
+  const result = checkIndexMdNotModified(['docs/knowledge/handoffs/INDEX.md']);
+  assert.ok(result, 'expected deny when INDEX.md is modified');
+  assert.match(result, /INDEX\.md must not be committed to a PR branch/);
+  assert.match(result, /git rm --cached/);
+});
+
+test('checkIndexMdNotModified denies when INDEX.md appears alongside other files', () => {
+  const result = checkIndexMdNotModified([
+    'src/core/foo.ts',
+    'docs/knowledge/handoffs/INDEX.md',
+  ]);
+  assert.ok(result, 'expected deny when INDEX.md is present with other changes');
+});
+
+test('checkIndexMdNotModified allows diffs that do not touch INDEX.md', () => {
+  assert.equal(checkIndexMdNotModified(['src/core/foo.ts']), null);
+  assert.equal(checkIndexMdNotModified(['docs/knowledge/handoffs/2026-07-28-test.md']), null);
+  assert.equal(checkIndexMdNotModified([]), null);
+});
+
+test('checkIndexMdNotModified matches Windows-style paths', () => {
+  const result = checkIndexMdNotModified(['docs\\knowledge\\handoffs\\INDEX.md']);
+  assert.ok(result, 'expected deny for Windows-style path');
+});
+
+
 
 test('preflight preserves sync warning alongside an unrelated deny', () => {
   const result = evaluatePreflightChecks({
