@@ -1,4 +1,5 @@
 import { graphql, paginate, request } from './github.mjs';
+import { CI_INCIDENT_MARKER } from './markers.mjs';
 import {
   hasTrustedTrainPromotionCheck,
   isTrustedTrainPromotionCheck,
@@ -127,7 +128,7 @@ try {
 }
 
 const body = [
-  '<!-- crawler-ci-incident:v1 -->',
+  CI_INCIDENT_MARKER,
   `# ${run.name} needs recovery`,
   '',
   `- Conclusion: \`${run.conclusion}\``,

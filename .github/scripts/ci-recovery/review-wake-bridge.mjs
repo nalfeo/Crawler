@@ -31,6 +31,7 @@ export const PROTECTED_WORKFLOW_PATHS = new Set([
   '.github/scripts/ci-recovery/pr-lifecycle.mjs',
   '.github/scripts/ci-recovery/review-request.mjs',
   '.github/scripts/ci-recovery/loop-incident-lib.mjs',
+  '.github/scripts/ci-recovery/markers.mjs',
   '.github/scripts/ci-recovery/github.mjs',
   '.github/scripts/ci-recovery/issue-intake-lib.mjs',
   '.github/scripts/ci-recovery/state.mjs',

@@ -51,6 +51,19 @@ import {
   waitForOutstandingCount,
 } from './router.mjs';
 import {
+  CI_INCIDENT_MARKER,
+  COORDINATOR_DATA_PREFIX,
+  MANAGED_COMMENT_MARKERS,
+  MANAGED_COMMENT_PREFIX,
+  LOOP_INCIDENT_FINGERPRINT_PREFIX,
+  LOOP_INCIDENT_MARKER,
+  MERGE_TRAIN_EMPTY_INCIDENT_MARKER,
+  MERGE_TRAIN_LANDED_MARKER,
+  STATE_DATA_PREFIX,
+  TASK_COMMENT_MARKER,
+  LIFECYCLE_DATA_PREFIX,
+} from './markers.mjs';
+import {
   automationProgressKey,
   blockerFingerprint,
   makeState,
@@ -1813,11 +1826,21 @@ test('train sweeps preserve synchronize only for the directly triggered PR', () 
 
 test('managed recovery comments do not feed the recovery router', () => {
   for (const body of [
+    `${STATE_DATA_PREFIX}x -->\nstate-data`,
+    `${TASK_COMMENT_MARKER} fingerprint=x -->\ntask`,
+    `${CI_INCIDENT_MARKER}\nincident`,
     '<!-- crawler-ci-state:v1 -->\nstate',
-    '<!-- crawler-ci-task:v1 fingerprint=x -->\ntask',
     '<!-- crawler-merge-train:v1 -->\nstatus',
+    `${MERGE_TRAIN_LANDED_MARKER}\nlanded`,
+    `${MERGE_TRAIN_EMPTY_INCIDENT_MARKER}\nempty-train-incident`,
     '<!-- crawler-review-request:v1 head=x reason=ready -->',
     '<!-- crawler-review-conflict:v1 episode=x head=y base=z -->',
+    `${LIFECYCLE_DATA_PREFIX}x -->\nlifecycle-data`,
+    '<!-- crawler-pr-lifecycle:v1 -->\nlifecycle',
+    `${COORDINATOR_DATA_PREFIX}x -->\ncoordinator-data`,
+    '<!-- crawler-ci-conflict-coordinator:v1 -->\ncoordinator',
+    `${LOOP_INCIDENT_MARKER}\nloop-incident`,
+    `${LOOP_INCIDENT_FINGERPRINT_PREFIX}x -->\nloop-fingerprint`,
   ]) {
     assert.equal(isManagedCommentEvent({ comment: { body } }, 'issue_comment'), true);
   }
@@ -1832,18 +1855,34 @@ test('managed recovery comments do not feed the recovery router', () => {
 
 test('managed recovery comments are rejected by the workflow job guard', () => {
   assert.equal(typeof routeJob.if, 'string');
-  for (const marker of [
-    '<!-- crawler-ci-state:v1 -->',
-    '<!-- crawler-ci-task:v1',
-    '<!-- crawler-merge-train:v1 -->',
-    '<!-- crawler-review-request:v1',
-    '<!-- crawler-review-conflict:v1',
-  ]) {
+  // All managed-comment markers start with '<!-- crawler-' (MANAGED_COMMENT_PREFIX).
+  // The YAML filter uses a single prefix check so new markers are covered
+  // automatically without editing the workflow file.
+  assert.ok(
+    routeJob.if.includes(`!startsWith(github.event.comment.body, '${MANAGED_COMMENT_PREFIX}')`),
+    `expected job guard to use the shared managed-comment prefix '${MANAGED_COMMENT_PREFIX}'`,
+  );
+  // Every marker in MANAGED_COMMENT_MARKERS must satisfy the shared prefix.
+  for (const marker of MANAGED_COMMENT_MARKERS) {
     assert.ok(
-      routeJob.if.includes(`!startsWith(github.event.comment.body, '${marker}')`),
-      `expected job guard for ${marker}`,
+      marker.startsWith(MANAGED_COMMENT_PREFIX),
+      `marker '${marker}' does not start with MANAGED_COMMENT_PREFIX '${MANAGED_COMMENT_PREFIX}'`,
     );
   }
+});
+
+test('managed marker inventory covers every exported managed marker string exactly once', async () => {
+  const markerModule = await import('./markers.mjs');
+  const exportedManagedMarkers = Object.entries(markerModule)
+    .filter(
+      ([name, value]) =>
+        name !== 'MANAGED_COMMENT_PREFIX' &&
+        typeof value === 'string' &&
+        value.startsWith(MANAGED_COMMENT_PREFIX),
+    )
+    .map(([, value]) => value)
+    .sort();
+  assert.deepEqual([...new Set(MANAGED_COMMENT_MARKERS)].sort(), exportedManagedMarkers);
 });
 
 test('router listens only for completed CI workflow runs', () => {
