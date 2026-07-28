@@ -51,6 +51,24 @@ test('boots into the set index when the canvas opens without a set', () => {
   assert.match(withoutSet, /if \(currentSetId\) load\(\); else loadIndex\(\);/);
 });
 
+test('scopes advancement controls to the active phase tab with a header refresh fallback', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 't' });
+  // Phase controls (Run / Approve remaining / Advance) render only on the tab matching the durable phase.
+  assert.match(html, /selectedPhase === state\.phase \?/);
+  // The gate must structurally wrap the Phase controls section (guards against the condition
+  // decaying into dead code that always/never renders the controls).
+  assert.match(
+    html,
+    /selectedPhase === state\.phase \?\s*'<section class="panel"><div class="panel-head"><div><strong>Phase controls/,
+  );
+  // Non-active phase tabs show a review-only pointer to the active phase instead of the controls.
+  assert.match(html, /Advancement controls for the active phase/);
+  assert.match(html, /an earlier, completed phase/);
+  assert.match(html, /a later phase, not yet active/);
+  // A generic Refresh lives in the header so it stays reachable from every tab.
+  assert.match(html, /← All sets<\/button><button data-refresh /);
+});
+
 test('never lets a set id reach the DOM unescaped', () => {
   const html = renderHtml({ instanceId: 'review-1', setId: '</script><img>', token: 't' });
   assert.ok(!html.includes('</script><img>'));
