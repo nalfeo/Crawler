@@ -529,47 +529,11 @@ export class ThemeEquipmentRunner {
     if (state.phase === 'roster' || state.phase === 'briefs') {
       return this.judgeTextCollection(state, state.phase);
     }
+    const sources = selectCollectionTileSources(state);
     const tiles = await Promise.all(
-      state.items.flatMap((item) => {
-        if (state.phase === 'sprite-sheets') {
-          const artifact = requiredArtifact(item, 'sprite-sheets', 'raw-sheet');
-          if (!artifact.briefId || !artifact.runId) {
-            throw new ThemeEquipmentRunnerError(
-              `Collection artifact metadata is incomplete for "${item.id}".`,
-            );
-          }
-          return [
-            this.deps.store
-              .get(`${artifact.briefId}/${artifact.runId}/${artifact.summary}`)
-              .then((png) => ({ label: item.displayName, png })),
-          ];
-        }
-        // variant-approval: include ALL approved variants so the collection
-        // judge scores every selected variant, not just the first one.
-        const approvedArtifacts = item.phases['variant-approval'].artifacts.filter(
-          (a) => a.kind === THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
-        );
-        if (approvedArtifacts.length === 0) {
-          throw new ThemeEquipmentRunnerError(
-            `Item "${item.id}" has no approved-variant artifacts for collection judging.`,
-          );
-        }
-        return approvedArtifacts.map((artifact) => {
-          if (!artifact.briefId || !artifact.runId || artifact.variantIndex === undefined) {
-            throw new ThemeEquipmentRunnerError(
-              `Collection artifact metadata is incomplete for "${item.id}".`,
-            );
-          }
-          const filename = `processed/${String(artifact.variantIndex).padStart(2, '0')}.png`;
-          const label =
-            approvedArtifacts.length > 1
-              ? `${item.displayName} v${artifact.variantIndex}`
-              : item.displayName;
-          return this.deps.store
-            .get(`${artifact.briefId}/${artifact.runId}/${filename}`)
-            .then((png) => ({ label, png }));
-        });
-      }),
+      sources.map((source) =>
+        this.deps.store.get(source.key).then((png) => ({ label: source.label, png })),
+      ),
     );
     return judgeThemeEquipmentCollectionWithVision({
       state,
@@ -739,6 +703,90 @@ function requiredArtifact(
     );
   }
   return artifact;
+}
+
+/**
+ * One PNG tile to fetch for a vision collection-cohesion contact sheet: the
+ * run-store key of the image and the label the judge prompt uses to refer to
+ * it.
+ */
+export interface CollectionTileSource {
+  readonly key: string;
+  readonly label: string;
+}
+
+/**
+ * Choose the contact-sheet tiles for the collection-cohesion vision judge at
+ * the `sprite-sheets` or `variant-approval` phase. Returns EXACTLY ONE tile
+ * per item, in `state.items` order.
+ *
+ * Collection cohesion is a cross-item judgment — whether the items read as a
+ * single coherent set — so one representative image per item is the right
+ * granularity. Per-variant quality was already judged during variant
+ * selection/approval. One tile per item also keeps the sheet within
+ * `CONTACT_SHEET_MAX_TILES` for large sets (N items = N tiles, never
+ * N × variants — an 18-item set with 3 approved variants each previously
+ * assembled 54 tiles and overflowed the 32 cap at the very end of a paid run)
+ * and keeps each sprite large enough for the vision model to read.
+ *
+ * For `variant-approval` the representative is the approved variant with the
+ * LOWEST `variantIndex` — a deterministic tiebreak that does not depend on the
+ * durable artifact array's order. Every approved variant is by definition
+ * acceptable, so any is a valid stand-in. The metadata of EVERY approved
+ * variant is validated before selection, so a malformed unselected artifact
+ * fails loudly here rather than surviving to a later publish step.
+ *
+ * Throws `ThemeEquipmentRunnerError` for an unsupported phase, an item with no
+ * approved variants, or incomplete artifact metadata.
+ */
+export function selectCollectionTileSources(state: ThemeEquipmentSetState): CollectionTileSource[] {
+  switch (state.phase) {
+    case 'sprite-sheets':
+      return state.items.map((item) => {
+        const artifact = requiredArtifact(item, 'sprite-sheets', 'raw-sheet');
+        if (!artifact.briefId || !artifact.runId || !artifact.summary) {
+          throw new ThemeEquipmentRunnerError(
+            `Collection artifact metadata is incomplete for "${item.id}".`,
+          );
+        }
+        return {
+          key: `${artifact.briefId}/${artifact.runId}/${artifact.summary}`,
+          label: item.displayName,
+        };
+      });
+    case 'variant-approval':
+      return state.items.map((item) => {
+        const approved = item.phases['variant-approval'].artifacts.filter(
+          (artifact) => artifact.kind === THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
+        );
+        if (approved.length === 0) {
+          throw new ThemeEquipmentRunnerError(
+            `Item "${item.id}" has no approved-variant artifacts for collection judging.`,
+          );
+        }
+        for (const artifact of approved) {
+          if (!artifact.briefId || !artifact.runId || artifact.variantIndex === undefined) {
+            throw new ThemeEquipmentRunnerError(
+              `Collection artifact metadata is incomplete for "${item.id}".`,
+            );
+          }
+        }
+        const representative = approved.reduce((lowest, candidate) => {
+          const candidateIndex = candidate.variantIndex ?? Number.POSITIVE_INFINITY;
+          const lowestIndex = lowest.variantIndex ?? Number.POSITIVE_INFINITY;
+          return candidateIndex < lowestIndex ? candidate : lowest;
+        });
+        const filename = `processed/${String(representative.variantIndex).padStart(2, '0')}.png`;
+        return {
+          key: `${representative.briefId}/${representative.runId}/${filename}`,
+          label: item.displayName,
+        };
+      });
+    default:
+      throw new ThemeEquipmentRunnerError(
+        `selectCollectionTileSources does not support phase "${state.phase}".`,
+      );
+  }
 }
 
 export async function __stageThemeEquipmentRun(
