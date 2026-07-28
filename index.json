@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4a7200bf08a65d816c219924234ae895806ad881",
+    "commitDate": "2026-07-28T06:19:51Z",
+    "commitSubject": "fix(ci): publish docs-update PRs with PAT auth (#2155)",
+    "capturedAt": "2026-07-28T07:26:55.504Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30334834080",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/4a7200bf08a65d816c219924234ae895806ad881.json"
+  },
+  {
     "commit": "e2055956e02444f38144072ac4441f5cdfc7e604",
     "commitDate": "2026-07-28T06:09:22Z",
     "commitSubject": "Add nightly velocity/perf issue filers with trusted checkout and staggered schedules (#2149)",
