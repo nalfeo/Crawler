@@ -83,23 +83,46 @@ function readPackAsset(packId: string, fileName: string): RgbaImage {
   return decodePng(fs.readFileSync(abs));
 }
 
-/** Read `<prefix>-0.png`, `<prefix>-1.png`, … until the sequence stops. */
-function readPackPool(packId: string, prefix: string): readonly RgbaImage[] {
-  const out: RgbaImage[] = [];
-  for (let i = 0; ; i++) {
-    const abs = path.join(
-      REPO_ROOT,
-      'public',
-      'assets',
-      'terrain-packs',
-      packId,
-      `${prefix}-${i}.png`,
-    );
-    if (!fs.existsSync(abs)) break;
-    out.push(decodePng(fs.readFileSync(abs)));
+/**
+ * Discover and validate the sorted pool indices for `${prefix}-N.png` in `dir`.
+ *
+ * Reads the directory listing so interior gaps are detected: if floor-0.png and
+ * floor-2.png exist but floor-1.png is absent, the sequential-break approach would
+ * silently return a one-variant pool and trigger a destructive rebuild downgrade.
+ * This function requires a strictly contiguous 0..N sequence and throws on any gap.
+ *
+ * Exported for unit testing.
+ */
+export function discoverPoolIndices(dir: string, prefix: string): number[] {
+  const re = new RegExp(`^${prefix}-(\\d+)\\.png$`);
+  const indices: number[] = [];
+  if (fs.existsSync(dir)) {
+    for (const entry of fs.readdirSync(dir)) {
+      const m = re.exec(entry);
+      if (m) indices.push(parseInt(m[1]!, 10));
+    }
   }
-  if (out.length === 0) throw new Error(`--from-source found no ${prefix}-*.png in ${packId}`);
-  return out;
+  if (indices.length === 0) {
+    throw new Error(`--from-source found no ${prefix}-*.png in ${dir}`);
+  }
+  indices.sort((a, b) => a - b);
+  for (let i = 0; i < indices.length; i++) {
+    if (indices[i] !== i) {
+      throw new Error(
+        `--from-source: non-contiguous source pool for "${prefix}" in ${path.basename(dir)}; ` +
+          `found indices [${indices.join(', ')}] but expected 0..${indices.length - 1}. ` +
+          `Restore or regenerate all source files before rebuilding.`,
+      );
+    }
+  }
+  return indices;
+}
+
+/** Read `<prefix>-0.png`, `<prefix>-1.png`, … from the committed pack sources. */
+function readPackPool(packId: string, prefix: string): readonly RgbaImage[] {
+  const dir = path.join(REPO_ROOT, 'public', 'assets', 'terrain-packs', packId);
+  const indices = discoverPoolIndices(dir, prefix);
+  return indices.map((i) => decodePng(fs.readFileSync(path.join(dir, `${prefix}-${i}.png`))));
 }
 
 async function loadMaterial(spec: SurfaceMaterialSpec, options: CliOptions): Promise<RgbaImage> {
@@ -223,10 +246,10 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const atlas = decodePng(atlasBytes);
   const typed = manifest as TerrainPackDef;
   return reportValidation(spec.id, [
-    // Use the gen-specific schema validator: the pack id ('floor1-dungeon',
-    // 'floor1-cave') is intentionally not yet in TERRAIN_PACK_IDS — these are
-    // generation targets that get registered once their manifests are committed.
-    // All non-id fields are validated against the same strict schema.
+    // Use the gen-specific schema validator: floor1-dungeon/floor1-cave are now
+    // registered in RUNTIME_TERRAIN_PACK_IDS, but validateManifestSchema also
+    // validates the id field against the runtime registry, so either validator
+    // works here. All non-id fields are validated against the same strict schema.
     validateGenManifestSchema(manifest),
     validateAtlasDimensions(typed, atlas),
     validateMaskCoverage(typed),
