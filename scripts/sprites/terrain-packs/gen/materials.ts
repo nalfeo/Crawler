@@ -290,8 +290,8 @@ export const FLOOR2_LINEWORK_MATERIALS = {
  * Floor 2 linework PROP sheet.
  *
  * Unlike every other spec in this file this is NOT a tileable material — it is a
- * 2x2 grid of discrete objects on a flat pure-magenta field that local code keys
- * out into four square frames. Chroma keying is derivation (the same class of
+ * 3x2 grid of discrete objects on a flat pure-magenta field that local code keys
+ * out into six square frames. Chroma keying is derivation (the same class of
  * operation as the crack-mask isolation in `buildGroundDecals`), not texture
  * synthesis, so it stays on the correct side of the governing law: the object's
  * shape and surface both come from Azure, only the cut-out is local.
@@ -301,26 +301,60 @@ export const FLOOR2_LINEWORK_MATERIALS = {
  * same generation harness.
  */
 export const FLOOR2_LINEWORK_PROPS: SurfaceMaterialSpec = {
-  cacheKey: 'floor2-linework-props',
+  cacheKey: 'floor2-linework-props-v2',
   prompt:
-    'Four separate mining objects arranged in a 2x2 grid on a plain flat pure ' +
-    'magenta background, one object centred in each quadrant with a wide magenta ' +
-    'margin around it and no object touching another. Top-left: a rusty iron ' +
-    'mine cart on small wheels seen from directly above. Top-right: an overturned ' +
-    'empty mine cart seen from directly above. Bottom-left: a track switch lever ' +
-    'stand, a short iron lever on a base plate, seen from directly above. ' +
-    'Bottom-right: a pipe valve wheel on a short flanged stub, seen from directly ' +
-    'above. Top-down orthographic view, flat even lighting, no cast shadows, no ' +
-    'perspective, no ground texture, no text, no watermark, muted desaturated ' +
-    'rusted industrial palette, dark fantasy dungeon crawler game asset sheet. ' +
-    'The background must be a single uniform magenta colour everywhere it is not ' +
-    'an object.',
+    'Six separate mining objects arranged in a 3x2 grid on a plain flat pure ' +
+    'magenta background, one object centred in each cell with a wide magenta ' +
+    'margin around it and no object touching another. Top row, left to right: a ' +
+    'rusty iron mine cart on small wheels seen from directly above; an overturned ' +
+    'empty mine cart seen from directly above; a track switch lever stand, a short ' +
+    'iron lever on a base plate, seen from directly above. Bottom row, left to ' +
+    'right: a chunky bolted iron pipe collar, a thick ring of metal with square ' +
+    'bolt heads around its rim, seen from directly above; a small round pressure ' +
+    'gauge with a dark dial face in a heavy iron bezel, seen from directly above; ' +
+    'a compact iron handwheel with four thick spokes and a solid hub, seen from ' +
+    'directly above. Every bottom-row object must be circular and symmetrical so ' +
+    'it reads the same at any rotation. Top-down orthographic view, flat even ' +
+    'lighting, no cast shadows, no perspective, no ground texture, no pipes, no ' +
+    'rails, no text, no watermark, muted desaturated rusted industrial palette, ' +
+    'dark fantasy dungeon crawler game asset sheet. The background must be a ' +
+    'single uniform magenta colour everywhere it is not an object.',
   tile: {
     sizePx: 64,
     posterizeLevels: 12,
     targetMeanLuminance: 96,
     maxLuminance: 190,
     targetStdDev: 22,
+  },
+};
+
+/**
+ * Floor 2 linework WEAR overlay.
+ *
+ * A tileable field of corrosion damage that local code thresholds into a
+ * darkening mask and multiplies over the pipe body. Only the *damage* comes from
+ * Azure; the decision about which pixels of a frame it may touch (never the
+ * edge-locked border band, never off-silhouette) is geometry, and stays local.
+ *
+ * The prompt asks for high contrast on a mid field precisely because the local
+ * side only keeps the dark tail: a low-contrast material would threshold into
+ * either nothing or a solid blot.
+ */
+export const FLOOR2_LINEWORK_WEAR: SurfaceMaterialSpec = {
+  cacheKey: 'floor2-linework-wear',
+  prompt:
+    'Seamless tileable corrosion damage overlay: long vertical rust streaks ' +
+    'running down a metal surface, dark hairline cracks in the crust, flaking ' +
+    'scale patches and dark pitting, scattered unevenly with plenty of clean ' +
+    'space between them. High contrast, very dark damage on a mid neutral grey ' +
+    'field. No objects, no pipes, no rivets, no edges, no silhouettes, no text. ' +
+    SHARED_STYLE,
+  tile: {
+    sizePx: 64,
+    posterizeLevels: 6,
+    targetMeanLuminance: 120,
+    maxLuminance: 210,
+    targetStdDev: 46,
   },
 };
 

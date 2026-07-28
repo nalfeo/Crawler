@@ -159,3 +159,72 @@ The human rejected the first lit pass as "looking like Factorio". The resulting 
 - ADR 2026-07-25: Floor 2 terrain variance — shared-base pools, ground decals, and clip-by-overpaint
 - `docs/knowledge/handoffs/2026-07-28-floor2-industrial-linework.md`
 - cr31's Wang-tile pages (2-edge set = 16 tiles; pipes as the canonical example)
+
+## Amendment 2026-07-28: art-quality polish round
+
+The initial implementation shipped and was reviewed on a gameplay screenshot. The human raised
+five defects, all of which are addressed without changing the Wang mechanism, the join contract,
+or the route planner.
+
+### Burial is a planning decision, not a draw-order trick
+
+The most structural of the five was "pipes must go _under_ the track for real". Drawing the pipe
+first and letting the track overpaint it would satisfy the screenshot but not the model: the pipe
+tile would still be a member of its own visible network, so the run-length and concentration
+metrics would count tiles nobody can see, and the pipe's neighbours would still present a stub
+pointing into a tile that reads as track.
+
+Instead `buryCrossings()` runs inside the plan. Tiles a pipe shares with an already-placed track
+become a third occupancy value `LINEWORK_BURIED`, distinct from both empty and visible. The plan
+then exposes a **second, parallel view** of itself — `renderOccupancy`, `renderMasks`,
+`renderRuns`, `buriedCount` — alongside the original topological arrays. The renderer consumes
+only the render view.
+
+Two properties make this safe and are now tested:
+
+- **Burial cannot strand a tile.** Removing a tile from the visible network removes a bit from
+  each neighbour's mask. A neighbour can therefore drop to mask 0 — a tile connected to nothing,
+  which would stamp as an isolated blob. The pass is a monotone fixpoint: rebuild the render
+  masks, bury any visible tile that reached mask 0, repeat. It terminates because burial only
+  ever adds tiles to a finite set.
+- **Burial cannot sever a branch.** Growth along the run by `BURY_MARGIN` is restricted to tiles
+  with exactly two set bits. Sinking a T-junction or a cross would orphan whichever branch was
+  not part of the crossing.
+
+`LINEWORK_BURIED` is a truthy occupancy value, so every previously-sufficient `!occupancy[i]`
+test became a latent bug. `groundMask()` and `measureRuns()` now compare against the value.
+
+Layers are sorted track-kind-first before planning. That is a no-op against today's manifest, but
+it makes "track is placed before pipe" a property of the renderer rather than of the layer order
+someone happened to author.
+
+### Art-side changes
+
+- **Track boldness came from contrast, not brightness.** `restylePixelArtMaterial()` normalises
+  _toward_ `targetMeanLuminance`, so raising it would have made the track literally brighter — the
+  opposite of the complaint, and a violation of the near-floor-tone style law. Boldness came from
+  a wider silhouette, `targetStdDev` 24 → 34, a darker rim (`0.34`), and a steeper rail band ramp.
+- **Buffer stops** required a dedicated `capCurve()` because the shared stub curve caps arc length
+  at the cell centre, which had been silently painting only the near half of every end cap since
+  the original merge. The cap is a pre-pass that wins over rail — a buffer stop's beam sits
+  _across_ the rails — implemented via an empty-curve-list substitution rather than an early
+  `break`, so T-junction and cross frames keep their existing multi-curve override behaviour.
+- **Rivet collars now wrap the bore.** They previously rendered as two tabs stuck to the pipe
+  silhouette because rail was classified first. For round profiles only, the collar now wins over
+  the body and keeps the cylinder cross-coordinate. Track sleepers still pass _under_ their rails,
+  which is correct.
+- **Props are cut by connected component, not by grid cell.** The generator does not respect
+  notional cell boundaries and adds contact shadows that key as foreground, so rigid slicing
+  truncated overhanging objects and let shadow crumbs blow out bounding boxes. Components are
+  labelled on the _un-eroded_ mask (eroding first severs thin structures), then each component is
+  eroded individually.
+
+### Deviation from the reviewed plan
+
+The plan called for a `variants` schema field with a 48-frame pipe atlas and a variant picker.
+This was **not** built. A single wear overlay — a generated corrosion material thresholded into a
+multiplicative darkening of the pipe bore — delivers the requested rust and cracking at a fraction
+of the risk: no schema change, no 3x atlas, no variant-sweep guard extension. It preserves the
+join contract for free because it is sampled through the same `sampleTile` edge lock, so every
+frame's stub band receives an identical overlay. If genuine per-tile variation is wanted later,
+the `variants` design remains valid.
