@@ -25,7 +25,11 @@ import {
   neighborMask8InTerrain,
   normalizeBlob47Mask,
 } from '../../src/shared/terrain-pack-mask.js';
-import { pickPoolVariant } from '../../src/shared/terrain-pack-variants.js';
+import {
+  pickPoolCombo,
+  buildPoolStampConfig,
+  pickWallAccentSelection,
+} from '../../src/shared/terrain-pack-variants.js';
 
 interface StampCall {
   key: string;
@@ -45,10 +49,16 @@ class MockRenderTexture {
   depth = 0;
   readonly stamps: StampCall[] = [];
   readonly fills: unknown[] = [];
+  readonly clears: { x: number; y: number; w: number; h: number }[] = [];
 
   setOrigin(x: number, y: number): this {
     this.originX = x;
     this.originY = y;
+    return this;
+  }
+
+  clear(x: number, y: number, w: number, h: number): this {
+    this.clears.push({ x, y, w, h });
     return this;
   }
 
@@ -133,6 +143,7 @@ const allPackKeys = new Set<string>([
   ...pack.floorPool.map((v) => v.textureKey),
   ...pack.corridorPool.map((v) => v.textureKey),
   ...Object.values(pack.doorSet).map((v) => v.textureKey),
+  ...(pack.wallAccents ?? []).map((a) => a.textureKey),
 ]);
 
 describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8)', () => {
@@ -155,11 +166,19 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       (m) => m.maskId === expectedMask,
     )!.frameIndex;
 
-    expect(rt.stamps).toHaveLength(1);
+    // 1 base wall stamp, plus an optional accent stamp for this single tile
+    // (deterministic per this floor's seed — accented or not, either is valid).
+    expect(rt.stamps.length).toBeGreaterThanOrEqual(1);
+    expect(rt.stamps.length).toBeLessThanOrEqual(2);
     expect(rt.stamps[0]!.key).toBe(pack.wallAutotile.textureKey);
     expect(rt.stamps[0]!.frame).toBe(expectedFrame);
     expect(rt.stamps[0]!.config.scaleX).toBe(packWallScale);
     expect(rt.stamps[0]!.config.scaleY).toBe(packWallScale);
+    if (rt.stamps.length === 2) {
+      const accentKeys = new Set((pack.wallAccents ?? []).map((a) => a.textureKey));
+      expect(accentKeys.has(rt.stamps[1]!.key)).toBe(true);
+      expect(rt.stamps[1]!.frame).toBe(expectedFrame);
+    }
   });
 
   it('stamps the fully-enclosed (mask 255) frame for an interior wall tile surrounded by walls', () => {
@@ -170,8 +189,12 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
 
     buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
 
-    // Center tile is index (1,1) -> the 5th stamp (row-major, ty then tx).
-    const centerStamp = rt.stamps[1 * 3 + 1];
+    // Base wall stamps only (accent stamps interleave optionally, so filter
+    // by textureKey rather than a fixed positional index). Center tile is
+    // index (1,1) -> the 5th base wall stamp (row-major, ty then tx).
+    const baseWallStamps = rt.stamps.filter((s) => s.key === pack.wallAutotile.textureKey);
+    expect(baseWallStamps).toHaveLength(9);
+    const centerStamp = baseWallStamps[1 * 3 + 1];
     const rawMask = neighborMask8InTerrain(floorMap.terrain, 3, 3, 1, 1, TerrainType.STONE_WALL);
     expect(rawMask).toBe(255);
     const canonicalMask = normalizeBlob47Mask(255);
@@ -204,17 +227,19 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       (m) => m.maskId === normalizeBlob47Mask(rawRight),
     )!.frameIndex;
 
-    expect(rt.stamps).toHaveLength(2);
-    expect(rt.stamps[0]!.frame).toBe(leftFrame);
-    expect(rt.stamps[1]!.frame).toBe(rightFrame);
-    expect(rt.stamps[0]!.frame).not.toBe(
+    // Base wall stamps only — accent stamps (if any) interleave optionally.
+    const baseWallStamps = rt.stamps.filter((s) => s.key === pack.wallAutotile.textureKey);
+    expect(baseWallStamps).toHaveLength(2);
+    expect(baseWallStamps[0]!.frame).toBe(leftFrame);
+    expect(baseWallStamps[1]!.frame).toBe(rightFrame);
+    expect(baseWallStamps[0]!.frame).not.toBe(
       pack.wallAutotile.masks.find((m) => m.maskId === 0)!.frameIndex,
     );
-    expect(rt.stamps[1]!.frame).not.toBe(
+    expect(baseWallStamps[1]!.frame).not.toBe(
       pack.wallAutotile.masks.find((m) => m.maskId === 0)!.frameIndex,
     );
   });
-  it('stamps a deterministic floorPool variant for STONE_FLOOR tiles', () => {
+  it('stamps a deterministic floorPool combo (center-origin, transform-aware) for STONE_FLOOR tiles', () => {
     const { scene, rt } = createPackScene(allPackKeys);
     const floorMap = makeFloorMap(
       [TerrainType.STONE_FLOOR, TerrainType.STONE_FLOOR, TerrainType.STONE_FLOOR],
@@ -230,14 +255,35 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(result.spriteCount).toBe(0);
 
     for (let tx = 0; tx < 3; tx++) {
-      const expectedVariant = pickPoolVariant(pack.floorPool, 7, tx, 0)!;
-      expect(rt.stamps[tx]!.key).toBe(expectedVariant.textureKey);
+      const expectedCombo = pickPoolCombo(pack.floorPool, 7, tx, 0)!;
+      const expectedConfig = buildPoolStampConfig(expectedCombo.transform, packPoolScale);
+      expect(rt.stamps[tx]!.key).toBe(expectedCombo.variant.textureKey);
       expect(rt.stamps[tx]!.frame).toBeUndefined();
-      expect(rt.stamps[tx]!.config.scaleX).toBe(packPoolScale);
+      expect(rt.stamps[tx]!.x).toBe(tx * tileSize + tileSize / 2);
+      expect(rt.stamps[tx]!.y).toBe(tileSize / 2);
+      expect(rt.stamps[tx]!.config).toEqual(expectedConfig);
     }
+
+    // Live diversity instrumentation (refinement #4): every stamped tile's
+    // source id and transform are tallied.
+    const totalFloorSourceCount = Object.values(result.packFloorSourceCounts).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    const totalFloorTransformCount = Object.values(result.packFloorTransformCounts).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    const totalFloorComboCount = Object.values(result.packFloorComboCounts).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    expect(totalFloorSourceCount).toBe(3);
+    expect(totalFloorTransformCount).toBe(3);
+    expect(totalFloorComboCount).toBe(3);
   });
 
-  it('stamps a deterministic corridorPool variant for CORRIDOR tiles (API completeness — not exercised by Floor 2 gameplay today)', () => {
+  it('stamps a deterministic corridorPool combo for CORRIDOR tiles (API completeness — not exercised by Floor 2 gameplay today)', () => {
     const { scene, rt } = createPackScene(allPackKeys);
     const floorMap = makeFloorMap([TerrainType.CORRIDOR, TerrainType.CORRIDOR], 2, 1, 11);
 
@@ -245,8 +291,8 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
 
     expect(result.packCorridorCount).toBe(2);
     for (let tx = 0; tx < 2; tx++) {
-      const expectedVariant = pickPoolVariant(pack.corridorPool, 11, tx, 0)!;
-      expect(rt.stamps[tx]!.key).toBe(expectedVariant.textureKey);
+      const expectedCombo = pickPoolCombo(pack.corridorPool, 11, tx, 0)!;
+      expect(rt.stamps[tx]!.key).toBe(expectedCombo.variant.textureKey);
     }
   });
 
@@ -259,6 +305,20 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     buildTerrainLayer(sceneB, floorMap, { terrainPackId: 'industrial-cave' });
 
     expect(rtA.stamps[0]!.key).toBe(rtB.stamps[0]!.key);
+  });
+
+  it('can assign a pack to cave terrain without changing the stone fallback path', () => {
+    const { scene, rt } = createPackScene(allPackKeys);
+    const floorMap = makeFloorMap([TerrainType.STONE_FLOOR, TerrainType.CAVE_FLOOR], 2, 1);
+
+    const result = buildTerrainLayer(scene, floorMap, {
+      terrainPacks: { cave: 'industrial-cave' },
+    });
+
+    expect(result.packFloorCount).toBe(1);
+    expect(rt.stamps).toHaveLength(1);
+    expect(pack.floorPool.some((variant) => variant.textureKey === rt.stamps[0]!.key)).toBe(true);
+    expect(result.colorCount).toBe(1);
   });
 
   it('leaves legacy rendering byte-identical when terrainPackId is omitted (Floor 1 path untouched)', () => {
@@ -296,5 +356,162 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(result.packFloorCount).toBe(0);
     expect(result.colorCount).toBe(1);
     expect(rt.stamps).toHaveLength(0);
+  });
+
+  it('accented wall tiles add a SECOND stamp (same frame, accent texture) on top of the base wall stamp (2026-07-25 refinement #3/#6)', () => {
+    const { scene, rt } = createPackScene(allPackKeys);
+    // A reasonably large all-wall grid gives the deterministic accent picker
+    // enough tiles to guarantee at least one accented tile at this seed.
+    const size = 30;
+    const grid = Array<TerrainType>(size * size).fill(TerrainType.STONE_WALL);
+    const floorMap = makeFloorMap(grid, size, size, 321);
+
+    const result = buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    expect(result.packWallCount).toBe(size * size);
+    expect(result.packWallAccentedCount).toBeGreaterThan(0);
+    // Structural performance cap (refinement #6): accent stamps are strictly
+    // a SECOND stamp on already-stamped wall tiles, never their own tile —
+    // so accented count can never exceed total wall count.
+    expect(result.packWallAccentedCount).toBeLessThanOrEqual(result.packWallCount);
+    const totalAccentCounts = Object.values(result.packWallAccentCounts).reduce((a, b) => a + b, 0);
+    expect(totalAccentCounts).toBe(result.packWallAccentedCount);
+
+    // Reconstruct the EXACT expected stamp sequence from the pure picker and
+    // assert the mock RenderTexture recorded exactly that sequence — proves
+    // the accent stamp reuses the SAME frameIndex as its tile's base wall
+    // stamp (mask-aware sharing, refinement #3) and comes immediately after
+    // it (one extra stamp per accented tile, never its own tile).
+    let expectedStampCount = size * size;
+    let cursor = 0;
+    for (let ty = 0; ty < size; ty++) {
+      for (let tx = 0; tx < size; tx++) {
+        const wallStamp = rt.stamps[cursor]!;
+        expect(wallStamp.key).toBe(pack.wallAutotile.textureKey);
+        cursor += 1;
+        const accent = pickWallAccentSelection(
+          pack.wallAccents ?? [],
+          floorMap.config.seed,
+          tx,
+          ty,
+        );
+        if (accent) {
+          expectedStampCount += 1;
+          const accentStamp = rt.stamps[cursor]!;
+          expect(accentStamp.key).toBe(accent.textureKey);
+          expect(accentStamp.frame).toBe(wallStamp.frame);
+          expect(accentStamp.config.scaleX).toBe(packWallScale);
+          expect(accentStamp.config.scaleY).toBe(packWallScale);
+          cursor += 1;
+        }
+      }
+    }
+    expect(rt.stamps).toHaveLength(expectedStampCount);
+    expect(expectedStampCount).toBe(size * size + result.packWallAccentedCount);
+  });
+});
+
+describe('buildTerrainLayer — ground decals are clipped by walls, not excluded by them', () => {
+  const decalSets = pack.groundDecals ?? [];
+  const decalKeys = new Set(decalSets.map((d) => d.textureKey));
+  /** Pack keys plus the decal atlases, simulating a full BootScene preload. */
+  const keysWithDecals = new Set<string>([...allPackKeys, ...decalKeys]);
+
+  /** Open floor room ringed by one tile of wall. */
+  function makeWalledRoom(size: number, seed: number): FloorMap {
+    const grid = Array<TerrainType>(size * size).fill(TerrainType.CAVE_FLOOR);
+    for (let ty = 0; ty < size; ty++) {
+      for (let tx = 0; tx < size; tx++) {
+        if (tx === 0 || ty === 0 || tx === size - 1 || ty === size - 1) {
+          grid[ty * size + tx] = TerrainType.CAVE_WALL;
+        }
+      }
+    }
+    return makeFloorMap(grid, size, size, seed);
+  }
+
+  it('places decals whose footprint overhangs a wall (the old rule reserved a dead margin)', () => {
+    expect(decalSets.length).toBeGreaterThan(0);
+    const size = 40;
+    const { scene, rt } = createPackScene(keysWithDecals);
+    const floorMap = makeWalledRoom(size, 1234);
+
+    const result = buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    expect(result.packGroundDecalCount).toBeGreaterThan(0);
+
+    // At least one decal must overhang the wall ring. Under the previous
+    // all-or-nothing footprint rule this was impossible by construction.
+    const overhanging = rt.stamps.filter((s) => {
+      const set = decalSets.find((d) => d.textureKey === s.key);
+      if (!set) return false;
+      const half = (tileSize * set.spanTiles) / 2;
+      return (
+        s.x - half < tileSize ||
+        s.y - half < tileSize ||
+        s.x + half > (size - 1) * tileSize ||
+        s.y + half > (size - 1) * tileSize
+      );
+    });
+    expect(overhanging.length).toBeGreaterThan(0);
+  });
+
+  it('paints every wall tile AFTER all decals, clearing its cell first so the wall art is the mask', () => {
+    const size = 40;
+    const { scene, rt } = createPackScene(keysWithDecals);
+    const floorMap = makeWalledRoom(size, 4321);
+
+    const result = buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    const lastDecalIndex = rt.stamps.reduce((acc, s, i) => (decalKeys.has(s.key) ? i : acc), -1);
+    expect(lastDecalIndex).toBeGreaterThanOrEqual(0);
+    const firstWallIndex = rt.stamps.findIndex((s) => s.key === pack.wallAutotile.textureKey);
+    expect(firstWallIndex).toBeGreaterThan(lastDecalIndex);
+
+    // One region clear per cover (wall) cell — the wall silhouette is inset and
+    // does not fill its own cell, so decal overhang inside the inset must go.
+    expect(rt.clears).toHaveLength(result.packWallCount);
+    for (const c of rt.clears) {
+      expect(c.w).toBe(tileSize);
+      expect(c.h).toBe(tileSize);
+    }
+  });
+
+  it('rejects a large decal set inside a one-tile corridor (ground-fraction floor)', () => {
+    const size = 40;
+    const { scene, rt } = createPackScene(keysWithDecals);
+    // A single horizontal one-tile-wide corridor through solid wall.
+    const grid = Array<TerrainType>(size * size).fill(TerrainType.CAVE_WALL);
+    const midY = Math.floor(size / 2);
+    for (let tx = 0; tx < size; tx++) grid[midY * size + tx] = TerrainType.CORRIDOR;
+    const floorMap = makeFloorMap(grid, size, size, 777);
+
+    buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    const largest = decalSets.reduce((a, b) => (a.spanTiles >= b.spanTiles ? a : b));
+    expect(largest.spanTiles).toBeGreaterThanOrEqual(4);
+    // A >=4-tile decal in a 1-tile corridor is <=25% ground, below the 0.35 floor.
+    expect(rt.stamps.some((s) => s.key === largest.textureKey)).toBe(false);
+  });
+
+  it('does not stamp a pack\u2019s decals onto another family\u2019s ground (mixed-biome floors)', () => {
+    const size = 40;
+    // Cave-only room. Assigning the pack to the STONE family means nothing on
+    // this map belongs to it, so it must contribute no decals — the previous
+    // `anyPack` resolution stamped stone cracks all over cave ground (and
+    // silently dropped the cave pack's own decals) on a two-pack floor.
+    const stoneOnly = createPackScene(keysWithDecals);
+    const stoneResult = buildTerrainLayer(stoneOnly.scene, makeWalledRoom(size, 2468), {
+      terrainPacks: { stone: 'industrial-cave' },
+    });
+    expect(stoneResult.packGroundDecalCount).toBe(0);
+    expect(stoneOnly.rt.stamps.some((s) => decalKeys.has(s.key))).toBe(false);
+
+    // Control: the SAME map with the pack bound to the cave family does decal.
+    const caveOnly = createPackScene(keysWithDecals);
+    const caveResult = buildTerrainLayer(caveOnly.scene, makeWalledRoom(size, 2468), {
+      terrainPacks: { cave: 'industrial-cave' },
+    });
+    expect(caveResult.packGroundDecalCount).toBeGreaterThan(0);
   });
 });

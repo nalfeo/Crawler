@@ -39,6 +39,7 @@ import {
   terrainPackDefSchema,
   TERRAIN_PACK_CELL_PX,
   type TerrainPackDef,
+  type TransformId,
 } from '../../../src/shared/terrain-pack-types.js';
 import { ATLAS_HEIGHT_PX, ATLAS_WIDTH_PX } from './atlas-grid.js';
 import {
@@ -49,6 +50,7 @@ import {
   VENDORED_EDGE_SAMPLING,
 } from './edge-signature.js';
 import { cropImage, decodePng, type RgbaImage } from './png-buffer.js';
+import { validateDeclaredTransforms } from './transform-eligibility.js';
 
 export interface ValidationIssue {
   readonly code: string;
@@ -393,6 +395,12 @@ export function validatePoolAndDoorImages(
       imagePath: v.imagePath,
       context: `doorSet.${key}`,
     })),
+    ...Object.entries(manifest.specialFloorPools ?? {}).flatMap(([key, pool]) =>
+      pool.map((v) => ({
+        imagePath: v.imagePath,
+        context: `specialFloorPools.${key}[${v.id}]`,
+      })),
+    ),
   ];
 
   for (const { imagePath, context } of entries) {
@@ -478,5 +486,197 @@ export function validatePoolAndDoorImages(
     }
   }
 
+  return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Validate every `wallAccents[]` entry's imagePath: allowed root, exists,
+ * decodes as PNG, and is EXACTLY the same 8×6×64px grid as `wallAutotile`
+ * (2026-07-25 refinement #3 — accent atlases share the wall atlas's grid so
+ * frame N of an accent overlays frame N of the wall for the same mask).
+ */
+export function validateWallAccentImagePaths(
+  manifest: TerrainPackDef,
+  options: PoolImageValidationOptions,
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  const expectedWidth = manifest.wallAutotile.gridCols * manifest.wallAutotile.cellPx;
+  const expectedHeight = manifest.wallAutotile.gridRows * manifest.wallAutotile.cellPx;
+
+  for (const accent of manifest.wallAccents ?? []) {
+    const context = `wallAccents[${accent.id}]`;
+    const normalized = accent.imagePath.replace(/\\/g, '/');
+
+    if (normalized.includes('..')) {
+      fail(
+        issues,
+        'path-traversal',
+        `${context}: imagePath contains '..' (path traversal prevented): ${accent.imagePath}`,
+      );
+      continue;
+    }
+    if (!normalized.startsWith(ALLOWED_IMAGEPATH_PREFIX)) {
+      fail(
+        issues,
+        'path-not-in-allowed-root',
+        `${context}: imagePath '${accent.imagePath}' must start with '${ALLOWED_IMAGEPATH_PREFIX}'`,
+      );
+      continue;
+    }
+
+    const absPath = path.join(options.repoRoot, 'public', normalized);
+    let pngBytes: Buffer;
+    try {
+      pngBytes = readFileSync(absPath);
+    } catch (err) {
+      fail(
+        issues,
+        'image-missing',
+        `${context}: imagePath '${accent.imagePath}' could not be read at ${absPath}: ${String(err)}`,
+      );
+      continue;
+    }
+    let img: RgbaImage;
+    try {
+      img = decodePng(pngBytes);
+    } catch (err) {
+      fail(
+        issues,
+        'image-not-png',
+        `${context}: '${accent.imagePath}' could not be decoded as PNG: ${String(err)}`,
+      );
+      continue;
+    }
+    if (img.width !== expectedWidth || img.height !== expectedHeight) {
+      fail(
+        issues,
+        'image-wrong-size',
+        `${context}: '${accent.imagePath}' must match the wall atlas grid ${expectedWidth}×${expectedHeight}, got ${img.width}×${img.height}`,
+      );
+    }
+  }
+
+  return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Direct pixel-level "no spill" proof (2026-07-25 refinement #3): for every
+ * canonical mask, the accent atlas's cell at that mask's frameIndex must be
+ * fully transparent everywhere the WALL atlas's cell at that same frameIndex
+ * is transparent. This is what makes "no accent may spill outside valid wall
+ * topology" a provable build/validate-time guarantee instead of a
+ * convention.
+ */
+export function validateWallAccentTopology(
+  manifest: TerrainPackDef,
+  wallAtlas: RgbaImage,
+  accentAtlas: RgbaImage,
+  accentId: string,
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  const { cellPx, gridCols } = manifest.wallAutotile;
+  const cellFor = (atlas: RgbaImage, frameIndex: number): RgbaImage => {
+    const col = frameIndex % gridCols;
+    const row = Math.floor(frameIndex / gridCols);
+    return cropImage(atlas, col * cellPx, row * cellPx, cellPx, cellPx);
+  };
+
+  for (const { maskId, frameIndex } of manifest.wallAutotile.masks) {
+    const wallCell = cellFor(wallAtlas, frameIndex);
+    const accentCell = cellFor(accentAtlas, frameIndex);
+    for (let i = 3; i < wallCell.data.length; i += 4) {
+      const wallAlpha = wallCell.data[i] ?? 0;
+      const accentAlpha = accentCell.data[i] ?? 0;
+      if (wallAlpha === 0 && accentAlpha !== 0) {
+        const pixelIndex = (i - 3) / 4;
+        fail(
+          issues,
+          'accent-spill',
+          `wallAccents[${accentId}] mask ${maskId} (frame ${frameIndex}): accent pixel ${pixelIndex} is opaque (alpha=${accentAlpha}) where the wall cell is transparent — accent spills outside wall topology`,
+        );
+        break; // one reported spill per mask is enough signal; don't flood.
+      }
+    }
+  }
+  return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Prove that two packs can share one wall-neighbor topology. Frame indices may
+ * differ, but each canonical mask must expose the same opaque silhouette in
+ * both atlases so a material boundary cannot create a notch.
+ */
+export function validateCrossPackWallSilhouettes(
+  leftManifest: TerrainPackDef,
+  leftAtlas: RgbaImage,
+  rightManifest: TerrainPackDef,
+  rightAtlas: RgbaImage,
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  const cellPx = leftManifest.wallAutotile.cellPx;
+  if (cellPx !== rightManifest.wallAutotile.cellPx) {
+    fail(
+      issues,
+      'cross-pack-cell-size',
+      `${leftManifest.id} and ${rightManifest.id} use different wall cell sizes (${cellPx}px vs ${rightManifest.wallAutotile.cellPx}px)`,
+    );
+    return { ok: false, issues };
+  }
+
+  const leftFrames = new Map(
+    leftManifest.wallAutotile.masks.map(({ maskId, frameIndex }) => [maskId, frameIndex]),
+  );
+  const rightFrames = new Map(
+    rightManifest.wallAutotile.masks.map(({ maskId, frameIndex }) => [maskId, frameIndex]),
+  );
+  const cellFor = (atlas: RgbaImage, manifest: TerrainPackDef, frameIndex: number): RgbaImage => {
+    const col = frameIndex % manifest.wallAutotile.gridCols;
+    const row = Math.floor(frameIndex / manifest.wallAutotile.gridCols);
+    return cropImage(atlas, col * cellPx, row * cellPx, cellPx, cellPx);
+  };
+
+  for (const maskId of BLOB47_CANONICAL_MASKS) {
+    const leftFrame = leftFrames.get(maskId);
+    const rightFrame = rightFrames.get(maskId);
+    if (leftFrame === undefined || rightFrame === undefined) continue;
+    const leftCell = cellFor(leftAtlas, leftManifest, leftFrame);
+    const rightCell = cellFor(rightAtlas, rightManifest, rightFrame);
+    for (let alphaIndex = 3; alphaIndex < leftCell.data.length; alphaIndex += 4) {
+      const leftOpaque = (leftCell.data[alphaIndex] ?? 0) >= 128;
+      const rightOpaque = (rightCell.data[alphaIndex] ?? 0) >= 128;
+      if (leftOpaque !== rightOpaque) {
+        const pixelIndex = (alphaIndex - 3) / 4;
+        fail(
+          issues,
+          'cross-pack-silhouette-mismatch',
+          `${leftManifest.id} and ${rightManifest.id} disagree on wall mask ${maskId} at pixel ${pixelIndex}`,
+        );
+        break;
+      }
+    }
+  }
+
+  return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Validate declared transforms for a single decoded pool image — the actual
+ * work; `cli.ts` loops every floorPool/corridorPool variant, decodes its PNG
+ * once, and calls this so the pure `transform-eligibility.ts` check runs
+ * against real shipped pixels.
+ */
+export function validateVariantTransformEligibility(
+  image: RgbaImage,
+  variant: {
+    readonly id: string;
+    readonly allowedTransforms?: readonly TransformId[];
+  },
+  poolLabel: string,
+): ValidationResult {
+  const issues = validateDeclaredTransforms(
+    image,
+    variant.allowedTransforms ?? ['none'],
+    `${poolLabel}[${variant.id}]`,
+  ).map((i) => ({ code: i.code, message: i.message }));
   return { ok: issues.length === 0, issues };
 }

@@ -39,15 +39,10 @@
   "lighting": {
     "ambient": 0.1
   },
-  "terrainPackId": "industrial-cave",
   "props": {
     "biomeTag": "cave",
     "densityMultiplier": 0.8,
-    "allowedCategories": [
-        "rubbish",
-        "light-source",
-        "structural"
-    ]
+    "allowedCategories": ["rubbish", "light-source", "structural"]
   },
   "floor2": {
     "presentCount": 4,

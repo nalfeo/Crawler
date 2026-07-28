@@ -155,18 +155,107 @@ const wallAutotileSchema = z
   });
 export type WallAutotileDef = z.infer<typeof wallAutotileSchema>;
 
+/**
+ * Deterministic geometric transforms a floor/corridor pool variant's texture
+ * MAY be stamped with (2026-07-25 terrain-variance refinement #2/#5). Applied
+ * at RUNTIME via Phaser `RenderTexture.stamp()` center-origin + signed scale
+ * (never pre-baked, never an implicit resize) — see
+ * `terrain-pack-variants.ts`'s `buildPoolStampConfig`.
+ *
+ * Fixed enumeration ORDER matters: `buildWeightedCombos` walks a variant's
+ * `allowedTransforms` in this exact order (not array declaration order, not
+ * `Array.sort()`) so the weighted combo table — and therefore every tile's
+ * deterministic pick — is stable across manifest edits that only reorder a
+ * variant's declared transforms.
+ */
+export const TRANSFORM_IDS = ['none', 'flipH', 'flipV', 'flipHV'] as const;
+export const transformIdSchema = z.enum(TRANSFORM_IDS);
+export type TransformId = (typeof TRANSFORM_IDS)[number];
+
 /** One floor/corridor pool variant — a standalone `TERRAIN_PACK_CELL_PX` image. */
 const poolVariantSchema = z
   .object({
     id: z.string().min(1),
     imagePath: z.string().min(1),
     textureKey: z.string().min(1),
+    /**
+     * Optional transform-eligibility metadata (refinement #2): which of the
+     * deterministic transforms this source's art tolerates without breaking
+     * seam/edge closure or implying a false direction (e.g. gravity-fed
+     * stains, directional grates). ALWAYS includes `'none'` (the identity
+     * transform is always safe). Build tooling derives this list by
+     * rendering every candidate transform and validating edge-closure before
+     * writing it — see `scripts/sprites/terrain-packs/transform-eligibility.ts`.
+     *
+     * Omission preserves the legacy identity-only behavior for packs authored
+     * before runtime transforms were introduced.
+     */
+    allowedTransforms: z.array(transformIdSchema).min(1).optional(),
+
+    /**
+     * Relative selection weight (2026-07-25 shared-base redesign). Pool draws
+     * are weighted, not uniform: a pack declares ONE dominant plain base
+     * (large weight) and several sparse detail variants (small weights), so
+     * ground reads as continuous ground with occasional features rather than
+     * a patchwork of equally-likely textures.
+     *
+     * Omission defaults to 1, which reproduces the legacy uniform draw exactly
+     * when no variant in the pool declares a weight.
+     */
+    weight: z.number().positive().finite().optional(),
+  })
+  .strict()
+  .superRefine((val, ctx) => {
+    if (val.allowedTransforms && !val.allowedTransforms.includes('none')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${val.id}: allowedTransforms must include 'none' (the identity transform is always safe)`,
+      });
+    }
+    const seen = new Set<TransformId>();
+    for (const t of val.allowedTransforms ?? []) {
+      if (seen.has(t)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${val.id}: duplicate transform '${t}' in allowedTransforms`,
+        });
+      }
+      seen.add(t);
+    }
+  });
+
+/**
+ * 3–12 variants per pool. Widened from the original 3–5 build target (see
+ * `git log` on this file) to accommodate the 8-source floor/corridor
+ * contract adopted 2026-07-25 (terrain-variance reviewed design) while
+ * leaving headroom above 8 for future growth without another schema bump.
+ */
+const variantPoolSchema = z.array(poolVariantSchema).min(3).max(12);
+export type PoolVariantDef = z.infer<typeof poolVariantSchema>;
+
+/** Target floor/corridor pool size adopted 2026-07-25 (grown from 4). */
+export const TERRAIN_PACK_POOL_TARGET_SIZE = 8;
+
+/**
+ * One wall-accent overlay atlas (refinement #3): a MASK-AWARE, transparent
+ * 8×6 (same grid as `wallAutotile`) atlas sharing the wall atlas's
+ * maskId→frameIndex table — frame N of an accent atlas overlays frame N of
+ * `wallAutotile` for the SAME canonical mask, so the accent motif is
+ * guaranteed to respect that mask's wall silhouette (never spills onto
+ * floor). Packs may omit accents; packs that opt in ship exactly
+ * `WALL_ACCENT_COUNT` (4) atlases.
+ */
+const wallAccentSchema = z
+  .object({
+    id: z.string().min(1),
+    imagePath: z.string().min(1),
+    textureKey: z.string().min(1),
   })
   .strict();
+export type WallAccentDef = z.infer<typeof wallAccentSchema>;
 
-/** 3–5 variants per pool (reviewed-design build target). */
-const variantPoolSchema = z.array(poolVariantSchema).min(3).max(5);
-export type PoolVariantDef = z.infer<typeof poolVariantSchema>;
+/** Number of wall-accent overlay atlases for packs that opt in. */
+export const WALL_ACCENT_COUNT = 4;
 
 /** One door texture (a single open/closed × horizontal/vertical combination). */
 const doorVariantSchema = z
@@ -190,6 +279,54 @@ const doorSetSchema = z
   .strict();
 export type DoorSetDef = z.infer<typeof doorSetSchema>;
 
+/**
+ * Optional floor pools for rooms whose role — not terrain family — should look
+ * distinct. Walls, corridors, and doors remain owned by the surrounding pack.
+ */
+const specialFloorPoolsSchema = z
+  .object({
+    welcome: variantPoolSchema.optional(),
+    safe: variantPoolSchema.optional(),
+    bossStair: variantPoolSchema.optional(),
+  })
+  .strict();
+export type SpecialFloorPoolsDef = z.infer<typeof specialFloorPoolsSchema>;
+
+/**
+ * Optional cross-tile ground decal atlas. Every floor/corridor pool tile has its
+ * BORDER byte-restored from the shared base so neighbours tile seamlessly — which
+ * also means no feature in a pool tile can ever cross a tile edge. Long cracks
+ * therefore cannot be expressed by the pool at all; they need a motif that is
+ * larger than one cell and is positioned independently of the tile grid.
+ *
+ * Decals are stamped into the SAME terrain RenderTexture after the per-tile pass,
+ * spanning `spanTiles`×`spanTiles` cells, only where the whole footprint is
+ * eligible ground. Being an overlay they never modify a pool tile's border, so
+ * the seamlessness contract is untouched.
+ */
+const groundDecalSetSchema = z
+  .object({
+    imagePath: z.string().min(1),
+    textureKey: z.string().min(1),
+    /** Source pixel size of one square decal frame. */
+    cellPx: z.number().int().positive(),
+    /** How many tiles wide/tall one decal covers when stamped. */
+    spanTiles: z.number().int().min(2),
+    /** Number of horizontally-packed frames in the atlas. */
+    frames: z.number().int().positive(),
+    /**
+     * Tile pitch of this set's anchor lattice. Each set carries its own stride
+     * so a small set can fill the gaps a large set leaves; a single shared
+     * stride produces visible bands of untouched ground where the lattice
+     * misses line up across the map.
+     */
+    strideTiles: z.number().int().min(1),
+    /** Fraction of this set's anchors that receive a stamp. */
+    density: z.number().min(0).max(1),
+  })
+  .strict();
+export type GroundDecalSetDef = z.infer<typeof groundDecalSetSchema>;
+
 export const terrainPackDefSchema = z
   .object({
     id: terrainPackIdSchema,
@@ -199,6 +336,10 @@ export const terrainPackDefSchema = z
     floorPool: variantPoolSchema,
     corridorPool: variantPoolSchema,
     doorSet: doorSetSchema,
+    /** Optional set of exactly `WALL_ACCENT_COUNT` mask-aware accent atlases. */
+    wallAccents: z.array(wallAccentSchema).length(WALL_ACCENT_COUNT).optional(),
+    specialFloorPools: specialFloorPoolsSchema.optional(),
+    groundDecals: z.array(groundDecalSetSchema).min(1).optional(),
   })
   .strict();
 export type TerrainPackDef = z.infer<typeof terrainPackDefSchema>;
