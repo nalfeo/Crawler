@@ -136,8 +136,23 @@ spread rather than silently moving the headline. The worst round is your
 defensible headline, never the best.
 
 **Run the finished bench in at least two separate process invocations and
-publish the range**, not one run's median. A single invocation's median is
-itself a sample.
+publish the observed span**, not one run's median. A single invocation's median
+is itself a sample.
+
+**Say "observed", not "range" — a 3-invocation span is not a bound.** The
+across-invocation spread is itself under-sampled at n=3, and a tight-looking
+interval invites readers to treat it as a bound it never earned. Measured on
+this rig: a bench published at `1.171–1.180x` and `1.343–1.458x` off three
+invocations had an independent fourth land **outside both, in opposite
+directions** (`1.296x` and `1.303x`). List the observed medians per invocation,
+label them observed, and expect ±0.1x. If one interval comes out implausibly
+tight next to the others, that is a sampling artifact, not precision.
+
+**Report a weak panel as weak instead of averaging it into the headline.** When
+one panel scores materially worse on rounds-won or worst-round than its
+siblings, name it as marginal and rest the verdict on the strong panels — ideally
+the one carrying the most production calls. Folding a ⚠️ panel into a single
+confident number is how a mixed result gets published as a clean one.
 
 **Size each timed round to tens of milliseconds.** Sub-millisecond rounds are
 unusable no matter how many of them you run: timer granularity and scheduler
@@ -301,6 +316,37 @@ RunStats DRIFT in 1 run(s):
 
 That is your change altering the game. Fix the change. Do not regenerate the
 baseline.
+
+**A green fingerprint on a fixture that never executes your branch is
+trivially green.** It proves the diff did not perturb the replayed sim in some
+_other_ way — real, but small. It says nothing about the branch itself. If your
+fast path only fires in a state Floor 1 never enters (an empty registry, a
+disabled feature, a mode the gate sample does not exercise), report the 24/24 as
+covering collateral perturbation only, and name the test that is actually
+gating correctness. Taking a tautological pass as coverage of the one hazard it
+structurally cannot reach is the `spawnerSystem` shape in AGENTS.md r9.
+
+## Proving your correctness test can fail (mutation)
+
+A perf change that skips work needs a test proving the skipped work was
+genuinely unnecessary — and that test is worthless unless you have watched it go
+red. Break the fast path deliberately and confirm the failure. Minimum two
+mutations for a caching/short-circuit change:
+
+- force the fast path to always take the skip branch → must fail
+- remove the invalidation (cache the verdict, never re-read) → must fail
+
+**Print the mutation's diff or installed-site count before you trust a green
+suite.** A mutation that silently failed to apply and a test that genuinely
+cannot fail produce **identical** output — a green run — and the green reads as
+_"the test is decorative, go weaken it"_, which is the most dangerous possible
+inversion. `git diff --stat` showing `0 files changed`, or a printed count of
+patched sites, distinguishes them in one line.
+
+The concrete trap on Windows: a PowerShell `String.Replace` using `` `r`n ``
+against an LF file (Prettier and git normalize to LF) matches nothing and
+no-ops silently. Use `` `n ``, and verify the edit landed before believing the
+result.
 
 ## Reporting template
 
