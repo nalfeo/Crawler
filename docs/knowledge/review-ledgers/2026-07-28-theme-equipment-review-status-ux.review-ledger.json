@@ -17,12 +17,20 @@
       "clean": true,
       "rounds": [
         {
-          "round": 1,
-          "models": ["gpt-5.5"],
-          "concerns_count": 2,
           "resolved_count": 2,
+          "models": ["gpt-5.5"],
           "clean": true,
-          "notes": "2 Medium findings, both fixed with regression tests. Finding 1: draftFeedback keyed only by raw item id + collection sentinel -> (a) collection draft leaked across set-switch, (b) an item id literally collection collided with the set-level box. Fix: feedbackKey(scope,id) namespaces items as item:<id>, keeps bare collection for the set box; drafts cleared in openSet + loadIndex but NOT load() (refresh must preserve). Finding 2: run-status correlation displayTitle.endsWith(space-dot-space+setId) was suffix-spoofable by a crafted set_id -> anchored regex ^Theme Equipment [^dot]+ dot <escaped-setId>$, setId regex-escaped."
+          "notes": "Changes 7-10. 2 Medium findings, both fixed with regression tests. Finding 1: draftFeedback keyed only by raw item id + collection sentinel -> collection draft leaked across set-switch and an item id literally collection collided with the set-level box; fixed with scope-namespaced feedbackKey(scope,id) cleared in openSet+loadIndex but not load(). Finding 2: run-status correlation suffix-spoofable; fixed with anchored setId-escaped regex.",
+          "round": 1,
+          "concerns_count": 2
+        },
+        {
+          "resolved_count": 1,
+          "models": ["gpt-5.6-sol"],
+          "clean": true,
+          "notes": "Changes 11-16 (renderer status UX + judge null-rationale + run-active control lock). 1 Medium finding: the active-run banner reported live progress but review controls stayed enabled during an in-flight run, so a mid-run verdict/bulk/advance/brief mutation would either fail the runner final atomic CAS save (all ~30min paid vision work discarded) or silently overwrite the maintainer change, and the banner count would drift. Fix: gate every durable-state mutation on isRunActive() (review thumbs incl. the shared brief Save-and-Approve up-button, bulk Approve remaining, Advance); run-phase/refresh/back stay enabled; a visible lock note explains why; the run-status poll re-renders (not just patches the strip) on an active<->inactive transition so controls actually lock/unlock, and a broken poll never leaves them stuck locked. Regression guard test added. Live-verified [disabled] controls + lock note against real in-progress run 30345704005.",
+          "round": 2,
+          "concerns_count": 1
         }
       ]
     }
