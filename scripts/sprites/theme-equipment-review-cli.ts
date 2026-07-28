@@ -574,7 +574,11 @@ function artifactStoreKey(artifact: ThemeEquipmentArtifactEvidence): string | nu
     return `${artifact.briefId}/${artifact.runId}/processed/${String(artifact.variantIndex).padStart(2, '0')}.png`;
   }
   if (artifact.kind === 'selected-brief') {
-    const match = /theme-sets\/[^/]+\/artifacts\/[^/]+\/r\d+\/brief\.yaml/.exec(artifact.uri);
+    // The uri is `store.resolve(key)`, which for the local store on Windows is
+    // an absolute path with backslashes; normalize so the forward-slash key
+    // regex matches regardless of platform/backend.
+    const normalized = artifact.uri.replace(/\\/g, '/');
+    const match = /theme-sets\/[^/]+\/artifacts\/[^/]+\/r\d+\/brief\.yaml/.exec(normalized);
     return match?.[0] ?? null;
   }
   return null;

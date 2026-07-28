@@ -141,6 +141,46 @@ describe('theme equipment review command bridge', () => {
     expect(result.contentType).toBe('image/png');
   });
 
+  it('resolves a selected-brief preview even when the uri is a Windows path', async () => {
+    const { store, state } = await seededStore();
+    const item = state.items[0]!;
+    // The local store on Windows mints selected-brief uris as absolute paths
+    // with backslashes; the preview reader must still recover the store key.
+    const winUri = `C:\\repo\\generated\\runs\\theme-sets\\${state.id}\\artifacts\\${item.id}\\r0\\brief.yaml`;
+    const recorded = recordThemeSetItemPhaseArtifacts(
+      state,
+      item.id,
+      [
+        {
+          id: `${item.id}-brief-r0-selected`,
+          kind: 'selected-brief',
+          uri: winUri,
+          summary: 'selected brief',
+          briefId: 'iron-sword',
+        },
+      ],
+      [],
+    );
+    if (!recorded.ok) throw new Error('fixture artifact mutation failed');
+    store.mem.set(themeEquipmentSetStateKey(state.id), Buffer.from(JSON.stringify(recorded.state)));
+    await store.put(
+      `theme-sets/${state.id}/artifacts/${item.id}/r0/brief.yaml`,
+      Buffer.from('type: weapon\nname: iron-sword\n'),
+    );
+
+    const result = await executeThemeEquipmentReviewCommand(
+      {
+        action: 'artifact',
+        setId: state.id,
+        itemId: item.id,
+        artifactId: `${item.id}-brief-r0-selected`,
+      },
+      { store, now: NOW, repoRoot: process.cwd() },
+    );
+
+    expect(Buffer.from(String(result.base64), 'base64').toString()).toContain('iron-sword');
+  });
+
   it('keeps presentation pure', () => {
     const plan = loadThemeEquipmentSetPlan('classic-fantasy', {
       projectRoot: process.cwd(),
