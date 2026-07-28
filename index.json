@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a3d29c3e31de6fbeae61418beb6e6ebd54e38c00",
+    "commitDate": "2026-07-27T19:17:22-07:00",
+    "commitSubject": "test(sweep-budget): align latent-backlog test assertions with blocked-demand accounting (#2141)",
+    "capturedAt": "2026-07-28T03:17:19.857Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30323149266",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/a3d29c3e31de6fbeae61418beb6e6ebd54e38c00.json"
+  },
+  {
     "commit": "0857cc2c6a00ea821035fca10abb698896178120",
     "commitDate": "2026-07-27T16:12:14-07:00",
     "commitSubject": "fix(ci): correct stale latent-backlog expectation greening main (#2131)",
