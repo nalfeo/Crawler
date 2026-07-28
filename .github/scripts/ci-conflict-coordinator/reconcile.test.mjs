@@ -617,7 +617,6 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
   );
 });
 
-<<<<<<< HEAD
 test('coordinator keeps every member fenced and suppresses dispatch when the active slot has a trusted shepherd lease', async (t) => {
   const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
   t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
@@ -646,36 +645,23 @@ test('coordinator keeps every member fenced and suppresses dispatch when the act
     pr1Sha,
     pr2Sha,
     pr3Sha,
-    pr1Labels: [{ name: 'ci-owner-pr-1' }],
+    // Seed PR1 with both the owner label and the ORDER_WAIT fence so the
+    // "no fence removal" assertion below is non-trivial: the fence exists on
+    // disk and the coordinator must choose NOT to delete it due to the lease.
+    pr1Labels: [{ name: 'ci-owner-pr-1' }, { name: 'ci-conflict-order-wait' }],
   });
   routes[`GET /repos/${OWNER}/${REPO}/issues/1/comments`] = () => ({
     body: [trustedRecoveryComment],
   });
 
   const { server, port, mutatingCalls } = await startServer(routes);
-=======
-test('coordinator discovers but does not serialize when enforcement is disabled (default)', async (t) => {
-  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
-  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
-
-  // Same drift scenario as the fencing test above — the ONLY difference is that
-  // enforcement is left at its default (off). The fence must not be applied.
-  const driftedActiveSha = '6'.repeat(40);
-  const { server, port, mutatingCalls } = await startServer(
-    buildRoutes({
-      mainSha,
-      pr1Sha,
-      pr2Sha,
-      pr3Sha,
-      livePr1Sha: driftedActiveSha,
-      // Seed a stranded fence label left behind by a previous enforcing run.
-      pr3Labels: [{ name: 'ci-conflict-order-wait' }],
-    }),
-  );
->>>>>>> origin/main
   t.after(() => server.close());
 
-  const { code, stdout, stderr } = await runScript(port, workDir);
+  // Enforcement must be enabled so the shepherd-lease suppression is exercised
+  // non-trivially: without it, dispatch never happens anyway.
+  const { code, stdout, stderr } = await runScript(port, workDir, {
+    CI_CONFLICT_COORDINATION_ENFORCE: '1',
+  });
 
   if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
     t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
@@ -683,7 +669,6 @@ test('coordinator discovers but does not serialize when enforcement is disabled 
   }
 
   assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
-<<<<<<< HEAD
   const recoveryDispatch = mutatingCalls.find(
     (c) =>
       c.method === 'POST' &&
@@ -717,7 +702,36 @@ test('coordinator discovers but does not serialize when enforcement is disabled 
     escalationAdd,
     'must escalate the active slot when a trusted shepherd lease is present',
   );
-=======
+});
+
+test('coordinator discovers but does not serialize when enforcement is disabled (default)', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  // Same drift scenario as the fencing test above — the ONLY difference is that
+  // enforcement is left at its default (off). The fence must not be applied.
+  const driftedActiveSha = '6'.repeat(40);
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      livePr1Sha: driftedActiveSha,
+      // Seed a stranded fence label left behind by a previous enforcing run.
+      pr3Labels: [{ name: 'ci-conflict-order-wait' }],
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
 
   const fenceAdd = mutatingCalls.find(
     (c) =>
@@ -800,7 +814,6 @@ test('auto-merge stays disarmed for human-gated PRs even when enforcement is dis
       c.body.labels.includes('ci-conflict-order-wait'),
   );
   assert.equal(fenceAdd, undefined, 'the ownership carve-out must not re-enable serialization');
->>>>>>> origin/main
 });
 
 test('coordinator reopens duplicate when post-close drift is detected', async (t) => {

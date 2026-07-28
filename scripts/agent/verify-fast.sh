@@ -41,8 +41,16 @@ is_supported_ts_path() {
   [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|vitest\.mutation\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
 }
 
-is_supported_github_scripts_mjs_path() {
+# Returns true for .mjs files that are actively linted in changed-file mode.
+is_linted_mjs_path() {
   [[ "$1" =~ ^\.github/scripts/.*\.mjs$ ]]
+}
+
+# Returns true for ALL .mjs locations known to exist in this repo.
+# Files in these trees are not linted locally by verify:fast (CI covers them),
+# but they must not be rejected as "unsupported" when someone edits them.
+is_known_mjs_path() {
+  [[ "$1" =~ ^(\.github/scripts/|\.github/extensions/|scripts/).*\.mjs$ ]]
 }
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
@@ -107,11 +115,13 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
     fi
   done
   for f in "${changed_repo_github_scripts_mjs[@]}"; do
-    if is_supported_github_scripts_mjs_path "$f"; then
+    if is_linted_mjs_path "$f"; then
       changed_github_scripts_mjs+=("$f")
-    else
+    elif ! is_known_mjs_path "$f"; then
       unsupported_mjs+=("$f")
     fi
+    # Known but non-.github/scripts paths (.github/extensions/, scripts/):
+    # CI lints them in full-tree mode; verify:fast skips them locally.
   done
   if [ "${#unsupported_ts[@]}" -ne 0 ]; then
     echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:" >&2
@@ -120,9 +130,9 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
     exit 1
   fi
   if [ "${#unsupported_mjs[@]}" -ne 0 ]; then
-    echo "❌ verify:fast does not support changed .mjs files outside .github/scripts/:" >&2
+    echo "❌ verify:fast does not support changed .mjs files outside .github/scripts/, .github/extensions/, or scripts/:" >&2
     printf '   - %s\n' "${unsupported_mjs[@]}" >&2
-    echo "   Move the file into .github/scripts/ or extend verify:fast first." >&2
+    echo "   Move the file into a known .mjs tree or extend verify:fast first." >&2
     exit 1
   fi
   if [ "$test_static_only" -eq 1 ]; then
