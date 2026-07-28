@@ -371,6 +371,11 @@ export function deleteCandidateBundle({ refName, transportSha, git }) {
   return true;
 }
 
+// The generated INDEX.md must never appear on PR branches (enforced by
+// pr-preflight guard), but if it does slip through, auto-resolve it during
+// candidate builds so it never serializes the merge queue (issue #1856).
+const INDEX_MD_PATH = 'docs/knowledge/handoffs/INDEX.md';
+
 export function buildCandidate({ baseSha, entries, refName, git, live }) {
   if (live && !refName.startsWith(CANDIDATE_REF_PREFIX)) {
     throw new Error(
@@ -388,27 +393,54 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
         env: CANDIDATE_GIT_IDENTITY,
       });
     } catch (error) {
-      let hasUnmergedEntries = false;
+      let unmergedFiles = [];
       let operationalError = error;
       try {
-        hasUnmergedEntries = git(['ls-files', '--unmerged']).trim().length > 0;
+        const unmergedOutput = git(['ls-files', '--unmerged']);
+        // ls-files --unmerged format: "mode sha stage\tpath" — one line per
+        // conflict stage (1=base, 2=ours, 3=theirs) so deduplicate by path.
+        unmergedFiles = [
+          ...new Set(
+            unmergedOutput
+              .trim()
+              .split('\n')
+              .filter(Boolean)
+              .map((line) => line.split('\t')[1])
+              .filter(Boolean),
+          ),
+        ];
       } catch (inspectionError) {
         operationalError = new Error(
           `could not inspect the failed candidate merge: ${inspectionError.message}`,
           { cause: error },
         );
       }
-      git(['reset', '--hard', baseSha]);
-      if (hasUnmergedEntries) {
-        throw new MergeTrainConflictError(
-          `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
-          { cause: error },
+      // Auto-resolve: if the only conflict is INDEX.md (a generated file that
+      // must not appear on PR branches), keep HEAD's version and continue the
+      // candidate build rather than aborting the whole train.
+      if (
+        unmergedFiles.length > 0 &&
+        unmergedFiles.every((f) => f === INDEX_MD_PATH)
+      ) {
+        git(['checkout', 'HEAD', '--', INDEX_MD_PATH]);
+        // A squash-merge leaves newly-added files from the merged branch as
+        // untracked (not staged). Stage everything so the candidate commit
+        // captures the PR's full diff, not just its pre-existing modifications.
+        git(['add', '--all']);
+        // Fall through — merge is now clean, continue to commit below.
+      } else {
+        git(['reset', '--hard', baseSha]);
+        if (unmergedFiles.length > 0) {
+          throw new MergeTrainConflictError(
+            `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
+            { cause: error },
+          );
+        }
+        throw new Error(
+          `PR #${entry.number} candidate merge failed operationally: ${operationalError.message}`,
+          { cause: operationalError },
         );
       }
-      throw new Error(
-        `PR #${entry.number} candidate merge failed operationally: ${operationalError.message}`,
-        { cause: operationalError },
-      );
     }
     if (gitCommandSucceeded(git, ['diff', '--cached', '--quiet'])) {
       throw new MergeTrainNoopError(

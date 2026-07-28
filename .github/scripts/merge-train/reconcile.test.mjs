@@ -329,6 +329,111 @@ test('buildCandidate classifies squash conflicts separately from retryable failu
   );
 });
 
+test('buildCandidate auto-resolves INDEX.md-only conflicts and continues', () => {
+  // INDEX.md must never appear on PR branches, but if it does the merge-train
+  // should auto-resolve rather than serializing the queue (issue #1856).
+  const entry = makePr();
+  const calls = [];
+  const refs = new Map();
+  const git = (args, options = {}) => {
+    calls.push({ args, options });
+    if (args[0] === 'fetch') {
+      const [, dest] = (args[2] || '').split(':');
+      if (dest) refs.set(dest, prSha);
+      return '';
+    }
+    if (args[0] === 'merge') throw new Error('merge failed');
+    if (args[0] === 'ls-files' && args[1] === '--unmerged') {
+      // Return INDEX.md only — three stages but same file path.
+      return [
+        '100644 aaa 1\tdocs/knowledge/handoffs/INDEX.md',
+        '100644 bbb 2\tdocs/knowledge/handoffs/INDEX.md',
+        '100644 ccc 3\tdocs/knowledge/handoffs/INDEX.md',
+      ].join('\n');
+    }
+    if (args[0] === 'diff' && args[1] === '--cached' && args[2] === '--quiet') {
+      throw new Error('staged diff present');
+    }
+    if (args[0] === 'rev-parse' && args[1] === 'HEAD') return candidateSha;
+    if (args[0] === 'rev-parse') return refs.get(args[1]) || prSha;
+    return '';
+  };
+
+  const sha = buildCandidate({
+    baseSha,
+    entries: [entry],
+    refName: 'merge-train/candidate-1',
+    git,
+    live: false,
+  });
+
+  assert.equal(sha, candidateSha);
+  // reset --hard must NOT have been called — we resolved in-place.
+  assert.ok(
+    !calls.some((c) => c.args[0] === 'reset' && c.args[1] === '--hard'),
+    'reset --hard should not be called on INDEX.md-only conflict',
+  );
+  // checkout HEAD -- INDEX.md should have been called to resolve.
+  assert.ok(
+    calls.some(
+      (c) =>
+        c.args[0] === 'checkout' &&
+        c.args[1] === 'HEAD' &&
+        c.args[2] === '--' &&
+        c.args[3] === 'docs/knowledge/handoffs/INDEX.md',
+    ),
+    'expected checkout HEAD -- INDEX.md to resolve the conflict',
+  );
+  // git add --all must follow to pick up any newly-added files from the PR
+  // that a squash-merge leaves untracked rather than staged (critical: without
+  // this, added files would be silently dropped from the candidate commit).
+  assert.ok(
+    calls.some((c) => c.args[0] === 'add' && c.args[1] === '--all'),
+    'expected git add --all to stage newly-added files from the PR',
+  );
+});
+
+test('buildCandidate still throws MergeTrainConflictError when INDEX.md conflicts alongside real files', () => {
+  const entry = makePr();
+  const refs = new Map();
+  const git = (args) => {
+    if (args[0] === 'fetch') {
+      const spec = args[2] || '';
+      const [, dest] = spec.split(':');
+      if (dest) refs.set(dest, prSha);
+      return '';
+    }
+    if (args[0] === 'checkout' && args[1] === '--detach') return '';
+    if (args[0] === 'rev-parse') return refs.get(args[1]) || prSha;
+    if (args[0] === 'merge') throw new Error('merge failed');
+    if (args[0] === 'ls-files' && args[1] === '--unmerged') {
+      // Both INDEX.md and a real source file conflict.
+      return [
+        '100644 aaa 1\tdocs/knowledge/handoffs/INDEX.md',
+        '100644 bbb 2\tsrc/core/foo.ts',
+      ].join('\n');
+    }
+    if (args[0] === 'reset') return '';
+    return '';
+  };
+
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [entry],
+        refName: 'merge-train/candidate-1',
+        git,
+        live: false,
+      }),
+    (error) => {
+      assert.equal(isMergeTrainConflictError(error), true);
+      assert.match(error.message, /conflicts in the cumulative candidate/);
+      return true;
+    },
+  );
+});
+
 test('buildCandidate supplies deterministic Git identity to squash merge', () => {
   const { git, calls } = createGitStub({});
   buildCandidate({
