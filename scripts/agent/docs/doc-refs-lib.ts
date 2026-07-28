@@ -175,7 +175,10 @@ export function referencedPersonas(text: string): string[] {
 
 /** Non-empty `description:` from a leading YAML frontmatter block, or `null`. */
 export function frontmatterDescription(text: string): string | null {
-  const match = /^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)/.exec(text);
+  // Normalize CRLF first: a lone trailing `\r` on the final frontmatter line
+  // makes the YAML parser report "Unexpected scalar at node end", which would
+  // fail every agent file on a Windows checkout while passing on LF-only CI.
+  const match = /^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)/.exec(text.replace(/\r\n/g, '\n'));
   if (!match || !match[1]) return null;
   let parsed;
   try {
@@ -188,4 +191,78 @@ export function frontmatterDescription(text: string): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Data rows of the first GitHub-flavoured pipe table in `text`.
+ *
+ * Returns each row as its trimmed cells, skipping the header row and the
+ * `| --- |` separator. Returns `[]` when no table is present.
+ */
+export function tableRows(text: string): string[][] {
+  const rows: string[][] = [];
+  let seenSeparator = false;
+  let started = false;
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('|')) {
+      // A blank/prose line after the table has begun ends that table.
+      if (started && trimmed.length === 0) break;
+      continue;
+    }
+    started = true;
+    const cells = trimmed
+      .replace(/^\|/, '')
+      .replace(/\|$/, '')
+      .split('|')
+      .map((cell) => cell.trim());
+    if (!seenSeparator) {
+      if (cells.every((cell) => /^:?-{3,}:?$/.test(cell))) seenSeparator = true;
+      continue; // header row, or separator row itself
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+
+/**
+ * Persona/agent pairs parsed from a Routing Matrix table, **in row order and
+ * without deduplication** so callers can detect a duplicated persona row.
+ *
+ * Expects the persona as the first bolded cell (`**Producer**`) and the agent
+ * as the first backticked slug cell (`` `producer` ``). Rows missing either are
+ * skipped — the caller compares the result against the routing manifest, so a
+ * malformed row surfaces as a missing entry rather than a silent pass.
+ */
+export function routingMatrixRows(text: string): Array<{ persona: string; agent: string }> {
+  const rows: Array<{ persona: string; agent: string }> = [];
+  for (const cells of tableRows(text)) {
+    let persona: string | null = null;
+    let agent: string | null = null;
+    for (const cell of cells) {
+      if (persona === null) {
+        const bold = /^\*\*(.+?)\*\*$/.exec(cell);
+        if (bold?.[1]) {
+          persona = bold[1].trim();
+          continue;
+        }
+      }
+      if (persona !== null && agent === null) {
+        const code = /^`([a-z0-9-]+)`$/.exec(cell);
+        if (code?.[1]) agent = code[1];
+      }
+    }
+    if (persona !== null && agent !== null) rows.push({ persona, agent });
+  }
+  return rows;
+}
+
+/**
+ * `{ persona display name -> agent slug }` from a Routing Matrix table.
+ *
+ * Deduplicates by persona (last row wins), so callers that care about a
+ * duplicated persona row must use {@link routingMatrixRows} instead.
+ */
+export function routingMatrixPairs(text: string): Map<string, string> {
+  return new Map(routingMatrixRows(text).map((row) => [row.persona, row.agent]));
 }

@@ -24,6 +24,16 @@
  * And the reverse: a persona file referenced by the README index that does not
  * exist on disk.
  *
+ * Finally, it enforces the single routing manifest
+ * (`docs/agent-os/personas/routing.json`), which is the one machine-readable
+ * source of truth consumed by `scripts/agent/producer.ts`:
+ *   6. Manifest personas and persona docs are in bijection, and each entry's
+ *      agent is that persona's canonical agent.
+ *   7. Every agent is either a manifest persona's canonical agent or a listed
+ *      specialist sibling with an existing `inherits` persona.
+ *   8. The README's Routing Matrix rows match the manifest exactly (same
+ *      personas, same agent per persona).
+ *
  * Exit code is non-zero (blocking) on any of the above.
  */
 
@@ -31,10 +41,16 @@ import { readFileSync, readdirSync } from 'node:fs';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 import {
+  ROUTING_MANIFEST,
+  loadPersonaRouting,
+  type PersonaRouting,
+} from '../shared/persona-routing.js';
+import {
   frontmatterDescription,
   headingSet,
   referencedAgents,
   referencedPersonas,
+  routingMatrixRows,
   sectionBody,
 } from './doc-refs-lib.js';
 
@@ -236,6 +252,135 @@ async function main(): Promise<void> {
         file: README,
         remediation: `Create \`${AGENT_DIR}/${agent}\` or remove the stale reference.`,
       });
+    }
+  }
+
+  // 8. Routing manifest is the single source of truth: it must agree with the
+  //    persona docs, the agent files, and the README Routing Matrix.
+  let routing: PersonaRouting | null = null;
+  try {
+    routing = loadPersonaRouting();
+  } catch (err) {
+    report.error(
+      `Persona routing manifest is invalid: ${err instanceof Error ? err.message : String(err)}`,
+      {
+        file: ROUTING_MANIFEST,
+        remediation:
+          'Fix the manifest so persona routing has exactly one machine-readable source of truth.',
+      },
+    );
+  }
+
+  if (routing !== null) {
+    const manifestFiles = new Set(routing.personas.map((p) => p.file));
+    for (const persona of routing.personas) {
+      if (!known.has(persona.file)) {
+        report.error(`Routing manifest lists a missing persona doc: \`${persona.file}\`.`, {
+          file: ROUTING_MANIFEST,
+          remediation: `Create ${PERSONA_DIR}/${persona.file} or drop the entry.`,
+        });
+      }
+      if (!agentFiles.has(persona.agent)) {
+        report.error(`Routing manifest lists a missing agent file: \`${persona.agent}\`.`, {
+          file: ROUTING_MANIFEST,
+          remediation: `Create \`${AGENT_DIR}/${persona.agent}\` or point the entry at an existing agent.`,
+        });
+      } else {
+        // The manifest's agent must be the persona doc's CANONICAL agent (the
+        // one listed first), not merely one it mentions — otherwise
+        // decomposition would dispatch to a sibling that does not own the
+        // doctrine.
+        const owner = canonicalOwner.get(persona.agent);
+        const remediation = `Point the entry at the agent named first in ${PERSONA_DIR}/${persona.file}'s "## Agent" section.`;
+        if (owner === undefined) {
+          report.error(
+            `Routing manifest maps "${persona.name}" to \`${persona.agent}\`, but that agent is not the canonical (first-listed) agent of any persona doc.`,
+            { file: ROUTING_MANIFEST, remediation },
+          );
+        } else if (owner !== persona.file) {
+          report.error(
+            `Routing manifest maps "${persona.name}" to \`${persona.agent}\`, but that agent is canonically owned by \`${owner}\`.`,
+            { file: ROUTING_MANIFEST, remediation },
+          );
+        }
+      }
+    }
+    for (const file of personaFiles) {
+      if (!manifestFiles.has(file)) {
+        report.error(`Persona doc is absent from the routing manifest: \`${file}\`.`, {
+          file: ROUTING_MANIFEST,
+          remediation: `Add an entry for \`${file}\` (display name, agent, and any decomposition system keywords).`,
+        });
+      }
+    }
+
+    for (const sibling of routing.siblings) {
+      if (!agentFiles.has(sibling.agent)) {
+        report.error(`Routing manifest lists a missing sibling agent: \`${sibling.agent}\`.`, {
+          file: ROUTING_MANIFEST,
+          remediation: `Create \`${AGENT_DIR}/${sibling.agent}\` or drop the entry.`,
+        });
+      }
+      if (!known.has(sibling.inherits)) {
+        report.error(
+          `Sibling agent \`${sibling.agent}\` inherits a missing persona doc: \`${sibling.inherits}\`.`,
+          {
+            file: ROUTING_MANIFEST,
+            remediation: `Point \`inherits\` at an existing persona doc under \`${PERSONA_DIR}/\`.`,
+          },
+        );
+      }
+    }
+    const siblingAgents = new Set(routing.siblings.map((s) => s.agent));
+    for (const agent of agentFiles) {
+      if (canonicalOwner.has(agent)) continue;
+      if (siblingAgents.has(agent)) continue;
+      report.error(`Agent is absent from the routing manifest: \`${AGENT_DIR}/${agent}\`.`, {
+        file: ROUTING_MANIFEST,
+        remediation: `Add \`${agent}\` to \`siblings\` (with the persona whose doctrine it narrows), or make it a persona's canonical agent.`,
+      });
+    }
+
+    // 9. README Routing Matrix must match the manifest exactly.
+    const matrixRows = routingMatrixRows(sectionBody(readmeText, 'Routing Matrix') ?? '');
+    const matrix = new Map(matrixRows.map((row) => [row.persona, row.agent]));
+    const seenRows = new Set<string>();
+    for (const row of matrixRows) {
+      if (seenRows.has(row.persona)) {
+        report.error(`README Routing Matrix has more than one row for "${row.persona}".`, {
+          file: README,
+          remediation:
+            'Delete the duplicate row — a persona routes to exactly one agent, and a duplicate hides the stale row from this check.',
+        });
+      }
+      seenRows.add(row.persona);
+    }
+    for (const persona of routing.personas) {
+      const slug = persona.agent.replace(/\.agent\.md$/, '');
+      const row = matrix.get(persona.name);
+      if (row === undefined) {
+        report.error(`README Routing Matrix has no row for "${persona.name}".`, {
+          file: README,
+          remediation: `Add a row with **${persona.name}** and agent \`${slug}\`, matching ${ROUTING_MANIFEST}.`,
+        });
+      } else if (row !== slug) {
+        report.error(
+          `README Routing Matrix routes "${persona.name}" to \`${row}\`, but the manifest says \`${slug}\`.`,
+          {
+            file: README,
+            remediation: `Update the Agent column to \`${slug}\`, or change ${ROUTING_MANIFEST} if the manifest is wrong.`,
+          },
+        );
+      }
+    }
+    const manifestNames = new Set(routing.personas.map((p) => p.name));
+    for (const name of matrix.keys()) {
+      if (!manifestNames.has(name)) {
+        report.error(`README Routing Matrix lists an unknown persona: "${name}".`, {
+          file: README,
+          remediation: `Add "${name}" to ${ROUTING_MANIFEST} or remove the stale row.`,
+        });
+      }
     }
   }
 

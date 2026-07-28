@@ -88,6 +88,12 @@ are actually editing, and consult adjacent personas via their "Collaborates with
 lines. If you still can't tell, that ambiguity is itself the signal to adopt
 **Producer** and split the work.
 
+This table is **not** the machine-readable source of truth. That is
+[`routing.json`](routing.json), which maps each persona to its canonical agent
+and to the system keywords `scripts/agent/producer.ts` uses when it decomposes a
+request into slices. Edit `routing.json` first; `npm run docs:check` then reports
+every row here, every persona doc, and every agent file that still disagrees.
+
 ## Boundary Quick-Reference
 
 These roles overlap and are easy to confuse:
@@ -190,6 +196,7 @@ recreate one only when its domain has real, scheduled work.
   everything downstream of it; **DevOps Engineer** owns the model runtime and its
   CI/offline story; **Reviewer** enforces that nothing leaks into the frame loop.
   Do not recreate this persona unless that work is actually scheduled.
+
 - **Sound Designer** — 3 source files, 1 commit in 90 days, no audio pipeline,
   skill, or gate. Its constraints (no runaway voice counts, audio failure must
   never break gameplay) moved into **UX Designer**.

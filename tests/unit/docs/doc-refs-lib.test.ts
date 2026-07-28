@@ -9,7 +9,10 @@ import {
   referencedAgents,
   referencedPersonas,
   resolveLinkTarget,
+  routingMatrixPairs,
+  routingMatrixRows,
   sectionBody,
+  tableRows,
 } from '../../../scripts/agent/docs/doc-refs-lib.js';
 
 describe('looksLikePath', () => {
@@ -244,5 +247,92 @@ describe('frontmatterDescription', () => {
 
   it('ignores a description that appears only in the body', () => {
     expect(frontmatterDescription('---\nname: X\n---\n\ndescription: nope\n')).toBeNull();
+  });
+
+  it('parses CRLF frontmatter (a lone trailing \\r breaks the YAML parser)', () => {
+    const crlf =
+      "---\r\nname: Reviewer\r\ndescription: 'Reviews diffs.'\r\ntools: ['read']\r\n---\r\n\r\nBody\r\n";
+    expect(frontmatterDescription(crlf)).toBe('Reviews diffs.');
+  });
+});
+
+describe('tableRows', () => {
+  const table = [
+    '| Task | Persona | Agent |',
+    '| ---- | ------- | ----- |',
+    '| Core ECS | **Systems Engineer** | `systems-engineer` |',
+    '| Tests | **QA Engineer** | `qa-engineer` |',
+  ].join('\n');
+
+  it('returns data rows without the header or separator', () => {
+    expect(tableRows(table)).toEqual([
+      ['Core ECS', '**Systems Engineer**', '`systems-engineer`'],
+      ['Tests', '**QA Engineer**', '`qa-engineer`'],
+    ]);
+  });
+
+  it('tolerates CRLF and alignment separators', () => {
+    const aligned = '| A | B |\r\n| :--- | ---: |\r\n| x | y |\r\n';
+    expect(tableRows(aligned)).toEqual([['x', 'y']]);
+  });
+
+  it('stops at the first blank line after the table starts', () => {
+    expect(tableRows(`${table}\n\n| Later | Table |\n| --- | --- |\n| a | b |`)).toHaveLength(2);
+  });
+
+  it('returns an empty array when no table is present', () => {
+    expect(tableRows('Just prose.\n\nMore prose.')).toEqual([]);
+  });
+});
+
+describe('routingMatrixPairs', () => {
+  it('maps the bolded persona to the first backticked agent slug', () => {
+    const text = [
+      '| If your task is mostly… | Adopt persona | Agent | Primary paths |',
+      '| --- | --- | --- | --- |',
+      '| Core ECS | **Systems Engineer** | `systems-engineer` | `src/core/**` |',
+      '| Sprites | **Graphics Designer** | `asset-forge` | `briefs/**` |',
+    ].join('\n');
+    expect(routingMatrixPairs(text)).toEqual(
+      new Map([
+        ['Systems Engineer', 'systems-engineer'],
+        ['Graphics Designer', 'asset-forge'],
+      ]),
+    );
+  });
+
+  it('ignores backticked cells that precede the persona cell', () => {
+    const text = [
+      '| Paths | Persona | Agent |',
+      '| --- | --- | --- |',
+      '| `src/core/**` | **Systems Engineer** | `systems-engineer` |',
+    ].join('\n');
+    expect(routingMatrixPairs(text).get('Systems Engineer')).toBe('systems-engineer');
+  });
+
+  it('skips rows missing a persona or an agent', () => {
+    const text = [
+      '| Persona | Agent |',
+      '| --- | --- |',
+      '| **Producer** | _(none)_ |',
+      '| plain text | `reviewer` |',
+    ].join('\n');
+    expect(routingMatrixPairs(text).size).toBe(0);
+  });
+
+  it('keeps duplicate persona rows visible via routingMatrixRows', () => {
+    const text = [
+      '| Persona | Agent |',
+      '| --- | --- |',
+      '| **Systems Engineer** | `wrong-agent` |',
+      '| **Systems Engineer** | `systems-engineer` |',
+    ].join('\n');
+    // The Map view dedupes (last row wins), which would hide the stale row —
+    // callers detecting drift must use the row list.
+    expect(routingMatrixPairs(text).size).toBe(1);
+    expect(routingMatrixRows(text)).toEqual([
+      { persona: 'Systems Engineer', agent: 'wrong-agent' },
+      { persona: 'Systems Engineer', agent: 'systems-engineer' },
+    ]);
   });
 });

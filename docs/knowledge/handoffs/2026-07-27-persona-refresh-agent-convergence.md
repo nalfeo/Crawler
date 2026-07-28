@@ -36,7 +36,7 @@ links back to a persona doc.
 
 **Asset convergence (the explicit ask).** `sprite-issue-factory.agent.md` was ~80%
 duplicated with `asset-forge.agent.md`. It is deleted; `asset-forge` absorbed it as
-an `issue-wave` execution mode next to the default `local` mode. Only the *generate*
+an `issue-wave` execution mode next to the default `local` mode. Only the _generate_
 step differs between modes — everything else is one shared loop. `issue-wave`
 requires explicit human confirmation before opening issues.
 
@@ -88,10 +88,28 @@ passes.
 - Long PowerShell one-liners with `|` after a `}` fail with
   `ParserError: An empty pipe element is not allowed`. Write a script file instead.
 
-## Follow-up (deliberately not done)
+## Single routing manifest
 
-The plan reviewer flagged that `scripts/agent/producer.ts` still hardcodes its own
-persona mapping — a third routing source of truth alongside the README matrix and the
-guard. The right fix is one machine-readable routing manifest that the README, the
-guard, and `producer.ts` all consume. That is a separate change; this session fixed
-the mapping's correctness but not its duplication.
+The plan reviewer flagged that `scripts/agent/producer.ts` hardcoded its own persona
+mapping — a third routing source of truth alongside the README matrix and the guard.
+The human asked for that collapsed in the same PR, so it is done here:
+`docs/agent-os/personas/routing.json` is now the one machine-readable source of truth.
+
+- `scripts/agent/shared/persona-routing.ts` loads and validates it (fails loudly on a
+  malformed manifest, and rejects two personas claiming the same system keyword —
+  which would otherwise make decomposition silently order-dependent).
+- `producer.ts` builds `personaMapping` from it, and takes its unrouted-system triage
+  bucket from `unrouted_persona` instead of a hardcoded `'Producer'` literal.
+- `check-personas.ts` asserts manifest ↔ persona docs are a bijection, that each
+  entry's agent is that persona's **canonical** agent (not merely one it mentions),
+  that every agent is a canonical agent or a listed sibling with a real `inherits`,
+  and that the README Routing Matrix rows match the manifest exactly.
+
+Adding a persona is now: edit `routing.json`, run `npm run docs:check`, and fix
+everything it names.
+
+**CRLF bug found and fixed while doing this.** `frontmatterDescription` fed raw file
+text to the YAML parser. On a Windows checkout the final frontmatter line carries a
+lone trailing `\r`, which the parser rejects with "Unexpected scalar at node end" —
+so the agent-`description` check reported all 11 agents broken locally while passing
+on LF-only CI. It now normalizes CRLF first, with a regression test.

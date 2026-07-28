@@ -19,6 +19,8 @@ import { parseArgs } from 'util';
 import { fileURLToPath } from 'url';
 import { basename } from 'path';
 
+import { loadPersonaRouting, systemsByPersona } from './shared/persona-routing.js';
+
 interface TriageResult {
   requestType: string;
   verdict: 'RECOMMENDED' | 'RISKY' | 'NOT_RECOMMENDED';
@@ -563,18 +565,11 @@ export function decompose(request: string): DecompositionResult {
   const slices: SliceDecomposition[] = [];
   const sliceId = (name: string) => name.toLowerCase().replace(/\s+/g, '-');
 
-  // Persona-to-systems mapping (from routing matrix)
-  const personaMapping: Record<string, string[]> = {
-    // `game` is the generic gameplay bucket seeded when nothing specific
-    // matched; it is real design work, so it is mapped explicitly rather than
-    // relying on a catch-all fallback.
-    'Game Designer': ['game', 'combat', 'loot', 'progression', 'economy', 'floor-generation'],
-    'Content Designer': ['quests', 'story'],
-    'Graphics Designer': ['graphics'],
-    'UX Designer': ['ui', 'audio'],
-    'Game AI Engineer': ['ai'],
-    'Systems Engineer': ['core'],
-  };
+  // Persona-to-systems mapping — loaded from the single routing manifest
+  // (`docs/agent-os/personas/routing.json`) so this file, the personas README,
+  // and the docs guard can never disagree about who owns what.
+  const routing = loadPersonaRouting();
+  const personaMapping = systemsByPersona(routing);
 
   // Group systems by persona
   const personaWork: Record<string, string[]> = {};
@@ -590,10 +585,11 @@ export function decompose(request: string): DecompositionResult {
     }
     if (!assigned) {
       // Unmapped systems are a routing gap, not game design. Surface them on
-      // the Producer slice so triage is explicit instead of silently landing
-      // on whichever persona happens to be listed first.
-      if (!personaWork['Producer']) personaWork['Producer'] = [];
-      personaWork['Producer'].push(system);
+      // the manifest's triage persona so the gap is explicit instead of
+      // silently landing on whichever persona happens to be listed first.
+      const bucket = routing.unrouted_persona;
+      if (!personaWork[bucket]) personaWork[bucket] = [];
+      personaWork[bucket].push(system);
     }
   }
 
