@@ -261,7 +261,7 @@ function stopGain(stops: readonly { t: number; gain: number }[], shade: number):
 }
 
 /** A raised rivet band catches more light than the tube it wraps. */
-const COLLAR_GAIN = 1.22;
+const COLLAR_GAIN = 1.45;
 
 function memberGain(cls: number, shade: number, round: boolean): number {
   if (cls === LINEWORK_PIXEL.Rail) {
@@ -360,8 +360,8 @@ function isRim(cls: Uint8Array, size: number, x: number, y: number): boolean {
  * how black a streak can get — beyond about 0.6 the pipe stops reading as a
  * cylinder because the damage starts competing with the shading bands.
  */
-const WEAR_CUT = 118;
-const WEAR_FLOOR = 0.5;
+const WEAR_CUT = 132;
+const WEAR_FLOOR = 0.36;
 
 /** Multiplicative darkening from the wear material at this pixel. */
 function wearGain(wear: RgbaImage | undefined, frame: number, x: number, y: number): number {

@@ -260,8 +260,11 @@ export const TRACK_PROFILE: LineworkProfile = {
 export const PIPE_PROFILE: LineworkProfile = {
   railOffset: 0,
   railHalfWidth: 9,
-  tieHalfLength: 12,
-  tieHalfWidth: 1.8,
+  // The ring must clear the bore by enough pixels to survive the 0.5 atlas
+  // downscale — at `tieHalfLength: 12` the shoulders protruded 3 atlas px, which
+  // is ~2 screen px and reads as texture rather than hardware.
+  tieHalfLength: 14,
+  tieHalfWidth: 2.4,
   tiePeriod: 32,
   tiePhase: 16,
   // Rings sit at arc-length 11/21 and 43/53 of a 64-long straight — four bands
