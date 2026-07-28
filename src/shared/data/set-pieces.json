@@ -14197,7 +14197,8 @@
               },
               "widthFt": 6.06,
               "heightFt": 3.2,
-              "anchorBase": true
+              "anchorBase": true,
+              "offsetYFt": 1.3
             }
           ],
           "width": 0.75,
@@ -14219,7 +14220,7 @@
               },
               "widthFt": 3.25,
               "heightFt": 3.5,
-              "offsetYFt": -4
+              "offsetYFt": -0.7
             }
           ],
           "sceneLayer": "default"
@@ -14240,7 +14241,7 @@
               },
               "widthFt": 5,
               "heightFt": 5,
-              "offsetYFt": -1.2,
+              "offsetYFt": 2.1,
               "anchorBase": true
             }
           ],
@@ -14292,7 +14293,7 @@
               },
               "widthFt": 1.6,
               "heightFt": 1.6,
-              "offsetYFt": -4,
+              "offsetYFt": -0.5,
               "flipX": true
             }
           ],
@@ -14302,7 +14303,7 @@
           "id": "sconce-far-left",
           "kind": "decoration",
           "x": 0.1,
-          "y": 0.7,
+          "y": 0.15,
           "width": 0.5,
           "height": 0.5,
           "z": 20,
@@ -14314,7 +14315,7 @@
               },
               "widthFt": 1.6,
               "heightFt": 1.6,
-              "offsetYFt": -4
+              "offsetYFt": -0.5
             }
           ],
           "sceneLayer": "default"
@@ -14408,7 +14409,7 @@
           "id": "sconce-far-right",
           "kind": "decoration",
           "x": 6.05,
-          "y": 0.9,
+          "y": 0.15,
           "width": 0.5,
           "height": 0.5,
           "z": 20,
@@ -14420,7 +14421,7 @@
               },
               "widthFt": 1.6,
               "heightFt": 1.6,
-              "offsetYFt": -4,
+              "offsetYFt": -0.5,
               "flipX": true
             }
           ],
@@ -14491,7 +14492,7 @@
               },
               "widthFt": 1.6,
               "heightFt": 1.6,
-              "offsetYFt": -4
+              "offsetYFt": -0.5
             }
           ],
           "width": 0.5,
