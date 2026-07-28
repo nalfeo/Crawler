@@ -36,7 +36,14 @@ import {
   ATLAS_HEIGHT_PX,
   ATLAS_WIDTH_PX,
 } from '../../../scripts/sprites/terrain-packs/atlas-grid.js';
-import { decodePng } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
+import { decodePng, cropImage } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
+import {
+  buildEdgeReferences,
+  classifyCellEdges,
+  CELL_EDGES,
+  VENDORED_EDGE_SAMPLING,
+} from '../../../scripts/sprites/terrain-packs/edge-signature.js';
+import { edgeConnectionsFromMask } from '../../../src/shared/terrain-pack-mask.js';
 import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
 import { readFileSync } from 'node:fs';
 
@@ -286,13 +293,119 @@ describe('validateCompatibleBoundaries — documented seam/edge-consistency chec
     expect(validation.issues.some((i) => i.code === 'boundary-mismatch')).toBe(true);
   });
 
-  it('the vendored fixture meets its documented 0.85 floor', () => {
+  it('the vendored fixture meets its documented 0.90 floor', () => {
     const vendored = buildCaelesFixturePack(readVendoredTemplate());
     const vendoredAtlas = decodePng(atlasBufferOf(vendored));
     const validation = validateCompatibleBoundaries(vendored.manifest, vendoredAtlas, {
-      minEdgePassRate: 0.85,
+      minEdgePassRate: 0.9,
     });
     expect(validation.ok).toBe(true);
+  });
+
+  /**
+   * Pins WHY the vendored floor is below 1.0, so the next person to touch it
+   * does not have to re-derive it (and notices immediately if the residue
+   * changes shape rather than just changing size).
+   *
+   * The 8 misses are a single class: every one is a `wall -> floor` misread,
+   * exactly two per compass direction, confined to the four single-arm stubs
+   * (1/2/4/8) and the two straight corridors (5/10). Hand-drawn line art draws
+   * a wall reached by one narrow arm thin, so that edge band is mostly floor.
+   */
+  it('the vendored fixture misses ONLY on the thin-arm masks, and only wall->floor', () => {
+    const vendored = buildCaelesFixturePack(readVendoredTemplate());
+    const atlas = decodePng(atlasBufferOf(vendored));
+    const { cellPx, gridCols } = vendored.manifest.wallAutotile;
+    const cellFor = (frameIndex: number) =>
+      cropImage(
+        atlas,
+        (frameIndex % gridCols) * cellPx,
+        Math.floor(frameIndex / gridCols) * cellPx,
+        cellPx,
+        cellPx,
+      );
+    const maskToFrame = new Map(
+      vendored.manifest.wallAutotile.masks.map((m) => [m.maskId, m.frameIndex]),
+    );
+    const refs = buildEdgeReferences(
+      cellFor(maskToFrame.get(0)!),
+      cellFor(maskToFrame.get(255)!),
+      VENDORED_EDGE_SAMPLING,
+    );
+
+    const misses: { maskId: number; edge: string; expected: boolean }[] = [];
+    for (const { maskId, frameIndex } of vendored.manifest.wallAutotile.masks) {
+      const expected = edgeConnectionsFromMask(maskId);
+      const classified = classifyCellEdges(cellFor(frameIndex), refs, VENDORED_EDGE_SAMPLING);
+      for (const edge of CELL_EDGES) {
+        if (classified[edge] !== expected[edge]) {
+          misses.push({ maskId, edge, expected: expected[edge] });
+        }
+      }
+    }
+
+    // Every miss is a thin wall arm read as floor — never the reverse.
+    expect(misses.every((m) => m.expected === true)).toBe(true);
+    // Confined to the single-arm stubs and straight corridors.
+    expect([...new Set(misses.map((m) => m.maskId))].sort((a, b) => a - b)).toEqual([
+      1, 2, 4, 5, 8, 10,
+    ]);
+    // Symmetric across compass directions (the art has no directional bias).
+    const perEdge = CELL_EDGES.map((e) => misses.filter((m) => m.edge === e).length);
+    expect(new Set(perEdge).size).toBe(1);
+    // And the total stays clear of the 0.90 floor (0.90 * 188 => at most 18).
+    expect(misses.length).toBe(8);
+  });
+});
+
+describe('validateTerrainPack — VENDORED_MIN_EDGE_PASS_RATE default constant is exercised end-to-end', () => {
+  /**
+   * The existing caeles fixture test calls validateTerrainPack with the pristine
+   * atlas (rate 0.957), which passes at any constant ≤ 0.957 — including the
+   * old 0.85 floor — and therefore does NOT test that VENDORED_MIN_EDGE_PASS_RATE
+   * is actually 0.90.
+   *
+   * This suite constructs a deterministic "degraded" atlas by swapping the
+   * frameIndex assignments for two pairs of opposite-corner masks in the
+   * manifest (masks 3↔12 and 7↔14; pixel data is unchanged). The swap drops
+   * the edge-pass rate from 0.957 to 0.8936 (168/188 edges pass), placing it
+   * in the 0.85–0.90 window: above the old 0.85 floor but below the new 0.90
+   * floor.
+   *
+   * Reverting VENDORED_MIN_EDGE_PASS_RATE to 0.85 would cause the second test
+   * to fail because boundary-mismatch would no longer appear in the issues.
+   */
+  const caeles = buildCaelesFixturePack(readVendoredTemplate());
+  const atlasBuf = atlasBufferOf(caeles);
+
+  function swappedManifest(): TerrainPackDef {
+    const masks = caeles.manifest.wallAutotile.masks.map((m) => ({ ...m }));
+    for (const [a, b] of [
+      [3, 12],
+      [7, 14],
+    ] as [number, number][]) {
+      const ia = masks.findIndex((m) => m.maskId === a);
+      const ib = masks.findIndex((m) => m.maskId === b);
+      const tmp = masks[ia]!.frameIndex;
+      masks[ia] = { ...masks[ia]!, frameIndex: masks[ib]!.frameIndex };
+      masks[ib] = { ...masks[ib]!, frameIndex: tmp };
+    }
+    return { ...caeles.manifest, wallAutotile: { ...caeles.manifest.wallAutotile, masks } };
+  }
+
+  it('rate-0.8936 atlas passes validateCompatibleBoundaries at explicit 0.85 (proves rate > old floor)', () => {
+    const atlas = decodePng(atlasBuf);
+    const result = validateCompatibleBoundaries(swappedManifest(), atlas, {
+      minEdgePassRate: 0.85,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('rate-0.8936 atlas: validateTerrainPack without options reports boundary-mismatch (VENDORED_MIN_EDGE_PASS_RATE enforced at 0.90)', () => {
+    const result = validateTerrainPack(swappedManifest(), atlasBuf);
+    // boundary-mismatch appears because the production default (0.90) rejects rate 0.8936.
+    // If VENDORED_MIN_EDGE_PASS_RATE were reverted to 0.85, this assertion would fail.
+    expect(result.issues.some((i) => i.code === 'boundary-mismatch')).toBe(true);
   });
 });
 
