@@ -52,3 +52,4 @@ code-touching checks; `npm run format:check` passes.
 1. Implement cherry-based contamination detection (`.github/scripts/ci-conflict-coordinator/`)
 2. Re-enable `CI_CONFLICT_COORDINATION_ENFORCE` once detection is in place
 3. Re-run `npm run velocity:scan -- --limit 60` ~2 weeks after fix to validate P90 drops below 24h
+
