@@ -118,6 +118,39 @@ export function queuePositionAfterRecovery(index, recovery) {
   return index + 1 - promotedCount;
 }
 
+export const EMPTY_TRAIN_LIVENESS_THRESHOLD_MS = 60 * 60 * 1000;
+
+function stallAnchorMs(pull) {
+  const updatedAtMs = Date.parse(String(pull?.updated_at || ''));
+  if (Number.isFinite(updatedAtMs) && updatedAtMs > 0) return updatedAtMs;
+  const createdAtMs = Date.parse(String(pull?.created_at || ''));
+  return Number.isFinite(createdAtMs) && createdAtMs > 0 ? createdAtMs : Number.NaN;
+}
+
+export function stalledAdmissionEligiblePulls({
+  pulls,
+  queuedNumbers = new Set(),
+  admissionByNumber = new Map(),
+  now = new Date(),
+  thresholdMs = EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+}) {
+  const nowMs = now.getTime();
+  if (!Number.isFinite(nowMs) || nowMs <= 0) return [];
+  return (pulls || [])
+    .filter((pull) => {
+      if (!pull || queuedNumbers.has(pull.number)) return false;
+      if (admissionByNumber.get(pull.number) !== true) return false;
+      const anchorMs = stallAnchorMs(pull);
+      if (!Number.isFinite(anchorMs) || anchorMs <= 0) return false;
+      return nowMs - anchorMs >= thresholdMs;
+    })
+    .sort(
+      (left, right) =>
+        stallAnchorMs(left) - stallAnchorMs(right) ||
+        left.number - right.number,
+    );
+}
+
 /**
  * Runs the candidate build loop for a merge train. For each train entry,
  * `buildEntry(index)` is called inside the retryable candidate-build boundary.
