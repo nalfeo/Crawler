@@ -15,6 +15,7 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
+import { MERGE_TRAIN_EMPTY_INCIDENT_MARKER as EMPTY_TRAIN_INCIDENT_MARKER } from '../ci-recovery/markers.mjs';
 import { coordinationEnforcementEnabled } from '../ci-conflict-coordinator/state.mjs';
 import { ciConflictOrderReasonForPromotion } from './ci-conflict-order.mjs';
 import {
@@ -80,7 +81,6 @@ const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
 const { trainCap: resolvedTrainCap } = resolveGlobalDispatchCaps(process.env);
 const EMPTY_TRAIN_INCIDENT_LABEL = 'ci-incident';
 const EMPTY_TRAIN_INCIDENT_TITLE = 'CI incident: Merge train empty with admission-eligible backlog';
-const EMPTY_TRAIN_INCIDENT_MARKER = '<!-- crawler-merge-train-empty-incident:v1 -->';
 
 if (!owner || !repo || !token || !Number.isInteger(trustedAppId)) {
   throw new Error('Merge train requires GITHUB_REPOSITORY, a GitHub token, and MERGE_TRAIN_APP_ID');

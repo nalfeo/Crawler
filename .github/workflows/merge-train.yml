@@ -55,20 +55,39 @@ jobs:
         github.event.workflow_run.name != 'CI' ||
         (github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.head_branch == github.event.repository.default_branch) ||
-        (github.event.workflow_run.event == 'schedule' &&
-        vars.MERGE_TRAIN_ENABLED == 'true'))
+        github.event.workflow_run.event == 'schedule')
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Fetch local actions
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: '.github/actions'
+          persist-credentials: false
+
+      - name: Train gate
+        id: train-gate
+        uses: ./.github/actions/train-gate
+        with:
+          # Gate only applies to schedule-triggered CI workflow_run events;
+          # all other events (push, pull_request_target, workflow_dispatch,
+          # Merge Train Validation workflow_run, direct schedule) proceed
+          # unconditionally. See job-level if: comment above.
+          event-is-schedule: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == 'CI' && github.event.workflow_run.event == 'schedule' }}
+          merge-train-enabled: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
+
       - name: Generate repository app token
         id: app-token
+        if: steps.train-gate.outputs.enabled == 'true'
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Checkout trusted merge-train implementation
+        if: steps.train-gate.outputs.enabled == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
@@ -76,6 +95,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Reconcile six-PR build-expiry train
+        if: steps.train-gate.outputs.enabled == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_TRAIN_TOKEN: ${{ steps.app-token.outputs.token }}
