@@ -182,9 +182,14 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
     // with a detail patch stamped strictly inside a border margin, so all
     // variants share byte-identical border pixels and a cross-variant seam is
     // arithmetically the base's own self-seam. The 2026-07-25 design generated
-    // each variant as an independent seamless material — each tiled against
-    // ITSELF but never against a sibling, giving ~3x cross-seam delta and the
-    // quilt the human rejected. These assertions lock the replacement.
+    // each variant from an INDEPENDENT Azure generation — each tiled against
+    // ITSELF but never against a sibling, giving ~3x cross-seam delta (relative
+    // to self-seam) and the quilt the human rejected. The independence is what
+    // hurt: variants cut as quadrants of ONE generation share global tone and
+    // palette and measure far milder (Floor 1 measured 1.2-1.6x its interior
+    // baseline). That milder failure is still unbounded, which is why this pack
+    // makes the property structural rather than merely small. These assertions
+    // lock the replacement.
     // LUMINANCE BOUNDS TRACK THE APPROVED VALUE HIERARCHY. These were originally
     // calibrated when the floor sat below the wall. The design was later flipped
     // (ADR: wall/floor separation comes from STRUCTURE, not from making the wall

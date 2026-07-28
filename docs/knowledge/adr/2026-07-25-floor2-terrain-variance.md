@@ -171,11 +171,23 @@ guard cannot silently shrink.
 - `DECAL_MIN_GROUND_FRACTION = 0.35` is a judgement call validated by screenshots, not a derived bound.
 - Long cracks read slightly root/branch-like rather than fractured-stone at `windowScale: 1` — the
   source material's crack network amplified by scale. Flagged to the human, accepted for now.
+- **The base's own self-seam is ungated.** The byte-identity assertion proves every variant seams as
+  well as the base does; it says nothing about how well _the base_ tiles. A regenerated base that
+  tiles poorly would be inherited by all eight variants with every guard still green. Cross-variant
+  seam needs no gate (it is structural), but a bound on base self-seam is a genuine missing check —
+  the Floor 1 session has a ~40-line seam probe that could be repurposed for exactly this.
 
 ## Alternatives Considered
 
 - **8 independent materials** — rejected on gameplay screenshots: variety without cohesion reads as
   noise, not as one place. Led to replacing the >=24-combinations metric with a cohesion metric.
+- **Quadrant-derived variants (one generation cut into 4)** — a materially weaker version of the
+  same failure, and worth distinguishing. The Floor 1 pack does this and measured its cross-variant
+  seam at **1.2-1.6x** its own interior adjacent-column baseline, versus the ~3x (relative to
+  self-seam) that independent generations produced here. Sharing one source fixes global tone and
+  palette, so only the local seam phase differs. It is milder, but still **unbounded** — nothing
+  stops a future regeneration from drifting. Base + interior-only patch makes the property hold by
+  construction instead, which is why it wins even against the milder variant.
 - **Disjoint parity buckets** — implemented, then removed (see Decision 1).
 - **Bigger pools / more variants** — cannot produce a cross-tile crack at any size (Decision 2).
 - **Per-decal masking against the wall map** — correct but strictly more expensive than
