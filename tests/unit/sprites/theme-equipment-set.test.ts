@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import {
   NON_HAND_EQUIPMENT_SLOT_IDS,
   THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS,
@@ -28,10 +32,74 @@ import {
   type ThemeEquipmentSetReviewPhase,
   type ThemeEquipmentSetState,
 } from '../../../scripts/sprites/theme-equipment-set.js';
-import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
+import {
+  StoreConditionalWriteError,
+  StoreNotFoundError,
+  type ConditionalWriteConditions,
+  type RunStore,
+} from '../../../scripts/sprites/store/types.js';
+import { CachingRunStore } from '../../../scripts/sprites/store/caching-store.js';
+import { SharedResourceCache } from '../../../scripts/sprites/store/shared-cache.js';
 
 const NOW = '2026-07-25T04:07:30.322Z';
 const WEAPON_TYPES = ['sword', 'bow', 'axe', 'staff', 'dagger'] as const;
+
+/**
+ * A shared backend with genuine server-side compare-and-swap, matching how
+ * Azure evaluates If-Match / If-None-Match. This is the ONLY store shape that
+ * reaches the conditional-write branch of `saveThemeEquipmentSetState` — the
+ * plain `makeStore()` double has no CAS methods and takes the fallback — so
+ * without it the atomic path ships untested.
+ */
+function makeAtomicStore(): RunStore & {
+  readonly mem: Map<string, { data: Buffer; etag: string }>;
+} {
+  const mem = new Map<string, { data: Buffer; etag: string }>();
+  let nextEtag = 1;
+  const commit = (key: string, data: Buffer): void => {
+    mem.set(key, { data: Buffer.from(data), etag: `etag-${nextEtag++}` });
+  };
+  return {
+    mem,
+    backend: 'azure-blob',
+    conditionalWrites: 'atomic',
+    async put(key, data) {
+      commit(key, data);
+    },
+    async get(key) {
+      const value = mem.get(key);
+      if (!value) throw new StoreNotFoundError(key);
+      return Buffer.from(value.data);
+    },
+    async getWithETag(key) {
+      const value = mem.get(key);
+      if (!value) throw new StoreNotFoundError(key);
+      return { data: Buffer.from(value.data), etag: value.etag };
+    },
+    async putConditional(key, data, conditions: ConditionalWriteConditions) {
+      const value = mem.get(key);
+      if (conditions.ifNoneMatch === '*' && value !== undefined) {
+        throw new StoreConditionalWriteError(`${key} already exists`);
+      }
+      if (conditions.ifMatch !== undefined && value?.etag !== conditions.ifMatch) {
+        throw new StoreConditionalWriteError(`${key} etag mismatch`);
+      }
+      commit(key, data);
+    },
+    async has(key) {
+      return mem.has(key);
+    },
+    async list(prefix) {
+      return [...mem.keys()].filter((key) => key.startsWith(prefix));
+    },
+    async remove(key) {
+      mem.delete(key);
+    },
+    resolve(key) {
+      return key;
+    },
+  };
+}
 
 function makeStore(): RunStore & { readonly mem: Map<string, Buffer> } {
   const mem = new Map<string, Buffer>();
@@ -501,6 +569,81 @@ describe('theme equipment set persistence', () => {
       }),
     ).rejects.toThrow(/does not provide atomic conditional writes/);
     expect(store.mem.size).toBe(0);
+  });
+
+  it('creates and updates through server-side compare-and-swap on an atomic backend', async () => {
+    const store = makeAtomicStore();
+    const key = themeEquipmentSetStateKey(makeState().id);
+
+    // First save is a create: guarded by ifNoneMatch:'*' so a racing creator
+    // cannot be clobbered.
+    const created = await saveThemeEquipmentSetState(store, makeState(), {
+      expectedRevision: null,
+      now: () => new Date(NOW),
+    });
+    expect(store.mem.has(key)).toBe(true);
+
+    // Second save is an update: guarded by ifMatch against the ETag observed
+    // during the read, so it commits only if nothing changed in between.
+    const updated = await saveThemeEquipmentSetState(
+      store,
+      { ...created, stateRevision: created.stateRevision + 1 },
+      { expectedRevision: created.stateRevision, now: () => new Date(NOW) },
+    );
+    expect(updated.stateRevision).toBe(created.stateRevision + 1);
+    await expect(loadThemeEquipmentSetState(store, updated.id)).resolves.toEqual(updated);
+  });
+
+  it('rejects a stale writer on an atomic backend instead of overwriting the winner', async () => {
+    const store = makeAtomicStore();
+    const created = await saveThemeEquipmentSetState(store, makeState(), {
+      expectedRevision: null,
+      now: () => new Date(NOW),
+    });
+
+    // Another machine commits first.
+    const winner = await saveThemeEquipmentSetState(
+      store,
+      { ...created, stateRevision: created.stateRevision + 1, displayName: 'Winner' },
+      { expectedRevision: created.stateRevision, now: () => new Date(NOW) },
+    );
+
+    // This writer still believes the pre-winner revision is current. Losing the
+    // race must surface as a conflict, never a silent overwrite — the whole
+    // point of routing saves through conditional writes.
+    await expect(
+      saveThemeEquipmentSetState(
+        store,
+        { ...created, stateRevision: created.stateRevision + 1, displayName: 'Stale Overwrite' },
+        { expectedRevision: created.stateRevision, now: () => new Date(NOW) },
+      ),
+    ).rejects.toThrow(/revision conflict/);
+
+    await expect(loadThemeEquipmentSetState(store, winner.id)).resolves.toEqual(winner);
+  });
+
+  it('passes the atomicity gate through a CachingRunStore over an atomic backend', async () => {
+    // The production shape: the wrapper must forward CAS and report the inner
+    // store's capability, otherwise the hoisted gate refuses every real save.
+    const cacheDir = mkdtempSync(path.join(tmpdir(), 'crawler-theme-cas-'));
+    try {
+      const inner = makeAtomicStore();
+      const store = new CachingRunStore({
+        inner,
+        cache: new SharedResourceCache({ cacheDir, maxBytes: 0, log: () => {} }),
+      });
+      expect(store.conditionalWrites).toBe('atomic');
+
+      const saved = await saveThemeEquipmentSetState(store, makeState(), {
+        expectedRevision: null,
+        now: () => new Date(NOW),
+      });
+      await expect(loadThemeEquipmentSetState(store, saved.id)).resolves.toEqual(saved);
+      // Written through to the authoritative backend, not just the cache.
+      expect(inner.mem.has(themeEquipmentSetStateKey(saved.id))).toBe(true);
+    } finally {
+      await rm(cacheDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    }
   });
 });
 
