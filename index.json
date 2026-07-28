@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fb7c38d6652edf1c0649e012e043a82f3866bab3",
+    "commitDate": "2026-07-28T19:09:30Z",
+    "commitSubject": "ci: D2 fix — auto-update clean-BEHIND PRs via update-branch API (WIP) (#2199)",
+    "capturedAt": "2026-07-28T20:02:22.197Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30391360509",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/fb7c38d6652edf1c0649e012e043a82f3866bab3.json"
+  },
+  {
     "commit": "d21fe1a7802973339ae2dbe08dc8bc1bdec88ecf",
     "commitDate": "2026-07-28T17:48:57Z",
     "commitSubject": "feat(ci-harness): non-blocking PR disposition — auto-close provable duplicates + quarantine abandon-candidates (Issue 8) (#2201)",
