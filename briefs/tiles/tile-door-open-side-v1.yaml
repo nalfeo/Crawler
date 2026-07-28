@@ -1,83 +1,102 @@
-# DUNGEON DOOR — OPEN, VERTICAL DOORWAY (wall runs up<->down, seen edge-on).
+# ORIENTATION NOTE (Set Piece Designer, 2026-07-28)
 #
-# Consumed as GENERATED_DOOR_TEXTURE_KEYS.openVertical — the last of the four
-# door states, and today the worst-looking: an open E/W doorway currently falls
-# back to a 16px Kenney frame upscaled 4x.
+# Sibling of tile-door-side-v1 (same wall, same quarter-turn, OPEN instead of
+# closed). ROUND 1 FAILED THE EYEBALL 8/8: every variant drew a face-on stone
+# archway with a horizontal timber lintel across the top -- i.e. the horizontal
+# orientation again -- and the swung leaf was a barely-visible nub. Sensors
+# scored 7/7 and the VLM judge scored brief_match 5/5 on all of them, because
+# neither gate can see which way the opening runs.
 #
-# Tile-filling and 4 ft x 4 ft for the same reason as tile-door-side-v1: a wall
-# running up-down the screen is seen edge-on, so there is no door FACE to draw
-# tall. See that brief's header for the full reasoning.
+# WHY THIS ONE IS NOT TALL: this door sits in a wall running UP-DOWN the screen.
+# Measured against the shipped terrain packs, the pack's vertical door tile is
+# its horizontal door tile rotated 90 degrees counter-clockwise -- confirmed to
+# the pixel (the horizontal tile's TOP edge row is byte-identical to the vertical
+# tile's LEFT edge column reversed; mean per-channel diff 0.0, versus 20.8 for
+# the identity mapping). The packs hand-retouch the interior so the SHADING does
+# not rotate with the art.
+#
+# Consequences: wall context on the TOP and BOTTOM rows; the opening runs
+# LEFT-TO-RIGHT across the middle; the swung leaf lies against the TOP jamb; and
+# the light still comes from the UPPER LEFT.
+#
+# THE OPENING MUST BE OPAQUE, NOT TRANSPARENT -- the dark gap is the room beyond,
+# painted solid. `type: tile` makes the whole cell opaque anyway, but the dark
+# must read as depth rather than a punched hole.
 type: tile
 name: tile-door-open-side-v1
 description: |
-  A 256x256 dungeon wall tile seen EDGE-ON with an OPEN doorway through it, for a
-  wall that runs VERTICALLY up and down the screen. The player walks through it
-  left-to-right. Modern high-quality pixel art, readable at 16px.
+  An OPEN DUNGEON DOORWAY seen in a wall that runs UP AND DOWN the screen. Modern
+  high-quality pixel art. The cell is 256 x 256 source pixels and the artwork
+  FILLS IT EDGE TO EDGE -- there is no transparency anywhere.
 
-  THE SUBJECT IS THE OPENING. The single most important thing to read at a glance
-  is that this doorway is PASSABLE — a player must instantly tell it apart from
-  the closed version. The middle of the tile is a DARK EMPTY GAP, not a leaf.
+  THIS IS AN OPEN DOORWAY ROTATED A QUARTER TURN. Picture a normal front-on open
+  doorway -- an upright opening with the door swung back against one side. Now
+  turn that whole picture 90 degrees counter-clockwise and draw THAT. The opening
+  that ran up-down now runs LEFT-TO-RIGHT, and the door leaf that stood upright
+  now lies flat along the TOP of the gap.
 
-  ORIENTATION — READ THIS TWICE. This is NOT a front-elevation doorway. You are
-  looking along the wall. The composition is a VERTICAL BAND: stone wall masonry
-  runs off the TOP edge and off the BOTTOM edge of the tile, and the opening
-  occupies the middle of that band, spanning the FULL WIDTH of the tile left to
-  right. If your image looks like an archway you could walk into face-first, it
-  is WRONG and belongs to the other brief.
+  SELF-CHECK BEFORE YOU COMMIT THE IMAGE -- round 1 failed all 16 variants here:
+  - The stonework must appear along the TOP EDGE and the BOTTOM EDGE of the cell.
+    If your stone is up the LEFT and RIGHT sides, the image is wrong and you must
+    start over.
+  - The dark opening must be a WIDE HORIZONTAL BAND spanning the cell from the
+    left edge to the right edge. If your dark area is a tall upright rectangle,
+    the image is wrong.
+  - The swung door leaf must be a HORIZONTAL bar of timber. If your leaf is a
+    vertical sliver, the image is wrong.
+  - There must be NO timber lintel lying across the top of an upright arch. That
+    was round 1's mistake.
 
-  COMPOSITION — FULL BLEED, NO TRANSPARENCY:
-  - The tile is FULLY OPAQUE edge to edge. No transparent background, no cut-out
-    silhouette, no padding. Every one of the 256x256 pixels is drawn.
-  - Stone WALL masonry fills the top quarter and the bottom quarter and runs off
-    those edges so it joins the adjacent wall tiles cleanly.
-  - Between them: the OPENING — deep shadow, nearly black at its centre, lifting
-    very slightly toward the near edge so it reads as depth rather than a flat
-    black bar. No visible room, no furniture, no distant scenery, no light shaft,
-    no fog. Just dark dungeon interior.
-  - A chipped stone JAMB band edges the opening top and bottom, catching a little
-    light so the gap does not merge into the wall.
-  - The DOOR LEAF is swung away out of the passage and is seen edge-on and
-    FORESHORTENED: a narrow horizontal strip of banded timber pressed against the
-    inside of the UPPER jamb, only about one fifth the depth of the opening. One
-    iron strap and a rivet row are still just readable on it. It must NOT block
-    the opening.
+  LAYOUT, top to bottom:
+  - The TOP ~15% of the cell is dungeon WALL -- cool grey blocky stone, the wall
+    carrying on past the doorway.
+  - Immediately under it, the SWUNG DOOR LEAF: a HORIZONTAL bar of heavy timber
+    running left-to-right, about ONE FIFTH of the height of the opening, pushed
+    back flat against the underside of the top wall. It is DARKER than a lit door
+    because it lies in the shadow of the opening. One or two iron straps and the
+    plank seams are still just readable on it.
+  - The MIDDLE, and most of the cell, is the OPENING: a wide horizontal band of
+    OPAQUE near-black shadow -- the unlit space beyond. Every pixel of it is
+    painted. Let the dark lift very slightly toward its lower edge so it reads as
+    depth rather than a flat hole.
+  - The BOTTOM ~15% of the cell is dungeon WALL again, matching the top.
 
-  IT IS NOT: a closed door, a doorway with the leaf still filling it, a
-  portcullis, a gate, a floor hatch, a pit, a chasm, a window, a mirror, a
-  portal, or a glowing magical rift. It is an open timber door in a wall seen
-  edge-on.
+  IT IS NOT: an upright front-facing doorway, a stone archway with a timber
+  lintel, a closed door, a portcullis, a gate, a window, a hatch, a cave mouth, a
+  mine shaft, or a bridge. It is one open doorway in a wall that runs up and down
+  the screen.
 
-  MOOD — a grimy reality-TV dungeon. The gap should feel like an invitation into
-  somewhere worse. Tired, worn, heavy; never ornate, never fantasy-decorative.
+  MOOD -- a grimy reality-TV dungeon. The way through is open and it is not
+  reassuring: the dark beyond is flat and unlit.
 
-  COLOUR — the stone is cool grey with a hint of blue-green in its shadows; the
-  foreshortened leaf is a warm desaturated walnut-brown; iron is dull dark
-  grey-black with tarnished rust-brown streaks; the opening is a very dark cool
-  grey-black, NOT pure black. The opening must read clearly DARKER than both the
-  stone and the leaf. BANNED: neon, pure white, saturated red, saturated yellow,
-  orange, teal, cyan, blue, green, magenta, purple, gold leaf, gemstones, glowing
-  runes, magical glow, torchlight beams, ornate carved fantasy filigree.
+  COLOUR -- the opening is a very dark desaturated blue-black, near-black but not
+  pure black, lifting faintly toward its lower edge; the swung leaf is a warm
+  desaturated walnut-brown pushed several tone stops DARKER than a lit door; iron
+  straps and rivets are dull dark grey-black metal with tarnished rust-brown
+  streaks; the wall stone is cool grey with a hint of blue-green in its shadows.
+  BANNED: neon, pure white, pure black, saturated red, saturated yellow, orange,
+  teal, cyan, blue, green, magenta, purple, gold leaf, gemstones, glowing runes,
+  magical glow, torchlight glare, visible fire, and any ornate carved fantasy
+  filigree.
 
-  LIGHTING: light comes from the UPPER LEFT, consistently. The upper wall band
-  and the left end of the jamb catch the highlight; shadow falls down and to the
-  right and deepens into the opening.
+  LIGHTING: light comes from the UPPER LEFT, consistently, and it does NOT rotate
+  with the doorway. Highlights still sit on the upper-left side of every stone,
+  strap and plank, and shadow still falls down and to the right. This is the one
+  thing that must NOT be rotated.
 
-  RENDERING: 3-5 tone stops per material, restrained dithering for stone and
-  timber grain — no mushy gradients, no airbrush. A hard dark keyline separates
-  stone from timber from iron from the void.
+  RENDERING: hard dark outlines where materials meet, 3-5 tone stops per
+  material, restrained dithering for stone and timber grain -- no mushy
+  gradients, no airbrush.
 
   NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils, labels,
-  captions, watermarks or signatures.
+  captions, watermarks or signatures anywhere.
 
-  NO BORDER ARTIFACT: the tile is fully opaque edge-to-edge. There must be NO
-  magenta, pink or off-palette fringe along any edge, and no drawn frame, rim,
-  vignette or keyline around the tile's own boundary — a rim would composite into
-  a lattice against the neighbouring wall tiles.
-variations:
-  - a wide clean opening with the swung leaf tight against the upper jamb and
-    heavy chipped stone above and below
-  - a slightly narrower opening with more rubble and wear on the jambs, the swung
-    leaf showing two rivet rows
+  BACKGROUND: none. This is an opaque tile that fills its whole cell edge to
+  edge. No transparency, no drop shadow, no vignette, no border, no frame around
+  the cell.
+
+  SHEET BACKGROUND: every cell is fully painted; cells butt directly against each
+  other with no dividers, borders or gutters between them.
 size:
   width: 64
   height: 64
@@ -85,18 +104,18 @@ anchor:
   x: 32
   y: 63
 sensors:
-  # Full-bleed tile: every pixel is opaque by design, so the cut-out prop ratio
-  # bounds and the edge-touch rule do not apply. Same posture as
-  # tile-stone-floor-v2, set BEFORE generating from the subject's geometry.
-  opaqueRatio:
-    disabled: true
+  # Full-bleed opaque tile: occupancy is 1.0 by definition, so the ratio sensor
+  # has nothing to say and is disabled rather than given a meaningless bound.
+  opaqueRatio: false
+  # The artwork intentionally runs to all four edges.
   edge:
     allowMainTouch: true
 tags:
   - pixel-dungeon
-  - architecture
+  - dungeon
   - door
-  - terrain
+  - architecture
+  - tile
 judge:
   enabled: true
   maxVariants: 8

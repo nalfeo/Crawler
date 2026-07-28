@@ -1,113 +1,130 @@
-# DUNGEON DOOR — OPEN, HORIZONTAL DOORWAY (wall runs left<->right, faces camera).
+# ORIENTATION + ASPECT NOTE (Set Piece Designer, 2026-07-28)
 #
-# Consumed as GENERATED_DOOR_TEXTURE_KEYS.openHorizontal. There is currently NO
-# generated open-door art at all, so every open door in the game falls back to a
-# 16px Kenney frame upscaled 4x — the single ugliest door state in the build.
+# Sibling of tile-door-v1 (same doorway, same geometry, OPEN instead of closed).
+# Round 1 failed 0/16 on `anchor-derivable` for the same two reasons; both fixed:
 #
-# Same width-authoritative render contract as tile-door-v1: the opaque box is
-# scaled so its WIDTH is one tile (4 ft), height follows the box aspect and grows
-# upward into the wall above. 64x112 => 4 ft x 7 ft.
+# 1. MECHANICAL. 64x112 fell through `resizeSpriteStrategy()` to 'fit', which
+#    LETTERBOXES and left transparent rows under the subject. 64x128 selects
+#    'height': height locked, width follows the drawn subject, always bottom-fed.
+#
+# 2. SUBJECT. Round 1 drew a stone frame. The renderer scales this sprite so its
+#    opaque box WIDTH equals the 4 ft doorway, and the mapgen already draws the
+#    surrounding wall, so a baked frame both double-draws masonry and shrinks the
+#    real opening. Draw the OPENING ONLY.
+#
+# THE OPENING MUST BE OPAQUE, NOT TRANSPARENT. This is the defining constraint of
+# the open-door art and the easiest one to get wrong. The dark gap is the room
+# BEYOND the door -- it is painted opaque near-black. If it is left transparent,
+# the floor tile underneath shows straight through the doorway and the door reads
+# as a hole in the world rather than a passage. `interior-transparency-holes`
+# will also fail it.
+#
+# WHY THIS EXISTS: there is no open-door art at all today. Every open door in the
+# dungeon falls back to an upscaled 16px Kenney frame
+# (`resolveDoorRenderMode` -> Kenney open frame), which is the mushiest art on
+# screen and does not match the closed door beside it.
 type: prop
 name: tile-door-open-v1
 description: |
-  A heavy DUNGEON DOOR standing OPEN in a stone wall, seen in front elevation —
-  looking STRAIGHT AT THE DOORWAY dead-on, the wall exactly parallel to the
-  screen, NO tilt, NO rotation, NO oblique angle, NO perspective. Modern
-  high-quality pixel art, silhouette readable at 16px.
+  An OPEN DUNGEON DOORWAY, front elevation, looking STRAIGHT THROUGH the opening
+  dead-on -- the plane of the doorway is exactly parallel to the screen, with NO
+  tilt, NO rotation, NO oblique angle and NO perspective. Modern high-quality
+  pixel art, silhouette readable at 16px.
 
-  THE SUBJECT IS THE OPENING. The single most important thing to read at a glance
-  is that this doorway is PASSABLE — a player must instantly tell it apart from
-  the closed door. The centre of the shape is a DARK EMPTY OPENING you can walk
-  through, not a timber leaf.
+  DRAW THE OPENING AND THE SWUNG LEAF ONLY -- NO STONE FRAME. Do NOT draw stone
+  jambs up the sides, a lintel across the top, a threshold at the bottom, or any
+  masonry, brick, wall or floor. The dungeon wall is ALREADY DRAWN underneath and
+  beside this art by the game.
 
-  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The whole
-  drawn bounding box INCLUDING the stone frame and the swung leaf must be about
-  128 PIXELS WIDE and 224 PIXELS TALL — a tall narrow portrait rectangle. Check
-  the width fits nearly TWICE inside the height. If it looks square or like a
-  gate it is WRONG.
+  THE OPENING IS SOLID DARK, NOT TRANSPARENT. Fill the whole doorway with OPAQUE
+  near-black shadow -- the unlit room beyond. Every pixel inside the doorway is
+  painted. Nothing behind it may show through. Let the dark lift very slightly
+  toward the bottom of the opening so it reads as depth rather than a flat hole.
 
-  COMPOSITION INSIDE THE SQUARE CELL:
-  - The doorway runs VERTICALLY, its stone THRESHOLD reaching the BOTTOM margin
-    of the cell and its stone LINTEL nearly touching the TOP margin.
-  - It occupies only the MIDDLE HALF of the cell's width. The left quarter and
-    the right quarter of the cell are completely EMPTY transparent background.
-  - EXACTLY ONE DOORWAY PER CELL. Never stack two and never draw a pair.
-  - NO DROP SHADOW, NO GROUND SHADOW, no floor line outside the threshold.
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The doorway's
+  drawn bounding box must be approximately 146 PIXELS WIDE and 256 PIXELS TALL --
+  the FULL HEIGHT of the cell, top margin to bottom margin, but only a little
+  over HALF its width.
+  - Check the width fits nearly TWICE inside the height. If it fits only once,
+    the opening is far too wide.
+  - The left ~21% and the right ~21% of the cell are completely EMPTY transparent
+    background.
+  - The top of the opening is gently ARCHED -- a shallow round-headed arch.
+  - EXACTLY ONE DOORWAY PER CELL.
 
-  WHAT IT IS:
-  - A stone door FRAME — slim jamb up each side, a shallow lintel across the top,
-    a worn THRESHOLD stone at the bottom. Blocky, chipped, cool grey.
-  - Inside the frame, the OPENING: deep shadow, nearly black at the top and
-    centre, lifting very slightly toward the threshold so it reads as depth
-    rather than a flat black hole. No visible room, no furniture, no distant
-    scenery, no light shaft, no fog, no stars — just dark dungeon interior.
-  - The DOOR LEAF itself is swung INWARD and away, so it is seen edge-on and
-    FORESHORTENED: a narrow vertical strip of banded timber pressed against the
-    INSIDE of the LEFT jamb, only about one fifth as wide as the opening. Its
-    iron banding and one rivet row are still just readable on the strip. The leaf
-    must NOT cover the opening and must NOT stick out beyond the frame.
-  - The same wear as the closed door: rust streaks, scuffed timber, chipped stone
-    corners, grime in the seams.
+  REAL-WORLD SIZE. The opening is 4 FEET WIDE x 7 FEET TALL. A person is 5.75 ft
+  tall, so there is clear headroom -- a person walks through without stooping.
 
-  IT IS NOT: a closed door, a doorway with the leaf still filling it, a
-  portcullis, a gate, an archway with no frame, a window, a mirror, a portal, or
-  a glowing magical rift. It is an open timber door in a stone frame.
+  THE SWUNG LEAF: the door itself has swung INWARD and stands FORESHORTENED flat
+  against the INSIDE of the LEFT edge of the opening -- a narrow vertical sliver
+  of timber only about ONE FIFTH the width of the opening, running its full
+  height, seen nearly edge-on. It is DARKER than the closed door would be because
+  it is in shadow inside the room. You can still make out one or two horizontal
+  iron straps and the plank seams on it. It must read as a door that has opened,
+  not as a plank leaning in the gap.
 
-  MOOD — a grimy reality-TV dungeon. The opening should feel like an invitation
-  into somewhere worse. Tired, worn, heavy; never ornate, never fantasy-decorative.
+  IT IS NOT: a closed door, a portcullis, a gate, an empty stone archway with
+  nothing in it, a window, a mine shaft, a cave mouth, or a doorway set in a
+  stone surround. It is one open timber door, swung inward, floating on
+  transparency.
 
-  COLOUR — the stone frame is cool grey with a hint of blue-green in its shadows;
-  the foreshortened leaf is a warm desaturated walnut-brown; the iron banding and
-  rivets are dull dark grey-black metal with tarnished rust-brown streaks; the
-  opening is a very dark cool grey-black, NOT pure black. Keep a clear dark
-  outline and clear tonal separation between stone, timber, iron and the void.
-  BANNED: neon, pure white, saturated red, saturated yellow, orange, teal, cyan,
-  blue, green, magenta, purple, gold leaf, gemstones, glowing runes, magical
-  glow, torchlight beams, ornate carved fantasy filigree.
+  MOOD -- a grimy reality-TV dungeon. The way out is open and it is not
+  reassuring: the dark beyond is flat and unlit.
 
-  LIGHTING: light comes from the UPPER LEFT, consistently. The left jamb and the
-  top of the lintel catch the highlight; shadow falls down and to the right and
-  deepens into the opening.
+  COLOUR -- the opening is a very dark desaturated blue-black, near-black but not
+  pure black, with a faint lift near the floor; the swung leaf is a warm
+  desaturated walnut-brown pushed several tone stops DARKER than a lit door; the
+  iron straps and rivets are dull dark grey-black metal with tarnished rust-brown
+  streaks. Keep a clear dark outline. BANNED: neon, pure white, pure black,
+  saturated red, saturated yellow, orange, teal, cyan, blue, green, magenta,
+  purple, gold leaf, gemstones, glowing runes, magical glow, torchlight glare,
+  visible fire, and any ornate carved fantasy filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. Because the leaf is
+  swung inward on the left it is in shadow; the right inner edge of the opening
+  catches the only real highlight.
 
   RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
-  material, restrained dithering for stone and timber grain — no mushy gradients,
-  no airbrush, no floating unsupported elements.
+  material, restrained dithering -- no mushy gradients, no airbrush, no floating
+  unsupported elements.
 
   NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils, labels,
-  captions, watermarks or signatures.
+  captions, watermarks or signatures anywhere.
 
-  BACKGROUND: fully transparent OUTSIDE the stone frame. Draw ONLY the frame, the
-  dark opening inside it, and the foreshortened leaf. Do NOT paint a wall around
-  the frame, a floor slab, a rectangular backing panel, a border, a vignette, or
-  any cast/contact/drop shadow. The dark opening INSIDE the frame is opaque dark
-  pixels, NOT transparency — the floor is drawn underneath this art and must not
-  show through the doorway.
+  BACKGROUND: fully transparent OUTSIDE the doorway silhouette only. Draw ONLY
+  the opening and its swung leaf. Do NOT paint a wall, a stone frame, a floor
+  slab, a rectangular backing panel, a border, a vignette, or any cast/contact/
+  drop shadow.
 
   SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
-  colour, identical in all cells, clearly distinct from the art so it can be
+  colour, identical in all cells, clearly distinct from the artwork so it can be
   keyed out cleanly. No per-cell background variation, no borders, no dividers.
 size:
   width: 64
-  height: 112
+  height: 128
 anchor:
   x: 32
-  y: 108
+  y: 126
 sensors:
-  # Same near-rectangular geometry as the closed leaf: frame + filled dark
-  # opening fills most of its bounding box, far above the `prop` default 0.65.
-  # Bound set BEFORE generating, from the subject's geometry.
+  # An open doorway filled with opaque shadow is an even more solidly rectangular
+  # subject than the closed leaf, so the `prop` default [0.10, 0.65] is far too
+  # tight. Cap derived from the ARCHED head, which removes roughly 4-8% of the
+  # bounding box at the upper corners; a background-removal failure lands at
+  # ~0.99-1.0 and is still caught. Bounds set BEFORE generating.
   opaqueRatio:
-    min: 0.4
-    max: 0.9
+    min: 0.55
+    max: 0.96
+  # Grounded: the bottom of the opening is the doorway floor line.
   anchor:
     derive: true
     bandRows: 8
     centerToleranceX: 10
 tags:
   - pixel-dungeon
-  - architecture
+  - dungeon
   - door
-  - terrain
+  - architecture
+  - tile
 judge:
   enabled: true
   maxVariants: 8
