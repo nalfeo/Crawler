@@ -55,6 +55,7 @@ const TRUSTED_PACKAGES = new Set<string>([
   'zod',
   'fastify',
   'playwright',
+  'esbuild',
   // Navmesh AI pathing (Slice 3) — recast-navigation-js, the standard WASM
   // binding for the Recast/Detour navmesh library. MIT-licensed, maintainer
   // isaacmason, pinned 0.43.1 (== latest, published 2026-02). Deterministic

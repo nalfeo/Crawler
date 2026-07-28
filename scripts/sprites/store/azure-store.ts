@@ -46,6 +46,8 @@ export interface AzureBlobRunStoreOptions {
 
 export class AzureBlobRunStore implements RunStore {
   readonly backend = 'azure-blob' as const;
+  /** Azure enforces `If-Match`/`If-None-Match` server-side. */
+  readonly conditionalWrites = 'atomic' as const;
 
   /**
    * Non-secret identity used to namespace the shared resource cache. Contains

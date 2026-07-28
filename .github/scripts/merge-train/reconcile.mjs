@@ -15,6 +15,7 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
+import { coordinationEnforcementEnabled } from '../ci-conflict-coordinator/state.mjs';
 import { ciConflictOrderReasonForPromotion } from './ci-conflict-order.mjs';
 import {
   applyLandedRecoveryDecision,
@@ -817,25 +818,31 @@ async function promotePrefix(prefixLength, validationIndex) {
       landedCount += 1;
     },
     reattestHealth: mainHealthAllowsPromotion,
-    verifyMergeSlot: async ({ currentPr, currentMain }) =>
-      ciConflictOrderReasonForPromotion({
-        pullRequest: currentPr,
-        baseSha: currentMain,
-        owner,
-        repo,
-        repository,
-        trustedAppId,
-        requiredChecks: requiredAdmissionChecks,
-        git,
-        fetchOpenPulls: async () =>
-          paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`),
-        fetchPullFiles: async (number) =>
-          paginate(token, `/repos/${owner}/${repo}/pulls/${number}/files?per_page=100`),
-        fetchComments: async (number) =>
-          paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
-        fetchCheckRuns: async (sha) => checkRuns(sha),
-        fetchClosingIssues: async (number) => listClosingIssues(token, owner, repo, number),
-      }),
+    // Coordinator slot ordering is recomputed LIVE from filenames here, so it
+    // survives label removal — it must be gated on the same kill switch or the
+    // train would keep enforcing an order nothing else is enforcing.
+    // `undefined` falls through to promoteExactBatch's `async () => null`.
+    verifyMergeSlot: coordinationEnforcementEnabled(process.env)
+      ? async ({ currentPr, currentMain }) =>
+          ciConflictOrderReasonForPromotion({
+            pullRequest: currentPr,
+            baseSha: currentMain,
+            owner,
+            repo,
+            repository,
+            trustedAppId,
+            requiredChecks: requiredAdmissionChecks,
+            git,
+            fetchOpenPulls: async () =>
+              paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`),
+            fetchPullFiles: async (number) =>
+              paginate(token, `/repos/${owner}/${repo}/pulls/${number}/files?per_page=100`),
+            fetchComments: async (number) =>
+              paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+            fetchCheckRuns: async (sha) => checkRuns(sha),
+            fetchClosingIssues: async (number) => listClosingIssues(token, owner, repo, number),
+          })
+      : undefined,
   });
   return { promoted, landedCount };
 }

@@ -3,10 +3,23 @@ import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 
 const MAX_BODY_BYTES = 32 * 1024;
+/**
+ * Opening the canvas asks for the set list twice: once for the set-id
+ * allowlist in `selectSet`, once for the index the browser renders. Each
+ * one is a fresh child process, so caching for a few seconds removes a
+ * whole command from the open path without letting the list go
+ * meaningfully stale.
+ */
+const LIST_TTL_MS = 3_000;
+/** Poll cadence and give-up point for the post-`init` state watch. */
+const WATCH_INTERVAL_MS = 15_000;
+const WATCH_LIMIT_MS = 20 * 60_000;
 const MUTATING_PATHS = new Set([
   '/api/review-item',
   '/api/review-set',
   '/api/advance',
+  '/api/approve-remaining',
+  '/api/save-and-approve-brief',
   '/api/dispatch',
   '/api/select',
   '/api/synth-roster',
@@ -22,11 +35,98 @@ export async function startThemeEquipmentReviewServer(options) {
     runCommand,
     dispatchWorkflow,
     log = () => {},
+    listTtlMs = LIST_TTL_MS,
+    watchIntervalMs = WATCH_INTERVAL_MS,
+    watchLimitMs = WATCH_LIMIT_MS,
   } = options;
   const token = randomBytes(32).toString('base64url');
   const clients = new Set();
+  const watches = new Map();
   let port = 0;
   let setId = null;
+  let listCache = null;
+
+  /**
+   * Share one `list` result between concurrent callers and for a short
+   * window afterwards. A failed list is never cached, so an outage cannot
+   * be pinned in place.
+   */
+  function listSets() {
+    if (listCache && Date.now() - listCache.at < listTtlMs) return listCache.promise;
+    const promise = runCommand({ action: 'list' });
+    listCache = { at: Date.now(), promise };
+    promise.catch(() => {
+      if (listCache?.promise === promise) listCache = null;
+    });
+    return promise;
+  }
+
+  function invalidateList() {
+    listCache = null;
+  }
+
+  /**
+   * Watch for durable state to appear after an `init` dispatch.
+   *
+   * The workflow runs on GitHub and takes minutes, so without this the
+   * canvas sits on its "not initialized" error until the user happens to
+   * press Refresh — which is exactly why a working Initialize button
+   * looked inert. Broadcasting the state when it lands lets the existing
+   * SSE handler flip the pane to the board on its own.
+   */
+  function watchForState(watchedSetId) {
+    stopWatch(watchedSetId);
+    const startedAt = Date.now();
+    let timer = null;
+    let cancelled = false;
+
+    const tick = async () => {
+      if (cancelled) return;
+      if (Date.now() - startedAt > watchLimitMs) {
+        log(`state watch for "${watchedSetId}" gave up after ${watchLimitMs}ms`, 'warn');
+        return stopWatch(watchedSetId);
+      }
+      let state = null;
+      try {
+        state = await runCommand({ action: 'state', setId: watchedSetId });
+      } catch (error) {
+        if (cancelled) return;
+        const message = error?.message ?? String(error);
+        // "Not there yet" is the only error worth waiting on. A store or
+        // credential failure will not resolve itself, and retrying it for
+        // twenty minutes would burn child processes while hiding the real
+        // problem from the user.
+        if (!/was not found/.test(message)) {
+          log(`state watch for "${watchedSetId}" stopped: ${message}`, 'warn');
+          return stopWatch(watchedSetId);
+        }
+      }
+      if (cancelled) return;
+      if (state) {
+        invalidateList();
+        broadcast(state);
+        return stopWatch(watchedSetId);
+      }
+      timer = setTimeout(tick, watchIntervalMs);
+      timer.unref?.();
+    };
+
+    timer = setTimeout(tick, watchIntervalMs);
+    timer.unref?.();
+    watches.set(watchedSetId, {
+      cancel: () => {
+        cancelled = true;
+        if (timer) clearTimeout(timer);
+      },
+    });
+  }
+
+  function stopWatch(watchedSetId) {
+    const watch = watches.get(watchedSetId);
+    if (!watch) return;
+    watches.delete(watchedSetId);
+    watch.cancel();
+  }
 
   /**
    * Resolve a client-supplied set id against a server-computed allowlist
@@ -37,7 +137,7 @@ export async function startThemeEquipmentReviewServer(options) {
     if (typeof requested !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(requested)) {
       throw new HttpError(400, 'invalid-set-id');
     }
-    const index = await runCommand({ action: 'list' });
+    const index = await listSets();
     const known = new Set((index.sets ?? []).map((entry) => entry.id));
     if (!known.has(requested)) throw new HttpError(404, `unknown-set:${requested}`);
     setId = requested;
@@ -102,7 +202,7 @@ export async function startThemeEquipmentReviewServer(options) {
       }
     }
     if (method === 'GET' && url.pathname === '/api/sets') {
-      writeJson(res, 200, { ...(await runCommand({ action: 'list' })), currentSetId: setId });
+      writeJson(res, 200, { ...(await listSets()), currentSetId: setId });
       return;
     }
     if (method === 'GET' && url.pathname === '/api/state') {
@@ -174,6 +274,8 @@ export async function startThemeEquipmentReviewServer(options) {
           plan: body.plan,
           overwrite: body.overwrite === true,
         });
+        // A newly authored plan belongs in the index immediately.
+        invalidateList();
         writeJson(res, 200, result);
         return;
       }
@@ -182,11 +284,41 @@ export async function startThemeEquipmentReviewServer(options) {
           writeJson(res, 409, { error: 'no-set-selected' });
           return;
         }
-        writeJson(res, 200, await dispatchWorkflow(body.action, setId));
+        // `setId` is mutable shared state: a concurrent /api/select during the
+        // dispatch would otherwise redirect the watch at the wrong set.
+        const dispatchedSetId = setId;
+        const dispatched = await dispatchWorkflow(body.action, dispatchedSetId);
+        if (body.action === 'init') {
+          invalidateList();
+          watchForState(dispatchedSetId);
+        }
+        writeJson(res, 200, dispatched);
         return;
       }
       if (!setId) {
         writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
+      if (url.pathname === '/api/approve-remaining') {
+        const bulk = await runCommand({
+          action: 'approve-remaining',
+          setId,
+          expectedRevision: body.expectedRevision,
+        });
+        writeJson(res, 200, bulk);
+        broadcast(bulk);
+        return;
+      }
+      if (url.pathname === '/api/save-and-approve-brief') {
+        const edited = await runCommand({
+          action: 'save-and-approve-brief',
+          setId,
+          itemId: body.itemId,
+          briefText: body.briefText,
+          expectedRevision: body.expectedRevision,
+        });
+        writeJson(res, 200, edited);
+        broadcast(edited);
         return;
       }
       const result =
@@ -261,6 +393,7 @@ export async function startThemeEquipmentReviewServer(options) {
     },
     close: () =>
       new Promise((resolve) => {
+        for (const watchedSetId of [...watches.keys()]) stopWatch(watchedSetId);
         for (const client of clients) client.end();
         clients.clear();
         server.close(() => resolve());
