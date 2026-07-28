@@ -68,6 +68,11 @@ import {
   parseLifecycleComment,
 } from './pr-lifecycle.mjs';
 import { DISPATCH_ACTION, selectEarlyAction, selectTerminalAction } from './dispatch-table.mjs';
+import {
+  buildEarlyDecisionRecord,
+  buildTerminalDecisionRecord,
+  formatDecisionLog,
+} from './decision-log.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -1383,6 +1388,21 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
   }
 }
 
+// Build the common (stage-independent) fields for a structured decision-log
+// record. Reads module-level reconcile state at call time; caller supplies the
+// two stage-derived signals. See decision-log.mjs for the record contract.
+function buildDecisionCommon({ shepherdLeaseExpired, mergeTrainOwned }) {
+  return {
+    prNumber,
+    headSha: pr.head.sha,
+    timestamp: now.toISOString(),
+    trigger,
+    stateAttempt: state?.attempt ?? 0,
+    shepherdLeaseExpired: Boolean(shepherdLeaseExpired),
+    mergeTrainOwned: Boolean(mergeTrainOwned),
+  };
+}
+
 {
   const earlyAutomationProgressAtMs =
     labelExists &&
@@ -1435,6 +1455,20 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
   }
 
   if (earlyRow) {
+    // Observability (no behavior change): emit the early short-circuit decision
+    // to the append-only workflow run log. Early rows never post a task comment.
+    process.stdout.write(
+      `${formatDecisionLog(
+        buildEarlyDecisionRecord({
+          common: buildDecisionCommon({
+            shepherdLeaseExpired: earlyCtx.shepherdLeaseExpired,
+            mergeTrainOwned: mergeTrainEnabled && earlyCtx.hasQueueLabel,
+          }),
+          ctx: earlyCtx,
+          row: earlyRow,
+        }),
+      )}\n`,
+    );
     switch (earlyRow.action) {
       case DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_CONFLICT:
         // R05: stale automation lock — release with loop-incident filing when
@@ -2519,6 +2553,11 @@ let dispatchProgressAt = now.toISOString();
 // unbounded `for (;;)` relying on the invariant holding forever.
 const MAX_TERMINAL_PASSES = 2;
 let terminalRow;
+// Snapshot the {row, ctx, pass} that produced the FINAL terminal decision so the
+// decision-log line uses the exact context that selected the row (not a
+// post-loop recomputation that could drift). Reassigned every pass; on the
+// terminating pass it holds the converged decision (plan review, 2026-07-27).
+let selectedTerminal = null;
 for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
   // Recomputed every pass (not hoisted) so a mid-loop release() that changes
   // `state` is reflected in the exhausted-state comparison, not just in
@@ -2545,6 +2584,7 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
       now.getTime() - Date.parse(state?.progressAt || state?.updatedAt) < 30 * 60 * 1000,
   };
   terminalRow = selectTerminalAction(terminalCtx);
+  selectedTerminal = { row: terminalRow, ctx: terminalCtx, pass };
   if (terminalRow.action !== DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_RETRY) break;
 
   // R33 (non-terminal): duplicate dispatch not yet exhausted. Release and
@@ -2592,6 +2632,32 @@ if (terminalRow.action === DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_RETRY) {
     `reconcile: terminal dispatch did not converge after ${MAX_TERMINAL_PASSES} passes ` +
       `(still RELEASE_STALE_AUTOMATION_RETRY for pr=#${prNumber}). This indicates release() ` +
       `failed to clear labelExists/state as expected.`,
+  );
+}
+
+// Observability (no behavior change): emit the FINAL terminal decision to the
+// append-only workflow run log. `taskComment` reports intent (planned/dry-run/
+// not-applicable) — the subsequent `assigned copilot pr=#N` line records the
+// confirmed post, and a POST failure throws loudly in this same run log.
+{
+  const blockerKinds = [...new Set(normalized.map((blocker) => blocker.kind))];
+  process.stdout.write(
+    `${formatDecisionLog(
+      buildTerminalDecisionRecord({
+        common: buildDecisionCommon({
+          shepherdLeaseExpired:
+            labelExists && state?.owner === 'shepherd' && isLeaseExpired(state, now),
+          mergeTrainOwned:
+            mergeTrainEnabled && (pr.labels || []).some((label) => label.name === QUEUE_LABEL),
+        }),
+        ctx: selectedTerminal.ctx,
+        row: selectedTerminal.row,
+        terminalPass: selectedTerminal.pass,
+        fingerprint,
+        blockerKinds,
+        blockerCount: normalized.length,
+      }),
+    )}\n`,
   );
 }
 

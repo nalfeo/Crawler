@@ -260,6 +260,18 @@ function isWindowsAsyncCloseCrash(code, stderr) {
   return process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr);
 }
 
+// Parse the append-only CI_RECOVERY_DECISION observability lines out of a
+// reconcile run's stdout (see decision-log.mjs). Each such line is
+// `CI_RECOVERY_DECISION {json}`; returns the parsed JSON records in order.
+const DECISION_LINE_RE = /^CI_RECOVERY_DECISION (\{.*\})$/;
+function parseDecisionLines(stdout) {
+  return stdout
+    .split('\n')
+    .map((line) => DECISION_LINE_RE.exec(line.trim()))
+    .filter(Boolean)
+    .map((match) => JSON.parse(match[1]));
+}
+
 // The Windows UV_HANDLE_CLOSING shutdown assertion is a known Node/libuv
 // race in this file's shared spawn-subprocess + mock-HTTP-server harness:
 // every test here starts a real server, spawns reconcile.mjs as a child
@@ -938,6 +950,14 @@ for (const attempt of [1, 2]) {
     const finalState = parseStateComment(stateComment.body);
     if (attempt === 1) {
       assert.match(stdout, /assigned copilot pr=#42/);
+      // Observability: a terminal decision line must record the dispatch, with a
+      // machine-readable action + task-comment intent (decision-log.mjs).
+      const decisions = parseDecisionLines(stdout);
+      const dispatch = decisions.find((d) => d.action === DISPATCH_ACTION.DISPATCH_COPILOT);
+      assert.ok(dispatch, 'expected a CI_RECOVERY_DECISION line for the copilot dispatch');
+      assert.equal(dispatch.stage, 'terminal');
+      assert.equal(dispatch.pr, PR_NUM);
+      assert.equal(dispatch.taskComment, 'planned');
       assert.equal(finalState.owner, 'automation');
       assert.equal(finalState.status, 'dispatched');
       assert.equal(finalState.attempt, 2);
@@ -1972,6 +1992,15 @@ test('admission wait after orphan cleanup does not release ownership twice', asy
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
   assert.match(stdout, /wait pr=#42 admission=/);
+  // Observability: a terminal decision line records the non-dispatch outcome so a
+  // stalled PR can be diagnosed even when @copilot is deliberately not summoned.
+  {
+    const decisions = parseDecisionLines(stdout);
+    const terminal = decisions.find((d) => d.stage === 'terminal');
+    assert.ok(terminal, 'expected a terminal CI_RECOVERY_DECISION line');
+    assert.equal(terminal.action, DISPATCH_ACTION.WAIT_ADMISSION);
+    assert.equal(terminal.taskComment, 'not-applicable');
+  }
   assert.equal(
     mutatingCalls.filter(
       (call) =>
@@ -4544,6 +4573,15 @@ test('disabled merge train still clears stale train labels before honoring an ac
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /skip pr=#42 reason=active-shepherd-lease/);
+  // Observability: an early short-circuit also emits a decision line (stage=early)
+  // so a run that never reaches the terminal table is still diagnosable.
+  {
+    const decisions = parseDecisionLines(stdout);
+    const early = decisions.find((d) => d.stage === 'early');
+    assert.ok(early, 'expected an early CI_RECOVERY_DECISION line');
+    assert.equal(early.action, DISPATCH_ACTION.SKIP_ACTIVE_SHEPHERD);
+    assert.equal(early.taskComment, 'not-applicable');
+  }
   const deletedLabels = mutatingCalls
     .filter((call) => call.method === 'DELETE')
     .map((call) => decodeURIComponent(call.url.split('/').at(-1)))
