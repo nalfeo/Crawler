@@ -17,7 +17,13 @@ import { buildTerrainLayer } from '../../src/engine/terrain-renderer.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
-import { BiomeType, TerrainType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import {
+  BiomeType,
+  RoomRole,
+  TerrainType,
+  TilePresets,
+  type MapConfig,
+} from '../../src/shared/map-types.js';
 import { PIXELS_PER_FOOT } from '../../src/shared/units.js';
 import { getTerrainPack } from '../../src/shared/terrain-pack-registry.js';
 import {
@@ -36,7 +42,7 @@ interface StampCall {
   frame: number | undefined;
   x: number;
   y: number;
-  config: { originX: number; originY: number; scaleX: number; scaleY: number };
+  config: { originX: number; originY: number; scaleX: number; scaleY: number; rotation?: number };
 }
 
 class MockRenderTexture {
@@ -115,6 +121,7 @@ function makeFloorMap(
   widthTiles: number,
   heightTiles: number,
   seed = 42,
+  roomGraph: RoomGraph = new RoomGraph(),
 ): FloorMap {
   const config: MapConfig = {
     widthTiles,
@@ -130,7 +137,33 @@ function makeFloorMap(
   const tileMap = new TileMap(widthTiles, heightTiles);
   tileMap.fill(TilePresets.FLOOR);
   const terrain = Uint8Array.from(terrainTypes);
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 0, y: 0 });
+  return new FloorMap(config, tileMap, roomGraph, terrain, { x: 0, y: 0 });
+}
+
+function makeLineworkFloorMap(seed = 4242): FloorMap {
+  const size = 25;
+  const terrain = Array<TerrainType>(size * size).fill(TerrainType.STONE_WALL);
+  const carve = (tx: number, ty: number, radius = 0): void => {
+    for (let y = ty - radius; y <= ty + radius; y++) {
+      for (let x = tx - radius; x <= tx + radius; x++) {
+        if (x < 0 || y < 0 || x >= size || y >= size) continue;
+        terrain[y * size + x] = TerrainType.STONE_FLOOR;
+      }
+    }
+  };
+  for (let tx = 2; tx < size - 2; tx++) carve(tx, 12);
+  for (let ty = 2; ty < size - 2; ty++) carve(12, ty);
+  for (let tx = 4; tx < size - 4; tx++) carve(tx, 6);
+  for (let tx = 4; tx < size - 4; tx++) carve(tx, 18);
+  for (let ty = 4; ty < size - 4; ty++) carve(6, ty);
+  for (let ty = 4; ty < size - 4; ty++) carve(18, ty);
+  carve(6, 6, 1);
+  carve(18, 18, 1);
+
+  const roomGraph = new RoomGraph();
+  roomGraph.add({ x: 5, y: 5, width: 3, height: 3 }, [], [], RoomRole.BOSS_DEN);
+  roomGraph.add({ x: 17, y: 17, width: 3, height: 3 }, [], [], RoomRole.RESOURCE_HEART);
+  return makeFloorMap(terrain, size, size, seed, roomGraph);
 }
 
 const pack = getTerrainPack('industrial-cave');
@@ -144,6 +177,8 @@ const allPackKeys = new Set<string>([
   ...pack.corridorPool.map((v) => v.textureKey),
   ...Object.values(pack.doorSet).map((v) => v.textureKey),
   ...(pack.wallAccents ?? []).map((a) => a.textureKey),
+  ...(pack.linework ?? []).map((l) => l.textureKey),
+  ...(pack.linework ?? []).flatMap((l) => (l.props ? [l.props.textureKey] : [])),
 ]);
 
 describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8)', () => {
@@ -438,6 +473,39 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(result.packFloorCount).toBe(0);
     expect(rt.stamps).toHaveLength(1);
     expect(rt.stamps[0]!.key).toBe(pack.wallAutotile.textureKey);
+  });
+
+  it('executes linework runtime stamping with props and deferred wall-entry ordering', () => {
+    const { scene, rt } = createPackScene(allPackKeys);
+    const floorMap = makeLineworkFloorMap(4242);
+
+    const result = buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    expect(result.packLineworkHubs).toHaveLength(2);
+    expect(result.packLineworkTileCount).toBeGreaterThan(0);
+    expect(result.packLineworkRuns.length).toBeGreaterThan(0);
+
+    const lineworkKeys = new Set((pack.linework ?? []).map((layer) => layer.textureKey));
+    const lineworkStamps = rt.stamps.filter((stamp) => lineworkKeys.has(stamp.key));
+    expect(lineworkStamps.length).toBeGreaterThan(0);
+    expect(lineworkStamps.some((stamp) => typeof stamp.frame === 'number')).toBe(true);
+
+    const propKeys = new Set(
+      (pack.linework ?? []).flatMap((layer) => (layer.props ? [layer.props.textureKey] : [])),
+    );
+    const propStamps = rt.stamps.filter((stamp) => propKeys.has(stamp.key));
+    expect(propStamps.length).toBeGreaterThan(0);
+    expect(propStamps.some((stamp) => stamp.config.rotation === Math.PI / 2)).toBe(true);
+
+    const lastWallStampIndex = rt.stamps.reduce(
+      (latest, stamp, index) => (stamp.key === pack.wallAutotile.textureKey ? index : latest),
+      -1,
+    );
+    expect(lastWallStampIndex).toBeGreaterThanOrEqual(0);
+    const deferredLineworkIndex = rt.stamps.findIndex(
+      (stamp, index) => lineworkKeys.has(stamp.key) && index > lastWallStampIndex,
+    );
+    expect(deferredLineworkIndex).toBeGreaterThan(lastWallStampIndex);
   });
 });
 

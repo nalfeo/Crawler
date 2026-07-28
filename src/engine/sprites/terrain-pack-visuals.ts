@@ -23,7 +23,7 @@ const logger = createLogger('engine:terrain-pack-visuals');
 /** One entry in the static terrain-pack preload registry. */
 export type TerrainPackPreloadEntry =
   | {
-      readonly kind: 'wall-atlas' | 'ground-decals';
+      readonly kind: 'wall-atlas' | 'ground-decals' | 'linework';
       readonly textureKey: string;
       readonly path: string;
       readonly frameWidth: number;
@@ -87,6 +87,27 @@ export function collectTerrainPackPreloadEntries(): readonly TerrainPackPreloadE
         frameHeight: decalSet.cellPx,
       });
     }
+    // Linework atlases (2-edge Wang path tiles) and their prop sheets. Both are
+    // spritesheets, but each declares its own cellPx: the Wang atlas is pinned to
+    // the pack cell so a frame can never overhang its own tile, while props are a
+    // separate sheet that may be sized independently.
+    for (const layer of pack.linework ?? []) {
+      entries.push({
+        kind: 'linework',
+        textureKey: layer.textureKey,
+        path: layer.imagePath,
+        frameWidth: layer.cellPx,
+        frameHeight: layer.cellPx,
+      });
+      if (!layer.props) continue;
+      entries.push({
+        kind: 'linework',
+        textureKey: layer.props.textureKey,
+        path: layer.props.imagePath,
+        frameWidth: layer.props.cellPx,
+        frameHeight: layer.props.cellPx,
+      });
+    }
     for (const variant of [
       ...pack.floorPool,
       ...pack.corridorPool,
@@ -125,7 +146,11 @@ export function preloadTerrainPacks(
     }
     seen.add(entry.textureKey);
     const url = resolvePublicAssetUrl(entry.path);
-    if (entry.kind === 'wall-atlas' || entry.kind === 'ground-decals') {
+    if (
+      entry.kind === 'wall-atlas' ||
+      entry.kind === 'ground-decals' ||
+      entry.kind === 'linework'
+    ) {
       loader.spritesheet(entry.textureKey, url, {
         frameWidth: entry.frameWidth,
         frameHeight: entry.frameHeight,

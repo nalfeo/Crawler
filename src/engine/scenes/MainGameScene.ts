@@ -34,7 +34,11 @@ import {
   resolveDoorPoolVariant,
 } from '../../shared/terrain-pack-variants.js';
 import { TERRAIN_PACK_CELL_PX } from '../../shared/terrain-pack-types.js';
-import { buildTerrainLayer, type TerrainPackFamily } from '../terrain-renderer.js';
+import {
+  buildTerrainLayer,
+  type LineworkRunStats,
+  type TerrainPackFamily,
+} from '../terrain-renderer.js';
 import type { TerrainPackId, TransformId } from '../../shared/terrain-pack-types.js';
 import {
   resolveDoorRenderMode,
@@ -427,6 +431,10 @@ export class MainGameScene extends Phaser.Scene {
     packWallAccentedCount: number;
     packWallAccentCounts: Record<string, number>;
     packGroundDecalCount: number;
+    packLineworkTileCount: number;
+    packLineworkPropCount: number;
+    packLineworkRuns: readonly LineworkRunStats[];
+    packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
   } = {
     generatedCount: 0,
     spriteCount: 0,
@@ -444,6 +452,10 @@ export class MainGameScene extends Phaser.Scene {
     packWallAccentedCount: 0,
     packWallAccentCounts: {},
     packGroundDecalCount: 0,
+    packLineworkTileCount: 0,
+    packLineworkPropCount: 0,
+    packLineworkRuns: [],
+    packLineworkHubs: [],
   };
 
   /**
@@ -1892,6 +1904,10 @@ export class MainGameScene extends Phaser.Scene {
     packWallAccentedCount: number;
     packWallAccentCounts: Record<string, number>;
     packGroundDecalCount: number;
+    packLineworkTileCount: number;
+    packLineworkPropCount: number;
+    packLineworkRuns: readonly LineworkRunStats[];
+    packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
   } {
     return this.terrainRenderSummary;
   }
@@ -2181,6 +2197,10 @@ export class MainGameScene extends Phaser.Scene {
       packWallAccentedCount,
       packWallAccentCounts,
       packGroundDecalCount,
+      packLineworkTileCount,
+      packLineworkPropCount,
+      packLineworkRuns,
+      packLineworkHubs,
     } = buildTerrainLayer(this, floorMap, {
       terrainPackId: this.options.terrainPackId,
       terrainPacks: this.options.terrainPacks,
@@ -2204,6 +2224,10 @@ export class MainGameScene extends Phaser.Scene {
       packWallAccentedCount,
       packWallAccentCounts,
       packGroundDecalCount,
+      packLineworkTileCount,
+      packLineworkPropCount,
+      packLineworkRuns,
+      packLineworkHubs,
     };
 
     if (colorCount > 0) {

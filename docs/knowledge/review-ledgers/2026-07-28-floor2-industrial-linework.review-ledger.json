@@ -1,0 +1,82 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "floor2-industrial-linework",
+  "task_title": "Floor 2 industrial linework",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Adversarial plan review red-teamed the edge-Wang path-tile design and argued for two alternatives: (A) a semantic infrastructure forest - deterministic ports on room boundaries plus a Steiner forest preserving route identity - and (B) whole-run textured ribbon rasterisation of polylines instead of per-tile Wang frames. Chosen design retained: (A) collapses the >=6-distinct-runs metric by merging every yard into one component; (B) cannot be pooled or atlased and breaks the binary-alpha/stamp contract. Divergence minor: the review forced yards+trunks instead of all-pairs trunks, and hub snapping to the nearest interior cell. Two BLOCKING findings, both fixed: (1) the join guard compared same-named edges (N-to-N) when a tile north row abuts its neighbour SOUTH row, so every join carried a colour step while the guard stayed green - fixed by an axis-symmetric edge lock in the generator plus an axis-grouped guard; (2) props were placed without semantic or directional matching - fixed with frameStart/orientToRun and lineworkRunAxis. Six non-blocking findings fixed (trunk hub pairing, route overlap cost, wall-terminus edge pinning, hub snapping, stamp-config hoist). One documented as a known limitation: the placement gate runs against a synthetic map in CI, not a real generated floor."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "claude-opus-4.8 verified tsc/eslint/tests green, proved the A* Manhattan heuristic admissible AND consistent, and confirmed determinism; its one finding was missing props-atlas coverage in the committed-art guard. gemini-3.1-pro-preview found a missing cross-layer seedSalt regression guard and a per-tile stamp-config allocation in the renderer hot loop. All three fixed."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8", "gpt-5.6-sol"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Both models INDEPENDENTLY found the same defect: ground masks were derived with edgeWangMaskFromOccupancy, which counts every occupied neighbour including a pinned LINEWORK_WALL_ENTRY it is not the parent of, so a later route beside the same rock painted a stub the entry never painted back. Repro both gave: pipe layer, floorSeed 77, ground tile (124,126) mask 13 connecting west to wall entry (123,126) whose pinned mask was 1. Fixed by a reciprocity-aware groundMask plus a reciprocity regression test."
+        },
+        {
+          "round": 3,
+          "models": ["gemini-3.1-pro-preview", "claude-opus-4.8"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Two-model focused confirmation of commit 08f03529e, each asked to independently verify or refute four claims. Both confirmed: the EDGE_WANG_OPPOSITE_BIT letter-keying algebra keeps the genuine parent join rather than dropping it; a ground tile can never fall to mask 0 (A* paths are 4-connected and >=2 tiles with a!==b guards, so every ground tile has a ground path-neighbour - measured mask0Grounds 0); a wall entry cannot be hijacked (extendIntoWall skips already-occupied cells so entryParent is written once by its true creator); and the new guard genuinely fails on pre-fix logic. claude-opus-4.8 additionally proved NON-VACUITY: 14 wall entries, 14 ground-bits-at-wall-entry and 14 wall-entry-bits-at-ground traversed, pre-fix replay checked 10445 violations 1. tsc clean, 29 tests pass, tree left unmodified by both."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8", "gpt-5.6-sol"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["gemini-3.1-pro-preview", "claude-opus-4.8"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Four distinct models across three rounds: claude-opus-4.8, gemini-3.1-pro-preview and gpt-5.6-sol (also the adversarial plan reviewer), adjudicated by claude-opus-5. Round 1 findings were disjoint across models; all three accepted as valid and fixed. Round 2 was the strongest signal - two different model families independently derived the SAME one-sided-join defect with the same concrete repro seed, so it was accepted without argument and fixed. Round 3 was scoped to the fix delta and run with TWO models, each asked to independently verify or refute four specific claims rather than to re-review. gemini-3.1-pro-preview confirmed the direction algebra, proved no mask-0 regression, and empirically showed the new guard fails on pre-fix code. claude-opus-4.8 then independently re-derived all four and additionally proved the guard is NOT VACUOUS: the plan contains 14 wall entries and the reciprocity loop traverses 14 ground-bits-at-wall-entry and 14 wall-entry-bits-at-ground, and replaying the pre-fix derivation gives checked 10445 violations 1. Both left the tree unmodified. One adversarial-plan finding was NOT fixed and was adjudicated accepted-with-limitation: the placement gate exercises a synthetic map in CI rather than a real generated floor, so real-map density stays a manual observation - recorded in the handoff and the ADR."
+    }
+  }
+}
