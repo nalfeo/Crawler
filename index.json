@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3e9d303cc7438090c1f108ade79913e8bdf66b9d",
+    "commitDate": "2026-07-28T14:09:09Z",
+    "commitSubject": "fix(terrain-packs): close the blob47 corner-coverage blind spot and round cave corners (#2189)",
+    "capturedAt": "2026-07-28T15:16:48.224Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30367718584",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/3e9d303cc7438090c1f108ade79913e8bdf66b9d.json"
+  },
+  {
     "commit": "8f7d4ea99122f93ccf7f8c1af2f454845d4ee13a",
     "commitDate": "2026-07-28T13:41:44Z",
     "commitSubject": "feat(terrain): Floor 2 industrial linework as edge-Wang path tiles (#2184)",
