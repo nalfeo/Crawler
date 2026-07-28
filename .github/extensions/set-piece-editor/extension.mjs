@@ -51,6 +51,9 @@ function getGeneratedManifestPath() {
 function getSubstratePath() {
   return join(REPO_ROOT, 'src', 'shared', 'data', 'set-piece-substrate.json');
 }
+function getNpcSpriteMapPath() {
+  return join(REPO_ROOT, 'src', 'shared', 'data', 'npc-sprite-map.json');
+}
 function readGeneratedSpriteIds() {
   try {
     const manifestPath = getGeneratedManifestPath();
@@ -128,6 +131,16 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
       res.end(JSON.stringify(readPack()));
     } catch (e) {
       res.writeHead(500);
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+    }
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/npc-sprites') {
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(readFileSync(getNpcSpriteMapPath(), 'utf-8'));
+    } catch (e) {
+      res.statusCode = 500;
       res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
     }
     return;
@@ -703,11 +716,12 @@ var CATALOG = {
   'effect.dead': { k: 'custom-pixel-sprites', c: 18, r: 0 },
 };
 // Mirrors src/engine/phaser-bridge/sprite-kind.ts GENERATED_KEY_BY_NPC_DEF.
-var GENERATED_NPC_SPRITE_BY_DEF = {
-  'tutorial-goon':'npc-welcome-goon-var-0',
-  'shopkeeper':'npc-sweaty-merchant-var-0',
-  'spell-quest-giver':'npc-spell-broker-var-1'
-};
+// Populated from /npc-sprites, which serves src/shared/data/npc-sprite-map.json -
+// the SAME file the game imports. This used to be a hardcoded literal here and it
+// went stale: the Goon and Merchant were regenerated to -v3- and the game was
+// repointed, but this copy still named the old npc-*-var-0 art, so the editor
+// showed sprites that had already been replaced.
+var GENERATED_NPC_SPRITE_BY_DEF = {};
 var KNOWN_NPC_TYPE_IDS = [
   'tutorial-goon',
   'shopkeeper',
@@ -1166,6 +1180,13 @@ function clampResizeRectToBounds(ox,oy,ow,oh,nx,ny,nw,nh,h,maxW,maxH){
 }
 async function loadData(){
   var params=new URLSearchParams(location.search),initId=params.get('setPieceId')||'';
+  try{
+    var nres=await fetch('/npc-sprites');
+    var nmap=await nres.json();
+    GENERATED_NPC_SPRITE_BY_DEF=(nmap&&nmap.byNpcDefId)||{};
+  }catch(_){
+    GENERATED_NPC_SPRITE_BY_DEF={};
+  }
   try{
     var sres=await fetch('/substrate');
     SUBSTRATE=await sres.json();
