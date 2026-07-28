@@ -222,6 +222,12 @@ export interface SetPiecePropDef {
   readonly z: number;
   /** Optional scene-layer id used by editors for visibility/locking workflows. */
   readonly sceneLayer?: string;
+  /**
+   * True when the prop physically blocks movement. Its footprint tiles are
+   * written impassable-but-transparent at carve time, so the player and AI walk
+   * around it while still seeing (and being able to talk) over it.
+   */
+  readonly solid: boolean;
   /** Ordered visual layers (base first, stacked extras after). */
   readonly layers: readonly SpriteLayer[];
 }
@@ -441,6 +447,18 @@ const propSourceSchema = z
     height: z.number().finite().positive().optional(),
     z: z.number().int().optional(),
     sceneLayer: z.string().trim().min(1).optional(),
+    /**
+     * Opt-in physical collision. When true the prop's footprint tiles are
+     * written as impassable at carve time, so the player and the AI walk
+     * around it instead of through it. Off by default: props are decor unless
+     * they are bulk furniture the player should not clip through.
+     *
+     * Solidity is applied with a revert-on-disconnect guard
+     * (`applySolidProps`), so marking a prop solid can never strand a room —
+     * a prop whose blocking would cut the interior off from its door is left
+     * render-only instead.
+     */
+    solid: z.boolean().optional(),
     layers: z.array(spriteLayerSchema).min(1),
   })
   .strict();
@@ -691,6 +709,7 @@ function compileProp(source: SetPieceSource['props'][number]): SetPiecePropDef {
     height: source.height ?? 1,
     z: source.z ?? PROP_KIND_Z[source.kind],
     sceneLayer: source.sceneLayer,
+    solid: source.solid ?? false,
     layers: source.layers,
   };
 }

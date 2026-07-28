@@ -29,6 +29,7 @@ import {
   type StampedSetPiece,
   type StampedSetPieceNpc,
 } from '../core/map/stampSetPiece.js';
+import { applySolidProps } from '../core/map/applySolidProps.js';
 import { carveConnectorToReachable, carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
 import {
   getSetPieceDef,
@@ -1416,7 +1417,21 @@ function computeWelcomeRoomStamp(
 function carveWelcomeRoomPrefab(
   world: GameWorld,
   welcomeOfficePos: { x: number; y: number },
-): { fitted: boolean; recentredWelcomePos?: { x: number; y: number }; welcomeRoomId?: number } {
+): {
+  fitted: boolean;
+  recentredWelcomePos?: { x: number; y: number };
+  welcomeRoomId?: number;
+  /**
+   * Re-runs `applySolidProps` for this carve. The welcome room is the ONLY
+   * carved set piece that also goes through `tagRoomAsSafe`, whose
+   * `restoreRoomInterior` call repaints every interior tile back to plain
+   * floor — silently wiping the furniture collision the carve just wrote.
+   * The caller must invoke this AFTER `tagRoomAsSafe` so the flags survive.
+   * (Discovered by probing the running game: unit tests were green while the
+   * feature was fully inert on a real floor.)
+   */
+  reapplySolidProps?: () => void;
+} {
   const floorMap = world.floorMap;
   if (!floorMap) return { fitted: false };
   const def = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
@@ -1449,10 +1464,16 @@ function carveWelcomeRoomPrefab(
   }
   const centreTileX = result.bounds.x + Math.floor(result.bounds.width / 2);
   const centreTileY = result.bounds.y + Math.floor(result.bounds.height / 2);
+  const carvedBounds = result.bounds;
+  const carvedDoors = result.doors ?? [];
+  const originTileX = result.originTileX ?? carvedBounds.x;
+  const originTileY = result.originTileY ?? carvedBounds.y;
   return {
     fitted: true,
     recentredWelcomePos: floorMap.tileToWorld(centreTileX, centreTileY),
     welcomeRoomId: room.id,
+    reapplySolidProps: () =>
+      applySolidProps(floorMap, def, originTileX, originTileY, carvedBounds, carvedDoors),
   };
 }
 
@@ -1561,6 +1582,11 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // The welcome room is the only safe room on Floor 1 — the bar/hub where all
   // three quest NPCs live. The shop and spell-broker rooms are regular rooms.
   tagRoomAsSafe(world, welcomeOfficePos);
+  // MUST follow tagRoomAsSafe: its `restoreRoomInterior` repaints the whole
+  // interior back to plain floor, wiping the furniture collision written during
+  // the carve. Re-applying here is idempotent and keeps the revert-on-disconnect
+  // guard in one place.
+  welcomeCarve.reapplySolidProps?.();
 
   // Door-gate every special room. Corridors carved between room centres regularly
   // clip a room's bounding-box perimeter at non-door tiles, letting enemies tunnel

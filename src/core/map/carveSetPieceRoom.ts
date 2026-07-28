@@ -45,6 +45,7 @@ import {
   type SetPieceResolvedDoorSlot,
 } from '../../shared/set-piece-types.js';
 import type { FloorMap } from './FloorMap.js';
+import { applySolidProps } from './applySolidProps.js';
 import { ORTHO_NEIGHBORS } from './grid-utils.js';
 import { restoreRoomInterior, sealRoomPerimeter } from './special-rooms.js';
 
@@ -381,6 +382,11 @@ export function carveSetPieceRoom(
     }
     carveConnectorToReachable(floorMap, primary.x, primary.y, reachableBefore, avoid);
   }
+
+  // 7. Physical collision for opt-in bulk furniture. Runs last so it sees the
+  //    final door set, and is individually reverted for any prop that would
+  //    disconnect the interior — see `applySolidProps`.
+  applySolidProps(floorMap, def, originX, originY, newBounds, updated.doors);
 
   return {
     fitted: true,

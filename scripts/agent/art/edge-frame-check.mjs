@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global console, process */
 /**
  * edge-frame-check.mjs — measure whether a tile PNG carries a baked-in border
  * frame (dark keyline, pale rim, vignette, matte residue) around its canvas.

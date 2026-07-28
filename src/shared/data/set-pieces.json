@@ -13844,7 +13844,8 @@
           "width": 1.5,
           "height": 0.75,
           "z": 30,
-          "sceneLayer": "default"
+          "sceneLayer": "default",
+          "solid": true
         },
         {
           "id": "welcome-desk",
@@ -13874,6 +13875,7 @@
           "width": 2.25,
           "z": 30,
           "sceneLayer": "default",
+          "solid": true,
           "height": 0.75
         },
         {
@@ -13904,6 +13906,7 @@
           ],
           "z": 9,
           "sceneLayer": "default",
+          "solid": true,
           "width": 1.25,
           "height": 0.5
         },
@@ -13954,7 +13957,8 @@
               "heightFt": 5.5
             }
           ],
-          "sceneLayer": "default"
+          "sceneLayer": "default",
+          "solid": true
         },
         {
           "id": "kitchenette",
@@ -13974,7 +13978,8 @@
               "heightFt": 5.5
             }
           ],
-          "sceneLayer": "default"
+          "sceneLayer": "default",
+          "solid": true
         },
         {
           "id": "mini-fridge",
