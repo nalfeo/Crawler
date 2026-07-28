@@ -13,7 +13,7 @@ test('renders the four review phases, revision controls, coverage, and workflow 
     'variant-approval',
     'expectedRevision',
     'coveredSlotCount',
-    "work.withArtifacts ? 'Regenerate' : 'Generate'",
+    'Judge collection cohesion on GitHub',
     'Re-judge collection cohesion on GitHub',
     'Publish complete set atomically on GitHub',
     'Initialize set on GitHub',
