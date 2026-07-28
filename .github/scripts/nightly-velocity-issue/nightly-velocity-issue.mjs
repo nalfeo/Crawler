@@ -6,7 +6,7 @@ export const ISSUE_LABELS = Object.freeze([
   'automation',
   'telemetry',
   'ai',
-  'developer-experience',
+  'tooling',
   HUMAN_APPROVAL_LABEL,
 ]);
 

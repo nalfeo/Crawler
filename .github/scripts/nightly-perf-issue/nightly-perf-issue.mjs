@@ -4,7 +4,7 @@ import { runNightlyBalanceIssue } from '../nightly-balance-issue/nightly-balance
 export const ISSUE_TITLE = 'perf: nightly gameplay-neutral optimization pass';
 export const ISSUE_LABELS = Object.freeze([
   'automation',
-  'performance',
+  'tooling',
   'ai',
   HUMAN_APPROVAL_LABEL,
 ]);
