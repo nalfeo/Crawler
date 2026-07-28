@@ -31,15 +31,14 @@ jobs:
     # cause is fixed — incident.mjs itself must not auto-close on that kind
     # of success (it re-checks the head's attested merge-train provenance
     # before closing), so routing it here is safe either way.
-    # Scheduled `CI` runs only route while the train is enabled, matching
-    # `ci.yml`'s own gating of the schedule trigger (`changes` job) — when the
-    # train is disabled, a scheduled run is a no-op success that must not be
-    # allowed to auto-close a real, still-open incident.
+    # Scheduled `CI` runs always route too. The daily scheduled run is the
+    # unconditionally-full backstop (`ci.yml` forces every scope flag off for
+    # schedule events, and its `changes` job is no longer gated on
+    # MERGE_TRAIN_ENABLED), so a scheduled failure is real evidence of a broken
+    # `main` whether the train is enabled or not — including during a rollback,
+    # when it is the only full run left.
     if: >-
-      github.event.workflow_run.event != 'pull_request' &&
-      (github.event.workflow_run.name != 'CI' ||
-       github.event.workflow_run.event == 'push' ||
-       (github.event.workflow_run.event == 'schedule' && vars.MERGE_TRAIN_ENABLED == 'true'))
+      github.event.workflow_run.event != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

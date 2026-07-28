@@ -28,7 +28,7 @@ export const REQUIRED_CHECK_NAME = 'merge-train';
 // (or the candidate, if no merge landed) when a sequential squash-merge
 // promotion fails its proof. It is deliberately NOT named `merge-train`
 // (REQUIRED_CHECK_NAME): a `merge-train` check on a real landed `main` commit
-// would masquerade as the fast-path attestation `ci.yml`/`mainHealthReason`
+// would masquerade as the fast-path attestation `ci.yml`/`mainAttributionVerdict`
 // key on, and a squash-merged commit must instead earn ordinary push-CI
 // evidence. This name is distinct so it never collides with that machinery.
 export const PROMOTION_POSTCONDITION_CHECK_NAME = 'merge-train-promotion-postcondition';
@@ -252,6 +252,53 @@ export function planPrefixPromotion(prefixStates) {
     return { action: 'wait', firstFailure: maximalIndex };
   }
   return { action: 'validate', prefixes: [index], firstFailure: maximalIndex };
+}
+
+/**
+ * Attribution-aware wrapper around `planPrefixPromotion`.
+ *
+ * A RED maximal composite has two possible causes -- a queued PR broke it, or
+ * `main` was already broken -- and the composite result alone cannot tell them
+ * apart. Because a validation failure EJECTS the first failing addition, a
+ * `main` that is red for an unrelated reason makes every prefix (including
+ * prefix 1) fail, bisection converges on green=0/red=1, and the train ejects
+ * innocent PRs one per round down the whole queue. So when, and ONLY when, the
+ * maximal composite failed, `main`'s own health is consulted as an ATTRIBUTION
+ * signal (ADR 0077):
+ *
+ *   - maximal success              -> promote. `mainVerdict` is never consulted.
+ *   - maximal failure + not 'red'  -> unchanged bisect/isolate/eject.
+ *   - maximal failure + 'red'      -> nothing is ever ejected. An already-proven
+ *                                     green prefix STILL promotes (that is how a
+ *                                     queued PR that FIXES `main` lands), but
+ *                                     `firstFailure` is suppressed to -1; any
+ *                                     further bisection round becomes
+ *                                     `action: 'pause'` instead, so no rounds
+ *                                     are spent isolating an unattributable
+ *                                     failure.
+ *
+ * `mainVerdict` is a zero-arg (optionally async) probe so that the
+ * "never consulted on the promotion path" property is directly observable; it
+ * returns `{ verdict }` from `mainAttributionVerdict`. Only a POSITIVE `'red'`
+ * pauses: `'unknown'` attributes nothing and must not stall ejection.
+ */
+export async function planAttributedPrefixPromotion({ prefixStates, mainVerdict }) {
+  if (!Array.isArray(prefixStates) || prefixStates.length === 0) {
+    return { action: 'noop' };
+  }
+  const plan = planPrefixPromotion(prefixStates);
+  if (prefixStates[prefixStates.length - 1] !== 'failure') return plan;
+
+  const { verdict, reason } = (await mainVerdict()) || {};
+  if (verdict !== 'red') return plan;
+
+  const attribution = reason || 'main is red';
+  // `promote` here is the bisection ISOLATE outcome: a proven-green prefix plus
+  // the index to eject. Keep the promotion, drop the ejection.
+  if (plan.action === 'promote') return { ...plan, firstFailure: -1, attribution };
+  // Anything else (another bisection round, or a wait on one) would only spend
+  // rounds narrowing a failure no queued PR is responsible for.
+  return { action: 'pause', reason: attribution, greenPrefixLength: 0, firstFailure: -1 };
 }
 
 export function commitTimestamp(entry) {
