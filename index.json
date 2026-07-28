@@ -1,5 +1,16 @@
 [
   {
+    "commit": "76e29f3a777654f5373c1b289d4feac9bfdc7f67",
+    "commitDate": "2026-07-28T05:04:38Z",
+    "commitSubject": "feat(ci-health): expose asset request pipeline progress (#1976)",
+    "capturedAt": "2026-07-28T06:08:07.887Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30330897777",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/76e29f3a777654f5373c1b289d4feac9bfdc7f67.json"
+  },
+  {
     "commit": "432f5a8d56f8fa7f52315e3d77d8eb42b4ec51eb",
     "commitDate": "2026-07-28T04:24:25Z",
     "commitSubject": "Theme-equipment review canvas: preserve collection approval, bulk \"Approve remaining\", hand-editable briefs, honest judge-only Run label, tab-scoped advancement controls (#2138)",
