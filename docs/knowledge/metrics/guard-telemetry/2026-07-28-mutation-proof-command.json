@@ -1,0 +1,46 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "mutation-proof-command",
+  "date": "2026-07-28",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 360,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 348
+    },
+    "pr-preflight": {
+      "allow": 6
+    },
+    "pr-review-ledger": {
+      "allow": 5,
+      "skip": 1
+    }
+  },
+  "tools": {
+    "ask_user": 3,
+    "create": 11,
+    "create_pull_request": 12,
+    "create_session": 2,
+    "edit": 32,
+    "extensions_reload": 1,
+    "get_session": 2,
+    "glob": 3,
+    "grep": 25,
+    "list_agents": 1,
+    "list_sessions_and_chats": 1,
+    "powershell": 188,
+    "read_agent": 4,
+    "read_powershell": 5,
+    "rg": 10,
+    "send_session_message": 6,
+    "skill": 1,
+    "sql": 4,
+    "stop_powershell": 3,
+    "task": 3,
+    "view": 43
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

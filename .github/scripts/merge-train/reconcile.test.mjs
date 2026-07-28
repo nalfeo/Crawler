@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -1167,5 +1168,52 @@ test('buildGatedDispatchRecovery allows a second call once cap is raised (stale 
       { prNumber: 11, trigger: 'merge-train-admission-stale' },
     ],
     'third sequential call must be blocked once pendingDispatches reaches cap',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Coordination kill-switch wiring (source topology).
+//
+// reconcile.mjs is a top-level script that performs live GitHub I/O on import,
+// so the gate cannot be exercised by importing it. These assertions pin the
+// two regressions that would silently restore the delivery-blocking behaviour
+// while every behavioural test still passed:
+//   (a) the coordinator callback being supplied unconditionally, and
+//   (b) the environment gate being inverted.
+// ---------------------------------------------------------------------------
+const RECONCILE_SOURCE = readFileSync(new URL('./reconcile.mjs', import.meta.url), 'utf8');
+
+test('verifyMergeSlot is gated on the coordination kill switch', () => {
+  assert.match(
+    RECONCILE_SOURCE,
+    /verifyMergeSlot:\s*coordinationEnforcementEnabled\(process\.env\)\s*\?/,
+    'verifyMergeSlot must be supplied ONLY when coordination enforcement is enabled; ' +
+      'supplying it unconditionally re-enables live filename-ordering enforcement at promotion',
+  );
+});
+
+test('the disabled branch of the merge-slot gate is a no-op, not an enforcer', () => {
+  // `undefined` falls through to promoteExactBatch's `verifyMergeSlot = async () => null`
+  // default, i.e. "no coordinator ordering objection".
+  const gate = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('verifyMergeSlot: coordinationEnforcementEnabled'),
+  );
+  const enabledBranch = gate.indexOf('ciConflictOrderReasonForPromotion');
+  const disabledBranch = gate.indexOf(': undefined');
+  assert.ok(enabledBranch > -1, 'enabled branch must call ciConflictOrderReasonForPromotion');
+  assert.ok(disabledBranch > -1, 'disabled branch must pass undefined');
+  assert.ok(
+    enabledBranch < disabledBranch,
+    'gate is INVERTED: the truthy branch must enforce and the falsy branch must be undefined',
+  );
+});
+
+test('promoteExactBatch defaults verifyMergeSlot to a permissive no-op', () => {
+  // This is what makes passing `undefined` safe rather than a crash.
+  const libSource = readFileSync(new URL('./reconcile-lib.mjs', import.meta.url), 'utf8');
+  assert.match(
+    libSource,
+    /verifyMergeSlot = async \(\) => null/,
+    'promoteExactBatch must default verifyMergeSlot to a null-returning no-op',
   );
 });

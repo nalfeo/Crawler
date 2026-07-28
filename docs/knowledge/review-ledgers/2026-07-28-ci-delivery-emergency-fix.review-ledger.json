@@ -1,0 +1,48 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "ci-delivery-emergency-fix",
+  "task_title": "Emergency CI delivery fix: make conflict serialization opt-in (unfence). Ejection loop + proactive rebase deliberately deferred after adversarial plan review forced a major fork.",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial review rejected the 3-part plan and forced a major fork. Verified in code: (F1) promotePrefix returns {promoted:false} whenever mainHealthAllowsPromotion() fails (reconcile.mjs:780, reattest at :819, third re-check reconcile-lib.mjs:651-658) - so a red main blocks the train from landing the very PR that fixes main. The original 3-part plan did not address this at all. (F3) Unfencing via R07 alone is insufficient: CI_CONFLICT_ORDER_WAIT_LABEL independently invalidates promotion at reconcile-lib.mjs:489-490 and verifyMergeSlot recomputes coordinator ordering at reconcile.mjs:820-825. (F5) Folding rebase into the fixer dispatch uses stale head evidence; the existing two-phase trusted-rebase dispatch is correct. F2 mechanism claim partly incorrect (in-place splice does preserve prefix candidates built before the ejection index) but the invariant-sensitivity argument stands, so ejection is de-prioritised out of the emergency PR. Alternatives enumerated: (1) sanitise branches at admission and retain coordinator, (2) replace filename fencing with exact synthetic merge proofs, (3) conservative cross-pass ejection instead of in-pass continue.",
+      "model": "gpt-5.6-sol"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "High: default-off left already-armed auto-merge in place for ownership/human-gated PRs (coordinator blanket disarm was incidental protection). Fixed via ownershipGated carve-out. Medium: no regression test for merge-train kill-switch wiring. Fixed via 3 source-topology assertions."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra", "claude-opus-4.8"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Reviewers DISAGREED on the High finding. terra: removing the coordinator blanket disarm leaves an already-armed auto-merge live for human-gated PRs. opus-4.8: no significant issues - human approval is independently enforced at ci-recovery/reconcile.mjs:1171 with no coordinator dependency. Adjudication (verified in code, not accepted on assertion): opus is right that protection is not PERMANENTLY lost; terra is right that it is not TRANSACTIONAL - between the coordinator pass and the next ci-recovery pass an armed auto-merge can fire. Applied terras fix because it is strictly safer and cannot loop (ci-recovery only arms when clean and not human-gated, so it never re-arms against the disarm). Mutation-verified: reverting the carve-out makes the new integration test fail."
+        }
+      ]
+    }
+  }
+}
