@@ -174,8 +174,18 @@ guard cannot silently shrink.
 - **The base's own self-seam is ungated.** The byte-identity assertion proves every variant seams as
   well as the base does; it says nothing about how well _the base_ tiles. A regenerated base that
   tiles poorly would be inherited by all eight variants with every guard still green. Cross-variant
-  seam needs no gate (it is structural), but a bound on base self-seam is a genuine missing check —
-  the Floor 1 session has a ~40-line seam probe that could be repurposed for exactly this.
+  seam needs no gate (it is structural), but a bound on base self-seam is a genuine missing check.
+  Measured with the Floor 1 session's self-seam probe, which scores the wrap edge by its
+  **percentile rank within the tile's own interior line-delta distribution** — a seam/mean _ratio_
+  is unfit to gate on, because it rewards busy materials whose rare high-contrast features inflate
+  the denominator. Result: `floor-0` sits at 75.8% on both axes, `corridor-0` at **95.2% vertical**
+  / 82.3% horizontal. Two caveats before anyone acts on that. Axes must be scored **separately
+  against their own distribution** — pooling column and row deltas mixes two differently-centred
+  distributions into an uninterpretable number (pooled rates `corridor-0` 94.4%, hiding the 95.2%
+  axis, and rates `floor-0` 83.1%, _worse_ than either of its axes). And there is no visual ground
+  truth: tiling `corridor-0` 3x3 shows no seam line the eye can find, only motif repetition, which
+  the weighted pool and decals already mask in play. Treat it as a regression bound, not a quality
+  bar.
 
 ## Alternatives Considered
 
