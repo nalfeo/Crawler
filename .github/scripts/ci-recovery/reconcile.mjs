@@ -2762,6 +2762,29 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     } else {
       process.stdout.write(`queue unchanged merge-train pr=#${prNumber}\n`);
     }
+    // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
+    // strict up-to-date merge policy does not block it forever.  readToken is
+    // CRAWLER_CI_PAT || GITHUB_TOKEN — either identity avoids the D7
+    // action_required parking trap that occurs when the App token force-pushes.
+    if (pr.mergeable_state === 'behind') {
+      if (live) {
+        try {
+          await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
+            method: 'PUT',
+            body: { expected_head_oid: pr.head.sha },
+          });
+          process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
+        } catch (err) {
+          if (err.status !== 422) {
+            process.stderr.write(
+              `update-branch pr=#${prNumber} failed: ${err.status} ${err.message}\n`,
+            );
+          }
+        }
+      } else {
+        process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
+      }
+    }
     process.exit(0);
   }
 
@@ -2788,6 +2811,29 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     process.stdout.write(`auto-merge armed pr=#${prNumber}\n`);
   } else {
     process.stdout.write(`dry-run would-arm-auto-merge pr=#${prNumber}\n`);
+  }
+  // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
+  // strict up-to-date merge policy does not block it forever.  readToken is
+  // CRAWLER_CI_PAT || GITHUB_TOKEN — either identity avoids the D7
+  // action_required parking trap that occurs when the App token force-pushes.
+  if (pr.mergeable_state === 'behind') {
+    if (live) {
+      try {
+        await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
+          method: 'PUT',
+          body: { expected_head_oid: pr.head.sha },
+        });
+        process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
+      } catch (err) {
+        if (err.status !== 422) {
+          process.stderr.write(
+            `update-branch pr=#${prNumber} failed: ${err.status} ${err.message}\n`,
+          );
+        }
+      }
+    } else {
+      process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
+    }
   }
   process.exit(0);
 } else if (terminalRow.action === DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED) {

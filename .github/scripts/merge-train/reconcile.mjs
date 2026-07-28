@@ -665,6 +665,34 @@ const admitted = [];
 for (const pr of queued) {
   const admission = await eligible(pr);
   if (admission.ok) {
+    // D2 fix: if the admitted PR's branch is clean-BEHIND main, call the
+    // update-branch API so the strict up-to-date merge policy does not block
+    // it from merging.  workflowDispatchToken is GITHUB_TOKEN, which avoids
+    // the D7 action_required parking trap (App token force-push would park
+    // required checks).  Skip the PR from the current train pass so the
+    // candidate build uses only branches that are already current.
+    if (pr.mergeable_state === 'behind') {
+      try {
+        await request(
+          workflowDispatchToken,
+          `/repos/${owner}/${repo}/pulls/${pr.number}/update-branch`,
+          {
+            method: 'PUT',
+            body: { expected_head_oid: pr.head.sha },
+          },
+        );
+        process.stdout.write(`update-branch pr=#${pr.number} reason=clean-behind\n`);
+      } catch (err) {
+        if (err.status !== 422) {
+          process.stderr.write(
+            `update-branch pr=#${pr.number} failed: ${err.status} ${err.message}\n`,
+          );
+        }
+      }
+      // PR will re-enter the train on the next reconcile once its branch is
+      // current and required CI passes on the updated branch.
+      continue;
+    }
     // Fence the legacy auto-merge path before this PR can be sequentially
     // squash-merged, so it cannot land out of order underneath the promotion.
     await disableAutoMerge(pr);

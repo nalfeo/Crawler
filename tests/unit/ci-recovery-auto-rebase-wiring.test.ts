@@ -66,4 +66,23 @@ describe('CI recovery auto-rebase callback fencing', () => {
       'git commit --allow-empty -m "chore(ci-recovery): retrigger validation recovery for PR #$number"',
     );
   });
+
+  it('D2 fix: non-train mode uses update-branch API for clean-BEHIND PRs, not git force-push', () => {
+    const raw = readFileSync(WORKFLOW_PATH, 'utf8');
+    // D2: include mergeStateStatus in the non-train prs_json fetch
+    expect(raw).toContain('mergeStateStatus');
+    // D2: use GitHub update-branch API (avoids D7 action_required parking from App token push)
+    expect(raw).toContain('gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$number/update-branch"');
+    expect(raw).toContain('-F expected_head_oid="$expected_head"');
+    // D2: route BEHIND → update-branch, DIRTY → ci-recovery dispatch
+    expect(raw).toContain('BEHIND)');
+    expect(raw).toContain('DIRTY)');
+    // D2: non-train blanket sweep no longer runs git rebase for all PRs
+    // (git rebase still runs in train mode for targeted conflict recovery only)
+    expect(raw).toContain('if [ "$train_enabled" != "true" ]; then');
+    // summary counter tracks update-branch successes separately from rebases
+    expect(raw).toContain('updated=0');
+    expect(raw).toContain('updated=$((updated + 1))');
+    expect(raw).toContain('updated=$updated');
+  });
 });

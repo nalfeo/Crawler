@@ -3742,10 +3742,110 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // A clean-BEHIND PR with pending CI ends up at WAIT_ADMISSION (not ARM_AUTO_MERGE),
+  // so no would-update-branch is emitted until CI passes.
   assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
   assert.doesNotMatch(stdout, /dry-run would-assign copilot/);
   assert.doesNotMatch(stdout, /merge-conflict/);
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('dry-run reconcile emits would-update-branch for an admissible clean-BEHIND PR', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    // Provide passing required checks so the PR reaches ARM_AUTO_MERGE.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /dry-run would-arm-auto-merge pr=#42/);
+  // D2 fix: an admissible clean-BEHIND PR must also emit would-update-branch in dry-run.
+  assert.match(stdout, /dry-run would-update-branch pr=#42 reason=clean-behind/);
+  assert.doesNotMatch(stdout, /merge-conflict/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('live reconcile calls update-branch for a clean-BEHIND PR at ARM_AUTO_MERGE', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    // Provide passing required checks so the PR reaches ARM_AUTO_MERGE.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`PUT /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`]: () => ({
+      status: 202,
+      body: { message: 'Updating pull request branch.' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /auto-merge armed pr=#42/);
+  // D2 fix: update-branch must be called for a clean-BEHIND PR to unblock the
+  // strict up-to-date merge policy without force-pushing (D7 avoided).
+  assert.match(stdout, /update-branch pr=#42 reason=clean-behind/);
+  const updateBranchCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'PUT' && call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`,
+  );
+  assert.ok(updateBranchCall, 'update-branch PUT must be called for a clean-BEHIND PR');
 });
 
 test('human-gated balance PR cannot keep merge-train or armed auto-merge before owner approval', async (t) => {
