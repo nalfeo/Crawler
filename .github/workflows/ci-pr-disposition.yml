@@ -28,18 +28,25 @@ jobs:
         with:
           script: |
             // Duplicate detection — deterministic proof rules only.
-            // Auto-closes a PR ONLY when one of the three proof rules fires:
+            // Auto-closes a PR ONLY when one of the two proof rules fires:
             //   1. linked-issue-closed-by-sibling: a closing issue is CLOSED and a merged sibling closes it
-            //   2. sibling-merged: a sibling PR (same closing issue) has MERGED
-            //   3. empty-diff: the PR's diff is zero (all changes already on main)
-            //   4. coordinator-superseded: coordinator marked this PR as a full-tree no-op (legacy, retained)
+            //   2. empty-diff: the PR's diff is zero (all changes already on main)
+            //   3. coordinator-superseded: coordinator marked this PR as a full-tree no-op (legacy, retained)
+            // SIBLING_MERGED: merged sibling closes same issue (issue may still be open) — suspicious
+            //   but NOT a proof. Routes to quarantine (adds abandon-candidate label for step 2 pickup).
             // Any uncertainty routes to quarantine (step 2), never to auto-close.
+            //
+            // Scope: ALL open PRs except those already quarantined or abandoned.
+            // A PR that can hold a blocking slot must be checked, regardless of labels.
             //
             // Golden fixture: PR #1630 / PR #1575 / issue #1568 — rule 1 fires,
             // closes #1630, cites #1575 as the superseder.
 
+            const { pathToFileURL } = await import('url');
             const workspace = process.env.GITHUB_WORKSPACE;
-            const { detectDuplicateProof } = await import(`${workspace}/.github/scripts/ci-recovery/duplicate-detect.mjs`);
+            const { detectDuplicateProof, detectQuarantineEvidence } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/duplicate-detect.mjs`).href
+            );
             const {
               PHASE,
               LIFECYCLE_MARKER,
@@ -47,10 +54,11 @@ jobs:
               applyLifecycleDecision,
               makeDuplicateCloseComment,
               parseLifecycleComment,
-            } = await import(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`);
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`).href
+            );
 
             const { owner, repo } = context.repo;
-            const WAITING_LABEL = 'ci-recovery-waiting';
             const ABANDON_CANDIDATE_LABEL = 'abandon-candidate';
             const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED]; // 'ci-lifecycle-quarantined'
             const ABANDONED_LABEL = PHASE_LABELS[PHASE.ABANDONED]; // 'ci-lifecycle-abandoned'
@@ -108,24 +116,28 @@ jobs:
               }
             }
 
-            // Fetch recently merged PRs and their closing issues to find siblings.
-            // Limited to 60 most recently merged; this covers most real cases and
-            // respects the load-aware budget (avoids pagination storms).
-            async function buildMergedSiblingIndex() {
-              const mergedPrs = await github.paginate(github.rest.pulls.list, {
-                owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 60,
-              }, (response, done) => { done(); return response.data; });
-              const merged = mergedPrs.filter((p) => p.merged_at != null);
-              const siblingsByIssue = new Map(); // issueNumber → [{number, merged:true, closingIssueNumbers}]
-              for (const pr of merged) {
-                const issues = await getClosingIssues(pr.number);
-                if (!issues.length) continue;
-                const issueNums = issues.map((i) => Number(i.number));
-                const entry = { number: pr.number, merged: true, closingIssueNumbers: issueNums };
-                for (const n of issueNums) {
-                  if (!siblingsByIssue.has(n)) siblingsByIssue.set(n, []);
-                  siblingsByIssue.get(n).push(entry);
+            // Fetch at least maxMerged recently-merged PRs and their closing issues.
+            // Paginates until enough merged PRs are collected (not just closed PRs).
+            async function buildMergedSiblingIndex(maxMerged = 60) {
+              const siblingsByIssue = new Map();
+              let mergedCount = 0;
+              for await (const page of github.paginate.iterator(github.rest.pulls.list, {
+                owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 100,
+              })) {
+                for (const pr of page.data) {
+                  if (!pr.merged_at) continue; // skip unmerged closed PRs
+                  const issues = await getClosingIssues(pr.number);
+                  if (!issues.length) { mergedCount++; continue; }
+                  const issueNums = issues.map((i) => Number(i.number));
+                  const entry = { number: pr.number, merged: true, closingIssueNumbers: issueNums };
+                  for (const n of issueNums) {
+                    if (!siblingsByIssue.has(n)) siblingsByIssue.set(n, []);
+                    siblingsByIssue.get(n).push(entry);
+                  }
+                  mergedCount++;
+                  if (mergedCount >= maxMerged) break;
                 }
+                if (mergedCount >= maxMerged) break;
               }
               return siblingsByIssue;
             }
@@ -134,25 +146,23 @@ jobs:
               owner, repo, state: 'open', per_page: 100,
             });
 
-            // Only scan PRs that are in the waiting queue, carry abandon-candidate,
-            // or are already quarantined (but not yet abandoned/closed).
-            // This bounds the per-sweep cost.
+            // Scope: ALL open PRs except those already quarantined or abandoned.
+            // A PR that holds a blocking cluster/ordering slot must be evaluated
+            // regardless of which other labels it carries.
             const inScope = pulls.filter((p) => {
               const labels = (p.labels || []).map((l) => String(l.name || ''));
-              return (
-                labels.includes(WAITING_LABEL) ||
-                labels.includes(ABANDON_CANDIDATE_LABEL)
-              ) && !labels.includes(QUARANTINED_LABEL) && !labels.includes(ABANDONED_LABEL);
+              return !labels.includes(QUARANTINED_LABEL) && !labels.includes(ABANDONED_LABEL);
             });
 
             if (!inScope.length) {
-              core.info('duplicate-detection: no in-scope PRs, skipping sibling fetch');
+              core.info('duplicate-detection: no in-scope PRs, skipping');
               return;
             }
 
             const siblingsByIssue = await buildMergedSiblingIndex();
 
             let closedCount = 0;
+            let suspiciousCount = 0;
             const closedPrNumbers = [];
 
             for (const pull of inScope) {
@@ -201,8 +211,17 @@ jobs:
               const mergedSiblings = ownIssueNums.flatMap((n) => siblingsByIssue.get(n) || []);
               const dedupedSiblings = [...new Map(mergedSiblings.map((s) => [s.number, s])).values()];
 
+              // Fetch full PR details (needed for additions/deletions — not in list response).
+              let fullPr = pull;
+              try {
+                const { data } = await github.rest.pulls.get({ owner, repo, pull_number: pull.number });
+                fullPr = data;
+              } catch (e) {
+                core.warning(`pulls.get pr=#${pull.number}: ${e.message}`);
+              }
+
               const proof = detectDuplicateProof(
-                { number: pull.number, additions: pull.additions, deletions: pull.deletions },
+                { number: pull.number, additions: fullPr.additions, deletions: fullPr.deletions },
                 { closingIssues, mergedSiblings: dedupedSiblings },
               );
 
@@ -224,10 +243,30 @@ jobs:
                 closedPrNumbers.push(pull.number);
                 closedCount += 1;
                 core.notice(`closed-duplicate pr=#${pull.number} rule=${proof.proofRule} superseder=${proof.supersederPr ?? 'none'} reason=${proof.reason}`);
+                continue;
+              }
+
+              // SIBLING_MERGED is quarantine evidence (not a proof): merged sibling closes
+              // same issue but issue may still be open. Tag for quarantine in step 2.
+              const evidence = detectQuarantineEvidence(
+                { number: pull.number },
+                { closingIssues, mergedSiblings: dedupedSiblings },
+              );
+              if (evidence.evidenceRule) {
+                const labelNames = (pull.labels || []).map((l) => String(l.name || ''));
+                if (!labelNames.includes(ABANDON_CANDIDATE_LABEL)) {
+                  try {
+                    await github.rest.issues.addLabels({ owner, repo, issue_number: pull.number, labels: [ABANDON_CANDIDATE_LABEL] });
+                    suspiciousCount += 1;
+                    core.notice(`sibling-merged-suspect pr=#${pull.number} evidence=${evidence.evidenceRule} superseder=${evidence.supersederPr ?? 'none'} → tagged abandon-candidate for quarantine`);
+                  } catch (e) {
+                    core.warning(`addLabel abandon-candidate pr=#${pull.number}: ${e.message}`);
+                  }
+                }
               }
             }
 
-            core.info(`duplicate-detection complete closed=${closedCount} prs=${closedPrNumbers.join(',')}`);
+            core.info(`duplicate-detection complete closed=${closedCount} suspicious-tagged=${suspiciousCount} prs=${closedPrNumbers.join(',')}`);
 
       - name: Quarantine abandon-candidate PRs (lifecycle FSM, non-blocking)
         uses: actions/github-script@v7
@@ -242,10 +281,12 @@ jobs:
             //
             // Quarantine criteria (any one triggers):
             //   1. ci-recovery-waiting + no owner + idle ≥ ABANDON_THRESHOLD_DAYS
-            //   2. abandon-candidate label (explicit human/agent proposal)
+            //      with corroborating evidence (closed linked issue or sibling suspect)
+            //   2. abandon-candidate label (explicit human/agent proposal, OR step 1 sibling-suspect)
             //
             // A PR behind a quarantined PR is still admitted and merged (D11).
 
+            const { pathToFileURL } = await import('url');
             const workspace = process.env.GITHUB_WORKSPACE;
             const {
               PHASE,
@@ -254,7 +295,9 @@ jobs:
               applyLifecycleDecision,
               makeQuarantineComment,
               parseLifecycleComment,
-            } = await import(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`);
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`).href
+            );
 
             const { owner, repo } = context.repo;
             const WAITING_LABEL = 'ci-recovery-waiting';
@@ -288,6 +331,26 @@ jobs:
               }
             }
 
+            async function getClosingIssues(prNumber) {
+              try {
+                const result = await github.graphql(`
+                  query($owner: String!, $repo: String!, $number: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $number) {
+                        closingIssuesReferences(first: 100) {
+                          nodes { number state }
+                        }
+                      }
+                    }
+                  }
+                `, { owner, repo, number: prNumber });
+                return result.repository?.pullRequest?.closingIssuesReferences?.nodes || [];
+              } catch (error) {
+                core.warning(`getClosingIssues pr=#${prNumber}: ${error.message}`);
+                return [];
+              }
+            }
+
             const pulls = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', per_page: 100,
             });
@@ -307,10 +370,11 @@ jobs:
               let lastActivityIso = null;
 
               if (labelNames.includes(ABANDON_CANDIDATE_LABEL)) {
-                // Explicit proposal by a human or agent.
+                // Explicit proposal by a human, agent, or step 1 sibling-suspect tagging.
                 quarantineReason = 'abandon-candidate-label';
               } else if (labelNames.includes(WAITING_LABEL) && !labelNames.some((n) => n.startsWith(OWNER_LABEL_PREFIX))) {
-                // Waiting with no active owner — check if stale.
+                // Waiting with no active owner — check if stale WITH corroborating evidence.
+                // Require a closed linked issue (not just idleness) to reduce false positives.
                 const comments = await github.paginate(github.rest.issues.listComments, {
                   owner, repo, issue_number: pull.number, per_page: 100,
                 });
@@ -320,8 +384,17 @@ jobs:
                   if (state && state.owner === 'none') {
                     const lastProgress = Date.parse(state.progressAt || state.updatedAt || '');
                     if (Number.isFinite(lastProgress) && now.getTime() - lastProgress >= thresholdMs) {
-                      quarantineReason = `dead-session-${ABANDON_THRESHOLD_DAYS}-days`;
-                      lastActivityIso = new Date(lastProgress).toISOString();
+                      // Require corroborating evidence: at least one closing issue must be CLOSED.
+                      const closingIssues = await getClosingIssues(pull.number);
+                      const hasClosedLinkedIssue = closingIssues.some(
+                        (i) => String(i?.state ?? '').toUpperCase() === 'CLOSED',
+                      );
+                      if (hasClosedLinkedIssue) {
+                        quarantineReason = `dead-session-${ABANDON_THRESHOLD_DAYS}-days-closed-issue`;
+                        lastActivityIso = new Date(lastProgress).toISOString();
+                      } else {
+                        core.info(`stale-pr pr=#${pull.number} idle>${ABANDON_THRESHOLD_DAYS}d but no closed linked issue — skipping quarantine`);
+                      }
                     }
                   }
                 }
@@ -371,11 +444,14 @@ jobs:
             // Rules (acceptance criterion: "human-gated revival is exact-match"):
             //   - Only the PR author/owner's standalone trimmed "KEEP" or "ABANDON" acts.
             //   - Green CI, other authors, quoted text, or substrings do NOT trigger.
+            //   - Commands must appear AFTER the most recent quarantine comment — prevents
+            //     stale pre-quarantine commands from acting on a newly quarantined PR.
             //   - KEEP → revive to QUEUED (remove quarantine + human-approval-required, add merge-train)
             //   - ABANDON → close the PR permanently
             //
             // A revived PR re-enters the normal lifecycle cleanly with no orphaned fences.
 
+            const { pathToFileURL } = await import('url');
             const workspace = process.env.GITHUB_WORKSPACE;
             const {
               PHASE,
@@ -383,10 +459,15 @@ jobs:
               PHASE_LABELS,
               applyLifecycleDecision,
               parseLifecycleComment,
-            } = await import(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`);
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`).href
+            );
             const {
               parseDispositionCommand,
-            } = await import(`${workspace}/.github/scripts/ci-recovery/state.mjs`);
+              QUARANTINE_COMMENT_MARKER,
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/state.mjs`).href
+            );
 
             const { owner, repo } = context.repo;
             const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED]; // 'ci-lifecycle-quarantined'
@@ -428,10 +509,27 @@ jobs:
                 owner, repo, issue_number: pull.number, per_page: 100,
               });
 
-              // Find the LAST disposition command from the PR owner.
-              // Only the owner's exact standalone KEEP or ABANDON acts.
+              // Find the LATEST quarantine comment to anchor KEEP/ABANDON commands.
+              // Only commands posted AFTER the quarantine comment are honored; this
+              // prevents a stale pre-quarantine KEEP/ABANDON from acting on a newly
+              // quarantined PR.
+              const quarantineComments = comments.filter(
+                (c) => String(c.body || '').includes(QUARANTINE_COMMENT_MARKER),
+              );
+              if (!quarantineComments.length) {
+                core.warning(`quarantined PR #${pull.number} has no quarantine comment — skipping revival check`);
+                continue;
+              }
+              const latestQuarantine = quarantineComments.sort(
+                (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+              )[0];
+              const quarantineTime = new Date(latestQuarantine.created_at).getTime();
+
+              // Find the LAST owner command posted after the quarantine comment.
               let command = null;
               for (const comment of comments) {
+                // Only consider commands strictly after the quarantine comment.
+                if (new Date(comment.created_at).getTime() <= quarantineTime) continue;
                 const authorLogin = String(comment.user?.login || '').toLowerCase();
                 if (authorLogin !== prOwnerLogin) continue;
                 const parsed = parseDispositionCommand(comment.body);

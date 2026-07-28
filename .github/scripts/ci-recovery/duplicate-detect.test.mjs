@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   detectDuplicateProof,
+  detectQuarantineEvidence,
   PROOF_RULES,
   proveEmptyDiff,
   proveLinkedIssueSiblingClosed,
@@ -217,8 +218,9 @@ test('non-provable case: open issue with merged sibling that closes a DIFFERENT 
   assert.equal(proof.proofRule, null, 'no overlapping issue → not a provable duplicate');
 });
 
-test('rule priority: Rule 1 fires before Rule 2 when both apply', () => {
-  // Both rules fire (issue is CLOSED + sibling merged + same issue).
+test('rule priority: Rule 1 fires when issue is CLOSED + sibling merged (Rule 2 is quarantine-only)', () => {
+  // Both LINKED_ISSUE_SIBLING and SIBLING_MERGED conditions apply, but Rule 1 is the
+  // deterministic auto-close proof; Rule 2 (SIBLING_MERGED) is quarantine evidence only.
   const proof = detectDuplicateProof(
     { number: 42, additions: 10, deletions: 0 },
     {
@@ -226,7 +228,7 @@ test('rule priority: Rule 1 fires before Rule 2 when both apply', () => {
       mergedSiblings: [{ number: 77, merged: true, closingIssueNumbers: [100] }],
     },
   );
-  assert.equal(proof.proofRule, PROOF_RULES.LINKED_ISSUE_SIBLING, 'Rule 1 wins when both apply');
+  assert.equal(proof.proofRule, PROOF_RULES.LINKED_ISSUE_SIBLING, 'Rule 1 fires (deterministic proof)');
 });
 
 test('Rule 3 fires when diff is zero, even without closing issues', () => {
@@ -243,4 +245,57 @@ test('invalid prNumber returns null without throwing', () => {
   assert.doesNotThrow(() => detectDuplicateProof({ number: 0 }));
   assert.doesNotThrow(() => detectDuplicateProof(null));
   assert.equal(detectDuplicateProof(null).proofRule, null);
+});
+
+// ---------------------------------------------------------------------------
+// SIBLING_MERGED demotion: NOT an auto-close proof
+// ---------------------------------------------------------------------------
+
+test('SIBLING_MERGED (open issue + merged sibling overlap) does NOT trigger auto-close', () => {
+  // Rule 2 was demoted: sibling-merged is quarantine evidence, not an auto-close proof.
+  // Even with a merged sibling closing the same open issue, detectDuplicateProof must
+  // return null — two PRs can legitimately close the same issue (feature + tests, etc.).
+  const proof = detectDuplicateProof(
+    { number: 42, additions: 10, deletions: 0 },
+    {
+      closingIssues: [{ number: 100, state: 'OPEN' }],
+      mergedSiblings: [{ number: 77, merged: true, closingIssueNumbers: [100] }],
+    },
+  );
+  assert.equal(proof.proofRule, null, 'SIBLING_MERGED (issue still open) does not auto-close');
+  assert.equal(proof.supersederPr, null);
+});
+
+// ---------------------------------------------------------------------------
+// detectQuarantineEvidence — SIBLING_MERGED suspicion
+// ---------------------------------------------------------------------------
+
+test('detectQuarantineEvidence: returns SIBLING_MERGED when merged sibling closes same issue', () => {
+  const evidence = detectQuarantineEvidence(
+    { number: 42 },
+    {
+      closingIssues: [{ number: 100, state: 'OPEN' }],
+      mergedSiblings: [{ number: 77, merged: true, closingIssueNumbers: [100] }],
+    },
+  );
+  assert.equal(evidence.evidenceRule, PROOF_RULES.SIBLING_MERGED);
+  assert.equal(evidence.supersederPr, 77);
+  assert.ok(String(evidence.reason).includes('77'));
+});
+
+test('detectQuarantineEvidence: returns null when no sibling overlap', () => {
+  const evidence = detectQuarantineEvidence(
+    { number: 42 },
+    {
+      closingIssues: [{ number: 100, state: 'OPEN' }],
+      mergedSiblings: [{ number: 77, merged: true, closingIssueNumbers: [999] }],
+    },
+  );
+  assert.equal(evidence.evidenceRule, null);
+});
+
+test('detectQuarantineEvidence: returns null for invalid prNumber', () => {
+  const evidence = detectQuarantineEvidence({ number: 0 }, {});
+  assert.equal(evidence.evidenceRule, null);
+  assert.doesNotThrow(() => detectQuarantineEvidence(null, {}));
 });
