@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
-import { MANAGED_COMMENT_MARKERS, MANAGED_COMMENT_PREFIX } from './markers.mjs';
+import { MANAGED_COMMENT_PREFIX } from './markers.mjs';
 import {
   AUTOMATION_STALE_MINUTES,
   isHealthyRecoveryOwner,
@@ -92,7 +92,7 @@ const IDLE_CAP_MAX = 20;
 // exists to close.
 const OUTSTANDING_RUN_STATUSES = ['queued', 'pending', 'in_progress', 'waiting', 'requested'];
 const REPAIR_WINDOW_SIZE = 6;
-// MANAGED_COMMENT_MARKERS and MANAGED_COMMENT_PREFIX are imported from markers.mjs above.
+// MANAGED_COMMENT_PREFIX is imported from markers.mjs above.
 // isManagedCommentEvent uses MANAGED_COMMENT_PREFIX so new markers are covered automatically.
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
