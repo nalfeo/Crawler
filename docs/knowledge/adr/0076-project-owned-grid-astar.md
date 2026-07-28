@@ -1,4 +1,4 @@
-# ADR 0076: Project-owned grid A* replaces rot-js `Path.AStar` in `findTilePath`
+# ADR 0076: Project-owned grid A\* replaces rot-js `Path.AStar` in `findTilePath`
 
 ## Status
 
@@ -17,7 +17,7 @@ contract, multi-round adversarial review required
 
 `findTilePath` is the only consumer of `Path.AStar` from rot-js, and it accounted for
 **16.16% self / 19.02% total** CPU time in a headless Floor-1 simulation profile.
-The bottleneck was entirely inside rot-js's data structures, not the A* algorithm itself:
+The bottleneck was entirely inside rot-js's data structures, not the A\* algorithm itself:
 
 - Open list: sorted `Array` with O(n) linear scan on every push (`splice`) and O(n)
   pop (`Array.shift()`).
@@ -30,7 +30,7 @@ The bottleneck was entirely inside rot-js's data structures, not the A* algorith
 Because `findTilePath` results drive AI movement, any change to tie-break ordering or
 path content is a gameplay change that fails the fingerprint neutrality gate. This
 creates an unusual requirement: the replacement must be **byte-identical** in every
-path it returns, not merely correct per the A* specification.
+path it returns, not merely correct per the A\* specification.
 
 ## Decision
 
@@ -38,13 +38,13 @@ Replace rot-js's `Path.AStar` for integer tile coordinates with a project-owned
 implementation (`src/core/map/astar-grid.ts`) that keeps the **algorithm byte-for-byte
 identical** and replaces only the data structures:
 
-| rot-js 2.2.1 | grid A* |
-|---|---|
-| sorted `Array` + O(n) scan + `splice` open list | binary min-heap over `(f, h, entryId)` |
-| `Array.shift()` pop — O(n) | heap pop — O(log n) |
-| plain object keyed `` `${x},${y}` `` as closed set | generation-stamped `Int32Array` indexed `y*width+x` |
-| `_getNeighbors` allocates `[[x,y],…]` per expansion | four probes into a reused `Uint8Array(4)` |
-| one `{x,y,prev,g,h}` object per push | five parallel `Int32Array`s indexed by insertion seq |
+| rot-js 2.2.1                                        | grid A\*                                             |
+| --------------------------------------------------- | ---------------------------------------------------- |
+| sorted `Array` + O(n) scan + `splice` open list     | binary min-heap over `(f, h, entryId)`               |
+| `Array.shift()` pop — O(n)                          | heap pop — O(log n)                                  |
+| plain object keyed `` `${x},${y}` `` as closed set  | generation-stamped `Int32Array` indexed `y*width+x`  |
+| `_getNeighbors` allocates `[[x,y],…]` per expansion | four probes into a reused `Uint8Array(4)`            |
+| one `{x,y,prev,g,h}` object per push                | five parallel `Int32Array`s indexed by insertion seq |
 
 The implementation reproduces rot-js's ordering contract exactly:
 
@@ -88,13 +88,13 @@ Byte-identical correctness is enforced by:
 
 ### Negative
 
-- The project now owns a bespoke A* implementation. Future changes to the algorithm
+- The project now owns a bespoke A\* implementation. Future changes to the algorithm
   (e.g. weighted edges, jump-point search) must be made here rather than picking up an
   upstream fix.
 - The exact-compatibility contract (all four probes before any closed-set check,
   FIFO stability, no decrease-key) is non-obvious and must be preserved by future
   editors. It is documented both in `astar-grid.ts` and in this ADR.
-- Non-integer-coordinate paths still use rot-js, so there are now two A* code paths
+- Non-integer-coordinate paths still use rot-js, so there are now two A\* code paths
   that must stay in sync if the passability semantics change.
 
 ### Risks

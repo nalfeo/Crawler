@@ -245,6 +245,44 @@ describe('Floor 2 boss ability catalog', () => {
     expect(values.get('stacking')).toBe(false);
   });
 
+  it("preserves Don Paco's THE BIG GOB contract", () => {
+    const don = getFloor2BossAbilityByBossId('llama-boss');
+    expect(don).toMatchObject({
+      id: 'don-paco-the-big-gob',
+      attackName: 'THE BIG GOB',
+      announcementText: "Don Paco's painting the whole block!",
+      timing: {
+        firstEligibleAfterMs: 9000,
+        cooldownMs: 9000,
+        cooldownAnchor: 'resolution',
+        randomJitterMs: 0,
+      },
+      targeting: {
+        mode: 'player-direction',
+        lockAt: 'telegraph-start',
+        tracksPlayer: false,
+        origin: 'locked',
+      },
+      telegraph: {
+        durationMs: 1400,
+        shape: 'cone',
+        dangerColor: 'hostile-red',
+      },
+    });
+    expect(don?.telegraph.metrics).toEqual(
+      expect.arrayContaining([
+        { id: 'angle', value: 70, unit: 'degrees' },
+        { id: 'range', value: 30, unit: 'feet' },
+        { id: 'projectile-count', value: 5, unit: 'count' },
+      ]),
+    );
+    const values = effectValuesForBoss('llama-boss');
+    expect(values.get('projectile-count')).toBe(5);
+    expect(values.get('damage-profile')).toBe('moderate');
+    expect(values.get('slick-duration')).toBe(4000);
+    expect(values.get('slow-rule')).toBe('while-inside');
+  });
+
   it('projects codex content without delivery metadata', () => {
     for (const ability of FLOOR2_BOSS_ABILITY_CATALOG.entries) {
       const codex = toBossAbilityCodexEntry(ability);

@@ -1,0 +1,40 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "merge-train-health-attribution",
+  "task_title": "Demote merge-train main-health to an attribution signal",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Separate-model (gpt-5.6-sol) review of the demotion plan. 1 BLOCKER accepted: ci-recovery-incidents.yml discarded scheduled CI while the train was disabled on the assumption those runs were no-ops; once ci.yml drops its schedule gate that is false and a failed daily backstop would raise no incident during a rollback -- fixed by routing scheduled CI unconditionally. Issue 2 accepted and CHANGED THE DESIGN: the never-worse-than-today claim was false because mainHealthReason fails closed on ABSENT evidence and excludes isTrainFastPath runs, so no-evidence is the post-promotion steady state; gating ejection on that at daily cadence would stall ejection up to 24h. Replaced with mainAttributionVerdict returning green|red|unknown, pausing only on a positive red (fail OPEN on unknown). Issue 3 accepted: testing an isolated planFailureAttribution would not prove reconcile.mjs consults it before ejecting, and passing a removed reattestHealth property proves nothing since JS drops unknown props -- so the whole decision was wrapped in planAttributedPrefixPromotion and both ejection (firstFailure) and dispatch (action) are driven off one return value. Issue 4 accepted: docs/guides/merge-train.md documented the deadlock as intended behaviour and prescribed disabling the train; rewritten. Suggestion 5 declined and documented: probe-only validation of prefix 1 on a red main adds a second validation mode outside the approved design.",
+      "model": "gpt-5.6-sol"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "clean": false,
+          "round": 1,
+          "notes": "High: the red-main branch read greenPrefixLength off the wrapped plan, so mid-bisection states (e.g. success/missing/missing/failure, which return action=validate) paused with greenPrefixLength=0 and stranded a proven-green repair prefix -> permanent deadlock. Fixed by scanning prefixStates directly, mirroring nextBisectStep green-scan semantics, and returning action=promote with validationIndex=greenPrefixLength-1. Regression test added.",
+          "resolved_count": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1
+        },
+        {
+          "clean": true,
+          "round": 2,
+          "notes": "No correctness findings. Independently re-verified green-prefix scan vs nextBisectStep contract, validationIndex/verifyCandidateEvidence satisfiability, loop bound, pause->exit(0) symmetry with pre-existing validate/wait branches, absence of any remaining red-main ejection path, reattestHealth having no live callers, and reconcile cron independence from ci.yml cron. One Low observability note (plan.attribution never logged) - implemented anyway as a stdout line on the promote-on-red-main path.",
+          "resolved_count": 0,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0
+        }
+      ],
+      "completed": true
+    }
+  }
+}

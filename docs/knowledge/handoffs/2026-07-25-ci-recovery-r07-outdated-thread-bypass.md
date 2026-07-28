@@ -4,7 +4,7 @@
 **Session:** ci-recovery-r07-outdated-thread-bypass  
 **Apple estimate:** 🍎 (1 — small script fix + regression tests, no gameplay code)  
 **Closes:** #2047
-**PR:** #2058  
+**PR:** #2058
 
 ## Systems touched
 
@@ -20,6 +20,7 @@ auto-outdated-marker / thread-resolution passes (lines 1555–1623 in the old
 file).
 
 Concretely, on PR #2016:
+
 1. A review thread (`PRRT_kwDOSvo2Ms6TwYIN`) became `is_outdated: true` after
    @copilot pushed new commits.
 2. The conflict coordinator labelled the PR `ci-conflict-order-wait` (R07).

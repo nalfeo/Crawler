@@ -311,6 +311,19 @@ export function isThemeSetItemResolvedForPhase(
   );
 }
 
+/**
+ * True when the pipeline has already produced at least one artifact for `item`
+ * in `phase`. Distinguishes a never-generated item (a run "generates" it) from
+ * one that has output but is unresolved (a run "regenerates" it). Purely
+ * cosmetic — drives only the Run-button wording, never eligibility or gating.
+ */
+export function themeSetItemHasPhaseOutput(
+  item: ThemeEquipmentSetItem,
+  phase: ThemeEquipmentSetReviewPhase,
+): boolean {
+  return item.phases[phase].artifacts.length > 0;
+}
+
 export function themeEquipmentSetStateKey(setId: string): string {
   if (!KEBAB_ID_PATTERN.test(setId)) {
     throw new ThemeEquipmentSetValidationError([
@@ -676,6 +689,24 @@ const PHASE_REQUIRED_ARTIFACT_KIND: Partial<Record<ThemeEquipmentSetReviewPhase,
 } as const;
 
 /**
+ * True when `item` cannot yet be reviewed in `phase` because its required
+ * pipeline output has not been generated. Roster has no required artifact, so it
+ * is reviewable immediately and never "awaits generation". This gates the review
+ * thumbs in the canvas (Change 8) so the maintainer can't approve/reject an item
+ * before the pipeline has produced anything to judge. Distinct from
+ * `themeSetItemHasPhaseOutput` (any artifact) — this checks the REQUIRED kind, so
+ * it stays aligned with `validatePhaseArtifactsForUpVote`, the up-vote authority.
+ */
+export function themeSetItemAwaitsGeneration(
+  item: ThemeEquipmentSetItem,
+  phase: ThemeEquipmentSetReviewPhase,
+): boolean {
+  const requiredKind = PHASE_REQUIRED_ARTIFACT_KIND[phase];
+  if (!requiredKind) return false; // roster is reviewable without generated output
+  return !item.phases[phase].artifacts.some((artifact) => artifact.kind === requiredKind);
+}
+
+/**
  * Returns a gate reason when the item is missing the required artifact for an
  * up vote in the given phase, or when variant-approval has the wrong count.
  * Returns `null` when everything is in order.
@@ -727,9 +758,15 @@ function validatePhaseArtifactsForUpVote(
  * flip. "down" or clearing back to `null` leaves the item open for
  * `reviseRejectedThemeSetItem` / re-recording.
  *
- * Both set-level approvals were formed against the previous item verdicts, so
- * they are invalidated whenever an item's verdict changes. This forces the
- * revised complete collection through both human and automated cohesion review.
+ * Both set-level approvals were formed against the item verdicts and the
+ * artifacts they signed off on. Clearing or flipping a verdict never mutates an
+ * artifact (only `recordThemeSetItemPhaseArtifacts` / `applyEditedThemeSetBrief`
+ * do), so a non-withdrawing change (`null→up`, `null→down`, `down→null`,
+ * `down→up`, `up→up`) leaves the collection judgment valid and the set-level
+ * reviews intact. Only *withdrawing* an existing approval
+ * (`previousVerdict === 'up' && nextVerdict !== 'up'`) can invalidate a
+ * set-level sign-off that was predicated on that item being approved, so only
+ * that transition resets `phases[phase]`.
  */
 export function applyThemeSetItemReview(
   input: unknown,
@@ -781,7 +818,12 @@ export function applyThemeSetItemReview(
     }
   }
 
-  const verdictChanged = item.phases[phase].review.verdict !== parsedReview.data.verdict;
+  const previousVerdict = item.phases[phase].review.verdict;
+  const nextVerdict = parsedReview.data.verdict;
+  // Only withdrawing an existing approval can invalidate a set-level sign-off
+  // that was predicated on this item being up. Every other transition leaves
+  // the artifacts (and therefore both set-level reviews) valid.
+  const withdrawsApproval = previousVerdict === 'up' && nextVerdict !== 'up';
 
   const nextState: ThemeEquipmentSetState = {
     ...state,
@@ -800,12 +842,344 @@ export function applyThemeSetItemReview(
           }
         : candidate,
     ),
-    phases: verdictChanged
+    phases: withdrawsApproval
       ? {
           ...state.phases,
           [phase]: emptyThemeEquipmentSetPhaseReview(),
         }
       : { ...state.phases },
+  };
+
+  return { ok: true, state: parseThemeEquipmentSetState(nextState) };
+}
+
+/** One item the bulk-approve action deliberately left un-approved, with why. */
+export interface ThemeSetBulkApproveSkip {
+  readonly id: string;
+  readonly code: string;
+  readonly reason: string;
+}
+
+/**
+ * A read-only plan for "approve remaining" in the current phase. `count` is the
+ * number of items that WOULD be up-voted, and is the single source of truth the
+ * canvas label must be derived from (Change 4: the label must match the action).
+ */
+export interface ThemeSetBulkApprovePlan {
+  /** Current phase, or `null` when the set is not in a reviewable phase. */
+  readonly phase: ThemeEquipmentSetReviewPhase | null;
+  /** Items with no verdict that are eligible for an up vote — the ones we approve. */
+  readonly approvableIds: readonly string[];
+  /** Items already up — no action needed. */
+  readonly alreadyUpIds: readonly string[];
+  /** Items deliberately skipped (rejected, or missing required artifacts), with reasons. */
+  readonly skipped: readonly ThemeSetBulkApproveSkip[];
+  /** `approvableIds.length` — the truthful count for the button label. */
+  readonly count: number;
+}
+
+export type ThemeSetBulkApproveResult =
+  | {
+      readonly ok: true;
+      readonly state: ThemeEquipmentSetState;
+      /** False when there was nothing to approve; no write should happen. */
+      readonly changed: boolean;
+      readonly approvedIds: readonly string[];
+      readonly alreadyUpIds: readonly string[];
+      readonly skipped: readonly ThemeSetBulkApproveSkip[];
+    }
+  | {
+      readonly ok: false;
+      readonly reasons: readonly ThemeSetGateReason[];
+    };
+
+function computeBulkApprovePlan(state: ThemeEquipmentSetState): ThemeSetBulkApprovePlan {
+  if (!isReviewPhase(state.phase)) {
+    return { phase: null, approvableIds: [], alreadyUpIds: [], skipped: [], count: 0 };
+  }
+  const phase = state.phase;
+  const approvableIds: string[] = [];
+  const alreadyUpIds: string[] = [];
+  const skipped: ThemeSetBulkApproveSkip[] = [];
+
+  for (const item of state.items) {
+    const verdict = item.phases[phase].review.verdict;
+    if (verdict === 'up') {
+      alreadyUpIds.push(item.id);
+      continue;
+    }
+    if (verdict === 'down') {
+      skipped.push({
+        id: item.id,
+        code: 'item-rejected',
+        reason: `Item "${item.id}" is rejected; bulk approve does not override a down vote`,
+      });
+      continue;
+    }
+    // verdict === null → approve only if the phase's required artifacts are present.
+    const artifactReason = validatePhaseArtifactsForUpVote(item, phase);
+    if (artifactReason) {
+      skipped.push({ id: item.id, code: artifactReason.code, reason: artifactReason.message });
+      continue;
+    }
+    approvableIds.push(item.id);
+  }
+
+  return { phase, approvableIds, alreadyUpIds, skipped, count: approvableIds.length };
+}
+
+/**
+ * Pure plan for "approve remaining" in the current phase. Never mutates. Used
+ * both to drive the label (`count`) and to preview skips. Returns a `phase:null`
+ * empty plan for non-review phases or unparseable input.
+ */
+export function planApproveRemaining(input: unknown): ThemeSetBulkApprovePlan {
+  const parsed = themeEquipmentSetStateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { phase: null, approvableIds: [], alreadyUpIds: [], skipped: [], count: 0 };
+  }
+  return computeBulkApprovePlan(parsed.data);
+}
+
+/**
+ * Up-votes every eligible, not-yet-reviewed item in the current phase in ONE
+ * mutation (one `stateRevision` bump, one compare-and-swap write by the caller).
+ * Skips rejected items and items missing required artifacts, reporting each.
+ * When there is nothing to approve it returns `changed:false` and the state
+ * UNCHANGED (no revision bump) so the caller writes nothing. Every applied
+ * transition is `null→up`, never a withdrawal, so set-level reviews are
+ * preserved — consistent with `applyThemeSetItemReview`'s narrowed reset.
+ */
+export function approveRemainingThemeSetPhase(input: unknown): ThemeSetBulkApproveResult {
+  const parsed = themeEquipmentSetStateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, reasons: zodIssuesToGateReasons(parsed.error.issues) };
+  }
+  const state = parsed.data;
+  if (!isReviewPhase(state.phase)) {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'phase-not-reviewable',
+          message: `Cannot bulk-approve during phase "${state.phase}"`,
+          path: ['phase'],
+        },
+      ],
+    };
+  }
+
+  const plan = computeBulkApprovePlan(state);
+  if (plan.count === 0) {
+    return {
+      ok: true,
+      state,
+      changed: false,
+      approvedIds: [],
+      alreadyUpIds: plan.alreadyUpIds,
+      skipped: plan.skipped,
+    };
+  }
+
+  const phase = state.phase;
+  const approveSet = new Set(plan.approvableIds);
+  const nextState: ThemeEquipmentSetState = {
+    ...state,
+    stateRevision: state.stateRevision + 1,
+    items: state.items.map((candidate) =>
+      approveSet.has(candidate.id)
+        ? {
+            ...candidate,
+            phases: {
+              ...candidate.phases,
+              [phase]: {
+                ...candidate.phases[phase],
+                review: { verdict: 'up' as const },
+              },
+            },
+          }
+        : candidate,
+    ),
+    // All transitions are null→up (never a withdrawal) → set-level reviews stay intact.
+    phases: { ...state.phases },
+  };
+
+  return {
+    ok: true,
+    state: parseThemeEquipmentSetState(nextState),
+    changed: true,
+    approvedIds: plan.approvableIds,
+    alreadyUpIds: plan.alreadyUpIds,
+    skipped: plan.skipped,
+  };
+}
+
+/**
+ * A read-only description of what a `run-phase` dispatch would do RIGHT NOW,
+ * derived from the same resolution predicate the pipeline uses
+ * (`isThemeSetItemResolvedForPhase`) so the canvas label can never lie about
+ * the work. A run always (re)generates every currently-unresolved item and then
+ * judges the whole collection exactly once (see `runThemeEquipmentSetPhase`);
+ * when nothing is unresolved the run regenerates nothing and only produces the
+ * collection judge — which is exactly the state that otherwise dead-ends the
+ * maintainer at Advance (`collectionJudge` is required by `canAdvanceThemeSet`).
+ */
+export interface ThemeSetRunPhasePlan {
+  /** Current phase, or `null` when the set is not in a reviewable phase. */
+  readonly phase: ThemeEquipmentSetReviewPhase | null;
+  /**
+   * Number of unresolved items a run would generate for the FIRST time — items
+   * with no phase output yet. Disjoint from `regenerateCount`.
+   */
+  readonly generateCount: number;
+  /**
+   * Number of unresolved items a run would regenerate — items that already have
+   * phase output (e.g. rejected and awaiting a fresh attempt). Disjoint from
+   * `generateCount`. Invariant: `generateCount + regenerateCount` equals the
+   * total unresolved item count.
+   */
+  readonly regenerateCount: number;
+  /** True when a run regenerates nothing and would only judge the collection. */
+  readonly judgeOnly: boolean;
+  /** True when the current phase has no collection judge yet (blocks Advance). */
+  readonly collectionJudgeMissing: boolean;
+}
+
+/**
+ * Pure plan for the `run-phase` control in the current phase. Never mutates.
+ * Drives the Run button's truthful label and the "a run is required to produce
+ * the collection judge" guidance — both derived from this one computation so the
+ * label matches the work (mirrors `planApproveRemaining`). Returns a `phase:null`
+ * empty plan for non-review phases or unparseable input.
+ */
+export function planRunPhase(input: unknown): ThemeSetRunPhasePlan {
+  const parsed = themeEquipmentSetStateSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      phase: null,
+      generateCount: 0,
+      regenerateCount: 0,
+      judgeOnly: false,
+      collectionJudgeMissing: false,
+    };
+  }
+  const state = parsed.data;
+  if (!isReviewPhase(state.phase)) {
+    return {
+      phase: null,
+      generateCount: 0,
+      regenerateCount: 0,
+      judgeOnly: false,
+      collectionJudgeMissing: false,
+    };
+  }
+  const phase = state.phase;
+  const unresolved = state.items.filter((item) => !isThemeSetItemResolvedForPhase(item, phase));
+  const regenerateCount = unresolved.filter((item) =>
+    themeSetItemHasPhaseOutput(item, phase),
+  ).length;
+  const generateCount = unresolved.length - regenerateCount;
+  return {
+    phase,
+    generateCount,
+    regenerateCount,
+    judgeOnly: unresolved.length === 0,
+    collectionJudgeMissing: state.phases[phase].collectionJudge === null,
+  };
+}
+
+/**
+ * (unlike a verdict change) it MUST invalidate the set-level briefs review: the
+ * collection judgment and human sign-off were formed against the old brief text.
+ *
+ * The caller (the CLI) is responsible for the real side effect — writing the
+ * validated YAML to `selectedBriefKey(state, item, item.revision + 1)` (a NEW
+ * key, so a failed compare-and-swap never corrupts the live brief) — and for
+ * minting the `artifact`/`evidence` records that point at it. This pure mutation
+ * only rewrites state: it bumps `item.revision`, replaces the item's briefs
+ * phase with the new artifact + an `up` review, and clears `phases.briefs`.
+ */
+export function applyEditedThemeSetBrief(
+  input: unknown,
+  itemId: string,
+  records: { readonly artifact: unknown; readonly evidence: unknown },
+): ThemeSetMutationResult {
+  const parsed = themeEquipmentSetStateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, reasons: zodIssuesToGateReasons(parsed.error.issues) };
+  }
+  const state = parsed.data;
+  if (state.phase !== 'briefs') {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'phase-not-briefs',
+          message: `Brief edits are only allowed during phase "briefs" (current: "${state.phase}")`,
+          path: ['phase'],
+        },
+      ],
+    };
+  }
+  const item = state.items.find((candidate) => candidate.id === itemId);
+  if (!item) {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'item-not-found',
+          message: `Theme set item "${itemId}" was not found`,
+          path: ['items'],
+        },
+      ],
+    };
+  }
+
+  const parsedArtifact = artifactEvidenceSchema.safeParse(records.artifact);
+  if (!parsedArtifact.success) {
+    return { ok: false, reasons: zodIssuesToGateReasons(parsedArtifact.error.issues) };
+  }
+  if (parsedArtifact.data.kind !== 'selected-brief') {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'artifact-not-selected-brief',
+          message: `Edited-brief artifact must have kind "selected-brief" (got "${parsedArtifact.data.kind}")`,
+          path: ['artifact', 'kind'],
+        },
+      ],
+    };
+  }
+  const parsedEvidence = artifactEvidenceSchema.safeParse(records.evidence);
+  if (!parsedEvidence.success) {
+    return { ok: false, reasons: zodIssuesToGateReasons(parsedEvidence.error.issues) };
+  }
+
+  const nextState: ThemeEquipmentSetState = {
+    ...state,
+    stateRevision: state.stateRevision + 1,
+    items: state.items.map((candidate) =>
+      candidate.id === itemId
+        ? {
+            ...candidate,
+            revision: candidate.revision + 1,
+            phases: {
+              ...candidate.phases,
+              briefs: {
+                artifacts: [parsedArtifact.data],
+                evidence: [parsedEvidence.data],
+                review: { verdict: 'up' as const },
+              },
+            },
+          }
+        : candidate,
+    ),
+    // Reviewed content changed → invalidate the set-level briefs review.
+    phases: {
+      ...state.phases,
+      briefs: emptyThemeEquipmentSetPhaseReview(),
+    },
   };
 
   return { ok: true, state: parseThemeEquipmentSetState(nextState) };

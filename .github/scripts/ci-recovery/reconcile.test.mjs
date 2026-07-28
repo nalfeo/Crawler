@@ -260,6 +260,18 @@ function isWindowsAsyncCloseCrash(code, stderr) {
   return process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr);
 }
 
+// Parse the append-only CI_RECOVERY_DECISION observability lines out of a
+// reconcile run's stdout (see decision-log.mjs). Each such line is
+// `CI_RECOVERY_DECISION {json}`; returns the parsed JSON records in order.
+const DECISION_LINE_RE = /^CI_RECOVERY_DECISION (\{.*\})$/;
+function parseDecisionLines(stdout) {
+  return stdout
+    .split('\n')
+    .map((line) => DECISION_LINE_RE.exec(line.trim()))
+    .filter(Boolean)
+    .map((match) => JSON.parse(match[1]));
+}
+
 // The Windows UV_HANDLE_CLOSING shutdown assertion is a known Node/libuv
 // race in this file's shared spawn-subprocess + mock-HTTP-server harness:
 // every test here starts a real server, spawns reconcile.mjs as a child
@@ -938,6 +950,14 @@ for (const attempt of [1, 2]) {
     const finalState = parseStateComment(stateComment.body);
     if (attempt === 1) {
       assert.match(stdout, /assigned copilot pr=#42/);
+      // Observability: a terminal decision line must record the dispatch, with a
+      // machine-readable action + task-comment intent (decision-log.mjs).
+      const decisions = parseDecisionLines(stdout);
+      const dispatch = decisions.find((d) => d.action === DISPATCH_ACTION.DISPATCH_COPILOT);
+      assert.ok(dispatch, 'expected a CI_RECOVERY_DECISION line for the copilot dispatch');
+      assert.equal(dispatch.stage, 'terminal');
+      assert.equal(dispatch.pr, PR_NUM);
+      assert.equal(dispatch.taskComment, 'planned');
       assert.equal(finalState.owner, 'automation');
       assert.equal(finalState.status, 'dispatched');
       assert.equal(finalState.attempt, 2);
@@ -1972,6 +1992,15 @@ test('admission wait after orphan cleanup does not release ownership twice', asy
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
   assert.match(stdout, /wait pr=#42 admission=/);
+  // Observability: a terminal decision line records the non-dispatch outcome so a
+  // stalled PR can be diagnosed even when @copilot is deliberately not summoned.
+  {
+    const decisions = parseDecisionLines(stdout);
+    const terminal = decisions.find((d) => d.stage === 'terminal');
+    assert.ok(terminal, 'expected a terminal CI_RECOVERY_DECISION line');
+    assert.equal(terminal.action, DISPATCH_ACTION.WAIT_ADMISSION);
+    assert.equal(terminal.taskComment, 'not-applicable');
+  }
   assert.equal(
     mutatingCalls.filter(
       (call) =>
@@ -3713,10 +3742,193 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // A clean-BEHIND PR with pending CI ends up at WAIT_ADMISSION (not ARM_AUTO_MERGE),
+  // so no would-update-branch is emitted until CI passes.
   assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
   assert.doesNotMatch(stdout, /dry-run would-assign copilot/);
   assert.doesNotMatch(stdout, /merge-conflict/);
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('dry-run reconcile emits would-update-branch for an admissible clean-BEHIND PR', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    // Provide passing required checks so the PR reaches ARM_AUTO_MERGE.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /dry-run would-arm-auto-merge pr=#42/);
+  // D2 fix: an admissible clean-BEHIND PR must also emit would-update-branch in dry-run.
+  assert.match(stdout, /dry-run would-update-branch pr=#42 reason=clean-behind/);
+  assert.doesNotMatch(stdout, /merge-conflict/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('live reconcile calls update-branch for a clean-BEHIND PR at ARM_AUTO_MERGE', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    // Provide passing required checks so the PR reaches ARM_AUTO_MERGE.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`PUT /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`]: () => ({
+      status: 202,
+      body: { message: 'Updating pull request branch.' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /auto-merge armed pr=#42/);
+  // D2 fix: update-branch must be called for a clean-BEHIND PR to unblock the
+  // strict up-to-date merge policy without force-pushing (D7 avoided).
+  assert.match(stdout, /update-branch pr=#42 reason=clean-behind/);
+  const updateBranchCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'PUT' && call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`,
+  );
+  assert.ok(updateBranchCall, 'update-branch PUT must be called for a clean-BEHIND PR');
+  // Assert the exact request body to lock the update-branch API contract.
+  // The field is expected_head_sha (not expected_head_oid) per GitHub REST API.
+  assert.deepEqual(
+    updateBranchCall.body,
+    { expected_head_sha: HEAD_SHA },
+    'update-branch body must use expected_head_sha',
+  );
+});
+
+test('live reconcile calls update-branch for a clean-BEHIND PR at QUEUE_MERGE_TRAIN', async (t) => {
+  // Exercises the update-branch path independently implemented in QUEUE_MERGE_TRAIN
+  // (separate from ARM_AUTO_MERGE). The QUEUE_MERGE_TRAIN path adds the merge-train
+  // label + dispatch BEFORE calling update-branch; this test verifies the PUT body
+  // and that the call occurs after the label mutations.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    // Provide passing required checks so the PR reaches QUEUE_MERGE_TRAIN.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+    [`PUT /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`]: () => ({
+      status: 202,
+      body: { message: 'Updating pull request branch.' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /queued merge-train pr=#42/);
+  // D2 fix: update-branch must be called for a clean-BEHIND PR at QUEUE_MERGE_TRAIN.
+  assert.match(stdout, /update-branch pr=#42 reason=clean-behind/);
+  const updateBranchCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'PUT' && call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`,
+  );
+  assert.ok(
+    updateBranchCall,
+    'update-branch PUT must be called for a clean-BEHIND PR at QUEUE_MERGE_TRAIN',
+  );
+  assert.deepEqual(
+    updateBranchCall.body,
+    { expected_head_sha: HEAD_SHA },
+    'QUEUE_MERGE_TRAIN update-branch body must use expected_head_sha',
+  );
+  // update-branch must occur after the merge-train label is attached.
+  const labelAttachIdx = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+  );
+  const updateBranchIdx = mutatingCalls.indexOf(updateBranchCall);
+  assert.ok(
+    labelAttachIdx >= 0 && updateBranchIdx > labelAttachIdx,
+    'update-branch must be called after the merge-train label is attached',
+  );
 });
 
 test('human-gated balance PR cannot keep merge-train or armed auto-merge before owner approval', async (t) => {
@@ -4544,6 +4756,15 @@ test('disabled merge train still clears stale train labels before honoring an ac
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /skip pr=#42 reason=active-shepherd-lease/);
+  // Observability: an early short-circuit also emits a decision line (stage=early)
+  // so a run that never reaches the terminal table is still diagnosable.
+  {
+    const decisions = parseDecisionLines(stdout);
+    const early = decisions.find((d) => d.stage === 'early');
+    assert.ok(early, 'expected an early CI_RECOVERY_DECISION line');
+    assert.equal(early.action, DISPATCH_ACTION.SKIP_ACTIVE_SHEPHERD);
+    assert.equal(early.taskComment, 'not-applicable');
+  }
   const deletedLabels = mutatingCalls
     .filter((call) => call.method === 'DELETE')
     .map((call) => decodeURIComponent(call.url.split('/').at(-1)))
@@ -5644,6 +5865,246 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
   assert.ok(
     taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
     'task comment should reserve the SHA-less marker for deterministic non-applicability',
+  );
+});
+
+test('ci-only task body omits review-thread protocol and requires push-based progress', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'Lightweight Checks',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.ok(
+    taskCommentCall.body.body.includes('**CI-only protocol:**'),
+    'ci-only recovery task should include explicit CI-only guidance',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('do not reply to this task comment with status updates'),
+    'ci-only recovery task should forbid status-only task-comment replies',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**Review-thread protocol:**'),
+    false,
+    'ci-only recovery task should omit review-thread protocol text',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes(
+      'A top-level PR comment is never sufficient for a review-thread blocker',
+    ),
+    false,
+    'ci-only recovery task should omit review-thread-only marker instructions',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('do not use it in an addressed marker'),
+    false,
+    'ci-only recovery task should omit addressed-marker hint from branch-head line',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('replies in each thread'),
+    false,
+    'ci-only recovery task should omit thread-reply instruction from human-approval note',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('review feedback'),
+    false,
+    'ci-only recovery task should omit review-feedback step from required-order line',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('thread resolution'),
+    false,
+    'ci-only recovery task should omit thread-resolution step from required-order line',
+  );
+});
+
+test('merge-train-noop task body uses generic repair protocol, not ci-only or review-thread', async (t) => {
+  // A merge-train-noop blocker means the PR squash diff is already in the
+  // train base — neither a CI failure nor a review-thread.  The task body
+  // must select the generic **Repair protocol** branch, not the CI-only branch.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-noop' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.ok(
+    taskCommentCall.body.body.includes('**Repair protocol:**'),
+    'merge-train-noop task should use generic repair protocol',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**CI-only protocol:**'),
+    false,
+    'merge-train-noop task should not use CI-only protocol',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**Review-thread protocol:**'),
+    false,
+    'merge-train-noop task should not use review-thread protocol',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('review feedback'),
+    false,
+    'merge-train-noop task should omit review-feedback from required-order line',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('thread resolution'),
+    false,
+    'merge-train-noop task should omit thread-resolution from required-order line',
   );
 });
 
@@ -8738,7 +9199,7 @@ test('stale-marker SHA that is a one-digit typo of head SHA (404) is auto-resolv
 
   assert.match(
     stdout,
-    new RegExp(`promoted stale-marker sha=${typoSha} to reachable via one-digit typo match`),
+    new RegExp(`promoted stale-marker sha=${typoSha} to reachable via near-typo match`),
     'expected prefix-match promotion log line',
   );
   assert.match(
@@ -8768,6 +9229,161 @@ test('stale-marker SHA that is a one-digit typo of head SHA (404) is auto-resolv
       call.body.body.includes('crawler-ci-task'),
   );
   assert.equal(taskCommentCall, undefined, 'must not post a task comment for the resolved thread');
+});
+
+test('stale-marker SHA that is a two-adjacent-digit typo of head SHA (404) is auto-resolved', async (t) => {
+  // PR #2010 incident: the recovery agent posted ✅ Addressed in <sha> but
+  // two adjacent hex digits were written as a decimal-adjacent substitution
+  // ("19" → "20") — the actual commit was "...f3fe19afef77" but the marker
+  // carried "...f3fe20afef77". The SHA returns 404 (definitively unreachable),
+  // shares HEAD's 7-char abbreviation, and the two differing digits are
+  // contiguous (adjacent positions). The reconciler must promote the SHA and
+  // auto-resolve the thread without dispatching a new LLM agent.
+  // HEAD_SHA = 'abc1234def5678901234567890abcdef12345678'
+  // Replace the last two chars "78" with "90" to produce a 2-adjacent-digit typo.
+  const typoSha = `${HEAD_SHA.slice(0, -2)}90`;
+  assert.ok(HEAD_SHA.startsWith(typoSha.slice(0, 7)), 'test invariant: prefixes must match');
+  assert.notEqual(typoSha, HEAD_SHA, 'test invariant: full SHAs must differ');
+  // Verify exactly 2 adjacent positions differ.
+  const diffs = [...HEAD_SHA].reduce((acc, ch, i) => (ch !== typoSha[i] ? [...acc, i] : acc), []);
+  assert.equal(diffs.length, 2, 'test invariant: exactly 2 positions differ');
+  assert.equal(diffs[1] - diffs[0], 1, 'test invariant: differing positions are adjacent');
+
+  const threadId = 'PRRT_two_digit_typo_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation') && query.includes('resolveReviewThread')) {
+        return {
+          body: {
+            data: {
+              resolveReviewThread: { thread: { isResolved: true } },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/core/mob-abilities/types.ts',
+            line: 23,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_two_digit_typo_reply',
+                  body: `✅ Addressed in \`${typoSha}\`: Added ADR-0076 documenting the lane/active-phase contract.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    // Typo SHA returns 404 — it doesn't exist as a commit.
+    [`GET /repos/${OWNER}/${REPO}/compare/${typoSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1002 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    new RegExp(`promoted stale-marker sha=${typoSha} to reachable via near-typo match`),
+    'expected near-typo promotion log line for 2-adjacent-digit typo',
+  );
+  assert.match(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'thread with 2-adjacent-digit typo SHA must be auto-resolved',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /assigned copilot pr=#42/,
+    'must not dispatch a repair agent when the thread is auto-resolved',
+  );
+
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === threadId,
+  );
+  assert.ok(
+    resolveCall,
+    'expected a resolveReviewThread mutation for the 2-adjacent-digit typo thread',
+  );
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.equal(
+    taskCommentCall,
+    undefined,
+    'must not post a task comment for the auto-resolved thread',
+  );
 });
 
 test('diverged/behind stale-marker SHA that shares head prefix is not auto-resolved', async (t) => {
@@ -8865,7 +9481,7 @@ test('diverged/behind stale-marker SHA that shares head prefix is not auto-resol
 
   assert.doesNotMatch(
     stdout,
-    new RegExp(`promoted stale-marker sha=${divergentSha} to reachable via one-digit typo match`),
+    new RegExp(`promoted stale-marker sha=${divergentSha} to reachable via near-typo match`),
   );
   assert.doesNotMatch(
     stdout,
@@ -8984,7 +9600,7 @@ test('missing stale-marker SHA with same 7-char prefix but many differing digits
   assert.doesNotMatch(
     stdout,
     new RegExp(
-      `promoted stale-marker sha=${missingNonNearMatchSha} to reachable via one-digit typo match`,
+      `promoted stale-marker sha=${missingNonNearMatchSha} to reachable via near-typo match`,
     ),
   );
   assert.doesNotMatch(
@@ -9001,6 +9617,144 @@ test('missing stale-marker SHA with same 7-char prefix but many differing digits
       call.body.body.includes(threadId),
   );
   assert.ok(taskCommentCall, 'expected stale-marker task comment for missing non-near-match SHA');
+});
+
+test('two-digit typo with non-adjacent (non-contiguous) differing positions is not auto-resolved', async (t) => {
+  // Safety guard: a missing SHA that shares HEAD's 7-char prefix and differs
+  // by exactly 2 hex digits BUT at non-adjacent positions is NOT promoted.
+  // Two separated changed digits more likely indicate a genuinely different
+  // commit than a single transcription slip, so the promotion threshold
+  // requires contiguity (positions differ by exactly 1).
+  //
+  // Construct a SHA that changes characters at positions 0 and 2 (not adjacent):
+  // HEAD_SHA = 'abc1234def5678901234567890abcdef12345678'
+  // positions:   0123456...
+  // Change positions 7 and 9 (both within the first 7-char prefix would break
+  // the prefix guard; we need positions AFTER the 7-char boundary).
+  // positions 7 and 9: HEAD_SHA[7]='d', HEAD_SHA[9]='f'
+  // Change HEAD_SHA[7] 'd'→'e' and HEAD_SHA[9] 'f'→'0'.
+  const head = HEAD_SHA; // 'abc1234def5678901234567890abcdef12345678'
+  const nonAdjacentTypoSha = `${head.slice(0, 7)}e${head[8]}0${head.slice(10)}`;
+  assert.ok(
+    HEAD_SHA.startsWith(nonAdjacentTypoSha.slice(0, 7)),
+    'test invariant: prefixes must match',
+  );
+  assert.notEqual(nonAdjacentTypoSha, HEAD_SHA, 'test invariant: SHAs must differ');
+  const diffs = [...HEAD_SHA].reduce(
+    (acc, ch, i) => (ch !== nonAdjacentTypoSha[i] ? [...acc, i] : acc),
+    [],
+  );
+  assert.equal(diffs.length, 2, 'test invariant: exactly 2 positions differ');
+  assert.ok(diffs[1] - diffs[0] > 1, 'test invariant: differing positions are NOT adjacent');
+
+  const threadId = 'PRRT_non_adjacent_two_digit_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/core/mob-abilities/types.ts',
+            line: 23,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'reviewer: these new public phases need an ADR',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_non_adjacent_reply',
+                  body: `✅ Addressed in \`${nonAdjacentTypoSha}\`: Added ADR-0076.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${nonAdjacentTypoSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1004 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`promoted stale-marker sha=${nonAdjacentTypoSha} to reachable via near-typo match`),
+    'non-adjacent 2-digit differences must NOT be promoted',
+  );
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`resolved thread=${threadId}`),
+    'non-adjacent 2-digit typo SHAs must stay on the stale-marker hint path',
+  );
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes(threadId),
+  );
+  assert.ok(
+    taskCommentCall,
+    'expected stale-marker task comment for non-adjacent 2-digit typo SHA',
+  );
 });
 
 test('outdated stale-marker thread stays on the stale-marker hint path', async (t) => {
@@ -12739,4 +13493,286 @@ test('dry-run: R06 merge-train-owned exit still runs outdated-thread cleanup', a
   assert.match(stdout, /skip pr=#42 reason=merge-train-owned/);
   // No mutations in dry-run mode.
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+// ---------------------------------------------------------------------------
+// Auto-close loop incident on convergence (regression for incident #2196)
+// ---------------------------------------------------------------------------
+
+test('converged PR (ARM_AUTO_MERGE) automatically closes an open loop incident in live mode', async (t) => {
+  // Simulates a PR that previously exhausted the CI recovery retry budget
+  // (incident filed), then had its CI failures fixed and passed all checks.
+  // The reconciler must close the incident when it converges.
+  const loopIncidentIssue = {
+    number: 501,
+    title: `CI recovery loop: PR #${PR_NUM}`,
+    body: '<!-- crawler-pr-loop-incident:v1 -->\nThis is a loop incident.',
+    pull_request: undefined,
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    // Return passing check runs for ci + Security checks so admission is satisfied.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // Loop incident list and close routes:
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [loopIncidentIssue] }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/501`]: () => ({ body: { number: 501 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /loop-incident-closed pr=#42 issue=#501/,
+    'converged PR must auto-close the open loop incident',
+  );
+
+  const closeCall = mutatingCalls.find(
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/501`,
+  );
+  assert.ok(closeCall, 'must PATCH the loop incident issue to close it');
+  assert.equal(closeCall.body?.state, 'closed', 'state must be closed');
+  assert.equal(closeCall.body?.state_reason, 'completed', 'state_reason must be completed');
+});
+
+test('converged PR (ARM_AUTO_MERGE) must not close loop incident when arm-auto-merge metadata guard fails', async (t) => {
+  const movedHead = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  let pullFetches = 0;
+  const loopIncidentIssue = {
+    number: 502,
+    title: `CI recovery loop: PR #${PR_NUM}`,
+    body: '<!-- crawler-pr-loop-incident:v1 -->\nThis is a loop incident.',
+    pull_request: undefined,
+  };
+  const priorMarkerComment = {
+    id: 500,
+    body: reviewRequestMarker({ headSha: HEAD_SHA, reason: 'ready' }),
+    author_association: 'OWNER',
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      const head = pullFetches < 3 ? HEAD_SHA : movedHead;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          head: { ...trustedReviewWakePr().head, sha: head },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [priorMarkerComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [loopIncidentIssue] }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/502`]: () => ({ body: { number: 502 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=head-sha-moved-before-mutation phase=arm-auto-merge expected=${HEAD_SHA} actual=${movedHead}`,
+    ),
+    'stale metadata must abort before arm-auto-merge mutations',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /loop-incident-closed pr=#42 issue=#502/,
+    'must not close the loop incident when the arm-auto-merge metadata guard fails',
+  );
+  assert.equal(
+    pullFetches,
+    3,
+    'state-comment and arm-auto-merge guards must re-fetch live metadata',
+  );
+  const closeCall = mutatingCalls.find(
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/502`,
+  );
+  assert.equal(
+    closeCall,
+    undefined,
+    'must not PATCH-close the loop incident on metadata-guard skip',
+  );
+});
+test('converged PR (ARM_AUTO_MERGE) skips loop-incident close when no incident exists', async (t) => {
+  // No open loop incident for this PR — closeLoopIncident must be a no-op.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    // Return passing check runs for ci + Security checks so admission is satisfied.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // Empty incident list:
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.doesNotMatch(
+    stdout,
+    /loop-incident-closed/,
+    'must not log loop-incident-closed when no incident exists',
+  );
+  const closeCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'PATCH' &&
+      /\/issues\/\d+$/.test(call.url.split('?')[0]) &&
+      !call.url.includes('/comments/'),
+  );
+  assert.equal(closeCalls.length, 0, 'must not PATCH any issue when no loop incident exists');
+});
+
+// Regression: merged-PR cleanup path.
+//
+// Simulates the race where closeLoopIncident failed at the ARM_AUTO_MERGE
+// convergence point and the PR then merged.  The pull_request_target:closed
+// trigger reaches reconcile with pr.state='closed' + merged=true, hits the
+// early-exit block,
+// and must close the incident there before exiting.
+test('merged PR event closes an open loop incident even when ARM_AUTO_MERGE path already exited', async (t) => {
+  const loopIncidentIssue = {
+    number: 503,
+    title: `CI recovery loop: PR #${PR_NUM}`,
+    body: '<!-- crawler-pr-loop-incident:v1 -->\nLoop incident that was not closed at convergence.',
+    pull_request: undefined,
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed', merged: true },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    // Loop incident list and close routes:
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [loopIncidentIssue] }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/503`]: () => ({ body: { number: 503 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  // The script exits 0 (the merged-PR skip path is a clean exit).
+  if (!assertSuccessfulExit(t, code, stderr, 'merged-pr loop-incident cleanup', true)) return;
+
+  assert.match(
+    stdout,
+    /loop-incident-closed pr=#42 issue=#503 reason=pr-closed/,
+    'merged-PR path must close the open loop incident',
+  );
+
+  const closeCall = mutatingCalls.find(
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/503`,
+  );
+  assert.ok(closeCall, 'must PATCH the loop incident issue to close it');
+  assert.equal(closeCall.body?.state, 'closed', 'state must be closed');
+  assert.equal(closeCall.body?.state_reason, 'completed', 'state_reason must be completed');
 });

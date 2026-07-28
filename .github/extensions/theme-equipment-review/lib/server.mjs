@@ -18,6 +18,8 @@ const MUTATING_PATHS = new Set([
   '/api/review-item',
   '/api/review-set',
   '/api/advance',
+  '/api/approve-remaining',
+  '/api/save-and-approve-brief',
   '/api/dispatch',
   '/api/select',
   '/api/synth-roster',
@@ -32,6 +34,7 @@ export async function startThemeEquipmentReviewServer(options) {
     renderHtml,
     runCommand,
     dispatchWorkflow,
+    runStatus,
     log = () => {},
     listTtlMs = LIST_TTL_MS,
     watchIntervalMs = WATCH_INTERVAL_MS,
@@ -211,6 +214,18 @@ export async function startThemeEquipmentReviewServer(options) {
       writeJson(res, 200, await runCommand({ action: 'state', setId }));
       return;
     }
+    if (method === 'GET' && url.pathname === '/api/run-status') {
+      if (!setId) {
+        writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
+      if (typeof runStatus !== 'function') {
+        writeJson(res, 200, { available: false, errorKind: 'not-wired' });
+        return;
+      }
+      writeJson(res, 200, await runStatus(setId));
+      return;
+    }
     if (method === 'GET' && url.pathname === '/api/artifact') {
       if (!setId) {
         writeJson(res, 409, { error: 'no-set-selected' });
@@ -295,6 +310,28 @@ export async function startThemeEquipmentReviewServer(options) {
       }
       if (!setId) {
         writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
+      if (url.pathname === '/api/approve-remaining') {
+        const bulk = await runCommand({
+          action: 'approve-remaining',
+          setId,
+          expectedRevision: body.expectedRevision,
+        });
+        writeJson(res, 200, bulk);
+        broadcast(bulk);
+        return;
+      }
+      if (url.pathname === '/api/save-and-approve-brief') {
+        const edited = await runCommand({
+          action: 'save-and-approve-brief',
+          setId,
+          itemId: body.itemId,
+          briefText: body.briefText,
+          expectedRevision: body.expectedRevision,
+        });
+        writeJson(res, 200, edited);
+        broadcast(edited);
         return;
       }
       const result =

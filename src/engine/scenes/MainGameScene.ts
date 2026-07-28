@@ -34,8 +34,12 @@ import {
   resolveDoorPoolVariant,
 } from '../../shared/terrain-pack-variants.js';
 import { TERRAIN_PACK_CELL_PX } from '../../shared/terrain-pack-types.js';
-import { buildTerrainLayer } from '../terrain-renderer.js';
-import type { TerrainPackId } from '../../shared/terrain-pack-types.js';
+import {
+  buildTerrainLayer,
+  type LineworkRunStats,
+  type TerrainPackFamily,
+} from '../terrain-renderer.js';
+import type { TerrainPackId, TransformId } from '../../shared/terrain-pack-types.js';
 import {
   resolveDoorRenderMode,
   GENERATED_DOOR_TEXTURE_KEY,
@@ -284,6 +288,8 @@ export interface MainGameSceneOptions {
    * atlas/pool textures; when omitted (Floor 1) the legacy path renders.
    */
   terrainPackId?: TerrainPackId;
+  /** Optional per-terrain-family overrides for mixed-biome floors. */
+  terrainPacks?: Partial<Record<TerrainPackFamily, TerrainPackId>>;
   /** Floor-specific Director narration copy. */
   director?: {
     intro: string;
@@ -415,6 +421,20 @@ export class MainGameScene extends Phaser.Scene {
     packWallCount: number;
     packFloorCount: number;
     packCorridorCount: number;
+    packSpecialFloorCount: number;
+    packFloorSourceCounts: Record<string, number>;
+    packFloorTransformCounts: Partial<Record<TransformId, number>>;
+    packFloorComboCounts: Record<string, number>;
+    packCorridorSourceCounts: Record<string, number>;
+    packCorridorTransformCounts: Partial<Record<TransformId, number>>;
+    packCorridorComboCounts: Record<string, number>;
+    packWallAccentedCount: number;
+    packWallAccentCounts: Record<string, number>;
+    packGroundDecalCount: number;
+    packLineworkTileCount: number;
+    packLineworkPropCount: number;
+    packLineworkRuns: readonly LineworkRunStats[];
+    packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
   } = {
     generatedCount: 0,
     spriteCount: 0,
@@ -422,6 +442,20 @@ export class MainGameScene extends Phaser.Scene {
     packWallCount: 0,
     packFloorCount: 0,
     packCorridorCount: 0,
+    packSpecialFloorCount: 0,
+    packFloorSourceCounts: {},
+    packFloorTransformCounts: {},
+    packFloorComboCounts: {},
+    packCorridorSourceCounts: {},
+    packCorridorTransformCounts: {},
+    packCorridorComboCounts: {},
+    packWallAccentedCount: 0,
+    packWallAccentCounts: {},
+    packGroundDecalCount: 0,
+    packLineworkTileCount: 0,
+    packLineworkPropCount: 0,
+    packLineworkRuns: [],
+    packLineworkHubs: [],
   };
 
   /**
@@ -1860,6 +1894,20 @@ export class MainGameScene extends Phaser.Scene {
     packWallCount: number;
     packFloorCount: number;
     packCorridorCount: number;
+    packSpecialFloorCount: number;
+    packFloorSourceCounts: Record<string, number>;
+    packFloorTransformCounts: Partial<Record<TransformId, number>>;
+    packFloorComboCounts: Record<string, number>;
+    packCorridorSourceCounts: Record<string, number>;
+    packCorridorTransformCounts: Partial<Record<TransformId, number>>;
+    packCorridorComboCounts: Record<string, number>;
+    packWallAccentedCount: number;
+    packWallAccentCounts: Record<string, number>;
+    packGroundDecalCount: number;
+    packLineworkTileCount: number;
+    packLineworkPropCount: number;
+    packLineworkRuns: readonly LineworkRunStats[];
+    packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
   } {
     return this.terrainRenderSummary;
   }
@@ -2139,7 +2187,24 @@ export class MainGameScene extends Phaser.Scene {
       packWallCount,
       packFloorCount,
       packCorridorCount,
-    } = buildTerrainLayer(this, floorMap, { terrainPackId: this.options.terrainPackId });
+      packSpecialFloorCount,
+      packFloorSourceCounts,
+      packFloorTransformCounts,
+      packFloorComboCounts,
+      packCorridorSourceCounts,
+      packCorridorTransformCounts,
+      packCorridorComboCounts,
+      packWallAccentedCount,
+      packWallAccentCounts,
+      packGroundDecalCount,
+      packLineworkTileCount,
+      packLineworkPropCount,
+      packLineworkRuns,
+      packLineworkHubs,
+    } = buildTerrainLayer(this, floorMap, {
+      terrainPackId: this.options.terrainPackId,
+      terrainPacks: this.options.terrainPacks,
+    });
     rt.setDepth(-20);
     this.mapRt = rt;
     this.terrainRenderSummary = {
@@ -2149,6 +2214,20 @@ export class MainGameScene extends Phaser.Scene {
       packWallCount,
       packFloorCount,
       packCorridorCount,
+      packSpecialFloorCount,
+      packFloorSourceCounts,
+      packFloorTransformCounts,
+      packFloorComboCounts,
+      packCorridorSourceCounts,
+      packCorridorTransformCounts,
+      packCorridorComboCounts,
+      packWallAccentedCount,
+      packWallAccentCounts,
+      packGroundDecalCount,
+      packLineworkTileCount,
+      packLineworkPropCount,
+      packLineworkRuns,
+      packLineworkHubs,
     };
 
     if (colorCount > 0) {
@@ -2756,9 +2835,11 @@ export class MainGameScene extends Phaser.Scene {
       }
     }
     const hasGeneratedClosed = generatedDoorScale !== null;
-    const terrainPackId = this.options.floorId
-      ? getFloorManifest(this.options.floorId)?.terrainPackId
-      : undefined;
+    const doorManifest = this.options.floorId ? getFloorManifest(this.options.floorId) : undefined;
+    const terrainPackId =
+      doorManifest?.terrainPacks?.stone ??
+      doorManifest?.terrainPackId ??
+      doorManifest?.terrainPacks?.cave;
     const activeDoorSet = terrainPackId ? getTerrainPack(terrainPackId).doorSet : null;
 
     // Door images are recreated every frame, AFTER refreshCameraMasks() has

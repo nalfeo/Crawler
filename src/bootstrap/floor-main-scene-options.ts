@@ -68,6 +68,7 @@ export function createFloorMainSceneOptions(
   return {
     floorId,
     terrainPackId: manifest.terrainPackId,
+    terrainPacks: manifest.terrainPacks,
     lightingConfig: { ambient: manifest.lighting.ambient },
     configureWorld: (world: GameWorld, playerEid: number) =>
       scenario.configureWorld(world, playerEid, initializationOptions),

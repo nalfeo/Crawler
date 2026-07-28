@@ -42,7 +42,7 @@
 
 import Phaser from 'phaser';
 import type { FloorMap } from '../core/map/FloorMap.js';
-import { TerrainType } from '../shared/map-types.js';
+import { RoomRole, TerrainType } from '../shared/map-types.js';
 import { PIXELS_PER_FOOT } from '../shared/units.js';
 import { TERRAIN_FALLBACK_COLORS } from '../shared/terrain-colors.js';
 import { getTileVisual, resolveFrame } from './sprites/tile-visuals.js';
@@ -50,10 +50,32 @@ import { getSheet } from './sprites/index.js';
 import { createLogger } from '../shared/logger.js';
 import { computeRawMask8, normalizeBlob47Mask } from '../shared/terrain-pack-mask.js';
 import { getTerrainPack } from '../shared/terrain-pack-registry.js';
-import { pickPoolVariant } from '../shared/terrain-pack-variants.js';
+import {
+  buildGroundDecalStampConfig,
+  buildLineworkPropStampConfig,
+  buildLineworkStampConfig,
+  buildPoolStampConfig,
+  groundDecalHalfExtentPx,
+  pickLineworkPropFrame,
+  pickPoolCombo,
+  pickWallAccentSelection,
+  pickGroundDecal,
+  shouldPlaceLineworkProp,
+} from '../shared/terrain-pack-variants.js';
+import {
+  lineworkRunAxis,
+  planLinework,
+  LINEWORK_EMPTY,
+  LINEWORK_GROUND,
+  LINEWORK_WALL_ENTRY,
+  type LineworkHub,
+} from '../shared/terrain-linework.js';
 import {
   TERRAIN_PACK_CELL_PX,
+  type PoolVariantDef,
+  type TerrainPackDef,
   type TerrainPackId,
+  type TransformId,
   type WallAutotileDef,
 } from '../shared/terrain-pack-types.js';
 
@@ -81,6 +103,104 @@ const PACK_FLOOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([
   TerrainType.CAVE_FLOOR,
 ]);
 const PACK_CORRIDOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([TerrainType.CORRIDOR]);
+
+/**
+ * Minimum share of a ground decal's rotated bounding box that must be ground for
+ * the decal to be placed. Decals are clipped by the wall pass rather than
+ * excluded by it, so this is not a containment rule — it only stops a large set
+ * from firing into a one-tile corridor, where nearly all of it would be clipped
+ * away and the surviving slivers would read as noise instead of a crack.
+ */
+const DECAL_MIN_GROUND_FRACTION = 0.35;
+
+/** Terrain families that a mixed-biome floor may assign to different packs. */
+export type TerrainPackFamily = 'stone' | 'cave';
+
+function familyForTerrain(terrain: TerrainType): TerrainPackFamily {
+  return terrain === TerrainType.CAVE_WALL || terrain === TerrainType.CAVE_FLOOR ? 'cave' : 'stone';
+}
+
+const SPECIAL_POOL_BY_TERRAIN: ReadonlyMap<TerrainType, 'safe' | 'bossStair'> = new Map([
+  [TerrainType.SAFE_ROOM_FLOOR, 'safe'],
+  [TerrainType.BOSS_STAIR_FLOOR, 'bossStair'],
+]);
+
+/**
+ * Rooms the industrial network is *about*: the boss dens and the resource
+ * heart. Both spurs (density) and trunk endpoints (length) are anchored here,
+ * and the placement metric measures concentration against the same set, so the
+ * thing being tuned and the thing being measured cannot drift apart.
+ *
+ * Cave rooms carry `interiorCells` (an irregular blob); rectangular rooms only
+ * carry `bounds`. Using the centre of `interiorCells` when present keeps a hub
+ * inside its own room rather than on the bounding box's centre, which for a
+ * crescent-shaped cavern can land in solid rock.
+ */
+const LINEWORK_HUB_ROLES: ReadonlySet<RoomRole> = new Set([
+  RoomRole.BOSS_DEN,
+  RoomRole.RESOURCE_HEART,
+]);
+
+function collectLineworkHubs(floorMap: FloorMap): LineworkHub[] {
+  const hubs: LineworkHub[] = [];
+  for (const room of floorMap.rooms) {
+    if (!LINEWORK_HUB_ROLES.has(room.role)) continue;
+    const cells = room.interiorCells;
+    if (cells && cells.length > 0) {
+      let sx = 0;
+      let sy = 0;
+      for (const cell of cells) {
+        sx += cell.x;
+        sy += cell.y;
+      }
+      const cx = sx / cells.length;
+      const cy = sy / cells.length;
+      // The arithmetic centroid of a crescent-shaped cavern can land in solid
+      // rock, so snap it to the nearest cell the room actually owns. Ties are
+      // broken by iteration order, which is stable for a given map.
+      let best = cells[0]!;
+      let bestDistance = Infinity;
+      for (const cell of cells) {
+        const distance = (cell.x - cx) * (cell.x - cx) + (cell.y - cy) * (cell.y - cy);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = cell;
+        }
+      }
+      hubs.push({ tx: best.x, ty: best.y });
+      continue;
+    }
+    hubs.push({
+      tx: room.bounds.x + Math.floor(room.bounds.width / 2),
+      ty: room.bounds.y + Math.floor(room.bounds.height / 2),
+    });
+  }
+  return hubs;
+}
+
+/** Per-component linework statistics surfaced for the placement guard. */
+export interface LineworkRunStats {
+  readonly layerId: string;
+  readonly tileCount: number;
+  readonly hubTileCount: number;
+}
+
+function buildSpawnRoomMask(floorMap: FloorMap): Uint8Array | null {
+  const spawnRooms = floorMap.rooms.filter((room) => room.role === RoomRole.SPAWN);
+  if (spawnRooms.length === 0) return null;
+  const mask = new Uint8Array(floorMap.width * floorMap.height);
+  for (const room of spawnRooms) {
+    const { x, y, width, height } = room.bounds;
+    const maxY = Math.min(floorMap.height, y + height);
+    const maxX = Math.min(floorMap.width, x + width);
+    for (let ty = Math.max(0, y); ty < maxY; ty++) {
+      for (let tx = Math.max(0, x); tx < maxX; tx++) {
+        mask[ty * floorMap.width + tx] = 1;
+      }
+    }
+  }
+  return mask;
+}
 
 /** Build a `maskId -> frameIndex` lookup once per bake from the pack's explicit table. */
 function buildMaskFrameLookup(wallAutotile: WallAutotileDef): ReadonlyMap<number, number> {
@@ -112,12 +232,55 @@ export interface TerrainLayerResult {
   packFloorCount: number;
   /** Number of CORRIDOR tiles rendered via a terrain-pack `corridorPool` variant. */
   packCorridorCount: number;
+  /** Number of role-keyed special-room floor tiles rendered from a pack pool. */
+  packSpecialFloorCount: number;
+  /**
+   * Live diversity instrumentation (2026-07-25 terrain-variance refinement
+   * #4): per-source and per-transform stamp counts for the floor pool, so a
+   * probe (or the observe-before-done check) can assert "all 8 sources
+   * used" / ">=24 combos" against the REAL bake, not just a synthetic
+   * sample. Keyed by `PoolVariantDef.id` / `TransformId`.
+   */
+  packFloorSourceCounts: Record<string, number>;
+  packFloorTransformCounts: Partial<Record<TransformId, number>>;
+  /** Per exact floor source+transform identity. */
+  packFloorComboCounts: Record<string, number>;
+  /** Same instrumentation for the corridor pool. */
+  packCorridorSourceCounts: Record<string, number>;
+  packCorridorTransformCounts: Partial<Record<TransformId, number>>;
+  /** Per exact corridor source+transform identity. */
+  packCorridorComboCounts: Record<string, number>;
+  /** Number of WALL tiles that additionally received an accent-atlas stamp. */
+  packWallAccentedCount: number;
+  /** Per-accent-id stamp counts (keyed by `WallAccentDef.id`). */
+  packWallAccentCounts: Record<string, number>;
+  /** Number of cross-tile ground decals stamped across all declared sets. */
+  packGroundDecalCount: number;
+  /** Number of tiles stamped by the industrial-linework pass (all layers). */
+  packLineworkTileCount: number;
+  /** Number of props (switch stands, carts, valves) placed on linework tiles. */
+  packLineworkPropCount: number;
+  /**
+   * One entry per maximal connected component of every linework layer. This is
+   * the seam the placement guard and the probe lab assert against: run count,
+   * per-run length and per-run hub concentration are all derivable from it.
+   */
+  packLineworkRuns: readonly LineworkRunStats[];
+  /**
+   * Hub tiles (boss dens + resource heart) the linework was routed around, in
+   * TILE coordinates. Exposed because the concentration metric is meaningless
+   * without knowing what it was measured against, and because an observer needs
+   * somewhere to point the camera to actually look at the network.
+   */
+  packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
 }
 
 /** Optional per-bake terrain-pack selection. */
 export interface TerrainLayerOptions {
   /** Registry-backed terrain pack id — omit to keep the exact legacy path. */
   terrainPackId?: TerrainPackId;
+  /** Per-family overrides; an omitted family falls back to `terrainPackId`. */
+  terrainPacks?: Partial<Record<TerrainPackFamily, TerrainPackId>>;
 }
 
 /**
@@ -157,15 +320,68 @@ export function buildTerrainLayer(
   let packWallCount = 0;
   let packFloorCount = 0;
   let packCorridorCount = 0;
+  let packSpecialFloorCount = 0;
+  let packWallAccentedCount = 0;
+  const packFloorSourceCounts: Record<string, number> = {};
+  const packFloorTransformCounts: Partial<Record<TransformId, number>> = {};
+  const packFloorComboCounts: Record<string, number> = {};
+  const packCorridorSourceCounts: Record<string, number> = {};
+  const packCorridorTransformCounts: Partial<Record<TransformId, number>> = {};
+  const packCorridorComboCounts: Record<string, number> = {};
+  const packWallAccentCounts: Record<string, number> = {};
 
-  // Terrain-pack lookups, resolved once per bake (not per tile). `pack` is
-  // null when the floor omits `terrainPackId` (e.g. Floor 1) — every pack
-  // branch below is gated on it, so the legacy path is untouched in that case.
-  const pack = options?.terrainPackId ? getTerrainPack(options.terrainPackId) : null;
-  const maskFrameLookup = pack ? buildMaskFrameLookup(pack.wallAutotile) : null;
+  const resolvePack = (family: TerrainPackFamily): TerrainPackDef | null => {
+    const id = options?.terrainPacks?.[family] ?? options?.terrainPackId;
+    return id ? getTerrainPack(id) : null;
+  };
+  const packsByFamily: Record<TerrainPackFamily, TerrainPackDef | null> = {
+    stone: resolvePack('stone'),
+    cave: resolvePack('cave'),
+  };
+  const maskFrameLookups = new Map<TerrainPackFamily, ReadonlyMap<number, number>>();
+  for (const family of ['stone', 'cave'] as const) {
+    const pack = packsByFamily[family];
+    if (pack) maskFrameLookups.set(family, buildMaskFrameLookup(pack.wallAutotile));
+  }
+  const anyPack = packsByFamily.stone ?? packsByFamily.cave;
+  const specialPack = packsByFamily.stone;
+  const spawnRoomMask = specialPack?.specialFloorPools?.welcome
+    ? buildSpawnRoomMask(floorMap)
+    : null;
   const floorSeed = config.seed;
-  const packWallScale = pack ? tileSize / pack.wallAutotile.cellPx : 1;
   const packPoolScale = tileSize / TERRAIN_PACK_CELL_PX;
+  const packPoolHalfTile = tileSize / 2;
+
+  const stampPoolVariant = (
+    pool: readonly PoolVariantDef[] | undefined,
+    tx: number,
+    ty: number,
+    sourceCounts?: Record<string, number>,
+    transformCounts?: Partial<Record<TransformId, number>>,
+    comboCounts?: Record<string, number>,
+  ): boolean => {
+    if (!pool) return false;
+    const combo = pickPoolCombo(pool, floorSeed, tx, ty);
+    if (!combo || !scene.textures.exists(combo.variant.textureKey)) return false;
+    rt.stamp(
+      combo.variant.textureKey,
+      undefined,
+      tx * tileSize + packPoolHalfTile,
+      ty * tileSize + packPoolHalfTile,
+      buildPoolStampConfig(combo.transform, packPoolScale),
+    );
+    if (sourceCounts) {
+      sourceCounts[combo.variant.id] = (sourceCounts[combo.variant.id] ?? 0) + 1;
+    }
+    if (transformCounts) {
+      transformCounts[combo.transform] = (transformCounts[combo.transform] ?? 0) + 1;
+    }
+    if (comboCounts) {
+      const comboId = `${combo.variant.id}:${combo.transform}`;
+      comboCounts[comboId] = (comboCounts[comboId] ?? 0) + 1;
+    }
+    return true;
+  };
 
   // Per-textureKey scale memo. Generated tiles are single PNGs whose pixel width
   // is constant per key, so resolve the tileSize/width scale ONCE per key rather
@@ -186,115 +402,447 @@ export function buildTerrainLayer(
     return scale;
   };
 
-  for (let ty = 0; ty < height; ty++) {
-    for (let tx = 0; tx < width; tx++) {
-      const idx = ty * width + tx;
-      const terrain: TerrainType = floorMap.terrain[idx] ?? TerrainType.VOID;
+  // Tiles the ground decals are allowed to mark. Hoisted above the paint passes
+  // because it also decides which pass paints a tile: decals are stamped BETWEEN
+  // the ground pass and the wall/void pass so a crack can run under a wall and be
+  // clipped by it, instead of being rejected for coming near one.
+  const isDecalGround = (tx: number, ty: number): boolean => {
+    if (tx < 0 || ty < 0 || tx >= width || ty >= height) return false;
+    const t = floorMap.terrain[ty * width + tx] as TerrainType;
+    return PACK_FLOOR_TERRAIN_TYPES.has(t) || PACK_CORRIDOR_TERRAIN_TYPES.has(t);
+  };
 
-      // Terrain-pack precedence: WALL/FLOOR/CORRIDOR tiles eligible for this
-      // pack's surfaces are stamped from the pack's atlas/pool textures FIRST,
-      // bypassing the legacy generated/sheet/color path entirely for that
-      // tile. Each pack branch stamps only when the texture is actually loaded
-      // (`textures.exists` guard); if the texture is missing the tile falls
-      // through to the generated/Kenney/color chain below so a cold boot or
-      // a missing asset never leaves a blank tile.
-      if (pack && maskFrameLookup && PACK_WALL_TERRAIN_TYPES.has(terrain)) {
-        const rawMask = computeRawMask8(tx, ty, width, height, (nx, ny) =>
-          PACK_WALL_TERRAIN_TYPES.has(floorMap.terrain[ny * width + nx] as TerrainType),
-        );
-        const canonicalMask = normalizeBlob47Mask(rawMask);
-        const frameIndex = maskFrameLookup.get(canonicalMask);
-        if (frameIndex !== undefined && scene.textures.exists(pack.wallAutotile.textureKey)) {
-          // Stamp the floor pool variant underneath the wall frame first, so that
-          // transparent regions of the blob47 silhouette (open-edge quadrants are
-          // inset by WALL_INSET_PX of alpha) expose ground rather than the empty
-          // RenderTexture (which reads as black). The underdraw is NOT counted in
-          // packFloorCount — it is not a floor tile from the player's perspective
-          // and must not pollute floor-diversity metrics.
-          const underVariant = pickPoolVariant(pack.floorPool, floorSeed, tx, ty);
-          if (underVariant && scene.textures.exists(underVariant.textureKey)) {
-            rt.stamp(underVariant.textureKey, undefined, tx * tileSize, ty * tileSize, {
-              originX: 0,
-              originY: 0,
-              scaleX: packPoolScale,
-              scaleY: packPoolScale,
-            });
+  /**
+   * Paint one half of the tile map.
+   *
+   * `ground` paints the surfaces decals may mark; `cover` paints everything else
+   * (walls, void, special rooms) and runs AFTER the decal pass so it overpaints
+   * any decal overhang. `cover` clears each cell first because a wall silhouette
+   * is inset and does not fill its own cell — without the clear, decal pixels
+   * would survive inside the transparent inset and float over the background.
+   * Nothing else in the pack draws across a cell boundary, so clearing a cover
+   * cell can only ever remove decal overhang.
+   */
+  const paintTiles = (phase: 'ground' | 'cover'): void => {
+    for (let ty = 0; ty < height; ty++) {
+      for (let tx = 0; tx < width; tx++) {
+        if (isDecalGround(tx, ty) !== (phase === 'ground')) continue;
+        if (phase === 'cover') rt.clear(tx * tileSize, ty * tileSize, tileSize, tileSize);
+        const idx = ty * width + tx;
+        const terrain: TerrainType = floorMap.terrain[idx] ?? TerrainType.VOID;
+
+        // Terrain-pack precedence: WALL/FLOOR/CORRIDOR tiles eligible for this
+        // pack's surfaces are stamped from the pack's atlas/pool textures FIRST,
+        // bypassing the legacy generated/sheet/color path entirely for that
+        // tile. Each pack branch stamps only when the texture is actually loaded
+        // (`textures.exists` guard); if the texture is missing the tile falls
+        // through to the generated/Kenney/color chain below so a cold boot or
+        // a missing asset never leaves a blank tile.
+        if (anyPack && PACK_WALL_TERRAIN_TYPES.has(terrain)) {
+          const family = familyForTerrain(terrain);
+          const wallPack = packsByFamily[family];
+          const maskFrameLookup = maskFrameLookups.get(family);
+          if (wallPack && maskFrameLookup) {
+            const rawMask = computeRawMask8(tx, ty, width, height, (nx, ny) =>
+              PACK_WALL_TERRAIN_TYPES.has(floorMap.terrain[ny * width + nx] as TerrainType),
+            );
+            const canonicalMask = normalizeBlob47Mask(rawMask);
+            const frameIndex = maskFrameLookup.get(canonicalMask);
+            if (
+              frameIndex !== undefined &&
+              scene.textures.exists(wallPack.wallAutotile.textureKey)
+            ) {
+              // Stamp the floor pool variant underneath the wall frame first, so that
+              // transparent regions of the blob47 silhouette (open-edge quadrants are
+              // inset by WALL_INSET_PX of alpha) expose ground rather than the empty
+              // RenderTexture (which reads as black). The underdraw is NOT counted in
+              // packFloorCount — it is not a floor tile from the player's perspective
+              // and must not pollute floor-diversity metrics.
+              stampPoolVariant(wallPack.floorPool, tx, ty);
+              const packWallScale = tileSize / wallPack.wallAutotile.cellPx;
+              rt.stamp(wallPack.wallAutotile.textureKey, frameIndex, tx * tileSize, ty * tileSize, {
+                originX: 0,
+                originY: 0,
+                scaleX: packWallScale,
+                scaleY: packWallScale,
+              });
+              packWallCount++;
+              const accent = pickWallAccentSelection(wallPack.wallAccents ?? [], floorSeed, tx, ty);
+              if (accent && scene.textures.exists(accent.textureKey)) {
+                rt.stamp(accent.textureKey, frameIndex, tx * tileSize, ty * tileSize, {
+                  originX: 0,
+                  originY: 0,
+                  scaleX: packWallScale,
+                  scaleY: packWallScale,
+                });
+                packWallAccentedCount++;
+                packWallAccentCounts[accent.id] = (packWallAccentCounts[accent.id] ?? 0) + 1;
+              }
+              continue;
+            }
           }
-          rt.stamp(pack.wallAutotile.textureKey, frameIndex, tx * tileSize, ty * tileSize, {
+        }
+        if (specialPack?.specialFloorPools) {
+          const poolKey =
+            SPECIAL_POOL_BY_TERRAIN.get(terrain) ??
+            (terrain === TerrainType.STONE_FLOOR && spawnRoomMask?.[idx] === 1
+              ? ('welcome' as const)
+              : undefined);
+          if (poolKey && stampPoolVariant(specialPack.specialFloorPools[poolKey], tx, ty)) {
+            packSpecialFloorCount++;
+            continue;
+          }
+        }
+        if (PACK_FLOOR_TERRAIN_TYPES.has(terrain)) {
+          const floorPack = packsByFamily[familyForTerrain(terrain)];
+          if (
+            floorPack &&
+            stampPoolVariant(
+              floorPack.floorPool,
+              tx,
+              ty,
+              packFloorSourceCounts,
+              packFloorTransformCounts,
+              packFloorComboCounts,
+            )
+          ) {
+            packFloorCount++;
+            continue;
+          }
+        }
+        if (PACK_CORRIDOR_TERRAIN_TYPES.has(terrain)) {
+          const corridorPack = packsByFamily.stone ?? packsByFamily.cave;
+          if (
+            corridorPack &&
+            stampPoolVariant(
+              corridorPack.corridorPool,
+              tx,
+              ty,
+              packCorridorSourceCounts,
+              packCorridorTransformCounts,
+              packCorridorComboCounts,
+            )
+          ) {
+            packCorridorCount++;
+            continue;
+          }
+        }
+
+        const visual = getTileVisual(terrain);
+
+        const generatedScale = visual?.textureKey ? resolveGeneratedScale(visual.textureKey) : null;
+
+        if (visual?.textureKey && generatedScale !== null) {
+          // Generated single-texture tile: stamp the whole PNG scaled to tileSize.
+          // Passing `undefined` for the frame uses the texture's default `__BASE`
+          // frame — a single generated PNG has no sub-frames to select.
+          rt.stamp(visual.textureKey, undefined, tx * tileSize, ty * tileSize, {
             originX: 0,
             originY: 0,
-            scaleX: packWallScale,
-            scaleY: packWallScale,
+            scaleX: generatedScale,
+            scaleY: generatedScale,
           });
-          packWallCount++;
-          continue;
-        }
-        // Texture missing or mask not found — fall through to legacy chain.
-      }
-      if (pack && PACK_FLOOR_TERRAIN_TYPES.has(terrain)) {
-        const variant = pickPoolVariant(pack.floorPool, floorSeed, tx, ty);
-        if (variant && scene.textures.exists(variant.textureKey)) {
-          rt.stamp(variant.textureKey, undefined, tx * tileSize, ty * tileSize, {
+          generatedCount++;
+        } else if (visual && scene.textures.exists(visual.sheetKey)) {
+          const sheet = getSheet(visual.sheetKey);
+          const frameSize = sheet?.frameWidth ?? tileSize;
+          const scale = tileSize / frameSize;
+          const frame = resolveFrame(visual, floorMap.terrain, width, height, tx, ty, terrain);
+          rt.stamp(visual.sheetKey, frame, tx * tileSize, ty * tileSize, {
             originX: 0,
             originY: 0,
-            scaleX: packPoolScale,
-            scaleY: packPoolScale,
+            scaleX: scale,
+            scaleY: scale,
           });
-          packFloorCount++;
-          continue;
+          spriteCount++;
+        } else {
+          // rt.fill() queues a fill command into Phaser 4's DynamicTexture buffer.
+          // Commands are NOT visible until rt.render() is called below.
+          const color = TERRAIN_FALLBACK_COLORS[terrain] ?? 0x05060f;
+          rt.fill(color, 1, tx * tileSize, ty * tileSize, tileSize, tileSize);
+          colorCount++;
         }
-        // Texture missing — fall through to legacy chain.
-      }
-      if (pack && PACK_CORRIDOR_TERRAIN_TYPES.has(terrain)) {
-        const variant = pickPoolVariant(pack.corridorPool, floorSeed, tx, ty);
-        if (variant && scene.textures.exists(variant.textureKey)) {
-          rt.stamp(variant.textureKey, undefined, tx * tileSize, ty * tileSize, {
-            originX: 0,
-            originY: 0,
-            scaleX: packPoolScale,
-            scaleY: packPoolScale,
-          });
-          packCorridorCount++;
-          continue;
-        }
-        // Texture missing — fall through to legacy chain.
-      }
-
-      const visual = getTileVisual(terrain);
-
-      const generatedScale = visual?.textureKey ? resolveGeneratedScale(visual.textureKey) : null;
-
-      if (visual?.textureKey && generatedScale !== null) {
-        // Generated single-texture tile: stamp the whole PNG scaled to tileSize.
-        // Passing `undefined` for the frame uses the texture's default `__BASE`
-        // frame — a single generated PNG has no sub-frames to select.
-        rt.stamp(visual.textureKey, undefined, tx * tileSize, ty * tileSize, {
-          originX: 0,
-          originY: 0,
-          scaleX: generatedScale,
-          scaleY: generatedScale,
-        });
-        generatedCount++;
-      } else if (visual && scene.textures.exists(visual.sheetKey)) {
-        const sheet = getSheet(visual.sheetKey);
-        const frameSize = sheet?.frameWidth ?? tileSize;
-        const scale = tileSize / frameSize;
-        const frame = resolveFrame(visual, floorMap.terrain, width, height, tx, ty, terrain);
-        rt.stamp(visual.sheetKey, frame, tx * tileSize, ty * tileSize, {
-          originX: 0,
-          originY: 0,
-          scaleX: scale,
-          scaleY: scale,
-        });
-        spriteCount++;
-      } else {
-        // rt.fill() queues a fill command into Phaser 4's DynamicTexture buffer.
-        // Commands are NOT visible until rt.render() is called below.
-        const color = TERRAIN_FALLBACK_COLORS[terrain] ?? 0x05060f;
-        rt.fill(color, 1, tx * tileSize, ty * tileSize, tileSize, tileSize);
-        colorCount++;
       }
     }
+  };
+
+  paintTiles('ground');
+
+  // Cross-tile ground decals. Runs BETWEEN the two paint passes: the ground is
+  // finished, so a decal overlays completed floor, but walls and void are not yet
+  // painted, so a decal that runs off the ground is CLIPPED by the wall drawn on
+  // top of it rather than being rejected for coming near one. Stamps into the
+  // same RenderTexture, so it costs no extra draw call or depth layer at runtime.
+  //
+  // This is the only mechanism in the pack that can express a feature larger than
+  // one cell: pool tiles have their borders byte-restored from the shared base for
+  // seamlessness, so nothing in a pool tile can ever cross a tile edge.
+  //
+  // A pack declares SEVERAL sets (e.g. 3x3 crack networks plus 2x2 fragments).
+  // One set alone leaves visible bands of untouched ground wherever its lattice
+  // misses align; overlapping lattices of different pitch break that up.
+  //
+  // On a MIXED-BIOME floor (a manifest assigning different packs to the stone
+  // and cave families) each pack must stamp only onto its own family's ground —
+  // otherwise one pack's cracks contaminate the other's surface and the second
+  // pack's decals never appear at all. Corridors follow the same
+  // `stone ?? cave` resolution the corridor pool uses, so a corridor is marked
+  // by exactly the pack that painted it. When both families resolve to the SAME
+  // pack (the single-`terrainPackId` case), the entry is deduped and its
+  // eligibility is the union — identical to stamping once over all ground.
+  const decalPasses: { pack: TerrainPackDef; families: Set<TerrainPackFamily> }[] = [];
+  for (const family of ['stone', 'cave'] as const) {
+    const pack = packsByFamily[family];
+    if (!pack?.groundDecals?.length) continue;
+    const existing = decalPasses.find((p) => p.pack === pack);
+    if (existing) existing.families.add(family);
+    else decalPasses.push({ pack, families: new Set([family]) });
+  }
+  const corridorDecalPack = packsByFamily.stone ?? packsByFamily.cave;
+  let packGroundDecalCount = 0;
+  for (const { pack, families } of decalPasses) {
+    const marksCorridors = pack === corridorDecalPack;
+    const isMarkable = (tx: number, ty: number): boolean => {
+      if (tx < 0 || ty < 0 || tx >= width || ty >= height) return false;
+      const t = floorMap.terrain[ty * width + tx] as TerrainType;
+      if (PACK_CORRIDOR_TERRAIN_TYPES.has(t)) return marksCorridors;
+      return PACK_FLOOR_TERRAIN_TYPES.has(t) && families.has(familyForTerrain(t));
+    };
+    const decalSets = pack.groundDecals ?? [];
+    for (const [setIndex, decals] of decalSets.entries()) {
+      if (!scene.textures.exists(decals.textureKey)) continue;
+      const decalScale = (tileSize * decals.spanTiles) / decals.cellPx;
+      const stride = decals.strideTiles;
+      const footprintPx = tileSize * decals.spanTiles;
+      // Jitter spans the FULL stride rather than only the slack left over after
+      // the span. Footprints from neighbouring anchors may then overlap, which is
+      // precisely what dissolves the lattice — clamping jitter to `stride - span`
+      // pins every decal into the same sub-block and produces banding.
+      for (let ay = 0; ay * stride < height; ay++) {
+        for (let ax = 0; ax * stride < width; ax++) {
+          const pick = pickGroundDecal(decals.frames, floorSeed, ax, ay, decals.density, setIndex);
+          if (!pick) continue;
+          const originTx = ax * stride + Math.floor(pick.offsetX * stride);
+          const originTy = ay * stride + Math.floor(pick.offsetY * stride);
+          const centerX = originTx * tileSize + pick.subTileX * tileSize + footprintPx / 2;
+          const centerY = originTy * tileSize + pick.subTileY * tileSize + footprintPx / 2;
+          // The decal does NOT have to fit entirely on ground. The wall/void pass
+          // runs after this one and overpaints its own cells, so anything hanging
+          // off the ground is clipped by the wall art itself — pixel-exact, and at
+          // no per-decal cost. Requiring a clear footprint (the old rule) reserved
+          // a dead margin of half a footprint around every wall, which for the 6x
+          // set is ~4 tiles: cracks visibly avoided the walls and the ground read
+          // as an untouched border ring.
+          //
+          // Two conditions remain. The CENTRE must be markable ground, so a decal
+          // is always anchored to the surface it marks rather than emanating from
+          // a wall or from another pack's biome. And enough of its span must be
+          // markable that a recognisable amount survives the clip — without this,
+          // a big set fires into one-tile corridors and leaves unreadable
+          // confetti. The extent is the exact rotated bounding box, since an
+          // off-axis rotation sweeps the square's corners outside its own span.
+          if (!isMarkable(Math.floor(centerX / tileSize), Math.floor(centerY / tileSize))) {
+            continue;
+          }
+          const halfExtent = groundDecalHalfExtentPx(footprintPx, pick.rotationDeg);
+          // The AABB spans [centre - halfExtent, centre + halfExtent) in pixels.
+          // The upper bound is an exclusive FLOAT edge, so it maps to an inclusive
+          // tile index via `ceil(edge / tileSize) - 1`. Flooring `edge - 1`
+          // instead would drop a tile the box overlaps by under one pixel.
+          const minTx = Math.floor((centerX - halfExtent) / tileSize);
+          const maxTx = Math.ceil((centerX + halfExtent) / tileSize) - 1;
+          const minTy = Math.floor((centerY - halfExtent) / tileSize);
+          const maxTy = Math.ceil((centerY + halfExtent) / tileSize) - 1;
+          let markableTiles = 0;
+          let footprintTiles = 0;
+          for (let ty2 = minTy; ty2 <= maxTy; ty2++) {
+            for (let tx2 = minTx; tx2 <= maxTx; tx2++) {
+              footprintTiles++;
+              if (isMarkable(tx2, ty2)) markableTiles++;
+            }
+          }
+          if (markableTiles < footprintTiles * DECAL_MIN_GROUND_FRACTION) continue;
+          // Center-origin, matching `buildPoolStampConfig`: signed scale and angle
+          // act about the frame's own middle, so the stamp is positioned at the
+          // footprint CENTER rather than its top-left corner.
+          rt.stamp(
+            decals.textureKey,
+            pick.frame,
+            centerX,
+            centerY,
+            buildGroundDecalStampConfig(decalScale, pick.rotationDeg, pick.flipX),
+          );
+          packGroundDecalCount++;
+        }
+      }
+    }
+  }
+
+  // --- Industrial linework ------------------------------------------------
+  //
+  // Runs after the ground decals and (for ground tiles) before `paintTiles`
+  // finishes the walls, so a run that touches rock is clipped pixel-exactly by
+  // the wall art — the same free clip the decal pass relies on.
+  //
+  // It is NOT a decal set. A decal is an independent lattice stamp with no
+  // knowledge of any other stamp or of the map; that is right for cracks and
+  // completely wrong for rail and pipe. Linework instead routes over the real
+  // walkable graph and then derives each tile's frame from its OCCUPIED
+  // NEIGHBOURS via the 2-edge Wang mask, so straights, corners, Ts, crosses and
+  // end-caps fall out of the topology rather than being chosen.
+  const lineworkPasses: { pack: TerrainPackDef; families: Set<TerrainPackFamily> }[] = [];
+  for (const family of ['stone', 'cave'] as const) {
+    const pack = packsByFamily[family];
+    if (!pack?.linework?.length) continue;
+    const existing = lineworkPasses.find((p) => p.pack === pack);
+    if (existing) existing.families.add(family);
+    else lineworkPasses.push({ pack, families: new Set([family]) });
+  }
+  let packLineworkTileCount = 0;
+  let packLineworkPropCount = 0;
+  const packLineworkRuns: LineworkRunStats[] = [];
+  let packLineworkHubs: readonly LineworkHub[] = [];
+  /** Wall-entry stamps deferred until after `paintTiles('cover')`. */
+  const deferredWallEntries: {
+    textureKey: string;
+    frame: number;
+    x: number;
+    y: number;
+    scale: number;
+  }[] = [];
+  const lineworkScaleFor = (cellPx: number): number => tileSize / cellPx;
+  const lineworkPropTaken = new Uint8Array(width * height);
+  for (const { pack, families } of lineworkPasses) {
+    const routable = new Uint8Array(width * height);
+    const wall = new Uint8Array(width * height);
+    for (let i = 0; i < width * height; i++) {
+      const t = floorMap.terrain[i] as TerrainType;
+      if (PACK_WALL_TERRAIN_TYPES.has(t)) {
+        wall[i] = 1;
+      } else if (PACK_CORRIDOR_TERRAIN_TYPES.has(t)) {
+        routable[i] = 1;
+      } else if (PACK_FLOOR_TERRAIN_TYPES.has(t) && families.has(familyForTerrain(t))) {
+        routable[i] = 1;
+      }
+    }
+    // Linework is the floor's industrial story, so it is anchored to the rooms
+    // that story is about: the boss dens and the resource heart. Spawn and
+    // ordinary territory rooms are reachable by trunk lines but are not hubs.
+    const hubs = collectLineworkHubs(floorMap);
+    if (hubs.length === 0) continue;
+    packLineworkHubs = hubs;
+    // Accumulated occupancy of layers already planned, so a later layer prefers
+    // its own ground rather than hiding under an earlier one.
+    const lineworkTaken = new Uint8Array(width * height);
+    for (const layer of pack.linework ?? []) {
+      if (!scene.textures.exists(layer.textureKey)) continue;
+      const plan = planLinework({
+        width,
+        height,
+        routable,
+        wall,
+        avoid: lineworkTaken,
+        hubs,
+        floorSeed,
+        params: {
+          spursPerHub: layer.spursPerHub,
+          trunkRoutes: layer.trunkRoutes,
+          hubRadiusTiles: layer.hubRadiusTiles,
+          awayFromHubCost: layer.awayFromHubCost,
+          turnPenalty: layer.turnPenalty,
+          // Track never leaves the ground — a rail vanishing into rock reads as
+          // a bug. A pipe doing exactly that is the whole point.
+          entersWalls: layer.kind === 'pipe',
+          seedSalt: layer.seedSalt,
+        },
+      });
+      const scale = lineworkScaleFor(layer.cellPx);
+      const propScale = layer.props ? lineworkScaleFor(layer.props.cellPx) : 1;
+      // Hoisted: these are constant for the whole layer, and the loop below runs
+      // once per map tile.
+      const stampConfig = buildLineworkStampConfig(scale);
+      const propStampConfigs = {
+        y: buildLineworkPropStampConfig(propScale, 0),
+        x: buildLineworkPropStampConfig(propScale, Math.PI / 2),
+      } as const;
+      for (let ty = 0; ty < height; ty++) {
+        for (let tx = 0; tx < width; tx++) {
+          const index = ty * width + tx;
+          const cell = plan.occupancy[index] ?? LINEWORK_EMPTY;
+          if (cell === LINEWORK_EMPTY) continue;
+          lineworkTaken[index] = 1;
+          const mask = plan.masks[index] ?? 0;
+          const x = tx * tileSize + tileSize / 2;
+          const y = ty * tileSize + tileSize / 2;
+          if (cell === LINEWORK_WALL_ENTRY) {
+            // Deferred: the wall for this very tile has not been painted yet,
+            // and it would overpaint the stamp. Drawing it after `'cover'` is
+            // what makes the pipe read as entering the rock face.
+            deferredWallEntries.push({
+              textureKey: layer.textureKey,
+              frame: mask,
+              x,
+              y,
+              scale,
+            });
+          } else {
+            rt.stamp(layer.textureKey, mask, x, y, stampConfig);
+          }
+          packLineworkTileCount++;
+          const props = layer.props;
+          const runAxis = lineworkRunAxis(mask);
+          if (
+            props &&
+            cell === LINEWORK_GROUND &&
+            runAxis !== null &&
+            !lineworkPropTaken[index] &&
+            scene.textures.exists(props.textureKey) &&
+            shouldPlaceLineworkProp(floorSeed, layer.seedSalt, tx, ty, props.density)
+          ) {
+            // Prop art is authored along the vertical axis, so an east-west run
+            // needs a quarter turn. Props carry no Wang edge signature, so
+            // rotating them cannot break the join contract.
+            const propConfig =
+              props.orientToRun && runAxis === 'x' ? propStampConfigs.x : propStampConfigs.y;
+            rt.stamp(
+              props.textureKey,
+              pickLineworkPropFrame(
+                floorSeed,
+                layer.seedSalt,
+                tx,
+                ty,
+                props.frames,
+                props.frameStart,
+              ),
+              x,
+              y,
+              propConfig,
+            );
+            lineworkPropTaken[index] = 1;
+            packLineworkPropCount++;
+          }
+        }
+      }
+      for (const run of plan.runs) {
+        packLineworkRuns.push({
+          layerId: layer.id,
+          tileCount: run.tileCount,
+          hubTileCount: run.hubTileCount,
+        });
+      }
+    }
+  }
+
+  paintTiles('cover');
+
+  for (const entry of deferredWallEntries) {
+    rt.stamp(
+      entry.textureKey,
+      entry.frame,
+      entry.x,
+      entry.y,
+      buildLineworkStampConfig(entry.scale),
+    );
   }
 
   // Phaser 4: flush all buffered fill/stamp commands to the GPU framebuffer.
@@ -313,7 +861,21 @@ export function buildTerrainLayer(
     packWallCount,
     packFloorCount,
     packCorridorCount,
+    packSpecialFloorCount,
+    packWallAccentedCount,
+    packWallAccentCounts,
+    packGroundDecalCount,
+    packLineworkTileCount,
+    packLineworkPropCount,
+    packLineworkRunCount: packLineworkRuns.length,
+    packFloorSourceCounts,
+    packFloorTransformCounts,
+    packFloorComboCounts,
+    packCorridorSourceCounts,
+    packCorridorTransformCounts,
+    packCorridorComboCounts,
     terrainPackId: options?.terrainPackId ?? null,
+    terrainPacks: options?.terrainPacks ?? null,
     totalTiles: width * height,
     // Coverage = any non-color tile (generated, Kenney sheet, OR pack atlas/pool).
     // A tile only counts as uncovered when it fell all the way through to the
@@ -321,7 +883,12 @@ export function buildTerrainLayer(
     spriteCoverage:
       width * height > 0
         ? `${Math.round(
-            ((generatedCount + spriteCount + packWallCount + packFloorCount + packCorridorCount) /
+            ((generatedCount +
+              spriteCount +
+              packWallCount +
+              packFloorCount +
+              packCorridorCount +
+              packSpecialFloorCount) /
               (width * height)) *
               100,
           )}%`
@@ -336,5 +903,19 @@ export function buildTerrainLayer(
     packWallCount,
     packFloorCount,
     packCorridorCount,
+    packSpecialFloorCount,
+    packFloorSourceCounts,
+    packFloorTransformCounts,
+    packFloorComboCounts,
+    packCorridorSourceCounts,
+    packCorridorTransformCounts,
+    packCorridorComboCounts,
+    packWallAccentedCount,
+    packWallAccentCounts,
+    packGroundDecalCount,
+    packLineworkTileCount,
+    packLineworkPropCount,
+    packLineworkRuns,
+    packLineworkHubs,
   };
 }

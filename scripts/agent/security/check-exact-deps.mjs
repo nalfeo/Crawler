@@ -1,0 +1,185 @@
+#!/usr/bin/env node
+/**
+ * security/check-exact-deps.mjs — Reject any non-exact version specifier in
+ * direct dependencies, devDependencies, optionalDependencies, and overrides.
+ *
+ * "Exact" means a plain three-part semver string (or optionally a pre-release /
+ * build-metadata suffix) with no leading range operator:
+ *   ✅ "1.2.3"        ✅ "4.1.0"       ✅ "1.0.0-beta.1"
+ *   ❌ "^1.2.3"       ❌ "~1.2.3"      ❌ ">=1.0.0"
+ *   ❌ "*"            ❌ "latest"       ❌ "1.x"
+ *
+ * Motivation: Fresh releases can be selected during unrelated lockfile
+ * regeneration before Microsoft's mandatory npm proxy completes its seven-day
+ * quarantine. `npm ci` then fails with a false 404, blocking local work and
+ * open PRs. Exact top-level versions prevent any direct dependency from
+ * silently advancing during an unrelated `npm install --package-lock-only`.
+ *
+ * If a version specifier must intentionally be non-exact (e.g. a workspace
+ * alias, a git URL, or a local path), add it to EXACT_VERSION_EXEMPTIONS below
+ * with a reason comment. The exemption list is intentionally small.
+ */
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import process from 'node:process';
+
+/**
+ * Exemptions for entries where a non-exact specifier is intentionally allowed.
+ * Each entry: { field, name, version, reason }
+ *   field:   the package.json field path, e.g. "dependencies" or "overrides/parent"
+ *   name:    the package name, e.g. "my-pkg"
+ *   version: the exact specifier string that is permitted, e.g. "workspace:*"
+ *   reason:  short explanation for why an exact pin is not used
+ *
+ * The exemption is bound to the specific (field, name, version) triple so that
+ * a later change to a range specifier on the same entry is NOT silently exempt.
+ */
+const EXACT_VERSION_EXEMPTIONS = [
+  // No current exemptions. Add here with a reason when needed.
+  // Example:
+  //   {
+  //     field: 'dependencies',
+  //     name: 'my-workspace-pkg',
+  //     version: 'workspace:*',
+  //     reason: 'workspace alias — must use workspace:*',
+  //   },
+];
+
+/**
+ * Regex for an "exact" npm version string, following SemVer 2.0.0:
+ *   - No leading range operator (^, ~, >, <, =, *, x, X)
+ *   - Three dot-separated numeric components, each without leading zeros
+ *   - Optional pre-release: hyphen + one or more dot-separated identifiers
+ *     composed of [0-9A-Za-z-] — hyphens within identifiers are allowed
+ *     (e.g. "1.0.0-beta-1") but underscores are not
+ *   - Optional build metadata: plus + same identifier format
+ *
+ * Examples accepted: "1.2.3", "0.0.0", "1.0.0-beta.1", "1.0.0-beta-1", "4.1.0+sha.abc"
+ * Examples rejected: "^1.2.3", "~1.2.3", "01.2.3", "1.0.0-alpha_1", "1.0.0-alpha."
+ */
+const EXACT_SEMVER_RE =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
+
+/**
+ * Returns true if the given version string is considered an exact pin.
+ */
+export function isExactVersion(version) {
+  if (typeof version !== 'string') return false;
+  return EXACT_SEMVER_RE.test(version);
+}
+
+/**
+ * Returns a list of violations found in the given package.json object.
+ * Each violation: { field, name, version }
+ *
+ * @param {object} pkg - parsed package.json
+ * @param {Array} [exemptions] - optional list of exemptions to use instead of
+ *   EXACT_VERSION_EXEMPTIONS; useful for testing the exemption logic in isolation.
+ * @returns {{ field: string, name: string, version: string }[]}
+ */
+export function findRangeViolations(pkg, exemptions = EXACT_VERSION_EXEMPTIONS) {
+  const violations = [];
+
+  const directFields = ['dependencies', 'devDependencies', 'optionalDependencies'];
+  for (const field of directFields) {
+    const entries = pkg[field];
+    if (!entries || typeof entries !== 'object') continue;
+    for (const [name, version] of Object.entries(entries)) {
+      if (isExempt(field, name, version, exemptions)) continue;
+      if (!isExactVersion(version)) {
+        violations.push({ field, name, version });
+      }
+    }
+  }
+
+  // overrides can be a flat map or a nested object (npm's "overrides" format allows
+  // both `"qs": "6.15.2"` and `"pkg": { ".": "1.0.0", "dep": "2.0.0" }`).
+  if (pkg.overrides && typeof pkg.overrides === 'object') {
+    checkOverrides(pkg.overrides, 'overrides', violations, exemptions);
+  }
+
+  return violations;
+}
+
+/**
+ * Recursively validates overrides entries.
+ * Nested overrides values can be either a version string or a nested object.
+ */
+function checkOverrides(obj, field, violations, exemptions) {
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string') {
+      if (isExempt(field, key, value, exemptions)) continue;
+      if (!isExactVersion(value)) {
+        violations.push({ field, name: key, version: value });
+      }
+    } else if (value && typeof value === 'object') {
+      // Nested overrides object: recurse
+      checkOverrides(value, `${field}/${key}`, violations, exemptions);
+    }
+  }
+}
+
+/**
+ * Returns true if the (field, name, version) triple matches a known exemption.
+ * The version is part of the key so that a later change to a different specifier
+ * on the same entry is NOT silently covered by the original exemption.
+ */
+function isExempt(field, name, version, exemptions) {
+  return exemptions.some((e) => e.field === field && e.name === name && e.version === version);
+}
+
+/**
+ * Resolves the repo root from this file's location using the platform-native
+ * path representation so that percent-encoded characters in directory names
+ * (e.g. spaces as %20) are handled correctly on all platforms.
+ *
+ * scripts/agent/security/check-exact-deps.mjs → three levels up to repo root.
+ */
+function repoRoot() {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  return resolve(__dirname, '..', '..', '..');
+}
+
+function main() {
+  let pkg;
+  try {
+    const pkgPath = resolve(repoRoot(), 'package.json');
+    pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  } catch (err) {
+    process.stderr.write(`check-exact-deps: could not read package.json: ${err.message}\n`);
+    process.exitCode = 2;
+    return;
+  }
+
+  const violations = findRangeViolations(pkg);
+  if (violations.length === 0) {
+    process.stdout.write('check-exact-deps: all direct dependencies use exact versions. ✓\n');
+    return;
+  }
+
+  for (const { field, name, version } of violations) {
+    process.stderr.write(
+      `[ERROR] package.json ${field}.${name}: "${version}" is not an exact version.\n` +
+        `    ↳ Pin to the exact installed version (e.g. from package-lock.json) and\n` +
+        `      update the dependency-upgrades procedure doc before changing.\n`,
+    );
+  }
+  process.stderr.write(
+    `\ncheck-exact-deps: ${violations.length} violation(s) found.\n` +
+      `See docs/guides/dependency-upgrades.md for the intentional upgrade procedure.\n`,
+  );
+  process.exitCode = 1;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    main();
+  } catch (error) {
+    process.stderr.write(
+      `check-exact-deps crashed: ${error instanceof Error ? error.stack : error}\n`,
+    );
+    process.exitCode = 2;
+  }
+}

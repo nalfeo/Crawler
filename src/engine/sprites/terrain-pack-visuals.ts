@@ -23,7 +23,7 @@ const logger = createLogger('engine:terrain-pack-visuals');
 /** One entry in the static terrain-pack preload registry. */
 export type TerrainPackPreloadEntry =
   | {
-      readonly kind: 'wall-atlas';
+      readonly kind: 'wall-atlas' | 'ground-decals' | 'linework';
       readonly textureKey: string;
       readonly path: string;
       readonly frameWidth: number;
@@ -62,7 +62,57 @@ export function collectTerrainPackPreloadEntries(): readonly TerrainPackPreloadE
       frameWidth: pack.wallAutotile.cellPx,
       frameHeight: pack.wallAutotile.cellPx,
     });
-    for (const variant of [...pack.floorPool, ...pack.corridorPool]) {
+    // Wall-accent atlases share the wall atlas's grid/cellPx (2026-07-25
+    // refinement #3), so they preload as spritesheets too — same 'wall-atlas'
+    // preload kind, keyed by their own textureKey/imagePath.
+    for (const accent of pack.wallAccents ?? []) {
+      entries.push({
+        kind: 'wall-atlas',
+        textureKey: accent.textureKey,
+        path: accent.imagePath,
+        frameWidth: pack.wallAutotile.cellPx,
+        frameHeight: pack.wallAutotile.cellPx,
+      });
+    }
+    for (const decalSet of pack.groundDecals ?? []) {
+      // Its own kind, not 'wall-atlas': it is a spritesheet like the wall
+      // atlases but its frames are sized by the DECAL cell, not the wall
+      // cellPx, so conflating the two would make "wall-atlas frames use the
+      // pack's wall cellPx" silently untrue.
+      entries.push({
+        kind: 'ground-decals',
+        textureKey: decalSet.textureKey,
+        path: decalSet.imagePath,
+        frameWidth: decalSet.cellPx,
+        frameHeight: decalSet.cellPx,
+      });
+    }
+    // Linework atlases (2-edge Wang path tiles) and their prop sheets. Both are
+    // spritesheets, but each declares its own cellPx: the Wang atlas is pinned to
+    // the pack cell so a frame can never overhang its own tile, while props are a
+    // separate sheet that may be sized independently.
+    for (const layer of pack.linework ?? []) {
+      entries.push({
+        kind: 'linework',
+        textureKey: layer.textureKey,
+        path: layer.imagePath,
+        frameWidth: layer.cellPx,
+        frameHeight: layer.cellPx,
+      });
+      if (!layer.props) continue;
+      entries.push({
+        kind: 'linework',
+        textureKey: layer.props.textureKey,
+        path: layer.props.imagePath,
+        frameWidth: layer.props.cellPx,
+        frameHeight: layer.props.cellPx,
+      });
+    }
+    for (const variant of [
+      ...pack.floorPool,
+      ...pack.corridorPool,
+      ...Object.values(pack.specialFloorPools ?? {}).flat(),
+    ]) {
       entries.push({ kind: 'pool', textureKey: variant.textureKey, path: variant.imagePath });
     }
     for (const doorVariant of Object.values(pack.doorSet)) {
@@ -96,7 +146,11 @@ export function preloadTerrainPacks(
     }
     seen.add(entry.textureKey);
     const url = resolvePublicAssetUrl(entry.path);
-    if (entry.kind === 'wall-atlas') {
+    if (
+      entry.kind === 'wall-atlas' ||
+      entry.kind === 'ground-decals' ||
+      entry.kind === 'linework'
+    ) {
       loader.spritesheet(entry.textureKey, url, {
         frameWidth: entry.frameWidth,
         frameHeight: entry.frameHeight,

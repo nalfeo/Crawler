@@ -8,9 +8,11 @@ import {
   THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS,
   THEME_EQUIPMENT_SET_MIN_WEAPON_TYPES,
   advanceThemeSetPhase,
+  applyEditedThemeSetBrief,
   applyThemeSetItemReview,
   applyThemeSetPhaseCollectionJudge,
   applyThemeSetPhaseHumanReview,
+  approveRemainingThemeSetPhase,
   buildThemeEquipmentSetStateFromPlan,
   canAdvanceThemeSet,
   emptyThemeEquipmentItemPhases,
@@ -21,10 +23,14 @@ import {
   loadThemeEquipmentSetState,
   markThemeEquipmentSetPublished,
   parseThemeEquipmentSetState,
+  planApproveRemaining,
+  planRunPhase,
   recordThemeSetItemPhaseArtifacts,
   reviseRejectedThemeSetItem,
   saveThemeEquipmentSetState,
   themeEquipmentSetStateKey,
+  themeSetItemAwaitsGeneration,
+  themeSetItemHasPhaseOutput,
   type ThemeEquipmentSetReviewPhase,
   type ThemeEquipmentSetState,
 } from '../../../scripts/sprites/theme-equipment-set.js';
@@ -168,6 +174,24 @@ function makeState(overrides: Partial<ThemeEquipmentSetState> = {}): ThemeEquipm
 
 function cloneState(state: ThemeEquipmentSetState): ThemeEquipmentSetState {
   return parseThemeEquipmentSetState(JSON.parse(JSON.stringify(state)) as unknown);
+}
+
+/**
+ * Directly sets an item's review verdict for the CURRENT phase, bypassing
+ * `applyThemeSetItemReview`'s invalidation logic. Test-only setup so we can
+ * arrange a specific starting verdict without wiping set-level approvals.
+ */
+function withItemVerdict(
+  state: ThemeEquipmentSetState,
+  itemIndex: number,
+  verdict: 'up' | 'down' | null,
+): ThemeEquipmentSetState {
+  const phase = state.phase as ThemeEquipmentSetReviewPhase;
+  const raw = JSON.parse(JSON.stringify(state)) as {
+    items: { phases: Record<string, { review: { verdict: 'up' | 'down' | null } }> }[];
+  };
+  raw.items[itemIndex]!.phases[phase]!.review.verdict = verdict;
+  return parseThemeEquipmentSetState(raw);
 }
 
 function readyForPhase(
@@ -802,7 +826,7 @@ describe('theme equipment item human review application', () => {
     expect(isThemeSetItemResolvedForPhase(item, 'roster')).toBe(false);
   });
 
-  it('invalidates both set-level approvals when an item verdict changes', () => {
+  it('invalidates both set-level approvals when an up-vote is withdrawn (up→down)', () => {
     const state = readyForPhase(makeState());
     const itemId = state.items[0]!.id;
     expect(state.phases.roster.humanReview.verdict).toBe('up');
@@ -814,6 +838,67 @@ describe('theme equipment item human review application', () => {
     if (!result.ok) return;
     expect(result.state.phases.roster.collectionJudge).toBeNull();
     expect(result.state.phases.roster.humanReview.verdict).toBeNull();
+  });
+
+  it('invalidates both set-level approvals when an up-vote is withdrawn (up→null)', () => {
+    const state = readyForPhase(makeState());
+    const itemId = state.items[0]!.id;
+
+    const result = applyThemeSetItemReview(state, itemId, { verdict: null });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.phases.roster.collectionJudge).toBeNull();
+    expect(result.state.phases.roster.humanReview.verdict).toBeNull();
+  });
+
+  it('preserves set-level approvals on a non-withdrawing verdict change (null→up)', () => {
+    const state = withItemVerdict(readyForPhase(makeState()), 0, null);
+    const itemId = state.items[0]!.id;
+    expect(state.phases.roster.humanReview.verdict).toBe('up');
+
+    const result = applyThemeSetItemReview(state, itemId, { verdict: 'up' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.phases.roster.humanReview.verdict).toBe('up');
+    expect(result.state.phases.roster.collectionJudge).toEqual(state.phases.roster.collectionJudge);
+  });
+
+  it('preserves set-level approvals on a non-withdrawing verdict change (null→down)', () => {
+    const state = withItemVerdict(readyForPhase(makeState()), 0, null);
+    const itemId = state.items[0]!.id;
+
+    const result = applyThemeSetItemReview(state, itemId, { verdict: 'down' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.phases.roster.humanReview.verdict).toBe('up');
+    expect(result.state.phases.roster.collectionJudge).toEqual(state.phases.roster.collectionJudge);
+  });
+
+  it('preserves set-level approvals on a non-withdrawing verdict change (down→null)', () => {
+    const state = withItemVerdict(readyForPhase(makeState()), 0, 'down');
+    const itemId = state.items[0]!.id;
+
+    const result = applyThemeSetItemReview(state, itemId, { verdict: null });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.phases.roster.humanReview.verdict).toBe('up');
+    expect(result.state.phases.roster.collectionJudge).toEqual(state.phases.roster.collectionJudge);
+  });
+
+  it('preserves set-level approvals on a non-withdrawing verdict change (down→up)', () => {
+    const state = withItemVerdict(readyForPhase(makeState()), 0, 'down');
+    const itemId = state.items[0]!.id;
+
+    const result = applyThemeSetItemReview(state, itemId, { verdict: 'up' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.phases.roster.humanReview.verdict).toBe('up');
+    expect(result.state.phases.roster.collectionJudge).toEqual(state.phases.roster.collectionJudge);
   });
 
   it('leaves the set-level collection judge untouched when the verdict does not change', () => {
@@ -1046,5 +1131,365 @@ describe('Classic Fantasy authored theme-equipment plan fixture', () => {
     expect(state.id).toBe('classic-fantasy');
     expect(state.phase).toBe('roster');
     expect(state.publication.status).toBe('held');
+  });
+});
+
+describe('approve remaining (bulk up-vote)', () => {
+  it('plans every not-yet-reviewed, eligible item in the current phase', () => {
+    const state = makeState(); // roster phase, all verdicts null, no required artifact
+
+    const plan = planApproveRemaining(state);
+
+    expect(plan.phase).toBe('roster');
+    expect(plan.count).toBe(state.items.length);
+    expect(plan.approvableIds).toHaveLength(state.items.length);
+    expect(plan.skipped).toHaveLength(0);
+    expect(plan.alreadyUpIds).toHaveLength(0);
+  });
+
+  it('skips rejected items and counts already-up items separately', () => {
+    const withDown = withItemVerdict(makeState(), 0, 'down');
+    const state = withItemVerdict(withDown, 1, 'up');
+
+    const plan = planApproveRemaining(state);
+
+    expect(plan.alreadyUpIds).toEqual([state.items[1]!.id]);
+    expect(plan.skipped).toEqual([
+      expect.objectContaining({ id: state.items[0]!.id, code: 'item-rejected' }),
+    ]);
+    expect(plan.count).toBe(state.items.length - 2);
+    expect(plan.approvableIds).not.toContain(state.items[0]!.id);
+    expect(plan.approvableIds).not.toContain(state.items[1]!.id);
+  });
+
+  it('skips items missing the required phase artifact with a reason', () => {
+    // briefs phase but readyForPhase adds a `briefs`-kind artifact, NOT `selected-brief`.
+    const ready = readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+    const state = withItemVerdict(ready, 0, null);
+
+    const plan = planApproveRemaining(state);
+
+    expect(plan.phase).toBe('briefs');
+    expect(plan.count).toBe(0);
+    expect(plan.skipped).toEqual([
+      expect.objectContaining({ id: state.items[0]!.id, code: 'item-missing-phase-artifact' }),
+    ]);
+  });
+
+  it('returns an empty plan for a non-review phase', () => {
+    const complete = parseThemeEquipmentSetState({ ...makeState(), phase: 'complete' });
+
+    const plan = planApproveRemaining(complete);
+
+    expect(plan.phase).toBeNull();
+    expect(plan.count).toBe(0);
+  });
+
+  it('approves every eligible item in one revision bump and preserves set-level review', () => {
+    const state = withItemVerdict(readyForPhase(makeState()), 0, null);
+    expect(state.phases.roster.humanReview.verdict).toBe('up');
+
+    const result = approveRemainingThemeSetPhase(state);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.changed).toBe(true);
+    expect(result.approvedIds).toEqual([state.items[0]!.id]);
+    expect(result.state.items[0]!.phases.roster.review.verdict).toBe('up');
+    expect(result.state.stateRevision).toBe(state.stateRevision + 1);
+    // null→up is never a withdrawal → set-level review stays intact.
+    expect(result.state.phases.roster.humanReview.verdict).toBe('up');
+    expect(result.state.phases.roster.collectionJudge).toEqual(state.phases.roster.collectionJudge);
+  });
+
+  it('is a no-op (no revision bump) when there is nothing to approve', () => {
+    const state = readyForPhase(makeState()); // every item already up
+
+    const result = approveRemainingThemeSetPhase(state);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.changed).toBe(false);
+    expect(result.approvedIds).toHaveLength(0);
+    expect(result.state.stateRevision).toBe(state.stateRevision);
+    expect(result.state).toEqual(state);
+  });
+
+  it('refuses to bulk-approve outside a review phase', () => {
+    const complete = parseThemeEquipmentSetState({ ...makeState(), phase: 'complete' });
+
+    const result = approveRemainingThemeSetPhase(complete);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'phase-not-reviewable' })]),
+    );
+  });
+});
+
+describe('planRunPhase (truthful Run-button plan)', () => {
+  it('reports judge-only when every item is resolved but the collection judge is missing', () => {
+    const ready = readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+    const state = parseThemeEquipmentSetState({
+      ...ready,
+      phases: {
+        ...ready.phases,
+        briefs: { ...ready.phases.briefs, collectionJudge: null },
+      },
+    });
+
+    const plan = planRunPhase(state);
+
+    expect(plan.phase).toBe('briefs');
+    expect(plan.regenerateCount).toBe(0);
+    expect(plan.judgeOnly).toBe(true);
+    expect(plan.collectionJudgeMissing).toBe(true);
+  });
+
+  it('counts every unresolved never-generated item as a generation (roster has no artifacts)', () => {
+    // roster phase, every verdict null and no artifacts → every item is
+    // unresolved AND never generated, so it is a generation, not a regeneration.
+    const state = makeState();
+
+    const plan = planRunPhase(state);
+
+    expect(plan.phase).toBe('roster');
+    expect(plan.generateCount).toBe(state.items.length);
+    expect(plan.regenerateCount).toBe(0);
+    expect(plan.judgeOnly).toBe(false);
+    expect(plan.collectionJudgeMissing).toBe(true);
+  });
+
+  it('counts an unresolved item that already has output as a regeneration', () => {
+    // briefs phase: give every item a briefs artifact (output exists) but leave
+    // verdicts null → unresolved WITH output → regeneration, not generation.
+    const withOutput = parseThemeEquipmentSetState({
+      ...readyForPhase(makeState({ phase: 'briefs' }), 'briefs'),
+      items: readyForPhase(makeState({ phase: 'briefs' }), 'briefs').items.map((item) => ({
+        ...item,
+        phases: { ...item.phases, briefs: { ...item.phases.briefs, review: { verdict: null } } },
+      })),
+    });
+
+    const plan = planRunPhase(withOutput);
+
+    expect(plan.phase).toBe('briefs');
+    expect(plan.generateCount).toBe(0);
+    expect(plan.regenerateCount).toBe(withOutput.items.length);
+    expect(plan.judgeOnly).toBe(false);
+  });
+
+  it('keeps generateCount + regenerateCount === the unresolved count in a mixed state', () => {
+    // Start from a fully-ready briefs set (all up, all have output), then knock
+    // two items back to unresolved: one keeps its output (regenerate), one has
+    // its output stripped (generate).
+    const ready = readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+    const raw = JSON.parse(JSON.stringify(ready)) as {
+      items: {
+        phases: Record<string, { artifacts: unknown[]; review: { verdict: 'up' | 'down' | null } }>;
+      }[];
+    };
+    raw.items[0]!.phases.briefs!.review.verdict = null; // unresolved, keeps output
+    raw.items[1]!.phases.briefs!.review.verdict = null; // unresolved, output stripped
+    raw.items[1]!.phases.briefs!.artifacts = [];
+    const mixed = parseThemeEquipmentSetState(raw);
+
+    const plan = planRunPhase(mixed);
+
+    const unresolved = mixed.items.filter(
+      (item) => !isThemeSetItemResolvedForPhase(item, 'briefs'),
+    ).length;
+    expect(unresolved).toBe(2);
+    expect(plan.generateCount).toBe(1);
+    expect(plan.regenerateCount).toBe(1);
+    expect(plan.generateCount + plan.regenerateCount).toBe(unresolved);
+  });
+
+  it('treats rejected (down) items as unresolved regenerations', () => {
+    const ready = readyForPhase(makeState()); // all up, judged, all have artifacts
+    const state = withItemVerdict(ready, 0, 'down');
+
+    const plan = planRunPhase(state);
+
+    expect(plan.regenerateCount).toBe(1);
+    expect(plan.generateCount).toBe(0);
+    expect(plan.judgeOnly).toBe(false);
+  });
+
+  it('is not judge-missing once the collection judge exists', () => {
+    const state = readyForPhase(makeState()); // all up + collectionJudge score 3
+
+    const plan = planRunPhase(state);
+
+    expect(plan.regenerateCount).toBe(0);
+    expect(plan.judgeOnly).toBe(true);
+    expect(plan.collectionJudgeMissing).toBe(false);
+  });
+
+  it('returns an empty plan for a non-review phase', () => {
+    const complete = parseThemeEquipmentSetState({ ...makeState(), phase: 'complete' });
+
+    const plan = planRunPhase(complete);
+
+    expect(plan.phase).toBeNull();
+    expect(plan.regenerateCount).toBe(0);
+    expect(plan.judgeOnly).toBe(false);
+    expect(plan.collectionJudgeMissing).toBe(false);
+  });
+});
+
+describe('themeSetItemHasPhaseOutput / themeSetItemAwaitsGeneration (review gating)', () => {
+  it('reports no output and awaiting-generation for a fresh briefs item', () => {
+    const state = makeState({ phase: 'briefs' });
+    const item = state.items[0]!;
+
+    expect(themeSetItemHasPhaseOutput(item, 'briefs')).toBe(false);
+    expect(themeSetItemAwaitsGeneration(item, 'briefs')).toBe(true);
+  });
+
+  it('reports output present and not awaiting once the required kind exists', () => {
+    // readyForPhase adds a `selected-brief`-required?—it adds a `briefs`-kind
+    // artifact, which counts as OUTPUT but is NOT the required `selected-brief`
+    // kind, so the item still awaits generation. Give it the required kind too.
+    const ready = readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+    const raw = JSON.parse(JSON.stringify(ready)) as {
+      items: {
+        phases: Record<
+          string,
+          { artifacts: { id: string; kind: string; uri: string; provenance: string }[] }
+        >;
+      }[];
+    };
+    raw.items[0]!.phases.briefs!.artifacts.push({
+      id: 'req-selected-brief',
+      kind: 'selected-brief',
+      uri: 'run://selected',
+      provenance: 'unit-test',
+    });
+    const withRequired = parseThemeEquipmentSetState(raw);
+    const item = withRequired.items[0]!;
+
+    expect(themeSetItemHasPhaseOutput(item, 'briefs')).toBe(true);
+    expect(themeSetItemAwaitsGeneration(item, 'briefs')).toBe(false);
+  });
+
+  it('never awaits generation in the roster phase (no required artifact)', () => {
+    const state = makeState();
+    const item = state.items[0]!;
+
+    expect(themeSetItemAwaitsGeneration(item, 'roster')).toBe(false);
+  });
+
+  it('awaits generation when a briefs artifact exists but not the required selected-brief kind', () => {
+    // A non-required artifact (e.g. a `briefs`-kind evidence artifact) is OUTPUT
+    // but does not satisfy the up-vote requirement, so the thumbs stay gated.
+    const ready = readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+    const item = ready.items[0]!;
+
+    expect(themeSetItemHasPhaseOutput(item, 'briefs')).toBe(true);
+    expect(themeSetItemAwaitsGeneration(item, 'briefs')).toBe(true);
+  });
+});
+
+describe('applyEditedThemeSetBrief', () => {
+  const artifact = {
+    id: 'x-brief-r1-selected',
+    kind: 'selected-brief',
+    uri: 'run://edited-brief',
+    summary: 'Hand-edited brief (revision 1).',
+    provenance: 'hand-edit',
+    briefId: 'edited-brief',
+  };
+  const evidence = {
+    id: 'x-brief-r1-edit',
+    kind: 'brief-edit',
+    uri: 'run://edited-brief',
+    provenance: 'hand-edit',
+  };
+
+  function briefsState(): ThemeEquipmentSetState {
+    return readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+  }
+
+  it('bumps the item revision, replaces the brief artifact, and clears the set-level review', () => {
+    const state = briefsState();
+    const itemId = state.items[0]!.id;
+    const artifactFor = { ...artifact, id: `${itemId}-brief-r1-selected` };
+    const evidenceFor = { ...evidence, id: `${itemId}-brief-r1-edit` };
+    expect(state.phases.briefs.humanReview.verdict).toBe('up');
+
+    const result = applyEditedThemeSetBrief(state, itemId, {
+      artifact: artifactFor,
+      evidence: evidenceFor,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const item = result.state.items.find((candidate) => candidate.id === itemId)!;
+    expect(item.revision).toBe(state.items[0]!.revision + 1);
+    expect(item.phases.briefs.artifacts).toEqual([artifactFor]);
+    expect(item.phases.briefs.review.verdict).toBe('up');
+    expect(result.state.stateRevision).toBe(state.stateRevision + 1);
+    // Reviewed content changed → set-level briefs review is invalidated.
+    expect(result.state.phases.briefs.humanReview.verdict).toBeNull();
+    expect(result.state.phases.briefs.collectionJudge).toBeNull();
+  });
+
+  it('rejects an edit outside the briefs phase', () => {
+    const state = makeState(); // roster
+    const itemId = state.items[0]!.id;
+
+    const result = applyEditedThemeSetBrief(state, itemId, {
+      artifact: { ...artifact, id: `${itemId}-brief-r1-selected` },
+      evidence: { ...evidence, id: `${itemId}-brief-r1-edit` },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'phase-not-briefs' })]),
+    );
+  });
+
+  it('rejects an unknown item id', () => {
+    const state = briefsState();
+
+    const result = applyEditedThemeSetBrief(state, 'not-a-real-item', { artifact, evidence });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'item-not-found' })]),
+    );
+  });
+
+  it('rejects an artifact whose kind is not selected-brief', () => {
+    const state = briefsState();
+    const itemId = state.items[0]!.id;
+
+    const result = applyEditedThemeSetBrief(state, itemId, {
+      artifact: { ...artifact, id: `${itemId}-brief-r1-selected`, kind: 'raw-sheet' },
+      evidence: { ...evidence, id: `${itemId}-brief-r1-edit` },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'artifact-not-selected-brief' })]),
+    );
+  });
+
+  it('does not mutate the input state', () => {
+    const state = briefsState();
+    const itemId = state.items[0]!.id;
+    const before = JSON.stringify(state);
+
+    applyEditedThemeSetBrief(state, itemId, {
+      artifact: { ...artifact, id: `${itemId}-brief-r1-selected` },
+      evidence: { ...evidence, id: `${itemId}-brief-r1-edit` },
+    });
+
+    expect(JSON.stringify(state)).toBe(before);
   });
 });

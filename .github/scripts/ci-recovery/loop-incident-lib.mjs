@@ -18,7 +18,12 @@
  */
 import { createHash } from 'node:crypto';
 
-export const LOOP_INCIDENT_MARKER = '<!-- crawler-pr-loop-incident:v1 -->';
+import {
+  LOOP_INCIDENT_FINGERPRINT_PREFIX,
+  LOOP_INCIDENT_MARKER,
+} from './markers.mjs';
+
+export { LOOP_INCIDENT_MARKER, LOOP_INCIDENT_FINGERPRINT_PREFIX };
 export const LOOP_INCIDENT_LABEL = 'ci-loop-incident';
 
 /**
@@ -98,7 +103,7 @@ export function buildLoopIncidentBody({
 
   return [
     LOOP_INCIDENT_MARKER,
-    `<!-- crawler-pr-loop-fingerprint:${fingerprint} -->`,
+    `${LOOP_INCIDENT_FINGERPRINT_PREFIX}${fingerprint} -->`,
     '',
     `The automated CI recovery pipeline made no progress on **PR #${prNumber}** after repeated attempts. An investigation agent has been assigned to diagnose the root cause.`,
     '',
@@ -254,4 +259,43 @@ export async function fileLoopIncident({
   ).data;
 
   return { action: 'created', issueNumber: issue.number };
+}
+
+/**
+ * Close an open loop-incident issue for a PR if one exists.
+ *
+ * Called by the reconciler when it reaches a converged state (ARM_AUTO_MERGE /
+ * QUEUE_MERGE_TRAIN) for a PR that previously triggered a loop incident.
+ * Idempotent: if no open incident exists this is a no-op.
+ *
+ * @param {object} opts
+ * @param {Function} opts.request   - github.mjs `request` helper
+ * @param {Function} opts.paginate  - github.mjs `paginate` helper
+ * @param {string}  opts.token      - PAT with issues:write
+ * @param {string}  opts.owner
+ * @param {string}  opts.repo
+ * @param {number}  opts.prNumber
+ * @returns {Promise<{action: 'closed', issueNumber: number}|{action: 'not-found'}>}
+ */
+export async function closeLoopIncident({ request, paginate, token, owner, repo, prNumber }) {
+  const title = loopIncidentTitle(prNumber);
+
+  const openIssues = await paginate(
+    token,
+    `/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent(LOOP_INCIDENT_LABEL)}`,
+  );
+  const existing = openIssues.find(
+    (issue) => !issue.pull_request && String(issue.title).toLowerCase() === title.toLowerCase(),
+  );
+
+  if (!existing) {
+    return { action: 'not-found' };
+  }
+
+  await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+    method: 'PATCH',
+    body: { state: 'closed', state_reason: 'completed' },
+  });
+
+  return { action: 'closed', issueNumber: existing.number };
 }
