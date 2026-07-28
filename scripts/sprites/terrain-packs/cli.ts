@@ -167,7 +167,8 @@ function runValidate(): void {
         ['floorPool', manifest.floorPool],
         ['corridorPool', manifest.corridorPool],
         ...Object.entries(manifest.specialFloorPools ?? {}).map(
-          ([key, pool]) => [`specialFloorPools.${key}`, pool] as [string, typeof manifest.floorPool],
+          ([key, pool]) =>
+            [`specialFloorPools.${key}`, pool] as [string, typeof manifest.floorPool],
         ),
       ];
       for (const [label, pool] of poolsToCheck) {
@@ -184,7 +185,13 @@ function runValidate(): void {
       }
     }
 
-    if (result.ok && poolResult.ok && accentPathResult.ok && decalPathResult.ok && allIssues.length === 0) {
+    if (
+      result.ok &&
+      poolResult.ok &&
+      accentPathResult.ok &&
+      decalPathResult.ok &&
+      allIssues.length === 0
+    ) {
       console.log(`[${pack.id}] OK`);
       if ((RUNTIME_TERRAIN_PACK_IDS as readonly string[]).includes(pack.id)) {
         decodedPacks.push({ id: pack.id, manifest, wallAtlas });

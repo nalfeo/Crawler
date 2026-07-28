@@ -583,7 +583,6 @@ export function validateGroundDecalImages(
   return { ok: issues.length === 0, issues };
 }
 
-
 export function validateWallAccentImagePaths(
   manifest: TerrainPackDef,
   options: PoolImageValidationOptions,
