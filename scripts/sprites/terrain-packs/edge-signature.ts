@@ -24,6 +24,12 @@
  * See `validate.ts` module doc for the full design rationale.
  */
 import { cropImage, type RgbaImage } from './png-buffer.js';
+import {
+  sampleSignature,
+  signatureDistance,
+  ZERO_SIGNATURE,
+  type SampleSignature,
+} from './sample-signature.js';
 
 export type CellEdge = 'N' | 'E' | 'S' | 'W';
 export const CELL_EDGES: readonly CellEdge[] = ['N', 'E', 'S', 'W'];
@@ -46,22 +52,6 @@ export const VENDORED_EDGE_SAMPLING: EdgeSamplingConfig = {
   marginFraction: 0,
 };
 
-/** Mean luminance of an RGBA image; fully-transparent pixels count as background (255, "open-like"). */
-function meanLuminance(img: RgbaImage): number {
-  let sum = 0;
-  let count = 0;
-  for (let i = 0; i < img.data.length; i += 4) {
-    const r = img.data[i]!;
-    const g = img.data[i + 1]!;
-    const b = img.data[i + 2]!;
-    const a = img.data[i + 3]!;
-    const lum = a === 0 ? 255 : 0.299 * r + 0.587 * g + 0.114 * b;
-    sum += lum;
-    count += 1;
-  }
-  return count === 0 ? 0 : sum / count;
-}
-
 /** Extract a thin sample band along one edge of a (square) cell per the given sampling config. */
 function sampleEdgeBand(cell: RgbaImage, edge: CellEdge, config: EdgeSamplingConfig): RgbaImage {
   const size = cell.width;
@@ -80,10 +70,10 @@ function sampleEdgeBand(cell: RgbaImage, edge: CellEdge, config: EdgeSamplingCon
   }
 }
 
-/** Per-edge open/solid mean-luminance reference values derived from two reference cells. */
+/** Per-edge open/solid reference signatures derived from two reference cells. */
 export interface EdgeReferences {
-  readonly open: Readonly<Record<CellEdge, number>>;
-  readonly solid: Readonly<Record<CellEdge, number>>;
+  readonly open: Readonly<Record<CellEdge, SampleSignature>>;
+  readonly solid: Readonly<Record<CellEdge, SampleSignature>>;
 }
 
 export function buildEdgeReferences(
@@ -91,11 +81,21 @@ export function buildEdgeReferences(
   solidRefCell: RgbaImage,
   config: EdgeSamplingConfig,
 ): EdgeReferences {
-  const open: Record<CellEdge, number> = { N: 0, E: 0, S: 0, W: 0 };
-  const solid: Record<CellEdge, number> = { N: 0, E: 0, S: 0, W: 0 };
+  const open: Record<CellEdge, SampleSignature> = {
+    N: ZERO_SIGNATURE,
+    E: ZERO_SIGNATURE,
+    S: ZERO_SIGNATURE,
+    W: ZERO_SIGNATURE,
+  };
+  const solid: Record<CellEdge, SampleSignature> = {
+    N: ZERO_SIGNATURE,
+    E: ZERO_SIGNATURE,
+    S: ZERO_SIGNATURE,
+    W: ZERO_SIGNATURE,
+  };
   for (const edge of CELL_EDGES) {
-    open[edge] = meanLuminance(sampleEdgeBand(openRefCell, edge, config));
-    solid[edge] = meanLuminance(sampleEdgeBand(solidRefCell, edge, config));
+    open[edge] = sampleSignature(sampleEdgeBand(openRefCell, edge, config));
+    solid[edge] = sampleSignature(sampleEdgeBand(solidRefCell, edge, config));
   }
   return { open, solid };
 }
@@ -108,10 +108,8 @@ export function classifyCellEdges(
 ): Record<CellEdge, boolean> {
   const out: Record<CellEdge, boolean> = { N: false, E: false, S: false, W: false };
   for (const edge of CELL_EDGES) {
-    const lum = meanLuminance(sampleEdgeBand(cell, edge, config));
-    const distToOpen = Math.abs(lum - refs.open[edge]);
-    const distToSolid = Math.abs(lum - refs.solid[edge]);
-    out[edge] = distToSolid < distToOpen;
+    const sig = sampleSignature(sampleEdgeBand(cell, edge, config));
+    out[edge] = signatureDistance(sig, refs.solid[edge]) < signatureDistance(sig, refs.open[edge]);
   }
   return out;
 }

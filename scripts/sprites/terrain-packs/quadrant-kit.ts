@@ -86,13 +86,18 @@ const QUADRANT_GEOMETRY: Record<QuadrantCorner, QuadrantGeometry> = {
  * isolated cell) is thus inset on BOTH outer edges: convex corners are bevelled
  * and an isolated wall still renders a visible centre block.
  *
- * `concave` (both cardinals present, diagonal ABSENT): both outer edges are
- * fully solid — same as `full` so far — but the inner corner (cell-centre-
- * facing) has a `WALL_INSET_PX × WALL_INSET_PX` notch carved out to represent
- * the missing diagonal neighbour (floor cell on that diagonal). This makes
- * `concave` visually distinct from `full` while preserving the cardinal-edge
- * compatibility invariant (the notch is at the inner corner, far from the
- * outer-edge sample bands used by the validator).
+ * `concave` (both cardinals present, diagonal ABSENT): both outer edges reach
+ * their cell boundary — same as `full` along the edges — but the OUTER corner
+ * (the intersection of the two outer edges, i.e. the corner facing the missing
+ * diagonal neighbour) has a `WALL_INSET_PX × WALL_INSET_PX` notch carved out.
+ * That is the defining visual of a blob47 inner corner: the diagonal cell is
+ * floor, so the wall must be nicked back there.
+ *
+ * The notch is `WALL_INSET_PX / (QUADRANT_SRC_PX * 2)` = 18.75% of the cell in
+ * from each edge end, which sits entirely inside `AUTHORED_EDGE_SAMPLING`'s 25%
+ * corner-exclusion margin. The cardinal-edge compatibility invariant is
+ * therefore preserved (still provably 100%) while the corner now carries the
+ * diagonal information the corner-coverage validator checks.
  *
  * Because "present cardinal → wall reaches that edge; absent cardinal → inset
  * off it" holds independently per cardinal, each cell edge's wall/no-wall
@@ -120,15 +125,15 @@ function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): RgbaImage
   fillRect(img, left, top, right - left, bottom - top, r, g, b, a);
 
   // 'concave': both cardinals present (wall reaches both outer edges) but the
-  // diagonal is ABSENT → carve a notch from the INNER corner (cell-centre-facing
-  // side) to distinguish it from 'full' (all three bits set, solid throughout).
-  // The notch is at the quadrant's inner corner — the intersection of the two
-  // INNER (non-outer) edges — and is `WALL_INSET_PX` wide on each axis.
-  // It never overlaps the outer-edge sample bands, so cardinal-edge compatibility
-  // is preserved (provably 100%) for both 'concave' and 'full'.
+  // diagonal is ABSENT → carve a notch from the OUTER corner (the corner facing
+  // the missing diagonal neighbour, i.e. the intersection of the two OUTER
+  // edges). This is what makes an inner corner read as an inner corner instead
+  // of flat wall, and it is what `cornerIsWallFromMask` / the corner-coverage
+  // validator assert. The notch is inside the edge sampler's 25% corner-exclusion
+  // margin, so cardinal-edge compatibility stays provably 100%.
   if (state === 'concave') {
-    const notchX = geom.nearLeftIsEdgeB ? QUADRANT_SRC_PX - WALL_INSET_PX : 0;
-    const notchY = geom.nearTopIsEdgeA ? QUADRANT_SRC_PX - WALL_INSET_PX : 0;
+    const notchX = geom.nearLeftIsEdgeB ? 0 : QUADRANT_SRC_PX - WALL_INSET_PX;
+    const notchY = geom.nearTopIsEdgeA ? 0 : QUADRANT_SRC_PX - WALL_INSET_PX;
     fillRect(img, notchX, notchY, WALL_INSET_PX, WALL_INSET_PX, 0, 0, 0, 0);
   }
 
