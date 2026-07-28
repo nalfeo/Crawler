@@ -1,5 +1,16 @@
 [
   {
+    "commit": "8ee6db2bd5b74bb5010a438925cfe6a9fc3b0c6b",
+    "commitDate": "2026-07-27T20:10:15-07:00",
+    "commitSubject": "test(ci): align sweep backlog expectations with latent-demand policy (#2136)",
+    "capturedAt": "2026-07-28T04:07:13.165Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30325540183",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/8ee6db2bd5b74bb5010a438925cfe6a9fc3b0c6b.json"
+  },
+  {
     "commit": "a3d29c3e31de6fbeae61418beb6e6ebd54e38c00",
     "commitDate": "2026-07-27T19:17:22-07:00",
     "commitSubject": "test(sweep-budget): align latent-backlog test assertions with blocked-demand accounting (#2141)",
