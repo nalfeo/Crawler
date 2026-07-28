@@ -244,4 +244,41 @@ describe('planLinework placement gate', () => {
     }
     expect(checked).toBeGreaterThan(0);
   });
+
+  it('never paints a one-sided join against a wall entry', () => {
+    // Reciprocity: if tile A's mask says "connected east", the tile to its east
+    // must say "connected west". A wall entry is pinned to a single edge, so a
+    // later route running alongside the same rock must NOT connect to it.
+    const dirs = [
+      { dx: 0, dy: -1, bit: 1, back: 4 },
+      { dx: 1, dy: 0, bit: 2, back: 8 },
+      { dx: 0, dy: 1, bit: 4, back: 1 },
+      { dx: -1, dy: 0, bit: 8, back: 2 },
+    ];
+    let checked = 0;
+    for (const layer of manifest.linework ?? []) {
+      for (const seed of [1, 77, 4242]) {
+        const plan = planLinework(request(layer.id, seed));
+        for (let i = 0; i < plan.occupancy.length; i++) {
+          if (!plan.occupancy[i]) continue;
+          const mask = plan.masks[i] ?? 0;
+          const tx = i % MAP_SIZE;
+          const ty = (i / MAP_SIZE) | 0;
+          for (const dir of dirs) {
+            if (!(mask & dir.bit)) continue;
+            const nx = tx + dir.dx;
+            const ny = ty + dir.dy;
+            expect(nx).toBeGreaterThanOrEqual(0);
+            expect(ny).toBeGreaterThanOrEqual(0);
+            expect(nx).toBeLessThan(MAP_SIZE);
+            expect(ny).toBeLessThan(MAP_SIZE);
+            const back = plan.masks[ny * MAP_SIZE + nx] ?? 0;
+            expect(back & dir.back).toBe(dir.back);
+            checked++;
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
 });

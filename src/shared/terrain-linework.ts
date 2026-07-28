@@ -31,12 +31,7 @@
  * engine, by tests, and by offline tooling alike.
  */
 import { hashStringToSeed, SeededRandom } from './random.js';
-import {
-  EDGE_WANG_DIRECTIONS,
-  EDGE_WANG_OPPOSITE_BIT,
-  edgeWangMaskFromOccupancy,
-  MASK_BIT,
-} from './terrain-pack-mask.js';
+import { EDGE_WANG_DIRECTIONS, EDGE_WANG_OPPOSITE_BIT, MASK_BIT } from './terrain-pack-mask.js';
 
 /** Occupancy grid values. */
 export const LINEWORK_EMPTY = 0;
@@ -503,13 +498,7 @@ export function planLinework(request: LineworkPlanRequest): LineworkPlan {
       masks[index] = entryParent[index] ?? 0;
       continue;
     }
-    masks[index] = edgeWangMaskFromOccupancy(
-      occupancy,
-      width,
-      height,
-      index % width,
-      (index / width) | 0,
-    );
+    masks[index] = groundMask(occupancy, entryParent, width, height, index);
   }
 
   return {
@@ -521,6 +510,41 @@ export function planLinework(request: LineworkPlanRequest): LineworkPlan {
     tileCount,
     hubTileCount,
   };
+}
+
+/**
+ * Edge-Wang mask for a ground tile, with wall-entry reciprocity enforced.
+ *
+ * A wall entry is pinned to exactly one edge (its `entryParent`). A later route
+ * that happens to run alongside that rock would otherwise see the entry as a
+ * plain occupied neighbour and connect to it, producing a one-sided join: the
+ * ground tile paints a stub the pinned entry never paints back. Counting a
+ * wall-entry neighbour only when its pin points back at this tile keeps every
+ * edge reciprocal.
+ */
+function groundMask(
+  occupancy: Uint8Array,
+  entryParent: Uint8Array,
+  width: number,
+  height: number,
+  index: number,
+): number {
+  const tx = index % width;
+  const ty = (index / width) | 0;
+  let mask = 0;
+  for (const { bit, dx, dy, dir } of EDGE_WANG_DIRECTIONS) {
+    const nx = tx + dx;
+    const ny = ty + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+    const nIndex = ny * width + nx;
+    const neighbour = occupancy[nIndex];
+    if (!neighbour) continue;
+    if (neighbour === LINEWORK_WALL_ENTRY && entryParent[nIndex] !== EDGE_WANG_OPPOSITE_BIT[dir]) {
+      continue;
+    }
+    mask |= bit;
+  }
+  return mask;
 }
 
 /**
