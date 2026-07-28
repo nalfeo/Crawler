@@ -1,5 +1,16 @@
 [
   {
+    "commit": "94047f6306251d2f9df05ad8ca7653d0440a9f3c",
+    "commitDate": "2026-07-28T19:22:19Z",
+    "commitSubject": "ci-harness: centralize CI schedule+train gate and managed-comment markers (#2200)",
+    "capturedAt": "2026-07-28T20:28:24.850Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30392340328",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/94047f6306251d2f9df05ad8ca7653d0440a9f3c.json"
+  },
+  {
     "commit": "fb7c38d6652edf1c0649e012e043a82f3866bab3",
     "commitDate": "2026-07-28T19:09:30Z",
     "commitSubject": "ci: D2 fix — auto-update clean-BEHIND PRs via update-branch API (WIP) (#2199)",
