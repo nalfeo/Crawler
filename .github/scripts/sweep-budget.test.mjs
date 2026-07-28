@@ -64,8 +64,8 @@ test('latent backlog deduplicates merge-train and recovery demand by PR number',
     { ...base, number: 1, labels: [{ name: 'merge-train' }] },
     // Counted once by the recovery backlog (unlabelled, so nothing excludes it).
     { ...base, number: 2, labels: [] },
-    // Externally-blocked PRs do not enter recovery slots, but still count as
-    // latent demand for sweep budgeting.
+    // Counted once as latent demand: `merge-train-blocked` is excluded from recovery
+    // slot consumption, but still contributes to sweep budgeting.
     { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] },
     // Excluded from both: no queue label, and explicitly opted out of recovery.
     { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
@@ -73,9 +73,9 @@ test('latent backlog deduplicates merge-train and recovery demand by PR number',
   assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
 });
 
-// Pins the externally-blocked latent-demand policy on its own, so a future
-// change in EXTERNALLY_BLOCKED_LABEL_NAMES fails with an unambiguous message.
-test('latent backlog includes externally-blocked PRs as latent demand', () => {
+// Pins externally-blocked latent-demand accounting so future changes to
+// EXTERNALLY_BLOCKED_LABEL_NAMES fail with an unambiguous message.
+test('latent backlog counts externally-blocked PRs once as latent demand', () => {
   const repository = 'nalfeo/Crawler';
   const base = {
     state: 'open',
