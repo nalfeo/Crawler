@@ -139,6 +139,44 @@ defensible headline, never the best.
 publish the range**, not one run's median. A single invocation's median is
 itself a sample.
 
+**Size each timed round to tens of milliseconds.** Sub-millisecond rounds are
+unusable no matter how many of them you run: timer granularity and scheduler
+jitter dominate, and pairing cannot rescue you because the noise is not shared
+between the two halves of a round. An LOS bench with ~1500-3000 calls per round
+swung paired ratios **0.64x-1.37x on byte-identical code**; raising it to
+30k-60k calls (~10-25ms per round) collapsed that to a stable ~1.0x. If your
+per-call cost is sub-microsecond, raise the call count until each round clears
+~10ms — do not compensate by adding rounds.
+
+**Run the equivalence oracle AFTER the timed rounds, never before.** A recording
+or tracing wrapper is usually a subclass or a swapped-in callback, so exercising
+it teaches V8's inline caches that the call sites are polymorphic — and it does
+that _only_ for the variants the oracle touched. Every timed round afterwards is
+then measuring a handicap you introduced. This applies to any pre-flight
+correctness check, including a drift guard that proves your inlined baseline
+copy still matches the real function; put all of them at the end.
+
+**Build both variants from the real runtime object, not a fresh clone.** Objects
+assembled at load time often carry installed callbacks, populated caches, or
+non-null fields that the hot path branches on, and a bare clone silently
+short-circuits them. In this repo `attachBarriersToFloorMap` installs two lookup
+closures on the live `FloorMap`, and `isPassableAt` early-outs when they are
+null — so timing the real map against a clean clone gives one side two live
+closure calls per probe and the other a null check. That single asymmetry
+flipped a result by ~1.6x in **both** directions across two revisions of the
+same bench. `null -> function` is also a hidden-class transition. These fields
+are frequently private with setters and no getters, so probe the object rather
+than assuming.
+
+**Do not assume an ablation is a bound without checking what it removed.** "Detach
+subsystem X and compare" measures the cost of _consulting_ X, which is only a
+lower bound on removing it if X was actually doing work. Print the subsystem's
+size and both variants' result counts: if the counts are identical, the variants
+did identical work and any early-exit argument you were about to make does not
+apply. A barrier-overlay diagnostic here was reported as a floor on that
+reasoning, then found to be running against a registry holding **0 entries** for
+the whole fixture.
+
 Do not benchmark while review agents or other sessions are running — an
 observed baseline worst round went 208us -> 1138us purely from a busy machine.
 
@@ -146,6 +184,12 @@ observed baseline worst round went 208us -> 1138us purely from a busy machine.
 are the reference implementations of this whole pattern: inlined verbatim
 baseline, ablation variants, rotating lead, rotated warmup, lockstep
 byte-exact equivalence oracle, and paired per-round ratio reporting.
+`scripts/agent/perf/bench-line-of-sight.ts` additionally shows the ordering and
+round-sizing rules above, an ordered probe-trace oracle for a caller-supplied
+callback, and what a **null** result looks like next to a real one measured on
+the same rig — a candidate at 0.897x-1.111x with 1-11/15 rounds won, beside a
+subsystem ablation at 1.438x-2.275x with 15/15. Read it before reporting a
+marginal win.
 
 To get the `before` side, extract the pre-change file from git rather than
 stashing, so both versions are importable at once:
