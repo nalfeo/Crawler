@@ -47,6 +47,13 @@ import {
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
 } from '../sprites/door-visuals.js';
+import { GENERATED_SPRITE_REGISTRY_KEY } from '../generatedAssets/index.js';
+import {
+  resolveOpaqueBox,
+  resolveOpaqueFit,
+  type GeneratedSpriteRegistry,
+  type OpaqueBounds,
+} from '../../shared/generated-assets.js';
 import { createBarrierOverlay } from '../BarrierOverlay.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createAbilityLoadoutUI, type AbilityLoadoutEntry } from '../AbilityLoadoutUI.js';
@@ -2866,18 +2873,73 @@ export class MainGameScene extends Phaser.Scene {
     // horizontally (leaf + jambs touch both side edges) and bottom-aligned, so
     // canvas width == doorway width and the canvas bottom == the floor line.
     // Pinned deterministically by tests/unit/generated-door-art.test.ts.
-    const generatedDoorScales = new Map<string, number>();
+    // Doors fit on their OPAQUE pixels, not the raw canvas, and width is
+    // authoritative (a door must exactly fill its doorway; height then follows
+    // the art's own aspect and grows upward into the wall tile above).
+    //
+    // Canvas-relative fitting cannot express a 7 ft door in this pipeline. The
+    // image model draws into a SQUARE cell and `sizeVariant: tall` is banned
+    // (portrait cells slice into stacked-object columns), so the only way a
+    // door can ship taller than it is wide is to be drawn tall INSIDE a square
+    // canvas with transparent margins either side. Scaling such art by
+    // `tileSize / canvasWidth` would render the doorway narrower than its own
+    // opening and leave gaps at the jambs.
+    //
+    // Degrades safely: an entry with no/mismatched bounds falls back to the
+    // whole canvas, which is exactly the previous behaviour, and today's
+    // full-bleed 256² door has bounds equal to its canvas — so this is a no-op
+    // for the art that currently ships.
+    const rawDoorRegistry = this.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY) as
+      | GeneratedSpriteRegistry
+      | undefined;
+    const generatedDoorRegistry =
+      rawDoorRegistry && typeof rawDoorRegistry.entries === 'function' ? rawDoorRegistry : null;
+    const generatedDoorBounds = new Map<string, OpaqueBounds>();
+    if (generatedDoorRegistry) {
+      for (const entry of generatedDoorRegistry.entries()) {
+        if (entry.opaqueBounds !== undefined) {
+          generatedDoorBounds.set(entry.textureKey, entry.opaqueBounds);
+        }
+      }
+    }
+    const generatedDoorFits = new Map<
+      string,
+      { scale: number; originX: number; originY: number }
+    >();
     for (const key of ALL_GENERATED_DOOR_TEXTURE_KEYS) {
       if (!this.textures.exists(key)) {
         continue;
       }
-      const source = this.textures.get(key).getSourceImage() as { width?: number };
-      const srcWidth = typeof source?.width === 'number' ? source.width : 0;
-      if (srcWidth > 0) {
-        generatedDoorScales.set(key, tileSize / srcWidth);
+      const source = this.textures.get(key).getSourceImage() as {
+        width?: number;
+        height?: number;
+      };
+      const canvasWidth = typeof source?.width === 'number' ? source.width : 0;
+      const canvasHeight = typeof source?.height === 'number' ? source.height : 0;
+      if (canvasWidth <= 0 || canvasHeight <= 0) {
+        continue;
       }
+      const bounds = generatedDoorBounds.get(key);
+      const box = resolveOpaqueBox(bounds, canvasWidth, canvasHeight);
+      const fit = resolveOpaqueFit({
+        bounds,
+        canvasWidth,
+        canvasHeight,
+        // Only the ORIGINS are taken from resolveOpaqueFit; the scale below is
+        // computed separately because resolveOpaqueFit is height-authoritative
+        // and doors are width-authoritative. These targets are therefore inert.
+        targetWidthPx: tileSize,
+        targetHeightPx: tileSize,
+        anchorBase: true,
+        floorPlane: false,
+      });
+      generatedDoorFits.set(key, {
+        scale: tileSize / box.width,
+        originX: fit.originX,
+        originY: fit.originY,
+      });
     }
-    const availableGeneratedKeys: ReadonlySet<string> = new Set(generatedDoorScales.keys());
+    const availableGeneratedKeys: ReadonlySet<string> = new Set(generatedDoorFits.keys());
     const doorManifest = this.options.floorId ? getFloorManifest(this.options.floorId) : undefined;
     const terrainPackId =
       doorManifest?.terrainPacks?.stone ??
@@ -2903,10 +2965,12 @@ export class MainGameScene extends Phaser.Scene {
       key: string,
       frame: number | undefined,
       scale: number,
+      originX = 0.5,
+      originY = 1,
     ): void => {
       const img = this.add
         .image(px, tileBottomY, key, frame)
-        .setOrigin(0.5, 1)
+        .setOrigin(originX, originY)
         .setDepth(-19)
         .setScale(scale);
       this.uiCamera?.ignore(img);
@@ -2977,15 +3041,18 @@ export class MainGameScene extends Phaser.Scene {
           }
           case 'generated': {
             // 'generated' is only chosen for a key present in
-            // availableGeneratedKeys, which is built from generatedDoorScales, so
-            // the lookup always hits (?? 1 is unreachable but keeps the type
-            // checker happy without a non-null assertion).
+            // availableGeneratedKeys, which is built from generatedDoorFits, so
+            // the lookup always hits (the ?? branch is unreachable but keeps the
+            // type checker happy without a non-null assertion).
+            const fit = generatedDoorFits.get(mode.textureKey);
             addDoorImage(
               cx,
               tileBottomY,
               mode.textureKey,
               undefined,
-              generatedDoorScales.get(mode.textureKey) ?? 1,
+              fit?.scale ?? 1,
+              fit?.originX ?? 0.5,
+              fit?.originY ?? 1,
             );
             if (isOpen) {
               openGeneratedCount += 1;

@@ -391,11 +391,21 @@ export interface OpaqueFit {
  * or disagree with the loaded texture (art replaced without a re-derive), so a
  * stale manifest degrades to the previous rendering rather than to garbage.
  */
-export function resolveOpaqueFit(input: OpaqueFitInput): OpaqueFit {
-  const { bounds, canvasWidth, canvasHeight, targetWidthPx, targetHeightPx } = input;
-  if (canvasWidth <= 0 || canvasHeight <= 0) {
-    return { originX: 0.5, originY: input.anchorBase ? 1 : 0.5, scale: 1 };
-  }
+/**
+ * The rectangle a sprite should actually be fitted/anchored on: its opaque
+ * bounds when they are present and consistent with the loaded texture,
+ * otherwise the whole canvas.
+ *
+ * Exported so callers that need a non-height-authoritative fit (doors are
+ * width-authoritative) can derive their own scale from the SAME box
+ * `resolveOpaqueFit` anchors on. Recomputing this validation at the call site
+ * is how origin and scale drift apart on malformed bounds.
+ */
+export function resolveOpaqueBox(
+  bounds: OpaqueBounds | undefined,
+  canvasWidth: number,
+  canvasHeight: number,
+): { x: number; y: number; width: number; height: number } {
   const usable =
     bounds !== undefined &&
     bounds.canvasWidth === canvasWidth &&
@@ -406,7 +416,15 @@ export function resolveOpaqueFit(input: OpaqueFitInput): OpaqueFit {
     bounds.y >= 0 &&
     bounds.x + bounds.width <= canvasWidth &&
     bounds.y + bounds.height <= canvasHeight;
-  const box = usable ? bounds : { x: 0, y: 0, width: canvasWidth, height: canvasHeight };
+  return usable ? bounds : { x: 0, y: 0, width: canvasWidth, height: canvasHeight };
+}
+
+export function resolveOpaqueFit(input: OpaqueFitInput): OpaqueFit {
+  const { bounds, canvasWidth, canvasHeight, targetWidthPx, targetHeightPx } = input;
+  if (canvasWidth <= 0 || canvasHeight <= 0) {
+    return { originX: 0.5, originY: input.anchorBase ? 1 : 0.5, scale: 1 };
+  }
+  const box = resolveOpaqueBox(bounds, canvasWidth, canvasHeight);
   return {
     originX: (box.x + box.width / 2) / canvasWidth,
     originY: input.anchorBase

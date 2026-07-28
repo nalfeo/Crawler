@@ -8,19 +8,24 @@ import {
 
 /**
  * The door render contract in `MainGameScene.updateDoorOverlay()` is
- * WIDTH-authoritative and BOTTOM-anchored: the texture is scaled by
- * `tileSize / srcWidth` and pinned by its bottom-centre to the tile's bottom
- * edge, so the height follows the art's aspect ratio and any excess grows upward
- * into the wall tile above.
+ * WIDTH-authoritative and anchored on the sprite's OPAQUE BOX: the texture is
+ * scaled by `tileSize / box.width` and pinned by the box's bottom-centre to the
+ * tile's bottom edge, so the rendered height follows the opaque box's aspect and
+ * any excess grows upward into the wall tile above.
  *
- * That math is only correct if the art is full-bleed horizontally (leaf + jambs
- * touch both side edges, so canvas width == doorway width) and bottom-aligned
- * (canvas bottom == the floor line). Those were brief instructions; this makes
- * them a check, because a brief is a hope and art regenerates.
+ * Note this deliberately does NOT require full-bleed or bottom-aligned art.
+ * An earlier revision of this file asserted both, which was wrong: the image
+ * model draws into a SQUARE cell and `sizeVariant: tall` is banned (portrait
+ * cells slice into stacked-object columns), so a door taller than it is wide
+ * can ONLY ship as a tall subject inside a square canvas with transparent
+ * margins. Requiring full-bleed would have made a 7 ft door unrepresentable.
+ * Anchoring on the opaque box makes canvas padding irrelevant instead.
  *
- * A door sprite that violates either one renders narrower than its doorway or
- * floating above the floor — both invisible in the def, the manifest and every
- * sensor, and only visible by decoding the shipped PNG's alpha.
+ * What still matters is the OPAQUE box's aspect, because that alone decides how
+ * tall the door renders once its width is pinned to the doorway. A door whose
+ * opaque box is square renders 4 ft — shorter than the 5.75 ft player, which is
+ * the defect this whole change exists to fix, and it is invisible in the def,
+ * the manifest and every sensor. Only decoding the shipped PNG's alpha shows it.
  */
 
 interface ManifestEntry {
@@ -73,17 +78,17 @@ describe('generated door art contract', () => {
         expect(bounds).toBeDefined();
       });
 
-      it('is full-bleed horizontally, so canvas width == doorway width', () => {
-        expect(bounds!.x).toBe(0);
-        expect(bounds!.x + bounds!.width).toBe(bounds!.canvasWidth);
-      });
-
-      it('is bottom-aligned, so the canvas bottom is the floor line', () => {
-        expect(bounds!.y + bounds!.height).toBe(bounds!.canvasHeight);
+      it('has a non-degenerate opaque box', () => {
+        expect(bounds!.width).toBeGreaterThan(0);
+        expect(bounds!.height).toBeGreaterThan(0);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(bounds!.canvasWidth);
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(bounds!.canvasHeight);
       });
 
       it('renders to a plausible door height once width-fitted to one tile', () => {
-        const heightFt = FEET_PER_TILE * (bounds!.canvasHeight / bounds!.canvasWidth);
+        // Measured on the OPAQUE box, not the canvas: transparent margins are
+        // scaled away by the same factor, so they cannot change the result.
+        const heightFt = FEET_PER_TILE * (bounds!.height / bounds!.width);
         expect(heightFt).toBeGreaterThanOrEqual(MIN_DOOR_HEIGHT_FT);
         expect(heightFt).toBeLessThanOrEqual(MAX_DOOR_HEIGHT_FT);
       });
