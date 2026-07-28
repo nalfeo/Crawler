@@ -1,5 +1,16 @@
 [
   {
+    "commit": "dfff87d7886ea002710e246573a9dc3a3e0e6f19",
+    "commitDate": "2026-07-28T22:07:49Z",
+    "commitSubject": "fix(terrain-packs): tighten the vendored edge-pass floor to 0.90 (#2232)",
+    "capturedAt": "2026-07-28T23:14:58.127Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30403983987",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/dfff87d7886ea002710e246573a9dc3a3e0e6f19.json"
+  },
+  {
     "commit": "ba7e5eb296d89b67e79126e45829d8009fd7bc35",
     "commitDate": "2026-07-28T21:35:25Z",
     "commitSubject": "feat(sprites): add missing v2 floor-plate tile briefs (#2226)",
