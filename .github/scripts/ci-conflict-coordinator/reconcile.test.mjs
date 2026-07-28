@@ -16,6 +16,11 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { makeCoordinatorState, renderCoordinatorComment } from './state.mjs';
+import {
+  blockerFingerprint,
+  makeState as makeRecoveryState,
+  renderStateComment as renderRecoveryStateComment,
+} from '../ci-recovery/state.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
@@ -228,6 +233,7 @@ function buildRoutes({
   pr1Sha,
   pr2Sha,
   pr3Sha,
+  pr1Labels = [],
   livePr1Sha = pr1Sha,
   postClosePr3Sha,
   postClosePr3Status = 200,
@@ -298,7 +304,7 @@ function buildRoutes({
       body: [
         // PR3 has 2 CI files → ranks first
         pr3Pull(pr3Sha),
-        livePull(1, pr1Sha),
+        livePull(1, pr1Sha, { labels: pr1Labels }),
         livePull(2, pr2Sha),
       ],
     }),
@@ -332,7 +338,9 @@ function buildRoutes({
     },
 
     // Live PR reads for PR1 (leader): can drift after the initial snapshot.
-    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({ body: livePull(1, livePr1Sha) }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({
+      body: livePull(1, livePr1Sha, { labels: pr1Labels }),
+    }),
 
     // Live PR reads for PR2
     [`GET /repos/${OWNER}/${REPO}/pulls/2`]: () => ({ body: livePull(2, pr2Sha) }),
@@ -606,6 +614,93 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
     closePatch,
     undefined,
     'must not close another group member from the stale selection',
+  );
+});
+
+test('coordinator keeps every member fenced and suppresses dispatch when the active slot has a trusted shepherd lease', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const shepherdState = makeRecoveryState({
+    prNumber: 1,
+    headSha: pr1Sha,
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: 'test-shepherd-lease',
+    blockers: [],
+    updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+  });
+
+  const trustedRecoveryComment = {
+    id: 2001,
+    body: renderRecoveryStateComment(shepherdState),
+    performed_via_github_app: { id: Number(APP_ID) },
+    user: { login: 'trusted-app[bot]' },
+    author_association: 'NONE',
+  };
+
+  const routes = buildRoutes({
+    mainSha,
+    pr1Sha,
+    pr2Sha,
+    pr3Sha,
+    // Seed PR1 with both the owner label and the ORDER_WAIT fence so the
+    // "no fence removal" assertion below is non-trivial: the fence exists on
+    // disk and the coordinator must choose NOT to delete it due to the lease.
+    pr1Labels: [{ name: 'ci-owner-pr-1' }, { name: 'ci-conflict-order-wait' }],
+  });
+  routes[`GET /repos/${OWNER}/${REPO}/issues/1/comments`] = () => ({
+    body: [trustedRecoveryComment],
+  });
+
+  const { server, port, mutatingCalls } = await startServer(routes);
+  t.after(() => server.close());
+
+  // Enforcement must be enabled so the shepherd-lease suppression is exercised
+  // non-trivially: without it, dispatch never happens anyway.
+  const { code, stdout, stderr } = await runScript(port, workDir, {
+    CI_CONFLICT_COORDINATION_ENFORCE: '1',
+  });
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+  const recoveryDispatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      c.url === `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`,
+  );
+  assert.equal(
+    recoveryDispatch,
+    undefined,
+    'must not dispatch ci-recovery when the active slot carries a trusted shepherd lease',
+  );
+
+  const activeFenceRemove = mutatingCalls.find(
+    (c) =>
+      c.method === 'DELETE' &&
+      c.url === `/repos/${OWNER}/${REPO}/issues/1/labels/ci-conflict-order-wait`,
+  );
+  assert.equal(
+    activeFenceRemove,
+    undefined,
+    'must keep ORDER_WAIT on the active slot while a trusted shepherd lease is healthy',
+  );
+
+  const escalationAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      c.url === `/repos/${OWNER}/${REPO}/issues/1/labels` &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-escalation'),
+  );
+  assert.ok(
+    escalationAdd,
+    'must escalate the active slot when a trusted shepherd lease is present',
   );
 });
 

@@ -49,7 +49,6 @@ import {
   renderCoordinatorComment,
   selectCoordination,
   shouldDispatchActiveSlot,
-  whoMustLandFirst,
 } from './state.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';

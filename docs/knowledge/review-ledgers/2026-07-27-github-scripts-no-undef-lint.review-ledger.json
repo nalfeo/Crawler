@@ -1,0 +1,42 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "github-scripts-no-undef-lint",
+  "task_title": "Harden .github/scripts no-undef lint",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Plan review required broadening beyond verify:fast alone: update ESLint config for .github/scripts Node globals/no-undef, extend package.json lint surfaces or equivalent CI-invoked lint path so merge-gate CI covers .github/scripts, add verify-fast path-classification regressions for supported .github/scripts/**/*.mjs vs unsupported external .mjs, and make the spawned coordinator fixture assert a behavior unique to trusted state-present recovery (fresh matching shepherd lease suppresses dispatch / keeps fencing)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "timestamp": "2026-07-28T08:10:00Z",
+          "clean": false,
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "verdict": "concerns_addressed",
+          "notes": "Round 1 found 3 issues: (1) unresolved merge conflict markers in reconcile.test.mjs — resolved by properly merging both the shepherd-lease test and the enforcement-disabled/auto-merge tests from main; (2) verify-fast.sh rejecting valid .mjs paths under scripts/ and .github/extensions/ — resolved by adding is_linted_mjs_path vs is_known_mjs_path split; (3) shepherd-lease test assertion was trivially true because PR1 was not seeded with ci-conflict-order-wait — resolved by seeding both labels so the no-removal assertion is non-trivial."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "timestamp": "2026-07-28T08:20:00Z",
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "verdict": "approve",
+          "notes": "All round-1 concerns verified resolved: conflict markers cleared, is_known_mjs_path correctly covers .github/extensions/ and scripts/ trees, shepherd-lease test now seeds ORDER_WAIT fence on PR1 making the no-removal assertion non-trivial. Lint, typecheck, and unit tests pass. No new concerns."
+        }
+      ]
+    }
+  }
+}

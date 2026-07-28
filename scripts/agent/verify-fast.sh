@@ -41,6 +41,18 @@ is_supported_ts_path() {
   [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|vitest\.mutation\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
 }
 
+# Returns true for .mjs files that are actively linted in changed-file mode.
+is_linted_mjs_path() {
+  [[ "$1" =~ ^\.github/scripts/.*\.mjs$ ]]
+}
+
+# Returns true for ALL .mjs locations known to exist in this repo.
+# Files in these trees are not linted locally by verify:fast (CI covers them),
+# but they must not be rejected as "unsupported" when someone edits them.
+is_known_mjs_path() {
+  [[ "$1" =~ ^(\.github/scripts/|\.github/extensions/|scripts/).*\.mjs$ ]]
+}
+
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
 # lint only the files that changed vs the branch base + the working tree. This
 # is safe: the ESLint config here has NO type-aware or cross-file rules
@@ -49,7 +61,7 @@ is_supported_ts_path() {
 # for its cache even when nothing changed (~22s of pure overhead), whereas a
 # typical change set is a handful of files (~3-5s), making this the biggest win
 # on the most frequently run command.
-LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ tools/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ tools/ .github/scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
 if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
   # In CI, use GITHUB_BASE_SHA as a fallback when no local branch is resolvable
@@ -57,15 +69,26 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   if [ -z "$base" ] && [ -n "${GITHUB_BASE_SHA:-}" ]; then
     base="${GITHUB_BASE_SHA}"
   fi
+  changed_repo_lint=()
   changed_repo_ts=()
+  changed_repo_github_scripts_mjs=()
   changed_ts=()
   unsupported_ts=()
+  changed_github_scripts_mjs=()
+  unsupported_mjs=()
   while IFS= read -r f; do
     # Skip blanks and any path that no longer exists on disk. A file deleted or
     # renamed-away in this branch still shows up in the diff, but ESLint errors
     # when handed a path that isn't there — which would break the most
     # frequently-run command for the life of the branch.
-    [ -n "$f" ] && [ -f "$f" ] && changed_repo_ts+=("$f")
+    if [ -n "$f" ] && [ -f "$f" ]; then
+      changed_repo_lint+=("$f")
+      if [[ "$f" =~ \.(tsx?|mts|cts)$ ]]; then
+        changed_repo_ts+=("$f")
+      elif [[ "$f" =~ \.mjs$ ]]; then
+        changed_repo_github_scripts_mjs+=("$f")
+      fi
+    fi
   done < <(
     {
       # --diff-filter=ACMR drops deletions (D) and reports renames at their new
@@ -74,11 +97,12 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
       git diff --name-only --diff-filter=ACMR
       git diff --name-only --diff-filter=ACMR --cached
       git ls-files --others --exclude-standard
-    } 2>/dev/null | grep -E '\.(tsx?|mts|cts)$' | sort -u
+    } 2>/dev/null | grep -E '\.(tsx?|mts|cts|mjs)$' | sort -u
   )
-  # Fail safe only when we have no merge base AND no working-tree TS changes. In
-  # that clean-checkout state, committed unsupported TS paths would be invisible.
-  if [ -z "$base" ] && [ "${#changed_repo_ts[@]}" -eq 0 ]; then
+  # Fail safe only when we have no merge base AND no working-tree lintable code
+  # changes. In that clean-checkout state, committed unsupported paths would be
+  # invisible.
+  if [ -z "$base" ] && [ "${#changed_repo_lint[@]}" -eq 0 ]; then
     echo "❌ verify:fast could not determine a git merge base for changed-file scanning." >&2
     echo "   Fetch origin/main or main locally, or set GITHUB_BASE_SHA in CI, before relying on verify:fast." >&2
     exit 1
@@ -90,21 +114,37 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
       unsupported_ts+=("$f")
     fi
   done
+  for f in "${changed_repo_github_scripts_mjs[@]}"; do
+    if is_linted_mjs_path "$f"; then
+      changed_github_scripts_mjs+=("$f")
+    elif ! is_known_mjs_path "$f"; then
+      unsupported_mjs+=("$f")
+    fi
+    # Known but non-.github/scripts paths (.github/extensions/, scripts/):
+    # CI lints them in full-tree mode; verify:fast skips them locally.
+  done
   if [ "${#unsupported_ts[@]}" -ne 0 ]; then
     echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:" >&2
     printf '   - %s\n' "${unsupported_ts[@]}" >&2
     echo "   Move the file into a supported tree or extend verify:fast + tsconfig.json first." >&2
     exit 1
   fi
+  if [ "${#unsupported_mjs[@]}" -ne 0 ]; then
+    echo "❌ verify:fast does not support changed .mjs files outside .github/scripts/, .github/extensions/, or scripts/:" >&2
+    printf '   - %s\n' "${unsupported_mjs[@]}" >&2
+    echo "   Move the file into a known .mjs tree or extend verify:fast first." >&2
+    exit 1
+  fi
   if [ "$test_static_only" -eq 1 ]; then
     LINT_CMD=(true)
   elif [ -z "${CI:-}" ]; then
-    if [ "${#changed_ts[@]}" -eq 0 ]; then
-      echo "   ✓ No changed TS files to lint (full tree is re-linted in CI)."
+    changed_lint=("${changed_ts[@]}" "${changed_github_scripts_mjs[@]}")
+    if [ "${#changed_lint[@]}" -eq 0 ]; then
+      echo "   ✓ No changed TS or .github/scripts .mjs files to lint (full tree is re-linted in CI)."
       LINT_CMD=(true)
     else
-      echo "   Linting ${#changed_ts[@]} changed file(s) (full tree is re-linted in CI)..."
-      LINT_CMD=(npx eslint "${changed_ts[@]}" --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+      echo "   Linting ${#changed_lint[@]} changed file(s) (full tree is re-linted in CI)..."
+      LINT_CMD=(npx eslint "${changed_lint[@]}" --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
     fi
   fi
 elif [ "$test_static_only" -eq 1 ]; then
