@@ -16,19 +16,67 @@
  *     abs(edgeLuma - interiorLuma) / interiorLuma  MUST be < 0.10
  *
  * Usage: node scripts/agent/art/edge-frame-check.mjs <png> [...]
+ *          [--threshold 0.10] [--edge-depth 6] [--interior-inset 24]
+ *          [--structure-floor 5]
  * Exit code 1 if any file fails.
  */
 import { readFileSync } from 'node:fs';
 import { PNG } from 'pngjs';
 
-const THRESHOLD = 0.1;
-const EDGE_DEPTH = 6;
-const INTERIOR_INSET = 24;
+let THRESHOLD = 0.1;
+let EDGE_DEPTH = 6;
+let INTERIOR_INSET = 24;
 
 const luma = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
 const BLOCK = 8;
-const STRUCTURE_FLOOR = Number(process.env.STRUCTURE_FLOOR ?? 5);
+let STRUCTURE_FLOOR = Number(process.env.STRUCTURE_FLOOR ?? 5);
+
+/**
+ * Parse `--flag value` pairs out of argv, leaving the positional PNG paths.
+ *
+ * Multi-file positional invocation is the original contract (the whole point is
+ * sweeping a corpus); the flags came from an independent single-file
+ * reimplementation that landed on main in #2226. Supporting both keeps that
+ * caller working without giving up corpus sweeps — and, critically, without
+ * giving up the structure criterion, which #2226 did not carry.
+ */
+function parseArgs(argv) {
+  const files = [];
+  const numeric = {
+    '--threshold': (v) => {
+      THRESHOLD = v;
+    },
+    '--edge-depth': (v) => {
+      EDGE_DEPTH = v;
+    },
+    '--interior-inset': (v) => {
+      INTERIOR_INSET = v;
+    },
+    '--structure-floor': (v) => {
+      STRUCTURE_FLOOR = v;
+    },
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (!token.startsWith('--')) {
+      files.push(token);
+      continue;
+    }
+    const apply = numeric[token];
+    if (!apply) throw new Error(`Unknown option: ${token}`);
+    const raw = argv[i + 1];
+    if (raw === undefined) throw new Error(`Missing value for ${token}`);
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`${token} must be a finite number >= 0 (got ${raw}).`);
+    }
+    apply(value);
+    i += 1;
+  }
+  if (files.length === 0) throw new Error('Missing required <png-path>.');
+  return files;
+}
 
 /**
  * Structure score: luma SD after BLOCKxBLOCK box-averaging.
@@ -172,7 +220,17 @@ function analyze(file) {
 }
 
 let failed = 0;
-for (const file of process.argv.slice(2)) {
+let targets;
+try {
+  targets = parseArgs(process.argv.slice(2));
+} catch (err) {
+  console.error(`${err.message}`);
+  console.error(
+    'Usage: node scripts/agent/art/edge-frame-check.mjs <png> [...] [--threshold 0.10] [--edge-depth 6] [--interior-inset 24] [--structure-floor 5]',
+  );
+  process.exit(2);
+}
+for (const file of targets) {
   try {
     const r = analyze(file);
     if (!r.pass) failed += 1;
