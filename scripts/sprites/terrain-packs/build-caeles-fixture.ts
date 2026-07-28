@@ -66,6 +66,7 @@ import {
   type RgbaImage,
 } from './png-buffer.js';
 import type { BuildOutputFile } from './build-industrial-cave.js';
+import { renderDoorTile } from './procedural-surfaces.js';
 
 const CAELES_FIXTURE_PACK_ID = 'caeles-fixture' as const;
 
@@ -305,14 +306,29 @@ export function buildCaelesFixturePack(templatePng: Buffer): CaelesFixtureBuildR
   function buildDerivedPool(
     kind: 'floor' | 'corridor',
     count: number,
-  ): { id: string; imagePath: string; textureKey: string }[] {
-    const out: { id: string; imagePath: string; textureKey: string }[] = [];
+  ): { id: string; imagePath: string; textureKey: string; allowedTransforms: ['none'] }[] {
+    const out: {
+      id: string;
+      imagePath: string;
+      textureKey: string;
+      allowedTransforms: ['none'];
+    }[] = [];
     for (let i = 0; i < count; i++) {
       const id = `${kind}-${i}`;
       const img = recolorDerivedTile(spareUpscaled, kind, i);
       const relPath = `${packDir}/${kind}-${i}.png`;
       files.push({ relativePath: relPath, buffer: encodePng(img) });
-      out.push({ id, imagePath: relPath, textureKey: `terrain-pack-caeles-fixture-${kind}-${i}` });
+      // This build-only fixture pack has no diversity/transform requirement
+      // (it never ships to a floor manifest, refinement scope is Floor 2's
+      // industrial-cave only) — declare only the always-safe identity
+      // transform rather than deriving eligibility for a fixture nobody
+      // renders with variety.
+      out.push({
+        id,
+        imagePath: relPath,
+        textureKey: `terrain-pack-caeles-fixture-${kind}-${i}`,
+        allowedTransforms: ['none'],
+      });
     }
     return out;
   }
@@ -327,7 +343,7 @@ export function buildCaelesFixturePack(templatePng: Buffer): CaelesFixtureBuildR
   ];
   const doorEntries: Record<string, { imagePath: string; textureKey: string }> = {};
   for (const spec of doorSpecs) {
-    const img = recolorDerivedTile(spareUpscaled, 'door', spec.isOpen ? 0 : 1, spec.orientation);
+    const img = renderDoorTile(spec.isOpen, spec.orientation);
     const fileName = `door-${spec.isOpen ? 'open' : 'closed'}-${spec.orientation}.png`;
     const relPath = `${packDir}/${fileName}`;
     files.push({ relativePath: relPath, buffer: encodePng(img) });
@@ -336,6 +352,19 @@ export function buildCaelesFixturePack(templatePng: Buffer): CaelesFixtureBuildR
       textureKey: `terrain-pack-caeles-fixture-door-${spec.isOpen ? 'open' : 'closed'}-${spec.orientation}`,
     };
   }
+
+  // This build-only fixture pack never renders wall-accent variety (it never
+  // ships to a floor manifest — scope is Floor 2's industrial-cave only), so
+  // its 4 required accent atlases are fully-transparent no-ops: schema-valid,
+  // trivially topology-safe (nothing is ever opaque, so nothing can ever
+  // spill), and cheap to build.
+  const wallAccentIds = ['crack', 'mineral-vein', 'rust-brace', 'damp-stain'] as const;
+  const wallAccents: TerrainPackDef['wallAccents'] = wallAccentIds.map((id) => {
+    const blank = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
+    const relPath = `${packDir}/accent-${id}.png`;
+    files.push({ relativePath: relPath, buffer: encodePng(blank) });
+    return { id, imagePath: relPath, textureKey: `terrain-pack-caeles-fixture-accent-${id}` };
+  });
 
   const manifest: TerrainPackDef = {
     id: CAELES_FIXTURE_PACK_ID,
@@ -352,6 +381,7 @@ export function buildCaelesFixturePack(templatePng: Buffer): CaelesFixtureBuildR
     floorPool,
     corridorPool,
     doorSet: doorEntries as TerrainPackDef['doorSet'],
+    wallAccents,
   };
 
   return { manifest, files };

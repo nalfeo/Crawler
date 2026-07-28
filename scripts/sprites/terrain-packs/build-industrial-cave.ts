@@ -5,7 +5,11 @@
  * external assets):
  *   - A 512x384 (8x6 grid, 64px cells) wall autotile atlas covering all 47
  *     canonical blob47 masks, composed from a 20-quadrant kit.
- *   - 4 floor-pool variants + 4 corridor-pool variants (64x64 each).
+ *   - 8 floor-pool variants + 8 corridor-pool variants (64x64 each), each
+ *     with derived `allowedTransforms` metadata (2026-07-25 terrain-variance
+ *     design — grown from the original 4+4).
+ *   - 4 mask-aware wall-accent overlay atlases (crack / mineral-vein /
+ *     rust-brace / damp-stain placeholders).
  *   - 4 door images: open/closed x horizontal/vertical (64x64 each).
  *   - The pack manifest JSON consumed by `src/shared/terrain-pack-registry.ts`.
  *
@@ -23,9 +27,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { hashStringToSeed } from '../../../src/shared/random.js';
-import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
-import { TERRAIN_PACK_CELL_PX } from '../../../src/shared/terrain-pack-types.js';
+import { hashStringToSeed, SeededRandom } from '../../../src/shared/random.js';
+import type { TerrainPackDef, TransformId } from '../../../src/shared/terrain-pack-types.js';
+import {
+  TERRAIN_PACK_CELL_PX,
+  TERRAIN_PACK_POOL_TARGET_SIZE,
+  WALL_ACCENT_COUNT,
+} from '../../../src/shared/terrain-pack-types.js';
 import {
   ATLAS_GRID_COLS,
   ATLAS_GRID_ROWS,
@@ -34,29 +42,110 @@ import {
   buildMaskFrameAssignments,
 } from './atlas-grid.js';
 import { composeWallCellOutput } from './compose-wall-cell.js';
-import { encodePng, compositeInto, createImage, type RgbaImage } from './png-buffer.js';
+import { encodePng, compositeInto, createImage, setPixel, type RgbaImage } from './png-buffer.js';
 import { generateQuadrantKit } from './quadrant-kit.js';
 import {
   renderDoorTile,
   renderSpeckledSurface,
   type SurfacePalette,
 } from './procedural-surfaces.js';
+import { deriveAllowedTransforms } from './transform-eligibility.js';
+import { buildWallAccentAtlas } from './wall-accent-tools.js';
 
 const INDUSTRIAL_CAVE_PACK_ID = 'industrial-cave' as const;
 
-const FLOOR_PALETTES: readonly SurfacePalette[] = [
-  { base: [46, 42, 40, 255], speckle: [58, 53, 50, 255], speckleDensity: 0.08 },
-  { base: [48, 44, 41, 255], speckle: [36, 33, 31, 255], speckleDensity: 0.06 },
-  { base: [44, 41, 44, 255], speckle: [55, 50, 55, 255], speckleDensity: 0.1 },
-  { base: [50, 45, 40, 255], speckle: [40, 36, 33, 255], speckleDensity: 0.07 },
+/**
+ * 8 floor-pool source palettes (grown from 4, 2026-07-25 terrain-variance
+ * design). Variant index 6 carries a deliberate top-to-bottom gradient (a
+ * "grime pooling downward" motif) so the transform-eligibility deriver
+ * legitimately restricts its `allowedTransforms` — proving the asymmetric
+ * per-source allowance rule holds even in the pure procedural placeholder,
+ * not only in the Azure-generated shipped art.
+ */
+const FLOOR_PALETTES: readonly {
+  readonly palette: SurfacePalette;
+  readonly gradient?: { readonly axis: 'vertical' | 'horizontal'; readonly strength: number };
+}[] = [
+  { palette: { base: [46, 42, 40, 255], speckle: [58, 53, 50, 255], speckleDensity: 0.08 } },
+  { palette: { base: [48, 44, 41, 255], speckle: [36, 33, 31, 255], speckleDensity: 0.06 } },
+  { palette: { base: [44, 41, 44, 255], speckle: [55, 50, 55, 255], speckleDensity: 0.1 } },
+  { palette: { base: [50, 45, 40, 255], speckle: [40, 36, 33, 255], speckleDensity: 0.07 } },
+  { palette: { base: [43, 40, 38, 255], speckle: [60, 55, 48, 255], speckleDensity: 0.09 } },
+  { palette: { base: [47, 43, 46, 255], speckle: [33, 30, 33, 255], speckleDensity: 0.05 } },
+  {
+    palette: { base: [40, 37, 33, 255], speckle: [52, 48, 40, 255], speckleDensity: 0.08 },
+    gradient: { axis: 'vertical', strength: 34 },
+  },
+  { palette: { base: [49, 46, 42, 255], speckle: [38, 35, 30, 255], speckleDensity: 0.11 } },
 ];
 
-const CORRIDOR_PALETTES: readonly SurfacePalette[] = [
-  { base: [40, 38, 44, 255], speckle: [52, 49, 56, 255], speckleDensity: 0.09 },
-  { base: [42, 40, 46, 255], speckle: [30, 29, 34, 255], speckleDensity: 0.05 },
-  { base: [38, 37, 42, 255], speckle: [48, 46, 52, 255], speckleDensity: 0.11 },
-  { base: [44, 42, 48, 255], speckle: [34, 32, 38, 255], speckleDensity: 0.06 },
+/**
+ * 8 corridor-pool source palettes (grown from 4). Variant index 5 carries a
+ * deliberate left-to-right gradient (a "runoff staining toward one wall"
+ * motif) for the same transform-eligibility-restriction reason as floor
+ * variant 6 above.
+ */
+const CORRIDOR_PALETTES: readonly {
+  readonly palette: SurfacePalette;
+  readonly gradient?: { readonly axis: 'vertical' | 'horizontal'; readonly strength: number };
+}[] = [
+  { palette: { base: [40, 38, 44, 255], speckle: [52, 49, 56, 255], speckleDensity: 0.09 } },
+  { palette: { base: [42, 40, 46, 255], speckle: [30, 29, 34, 255], speckleDensity: 0.05 } },
+  { palette: { base: [38, 37, 42, 255], speckle: [48, 46, 52, 255], speckleDensity: 0.11 } },
+  { palette: { base: [44, 42, 48, 255], speckle: [34, 32, 38, 255], speckleDensity: 0.06 } },
+  { palette: { base: [41, 39, 45, 255], speckle: [56, 52, 60, 255], speckleDensity: 0.08 } },
+  {
+    palette: { base: [39, 36, 41, 255], speckle: [50, 47, 54, 255], speckleDensity: 0.07 },
+    gradient: { axis: 'horizontal', strength: 32 },
+  },
+  { palette: { base: [45, 43, 49, 255], speckle: [32, 31, 36, 255], speckleDensity: 0.1 } },
+  { palette: { base: [37, 35, 40, 255], speckle: [49, 45, 53, 255], speckleDensity: 0.09 } },
 ];
+
+/**
+ * 4 procedural wall-accent motifs (crack / mineral-vein / rust-brace /
+ * damp-stain), each a small deterministic blob rendered onto a transparent
+ * 64x64 canvas — placeholder stand-ins for the Azure-generated motifs that
+ * ship in the committed pack (see `generate-industrial-cave-motifs.ts`).
+ * `buildWallAccentAtlas` then clips each motif to every mask's wall
+ * silhouette to build the full 8x6 atlas (2026-07-25 refinement #3).
+ */
+const ACCENT_SPECS: readonly {
+  readonly id: string;
+  readonly color: readonly [number, number, number];
+}[] = [
+  { id: 'crack', color: [12, 10, 10] },
+  { id: 'mineral-vein', color: [92, 168, 150] },
+  { id: 'rust-brace', color: [140, 74, 34] },
+  { id: 'damp-stain', color: [20, 28, 30] },
+];
+
+/** Render one deterministic transparent accent-motif blob (placeholder — no external art). */
+function renderAccentMotif(seed: number, color: readonly [number, number, number]): RgbaImage {
+  const size = TERRAIN_PACK_CELL_PX;
+  const img = createImage(size, size);
+  const rng = new SeededRandom(seed);
+  const cx = size * (0.35 + rng.next() * 0.3);
+  const cy = size * (0.35 + rng.next() * 0.3);
+  const radius = size * (0.2 + rng.next() * 0.15);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Soft-edged blob: opaque core fading to transparent — a believable
+      // decal silhouette rather than a hard-edged square (avoids reading as
+      // a generic overlay, refinement #3's "no generic overlays" spirit).
+      const edge = radius * (0.7 + 0.3 * Math.sin(dx * 0.5) * Math.cos(dy * 0.5));
+      if (dist < edge) {
+        const falloff = 1 - dist / edge;
+        const alpha = Math.round(160 + falloff * 95);
+        setPixel(img, x, y, color[0], color[1], color[2], Math.min(255, alpha));
+      }
+    }
+  }
+  return img;
+}
 
 export interface BuildOutputFile {
   readonly relativePath: string;
@@ -77,6 +166,10 @@ export function buildIndustrialCavePack(): IndustrialCaveBuildResult {
   const files: BuildOutputFile[] = [];
 
   // --- Wall autotile atlas -------------------------------------------------
+  // NOTE: `generateQuadrantKit` emits SOLID-FILL silhouettes by design (see its
+  // header) — this atlas carries correct blob47 geometry and alpha but no
+  // material. `restyleWallAtlas` in rebuild-shared-base-pools.ts stamps the
+  // floor material through it; that step is chained into `terrain-packs:build`.
   const quadrantKit = generateQuadrantKit();
   const assignments = buildMaskFrameAssignments();
   const atlas = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
@@ -92,19 +185,55 @@ export function buildIndustrialCavePack(): IndustrialCaveBuildResult {
   // --- Floor / corridor pools -----------------------------------------------
   function buildPool(
     kind: 'floor' | 'corridor',
-    palettes: readonly SurfacePalette[],
-  ): { id: string; imagePath: string; textureKey: string }[] {
-    return palettes.map((palette, i) => {
+    specs: readonly {
+      readonly palette: SurfacePalette;
+      readonly gradient?: { readonly axis: 'vertical' | 'horizontal'; readonly strength: number };
+    }[],
+  ): TerrainPackDef['floorPool'] {
+    return specs.map((spec, i) => {
       const id = `${kind}-${i}`;
       const seed = hashStringToSeed(`industrial-cave-${kind}-${i}`);
-      const img = renderSpeckledSurface(seed, palette);
+      const img = renderSpeckledSurface(seed, spec.palette, spec.gradient);
       const relPath = `${packDir}/${kind}-${i}.png`;
       files.push({ relativePath: relPath, buffer: encodePng(img) });
-      return { id, imagePath: relPath, textureKey: `terrain-pack-industrial-cave-${kind}-${i}` };
+      const allowedTransforms: TransformId[] = deriveAllowedTransforms(img);
+      return {
+        id,
+        imagePath: relPath,
+        textureKey: `terrain-pack-industrial-cave-${kind}-${i}`,
+        allowedTransforms,
+      };
     });
   }
   const floorPool = buildPool('floor', FLOOR_PALETTES);
   const corridorPool = buildPool('corridor', CORRIDOR_PALETTES);
+  if (floorPool.length !== TERRAIN_PACK_POOL_TARGET_SIZE) {
+    throw new Error(
+      `Expected ${TERRAIN_PACK_POOL_TARGET_SIZE} floor sources, built ${floorPool.length}`,
+    );
+  }
+  if (corridorPool.length !== TERRAIN_PACK_POOL_TARGET_SIZE) {
+    throw new Error(
+      `Expected ${TERRAIN_PACK_POOL_TARGET_SIZE} corridor sources, built ${corridorPool.length}`,
+    );
+  }
+
+  // --- Wall accents ----------------------------------------------------------
+  const wallAccents: TerrainPackDef['wallAccents'] = ACCENT_SPECS.map((spec) => {
+    const seed = hashStringToSeed(`industrial-cave-accent-${spec.id}`);
+    const motif = renderAccentMotif(seed, spec.color);
+    const accentAtlas = buildWallAccentAtlas(motif, atlas);
+    const relPath = `${packDir}/accent-${spec.id}.png`;
+    files.push({ relativePath: relPath, buffer: encodePng(accentAtlas) });
+    return {
+      id: spec.id,
+      imagePath: relPath,
+      textureKey: `terrain-pack-industrial-cave-accent-${spec.id}`,
+    };
+  });
+  if (wallAccents.length !== WALL_ACCENT_COUNT) {
+    throw new Error(`Expected ${WALL_ACCENT_COUNT} wall accents, built ${wallAccents.length}`);
+  }
 
   // --- Doors -----------------------------------------------------------------
   const doorSpecs = [
@@ -150,6 +279,7 @@ export function buildIndustrialCavePack(): IndustrialCaveBuildResult {
     floorPool,
     corridorPool,
     doorSet: doorEntries as TerrainPackDef['doorSet'],
+    wallAccents,
   };
 
   return { manifest, files };

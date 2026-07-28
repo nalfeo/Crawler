@@ -1618,15 +1618,30 @@ const definitivelyUnreachableMarkerShas = new Set();
 // exist on a divergent lineage.
 const definitivelyMissingMarkerShas = new Set();
 
-function differsByExactlyOneHexDigit(leftSha, rightSha) {
+// True when leftSha and rightSha (both 40-char hex) differ by at most 2
+// adjacent (contiguous) hex digits. This covers the one-digit transcription
+// error seen in earlier incidents AND the two-adjacent-digit pattern — e.g.
+// "19" → "20" — produced by LLM SHA hallucination (PR #2010 incident, where
+// the marker reply carried "...f3fe20afef77" instead of "...f3fe19afef77").
+// Keeping the guard to contiguous pairs (not any 2 differing positions) stays
+// conservative: 2 non-adjacent changed digits almost always indicate a
+// genuinely different commit, not a single transcription mistake.
+function isNearHexTypo(leftSha, rightSha) {
   if (leftSha.length !== 40 || rightSha.length !== 40) return false;
-  let differenceCount = 0;
+  const diffPositions = [];
   for (let index = 0; index < leftSha.length; index += 1) {
-    if (leftSha[index] === rightSha[index]) continue;
-    differenceCount += 1;
-    if (differenceCount > 1) return false;
+    if (leftSha[index] !== rightSha[index]) {
+      diffPositions.push(index);
+      if (diffPositions.length > 2) return false;
+    }
   }
-  return differenceCount === 1;
+  if (diffPositions.length === 1) return true;
+  if (diffPositions.length === 2) {
+    // Accept only if the two differing positions are adjacent — a single
+    // contiguous "group" — to avoid promoting genuinely divergent commits.
+    return diffPositions[1] - diffPositions[0] === 1;
+  }
+  return false;
 }
 
 for (const markerSha of markerShasNeedingLineageCheck) {
@@ -1668,17 +1683,21 @@ for (const markerSha of markerShasNeedingLineageCheck) {
   }
 }
 
-// Promote only definitively-missing 40-char SHAs that differ from the current
-// head by exactly one hex digit. This covers the reported stale-marker typo
-// incident without reclassifying divergent/behind commits or unrelated missing
-// SHAs that merely share a 7-char prefix with HEAD.
+// Promote definitively-missing 40-char SHAs that are a near-typo of HEAD:
+// share HEAD's 7-char abbreviation AND differ by at most 2 contiguous hex
+// digits. The 2-digit contiguous case covers the PR #2010 class of LLM SHA
+// hallucination ("...f3fe19..." written as "...f3fe20..."), where a decimal-
+// adjacent substitution produces two adjacent hex-digit differences.
+// Requiring contiguity (positions differ by 1) keeps the promotion
+// conservative: two non-adjacent changed digits almost always indicate a
+// genuinely different commit rather than a transcription slip.
 for (const sha of [...definitivelyMissingMarkerShas]) {
-  if (headSha.startsWith(sha.slice(0, 7)) && differsByExactlyOneHexDigit(sha, headSha)) {
+  if (headSha.startsWith(sha.slice(0, 7)) && isNearHexTypo(sha, headSha)) {
     reachableMarkerShas.add(sha);
     definitivelyUnreachableMarkerShas.delete(sha);
     definitivelyMissingMarkerShas.delete(sha);
     process.stdout.write(
-      `promoted stale-marker sha=${sha} to reachable via one-digit typo match head=${headSha}\n`,
+      `promoted stale-marker sha=${sha} to reachable via near-typo match head=${headSha}\n`,
     );
   }
 }

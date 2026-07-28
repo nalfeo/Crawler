@@ -41,16 +41,37 @@ class MockLoader implements TerrainPackLoaderLike {
 describe('collectTerrainPackPreloadEntries', () => {
   const entries = collectTerrainPackPreloadEntries();
 
-  it('includes exactly one wall-atlas entry per RUNTIME pack (caeles-fixture is build-only)', () => {
+  it('includes one wall-atlas entry PLUS one per wall-accent atlas, for every RUNTIME pack', () => {
     const wallEntries = entries.filter((e) => e.kind === 'wall-atlas');
-    expect(wallEntries).toHaveLength(getAllRuntimeTerrainPackIds().length);
+    const expectedCount = getAllRuntimeTerrainPackIds().reduce(
+      (sum, id) => sum + 1 + (getTerrainPack(id).wallAccents?.length ?? 0),
+      0,
+    );
+    expect(wallEntries).toHaveLength(expectedCount);
+  });
+
+  it('includes one ground-decals spritesheet entry per declared decal set', () => {
+    const decalEntries = entries.filter((e) => e.kind === 'ground-decals');
+    const declaredSets = getAllRuntimeTerrainPackIds().flatMap((id) =>
+      (getTerrainPack(id).groundDecals ?? []).map((set) => ({ id, set })),
+    );
+    expect(decalEntries).toHaveLength(declaredSets.length);
+    for (const { id, set } of declaredSets) {
+      const entry = decalEntries.find((e) => e.textureKey === set.textureKey);
+      expect(entry, `${id} ground-decals entry for ${set.textureKey}`).toBeDefined();
+      // Decal frames are sized by the DECAL cell, never the wall cellPx — the
+      // reason this is a distinct preload kind. Sets differ in cellPx, so a
+      // shared kind would make the wall-atlas frame invariant untrue twice over.
+      expect(entry && 'frameWidth' in entry ? entry.frameWidth : null).toBe(set.cellPx);
+      expect(entry && 'frameHeight' in entry ? entry.frameHeight : null).toBe(set.cellPx);
+    }
   });
 
   it('does not include any caeles-fixture assets (build-only pack, not preloaded at boot)', () => {
     expect(entries.every((e) => !e.textureKey.includes('caeles-fixture'))).toBe(true);
   });
 
-  it('includes every floorPool + corridorPool + doorSet asset for every RUNTIME pack', () => {
+  it('includes every floorPool + corridorPool + doorSet + wallAccents asset for every RUNTIME pack', () => {
     for (const id of getAllRuntimeTerrainPackIds()) {
       const pack = getTerrainPack(id);
       const expectedKeys = [
@@ -58,6 +79,7 @@ describe('collectTerrainPackPreloadEntries', () => {
         ...pack.floorPool.map((v) => v.textureKey),
         ...pack.corridorPool.map((v) => v.textureKey),
         ...Object.values(pack.doorSet).map((v) => v.textureKey),
+        ...(pack.wallAccents ?? []).map((a) => a.textureKey),
       ];
       const actualKeys = entries.map((e) => e.textureKey);
       for (const key of expectedKeys) {
@@ -66,12 +88,16 @@ describe('collectTerrainPackPreloadEntries', () => {
     }
   });
 
-  it('wall-atlas entries carry the pack cellPx as frame dimensions', () => {
+  it('wall-atlas entries (base atlas + accent atlases) carry the pack cellPx as frame dimensions', () => {
     for (const entry of entries) {
       if (entry.kind !== 'wall-atlas') continue;
       const pack = getAllRuntimeTerrainPackIds()
         .map((id) => getTerrainPack(id))
-        .find((p) => p.wallAutotile.textureKey === entry.textureKey)!;
+        .find(
+          (p) =>
+            p.wallAutotile.textureKey === entry.textureKey ||
+            (p.wallAccents ?? []).some((a) => a.textureKey === entry.textureKey),
+        )!;
       expect(entry.frameWidth).toBe(pack.wallAutotile.cellPx);
       expect(entry.frameHeight).toBe(pack.wallAutotile.cellPx);
     }
@@ -91,9 +117,13 @@ describe('preloadTerrainPacks', () => {
     const entries = collectTerrainPackPreloadEntries();
     expect(queued).toHaveLength(entries.length);
 
-    const wallCount = entries.filter((e) => e.kind === 'wall-atlas').length;
-    const otherCount = entries.length - wallCount;
-    expect(loader.spritesheets).toHaveLength(wallCount);
+    // Both framed kinds load as spritesheets; only unframed pool/door art loads
+    // as a plain image.
+    const sheetCount = entries.filter(
+      (e) => e.kind === 'wall-atlas' || e.kind === 'ground-decals',
+    ).length;
+    const otherCount = entries.length - sheetCount;
+    expect(loader.spritesheets).toHaveLength(sheetCount);
     expect(loader.images).toHaveLength(otherCount);
   });
 

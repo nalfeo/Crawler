@@ -214,34 +214,40 @@
     {
       "id": "floor-0",
       "imagePath": "assets/terrain-packs/caeles-fixture/floor-0.png",
-      "textureKey": "terrain-pack-caeles-fixture-floor-0"
+      "textureKey": "terrain-pack-caeles-fixture-floor-0",
+      "allowedTransforms": ["none"]
     },
     {
       "id": "floor-1",
       "imagePath": "assets/terrain-packs/caeles-fixture/floor-1.png",
-      "textureKey": "terrain-pack-caeles-fixture-floor-1"
+      "textureKey": "terrain-pack-caeles-fixture-floor-1",
+      "allowedTransforms": ["none"]
     },
     {
       "id": "floor-2",
       "imagePath": "assets/terrain-packs/caeles-fixture/floor-2.png",
-      "textureKey": "terrain-pack-caeles-fixture-floor-2"
+      "textureKey": "terrain-pack-caeles-fixture-floor-2",
+      "allowedTransforms": ["none"]
     }
   ],
   "corridorPool": [
     {
       "id": "corridor-0",
       "imagePath": "assets/terrain-packs/caeles-fixture/corridor-0.png",
-      "textureKey": "terrain-pack-caeles-fixture-corridor-0"
+      "textureKey": "terrain-pack-caeles-fixture-corridor-0",
+      "allowedTransforms": ["none"]
     },
     {
       "id": "corridor-1",
       "imagePath": "assets/terrain-packs/caeles-fixture/corridor-1.png",
-      "textureKey": "terrain-pack-caeles-fixture-corridor-1"
+      "textureKey": "terrain-pack-caeles-fixture-corridor-1",
+      "allowedTransforms": ["none"]
     },
     {
       "id": "corridor-2",
       "imagePath": "assets/terrain-packs/caeles-fixture/corridor-2.png",
-      "textureKey": "terrain-pack-caeles-fixture-corridor-2"
+      "textureKey": "terrain-pack-caeles-fixture-corridor-2",
+      "allowedTransforms": ["none"]
     }
   ],
   "doorSet": {
@@ -261,5 +267,27 @@
       "imagePath": "assets/terrain-packs/caeles-fixture/door-closed-vertical.png",
       "textureKey": "terrain-pack-caeles-fixture-door-closed-vertical"
     }
-  }
+  },
+  "wallAccents": [
+    {
+      "id": "crack",
+      "imagePath": "assets/terrain-packs/caeles-fixture/accent-crack.png",
+      "textureKey": "terrain-pack-caeles-fixture-accent-crack"
+    },
+    {
+      "id": "mineral-vein",
+      "imagePath": "assets/terrain-packs/caeles-fixture/accent-mineral-vein.png",
+      "textureKey": "terrain-pack-caeles-fixture-accent-mineral-vein"
+    },
+    {
+      "id": "rust-brace",
+      "imagePath": "assets/terrain-packs/caeles-fixture/accent-rust-brace.png",
+      "textureKey": "terrain-pack-caeles-fixture-accent-rust-brace"
+    },
+    {
+      "id": "damp-stain",
+      "imagePath": "assets/terrain-packs/caeles-fixture/accent-damp-stain.png",
+      "textureKey": "terrain-pack-caeles-fixture-accent-damp-stain"
+    }
+  ]
 }

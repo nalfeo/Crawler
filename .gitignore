@@ -60,7 +60,7 @@ files/
 # actionlint binary (downloaded for local use; not committed)
 actionlint
 
-# Playwright MCP scratch output (screenshots/console logs) — never commit
+# Playwright MCP session artifacts (console logs, traces) - throwaway
 .playwright-mcp/
 
 # Stryker mutation testing artifacts (sandbox + HTML/JSON reports)
