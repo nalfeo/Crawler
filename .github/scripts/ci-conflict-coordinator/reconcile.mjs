@@ -688,6 +688,9 @@ const commentEntries = await mapLimit(stateCandidateNumbers, 8, async (number) =
 const commentsByNumber = new Map(commentEntries);
 const existingStates = [];
 const commentedManagedNumbers = [];
+// Track coordinator comment ids so dissolved groups can have their durable
+// comment deleted (not just label-stripped) during out-of-scope cleanup below.
+const coordinatorCommentIdByNumber = new Map();
 for (const [number, comments] of commentEntries) {
   const managed = singleManagedComment(
     comments,
@@ -699,6 +702,7 @@ for (const [number, comments] of commentEntries) {
   if (managed) {
     existingStates.push(managed.state);
     commentedManagedNumbers.push(number);
+    coordinatorCommentIdByNumber.set(number, managed.comment.id);
   }
 }
 const managedNumbers = [...new Set([...labeledManagedNumbers, ...commentedManagedNumbers])];
@@ -729,6 +733,25 @@ for (const number of managedNumbers) {
   process.stdout.write(
     `released orphaned coordinator labels pr=#${number} reason=out-of-scope-or-stale\n`,
   );
+  // Delete the durable coordinator comment so the stale state blob is not
+  // re-parsed on the next sweep and re-queued for indefinite cleanup. Labels
+  // are already gone; the comment is the only surviving artifact.
+  const commentId = coordinatorCommentIdByNumber.get(number);
+  if (commentId) {
+    try {
+      await request(token, `/repos/${owner}/${repo}/issues/comments/${commentId}`, {
+        method: 'DELETE',
+      });
+      process.stdout.write(
+        `deleted coordinator comment pr=#${number} comment_id=${commentId}\n`,
+      );
+    } catch (error) {
+      // Non-fatal: a 404 means it was already deleted; log and continue.
+      process.stdout.write(
+        `skip coordinator comment delete pr=#${number} comment_id=${commentId} error=${error?.message || error}\n`,
+      );
+    }
+  }
 }
 if (groups.length === 0) {
   process.stdout.write('No CI conflict clusters found after cleanup\n');
