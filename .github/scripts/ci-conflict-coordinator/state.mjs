@@ -13,10 +13,14 @@ export const ORDER_WAIT_LABEL = 'ci-conflict-order-wait';
  * Enforcement kill switch for CI conflict coordination.
  *
  * When DISABLED (the default) the coordinator still *discovers* and reports
- * overlap groups — the comment, the `ci-conflict-coordinated` label and all
- * escalation signals keep working — but it stops *serializing*: it no longer
- * applies `ci-conflict-order-wait`, no longer disarms auto-merge, and the merge
- * train stops consulting coordinator slot ordering at promotion time.
+ * overlap groups via the coordinator comment, but it actively drains the
+ * `ci-conflict-coordinated` and `ci-conflict-leader` labels and suppresses
+ * grouping-derived escalation signals (`ambiguous` supersession proofs and
+ * selection-binding drift). Only ownership-gated escalation signals keep
+ * working, and it stops *serializing*: it no longer applies
+ * `ci-conflict-order-wait`, no longer disarms auto-merge for grouping reasons,
+ * and the merge train stops consulting coordinator slot ordering at promotion
+ * time.
  *
  * Rationale: filename overlap is not proof of conflict. The fence is a
  * pessimistic lock with ~100:1 asymmetric cost — a false positive stalls the
