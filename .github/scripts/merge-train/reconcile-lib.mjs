@@ -423,7 +423,10 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
         unmergedFiles.every((f) => f === INDEX_MD_PATH)
       ) {
         git(['checkout', 'HEAD', '--', INDEX_MD_PATH]);
-        git(['add', INDEX_MD_PATH]);
+        // A squash-merge leaves newly-added files from the merged branch as
+        // untracked (not staged). Stage everything so the candidate commit
+        // captures the PR's full diff, not just its pre-existing modifications.
+        git(['add', '--all']);
         // Fall through — merge is now clean, continue to commit below.
       } else {
         git(['reset', '--hard', baseSha]);

@@ -144,7 +144,8 @@ test('checkIndexMdNotModified denies when INDEX.md is in the diff', () => {
   const result = checkIndexMdNotModified(['docs/knowledge/handoffs/INDEX.md']);
   assert.ok(result, 'expected deny when INDEX.md is modified');
   assert.match(result, /INDEX\.md must not be committed to a PR branch/);
-  assert.match(result, /git rm --cached/);
+  assert.match(result, /git restore --source=origin\/main/);
+  assert.match(result, /automation\/docs-update/);
 });
 
 test('checkIndexMdNotModified denies when INDEX.md appears alongside other files', () => {

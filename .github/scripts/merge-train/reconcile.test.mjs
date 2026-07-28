@@ -384,13 +384,12 @@ test('buildCandidate auto-resolves INDEX.md-only conflicts and continues', () =>
     ),
     'expected checkout HEAD -- INDEX.md to resolve the conflict',
   );
-  // INDEX.md must be staged after resolution.
+  // git add --all must follow to pick up any newly-added files from the PR
+  // that a squash-merge leaves untracked rather than staged (critical: without
+  // this, added files would be silently dropped from the candidate commit).
   assert.ok(
-    calls.some(
-      (c) =>
-        c.args[0] === 'add' && c.args[1] === 'docs/knowledge/handoffs/INDEX.md',
-    ),
-    'expected git add INDEX.md after checkout',
+    calls.some((c) => c.args[0] === 'add' && c.args[1] === '--all'),
+    'expected git add --all to stage newly-added files from the PR',
   );
 });
 
