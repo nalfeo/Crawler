@@ -680,6 +680,7 @@ test('live Actions runs require separate promotion and workflow-dispatch tokens'
     {
       promotionToken: 'app-token',
       workflowDispatchToken: 'actions-token',
+      updateBranchToken: 'actions-token',
     },
   );
   assert.throws(
@@ -1046,6 +1047,7 @@ test('resolveMergeTrainTokens ignores the legacy workflow PAT environment variab
   assert.deepEqual(result, {
     promotionToken: 'app-token',
     workflowDispatchToken: 'github-token',
+    updateBranchToken: 'github-token',
   });
 });
 
