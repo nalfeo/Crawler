@@ -34,6 +34,7 @@ export async function startThemeEquipmentReviewServer(options) {
     renderHtml,
     runCommand,
     dispatchWorkflow,
+    runStatus,
     log = () => {},
     listTtlMs = LIST_TTL_MS,
     watchIntervalMs = WATCH_INTERVAL_MS,
@@ -211,6 +212,18 @@ export async function startThemeEquipmentReviewServer(options) {
         return;
       }
       writeJson(res, 200, await runCommand({ action: 'state', setId }));
+      return;
+    }
+    if (method === 'GET' && url.pathname === '/api/run-status') {
+      if (!setId) {
+        writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
+      if (typeof runStatus !== 'function') {
+        writeJson(res, 200, { available: false, errorKind: 'not-wired' });
+        return;
+      }
+      writeJson(res, 200, await runStatus(setId));
       return;
     }
     if (method === 'GET' && url.pathname === '/api/artifact') {

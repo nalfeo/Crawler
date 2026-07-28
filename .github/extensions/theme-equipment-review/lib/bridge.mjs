@@ -241,6 +241,102 @@ export async function dispatchThemeEquipmentWorkflow(repoRoot, setId, action) {
   }
 }
 
+/** Bound the run-status probe tightly — it polls, so a hung gh call must not pile up. */
+const RUN_STATUS_TIMEOUT_MS = 20_000;
+const RUN_STATUS_WORKFLOW = 'theme-equipment.yml';
+
+/**
+ * Report the most recent GitHub Actions run for this set on the current branch,
+ * so the canvas can show a dispatched run progressing without leaving the board.
+ *
+ * Correlation: the workflow's run-name ends in " · <set_id>" (see
+ * theme-equipment.yml). Matching on that exact suffix is collision-safe because a
+ * set id cannot contain " · " — "… · classic-fantasy" never matches
+ * "classic-fantasy-basic-leather".
+ *
+ * Three distinct outcomes, kept separate so the UI can tell a quiet pipeline from
+ * a broken one:
+ *   { available: true,  run: {...}, ref }  — a matching run was found
+ *   { available: true,  run: null,  ref }  — gh worked, no matching run yet
+ *   { available: false, errorKind }        — gh/auth/network failure
+ */
+/**
+ * Pure correlation + normalization for a `gh run list --json …` payload. Kept
+ * separate from the `gh` shell so the collision-safe title match and the
+ * field-by-field normalization can be unit-tested without a live GitHub call.
+ * Returns the normalized run object, or null when nothing matches (or the
+ * payload is not an array).
+ *
+ * The run-name is "Theme Equipment <action> · <setId>". We anchor the WHOLE
+ * title rather than only its " · <setId>" suffix: the action segment cannot
+ * contain the "·" separator, so a run dispatched with a crafted set_id like
+ * "x · classic-fantasy" (title "… · x · classic-fantasy", suffix-matches
+ * "classic-fantasy") introduces a second "·" and fails the anchored match — it
+ * can no longer masquerade as the run for "classic-fantasy". Anchoring on "$"
+ * also preserves the prefix-collision safety (a shorter id never matches a
+ * longer id's run). setId is regex-escaped defensively; authored ids are
+ * kebab-case and contain no metacharacters.
+ */
+export function selectThemeEquipmentRun(runs, setId) {
+  if (!Array.isArray(runs)) return null;
+  const escapedSetId = String(setId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const titlePattern = new RegExp('^Theme Equipment [^·]+ · ' + escapedSetId + '$');
+  const match = runs.find(
+    (run) => typeof run?.displayTitle === 'string' && titlePattern.test(run.displayTitle),
+  );
+  if (!match) return null;
+  const databaseId = Number(match.databaseId);
+  return {
+    databaseId: Number.isInteger(databaseId) && databaseId > 0 ? databaseId : null,
+    status: typeof match.status === 'string' ? match.status : null,
+    conclusion: typeof match.conclusion === 'string' && match.conclusion ? match.conclusion : null,
+    url: typeof match.url === 'string' ? match.url : null,
+    createdAt: typeof match.createdAt === 'string' ? match.createdAt : null,
+    displayTitle: typeof match.displayTitle === 'string' ? match.displayTitle : null,
+  };
+}
+
+export async function themeEquipmentRunStatus(repoRoot, setId) {
+  if (!SET_ID_PATTERN.test(setId ?? '')) {
+    return { available: false, errorKind: 'invalid-set-id' };
+  }
+  const env = loadRepoEnv(repoRoot);
+  let ref;
+  try {
+    ref = await resolveDispatchRef(repoRoot, env);
+  } catch (error) {
+    return { available: false, errorKind: 'no-branch', detail: error?.message };
+  }
+  let stdout;
+  try {
+    ({ stdout } = await execFileAsync(
+      'gh',
+      [
+        'run',
+        'list',
+        `--workflow=${RUN_STATUS_WORKFLOW}`,
+        '--branch',
+        ref,
+        '--limit',
+        '20',
+        '--json',
+        'databaseId,status,conclusion,url,createdAt,displayTitle',
+      ],
+      { cwd: repoRoot, env, encoding: 'utf8', windowsHide: true, timeout: RUN_STATUS_TIMEOUT_MS },
+    ));
+  } catch (error) {
+    const detail = typeof error?.stderr === 'string' ? error.stderr.trim() : error?.message;
+    return { available: false, errorKind: 'gh-failed', detail };
+  }
+  let runs;
+  try {
+    runs = JSON.parse(stdout);
+  } catch {
+    return { available: false, errorKind: 'parse-failed' };
+  }
+  return { available: true, run: selectThemeEquipmentRun(runs, setId), ref };
+}
+
 export function loadRepoEnv(repoRoot, baseEnv = process.env) {
   const env = { ...baseEnv };
   const envPath = path.join(repoRoot, '.env.local');
