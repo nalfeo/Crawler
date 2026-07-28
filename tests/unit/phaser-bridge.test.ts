@@ -741,7 +741,13 @@ describe('createPhaserBridge', () => {
   });
 
   it('prefers Kenney sprite + frame when the sheet texture exists', () => {
-    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    // Exclude the generated player art so this exercises the Kenney FALLBACK.
+    // The `player` render kind now also pins generated art (Rhea Vale), which
+    // otherwise wins and hides this branch.
+    const { scene, images } = createSceneStub({
+      kenneyLoaded: true,
+      textureExists: (key) => !key.startsWith('rhea-vale'),
+    });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
     const eid = addEntity(world.ecs);
@@ -756,6 +762,24 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.textureKey).toBe('kenney-tiny-dungeon');
     expect(images[0]?.frame).toBe(96); // player → Tiny Dungeon knight (frame 96)
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
+  });
+
+  it('prefers the pinned generated player art over the Kenney sheet', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('rhea-vale-v1-var-0');
+    // 64px art at 0.72 => 46px drawn box == 5.75 ft, matching the NPC scale.
+    expect(images[0]?.scaleX).toBeCloseTo(0.72, 5);
   });
 
   it('fades the skull marker out quickly while the corpse desaturates and fades', () => {

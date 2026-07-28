@@ -26,18 +26,10 @@ Previously it failed on essentially every character variant for nine rounds.
 
 ## Results
 
-<<<<<<< Updated upstream
-| brief | variants | sensor-pass | full-pipeline-pass | shipped primary |
+| brief                | variants | sensor-pass | full-pipeline-pass | shipped primary                |
 | -------------------- | -------- | ----------- | ------------------ | ------------------------------ |
-| `sweaty-merchant-v2` | 12 | 12/12 | 4 (5, 7, 9, 10) | **`sweaty-merchant-v2-var-7`** |
-| `welcome-goon-v2` | 12 | 11/12 | 7 (3,4,5,6,7,9,10) | **`welcome-goon-v2-var-7`** |
-=======
-| brief | variants | sensor-pass | full-pipeline-pass | shipped primary |
-|---|---|---|---|---|
-| `sweaty-merchant-v2` | 12 | 12/12 | 4 (5, 7, 9, 10) | **`sweaty-merchant-v2-var-7`** |
-| `welcome-goon-v2` | 12 | 11/12 | 7 (3,4,5,6,7,9,10) | **`welcome-goon-v2-var-7`** |
-
-> > > > > > > Stashed changes
+| `sweaty-merchant-v2` | 12       | 12/12       | 4 (5, 7, 9, 10)    | **`sweaty-merchant-v2-var-7`** |
+| `welcome-goon-v2`    | 12       | 11/12       | 7 (3,4,5,6,7,9,10) | **`welcome-goon-v2-var-7`**    |
 
 Judge scores (design_language / reference_style_match / brief_match / readability):
 
@@ -66,15 +58,10 @@ threw and failed the brief. The hard-block finding was substantively CORRECT —
     measured round 10: drawn box 38x58, aspect 0.655, head block ~13px of 58
 
 i.e. ~4.5 heads, against a brief demanding 7. **I did not raise the schema cap or
-<<<<<<< Updated upstream
 otherwise touch judge/sensor code.** I fixed the _brief_, porting the merchant
-=======
-otherwise touch judge/sensor code.\** I fixed the *brief\*, porting the merchant
-
-> > > > > > > Stashed changes
-> > > > > > > brief's measured-share language (explicit legs ≥100/256 source px, head ≤34/256,
-> > > > > > > "clearly taller than wide") and replacing "big, heavy-set" — which was fighting
-> > > > > > > the seven-heads requirement — with "tall, rangy … lean, long-limbed".
+brief's measured-share language (explicit legs ≥100/256 source px, head ≤34/256,
+"clearly taller than wide") and replacing "big, heavy-set" — which was fighting
+the seven-heads requirement — with "tall, rangy … lean, long-limbed".
 
     measured round 11: drawn box 31x58, aspect 0.534 — and 7 full-pipeline passes
 
@@ -91,11 +78,7 @@ otherwise touch judge/sensor code.\** I fixed the *brief\*, porting the merchant
    run "the single hardest requirement"; the shipped sprite has two runs
    ([21-30], [36-42]). It is harmless now that the anchor is centre-of-mass, and
    the silhouette is symmetric about x=32, but the brief text overstates the
-   <<<<<<< Updated upstream
    requirement and should be relaxed _in the brief_ next time this is touched.
-   =======
-   requirement and should be relaxed _in the brief_ next time this is touched.
-   > > > > > > > Stashed changes
 3. **Low variant diversity** (pHash mean 0.018 merchant / 0.023 goon) — the 12
    cells of a sheet are near-duplicates, yet judge scores split 4/4/4/5 vs
    2/3/1/2 across them. Worth a look; not blocking.

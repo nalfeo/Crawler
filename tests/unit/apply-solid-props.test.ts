@@ -14,7 +14,7 @@ import {
 import type { SetPieceDef } from '../../src/shared/set-piece-types.js';
 
 const BOUNDS: RoomBounds = { x: 1, y: 1, width: 7, height: 7 };
-const DOORS: readonly DoorLocation[] = [{ x: 4, y: 7 }];
+const DOORS: readonly DoorLocation[] = [{ x: 4, y: 7, connectsTo: -1 }];
 
 /** 9x9 map holding one 7x7 walled room with a single door on the bottom ring. */
 function createRoomMap(): FloorMap {

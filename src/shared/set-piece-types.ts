@@ -227,7 +227,7 @@ export interface SetPiecePropDef {
    * written impassable-but-transparent at carve time, so the player and AI walk
    * around it while still seeing (and being able to talk) over it.
    */
-  readonly solid: boolean;
+  readonly solid?: boolean;
   /** Ordered visual layers (base first, stacked extras after). */
   readonly layers: readonly SpriteLayer[];
 }

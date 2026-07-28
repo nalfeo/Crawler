@@ -477,26 +477,36 @@ describe('floor1Scenario', () => {
         `seed ${seed}: the carved welcome-room ring needs at least one door`,
       ).toBeGreaterThanOrEqual(1);
 
-      // The interior (inside the ring) has no stray carved walls — fully passable.
+      // The interior has no stray carved WALLS. `solid: true` furniture props
+      // (welcome-desk, bookcase, …) legitimately write impassable tiles here,
+      // but they use `TilePresets.WINDOW` — impassable AND transparent — so NPC
+      // line-of-sight still reaches over them. Anything impassable-and-opaque
+      // inside the ring is a real bug.
       for (let ty = y + 1; ty < y + height - 1; ty += 1) {
         for (let tx = x + 1; tx < x + width - 1; tx += 1) {
           const flags = map.tileMap.flags[ty * map.width + tx]!;
+          if ((flags & TileFlags.PASSABLE) !== 0) continue;
           expect(
-            (flags & TileFlags.PASSABLE) !== 0,
-            `seed ${seed}: unexpected impassable tile at (${tx},${ty}) in welcome room interior`,
+            (flags & TileFlags.TRANSPARENT) !== 0,
+            `seed ${seed}: impassable interior tile (${tx},${ty}) must be transparent furniture, not an opaque wall`,
           ).toBe(true);
         }
       }
     }
   });
 
-  it('welcome-room set-piece owns its wall/door shell and keeps its interior passable', () => {
+  it('welcome-room set-piece owns its wall/door shell and keeps its interior connected', () => {
     // Prefab-room model: the welcome-room set-piece is now AUTHORITATIVE for its
     // own shell — it carries a complete wall ring plus at least one door slot in
     // its authored props. Those structural props are baked into terrain TILES by
     // the carve (real impassable walls + a TileFlags.DOOR) and are SKIPPED from
     // the render-only `world.setPieceProps` list (re-drawing them would z-fight
-    // the baked tiles). The interior stays fully passable.
+    // the baked tiles).
+    //
+    // The interior is NOT fully passable: `solid: true` furniture props write
+    // impassable-but-transparent tiles. What must hold is that the walkable
+    // interior stays ONE connected region — `applySolidProps` reverts any prop
+    // whose blocking would split the room.
     const def = getSetPieceDef('welcome-room');
     if (!def) {
       throw new Error('Expected the welcome-room set piece to be registered');
@@ -534,15 +544,44 @@ describe('floor1Scenario', () => {
     }
 
     const { x, y, width, height } = room.bounds;
+    const passable: number[] = [];
     for (let ty = y + 1; ty < y + height - 1; ty += 1) {
       for (let tx = x + 1; tx < x + width - 1; tx += 1) {
-        const flags = map.tileMap.flags[ty * map.width + tx]!;
-        expect(
-          (flags & TileFlags.PASSABLE) !== 0,
-          `unexpected impassable tile at (${tx},${ty}) in welcome room interior after set-piece carve`,
-        ).toBe(true);
+        if ((map.tileMap.flags[ty * map.width + tx]! & TileFlags.PASSABLE) !== 0) {
+          passable.push(ty * map.width + tx);
+        }
       }
     }
+    expect(passable.length, 'the welcome-room interior must not be sealed shut').toBeGreaterThan(0);
+
+    // Flood the walkable interior from an arbitrary passable tile; it must reach
+    // every other one, or furniture has split the room into islands.
+    const seen = new Set<number>([passable[0]!]);
+    const stack = [passable[0]!];
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const tx = idx % map.width;
+      const ty = (idx - tx) / map.width;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nx = tx + dx;
+        const ny = ty + dy;
+        if (nx <= x || nx >= x + width - 1 || ny <= y || ny >= y + height - 1) continue;
+        const nIdx = ny * map.width + nx;
+        if (seen.has(nIdx)) continue;
+        if ((map.tileMap.flags[nIdx]! & TileFlags.PASSABLE) === 0) continue;
+        seen.add(nIdx);
+        stack.push(nIdx);
+      }
+    }
+    expect(
+      seen.size,
+      'solid furniture props must never split the welcome-room interior into disconnected islands',
+    ).toBe(passable.length);
   });
 
   it('does not accumulate set-piece props when re-initialized on a reused world', () => {
