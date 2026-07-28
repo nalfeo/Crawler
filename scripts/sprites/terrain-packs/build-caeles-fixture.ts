@@ -10,23 +10,26 @@
  * every terrain pack uses, and documents that transformation via
  * `provenance.derivationNote`.
  *
- * Cell → mask assignment: the last (48th) template cell is reserved as a
- * spare (used to derive floor/corridor/door pool art, since the template has
- * no dedicated art for those surfaces). The first 47 cells are assigned to
- * the 47 canonical blob47 masks via a deterministic two-phase GREEDY
- * content-aware match (see `assignPoolCellsToMasks`): phase 1 bootstraps
- * open/solid edge references from pool cell 0 and the spare cell to lock in
- * masks 0 (all-open) and 255 (all-solid) first; phase 2 rebuilds the
- * references from the cells actually assigned to those two masks (so the
- * classifier is self-consistent with what the post-hoc compatible-boundary
- * validator will later sample straight from the atlas) and greedily assigns
- * every remaining mask in fixed ascending mask-value order, breaking ties by
- * lowest cell index. This is still fully deterministic build-time
- * computation — the result is written down as a literal, explicit
- * `{maskId, frameIndex}` table in the manifest (never inferred from atlas
- * position at runtime) — and it measurably beats a blind positional
- * assignment on the compatible-boundary check (~0.94 vs ~0.55-0.65
- * edge-match rate on this fixture; see `validate.ts`).
+ * Cell → mask assignment: DERIVED from the art, not guessed. The template is
+ * alpha-clean (opaque = wall, transparent = floor), so each 32px cell's own
+ * blob47 signature is read straight off its pixels — the midpoint of each edge
+ * for the 4 cardinal bits, the extreme corner pixel for each of the 4 diagonal
+ * bits — and normalized through the shared `normalizeBlob47Mask`. See
+ * `deriveTemplateCellMasks`. That recovers the template's real layout exactly:
+ * 47 distinct canonical masks over the 48 cells, every raw signature already
+ * canonical, and mask 255 appearing twice (the template ships two fully-solid
+ * cells; the second is the spare used to derive floor/corridor/door art). The
+ * derivation asserts all of that and throws if the vendored source ever stops
+ * matching. The result is still written down as a literal, explicit
+ * `{maskId, frameIndex}` table in the manifest — never inferred from atlas
+ * position at runtime.
+ *
+ * This replaced an earlier two-phase GREEDY best-match search that scored cells
+ * only against expected CARDINAL connectivity. Being blind to diagonals, it
+ * mapped a half-floor cell onto mask 255, emitted duplicate silhouettes, and
+ * reserved cell 47 as the "spare" when cell 47 is really mask 9 — while still
+ * scoring ~0.94 on the cardinal-only edge check. The corner-coverage check in
+ * `validate.ts` now catches that class of error.
  *
  * Usage:
  *   npx tsx scripts/sprites/terrain-packs/build-caeles-fixture.ts
@@ -38,7 +41,8 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import {
   BLOB47_CANONICAL_MASKS,
-  edgeConnectionsFromMask,
+  MASK_BIT,
+  normalizeBlob47Mask,
 } from '../../../src/shared/terrain-pack-mask.js';
 import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
 import { TERRAIN_PACK_CELL_PX } from '../../../src/shared/terrain-pack-types.js';
@@ -50,13 +54,6 @@ import {
   buildMaskFrameAssignments,
 } from './atlas-grid.js';
 import {
-  buildEdgeReferences,
-  classifyCellEdges,
-  CELL_EDGES,
-  VENDORED_EDGE_SAMPLING,
-  type CellEdge,
-} from './edge-signature.js';
-import {
   compositeInto,
   createImage,
   cropImage,
@@ -67,6 +64,7 @@ import {
 } from './png-buffer.js';
 import type { BuildOutputFile } from './build-industrial-cave.js';
 import { renderDoorTile } from './procedural-surfaces.js';
+import { isWallAlpha } from './wall-opacity.js';
 
 const CAELES_FIXTURE_PACK_ID = 'caeles-fixture' as const;
 
@@ -88,20 +86,19 @@ const CAELES_PROVENANCE = {
   licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
   sha256: '34f07db7bb4872406f35507c515e2fca78bbabbf5a112a20c995bcf554992d76',
   derivationNote:
-    'Sliced into 48 32px cells (8x6 grid, row-major). The 48th (last) cell is reserved as a ' +
-    'spare, used only to derive floor/corridor/door art and as a bootstrap "solid" reference ' +
-    '(the source template has no dedicated art for those surfaces). The remaining 47 cells are ' +
-    'assigned to the 47 canonical blob47 masks via a deterministic two-phase greedy ' +
-    'content-aware match (see assignPoolCellsToMasks in build-caeles-fixture.ts): phase 1 ' +
-    'classifies edges against the bootstrap open (cell 0) / solid (spare) references and locks ' +
-    'in masks 0 and 255 first; phase 2 reclassifies the remaining cells against those two ' +
-    "actually-assigned cells (self-consistent with what validate.ts's compatible-boundary " +
-    'check will later sample from the atlas) and greedily assigns every other mask in ' +
-    'ascending mask-value order, breaking ties by lowest cell index. Each assigned cell is ' +
-    'nearest-neighbor upscaled 32x32 -> 64x64 (factor 2, explicit source/destination size, no ' +
-    'implicit resizing). Floor/corridor/door pool images are derived by deterministically ' +
-    'cropping/recoloring the spare cell (documented here, not literal additional vendored ' +
-    'artwork) because the source template has no dedicated floor/corridor/door art.',
+    'Sliced into 48 32px cells (8x6 grid, row-major). Cell -> mask assignment is DERIVED from ' +
+    'the artwork rather than guessed: the template is alpha-clean (opaque = wall, transparent = ' +
+    "floor), so each cell's own blob47 signature is read directly off its pixels - the midpoint " +
+    'of each edge for the 4 cardinal bits, the extreme corner pixel for each of the 4 diagonal ' +
+    'bits - and normalized through the shared normalizeBlob47Mask (see deriveTemplateCellMasks ' +
+    'in build-caeles-fixture.ts). Every raw signature is already canonical, the 48 cells yield ' +
+    'exactly the 47 canonical masks, and mask 255 appears twice; the second fully-solid cell is ' +
+    'the spare. The derivation asserts all of that and throws if the vendored source ever stops ' +
+    'matching. Each assigned cell is nearest-neighbor upscaled 32x32 -> 64x64 (factor 2, explicit ' +
+    'source/destination size, no implicit resizing). Floor/corridor/door pool images are derived ' +
+    'by deterministically cropping/recoloring the spare cell (documented here, not literal ' +
+    'additional vendored artwork) because the source template has no dedicated ' +
+    'floor/corridor/door art.',
 };
 
 /** Read the 48 source cells (row-major) from the vendored template PNG bytes. */
@@ -124,121 +121,103 @@ function sliceSourceCells(templatePng: Buffer): readonly RgbaImage[] {
 }
 
 /**
- * Deterministically assign the 47 canonical blob47 masks to the 47 pool
- * cells (all source cells except the reserved spare), using a greedy
- * content-aware match on classified edge signatures.
+ * Recover the template's TRUE cell→mask layout by reading each cell's own
+ * 8-neighbour signature directly out of the art.
  *
- * Algorithm (fully deterministic, no randomness), in two phases so the
- * reference cells used for classification are the SAME cells the
- * compatible-boundary validator will later see at frame 0 / frame 46 of the
- * assembled atlas (self-consistency — otherwise the build's own optimization
- * target and the post-hoc validation metric silently diverge):
- *  1. Bootstrap: classify all 47 pool cells against a provisional open
- *     reference (pool cell 0) and a provisional solid reference (the
- *     reserved spare cell, which itself is never placed in the atlas — it
- *     is only used here as an external "fully enclosed" exemplar). Use this
- *     bootstrap classification to pick the single best-matching pool cell
- *     for mask 0 (all-open) and, separately, for mask 255 (all-solid).
- *  2. Final: rebuild the open/solid references from the ACTUAL cells now
- *     assigned to mask 0 and mask 255 (i.e. the literal atlas frame-0/46
- *     content), reclassify the remaining pool cells against these final
- *     references, then process every other canonical mask in fixed
- *     ascending mask-value order — for each, score every still-unassigned
- *     cell by how many of its 4 classified edges match the mask's expected
- *     cardinal connectivity (0-4), pick the highest score, and break ties by
- *     the lowest remaining cell index.
+ * The vendored template is alpha-clean: wall pixels are opaque, floor pixels
+ * fully transparent. So for each 32px cell we can read the blob47 signature
+ * off the art exactly the way the runtime reads it off the tilemap — sample the
+ * midpoint of each of the 4 edges for the cardinal bits, and the extreme corner
+ * pixel for each of the 4 diagonal bits — then normalize through the shared
+ * `normalizeBlob47Mask`.
  *
- * Returns a Map from maskId -> pool cell index (0-based, excludes the spare).
+ * This is a derivation, not a heuristic. It is self-verifying: the 48 cells
+ * yield exactly the 47 canonical masks with mask 255 appearing twice (the
+ * template ships two fully-solid cells), every raw signature is already
+ * canonical (no diagonal needed gating), and the function throws if any of that
+ * stops holding — which is precisely what a swapped or corrupted vendored
+ * source would do.
+ *
+ * It replaces an earlier two-phase GREEDY best-match search that scored cells
+ * against expected cardinal connectivity. That search could only ever see the 4
+ * cardinal bits, so it was blind to the diagonals that distinguish 31 of the 47
+ * masks; it mapped a half-floor cell onto mask 255, produced duplicate
+ * silhouettes, and reserved cell 47 as the "spare" when cell 47 is really
+ * mask 9.
+ *
+ * Returns { maskToCell, spareCellIndex }, where `spareCellIndex` is the second
+ * (higher-index) fully-solid cell — the one not needed for mask 255, reused to
+ * derive floor/corridor/door art.
  */
-function assignPoolCellsToMasks(
-  poolCells: readonly RgbaImage[],
-  spareCell: RgbaImage,
-): Map<number, number> {
-  if (poolCells.length !== BLOB47_CANONICAL_MASKS.length) {
-    throw new Error(
-      `Expected ${BLOB47_CANONICAL_MASKS.length} pool cells, got ${poolCells.length}`,
-    );
+export function deriveTemplateCellMasks(sourceCells: readonly RgbaImage[]): {
+  maskToCell: Map<number, number>;
+  spareCellIndex: number;
+} {
+  const expectedCells = SOURCE_GRID_COLS * SOURCE_GRID_ROWS;
+  if (sourceCells.length !== expectedCells) {
+    throw new Error(`Expected ${expectedCells} source cells, got ${sourceCells.length}`);
   }
-  const OPEN_MASK_ID = 0;
+
+  const isWall = (cell: RgbaImage, x: number, y: number): boolean =>
+    isWallAlpha(cell.data[(y * cell.width + x) * 4 + 3]!);
+
+  const signatures = sourceCells.map((cell) => {
+    const size = cell.width;
+    const mid = Math.floor(size / 2);
+    const far = size - 1;
+    let raw = 0;
+    if (isWall(cell, mid, 0)) raw |= MASK_BIT.N;
+    if (isWall(cell, far, mid)) raw |= MASK_BIT.E;
+    if (isWall(cell, mid, far)) raw |= MASK_BIT.S;
+    if (isWall(cell, 0, mid)) raw |= MASK_BIT.W;
+    if (isWall(cell, far, 0)) raw |= MASK_BIT.NE;
+    if (isWall(cell, far, far)) raw |= MASK_BIT.SE;
+    if (isWall(cell, 0, far)) raw |= MASK_BIT.SW;
+    if (isWall(cell, 0, 0)) raw |= MASK_BIT.NW;
+    const canonical = normalizeBlob47Mask(raw);
+    if (canonical !== raw) {
+      throw new Error(
+        `Template cell signature ${raw} is not blob47-canonical (normalizes to ${canonical}); ` +
+          'the vendored source does not match the expected seamless-template layout',
+      );
+    }
+    return raw;
+  });
+
+  const cellsByMask = new Map<number, number[]>();
+  signatures.forEach((mask, index) => {
+    cellsByMask.set(mask, [...(cellsByMask.get(mask) ?? []), index]);
+  });
+
   const SOLID_MASK_ID = 255;
-  if (
-    !BLOB47_CANONICAL_MASKS.includes(OPEN_MASK_ID) ||
-    !BLOB47_CANONICAL_MASKS.includes(SOLID_MASK_ID)
-  ) {
+  const solidCells = cellsByMask.get(SOLID_MASK_ID) ?? [];
+  if (solidCells.length !== 2) {
     throw new Error(
-      'Greedy assignment requires canonical masks 0 and 255 to anchor the reference cells',
+      `Expected exactly 2 fully-solid template cells (one for mask 255, one spare), got ${solidCells.length}`,
     );
   }
+  const spareCellIndex = solidCells[1]!;
 
-  const scoreAgainst = (
-    classified: Readonly<Record<CellEdge, boolean>>,
-    maskId: number,
-  ): number => {
-    const expected = edgeConnectionsFromMask(maskId);
-    let score = 0;
-    for (const edge of CELL_EDGES) {
-      if (classified[edge] === expected[edge]) {
-        score += 1;
-      }
-    }
-    return score;
-  };
-  const pickBest = (
-    candidateIndices: Iterable<number>,
-    classifications: readonly Readonly<Record<CellEdge, boolean>>[],
-    maskId: number,
-  ): number => {
-    let bestIndex = -1;
-    let bestScore = -1;
-    for (const index of candidateIndices) {
-      const score = scoreAgainst(classifications[index]!, maskId);
-      if (score > bestScore || (score === bestScore && (bestIndex === -1 || index < bestIndex))) {
-        bestScore = score;
-        bestIndex = index;
-      }
-    }
-    return bestIndex;
-  };
-
-  const remaining = new Set<number>(poolCells.map((_, i) => i));
-  const assignment = new Map<number, number>();
-
-  // Phase 1: bootstrap classification vs external references, lock in masks 0 and 255 first.
-  const bootstrapRefs = buildEdgeReferences(poolCells[0]!, spareCell, VENDORED_EDGE_SAMPLING);
-  const bootstrapClassifications = poolCells.map((cell) =>
-    classifyCellEdges(cell, bootstrapRefs, VENDORED_EDGE_SAMPLING),
-  );
-
-  const openIndex = pickBest(remaining, bootstrapClassifications, OPEN_MASK_ID);
-  assignment.set(OPEN_MASK_ID, openIndex);
-  remaining.delete(openIndex);
-  const solidIndex = pickBest(remaining, bootstrapClassifications, SOLID_MASK_ID);
-  assignment.set(SOLID_MASK_ID, solidIndex);
-  remaining.delete(solidIndex);
-
-  // Phase 2: reclassify against the FINAL self-consistent references (the actual assigned
-  // mask-0/mask-255 cells) and greedily assign every remaining mask.
-  const finalRefs = buildEdgeReferences(
-    poolCells[openIndex]!,
-    poolCells[solidIndex]!,
-    VENDORED_EDGE_SAMPLING,
-  );
-  const finalClassifications = poolCells.map((cell) =>
-    classifyCellEdges(cell, finalRefs, VENDORED_EDGE_SAMPLING),
-  );
-
+  const maskToCell = new Map<number, number>();
   for (const maskId of BLOB47_CANONICAL_MASKS) {
-    if (maskId === OPEN_MASK_ID || maskId === SOLID_MASK_ID) {
-      continue;
+    const candidates = cellsByMask.get(maskId);
+    if (!candidates || candidates.length === 0) {
+      throw new Error(`Vendored template has no cell for canonical mask ${maskId}`);
     }
-    const bestIndex = pickBest(remaining, finalClassifications, maskId);
-    if (bestIndex === -1) {
-      throw new Error(`No remaining pool cell available for mask ${maskId}`);
+    if (candidates.length > 1 && maskId !== SOLID_MASK_ID) {
+      throw new Error(
+        `Vendored template has ${candidates.length} cells for mask ${maskId} (cells ${candidates.join(', ')}); ` +
+          'the cell→mask mapping must be 1:1 apart from the duplicated solid cell',
+      );
     }
-    assignment.set(maskId, bestIndex);
-    remaining.delete(bestIndex);
+    maskToCell.set(maskId, candidates[0]!);
   }
-  return assignment;
+  if (maskToCell.size !== BLOB47_CANONICAL_MASKS.length) {
+    throw new Error(
+      `Derived ${maskToCell.size} mask assignments, expected ${BLOB47_CANONICAL_MASKS.length}`,
+    );
+  }
+  return { maskToCell, spareCellIndex };
 }
 
 export interface CaelesFixtureBuildResult {
@@ -269,32 +248,25 @@ export function buildCaelesFixturePack(templatePng: Buffer): CaelesFixtureBuildR
   const files: BuildOutputFile[] = [];
 
   const sourceCells = sliceSourceCells(templatePng);
-  const spareCellRaw = sourceCells[sourceCells.length - 1]!;
-  const poolCellsRaw = sourceCells.slice(0, sourceCells.length - 1);
-  const poolCellsUpscaled = poolCellsRaw.map((cell) =>
+  const { maskToCell, spareCellIndex } = deriveTemplateCellMasks(sourceCells);
+  const upscaledCells = sourceCells.map((cell) =>
     nearestNeighborResize(cell, TERRAIN_PACK_CELL_PX, TERRAIN_PACK_CELL_PX),
   );
-  // Spare (48th) source cell is reused both as the "solid" reference for greedy mask assignment
-  // (see `assignPoolCellsToMasks`) and, deterministically cropped/recolored, as the basis for
-  // floor/corridor/door pool art — the template has no dedicated art for those surfaces.
-  const spareUpscaled = nearestNeighborResize(
-    spareCellRaw,
-    TERRAIN_PACK_CELL_PX,
-    TERRAIN_PACK_CELL_PX,
-  );
-
-  const maskToPoolIndex = assignPoolCellsToMasks(poolCellsUpscaled, spareUpscaled);
+  // The template ships TWO fully-solid cells; the second is surplus to mask 255 and is
+  // deterministically cropped/recolored into floor/corridor/door art (the template has no
+  // dedicated art for those surfaces).
+  const spareUpscaled = upscaledCells[spareCellIndex]!;
   const assignments = buildMaskFrameAssignments();
 
   const atlas = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
   for (const { maskId, frameIndex } of assignments) {
-    const poolIndex = maskToPoolIndex.get(maskId);
-    if (poolIndex === undefined) {
-      throw new Error(`No pool cell assigned to mask ${maskId}`);
+    const cellIndex = maskToCell.get(maskId);
+    if (cellIndex === undefined) {
+      throw new Error(`No template cell derived for mask ${maskId}`);
     }
-    const upscaled = poolCellsUpscaled[poolIndex];
+    const upscaled = upscaledCells[cellIndex];
     if (!upscaled) {
-      throw new Error(`Missing upscaled pool cell at index ${poolIndex}`);
+      throw new Error(`Missing upscaled template cell at index ${cellIndex}`);
     }
     const col = frameIndex % ATLAS_GRID_COLS;
     const row = Math.floor(frameIndex / ATLAS_GRID_COLS);

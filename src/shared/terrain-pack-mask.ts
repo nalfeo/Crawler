@@ -13,6 +13,28 @@
  *   bit 0 (  1): N   bit 1 (  2): E   bit 2 (  4): S   bit 3 (  8): W
  *   bit 4 ( 16): NE  bit 5 ( 32): SE  bit 6 ( 64): SW  bit 7 (128): NW
  *
+ * Relationship to the canonical cr31 numbering
+ * --------------------------------------------
+ * The reference blob47 literature (cr31 "Wang Blob", mirrored at
+ * https://www.boristhebrave.com/permanent/24/06/cr31/stagecast/wang/blob.html,
+ * and every OpenGameArt blob tileset that follows it) weights the bits as a
+ * CONTINUOUS CLOCKWISE CYCLE instead:
+ *
+ *   N=1  NE=2  E=4  SE=8  S=16  SW=32  W=64  NW=128
+ *
+ * Both weightings are bijections onto the same 47 shapes — only the *labels*
+ * differ — so nothing about our geometry, gating, or packing is affected. But
+ * the two numberings are NOT interchangeable: our mask 15 is not cr31's tile 15.
+ * Any cross-reference against published blob47 tables, tools, or tilesets must
+ * re-weight first (see `toCr31Index` in
+ * `tests/unit/sprites/terrain-pack-corners.test.ts`).
+ *
+ * The cr31 ordering has one property ours lacks: rotating a tile 90 degrees
+ * clockwise is exactly `index * 4 mod 255`. We do not currently rotate tiles at
+ * build or render time, so this buys us nothing today; adopting it would be a
+ * breaking migration of every manifest's `maskId` values and should be a
+ * deliberate, separately-scoped decision rather than a silent change.
+ *
  * Diagonal gating rule: a diagonal bit only survives normalization if BOTH of
  * its adjacent cardinal bits are also set in the raw mask, e.g. NE survives
  * only when N and E are both set. This is the standard "blob47" rule (used by
@@ -207,6 +229,34 @@ export type QuadrantCorner = (typeof QUADRANT_CORNERS)[number];
  * alone distinguishes 'concave' from 'full' whenever both cardinals are set.
  */
 export function quadrantStateFromMask(mask: number, corner: QuadrantCorner): QuadrantState {
+  return quadrantStateFromMaskImpl(mask, corner);
+}
+
+/**
+ * Whether the EXTREME OUTER CORNER of a blob47 wall cell is wall (true) or
+ * floor (false) for one corner of a canonical mask.
+ *
+ * This is the corner-side counterpart to `edgeConnectionsFromMask` and is the
+ * single shared definition of blob47 corner semantics — the pack validator's
+ * corner-coverage check and the quadrant-kit compositor both derive from it so
+ * the art and the gate can never disagree about what a corner should look like.
+ *
+ * The rule is exactly "the quadrant state is `full`":
+ *   - `full`    (both cardinals AND the diagonal) → the corner is interior to a
+ *               solid wall mass, so it is WALL.
+ *   - `concave` (both cardinals, diagonal ABSENT) → the diagonal neighbour is
+ *               floor, so the corner must be nicked out: FLOOR.
+ *   - `edgeA` / `edgeB` (one cardinal) → the wall body is inset off the absent
+ *               cardinal's edge, and the corner lies in that inset: FLOOR.
+ *   - `open`    (neither cardinal) → convex outer corner: FLOOR.
+ *
+ * Exactly one canonical mask (255) therefore has all four corners wall.
+ */
+export function cornerIsWallFromMask(mask: number, corner: QuadrantCorner): boolean {
+  return quadrantStateFromMaskImpl(mask, corner) === 'full';
+}
+
+function quadrantStateFromMaskImpl(mask: number, corner: QuadrantCorner): QuadrantState {
   const [cardA, cardB] = CORNER_ADJACENCY[corner];
   const bitA = MASK_BIT[cardA];
   const bitB = MASK_BIT[cardB];
