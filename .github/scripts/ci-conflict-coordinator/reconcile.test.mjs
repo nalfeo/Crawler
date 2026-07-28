@@ -15,6 +15,11 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import {
+  makeLifecycleRecord,
+  PHASE as LIFECYCLE_PHASE,
+  renderLifecycleComment,
+} from '../ci-recovery/pr-lifecycle.mjs';
 import { makeCoordinatorState, renderCoordinatorComment } from './state.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
@@ -52,6 +57,22 @@ function gitCommit(cwd, message) {
     },
   });
   return git(cwd, ['rev-parse', 'HEAD']);
+}
+
+function lifecycleComment(prNumber, phase, headSha) {
+  return {
+    body: renderLifecycleComment(
+      makeLifecycleRecord({
+        prNumber,
+        phase,
+        headSha,
+        updatedAt: '2026-07-28T00:00:00Z',
+      }),
+    ),
+    performed_via_github_app: { id: Number(APP_ID) },
+    user: { login: 'crawler-bot' },
+    author_association: 'MEMBER',
+  };
 }
 
 /**
@@ -235,7 +256,12 @@ function buildRoutes({
   reopenStatus = 200,
   fenceReleaseStatus = 204,
   pr3HeadRef = undefined,
+  pr1Labels = [],
+  pr2Labels = [],
   pr3Labels = [],
+  pr1Comments = [],
+  pr2Comments = [],
+  pr3Comments = [],
   pr3AutoMerge = null,
   pr3LabelsAfterGetCount = null,
   pr3LabelsAfter = [{ name: 'human-approval-required' }],
@@ -298,8 +324,8 @@ function buildRoutes({
       body: [
         // PR3 has 2 CI files → ranks first
         pr3Pull(pr3Sha),
-        livePull(1, pr1Sha),
-        livePull(2, pr2Sha),
+        livePull(1, pr1Sha, { labels: pr1Labels }),
+        livePull(2, pr2Sha, { labels: pr2Labels }),
       ],
     }),
 
@@ -315,9 +341,9 @@ function buildRoutes({
     }),
 
     // PR comments (empty — no existing coordinator or recovery state)
-    [`GET /repos/${OWNER}/${REPO}/issues/1/comments`]: () => ({ body: [] }),
-    [`GET /repos/${OWNER}/${REPO}/issues/2/comments`]: () => ({ body: [] }),
-    [`GET /repos/${OWNER}/${REPO}/issues/3/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/1/comments`]: () => ({ body: pr1Comments }),
+    [`GET /repos/${OWNER}/${REPO}/issues/2/comments`]: () => ({ body: pr2Comments }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3/comments`]: () => ({ body: pr3Comments }),
 
     // main SHA
     [`GET /repos/${OWNER}/${REPO}/git/ref/heads/main`]: () => ({
@@ -332,10 +358,14 @@ function buildRoutes({
     },
 
     // Live PR reads for PR1 (leader): can drift after the initial snapshot.
-    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({ body: livePull(1, livePr1Sha) }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({
+      body: livePull(1, livePr1Sha, { labels: pr1Labels }),
+    }),
 
     // Live PR reads for PR2
-    [`GET /repos/${OWNER}/${REPO}/pulls/2`]: () => ({ body: livePull(2, pr2Sha) }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/2`]: () => ({
+      body: livePull(2, pr2Sha, { labels: pr2Labels }),
+    }),
 
     // Live PR reads for PR3: pre-close uses pr3Sha; once closed, post-close
     // reads use driftedPr3Sha and may fail per postClosePr3Status.
@@ -574,6 +604,15 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
   );
   assert.ok(activeFenceAdd, 'expected active slot to be fenced before any exposure attempt');
 
+  const escalationAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      /\/issues\/\d+\/labels$/.test(c.url) &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-escalation'),
+  );
+  assert.ok(escalationAdd, 'enforced mode must publish selection-binding drift escalation labels');
+
   const activeFenceRemove = mutatingCalls.find(
     (c) =>
       c.method === 'DELETE' &&
@@ -651,6 +690,19 @@ test('coordinator discovers but does not serialize when enforcement is disabled 
     'must never apply ci-conflict-order-wait while enforcement is disabled',
   );
 
+  const escalationAdd = mutatingCalls.find(
+    (c) =>
+      c.method === 'POST' &&
+      /\/issues\/\d+\/labels$/.test(c.url) &&
+      Array.isArray(c.body?.labels) &&
+      c.body.labels.includes('ci-conflict-escalation'),
+  );
+  assert.equal(
+    escalationAdd,
+    undefined,
+    'unenforced mode must not publish grouping-derived escalation labels from selection drift',
+  );
+
   // Discovery must still run: the coordinated label is how the group stays
   // visible/reportable even though it is no longer serialized.
   const coordinatedAdd = mutatingCalls.find(
@@ -668,6 +720,62 @@ test('coordinator discovers but does not serialize when enforcement is disabled 
     (c) => c.method === 'DELETE' && /\/issues\/\d+\/labels\/ci-conflict-order-wait$/.test(c.url),
   );
   assert.ok(fenceRemove, 'must actively remove stranded ci-conflict-order-wait labels');
+});
+
+test('all-non-blocking groups drain escalation unless ownership-gated', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      pr1Labels: [{ name: 'ci-conflict-escalation' }],
+      pr2Labels: [{ name: 'ci-conflict-escalation' }],
+      pr3Labels: [{ name: 'ci-conflict-escalation' }, { name: 'human-approval-required' }],
+      pr1Comments: [lifecycleComment(1, LIFECYCLE_PHASE.QUARANTINED, pr1Sha)],
+      pr2Comments: [lifecycleComment(2, LIFECYCLE_PHASE.ABANDONED, pr2Sha)],
+      pr3Comments: [lifecycleComment(3, LIFECYCLE_PHASE.QUARANTINED, pr3Sha)],
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+  assert.match(stdout, /reason=all-pulls-non-blocking/, 'must hit all-non-blocking group path');
+
+  const pr1EscalationRemoved = mutatingCalls.find(
+    (c) =>
+      c.method === 'DELETE' &&
+      c.url === `/repos/${OWNER}/${REPO}/issues/1/labels/ci-conflict-escalation`,
+  );
+  assert.ok(pr1EscalationRemoved, 'non-owned non-blocking member must have escalation drained');
+
+  const pr2EscalationRemoved = mutatingCalls.find(
+    (c) =>
+      c.method === 'DELETE' &&
+      c.url === `/repos/${OWNER}/${REPO}/issues/2/labels/ci-conflict-escalation`,
+  );
+  assert.ok(pr2EscalationRemoved, 'abandoned non-owned member must have escalation drained');
+
+  const pr3EscalationRemoved = mutatingCalls.find(
+    (c) =>
+      c.method === 'DELETE' &&
+      c.url === `/repos/${OWNER}/${REPO}/issues/3/labels/ci-conflict-escalation`,
+  );
+  assert.equal(
+    pr3EscalationRemoved,
+    undefined,
+    'ownership-gated non-blocking member must retain escalation label',
+  );
 });
 
 test('auto-merge stays disarmed for human-gated PRs even when enforcement is disabled', async (t) => {
