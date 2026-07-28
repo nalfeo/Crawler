@@ -201,6 +201,23 @@ Screenshots are in the session `files/visual-review/` dir (not committed).
   (there is no close-canvas tool, and a bound instance cannot be rebound to another
   setId). Only reopen a live-set panel after rebasing onto a `main` that carries
   #2119's cache fix, then re-read from Azure fresh before trusting the DOM.
+  - **Diagnosis technique** (proven this session by the #2119 author): enumerate
+    the shared cacache index at `~/.copilot/crawler/azure-resource-cache` for keys
+    matching the mutable doc, e.g.
+    `ns:<hash>:blob:theme-sets/<id>/state.json`,
+    `ns:<hash>:list:theme-sets/<id>/`, and `ns:<hash>:list:theme-sets/`.
+    A frozen-but-plausible snapshot that survives `extensions_reload` is the tell.
+  - **Remediation**: removing those `blob:.../state.json` + `list:theme-sets/...`
+    entries makes the next read hit Azure fresh. After clearing, the live set
+    correctly rendered "Approve remaining 16 briefs" / "Regenerate 16 unresolved
+    briefs + judge on GitHub" / "Judge pending" (matching rev 83: 2 up, judge
+    missing) — confirming `computeBulkApprovePlan`/`planRunPhase` were always
+    correct; the numbers were only ever wrong because the input state was stale.
+  - **Process rule**: never report a canvas as "verified" from a read that could
+    be cache-served. Assert the rendered DOM against a _fresh_ durable read
+    (enumerate/clear the cache first, or read Azure directly). When a live
+    artifact disagrees with your expectation, the artifact wins and the
+    disagreement is itself the finding.
 
 ## Rebase resolution vs PR #2119 (`nalfeo-theme-set-index`) — READ BEFORE RESOLVING THE renderer.mjs CONFLICT
 
