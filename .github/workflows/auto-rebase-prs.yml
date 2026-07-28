@@ -68,6 +68,7 @@ jobs:
       - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           TARGET_PR: ${{ inputs.pr_number }}
           EXPECTED_HEAD_INPUT: ${{ inputs.expected_head_sha }}
           EXPECTED_BASE_INPUT: ${{ inputs.expected_base_ref }}
@@ -154,8 +155,10 @@ jobs:
             fi
 
             # D2 fix (always-rebase, not conflict-only): for the non-train blanket
-            # sweep, use the GitHub update-branch API (with GITHUB_TOKEN, which avoids
-            # the D7 action_required parking trap) instead of git-rebase + force-push.
+            # sweep, use the GitHub update-branch API instead of git-rebase + force-push.
+            # Use CRAWLER_CI_PAT when available so the branch update triggers required CI
+            # (GITHUB_TOKEN is recursion-suppressed for push events, while CRAWLER_CI_PAT
+            # is a user token that emits normal push events and re-triggers CI).
             # For conflicted PRs, dispatch ci-recovery directly without a git-rebase
             # attempt.  Only the train-mode targeted conflict-rebase path still uses
             # git operations (see below).
@@ -163,14 +166,25 @@ jobs:
               merge_state=$(echo "$pr" | jq -r '.mergeStateStatus // "UNKNOWN"')
               case "$merge_state" in
                 BEHIND)
-                  echo "  🔄 PR #$number is clean-BEHIND; calling update-branch (D2 fix, avoids D7)..."
-                  if gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$number/update-branch" \
-                    -F expected_head_oid="$expected_head"; then
+                  echo "  🔄 PR #$number is clean-BEHIND; calling update-branch (D2 fix)..."
+                  update_branch_token="${CRAWLER_CI_PAT:-$GH_TOKEN}"
+                  set +e
+                  GH_TOKEN="$update_branch_token" gh api \
+                    -X PUT "repos/$GITHUB_REPOSITORY/pulls/$number/update-branch" \
+                    -F expected_head_sha="$expected_head" \
+                    > /tmp/update_branch_out.json 2>/tmp/update_branch_err.txt
+                  api_exit=$?
+                  set -e
+                  if [ $api_exit -eq 0 ]; then
                     echo "  ✅ Branch update queued for PR #$number."
                     updated=$((updated + 1))
-                  else
-                    echo "  ⚠️ update-branch failed for PR #$number (non-fatal; possibly already up-to-date or stale head); skipping."
+                  elif grep -qi '"status":422\|HTTP 422\|Unprocessable' /tmp/update_branch_err.txt 2>/dev/null; then
+                    echo "  ⚠️ update-branch 422 for PR #$number (already up-to-date or stale head); skipping."
                     skipped=$((skipped + 1))
+                  else
+                    echo "  ❌ update-branch failed for PR #$number (non-422 error):"
+                    cat /tmp/update_branch_err.txt || true
+                    failed=$((failed + 1))
                   fi
                   continue
                   ;;

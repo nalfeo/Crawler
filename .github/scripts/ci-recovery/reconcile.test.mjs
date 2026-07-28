@@ -3846,6 +3846,91 @@ test('live reconcile calls update-branch for a clean-BEHIND PR at ARM_AUTO_MERGE
       call.method === 'PUT' && call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`,
   );
   assert.ok(updateBranchCall, 'update-branch PUT must be called for a clean-BEHIND PR');
+  // Assert the exact request body to lock the update-branch API contract.
+  // The field is expected_head_sha (not expected_head_oid) per GitHub REST API.
+  assert.deepEqual(
+    updateBranchCall.body,
+    { expected_head_sha: HEAD_SHA },
+    'update-branch body must use expected_head_sha',
+  );
+});
+
+test('live reconcile calls update-branch for a clean-BEHIND PR at QUEUE_MERGE_TRAIN', async (t) => {
+  // Exercises the update-branch path independently implemented in QUEUE_MERGE_TRAIN
+  // (separate from ARM_AUTO_MERGE). The QUEUE_MERGE_TRAIN path adds the merge-train
+  // label + dispatch BEFORE calling update-branch; this test verifies the PUT body
+  // and that the call occurs after the label mutations.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    // Provide passing required checks so the PR reaches QUEUE_MERGE_TRAIN.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+    [`PUT /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`]: () => ({
+      status: 202,
+      body: { message: 'Updating pull request branch.' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /queued merge-train pr=#42/);
+  // D2 fix: update-branch must be called for a clean-BEHIND PR at QUEUE_MERGE_TRAIN.
+  assert.match(stdout, /update-branch pr=#42 reason=clean-behind/);
+  const updateBranchCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'PUT' && call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`,
+  );
+  assert.ok(
+    updateBranchCall,
+    'update-branch PUT must be called for a clean-BEHIND PR at QUEUE_MERGE_TRAIN',
+  );
+  assert.deepEqual(
+    updateBranchCall.body,
+    { expected_head_sha: HEAD_SHA },
+    'QUEUE_MERGE_TRAIN update-branch body must use expected_head_sha',
+  );
+  // update-branch must occur after the merge-train label is attached.
+  const labelAttachIdx = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+  );
+  const updateBranchIdx = mutatingCalls.indexOf(updateBranchCall);
+  assert.ok(
+    labelAttachIdx >= 0 && updateBranchIdx > labelAttachIdx,
+    'update-branch must be called after the merge-train label is attached',
+  );
 });
 
 test('human-gated balance PR cannot keep merge-train or armed auto-merge before owner approval', async (t) => {

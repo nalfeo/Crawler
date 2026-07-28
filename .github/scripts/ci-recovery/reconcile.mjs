@@ -2764,19 +2764,20 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     }
     // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
     // strict up-to-date merge policy does not block it forever.  readToken is
-    // CRAWLER_CI_PAT || GITHUB_TOKEN — either identity avoids the D7
-    // action_required parking trap that occurs when the App token force-pushes.
+    // CRAWLER_CI_PAT || GITHUB_TOKEN — CRAWLER_CI_PAT emits normal push events
+    // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
     if (pr.mergeable_state === 'behind') {
       if (live) {
         try {
           await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
             method: 'PUT',
-            body: { expected_head_oid: pr.head.sha },
+            body: { expected_head_sha: pr.head.sha },
           });
           process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
         } catch (err) {
-          // 422 covers "already up-to-date" and stale expected_head_oid — log
+          // 422 covers "already up-to-date" and stale expected_head_sha — log
           // it so stale-head races are visible and not silently swallowed.
+          if (err.status !== 422) throw err;
           process.stderr.write(
             `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
           );
@@ -2814,19 +2815,20 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   }
   // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
   // strict up-to-date merge policy does not block it forever.  readToken is
-  // CRAWLER_CI_PAT || GITHUB_TOKEN — either identity avoids the D7
-  // action_required parking trap that occurs when the App token force-pushes.
+  // CRAWLER_CI_PAT || GITHUB_TOKEN — CRAWLER_CI_PAT emits normal push events
+  // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
   if (pr.mergeable_state === 'behind') {
     if (live) {
       try {
         await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
           method: 'PUT',
-          body: { expected_head_oid: pr.head.sha },
+          body: { expected_head_sha: pr.head.sha },
         });
         process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
       } catch (err) {
-        // 422 covers "already up-to-date" and stale expected_head_oid — log
+        // 422 covers "already up-to-date" and stale expected_head_sha — log
         // it so stale-head races are visible and not silently swallowed.
+        if (err.status !== 422) throw err;
         process.stderr.write(
           `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
         );
