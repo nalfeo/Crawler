@@ -88,6 +88,17 @@
     "path": "by-sha/f34efc79a153971c2d89990ac58255041ad4f330.json"
   },
   {
+    "commit": "7d662c13def94d89f715a700f3a26a518469707f",
+    "commitDate": "2026-07-28T00:44:48-07:00",
+    "commitSubject": "fix(ci): make CI conflict serialization opt-in to break the repo-wide delivery deadlock (#2168)",
+    "capturedAt": "2026-07-28T08:52:37.509Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30340143490",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/7d662c13def94d89f715a700f3a26a518469707f.json"
+  },
+  {
     "commit": "8ee6db2bd5b74bb5010a438925cfe6a9fc3b0c6b",
     "commitDate": "2026-07-27T20:10:15-07:00",
     "commitSubject": "test(ci): align sweep backlog expectations with latent-demand policy (#2136)",
