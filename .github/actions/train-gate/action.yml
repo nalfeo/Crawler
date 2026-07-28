@@ -20,8 +20,8 @@ inputs:
     required: true
   merge-train-enabled:
     description: >
-      Value of the MERGE_TRAIN_ENABLED repository variable (pass as
-      ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}).
+      Value of the MERGE_TRAIN_ENABLED repository variable (pass the workflow's
+      resolved string value, usually true or false).
     required: true
 
 outputs:
