@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2c1dd9ac7d1a883e65ba4993a14f8e5f98bf12df",
+    "commitDate": "2026-07-28T09:30:46Z",
+    "commitSubject": "fix: pin direct deps to exact versions; fix check-exact-deps exemption binding and path resolution (#2003)",
+    "capturedAt": "2026-07-28T10:39:34.237Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30347556043",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/2c1dd9ac7d1a883e65ba4993a14f8e5f98bf12df.json"
+  },
+  {
     "commit": "6ada3b8ca399f7a1b53079de2b83a96197790ecd",
     "commitDate": "2026-07-28T08:56:38Z",
     "commitSubject": "Implement Don Paco’s THE BIG GOB on the typed mob-ability runtime (#2016)",
