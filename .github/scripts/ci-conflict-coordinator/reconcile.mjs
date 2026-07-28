@@ -791,7 +791,45 @@ for (const group of groups) {
   // PRs entirely (D11 structural guarantee in the coordinator runtime).
   const nbPhases = new Set(nonBlockingPhases());
   const blockingPulls = group.pulls.filter((pull) => !nbPhases.has(pull.lifecyclePhase));
+  const enforceCoordination = coordinationEnforcementEnabled(process.env);
   if (blockingPulls.length === 0) {
+    const recoveryByNumber = new Map(
+      group.pulls.map((pull) => [
+        pull.number,
+        recoveryContext(pull, groupComments.get(pull.number)),
+      ]),
+    );
+    const humanApprovalByNumber = new Map(
+      await mapLimit(group.pulls, 4, async (pull) => [
+        pull.number,
+        humanApprovalRejection({
+          pullRequest: {
+            labels: [...pull.labelNames].map((name) => ({ name })),
+            head: { ref: pull.headRef },
+          },
+          closingIssues: await listClosingIssues(token, owner, repo, pull.number),
+          comments: groupComments.get(pull.number) || [],
+          ownerLogin: owner,
+        }),
+      ]),
+    );
+
+    for (const pull of group.pulls) {
+      const ownershipGated =
+        Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
+        Boolean(recoveryByNumber.get(pull.number)?.shepherdLease) ||
+        Boolean(humanApprovalByNumber.get(pull.number));
+      await removeLabel(pull, ORDER_WAIT_LABEL);
+      await removeLabel(pull, COORDINATED_LABEL);
+      await removeLabel(pull, LEADER_LABEL);
+      if (ownershipGated) {
+        await addLabel(pull, ESCALATION_LABEL);
+        await disableAutoMerge(pull);
+      } else {
+        await removeLabel(pull, ESCALATION_LABEL);
+      }
+    }
+
     // All pulls in this group are non-blocking (quarantined/abandoned). Nothing to
     // coordinate — skip proof collection and selection for this group entirely.
     process.stdout.write(
@@ -878,7 +916,6 @@ for (const group of groups) {
   // already-armed auto-merge in place would let GitHub merge the PR the moment
   // its checks pass — before any of those reconcilers next run. Serialization
   // is what we are switching off here; human/agent ownership gates are not.
-  const enforceCoordination = coordinationEnforcementEnabled(process.env);
   for (const pull of group.pulls) {
     await addLabel(pull, COORDINATED_LABEL);
     const ownershipGated =
@@ -894,7 +931,9 @@ for (const group of groups) {
     }
     if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
     else await removeLabel(pull, LEADER_LABEL);
-    const escalated = proofByNumber.get(pull.number)?.status === 'ambiguous' || ownershipGated;
+    const escalated =
+      ownershipGated ||
+      (enforceCoordination && proofByNumber.get(pull.number)?.status === 'ambiguous');
     if (escalated) await addLabel(pull, ESCALATION_LABEL);
     else await removeLabel(pull, ESCALATION_LABEL);
   }
@@ -908,8 +947,10 @@ for (const group of groups) {
     } else {
       selectionBindingDrift = bindingCheck.reason;
       escalations.push(bindingCheck.reason);
-      for (const pull of group.pulls) {
-        await addLabel(pull, ESCALATION_LABEL);
+      if (enforceCoordination) {
+        for (const pull of group.pulls) {
+          await addLabel(pull, ESCALATION_LABEL);
+        }
       }
       process.stdout.write(`retain fenced group=${group.groupId} reason=${bindingCheck.reason}\n`);
     }
