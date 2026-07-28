@@ -88,6 +88,7 @@
     "sprites:reconcile-queue": "tsx scripts/sprites/reconcile-queue-cli.ts",
     "terrain-packs:build": "tsx scripts/sprites/terrain-packs/cli.ts build",
     "terrain-packs:validate": "tsx scripts/sprites/terrain-packs/cli.ts validate",
+    "terrain-packs:generate-motifs": "tsx scripts/sprites/terrain-packs/generate-industrial-cave-motifs.ts",
     "setup:azure:provision": "pwsh scripts/setup-azure-resources.ps1",
     "setup:azure": "pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage",
     "setup:azure:env": "pwsh scripts/setup-azure-env.ps1 -IncludeStorage",

@@ -40,6 +40,7 @@ interface WorkflowJob {
   steps?: Array<{
     id?: string;
     name?: string;
+    if?: string;
     run?: string;
     uses?: string;
     with?: Record<string, string | number | boolean>;
@@ -139,5 +140,28 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
     const guardScript = String(steps[guardIdx]?.run ?? '');
     expect(guardScript).toContain('github.event.workflow_run.head_sha');
     expect(guardScript).toContain('repos/${{ github.repository }}/commits/main');
+    expect(steps[guardIdx]?.id).toBe('tip-guard');
+    expect(guardScript).toContain('echo "skip=true" >> "$GITHUB_OUTPUT"');
+    expect(guardScript).not.toContain('exit 1');
+  });
+
+  it('gates all stale-sensitive deploy steps on tip-guard skip output', () => {
+    const doc = loadDeployWorkflow();
+    const deploy = getJob(doc, 'deploy');
+    const steps = deploy.steps ?? [];
+    const guardedStepNames = [
+      'Upload artifact',
+      'Deploy to GitHub Pages',
+      'Select released PR targets',
+      'Label and comment on released PRs',
+    ];
+    for (const stepName of guardedStepNames) {
+      const step = steps.find((candidate) => candidate.name === stepName);
+      expect(step, `deploy must include "${stepName}" step`).toBeDefined();
+      expect(
+        String(step?.if ?? '').trim(),
+        `"${stepName}" must gate on tip-guard skip output`,
+      ).toBe("steps.tip-guard.outputs.skip != 'true'");
+    }
   });
 });
