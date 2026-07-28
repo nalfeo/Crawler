@@ -708,7 +708,6 @@ export function mobAbilitySystem(world: GameWorld): void {
   // registered in resolveCast this step is not immediately advanced.
   // This keeps first-tick and expiry frame indices deterministic.
   tickOwnedZones(world);
-  tickRecoveries(world);
 
   if (runtime.byEntity.size === 0) return;
 
