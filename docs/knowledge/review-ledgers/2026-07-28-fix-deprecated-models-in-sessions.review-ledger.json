@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "fix-deprecated-models-in-sessions",
+  "task_title": "Fix deprecated claude-sonnet-4.5 model references",
+  "estimated_apples": 1,
+  "stages": {}
+}

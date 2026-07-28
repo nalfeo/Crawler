@@ -2748,10 +2748,11 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     await completeWaitingExit(waitingTransition);
   }
 
-  // Close any open loop-incident for this PR — it was filed when the retry
-  // budget was exhausted, but the PR has since converged (CI passing, no
-  // blockers).  Non-fatal: a failure to close must not block the merge.
-  if (live) {
+  const closeLoopIncidentOnConvergence = async () => {
+    // Close any open loop-incident for this PR — it was filed when the retry
+    // budget was exhausted, but the PR has since converged (CI passing, no
+    // blockers). Non-fatal: a failure to close must not block merge actions.
+    if (!live) return;
     try {
       const closeResult = await closeLoopIncident({
         request,
@@ -2772,7 +2773,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
         .slice(0, 500);
       process.stderr.write(`loop-incident-close-failed pr=#${prNumber} err=${safeMsg}\n`);
     }
-  }
+  };
 
   if (terminalRow.action === DISPATCH_ACTION.QUEUE_MERGE_TRAIN) {
     await removePrLabel(BLOCKED_LABEL);
@@ -2812,8 +2813,10 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       process.stdout.write(`queued merge-train pr=#${prNumber}\n`);
       await dispatchWorkflow('ci-recovery-router.yml', {});
     } else {
+      await assertExpectedMetadataUnchanged('queue-merge-train');
       process.stdout.write(`queue unchanged merge-train pr=#${prNumber}\n`);
     }
+    await closeLoopIncidentOnConvergence();
     process.exit(0);
   }
 
@@ -2838,6 +2841,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       { pullRequestId: review.id, headOid: pr.head.sha },
     );
     process.stdout.write(`auto-merge armed pr=#${prNumber}\n`);
+    await closeLoopIncidentOnConvergence();
   } else {
     process.stdout.write(`dry-run would-arm-auto-merge pr=#${prNumber}\n`);
   }
