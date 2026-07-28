@@ -504,7 +504,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
     <option value="free">Free</option>
   </select>
   <label style="font-size:11px;color:var(--text-color-muted,#8b949e);display:inline-flex;align-items:center;gap:4px">
-    <input id="keepaspect" type="checkbox"> Keep aspect
+    <input id="keepaspect" type="checkbox" checked> Keep aspect
   </label>
   <button class="btn" id="btnfit" title="Zoom to fit">&#8599;Fit</button>
   <button class="btn" id="btnzm" style="padding:3px 7px">&#8722;</button>
@@ -558,6 +558,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
           <div class="fr"><label>w</label><input id="pw" type="number" min="0.25" step="0.25"></div>
           <div class="fr"><label>h</label><input id="ph" type="number" min="0.25" step="0.25"></div>
         </div>
+        <div id="prendersz" style="display:none;font-size:10px;opacity:.65;padding:2px 0 0 2px"></div>
         <div class="fr"><label>size</label>
           <select id="pwhu">
             <option value="tiles">tiles</option>
@@ -846,7 +847,7 @@ function clampGroupDeltaPx(items,dx,dy,widthTiles,heightTiles){
 }
 var FEET_PER_TILE=4;
 var APPLY_TOKEN=__SET_PIECE_EDITOR_APPLY_TOKEN__;
-var S={pack:null,selId:null,selPropIdx:-1,selNpcIdx:-1,selPropIds:{},selNpcIds:{},tileSize:48,dirty:false,snapMode:'tile',activeLayerId:null,propSizeUnit:'tiles',showOverlay:true,keepAspect:false};
+var S={pack:null,selId:null,selPropIdx:-1,selNpcIdx:-1,selPropIds:{},selNpcIds:{},tileSize:48,dirty:false,snapMode:'tile',activeLayerId:null,propSizeUnit:'tiles',showOverlay:true,keepAspect:true};
 var GENERATED_LIBRARY=[];
 var CLIPBOARD={props:[],npcs:[]};
 var sp=null;
@@ -1864,12 +1865,17 @@ canvas.addEventListener('mouseup',function(){
       });
     }else{
       p.x=Math.max(0,nnum(snapV(drag.dispX/ts),0));p.y=Math.max(0,nnum(snapV(drag.dispY/ts),0));
+      var prevDW=Math.max(0.0001,nnum(p.width,1)),prevDH=Math.max(0.0001,nnum(p.height,1));
       p.width=snapSz(drag.dispW/ts);p.height=snapSz(drag.dispH/ts);
       p.width=Math.min(p.width,sp.width-p.x);p.height=Math.min(p.height,sp.height-p.y);
       var baseLayer=p.layers&&p.layers[0];
       if(baseLayer&&baseLayer.widthFt!==undefined&&baseLayer.heightFt!==undefined){
-        baseLayer.widthFt=p.width*FEET_PER_TILE;
-        baseLayer.heightFt=p.height*FEET_PER_TILE;
+        // Scale the render size with the footprint instead of forcing them
+        // equal - see the note in syncPropInputs. Forcing flattened every
+        // deliberate overhang (the door's 5.75x8ft leaf on a 1x1 footprint)
+        // the first time anyone dragged a resize handle.
+        if(p.width!==prevDW)baseLayer.widthFt=baseLayer.widthFt*(p.width/prevDW);
+        if(p.height!==prevDH)baseLayer.heightFt=baseLayer.heightFt*(p.height/prevDH);
       }
     }
     refreshPropInputs();markDirty();
@@ -2101,7 +2107,21 @@ function refreshPropInputs(){
   document.getElementById('ph').value=h;
   document.getElementById('pz').value=p.z!==undefined?p.z:'';
   document.getElementById('player').value=propLayer(p);
+  // w/h edit the FOOTPRINT. The art is drawn at layer widthFt/heightFt, which
+  // is legitimately different (deliberate overhang). Surface that instead of
+  // letting the panel imply the footprint is the render size - 20 of 58
+  // welcome-room props differ, and a panel that hides it is an instrument that
+  // cannot show you the defect.
+  var rs=document.getElementById('prendersz');
+  var bl=p.layers&&p.layers[0];
+  if(bl&&bl.widthFt!==undefined&&bl.heightFt!==undefined&&
+     (Math.abs(bl.widthFt-(p.width||1)*FEET_PER_TILE)>0.01||
+      Math.abs(bl.heightFt-(p.height||1)*FEET_PER_TILE)>0.01)){
+    rs.textContent='art drawn '+rnd2(bl.widthFt)+' x '+rnd2(bl.heightFt)+' ft (overhangs footprint)';
+    rs.style.display='block';
+  }else{rs.style.display='none';}
 }
+function rnd2(v){return Math.round(v*100)/100;}
 function refreshSprites(){
   var p=sp&&sp.props[S.selPropIdx];if(!p)return;
   var list=document.getElementById('spriteslist');list.innerHTML='';
@@ -2189,7 +2209,7 @@ document.getElementById('player').addEventListener('change',function(){
   var p=sp&&sp.props[S.selPropIdx];if(!p)return;
   p.sceneLayer=document.getElementById('player').value;render();markDirty();
 });
-function syncPropInputs(){
+function syncPropInputs(ev){
   var p=sp&&sp.props[S.selPropIdx];if(!p)return;
   var oldId=p.id;
   p.id=document.getElementById('pid').value||p.id;
@@ -2197,12 +2217,19 @@ function syncPropInputs(){
   p.kind=document.getElementById('pkind').value;
   p.x=parseFloat(document.getElementById('px').value)||0;
   p.y=parseFloat(document.getElementById('py').value)||0;
+  var prevW=Math.max(0.0001,nnum(p.width,1)),prevH=Math.max(0.0001,nnum(p.height,1));
   var wv=parseFloat(document.getElementById('pw').value)||1;
   var hv=parseFloat(document.getElementById('ph').value)||1;
   if(S.propSizeUnit==='feet'){wv=wv/FEET_PER_TILE;hv=hv/FEET_PER_TILE;}
   if(S.keepAspect){
-    var ar=Math.max(0.0001,nnum((p.width||1)/(p.height||1),1));
-    var aid=(document.activeElement&&document.activeElement.id)||'';
+    // Which field the user edited must come from the EVENT TARGET, not
+    // document.activeElement. These inputs fire 'change', which for typed text
+    // fires on BLUR - by then activeElement is whatever was clicked next, so
+    // neither branch matched and keep-aspect silently did nothing. Stepper
+    // arrows fire 'change' while still focused, which is why it appeared to
+    // work only with up/down.
+    var ar=Math.max(0.0001,prevW/prevH);
+    var aid=(ev&&ev.target&&ev.target.id)||'';
     if(aid==='pw')hv=wv/ar;
     else if(aid==='ph')wv=hv*ar;
   }
@@ -2210,14 +2237,21 @@ function syncPropInputs(){
   p.height=hv;
   var baseLayer=p.layers&&p.layers[0];
   if(baseLayer&&baseLayer.widthFt!==undefined&&baseLayer.heightFt!==undefined){
-    baseLayer.widthFt=p.width*FEET_PER_TILE;
-    baseLayer.heightFt=p.height*FEET_PER_TILE;
+    // The size box edits the FOOTPRINT; layer feet are the independently
+    // authored RENDER size and are legitimately different (the door is a 1x1
+    // footprint drawn 5.75x8ft, deliberate overhang for the 3/4-view leaf).
+    // This used to force feet = footprint*4 on EVERY field change, so merely
+    // renaming or nudging a prop silently rewrote its art scale - 20 of 58
+    // welcome-room props carry such a mismatch. Scale proportionally instead,
+    // and leave it untouched when the footprint did not change.
+    if(wv!==prevW)baseLayer.widthFt=baseLayer.widthFt*(wv/prevW);
+    if(hv!==prevH)baseLayer.heightFt=baseLayer.heightFt*(hv/prevH);
   }
   var zv=document.getElementById('pz').value.trim();
   if(zv===''){delete p.z;}else{p.z=parseInt(zv);}
   render();markDirty();
 }
-function syncNpcInputs(){
+function syncNpcInputs(ev){
   var n=sp&&sp.npcs&&sp.npcs[S.selNpcIdx];if(!n)return;
   var oldId=n.id;
   var nidv=document.getElementById('nid').value.trim();if(nidv)n.id=nidv;
@@ -2226,8 +2260,9 @@ function syncNpcInputs(){
   var nwv=Math.max(0.25,nnum(parseFloat(document.getElementById('nwf').value),2.5));
   var nhv=Math.max(0.25,nnum(parseFloat(document.getElementById('nhf').value),3.5));
   if(S.keepAspect){
+    // Event target, not activeElement - see the note in syncPropInputs.
     var nar=Math.max(0.0001,nnum(n.widthFt,2.5)/Math.max(0.0001,nnum(n.heightFt,3.5)));
-    var naid=(document.activeElement&&document.activeElement.id)||'';
+    var naid=(ev&&ev.target&&ev.target.id)||'';
     if(naid==='nwf')nhv=nwv/nar;
     else if(naid==='nhf')nwv=nhv*nar;
   }
