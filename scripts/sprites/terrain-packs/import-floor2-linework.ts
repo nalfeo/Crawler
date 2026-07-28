@@ -240,7 +240,7 @@ const PIPE_STOPS = [
   { t: Number.POSITIVE_INFINITY, gain: 0.34 },
 ] as const;
 /** Rail head: bright running surface, dark web at the outside. */
-const RAIL_BANDS = [1.12, 0.94, 0.66] as const;
+const RAIL_BANDS = [1.25, 0.98, 0.58] as const;
 /** Cross-members sit lower than the body, with a slight crown of their own. */
 const TIE_BANDS = [0.86, 1.14, 0.9] as const;
 
@@ -258,11 +258,19 @@ function stopGain(stops: readonly { t: number; gain: number }[], shade: number):
   return stops[stops.length - 1]?.gain ?? 1;
 }
 
+/** A raised rivet band catches more light than the tube it wraps. */
+const COLLAR_GAIN = 1.22;
+
 function memberGain(cls: number, shade: number, round: boolean): number {
   if (cls === LINEWORK_PIXEL.Rail) {
     return round ? stopGain(PIPE_STOPS, shade) : bandGain(RAIL_BANDS, Math.abs(shade) * 2 - 1);
   }
-  if (cls === LINEWORK_PIXEL.Tie) return bandGain(TIE_BANDS, shade);
+  if (cls === LINEWORK_PIXEL.Tie) {
+    // On a round body the collar keeps the cylinder ramp and is simply lifted, so
+    // the band reads as raised hardware rather than a flat stripe painted across
+    // the tube.
+    return round ? stopGain(PIPE_STOPS, shade) * COLLAR_GAIN : bandGain(TIE_BANDS, shade);
+  }
   return bandGain(TIE_BANDS, shade) * 1.12;
 }
 
@@ -299,6 +307,30 @@ const PROP_PIXEL_STYLE: PixelArtMaterialStyle = {
   maxChroma: 6,
 };
 
+/**
+ * Track-specific restyle.
+ *
+ * The human called the shipped track "too light and too narrow". Only ONE of
+ * those is a brightness problem, and it is not the one it looks like:
+ * `restylePixelArtMaterial` normalises toward `targetMeanLuminance`, so raising
+ * the mean would make track objectively BRIGHTER — the opposite of the note, and
+ * a direct violation of the near-floor-tone rule above. "Too light" here means
+ * too WEAK: thin, low-contrast, washed into the floor. So the mean and the cap
+ * are held exactly where they are, and boldness comes from the three things that
+ * actually carry it — wider rails and sleepers (geometry), a wider value spread,
+ * and a much darker silhouette rim.
+ */
+const TRACK_PIXEL_STYLE: PixelArtMaterialStyle = {
+  ...LINEWORK_PIXEL_STYLE,
+  targetStdDev: 34,
+};
+
+/** Default silhouette darkening. */
+const RIM_SCALE_DEFAULT = RIM_SCALE;
+
+/** Track gets a near-black outline so rails read as drawn linework at zoom. */
+const TRACK_RIM_SCALE = 0.34;
+
 function isRim(cls: Uint8Array, size: number, x: number, y: number): boolean {
   const neighbours = [
     [x, y - 1],
@@ -321,6 +353,8 @@ function buildAtlas(
   tieTile: RgbaImage,
   /** True when the body is a single round tube rather than paired rail heads. */
   round: boolean,
+  style: PixelArtMaterialStyle = LINEWORK_PIXEL_STYLE,
+  rimScale: number = RIM_SCALE_DEFAULT,
 ): RgbaImage {
   const size = LINEWORK_CELL_PX;
   const width = size * FRAME_COUNT;
@@ -332,11 +366,13 @@ function buildAtlas(
         const c = cls[y * size + x] as number;
         const o = (y * width + frame * size + x) * 4;
         if (c === LINEWORK_PIXEL.Empty) continue;
-        const src = c === LINEWORK_PIXEL.Tie ? tieTile : bodyTile;
+        // Rails are the only member cut from the body material. Sleepers AND
+        // buffer stops are timber on a track, so the cap must follow the tie.
+        const src = c === LINEWORK_PIXEL.Rail ? bodyTile : tieTile;
         const [r, g, b] = sampleTile(src, frame, x, y);
         const gain =
           memberGain(c, shade[y * size + x] as number, round) *
-          (isRim(cls, size, x, y) ? RIM_SCALE : 1);
+          (isRim(cls, size, x, y) ? rimScale : 1);
         out.data[o] = clamp8(r * gain);
         out.data[o + 1] = clamp8(g * gain);
         out.data[o + 2] = clamp8(b * gain);
@@ -345,7 +381,7 @@ function buildAtlas(
       }
     }
   }
-  return restylePixelArtMaterial(out, LINEWORK_PIXEL_STYLE);
+  return restylePixelArtMaterial(out, style);
 }
 
 /**
@@ -585,7 +621,10 @@ async function main(): Promise<void> {
   );
 
   console.log('Floor 2 linework: atlases');
-  write('linework-track.png', buildAtlas(TRACK_PROFILE, steel, timber, false));
+  write(
+    'linework-track.png',
+    buildAtlas(TRACK_PROFILE, steel, timber, false, TRACK_PIXEL_STYLE, TRACK_RIM_SCALE),
+  );
   write('linework-pipe.png', buildAtlas(PIPE_PROFILE, iron, iron, true));
   write('linework-props.png', restylePixelArtMaterial(buildPropAtlas(propsRaw), PROP_PIXEL_STYLE));
 
