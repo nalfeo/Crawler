@@ -21,6 +21,7 @@ import {
   LOOP_INCIDENT_LABEL,
   LOOP_INCIDENT_MARKER,
   buildLoopIncidentBody,
+  closeLoopIncident,
   fileLoopIncident,
   loopIncidentFingerprint,
   loopIncidentTitle,
@@ -602,3 +603,98 @@ test('workflowRunUrl is included in the issue body when provided', async (t) => 
 // What we CAN verify here is that the dry-run code path (reconciler-level,
 // not library-level) never calls fileLoopIncident — tested separately in
 // reconcile.test.mjs via the 'dry-run would-file-loop-incident' stdout line.
+
+// ── Scenario 8: closeLoopIncident closes an open loop incident ───────────────
+
+test('closeLoopIncident closes an open incident and returns action=closed', async (t) => {
+  const existingBody = buildLoopIncidentBody({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: MARKER_REVIEW_FP,
+    blockers: MARKER_REVIEW_BLOCKER,
+    attempt: 2,
+    firstSeenAt: '2026-07-01T00:30:00.000Z',
+    lastSeenAt: '2026-07-01T00:30:00.000Z',
+    repetitionCount: 1,
+    workflowRunUrl: null,
+    prHtmlUrl: 'https://github.com/' + REPOSITORY + '/pull/' + PR_NUM,
+    repository: REPOSITORY,
+  });
+
+  const existingIssue = {
+    number: 501,
+    title: loopIncidentTitle(PR_NUM),
+    body: existingBody,
+    pull_request: undefined,
+  };
+
+  const { server, port, mutatingCalls } = await startMockServer({
+    ['GET /repos/' + OWNER + '/' + REPO + '/issues']: () => ({ body: [existingIssue] }),
+    ['PATCH /repos/' + OWNER + '/' + REPO + '/issues/501']: () => ({ body: { number: 501 } }),
+  });
+  t.after(() => server.close());
+
+  const result = await closeLoopIncident({
+    request: makeMockRequest(port),
+    paginate: makeMockPaginate(port),
+    token: TOKEN,
+    owner: OWNER,
+    repo: REPO,
+    prNumber: PR_NUM,
+  });
+
+  assert.equal(result.action, 'closed');
+  assert.equal(result.issueNumber, 501);
+
+  const patchCall = mutatingCalls.find(
+    (call) => call.method === 'PATCH' && call.url === '/repos/' + OWNER + '/' + REPO + '/issues/501',
+  );
+  assert.ok(patchCall, 'must have patched the incident issue');
+  assert.equal(patchCall.body.state, 'closed');
+  assert.equal(patchCall.body.state_reason, 'completed');
+});
+
+test('closeLoopIncident returns action=not-found when no open incident exists', async (t) => {
+  const { server, port, mutatingCalls } = await startMockServer({
+    ['GET /repos/' + OWNER + '/' + REPO + '/issues']: () => ({ body: [] }),
+  });
+  t.after(() => server.close());
+
+  const result = await closeLoopIncident({
+    request: makeMockRequest(port),
+    paginate: makeMockPaginate(port),
+    token: TOKEN,
+    owner: OWNER,
+    repo: REPO,
+    prNumber: PR_NUM,
+  });
+
+  assert.equal(result.action, 'not-found');
+  assert.equal(mutatingCalls.length, 0, 'must not issue any mutating calls when no incident exists');
+});
+
+test('closeLoopIncident ignores PRs that have the same title', async (t) => {
+  // Ensure an issue that happens to be a pull_request is ignored.
+  const prLike = {
+    number: 99,
+    title: loopIncidentTitle(PR_NUM),
+    body: '<!-- not a real incident -->',
+    pull_request: { url: 'https://github.com/...' },
+  };
+  const { server, port, mutatingCalls } = await startMockServer({
+    ['GET /repos/' + OWNER + '/' + REPO + '/issues']: () => ({ body: [prLike] }),
+  });
+  t.after(() => server.close());
+
+  const result = await closeLoopIncident({
+    request: makeMockRequest(port),
+    paginate: makeMockPaginate(port),
+    token: TOKEN,
+    owner: OWNER,
+    repo: REPO,
+    prNumber: PR_NUM,
+  });
+
+  assert.equal(result.action, 'not-found');
+  assert.equal(mutatingCalls.length, 0, 'must not close a pull_request item');
+});
