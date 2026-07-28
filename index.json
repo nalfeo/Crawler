@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c04dbae255b96f76000dbe4818afad720d80204b",
+    "commitDate": "2026-07-28T17:18:50Z",
+    "commitSubject": "ci-recovery: auto-close loop-incident when PR converges to ARM_AUTO_MERGE (#2197)",
+    "capturedAt": "2026-07-28T18:13:38.904Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30382981482",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/c04dbae255b96f76000dbe4818afad720d80204b.json"
+  },
+  {
     "commit": "dd0ee956b3b53a8914e65d512adb8edecf45289b",
     "commitDate": "2026-07-28T14:34:18Z",
     "commitSubject": "fix(ci): stop the conflict coordinator labelling non-conflicting PRs as conflict-managed (#2186)",
