@@ -27,7 +27,7 @@ import {
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
-  mainHealthReason,
+  mainAttributionVerdict,
   mergeTrainGitEnvironment,
   planLandedRecovery,
   promoteExactBatch,
@@ -54,7 +54,7 @@ import {
   NOOP_LABEL,
   parseEnabledFlag,
   parseMergeTrainPrNumber,
-  planPrefixPromotion,
+  planAttributedPrefixPromotion,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
   RECOVERY_PENDING_LABEL,
@@ -421,7 +421,12 @@ const dispatchRecoveryGated = buildGatedDispatchRecovery({
 // keeps the check-run fan-out small and predictable either way.
 const MAIN_HEALTH_PUSH_RUN_LOOKBACK = 5;
 
-async function mainHealthAllowsPromotion() {
+// Failure-ATTRIBUTION probe. This is NOT a promotion gate (ADR 0077): the
+// validated composite prefix is the sole promotion gate, and a green composite
+// promotes onto a red `main` -- that is exactly how a PR that FIXES `main`
+// lands. The verdict is consulted only to decide whether a RED composite is
+// attributable to a queued PR, and only a positive 'red' pauses.
+async function mainAttributionSignal() {
   const currentMainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
     .object.sha;
   const [scheduleResponse, pushResponse] = await Promise.all([
@@ -437,15 +442,14 @@ async function mainHealthAllowsPromotion() {
   const scheduleRuns = [];
   for (const run of scheduleResponse.data.workflow_runs || []) {
     if (run.head_sha !== currentMainSha) {
-      // Runs for other SHAs are filtered by mainHealthReason; no need to
+      // Runs for other SHAs are filtered by mainAttributionVerdict; no need to
       // fetch jobs for them.
       scheduleRuns.push({ ...run, isTrainFastPath: false });
       continue;
     }
     // For schedule runs on the current main SHA, verify they ran the full CI
-    // gate. When MERGE_TRAIN_ENABLED=false, ci.yml skips the `changes` job on
-    // schedule events, so the run completes as success without real CI work.
-    // Such a no-op run must not be treated as authoritative health evidence.
+    // gate. A scheduled run whose `changes` job is absent/skipped did no real
+    // CI work, so it is not authoritative evidence either way.
     const jobs = await workflowRunJobs(run.id);
     scheduleRuns.push({ ...run, isTrainFastPath: isDisabledTrainScheduleRun(jobs) });
   }
@@ -457,15 +461,11 @@ async function mainHealthAllowsPromotion() {
     const runs = await checkRuns(run.head_sha);
     pushRuns.push({ ...run, isTrainFastPath: isTrainFastPathPushRun(run, trustedAppId, runs) });
   }
-  const reason = mainHealthReason({
+  const verdict = mainAttributionVerdict({
     mainSha: currentMainSha,
     runs: [...scheduleRuns, ...pushRuns],
   });
-  if (reason) {
-    process.stdout.write(`paused merge train; ${reason}\n`);
-    return false;
-  }
-  return true;
+  return verdict;
 }
 
 // Real GitHub squash-merge promotion. `mergePullRequest` merges each admitted
@@ -498,7 +498,7 @@ async function fetchCommit(sha) {
 // always a real GitHub commit, never a candidate SHA. Deliberately named
 // PROMOTION_POSTCONDITION_CHECK_NAME, never `merge-train`: a `merge-train`
 // check on a real landed main commit would masquerade as the fast-path
-// attestation ci.yml/mainHealthReason key on.
+// attestation ci.yml/mainAttributionVerdict key on.
 async function publishPostconditionCheck(sha, fingerprint, entries) {
   await createTrainCheck(
     sha,
@@ -884,7 +884,6 @@ const loopResult = await runTrainBuildLoop({
 });
 
 async function promotePrefix(prefixLength, validationIndex) {
-  if (!(await mainHealthAllowsPromotion())) return { promoted: false, landedCount: 0 };
   const provenanceEntries = train.slice(0, prefixLength);
   const validationCandidate = candidates[validationIndex];
   if (!validationCandidate) {
@@ -923,7 +922,6 @@ async function promotePrefix(prefixLength, validationIndex) {
     recordMapping: () => {
       landedCount += 1;
     },
-    reattestHealth: mainHealthAllowsPromotion,
     // Coordinator slot ordering is recomputed LIVE from filenames here, so it
     // survives label removal — it must be gated on the same kill switch or the
     // train would keep enforcing an order nothing else is enforcing.
@@ -965,8 +963,20 @@ if (loopResult.action === 'retryable-build-failure') {
 }
 
 // Validate the maximal candidate first. Only a genuine terminal maximal failure
-// asks the bisection planner for a smaller prefix.
-const plan = planPrefixPromotion(candidates.map((candidate) => candidate.state));
+// asks the bisection planner for a smaller prefix -- and only when `main` is not
+// itself known-red, so an unrelated broken `main` cannot be misattributed to a
+// queued PR and eject it (ADR 0077).
+const plan = await planAttributedPrefixPromotion({
+  prefixStates: candidates.map((candidate) => candidate.state),
+  mainVerdict: mainAttributionSignal,
+});
+
+if (plan.action === 'pause') {
+  process.stdout.write(
+    `paused merge train attribution; ${plan.reason}; the failed composite is not attributable to any queued PR, so no PR was ejected and no bisection round was spent\n`,
+  );
+  process.exit(0);
+}
 
 if (plan.action === 'validate') {
   await Promise.all(
@@ -1021,6 +1031,16 @@ if (plan.firstFailure !== -1) {
   await dispatchRecoveryGated(failingEntry.number, 'merge-train-validation-failure');
   process.stdout.write(
     `isolated first failing pr=#${failingEntry.number} green_prefix=${plan.greenPrefixLength}\n`,
+  );
+}
+
+if (plan.attribution) {
+  // Red-`main` attribution suppressed the ejection (`firstFailure: -1`), so the
+  // isolation block above logged nothing. Without this line an operator sees a
+  // failed composite, a partial prefix landing, and no explanation for why the
+  // failing PR was left in the queue.
+  process.stdout.write(
+    `main red attribution; ${plan.attribution}; ejected nothing, promoting proven-green prefix=${plan.greenPrefixLength}\n`,
   );
 }
 

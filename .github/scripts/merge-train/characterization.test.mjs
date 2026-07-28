@@ -32,7 +32,9 @@ test('merge-train fixture verdicts match current pure-function behavior', () => 
   const fixture = loadFixture();
   for (const entry of fixture.verdict_fixtures) {
     if (entry.kind === 'queueEntries') {
-      const ordered = queueEntries(entry.input.pulls, entry.input.repository).map((pull) => pull.number);
+      const ordered = queueEntries(entry.input.pulls, entry.input.repository).map(
+        (pull) => pull.number,
+      );
       assert.deepEqual(ordered, entry.expected.orderedNumbers, entry.id);
       continue;
     }
@@ -74,7 +76,11 @@ test('merge-train fixture verdicts match current pure-function behavior', () => 
       continue;
     }
     if (entry.kind === 'unsatisfiedChecks') {
-      assert.deepEqual(unsatisfiedChecks(entry.input.runs, entry.input.required), entry.expected.missing, entry.id);
+      assert.deepEqual(
+        unsatisfiedChecks(entry.input.runs, entry.input.required),
+        entry.expected.missing,
+        entry.id,
+      );
       continue;
     }
     assert.fail(`unknown fixture kind ${entry.kind}`);

@@ -454,29 +454,67 @@ export function isDisabledTrainScheduleRun(jobs) {
 }
 
 /**
- * Decide whether main currently has authoritative full-CI ("ci.yml", the
- * `CI` workflow) evidence for the exact SHA it is on right now, considering
- * both hourly `schedule` runs and `push` runs but excluding push runs that
- * merely attest a merge-train fast-path shortcut (`isTrainFastPath: true`;
- * their own green conclusion is not full-CI evidence). Fails closed: no
- * evidence is treated as NOT healthy, so the circuit breaker cannot be
- * bypassed by an empty/incomplete run list. A pending duplicate cannot hide
- * completed evidence for the same SHA; the newest completed run remains
- * authoritative, including a later completed failure.
+ * Classify `main`'s own CI health for the merge train's failure-ATTRIBUTION
+ * circuit breaker. Considers authoritative full-CI ("ci.yml", the `CI`
+ * workflow) runs for the exact SHA `main` is on right now -- both `schedule`
+ * and `push` runs -- but excludes push runs that merely attest a merge-train
+ * fast-path shortcut (`isTrainFastPath: true`; their own green conclusion is
+ * not full-CI evidence). A pending duplicate cannot hide completed evidence
+ * for the same SHA; the newest completed run remains authoritative, including
+ * a later completed failure.
+ *
+ * Returns `{ verdict, reason }` where verdict is:
+ *   - `'red'`     the newest completed authoritative run concluded non-success
+ *   - `'green'`   the newest completed authoritative run succeeded
+ *   - `'unknown'` no authoritative evidence exists yet, or it is still pending
+ *
+ * This deliberately fails OPEN on `'unknown'`, unlike the promotion gate it
+ * replaced (ADR 0077). Main health is no longer a promotion gate -- the
+ * composite prefix validation is the sole promotion gate -- so this verdict is
+ * only consulted to decide whether a RED composite is attributable to a queued
+ * PR. Absence of evidence attributes nothing. Failing closed here would be
+ * ruinous rather than safe: after every train promotion the only run on the new
+ * `main` is the excluded fast-path attestation, so "no evidence" is the steady
+ * state, and with a daily full-CI backstop a fail-closed breaker would suspend
+ * ejection of genuinely broken PRs for up to a day. An unattributed ejection is
+ * recoverable (the PR returns to ci-recovery and re-queues); a train that
+ * cannot eject anything is not self-healing.
  */
-export function mainHealthReason({ mainSha, runs }) {
+export function mainAttributionVerdict({ mainSha, runs }) {
   const authoritative = (runs || [])
     .filter((run) => run.head_sha === mainSha && run.name === 'CI' && !run.isTrainFastPath)
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-  if (authoritative.length === 0) return `no full-CI evidence yet for current main ${mainSha}`;
+  if (authoritative.length === 0) {
+    return { verdict: 'unknown', reason: `no full-CI evidence yet for current main ${mainSha}` };
+  }
   const latestCompleted = authoritative.find((run) => run.status === 'completed');
   if (!latestCompleted) {
-    return `full-CI run for current main ${mainSha} is still ${authoritative[0].status}`;
+    return {
+      verdict: 'unknown',
+      reason: `full-CI run for current main ${mainSha} is still ${authoritative[0].status}`,
+    };
   }
-  if (latestCompleted.conclusion !== 'success') {
-    return `latest completed full-CI run for current main ${mainSha} concluded ${latestCompleted.conclusion}`;
+  // Only conclusions that represent an actual test failure count as positive red
+  // evidence. Infra-only outcomes (cancelled, skipped, stale, neutral) are not
+  // authoritative: treat them the same as `unknown` so a manually cancelled run
+  // does not suppress bisection/ejection until the next daily backstop.
+  // Mirrors the incident router's gate (incident.mjs: only failure/timed_out/
+  // startup_failure/action_required raise incidents).
+  const FAILURE_CONCLUSIONS = new Set(['failure', 'timed_out', 'startup_failure', 'action_required']);
+  if (FAILURE_CONCLUSIONS.has(latestCompleted.conclusion)) {
+    return {
+      verdict: 'red',
+      reason: `latest completed full-CI run for current main ${mainSha} concluded ${latestCompleted.conclusion}`,
+    };
   }
-  return null;
+  if (latestCompleted.conclusion === 'success') {
+    return { verdict: 'green', reason: null };
+  }
+  // cancelled / skipped / stale / neutral — not authoritative evidence either way
+  return {
+    verdict: 'unknown',
+    reason: `latest completed full-CI run for current main ${mainSha} has non-authoritative conclusion ${latestCompleted.conclusion}`,
+  };
 }
 
 export function promotionStaleReason({ currentMain, currentPr, expectedBase, pr, repository }) {
@@ -515,7 +553,6 @@ export async function promoteExactCandidate({
   publishPostconditionCheck,
   provenanceEntries = [pr],
   recordMapping,
-  reattestHealth,
 }) {
   return promoteExactBatch({
     entries: [pr],
@@ -537,7 +574,6 @@ export async function promoteExactCandidate({
     provenanceEntries,
     positions: [position],
     recordMapping,
-    reattestHealth,
   });
 }
 
@@ -562,7 +598,6 @@ export async function promoteExactBatch({
   provenanceEntries = entries,
   positions = entries.map((_, index) => index + 1),
   recordMapping = () => {},
-  reattestHealth = async () => true,
   verifyMergeSlot = async () => null,
   proofPollDelaysMs,
   proofSleep,
@@ -652,19 +687,19 @@ export async function promoteExactBatch({
     }
     currentPrs[index] = finalPr;
   }
-  // Re-run the main-health guard here, immediately before publishing the
-  // required check and updating refs. The initial guard (mainHealthAllowsPromotion)
-  // runs once per reconcile before the sequential PR/admission reads above;
-  // a scheduled or push-triggered CI run for main can start and go
-  // pending/red while those reads are in flight, which would otherwise let a
-  // now-unhealthy main get promoted past. Reusing the same trusted, token
-  // authenticated health check here (rather than trusting the earlier
-  // result) closes that window without any unauthenticated or stale
-  // shortcut.
-  if (!(await reattestHealth())) {
-    process.stdout.write('paused merge train; main health changed during final reattestation\n');
-    return false;
-  }
+  // Main's OWN health is deliberately NOT re-checked here (ADR 0077). The
+  // validated composite candidate -- built on exactly `expectedBase` and proven
+  // green by the full merge-gate -- is the sole promotion gate; re-asserting
+  // that `main` alone is green would only reinstate the deadlock where a PR
+  // that FIXES a red `main` can never land. Everything this re-check used to
+  // add is still covered: `main` moving is caught by `promotionStaleReason`
+  // above, by the whole-batch `finalMain` guard, and by the per-merge base-CAS
+  // below; a divergent landing is caught fail-closed by the post-merge
+  // parent/tree proof (`landedCommitProofError`). The only case it uniquely
+  // covered -- `main` going red WITHOUT moving, i.e. a re-run of CI on the same
+  // SHA concluding differently -- is not a promotion concern, because the
+  // candidate was validated against that exact SHA. Main health now feeds only
+  // the failure-ATTRIBUTION breaker in reconcile.mjs.
   const finalCandidateSha = candidateShas.at(-1);
   const promotionFingerprint = candidateFingerprint(expectedBase, currentPrs);
   // ---- Sequential GitHub squash-merge promotion. ----

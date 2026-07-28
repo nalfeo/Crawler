@@ -32,18 +32,17 @@ jobs:
     #     currently carry or are transitioning the merge-train queue label.
     #   - workflow_run named 'CI': allowed only for (a) a push-triggered CI
     #     completion on the default branch, or (b) a schedule-triggered CI
-    #     completion while the train is enabled. (b) closes a gap:
-    #     mainHealthReason() (reconcile-lib.mjs) picks the newest *completed*
-    #     authoritative run for the current main SHA; a pending duplicate never
-    #     hides completed evidence. (b) is needed only for the pending-only
-    #     initial case: when main just moved and no completed CI run exists yet,
-    #     reconcile pauses, and a wakeup is required once that pending run
-    #     completes -- without (b), nothing re-wakes reconcile in that window,
-    #     falling back to the unreliable */5 cron (which arrives ~hourly in
-    #     practice). Mirrors the identical carve-out already proven in
-    #     ci-recovery-incidents.yml (only *reads* vars.MERGE_TRAIN_ENABLED;
-    #     never sets it). Every other CI workflow_run (PR, or schedule while
-    #     disabled) remains blocked -- no storm regression.
+    #     completion while the train is enabled. (b) is the wakeup for the
+    #     failure-attribution pause: when the maximal composite is red and
+    #     `mainAttributionVerdict()` (reconcile-lib.mjs) reports 'red',
+    #     reconcile pauses without ejecting anyone, and something must re-wake
+    #     it once main's own full-CI evidence turns green. Without (b) nothing
+    #     re-wakes reconcile in that window, falling back to the unreliable
+    #     */5 cron (which arrives ~hourly in practice). Mirrors the identical
+    #     carve-out already proven in ci-recovery-incidents.yml (only *reads*
+    #     vars.MERGE_TRAIN_ENABLED; never sets it). Every other CI workflow_run
+    #     (PR, or schedule while disabled) remains blocked -- no storm
+    #     regression.
     #   - Every other event (push, schedule, workflow_dispatch, and the
     #     'Merge Train Validation' workflow_run) is unaffected.
     if: >-

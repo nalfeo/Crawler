@@ -1,0 +1,30 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "merge-train-health-attribution",
+  "date": "2026-07-28",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 252,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 252
+    }
+  },
+  "tools": {
+    "create": 4,
+    "edit": 45,
+    "glob": 1,
+    "grep": 13,
+    "powershell": 73,
+    "read_agent": 7,
+    "rename_branch": 1,
+    "rg": 21,
+    "skill": 1,
+    "sql": 2,
+    "task": 3,
+    "view": 81
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
