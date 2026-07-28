@@ -311,6 +311,19 @@ export function isThemeSetItemResolvedForPhase(
   );
 }
 
+/**
+ * True when the pipeline has already produced at least one artifact for `item`
+ * in `phase`. Distinguishes a never-generated item (a run "generates" it) from
+ * one that has output but is unresolved (a run "regenerates" it). Purely
+ * cosmetic — drives only the Run-button wording, never eligibility or gating.
+ */
+export function themeSetItemHasPhaseOutput(
+  item: ThemeEquipmentSetItem,
+  phase: ThemeEquipmentSetReviewPhase,
+): boolean {
+  return item.phases[phase].artifacts.length > 0;
+}
+
 export function themeEquipmentSetStateKey(setId: string): string {
   if (!KEBAB_ID_PATTERN.test(setId)) {
     throw new ThemeEquipmentSetValidationError([
@@ -676,6 +689,24 @@ const PHASE_REQUIRED_ARTIFACT_KIND: Partial<Record<ThemeEquipmentSetReviewPhase,
 } as const;
 
 /**
+ * True when `item` cannot yet be reviewed in `phase` because its required
+ * pipeline output has not been generated. Roster has no required artifact, so it
+ * is reviewable immediately and never "awaits generation". This gates the review
+ * thumbs in the canvas (Change 8) so the maintainer can't approve/reject an item
+ * before the pipeline has produced anything to judge. Distinct from
+ * `themeSetItemHasPhaseOutput` (any artifact) — this checks the REQUIRED kind, so
+ * it stays aligned with `validatePhaseArtifactsForUpVote`, the up-vote authority.
+ */
+export function themeSetItemAwaitsGeneration(
+  item: ThemeEquipmentSetItem,
+  phase: ThemeEquipmentSetReviewPhase,
+): boolean {
+  const requiredKind = PHASE_REQUIRED_ARTIFACT_KIND[phase];
+  if (!requiredKind) return false; // roster is reviewable without generated output
+  return !item.phases[phase].artifacts.some((artifact) => artifact.kind === requiredKind);
+}
+
+/**
  * Returns a gate reason when the item is missing the required artifact for an
  * up vote in the given phase, or when variant-approval has the wrong count.
  * Returns `null` when everything is in order.
@@ -996,7 +1027,17 @@ export function approveRemainingThemeSetPhase(input: unknown): ThemeSetBulkAppro
 export interface ThemeSetRunPhasePlan {
   /** Current phase, or `null` when the set is not in a reviewable phase. */
   readonly phase: ThemeEquipmentSetReviewPhase | null;
-  /** Number of items a run would (re)generate — every non-resolved item. */
+  /**
+   * Number of unresolved items a run would generate for the FIRST time — items
+   * with no phase output yet. Disjoint from `regenerateCount`.
+   */
+  readonly generateCount: number;
+  /**
+   * Number of unresolved items a run would regenerate — items that already have
+   * phase output (e.g. rejected and awaiting a fresh attempt). Disjoint from
+   * `generateCount`. Invariant: `generateCount + regenerateCount` equals the
+   * total unresolved item count.
+   */
   readonly regenerateCount: number;
   /** True when a run regenerates nothing and would only judge the collection. */
   readonly judgeOnly: boolean;
@@ -1014,20 +1055,35 @@ export interface ThemeSetRunPhasePlan {
 export function planRunPhase(input: unknown): ThemeSetRunPhasePlan {
   const parsed = themeEquipmentSetStateSchema.safeParse(input);
   if (!parsed.success) {
-    return { phase: null, regenerateCount: 0, judgeOnly: false, collectionJudgeMissing: false };
+    return {
+      phase: null,
+      generateCount: 0,
+      regenerateCount: 0,
+      judgeOnly: false,
+      collectionJudgeMissing: false,
+    };
   }
   const state = parsed.data;
   if (!isReviewPhase(state.phase)) {
-    return { phase: null, regenerateCount: 0, judgeOnly: false, collectionJudgeMissing: false };
+    return {
+      phase: null,
+      generateCount: 0,
+      regenerateCount: 0,
+      judgeOnly: false,
+      collectionJudgeMissing: false,
+    };
   }
   const phase = state.phase;
-  const regenerateCount = state.items.filter(
-    (item) => !isThemeSetItemResolvedForPhase(item, phase),
+  const unresolved = state.items.filter((item) => !isThemeSetItemResolvedForPhase(item, phase));
+  const regenerateCount = unresolved.filter((item) =>
+    themeSetItemHasPhaseOutput(item, phase),
   ).length;
+  const generateCount = unresolved.length - regenerateCount;
   return {
     phase,
+    generateCount,
     regenerateCount,
-    judgeOnly: regenerateCount === 0,
+    judgeOnly: unresolved.length === 0,
     collectionJudgeMissing: state.phases[phase].collectionJudge === null,
   };
 }

@@ -10,6 +10,8 @@ import {
   loadRepoEnv,
   resolveDispatchRef,
   resolveThemeSetId,
+  selectThemeEquipmentRun,
+  themeEquipmentRunStatus,
 } from '../lib/bridge.mjs';
 
 function repoWithSets(setIds) {
@@ -198,4 +200,97 @@ test('rejects when the working-tree plan differs from the remote blob', async ()
     rmSync(root, { recursive: true, force: true });
     rmSync(remote, { recursive: true, force: true });
   }
+});
+
+test('correlates a run to its set by the exact anchored "Theme Equipment <action> · <setId>" title (prefix-collision safe)', () => {
+  const runs = [
+    {
+      databaseId: 11,
+      status: 'in_progress',
+      conclusion: null,
+      url: 'u11',
+      createdAt: 't11',
+      displayTitle: 'Theme Equipment run-phase · classic-fantasy',
+    },
+    {
+      databaseId: 22,
+      status: 'completed',
+      conclusion: 'success',
+      url: 'u22',
+      createdAt: 't22',
+      displayTitle: 'Theme Equipment run-phase · classic-fantasy-basic-leather',
+    },
+  ];
+  // The shorter id must NOT match the longer id's run even though it is a prefix.
+  const match = selectThemeEquipmentRun(runs, 'classic-fantasy');
+  assert.equal(match.databaseId, 11);
+  assert.equal(match.status, 'in_progress');
+  assert.equal(match.conclusion, null);
+
+  const longer = selectThemeEquipmentRun(runs, 'classic-fantasy-basic-leather');
+  assert.equal(longer.databaseId, 22);
+  assert.equal(longer.conclusion, 'success');
+});
+
+test('does not correlate a run whose crafted set_id merely ends with the requested set id (suffix-spoof safe)', () => {
+  const runs = [
+    // A manual dispatch with set_id = "other · classic-fantasy" produces a title
+    // ending in " · classic-fantasy"; the old suffix match would have shown it as
+    // the latest run for "classic-fantasy". The anchored, single-separator match
+    // rejects it because the action segment cannot contain a second "·".
+    {
+      databaseId: 99,
+      status: 'in_progress',
+      conclusion: null,
+      url: 'u99',
+      createdAt: 't99',
+      displayTitle: 'Theme Equipment run-phase · other · classic-fantasy',
+    },
+  ];
+  assert.equal(selectThemeEquipmentRun(runs, 'classic-fantasy'), null);
+
+  // A legitimate single-separator title for that same id still matches.
+  const legit = [
+    {
+      databaseId: 7,
+      status: 'completed',
+      conclusion: 'success',
+      url: 'u7',
+      createdAt: 't7',
+      displayTitle: 'Theme Equipment status · classic-fantasy',
+    },
+  ];
+  assert.equal(selectThemeEquipmentRun(legit, 'classic-fantasy').databaseId, 7);
+});
+
+test('returns null when no run title carries the set suffix, or the payload is not an array', () => {
+  const runs = [{ databaseId: 1, displayTitle: 'Theme Equipment run-phase · other-set' }];
+  assert.equal(selectThemeEquipmentRun(runs, 'classic-fantasy'), null);
+  assert.equal(selectThemeEquipmentRun(null, 'classic-fantasy'), null);
+  assert.equal(selectThemeEquipmentRun('nope', 'classic-fantasy'), null);
+});
+
+test('normalizes malformed run fields to null rather than surfacing junk', () => {
+  const runs = [
+    {
+      databaseId: -5, // not a positive integer
+      status: 42, // not a string
+      conclusion: '', // empty string → null
+      url: null,
+      createdAt: undefined,
+      displayTitle: 'Theme Equipment run-phase · classic-fantasy',
+    },
+  ];
+  const match = selectThemeEquipmentRun(runs, 'classic-fantasy');
+  assert.equal(match.databaseId, null);
+  assert.equal(match.status, null);
+  assert.equal(match.conclusion, null);
+  assert.equal(match.url, null);
+  assert.equal(match.createdAt, null);
+  assert.equal(match.displayTitle, 'Theme Equipment run-phase · classic-fantasy');
+});
+
+test('rejects an invalid set id before shelling out to gh', async () => {
+  const result = await themeEquipmentRunStatus(process.cwd(), 'not a valid id!!');
+  assert.deepEqual(result, { available: false, errorKind: 'invalid-set-id' });
 });

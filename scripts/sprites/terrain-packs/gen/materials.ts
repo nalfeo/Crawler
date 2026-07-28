@@ -216,6 +216,114 @@ export const FLOOR2_INDUSTRIAL_CAVE_MATERIALS = {
   },
 } as const satisfies Record<string, SurfaceMaterialSpec>;
 
+/**
+ * Floor 2 — INDUSTRIAL LINEWORK source materials.
+ *
+ * These are pure SURFACE textures. All linework geometry (rail head profile,
+ * sleeper spacing, pipe bore and flange rings, the 16 edge-Wang masks and the
+ * stub contract that makes them join) is computed locally and deterministically
+ * in `import-floor2-linework.ts`; Azure only ever supplies the material that is
+ * sampled through those masks. That is the same division of labour as
+ * `buildWallAccents`, which clips a generated facet motif to a locally computed
+ * wall-cell alpha.
+ *
+ * Consequence for the prompts: they must describe a FLAT UNIFORM SURFACE and
+ * explicitly forbid rails, pipes, sleepers and any object silhouette. A
+ * generated rail baked into the texture would fight the geometry mask and read
+ * as a double image.
+ */
+export const FLOOR2_LINEWORK_MATERIALS = {
+  /** Rail heads and switch hardware. */
+  steel: {
+    cacheKey: 'floor2-linework-steel',
+    prompt:
+      'Weathered industrial steel surface, cool blue-grey metal with patches of ' +
+      'orange-brown rust bloom, fine scratches, pitting and old grease staining. ' +
+      'Flat uniform metal surface only — no rails, no pipes, no rivets arranged ' +
+      'in lines, no bolts, no machinery, no edges, no silhouettes. ' +
+      SHARED_STYLE,
+    tile: {
+      sizePx: 64,
+      posterizeLevels: 8,
+      targetMeanLuminance: 80,
+      maxLuminance: 150,
+      targetStdDev: 12,
+    },
+  },
+  /** Sleepers / ties under the rails. */
+  timber: {
+    cacheKey: 'floor2-linework-timber',
+    prompt:
+      'Creosote-soaked railway sleeper timber surface, very dark brown weathered ' +
+      'wood with straight open grain, splits along the grain, and dark oily ' +
+      'staining. Flat uniform wood surface only — no planks arranged as boards, ' +
+      'no nails, no metal, no objects, no edges, no silhouettes. ' +
+      SHARED_STYLE,
+    tile: {
+      sizePx: 64,
+      posterizeLevels: 8,
+      targetMeanLuminance: 56,
+      maxLuminance: 120,
+      targetStdDev: 12,
+    },
+  },
+  /** Pipe runs. */
+  iron: {
+    cacheKey: 'floor2-linework-iron',
+    prompt:
+      'Corroded cast iron surface, dull dark grey-green metal with heavy rust ' +
+      'scale, flaking patches, mineral crust and old verdigris staining. Flat ' +
+      'uniform metal surface only — no pipes, no tubes, no flanges, no bolts, ' +
+      'no valves, no machinery, no edges, no silhouettes. ' +
+      SHARED_STYLE,
+    tile: {
+      sizePx: 64,
+      posterizeLevels: 8,
+      targetMeanLuminance: 74,
+      maxLuminance: 140,
+      targetStdDev: 12,
+    },
+  },
+} as const satisfies Record<string, SurfaceMaterialSpec>;
+
+/**
+ * Floor 2 linework PROP sheet.
+ *
+ * Unlike every other spec in this file this is NOT a tileable material — it is a
+ * 2x2 grid of discrete objects on a flat pure-magenta field that local code keys
+ * out into four square frames. Chroma keying is derivation (the same class of
+ * operation as the crack-mask isolation in `buildGroundDecals`), not texture
+ * synthesis, so it stays on the correct side of the governing law: the object's
+ * shape and surface both come from Azure, only the cut-out is local.
+ *
+ * `tile` is unused for this spec — the sheet is never made seamless — but the
+ * field is kept so it satisfies `SurfaceMaterialSpec` and can flow through the
+ * same generation harness.
+ */
+export const FLOOR2_LINEWORK_PROPS: SurfaceMaterialSpec = {
+  cacheKey: 'floor2-linework-props',
+  prompt:
+    'Four separate mining objects arranged in a 2x2 grid on a plain flat pure ' +
+    'magenta background, one object centred in each quadrant with a wide magenta ' +
+    'margin around it and no object touching another. Top-left: a rusty iron ' +
+    'mine cart on small wheels seen from directly above. Top-right: an overturned ' +
+    'empty mine cart seen from directly above. Bottom-left: a track switch lever ' +
+    'stand, a short iron lever on a base plate, seen from directly above. ' +
+    'Bottom-right: a pipe valve wheel on a short flanged stub, seen from directly ' +
+    'above. Top-down orthographic view, flat even lighting, no cast shadows, no ' +
+    'perspective, no ground texture, no text, no watermark, muted desaturated ' +
+    'rusted industrial palette, dark fantasy dungeon crawler game asset sheet. ' +
+    'The background must be a single uniform magenta colour everywhere it is not ' +
+    'an object.',
+  tile: {
+    sizePx: 64,
+    posterizeLevels: 12,
+    targetMeanLuminance: 96,
+    maxLuminance: 190,
+    targetStdDev: 22,
+  },
+};
+
 export interface SpecialFloorSpec {
   /** Pool id, also the on-disk file prefix. */
   readonly id: string;

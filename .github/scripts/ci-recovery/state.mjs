@@ -201,7 +201,14 @@ export function isTrainFastPathPushRun(run, trustedAppId, checkRuns) {
 }
 
 const validOwners = new Set(['automation', 'shepherd', 'none']);
-const validStatuses = new Set(['active', 'dispatched', 'escalated', 'idle', 'waiting']);
+export const RECOVERY_STATUSES = Object.freeze([
+  'active',
+  'dispatched',
+  'escalated',
+  'idle',
+  'waiting',
+]);
+const validStatuses = new Set(RECOVERY_STATUSES);
 
 export function shouldMutateRecoveryState(mode, operation) {
   return mode === 'live' || (mode === 'dry-run' && operation.startsWith('lease-'));
