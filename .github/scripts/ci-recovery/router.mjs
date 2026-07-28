@@ -115,6 +115,8 @@ const DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS = 5000;
 export const DISPATCH_BLOCKED_LABEL_NAMES = new Set([
   'ci-conflict-order-wait', // ci-conflict-coordinator/state.mjs ORDER_WAIT_LABEL
   'ci-conflict-escalation', // ci-conflict-coordinator/state.mjs ESCALATION_LABEL
+  'ci-lifecycle-quarantined', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.QUARANTINED]
+  'ci-lifecycle-abandoned', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.ABANDONED]
   BLOCKED_LABEL, // 'merge-train-blocked'
   VALIDATION_FAILED_LABEL, // 'merge-train-validation-failed'
   HUMAN_APPROVAL_LABEL, // 'human-approval-required'
