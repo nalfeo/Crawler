@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bucketBySize,
   collectMergedPrPages,
+  computeOpenPrAging,
   computeStageTimings,
   deriveFindings,
   fetchMergedPrs,
   type BottleneckReport,
+  type OpenPrRecord,
   type StageTiming,
 } from '../../../scripts/agent/velocity/bottleneck-scan';
 
@@ -238,6 +240,7 @@ function report(overrides: Partial<Omit<BottleneckReport, 'findings'>>) {
     slowest: [],
     estimationAccuracy: null,
     guardFriction: [],
+    openPrAging: null,
     ...overrides,
   };
 }
@@ -337,5 +340,168 @@ describe('collectMergedPrPages', () => {
 
     expect(calls).toEqual([null, 'CURSOR_1']);
     expect(prs.map((pr) => pr.number)).toEqual([30, 20, 10]);
+  });
+});
+
+// ─── Helpers for open-PR aging tests ────────────────────────────────────────
+
+function openPr(
+  number: number,
+  ageH: number,
+  labels: string[] = [],
+  stateAgeH?: number,
+): OpenPrRecord {
+  const now = START + 100 * HOUR; // reference "now" = t+100h
+  return {
+    number,
+    title: `PR ${number}`,
+    createdAt: new Date(now - ageH * HOUR).toISOString(),
+    updatedAt: new Date(now - (stateAgeH ?? ageH) * HOUR).toISOString(),
+    labels,
+  };
+}
+
+const NOW = new Date(START + 100 * HOUR).toISOString();
+
+describe('computeOpenPrAging', () => {
+  it('returns zeroed panel for an empty list', () => {
+    const panel = computeOpenPrAging([], NOW);
+    expect(panel.openPrs).toBe(0);
+    expect(panel.maxAgeH).toBe(0);
+    expect(panel.oldest).toHaveLength(0);
+    expect(panel.labelBreakdown).toHaveLength(0);
+  });
+
+  it('computes p50 / p90 / max / countAbove4H from age distribution', () => {
+    // ages: 1h, 2h, 4h, 8h, 16h, 32h → sorted [1,2,4,8,16,32]
+    const prs = [1, 2, 4, 8, 16, 32].map((ageH, idx) => openPr(idx + 1, ageH));
+    const panel = computeOpenPrAging(prs, NOW);
+
+    expect(panel.openPrs).toBe(6);
+    expect(panel.maxAgeH).toBeCloseTo(32, 5);
+    expect(panel.p50AgeH).toBeCloseTo(4, 5); // nearest-rank p50 of 6 → idx 2 = 4
+    expect(panel.p90AgeH).toBeCloseTo(32, 5); // nearest-rank p90 of 6 → idx 5 = 32
+    // ages > 4h: 8, 16, 32 → 3
+    expect(panel.countAbove4H).toBe(3);
+  });
+
+  it('surfaces only known blocking labels in the breakdown', () => {
+    const prs = [
+      openPr(1, 10, ['ci-conflict-order-wait']),
+      openPr(2, 5, ['ci-conflict-order-wait', 'merge-conflict']),
+      openPr(3, 2, ['some-other-label']),
+    ];
+    const panel = computeOpenPrAging(prs, NOW);
+
+    expect(panel.labelBreakdown).toContainEqual({ label: 'ci-conflict-order-wait', count: 2 });
+    expect(panel.labelBreakdown).toContainEqual({ label: 'merge-conflict', count: 1 });
+    expect(panel.labelBreakdown.find((e) => e.label === 'some-other-label')).toBeUndefined();
+  });
+
+  it('returns the 5 oldest entries ordered by total age descending', () => {
+    const prs = [1, 2, 3, 4, 5, 6, 7].map((ageH, idx) => openPr(idx + 1, ageH));
+    const panel = computeOpenPrAging(prs, NOW);
+
+    expect(panel.oldest).toHaveLength(5);
+    expect(panel.oldest[0]?.prNumber).toBe(7); // age 7h
+    expect(panel.oldest[4]?.prNumber).toBe(3); // age 3h
+  });
+
+  it('reports stateAgeH from updatedAt, not createdAt', () => {
+    // PR created 20h ago, but last updated only 3h ago
+    const pr = openPr(1, 20, [], 3);
+    const panel = computeOpenPrAging([pr], NOW);
+    expect(panel.oldest[0]?.ageH).toBeCloseTo(20, 5);
+    expect(panel.oldest[0]?.stateAgeH).toBeCloseTo(3, 5);
+  });
+
+  it('oldest entries expose only blocking labels, not unrelated ones', () => {
+    const pr = openPr(1, 10, ['ci-conflict-order-wait', 'some-other-label']);
+    const panel = computeOpenPrAging([pr], NOW);
+    expect(panel.oldest[0]?.labels).toEqual(['ci-conflict-order-wait']);
+  });
+
+  // ── 2026-07-27 scenario fixture ──────────────────────────────────────────
+  // Replays the 18-PR ci-conflict-order-wait stall that ran unnoticed for 64h.
+  it('2026-07-27 scenario: 18 PRs carrying ci-conflict-order-wait for up to 64h is obviously alarming', () => {
+    // Realistic age distribution from the handoff:
+    // ages approximately 2h → 64h, all carrying the blocking label, some also merge-conflict
+    const ages = [64, 62, 58, 55, 48, 44, 40, 36, 32, 28, 24, 18, 14, 10, 8, 6, 4, 2];
+    expect(ages).toHaveLength(18);
+
+    const prs: OpenPrRecord[] = ages.map((ageH, idx) => {
+      const labels: string[] = ['ci-conflict-order-wait'];
+      if (idx < 7) labels.push('merge-conflict'); // the genuinely conflicting subset
+      return openPr(1976 + idx, ageH, labels);
+    });
+
+    const panel = computeOpenPrAging(prs, NOW);
+
+    expect(panel.openPrs).toBe(18);
+    expect(panel.maxAgeH).toBeCloseTo(64, 5);
+    expect(panel.p90AgeH).toBeGreaterThan(40); // p90 of 18 → idx 15 = 36+, well above threshold
+    expect(panel.countAbove4H).toBe(16); // all but the 2h and 4h PRs (threshold is > 4h)
+    expect(panel.labelBreakdown).toContainEqual({ label: 'ci-conflict-order-wait', count: 18 });
+    expect(panel.labelBreakdown).toContainEqual({ label: 'merge-conflict', count: 7 });
+
+    // The oldest entry should be the head-of-line offender (PR #1976, 64h)
+    expect(panel.oldest[0]?.prNumber).toBe(1976);
+    expect(panel.oldest[0]?.ageH).toBeCloseTo(64, 5);
+
+    // deriveFindings must produce a STALL ALARM with this panel
+    const findings = deriveFindings(
+      report({
+        openPrAging: panel,
+        stages: [
+          { name: 'last push → merge', kind: 'queue', medianHours: 4, shareOfLeadTime: 0.4 },
+        ],
+      }),
+    );
+    const text = findings.join('\n');
+    expect(text).toMatch(/STALL ALARM/);
+    expect(text).toMatch(/64\.0h/);
+    expect(text).toMatch(/ci-conflict-order-wait/);
+  });
+});
+
+describe('deriveFindings (open PR aging)', () => {
+  it('emits a STALL ALARM when max age is at or above 24h', () => {
+    const panel = computeOpenPrAging([openPr(1, 30, ['merge-train-blocked'])], NOW);
+    const findings = deriveFindings(report({ openPrAging: panel }));
+    expect(findings.join('\n')).toMatch(/STALL ALARM/);
+    expect(findings.join('\n')).toMatch(/merge-train-blocked/);
+  });
+
+  it('emits a watch warning when max age is between 8h and 24h', () => {
+    const panel = computeOpenPrAging([openPr(1, 12)], NOW);
+    const findings = deriveFindings(report({ openPrAging: panel }));
+    expect(findings.join('\n')).toMatch(/Watch for a growing queue/);
+    expect(findings.join('\n')).not.toMatch(/STALL ALARM/);
+  });
+
+  it('does not emit an age warning for healthy queues (max < 8h)', () => {
+    const panel = computeOpenPrAging([openPr(1, 3)], NOW);
+    const findings = deriveFindings(report({ openPrAging: panel }));
+    expect(findings.join('\n')).not.toMatch(/STALL ALARM/);
+    expect(findings.join('\n')).not.toMatch(/Watch for a growing queue/);
+  });
+
+  it('flags a dominant blocking label when 3 or more PRs share it', () => {
+    const prs = [
+      openPr(1, 30, ['ci-conflict-order-wait']),
+      openPr(2, 20, ['ci-conflict-order-wait']),
+      openPr(3, 10, ['ci-conflict-order-wait']),
+    ];
+    const panel = computeOpenPrAging(prs, NOW);
+    const findings = deriveFindings(report({ openPrAging: panel }));
+    expect(findings.join('\n')).toMatch(/ci-conflict-order-wait/);
+    expect(findings.join('\n')).toMatch(/head-of-line blocking/);
+  });
+
+  it('notes missing blocking label on alarming PR', () => {
+    const panel = computeOpenPrAging([openPr(99, 48, [])], NOW);
+    const findings = deriveFindings(report({ openPrAging: panel }));
+    expect(findings.join('\n')).toMatch(/STALL ALARM/);
+    expect(findings.join('\n')).toMatch(/no blocking label/);
   });
 });
