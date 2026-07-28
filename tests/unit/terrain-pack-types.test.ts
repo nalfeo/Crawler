@@ -101,7 +101,7 @@ describe('runtimeTerrainPackIdSchema — runtime-only subset (Fix 5)', () => {
     }
   });
 
-  it('accepts industrial-cave (the only current runtime pack)', () => {
+  it('accepts industrial-cave (a registered runtime pack)', () => {
     expect(runtimeTerrainPackIdSchema.safeParse('industrial-cave').success).toBe(true);
   });
 

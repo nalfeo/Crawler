@@ -307,7 +307,7 @@ export interface TerrainLayerOptions {
  * @param options.terrainPackId  Registry-backed terrain pack id (e.g. Floor
  *   2's `industrial-cave`). When present, WALL/FLOOR/CORRIDOR tiles (per
  *   `PACK_*_TERRAIN_TYPES`) stamp the pack's atlas/pool textures instead of
- *   the legacy `TILE_SPRITES` path. When omitted (e.g. Floor 1), rendering is
+ *   the legacy `TILE_SPRITES` path. When omitted, rendering is
  *   byte-for-byte identical to the pre-terrain-pack behavior.
  */
 export function buildTerrainLayer(

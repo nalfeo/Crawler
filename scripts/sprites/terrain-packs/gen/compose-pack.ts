@@ -166,6 +166,17 @@ export function composePack(input: ComposePackInput): ComposePackResult {
   const atlasRelPath = `${packDir}/wall-atlas.png`;
   files.push({ relativePath: atlasRelPath, buffer: encodePng(atlas) });
 
+  // DURABLE REBUILD INPUTS. The pool tiles below are terminal outputs, so they
+  // are their own source, but `wallTile`/`woodTile` are consumed into the atlas
+  // and door slabs and would otherwise survive only in the gitignored Azure
+  // cache. Committing them means a fresh clone can recompose this pack byte-for-
+  // byte with no Azure access — which is what a canonical-geometry change (as in
+  // #2189) requires. Deliberately NOT referenced by the manifest; they are build
+  // inputs, not runtime assets. `industrial-cave` ships `wall-material.png` for
+  // the same reason.
+  files.push({ relativePath: `${packDir}/wall-material.png`, buffer: encodePng(input.wallTile) });
+  files.push({ relativePath: `${packDir}/door-material.png`, buffer: encodePng(input.woodTile) });
+
   const buildPool = (
     kind: string,
     variants: readonly RgbaImage[],

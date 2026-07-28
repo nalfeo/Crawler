@@ -404,7 +404,11 @@ export const FLOOR1_SPECIAL_FLOOR_SPECS: readonly SpecialFloorSpec[] = [
       tile: {
         sizePx: 64,
         posterizeLevels: 10,
-        targetMeanLuminance: 58,
+        // Still the darkest floor in the game (normal floor targets 74), but it
+        // MUST stay above WALL_TILE's 62: a floor that reads darker than its
+        // walls stops the walls reading as vertical. Authored at 58 originally,
+        // which inverted that hierarchy in the boss room specifically.
+        targetMeanLuminance: 70,
         maxLuminance: 140,
         targetStdDev: 18,
       },

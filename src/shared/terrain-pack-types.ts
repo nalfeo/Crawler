@@ -25,7 +25,11 @@ import {
  * Runtime packs — preloadable at boot, valid in floor manifests.
  * Every id listed here MUST be registered in `terrain-pack-registry.ts`.
  */
-export const RUNTIME_TERRAIN_PACK_IDS = ['industrial-cave'] as const;
+export const RUNTIME_TERRAIN_PACK_IDS = [
+  'industrial-cave',
+  'floor1-dungeon',
+  'floor1-cave',
+] as const;
 export const runtimeTerrainPackIdSchema = z.enum(RUNTIME_TERRAIN_PACK_IDS);
 export type RuntimeTerrainPackId = z.infer<typeof runtimeTerrainPackIdSchema>;
 

@@ -1,0 +1,36 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "floor1-biome-terrain-packs",
+  "date": "2026-07-28",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 320,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 319,
+      "crash": 1
+    }
+  },
+  "tools": {
+    "create": 2,
+    "edit": 15,
+    "glob": 3,
+    "grep": 19,
+    "list_agents": 2,
+    "playwright-browser_evaluate": 1,
+    "playwright-browser_navigate": 1,
+    "playwright-browser_press_key": 1,
+    "playwright-browser_take_screenshot": 1,
+    "powershell": 189,
+    "read_agent": 5,
+    "read_powershell": 2,
+    "rename_session": 1,
+    "rg": 10,
+    "skill": 1,
+    "task": 3,
+    "view": 64
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

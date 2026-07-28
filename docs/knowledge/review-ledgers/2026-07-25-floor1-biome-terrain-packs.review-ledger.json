@@ -1,0 +1,49 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "floor1-biome-terrain-packs",
+  "task_title": "Floor 1 biome terrain packs",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "adversarial": true,
+      "alternatives_considered": 5,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review enumerated 5 alternatives (single pack with per-family pools; region-tinted single pack; shared-base + interior-patch as Floor 2 does; procedural-only; defer until after linework). Verdict ship-with-changes, divergence minor: two-pack architecture retained, durability and guards added. Both blocking concerns fixed: (1) art detectably stale but not repairably reproducible - added tracked wall/door-material.png rebuild inputs, gen/cli.ts --from-source, and a byte-for-byte fixed-point test; (2) boss-stair floor luminance 58 inverted the value hierarchy against the 62-target wall - raised to 70 and added a value-hierarchy guard."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "notes": "Round 1 (claude-sonnet-4.6) reviewed 11 categories and returned one finding: the committed-art suite called validateCompatibleBoundaries but never validateAuthoredSilhouetteExact, so an interior-geometry change to the canonical blob47 masks - exactly what PR #2189 did - could not fail CI. Confirmed against validate.ts, whose own docstring notes an interior-only defect scores a perfect 1.000 on cardinal-edge sampling. Fixed by adding the exact check to the suite; verified it fails on a deliberately stale atlas."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "notes": "Two distinct models reviewed independently. Both flagged the missing validateAuthoredSilhouetteExact gate - independent convergence, fixed. gemini-3.1-pro-preview added four more: (a) MockRenderTexture dropped stamp x/y/config so a stamp-everything-at-(0,0) regression would pass - fixture now records coordinates and a new test pins wall origin-anchoring vs pool centre-anchoring, which also covers the #1968 underdraw registration; (b) the missing-texture fallback was untested - added a test asserting the renderer degrades to the legacy path with zero pack stamps rather than crashing; (c) determinism and specialFloorPools schema clean. Adjudication REJECTED one remedy: gemini proposed deleting floor1-cave doorSet and its 4 door PNGs as dead assets. The diagnosis is right (MainGameScene resolves terrainPacks.stone first, so cave doors never render on Floor 1) but doorSet is required by terrain-pack-types.ts:458 with no .optional(), so removal fails schema validation, and the terrainPacks.cave fallback branch makes them reachable for any future cave-only floor. Recorded as a known cost of the pack contract, not a defect."
+    }
+  }
+}
