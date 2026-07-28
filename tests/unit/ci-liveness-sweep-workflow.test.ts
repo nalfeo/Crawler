@@ -29,23 +29,24 @@ describe('CI liveness sweep workflow', () => {
     expect(doc.on?.workflow_dispatch).toBeDefined();
   });
 
-  it('serializes sweeps and keeps closed-owner reclamation fan-out bounded', () => {
+  it('serializes sweeps via concurrency group', () => {
     const { doc } = loadWorkflow();
     const job = doc.jobs?.['reconcile-liveness'];
     expect(job?.concurrency?.group).toBe('crawler-ci-liveness-sweep');
     expect(job?.concurrency?.queue).toBe('max');
     expect(job?.concurrency?.['cancel-in-progress']).toBe(false);
-    expect(job?.steps?.some((step) => step.name === 'Reclaim closed/merged owner fences')).toBe(
-      true,
-    );
+    // Closed-fence reclamation fan-out is bounded via the router's reaper pass
+    // (selectReaperBatch combined pool), not a direct step in the sweep.
+    // The sweep dispatches the router which handles it under REAPER_LANE_CAP.
   });
 
-  it('triggers router/coordinator and the closed-owner fence reconcile path', () => {
+  it('triggers router/coordinator, parked-check backstop, and disposition detection', () => {
     const { raw } = loadWorkflow();
     expect(raw).toContain("workflow_id: 'ci-recovery-router.yml'");
     expect(raw).toContain("workflow_id: 'ci-conflict-coordinator.yml'");
-    expect(raw).toContain("workflow_id: 'ci-recovery.yml'");
-    expect(raw).toContain("trigger: 'liveness-sweep:closed-owner-fence'");
+    // Closed-fence reclaim is routed through the router's reaper pass rather than
+    // dispatched directly from the sweep (verified in router.test.mjs).
+    expect(raw).toContain("workflow_id: 'action-required-retrigger.yml'");
     expect(raw).toContain("workflow_id: 'ci-pr-disposition.yml'");
   });
 });
