@@ -1,0 +1,25 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "los-allocation-churn-falsified",
+  "task_title": "Falsify LOS allocation-churn hypothesis; add bench + barrier-share diagnostic",
+  "estimated_apples": 2,
+  "apples_rescored_from": 3,
+  "rescore_reason": "Investigation session: no src/ changes shipped. Actual deliverable was a bench script and negative-result writeup (2🍎). Original 3🍎 estimate assumed source changes would be evaluated and potentially landed; the measurement falsified the hypothesis before any src/ change was committed. The post-hoc adversarial audit conducted under plan_review was a result audit rather than a pre-implementation plan review, so the stage cannot be honestly marked complete. Rescoring to actual scope per policy's rescore path.",
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "reviewer_model": "gemini-3.1-pro-preview",
+          "notes": "Exhaustive review of the committed bench + handoff. 4 issues, all High/Medium, all fixed: (1) RecordingScalarMap.pendingTileX could silently desync across segments on an exception or a double worldToTileX - now guarded by an explicit throw plus a reset() called per segment; (2) both oracle subclasses inlined a copy of FloorMap.isPassableAt to avoid double-counting the internal tile conversion, which would silently drift if the real implementation changed - replaced with a probeDepth counter plus super.isPassableAt() in try/finally, so the oracle is pinned to the shipped implementation; (3) checkShippedCopiesMatchReal compared only booleans and only one of the two local copies - now compares the ordered probe trace for both copies, and was moved to run AFTER the timing panels because it needs a recording receiver and would otherwise make two of the three timed functions polymorphic; (4) runBarrierShareDiagnostic mutated world.floorMap without try/finally, so a throw in attachBarriersToFloorMap would leak the clone - now restored in finally. Reviewer independently verified the paired-ratio rotation math, confirmed the two shipped twin copies are byte-identical, confirmed the Amdahl arithmetic (0.553pct and 1.12pct) and the ratio-to-share derivations, and ran tsc --noEmit and eslint clean.",
+          "round": 1,
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "models": ["gemini-3.1-pro-preview"]
+        }
+      ]
+    }
+  }
+}

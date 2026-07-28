@@ -10,4 +10,5 @@ export * from './don-paco-the-big-gob.js';
 export * from './verdigris-glamour.js';
 export * from './undercity-mob-call.js';
 export * from './bamboo-fed-berserk.js';
+export * from './sovereign-spore-bloom.js';
 export * from './roman-candle-coronation.js';

@@ -31,6 +31,7 @@ import {
   type MobAbilityActiveBuffState,
   type MobAbilityGeometry,
   type MobAbilityInstanceState,
+  type MobAbilityOwnedZone,
   type MobAbilityProjectileFanPath,
   type MobAbilityRuntimeDefinition,
 } from './types.js';
@@ -47,6 +48,7 @@ const ANNOUNCEMENT_DURATION_MS = 2200;
  * single "simulation-step boundary" allowance the spec calls out.
  */
 const TIMER_EPSILON_MS = 1e-6;
+const MIN_OWNED_ZONE_TICK_INTERVAL_MS = 1;
 
 function normalizedTargetingMode(
   def: MobAbilityRuntimeDefinition,
@@ -142,6 +144,13 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
       runtime.activeZones.splice(i, 1);
     }
   }
+  clearMobAbilityOwnedZones(
+    world,
+    (zone) =>
+      zone.casterEid === casterEid ||
+      zone.sourceId === sourceId ||
+      zone.sourceId.startsWith(`${sourceId}:`),
+  );
 }
 
 function clearOwnedProjectiles(world: GameWorld, inst: MobAbilityInstanceState): void {
@@ -170,6 +179,7 @@ export function activateMobAbilityEncounter(world: GameWorld): void {
   runtime.encounterActive = true;
   runtime.activeProjectiles.length = 0;
   runtime.activeZones.length = 0;
+  runtime.ownedZones.length = 0;
   for (const inst of runtime.byEntity.values()) {
     inst.phase = 'cooldown';
     inst.timerMs = inst.definition.firstEligibleAfterMs;
@@ -197,6 +207,7 @@ export function disableMobAbilityEncounter(world: GameWorld): void {
   runtime.activeBuffsByEntity.clear();
   runtime.activeProjectiles.length = 0;
   runtime.activeZones.length = 0;
+  runtime.ownedZones.length = 0;
 }
 
 /** A caster is valid iff it still exists, is alive, and is still its own boss. */
@@ -391,7 +402,13 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
       targetingMode === 'self' || targetEid === null
         ? null
         : (world.entityRenderGeneration[targetEid] ?? 0);
-    inst.committedGeometry = {
+    inst.committedGeometry = def.commitGeometry?.({
+      world,
+      casterEid,
+      targetEid: targetingMode === 'self' ? null : targetEid,
+      lockedX: pos.x,
+      lockedY: pos.y,
+    }) ?? {
       kind: 'circle',
       x: pos.x,
       y: pos.y,
@@ -483,6 +500,44 @@ export function spawnMobAbilityZone(world: GameWorld, zone: SpawnMobAbilityZoneI
   });
 }
 
+export function registerMobAbilityOwnedZone(
+  world: GameWorld,
+  zone: Omit<MobAbilityOwnedZone, 'id' | 'elapsedMs' | 'nextTickAtMs'>,
+): number {
+  if (
+    !Number.isFinite(zone.tickIntervalMs) ||
+    zone.tickIntervalMs < MIN_OWNED_ZONE_TICK_INTERVAL_MS
+  ) {
+    throw new Error(
+      `Mob ability owned zone tickIntervalMs must be >= ${MIN_OWNED_ZONE_TICK_INTERVAL_MS} (received ${zone.tickIntervalMs})`,
+    );
+  }
+  if (!Number.isFinite(zone.durationMs) || zone.durationMs <= 0) {
+    throw new Error(`Mob ability owned zone durationMs must be > 0 (received ${zone.durationMs})`);
+  }
+  const id = world.mobAbilities.nextZoneId;
+  world.mobAbilities.nextZoneId += 1;
+  world.mobAbilities.ownedZones.push({
+    ...zone,
+    id,
+    elapsedMs: 0,
+    nextTickAtMs: zone.tickIntervalMs,
+  });
+  return id;
+}
+
+export function clearMobAbilityOwnedZones(
+  world: GameWorld,
+  predicate: (zone: MobAbilityOwnedZone) => boolean,
+): void {
+  const zones = world.mobAbilities.ownedZones;
+  for (let i = zones.length - 1; i >= 0; i -= 1) {
+    if (predicate(zones[i]!)) {
+      zones.splice(i, 1);
+    }
+  }
+}
+
 function isPointInsideCircle(
   x: number,
   y: number,
@@ -544,6 +599,7 @@ function tickActiveZones(world: GameWorld): void {
         slowMultiplier = zone.slowMultiplier;
       }
     }
+
     clearStatusEffects(
       world,
       player,
@@ -568,6 +624,27 @@ function tickActiveZones(world: GameWorld): void {
   }
 }
 
+function tickOwnedZones(world: GameWorld): void {
+  const dtMs = GAME.DELTA_MS;
+  const zones = world.mobAbilities.ownedZones;
+  for (let i = zones.length - 1; i >= 0; i -= 1) {
+    const zone = zones[i]!;
+    const inst = world.mobAbilities.byEntity.get(zone.casterEid);
+    if (inst === undefined || !isCasterValid(world, zone.casterEid, inst)) {
+      zones.splice(i, 1);
+      continue;
+    }
+    zone.elapsedMs += dtMs;
+    while (zone.elapsedMs + TIMER_EPSILON_MS >= zone.nextTickAtMs) {
+      zone.tick(world, zone);
+      zone.nextTickAtMs += zone.tickIntervalMs;
+    }
+    if (zone.elapsedMs + TIMER_EPSILON_MS >= zone.durationMs) {
+      zones.splice(i, 1);
+    }
+  }
+}
+
 function syncTelegraphGeometryToCaster(
   world: GameWorld,
   casterEid: number,
@@ -578,6 +655,7 @@ function syncTelegraphGeometryToCaster(
   if (normalizedOriginMode(inst.definition) !== 'follows-caster') return;
   const pos = targetPosition(world, casterEid);
   if (pos === null) return;
+  if (inst.committedGeometry.kind !== 'circle') return;
   inst.committedGeometry = {
     kind: 'circle',
     x: pos.x,
@@ -771,6 +849,7 @@ export function mobAbilitySystem(world: GameWorld): void {
   tickActiveBuffs(world);
   tickActiveProjectiles(world);
   tickActiveZones(world);
+  tickOwnedZones(world);
   if (runtime.byEntity.size === 0) return;
 
   const dtMs = GAME.DELTA_MS;

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "fix-docs-update-loop-prettier",
+  "task_title": "fix: add INDEX.md to .prettierignore to fix Docs Update Loop CI",
+  "estimated_apples": 1,
+  "stages": {}
+}

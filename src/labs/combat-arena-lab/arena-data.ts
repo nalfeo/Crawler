@@ -19,6 +19,7 @@ import {
   createUndercityMobCallDefinition,
   createBambooFedBerserkDefinition,
   createDonPacoBigGobDefinition,
+  createSovereignSporeBloomDefinition,
   createVerdigrisGlamourDefinition,
   createRomanCandleCoronationDefinition,
   registerMobAbility,
@@ -530,6 +531,7 @@ const F2_QUEEN_MAB = floor2EnemyPack.archetypes.find((a) => a.id === 'faerie-bos
 /** Plague-Boss Squick — the ratfolk boss that owns Undercity Mob Call. */
 const F2_SQUICK = floor2EnemyPack.archetypes.find((a) => a.id === 'ratfolk-boss')!;
 const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-boss')!;
+const F2_SOVEREIGN_CAP = floor2EnemyPack.archetypes.find((a) => a.id === 'myconid-boss')!;
 /** King Skritt the Unburnt — the kobold boss that owns Roman Candle Coronation. */
 const F2_KING_SKRITT = floor2EnemyPack.archetypes.find((a) => a.id === 'kobold-boss')!;
 const F2_DON_PACO = floor2EnemyPack.archetypes.find((a) => a.id === 'llama-boss')!;
@@ -594,6 +596,22 @@ function spawnBigPandaWeiArena(
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   setMobAbilitiesEnabled(world, true);
   registerMobAbility(world, eid, createBambooFedBerserkDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnSovereignCapArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_SOVEREIGN_CAP);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createSovereignSporeBloomDefinition());
   activateMobAbilityEncounter(world);
   return [eid];
 }
@@ -722,6 +740,15 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
       'Big Panda Wei solo, with Bamboo-Fed Berserk armed through the canonical mob-ability runtime: 10s eligibility, 1.5s self-following aura telegraph while planted, then 4s +40% move speed, +40% melee damage, and heavy knockback resistance.',
     entries: [],
     customSpawnFn: spawnBigPandaWeiArena,
+  },
+  {
+    id: 'f2-sovereign-cap',
+    name: 'F2: The Sovereign Cap (Sovereign Spore Bloom)',
+    floor: 'floor2',
+    description:
+      'The Sovereign Cap solo, with Sovereign Spore Bloom armed through the canonical mob-ability runtime: 9s eligibility, 1.6s locked hostile-red triangle telegraph, moderate impact damage, then 4s persistent toxic cloud rims dealing repeated light damage.',
+    entries: [],
+    customSpawnFn: spawnSovereignCapArena,
   },
   {
     id: 'f2-king-skritt',

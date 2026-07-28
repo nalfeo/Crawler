@@ -15,13 +15,17 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { approveVariant, type ManifestEntry } from './approve.js';
 import { autoSelectVariants } from './auto-selection.js';
 import { loadStyleGuide } from './build-prompt.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
+import {
+  enableJudge,
+  materializeAndLoadBrief,
+  selectedBriefKey,
+  selectedBriefRevision,
+} from './theme-equipment-brief.js';
 import { generateOne } from './generate-one.js';
-import { loadBrief } from './load-brief.js';
 import { loadRecordedReferencePngs } from './load-reference-pngs.js';
 import {
   createBriefSelectorProvider,
@@ -723,19 +727,6 @@ export class ThemeEquipmentRunner {
   }
 }
 
-function selectedBriefKey(
-  state: ThemeEquipmentSetState,
-  item: ThemeEquipmentSetItem,
-  revision = item.revision,
-): string {
-  return `theme-sets/${state.id}/artifacts/${item.id}/r${revision}/brief.yaml`;
-}
-
-function selectedBriefRevision(artifactId: string, fallback: number): number {
-  const match = /-brief-r(\d+)-selected$/.exec(artifactId);
-  return match ? Number(match[1]) : fallback;
-}
-
 function requiredArtifact(
   item: ThemeEquipmentSetItem,
   phase: 'sprite-sheets' | 'variant-approval',
@@ -748,39 +739,6 @@ function requiredArtifact(
     );
   }
   return artifact;
-}
-
-function enableJudge(yaml: string): string {
-  const doc = parseYaml(yaml) as Record<string, unknown>;
-  const judge =
-    doc['judge'] && typeof doc['judge'] === 'object' && !Array.isArray(doc['judge'])
-      ? { ...(doc['judge'] as Record<string, unknown>) }
-      : {};
-  judge['enabled'] = true;
-  if (typeof judge['maxVariants'] !== 'number') judge['maxVariants'] = 16;
-  doc['judge'] = judge;
-  return stringifyYaml(doc);
-}
-
-function materializeAndLoadBrief(
-  repoRoot: string,
-  state: ThemeEquipmentSetState,
-  item: ThemeEquipmentSetItem,
-  yaml: string,
-  revision = item.revision,
-) {
-  const dir = path.join(
-    repoRoot,
-    'generated',
-    'theme-equipment-drafts',
-    state.id,
-    item.id,
-    `r${revision}`,
-  );
-  mkdirSync(dir, { recursive: true });
-  const briefPath = path.join(dir, 'brief.yaml');
-  writeFileSync(briefPath, yaml, 'utf8');
-  return loadBrief(briefPath, { projectRoot: repoRoot });
 }
 
 export async function __stageThemeEquipmentRun(
