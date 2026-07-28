@@ -1,0 +1,220 @@
+# welcome-room-floor-plate-cable-run-v2 — Asset Forge, 2026-07-27.
+# Sibling of `welcome-room-floor-plate-clean-v2`. See that brief's header for the
+# full v1-rejection evidence, the crop reframe rationale, the numeric accept
+# criterion, and the `type: tile` / geometry / palette-lock reasoning — it all
+# applies verbatim.
+#
+# TWO CORRECTIONS ON TOP OF THE FRAME FIX:
+# 1. v1 `cable-run-var-4` shipped a ~10px near-black rim (edge luma 25 vs
+#    interior 76, -68%). Same fix as the family: the subject is a crop, not a
+#    tile. This variant has the easiest time proving it, because a cable run
+#    genuinely continues past the crop.
+# 2. THE CABLE MUST BE EDGE-CONTINUOUS IN THE USEFUL SENSE. v1's cable entered
+#    and exited at points that will not line up with a neighbouring copy. v2
+#    pins the crossing to the VERTICAL MIDPOINT of the left and right edges, so
+#    two copies placed side by side connect. If that proves unreliable across a
+#    wave it gets reported, and the maintainer places this as a single isolated
+#    accent instead — the fallback is a placement decision, not a licence to
+#    approve a mismatched variant.
+generation:
+  sheet:
+    rows: 1
+    cols: 1
+    nativeCanvas: 1024
+type: tile
+name: welcome-room-floor-plate-cable-run-v2
+description: |
+  A 4 ft x 4 ft SQUARE CROP CUT FROM THE MIDDLE of a much larger, continuous,
+  unbroken floor, seen from DIRECTLY OVERHEAD — flat top-down, the camera
+  looking straight down at the ground.
+
+  READ THIS FIRST. THIS IS NOT A TILE, A PANEL, A PLATE, A SLAB, A MAT OR AN
+  OBJECT. IT IS A CROP. The floor being drawn stretches for many metres in every
+  direction and runs far past all four sides of this square. What you are
+  drawing is one arbitrary patch of it, as if you stood over a huge floor and
+  photographed straight down at a random spot. The square boundary is the CAMERA
+  CROP. It is not the boundary of a thing, and nothing in the picture knows it
+  is there.
+
+  THE FULL-BLEED RULE — THIS IS THE SINGLE HARDEST REQUIREMENT AND IT IS
+  VERBATIM IDENTICAL IN ALL FOUR CROPS OF THIS FAMILY:
+  The material runs off ALL FOUR EDGES. The outermost pixels of the picture must
+  be INDISTINGUISHABLE from the pixels at the centre — same colour, same value,
+  same texture, same grain density, same everything. There is no border, no
+  frame, no outline, no keyline, no rim, no edge highlight, no edge darkening,
+  no lightening toward the margin, no vignette, no bevel, no drop shadow at the
+  margin, no rounded corners, no joint or grout line running along or parallel
+  to the crop edge, and NO CHANGE OF TONE OF ANY KIND anywhere near the edge.
+  Test it yourself before you finish: if the middle of the picture were covered
+  up, the remaining outer band would have to look like plain ordinary floor, and
+  would give no clue whatever about where the edge of the picture is.
+
+  THE LIGHTING IS PERFECTLY FLAT AND PERFECTLY EVEN — READ THIS, IT IS THE PART
+  THAT KEEPS GOING WRONG:
+  The last attempt had no drawn border at all and STILL failed, because it was
+  shaded like a photograph: the outer band of the picture was noticeably darker
+  than the middle, fading in gently over about twenty pixels all the way around.
+  That soft darkening is exactly as fatal as a drawn frame, because these crops
+  are laid edge to edge and the darkened bands of neighbouring crops butt up and
+  composite into a continuous lattice. So:
+  - The whole picture is lit by a single perfectly uniform ambient light. There
+    is NO light source, NO direction of light, NO falloff, NO gradient.
+  - There is NO photographic vignette, NO lens falloff, NO exposure ramp, NO
+    ambient-occlusion darkening toward the sides or into the corners, and NO
+    soft shadow creeping in from any side.
+  - The AVERAGE BRIGHTNESS of the outer band of the picture must be the SAME as
+    the average brightness of the middle, to within a few percent. Corners are
+    not darker. Corners are not lighter. Sides are not darker. Sides are not
+    lighter.
+  - If you would normally shade the outside of an image to make it sit nicely on
+    a page, DO NOT. This picture is not being looked at on its own; it is being
+    tiled.
+
+  HOW TO BUILD THE PICTURE — WORK IN THIS ORDER, IT MATTERS:
+  1. FIRST, fill the ENTIRE canvas, corner to corner, with the bare floor
+     material. Every pixel. Evenly lit. No border, no outline, nothing on it
+     yet. The four edges are finished at this point and you will not touch them
+     again.
+  2. THEN lay the broad soft tonal patches and the sparse cool grain over that
+     fill, running them right off all four edges.
+  3. THEN add the specific marks described below, ON TOP of that already
+     finished surface, as though they were applied to a floor that was already
+     there.
+  4. DO NOT, at any point after that, go back and tidy the outside of the
+     picture. Do not outline it. Do not darken or lighten its border. Do not
+     shade its corners. Do not put a mat, a mount, a card, a backing, a swatch
+     board or a frame behind it. This is not a product photo, a sticker, a
+     sample chip, a coaster or a framed picture, and it is not being presented
+     on anything. It is a crop of a floor.
+
+  PROOF THAT THE CROP IS REAL — DRAW THIS, IT IS A POSITIVE REQUIREMENT:
+  At least THREE separate details must be visibly SEVERED MID-STROKE by the crop
+  edge and continue off the picture. The cable is the loudest one and it is
+  specified exactly below; on top of that, a grime stain and a band of grain
+  must also be cut by an edge and carry on out of shot. A picture in which every
+  detail stops politely before reaching the edge is a REJECTION.
+
+  SURFACE CHARACTER — BROAD AND SOFT, NOT CONFETTI:
+  Because the lighting is flat there is a temptation to fill the picture with an
+  even all-over scatter of coloured dots. DO NOT. That reads as television
+  static, not as concrete, and an attempt at this brief did exactly that. The
+  surface variation is mostly BROAD and SOFT: large, gentle, irregular patches a
+  single tonal step apart, several tens of pixels across, drifting slowly across
+  the picture so that one region is faintly cloudier or faintly cleaner than
+  another. Fine per-pixel grain exists on top of that, but it is SPARSE,
+  LOW-CONTRAST and COOL GREY — never warm, never tan, never orange, never ochre,
+  never gold, and never a uniform field of bright specks. If more than roughly
+  one pixel in eight is a speck, there are far too many. Flat lighting does NOT
+  mean a flat featureless surface; it means the surface has character without
+  any light source shading it.
+
+  THE FAMILY LOCK — VERBATIM IDENTICAL IN ALL FOUR CROPS OF THIS FAMILY. THE
+  FOUR ARE LAID DIRECTLY ADJACENT ON A GRID, SO THE BASE SURFACE MUST MATCH:
+  The floor is COOL GREY CONCRETE-COMPOSITE STUDIO PANELLING — flat, matte and
+  slightly chalky, a MIDDLE grey with the faintest blue-green cast. Not pale,
+  not dark. It is NOT brown, NOT tan, NOT gold, NOT olive, NOT yellow, NOT ochre
+  and NOT warm wood. Dust and grime may push small patches a little warmer, but
+  the dominant impression of the whole picture must be COOL GREY. Fill the
+  entire square with it, corner to corner, with no transparent pixels anywhere.
+  Vary the surface ASYMMETRICALLY: grain, dust and light wear must be noticeably
+  heavier toward one corner or one side, never evenly distributed and never
+  mirror-symmetric, so neighbouring crops never look stamped.
+
+  THE FICTION: this is studio-grade sheet flooring laid down over dungeon stone
+  — the reception set of a televised dungeon reality show.
+
+  THIS IS THE CABLE-RUN VARIANT OF A FOUR-CROP FAMILY. It is the SAME floor as
+  its siblings — same base material, same value range, same total absence of any
+  edge treatment — differing ONLY in the detail on top. Here that detail is A
+  LENGTH OF THICK PRODUCTION CABLE TAPED DOWN FLAT ACROSS THE FLOOR, part of a
+  long run feeding the room's camera rig.
+
+  THE YELLOW BUDGET — READ THIS BEFORE DRAWING ANYTHING.
+  An earlier round of this came back with roughly a SIXTH of the whole picture
+  painted saturated yellow-ochre, as a mottled field spread across the floor.
+  That is a rejection. Yellow appears ONLY on the two or three small tape straps
+  described below and NOWHERE ELSE. The floor around the cable is COOL GREY
+  CONCRETE. It is not yellow, not ochre, not gold, not olive, not mustard, not
+  brass and not brown-gold. Fewer than one pixel in ten may be yellow.
+
+  THE CABLE — GEOMETRY IS EXACT AND IT IS THE POINT OF THIS VARIANT. IT IS
+  EXPRESSED AS FRACTIONS OF THE PICTURE, NOT PIXELS:
+  - ONE thick black rubber cable crosses the picture HORIZONTALLY, from the LEFT
+    edge to the RIGHT edge. LEFT TO RIGHT. It must NOT leave through the TOP
+    edge and it must NOT leave through the BOTTOM edge — an attempt at this
+    brief entered on the left and dropped out through the bottom, and that is a
+    rejection.
+  - It ENTERS EXACTLY HALFWAY DOWN THE LEFT EDGE and EXITS EXACTLY HALFWAY DOWN
+    THE RIGHT EDGE — the same height on both sides, dead centre vertically, as
+    if a ruler were laid across the middle of the picture. At each of those two
+    points the cable runs LEVEL and STRAIGHT, square to the edge it crosses, for
+    the last tenth of the picture's width before it leaves.
+  - WHY THIS MATTERS: two copies of this picture get placed side by side, and
+    the cable leaving the right of one must meet the cable entering the left of
+    the next at the same height, so the run reads as continuous. If the two
+    heights disagree the cable visibly snaps, which is worse than no cable.
+    These two entry points are the hard requirement of this variant.
+  - BETWEEN those two fixed ends the cable is loose and lazy: it sags and drifts
+    above and below the midline in a long shallow S, wandering by up to about a
+    sixth of the picture's height, so it never reads as a ruled straight line.
+  - The cable runs OFF both edges mid-stroke. It is not an offcut lying on the
+    floor; it has no visible ends inside the picture.
+  - It lies COMPLETELY FLAT, pressed hard against the floor: dark, cool,
+    desaturated blue-black rubber with one narrow lighter sheen line running
+    along its length to say "round rubber", and nothing more.
+  - TWO OR THREE SHORT STRAPS OF DULL ACID-YELLOW GAFFER TAPE laid ACROSS the
+    cable at intervals, pinning it down. Each strap is a blunt matte band wider
+    than the cable, overlapping onto the floor on both sides. Keep the straps
+    well away from the left and right edges, so the join between two copies is
+    plain cable meeting plain cable.
+  - STAINS AND PATCHING around the run: a soft irregular darker halo where grime
+    has collected along the cable, one or two low-contrast adhesive ghosts where
+    older tape was pulled up, and a faint patched rectangle of slightly
+    mismatched floor.
+
+  FLAT TOP-DOWN, ABSOLUTELY NO PERSPECTIVE:
+  This is a flat ground plane. Do NOT draw the floor, the cable or the tape in
+  3/4 view. Do NOT give any of them a visible thickness, side wall, bevelled
+  rim, extruded edge or implied height, and do NOT let the cable arch, loop up,
+  or lift off the floor. Do NOT draw a cast shadow, a drop shadow, a contact
+  shadow, or any shadow at all — the cable is taped flat, so it does not cast
+  one. Props are drawn separately in 3/4 view and render upward from their
+  footprint on top of this ground, so any implied height or shadow here will
+  look wrong underneath them.
+
+  LOW CONTRAST AND DESATURATED elsewhere: outside the cable and its two or three
+  small tape straps, every tone stays inside a narrow mid-value band of cool
+  desaturated concrete greys. No glow, no gloss, no specular highlight.
+
+  NO TEXT of any kind. No numbers, no labels, no logos, no cable markings, no
+  arrows, no symbols.
+
+  Rendered in the game at exactly 4 x 4 feet — one full floor cell. Keep the
+  cable chunky enough to survive downsampling and keep the surrounding detail
+  count low.
+
+  It must sit beside the already-approved welcome-room art without clashing:
+  welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-rug, welcome-room-stanchion-pair, welcome-sign-left-v1 and
+  prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass, hard
+  dark outline, muted and dusty, never bright or saturated.
+palette:
+  id: welcome-room-studio-floor
+postprocessing:
+  paletteMode: strict
+sensors:
+  # See the sibling brief: a flat ground crop has no single ground-contact point,
+  # so bottom-centre grip is meaningless. Contract choice, not a relaxed
+  # threshold — every other sensor keeps its default, `interiorHoles` stays 0.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - floor
+  - studio-set
+  - reality-show
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0
