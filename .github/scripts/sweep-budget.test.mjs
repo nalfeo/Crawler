@@ -14,6 +14,8 @@ import {
   runFromEnv,
   SweepProbeError,
 } from './sweep-budget.mjs';
+import { recoveryBacklogEntries } from './ci-recovery/router.mjs';
+import { queueEntries } from './merge-train/state.mjs';
 
 test('budget contracts for live jobs and latent backlog but never below one', () => {
   assert.equal(computeSweepBudget({ nonSweepJobs: 0, latentBacklog: 0 }), 10);
@@ -50,7 +52,7 @@ test('matrix enrichment preserves objects and wraps scalar entries', () => {
   ]);
 });
 
-test('latent backlog deduplicates merge-train and recovery demand by PR number', () => {
+test('latent backlog unions merge-train, recovery and externally-blocked demand', () => {
   const repository = 'nalfeo/Crawler';
   const base = {
     state: 'open',
@@ -64,20 +66,71 @@ test('latent backlog deduplicates merge-train and recovery demand by PR number',
     { ...base, number: 1, labels: [{ name: 'merge-train' }] },
     // Counted once by the recovery backlog (unlabelled, so nothing excludes it).
     { ...base, number: 2, labels: [] },
-    // Excluded from BOTH: no queue label for the train, and `merge-train-blocked`
-    // is an externally-blocked label, so the recovery backlog skips it rather than
-    // letting it consume a bounded REPAIR_WINDOW_SIZE slot.
+    // Counted once as latent demand: `merge-train-blocked` is excluded from recovery
+    // slot consumption, but still contributes to sweep budgeting.
     { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] },
     // Excluded from both: no queue label, and explicitly opted out of recovery.
     { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
   ];
-  assert.equal(countLatentBacklog({ pullRequests, repository }), 2);
+  assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
 });
 
-// Pins the externally-blocked exclusion on its own, so a future change to
-// EXTERNALLY_BLOCKED_LABEL_NAMES fails here with an unambiguous message instead
-// of silently shifting the aggregate count in the test above.
-test('latent backlog excludes externally-blocked PRs from the recovery backlog', () => {
+// The test above is named for a union, NOT for deduplication, because the three
+// demand sources are DISJOINT BY CONSTRUCTION: eligibleTrainRecoveryPulls
+// excludes every queue-labelled PR (`hasQueueLabel ||` in ci-recovery/router.mjs)
+// and queueEntries selects exactly the queue-labelled PRs. With disjoint inputs
+// the Set in countLatentBacklog can never collapse anything, so a fixture of
+// singly-classified PRs cannot distinguish `new Set([...])` from a plain array —
+// swapping the Set for `[...].length` leaves it green. The two tests below cover
+// what that fixture cannot.
+test('latent backlog dedup is load-bearing when a PR is reported twice', () => {
+  const repository = 'nalfeo/Crawler';
+  const base = {
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-21T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: repository } },
+  };
+  // A paginated listing can hand back the same PR on two pages. Each duplicate
+  // is classified into the same bucket, so only the Set keeps the count honest.
+  const queued = { ...base, number: 11, labels: [{ name: 'merge-train' }] };
+  const recovering = { ...base, number: 12, labels: [] };
+  const blocked = { ...base, number: 13, labels: [{ name: 'merge-train-blocked' }] };
+  const pullRequests = [queued, recovering, blocked, queued, recovering, blocked];
+  assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
+});
+
+test('merge-train queue and recovery backlog never claim the same PR', () => {
+  const repository = 'nalfeo/Crawler';
+  const base = {
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-21T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: repository } },
+  };
+  const pullRequests = [
+    { ...base, number: 21, labels: [{ name: 'merge-train' }] },
+    { ...base, number: 22, labels: [] },
+    { ...base, number: 23, labels: [{ name: 'merge-train' }] },
+  ];
+  const queued = new Set(queueEntries(pullRequests, repository).map((pull) => pull.number));
+  const recovering = recoveryBacklogEntries(pullRequests, repository).map((pull) => pull.number);
+  assert.ok(queued.size > 0, 'fixture must exercise the queue selector');
+  assert.ok(recovering.length > 0, 'fixture must exercise the recovery selector');
+  // Pins the disjointness the union accounting relies on. If a future change
+  // drops `hasQueueLabel` from the recovery exclusions, dedup becomes genuinely
+  // load-bearing for real inputs and this fails instead of silently double-counting.
+  assert.deepEqual(
+    recovering.filter((number) => queued.has(number)),
+    [],
+  );
+});
+
+// Pins externally-blocked latent-demand accounting so future changes to
+// EXTERNALLY_BLOCKED_LABEL_NAMES fail with an unambiguous message.
+test('latent backlog counts externally-blocked PRs once as latent demand', () => {
   const repository = 'nalfeo/Crawler';
   const base = {
     state: 'open',
@@ -87,7 +140,7 @@ test('latent backlog excludes externally-blocked PRs from the recovery backlog',
     head: { repo: { full_name: repository } },
   };
   const blocked = [{ ...base, number: 10, labels: [{ name: 'merge-train-blocked' }] }];
-  assert.equal(countLatentBacklog({ pullRequests: blocked, repository }), 0);
+  assert.equal(countLatentBacklog({ pullRequests: blocked, repository }), 1);
 
   const unblocked = [{ ...base, number: 10, labels: [] }];
   assert.equal(countLatentBacklog({ pullRequests: unblocked, repository }), 1);

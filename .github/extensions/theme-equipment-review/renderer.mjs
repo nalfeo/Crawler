@@ -67,6 +67,7 @@ export function renderHtml(bootstrap) {
     let draft = null;
     let selectedPhase = null;
     let busy = false;
+    let dispatchNotice = null;
     const app = document.querySelector('#app');
     const phases = ['roster','briefs','sprite-sheets','variant-approval','complete'];
     const MIN_WEAPON_TYPES = 5;
@@ -310,22 +311,52 @@ export function renderHtml(bootstrap) {
         '<div class="subtitle">' + (missing ? 'No durable state yet' : 'State unavailable') + '</div>' +
         '<div class="controls" style="margin:12px 0"><button data-back>← All sets</button></div></header>' +
         '<main><section class="panel">' +
+        (dispatchNotice
+          ? '<p class="' + (dispatchNotice.tone === 'error' ? 'error' : 'muted') + '">' + esc(dispatchNotice.text) + '</p>'
+          : '') +
         '<p class="error">' + esc(message) + '</p>' +
         (missing
           ? '<p class="muted">Initialize the durable set from its authored plan (data/theme-equipment-sets/' + esc(currentSetId) + '.json). The workflow reads the plan from the pushed branch, so commit and push it first.</p>' +
-            '<div class="controls"><button data-dispatch="init">Initialize set on GitHub</button><button data-refresh>Refresh</button></div>'
+            '<div class="controls"><button data-dispatch="init" ' + (busy ? 'disabled' : '') + '>' + (busy ? 'Dispatching…' : 'Initialize set on GitHub') + '</button><button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div>'
           : '<p class="muted">If this set lives in Azure, refresh .env.local with npm run setup:azure:env.</p>' +
             '<div class="controls"><button data-refresh>Refresh</button></div>') +
         '</section></main>';
-      document.querySelector('[data-back]')?.addEventListener('click', loadIndex);
+      document.querySelector('[data-back]')?.addEventListener('click', () => { dispatchNotice = null; loadIndex(); });
       document.querySelector('[data-refresh]')?.addEventListener('click', load);
       document.querySelector('[data-dispatch]')?.addEventListener('click', async () => {
-        if (!confirm('Dispatch init for ' + currentSetId + ' on GitHub?')) return;
+        if (busy) return;
+        // Dispatching takes several seconds (git rev-parse, fetch,
+        // cat-file, then gh workflow run). Without a busy state the button
+        // looks inert while it is working, which is exactly how a
+        // successful init came across as doing nothing.
+        const dispatchedSetId = currentSetId;
+        // "← All sets" stays live during the dispatch, so a late result must
+        // not repaint this pane over whatever the user navigated to. The
+        // null-state term matters too: a still-running watch can push state
+        // over SSE mid-dispatch, and render() has already drawn the board by
+        // the time this resolves.
+        const stillHere = () => view === 'board' && currentSetId === dispatchedSetId && state === null;
+        busy = true;
+        dispatchNotice = { tone: 'info', text: 'Dispatching init…' };
+        renderUninitialized(message);
+        let notice;
         try {
           const result = await request('/api/dispatch', { method: 'POST', body: JSON.stringify({ action: 'init' }) });
-          alert('Initialization dispatched on ref ' + (result.ref || 'unknown') + '. Refresh after the run completes.');
+          notice = {
+            tone: 'info',
+            text: 'Initialization dispatched on ref ' + (result.ref || 'unknown') +
+              '. The workflow runs on GitHub and takes a few minutes; this pane switches to the board on its own once the set exists.',
+          };
         } catch (error) {
-          alert(error.message);
+          notice = { tone: 'error', text: error.message };
+        } finally {
+          busy = false;
+          if (stillHere()) {
+            dispatchNotice = notice;
+            renderUninitialized(message);
+          } else {
+            dispatchNotice = null;
+          }
         }
       });
     }
@@ -346,6 +377,52 @@ export function renderHtml(bootstrap) {
         (previewable ? '<div class="preview" data-item="' + esc(item.id) + '" data-artifact="' + esc(artifact.id) + '">Loading…</div>' : '') +
         (artifact.summary ? '<pre>' + esc(artifact.summary) + '</pre>' : '') +
       '</div>';
+    }
+
+    const PHASE_NOUNS = {
+      'roster': 'roster entries',
+      'briefs': 'briefs',
+      'sprite-sheets': 'sprite sheets',
+      'variant-approval': 'variant sets',
+    };
+
+    /**
+     * What a run-phase dispatch would actually do right now, for the CURRENT
+     * phase (run-phase always targets state.phase, never the tab the user is
+     * browsing).
+     *
+     * This MIRRORS isThemeSetItemResolvedForPhase in
+     * scripts/sprites/theme-equipment-set.ts: the runner regenerates every item
+     * that is not frozen and not up-reviewed — including an item that already
+     * has artifacts but has not been reviewed yet. Counting only artifact-less
+     * items would understate the work and tell the user "re-judge only" right
+     * before a click regenerated all 18 briefs.
+     */
+    function runPhaseWork() {
+      const phase = state.phase;
+      let unresolved = 0;
+      let rejected = 0;
+      let withArtifacts = 0;
+      for (const item of state.items) {
+        const record = item.phases[phase];
+        if (!record) continue;
+        if (item.revisionStatus === 'frozen' || item.frozenPhases.includes(phase) || record.review.verdict === 'up') continue;
+        unresolved++;
+        if (record.review.verdict === 'down') rejected++;
+        if (record.artifacts.length) withArtifacts++;
+      }
+      return { unresolved, rejected, withArtifacts, noun: PHASE_NOUNS[phase] || 'items' };
+    }
+
+    function runPhaseLabel() {
+      if (busy) return 'Dispatching…';
+      const work = runPhaseWork();
+      // A zero-item run is still meaningful: run-phase always re-judges
+      // collection cohesion at the end.
+      if (!work.unresolved) return 'Re-judge collection cohesion on GitHub';
+      const verb = work.withArtifacts ? 'Regenerate' : 'Generate';
+      const detail = work.rejected && work.rejected < work.unresolved ? ' (' + work.rejected + ' rejected)' : '';
+      return verb + ' ' + work.unresolved + ' ' + work.noun + ' on GitHub' + detail;
     }
 
     function itemCard(item) {
@@ -379,12 +456,13 @@ export function renderHtml(bootstrap) {
           (selectedRecord.collectionJudge ? '<p>' + esc(selectedRecord.collectionJudge.rationale) + '</p>' : '') +
           (selectedPhase === state.phase ? '<textarea maxlength="2000" data-feedback="collection" placeholder="Optional whole-set feedback">' + esc(selectedRecord.humanReview.feedback || '') + '</textarea>' + reviewButtons(selectedRecord.humanReview,'collection') : '') +
         '</section>' : '') +
-        '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Approved items remain frozen; rejected items alone regenerate.</div></div>' +
+        '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Up-reviewed and frozen items are skipped; every other item regenerates. Run generates artifacts on GitHub (minutes); Advance only moves the phase pointer once the gate is open.</div></div>' +
         '<div class="controls">' +
-          (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>Run / rerun unresolved items on GitHub</button>' : '') +
+          (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>' + esc(runPhaseLabel()) + '</button>' : '') +
           (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
-          (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>Publish complete set atomically on GitHub</button>' : '') +
+          (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>' + (busy ? 'Dispatching…' : 'Publish complete set atomically on GitHub') + '</button>' : '') +
           '<button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div></div>' +
+          (dispatchNotice ? '<p class="' + (dispatchNotice.tone === 'error' ? 'error' : 'muted') + '">' + esc(dispatchNotice.text) + '</p>' : '') +
           (!state.gate.canAdvance && state.gate.reasons.length ? '<ul class="gate-list">' + state.gate.reasons.map(r => '<li>' + esc(r.message) + '</li>').join('') + '</ul>' : '') +
         '</section>' +
         (selectedPhase === 'complete' ? '<section class="panel">The complete set is held until one atomic publication workflow succeeds.</section>' :
@@ -395,7 +473,7 @@ export function renderHtml(bootstrap) {
     }
 
     function wire() {
-      document.querySelector('[data-back]')?.addEventListener('click', loadIndex);
+      document.querySelector('[data-back]')?.addEventListener('click', () => { dispatchNotice = null; loadIndex(); });
       document.querySelectorAll('[data-phase]').forEach(button => button.addEventListener('click', () => {
         selectedPhase = button.dataset.phase;
         render();
@@ -414,9 +492,40 @@ export function renderHtml(bootstrap) {
       document.querySelector('[data-advance]')?.addEventListener('click', () => mutate('/api/advance', { expectedRevision: state.stateRevision }));
       document.querySelector('[data-refresh]')?.addEventListener('click', load);
       document.querySelectorAll('[data-dispatch]').forEach(button => button.addEventListener('click', async () => {
-        if (!confirm('Dispatch ' + button.dataset.dispatch + ' for ' + state.id + ' on GitHub?')) return;
-        const result = await mutate('/api/dispatch', { action: button.dataset.dispatch }, false);
-        if (result) alert('Workflow dispatched on ref ' + (result.ref || 'unknown') + '. Refresh after the run completes.');
+        if (busy) return;
+        const action = button.dataset.dispatch;
+        const dispatchedSetId = state.id;
+        // A dispatch takes several seconds (git rev-parse, fetch, cat-file,
+        // then gh workflow run) and the workflow itself runs for minutes.
+        // Without an inline busy state + notice the button looks inert, which
+        // is exactly how a successful run came across as doing nothing.
+        const stillHere = () => view === 'board' && state !== null && state.id === dispatchedSetId;
+        busy = true;
+        dispatchNotice = { tone: 'info', text: 'Dispatching ' + action + '…' };
+        render();
+        let notice;
+        try {
+          const result = await request('/api/dispatch', { method: 'POST', body: JSON.stringify({ action }) });
+          notice = {
+            tone: 'info',
+            text: action + ' dispatched on ref ' + (result.ref || 'unknown') +
+              '. The workflow runs on GitHub and takes a few minutes; this pane updates on its own as the durable revision advances.',
+          };
+        } catch (error) {
+          notice = { tone: 'error', text: error.message };
+        } finally {
+          busy = false;
+          // Only repaint the pane we started from. "← All sets" stays live
+          // during the dispatch, so a late result must not paint the board
+          // over the index the user navigated to — and render() dereferences
+          // state, which is null on an uninitialized set.
+          if (stillHere()) {
+            dispatchNotice = notice;
+            render();
+          } else {
+            dispatchNotice = null;
+          }
+        }
       }));
     }
 

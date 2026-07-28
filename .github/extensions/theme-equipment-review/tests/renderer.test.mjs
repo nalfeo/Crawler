@@ -13,7 +13,8 @@ test('renders the four review phases, revision controls, coverage, and workflow 
     'variant-approval',
     'expectedRevision',
     'coveredSlotCount',
-    'Run / rerun unresolved items on GitHub',
+    "work.withArtifacts ? 'Regenerate' : 'Generate'",
+    'Re-judge collection cohesion on GitHub',
     'Publish complete set atomically on GitHub',
     'Initialize set on GitHub',
   ]) {
@@ -55,4 +56,35 @@ test('never lets a set id reach the DOM unescaped', () => {
   const html = renderHtml({ instanceId: 'review-1', setId: '</script><img>', token: 't' });
   assert.ok(!html.includes('</script><img>'));
   assert.match(html, /\\u003c\/script>/);
+});
+
+test('the init button reports progress instead of looking inert', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  // Busy state on the button itself: a dispatch takes several seconds.
+  assert.match(html, /Dispatching…/);
+  assert.match(html, /dispatchNotice/);
+  // Failures land in the panel rather than a bare alert().
+  assert.match(html, /notice = \{ tone: 'error', text: error\.message \}/);
+  // And the pane promises the automatic switch the server-side watch delivers.
+  assert.match(html, /switches to the board on its own/);
+});
+
+test('leaving the set clears any dispatch notice', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  assert.match(html, /dispatchNotice = null; loadIndex\(\)/);
+});
+
+test('a late init result never repaints a pane the user already left', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  assert.match(html, /const dispatchedSetId = currentSetId/);
+  assert.match(html, /view === 'board' && currentSetId === dispatchedSetId && state === null/);
+  assert.match(html, /if \(stillHere\(\)\) \{/);
+});
+
+test('state arriving over SSE mid-dispatch wins over the uninitialized pane', () => {
+  const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
+  // A watch left over from an earlier dispatch can broadcast state while the
+  // second dispatch is still awaiting its HTTP response; the board that the
+  // SSE handler drew must not be overwritten by the stale error pane.
+  assert.match(html, /currentSetId === dispatchedSetId && state === null/);
 });
