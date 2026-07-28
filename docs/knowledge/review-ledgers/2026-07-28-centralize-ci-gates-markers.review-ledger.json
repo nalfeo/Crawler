@@ -6,16 +6,26 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Reviewer identified blocking issue: local composite actions require checkout before use. Fix: added checkout step before train-gate in all 3 guarded workflows. Non-blocking items (marker completeness, test coverage) noted and addressed (test now validates checkout precedes gate). ci.yml dual-gate noted as acceptable design constraint (job-level if needed for downstream cascade)."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-opus-4.8"
+          ],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
     }
   }
 }

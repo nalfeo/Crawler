@@ -113,9 +113,10 @@ export const MANAGED_COMMENT_PREFIX = '<!-- crawler-';
  * standalone `issue_comment` events on pull requests and would otherwise
  * trigger the CI-recovery router unnecessarily.
  *
- * Used by `isManagedCommentEvent()` in router.mjs and by tests.
- * The YAML-level filter uses `MANAGED_COMMENT_PREFIX` (the shared prefix) for
- * simplicity; this array is the canonical JS-side reference.
+ * Used by tests. The YAML-level filter and `isManagedCommentEvent()` in router.mjs
+ * both use `MANAGED_COMMENT_PREFIX` (the shared prefix) instead of iterating this
+ * array, so new markers are automatically covered without editing the list.
+ * This array is the canonical JS-side inventory of known managed-comment markers.
  */
 export const MANAGED_COMMENT_MARKERS = [
   STATE_MARKER,
