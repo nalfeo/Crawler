@@ -91,6 +91,9 @@ variations:
 size:
   width: 64
   height: 64
+anchor:
+  x: 32
+  y: 63
 sensors:
   # Full-bleed tile: every pixel is opaque by design, so the cut-out prop ratio
   # bounds and the edge-touch rule do not apply. Same posture as
