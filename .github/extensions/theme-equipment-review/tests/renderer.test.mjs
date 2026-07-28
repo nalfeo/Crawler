@@ -126,6 +126,9 @@ test('Change 8: items awaiting generation show a note instead of review thumbs',
 test('Change 9: a run-status strip polls /api/run-status without a full re-render', () => {
   const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
   assert.match(html, /id="run-status-strip"/);
+  assert.match(html, /role="status"/);
+  assert.match(html, /aria-live="polite"/);
+  assert.match(html, /aria-atomic="true"/);
   assert.match(html, /\/api\/run-status/);
   assert.match(html, /ensureRunStatusPoll/);
   // The poll patches only the strip node by id, never calling render().
@@ -144,14 +147,16 @@ test('Change 10: feedback drafts and scroll/caret survive a re-render', () => {
   assert.match(html, /draftFeedback\.delete\(feedbackKey\(scope, id\)\)/);
 });
 
-test('feedback drafts are namespaced by scope so an item named "collection" cannot collide', () => {
+test('feedback drafts are namespaced by phase and scope to prevent cross-phase leaks', () => {
   const html = renderHtml({ instanceId: 'review-1', setId: 'classic-fantasy', token: 'secret' });
-  // Item drafts live under an "item:" prefix; the set-level textarea keeps the
-  // bare "collection" key. Without the prefix an item whose id is literally
-  // "collection" would read/write the collection textarea's draft.
-  assert.match(html, /function feedbackKey\(scope, id\)/);
-  assert.match(html, /'item:' \+ id/);
+  // Draft keys include selectedPhase plus item/collection scope so a briefs
+  // draft cannot render into sprite-sheets, while item ids still cannot collide
+  // with the collection textarea key.
+  assert.match(html, /function feedbackKey\(scope, id, phase = selectedPhase\)/);
+  assert.match(html, /phase \+ ':item:' \+ id/);
+  assert.match(html, /phase \+ ':collection'/);
   assert.match(html, /feedbackKey\('item', item\.id\)/);
+  assert.match(html, /CSS\.escape\(feedbackKey\(scope, id\)\)/);
 });
 
 test('drafts are cleared when leaving or switching sets but not on same-set refresh', () => {

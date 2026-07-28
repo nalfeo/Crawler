@@ -484,12 +484,13 @@ export function renderHtml(bootstrap) {
       '</div>';
     }
 
-    function feedbackKey(scope, id) {
-      // Namespace item drafts under "item:" so an item whose id is literally
-      // "collection" cannot collide with the set-level collection textarea, and
-      // so a draft never leaks between scopes. The collection scope has a single
-      // fixed key.
-      return scope === 'item' ? 'item:' + id : 'collection';
+    function feedbackKey(scope, id, phase = selectedPhase) {
+      // Namespace drafts by phase and scope. That preserves drafts during
+      // same-phase rerenders, while preventing cross-phase bleed (e.g. briefs
+      // text appearing in sprite-sheets). Item drafts stay under "item:" so an
+      // item whose id is literally "collection" cannot collide with the
+      // set-level textarea.
+      return scope === 'item' ? phase + ':item:' + id : phase + ':collection';
     }
 
     function feedbackValue(key, serverValue) {
@@ -546,7 +547,7 @@ export function renderHtml(bootstrap) {
           (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
           (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>Publish complete set atomically on GitHub</button>' : '') +
           '</div></div>' +
-          '<div class="run-status" id="run-status-strip">' + runStatusStrip() + '</div>' +
+          '<div class="run-status" id="run-status-strip" role="status" aria-live="polite" aria-atomic="true">' + runStatusStrip() + '</div>' +
           (state.phase !== 'complete' && state.runPhase && state.runPhase.judgeOnly && state.runPhase.collectionJudgeMissing ? '<div class="judge-hint">Every item in this phase is approved, but the collection judge is missing — Advance stays locked until it lands. Click <strong>' + esc(runPhaseLabel(state.runPhase, state.phase)) + '</strong> to generate it (it regenerates nothing).</div>' : '') +
           (lastBulkResult && lastBulkResult.skipped && lastBulkResult.skipped.length ? '<div class="bulk-skips"><strong>Skipped ' + lastBulkResult.skipped.length + ':</strong><ul>' + lastBulkResult.skipped.map(s => '<li>' + esc(s.reason) + '</li>').join('') + '</ul></div>' : '') +
           (dispatchNotice ? '<p class="' + (dispatchNotice.tone === 'error' ? 'error' : 'muted') + '">' + esc(dispatchNotice.text) + '</p>' : '') +
@@ -742,7 +743,7 @@ export function renderHtml(bootstrap) {
             return;
           }
         }
-        const feedbackEl = document.querySelector('[data-feedback="' + (scope === 'item' ? 'item:' + CSS.escape(id) : 'collection') + '"]');
+        const feedbackEl = document.querySelector('[data-feedback="' + CSS.escape(feedbackKey(scope, id)) + '"]');
         const result = await mutate(scope === 'item' ? '/api/review-item' : '/api/review-set', {
           ...(scope === 'item' ? { itemId: id } : {}),
           review: { verdict, ...(feedbackEl?.value.trim() ? { feedback: feedbackEl.value.trim() } : {}) },
