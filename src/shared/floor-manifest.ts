@@ -201,7 +201,7 @@ export const floorManifestDefSchema = z
      * Optional terrain pack id (registry-backed, see `terrain-pack-types.ts`)
      * this floor's renderer should use for walls/floor-pool/corridor-pool/
      * doors. Omitted entirely by floors that use the legacy 16-mask
-     * `TILE_SPRITES` autotile + generated-single-image path (e.g. Floor 1) —
+     * `TILE_SPRITES` autotile + generated-single-image path —
      * a typo'd id fails this Zod enum, never silently falls back at runtime.
      */
     terrainPackId: runtimeTerrainPackIdSchema.optional(),
