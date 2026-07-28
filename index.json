@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f34efc79a153971c2d89990ac58255041ad4f330",
+    "commitDate": "2026-07-28T03:19:06Z",
+    "commitSubject": "Stop caching mutable coordination docs, forward conditional writes, and make the theme-equipment canvas honest (#2119)",
+    "capturedAt": "2026-07-28T04:31:48.207Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30326074185",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/f34efc79a153971c2d89990ac58255041ad4f330.json"
+  },
+  {
     "commit": "8ee6db2bd5b74bb5010a438925cfe6a9fc3b0c6b",
     "commitDate": "2026-07-27T20:10:15-07:00",
     "commitSubject": "test(ci): align sweep backlog expectations with latent-demand policy (#2136)",
