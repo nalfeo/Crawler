@@ -313,7 +313,8 @@ async function loadRecentWorkflow(
   // executableRunNotFound is true when runs exist but none contained the required
   // step pattern — the fallback to the newest non-matching run is intentionally
   // withheld so callers see null rather than a misleading skipped/non-executable run.
-  const executableRunNotFound = requiredStepPattern !== null && latestRun === null && recentRuns.length > 0;
+  const executableRunNotFound =
+    requiredStepPattern !== null && latestRun === null && recentRuns.length > 0;
   return {
     workflowFile,
     recentRuns,

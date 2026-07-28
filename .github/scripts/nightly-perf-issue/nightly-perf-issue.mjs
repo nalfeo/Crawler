@@ -2,12 +2,7 @@ import { HUMAN_APPROVAL_LABEL } from '../merge-train/human-approval.mjs';
 import { runNightlyBalanceIssue } from '../nightly-balance-issue/nightly-balance-issue.mjs';
 
 export const ISSUE_TITLE = 'perf: nightly gameplay-neutral optimization pass';
-export const ISSUE_LABELS = Object.freeze([
-  'automation',
-  'tooling',
-  'ai',
-  HUMAN_APPROVAL_LABEL,
-]);
+export const ISSUE_LABELS = Object.freeze(['automation', 'tooling', 'ai', HUMAN_APPROVAL_LABEL]);
 
 export function buildIssueBody(issueNumber = '<this issue number>') {
   return `## Objective

@@ -70,7 +70,7 @@ What the tests prove:
   `expected_head_sha` / `expected_base_ref` binding and
   `stale-automation-exhausted` / duplicate-progress no-storm behavior.
 - **End-to-end subprocess test** (`runFromEnv hydrates waiting/no-owner
-  candidates and dispatches repair wake via schedule`): exercises the complete
+candidates and dispatches repair wake via schedule`): exercises the complete
   production HTTP path — the mock server returns the PR without an injected
   `recoveryState`, the router fetches comments via the API, parses the idle
   state, and dispatches reconcile. This is the production execution path that

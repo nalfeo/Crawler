@@ -22,8 +22,8 @@ Removed the invalid review-ledger scaffold from PR #2015 so the branch no longer
 
 ## Verification
 
-- `npm run verify:fast` *(blocked: dependencies unavailable in this sandbox; lockfile tarballs resolve to `ms-feed-2.pkgs.visualstudio.com`, which is unreachable here)*
-- `npm run verify:pr-prereqs` *(initially failed before this handoff existed; re-run pending after adding this handoff)*
+- `npm run verify:fast` _(blocked: dependencies unavailable in this sandbox; lockfile tarballs resolve to `ms-feed-2.pkgs.visualstudio.com`, which is unreachable here)_
+- `npm run verify:pr-prereqs` _(initially failed before this handoff existed; re-run pending after adding this handoff)_
 - `parallel_validation` (Code Review clean, CodeQL skipped as trivial docs-only change)
 
 ## Unresolved issues

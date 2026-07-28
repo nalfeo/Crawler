@@ -251,7 +251,7 @@ export function evaluateReport(report, options = {}) {
       total === 0
         ? 'No mutants were generated. The run proved nothing -- check the target path and line range.'
         : `All ${total} mutant(s) were ignored or errored, so not one produced a usable verdict. The run ` +
-          'proved nothing -- check for `// Stryker disable` comments or excluded mutators in range.',
+            'proved nothing -- check for `// Stryker disable` comments or excluded mutators in range.',
     );
   }
   // Separate check from `valid === 0`: even in a mixed report (e.g. Killed +

@@ -16,13 +16,13 @@ mapgen, ai-behavior-tree
 new `src/core/map/astar-grid.ts`, which keeps the **algorithm byte-for-byte
 identical** and replaces only the data structures:
 
-| rot-js 2.2.1                                    | grid A\*                                              |
-| ----------------------------------------------- | ----------------------------------------------------- |
-| open list = sorted `Array` + O(n) scan + `splice` | binary min-heap over `(f, h, entryId)`                |
-| pop = `Array.shift()` (O(n))                     | heap pop (O(log n))                                   |
-| closed set = plain object keyed `` `${x},${y}` `` | generation-stamped `Int32Array` indexed `y*width + x` |
-| `_getNeighbors` allocates `[[x,y],…]` per expansion | four probes into a reused `Uint8Array(4)`          |
-| one `{x,y,prev,g,h}` object per push             | five parallel `Int32Array`s, index == insertion seq   |
+| rot-js 2.2.1                                        | grid A\*                                              |
+| --------------------------------------------------- | ----------------------------------------------------- |
+| open list = sorted `Array` + O(n) scan + `splice`   | binary min-heap over `(f, h, entryId)`                |
+| pop = `Array.shift()` (O(n))                        | heap pop (O(log n))                                   |
+| closed set = plain object keyed `` `${x},${y}` ``   | generation-stamped `Int32Array` indexed `y*width + x` |
+| `_getNeighbors` allocates `[[x,y],…]` per expansion | four probes into a reused `Uint8Array(4)`             |
+| one `{x,y,prev,g,h}` object per push                | five parallel `Int32Array`s, index == insertion seq   |
 
 Scratch is reused across calls (hunting-grounds **A3 mechanism (2): encapsulated
 non-escaping**) via a module-level depth-indexed pool, so a search does **no
@@ -52,8 +52,8 @@ about 7–8x typically.**
 
 **Profile share** (`npm run perf:profile`, 3 headless Floor-1 runs):
 
-| | before | after |
-| --- | --- | --- |
+|                      | before                                                 | after                                            |
+| -------------------- | ------------------------------------------------------ | ------------------------------------------------ |
 | A\* search machinery | `rot.js:5356 compute` — **16.16% self / 19.02% total** | `computeGridPath` — **2.55% self / 4.80% total** |
 
 **Honest end-to-end: ≈14% less headless-sim CPU (≈1.16x).** Normalising on the
@@ -78,7 +78,7 @@ the dict-only gain.
 
 - **`npm run perf:fingerprint -- --check files/perf-baseline.json`: PASS.**
   `RunStats identical: every run in the sample matches the baseline
-  byte-for-byte.` — 24 runs, FULL gate sample, hash
+byte-for-byte.` — 24 runs, FULL gate sample, hash
   `b311a7808b9e94cadd14d4733df332aee4560565f0a8fe3fb8528f3fe7c8e37e`. The
   baseline was written from **unmodified** code before any edit landed.
 - Differential oracle: **4,350 comparisons byte-identical**, over 30 random maps
@@ -131,12 +131,12 @@ and `npm run perf:profile` on that same pipeline shows the frame moving from
 
 Each of these mutations was applied and the suite re-run:
 
-| mutation | result |
-| --- | --- |
-| break FIFO stability (sift-up ignores the exact `(f, h)` tie) | **10 failed** |
-| reverse neighbour order to W, S, E, N | **12 failed** |
-| prune the redundant OOB/closed passability probes | **12 failed** |
-| drop the `try/finally` scratch release | **2 failed** |
+| mutation                                                        | result            |
+| --------------------------------------------------------------- | ----------------- |
+| break FIFO stability (sift-up ignores the exact `(f, h)` tie)   | **10 failed**     |
+| reverse neighbour order to W, S, E, N                           | **12 failed**     |
+| prune the redundant OOB/closed passability probes               | **12 failed**     |
+| drop the `try/finally` scratch release                          | **2 failed**      |
 | make the pool always hand back slot 0 (no reentrancy isolation) | **runaway → OOM** |
 
 The last two exist because the multi-model review found the original pool tests
@@ -146,7 +146,7 @@ The last two exist because the multi-model review found the original pool tests
    search just allocated a fresh, correctly-sized slot and returned the right
    path. `__getGridAStarScratchDepthForTests()` was added so the assertion pins
    the `finally` itself.
-2. The first depth fix was *still* vacuous for reentrancy: a pool that always
+2. The first depth fix was _still_ vacuous for reentrancy: a pool that always
    handed back slot 0 would increment and decrement the same counter, so
    `depth === 2` proved nothing. Verified by applying that mutation and watching
    the suite pass. The fix is `__getGridAStarScratchPoolSizeForTests()` plus a
@@ -167,7 +167,7 @@ assuming it would fail.
   its own — **one untimed warmup sweep left V8 mid-tiering and swung the median
   between 4.7x and 8.4x for identical code.** Warm up several rotated sweeps, run
   the whole script more than once, and publish a range plus the worst round.
-- A microbench assertion about a resource *counter* can be vacuous even when the
+- A microbench assertion about a resource _counter_ can be vacuous even when the
   resource is broken. Assert on the thing that actually differs (here: pool size,
   not depth), and always confirm by applying the mutation.
 - `Int32Array` fields need `Int32Array<ArrayBuffer>` on helper signatures under

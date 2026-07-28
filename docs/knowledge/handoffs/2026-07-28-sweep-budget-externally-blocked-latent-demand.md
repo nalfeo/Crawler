@@ -1,6 +1,7 @@
 # 2026-07-28 sweep-budget externally-blocked latent demand fix
 
 ## Systems touched
+
 ci-recovery, merge-train
 
 ## What happened

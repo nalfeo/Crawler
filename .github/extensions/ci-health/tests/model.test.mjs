@@ -515,7 +515,11 @@ test('rejects asset pipeline markers from untrusted comment authors', () => {
     ],
     { now: '2026-07-25T00:02:00Z' },
   );
-  assert.equal(parsed.state, 'queued', 'spoofed completion from untrusted author must not advance state');
+  assert.equal(
+    parsed.state,
+    'queued',
+    'spoofed completion from untrusted author must not advance state',
+  );
   assert.equal(parsed.stage, 'queued');
 });
 
@@ -558,7 +562,11 @@ test('does not flag assets/queue-without-pr as danger when reconciler last ran s
       errors: [],
     },
   });
-  assert.equal(pipeline.stages[3].state, 'idle', 'bare queue branch after a successful reconciler run is a healthy no-op');
+  assert.equal(
+    pipeline.stages[3].state,
+    'idle',
+    'bare queue branch after a successful reconciler run is a healthy no-op',
+  );
   assert.equal(pipeline.severity, 'success');
 });
 
@@ -601,7 +609,11 @@ test('overlays reconciler failure before queue topology so failures are not hidd
       errors: [],
     },
   });
-  assert.equal(pipeline.stages[3].state, 'failure', 'reconciler failure must surface even when queue branch exists');
+  assert.equal(
+    pipeline.stages[3].state,
+    'failure',
+    'reconciler failure must surface even when queue branch exists',
+  );
   assert.equal(pipeline.severity, 'danger');
 });
 
@@ -625,5 +637,9 @@ test('surfaces a warning when no executable asset pipeline run was found in the 
     pipeline.warnings.some((w) => /executable.*run|run.*found/i.test(w)),
     `expected executableRunNotFound warning in: ${JSON.stringify(pipeline.warnings)}`,
   );
-  assert.equal(pipeline.partial, false, 'executableRunNotFound affects warnings but not partial flag');
+  assert.equal(
+    pipeline.partial,
+    false,
+    'executableRunNotFound affects warnings but not partial flag',
+  );
 });
