@@ -1,0 +1,110 @@
+# DUNGEON DOOR — CLOSED, VERTICAL DOORWAY (wall runs up<->down, seen edge-on).
+#
+# Consumed as GENERATED_DOOR_TEXTURE_KEYS.closedVertical. This is the BIGGER half
+# of the problem: 69 of Floor 1's 104 doors sit in vertical (E/W) doorways, and
+# today all 69 wear the FACE-ON art meant for horizontal doorways, which reads as
+# a door lying on its side.
+#
+# WHY THIS ONE IS NOT TALL. The face-on doors (tile-door-v1) render 4 ft wide x
+# 7 ft tall because you are looking at the door's FACE. A wall running up-down
+# the screen is seen EDGE-ON, so there is no face to show — the correct read is
+# a tile-filling slab of wall with a door set into it, exactly like the shipped
+# terrain-pack art (door-closed-vertical.png). It therefore fills its cell
+# edge-to-edge and renders 4 ft x 4 ft. Do NOT try to make this one tall.
+type: tile
+name: tile-door-side-v1
+description: |
+  A 256x256 dungeon wall tile seen EDGE-ON, with a heavy closed DOOR set into it,
+  for a wall that runs VERTICALLY up and down the screen. The player walks
+  through it left-to-right. Modern high-quality pixel art, readable at 16px.
+
+  ORIENTATION — READ THIS TWICE. This is NOT a front-elevation door. You are
+  looking along the wall, not at the face of the door. The composition is a
+  VERTICAL BAND: the wall continues off the TOP edge of the tile and off the
+  BOTTOM edge of the tile, and the door occupies the middle of that band. The
+  door's long axis therefore runs UP AND DOWN the tile, not left-right. If your
+  image looks like a door you could walk into face-first, it is WRONG and belongs
+  to the other brief.
+
+  COMPOSITION — FULL BLEED, NO TRANSPARENCY:
+  - The tile is FULLY OPAQUE edge to edge. There is no transparent background,
+    no cut-out silhouette, no padding. Every one of the 256x256 pixels is drawn.
+  - Stone WALL masonry fills the top quarter and the bottom quarter of the tile
+    and runs off both those edges so it joins the adjacent wall tiles cleanly.
+  - The DOOR fills the middle half of the tile vertically and spans the FULL
+    WIDTH of the tile left to right, because the doorway is the full width of the
+    passage.
+  - Above and below the door, a stone JAMB/threshold band separates it from the
+    wall masonry.
+
+  WHAT IT IS:
+  - Heavy TIMBER PLANKS forming the closed leaf. Because the door is seen along
+    its length, the planks run LEFT-TO-RIGHT across the tile (perpendicular to
+    the wall), with visible seams, deep grain, and dents at the ends.
+  - IRON BANDING: two or three broad iron straps running VERTICALLY across the
+    leaf (i.e. across the planks), riveted with fat round studs that read at
+    small size. The bands are the strongest readable detail.
+  - A heavy IRON RING HANDLE on a round backplate, set slightly off the middle of
+    the leaf. Big enough to read at 16px.
+  - Cool grey blocky chipped stone for the wall and jambs, matching the dungeon
+    stone floor and wall tiles.
+  - Wear everywhere: rust bleeding from rivets, scuffed timber, chipped stone,
+    grime in the seams.
+
+  IT IS NOT: a front-elevation door, an open doorway, a dark archway, a
+  portcullis, a gate, a double door, a hatch in the floor, a window, a crate lid,
+  or a wooden bridge. It is one closed timber door set into a wall seen edge-on.
+
+  MOOD — a grimy reality-TV dungeon. Heavy, permanent, unwelcoming. Tired, worn,
+  long shut, never ornate and never fantasy-decorative.
+
+  COLOUR — the stone is cool grey with a hint of blue-green in its shadows; the
+  door leaf is a warm desaturated walnut-brown with 4-5 tone stops so the planks
+  separate clearly; the iron banding, rivets and ring are dull dark grey-black
+  metal with tarnished rust-brown streaks. The door must be clearly DARKER and
+  WARMER than the surrounding stone so the opening reads instantly. It must NOT
+  be pale, washed out or low-contrast. BANNED: neon, pure white, pure black,
+  saturated red, saturated yellow, orange, teal, cyan, blue, green, magenta,
+  purple, gold leaf, gemstones, glowing runes, magical glow, ornate filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The upper edge of the
+  wall band and the left end of each iron strap catch the highlight; shadow falls
+  down and to the right, and the leaf sits slightly recessed so a soft shadow
+  falls along the inside of the lower jamb.
+
+  RENDERING: 3-5 tone stops per material, restrained dithering for stone and
+  timber grain — no mushy gradients, no airbrush. A hard dark keyline separates
+  stone from timber from iron.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils, labels,
+  captions, watermarks or signatures.
+
+  NO BORDER ARTIFACT: the tile is fully opaque edge-to-edge. There must be NO
+  magenta, pink or off-palette fringe along any edge, and no drawn frame, rim,
+  vignette or keyline around the tile's own boundary — a rim would composite into
+  a lattice against the neighbouring wall tiles.
+variations:
+  - the leaf slightly recessed into the wall, three broad iron straps, ring handle
+    just below centre
+  - a plainer leaf with two iron straps and a heavier chipped stone jamb above and
+    below, ring handle just above centre
+size:
+  width: 64
+  height: 64
+sensors:
+  # Full-bleed tile: every pixel is opaque by design, so the cut-out prop ratio
+  # bounds and the edge-touch rule do not apply. Same posture as
+  # tile-stone-floor-v2, set BEFORE generating from the subject's geometry.
+  opaqueRatio:
+    disabled: true
+  edge:
+    allowMainTouch: true
+tags:
+  - pixel-dungeon
+  - architecture
+  - door
+  - terrain
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 2
