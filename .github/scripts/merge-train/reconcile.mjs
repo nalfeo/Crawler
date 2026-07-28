@@ -73,7 +73,7 @@ import { LIFECYCLE_MARKER, parseLifecycleComment } from '../ci-recovery/pr-lifec
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
-const { promotionToken: token, workflowDispatchToken } = resolveMergeTrainTokens(process.env);
+const { promotionToken: token, workflowDispatchToken, updateBranchToken } = resolveMergeTrainTokens(process.env);
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
@@ -769,8 +769,48 @@ await closeManagedEmptyTrainIncidentIfAny('merge train has queued entries again'
 
 const admitted = [];
 for (const pr of queued) {
-  const admission = await eligible(pr);
+  // D2 fix: fetch the authoritative per-PR payload BEFORE calling eligible(),
+  // so both the BEHIND check and the conflict check (hasMergeConflict in
+  // eligible) draw from the same authoritative snapshot.  The list-pulls
+  // simplified response may cache a stale mergeable / mergeable_state, which
+  // could reject a clean-BEHIND PR before this update path, or admit a
+  // now-DIRTY PR.
+  const livePr = (await request(token, `/repos/${owner}/${repo}/pulls/${pr.number}`)).data;
+  const admission = await eligible(livePr);
   if (admission.ok) {
+    // D2 fix: if the PR is clean-BEHIND main, call the update-branch API so
+    // the strict up-to-date merge policy does not block it from merging.
+    // Use updateBranchToken (CRAWLER_CI_PAT || GITHUB_TOKEN): CRAWLER_CI_PAT
+    // emits normal push events that re-trigger required CI; GITHUB_TOKEN is
+    // recursion-suppressed for push events and would leave the updated head
+    // without check runs.
+    //
+    // Use `break` (not `continue`) after the first BEHIND PR to preserve FIFO
+    // queue ordering: newer PRs must not leapfrog an older BEHIND PR.
+    if (livePr.mergeable_state === 'behind') {
+      try {
+        await request(
+          updateBranchToken,
+          `/repos/${owner}/${repo}/pulls/${pr.number}/update-branch`,
+          {
+            method: 'PUT',
+            body: { expected_head_sha: livePr.head.sha },
+          },
+        );
+        process.stdout.write(`update-branch pr=#${pr.number} reason=clean-behind\n`);
+      } catch (err) {
+        // 422 covers "already up-to-date" and stale expected_head_sha — log
+        // it so stale-head races are visible and not silently swallowed.
+        if (err.status !== 422) throw err;
+        process.stderr.write(
+          `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
+        );
+      }
+      // Stop admitting further PRs this pass so newer PRs cannot leapfrog.
+      // The BEHIND PR will re-enter on the next reconcile once its branch is
+      // current and required CI passes.
+      break;
+    }
     // Fence the legacy auto-merge path before this PR can be sequentially
     // squash-merged, so it cannot land out of order underneath the promotion.
     await disableAutoMerge(pr);

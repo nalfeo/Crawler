@@ -273,13 +273,17 @@ export function resolveMergeTrainTokens(environment) {
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
   // The repository App receives 403 from workflow_dispatch; never reuse it here.
   const workflowDispatchToken = environment.GITHUB_TOKEN || '';
+  // CRAWLER_CI_PAT is a user token that emits normal push events (re-triggers
+  // required CI); GITHUB_TOKEN is recursion-suppressed for push events so
+  // update-branch via GITHUB_TOKEN does not restart required checks.
+  const updateBranchToken = environment.CRAWLER_CI_PAT || environment.GITHUB_TOKEN || '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
   }
   if (!workflowDispatchToken) {
     throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
   }
-  return { promotionToken, workflowDispatchToken };
+  return { promotionToken, workflowDispatchToken, updateBranchToken };
 }
 
 export function mergeTrainGitEnvironment(environment, overrides = {}) {
