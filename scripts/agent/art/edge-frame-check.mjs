@@ -44,6 +44,16 @@ const STRUCTURE_FLOOR = Number(process.env.STRUCTURE_FLOOR ?? 5);
  * ABSENCE of the v1 defect without verifying the PRESENCE of any content — a
  * blank texture trivially has no border frame.
  *
+ * SCOPE — full-bleed tiles ONLY. The score counts transparent pixels as black,
+ * so on a cut-out prop it measures the SILHOUETTE against the void, not internal
+ * detail, and inflates wildly: `welcome-room-floor-runner-var-10` (70% opaque)
+ * scores 43.6 including transparency but only **11.3** on opaque pixels alone;
+ * `stanchion-pair-var-4` (25% opaque) scores 13.3 vs **9.9**. The full-bleed
+ * guard in analyze() already SKIPs these, so the GATE is correct — but never
+ * quote a structure number for a cut-out prop, and never compare one against a
+ * full-bleed tile. That cross-class comparison is how "the runner scores 38.7,
+ * so it is not flat" got asserted about a sprite that is, in fact, flat.
+ *
  * Threshold derived from the whole 470-PNG shipped corpus, not fit to the
  * offending samples. What the corpus measurement establishes is PRECISION: of
  * the 86 files scoring below a floor of 5, exactly 85 are `*-placeholder.png` /
