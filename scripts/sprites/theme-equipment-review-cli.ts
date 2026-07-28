@@ -20,6 +20,8 @@ import {
   saveThemeEquipmentSetState,
   themeEquipmentSetPlanSchema,
   themeEquipmentSetStateKey,
+  themeSetItemAwaitsGeneration,
+  isReviewPhase,
   type ThemeEquipmentArtifactEvidence,
   type ThemeEquipmentSetPlan,
   type ThemeEquipmentSetState,
@@ -277,6 +279,25 @@ async function saveAndApproveBrief(
   return presentState(saved);
 }
 
+/**
+ * Per-item review readiness for the CURRENT phase only. `awaitsGeneration` is
+ * true when the item has no required pipeline output yet, so the canvas hides
+ * the review thumbs until a run produces something to judge (Change 8). Computed
+ * only for `state.phase` (the active tab); earlier/later tabs are review-only or
+ * already resolved. Empty for roster (always reviewable) and non-review phases.
+ */
+function buildReviewStatus(
+  state: ThemeEquipmentSetState,
+): Record<string, { awaitsGeneration: boolean }> {
+  if (!isReviewPhase(state.phase)) return {};
+  const phase = state.phase;
+  const status: Record<string, { awaitsGeneration: boolean }> = {};
+  for (const item of state.items) {
+    status[item.id] = { awaitsGeneration: themeSetItemAwaitsGeneration(item, phase) };
+  }
+  return status;
+}
+
 export function presentState(state: ThemeEquipmentSetState): Record<string, unknown> {
   const advance = canAdvanceThemeSet(state);
   const weaponTypes = new Set(
@@ -290,6 +311,7 @@ export function presentState(state: ThemeEquipmentSetState): Record<string, unkn
     gate: advance,
     bulkApprove: planApproveRemaining(state),
     runPhase: planRunPhase(state),
+    reviewStatus: buildReviewStatus(state),
     coverage: {
       weaponTypes: [...weaponTypes].sort(),
       weaponTypeCount: weaponTypes.size,

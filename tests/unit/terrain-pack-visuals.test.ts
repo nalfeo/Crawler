@@ -117,10 +117,10 @@ describe('preloadTerrainPacks', () => {
     const entries = collectTerrainPackPreloadEntries();
     expect(queued).toHaveLength(entries.length);
 
-    // Both framed kinds load as spritesheets; only unframed pool/door art loads
-    // as a plain image.
+    // Every framed kind loads as a spritesheet; only unframed pool/door art
+    // loads as a plain image.
     const sheetCount = entries.filter(
-      (e) => e.kind === 'wall-atlas' || e.kind === 'ground-decals',
+      (e) => e.kind === 'wall-atlas' || e.kind === 'ground-decals' || e.kind === 'linework',
     ).length;
     const otherCount = entries.length - sheetCount;
     expect(loader.spritesheets).toHaveLength(sheetCount);

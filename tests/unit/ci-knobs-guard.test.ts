@@ -168,6 +168,8 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'MAX_TERMINAL_PASSES', // structural safety cap on the terminal-table retry loop, not an operational knob
   // ci-recovery/decision-log.mjs — observability log-line truncation (2026-07-27)
   'MAX_TRIGGER_LEN', // max chars retained for a logged trigger value; a log-format bound, not an operational knob
+  // merge-train/reconcile-lib.mjs — empty-train liveness threshold
+  'EMPTY_TRAIN_LIVENESS_THRESHOLD_MS', // incident-open threshold for stalled empty-train; changing requires incident-metric evidence
   // merge-train/reconcile.mjs — structural lookback window
   'MAIN_HEALTH_PUSH_RUN_LOOKBACK',
   // merge-train/state.mjs

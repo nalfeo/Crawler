@@ -51,7 +51,7 @@ Single file changed: `.github/workflows/deploy.yml`
 ## Edge cases handled
 
 - **workflow_dispatch**: tip-guard step `if:` condition is `github.event_name !=
-  'workflow_dispatch'`, so it's skipped entirely. `steps.tip-guard.outputs.skip` is
+'workflow_dispatch'`, so it's skipped entirely. `steps.tip-guard.outputs.skip` is
   empty, which evaluates `!= 'true'` as true → all downstream steps run. ✓
 - **MAIN_SHA resolution failure**: original `|| true` fallback means MAIN_SHA is
   empty. The stale check `[ -n "$MAIN_SHA" ] && [ "$RUN_SHA" != "$MAIN_SHA" ]` is

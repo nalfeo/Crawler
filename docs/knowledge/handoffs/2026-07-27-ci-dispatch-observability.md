@@ -174,8 +174,8 @@ back into a targeted fix (separate PR; do not fix in the observability PR).
   `sweep-budget` test).
 - `npm run verify:fast` → pass.
 - **Direct emission confirmed locally**: the target `reconcile.test.mjs`
-  subprocess topology tests skip on Windows (known UV_HANDLE_CLOSING teardown
-  crash; they run on Linux CI). To confirm line _content_ locally I used a
+  subprocess topology tests skip on Windows (known UV*HANDLE_CLOSING teardown
+  crash; they run on Linux CI). To confirm line \_content* locally I used a
   temporary stderr probe and observed real lines:
   `stage:"terminal", row:"R26", action:"wait-admission",
 taskComment:"not-applicable"` and `stage:"early", row:"R03",
