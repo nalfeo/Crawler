@@ -391,6 +391,7 @@ function measureRuns(
   height: number,
   occupancy: Uint8Array,
   nearHub: Uint8Array,
+  masks: Uint8Array,
 ): LineworkRun[] {
   const seen = new Uint8Array(width * height);
   const runs: LineworkRun[] = [];
@@ -407,12 +408,15 @@ function measureRuns(
       if (nearHub[index]) hubTileCount++;
       const tx = index % width;
       const ty = (index / width) | 0;
-      for (const { dx, dy } of EDGE_WANG_DIRECTIONS) {
+      const mask = masks[index] ?? 0;
+      for (const { bit, dx, dy, dir } of EDGE_WANG_DIRECTIONS) {
+        if (!(mask & bit)) continue;
         const nx = tx + dx;
         const ny = ty + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const nIndex = ny * width + nx;
         if (!occupancy[nIndex] || seen[nIndex]) continue;
+        if (!((masks[nIndex] ?? 0) & EDGE_WANG_OPPOSITE_BIT[dir])) continue;
         seen[nIndex] = 1;
         stack.push(nIndex);
       }
@@ -506,7 +510,7 @@ export function planLinework(request: LineworkPlanRequest): LineworkPlan {
     height,
     occupancy,
     masks,
-    runs: measureRuns(width, height, occupancy, nearHub),
+    runs: measureRuns(width, height, occupancy, nearHub, masks),
     tileCount,
     hubTileCount,
   };

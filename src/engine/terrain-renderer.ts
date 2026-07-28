@@ -711,6 +711,7 @@ export function buildTerrainLayer(
     scale: number;
   }[] = [];
   const lineworkScaleFor = (cellPx: number): number => tileSize / cellPx;
+  const lineworkPropTaken = new Uint8Array(width * height);
   for (const { pack, families } of lineworkPasses) {
     const routable = new Uint8Array(width * height);
     const wall = new Uint8Array(width * height);
@@ -794,6 +795,7 @@ export function buildTerrainLayer(
             props &&
             cell === LINEWORK_GROUND &&
             runAxis !== null &&
+            !lineworkPropTaken[index] &&
             scene.textures.exists(props.textureKey) &&
             shouldPlaceLineworkProp(floorSeed, layer.seedSalt, tx, ty, props.density)
           ) {
@@ -816,6 +818,7 @@ export function buildTerrainLayer(
               y,
               propConfig,
             );
+            lineworkPropTaken[index] = 1;
             packLineworkPropCount++;
           }
         }
