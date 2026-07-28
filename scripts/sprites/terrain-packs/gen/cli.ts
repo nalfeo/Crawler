@@ -15,6 +15,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { decodePng, type RgbaImage } from '../png-buffer.js';
 import {
   validateAtlasDimensions,
@@ -287,4 +288,16 @@ async function main(): Promise<void> {
   console.log('\nAll packs valid.');
 }
 
-await main();
+const invokedAsScript = (() => {
+  try {
+    const entry = process.argv[1];
+    if (!entry) return false;
+    return path.resolve(entry) === path.resolve(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedAsScript) {
+  await main();
+}
