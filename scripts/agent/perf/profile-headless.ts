@@ -279,13 +279,39 @@ function profileOneRun(
     );
   }
 
+  let profileFile: string;
   if (emitted.length > 1) {
-    // One child, one profile. More means worker threads or a stale directory;
-    // silently picking the first would attribute the wrong thread's time.
-    fail(`Expected exactly 1 .cpuprofile but found ${emitted.length}: ${emitted.join(', ')}`);
+    // Node 22 + tsx v4 spawns a worker thread for ESM transforms, generating one
+    // .cpuprofile per thread. The Node.js naming convention is:
+    //   CPU.<date>.<time>.<pid>.<workerThreadId>.<seq>.cpuprofile
+    // Worker ID 0 is the main thread; all other IDs are tsx/loader workers whose
+    // profiles contain only transform overhead, not game code.
+    const mainThreadProfiles = emitted.filter((f) => {
+      // Match: CPU.YYYYMMDD.HHMMSS.PID.0.SEQ.cpuprofile
+      const parts = f.replace(/\.cpuprofile$/, '').split('.');
+      // parts: ["CPU", "YYYYMMDD", "HHMMSS", "PID", "WORKERID", "SEQ"]
+      return parts.length === 6 && parts[4] === '0';
+    });
+    if (mainThreadProfiles.length === 1) {
+      // Confirmed the main-thread profile; discard the tsx worker thread profile(s).
+      if (!options.json) {
+        console.error(
+          `  note: ${emitted.length - 1} tsx worker-thread profile(s) discarded; using main-thread profile`,
+        );
+      }
+      profileFile = mainThreadProfiles[0]!;
+    } else {
+      // Cannot identify the main thread — fail loudly rather than guess.
+      fail(
+        `Expected exactly 1 .cpuprofile but found ${emitted.length}: ${emitted.join(', ')}` +
+          ` (could not isolate main-thread profile: found ${mainThreadProfiles.length} candidate(s) with worker-ID 0)`,
+      );
+    }
+  } else {
+    profileFile = emitted[0]!;
   }
 
-  const profile = JSON.parse(readFileSync(path.join(dir, emitted[0]!), 'utf8')) as CpuProfile;
+  const profile = JSON.parse(readFileSync(path.join(dir, profileFile), 'utf8')) as CpuProfile;
   return summarizeProfile(profile);
 }
 
