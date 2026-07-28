@@ -3,7 +3,7 @@
 **Date:** 2026-07-27  
 **Session slug:** ci-recovery-typo-threshold  
 **Apple estimate:** 1🍎  
-**PR:** Closes #2115  
+**PR:** Closes #2115
 
 ## Summary
 
@@ -27,6 +27,7 @@ unresolvable forever.
 ## Fix
 
 `reconcile.mjs`: replaced `differsByExactlyOneHexDigit` with `isNearHexTypo` which accepts:
+
 - Exactly 1 differing hex digit (same as before)
 - Exactly 2 differing hex digits that are **contiguous (adjacent)** positions
 

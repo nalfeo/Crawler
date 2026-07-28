@@ -19,6 +19,9 @@ interface WorkflowDoc {
       concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
       steps?: Array<{
         name?: string;
+        id?: string;
+        if?: string;
+        uses?: string;
         env?: Record<string, string>;
         with?: Record<string, string>;
       }>;
@@ -284,14 +287,12 @@ describe('merge-train workflow wake-ups', () => {
     ).toBe(false);
   });
 
-  it('reconciles a completed scheduled CI run only while the merge train is enabled', () => {
-    // mainHealthReason() (reconcile-lib.mjs) picks the newest *completed* run
-    // for the current main SHA as authoritative; a pending duplicate never hides
-    // completed evidence. This carve-out covers only the pending-only initial
-    // case: when main just moved and no completed CI run exists yet, reconcile
-    // pauses, and a wakeup is needed once that pending run completes. Without
-    // this carve-out, nothing re-wakes reconcile in that window, leaving the
-    // train stuck until the unreliable */5 cron (observed ~hourly in production).
+  it('reconciles a completed scheduled CI run when the job-level if allows it through', () => {
+    // The schedule+MERGE_TRAIN_ENABLED gate was moved from the job-level if: into
+    // the .github/actions/train-gate composite action (step-level) so that the
+    // gate logic is defined once. The job-level if: now admits all schedule events
+    // and delegates MERGE_TRAIN_ENABLED enforcement to the train-gate step.
+    // See .github/actions/train-gate/action.yml for the canonical gate definition.
     const condition = loadWorkflow().jobs.reconcile?.if;
     if (!condition) throw new Error('reconcile job condition not found');
 
@@ -302,15 +303,41 @@ describe('merge-train workflow wake-ups', () => {
         'true',
       ),
     ).toBe(true);
-    // Fail closed: disabled train must not wake reconcile off a scheduled CI
-    // completion (matches the existing ci-recovery-incidents.yml precedent).
+    // The job-level if: no longer gates on MERGE_TRAIN_ENABLED for schedule events;
+    // the train-gate step handles that. The condition must admit the event so the
+    // step can decide.
     expect(
       evaluatesReconcileCondition(
         condition,
         { name: 'CI', event: 'schedule', headBranch: 'main' },
         'false',
       ),
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it('train-gate step enforces MERGE_TRAIN_ENABLED for schedule-triggered CI wakes', () => {
+    // The train-gate composite action is the canonical "schedule && train-enabled"
+    // gate. Verify the step is present and wired correctly.
+    const steps = loadWorkflow().jobs.reconcile?.steps ?? [];
+    const gateStep = steps.find((step) => step.name === 'Train gate');
+    expect(gateStep).toBeDefined();
+    expect(gateStep?.with?.['event-is-schedule']).toContain(
+      "github.event.workflow_run.name == 'CI'",
+    );
+    expect(gateStep?.with?.['event-is-schedule']).toContain(
+      "github.event.workflow_run.event == 'schedule'",
+    );
+    expect(gateStep?.with?.['merge-train-enabled']).toContain('MERGE_TRAIN_ENABLED');
+    // Downstream steps must be gated on the action output so they are skipped
+    // when the train is disabled on a schedule event.
+    const reconcileStep = steps.find((step) => step.name === 'Reconcile six-PR build-expiry train');
+    expect(reconcileStep?.if).toBe("steps.train-gate.outputs.enabled == 'true'");
+    // Checkout must precede the train-gate step (local composite actions
+    // require the repo to be checked out before they can be resolved).
+    const gateIdx = steps.indexOf(gateStep!);
+    const checkoutIdx = steps.findIndex((s) => s.uses?.startsWith('actions/checkout'));
+    expect(checkoutIdx).toBeGreaterThanOrEqual(0);
+    expect(checkoutIdx).toBeLessThan(gateIdx);
   });
 
   it('still rejects a PR-triggered CI run even while the merge train is enabled (no storm regression)', () => {

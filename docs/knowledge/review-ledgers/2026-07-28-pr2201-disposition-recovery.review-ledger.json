@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "pr2201-disposition-recovery",
+  "task_title": "Recover PR #2201 disposition blockers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Resolved reviewer concerns by replacing global merged-history scan with issue-scoped closedByPullRequestsReferences pagination, adding deterministic workflow unit coverage for the new safeguards, and confirming branch clean/no-conflict precondition for recovery sequencing."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

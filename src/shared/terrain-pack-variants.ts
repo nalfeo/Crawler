@@ -306,6 +306,96 @@ export function buildGroundDecalStampConfig(
 }
 
 /**
+ * Stamp config for one linework (2-edge Wang) tile.
+ *
+ * Deliberately has NO rotation and NO flip parameter, unlike the ground-decal
+ * config. A Wang frame's identity is its edge signature; rotating or mirroring
+ * it relabels those edges and silently breaks the join contract that makes a
+ * run read as continuous. Orientation is already encoded in the 16-frame set,
+ * so the renderer picks a frame and never transforms it.
+ */
+export function buildLineworkStampConfig(scale: number): {
+  originX: number;
+  originY: number;
+  scaleX: number;
+  scaleY: number;
+} {
+  return { originX: 0.5, originY: 0.5, scaleX: scale, scaleY: scale };
+}
+
+/**
+ * Decide whether an eligible linework tile carries a prop (switch stand, parked
+ * cart, valve wheel).
+ *
+ * Keyed on the tile's own coordinates plus the layer salt, so the answer is
+ * stable per tile and independent of iteration order — and two layers crossing
+ * the same tile do not both drop a prop on it.
+ */
+export function shouldPlaceLineworkProp(
+  floorSeed: number,
+  seedSalt: string,
+  tx: number,
+  ty: number,
+  density: number,
+): boolean {
+  if (density <= 0) return false;
+  return new SeededRandom(deriveLineworkPropSeed(floorSeed, seedSalt, tx, ty)).next() < density;
+}
+
+/** Frame index for a placed prop. Uses a second draw off the same stream. */
+export function pickLineworkPropFrame(
+  floorSeed: number,
+  seedSalt: string,
+  tx: number,
+  ty: number,
+  frames: number,
+  frameStart = 0,
+): number {
+  if (frames <= 0) return frameStart;
+  const rng = new SeededRandom(deriveLineworkPropSeed(floorSeed, seedSalt, tx, ty));
+  rng.next();
+  return frameStart + Math.min(frames - 1, Math.floor(rng.next() * frames));
+}
+
+/**
+ * Stamp config for a linework PROP.
+ *
+ * Unlike the Wang frames — whose identity IS their edge signature, so rotating
+ * one relabels its edges and silently breaks the join contract — a prop carries
+ * no edges. Turning it a quarter turn to follow an east-west run is therefore
+ * both safe and necessary, otherwise every cart on a horizontal track sits
+ * across the rails.
+ */
+export function buildLineworkPropStampConfig(
+  scale: number,
+  rotationRad: number,
+): {
+  originX: number;
+  originY: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+} {
+  return { originX: 0.5, originY: 0.5, scaleX: scale, scaleY: scale, rotation: rotationRad };
+}
+
+function deriveLineworkPropSeed(
+  floorSeed: number,
+  seedSalt: string,
+  tx: number,
+  ty: number,
+): number {
+  let saltHash = 0x811c9dc5;
+  for (let i = 0; i < seedSalt.length; i++) {
+    saltHash ^= seedSalt.charCodeAt(i);
+    saltHash = Math.imul(saltHash, 0x01000193) >>> 0;
+  }
+  // Offset the coordinates so a prop draw can never coincide with the pool,
+  // accent or decal pickers at the same integer tile.
+  return deriveTileVariantSeed(floorSeed ^ saltHash, tx + 6151, ty + 2749);
+}
+
+/**
  * Resolve door art orientation from wall-flank geometry.
  *
  * Convention from `procedural-surfaces.renderDoorTile`:

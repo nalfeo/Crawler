@@ -118,6 +118,37 @@ export function queuePositionAfterRecovery(index, recovery) {
   return index + 1 - promotedCount;
 }
 
+export const EMPTY_TRAIN_LIVENESS_THRESHOLD_MS = 60 * 60 * 1000;
+
+function stallAnchorMs(pull) {
+  const updatedAtMs = Date.parse(String(pull?.updated_at || ''));
+  if (Number.isFinite(updatedAtMs) && updatedAtMs > 0) return updatedAtMs;
+  const createdAtMs = Date.parse(String(pull?.created_at || ''));
+  return Number.isFinite(createdAtMs) && createdAtMs > 0 ? createdAtMs : Number.NaN;
+}
+
+export function stalledAdmissionEligiblePulls({
+  pulls,
+  queuedNumbers = new Set(),
+  admissionByNumber = new Map(),
+  now = new Date(),
+  thresholdMs = EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+}) {
+  const nowMs = now.getTime();
+  if (!Number.isFinite(nowMs) || nowMs <= 0) return [];
+  return (pulls || [])
+    .filter((pull) => {
+      if (!pull || queuedNumbers.has(pull.number)) return false;
+      if (admissionByNumber.get(pull.number) !== true) return false;
+      const anchorMs = stallAnchorMs(pull);
+      if (!Number.isFinite(anchorMs) || anchorMs <= 0) return false;
+      return nowMs - anchorMs >= thresholdMs;
+    })
+    .sort(
+      (left, right) => stallAnchorMs(left) - stallAnchorMs(right) || left.number - right.number,
+    );
+}
+
 /**
  * Runs the candidate build loop for a merge train. For each train entry,
  * `buildEntry(index)` is called inside the retryable candidate-build boundary.
@@ -240,13 +271,17 @@ export function resolveMergeTrainTokens(environment) {
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
   // The repository App receives 403 from workflow_dispatch; never reuse it here.
   const workflowDispatchToken = environment.GITHUB_TOKEN || '';
+  // CRAWLER_CI_PAT is a user token that emits normal push events (re-triggers
+  // required CI); GITHUB_TOKEN is recursion-suppressed for push events so
+  // update-branch via GITHUB_TOKEN does not restart required checks.
+  const updateBranchToken = environment.CRAWLER_CI_PAT || environment.GITHUB_TOKEN || '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
   }
   if (!workflowDispatchToken) {
     throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
   }
-  return { promotionToken, workflowDispatchToken };
+  return { promotionToken, workflowDispatchToken, updateBranchToken };
 }
 
 export function mergeTrainGitEnvironment(environment, overrides = {}) {
@@ -338,6 +373,11 @@ export function deleteCandidateBundle({ refName, transportSha, git }) {
   return true;
 }
 
+// The generated INDEX.md must never appear on PR branches (enforced by
+// pr-preflight guard), but if it does slip through, auto-resolve it during
+// candidate builds so it never serializes the merge queue (issue #1856).
+const INDEX_MD_PATH = 'docs/knowledge/handoffs/INDEX.md';
+
 export function buildCandidate({ baseSha, entries, refName, git, live }) {
   if (live && !refName.startsWith(CANDIDATE_REF_PREFIX)) {
     throw new Error(
@@ -355,27 +395,51 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
         env: CANDIDATE_GIT_IDENTITY,
       });
     } catch (error) {
-      let hasUnmergedEntries = false;
+      let unmergedFiles = [];
       let operationalError = error;
       try {
-        hasUnmergedEntries = git(['ls-files', '--unmerged']).trim().length > 0;
+        const unmergedOutput = git(['ls-files', '--unmerged']);
+        // ls-files --unmerged format: "mode sha stage\tpath" — one line per
+        // conflict stage (1=base, 2=ours, 3=theirs) so deduplicate by path.
+        unmergedFiles = [
+          ...new Set(
+            unmergedOutput
+              .trim()
+              .split('\n')
+              .filter(Boolean)
+              .map((line) => line.split('\t')[1])
+              .filter(Boolean),
+          ),
+        ];
       } catch (inspectionError) {
         operationalError = new Error(
           `could not inspect the failed candidate merge: ${inspectionError.message}`,
           { cause: error },
         );
       }
-      git(['reset', '--hard', baseSha]);
-      if (hasUnmergedEntries) {
-        throw new MergeTrainConflictError(
-          `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
-          { cause: error },
+      // Auto-resolve: if the only conflict is INDEX.md (a generated file that
+      // must not appear on PR branches), keep HEAD's version and continue the
+      // candidate build rather than aborting the whole train.
+      if (unmergedFiles.length > 0 && unmergedFiles.every((f) => f === INDEX_MD_PATH)) {
+        git(['checkout', 'HEAD', '--', INDEX_MD_PATH]);
+        // A squash-merge leaves newly-added files from the merged branch as
+        // untracked (not staged). Stage everything so the candidate commit
+        // captures the PR's full diff, not just its pre-existing modifications.
+        git(['add', '--all']);
+        // Fall through — merge is now clean, continue to commit below.
+      } else {
+        git(['reset', '--hard', baseSha]);
+        if (unmergedFiles.length > 0) {
+          throw new MergeTrainConflictError(
+            `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
+            { cause: error },
+          );
+        }
+        throw new Error(
+          `PR #${entry.number} candidate merge failed operationally: ${operationalError.message}`,
+          { cause: operationalError },
         );
       }
-      throw new Error(
-        `PR #${entry.number} candidate merge failed operationally: ${operationalError.message}`,
-        { cause: operationalError },
-      );
     }
     if (gitCommandSucceeded(git, ['diff', '--cached', '--quiet'])) {
       throw new MergeTrainNoopError(
@@ -421,29 +485,72 @@ export function isDisabledTrainScheduleRun(jobs) {
 }
 
 /**
- * Decide whether main currently has authoritative full-CI ("ci.yml", the
- * `CI` workflow) evidence for the exact SHA it is on right now, considering
- * both hourly `schedule` runs and `push` runs but excluding push runs that
- * merely attest a merge-train fast-path shortcut (`isTrainFastPath: true`;
- * their own green conclusion is not full-CI evidence). Fails closed: no
- * evidence is treated as NOT healthy, so the circuit breaker cannot be
- * bypassed by an empty/incomplete run list. A pending duplicate cannot hide
- * completed evidence for the same SHA; the newest completed run remains
- * authoritative, including a later completed failure.
+ * Classify `main`'s own CI health for the merge train's failure-ATTRIBUTION
+ * circuit breaker. Considers authoritative full-CI ("ci.yml", the `CI`
+ * workflow) runs for the exact SHA `main` is on right now -- both `schedule`
+ * and `push` runs -- but excludes push runs that merely attest a merge-train
+ * fast-path shortcut (`isTrainFastPath: true`; their own green conclusion is
+ * not full-CI evidence). A pending duplicate cannot hide completed evidence
+ * for the same SHA; the newest completed run remains authoritative, including
+ * a later completed failure.
+ *
+ * Returns `{ verdict, reason }` where verdict is:
+ *   - `'red'`     the newest completed authoritative run concluded non-success
+ *   - `'green'`   the newest completed authoritative run succeeded
+ *   - `'unknown'` no authoritative evidence exists yet, or it is still pending
+ *
+ * This deliberately fails OPEN on `'unknown'`, unlike the promotion gate it
+ * replaced (ADR 0077). Main health is no longer a promotion gate -- the
+ * composite prefix validation is the sole promotion gate -- so this verdict is
+ * only consulted to decide whether a RED composite is attributable to a queued
+ * PR. Absence of evidence attributes nothing. Failing closed here would be
+ * ruinous rather than safe: after every train promotion the only run on the new
+ * `main` is the excluded fast-path attestation, so "no evidence" is the steady
+ * state, and with a daily full-CI backstop a fail-closed breaker would suspend
+ * ejection of genuinely broken PRs for up to a day. An unattributed ejection is
+ * recoverable (the PR returns to ci-recovery and re-queues); a train that
+ * cannot eject anything is not self-healing.
  */
-export function mainHealthReason({ mainSha, runs }) {
+export function mainAttributionVerdict({ mainSha, runs }) {
   const authoritative = (runs || [])
     .filter((run) => run.head_sha === mainSha && run.name === 'CI' && !run.isTrainFastPath)
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-  if (authoritative.length === 0) return `no full-CI evidence yet for current main ${mainSha}`;
+  if (authoritative.length === 0) {
+    return { verdict: 'unknown', reason: `no full-CI evidence yet for current main ${mainSha}` };
+  }
   const latestCompleted = authoritative.find((run) => run.status === 'completed');
   if (!latestCompleted) {
-    return `full-CI run for current main ${mainSha} is still ${authoritative[0].status}`;
+    return {
+      verdict: 'unknown',
+      reason: `full-CI run for current main ${mainSha} is still ${authoritative[0].status}`,
+    };
   }
-  if (latestCompleted.conclusion !== 'success') {
-    return `latest completed full-CI run for current main ${mainSha} concluded ${latestCompleted.conclusion}`;
+  // Only conclusions that represent an actual test failure count as positive red
+  // evidence. Infra-only outcomes (cancelled, skipped, stale, neutral) are not
+  // authoritative: treat them the same as `unknown` so a manually cancelled run
+  // does not suppress bisection/ejection until the next daily backstop.
+  // Mirrors the incident router's gate (incident.mjs: only failure/timed_out/
+  // startup_failure/action_required raise incidents).
+  const FAILURE_CONCLUSIONS = new Set([
+    'failure',
+    'timed_out',
+    'startup_failure',
+    'action_required',
+  ]);
+  if (FAILURE_CONCLUSIONS.has(latestCompleted.conclusion)) {
+    return {
+      verdict: 'red',
+      reason: `latest completed full-CI run for current main ${mainSha} concluded ${latestCompleted.conclusion}`,
+    };
   }
-  return null;
+  if (latestCompleted.conclusion === 'success') {
+    return { verdict: 'green', reason: null };
+  }
+  // cancelled / skipped / stale / neutral — not authoritative evidence either way
+  return {
+    verdict: 'unknown',
+    reason: `latest completed full-CI run for current main ${mainSha} has non-authoritative conclusion ${latestCompleted.conclusion}`,
+  };
 }
 
 export function promotionStaleReason({ currentMain, currentPr, expectedBase, pr, repository }) {
@@ -482,7 +589,6 @@ export async function promoteExactCandidate({
   publishPostconditionCheck,
   provenanceEntries = [pr],
   recordMapping,
-  reattestHealth,
 }) {
   return promoteExactBatch({
     entries: [pr],
@@ -504,7 +610,6 @@ export async function promoteExactCandidate({
     provenanceEntries,
     positions: [position],
     recordMapping,
-    reattestHealth,
   });
 }
 
@@ -529,7 +634,6 @@ export async function promoteExactBatch({
   provenanceEntries = entries,
   positions = entries.map((_, index) => index + 1),
   recordMapping = () => {},
-  reattestHealth = async () => true,
   verifyMergeSlot = async () => null,
   proofPollDelaysMs,
   proofSleep,
@@ -619,19 +723,19 @@ export async function promoteExactBatch({
     }
     currentPrs[index] = finalPr;
   }
-  // Re-run the main-health guard here, immediately before publishing the
-  // required check and updating refs. The initial guard (mainHealthAllowsPromotion)
-  // runs once per reconcile before the sequential PR/admission reads above;
-  // a scheduled or push-triggered CI run for main can start and go
-  // pending/red while those reads are in flight, which would otherwise let a
-  // now-unhealthy main get promoted past. Reusing the same trusted, token
-  // authenticated health check here (rather than trusting the earlier
-  // result) closes that window without any unauthenticated or stale
-  // shortcut.
-  if (!(await reattestHealth())) {
-    process.stdout.write('paused merge train; main health changed during final reattestation\n');
-    return false;
-  }
+  // Main's OWN health is deliberately NOT re-checked here (ADR 0077). The
+  // validated composite candidate -- built on exactly `expectedBase` and proven
+  // green by the full merge-gate -- is the sole promotion gate; re-asserting
+  // that `main` alone is green would only reinstate the deadlock where a PR
+  // that FIXES a red `main` can never land. Everything this re-check used to
+  // add is still covered: `main` moving is caught by `promotionStaleReason`
+  // above, by the whole-batch `finalMain` guard, and by the per-merge base-CAS
+  // below; a divergent landing is caught fail-closed by the post-merge
+  // parent/tree proof (`landedCommitProofError`). The only case it uniquely
+  // covered -- `main` going red WITHOUT moving, i.e. a re-run of CI on the same
+  // SHA concluding differently -- is not a promotion concern, because the
+  // candidate was validated against that exact SHA. Main health now feeds only
+  // the failure-ATTRIBUTION breaker in reconcile.mjs.
   const finalCandidateSha = candidateShas.at(-1);
   const promotionFingerprint = candidateFingerprint(expectedBase, currentPrs);
   // ---- Sequential GitHub squash-merge promotion. ----

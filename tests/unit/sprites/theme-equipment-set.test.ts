@@ -29,6 +29,8 @@ import {
   reviseRejectedThemeSetItem,
   saveThemeEquipmentSetState,
   themeEquipmentSetStateKey,
+  themeSetItemAwaitsGeneration,
+  themeSetItemHasPhaseOutput,
   type ThemeEquipmentSetReviewPhase,
   type ThemeEquipmentSetState,
 } from '../../../scripts/sprites/theme-equipment-set.js';
@@ -1245,25 +1247,73 @@ describe('planRunPhase (truthful Run-button plan)', () => {
     expect(plan.collectionJudgeMissing).toBe(true);
   });
 
-  it('counts every unresolved item as a regeneration and is not judge-only', () => {
-    // roster phase, every verdict null → every item is unresolved.
+  it('counts every unresolved never-generated item as a generation (roster has no artifacts)', () => {
+    // roster phase, every verdict null and no artifacts → every item is
+    // unresolved AND never generated, so it is a generation, not a regeneration.
     const state = makeState();
 
     const plan = planRunPhase(state);
 
     expect(plan.phase).toBe('roster');
-    expect(plan.regenerateCount).toBe(state.items.length);
+    expect(plan.generateCount).toBe(state.items.length);
+    expect(plan.regenerateCount).toBe(0);
     expect(plan.judgeOnly).toBe(false);
     expect(plan.collectionJudgeMissing).toBe(true);
   });
 
+  it('counts an unresolved item that already has output as a regeneration', () => {
+    // briefs phase: give every item a briefs artifact (output exists) but leave
+    // verdicts null → unresolved WITH output → regeneration, not generation.
+    const withOutput = parseThemeEquipmentSetState({
+      ...readyForPhase(makeState({ phase: 'briefs' }), 'briefs'),
+      items: readyForPhase(makeState({ phase: 'briefs' }), 'briefs').items.map((item) => ({
+        ...item,
+        phases: { ...item.phases, briefs: { ...item.phases.briefs, review: { verdict: null } } },
+      })),
+    });
+
+    const plan = planRunPhase(withOutput);
+
+    expect(plan.phase).toBe('briefs');
+    expect(plan.generateCount).toBe(0);
+    expect(plan.regenerateCount).toBe(withOutput.items.length);
+    expect(plan.judgeOnly).toBe(false);
+  });
+
+  it('keeps generateCount + regenerateCount === the unresolved count in a mixed state', () => {
+    // Start from a fully-ready briefs set (all up, all have output), then knock
+    // two items back to unresolved: one keeps its output (regenerate), one has
+    // its output stripped (generate).
+    const ready = readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+    const raw = JSON.parse(JSON.stringify(ready)) as {
+      items: {
+        phases: Record<string, { artifacts: unknown[]; review: { verdict: 'up' | 'down' | null } }>;
+      }[];
+    };
+    raw.items[0]!.phases.briefs!.review.verdict = null; // unresolved, keeps output
+    raw.items[1]!.phases.briefs!.review.verdict = null; // unresolved, output stripped
+    raw.items[1]!.phases.briefs!.artifacts = [];
+    const mixed = parseThemeEquipmentSetState(raw);
+
+    const plan = planRunPhase(mixed);
+
+    const unresolved = mixed.items.filter(
+      (item) => !isThemeSetItemResolvedForPhase(item, 'briefs'),
+    ).length;
+    expect(unresolved).toBe(2);
+    expect(plan.generateCount).toBe(1);
+    expect(plan.regenerateCount).toBe(1);
+    expect(plan.generateCount + plan.regenerateCount).toBe(unresolved);
+  });
+
   it('treats rejected (down) items as unresolved regenerations', () => {
-    const ready = readyForPhase(makeState()); // all up, judged
+    const ready = readyForPhase(makeState()); // all up, judged, all have artifacts
     const state = withItemVerdict(ready, 0, 'down');
 
     const plan = planRunPhase(state);
 
     expect(plan.regenerateCount).toBe(1);
+    expect(plan.generateCount).toBe(0);
     expect(plan.judgeOnly).toBe(false);
   });
 
@@ -1286,6 +1336,59 @@ describe('planRunPhase (truthful Run-button plan)', () => {
     expect(plan.regenerateCount).toBe(0);
     expect(plan.judgeOnly).toBe(false);
     expect(plan.collectionJudgeMissing).toBe(false);
+  });
+});
+
+describe('themeSetItemHasPhaseOutput / themeSetItemAwaitsGeneration (review gating)', () => {
+  it('reports no output and awaiting-generation for a fresh briefs item', () => {
+    const state = makeState({ phase: 'briefs' });
+    const item = state.items[0]!;
+
+    expect(themeSetItemHasPhaseOutput(item, 'briefs')).toBe(false);
+    expect(themeSetItemAwaitsGeneration(item, 'briefs')).toBe(true);
+  });
+
+  it('reports output present and not awaiting once the required kind exists', () => {
+    // readyForPhase adds a `selected-brief`-required?—it adds a `briefs`-kind
+    // artifact, which counts as OUTPUT but is NOT the required `selected-brief`
+    // kind, so the item still awaits generation. Give it the required kind too.
+    const ready = readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+    const raw = JSON.parse(JSON.stringify(ready)) as {
+      items: {
+        phases: Record<
+          string,
+          { artifacts: { id: string; kind: string; uri: string; provenance: string }[] }
+        >;
+      }[];
+    };
+    raw.items[0]!.phases.briefs!.artifacts.push({
+      id: 'req-selected-brief',
+      kind: 'selected-brief',
+      uri: 'run://selected',
+      provenance: 'unit-test',
+    });
+    const withRequired = parseThemeEquipmentSetState(raw);
+    const item = withRequired.items[0]!;
+
+    expect(themeSetItemHasPhaseOutput(item, 'briefs')).toBe(true);
+    expect(themeSetItemAwaitsGeneration(item, 'briefs')).toBe(false);
+  });
+
+  it('never awaits generation in the roster phase (no required artifact)', () => {
+    const state = makeState();
+    const item = state.items[0]!;
+
+    expect(themeSetItemAwaitsGeneration(item, 'roster')).toBe(false);
+  });
+
+  it('awaits generation when a briefs artifact exists but not the required selected-brief kind', () => {
+    // A non-required artifact (e.g. a `briefs`-kind evidence artifact) is OUTPUT
+    // but does not satisfy the up-vote requirement, so the thumbs stay gated.
+    const ready = readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+    const item = ready.items[0]!;
+
+    expect(themeSetItemHasPhaseOutput(item, 'briefs')).toBe(true);
+    expect(themeSetItemAwaitsGeneration(item, 'briefs')).toBe(true);
   });
 });
 
