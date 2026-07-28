@@ -3,6 +3,7 @@
 **Date:** 2026-07-28  
 **Session slug:** sweep-budget-stale-test-assertions  
 **Apple estimate:** 1🍎  
+**Closes:** #2139  
 **PR:** fix/sweep-budget-stale-test-assertions  
 **Closes:** #2139
 
