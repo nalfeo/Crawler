@@ -609,7 +609,7 @@ test('coordinator keeps every member fenced when the active-slot head drifts bef
   );
 });
 
-test('coordinator discovers but does not serialize when enforcement is disabled (default)', async (t) => {
+test('coordinator discovers but neither serializes nor labels when enforcement is disabled (default)', async (t) => {
   const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
   t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
 
@@ -623,8 +623,8 @@ test('coordinator discovers but does not serialize when enforcement is disabled 
       pr2Sha,
       pr3Sha,
       livePr1Sha: driftedActiveSha,
-      // Seed a stranded fence label left behind by a previous enforcing run.
-      pr3Labels: [{ name: 'ci-conflict-order-wait' }],
+      // Seed stranded fence/grouping labels left behind by a previous enforcing run.
+      pr3Labels: [{ name: 'ci-conflict-order-wait' }, { name: 'ci-conflict-coordinated' }],
     }),
   );
   t.after(() => server.close());
@@ -651,8 +651,12 @@ test('coordinator discovers but does not serialize when enforcement is disabled 
     'must never apply ci-conflict-order-wait while enforcement is disabled',
   );
 
-  // Discovery must still run: the coordinated label is how the group stays
-  // visible/reportable even though it is no longer serialized.
+  // Discovery must still run, but it must no longer publish grouping-derived
+  // labels. The grouping predicate keys on CI-filename identity rather than any
+  // real conflict test (issue #2180), so `ci-conflict-coordinated` routinely
+  // marks PRs that do not actually conflict. Reporting now happens through the
+  // coordinator comment (which is also the state store, keeping dispatch
+  // de-duplication intact) while the misleading labels are actively drained.
   const coordinatedAdd = mutatingCalls.find(
     (c) =>
       c.method === 'POST' &&
@@ -660,7 +664,21 @@ test('coordinator discovers but does not serialize when enforcement is disabled 
       Array.isArray(c.body?.labels) &&
       c.body.labels.includes('ci-conflict-coordinated'),
   );
-  assert.ok(coordinatedAdd, 'discovery/reporting must keep working when enforcement is disabled');
+  assert.equal(
+    coordinatedAdd,
+    undefined,
+    'must not mark non-conflicting PRs as coordinated while enforcement is disabled',
+  );
+
+  const coordinatedRemove = mutatingCalls.find(
+    (c) => c.method === 'DELETE' && /\/issues\/\d+\/labels\/ci-conflict-coordinated$/.test(c.url),
+  );
+  assert.ok(coordinatedRemove, 'must actively drain stranded ci-conflict-coordinated labels');
+
+  const reportComment = mutatingCalls.find(
+    (c) => (c.method === 'POST' || c.method === 'PATCH') && /comments/.test(c.url),
+  );
+  assert.ok(reportComment, 'discovery/reporting must keep working when enforcement is disabled');
 
   // Removal (not just omission) is what drains labels stranded by a previous
   // enforcing run, so no manual cleanup pass is required.

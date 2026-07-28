@@ -844,8 +844,9 @@ for (const group of groups) {
   // Fence every member before exposing one slot, so concurrent train runs can
   // observe zero active slots briefly but never two.
   //
-  // With enforcement disabled (the default) we keep discovery/reporting but
-  // actively UNFENCE: ORDER_WAIT is removed from every member. Removing (rather
+  // With enforcement disabled (the default) we keep discovery/reporting via the
+  // coordinator comment, but actively UNFENCE and UNLABEL: ORDER_WAIT,
+  // COORDINATED and LEADER are all removed from every member. Removing (rather
   // than merely not-adding) is what drains labels stranded by a previous
   // enforcing run — no manual cleanup pass is needed.
   //
@@ -858,21 +859,35 @@ for (const group of groups) {
   // is what we are switching off here; human/agent ownership gates are not.
   const enforceCoordination = coordinationEnforcementEnabled(process.env);
   for (const pull of group.pulls) {
-    await addLabel(pull, COORDINATED_LABEL);
     const ownershipGated =
       Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
       Boolean(recoveryByNumber.get(pull.number)?.shepherdLease) ||
       Boolean(humanApprovalByNumber.get(pull.number));
     if (enforceCoordination) {
+      await addLabel(pull, COORDINATED_LABEL);
       await addLabel(pull, ORDER_WAIT_LABEL);
       await disableAutoMerge(pull);
+      if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
+      else await removeLabel(pull, LEADER_LABEL);
     } else {
+      // Unenforced (the default): grouping is advisory only, and the grouping
+      // predicate keys on CI-filename identity rather than any real conflict
+      // test (issue #2180), so these labels routinely assert conflicts that do
+      // not exist. Publishing them marks non-conflicting PRs as conflict-managed
+      // and misleads both humans and other reconcilers. Remove (rather than
+      // merely not-add) so labels stranded by an earlier enforcing run drain
+      // without a manual cleanup pass.
       await removeLabel(pull, ORDER_WAIT_LABEL);
+      await removeLabel(pull, COORDINATED_LABEL);
+      await removeLabel(pull, LEADER_LABEL);
       if (ownershipGated) await disableAutoMerge(pull);
     }
-    if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
-    else await removeLabel(pull, LEADER_LABEL);
-    const escalated = proofByNumber.get(pull.number)?.status === 'ambiguous' || ownershipGated;
+    // Ownership escalation is a real, grouping-independent signal and is never
+    // switched off. An `ambiguous` supersession proof, by contrast, is derived
+    // from group-mates, so it only escalates while enforcement is on.
+    const escalated = enforceCoordination
+      ? proofByNumber.get(pull.number)?.status === 'ambiguous' || ownershipGated
+      : ownershipGated;
     if (escalated) await addLabel(pull, ESCALATION_LABEL);
     else await removeLabel(pull, ESCALATION_LABEL);
   }
