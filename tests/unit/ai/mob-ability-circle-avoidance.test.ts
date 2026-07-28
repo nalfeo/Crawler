@@ -76,13 +76,17 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
     expect(Math.hypot(debug.dodgeX, debug.dodgeY)).toBeGreaterThan(0);
   });
 
-  it('treats active sovereign cloud zones as dangerous and dodges outward', () => {
+  it('preserves sovereign cloud-zone dodge while travel steering is active', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
-    world.stores.position.x[player] = 0;
-    world.stores.position.y[player] = 0;
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const input = createInputState();
+    ai.poll(input, world);
+
+    const playerX = world.stores.position.x[player] ?? 0;
+    const playerY = world.stores.position.y[player] ?? 0;
     world.mobAbilities.ownedZones.push({
       id: 1,
       abilityId: 'sovereign-cap-spore-bloom',
@@ -91,9 +95,9 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
       geometry: {
         kind: 'multi-circle',
         circles: [
-          { kind: 'circle', x: 0, y: 0, radiusFt: 8 },
-          { kind: 'circle', x: 6, y: 0, radiusFt: 8 },
-          { kind: 'circle', x: -6, y: 0, radiusFt: 8 },
+          { kind: 'circle', x: playerX, y: playerY, radiusFt: 8 },
+          { kind: 'circle', x: playerX + 6, y: playerY, radiusFt: 8 },
+          { kind: 'circle', x: playerX - 6, y: playerY, radiusFt: 8 },
         ],
       },
       durationMs: 4000,
@@ -103,9 +107,9 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
       tick: () => {},
     });
 
-    const ai = new BehaviorTreeAI({ seed: 42 });
     ai.poll(createInputState(), world);
 
+    expect(ai.getTravelSteeringDebug()).not.toBeNull();
     const debug = ai.getOpportunisticDebug();
     expect(Math.hypot(debug.dodgeX, debug.dodgeY)).toBeGreaterThan(0);
   });

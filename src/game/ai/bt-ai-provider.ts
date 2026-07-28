@@ -3796,6 +3796,19 @@ export class BehaviorTreeAI implements AIInputProvider {
             const dx = playerX - zone.circle.x;
             const dy = playerY - zone.circle.y;
             return dx * dx + dy * dy <= zone.circle.radiusFt * zone.circle.radiusFt;
+          }) ||
+          world.mobAbilities.ownedZones.some((zone) => {
+            const zoneCircles =
+              zone.geometry.kind === 'circle'
+                ? [zone.geometry]
+                : zone.geometry.kind === 'multi-circle'
+                  ? zone.geometry.circles
+                  : [];
+            return zoneCircles.some((circle) => {
+              const dx = playerX - circle.x;
+              const dy = playerY - circle.y;
+              return dx * dx + dy * dy <= circle.radiusFt * circle.radiusFt;
+            });
           });
         // The steering heading already encodes predictive spacing; blending the
         // legacy single-closest-threat dodge on top would double-count and
@@ -3806,6 +3819,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         // Slick-zone occupancy: if the player is currently inside an active zone,
         // the zone-branch dodge vector must also be preserved so the AI exits
         // rather than walking through the slick after travel steering takes over.
+        // Runtime-owned zones need the same protection so travel steering does
+        // not wipe the outward cloud/surface dodge it just computed earlier.
         if (!preserveMobAbilityDodge) {
           this.dodgeVecX = 0;
           this.dodgeVecY = 0;
