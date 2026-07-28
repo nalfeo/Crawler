@@ -31,7 +31,12 @@
  * engine, by tests, and by offline tooling alike.
  */
 import { hashStringToSeed, SeededRandom } from './random.js';
-import { EDGE_WANG_DIRECTIONS, edgeWangMaskFromOccupancy, MASK_BIT } from './terrain-pack-mask.js';
+import {
+  EDGE_WANG_DIRECTIONS,
+  EDGE_WANG_OPPOSITE_BIT,
+  edgeWangMaskFromOccupancy,
+  MASK_BIT,
+} from './terrain-pack-mask.js';
 
 /** Occupancy grid values. */
 export const LINEWORK_EMPTY = 0;
@@ -105,6 +110,13 @@ export interface LineworkPlanRequest {
   readonly routable: Uint8Array;
   /** Non-zero where a wall stands — the only tiles `entersWalls` may claim. */
   readonly wall: Uint8Array;
+  /**
+   * Optional occupancy of layers already planned on this floor. Tiles marked
+   * here cost more to route through, so the pipe run prefers its own ground
+   * rather than lying invisibly underneath the rails — but it is a COST, not a
+   * block, so a genuine crossing is still possible where the map demands it.
+   */
+  readonly avoid?: Uint8Array;
   readonly hubs: readonly LineworkHub[];
   readonly floorSeed: number;
   readonly params: LineworkLayerParams;
@@ -186,6 +198,16 @@ const DIRECTION_STATES = 5;
 const START_DIRECTION = 4;
 
 /**
+ * Extra step cost for routing through a tile another layer already occupies.
+ *
+ * A cost rather than a hard block: a pipe crossing a track is legitimate
+ * industrial geometry, but a pipe running *along* an existing track is hidden
+ * art that still inflates the reported run length. Comparable in weight to a
+ * turn, so a short detour is always preferred to a long shared stretch.
+ */
+const OVERLAP_COST = 6;
+
+/**
  * Turn-aware A* over the routable grid.
  *
  * State is (tile, incoming direction) rather than just tile, because the cost
@@ -203,7 +225,7 @@ function routeTurnAwareAStar(
   startIndex: number,
   goalIndex: number,
 ): number[] | null {
-  const { width, height, routable, params } = request;
+  const { width, height, routable, params, avoid } = request;
   const cellCount = width * height;
   if (!routable[startIndex] || !routable[goalIndex]) return null;
 
@@ -248,6 +270,7 @@ function routeTurnAwareAStar(
       let cost = 1;
       if (incoming !== START_DIRECTION && incoming !== d) cost += params.turnPenalty;
       if (!nearHub[nIndex]) cost += params.awayFromHubCost;
+      if (avoid?.[nIndex]) cost += OVERLAP_COST;
       const nState = nIndex * DIRECTION_STATES + d;
       const tentative = base + cost;
       if (tentative >= gScore[nState]!) continue;
@@ -323,10 +346,16 @@ function collectHubCandidates(
  * The direction is chosen to CONTINUE the run's final heading where possible,
  * so the pipe drives into the wall it was already pointing at rather than
  * turning sideways at the last moment.
+ *
+ * The bit pointing back at the parent tile is recorded in `entryParent` so the
+ * mask pass can pin this cell to exactly ONE connection. Without that, another
+ * run that happens to pass next to the same rock cell would turn the terminus
+ * into a straight or a T drawn over solid stone.
  */
 function extendIntoWall(
   request: LineworkPlanRequest,
   occupancy: Uint8Array,
+  entryParent: Uint8Array,
   path: readonly number[],
   atEnd: boolean,
 ): void {
@@ -347,13 +376,16 @@ function extendIntoWall(
       : EDGE_WANG_DIRECTIONS.map((_, i) => i);
 
   for (const d of order) {
-    const { dx, dy } = EDGE_WANG_DIRECTIONS[d]!;
+    const entry = EDGE_WANG_DIRECTIONS[d]!;
+    const { dx, dy } = entry;
     const nx = tx + dx;
     const ny = ty + dy;
     if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
     const index = ny * width + nx;
     if (!wall[index] || occupancy[index]) continue;
     occupancy[index] = LINEWORK_WALL_ENTRY;
+    // The parent lies in the OPPOSITE direction from the cell we just claimed.
+    entryParent[index] = EDGE_WANG_OPPOSITE_BIT[entry.dir];
     return;
   }
 }
@@ -406,6 +438,7 @@ function measureRuns(
 export function planLinework(request: LineworkPlanRequest): LineworkPlan {
   const { width, height, hubs, params, floorSeed } = request;
   const occupancy = new Uint8Array(width * height);
+  const entryParent = new Uint8Array(width * height);
   const nearHub = buildNearHubMask(width, height, hubs, params.hubRadiusTiles);
   const rng = new SeededRandom((floorSeed ^ hashStringToSeed(params.seedSalt)) >>> 0);
 
@@ -428,8 +461,8 @@ export function planLinework(request: LineworkPlanRequest): LineworkPlan {
       if (!path) continue;
       paint(path);
       if (params.entersWalls) {
-        extendIntoWall(request, occupancy, path, false);
-        extendIntoWall(request, occupancy, path, true);
+        extendIntoWall(request, occupancy, entryParent, path, false);
+        extendIntoWall(request, occupancy, entryParent, path, true);
       }
     }
   }
@@ -437,11 +470,14 @@ export function planLinework(request: LineworkPlanRequest): LineworkPlan {
   // Trunk lines: hub → hub, long enough to read as infrastructure crossing the
   // cavern. Deliberately NOT all-pairs — a fully connected trunk network merges
   // every yard into one giant component, which reads as a single sprawling mess
-  // and collapses the run count.
+  // and collapses the run count. Pairs are stepped by two so that with fewer
+  // trunks than hubs the trunks still spread over ALL the hubs instead of
+  // chaining the first few and leaving the rest with yards only.
   if (hubs.length >= 2) {
     for (let t = 0; t < params.trunkRoutes; t++) {
-      const fromHub = hubs[t % hubs.length]!;
-      const toHub = hubs[(t + 1) % hubs.length]!;
+      const fromHub = hubs[(t * 2) % hubs.length]!;
+      const toHub = hubs[(t * 2 + 1) % hubs.length]!;
+      if (fromHub === toHub) continue;
       const fromCandidates = collectHubCandidates(request, fromHub, params.hubRadiusTiles);
       const toCandidates = collectHubCandidates(request, toHub, params.hubRadiusTiles);
       if (fromCandidates.length === 0 || toCandidates.length === 0) continue;
@@ -461,6 +497,12 @@ export function planLinework(request: LineworkPlanRequest): LineworkPlan {
     if (!occupancy[index]) continue;
     tileCount++;
     if (nearHub[index]) hubTileCount++;
+    if (occupancy[index] === LINEWORK_WALL_ENTRY) {
+      // A wall terminus connects to its parent and to nothing else, however
+      // many other occupied cells happen to touch the rock it sits in.
+      masks[index] = entryParent[index] ?? 0;
+      continue;
+    }
     masks[index] = edgeWangMaskFromOccupancy(
       occupancy,
       width,
@@ -482,20 +524,29 @@ export function planLinework(request: LineworkPlanRequest): LineworkPlan {
 }
 
 /**
- * Tiles a prop (switch lever, parked cart) may sit on.
+ * The axis the run travels on at a prop-eligible tile, or `null` where a prop
+ * has no unambiguous direction to align with.
  *
  * A prop must not contradict the linework under it, so it is only allowed where
- * the run has a definite direction to align with: a straight (exactly two
- * opposite connections) or a T-junction. Corners and crosses are excluded —
- * a cart parked on a curve or in the middle of a crossing reads as a mistake.
+ * the run has a definite direction: a straight (exactly two opposite
+ * connections) or a T-junction. Corners and crosses return `null` — a cart on a
+ * curve or in the middle of a crossing reads as a mistake no matter how it is
+ * rotated.
+ *
+ * The axis itself matters because a parked cart drawn along the rails on a
+ * north-south run has to be turned a quarter turn on an east-west run, or it
+ * sits across the track.
  */
-export function isPropEligibleMask(mask: number): boolean {
-  const straightNS = mask === (MASK_BIT.N | MASK_BIT.S);
-  const straightEW = mask === (MASK_BIT.E | MASK_BIT.W);
-  const isT =
-    mask === (MASK_BIT.N | MASK_BIT.E | MASK_BIT.S) ||
-    mask === (MASK_BIT.E | MASK_BIT.S | MASK_BIT.W) ||
-    mask === (MASK_BIT.S | MASK_BIT.W | MASK_BIT.N) ||
-    mask === (MASK_BIT.W | MASK_BIT.N | MASK_BIT.E);
-  return straightNS || straightEW || isT;
+export function lineworkRunAxis(mask: number): 'x' | 'y' | null {
+  const N = MASK_BIT.N;
+  const E = MASK_BIT.E;
+  const S = MASK_BIT.S;
+  const W = MASK_BIT.W;
+  // Straights: the through-line is the pair itself.
+  if (mask === (N | S)) return 'y';
+  if (mask === (E | W)) return 'x';
+  // T-junctions: the through-line is the opposite pair, the third bit is the stem.
+  if (mask === (N | E | S) || mask === (S | W | N)) return 'y';
+  if (mask === (E | S | W) || mask === (W | N | E)) return 'x';
+  return null;
 }

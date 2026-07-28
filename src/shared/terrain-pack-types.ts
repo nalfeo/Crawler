@@ -344,7 +344,7 @@ export type GroundDecalSetDef = z.infer<typeof groundDecalSetSchema>;
  * Optional prop overlay stamped ON TOP of a linework layer (switch levers,
  * parked mine carts). Frames are square and tile-sized; placement is restricted
  * to tiles whose edge-Wang mask gives the prop a direction to align with — see
- * `isPropEligibleMask` in `terrain-linework.ts`.
+ * `lineworkRunAxis` in `terrain-linework.ts`.
  */
 const lineworkPropSetSchema = z
   .object({
@@ -352,8 +352,20 @@ const lineworkPropSetSchema = z
     textureKey: z.string().min(1),
     /** Source pixel size of one square prop frame. */
     cellPx: z.number().int().positive(),
-    /** Number of horizontally-packed frames in the atlas. */
+    /**
+     * First frame this layer may draw from. The prop sheet is shared, so a
+     * layer selects the SEMANTIC subrange that belongs to it — a track layer
+     * must never roll the pipe valve, and a pipe layer must never roll a cart.
+     */
+    frameStart: z.number().int().min(0).default(0),
+    /** Number of consecutive frames from `frameStart` this layer may draw. */
     frames: z.number().int().positive(),
+    /**
+     * Turn the prop a quarter turn on an east-west run. Props are NOT Wang
+     * tiles — they carry no edge signature — so rotating them is safe, and a
+     * cart or lever that ignores the run axis sits across the rails.
+     */
+    orientToRun: z.boolean().default(false),
     /** Fraction of eligible linework tiles that receive a prop. */
     density: z.number().min(0).max(1),
   })

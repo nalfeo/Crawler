@@ -52,6 +52,7 @@ import { computeRawMask8, normalizeBlob47Mask } from '../shared/terrain-pack-mas
 import { getTerrainPack } from '../shared/terrain-pack-registry.js';
 import {
   buildGroundDecalStampConfig,
+  buildLineworkPropStampConfig,
   buildLineworkStampConfig,
   buildPoolStampConfig,
   groundDecalHalfExtentPx,
@@ -62,7 +63,7 @@ import {
   shouldPlaceLineworkProp,
 } from '../shared/terrain-pack-variants.js';
 import {
-  isPropEligibleMask,
+  lineworkRunAxis,
   planLinework,
   LINEWORK_EMPTY,
   LINEWORK_GROUND,
@@ -152,7 +153,21 @@ function collectLineworkHubs(floorMap: FloorMap): LineworkHub[] {
         sx += cell.x;
         sy += cell.y;
       }
-      hubs.push({ tx: Math.round(sx / cells.length), ty: Math.round(sy / cells.length) });
+      const cx = sx / cells.length;
+      const cy = sy / cells.length;
+      // The arithmetic centroid of a crescent-shaped cavern can land in solid
+      // rock, so snap it to the nearest cell the room actually owns. Ties are
+      // broken by iteration order, which is stable for a given map.
+      let best = cells[0]!;
+      let bestDistance = Infinity;
+      for (const cell of cells) {
+        const distance = (cell.x - cx) * (cell.x - cx) + (cell.y - cy) * (cell.y - cy);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = cell;
+        }
+      }
+      hubs.push({ tx: best.x, ty: best.y });
       continue;
     }
     hubs.push({
@@ -715,6 +730,9 @@ export function buildTerrainLayer(
     const hubs = collectLineworkHubs(floorMap);
     if (hubs.length === 0) continue;
     packLineworkHubs = hubs;
+    // Accumulated occupancy of layers already planned, so a later layer prefers
+    // its own ground rather than hiding under an earlier one.
+    const lineworkTaken = new Uint8Array(width * height);
     for (const layer of pack.linework ?? []) {
       if (!scene.textures.exists(layer.textureKey)) continue;
       const plan = planLinework({
@@ -722,6 +740,7 @@ export function buildTerrainLayer(
         height,
         routable,
         wall,
+        avoid: lineworkTaken,
         hubs,
         floorSeed,
         params: {
@@ -738,11 +757,19 @@ export function buildTerrainLayer(
       });
       const scale = lineworkScaleFor(layer.cellPx);
       const propScale = layer.props ? lineworkScaleFor(layer.props.cellPx) : 1;
+      // Hoisted: these are constant for the whole layer, and the loop below runs
+      // once per map tile.
+      const stampConfig = buildLineworkStampConfig(scale);
+      const propStampConfigs = {
+        y: buildLineworkPropStampConfig(propScale, 0),
+        x: buildLineworkPropStampConfig(propScale, Math.PI / 2),
+      } as const;
       for (let ty = 0; ty < height; ty++) {
         for (let tx = 0; tx < width; tx++) {
           const index = ty * width + tx;
           const cell = plan.occupancy[index] ?? LINEWORK_EMPTY;
           if (cell === LINEWORK_EMPTY) continue;
+          lineworkTaken[index] = 1;
           const mask = plan.masks[index] ?? 0;
           const x = tx * tileSize + tileSize / 2;
           const y = ty * tileSize + tileSize / 2;
@@ -758,23 +785,36 @@ export function buildTerrainLayer(
               scale,
             });
           } else {
-            rt.stamp(layer.textureKey, mask, x, y, buildLineworkStampConfig(scale));
+            rt.stamp(layer.textureKey, mask, x, y, stampConfig);
           }
           packLineworkTileCount++;
           const props = layer.props;
+          const runAxis = lineworkRunAxis(mask);
           if (
             props &&
             cell === LINEWORK_GROUND &&
+            runAxis !== null &&
             scene.textures.exists(props.textureKey) &&
-            isPropEligibleMask(mask) &&
             shouldPlaceLineworkProp(floorSeed, layer.seedSalt, tx, ty, props.density)
           ) {
+            // Prop art is authored along the vertical axis, so an east-west run
+            // needs a quarter turn. Props carry no Wang edge signature, so
+            // rotating them cannot break the join contract.
+            const propConfig =
+              props.orientToRun && runAxis === 'x' ? propStampConfigs.x : propStampConfigs.y;
             rt.stamp(
               props.textureKey,
-              pickLineworkPropFrame(floorSeed, layer.seedSalt, tx, ty, props.frames),
+              pickLineworkPropFrame(
+                floorSeed,
+                layer.seedSalt,
+                tx,
+                ty,
+                props.frames,
+                props.frameStart,
+              ),
               x,
               y,
-              buildLineworkStampConfig(propScale),
+              propConfig,
             );
             packLineworkPropCount++;
           }

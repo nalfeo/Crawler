@@ -349,11 +349,34 @@ export function pickLineworkPropFrame(
   tx: number,
   ty: number,
   frames: number,
+  frameStart = 0,
 ): number {
-  if (frames <= 0) return 0;
+  if (frames <= 0) return frameStart;
   const rng = new SeededRandom(deriveLineworkPropSeed(floorSeed, seedSalt, tx, ty));
   rng.next();
-  return Math.min(frames - 1, Math.floor(rng.next() * frames));
+  return frameStart + Math.min(frames - 1, Math.floor(rng.next() * frames));
+}
+
+/**
+ * Stamp config for a linework PROP.
+ *
+ * Unlike the Wang frames — whose identity IS their edge signature, so rotating
+ * one relabels its edges and silently breaks the join contract — a prop carries
+ * no edges. Turning it a quarter turn to follow an east-west run is therefore
+ * both safe and necessary, otherwise every cart on a horizontal track sits
+ * across the rails.
+ */
+export function buildLineworkPropStampConfig(
+  scale: number,
+  rotationRad: number,
+): {
+  originX: number;
+  originY: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+} {
+  return { originX: 0.5, originY: 0.5, scaleX: scale, scaleY: scale, rotation: rotationRad };
 }
 
 function deriveLineworkPropSeed(

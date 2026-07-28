@@ -148,12 +148,16 @@ function chunkify(tile: RgbaImage, blockPx: number): RgbaImage {
  * fixed function of the frame index, and a multiple of the texture block size so
  * it never cuts a block in half.
  *
- * The outermost `EDGE_LOCK_PX` ring of every cell is exempt and always samples
- * at offset zero. That ring is exactly the pixels the Wang stub contract
- * compares, so locking it makes every frame present byte-identical bytes on a
- * connected edge — joins are seamless by construction instead of by luck. The
- * texture discontinuity this introduces is invisible: it sits inside noisy
- * metal, and neighbouring tiles already carry different weathering anyway.
+ * The outermost `EDGE_LOCK_PX` ring of every cell is exempt, because that ring
+ * is exactly what the Wang stub contract compares. Locking it to offset zero is
+ * NOT enough: a tile's north row abuts its neighbour's SOUTH row, so those two
+ * rows must agree, and at offset zero they sample material rows 0 and 63 —
+ * different pixels. The ring therefore samples a canonical strip indexed by
+ * (distance along the edge, depth into the cell), which is identical for a row
+ * and the opposite row, and for a column and the opposite column. Corner pixels
+ * belong to two edges at once, so they resolve their along-coordinate from the
+ * vertical edge; that choice is symmetric under both reflections, so all four
+ * corners agree too.
  */
 const EDGE_LOCK_PX = 2;
 
@@ -163,13 +167,20 @@ function sampleTile(
   x: number,
   y: number,
 ): [number, number, number] {
-  const locked =
-    x < EDGE_LOCK_PX ||
-    y < EDGE_LOCK_PX ||
-    x >= LINEWORK_CELL_PX - EDGE_LOCK_PX ||
-    y >= LINEWORK_CELL_PX - EDGE_LOCK_PX;
-  const sx = (x + (locked ? 0 : frame * 38)) % tile.width;
-  const sy = (y + (locked ? 0 : frame * 24)) % tile.height;
+  const far = LINEWORK_CELL_PX - EDGE_LOCK_PX;
+  const inVerticalBand = x < EDGE_LOCK_PX || x >= far;
+  const inHorizontalBand = y < EDGE_LOCK_PX || y >= far;
+  let sx: number;
+  let sy: number;
+  if (inVerticalBand || inHorizontalBand) {
+    const depth = Math.min(x, y, LINEWORK_CELL_PX - 1 - x, LINEWORK_CELL_PX - 1 - y);
+    const along = inVerticalBand ? y : x;
+    sx = along % tile.width;
+    sy = depth % tile.height;
+  } else {
+    sx = (x + frame * 38) % tile.width;
+    sy = (y + frame * 24) % tile.height;
+  }
   const i = (sy * tile.width + sx) * 4;
   return [tile.data[i] as number, tile.data[i + 1] as number, tile.data[i + 2] as number];
 }

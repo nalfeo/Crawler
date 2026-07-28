@@ -149,17 +149,29 @@ describe('committed industrial linework atlases', () => {
         }
       });
 
-      it('paints one identical stub on every connected edge', () => {
-        for (const edge of EDGES) {
+      it('paints one identical stub on every connected edge OF THE SAME AXIS', () => {
+        // Real neighbours abut N-against-S and E-against-W — never N against
+        // another N. Comparing each edge only against itself passes happily
+        // while every join on the map shows a colour step, so the reference
+        // profile is shared per AXIS: {N,S} read left-to-right by x, {E,W} read
+        // top-to-bottom by y, which is exactly how the two abutting lines meet.
+        const axes: ReadonlyArray<{ axis: string; edges: ReadonlyArray<(typeof EDGES)[number]> }> =
+          [
+            { axis: 'vertical', edges: [EDGES[0], EDGES[2]] },
+            { axis: 'horizontal', edges: [EDGES[1], EDGES[3]] },
+          ];
+        for (const { axis, edges } of axes) {
           let reference: string | undefined;
-          for (let mask = 0; mask < EDGE_WANG_FRAME_COUNT; mask++) {
-            if ((mask & edge.bit) === 0) continue;
-            const bytes = edgeBytes(atlas, mask, cell, edge.name);
-            if (reference === undefined) reference = bytes;
-            else if (bytes !== reference) {
-              throw new Error(
-                `${layer.id}: mask ${mask} edge ${edge.name} differs from the other connected masks`,
-              );
+          for (const edge of edges) {
+            for (let mask = 0; mask < EDGE_WANG_FRAME_COUNT; mask++) {
+              if ((mask & edge.bit) === 0) continue;
+              const bytes = edgeBytes(atlas, mask, cell, edge.name);
+              if (reference === undefined) reference = bytes;
+              else if (bytes !== reference) {
+                throw new Error(
+                  `${layer.id}: mask ${mask} edge ${edge.name} differs from the other ${axis} connected edges`,
+                );
+              }
             }
           }
           expect(reference).toBeDefined();
@@ -189,6 +201,44 @@ describe('committed industrial linework atlases', () => {
           }
         }
       });
+
+      const props = layer.props;
+      if (props) {
+        describe(`${layer.id} props`, () => {
+          const propAtlas = decodePng(
+            readFileSync(path.join(repoRoot(), 'public', props.imagePath)),
+          );
+
+          it('holds every frame this layer may draw', () => {
+            expect(propAtlas.height).toBe(props.cellPx);
+            expect(propAtlas.width).toBeGreaterThanOrEqual(
+              (props.frameStart + props.frames) * props.cellPx,
+            );
+          });
+
+          it('uses binary alpha only', () => {
+            for (let i = 3; i < propAtlas.data.length; i += 4) {
+              const a = propAtlas.data[i] ?? 0;
+              if (a !== 0 && a !== 255) {
+                throw new Error(`non-binary alpha ${a} at byte ${i}`);
+              }
+            }
+          });
+
+          it('has visible art in every frame this layer may draw', () => {
+            for (let f = props.frameStart; f < props.frameStart + props.frames; f++) {
+              let opaque = 0;
+              for (let y = 0; y < props.cellPx; y++) {
+                for (let x = 0; x < props.cellPx; x++) {
+                  const p = (y * propAtlas.width + f * props.cellPx + x) * 4;
+                  if ((propAtlas.data[p + 3] ?? 0) !== 0) opaque++;
+                }
+              }
+              expect(opaque).toBeGreaterThan(0);
+            }
+          });
+        });
+      }
     });
   }
 });

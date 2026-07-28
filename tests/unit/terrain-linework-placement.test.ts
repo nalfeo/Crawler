@@ -153,6 +153,16 @@ describe('planLinework placement gate', () => {
     expect(Array.from(b.occupancy)).not.toEqual(Array.from(a.occupancy));
   });
 
+  it('produces different networks for different layers on the same seed', () => {
+    // Guards the seedSalt: if planLinework ever derived its RNG from floorSeed
+    // alone, every layer would lay identical, perfectly overlapping runs and
+    // the seed-sensitivity test above would still pass.
+    expect(LAYER_IDS.length).toBeGreaterThan(1);
+    const a = planLinework(request(LAYER_IDS[0]!, 31));
+    const b = planLinework(request(LAYER_IDS[1]!, 31));
+    expect(Array.from(b.occupancy)).not.toEqual(Array.from(a.occupancy));
+  });
+
   it('never routes ground linework through a wall', () => {
     for (const id of LAYER_IDS) {
       const req = request(id, 55);
@@ -188,6 +198,8 @@ describe('planLinework placement gate', () => {
     ];
     for (let i = 0; i < plan.occupancy.length; i++) {
       if (!plan.occupancy[i]) continue;
+      // A wall terminus is pinned to its parent edge on purpose — see below.
+      if (plan.occupancy[i] === LINEWORK_WALL_ENTRY) continue;
       const tx = i % MAP_SIZE;
       const ty = (i / MAP_SIZE) | 0;
       let expected = 0;
@@ -199,5 +211,37 @@ describe('planLinework placement gate', () => {
       }
       expect(plan.masks[i]).toBe(expected);
     }
+  });
+
+  it('pins every wall terminus to exactly one connected edge', () => {
+    // A wall-entry cell is the END of a run. If its mask were derived from its
+    // neighbours like an ordinary tile, an unrelated run passing next to the
+    // same rock cell would promote the terminus to a straight or a T drawn
+    // over solid stone.
+    const dirs = [
+      { dx: 0, dy: -1, bit: 1 },
+      { dx: 1, dy: 0, bit: 2 },
+      { dx: 0, dy: 1, bit: 4 },
+      { dx: -1, dy: 0, bit: 8 },
+    ];
+    let checked = 0;
+    for (const layer of manifest.linework ?? []) {
+      if (layer.kind !== 'pipe') continue;
+      const plan = planLinework(request(layer.id, 77));
+      for (let i = 0; i < plan.occupancy.length; i++) {
+        if (plan.occupancy[i] !== LINEWORK_WALL_ENTRY) continue;
+        const mask = plan.masks[i] ?? 0;
+        // Exactly one bit set.
+        expect(mask).toBeGreaterThan(0);
+        expect(mask & (mask - 1)).toBe(0);
+        // And that bit points at an occupied neighbour, not at nothing.
+        const dir = dirs.find((d) => d.bit === mask)!;
+        const nx = (i % MAP_SIZE) + dir.dx;
+        const ny = ((i / MAP_SIZE) | 0) + dir.dy;
+        expect(plan.occupancy[ny * MAP_SIZE + nx]).toBeTruthy();
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

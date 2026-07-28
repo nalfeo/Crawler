@@ -417,7 +417,9 @@
         "imagePath": "assets/terrain-packs/industrial-cave/linework-props.png",
         "textureKey": "terrain-pack-industrial-cave-linework-props",
         "cellPx": 64,
-        "frames": 4,
+        "frameStart": 0,
+        "frames": 3,
+        "orientToRun": true,
         "density": 0.05
       }
     },
@@ -435,7 +437,16 @@
       "hubRadiusTiles": 25,
       "awayFromHubCost": 0.75,
       "turnPenalty": 9,
-      "seedSalt": "industrial-cave/steam-pipe"
+      "seedSalt": "industrial-cave/steam-pipe",
+      "props": {
+        "imagePath": "assets/terrain-packs/industrial-cave/linework-props.png",
+        "textureKey": "terrain-pack-industrial-cave-linework-pipe-props",
+        "cellPx": 64,
+        "frameStart": 3,
+        "frames": 1,
+        "orientToRun": false,
+        "density": 0.03
+      }
     }
   ]
 }
