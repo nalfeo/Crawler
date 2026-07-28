@@ -665,33 +665,38 @@ const admitted = [];
 for (const pr of queued) {
   const admission = await eligible(pr);
   if (admission.ok) {
-    // D2 fix: if the admitted PR's branch is clean-BEHIND main, call the
-    // update-branch API so the strict up-to-date merge policy does not block
-    // it from merging.  workflowDispatchToken is GITHUB_TOKEN, which avoids
-    // the D7 action_required parking trap (App token force-push would park
-    // required checks).  Skip the PR from the current train pass so the
-    // candidate build uses only branches that are already current.
-    if (pr.mergeable_state === 'behind') {
+    // D2 fix: fetch the authoritative per-PR payload to get mergeable_state,
+    // which is not reliably present in the list-pulls simplified response.
+    // If the PR is clean-BEHIND main, call the update-branch API so the strict
+    // up-to-date merge policy does not block it from merging.
+    // workflowDispatchToken is GITHUB_TOKEN — avoids the D7 action_required
+    // parking trap that occurs when the App token force-pushes.
+    //
+    // Use `break` (not `continue`) after the first BEHIND PR to preserve FIFO
+    // queue ordering: newer PRs must not leapfrog an older BEHIND PR.
+    const livePr = (await request(token, `/repos/${owner}/${repo}/pulls/${pr.number}`)).data;
+    if (livePr.mergeable_state === 'behind') {
       try {
         await request(
           workflowDispatchToken,
           `/repos/${owner}/${repo}/pulls/${pr.number}/update-branch`,
           {
             method: 'PUT',
-            body: { expected_head_oid: pr.head.sha },
+            body: { expected_head_oid: livePr.head.sha },
           },
         );
         process.stdout.write(`update-branch pr=#${pr.number} reason=clean-behind\n`);
       } catch (err) {
-        if (err.status !== 422) {
-          process.stderr.write(
-            `update-branch pr=#${pr.number} failed: ${err.status} ${err.message}\n`,
-          );
-        }
+        // 422 covers "already up-to-date" and stale expected_head_oid — log
+        // it so stale-head races are visible and not silently swallowed.
+        process.stderr.write(
+          `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
+        );
       }
-      // PR will re-enter the train on the next reconcile once its branch is
-      // current and required CI passes on the updated branch.
-      continue;
+      // Stop admitting further PRs this pass so newer PRs cannot leapfrog.
+      // The BEHIND PR will re-enter on the next reconcile once its branch is
+      // current and required CI passes.
+      break;
     }
     // Fence the legacy auto-merge path before this PR can be sequentially
     // squash-merged, so it cannot land out of order underneath the promotion.

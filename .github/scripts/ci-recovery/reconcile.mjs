@@ -2775,11 +2775,11 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
           });
           process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
         } catch (err) {
-          if (err.status !== 422) {
-            process.stderr.write(
-              `update-branch pr=#${prNumber} failed: ${err.status} ${err.message}\n`,
-            );
-          }
+          // 422 covers "already up-to-date" and stale expected_head_oid — log
+          // it so stale-head races are visible and not silently swallowed.
+          process.stderr.write(
+            `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
+          );
         }
       } else {
         process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
@@ -2825,11 +2825,11 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
         });
         process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
       } catch (err) {
-        if (err.status !== 422) {
-          process.stderr.write(
-            `update-branch pr=#${prNumber} failed: ${err.status} ${err.message}\n`,
-          );
-        }
+        // 422 covers "already up-to-date" and stale expected_head_oid — log
+        // it so stale-head races are visible and not silently swallowed.
+        process.stderr.write(
+          `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
+        );
       }
     } else {
       process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
