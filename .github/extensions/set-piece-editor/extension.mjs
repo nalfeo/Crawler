@@ -48,6 +48,9 @@ function getSetPiecesPath() {
 function getGeneratedManifestPath() {
   return join(REPO_ROOT, 'public', 'assets', 'generated', 'manifest.json');
 }
+function getSubstratePath() {
+  return join(REPO_ROOT, 'src', 'shared', 'data', 'set-piece-substrate.json');
+}
 function readGeneratedSpriteIds() {
   try {
     const manifestPath = getGeneratedManifestPath();
@@ -125,6 +128,21 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
       res.end(JSON.stringify(readPack()));
     } catch (e) {
       res.writeHead(500);
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+    }
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/substrate') {
+    // The carved terrain a set piece sits on (room floor + wall ring). It is NOT
+    // in the set-piece def - map generation writes those tiles - so the editor
+    // has to be told, or it previews props against a background the game never
+    // draws. Served from the same JSON the lab fidelity test pins against
+    // `tile-visuals.ts`, so this cannot drift into a private fourth copy.
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(readFileSync(getSubstratePath(), 'utf-8'));
+    } catch (e) {
+      res.statusCode = 500;
       res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
     }
     return;
@@ -1149,6 +1167,12 @@ function clampResizeRectToBounds(ox,oy,ow,oh,nx,ny,nw,nh,h,maxW,maxH){
 async function loadData(){
   var params=new URLSearchParams(location.search),initId=params.get('setPieceId')||'';
   try{
+    var sres=await fetch('/substrate');
+    SUBSTRATE=await sres.json();
+  }catch(_){
+    SUBSTRATE=null;
+  }
+  try{
     var gres=await fetch('/generated-index');
     GENERATED_LIBRARY=await gres.json();
   }catch(_){
@@ -1271,22 +1295,57 @@ document.getElementById('btnaddlayer').addEventListener('click',function(){
 });
 var canvas=document.getElementById('gc');
 var ctx=canvas.getContext('2d');
+// --- carved-terrain substrate -------------------------------------------------
+// The room floor + wall ring are written by MAP GENERATION, not by the set-piece
+// def, so the editor has no way to know them from set-pieces.json alone. Before
+// this existed the editor filled the canvas with a black void (#090d12) and let
+// the def's kind:'wall' props draw as blue-grey Kenney placeholders - so every
+// prop in this editor was authored and judged against a background the player
+// never sees. The lab had the same class of bug with a different wrong answer.
+// Ids come from /substrate, which is pinned to the engine's terrain->art map by
+// tests/unit/set-piece-lab-fidelity.test.ts.
+var SUBSTRATE=null;
+function substrateFor(id){
+  if(!SUBSTRATE)return null;
+  var o=(SUBSTRATE.bySetPiece||{})[id]||{},d=SUBSTRATE.default||{};
+  return{floor:o.floorSpriteId||d.floorSpriteId,wall:o.wallSpriteId||d.wallSpriteId};
+}
+function drawTileImg(img,x,y,ts){
+  ctx.drawImage(img,0,0,img.naturalWidth||16,img.naturalHeight||16,x*ts,y*ts,ts,ts);
+}
+function drawSubstrate(w,h,ts){
+  // Fallback base: only visible until the tile PNGs load, or if they fail.
+  ctx.fillStyle='#090d12';ctx.fillRect(0,0,w*ts,h*ts);
+  var sub=substrateFor(sp&&sp.id);
+  if(!sub)return;
+  var floorImg=sub.floor?loadGenSprite(sub.floor):null;
+  var wallImg=sub.wall?loadGenSprite(sub.wall):null;
+  ctx.imageSmoothingEnabled=false;
+  if(floorImg)for(var x=0;x<w;x++)for(var y=0;y<h;y++)drawTileImg(floorImg,x,y,ts);
+  if(wallImg)for(var wx=0;wx<w;wx++)for(var wy=0;wy<h;wy++){
+    if(wx!==0&&wy!==0&&wx!==w-1&&wy!==h-1)continue;
+    drawTileImg(wallImg,wx,wy,ts);
+  }
+}
 function render(){
   if(!sp)return;
   var ts=S.tileSize,w=sp.width,h=sp.height;
   canvas.width=w*ts;canvas.height=h*ts;
-  ctx.fillStyle='#090d12';ctx.fillRect(0,0,w*ts,h*ts);
-  if(S.snapMode==='half'||S.snapMode==='quarter'){
+  drawSubstrate(w,h,ts);
+  var chrome=S.showOverlay;
+  if(chrome&&(S.snapMode==='half'||S.snapMode==='quarter')){
     ctx.strokeStyle='#141c26';ctx.lineWidth=1;
     var sub=S.snapMode==='quarter'?4:2;
     for(var hx=1;hx<w*sub;hx++){if(hx%sub===0)continue;ctx.beginPath();ctx.moveTo(hx*ts/sub,0);ctx.lineTo(hx*ts/sub,h*ts);ctx.stroke();}
     for(var hy=1;hy<h*sub;hy++){if(hy%sub===0)continue;ctx.beginPath();ctx.moveTo(0,hy*ts/sub);ctx.lineTo(w*ts,hy*ts/sub);ctx.stroke();}
   }
   ctx.strokeStyle='#1e2530';ctx.lineWidth=1;
+  if(chrome){
   for(var gx=0;gx<=w;gx++){ctx.beginPath();ctx.moveTo(gx*ts,0);ctx.lineTo(gx*ts,h*ts);ctx.stroke();}
   for(var gy=0;gy<=h;gy++){ctx.beginPath();ctx.moveTo(0,gy*ts);ctx.lineTo(w*ts,gy*ts);ctx.stroke();}
   ctx.fillStyle='#ffffff0d';ctx.font='7px monospace';ctx.textAlign='left';ctx.textBaseline='top';
   for(var cx2=0;cx2<w;cx2++)for(var cy2=0;cy2<h;cy2++)ctx.fillText(cx2+','+cy2,cx2*ts+2,cy2*ts+2);
+  }
   var drawables=[];
   sp.props.forEach(function(p,i){
     var lid=propLayer(p);
@@ -1343,6 +1402,12 @@ function drawProp(prop,sel,ad){
   var C=KINDS[prop.kind]||KINDS.fixture;
   var layers=Array.isArray(prop.layers)?prop.layers:[];
   var sprited=false;
+  // wall/door props are structural: the game does NOT draw them (their art is
+  // the carved terrain, already painted by drawSubstrate) and drawing them again
+  // here stacks a Kenney placeholder over the real wall tile. They stay
+  // selectable - only their sprite is suppressed, never their box.
+  var structural=prop.kind==='wall'||prop.kind==='door';
+  if(structural)layers=[];
   layers.forEach(function(layer,layerIndex){
     if(!layer||!layer.sprite)return;
     var nativeTiles=layerIndex===0?{w:pw,h:ph}:getNativeSpriteTileDimensions(layer.sprite);
@@ -1418,8 +1483,10 @@ function drawProp(prop,sel,ad){
       sprited=true;
     }
   });
-  if(!sprited){ctx.fillStyle=C.bg;ctx.fillRect(px+1,py+1,pw2-2,ph2-2);}
-  var showBox=S.showOverlay||!sprited||sel;
+  if(!sprited&&!structural){ctx.fillStyle=C.bg;ctx.fillRect(px+1,py+1,pw2-2,ph2-2);}
+  // Structural props deliberately have no sprite here, so !sprited must not
+  // force their box on - otherwise game-view is still boxed walls.
+  var showBox=structural?(S.showOverlay||sel):(S.showOverlay||!sprited||sel);
   if(locked){ctx.fillStyle='rgba(0,0,0,0.38)';ctx.fillRect(px,py,pw2,ph2);}
   ctx.strokeStyle=sel?'#fff':C.bd;ctx.lineWidth=sel?2.5:1.5;
   if(showBox)ctx.strokeRect(px+1.5,py+1.5,pw2-3,ph2-3);
@@ -1459,7 +1526,9 @@ function drawNpcEntity(npc,sel,nd){
     ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-dw/2,-dh/2,dw,dh);
     ctx.restore();
   }
-  var showNBox=S.showOverlay||!res||sel;
+  // NPC boxes are chrome: game-view must hide them even when the sprite is
+  // missing, or "what ships" is still an editor screenshot.
+  var showNBox=S.showOverlay||sel;
   ctx.strokeStyle=sel?'#fff':NPC_BD;ctx.lineWidth=sel?2.5:1.5;
   if(showNBox)ctx.strokeRect(px+1.5,py+1.5,sw-3,sh-3);
   if(showNBox){

@@ -33,6 +33,8 @@ import {
   isStructuralSetPieceProp,
   type SetPiecePropKind,
 } from '../../src/shared/set-piece-types.js';
+import { getTileVisual } from '../../src/engine/sprites/tile-visuals.js';
+import SUBSTRATE from '../../src/shared/data/set-piece-substrate.json' with { type: 'json' };
 
 const ALL_PROP_KINDS: readonly SetPiecePropKind[] = [
   'floor',
@@ -104,5 +106,40 @@ describe('welcome-room shell is terrain-owned, not sprite-owned', () => {
     const def = getSetPieceDef('welcome-room');
     const renderable = (def?.props ?? []).filter((prop) => !isStructuralSetPieceProp(prop));
     expect(renderable.length).toBeGreaterThan(0);
+  });
+});
+
+describe('set-piece substrate JSON matches the engine terrain->art resolution', () => {
+  // WHY: the Set Piece Editor is a standalone .mjs extension and cannot import
+  // TypeScript, so it reads the substrate sprite ids from JSON. That JSON is a
+  // FOURTH place the same mapping could be written down, which is exactly the
+  // drift that made the lab and the editor each preview a different room than
+  // the game. These assertions make the JSON a projection of `tile-visuals.ts`
+  // rather than an independent copy of it: change the art and this goes red.
+  const terrainFor = (id: string): TerrainType => labInteriorTerrainFor(id);
+
+  it('pins the default floor + wall ids to what the engine resolves', () => {
+    expect(SUBSTRATE.default.floorSpriteId).toBe(
+      getTileVisual(DEFAULT_LAB_INTERIOR_TERRAIN)?.textureKey,
+    );
+    expect(SUBSTRATE.default.wallSpriteId).toBe(getTileVisual(LAB_BORDER_TERRAIN)?.textureKey);
+  });
+
+  it('pins every per-set-piece override to the terrain that set piece is carved as', () => {
+    const overrides = Object.entries(SUBSTRATE.bySetPiece);
+    expect(overrides.length).toBeGreaterThan(0);
+    for (const [setPieceId, entry] of overrides) {
+      expect(entry.floorSpriteId).toBe(getTileVisual(terrainFor(setPieceId))?.textureKey);
+    }
+  });
+
+  it('covers every set piece the lab special-cases, so no renderer falls back wrongly', () => {
+    // A set piece with a non-default interior terrain but no JSON entry would
+    // render on the DEFAULT substrate in the editor while the game carves
+    // something else - a silent reintroduction of the original bug.
+    const bySetPiece: Record<string, unknown> = SUBSTRATE.bySetPiece;
+    for (const setPieceId of Object.keys(LAB_INTERIOR_TERRAIN)) {
+      expect(bySetPiece[setPieceId]).toBeDefined();
+    }
   });
 });
