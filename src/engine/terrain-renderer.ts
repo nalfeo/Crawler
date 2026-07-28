@@ -67,6 +67,7 @@ import {
   planLinework,
   LINEWORK_EMPTY,
   LINEWORK_GROUND,
+  LINEWORK_BURIED,
   LINEWORK_WALL_ENTRY,
   type LineworkHub,
 } from '../shared/terrain-linework.js';
@@ -260,6 +261,18 @@ export interface TerrainLayerResult {
   packLineworkTileCount: number;
   /** Number of props (switch stands, carts, valves) placed on linework tiles. */
   packLineworkPropCount: number;
+  /**
+   * Tiles where a pipe run dives below grade to pass under a track. Counted
+   * because "the pipe goes under the rail" is otherwise invisible to any
+   * headless check — the tile simply is not stamped.
+   */
+  packLineworkBuriedCount: number;
+  /**
+   * A short prefix of those tiles, in TILE coordinates. Purely an observation
+   * aid: it lets a screenshot be aimed at a real crossing instead of hunting
+   * for one by eye.
+   */
+  packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
   /**
    * One entry per maximal connected component of every linework layer. This is
    * the seam the placement guard and the probe lab assert against: run count,
@@ -700,6 +713,10 @@ export function buildTerrainLayer(
   }
   let packLineworkTileCount = 0;
   let packLineworkPropCount = 0;
+  let packLineworkBuriedCount = 0;
+  /** Enough crossings to aim a camera at; not a complete record. */
+  const BURIED_SAMPLE_LIMIT = 8;
+  const packLineworkBuriedSample: { tx: number; ty: number }[] = [];
   const packLineworkRuns: LineworkRunStats[] = [];
   let packLineworkHubs: readonly LineworkHub[] = [];
   /** Wall-entry stamps deferred until after `paintTiles('cover')`. */
@@ -734,7 +751,14 @@ export function buildTerrainLayer(
     // Accumulated occupancy of layers already planned, so a later layer prefers
     // its own ground rather than hiding under an earlier one.
     const lineworkTaken = new Uint8Array(width * height);
-    for (const layer of pack.linework ?? []) {
+    // Track before pipe, always. Burial is order-dependent — whichever layer
+    // plans first owns the surface — and a rail crossing over a pipe is the
+    // physically right answer. Today's manifest already lists them that way; the
+    // sort makes that a guarantee rather than a coincidence.
+    const orderedLayers = [...(pack.linework ?? [])].sort(
+      (a, b) => (a.kind === 'track' ? 0 : 1) - (b.kind === 'track' ? 0 : 1),
+    );
+    for (const layer of orderedLayers) {
       if (!scene.textures.exists(layer.textureKey)) continue;
       const plan = planLinework({
         width,
@@ -742,6 +766,9 @@ export function buildTerrainLayer(
         routable,
         wall,
         avoid: lineworkTaken,
+        // Only a pipe dives. A rail that vanished under a pipe and reappeared
+        // would read as broken track.
+        buryUnder: layer.kind === 'pipe' ? Uint8Array.from(lineworkTaken) : undefined,
         hubs,
         floorSeed,
         params: {
@@ -768,10 +795,29 @@ export function buildTerrainLayer(
       for (let ty = 0; ty < height; ty++) {
         for (let tx = 0; tx < width; tx++) {
           const index = ty * width + tx;
-          const cell = plan.occupancy[index] ?? LINEWORK_EMPTY;
-          if (cell === LINEWORK_EMPTY) continue;
+          // `renderOccupancy`/`renderMasks` drive EVERY visual decision. The
+          // topological pair still describes the route, but a tile that has gone
+          // under a crossing must not be stamped, must not claim a prop, and must
+          // not report a run axis its buried neighbours no longer support.
+          const cell = plan.renderOccupancy[index] ?? LINEWORK_EMPTY;
+          if (cell === LINEWORK_EMPTY || cell === LINEWORK_BURIED) {
+            // Still claimed for routing purposes: a later layer should avoid the
+            // corridor even where this one runs below grade.
+            if ((plan.occupancy[index] ?? LINEWORK_EMPTY) !== LINEWORK_EMPTY) {
+              lineworkTaken[index] = 1;
+              if (cell === LINEWORK_BURIED) {
+                packLineworkBuriedCount++;
+                // A short sample makes the burial locatable from a probe, so a
+                // crossing can be screenshotted without guessing coordinates.
+                if (packLineworkBuriedSample.length < BURIED_SAMPLE_LIMIT) {
+                  packLineworkBuriedSample.push({ tx, ty });
+                }
+              }
+            }
+            continue;
+          }
           lineworkTaken[index] = 1;
-          const mask = plan.masks[index] ?? 0;
+          const mask = plan.renderMasks[index] ?? 0;
           const x = tx * tileSize + tileSize / 2;
           const y = ty * tileSize + tileSize / 2;
           if (cell === LINEWORK_WALL_ENTRY) {
@@ -823,7 +869,7 @@ export function buildTerrainLayer(
           }
         }
       }
-      for (const run of plan.runs) {
+      for (const run of plan.renderRuns) {
         packLineworkRuns.push({
           layerId: layer.id,
           tileCount: run.tileCount,
@@ -867,6 +913,7 @@ export function buildTerrainLayer(
     packGroundDecalCount,
     packLineworkTileCount,
     packLineworkPropCount,
+    packLineworkBuriedCount,
     packLineworkRunCount: packLineworkRuns.length,
     packFloorSourceCounts,
     packFloorTransformCounts,
@@ -915,6 +962,8 @@ export function buildTerrainLayer(
     packGroundDecalCount,
     packLineworkTileCount,
     packLineworkPropCount,
+    packLineworkBuriedCount,
+    packLineworkBuriedSample,
     packLineworkRuns,
     packLineworkHubs,
   };

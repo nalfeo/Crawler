@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "floor2-linework-polish",
+  "task_title": "Floor 2 linework art polish: bold track, buffer stops, pipe wear, pipe-under-track",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (gpt-5.6-sol) of the linework polish plan. 3 blocking concerns, all resolved before implementation: (1) buffer-stop buttresses fall outside stubCurve's alongMax=HALF so project() discards every pixel past the cell centre - resolved with a dedicated capCurve (alongMax = HALF + CAP_REACH) used only for Cap classification, leaving rails/ties on the HALF-limited stub so the stub contract is untouched; (2) leaving the topological run gate unchanged could let it pass while the visible network fragments under burial - resolved by measuring renderRuns over non-buried occupancy with renderMasks and gating the placement test on those; (3) raising track targetMeanLuminance 74->82 would make track objectively lighter, contradicting both the 'too light' complaint and the near-floor-tone style law - resolved by holding mean and maxLuminance and getting boldness from width, a raised targetStdDev, a darker rim and stronger rail bands. 5 non-blocking concerns resolved: burial fixpoint specified as an explicit monotonic algorithm bounded by occupancy.length that recomputes renderMasks each round; renderMasks now drives every visual decision including lineworkRunAxis and prop eligibility while masks stays topology-only; renderer sorts linework layers track-kind-first so burial no longer depends on manifest ordering; pipe props stay orientToRun:false and are specified as axis-agnostic upright fittings so neither run axis misaligns them; variant picker specified as a salted deriveTileVariantSeed stream with the atlas frame resolved before the normal/deferred-wall-entry branch.",
+      "model": "gpt-5.6-sol"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 (gpt-5.6-sol) returned clean. Because it returned unusually fast, a second independent round was run with claude-sonnet-4.6 at high reasoning effort rather than accepting the first result. Round 2 independently verified: burial fixpoint termination and no-stranded-tile property, wall-entry reciprocity cascade under burial, LINEWORK_BURIED truthiness handling in groundMask/measureRuns, edge-lock preservation under both wearGain and capCurve, double-band collar clearance, propComponents determinism, binary alpha, layer-sort burial guarantee, SeededRandom usage, and shared-layer purity. Both rounds clean."
+    }
+  }
+}
