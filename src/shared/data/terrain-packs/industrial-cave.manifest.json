@@ -405,8 +405,8 @@
       "textureKey": "terrain-pack-industrial-cave-linework-track",
       "cellPx": 64,
       "frames": 16,
-      "stubOffsetPx": 20,
-      "stubWidthPx": 24,
+      "stubOffsetPx": 18,
+      "stubWidthPx": 28,
       "spursPerHub": 4,
       "trunkRoutes": 3,
       "hubRadiusTiles": 25,
@@ -443,7 +443,7 @@
         "textureKey": "terrain-pack-industrial-cave-linework-pipe-props",
         "cellPx": 64,
         "frameStart": 3,
-        "frames": 1,
+        "frames": 3,
         "orientToRun": false,
         "density": 0.03
       }

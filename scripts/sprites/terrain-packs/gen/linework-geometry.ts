@@ -135,6 +135,16 @@ function straightCurve(bit: number): Curve {
 }
 
 /**
+ * Stub extended past the cell centre so terminal hardware can be projected.
+ * Used ONLY to classify `Cap` pixels on end-cap masks; rails and ties keep the
+ * HALF-limited `stubCurve`, so this cannot alter any connected edge's profile.
+ */
+function capCurve(bit: number): Curve {
+  const stub = stubCurve(bit) as Extract<Curve, { kind: 'line' }>;
+  return { ...stub, alongMax: HALF + CAP_REACH };
+}
+
+/**
  * Quarter arc joining two adjacent edge midpoints, centred on the cell corner
  * between them with radius `HALF`. This is the only corner geometry that leaves
  * the boundary profile identical to a straight's — see the file header.
@@ -198,32 +208,68 @@ export interface LineworkProfile {
   readonly tiePeriod: number;
   /** Arc-length phase of the first cross-member from the connected edge. */
   readonly tiePhase: number;
+  /**
+   * Arc-length offset of each ring in a PAIRED cross-member, or 0 for a single
+   * band. A pipe reads as pressure plumbing when its collars are rivet-band
+   * pairs rather than lone rings, and doubling the ring count is the cheapest
+   * honest way to add the "more rivet bands" the human asked for without
+   * shrinking the period so far that bands collide with the edge clearance.
+   */
+  readonly tieDoubleGap: number;
   /** Half-length of the terminal buffer stop / ground flange. */
   readonly capHalfLength: number;
   /** Half-width of the terminal hardware along the run. */
   readonly capHalfWidth: number;
 }
 
+/**
+ * How far past the cell centre terminal hardware may reach.
+ *
+ * Cap geometry needs its OWN curve. `stubCurve` stops at `alongMax = HALF`, so
+ * `project()` returns null for every pixel past the cell centre — which meant
+ * the original cap test `|along - HALF| <= capHalfWidth` only ever painted the
+ * near half of its beam, and any buttress behind that beam was silently
+ * discarded. Rails and ties keep the HALF-limited stub, so widening the cap
+ * reach cannot change what a connected edge paints.
+ */
+const CAP_REACH = 12;
+
+/** Half-length of a buffer-stop buttress measured inward from `capHalfLength`. */
+const BUTTRESS_DEPTH = 7;
+
+/** Arc length of a buffer-stop buttress behind the beam. */
+const BUTTRESS_LENGTH = 7;
+
+/** Skips the centreline pass when terminal hardware already claimed a pixel. */
+const EMPTY_CURVES: readonly Curve[] = [];
+
 /** Mine-cart track: two rail heads on periodic sleepers. */
 export const TRACK_PROFILE: LineworkProfile = {
-  railOffset: 10,
-  railHalfWidth: 2,
-  tieHalfLength: 16,
-  tieHalfWidth: 2.5,
+  railOffset: 11,
+  railHalfWidth: 3,
+  tieHalfLength: 17,
+  tieHalfWidth: 3.5,
   tiePeriod: 16,
   tiePhase: 8,
-  capHalfLength: 14,
-  capHalfWidth: 3,
+  tieDoubleGap: 0,
+  capHalfLength: 15,
+  capHalfWidth: 5,
 };
 
-/** Pipe run: one bore with periodic collars. */
+/** Pipe run: one bore with periodic rivet-band pairs. */
 export const PIPE_PROFILE: LineworkProfile = {
   railOffset: 0,
   railHalfWidth: 9,
-  tieHalfLength: 12,
-  tieHalfWidth: 2.5,
+  // The ring must clear the bore by enough pixels to survive the 0.5 atlas
+  // downscale — at `tieHalfLength: 12` the shoulders protruded 3 atlas px, which
+  // is ~2 screen px and reads as texture rather than hardware.
+  tieHalfLength: 14,
+  tieHalfWidth: 2.4,
   tiePeriod: 32,
   tiePhase: 16,
+  // Rings sit at arc-length 11/21 and 43/53 of a 64-long straight — four bands
+  // per cell instead of two, every one of them clear of `TIE_EDGE_CLEARANCE`.
+  tieDoubleGap: 5,
   capHalfLength: 13,
   capHalfWidth: 3,
 };
@@ -259,6 +305,25 @@ const TIE_EDGE_CLEARANCE = 4;
 
 function isRail(off: number, profile: LineworkProfile): boolean {
   return Math.abs(Math.abs(off) - profile.railOffset) <= profile.railHalfWidth;
+}
+
+/** Arc-length position within one cross-member period. */
+function ringPhase(along: number, profile: LineworkProfile): number {
+  return (((along - profile.tiePhase) % profile.tiePeriod) + profile.tiePeriod) % profile.tiePeriod;
+}
+
+/**
+ * Signed arc-length distance from the nearest ring of a cross-member.
+ *
+ * With `tieDoubleGap === 0` this is the distance from the collar centre, i.e.
+ * the original single-band behaviour. With a positive gap the collar becomes a
+ * PAIR of rings straddling that centre, which is how a pipe gets twice the rivet
+ * bands without halving the period into the edge-clearance zone.
+ */
+function ringOffset(along: number, profile: LineworkProfile): number {
+  const phase = ringPhase(along, profile);
+  const centred = Math.min(phase, profile.tiePeriod - phase);
+  return centred - profile.tieDoubleGap;
 }
 
 /**
@@ -312,6 +377,11 @@ export function rasterizeLineworkFrame(
   const shade = new Float32Array(size * size);
   const curves = curvesForMask(mask);
   if (curves.length === 0) return { cls, shade };
+  // Terminal hardware is projected on its OWN extended curve so it can reach
+  // past the cell centre; see `CAP_REACH`.
+  const terminal = isEndCap ? capCurve(mask) : null;
+  const buttressNear = HALF + profile.capHalfWidth;
+  const buttressInner = profile.capHalfLength - BUTTRESS_DEPTH;
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -320,47 +390,68 @@ export function rasterizeLineworkFrame(
       const py = y + 0.5;
       let value: LineworkPixel = LINEWORK_PIXEL.Empty;
       let cross = 0;
-      for (const curve of curves) {
+      // Cap wins over rail: a buffer stop's beam sits ACROSS the rails, so the
+      // rails must read as running into it rather than over it.
+      if (terminal) {
+        const p = project(terminal, px, py);
+        if (p) {
+          const absOff = Math.abs(p.off);
+          if (absOff <= profile.capHalfLength && Math.abs(p.along - HALF) <= profile.capHalfWidth) {
+            value = LINEWORK_PIXEL.Cap;
+            cross = (p.along - HALF) / profile.capHalfWidth;
+          } else if (
+            absOff <= profile.capHalfLength &&
+            absOff >= buttressInner &&
+            p.along >= buttressNear &&
+            p.along <= buttressNear + BUTTRESS_LENGTH
+          ) {
+            // Two buttress blocks braced behind the beam. They are what makes a
+            // terminus read as deliberate hardware instead of a truncated run.
+            value = LINEWORK_PIXEL.Cap;
+            const mid = (profile.capHalfLength + buttressInner) / 2;
+            cross = litFraction(p.dx, p.dy) * ((absOff - mid) / (BUTTRESS_DEPTH / 2));
+          }
+        }
+      }
+      for (const curve of value === LINEWORK_PIXEL.Empty ? curves : EMPTY_CURVES) {
         const p = project(curve, px, py);
         if (!p) continue;
+        const len = curveLength(curve);
+        const onCrossMember =
+          Math.abs(p.off) <= profile.tieHalfLength &&
+          p.along >= TIE_EDGE_CLEARANCE &&
+          p.along <= len - TIE_EDGE_CLEARANCE &&
+          Math.abs(ringOffset(p.along, profile)) <= profile.tieHalfWidth;
         if (isRail(p.off, profile)) {
-          value = LINEWORK_PIXEL.Rail;
-          // Distance out from this member's own centreline, normalised.
-          cross = (Math.abs(p.off) - profile.railOffset) / profile.railHalfWidth;
           // A single-bore member (a pipe) is a cylinder, so it must be lit from
           // ONE fixed screen direction regardless of which way the run travels.
           // `litFraction` supplies that side; the normalised bore offset supplies
           // the depth, so +1 is the lit silhouette edge and -1 the shadowed one.
-          if (profile.railOffset === 0) {
-            cross = litFraction(p.dx, p.dy) * (Math.abs(p.off) / profile.railHalfWidth);
-          }
+          const round = profile.railOffset === 0;
+          // A rivet band WRAPS a pipe, so on a round body the collar takes the
+          // pixel and keeps the cylinder cross-coordinate — that is what makes it
+          // read as a raised ring instead of two dots stuck to the silhouette.
+          // Track sleepers pass UNDER their rails, so rails keep winning there.
+          value = round && onCrossMember ? LINEWORK_PIXEL.Tie : LINEWORK_PIXEL.Rail;
+          cross = round
+            ? litFraction(p.dx, p.dy) * (Math.abs(p.off) / profile.railHalfWidth)
+            : // Distance out from this member's own centreline, normalised.
+              (Math.abs(p.off) - profile.railOffset) / profile.railHalfWidth;
           break;
         }
-        const len = curveLength(curve);
-        if (
-          Math.abs(p.off) <= profile.tieHalfLength &&
-          p.along >= TIE_EDGE_CLEARANCE &&
-          p.along <= len - TIE_EDGE_CLEARANCE
-        ) {
-          const phase =
-            (((p.along - profile.tiePhase) % profile.tiePeriod) + profile.tiePeriod) %
-            profile.tiePeriod;
-          const centred = Math.min(phase, profile.tiePeriod - phase);
-          if (centred <= profile.tieHalfWidth) {
-            value = LINEWORK_PIXEL.Tie;
+        if (onCrossMember) {
+          value = LINEWORK_PIXEL.Tie;
+          if (profile.railOffset === 0) {
+            // The ring's protruding shoulders belong to the same cylinder as the
+            // bore they wrap, so they must be lit from the same screen direction.
+            cross = litFraction(p.dx, p.dy) * (Math.abs(p.off) / profile.tieHalfLength);
+          } else {
             // A cross-member is also a round bar, just oriented along the run.
-            cross =
-              (phase <= profile.tiePeriod - phase ? centred : -centred) / profile.tieHalfWidth;
-            continue;
+            const phase = ringPhase(p.along, profile);
+            const signed = phase <= profile.tiePeriod - phase ? 1 : -1;
+            cross = (signed * ringOffset(p.along, profile)) / profile.tieHalfWidth;
           }
-        }
-        if (
-          isEndCap &&
-          Math.abs(p.off) <= profile.capHalfLength &&
-          Math.abs(p.along - HALF) <= profile.capHalfWidth
-        ) {
-          value = LINEWORK_PIXEL.Cap;
-          cross = (p.along - HALF) / profile.capHalfWidth;
+          continue;
         }
       }
       cls[y * size + x] = value;

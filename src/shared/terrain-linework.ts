@@ -43,6 +43,26 @@ export const LINEWORK_GROUND = 1;
  * pass so the wall does not overpaint it.
  */
 export const LINEWORK_WALL_ENTRY = 2;
+/**
+ * Tile carries the run but its art is NOT drawn — the run dives below grade to
+ * pass under another layer's linework.
+ *
+ * This is what makes a pipe genuinely go under a mine-cart track instead of
+ * being drawn across it. The tile stays in the topological occupancy grid (the
+ * run is still one run; it did not stop and restart), but it is excluded from
+ * the grid the renderer reads, so the tiles on either side of the dive resolve
+ * as end-caps and pick up the ground-flange art on their own.
+ */
+export const LINEWORK_BURIED = 3;
+
+/**
+ * Tiles of margin buried on each side of a crossing.
+ *
+ * Zero margin makes the pipe vanish exactly under the rail and reappear
+ * immediately after, which reads as a drawing error rather than as a descent.
+ * One tile gives the flange somewhere to sit.
+ */
+const BURY_MARGIN = 1;
 
 /** A tile a route may be attracted to and measured against. */
 export interface LineworkHub {
@@ -90,12 +110,26 @@ export interface LineworkPlan {
   readonly occupancy: Uint8Array;
   /** 4-bit edge-Wang mask per occupied tile (0 elsewhere), row-major. */
   readonly masks: Uint8Array;
+  /**
+   * Occupancy the RENDERER must read: identical to `occupancy` except that
+   * buried tiles are `LINEWORK_BURIED`. Every visual decision — stamping, run
+   * axis, prop eligibility — uses this and `renderMasks`, never the topological
+   * pair, or a tile that has since gone under a crossing could still be handed a
+   * straight-run prop.
+   */
+  readonly renderOccupancy: Uint8Array;
+  /** Edge-Wang masks recomputed with buried tiles treated as absent. */
+  readonly renderMasks: Uint8Array;
   /** Connected components, descending by tile count. */
   readonly runs: readonly LineworkRun[];
+  /** Components of the VISIBLE network — what the player can actually see. */
+  readonly renderRuns: readonly LineworkRun[];
   /** Total occupied tiles. */
   readonly tileCount: number;
   /** Occupied tiles within `hubRadiusTiles` of a hub. */
   readonly hubTileCount: number;
+  /** Tiles hidden because the run passes under another layer. */
+  readonly buriedCount: number;
 }
 
 export interface LineworkPlanRequest {
@@ -112,6 +146,12 @@ export interface LineworkPlanRequest {
    * block, so a genuine crossing is still possible where the map demands it.
    */
   readonly avoid?: Uint8Array;
+  /**
+   * Non-zero where another layer's linework is already drawn. This layer's run
+   * still ROUTES across those tiles, but it is drawn as descending below them:
+   * the crossing tiles are buried and the neighbours become termini.
+   */
+  readonly buryUnder?: Uint8Array;
   readonly hubs: readonly LineworkHub[];
   readonly floorSeed: number;
   readonly params: LineworkLayerParams;
@@ -397,7 +437,7 @@ function measureRuns(
   const runs: LineworkRun[] = [];
   const stack: number[] = [];
   for (let start = 0; start < occupancy.length; start++) {
-    if (!occupancy[start] || seen[start]) continue;
+    if (!occupancy[start] || occupancy[start] === LINEWORK_BURIED || seen[start]) continue;
     let tileCount = 0;
     let hubTileCount = 0;
     stack.push(start);
@@ -415,7 +455,7 @@ function measureRuns(
         const ny = ty + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const nIndex = ny * width + nx;
-        if (!occupancy[nIndex] || seen[nIndex]) continue;
+        if (!occupancy[nIndex] || occupancy[nIndex] === LINEWORK_BURIED || seen[nIndex]) continue;
         if (!((masks[nIndex] ?? 0) & EDGE_WANG_OPPOSITE_BIT[dir])) continue;
         seen[nIndex] = 1;
         stack.push(nIndex);
@@ -489,31 +529,165 @@ export function planLinework(request: LineworkPlanRequest): LineworkPlan {
     }
   }
 
-  const masks = new Uint8Array(width * height);
+  const masks = buildMasks(occupancy, entryParent, width, height);
   let tileCount = 0;
   let hubTileCount = 0;
   for (let index = 0; index < occupancy.length; index++) {
     if (!occupancy[index]) continue;
     tileCount++;
     if (nearHub[index]) hubTileCount++;
-    if (occupancy[index] === LINEWORK_WALL_ENTRY) {
-      // A wall terminus connects to its parent and to nothing else, however
-      // many other occupied cells happen to touch the rock it sits in.
-      masks[index] = entryParent[index] ?? 0;
-      continue;
-    }
-    masks[index] = groundMask(occupancy, entryParent, width, height, index);
   }
+
+  const { renderOccupancy, renderMasks, buriedCount } = buryCrossings(
+    request,
+    occupancy,
+    entryParent,
+    masks,
+  );
 
   return {
     width,
     height,
     occupancy,
     masks,
+    renderOccupancy,
+    renderMasks,
     runs: measureRuns(width, height, occupancy, nearHub, masks),
+    renderRuns: measureRuns(width, height, renderOccupancy, nearHub, renderMasks),
     tileCount,
     hubTileCount,
+    buriedCount,
   };
+}
+
+/** Edge-Wang masks for every occupied tile of one occupancy grid. */
+function buildMasks(
+  occupancy: Uint8Array,
+  entryParent: Uint8Array,
+  width: number,
+  height: number,
+): Uint8Array {
+  const masks = new Uint8Array(width * height);
+  for (let index = 0; index < occupancy.length; index++) {
+    const value = occupancy[index];
+    if (!value || value === LINEWORK_BURIED) continue;
+    if (value === LINEWORK_WALL_ENTRY) {
+      // A wall terminus connects to its parent and to nothing else, however
+      // many other occupied cells happen to touch the rock it sits in — and
+      // only while that parent is still drawn, or the entry would paint a stub
+      // against a buried tile that paints nothing back.
+      masks[index] = parentVisible(occupancy, entryParent, width, height, index)
+        ? (entryParent[index] ?? 0)
+        : 0;
+      continue;
+    }
+    masks[index] = groundMask(occupancy, entryParent, width, height, index);
+  }
+  return masks;
+}
+
+/** True when a wall entry's pinned parent tile is still drawn. */
+function parentVisible(
+  occupancy: Uint8Array,
+  entryParent: Uint8Array,
+  width: number,
+  height: number,
+  index: number,
+): boolean {
+  const parentBit = entryParent[index] ?? 0;
+  if (!parentBit) return false;
+  const tx = index % width;
+  const ty = (index / width) | 0;
+  for (const { bit, dx, dy } of EDGE_WANG_DIRECTIONS) {
+    if (bit !== parentBit) continue;
+    const nx = tx + dx;
+    const ny = ty + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) return false;
+    const value = occupancy[ny * width + nx];
+    return !!value && value !== LINEWORK_BURIED;
+  }
+  return false;
+}
+
+function popcount4(mask: number): number {
+  let n = 0;
+  for (let bit = 1; bit <= 8; bit <<= 1) if (mask & bit) n++;
+  return n;
+}
+
+/**
+ * Sink this layer's run below any tile already claimed by an earlier layer.
+ *
+ * The seed set is every crossing tile, grown by `BURY_MARGIN` along the run so
+ * the descent has room to read. That alone can leave a stranded tile whose every
+ * neighbour went under, so the set is then closed under a monotone fixpoint:
+ * recompute the visible masks, bury anything left with no visible connection,
+ * repeat. Burial only ever adds tiles and the grid is finite, so the loop
+ * terminates in at most `occupancy.length` rounds.
+ */
+function buryCrossings(
+  request: LineworkPlanRequest,
+  occupancy: Uint8Array,
+  entryParent: Uint8Array,
+  masks: Uint8Array,
+): { renderOccupancy: Uint8Array; renderMasks: Uint8Array; buriedCount: number } {
+  const { width, height, buryUnder } = request;
+  const renderOccupancy = Uint8Array.from(occupancy);
+  if (!buryUnder) {
+    return { renderOccupancy, renderMasks: masks, buriedCount: 0 };
+  }
+
+  for (let index = 0; index < occupancy.length; index++) {
+    if (occupancy[index] === LINEWORK_GROUND && buryUnder[index]) {
+      // Only bury two-connection tiles. Sinking a T-junction or cross would
+      // sever whichever branches were not part of the crossing, violating the
+      // "cannot sever a branch" invariant the same way as the margin pass.
+      if (popcount4(masks[index] ?? 0) <= 2) {
+        renderOccupancy[index] = LINEWORK_BURIED;
+      }
+    }
+  }
+
+  for (let step = 0; step < BURY_MARGIN; step++) {
+    const previous = Uint8Array.from(renderOccupancy);
+    for (let index = 0; index < previous.length; index++) {
+      if (previous[index] !== LINEWORK_BURIED) continue;
+      const tx = index % width;
+      const ty = (index / width) | 0;
+      for (const { bit, dx, dy } of EDGE_WANG_DIRECTIONS) {
+        if (!((masks[index] ?? 0) & bit)) continue;
+        const nx = tx + dx;
+        const ny = ty + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const nIndex = ny * width + nx;
+        if (previous[nIndex] !== LINEWORK_GROUND) continue;
+        // Only carry the descent through a plain two-connection tile. Sinking a
+        // junction would strand whichever branch stayed above grade.
+        if (popcount4(masks[nIndex] ?? 0) !== 2) continue;
+        renderOccupancy[nIndex] = LINEWORK_BURIED;
+      }
+    }
+  }
+
+  let renderMasks = buildMasks(renderOccupancy, entryParent, width, height);
+  for (let round = 0; round < occupancy.length; round++) {
+    let changed = false;
+    for (let index = 0; index < renderOccupancy.length; index++) {
+      const value = renderOccupancy[index];
+      if (!value || value === LINEWORK_BURIED) continue;
+      if ((renderMasks[index] ?? 0) !== 0) continue;
+      renderOccupancy[index] = LINEWORK_BURIED;
+      changed = true;
+    }
+    if (!changed) break;
+    renderMasks = buildMasks(renderOccupancy, entryParent, width, height);
+  }
+
+  let buriedCount = 0;
+  for (let index = 0; index < renderOccupancy.length; index++) {
+    if (renderOccupancy[index] === LINEWORK_BURIED) buriedCount++;
+  }
+  return { renderOccupancy, renderMasks, buriedCount };
 }
 
 /**
@@ -542,7 +716,7 @@ function groundMask(
     if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
     const nIndex = ny * width + nx;
     const neighbour = occupancy[nIndex];
-    if (!neighbour) continue;
+    if (!neighbour || neighbour === LINEWORK_BURIED) continue;
     if (neighbour === LINEWORK_WALL_ENTRY && entryParent[nIndex] !== EDGE_WANG_OPPOSITE_BIT[dir]) {
       continue;
     }
