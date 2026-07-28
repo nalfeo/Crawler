@@ -10,10 +10,10 @@
 # These are laid edge-to-edge on a 4ft grid, so a rim on each plate composites
 # into a continuous lattice across the whole floor — i.e. a framed plate makes
 # the stamped grid STRONGER than the tile this family exists to replace. It is
-# the `tile-stone-floor-v1-var-2` magenta-ring failure class exactly
-# (see scripts/sprites/check-tile-seams.ts), and that guard's docstring says
-# border continuity is deliberately out of scope, which is the gap v1 fell
-# through. The v1 "FAMILY LOCK" luma spread was measured on INTERIORS and so
+# the same border-rim failure class as `tile-stone-floor-v1-var-2`; border
+# continuity checks were out of scope in the prior tile sensors, which is the
+# gap v1 fell through. The v1 "FAMILY LOCK" luma spread was measured on
+# INTERIORS and so
 # could not see an edge-family failure; the frames were not even consistent with
 # each other (one pale, three near-black), which reads as damage, not pattern.
 #
@@ -30,8 +30,8 @@
 # edge) is stated as a positive requirement, because a positive requirement the
 # model can satisfy beats a negative one it can only avoid.
 #
-# HARD ACCEPT CRITERION, verified numerically before approval, never eyeballed
-# (scripts/agent/art/edge-frame-check.mjs):
+# HARD ACCEPT CRITERION, verified numerically before approval, never eyeballed:
+#   npm run sprites:edge-frame-check -- <png-path>
 #   interiorLuma = mean luma of rows/cols 24..(N-25)
 #   for each of the outer 6 rows and 6 cols on all four sides:
 #     abs(edgeLuma - interiorLuma) / interiorLuma  <  0.10
