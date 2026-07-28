@@ -19,7 +19,7 @@
  * a cardinal-only sheet, and assert both committed packs now pass at 1.0.
  */
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { validateCompatibleCorners } from '../../../scripts/sprites/terrain-packs/validate.js';
 import {
@@ -35,8 +35,10 @@ import {
   createImage,
   decodePng,
   encodePng,
+  type RgbaImage,
 } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 import { deriveTemplateCellMasks } from '../../../scripts/sprites/terrain-packs/build-caeles-fixture.js';
+import { restyleWallAtlas } from '../../../scripts/sprites/terrain-packs/rebuild-shared-base-pools.js';
 import {
   BLOB47_CANONICAL_MASKS,
   MASK_BIT,
@@ -63,6 +65,36 @@ function readCommittedPack(packId: string): { manifest: TerrainPackDef; atlas: B
     path.join(repoRoot(), 'public', ...manifest.wallAutotile.imagePath.split('/')),
   );
   return { manifest, atlas };
+}
+
+const CELL_PX = TERRAIN_PACK_CELL_PX;
+const INDUSTRIAL_CAVE_DIR = ['public', 'assets', 'terrain-packs', 'industrial-cave'] as const;
+
+function committedAtlasPath(): string {
+  return path.join(repoRoot(), ...INDUSTRIAL_CAVE_DIR, 'wall-atlas.png');
+}
+
+function committedAccentPaths(): readonly string[] {
+  const dir = path.join(repoRoot(), ...INDUSTRIAL_CAVE_DIR);
+  return readdirSync(dir)
+    .filter((f) => f.startsWith('accent-') && f.endsWith('.png'))
+    .sort()
+    .map((f) => path.join(dir, f));
+}
+
+/** The alpha ground truth: the 47 mask silhouettes, laid out on the atlas grid. */
+function composeCanonicalAtlas(): RgbaImage {
+  const kit = generateQuadrantKit();
+  const sheet = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
+  for (const { maskId, frameIndex } of buildMaskFrameAssignments()) {
+    compositeInto(
+      sheet,
+      composeWallCellOutput(maskId, kit),
+      (frameIndex % ATLAS_GRID_COLS) * CELL_PX,
+      Math.floor(frameIndex / ATLAS_GRID_COLS) * CELL_PX,
+    );
+  }
+  return sheet;
 }
 
 describe('blob47 corner semantics', () => {
@@ -445,6 +477,91 @@ describe('rounded cave corners', () => {
           expect(at(size - 1 - d, i)).toBe(east);
         }
       }
+    }
+  });
+});
+
+describe('wall-atlas silhouette is derived, not inherited', () => {
+  /**
+   * The defect this locks: `restyleWallAtlas` used to read alpha back out of
+   * the very `wall-atlas.png` it was about to overwrite ("Alpha is copied
+   * VERBATIM"). That made the shipped silhouette self-perpetuating — a wrong
+   * silhouette survived every rebuild and could only be corrected by hand
+   * editing art. It is how the pack came to ship 16 distinct shapes across 47
+   * mask slots for two separate art passes in a row.
+   *
+   * Alpha must be a pure function of the canonical mask set, so re-running the
+   * build repairs a corrupted atlas instead of laundering it.
+   */
+  it('restyleWallAtlas ignores the committed atlas alpha and rebuilds from the masks', () => {
+    // Reproduce the historical defect on disk: every cell filled edge to edge,
+    // which is precisely what the pack shipped when 47 mask slots collapsed
+    // onto 16 silhouettes. The old implementation copied this alpha VERBATIM,
+    // so a rebuild laundered the defect forward instead of repairing it.
+    const atlasPath = committedAtlasPath();
+    const original = readFileSync(atlasPath);
+    try {
+      const corrupted = decodePng(original);
+      for (let i = 3; i < corrupted.data.length; i += 4) corrupted.data[i] = 255;
+      writeFileSync(atlasPath, encodePng(corrupted));
+
+      const restyled = decodePng(
+        restyleWallAtlas().find((f) => f.relPath.endsWith('wall-atlas.png'))!.bytes,
+      );
+      const canonical = composeCanonicalAtlas();
+
+      expect(restyled.width).toBe(canonical.width);
+      expect(restyled.height).toBe(canonical.height);
+
+      let alphaMismatches = 0;
+      for (let i = 3; i < canonical.data.length; i += 4) {
+        if (restyled.data[i] !== canonical.data[i]) alphaMismatches += 1;
+      }
+      expect(
+        alphaMismatches,
+        'rebuild must restore the canonical silhouette from a fully-solid atlas',
+      ).toBe(0);
+    } finally {
+      writeFileSync(atlasPath, original);
+    }
+  });
+
+  it('the committed atlas carries all 47 distinct silhouettes and exactly one solid tile', () => {
+    const atlas = decodePng(readFileSync(committedAtlasPath()));
+    const shapes = new Set<string>();
+    let solid = 0;
+    for (const { frameIndex } of buildMaskFrameAssignments()) {
+      const col = frameIndex % ATLAS_GRID_COLS;
+      const row = Math.floor(frameIndex / ATLAS_GRID_COLS);
+      const bits: string[] = [];
+      let opaque = 0;
+      let total = 0;
+      for (let y = 0; y < CELL_PX; y += 1) {
+        for (let x = 0; x < CELL_PX; x += 1) {
+          const px = col * CELL_PX + x;
+          const py = row * CELL_PX + y;
+          const a = atlas.data[(py * atlas.width + px) * 4 + 3]!;
+          total += 1;
+          if (a >= 128) opaque += 1;
+          bits.push(a >= 128 ? '1' : '0');
+        }
+      }
+      if (opaque === total) solid += 1;
+      shapes.add(bits.join(''));
+    }
+    expect(shapes.size, 'every mask needs its own silhouette').toBe(47);
+    expect(solid, 'only mask 255 is fully solid (cr31 minimum packing)').toBe(1);
+  });
+
+  it('every wall accent stays inside the canonical silhouette', () => {
+    const canonical = composeCanonicalAtlas();
+    for (const accentPath of committedAccentPaths()) {
+      const accent = decodePng(readFileSync(accentPath));
+      let spill = 0;
+      for (let i = 3; i < canonical.data.length; i += 4) {
+        if (accent.data[i]! !== 0 && canonical.data[i]! < 128) spill += 1;
+      }
+      expect(spill, `${path.basename(accentPath)} spills outside the wall`).toBe(0);
     }
   });
 });
