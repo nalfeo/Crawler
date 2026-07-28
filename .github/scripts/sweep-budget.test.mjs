@@ -60,12 +60,35 @@ test('latent backlog deduplicates merge-train and recovery demand by PR number',
     head: { repo: { full_name: repository } },
   };
   const pullRequests = [
-    { ...base, number: 1, labels: [{ name: 'merge-train' }] }, // counted via queueEntries
-    { ...base, number: 2, labels: [] }, // counted via recoveryBacklogEntries
-    { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] }, // excluded: isExternallyBlocked
-    { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] }, // excluded: hasOptOutLabel
+    // Counted once by the merge-train queue (carries the queue label).
+    { ...base, number: 1, labels: [{ name: 'merge-train' }] },
+    // Counted once by the recovery backlog (unlabelled, so nothing excludes it).
+    { ...base, number: 2, labels: [] },
+    // Counted once as latent demand: `merge-train-blocked` is excluded from recovery
+    // slot consumption, but still contributes to sweep budgeting.
+    { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] },
+    // Excluded from both: no queue label, and explicitly opted out of recovery.
+    { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
   ];
-  assert.equal(countLatentBacklog({ pullRequests, repository }), 2);
+  assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
+});
+
+// Pins externally-blocked latent-demand accounting so future changes to
+// EXTERNALLY_BLOCKED_LABEL_NAMES fail with an unambiguous message.
+test('latent backlog counts externally-blocked PRs once as latent demand', () => {
+  const repository = 'nalfeo/Crawler';
+  const base = {
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-21T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: repository } },
+  };
+  const blocked = [{ ...base, number: 10, labels: [{ name: 'merge-train-blocked' }] }];
+  assert.equal(countLatentBacklog({ pullRequests: blocked, repository }), 1);
+
+  const unblocked = [{ ...base, number: 10, labels: [] }];
+  assert.equal(countLatentBacklog({ pullRequests: unblocked, repository }), 1);
 });
 
 test('runner inspection excludes all broad sweeps and counts queued non-sweep runs', async () => {
