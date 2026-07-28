@@ -18,15 +18,16 @@
  * all release the caster's instance, its cue, and any status effects it owns.
  */
 
-import { entityExists, hasComponent, query, removeComponent } from 'bitecs';
+import { entityExists, hasComponent, query, removeComponent, removeEntity } from 'bitecs';
 import { GAME } from '../../shared/constants.js';
-import { Health, Knockback, Player, Position, Velocity } from '../components.js';
+import { EnemyProjectile, Health, Knockback, Player, Position, Velocity } from '../components.js';
 import { clearStatusEffects } from '../status-effects.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
 import type { GameWorld } from '../world.js';
 import {
   mobAbilitySourceId,
   pushMobAbilityBurst,
+  type MobAbilityOwnedZone,
   type MobAbilityActiveBuffState,
   type MobAbilityGeometry,
   type MobAbilityInstanceState,
@@ -45,6 +46,7 @@ const ANNOUNCEMENT_DURATION_MS = 2200;
  * single "simulation-step boundary" allowance the spec calls out.
  */
 const TIMER_EPSILON_MS = 1e-6;
+const MIN_OWNED_ZONE_TICK_INTERVAL_MS = 1;
 
 function normalizedTargetingMode(def: MobAbilityRuntimeDefinition): 'player-position' | 'self' {
   return def.targetingMode ?? 'player-position';
@@ -84,6 +86,7 @@ export function registerMobAbility(
     resolvedCasts: 0,
     announcementsEmitted: 0,
     registrationToken: token,
+    ownedEntityGenerations: new Map(),
   });
 }
 
@@ -96,6 +99,7 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   const runtime = world.mobAbilities;
   const inst = runtime.byEntity.get(casterEid);
   if (inst === undefined) return;
+  clearOwnedProjectiles(world, inst);
   runtime.byEntity.delete(casterEid);
   runtime.registrationTokens.delete(casterEid);
 
@@ -120,7 +124,22 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   for (const eid of [...world.statusEffectsByEntity.keys()]) {
     clearStatusEffects(world, eid, (effect) => effect.sourceId === sourceId);
   }
+  inst.ownedEntityGenerations.clear();
   world.mobAbilities.activeBuffsByEntity.delete(casterEid);
+  clearMobAbilityOwnedZones(
+    world,
+    (zone) => zone.casterEid === casterEid || zone.sourceId === sourceId,
+  );
+}
+
+function clearOwnedProjectiles(world: GameWorld, inst: MobAbilityInstanceState): void {
+  for (const [eid, generation] of inst.ownedEntityGenerations) {
+    if (!entityExists(world.ecs, eid)) continue;
+    if ((world.entityRenderGeneration[eid] ?? -1) !== generation) continue;
+    if (!hasComponent(world.ecs, eid, EnemyProjectile)) continue;
+    removeEntity(world.ecs, eid);
+    world.enemyProjectileArchetypeKeys.delete(eid);
+  }
 }
 
 /** Enable/disable the runtime feature gate. Disabling clears all cues + clocks. */
@@ -162,6 +181,7 @@ export function disableMobAbilityEncounter(world: GameWorld): void {
   // pendingBursts so that per-caster death still renders the resolution VFX.
   runtime.pendingBursts.length = 0;
   runtime.activeBuffsByEntity.clear();
+  runtime.ownedZones.length = 0;
 }
 
 /** A caster is valid iff it still exists, is alive, and is still its own boss. */
@@ -215,39 +235,98 @@ function isTargetValid(
 
 function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
-  const targetingMode = normalizedTargetingMode(def);
-  let targetEid: number | null;
-  let pos: { x: number; y: number } | null = null;
-
-  if (targetingMode === 'self') {
-    targetEid = casterEid;
-    pos = targetPosition(world, casterEid);
-  } else {
-    // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
-    targetEid = findDefaultTarget(world);
-    if (targetEid !== null) {
-      pos = targetPosition(world, targetEid);
+  // Spawn-circle abilities commit deterministic caster-relative geometry directly.
+  if (def.geometry.kind === 'spawn-circles') {
+    const x = world.stores.position.x[casterEid];
+    const y = world.stores.position.y[casterEid];
+    if (x === undefined || y === undefined) {
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
     }
+    const circles: Array<{ kind: 'circle'; x: number; y: number; radiusFt: number }> = [];
+    for (let i = 0; i < def.geometry.count; i += 1) {
+      const angle = (i / def.geometry.count) * Math.PI * 2;
+      circles.push({
+        kind: 'circle',
+        x: x + Math.cos(angle) * def.geometry.distanceFromCasterFt,
+        y: y + Math.sin(angle) * def.geometry.distanceFromCasterFt,
+        radiusFt: def.geometry.radiusFt,
+      });
+    }
+    inst.phase = 'telegraph';
+    inst.timerMs = def.telegraphDurationMs;
+    inst.committedTargetEid = null;
+    inst.committedTargetGeneration = null;
+    inst.committedGeometry = { kind: 'spawn-circles', circles };
+  } else if (def.geometry.kind === 'radial-projectiles') {
+    // Radial-projectile abilities lock caster position once at telegraph start
+    // and derive the rotational offset from the cast ordinal (resolvedCasts).
+    // No player target is needed — the geometry is purely caster-relative.
+    const casterX = world.stores.position.x[casterEid];
+    const casterY = world.stores.position.y[casterEid];
+    if (casterX === undefined || casterY === undefined) {
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    // Alternating offset: even cast ordinals use 0°, odd ordinals use alternateOffsetDeg.
+    // `inst.resolvedCasts` is the count of ALREADY resolved casts, so it equals the
+    // 0-based ordinal of the UPCOMING cast (0 = first, 1 = second, …).
+    const offsetDeg = inst.resolvedCasts % 2 === 0 ? 0 : def.geometry.alternateOffsetDeg;
+    inst.phase = 'telegraph';
+    inst.timerMs = def.telegraphDurationMs;
+    inst.committedTargetEid = null;
+    inst.committedTargetGeneration = null;
+    inst.committedGeometry = {
+      kind: 'radial-projectiles',
+      casterX,
+      casterY,
+      count: def.geometry.count,
+      spokeLengthFt: def.geometry.spokeLengthFt,
+      offsetDeg,
+    };
+  } else {
+    const targetingMode = normalizedTargetingMode(def);
+    let targetEid: number | null;
+    let pos: { x: number; y: number } | null = null;
+
+    if (targetingMode === 'self') {
+      targetEid = casterEid;
+      pos = targetPosition(world, casterEid);
+    } else {
+      // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
+      targetEid = findDefaultTarget(world);
+      if (targetEid !== null) {
+        pos = targetPosition(world, targetEid);
+      }
+    }
+    if (pos === null) {
+      // No valid target/origin to lock onto — skip this cast and re-arm cooldown.
+      inst.phase = 'cooldown';
+      inst.timerMs = def.cooldownMs;
+      return;
+    }
+    inst.phase = 'telegraph';
+    inst.timerMs = def.telegraphDurationMs;
+    inst.committedTargetEid = targetingMode === 'self' ? null : targetEid;
+    inst.committedTargetGeneration =
+      targetingMode === 'self' || targetEid === null
+        ? null
+        : (world.entityRenderGeneration[targetEid] ?? 0);
+    inst.committedGeometry = def.commitGeometry?.({
+      world,
+      casterEid,
+      targetEid: targetingMode === 'self' ? null : targetEid,
+      lockedX: pos.x,
+      lockedY: pos.y,
+    }) ?? {
+      kind: 'circle',
+      x: pos.x,
+      y: pos.y,
+      radiusFt: def.geometry.radiusFt,
+    };
   }
-  if (pos === null) {
-    // No valid target/origin to lock onto — skip this cast and re-arm cooldown.
-    inst.phase = 'cooldown';
-    inst.timerMs = def.cooldownMs;
-    return;
-  }
-  inst.phase = 'telegraph';
-  inst.timerMs = def.telegraphDurationMs;
-  inst.committedTargetEid = targetingMode === 'self' ? null : targetEid;
-  inst.committedTargetGeneration =
-    targetingMode === 'self' || targetEid === null
-      ? null
-      : (world.entityRenderGeneration[targetEid] ?? 0);
-  inst.committedGeometry = {
-    kind: 'circle',
-    x: pos.x,
-    y: pos.y,
-    radiusFt: def.geometry.radiusFt,
-  };
 
   // Announcement is emitted exactly once, here, per cast.
   pushAnnouncement(world.announcements, {
@@ -280,9 +359,11 @@ function syncTelegraphGeometryToCaster(
   inst: MobAbilityInstanceState,
 ): void {
   if (inst.committedGeometry === null) return;
+  if (inst.committedGeometry.kind !== 'circle') return;
   if (normalizedOriginMode(inst.definition) !== 'follows-caster') return;
   const pos = targetPosition(world, casterEid);
   if (pos === null) return;
+  if (inst.committedGeometry.kind !== 'circle') return;
   inst.committedGeometry = {
     kind: 'circle',
     x: pos.x,
@@ -308,8 +389,14 @@ function pinCasterDuringTelegraph(
 function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
   const geometry = inst.committedGeometry;
+  const countOwnedLiving = () => pruneOwnedEntities(world, inst);
+  const registerOwnedEntity = (eid: number): void => {
+    inst.ownedEntityGenerations.set(eid, world.entityRenderGeneration[eid] ?? 0);
+  };
   const targetingMode = normalizedTargetingMode(def);
   const canResolve =
+    def.geometry.kind === 'spawn-circles' ||
+    def.geometry.kind === 'radial-projectiles' ||
     targetingMode === 'self' ||
     isTargetValid(world, inst.committedTargetEid, inst.committedTargetGeneration);
   // Revalidate the locked target before resolution. If the player died,
@@ -322,13 +409,18 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
       sourceId: mobAbilitySourceId(def.abilityId, casterEid),
       geometry,
       targetEid: inst.committedTargetEid,
+      countOwnedLiving,
+      registerOwnedEntity,
     });
     inst.resolvedCasts += 1;
     // Enqueue a durable burst event so the VFX renderer can fire the resolution
     // burst even if the caster dies later in the same simulation step (which
     // would remove byEntity[casterEid] before PhaserBridge.sync runs).
     // Bounded push prevents unbounded headless growth (VFX is the sole drain).
-    pushMobAbilityBurst(world.mobAbilities.pendingBursts, geometry);
+    pushMobAbilityBurst(world.mobAbilities.pendingBursts, {
+      abilityId: def.abilityId,
+      geometry,
+    });
   }
   // Re-arm: cooldown is anchored AFTER resolution.
   inst.phase = 'cooldown';
@@ -336,6 +428,23 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
   inst.committedGeometry = null;
   inst.committedTargetEid = null;
   inst.committedTargetGeneration = null;
+}
+
+function pruneOwnedEntities(world: GameWorld, inst: MobAbilityInstanceState): number {
+  for (const [eid, generation] of [...inst.ownedEntityGenerations.entries()]) {
+    if (!entityExists(world.ecs, eid)) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if ((world.entityRenderGeneration[eid] ?? -1) !== generation) {
+      inst.ownedEntityGenerations.delete(eid);
+      continue;
+    }
+    if (hasComponent(world.ecs, eid, Health) && (world.stores.health.current[eid] ?? 0) <= 0) {
+      inst.ownedEntityGenerations.delete(eid);
+    }
+  }
+  return inst.ownedEntityGenerations.size;
 }
 
 export interface ActivateMobAbilitySelfBuffInput {
@@ -377,6 +486,65 @@ export function activateMobAbilitySelfBuff(
     remainingMs: buff.durationMs,
   };
   world.mobAbilities.activeBuffsByEntity.set(buff.casterEid, state);
+}
+
+export function registerMobAbilityOwnedZone(
+  world: GameWorld,
+  zone: Omit<MobAbilityOwnedZone, 'id' | 'elapsedMs' | 'nextTickAtMs'>,
+): number {
+  if (
+    !Number.isFinite(zone.tickIntervalMs) ||
+    zone.tickIntervalMs < MIN_OWNED_ZONE_TICK_INTERVAL_MS
+  ) {
+    throw new Error(
+      `Mob ability owned zone tickIntervalMs must be >= ${MIN_OWNED_ZONE_TICK_INTERVAL_MS} (received ${zone.tickIntervalMs})`,
+    );
+  }
+  if (!Number.isFinite(zone.durationMs) || zone.durationMs <= 0) {
+    throw new Error(`Mob ability owned zone durationMs must be > 0 (received ${zone.durationMs})`);
+  }
+  const id = world.mobAbilities.nextZoneId;
+  world.mobAbilities.nextZoneId += 1;
+  world.mobAbilities.ownedZones.push({
+    ...zone,
+    id,
+    elapsedMs: 0,
+    nextTickAtMs: zone.tickIntervalMs,
+  });
+  return id;
+}
+
+export function clearMobAbilityOwnedZones(
+  world: GameWorld,
+  predicate: (zone: MobAbilityOwnedZone) => boolean,
+): void {
+  const zones = world.mobAbilities.ownedZones;
+  for (let i = zones.length - 1; i >= 0; i -= 1) {
+    if (predicate(zones[i]!)) {
+      zones.splice(i, 1);
+    }
+  }
+}
+
+function tickOwnedZones(world: GameWorld): void {
+  const dtMs = GAME.DELTA_MS;
+  const zones = world.mobAbilities.ownedZones;
+  for (let i = zones.length - 1; i >= 0; i -= 1) {
+    const zone = zones[i]!;
+    const inst = world.mobAbilities.byEntity.get(zone.casterEid);
+    if (inst === undefined || !isCasterValid(world, zone.casterEid, inst)) {
+      zones.splice(i, 1);
+      continue;
+    }
+    zone.elapsedMs += dtMs;
+    while (zone.elapsedMs + TIMER_EPSILON_MS >= zone.nextTickAtMs) {
+      zone.tick(world, zone);
+      zone.nextTickAtMs += zone.tickIntervalMs;
+    }
+    if (zone.elapsedMs + TIMER_EPSILON_MS >= zone.durationMs) {
+      zones.splice(i, 1);
+    }
+  }
 }
 
 function activeBuff(world: GameWorld, eid: number): MobAbilityActiveBuffState | undefined {
@@ -432,6 +600,12 @@ export function mobAbilitySystem(world: GameWorld): void {
   runtime.cues.length = 0;
   if (!runtime.enabled || !runtime.encounterActive) return;
   tickActiveBuffs(world);
+
+  // Tick pre-existing zones BEFORE processing new casts so that a zone
+  // registered in resolveCast this step is not immediately advanced.
+  // This keeps first-tick and expiry frame indices deterministic.
+  tickOwnedZones(world);
+
   if (runtime.byEntity.size === 0) return;
 
   const dtMs = GAME.DELTA_MS;
@@ -445,6 +619,7 @@ export function mobAbilitySystem(world: GameWorld): void {
       clearMobAbility(world, casterEid);
       continue;
     }
+    pruneOwnedEntities(world, inst);
 
     inst.timerMs -= dtMs;
     if (inst.timerMs <= TIMER_EPSILON_MS) {
