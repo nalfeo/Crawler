@@ -14972,66 +14972,6 @@
           "sceneLayer": "default"
         },
         {
-          "id": "floor-plate-clean",
-          "kind": "floor",
-          "x": 1,
-          "y": 1,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
-              },
-              "widthFt": 4,
-              "heightFt": 4
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-plate-scuffed",
-          "kind": "floor",
-          "x": 4,
-          "y": 1,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
-              },
-              "widthFt": 4,
-              "heightFt": 4
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
-          "id": "floor-plate-cable-run",
-          "kind": "floor",
-          "x": 1,
-          "y": 3,
-          "width": 1,
-          "height": 1,
-          "z": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
-              },
-              "widthFt": 4,
-              "heightFt": 4
-            }
-          ],
-          "sceneLayer": "default"
-        },
-        {
           "id": "stanchion-pair-entry",
           "kind": "decoration",
           "x": 2.25,

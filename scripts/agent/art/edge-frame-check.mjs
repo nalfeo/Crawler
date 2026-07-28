@@ -26,6 +26,54 @@ const INTERIOR_INSET = 24;
 
 const luma = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
+const BLOCK = 8;
+const STRUCTURE_FLOOR = Number(process.env.STRUCTURE_FLOOR ?? 5);
+
+/**
+ * Structure score: luma SD after BLOCKxBLOCK box-averaging.
+ *
+ * Plain luma SD cannot tell a blank field from real art, because an IID noise
+ * speckle scores as "varied" per-pixel. Box-averaging annihilates noise (SD of a
+ * mean falls as 1/sqrt(n)) while genuine shapes — planks, cables, scuffs, a rug
+ * border — survive. So this measures whether the texture carries *shapes* rather
+ * than merely non-constant pixels.
+ *
+ * This exists because three commissioned welcome-room floor plates passed the
+ * edge-frame criterion above and were placed in the room, yet rendered as flat
+ * grey slabs against the detailed stone floor. The frame check verified the
+ * ABSENCE of the v1 defect without verifying the PRESENCE of any content — a
+ * blank texture trivially has no border frame.
+ *
+ * Threshold derived from the whole 470-PNG shipped corpus, not fit to the
+ * offending samples: at a floor of 5, the ONLY non-placeholder file that fails
+ * is `welcome-room-floor-plate-clean-v2-var-0` (2.5), alongside all 17
+ * `*-placeholder.png` files and `temp_floor_0.png` (0.0-0.6) — which the metric
+ * rediscovered independently. Zero false positives on legitimate art.
+ *
+ * The finding that motivated it: the v2 plates scored 2.5 / 6.0 / 9.5 while the
+ * v1 plates they replaced — rejected for a baked frame — scored 17.5 / 22.7 /
+ * 21.0. The regeneration fixed the frame by deleting the content. NEITHER check
+ * alone catches that inversion; the frame check passes v2 and this check passes
+ * v1, so tile art must clear BOTH.
+ *
+ * This is a floor for "blank", not a substitute for looking at the room. Art can
+ * clear it and still read badly at game scale (low-saturation hue against the
+ * base floor is invisible to both checks).
+ */
+function structureScore(w, h, at) {
+  const means = [];
+  for (let by = 0; by + BLOCK <= h; by += BLOCK) {
+    for (let bx = 0; bx + BLOCK <= w; bx += BLOCK) {
+      let s = 0;
+      for (let y = 0; y < BLOCK; y += 1) for (let x = 0; x < BLOCK; x += 1) s += at(bx + x, by + y);
+      means.push(s / (BLOCK * BLOCK));
+    }
+  }
+  if (means.length < 2) return Number.POSITIVE_INFINITY;
+  const mu = means.reduce((a, b) => a + b, 0) / means.length;
+  return Math.sqrt(means.reduce((a, b) => a + (b - mu) ** 2, 0) / means.length);
+}
+
 function analyze(file) {
   const png = PNG.sync.read(readFileSync(file));
   const { width: w, height: h, data } = png;
@@ -33,6 +81,17 @@ function analyze(file) {
     const i = (w * y + x) << 2;
     return luma(data[i], data[i + 1], data[i + 2]);
   };
+
+  // Both criteria assume a FULL-BLEED tile. Pointed at a cut-out prop (a rug, a
+  // stanchion) the transparent surround reads as a pitch-black border and the
+  // frame check reports a bogus ~100% failure. Detect and skip rather than emit
+  // a confident wrong answer — the author of this check tripped exactly this.
+  let opaque = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] >= 128) opaque += 1;
+  const coverage = opaque / (w * h);
+  if (coverage < 0.98) {
+    return { file, w, h, coverage, skipped: true, pass: true };
+  }
 
   let sum = 0;
   let n = 0;
@@ -71,7 +130,21 @@ function analyze(file) {
       worstWhere = `${where} (luma ${val.toFixed(1)})`;
     }
   }
-  return { file, w, h, interior, worst, worstWhere, pass: worst < THRESHOLD };
+  const structure = structureScore(w, h, at);
+  const framePass = worst < THRESHOLD;
+  const structurePass = structure >= STRUCTURE_FLOOR;
+  return {
+    file,
+    w,
+    h,
+    interior,
+    worst,
+    worstWhere,
+    structure,
+    framePass,
+    structurePass,
+    pass: framePass && structurePass,
+  };
 }
 
 let failed = 0;
@@ -79,8 +152,19 @@ for (const file of process.argv.slice(2)) {
   try {
     const r = analyze(file);
     if (!r.pass) failed += 1;
+    if (r.skipped) {
+      console.log(
+        `SKIP  not a full-bleed tile (opaque ${(r.coverage * 100).toFixed(1)}%)  ${r.w}x${r.h}  ${r.file}`,
+      );
+      continue;
+    }
+    const why = r.framePass
+      ? r.structurePass
+        ? ''
+        : `  BLANK (structure ${r.structure.toFixed(1)} < ${STRUCTURE_FLOOR})`
+      : `  FRAMED worst=${r.worstWhere}`;
     console.log(
-      `${r.pass ? 'PASS' : 'FAIL'}  ${(r.worst * 100).toFixed(1)}%  ${r.w}x${r.h}  interior=${r.interior.toFixed(1)}  worst=${r.worstWhere}  ${r.file}`,
+      `${r.pass ? 'PASS' : 'FAIL'}  edge=${(r.worst * 100).toFixed(1)}%  struct=${r.structure.toFixed(1)}  ${r.w}x${r.h}  interior=${r.interior.toFixed(1)}  ${r.file}${why}`,
     );
   } catch (err) {
     failed += 1;
