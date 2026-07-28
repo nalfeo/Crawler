@@ -279,7 +279,7 @@ function profileOneRun(
     );
   }
 
-  let profileFile: string;
+  let profileFile!: string;
   if (emitted.length > 1) {
     // Node 22 + tsx v4 spawns a worker thread for ESM transforms, generating one
     // .cpuprofile per thread. The Node.js naming convention is:

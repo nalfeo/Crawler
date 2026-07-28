@@ -399,3 +399,54 @@ export function estimateFloor1RunPlan(
     droppedOptionalBundleIds,
   };
 }
+
+/**
+ * Build a cache key from the snapshot fields that affect route ordering and
+ * optional-bundle inclusion in {@link estimateFloor1RunPlan}.
+ *
+ * Fields that only affect time arithmetic (`nowMs`, player position) are
+ * excluded. A 30-second budget bucket and integer speed precision absorb their
+ * effects on the DP inputs while still invalidating the cache on any route-
+ * changing budget transition (e.g. merchant-weapon bundle affordability).
+ *
+ * `playerGold` is included raw because `applyFloor1WorkCosts` computes
+ * `goldOwed * goldFarmMs` for the `farm-shop-gold` and `farm-merchant-weapon-gold`
+ * goals, and every unit change affects the DP cost and optional-bundle inclusion.
+ */
+export function buildRunPlanCacheKey(
+  snapshot: Floor1RunPlannerSnapshot,
+  params: RunPlannerParams,
+): string {
+  const rawBudgetMs = Math.max(0, snapshot.deadlineMs - snapshot.nowMs - params.safetyBufferMs);
+  const budgetBucket = Math.floor(rawBudgetMs / 30_000);
+  const speedKey = Math.round(params.moveSpeedFtPerMs * 1000);
+  return [
+    snapshot.tutorialAccepted,
+    snapshot.playerLevel,
+    snapshot.questCompleted,
+    snapshot.ratsKilled,
+    snapshot.slimesKilled,
+    snapshot.requiredRats,
+    snapshot.requiredSlimes,
+    snapshot.requiredTotalKills,
+    snapshot.shopStage,
+    snapshot.playerGold,
+    snapshot.shopkeeperEquipmentCost,
+    snapshot.hasShopFetchItem,
+    snapshot.bossBattleAccepted,
+    snapshot.slimeRatStarted,
+    snapshot.slimeRatDefeated,
+    snapshot.spellsUnlocked,
+    snapshot.bossBattleComplete,
+    snapshot.staircaseStarted,
+    snapshot.staircaseDefeated,
+    snapshot.staircaseUnlocked,
+    snapshot.staircaseDiscovered,
+    snapshot.activeQuestGiverDetour,
+    snapshot.currentTarget?.committedGoalId ?? 'none',
+    snapshot.merchantWeaponIntent?.status ?? 'none',
+    snapshot.merchantWeaponIntent?.cost ?? 0,
+    speedKey,
+    budgetBucket,
+  ].join('|');
+}

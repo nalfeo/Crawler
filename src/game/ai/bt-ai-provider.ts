@@ -302,6 +302,7 @@ import {
   type TravelPickup,
 } from './travel-steering.js';
 import {
+  buildRunPlanCacheKey,
   estimateFloor1RunPlan,
   isRunPlanUrgent,
   type Floor1RunPlan,
@@ -1060,6 +1061,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     stateKey: string;
     goalId: string | null;
   } | null = null;
+  /** Cached result of {@link estimateCurrentRunPlan}, keyed on quest-state + budget bucket + speed.
+   * Invalidated when any input that affects route ordering changes. Cleared on {@link reset}. */
+  private runPlanCache: Floor1RunPlan | null = null;
+  private runPlanCacheKey: string | null = null;
   /**
    * Locked doors the AI is currently aware of, keyed by door entity. Populated
    * from {@link getNavigationBlockedDoors} each poll and pruned when a door's
@@ -4611,7 +4616,15 @@ export class BehaviorTreeAI implements AIInputProvider {
         staircase: objective.staircasePos,
       },
     };
-    return estimateFloor1RunPlan(snapshot, this.getRunPlannerParams(playerSpeedFtPerFrame));
+    const params = this.getRunPlannerParams(playerSpeedFtPerFrame);
+    const cacheKey = buildRunPlanCacheKey(snapshot, params);
+    if (cacheKey === this.runPlanCacheKey && this.runPlanCache !== null) {
+      return this.runPlanCache;
+    }
+    const plan = estimateFloor1RunPlan(snapshot, params);
+    this.runPlanCacheKey = cacheKey;
+    this.runPlanCache = plan;
+    return plan;
   }
 
   private getMerchantDecisionRunPlan(
@@ -9177,6 +9190,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.navEpoch = 0;
     this.navSignature = null;
     this.floor1MiddleChainCache = null;
+    this.runPlanCacheKey = null;
+    this.runPlanCache = null;
     this.hasPerceptionData = false;
     this.frontierBfsVisited = null;
     this.retreating = false;
