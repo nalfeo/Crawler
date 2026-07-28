@@ -54,6 +54,7 @@ import {
   automationProgressKey,
   blockerFingerprint,
   makeState,
+  RECOVERY_STATUSES,
   renderStateComment,
 } from './state.mjs';
 
@@ -706,6 +707,208 @@ test('repair window: conflict-fenced PRs do not consume sweep slots', () => {
   assert.deepEqual(numbers, [2096]);
 });
 
+test('repair window: broad sweep rotates selection instead of pinning the oldest fixed prefix', () => {
+  const pulls = Array.from({ length: 8 }, (_, index) => ({
+    number: 3001 + index,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  }));
+
+  const firstWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: pulls,
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:00:00Z'),
+  });
+  const secondWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: pulls,
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:11:00Z'),
+  });
+
+  assert.deepEqual(firstWindow, [3001, 3002, 3003, 3004, 3005, 3006]);
+  assert.deepEqual(secondWindow, [3002, 3003, 3004, 3005, 3006, 3007]);
+});
+
+test('invariant: every writable recovery status is dispatch-reachable through some train path', () => {
+  const nowDate = new Date(0); // rotation = 0, deterministic sweep order
+  const created_at = nowDate.toISOString();
+
+  for (const [index, status] of RECOVERY_STATUSES.entries()) {
+    const prNumber = 3100 + index;
+    // `waiting` needs the parking label; others must not have it so they land in
+    // the plain sweep bucket, exercising the eligibility filter for each status.
+    const labels = status === 'waiting' ? [{ name: 'ci-recovery-waiting' }] : [];
+    const pull = {
+      number: prNumber,
+      state: 'open',
+      draft: false,
+      created_at,
+      base: { ref: 'main' },
+      labels,
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      recoveryState: makeState({
+        prNumber,
+        headSha: `head-${prNumber}`,
+        fingerprint: `status-${status}`,
+        owner: 'none',
+        status,
+        trigger: status === 'waiting' ? 'admission-wait' : status,
+        blockers: [],
+        attempt: 0,
+        updatedAt: created_at,
+      }),
+    };
+
+    // Use the schedule (non-direct) path so routing logic for each status is
+    // actually exercised.  If isRepairWakeEligible or the sweep filter is broken
+    // for a given status, the PR is excluded and the assertion below fails.
+    const numbers = collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [pull],
+      trainEnabled: true,
+      now: nowDate,
+    });
+    assert.ok(numbers.includes(prNumber), `status=${status} must be reachable through schedule sweep`);
+  }
+});
+
+test('repair wake invariant: schedule sweep reaches ownerless idle/waiting states but excludes genuine waiting blockers', () => {
+  const now = '2026-07-27T00:00:00Z';
+  const idle = {
+    number: 3201,
+    state: 'open',
+    draft: false,
+    created_at: now,
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    recoveryState: makeState({
+      prNumber: 3201,
+      headSha: 'head-3201',
+      fingerprint: 'idle',
+      owner: 'none',
+      status: 'idle',
+      trigger: 'stale-automation',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: now,
+    }),
+  };
+  const waitingNoBlockers = {
+    ...idle,
+    number: 3202,
+    recoveryState: makeState({
+      prNumber: 3202,
+      headSha: 'head-3202',
+      fingerprint: 'waiting-no-blockers',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'admission-wait',
+      blockers: [],
+      attempt: 0,
+      updatedAt: now,
+    }),
+  };
+  const waitingBlocked = {
+    ...idle,
+    number: 3203,
+    recoveryState: makeState({
+      prNumber: 3203,
+      headSha: 'head-3203',
+      fingerprint: 'waiting-blocked',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'waiting',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: now,
+    }),
+  };
+
+  const numbers = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [idle, waitingNoBlockers, waitingBlocked],
+    trainEnabled: true,
+    now: new Date(now),
+  });
+
+  assert.ok(numbers.includes(3201), 'idle waiting PR should be repair-sweep reachable');
+  assert.ok(numbers.includes(3202), 'ownerless waiting+no-blockers PR should be repair-sweep reachable');
+  assert.ok(!numbers.includes(3203), 'genuine waiting-with-blockers PR should remain hidden');
+});
+
+test('repair window: waiting-transition PRs stay prioritized even when sweep backlog exceeds window', () => {
+  const transitionA = {
+    number: 3301,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting-transition' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const transitionB = {
+    number: 3302,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-02T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting-transition' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const sweep = Array.from({ length: 6 }, (_, index) => ({
+    number: 3310 + index,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(3 + index).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  }));
+
+  const earlyWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [transitionA, transitionB, ...sweep],
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:00:00Z'),
+  });
+  const rotatedWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [transitionA, transitionB, ...sweep],
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:14:00Z'),
+  });
+
+  assert.ok(earlyWindow.includes(3301) && earlyWindow.includes(3302));
+  assert.ok(rotatedWindow.includes(3301) && rotatedWindow.includes(3302));
+  // Transitions must appear before sweep PRs regardless of rotation so that
+  // partitionDispatchable() dispatches them first under backpressure.
+  assert.equal(earlyWindow.indexOf(3301), 0, 'transitionA must be at position 0');
+  assert.equal(earlyWindow.indexOf(3302), 1, 'transitionB must be at position 1');
+  assert.equal(rotatedWindow.indexOf(3301), 0, 'transitionA at position 0 under rotation');
+  assert.equal(rotatedWindow.indexOf(3302), 1, 'transitionB at position 1 under rotation');
+  assert.equal(earlyWindow.length, 6);
+  assert.equal(rotatedWindow.length, 6);
+});
+
 test('repair window: an explicitly dispatched conflict-fenced PR is still honored', () => {
   const fencedPr = {
     number: 2003,
@@ -973,6 +1176,7 @@ test('train schedule rechecks owned slots for expiry without widening the window
       repository: 'nalfeo/Crawler',
       scheduledPulls: pulls,
       trainEnabled: true,
+      now: new Date(0),
     }),
     [1, 2, 3, 4, 5, 6],
   );
@@ -996,6 +1200,7 @@ test('train sweeps skip genuine waiting PRs while exact direct events preserve t
       repository: 'nalfeo/Crawler',
       scheduledPulls: pulls,
       trainEnabled: true,
+      now: new Date(0),
     }),
     [1, 2, 3, 4, 5, 6],
   );
@@ -1090,6 +1295,7 @@ test('train undirected sweeps select at most the six oldest eligible PRs', () =>
       repository: 'nalfeo/Crawler',
       scheduledPulls: pulls,
       trainEnabled: true,
+      now: new Date(0),
     }),
     [1, 2, 3, 4, 5, 6],
   );
@@ -1121,20 +1327,19 @@ test('train PR-less default-branch CI sweeps preserve owner slots without redisp
     recoveryState: index === 0 ? automationOwnerState(1, '2026-07-17T12:00:00.000Z') : undefined,
   }));
 
-  assert.deepEqual(
-    collectPrNumbers({
-      payload: {
-        repository: { default_branch: 'main' },
-        workflow_run: { name: 'CI', head_branch: 'main', pull_requests: [] },
-      },
-      eventName: 'workflow_run',
-      repository: 'nalfeo/Crawler',
-      scheduledPulls: pulls,
-      trainEnabled: true,
-      now: new Date('2026-07-17T12:10:00.000Z'),
-    }),
-    [2, 3, 4, 5, 6, 7],
-  );
+  const result = collectPrNumbers({
+    payload: {
+      repository: { default_branch: 'main' },
+      workflow_run: { name: 'CI', head_branch: 'main', pull_requests: [] },
+    },
+    eventName: 'workflow_run',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: pulls,
+    trainEnabled: true,
+    now: new Date('2026-07-17T12:10:00.000Z'),
+  });
+  // Verify the healthy-owner PR is excluded; order is rotation-based so compare as a set.
+  assert.deepEqual([...result].sort((a, b) => a - b), [2, 3, 4, 5, 6, 7]);
 });
 
 test('train sweeps over-select past healthy owners to the next dispatchable PR', () => {
@@ -1192,17 +1397,16 @@ test('direct events retain a healthy owner while broad sweeps include stale and 
     recoveryState: null,
   };
 
-  assert.deepEqual(
-    collectPrNumbers({
-      payload: {},
-      eventName: 'schedule',
-      repository: 'nalfeo/Crawler',
-      scheduledPulls: [healthy, stale, inconsistent],
-      trainEnabled: true,
-      now: new Date('2026-07-17T12:10:00.000Z'),
-    }),
-    [2, 3],
-  );
+  // Order is rotation-based; compare as a sorted set.
+  const scheduleResult = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [healthy, stale, inconsistent],
+    trainEnabled: true,
+    now: new Date('2026-07-17T12:10:00.000Z'),
+  });
+  assert.deepEqual([...scheduleResult].sort((a, b) => a - b), [2, 3]);
   assert.deepEqual(
     collectPrNumbers({
       payload: { pull_request: { number: 1 } },

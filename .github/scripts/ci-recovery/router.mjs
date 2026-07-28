@@ -301,6 +301,36 @@ export function isRepairWakeEligible(pullRequest) {
   return state.status === 'waiting' && (state.blockers || []).length === 0;
 }
 
+function ageOrder(left, right) {
+  return (
+    new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+    left.number - right.number
+  );
+}
+
+function selectRepairWindowPulls({ direct, waitingTransitions, sweep, now = new Date() }) {
+  const targetSize = Math.max(REPAIR_WINDOW_SIZE, direct.length);
+  const remainingAfterDirect = Math.max(targetSize - direct.length, 0);
+  if (remainingAfterDirect === 0) return direct;
+  const prioritizedTransitions = [...waitingTransitions]
+    .sort(ageOrder)
+    .slice(0, remainingAfterDirect);
+  const remainingAfterTransitions = Math.max(
+    remainingAfterDirect - prioritizedTransitions.length,
+    0,
+  );
+  if (remainingAfterTransitions === 0) {
+    return [...direct, ...prioritizedTransitions];
+  }
+  const sweepOrdered = [...sweep].sort(ageOrder);
+  const rotation =
+    Number.isFinite(now.getTime()) && now.getTime() > 0
+      ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
+      : 0;
+  const rotated = rotateList(sweepOrdered, rotation);
+  return [...direct, ...prioritizedTransitions, ...rotated.slice(0, remainingAfterTransitions)];
+}
+
 // Labels meaning an external mechanism currently owns this PR's progress, so a
 // CI Recovery dispatch cannot advance it. This is DISPATCH_BLOCKED_LABEL_NAMES
 // minus WAITING_LABEL: `ci-recovery-waiting` is CI Recovery's own parking
@@ -362,14 +392,9 @@ export function collectPrNumbers({
         !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
         !hasHealthyOwnerForSweep(pullRequest, now),
     );
-    return [...direct, ...waitingTransitions, ...sweep]
-      .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
-      .sort(
-        (left, right) =>
-          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-          left.number - right.number,
-      )
-      .map((pullRequest) => pullRequest.number);
+    return selectRepairWindowPulls({ direct, waitingTransitions, sweep, now }).map(
+      (pullRequest) => pullRequest.number,
+    );
   }
   const directNumbers = eventPrNumbers(payload);
   const numbers = new Set(directNumbers);
@@ -486,11 +511,7 @@ export function eligibleTrainRecoveryPulls({
         !shouldExcludeByLabels
       );
     })
-    .sort(
-      (left, right) =>
-        new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-        left.number - right.number,
-    );
+    .sort(ageOrder);
 }
 
 export function recoveryBacklogEntries(scheduledPulls, repository, now = new Date()) {
