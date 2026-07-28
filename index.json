@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d21fe1a7802973339ae2dbe08dc8bc1bdec88ecf",
+    "commitDate": "2026-07-28T17:48:57Z",
+    "commitSubject": "feat(ci-harness): non-blocking PR disposition — auto-close provable duplicates + quarantine abandon-candidates (Issue 8) (#2201)",
+    "capturedAt": "2026-07-28T18:57:09.055Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30385275998",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/d21fe1a7802973339ae2dbe08dc8bc1bdec88ecf.json"
+  },
+  {
     "commit": "c04dbae255b96f76000dbe4818afad720d80204b",
     "commitDate": "2026-07-28T17:18:50Z",
     "commitSubject": "ci-recovery: auto-close loop-incident when PR converges to ARM_AUTO_MERGE (#2197)",
