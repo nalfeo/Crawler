@@ -59,3 +59,7 @@ files/
 
 # actionlint binary (downloaded for local use; not committed)
 actionlint
+
+# Stryker mutation testing artifacts (sandbox + HTML/JSON reports)
+.stryker-tmp/
+reports/
