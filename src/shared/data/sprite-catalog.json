@@ -3076,6 +3076,19 @@
     "row": 0
   },
   {
+    "id": "generated:sweaty-merchant-v3-var-3",
+    "kind": "sprite",
+    "label": "sweaty-merchant-v3-var-3",
+    "description": "Generated sprite from brief: sweaty-merchant-v3.",
+    "tags": ["character", "generated", "pipeline-approved"],
+    "spriteId": "sweaty-merchant-v3-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/sweaty-merchant-v3-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:the-stairs-v2-var-0",
     "kind": "sprite",
     "label": "the-stairs-v2-var-0",
@@ -3643,6 +3656,19 @@
     "spriteId": "welcome-goon-v2-var-9",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-goon-v2-var-9.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:welcome-goon-v3-var-1",
+    "kind": "sprite",
+    "label": "welcome-goon-v3-var-1",
+    "description": "Generated sprite from brief: welcome-goon-v3.",
+    "tags": ["character", "generated", "pipeline-approved"],
+    "spriteId": "welcome-goon-v3-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/welcome-goon-v3-var-1.png",
     "frame": 0,
     "col": 0,
     "row": 0
