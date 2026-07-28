@@ -21,20 +21,27 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import process from 'node:process';
 
 /**
  * Exemptions for entries where a non-exact specifier is intentionally allowed.
- * Each entry: { field, name, reason }
- *   field: the package.json field (e.g. "dependencies")
- *   name: the package name (e.g. "my-pkg")
- *   reason: short explanation for why an exact pin is not used
+ * Each entry: { field, name, version, reason }
+ *   field:   the package.json field (e.g. "dependencies")
+ *   name:    the package name (e.g. "my-pkg")
+ *   version: the EXACT specifier string that is allowed (e.g. "workspace:*")
+ *   reason:  short explanation for why an exact semver pin is not used
+ *
+ * The version field is required and must match the candidate exactly so that
+ * a later change from an intentional "workspace:*" to "^1.2.3" is never
+ * silently exempted. Include the full dependency path for nested overrides,
+ * e.g. field: "overrides/parent".
  */
 const EXACT_VERSION_EXEMPTIONS = [
   // No current exemptions. Add here with a reason when needed.
   // Example:
-  //   { field: 'dependencies', name: 'my-workspace-pkg', reason: 'workspace alias — must use workspace:*' },
+  //   { field: 'dependencies', name: 'my-workspace-pkg', version: 'workspace:*', reason: 'workspace alias' },
 ];
 
 /**
@@ -68,7 +75,7 @@ export function findRangeViolations(pkg) {
     const entries = pkg[field];
     if (!entries || typeof entries !== 'object') continue;
     for (const [name, version] of Object.entries(entries)) {
-      if (isExempt(field, name)) continue;
+      if (isExempt(field, name, version)) continue;
       if (!isExactVersion(version)) {
         violations.push({ field, name, version });
       }
@@ -91,7 +98,7 @@ export function findRangeViolations(pkg) {
 function checkOverrides(obj, field, violations) {
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === 'string') {
-      if (isExempt(field, key)) continue;
+      if (isExempt(field, key, value)) continue;
       if (!isExactVersion(value)) {
         violations.push({ field, name: key, version: value });
       }
@@ -102,21 +109,20 @@ function checkOverrides(obj, field, violations) {
   }
 }
 
-function isExempt(field, name) {
-  return EXACT_VERSION_EXEMPTIONS.some((e) => e.field === field && e.name === name);
+function isExempt(field, name, version) {
+  return EXACT_VERSION_EXEMPTIONS.some(
+    (e) => e.field === field && e.name === name && e.version === version,
+  );
 }
 
 /**
- * Resolves the repo root from this file's location.
+ * Resolves the repo root from this file's location using `fileURLToPath` so
+ * that percent-encoded characters in the path (e.g. spaces on Windows) are
+ * decoded correctly and the result is a proper OS file-system path.
  * scripts/agent/security/check-exact-deps.mjs → three levels up
  */
 function repoRoot() {
-  const url = new URL(import.meta.url);
-  const filePath = url.pathname;
-  const parts = filePath.split('/');
-  // Remove last 3 segments: check-exact-deps.mjs, security, agent (plus scripts → 4 up)
-  const root = parts.slice(0, parts.length - 4).join('/');
-  return root || '/';
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 }
 
 function main() {

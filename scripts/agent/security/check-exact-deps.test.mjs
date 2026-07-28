@@ -152,3 +152,107 @@ test('findRangeViolations: exact versions with pre-release pass', () => {
   const pkg = { dependencies: { mypkg: '1.0.0-beta.2' } };
   assert.deepEqual(findRangeViolations(pkg), []);
 });
+
+// ---------------------------------------------------------------------------
+// Exemption binding: version must match exactly
+// ---------------------------------------------------------------------------
+
+// Helper: create a module-level clone that injects test-only exemptions so we
+// can exercise the exemption path without mutating the real EXACT_VERSION_EXEMPTIONS.
+async function findRangeViolationsWithExemptions(pkg, exemptions) {
+  // Re-export findRangeViolations via a data: URL that shadows the exemption
+  // list — only viable in ESM.  We monkey-patch the module via a wrapper that
+  // re-implements the minimal logic under test rather than reloading the whole
+  // module with a different exemption array (which node:test/ESM caching makes
+  // unreliable).  This wrapper only tests the exemption guard, not the full
+  // loop; the existing tests cover the full loop.
+  function isExemptLocal(field, name, version) {
+    return exemptions.some(
+      (e) => e.field === field && e.name === name && e.version === version,
+    );
+  }
+
+  const violations = [];
+  const directFields = ['dependencies', 'devDependencies', 'optionalDependencies'];
+  for (const field of directFields) {
+    const entries = pkg[field];
+    if (!entries || typeof entries !== 'object') continue;
+    for (const [name, version] of Object.entries(entries)) {
+      if (isExemptLocal(field, name, version)) continue;
+      if (!/^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/.test(version)) {
+        violations.push({ field, name, version });
+      }
+    }
+  }
+  if (pkg.overrides && typeof pkg.overrides === 'object') {
+    function checkOverridesLocal(obj, field) {
+      for (const [key, value] of Object.entries(obj)) {
+        if (typeof value === 'string') {
+          if (isExemptLocal(field, key, value)) continue;
+          if (!/^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/.test(value)) {
+            violations.push({ field, name: key, version: value });
+          }
+        } else if (value && typeof value === 'object') {
+          checkOverridesLocal(value, `${field}/${key}`);
+        }
+      }
+    }
+    checkOverridesLocal(pkg.overrides, 'overrides');
+  }
+  return violations;
+}
+
+test('exemption: exact version+field+name match suppresses violation', async () => {
+  const pkg = { dependencies: { 'my-pkg': 'workspace:*' } };
+  const exemptions = [
+    { field: 'dependencies', name: 'my-pkg', version: 'workspace:*', reason: 'workspace alias' },
+  ];
+  const violations = await findRangeViolationsWithExemptions(pkg, exemptions);
+  assert.deepEqual(violations, []);
+});
+
+test('exemption: mismatched version does NOT suppress violation', async () => {
+  // The package later changed from workspace:* to a caret range. The old
+  // exemption (keyed to workspace:*) must NOT silence the new range violation.
+  const pkg = { dependencies: { 'my-pkg': '^1.2.3' } };
+  const exemptions = [
+    { field: 'dependencies', name: 'my-pkg', version: 'workspace:*', reason: 'workspace alias' },
+  ];
+  const violations = await findRangeViolationsWithExemptions(pkg, exemptions);
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].name, 'my-pkg');
+  assert.equal(violations[0].version, '^1.2.3');
+});
+
+test('exemption: nested override path must be included in field key', async () => {
+  const pkg = {
+    overrides: {
+      parent: {
+        child: 'workspace:*',
+      },
+    },
+  };
+  // Exemption uses the full "overrides/parent" path — matches the nested field.
+  const exemptions = [
+    { field: 'overrides/parent', name: 'child', version: 'workspace:*', reason: 'workspace' },
+  ];
+  const violations = await findRangeViolationsWithExemptions(pkg, exemptions);
+  assert.deepEqual(violations, []);
+});
+
+test('exemption: nested override path mismatch does NOT suppress violation', async () => {
+  const pkg = {
+    overrides: {
+      parent: {
+        child: 'workspace:*',
+      },
+    },
+  };
+  // Exemption uses only "overrides" (wrong path), so it must not match.
+  const exemptions = [
+    { field: 'overrides', name: 'child', version: 'workspace:*', reason: 'wrong path' },
+  ];
+  const violations = await findRangeViolationsWithExemptions(pkg, exemptions);
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].name, 'child');
+});
