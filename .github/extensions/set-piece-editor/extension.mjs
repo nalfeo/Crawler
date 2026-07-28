@@ -1453,7 +1453,23 @@ function drawProp(prop,sel,ad){
     if(res){
       var nativeW=Math.max(1,nnum(res.w,16));
       var nativeH=Math.max(1,nnum(res.h,16));
-      var fit=Math.min(targetW/nativeW,targetH/nativeH);
+      // Match the GAME's scale rule exactly (PhaserBridge.ts:1832-1838):
+      //   upright (kind !== 'floor') -> scale = heightFt / nativeH; widthFt is
+      //     IGNORED, the width follows the art's own aspect.
+      //   floor decal (kind === 'floor', set by stampSetPiece.ts:313) -> both
+      //     declared feet are real ground extents, so contain-fit them.
+      // The editor used to contain-fit EVERYTHING, i.e. apply the floor-decal
+      // rule to upright props. Whenever a declared widthFt was narrower than the
+      // art's aspect, Math.min picked the width and the editor drew the prop
+      // SHORTER than the game does - the welcome desk lost 34% of its width and
+      // the banner drew at half size. An instrument that cannot show you the
+      // defect is worse than no instrument.
+      var fit;
+      if(prop.kind==='floor'){
+        fit=Math.min(targetW/nativeW,targetH/nativeH);
+      }else{
+        fit=targetH/nativeH;
+      }
       if(!Number.isFinite(fit)||fit<=0)fit=1;
       var drawW=nativeW*fit;
       var drawH=nativeH*fit;
@@ -1461,6 +1477,12 @@ function drawProp(prop,sel,ad){
       ctx.translate(cx,cy);
       if(rot!==0)ctx.rotate(rot);
       if(fx!==1||fy!==1)ctx.scale(fx,fy);
+      // Anchor: the game sets origin (0.5, 1) for anchorBase layers so a tall
+      // object STANDS on its floor position and grows upward (PhaserBridge.ts
+      // :1816). The editor always centre-anchored, so all 14 anchorBase props in
+      // the welcome room were drawn half a body too low here relative to the
+      // game. drawY is the offset of the sprite's top edge from the anchor point.
+      var drawY=layer.anchorBase===true?-drawH:-drawH/2;
       var tinted=false;
       if(typeof layer.tintHex==='string'&&/^#[0-9a-fA-F]{6}$/.test(layer.tintHex)){
         var tintW=Math.max(1,Math.ceil(drawW));
@@ -1478,12 +1500,12 @@ function drawProp(prop,sel,ad){
           tintCtx.globalCompositeOperation='destination-atop';
           tintCtx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,0,0,tintW,tintH);
           tintCtx.globalCompositeOperation='source-over';
-          ctx.drawImage(tintCanvas,-drawW/2,-drawH/2,drawW,drawH);
+          ctx.drawImage(tintCanvas,-drawW/2,drawY,drawW,drawH);
           tinted=true;
         }
       }
       if(!tinted){
-        ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
+        ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,drawY,drawW,drawH);
       }
       ctx.restore();
       sprited=true;

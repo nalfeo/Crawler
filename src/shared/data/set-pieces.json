@@ -13817,7 +13817,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 6.14,
+              "widthFt": 5.93,
               "heightFt": 3.5
             },
             {
@@ -13857,7 +13857,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-desk-var-0"
               },
-              "widthFt": 9.24,
+              "widthFt": 6.06,
               "heightFt": 4
             },
             {
@@ -13887,7 +13887,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-bookcase-var-0"
               },
-              "widthFt": 4.74,
+              "widthFt": 7.17,
               "heightFt": 6.8,
               "anchorBase": true
             },
@@ -13990,7 +13990,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-mini-fridge-var-2"
               },
-              "widthFt": 1.9,
+              "widthFt": 2.03,
               "heightFt": 2.12
             }
           ],
@@ -14010,7 +14010,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-trash-bin-var-0"
               },
-              "widthFt": 2.4,
+              "widthFt": 3,
               "heightFt": 3,
               "anchorBase": true
             }
@@ -14071,7 +14071,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-chair-turned-var-0"
               },
-              "widthFt": 3.2,
+              "widthFt": 2.6,
               "heightFt": 3.2,
               "anchorBase": true
             }
@@ -14094,7 +14094,7 @@
                 "spriteId": "welcome-room-floor-runner-var-10"
               },
               "widthFt": 4,
-              "heightFt": 8.6
+              "heightFt": 7.68
             }
           ],
           "sceneLayer": "default"
@@ -14111,7 +14111,7 @@
                 "spriteId": "welcome-room-rug-var-0"
               },
               "widthFt": 7,
-              "heightFt": 4
+              "heightFt": 3.99
             }
           ],
           "width": 1.75,
@@ -14130,7 +14130,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-velvet-rope-var-2"
               },
-              "widthFt": 5,
+              "widthFt": 4.87,
               "heightFt": 3.4,
               "rotationDeg": 90,
               "flipX": true,
@@ -14177,7 +14177,7 @@
                 "spriteId": "welcome-room-carpet-var-4"
               },
               "widthFt": 3.99,
-              "heightFt": 4.9
+              "heightFt": 4.89
             }
           ],
           "sceneLayer": "default"
@@ -14195,7 +14195,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-wall-banner-var-6"
               },
-              "widthFt": 3.2,
+              "widthFt": 6.06,
               "heightFt": 3.2,
               "anchorBase": true
             }
@@ -14217,7 +14217,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-show-poster-var-0"
               },
-              "widthFt": 2.63,
+              "widthFt": 3.25,
               "heightFt": 3.5,
               "offsetYFt": -4
             }
@@ -14260,7 +14260,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-wall-shelf-var-0"
               },
-              "widthFt": 5.38,
+              "widthFt": 4,
               "heightFt": 2.69
             },
             {
@@ -14332,7 +14332,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-merchant-board-var-6"
               },
-              "widthFt": 3,
+              "widthFt": 2.53,
               "heightFt": 3,
               "anchorBase": true
             }
@@ -14353,7 +14353,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-call-sheet-var-3"
               },
-              "widthFt": 1,
+              "widthFt": 0.98,
               "heightFt": 1.3,
               "anchorBase": true
             }
@@ -14375,7 +14375,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-history-board-var-3"
               },
-              "widthFt": 3.7,
+              "widthFt": 3.5,
               "heightFt": 4.5,
               "anchorBase": true
             }
@@ -14396,7 +14396,7 @@
                 "source": "catalog",
                 "spriteId": "prop-torch-v1-var-14"
               },
-              "widthFt": 1.4,
+              "widthFt": 2.8,
               "heightFt": 2.8,
               "offsetXFt": 0.5,
               "anchorBase": true
@@ -14440,7 +14440,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-wall-shelf-var-0"
               },
-              "widthFt": 5.38,
+              "widthFt": 4,
               "heightFt": 2.69,
               "flipX": false
             },
@@ -14470,7 +14470,7 @@
                 "source": "catalog",
                 "spriteId": "prop-torch-v1-var-8"
               },
-              "widthFt": 1.4,
+              "widthFt": 2.8,
               "heightFt": 2.8,
               "offsetYFt": -4,
               "anchorBase": true
@@ -14512,7 +14512,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-exit-sign-wall-var-2"
               },
-              "widthFt": 2.5,
+              "widthFt": 2.4,
               "heightFt": 1.77,
               "anchorBase": true,
               "offsetYFt": -3.2
@@ -14965,7 +14965,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-door-var-2"
               },
-              "widthFt": 5.75,
+              "widthFt": 6,
               "heightFt": 8
             }
           ],
@@ -14985,7 +14985,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-stanchion-pair-var-4"
               },
-              "widthFt": 6,
+              "widthFt": 5.64,
               "heightFt": 3.79
             }
           ],
@@ -14996,13 +14996,13 @@
         {
           "id": "welcome-goon",
           "npcTypeId": "tutorial-goon",
-          "x": 4.2,
-          "y": 1.1,
+          "x": 4.30625,
+          "y": 1.20625,
           "anchorRole": "welcome",
           "sceneLayer": "default",
           "z": 5,
-          "widthFt": 6.6,
-          "heightFt": 6.6,
+          "widthFt": 5.75,
+          "heightFt": 5.75,
           "rotationDeg": 0,
           "flipX": false,
           "flipY": false
@@ -15010,27 +15010,27 @@
         {
           "id": "welcome-merchant",
           "npcTypeId": "shopkeeper",
-          "x": 1.05,
-          "y": 1.1,
+          "x": 1.15625,
+          "y": 1.20625,
           "anchorRole": "shop",
           "sceneLayer": "default",
           "z": 4,
-          "widthFt": 6.6,
-          "heightFt": 6.6
+          "widthFt": 5.75,
+          "heightFt": 5.75
         },
         {
           "id": "welcome-spell-broker",
           "npcTypeId": "spell-quest-giver",
-          "x": 1.05,
-          "y": 4.25,
+          "x": 1.15625,
+          "y": 4.35625,
           "anchorRole": "spell",
           "sceneLayer": "default",
           "spriteOverride": {
             "source": "catalog",
             "spriteId": "spell-broker-v2-var-3"
           },
-          "widthFt": 6.6,
-          "heightFt": 6.6,
+          "widthFt": 5.75,
+          "heightFt": 5.75,
           "rotationDeg": 0,
           "flipX": false,
           "flipY": false
