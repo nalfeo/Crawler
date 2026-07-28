@@ -1,23 +1,30 @@
-# ORIENTATION NOTE (Set Piece Designer, 2026-07-28)
+# ORIENTATION NOTE (Set Piece Designer, 2026-07-28) -- CONTRACT CHANGED IN ROUND 4
 #
-# Sibling of tile-door-side-v1 (same wall, same quarter-turn, OPEN instead of
-# closed). ROUND 1 FAILED THE EYEBALL 8/8: every variant drew a face-on stone
-# archway with a horizontal timber lintel across the top -- i.e. the horizontal
-# orientation again -- and the swung leaf was a barely-visible nub. Sensors
-# scored 7/7 and the VLM judge scored brief_match 5/5 on all of them, because
-# neither gate can see which way the opening runs.
+# Sibling of tile-door-side-v1 (same wall, same slot, OPEN instead of closed), and
+# it takes the same contract change: DRAW IT FACE-ON. The RENDERER applies the
+# quarter turn (`resolveDoorRenderMode` -> `quarterTurnsCcw: 1`, drawn as
+# `setAngle(-90)`), so a pre-turned sprite would be turned twice.
 #
-# WHY THIS ONE IS NOT TALL: this door sits in a wall running UP-DOWN the screen.
-# Measured against the shipped terrain packs, the pack's vertical door tile is
-# its horizontal door tile rotated 90 degrees counter-clockwise -- confirmed to
-# the pixel (the horizontal tile's TOP edge row is byte-identical to the vertical
-# tile's LEFT edge column reversed; mean per-channel diff 0.0, versus 20.8 for
-# the identity mapping). The packs hand-retouch the interior so the SHADING does
-# not rotate with the art.
+# Why: rounds 1-3 asked for the quarter-turn in escalating, falsifiable prose and
+# got face-on art every time. Sensors scored 7/7 and the VLM judge scored
+# brief_match 5/5 on that art, because NEITHER GATE CAN SEE WHICH WAY THE OPENING
+# RUNS. The turn moved to the renderer, where it is exact and free.
 #
-# Consequences: wall context on the TOP and BOTTOM rows; the opening runs
-# LEFT-TO-RIGHT across the middle; the swung leaf lies against the TOP jamb; and
-# the light still comes from the UPPER LEFT.
+# This matches the packs' own convention: their vertical door tile IS their
+# horizontal tile rotated 90 degrees counter-clockwise -- byte-identical on the
+# shared edge (mean per-channel diff 0.0 on both shipped packs, versus 20.8 for
+# the identity mapping).
+#
+# From that rotation (dst(x,y) = src(w-1-y, x)) two things follow, and the prose
+# below encodes both:
+#   - The source's LEFT and RIGHT edges become the rendered BOTTOM and TOP edges,
+#     so the wall stone belongs on the two SIDE edges here.
+#   - The source's UPPER-RIGHT corner becomes the rendered UPPER-LEFT, so this art
+#     is lit from the UPPER RIGHT in order to read as upper-left in game.
+#
+# FAMILY MATCH IS A HARD REQUIREMENT: measured at the true 32 px game scale, the
+# previous side art read cold and grey next to the approved horizontal doors. 69
+# of 104 Floor 1 doors are vertical, so this is the majority look.
 #
 # THE OPENING MUST BE OPAQUE, NOT TRANSPARENT -- the dark gap is the room beyond,
 # painted solid. `type: tile` makes the whole cell opaque anyway, but the dark
@@ -25,46 +32,36 @@
 type: tile
 name: tile-door-open-side-v1
 description: |
-  An OPEN DUNGEON DOORWAY seen in a wall that runs UP AND DOWN the screen. Modern
+  An OPEN DUNGEON DOORWAY seen FACE-ON, filling a square cell. Modern
   high-quality pixel art. The cell is 256 x 256 source pixels and the artwork
   FILLS IT EDGE TO EDGE -- there is no transparency anywhere.
 
-  THIS IS AN OPEN DOORWAY ROTATED A QUARTER TURN. Picture a normal front-on open
-  doorway -- an upright opening with the door swung back against one side. Now
-  turn that whole picture 90 degrees counter-clockwise and draw THAT. The opening
-  that ran up-down now runs LEFT-TO-RIGHT, and the door leaf that stood upright
-  now lies flat along the TOP of the gap.
+  Draw it UPRIGHT and FACE-ON, exactly as you would draw any front-facing open
+  doorway: an upright opening with the door swung back against one side. Do NOT
+  rotate, tilt or turn it -- the game engine turns this sprite a quarter turn
+  itself, so a pre-turned image would come out turned twice.
 
-  SELF-CHECK BEFORE YOU COMMIT THE IMAGE -- round 1 failed all 16 variants here:
-  - The stonework must appear along the TOP EDGE and the BOTTOM EDGE of the cell.
-    If your stone is up the LEFT and RIGHT sides, the image is wrong and you must
-    start over.
-  - The dark opening must be a WIDE HORIZONTAL BAND spanning the cell from the
-    left edge to the right edge. If your dark area is a tall upright rectangle,
-    the image is wrong.
-  - The swung door leaf must be a HORIZONTAL bar of timber. If your leaf is a
-    vertical sliver, the image is wrong.
-  - There must be NO timber lintel lying across the top of an upright arch. That
-    was round 1's mistake.
+  IT MUST LOOK LIKE THE SAME DOORWAY as the arched open doorway already in the
+  game -- same stonework, same timber, same age. Keep it readable: the dark
+  opening should clearly dominate, with the stone a slim surround.
 
-  LAYOUT, top to bottom:
-  - The TOP ~15% of the cell is dungeon WALL -- cool grey blocky stone, the wall
+  LAYOUT, left to right:
+  - The LEFT ~12% of the cell is dungeon WALL -- cool grey blocky stone, the wall
     carrying on past the doorway.
-  - Immediately under it, the SWUNG DOOR LEAF: a HORIZONTAL bar of heavy timber
-    running left-to-right, about ONE FIFTH of the height of the opening, pushed
-    back flat against the underside of the top wall. It is DARKER than a lit door
-    because it lies in the shadow of the opening. One or two iron straps and the
-    plank seams are still just readable on it.
-  - The MIDDLE, and most of the cell, is the OPENING: a wide horizontal band of
-    OPAQUE near-black shadow -- the unlit space beyond. Every pixel of it is
-    painted. Let the dark lift very slightly toward its lower edge so it reads as
-    depth rather than a flat hole.
-  - The BOTTOM ~15% of the cell is dungeon WALL again, matching the top.
+  - Immediately inside it, the SWUNG DOOR LEAF: an UPRIGHT bar of heavy timber
+    running top-to-bottom, about ONE FIFTH of the width of the opening, pushed
+    back flat against the left jamb. It is DARKER than a lit door because it lies
+    in the shadow of the opening. One or two iron straps and the plank seams are
+    still just readable on it.
+  - The MIDDLE, and most of the cell, is the OPENING: a tall band of OPAQUE
+    near-black shadow -- the unlit space beyond. Every pixel of it is painted. Let
+    the dark lift very slightly toward its lower edge so it reads as depth rather
+    than a flat hole.
+  - The RIGHT ~12% of the cell is dungeon WALL again, matching the left.
 
-  IT IS NOT: an upright front-facing doorway, a stone archway with a timber
-  lintel, a closed door, a portcullis, a gate, a window, a hatch, a cave mouth, a
-  mine shaft, or a bridge. It is one open doorway in a wall that runs up and down
-  the screen.
+  IT IS NOT: a closed door, a portcullis, a gate, a window, a hatch, a cave
+  mouth, a mine shaft, or a bridge. It is one open doorway filling a square gap
+  in a stone wall.
 
   MOOD -- a grimy reality-TV dungeon. The way through is open and it is not
   reassuring: the dark beyond is flat and unlit.
@@ -79,10 +76,12 @@ description: |
   magical glow, torchlight glare, visible fire, and any ornate carved fantasy
   filigree.
 
-  LIGHTING: light comes from the UPPER LEFT, consistently, and it does NOT rotate
-  with the doorway. Highlights still sit on the upper-left side of every stone,
-  strap and plank, and shadow still falls down and to the right. This is the one
-  thing that must NOT be rotated.
+  LIGHTING: light comes from the UPPER RIGHT. This is deliberate and it is the
+  opposite of the usual rule -- the engine turns this sprite a quarter turn
+  counter-clockwise, which carries the upper-right corner around to the
+  upper-left, so lighting it from the upper right here is what makes it lit from
+  the upper left on screen. Highlights sit on the upper-RIGHT side of every stone,
+  strap and plank; shadow falls down and to the LEFT.
 
   RENDERING: hard dark outlines where materials meet, 3-5 tone stops per
   material, restrained dithering for stone and timber grain -- no mushy
@@ -106,7 +105,8 @@ anchor:
 sensors:
   # Full-bleed opaque tile: occupancy is 1.0 by definition, so the ratio sensor
   # has nothing to say and is disabled rather than given a meaningless bound.
-  opaqueRatio: false
+  opaqueRatio:
+    disabled: true
   # The artwork intentionally runs to all four edges.
   edge:
     allowMainTouch: true

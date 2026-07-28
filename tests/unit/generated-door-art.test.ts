@@ -63,6 +63,38 @@ describe('generated door art contract', () => {
     expect(approved.map((r) => r.key)).toContain(GENERATED_DOOR_TEXTURE_KEYS.closedHorizontal);
   });
 
+  it('open and closed render at the SAME height (two frames of one door)', () => {
+    // A doorway is a fixed hole in the wall: swinging the leaf must not resize
+    // it. Because the renderer pins width to the tile and lets height follow the
+    // opaque box's aspect, two independently-sampled states silently disagree —
+    // the first approved pair rendered 5.92 ft closed and 4.47 ft open, so a door
+    // SHRANK 24% when it opened. Nothing else in the stack can see that: both
+    // PNGs are valid, both pass every sensor, and each is individually plausible.
+    // The defect exists only in the RELATIONSHIP between the two.
+    const closed = manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.closedHorizontal]?.opaqueBounds;
+    const open = manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.openHorizontal]?.opaqueBounds;
+    expect(closed).toBeDefined();
+    expect(open).toBeDefined();
+
+    const closedFt = FEET_PER_TILE * (closed!.height / closed!.width);
+    const openFt = FEET_PER_TILE * (open!.height / open!.width);
+    // 0.5 ft ~= 4 px on screen at the real 32 px tile — below the threshold where
+    // a state change reads as a size pop rather than as the door moving.
+    expect(Math.abs(closedFt - openFt)).toBeLessThanOrEqual(0.5);
+  });
+
+  it('both HORIZONTAL door keys name art that actually exists', () => {
+    // The wired key is a hand-typed variant index, and `sprites:approve` writes
+    // whichever index won review — so the two are free to drift apart silently.
+    // When they do, the renderer's fallback chain hides it perfectly: the door
+    // simply keeps rendering Kenney placeholder art and nothing fails. That is
+    // exactly how `welcome-room-door-var-2` sat approved with zero consumers.
+    // Vertical keys are deliberately exempt: their art is not generated yet, and
+    // falling back is the intended behaviour until it is.
+    expect(manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.closedHorizontal]).toBeDefined();
+    expect(manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.openHorizontal]).toBeDefined();
+  });
+
   for (const key of ALL_GENERATED_DOOR_TEXTURE_KEYS) {
     const entry = manifest.entries[key];
     if (!entry) {

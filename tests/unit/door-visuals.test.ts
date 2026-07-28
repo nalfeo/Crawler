@@ -77,6 +77,7 @@ describe('resolveDoorRenderMode', () => {
     expect(resolve(false, { keys: [K.closedHorizontal], hasSheet: true })).toEqual({
       kind: 'generated',
       textureKey: K.closedHorizontal,
+      quarterTurnsCcw: 0,
     });
   });
 
@@ -84,6 +85,7 @@ describe('resolveDoorRenderMode', () => {
     expect(resolve(false, { keys: [K.closedHorizontal], hasSheet: false })).toEqual({
       kind: 'generated',
       textureKey: K.closedHorizontal,
+      quarterTurnsCcw: 0,
     });
   });
 
@@ -146,7 +148,7 @@ describe('resolveDoorRenderMode', () => {
           orientation: 'vertical',
           hasSheet: true,
         }),
-      ).toEqual({ kind: 'generated', textureKey: K.closedVertical });
+      ).toEqual({ kind: 'generated', textureKey: K.closedVertical, quarterTurnsCcw: 1 });
     });
 
     it('horizontal doorway prefers the horizontal key when both are available', () => {
@@ -156,7 +158,7 @@ describe('resolveDoorRenderMode', () => {
           orientation: 'horizontal',
           hasSheet: true,
         }),
-      ).toEqual({ kind: 'generated', textureKey: K.closedHorizontal });
+      ).toEqual({ kind: 'generated', textureKey: K.closedHorizontal, quarterTurnsCcw: 0 });
     });
 
     it('vertical doorway falls back to the horizontal key rather than to Kenney', () => {
@@ -165,7 +167,7 @@ describe('resolveDoorRenderMode', () => {
       // this is the assertion that makes the change a no-op until new art lands.
       expect(
         resolve(false, { keys: [K.closedHorizontal], orientation: 'vertical', hasSheet: true }),
-      ).toEqual({ kind: 'generated', textureKey: K.closedHorizontal });
+      ).toEqual({ kind: 'generated', textureKey: K.closedHorizontal, quarterTurnsCcw: 0 });
     });
 
     it('open vertical doorway falls back to open-horizontal, not to closed art', () => {
@@ -175,7 +177,60 @@ describe('resolveDoorRenderMode', () => {
           orientation: 'vertical',
           hasSheet: true,
         }),
-      ).toEqual({ kind: 'generated', textureKey: K.openHorizontal });
+      ).toEqual({ kind: 'generated', textureKey: K.openHorizontal, quarterTurnsCcw: 0 });
+    });
+  });
+
+  describe('quarter-turn (vertical art is authored face-on and rotated by the renderer)', () => {
+    // The turn is a property of the ASSET, not of the requested orientation.
+    // Deriving it from the resolved key — not from `orientation` — is what keeps
+    // every fallback path byte-identical to its pre-rotation behaviour, which is
+    // the whole safety argument for the change.
+    it('turns both vertical keys exactly one quarter CCW', () => {
+      for (const [key, isOpen] of [
+        [K.closedVertical, false],
+        [K.openVertical, true],
+      ] as const) {
+        expect(resolve(isOpen, { keys: [key], orientation: 'vertical', hasSheet: true })).toEqual({
+          kind: 'generated',
+          textureKey: key,
+          quarterTurnsCcw: 1,
+        });
+      }
+    });
+
+    it('never turns a horizontal key, even when it is serving a vertical doorway', () => {
+      // The regression this pins: rotating on `orientation === "vertical"` rather
+      // than on the chosen key would turn face-on horizontal art sideways the
+      // moment vertical art is missing — strictly worse than the un-turned
+      // fallback it replaced.
+      for (const orientation of ['horizontal', 'vertical'] as const) {
+        for (const [key, isOpen] of [
+          [K.closedHorizontal, false],
+          [K.openHorizontal, true],
+        ] as const) {
+          expect(resolve(isOpen, { keys: [key], orientation, hasSheet: true })).toEqual({
+            kind: 'generated',
+            textureKey: key,
+            quarterTurnsCcw: 0,
+          });
+        }
+      }
+    });
+
+    it('leaves every non-generated mode free of rotation state', () => {
+      // Pack art is authored per-orientation and must never be turned.
+      expect(
+        resolve(false, {
+          keys: ALL_GENERATED_DOOR_TEXTURE_KEYS,
+          orientation: 'vertical',
+          hasSheet: true,
+          packDoorTextureKey: 'terrain-pack-industrial-cave-door-closed-vertical',
+        }),
+      ).not.toHaveProperty('quarterTurnsCcw');
+      expect(resolve(false, { orientation: 'vertical', hasSheet: true })).not.toHaveProperty(
+        'quarterTurnsCcw',
+      );
     });
   });
 
@@ -183,7 +238,7 @@ describe('resolveDoorRenderMode', () => {
     // Lock the constants the renderer depends on so a rename can't silently
     // un-wire a door variant or swap the open/closed frames.
     expect(K).toEqual({
-      closedHorizontal: 'tile-door-v1-var-0',
+      closedHorizontal: 'tile-door-v1-var-9',
       closedVertical: 'tile-door-side-v1-var-0',
       openHorizontal: 'tile-door-open-v1-var-0',
       openVertical: 'tile-door-open-side-v1-var-0',

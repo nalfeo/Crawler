@@ -2904,7 +2904,13 @@ export class MainGameScene extends Phaser.Scene {
     }
     const generatedDoorFits = new Map<
       string,
-      { scale: number; originX: number; originY: number }
+      {
+        scale: number;
+        originX: number;
+        originY: number;
+        centerOriginX: number;
+        centerOriginY: number;
+      }
     >();
     for (const key of ALL_GENERATED_DOOR_TEXTURE_KEYS) {
       if (!this.textures.exists(key)) {
@@ -2937,6 +2943,13 @@ export class MainGameScene extends Phaser.Scene {
         scale: tileSize / box.width,
         originX: fit.originX,
         originY: fit.originY,
+        // Origins of the OPAQUE BOX centre, in canvas-normalised coords, used
+        // only by the quarter-turned (vertical) branch. Rotation pivots on the
+        // origin, so pivoting on the box centre — rather than the canvas centre —
+        // keeps the door centred in its tile even when the art sits off-centre in
+        // its canvas.
+        centerOriginX: (box.x + box.width / 2) / canvasWidth,
+        centerOriginY: (box.y + box.height / 2) / canvasHeight,
       });
     }
     const availableGeneratedKeys: ReadonlySet<string> = new Set(generatedDoorFits.keys());
@@ -2967,12 +2980,16 @@ export class MainGameScene extends Phaser.Scene {
       scale: number,
       originX = 0.5,
       originY = 1,
+      angleDeg = 0,
     ): void => {
       const img = this.add
         .image(px, tileBottomY, key, frame)
         .setOrigin(originX, originY)
         .setDepth(-19)
         .setScale(scale);
+      if (angleDeg !== 0) {
+        img.setAngle(angleDeg);
+      }
       this.uiCamera?.ignore(img);
       this.doorImages.push(img);
     };
@@ -3045,15 +3062,34 @@ export class MainGameScene extends Phaser.Scene {
             // the lookup always hits (the ?? branch is unreachable but keeps the
             // type checker happy without a non-null assertion).
             const fit = generatedDoorFits.get(mode.textureKey);
-            addDoorImage(
-              cx,
-              tileBottomY,
-              mode.textureKey,
-              undefined,
-              fit?.scale ?? 1,
-              fit?.originX ?? 0.5,
-              fit?.originY ?? 1,
-            );
+            if (mode.quarterTurnsCcw === 1) {
+              // Vertical doorway wearing face-on art: turn it 90° CCW, matching
+              // the terrain packs' own measured convention. The wall run is
+              // up↕down here, so the door must span the tile in Y — and after the
+              // turn the art's WIDTH maps to on-screen height, which is why the
+              // same width-authoritative `scale` is correct for both branches.
+              // Pivot and position on the opaque-box centre.
+              addDoorImage(
+                cx,
+                y * tileSize + tileSize / 2,
+                mode.textureKey,
+                undefined,
+                fit?.scale ?? 1,
+                fit?.centerOriginX ?? 0.5,
+                fit?.centerOriginY ?? 0.5,
+                -90,
+              );
+            } else {
+              addDoorImage(
+                cx,
+                tileBottomY,
+                mode.textureKey,
+                undefined,
+                fit?.scale ?? 1,
+                fit?.originX ?? 0.5,
+                fit?.originY ?? 1,
+              );
+            }
             if (isOpen) {
               openGeneratedCount += 1;
             } else {

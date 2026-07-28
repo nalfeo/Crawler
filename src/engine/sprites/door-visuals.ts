@@ -38,7 +38,7 @@ export type DoorOrientation = 'horizontal' | 'vertical';
  * the fallback chain takes over.
  */
 export const GENERATED_DOOR_TEXTURE_KEYS = {
-  closedHorizontal: 'tile-door-v1-var-0',
+  closedHorizontal: 'tile-door-v1-var-9',
   closedVertical: 'tile-door-side-v1-var-0',
   openHorizontal: 'tile-door-open-v1-var-0',
   openVertical: 'tile-door-open-side-v1-var-0',
@@ -65,10 +65,42 @@ export const DOOR_OPEN_FRAME = 34;
  */
 export type DoorRenderMode =
   | { readonly kind: 'pack'; readonly textureKey: string }
-  | { readonly kind: 'generated'; readonly textureKey: string }
+  | {
+      readonly kind: 'generated';
+      readonly textureKey: string;
+      /**
+       * Quarter-turns COUNTER-clockwise the renderer must apply to this texture.
+       *
+       * The two vertical door assets are authored as ordinary FACE-ON art and are
+       * turned by the renderer rather than drawn pre-rotated. That is a measured
+       * decision, not a shortcut: diffing the shipped terrain packs showed their
+       * vertical door cell is their horizontal cell rotated exactly 90° CCW
+       * (`H.top` vs `V.left` reversed = 0.0 mean per-channel difference, i.e.
+       * byte-identical, on both packs; the identity mapping scores 20.8). So the
+       * turn is the packs' own convention, and applying it here is exact where
+       * three rounds of asking a generator to draw the quarter-turn produced
+       * face-on art every time.
+       *
+       * Only ever 1 for a key chosen for the EXACT vertical orientation. When a
+       * vertical doorway falls back to horizontal art this stays 0, so the
+       * fallback path is byte-identical to its pre-rotation behaviour.
+       */
+      readonly quarterTurnsCcw: 0 | 1;
+    }
   | { readonly kind: 'kenney-closed' }
   | { readonly kind: 'kenney-open' }
   | { readonly kind: 'color'; readonly open: boolean };
+
+/**
+ * The generated door keys authored face-on but DRAWN quarter-turned, because the
+ * wall run they sit in is vertical. Membership is a property of the asset, so it
+ * is derived from the key table rather than from the requested orientation —
+ * that is what keeps the fallback path unrotated.
+ */
+const QUARTER_TURNED_DOOR_KEYS: ReadonlySet<string> = new Set([
+  GENERATED_DOOR_TEXTURE_KEYS.closedVertical,
+  GENERATED_DOOR_TEXTURE_KEYS.openVertical,
+]);
 
 /** The generated texture keys for one open/closed state, most-preferred first. */
 function generatedKeysFor(isOpen: boolean, orientation: DoorOrientation): readonly string[] {
@@ -111,7 +143,11 @@ export function resolveDoorRenderMode(
   }
   for (const key of generatedKeysFor(isOpen, opts.orientation)) {
     if (opts.availableGeneratedKeys.has(key)) {
-      return { kind: 'generated', textureKey: key };
+      return {
+        kind: 'generated',
+        textureKey: key,
+        quarterTurnsCcw: QUARTER_TURNED_DOOR_KEYS.has(key) ? 1 : 0,
+      };
     }
   }
   if (opts.hasSheet) {
