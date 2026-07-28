@@ -21,11 +21,11 @@ An **open-PR aging panel** added to the bottleneck scan:
 
 - `computeOpenPrAging(prs, now)` — pure, deterministic function; p50/p90/max age,
   count above the 4h first-alert threshold, blocking-label breakdown, and the top-5
-  oldest open PRs with total age and state age (`updatedAt`-based).
+  oldest open PRs with total age and idle time (`updatedAt`-based).
 - `fetchOpenPrs(root)` — paginated GraphQL query mirroring the existing merged-PR fetch;
-  fetches `number`, `title`, `createdAt`, `updatedAt`, and `labels`.
+  fetches `number`, `title`, `createdAt`, `updatedAt`, and up to 100 labels per PR.
 - `BottleneckReport.openPrAging` — new optional field; `null` when no open-PR data is
-  available (e.g. offline / `--no-open-prs`).
+  supplied by the caller.
 - `buildReport` updated to accept `openPrRecords` and `now` parameters, keeping it
   fully testable without live `gh` calls.
 - `render` shows the panel with a prominent `⚠ STALL ALARM` line when `maxAgeH ≥ 24h`.
@@ -45,7 +45,7 @@ An **open-PR aging panel** added to the bottleneck scan:
 ## Verification
 
 - 25 unit tests added; all 25 pass.
-- 2026-07-27 scenario fixture (18 PRs, all `ci-conflict-order-wait`, ages 2–64h):
+- 2026-07-27 scenario simulation (18 PRs, all `ci-conflict-order-wait`, ages 2–64h):
   `computeOpenPrAging` returns `maxAgeH=64`, `deriveFindings` emits a STALL ALARM
   naming the 64h PR and the label.
 - `verify:fast` — 1787 tests pass, typecheck clean.
@@ -56,8 +56,9 @@ An **open-PR aging panel** added to the bottleneck scan:
 1. **Scheduled alert** (out of scope here, mentioned in the issue): once the metric
    exists, a cron-triggered alert on "oldest open PR age > N hours" would convert the
    panel from a report someone must remember to run into an actual tripwire.
-2. `updatedAt` is a coarse proxy for "time in current state" — label assignment
-   timestamps would be more precise but require timeline events (heavier API query).
+2. `updatedAt` is an inactivity/idle-time metric, not true "time in current state" —
+   label assignment timestamps would be more precise but require timeline events
+   (heavier API query).
 
 ## Gotchas for the next agent
 

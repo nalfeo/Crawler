@@ -1,11 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildReport,
   bucketBySize,
   collectMergedPrPages,
   computeOpenPrAging,
   computeStageTimings,
   deriveFindings,
+  fetchOpenPrs,
   fetchMergedPrs,
   type BottleneckReport,
   type OpenPrRecord,
@@ -34,6 +36,29 @@ function graphqlPage(
             ...pr,
             reviews: { nodes: [] },
             commits: { nodes: [] },
+          })),
+        },
+      },
+    },
+  });
+}
+
+function openPrGraphqlPage(
+  prs: Array<Record<string, unknown>>,
+  endCursor: string | null,
+  hasNextPage: boolean,
+) {
+  return JSON.stringify({
+    data: {
+      repository: {
+        pullRequests: {
+          pageInfo: { endCursor, hasNextPage },
+          nodes: prs.map((pr) => ({
+            title: `PR ${String(pr.number ?? 'unknown')}`,
+            createdAt: at(0),
+            updatedAt: at(1),
+            labels: { nodes: [] },
+            ...pr,
           })),
         },
       },
@@ -229,6 +254,63 @@ describe('fetchMergedPrs', () => {
   });
 });
 
+describe('fetchOpenPrs', () => {
+  beforeEach(() => {
+    vi.mocked(execFileSync).mockReset();
+  });
+
+  it('returns an empty array when GitHub reports no open PRs', () => {
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(openPrGraphqlPage([], null, false));
+
+    expect(fetchOpenPrs('repo-root')).toEqual([]);
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+  });
+
+  it('maps label nodes to plain strings', () => {
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(
+        openPrGraphqlPage(
+          [
+            {
+              number: 1,
+              labels: {
+                nodes: [{ name: 'ci-conflict-order-wait' }, { name: 'merge-conflict' }],
+              },
+            },
+          ],
+          null,
+          false,
+        ),
+      );
+
+    expect(fetchOpenPrs('repo-root')).toEqual([
+      {
+        number: 1,
+        title: 'PR 1',
+        createdAt: at(0),
+        updatedAt: at(1),
+        labels: ['ci-conflict-order-wait', 'merge-conflict'],
+      },
+    ]);
+  });
+
+  it('pages through open PRs using the GraphQL cursor', () => {
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce('nalfeo/Crawler')
+      .mockReturnValueOnce(openPrGraphqlPage([{ number: 1 }], 'CURSOR_1', true))
+      .mockReturnValueOnce(openPrGraphqlPage([{ number: 2 }], null, false));
+
+    const prs = fetchOpenPrs('repo-root');
+
+    expect(prs.map((pr) => pr.number)).toEqual([1, 2]);
+    const secondArgs = vi.mocked(execFileSync).mock.calls[2]![1] as string[];
+    expect(secondArgs).toContain('cursor=CURSOR_1');
+  });
+});
+
 function report(overrides: Partial<Omit<BottleneckReport, 'findings'>>) {
   return {
     schema: 'crawler-velocity-bottlenecks/v1' as const,
@@ -345,18 +427,13 @@ describe('collectMergedPrPages', () => {
 
 // ─── Helpers for open-PR aging tests ────────────────────────────────────────
 
-function openPr(
-  number: number,
-  ageH: number,
-  labels: string[] = [],
-  stateAgeH?: number,
-): OpenPrRecord {
+function openPr(number: number, ageH: number, labels: string[] = [], idleH?: number): OpenPrRecord {
   const now = START + 100 * HOUR; // reference "now" = t+100h
   return {
     number,
     title: `PR ${number}`,
     createdAt: new Date(now - ageH * HOUR).toISOString(),
-    updatedAt: new Date(now - (stateAgeH ?? ageH) * HOUR).toISOString(),
+    updatedAt: new Date(now - (idleH ?? ageH) * HOUR).toISOString(),
     labels,
   };
 }
@@ -407,12 +484,12 @@ describe('computeOpenPrAging', () => {
     expect(panel.oldest[4]?.prNumber).toBe(3); // age 3h
   });
 
-  it('reports stateAgeH from updatedAt, not createdAt', () => {
+  it('reports idleH from updatedAt, not createdAt', () => {
     // PR created 20h ago, but last updated only 3h ago
     const pr = openPr(1, 20, [], 3);
     const panel = computeOpenPrAging([pr], NOW);
     expect(panel.oldest[0]?.ageH).toBeCloseTo(20, 5);
-    expect(panel.oldest[0]?.stateAgeH).toBeCloseTo(3, 5);
+    expect(panel.oldest[0]?.idleH).toBeCloseTo(3, 5);
   });
 
   it('oldest entries expose only blocking labels, not unrelated ones', () => {
@@ -421,11 +498,11 @@ describe('computeOpenPrAging', () => {
     expect(panel.oldest[0]?.labels).toEqual(['ci-conflict-order-wait']);
   });
 
-  // ── 2026-07-27 scenario fixture ──────────────────────────────────────────
-  // Replays the 18-PR ci-conflict-order-wait stall that ran unnoticed for 64h.
+  // ── 2026-07-27 scenario simulation ───────────────────────────────────────
+  // Simulates the 18-PR ci-conflict-order-wait stall that ran unnoticed for 64h.
+  // Based on confirmed incident facts (18 PRs, max ~64h, PR #1976 as oldest);
+  // per-PR ages and the conflicting subset are constructed, not captured.
   it('2026-07-27 scenario: 18 PRs carrying ci-conflict-order-wait for up to 64h is obviously alarming', () => {
-    // Realistic age distribution from the handoff:
-    // ages approximately 2h → 64h, all carrying the blocking label, some also merge-conflict
     const ages = [64, 62, 58, 55, 48, 44, 40, 36, 32, 28, 24, 18, 14, 10, 8, 6, 4, 2];
     expect(ages).toHaveLength(18);
 
@@ -503,5 +580,25 @@ describe('deriveFindings (open PR aging)', () => {
     const findings = deriveFindings(report({ openPrAging: panel }));
     expect(findings.join('\n')).toMatch(/STALL ALARM/);
     expect(findings.join('\n')).toMatch(/no blocking label/);
+  });
+});
+
+describe('buildReport', () => {
+  it('keeps a supplied empty open-PR snapshot instead of treating it as unavailable', () => {
+    const report = buildReport('/tmp/repo', [], [], NOW);
+    expect(report.openPrAging).toEqual({
+      openPrs: 0,
+      p50AgeH: 0,
+      p90AgeH: 0,
+      maxAgeH: 0,
+      countAbove4H: 0,
+      labelBreakdown: [],
+      oldest: [],
+    });
+  });
+
+  it('uses null only when the caller omits open-PR data entirely', () => {
+    const report = buildReport('/tmp/repo', [], undefined, NOW);
+    expect(report.openPrAging).toBeNull();
   });
 });

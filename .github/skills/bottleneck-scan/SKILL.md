@@ -67,7 +67,7 @@ it is a tax).
 | `p50 / p90 / max` | Age distribution of all open PRs in hours                                               |
 | `countAbove4H`    | Number of open PRs older than 4 hours — the first-alert threshold                       |
 | `labelBreakdown`  | Count of PRs carrying each known blocking label (`ci-conflict-order-wait`, etc.)        |
-| `oldest`          | The 5 oldest open PRs with total age, state age (from `updatedAt`), and blocking labels |
+| `oldest`          | The 5 oldest open PRs with total age, idle time (from `updatedAt`), and blocking labels |
 
 When `maxAgeH ≥ 24`, the panel emits a `⚠ STALL ALARM` in both the rendered output and
 the findings list. A 64-hour stall with 18 PRs blocked by `ci-conflict-order-wait` will
@@ -88,5 +88,6 @@ A finding is not a mandate. Take the top finding into `task-pack-builder` +
 - Mind the denominator. A stage that is slow on 3 PRs out of 60 is an anecdote.
 - Recent-PR bias is real: a policy that changed 20 PRs ago pollutes the window. Prefer
   comparing two explicit windows over trusting one aggregate.
-- The open-PR aging panel uses `updatedAt` as a proxy for "time in current state". This is
-  an approximation — label assignment timestamps are not available without timeline events.
+- The open-PR aging panel uses `updatedAt` as an inactivity / idle-time metric. This is
+  intentionally not "time in current state" — label assignment timestamps would require
+  timeline events.

@@ -54,7 +54,7 @@ export interface OpenPrRecord {
   number: number;
   title: string;
   createdAt: string;
-  /** Time of the most recent event on the PR — used as a proxy for "entered current state". */
+  /** Timestamp of the most recent event on the PR (GitHub `updatedAt`). */
   updatedAt: string;
   labels: string[];
 }
@@ -75,8 +75,8 @@ export interface OpenPrAgingEntry {
   title: string;
   /** Total age since creation, in hours. */
   ageH: number;
-  /** Hours since the last update — proxy for time in the current state. */
-  stateAgeH: number;
+  /** Hours since any recorded PR activity (`updatedAt`). */
+  idleH: number;
   labels: string[];
 }
 
@@ -114,7 +114,7 @@ export interface BottleneckReport {
     medianAbsDelta: number;
   } | null;
   guardFriction: { guard: string; allow: number; deny: number }[];
-  /** Open-PR aging panel. null when no open-PR data was available (e.g. offline mode). */
+  /** Open-PR aging panel. null when the caller does not supply open-PR data. */
   openPrAging: OpenPrAgingPanel | null;
   findings: string[];
 }
@@ -180,7 +180,7 @@ export function computeOpenPrAging(prs: readonly OpenPrRecord[], now: string): O
       prNumber: pr.number,
       title: pr.title,
       ageH: (nowMs - Date.parse(pr.createdAt)) / HOUR_MS,
-      stateAgeH: Math.max(0, (nowMs - Date.parse(pr.updatedAt)) / HOUR_MS),
+      idleH: Math.max(0, (nowMs - Date.parse(pr.updatedAt)) / HOUR_MS),
       labels: pr.labels.filter((l) => (BLOCKING_LABELS as readonly string[]).includes(l)),
     }))
     .sort((a, b) => b.ageH - a.ageH)
@@ -591,7 +591,7 @@ export function fetchOpenPrs(root: string): OpenPrRecord[] {
             title
             createdAt
             updatedAt
-            labels(first: 20) {
+            labels(first: 100) {
               nodes { name }
             }
           }
@@ -657,7 +657,7 @@ export function fetchOpenPrs(root: string): OpenPrRecord[] {
 export function buildReport(
   root: string,
   prs: readonly PrRecord[],
-  openPrRecords: readonly OpenPrRecord[] = [],
+  openPrRecords?: readonly OpenPrRecord[],
   now: string = new Date().toISOString(),
 ): BottleneckReport {
   const timings = computeStageTimings(prs);
@@ -695,7 +695,7 @@ export function buildReport(
     slowest: [...timings].sort((a, b) => b.leadTimeH - a.leadTimeH).slice(0, 5),
     estimationAccuracy: readEstimationAccuracy(root),
     guardFriction: readGuardFriction(root),
-    openPrAging: openPrRecords.length > 0 ? computeOpenPrAging(openPrRecords, now) : null,
+    openPrAging: openPrRecords ? computeOpenPrAging(openPrRecords, now) : null,
   };
   return { ...partial, findings: deriveFindings(partial) };
 }
@@ -753,7 +753,7 @@ function render(report: BottleneckReport): string {
       lines.push('Oldest open PRs:');
       for (const pr of aging.oldest) {
         const labelStr = pr.labels.length > 0 ? `  [${pr.labels.join(', ')}]` : '';
-        const stateStr = `state-age=${pr.stateAgeH.toFixed(1)}h`;
+        const stateStr = `idle=${pr.idleH.toFixed(1)}h`;
         lines.push(
           `  #${String(pr.prNumber).padEnd(6)} ${pr.ageH.toFixed(1)}h (${stateStr})${labelStr}  ${pr.title}`,
         );
