@@ -185,7 +185,12 @@ guard cannot silently shrink.
   axis, and rates `floor-0` 83.1%, _worse_ than either of its axes). And there is no visual ground
   truth: tiling `corridor-0` 3x3 shows no seam line the eye can find, only motif repetition, which
   the weighted pool and decals already mask in play. Treat it as a regression bound, not a quality
-  bar.
+  bar. Concretely: percentile rank **cannot be read as an absolute**. Adjacent interior lines are
+  spatially correlated by any generator, while the wrap edge joins the two lines _least_ correlated
+  in generation order — so the seam is drawn from a structurally different distribution than the
+  baseline, and a high percentile is the expected null result rather than a signal. The only sound
+  reading is a **delta against the same tile's own history**. A fresh 90% is not a defect; a tile
+  that moves from 76% to 90% is.
 
 ## Alternatives Considered
 
