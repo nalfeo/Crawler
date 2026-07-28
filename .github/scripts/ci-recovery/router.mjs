@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
+import { MANAGED_COMMENT_PREFIX } from './markers.mjs';
 import {
   AUTOMATION_STALE_MINUTES,
   isHealthyRecoveryOwner,
@@ -91,13 +92,8 @@ const IDLE_CAP_MAX = 20;
 // exists to close.
 const OUTSTANDING_RUN_STATUSES = ['queued', 'pending', 'in_progress', 'waiting', 'requested'];
 const REPAIR_WINDOW_SIZE = 6;
-const MANAGED_COMMENT_MARKERS = [
-  '<!-- crawler-ci-state:v1 -->',
-  '<!-- crawler-ci-task:v1',
-  '<!-- crawler-merge-train:v1 -->',
-  '<!-- crawler-review-request:v1',
-  '<!-- crawler-review-conflict:v1',
-];
+// MANAGED_COMMENT_PREFIX is imported from markers.mjs above.
+// isManagedCommentEvent uses MANAGED_COMMENT_PREFIX so new markers are covered automatically.
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
@@ -766,7 +762,9 @@ export function recoveryTriggerForPr({
 export function isManagedCommentEvent(payload, eventName) {
   if (eventName !== 'issue_comment') return false;
   const body = String(payload.comment?.body || '').trimStart();
-  return MANAGED_COMMENT_MARKERS.some((marker) => body.startsWith(marker));
+  // Use the shared prefix from markers.mjs so any new '<!-- crawler-...' marker
+  // is automatically filtered without touching this file.
+  return body.startsWith(MANAGED_COMMENT_PREFIX);
 }
 
 // Total number of `workflowFile` runs currently outstanding (not yet

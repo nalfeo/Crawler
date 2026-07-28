@@ -22,9 +22,9 @@ import {
 } from './state.mjs';
 import { isAdmissible } from '../merge-train/state.mjs';
 import { whoMustLandFirst } from '../ci-conflict-coordinator/state.mjs';
+import { LIFECYCLE_DATA_PREFIX, LIFECYCLE_MARKER } from './markers.mjs';
 
-export const LIFECYCLE_MARKER = '<!-- crawler-pr-lifecycle:v1 -->';
-export const LIFECYCLE_DATA_PREFIX = '<!-- crawler-pr-lifecycle-data:';
+export { LIFECYCLE_MARKER, LIFECYCLE_DATA_PREFIX };
 
 // Phase enum (mirrors LIFECYCLE_PHASES in state.mjs).
 export const PHASE = { ...LIFECYCLE_PHASES };

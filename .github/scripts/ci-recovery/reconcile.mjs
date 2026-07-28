@@ -67,6 +67,7 @@ import {
   LIFECYCLE_MARKER,
   parseLifecycleComment,
 } from './pr-lifecycle.mjs';
+import { MERGE_TRAIN_STATUS_MARKER, TASK_COMMENT_MARKER } from './markers.mjs';
 import { DISPATCH_ACTION, selectEarlyAction, selectTerminalAction } from './dispatch-table.mjs';
 import {
   buildEarlyDecisionRecord,
@@ -106,7 +107,10 @@ const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
-const TASK_COMMENT_MARKER_PATTERN = /crawler-ci-task:v1 fingerprint=([0-9a-f]+)\b/i;
+const TASK_COMMENT_MARKER_PATTERN = new RegExp(
+  `${TASK_COMMENT_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} fingerprint=([0-9a-f]+)\\b`,
+  'i',
+);
 const TASK_REVIEW_THREAD_BLOCKER_PATTERN = /\*\*review-thread\*\*\s+`(review-thread:[^`]+)`/gi;
 const REVIEW_THREAD_BLOCKER_ID_PATTERN = /^review-thread:([^:]+):/;
 const KNOWN_RECOVERY_REPLY_LOGINS = new Set([
@@ -2170,7 +2174,7 @@ if (
   (!rebaseDispatchPendingForHead || !rebaseFailureBackoffActive)
 ) {
   const trainComment = comments.find((comment) =>
-    hasLeadingMarker(comment.body, '<!-- crawler-merge-train:v1 -->'),
+    hasLeadingMarker(comment.body, MERGE_TRAIN_STATUS_MARKER),
   );
   const validationBlocker = {
     kind: 'merge-train-validation',
@@ -2208,7 +2212,7 @@ if (
 }
 if (mergeTrainEnabled && validationFailed) {
   const trainComment = comments.find((comment) =>
-    hasLeadingMarker(comment.body, '<!-- crawler-merge-train:v1 -->'),
+    hasLeadingMarker(comment.body, MERGE_TRAIN_STATUS_MARKER),
   );
   blockers.push({
     kind: 'merge-train-validation',
@@ -3025,7 +3029,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     normalized.length > 0 &&
     normalized.every((blocker) => blocker.kind === 'ci-failure' || blocker.kind === 'ci-retrigger');
   const taskBody = [
-    `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,
+    `${TASK_COMMENT_MARKER} fingerprint=${fingerprint} -->`,
     '@copilot Please recover this PR from the exact blockers below.',
     `Branch head at dispatch: \`${headSha}\` (context only${hasReviewThreadBlockers ? '; do not use it in an addressed marker after pushing a repair' : ''}).`,
     '',

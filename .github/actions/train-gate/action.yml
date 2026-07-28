@@ -1,0 +1,44 @@
+name: Train Gate
+description: >
+  Checks whether a schedule-triggered workflow run should proceed.
+  When a workflow fires on a schedule and MERGE_TRAIN_ENABLED is not 'true',
+  the gate outputs enabled=false so callers can skip their work steps.
+  For all other trigger types (push, pull_request_target, workflow_dispatch, etc.)
+  the gate always outputs enabled=true.
+
+  This is the single authoritative definition of the "schedule && train-enabled"
+  guard that was previously replicated across ci.yml, merge-train.yml, and
+  ci-recovery-incidents.yml. All guarded workflows reference this action so that
+  any future change to the gate logic is a one-file edit here.
+
+inputs:
+  event-is-schedule:
+    description: >
+      Set to 'true' when the triggering event is a schedule (or a
+      schedule-triggered workflow_run) that should be gated on the train flag.
+      Use 'false' for push, pull_request_target, workflow_dispatch, etc.
+    required: true
+  merge-train-enabled:
+    description: >
+      Value of the MERGE_TRAIN_ENABLED repository variable (pass the workflow's
+      resolved string value, usually true or false).
+    required: true
+
+outputs:
+  enabled:
+    description: "'true' if the workflow should proceed; 'false' to no-op."
+    value: ${{ steps.check.outputs.enabled }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      run: |
+        if [ "${{ inputs.event-is-schedule }}" = "true" ] && [ "${{ inputs.merge-train-enabled }}" != "true" ]; then
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+          echo "train-gate: schedule trigger with MERGE_TRAIN_ENABLED != 'true' — skipping (no-op)."
+        else
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "train-gate: gate passed (event-is-schedule=${{ inputs.event-is-schedule }} merge-train-enabled=${{ inputs.merge-train-enabled }})."
+        fi
