@@ -62,3 +62,7 @@ actionlint
 
 # Playwright MCP scratch output (screenshots/console logs) — never commit
 .playwright-mcp/
+
+# Stryker mutation testing artifacts (sandbox + HTML/JSON reports)
+.stryker-tmp/
+reports/
