@@ -12,6 +12,9 @@ test('uses app theme tokens and includes live state controls', () => {
   assert.match(html, /Refresh every 30s/);
   assert.match(html, /Visible hosted jobs running/);
   assert.match(html, /active runs/);
+  assert.match(html, /Asset Request Pipeline/);
+  assert.match(html, /asset-timeline/);
+  assert.match(html, /Open asset requests/);
 });
 
 test('restores the manual refresh control after a request failure', () => {
@@ -55,4 +58,23 @@ test('creates external links with noreferrer protection', () => {
   const html = renderHtml({ instanceId: 'ci-health-1', refreshIntervalMs: 30_000 });
   assert.match(html, /rel = 'noreferrer'/);
   assert.match(html, /target = '_blank'/);
+});
+
+test('renders a health-aware collapsible asset pipeline with sortable issue diagnostics', () => {
+  const html = renderHtml({ instanceId: 'ci-health-1', refreshIntervalMs: 30_000 });
+  assert.match(html, /<details id="asset-pipeline"/);
+  assert.match(html, /pipeline\.defaultExpanded/);
+  assert.match(html, /severityRank\[pipeline\.severity\] > severityRank\[previousSeverity\]/);
+  assert.match(html, /if \(event\.isTrusted\) assetUserToggled = true/);
+  assert.match(html, /renderAssetTimeline/);
+  assert.match(html, /renderAssetIssueTable/);
+  assert.match(html, /Sort by/);
+  assert.match(html, /issue\.commentUrl/);
+  assert.match(html, /issue\.workflowUrl/);
+  assert.match(html, /issue\.summaryUrl/);
+  assert.match(
+    html,
+    /stale\|cancel\|timed_out\|queue-without-pr\|promotion-branch/,
+    'model danger states must render with danger styling',
+  );
 });
