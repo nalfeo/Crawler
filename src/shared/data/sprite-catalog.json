@@ -3271,6 +3271,19 @@
     "row": 0
   },
   {
+    "id": "generated:tile-door-v1-var-9",
+    "kind": "sprite",
+    "label": "tile-door-v1-var-9",
+    "description": "Generated sprite from brief: tile-door-v1.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "tile-door-v1-var-9",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/tile-door-v1-var-9.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:tile-safe-room-floor-v1-var-0",
     "kind": "sprite",
     "label": "tile-safe-room-floor-v1-var-0",
