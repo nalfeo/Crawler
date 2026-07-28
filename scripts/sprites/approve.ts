@@ -47,6 +47,8 @@
  */
 
 import { createHash } from 'node:crypto';
+import { PNG } from 'pngjs';
+import { deriveOpaqueBounds, type DerivedBounds } from './derive-opaque-bounds.js';
 import {
   copyFileSync,
   existsSync,
@@ -149,6 +151,14 @@ export interface ManifestEntry {
    * existed omit it, and the guard falls back to hashing the on-disk asset.
    */
   readonly contentHash?: string;
+  /**
+   * Bounding box of the sprite's non-transparent pixels, plus the canvas it was
+   * measured against. Lets consumers anchor and scale by the art the player can
+   * actually see instead of the pipeline's transparent safety margin. Optional:
+   * entries approved before this field existed omit it and consumers fall back
+   * to whole-canvas behaviour. Backfilled by `sprites:derive-opaque-bounds`.
+   */
+  readonly opaqueBounds?: DerivedBounds;
   readonly postprocessOverrideProfilePath?: string | null;
   readonly effectivePipelineSnapshotPath?: string | null;
   readonly effectivePipelineSnapshotYamlPath?: string | null;
@@ -328,7 +338,21 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   // Content hash of the exact image we're about to approve. Used both to block
   // true byte-for-byte re-approval and to stamp the manifest entry so a later
   // approval can tell "same pixels" from "re-post-processed, genuinely changed".
-  const contentHash = createHash('sha256').update(fs.readFileSync(processedPng)).digest('hex');
+  const processedBytes = fs.readFileSync(processedPng);
+  const contentHash = createHash('sha256').update(processedBytes).digest('hex');
+
+  // Visible-pixel box of the exact art being approved, so new sprites ship with
+  // bounds and the backfill script only has to cover historical entries.
+  // Deliberately non-fatal: approval has never required decodable PNG bytes and
+  // must not start to. A skip is not silent — `sprites:derive-opaque-bounds
+  // --check` reports any entry missing bounds, so the gate stays authoritative
+  // rather than this catch swallowing the gap forever.
+  let opaqueBounds: DerivedBounds | undefined;
+  try {
+    opaqueBounds = deriveOpaqueBounds(PNG.sync.read(processedBytes));
+  } catch {
+    opaqueBounds = undefined;
+  }
 
   // Block re-approval ONLY when the identical image is already approved under
   // this variant id — a genuine content change (e.g. after re-post-processing)
@@ -396,6 +420,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     judgeScorecard: candidate.judgeScorecard ?? null,
     type,
     contentHash,
+    ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),
     postprocessOverrideProfilePath: summary.postprocessOverrides?.profilePath ?? null,
     effectivePipelineSnapshotPath: summary.postprocessOverrides?.snapshotJsonPath ?? null,
     effectivePipelineSnapshotYamlPath: summary.postprocessOverrides?.snapshotYamlPath ?? null,

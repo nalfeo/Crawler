@@ -138,7 +138,8 @@
     "perf:profile": "tsx scripts/agent/perf/profile-headless.ts",
     "setpiece:score": "tsx scripts/agent/set-piece/composition-score-cli.ts",
     "setpiece:reachability-sweep": "tsx scripts/agent/set-piece/reachability-sweep.ts",
-    "check:tile-mattes": "tsx scripts/sprites/check-tile-seams.ts"
+    "check:tile-mattes": "tsx scripts/sprites/check-tile-seams.ts",
+    "sprites:derive-opaque-bounds": "tsx scripts/sprites/derive-opaque-bounds.ts"
   },
   "keywords": [
     "game",

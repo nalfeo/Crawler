@@ -24,8 +24,10 @@ import { MeleeSpriteId } from '../shared/constants.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import {
   pickGeneratedVariant,
+  resolveOpaqueFit,
   type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
+  type OpaqueBounds,
 } from '../shared/generated-assets.js';
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
@@ -467,6 +469,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const missingTypeWarnings = new Set<string>();
   let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
   const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
+  /**
+   * Opaque pixel bounds per texture key, so the set-piece pass can anchor and
+   * scale props by their VISIBLE art instead of the raw canvas. Rebuilt with
+   * `generatedFacingByTexture` whenever the registry identity changes.
+   */
+  const generatedBoundsByTexture = new Map<string, OpaqueBounds>();
   const mobMotionStates = new Map<number, MobMotionRenderState>();
   const mobFlashOverlays = new Map<number, Phaser.GameObjects.Image>();
   let lastRenderMs: number | null = null;
@@ -502,9 +510,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       const generatedRegistry = getGeneratedSpriteRegistry(scene);
       if (generatedRegistry !== cachedGeneratedRegistry) {
         generatedFacingByTexture.clear();
+        generatedBoundsByTexture.clear();
         if (generatedRegistry) {
           for (const entry of generatedRegistry.entries()) {
             generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
+            if (entry.opaqueBounds !== undefined) {
+              generatedBoundsByTexture.set(entry.textureKey, entry.opaqueBounds);
+            }
           }
         }
         cachedGeneratedRegistry = generatedRegistry;
@@ -1807,36 +1819,53 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             }
           }
           img.setPosition(propX, propY);
-          // Anchor: tall props (`anchorBase`) stand ON their floor position, so
-          // growing `heightFt` extends them UPWARD instead of sinking half the
-          // object through the floor. Default stays centre-anchored so existing
-          // authored rooms do not shift. Set every frame because a visual is
-          // reused by list index and a prop may change its anchor on a reset.
-          if (typeof img.setOrigin === 'function') {
-            img.setOrigin(0.5, sp.anchorBase === true ? 1 : 0.5);
-          }
-          // Scale: `heightFt` is AUTHORITATIVE for upright props — the sprite is
-          // scaled so its apparent vertical height matches the declared feet, and
-          // its width follows the art's own aspect ratio. We do NOT contain-fit
-          // upright props, because `Math.min` silently discards whichever declared
-          // dimension is the looser fit: a torch authored at 1.5x3 ft against a
-          // square 64x64 canvas rendered at 1.5 ft, throwing away HALF its height.
-          // 13 of the welcome room's 31 props were losing 5-50% of their authored
-          // height that way, which is what made every room read as squashed.
+          // Anchor + scale are both resolved against the sprite's OPAQUE pixel
+          // bounds, not its raw canvas. The pipeline ships a standardized ~5%
+          // per-side transparent safety margin, so measuring against the canvas
+          // (a) pins `anchorBase` props by the canvas bottom rather than the
+          // object's feet — they floated up to 0.42 ft above their floor line —
+          // and (b) makes `heightFt` scale padding-plus-art, rendering every
+          // prop ~10% shorter than its declared feet.
+          //
+          // `heightFt` stays AUTHORITATIVE for upright props: the sprite is
+          // scaled so its apparent vertical height matches the declared feet and
+          // its width follows the art's own aspect. We do NOT contain-fit
+          // upright props, because `Math.min` silently discards whichever
+          // declared dimension is the looser fit: a torch authored at 1.5x3 ft
+          // against a square 64x64 canvas rendered at 1.5 ft, throwing away HALF
+          // its height. 13 of the welcome room's 31 props were losing 5-50% of
+          // their authored height that way, which is what made every room read
+          // as squashed.
           //
           // Floor decals (rugs, stains, tape) are the exception: they lie IN the
-          // floor plane, so both of their declared feet are real ground extents
-          // and must both be honoured. Those keep the aspect-preserving contain-fit.
+          // floor plane, so both declared feet are real ground extents and must
+          // both be honoured. Those keep the aspect-preserving contain-fit.
+          //
+          // `resolveOpaqueFit` degrades to whole-canvas behaviour when the
+          // manifest has no bounds (legacy entries) or they disagree with the
+          // loaded texture, so stale data reverts to the old look, not garbage.
           const nativeW = img.width;
           const nativeH = img.height;
           if (nativeW > 0 && nativeH > 0) {
-            const heightAuthoritative = sp.floorPlane !== true;
-            img.setScale(
-              heightAuthoritative
-                ? spHeightPx / nativeH
-                : Math.min(spWidthPx / nativeW, spHeightPx / nativeH),
-            );
+            const fit = resolveOpaqueFit({
+              bounds: generatedBoundsByTexture.get(textureKey),
+              canvasWidth: nativeW,
+              canvasHeight: nativeH,
+              targetWidthPx: spWidthPx,
+              targetHeightPx: spHeightPx,
+              anchorBase: sp.anchorBase === true,
+              floorPlane: sp.floorPlane === true,
+            });
+            // Set every frame: a visual is reused by list index, so a prop may
+            // change its anchor or art on a room reset.
+            if (typeof img.setOrigin === 'function') {
+              img.setOrigin(fit.originX, fit.originY);
+            }
+            img.setScale(fit.scale);
           } else {
+            if (typeof img.setOrigin === 'function') {
+              img.setOrigin(0.5, sp.anchorBase === true ? 1 : 0.5);
+            }
             img.setDisplaySize(spWidthPx, spHeightPx);
           }
           // Mirror the sprite when the layer requests it (e.g. a right-side wall
