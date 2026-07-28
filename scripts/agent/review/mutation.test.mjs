@@ -144,9 +144,20 @@ test('collectTestFiles walks nested directories and skips node_modules', () => {
   const dirs = new Set(Object.keys(tree));
   const found = collectTestFiles('tests', {
     readdirSync: (dir) => tree[dir] ?? [],
-    statSync: (full) => ({ isDirectory: () => dirs.has(full) }),
+    lstatSync: (full) => ({ isDirectory: () => dirs.has(full) }),
   });
   assert.deepEqual(found, ['tests/a.test.ts', 'tests/nested/b.spec.ts']);
+});
+
+test('collectTestFiles does not traverse a symlinked directory', () => {
+  // lstat reports the symlink itself, not its target, so `isDirectory()` is
+  // false and the cycle is never entered.
+  const tree = { tests: ['loop', 'a.test.ts'], [`tests${sep()}loop`]: ['b.test.ts'] };
+  const found = collectTestFiles('tests', {
+    readdirSync: (dir) => tree[dir] ?? [],
+    lstatSync: () => ({ isDirectory: () => false }),
+  });
+  assert.deepEqual(found, ['tests/a.test.ts']);
 });
 
 function sep() {
@@ -209,6 +220,33 @@ test('evaluateReport fails an empty report rather than scoring it 100%', () => {
   assert.equal(result.total, 0);
   assert.equal(result.score, null);
   assert.match(result.failures.join('\n'), /No mutants were generated/);
+});
+
+test('evaluateReport fails a report of nothing but Ignored mutants', () => {
+  // Regression: `total` counts Ignored mutants, so guarding on `total === 0`
+  // let an all-ignored report print PASS having killed nothing.
+  const result = evaluateReport(report([mutant('Ignored'), mutant('Ignored', 2)]));
+  assert.equal(result.ok, false);
+  assert.equal(result.valid, 0);
+  assert.equal(result.score, null);
+  assert.match(result.failures.join('\n'), /proved nothing/);
+});
+
+test('evaluateReport fails an all-Ignored report even when survivors are tolerated', () => {
+  assert.equal(evaluateReport(report([mutant('Ignored')]), { maxSurvivors: 99 }).ok, false);
+});
+
+test('evaluateReport fails when every mutant errored and none produced a verdict', () => {
+  const result = evaluateReport(report([mutant('CompileError'), mutant('RuntimeError', 2)]));
+  assert.equal(result.ok, false);
+  assert.equal(result.valid, 0);
+  assert.match(result.failures.join('\n'), /proved nothing/);
+});
+
+test('evaluateReport fails a report whose mutants all have unrecognised statuses', () => {
+  const result = evaluateReport(report([mutant('Bogus'), mutant('AlsoBogus', 2)]));
+  assert.equal(result.ok, false);
+  assert.equal(result.total, 0);
 });
 
 test('evaluateReport fails a completely absent files map', () => {

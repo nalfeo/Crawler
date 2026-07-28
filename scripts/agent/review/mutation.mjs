@@ -21,7 +21,7 @@
 // of covering tests is not an optimisation detail; it is the difference between
 // a usable command and an unusable one.
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 
 /** Directory scanned when auto-deriving covering test files. */
@@ -137,10 +137,17 @@ export function parseArgs(argv) {
   return options;
 }
 
-/** Recursively list test files under `root`, returning POSIX-style paths. */
+/**
+ * Recursively list test files under `root`, returning POSIX-style paths.
+ *
+ * Uses `lstat` rather than `stat` so directory symlinks are not traversed: a
+ * symlink cycle under `tests/` would otherwise recurse to a stack overflow. A
+ * skipped symlinked directory can only ever cause auto-derivation to find fewer
+ * tests, which fails loudly ("could not auto-derive"), never silently green.
+ */
 export function collectTestFiles(root, deps = {}) {
   const readdir = deps.readdirSync ?? readdirSync;
-  const stat = deps.statSync ?? statSync;
+  const stat = deps.lstatSync ?? lstatSync;
   const found = [];
 
   const walk = (dir) => {
@@ -232,9 +239,16 @@ export function evaluateReport(report, options = {}) {
   const score = valid === 0 ? null : (detected / valid) * 100;
 
   const failures = [];
-  if (total === 0) {
+  // `valid`, not `total`: Ignored/errored mutants inflate `total` without ever
+  // producing a verdict, so a report of nothing but ignored mutants would
+  // otherwise print PASS having proven nothing -- the exact silent-green failure
+  // this command exists to catch.
+  if (valid === 0) {
     failures.push(
-      'No mutants were generated. The run proved nothing -- check the target path and line range.',
+      total === 0
+        ? 'No mutants were generated. The run proved nothing -- check the target path and line range.'
+        : `All ${total} mutant(s) were ignored or errored, so not one produced a usable verdict. The run ` +
+          'proved nothing -- check for `// Stryker disable` comments or excluded mutators in range.',
     );
   }
   if (counts.noCoverage > 0) {
@@ -277,7 +291,8 @@ export function formatSummary(result, context = {}) {
   }
   lines.push(
     `mutants: ${result.total} total | ${counts.killed} killed | ${counts.timeout} timeout | ` +
-      `${counts.survived} survived | ${counts.noCoverage} no-coverage | ${counts.invalid} invalid`,
+      `${counts.survived} survived | ${counts.noCoverage} no-coverage | ${counts.invalid} invalid | ` +
+      `${counts.ignored} ignored`,
   );
   lines.push(`score:   ${score === null ? 'n/a' : `${score.toFixed(2)}%`}`);
   if (result.ok) {
