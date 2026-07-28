@@ -144,12 +144,12 @@ function makeLineworkFloorMap(seed = 4242): FloorMap {
   const size = 25;
   const terrain = Array<TerrainType>(size * size).fill(TerrainType.STONE_WALL);
   const carve = (tx: number, ty: number, radius = 0): void => {
-   for (let y = ty - radius; y <= ty + radius; y++) {
-     for (let x = tx - radius; x <= tx + radius; x++) {
-       if (x < 0 || y < 0 || x >= size || y >= size) continue;
-       terrain[y * size + x] = TerrainType.STONE_FLOOR;
-     }
-   }
+    for (let y = ty - radius; y <= ty + radius; y++) {
+      for (let x = tx - radius; x <= tx + radius; x++) {
+        if (x < 0 || y < 0 || x >= size || y >= size) continue;
+        terrain[y * size + x] = TerrainType.STONE_FLOOR;
+      }
+    }
   };
   for (let tx = 2; tx < size - 2; tx++) carve(tx, 12);
   for (let ty = 2; ty < size - 2; ty++) carve(12, ty);
