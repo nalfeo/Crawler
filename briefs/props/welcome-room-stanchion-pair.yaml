@@ -1,0 +1,132 @@
+# REGENERATION of the welcome-room queue barrier (Asset Forge, 2026-07-26).
+#
+# WHY THIS BRIEF EXISTS: `welcome-room-velvet-rope-var-2` (96x67, drawn box
+# 86x57) has been rejected TWICE by the visual judge with the same words —
+# "reads as a hose lying on the floor". Its posts occupy under half the drawn
+# height, so the silhouette is dominated by a horizontal red cord. This brief
+# re-specifies the subject so the STANDING structure is the silhouette and the
+# rope is a secondary detail.
+#
+# GEOMETRY DECISIONS (each is a lesson paid for in earlier waves):
+#
+#  * `sizeVariant: wide` -> size 128x64 and a 4-row x 2-col sheet, i.e. native
+#    512x256 LANDSCAPE cells. The object is 6ft x 3.4ft (1 tile = 4 ft), so a
+#    square 256x256 cell would force a wide object into a square frame. A
+#    natively landscape cell lets the model compose into the real proportion.
+#    (`sizeVariant: tall` is NOT used — it is documented as actively harmful on
+#    props: the model keeps drawing square cells and the slicer then cuts
+#    stacked columns. See 2026-07-27-welcome-room-living-area-props.md.)
+#
+#  * 128x64 means w >= 2h, so `resizeSpriteStrategy` returns 'width': the final
+#    PNG width is LOCKED at 128 and the height FOLLOWS the drawn subject. That
+#    is aspect-true by construction and cannot letterbox, which is what trips
+#    `anchor-*` and makes props render short. The shipped aspect is therefore
+#    whatever the model actually draws — it must be MEASURED off the shipped
+#    PNG and reported, never assumed to equal the briefed 1.76:1.
+#
+#  * ONE AXIS ONLY is stated in source pixels (the width). Asking for a source
+#    width AND a source height in the same prompt reliably yields the width and
+#    a wrong height, and silhouette proportion is this prop's whole problem.
+#
+#  * `sensors.anchor.mode: center-of-mass`. A queue barrier has TWO ground
+#    contacts with an intentional gap between them, so its bottom-center is
+#    empty air and the grip-derived anchor is semantically meaningless here (the
+#    bottom row's runs are the two bases, both far off-centre). Centre-of-mass is
+#    the correct contract for a two-footed object — same reasoning as
+#    `welcome-room-cable-coil`. This is a contract choice, not a relaxed
+#    threshold: every other sensor keeps its default.
+#
+#  * `paletteMode: strict` against a purpose-built 16-step iron / brass / muted
+#    crimson ramp. Prose colour direction does not control this model (three
+#    rounds of evidence on the floor decals); quantization does. The lock also
+#    ACTIVATES the palette-membership sensor, so this tightens the gate.
+type: prop
+name: welcome-room-stanchion-pair
+sizeVariant: wide
+description: |
+  A free-standing QUEUE BARRIER: TWO upright stanchion posts standing on the
+  floor, side by side with a wide gap between them, and a single velvet rope
+  swagging from the top of one post to the top of the other.
+
+  The silhouette must read UNMISTAKABLY as two objects STANDING UP. Draw it in
+  this priority order:
+
+  1. TWO WEIGHTED CIRCULAR BASES resting flat on the ground, one under each
+     post. Seen from a slightly raised camera, so each base is a clear squat
+     ELLIPSE — wider than it is deep — with a low disc lip. The bases are the
+     heaviest, widest part of the whole object; they are what tells the eye the
+     thing stands up rather than lies down.
+  2. TWO STRAIGHT VERTICAL POSTS rising from the centre of those bases. Each
+     post is a slim column of dark iron with tarnished brass banding, several
+     times taller than its base is wide, and each is capped with a small round
+     BALL FINIAL at the very top.
+  3. A DEEP MUTED CRIMSON VELVET ROPE strung between the two ball finials. It
+     attaches at the TOP of each post and hangs in a shallow catenary — a soft
+     visible droop in the middle. The lowest point of the rope hangs clearly
+     ABOVE the floor and never touches it, and the rope is never a straight
+     horizontal line.
+
+  NEGATIVE SPACE IS THE SUBJECT. The area between the two posts, under the
+  drooping rope and above the floor, is EMPTY and transparent. Do not fill it,
+  do not draw a panel, curtain, wall, plinth or podium between the posts, and do
+  not connect the two bases to each other.
+
+  HARD NEGATIVES — these are the exact failures this brief is replacing:
+  - Do NOT draw a rope, cord, cable, hose or tube lying on the floor.
+  - Do NOT draw a long horizontal cord with two small end caps and no posts.
+  - Do NOT draw a single post, three or more posts, a doorway, an archway, a
+    gate, a fence, a railing, or a sign.
+  - Do NOT let the posts be shorter than the gap looks tall; the posts and their
+    finials must be the dominant vertical mass of the silhouette.
+
+  SIZE ON THE SHEET: the drawn barrier should span roughly 380 of the 512
+  horizontal source pixels of its landscape cell, centred, with the two bases
+  sitting on a common invisible floor line near the bottom of the cell. Let the
+  height come out at whatever the drawn object honestly needs — do not stretch
+  or squash it to fill the cell vertically — but keep the whole object fully
+  inside its own cell with clear breathing room on every side.
+
+  MATERIAL AND PALETTE: dark iron and tarnished brass posts and bases, deep
+  muted crimson velvet rope with a dull brass eyelet clip where it meets each
+  finial. Desaturated and dusty, never candy-bright, never glossy chrome, no
+  glow. Hard one-pixel dark outline, 3-5 tonal stops per material, dithered
+  scuffing on the metal.
+
+  Lit from the top wall; soft one-pixel contact shadow down and to the right
+  under each base only. Worn by decades of syndication — dusty, scuffed, the
+  velvet gone thin. 3/4 front-elevation pixel art: the camera looks slightly
+  down, so you see the top faces of both bases as ellipses, but the posts are
+  drawn in true front elevation.
+
+  Rendered in the game at roughly 6 x 3.4 feet (1 tile = 4 feet). The art must
+  read believably at that size — keep detail count low enough to survive when it
+  is only about 48 pixels wide on screen, and do not over-detail.
+
+  This prop must sit beside the already-approved welcome-room art without
+  clashing: welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-rug, welcome-sign-left-v1 and prop-wall-sconce-v1 — deep maroon
+  and dark walnut wood, tarnished brass hardware, hard dark outline, muted and
+  dusty, never bright or saturated.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the barrier's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, do not use a different background colour per cell, and do
+  not draw any panel, border or frame behind the subject.
+palette:
+  id: welcome-room-stanchion
+postprocessing:
+  paletteMode: strict
+sensors:
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - barrier
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

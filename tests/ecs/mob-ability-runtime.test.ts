@@ -22,6 +22,7 @@ import {
   activateMobAbilityEncounter,
   disableMobAbilityEncounter,
   createVerdigrisGlamourDefinition,
+  registerMobAbilityOwnedZone,
 } from '../../src/core/index.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 
@@ -187,6 +188,9 @@ describe('AI-avoidance cue consistency', () => {
     const cue = cues[0]!;
     expect(cue.phase).toBe('telegraph');
     expect(cue.geometry.kind).toBe('circle');
+    if (cue.geometry.kind !== 'circle') {
+      throw new Error('expected circle geometry');
+    }
     // Geometry must be locked to the PLAYER'S position at telegraph start.
     expect(typeof cue.geometry.x).toBe('number');
     expect(typeof cue.geometry.y).toBe('number');
@@ -251,5 +255,109 @@ describe('cooldown anchoring', () => {
     // The cooldown timer should be the full cooldownMs, not partway through.
     const def = createVerdigrisGlamourDefinition();
     expect(inst.timerMs).toBeCloseTo(def.cooldownMs, 0);
+  });
+});
+
+describe('owned zone registration', () => {
+  it('rejects non-positive tick intervals', () => {
+    const world = makeWorld();
+    const queen = spawnQueen(world);
+    expect(() =>
+      registerMobAbilityOwnedZone(world, {
+        sourceId: 'test-zone',
+        abilityId: 'test-ability',
+        casterEid: queen,
+        geometry: { kind: 'circle', x: 1, y: 2, radiusFt: 3 },
+        durationMs: 1000,
+        tickIntervalMs: 0,
+        tick: () => undefined,
+      }),
+    ).toThrow(/tickIntervalMs must be >= 1/);
+  });
+
+  it('rejects non-finite tick intervals', () => {
+    const world = makeWorld();
+    const queen = spawnQueen(world);
+    expect(() =>
+      registerMobAbilityOwnedZone(world, {
+        sourceId: 'test-zone',
+        abilityId: 'test-ability',
+        casterEid: queen,
+        geometry: { kind: 'circle', x: 1, y: 2, radiusFt: 3 },
+        durationMs: 1000,
+        tickIntervalMs: Number.NaN,
+        tick: () => undefined,
+      }),
+    ).toThrow(/tickIntervalMs must be >= 1/);
+    expect(() =>
+      registerMobAbilityOwnedZone(world, {
+        sourceId: 'test-zone',
+        abilityId: 'test-ability',
+        casterEid: queen,
+        geometry: { kind: 'circle', x: 1, y: 2, radiusFt: 3 },
+        durationMs: 1000,
+        tickIntervalMs: Number.POSITIVE_INFINITY,
+        tick: () => undefined,
+      }),
+    ).toThrow(/tickIntervalMs must be >= 1/);
+  });
+
+  it('rejects sub-millisecond positive tick intervals', () => {
+    const world = makeWorld();
+    const queen = spawnQueen(world);
+    expect(() =>
+      registerMobAbilityOwnedZone(world, {
+        sourceId: 'test-zone',
+        abilityId: 'test-ability',
+        casterEid: queen,
+        geometry: { kind: 'circle', x: 1, y: 2, radiusFt: 3 },
+        durationMs: 1000,
+        tickIntervalMs: Number.MIN_VALUE,
+        tick: () => undefined,
+      }),
+    ).toThrow(/tickIntervalMs must be >= 1/);
+  });
+
+  it('rejects non-positive durations', () => {
+    const world = makeWorld();
+    const queen = spawnQueen(world);
+    expect(() =>
+      registerMobAbilityOwnedZone(world, {
+        sourceId: 'test-zone',
+        abilityId: 'test-ability',
+        casterEid: queen,
+        geometry: { kind: 'circle', x: 1, y: 2, radiusFt: 3 },
+        durationMs: 0,
+        tickIntervalMs: DELTA,
+        tick: () => undefined,
+      }),
+    ).toThrow(/durationMs must be > 0/);
+  });
+
+  it('rejects non-finite durations', () => {
+    const world = makeWorld();
+    const queen = spawnQueen(world);
+    expect(() =>
+      registerMobAbilityOwnedZone(world, {
+        sourceId: 'test-zone',
+        abilityId: 'test-ability',
+        casterEid: queen,
+        geometry: { kind: 'circle', x: 1, y: 2, radiusFt: 3 },
+        durationMs: Number.NaN,
+        tickIntervalMs: DELTA,
+        tick: () => undefined,
+      }),
+    ).toThrow(/durationMs must be > 0/);
+    expect(() =>
+      registerMobAbilityOwnedZone(world, {
+        sourceId: 'test-zone',
+        abilityId: 'test-ability',
+        casterEid: queen,
+        geometry: { kind: 'circle', x: 1, y: 2, radiusFt: 3 },
+        durationMs: Number.POSITIVE_INFINITY,
+        tickIntervalMs: DELTA,
+        tick: () => undefined,
+      }),
+    ).toThrow(/durationMs must be > 0/);
   });
 });

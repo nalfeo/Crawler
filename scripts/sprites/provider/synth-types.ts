@@ -8,7 +8,7 @@
  * `synthesize-brief.ts` so the provider stays a thin transport.
  */
 
-import { SPRITE_TYPES } from '../brief-schema.js';
+import { SPRITE_TYPES, type BriefTheme } from '../brief-schema.js';
 
 export interface SynthesizeBriefRequest {
   /** Human-supplied subject name, e.g. "devils-yoyo", "scythe". */
@@ -19,6 +19,8 @@ export interface SynthesizeBriefRequest {
    * into the user prompt when present; absent/empty leaves the prompt unchanged.
    */
   readonly briefHint?: string;
+  /** Stable themed-set context shared by synthesis, generation, and judging. */
+  readonly theme?: BriefTheme;
   /** Caller-supplied type, or null when the model must classify. */
   readonly type: (typeof SPRITE_TYPES)[number] | null;
   /** Dungeon floor intensity, 1..20. */

@@ -62,3 +62,7 @@ actionlint
 
 # Playwright MCP session artifacts (console logs, traces) - throwaway
 .playwright-mcp/
+
+# Stryker mutation testing artifacts (sandbox + HTML/JSON reports)
+.stryker-tmp/
+reports/

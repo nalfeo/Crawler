@@ -41,7 +41,7 @@ approved in-game screenshots.
 ### 1. Composed-generation provenance model (committed PNGs are the source of truth)
 
 Real art is produced by a **local, network-backed generate→compose loop** (untracked harness under
-`scripts/sprites/terrain-packs/gen/`, Azure OpenAI `gpt-image-1`):
+`scripts/sprites/terrain-packs/` (untracked `gen/` subfolder), Azure OpenAI `gpt-image-1`):
 
 - `gpt-image-1` generates seamlessly-tileable **rock/floor/door materials**; the harness re-textures
   the **existing blob47 wall silhouettes** (via the same `composeWallCellOutput` geometry the

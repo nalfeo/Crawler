@@ -16,7 +16,11 @@ import {
   setEnemyAppearanceKey,
   spawnBehaviorEnemy,
   activateMobAbilityEncounter,
+  createUndercityMobCallDefinition,
+  createBambooFedBerserkDefinition,
+  createSovereignSporeBloomDefinition,
   createVerdigrisGlamourDefinition,
+  createRomanCandleCoronationDefinition,
   registerMobAbility,
   setMobAbilitiesEnabled,
 } from '../../core/index.js';
@@ -523,6 +527,12 @@ const F1_SLIME = floor1EnemyPack.archetypes.find((a) => a.id === 'slime')!;
 
 /** Queen Mab Tarnish — the faerie boss that owns Verdigris Glamour. */
 const F2_QUEEN_MAB = floor2EnemyPack.archetypes.find((a) => a.id === 'faerie-boss')!;
+/** Plague-Boss Squick — the ratfolk boss that owns Undercity Mob Call. */
+const F2_SQUICK = floor2EnemyPack.archetypes.find((a) => a.id === 'ratfolk-boss')!;
+const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-boss')!;
+const F2_SOVEREIGN_CAP = floor2EnemyPack.archetypes.find((a) => a.id === 'myconid-boss')!;
+/** King Skritt the Unburnt — the kobold boss that owns Roman Candle Coronation. */
+const F2_KING_SKRITT = floor2EnemyPack.archetypes.find((a) => a.id === 'kobold-boss')!;
 
 /**
  * Spawn Queen Mab and arm Verdigris Glamour through the CANONICAL mob-ability
@@ -552,6 +562,76 @@ function spawnQueenMabArena(
   // preset IS the explicit arena encounter-start transition.
   setMobAbilitiesEnabled(world, true);
   registerMobAbility(world, eid, createVerdigrisGlamourDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnSquickArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_SQUICK);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createUndercityMobCallDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnBigPandaWeiArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_BIG_PANDA_WEI);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createBambooFedBerserkDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnSovereignCapArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_SOVEREIGN_CAP);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createSovereignSporeBloomDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+/**
+ * Spawn King Skritt the Unburnt and arm ROMAN-CANDLE CORONATION through the
+ * canonical mob-ability runtime. Twelve straight non-homing crown-flame
+ * projectiles radiate along telegraphed spokes; every other cast rotates the
+ * whole pattern by exactly 15 degrees.
+ */
+function spawnKingSkryttArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_KING_SKRITT);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createRomanCandleCoronationDefinition());
   activateMobAbilityEncounter(world);
   return [eid];
 }
@@ -624,6 +704,42 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
       'Queen Mab Tarnish solo, with Verdigris Glamour armed through the canonical mob-ability runtime: 9s eligibility, 1.5s hostile-red 12ft telegraph locked to the player, moderate damage + Tarnished, 9s cooldown after resolution.',
     entries: [],
     customSpawnFn: spawnQueenMabArena,
+  },
+  {
+    id: 'f2-squick',
+    name: 'F2: Plague-Boss Squick (Undercity Mob Call)',
+    floor: 'floor2',
+    description:
+      'Plague-Boss Squick solo, with UNDERCITY MOB CALL armed through the canonical mob-ability runtime: 11s eligibility, 1.5s three-circle telegraph, summon up to 3 plague rats per cast with a strict owned cap of 6.',
+    entries: [],
+    customSpawnFn: spawnSquickArena,
+  },
+  {
+    id: 'f2-big-panda-wei',
+    name: 'F2: Big Panda Wei (Bamboo-Fed Berserk)',
+    floor: 'floor2',
+    description:
+      'Big Panda Wei solo, with Bamboo-Fed Berserk armed through the canonical mob-ability runtime: 10s eligibility, 1.5s self-following aura telegraph while planted, then 4s +40% move speed, +40% melee damage, and heavy knockback resistance.',
+    entries: [],
+    customSpawnFn: spawnBigPandaWeiArena,
+  },
+  {
+    id: 'f2-sovereign-cap',
+    name: 'F2: The Sovereign Cap (Sovereign Spore Bloom)',
+    floor: 'floor2',
+    description:
+      'The Sovereign Cap solo, with Sovereign Spore Bloom armed through the canonical mob-ability runtime: 9s eligibility, 1.6s locked hostile-red triangle telegraph, moderate impact damage, then 4s persistent toxic cloud rims dealing repeated light damage.',
+    entries: [],
+    customSpawnFn: spawnSovereignCapArena,
+  },
+  {
+    id: 'f2-king-skritt',
+    name: 'F2: King Skritt the Unburnt (Roman Candle Coronation)',
+    floor: 'floor2',
+    description:
+      'King Skritt the Unburnt solo, with ROMAN-CANDLE CORONATION armed through the canonical mob-ability runtime: 8s eligibility, 1.3s twelve-spoke hostile-red telegraph, twelve simultaneous crown-flame projectiles, alternating 15-degree rotation every other cast.',
+    entries: [],
+    customSpawnFn: spawnKingSkryttArena,
   },
   // ── Custom / blank ───────────────────────────────────────────────────────
   {

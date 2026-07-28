@@ -3,8 +3,10 @@ import test from 'node:test';
 
 import {
   mergeRunStatusResults,
+  loadAssetRequestIssues,
   parseGitHubRepository,
   sanitizeErrorText,
+  selectLatestRunWithStep,
   statusCountGapWarning,
   RUN_STATUSES,
 } from '../lib/github-client.mjs';
@@ -105,4 +107,94 @@ test('includes pending and requested states in the active-run query set', () => 
   assert.ok(RUN_STATUSES.includes('queued'), 'queued must remain in the set');
   assert.ok(RUN_STATUSES.includes('in_progress'), 'in_progress must remain in the set');
   assert.ok(RUN_STATUSES.includes('waiting'), 'waiting must remain in the set');
+});
+
+test('paginates every open asset-request issue with one bounded comment window per issue', async () => {
+  const cursors = [];
+  const queryGraphql = async (query, variables) => {
+    cursors.push(variables.cursor);
+    assert.match(query, /comments\(last: 100\)/);
+    const page = cursors.length;
+    return {
+      data: {
+        repository: {
+          issues: {
+            nodes: [
+              {
+                number: page,
+                title: `Asset ${page}`,
+                comments: {
+                  totalCount: 1,
+                  pageInfo: { hasPreviousPage: false },
+                  nodes: [{ id: `comment-${page}`, body: '🎬 Queued for processing' }],
+                },
+              },
+            ],
+            pageInfo: {
+              hasNextPage: page === 1,
+              endCursor: page === 1 ? 'next-page' : null,
+            },
+          },
+        },
+      },
+    };
+  };
+
+  const result = await loadAssetRequestIssues('nalfeo/Crawler', undefined, queryGraphql);
+
+  assert.deepEqual(cursors, [null, 'next-page']);
+  assert.deepEqual(
+    result.issues.map((issue) => issue.number),
+    [1, 2],
+  );
+  assert.equal(result.apiCalls, 2);
+  assert.equal(result.truncated, false);
+});
+
+test('reports truncation when open asset requests exceed the five-page safety cap', async () => {
+  let calls = 0;
+  const queryGraphql = async () => {
+    calls += 1;
+    return {
+      data: {
+        repository: {
+          issues: {
+            nodes: [{ number: calls, comments: { nodes: [] } }],
+            pageInfo: { hasNextPage: true, endCursor: `page-${calls}` },
+          },
+        },
+      },
+    };
+  };
+
+  const result = await loadAssetRequestIssues('nalfeo/Crawler', undefined, queryGraphql);
+
+  assert.equal(calls, 5);
+  assert.equal(result.issues.length, 5);
+  assert.equal(result.truncated, true);
+});
+
+test('selects the newest executable asset workflow run instead of a newer skipped trigger', () => {
+  const selected = selectLatestRunWithStep(
+    [
+      {
+        id: 2,
+        conclusion: 'skipped',
+        jobs: [{ name: 'Ingest issues + drain queue', steps: [{ name: 'Set up job' }] }],
+      },
+      {
+        id: 1,
+        conclusion: 'success',
+        jobs: [
+          {
+            name: 'Ingest issues + drain queue',
+            steps: [{ name: 'Ingest asset-request issues' }],
+          },
+        ],
+      },
+    ],
+    /ingest asset-request issues/i,
+  );
+
+  assert.equal(selected.id, 1);
 });

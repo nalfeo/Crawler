@@ -1,0 +1,10 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "ci-recovery-loop-pr-1917",
+  "task_title": "Fix docs-update parked CI recovery loop",
+  "estimated_apples": 2,
+  "apples_rescored_from": 3,
+  "rescore_reason": "The live CI evidence reduced the planned ci-recovery investigation to one docs-update workflow token change plus one focused regression test.",
+  "stages": {}
+}

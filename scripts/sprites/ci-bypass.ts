@@ -38,3 +38,19 @@ export function isCiPipelineBypassed(env: Readonly<Record<string, string | undef
   const norm = v.trim().toLowerCase();
   return norm === 'true' || norm === '1' || norm === 'yes';
 }
+
+/**
+ * Theme-equipment collection generation is a separately trusted, manual CI
+ * capability. The generic asset-request worker flag is intentionally
+ * insufficient: a workflow must opt in by name as well as by flag.
+ */
+export function isThemeEquipmentPipelineBypassed(
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  if (!isCiEnv(env) || env.GITHUB_ACTIONS !== 'true') return false;
+  if (env.SPRITES_ALLOW_CI_THEME_PIPELINE !== 'true') return false;
+  return (
+    typeof env.GITHUB_WORKFLOW_REF === 'string' &&
+    env.GITHUB_WORKFLOW_REF.includes('/.github/workflows/theme-equipment.yml@')
+  );
+}

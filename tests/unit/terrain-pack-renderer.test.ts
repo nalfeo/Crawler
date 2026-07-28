@@ -157,6 +157,7 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(result.spriteCount).toBe(0);
     expect(result.colorCount).toBe(0);
     expect(result.packWallCount).toBe(1);
+    // Underdraw does NOT count toward packFloorCount — it is not a player-visible floor tile.
     expect(result.packFloorCount).toBe(0);
     expect(result.packCorridorCount).toBe(0);
 
@@ -166,18 +167,17 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       (m) => m.maskId === expectedMask,
     )!.frameIndex;
 
-    // 1 base wall stamp, plus an optional accent stamp for this single tile
-    // (deterministic per this floor's seed — accented or not, either is valid).
-    expect(rt.stamps.length).toBeGreaterThanOrEqual(1);
-    expect(rt.stamps.length).toBeLessThanOrEqual(2);
-    expect(rt.stamps[0]!.key).toBe(pack.wallAutotile.textureKey);
-    expect(rt.stamps[0]!.frame).toBe(expectedFrame);
-    expect(rt.stamps[0]!.config.scaleX).toBe(packWallScale);
-    expect(rt.stamps[0]!.config.scaleY).toBe(packWallScale);
-    if (rt.stamps.length === 2) {
+    // stamps[0] = underdraw (floor pool combo), stamps[1] = wall atlas frame, stamps[2] = optional accent
+    expect(rt.stamps.length).toBeGreaterThanOrEqual(2);
+    expect(rt.stamps.length).toBeLessThanOrEqual(3);
+    expect(rt.stamps[1]!.key).toBe(pack.wallAutotile.textureKey);
+    expect(rt.stamps[1]!.frame).toBe(expectedFrame);
+    expect(rt.stamps[1]!.config.scaleX).toBe(packWallScale);
+    expect(rt.stamps[1]!.config.scaleY).toBe(packWallScale);
+    if (rt.stamps.length === 3) {
       const accentKeys = new Set((pack.wallAccents ?? []).map((a) => a.textureKey));
-      expect(accentKeys.has(rt.stamps[1]!.key)).toBe(true);
-      expect(rt.stamps[1]!.frame).toBe(expectedFrame);
+      expect(accentKeys.has(rt.stamps[2]!.key)).toBe(true);
+      expect(rt.stamps[2]!.frame).toBe(expectedFrame);
     }
   });
 
@@ -382,10 +382,12 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     // the accent stamp reuses the SAME frameIndex as its tile's base wall
     // stamp (mask-aware sharing, refinement #3) and comes immediately after
     // it (one extra stamp per accented tile, never its own tile).
-    let expectedStampCount = size * size;
+    // Each wall tile gets an underdraw before the wall stamp.
+    let expectedStampCount = size * size * 2; // 1 underdraw + 1 wall per tile
     let cursor = 0;
     for (let ty = 0; ty < size; ty++) {
       for (let tx = 0; tx < size; tx++) {
+        cursor += 1; // skip underdraw stamp
         const wallStamp = rt.stamps[cursor]!;
         expect(wallStamp.key).toBe(pack.wallAutotile.textureKey);
         cursor += 1;
@@ -407,7 +409,35 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       }
     }
     expect(rt.stamps).toHaveLength(expectedStampCount);
-    expect(expectedStampCount).toBe(size * size + result.packWallAccentedCount);
+    expect(expectedStampCount).toBe(size * size * 2 + result.packWallAccentedCount);
+  });
+
+  it('wall underdraw is deterministic: same seed+position gives same underdraw tile', () => {
+    const { scene: sceneA, rt: rtA } = createPackScene(allPackKeys);
+    const { scene: sceneB, rt: rtB } = createPackScene(allPackKeys);
+    const floorMap = makeFloorMap([TerrainType.STONE_WALL], 1, 1, 77);
+
+    buildTerrainLayer(sceneA, floorMap, { terrainPackId: 'industrial-cave' });
+    buildTerrainLayer(sceneB, floorMap, { terrainPackId: 'industrial-cave' });
+
+    // stamps[0] is the floor underdraw — must be identical across two bakes.
+    expect(rtA.stamps[0]!.key).toBe(rtB.stamps[0]!.key);
+    expect(rtA.stamps[0]!.config).toEqual(rtB.stamps[0]!.config);
+  });
+
+  it('wall stamps only wall frame (no underdraw) when floor pool textures are missing', () => {
+    // Load wall atlas but NOT floor pool textures — simulates partial asset load.
+    const wallOnlyKeys = new Set([pack.wallAutotile.textureKey]);
+    const { scene, rt } = createPackScene(wallOnlyKeys);
+    const floorMap = makeFloorMap([TerrainType.STONE_WALL], 1, 1);
+
+    const result = buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    // Wall stamp happens (wall texture is loaded), but underdraw is skipped (floor textures missing).
+    expect(result.packWallCount).toBe(1);
+    expect(result.packFloorCount).toBe(0);
+    expect(rt.stamps).toHaveLength(1);
+    expect(rt.stamps[0]!.key).toBe(pack.wallAutotile.textureKey);
   });
 });
 

@@ -11,7 +11,7 @@ Accepted
 ## Estimated Complexity
 
 🍎 x 3 — CI automation + asset-pipeline tooling scripts + this ADR. No
-`src/core|engine|game` runtime change and no shipped game-data change, so the
+`src/core`, `src/engine`, or `src/game` runtime change and no shipped game-data change, so the
 tooling-only apple cap (≤3🍎) applies even with the extra `assets/promote`
 branch. This is **PR2** of the durable asset-queue feature
 ([`2026-07-23-durable-asset-queue-persistence.md`](2026-07-23-durable-asset-queue-persistence.md)).
@@ -56,7 +56,7 @@ promotion branch)** with three refinements, recorded here.
 
 **Land queued art through a sole-writer, bot-owned `assets/promote` branch that
 is rebuilt on current `main` every cycle, and enforce trust on the diff
-*content* rather than on any author identity.** The reconciler is the only writer
+_content_ rather than on any author identity.** The reconciler is the only writer
 of `assets/promote`.
 
 Reconciler core = `scripts/sprites/reconcile-queue.ts` (IO-free, dependency-
@@ -135,7 +135,7 @@ queue-commit takes, so a cycle and a concurrent dev-box queue-commit never race.
 ### Scoped CI-bypass (reuse, not blanket)
 
 - **DEC-012.** The art surface enforced by the guard == `ASSET_SURFACE_PATHS` ==
-  the art classification in `scripts/ci/detect-art-only.sh` (wrapped by
+  the art classification in `scripts/agent/ci/detect-art-only.sh` (wrapped by
   `npm run scope`), exactly. The `assets/promote → main` diff is art-surface-only
   by construction ⇒ the existing art-only classification already skips the heavy
   gameplay gates (headless Floor-1, weapon sweeps) for it, with the merge gate

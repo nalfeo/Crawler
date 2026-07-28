@@ -1,7 +1,11 @@
 import { appendFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-import { hydrateRecoveryOwnership, recoveryBacklogEntries } from './ci-recovery/router.mjs';
+import {
+  hydrateRecoveryOwnership,
+  isExternallyBlocked,
+  recoveryBacklogEntries,
+} from './ci-recovery/router.mjs';
 import { paginate, request } from './ci-recovery/github.mjs';
 import { queueEntries } from './merge-train/state.mjs';
 
@@ -79,12 +83,35 @@ export function enrichMatrix(entries, slots, scalarKey = 'value') {
 }
 
 export function countLatentBacklog({ pullRequests, repository, now = new Date() }) {
+  const baseEligible = pullRequests.filter(
+    (pr) =>
+      pr.state === 'open' &&
+      !pr.draft &&
+      pr.base?.ref === 'main' &&
+      pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase(),
+  );
   const numbers = new Set([
     ...queueEntries(pullRequests, repository).map((pullRequest) => pullRequest.number),
     ...recoveryBacklogEntries(pullRequests, repository, now).map(
       (pullRequest) => pullRequest.number,
     ),
+    ...baseEligible.filter(isExternallyBlocked).map((pr) => pr.number),
   ]);
+  // Externally-blocked PRs (e.g. merge-train-blocked) are excluded from CI
+  // Recovery slot consumption but still represent latent CI demand that will
+  // eventually need runner capacity, so they count toward the sweep budget.
+  for (const pr of pullRequests) {
+    if (
+      pr.state === 'open' &&
+      !pr.draft &&
+      pr.base?.ref === 'main' &&
+      pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+      !(pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out') &&
+      isExternallyBlocked(pr)
+    ) {
+      numbers.add(pr.number);
+    }
+  }
   return numbers.size;
 }
 

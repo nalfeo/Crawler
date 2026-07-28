@@ -2,3 +2,5 @@ dist/
 node_modules/
 coverage/
 *.min.js
+# Auto-generated handoff index — long description lines intentional; wrapping breaks readability.
+docs/knowledge/handoffs/INDEX.md

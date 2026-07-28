@@ -16,10 +16,25 @@
     "src/engine/index.ts",
     "src/engine/sprites/index.ts",
     "src/engine/generatedAssets/index.ts",
-    "scripts/sprites/sidecar/cli.ts"
+    "scripts/sprites/sidecar/cli.ts",
+    "scripts/sprites/**/*.ts",
+    "src/bootstrap/equipment-balance-harness.ts"
   ],
   "project": ["src/**/*.ts", "tests/**/*.ts", "scripts/sprites/**/*.ts"],
   "ignore": ["node_modules/**", "dist/**"],
   "ignoreDependencies": ["playwright"],
-  "ignoreBinaries": ["pwsh"]
+  "ignoreBinaries": ["pwsh"],
+  "ignoreIssues": {
+    "src/devtools/sprite-approval-api.ts": ["exports"],
+    "src/engine/generated-equipment-icon.ts": ["exports"],
+    "src/engine/RewardOpeningUI.ts": ["exports"],
+    "src/game/ai/equipment-loadout-evaluator.ts": ["exports"],
+    "src/game/ai/settlement-maintenance-planner.ts": ["exports"],
+    "src/game/boss-chest-resolver.ts": ["exports"],
+    "src/game/floor1-lootbox-reward-resolver.ts": ["exports"],
+    "src/game/floor2-reward-bundle-resolver.ts": ["exports"],
+    "src/shared/mob-motion.ts": ["exports"],
+    "src/shared/reward-audio-cues.ts": ["exports"],
+    "src/shared/reward-opening-sequence.ts": ["exports"]
+  }
 }

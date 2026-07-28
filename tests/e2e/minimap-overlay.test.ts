@@ -36,6 +36,7 @@ import { E2E_LAB_BASE_URL, GAME_W, GAME_H } from './e2e-constants.js';
 const SAFE_ROOM_FLOOR = { r: 0x0f, g: 0x76, b: 0x6e }; // 0x0f766e  teal
 const STONE_WALL = { r: 0x1f, g: 0x29, b: 0x37 }; //      0x1f2937  dark blue-gray
 const VOID = { r: 0x05, g: 0x06, b: 0x0f }; //             0x05060f  near-black
+const WAYPOINT = { r: 0xfc, g: 0xd3, b: 0x4d }; //         0xfcd34d  gold
 
 // ── Map-overlay layout constants (derived from HudMinimap updateLayout) ───────
 // At GAME_W=1280, GAME_H=720 the overlay panel covers most of the canvas.
@@ -59,6 +60,26 @@ interface CanvasRect {
   y: number;
   width: number;
   height: number;
+}
+
+interface ScreenBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface UxSnapshotProbeApi {
+  ready(): boolean;
+  setTrackedWaypointPx(x: number, y: number): void;
+  getMinimapDockedBounds(): ScreenBounds | null;
+  getMinimapOverlayViewportBounds(): ScreenBounds | null;
+  getMinimapOverlayWaypointArrowBounds(): ScreenBounds | null;
+  getMinimapRadarWaypointArrowBounds(): ScreenBounds | null;
+}
+
+interface UxSnapshotProbeWindow extends Window {
+  __uxSnapshotProbe?: UxSnapshotProbeApi;
 }
 
 async function getCanvasRect(page: Page): Promise<CanvasRect> {
@@ -93,10 +114,82 @@ async function loadLab(page: Page): Promise<void> {
   // matching the robust pattern in tests/e2e/helpers/ui-probe.ts.
   await page.goto(LAB_URL, { waitUntil: 'commit', timeout: 45_000 });
   await page.waitForSelector('#lab-canvas canvas', { timeout: 30_000 });
+  await page.waitForFunction(
+    () => Boolean((window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe?.ready()),
+    undefined,
+    { timeout: 30_000 },
+  );
   // Give Phaser time to mount HudUI, call sync(), and bake the terrain
   // RenderTexture.  The 'ux-snapshot-lab' sets visible.fill(1) synchronously,
   // so one game loop tick is enough, but 3 s provides headroom on slow CI.
   await page.waitForTimeout(3_000);
+}
+
+function boundsToScreen(rect: CanvasRect, bounds: ScreenBounds): ScreenBounds {
+  const scaleX = rect.width / GAME_W;
+  const scaleY = rect.height / GAME_H;
+  return {
+    x: Math.round(rect.x + bounds.x * scaleX),
+    y: Math.round(rect.y + bounds.y * scaleY),
+    width: Math.round(bounds.width * scaleX),
+    height: Math.round(bounds.height * scaleY),
+  };
+}
+
+function inflateProbe(
+  bounds: ScreenBounds,
+  pad: number,
+): {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+} {
+  return {
+    x: Math.floor(bounds.x) - pad,
+    y: Math.floor(bounds.y) - pad,
+    w: Math.ceil(bounds.width) + pad * 2,
+    h: Math.ceil(bounds.height) + pad * 2,
+  };
+}
+
+async function setTrackedWaypointPx(page: Page, x: number, y: number): Promise<void> {
+  await page.evaluate(
+    ([nextX, nextY]) => {
+      (window as unknown as UxSnapshotProbeWindow).__uxSnapshotProbe!.setTrackedWaypointPx(
+        nextX,
+        nextY,
+      );
+    },
+    [x, y] as const,
+  );
+  await page.waitForTimeout(150);
+}
+
+async function getMinimapOverlayViewportBounds(page: Page): Promise<ScreenBounds> {
+  const bounds = await page.evaluate(() =>
+    (
+      window as unknown as UxSnapshotProbeWindow
+    ).__uxSnapshotProbe!.getMinimapOverlayViewportBounds(),
+  );
+  expect(bounds).not.toBeNull();
+  return bounds!;
+}
+
+async function getMinimapOverlayWaypointArrowBounds(page: Page): Promise<ScreenBounds | null> {
+  return page.evaluate(() =>
+    (
+      window as unknown as UxSnapshotProbeWindow
+    ).__uxSnapshotProbe!.getMinimapOverlayWaypointArrowBounds(),
+  );
+}
+
+async function getMinimapRadarWaypointArrowBounds(page: Page): Promise<ScreenBounds | null> {
+  return page.evaluate(() =>
+    (
+      window as unknown as UxSnapshotProbeWindow
+    ).__uxSnapshotProbe!.getMinimapRadarWaypointArrowBounds(),
+  );
 }
 
 /** Save a screenshot to tmp/e2e-screenshots/ for debugging failures. */
@@ -132,6 +225,69 @@ describe('minimap visual regression', () => {
   // ── Full-screen map overlay ──────────────────────────────────────────────
 
   describe('full-screen map overlay (press M)', () => {
+    it('shows and hides the overlay edge arrow as zoom/pan move a tracked waypoint off-screen', async () => {
+      await loadLab(page);
+      await setTrackedWaypointPx(page, 0, GAME_H / 2);
+      await page.keyboard.press('m');
+      await page.waitForTimeout(500);
+
+      const rect = await getCanvasRect(page);
+      const viewport = boundsToScreen(rect, await getMinimapOverlayViewportBounds(page));
+      const edgeProbe = {
+        x: viewport.x + 4,
+        y: viewport.y + Math.round(viewport.height / 2) - 16,
+        w: 32,
+        h: 32,
+      };
+
+      let buf = await page.screenshot({ type: 'png' });
+      let png = parsePng(buf);
+      expect(await getMinimapOverlayWaypointArrowBounds(page)).toBeNull();
+      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(false);
+
+      const viewportCenterX = Math.round(viewport.x + viewport.width / 2);
+      const viewportCenterY = Math.round(viewport.y + viewport.height / 2);
+      for (let i = 0; i < 4; i += 1) {
+        await page.mouse.move(viewportCenterX, viewportCenterY);
+        await page.mouse.wheel(0, -240);
+        await page.waitForTimeout(120);
+      }
+
+      await page.waitForFunction(
+        () =>
+          Boolean(
+            (
+              window as unknown as UxSnapshotProbeWindow
+            ).__uxSnapshotProbe?.getMinimapOverlayWaypointArrowBounds(),
+          ),
+        undefined,
+        { timeout: 2_000 },
+      );
+      await page.waitForTimeout(100);
+
+      buf = await page.screenshot({ type: 'png' });
+      saveDebugShot(buf, 'overlay-waypoint-edge-arrow.png');
+      png = parsePng(buf);
+      const overlayArrowProbe = inflateProbe(
+        boundsToScreen(rect, (await getMinimapOverlayWaypointArrowBounds(page))!),
+        4,
+      );
+      expect(regionContainsColor(png, overlayArrowProbe, WAYPOINT, 30)).toBe(true);
+
+      let overlayArrowBounds = await getMinimapOverlayWaypointArrowBounds(page);
+      for (let i = 0; overlayArrowBounds && i < 3; i += 1) {
+        await page.mouse.move(viewportCenterX, viewportCenterY);
+        await page.mouse.down();
+        await page.mouse.move(viewportCenterX + 120, viewportCenterY, { steps: 8 });
+        await page.mouse.up();
+        await page.waitForTimeout(200);
+        overlayArrowBounds = await getMinimapOverlayWaypointArrowBounds(page);
+      }
+      expect(overlayArrowBounds).toBeNull();
+
+      await page.screenshot({ type: 'png' });
+    });
+
     it('renders safe-room floor tiles (teal) in the map content area', async () => {
       await loadLab(page);
       // window.addEventListener('keydown', …) in HudMinimap picks up 'm'.
@@ -299,6 +455,46 @@ describe('minimap visual regression', () => {
         'Expected teal safe-room floor pixels inside the docked radar dial. ' +
           'If this fails, the radar RenderTexture is not compositing terrain.',
       ).toBe(true);
+    });
+
+    it('draws a radar edge arrow only while the tracked waypoint is outside the dial', async () => {
+      await loadLab(page);
+      await setTrackedWaypointPx(page, 2000, GAME_H / 2);
+
+      const rect = await getCanvasRect(page);
+      await page.waitForFunction(
+        () =>
+          Boolean(
+            (
+              window as unknown as UxSnapshotProbeWindow
+            ).__uxSnapshotProbe?.getMinimapRadarWaypointArrowBounds(),
+          ),
+        undefined,
+        { timeout: 2_000 },
+      );
+      await page.waitForTimeout(100);
+      let buf = await page.screenshot({ type: 'png' });
+      saveDebugShot(buf, 'radar-waypoint-edge-arrow.png');
+      let png = parsePng(buf);
+      const edgeProbe = inflateProbe(
+        boundsToScreen(rect, (await getMinimapRadarWaypointArrowBounds(page))!),
+        4,
+      );
+
+      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(true);
+
+      await setTrackedWaypointPx(page, GAME_W / 2, GAME_H / 2);
+      await page.waitForFunction(
+        () =>
+          !(
+            window as unknown as UxSnapshotProbeWindow
+          ).__uxSnapshotProbe?.getMinimapRadarWaypointArrowBounds(),
+        undefined,
+        { timeout: 2_000 },
+      );
+      buf = await page.screenshot({ type: 'png' });
+      png = parsePng(buf);
+      expect(regionContainsColor(png, edgeProbe, WAYPOINT, 30)).toBe(false);
     });
   });
 });

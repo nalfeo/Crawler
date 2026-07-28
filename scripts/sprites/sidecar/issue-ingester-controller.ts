@@ -1,18 +1,21 @@
 import { parseAssetRequestIssueBody, type ParsedAssetRequestIssue } from '../asset-request.js';
+import { ISSUE_PIPELINE_CHECKPOINT_VERSION } from '../issue-pipeline-checkpoint.js';
 import type { AssetQueue, IssueAssetRequest } from '../queue/types.js';
 import { isSizeVariant, type SizeVariant } from '../size-variants.js';
 import type { RunStore } from '../store/types.js';
 import type { AssetRequestIssueApi, OpenAssetRequestIssue } from './asset-request-issue-api.js';
+import { ISSUE_STATUS_KEY_PREFIX } from './issue-status-key.js';
+import { INGEST_STATE_KEY } from './ingest-state-key.js';
 
-const INGEST_STATE_KEY = 'workflow-state/asset-request-ingest.json';
-
-/**
- * Blob-store key prefix the sprite worker pipeline uses to write per-issue
- * status docs (see `scripts/sprites/issue-pipeline.ts`). Exported here so the
- * ingester's stale-claim TTL check can find them, and so tests + the CLI can
- * pin against the same constant.
- */
-export const ISSUE_STATUS_KEY_PREFIX = 'workflow-state/asset-request-jobs';
+// Re-exported for backward-compatible imports (tests + the CLI pin against
+// these constants via this module's path). The canonical declarations live in
+// `./issue-status-key.js` and `./ingest-state-key.js` — dependency-free
+// modules — so this controller can import `ISSUE_PIPELINE_CHECKPOINT_VERSION`
+// from `issue-pipeline-checkpoint.js` above without creating an import cycle
+// (that module in turn imports the prefix from `./issue-status-key.js`, never
+// from this file), and so `store/cache-policy.js` can classify the ingest
+// ledger as a coordination document without importing this controller.
+export { ISSUE_STATUS_KEY_PREFIX, INGEST_STATE_KEY };
 
 export async function isIssueRequestRejectedIngestState(
   store: RunStore,
@@ -368,7 +371,19 @@ export function createIssueIngesterController(
   async function readCompletionStage(
     issueNumber: number,
     fingerprint: string,
-  ): Promise<{ readonly stage: string; readonly updatedAt: string | null } | null> {
+  ): Promise<{
+    readonly stage: string;
+    readonly updatedAt: string | null;
+    /**
+     * True only when the parsed doc has the shape a real resumable-pipeline
+     * checkpoint always has (`version` === the current checkpoint schema
+     * version, plus an object-typed `stages` map). A pre-checkpoint legacy
+     * status doc (see `isLegacyIssueRunStatusShape` in
+     * `issue-pipeline-checkpoint.ts`) has neither field, so this is false for
+     * it even when its `stage` happens to read `'completed'`.
+     */
+    readonly isCurrentSchemaCheckpoint: boolean;
+  } | null> {
     if (!options.issueStatusPrefix) return null;
     const key = `${options.issueStatusPrefix}/${issueNumber}-${fingerprint}.json`;
     if (!(await options.store.has(key))) return null;
@@ -376,11 +391,17 @@ export function createIssueIngesterController(
       const parsed = JSON.parse((await options.store.get(key)).toString('utf8')) as {
         stage?: unknown;
         updatedAt?: unknown;
+        version?: unknown;
+        stages?: unknown;
       };
       if (!parsed || typeof parsed !== 'object') return null;
       const stage = typeof parsed.stage === 'string' ? parsed.stage : '';
       const updatedAt = typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null;
-      return { stage, updatedAt };
+      const isCurrentSchemaCheckpoint =
+        parsed.version === ISSUE_PIPELINE_CHECKPOINT_VERSION &&
+        typeof parsed.stages === 'object' &&
+        parsed.stages !== null;
+      return { stage, updatedAt, isCurrentSchemaCheckpoint };
     } catch {
       return null;
     }
@@ -398,9 +419,18 @@ export function createIssueIngesterController(
    *      exists but its `updatedAt` heartbeat is also older than TTL/2 (the
    *      pipeline is not writing status transitions — worker likely dead).
    *
-   * A `stage === 'completed'` status doc always short-circuits to "not
-   * stale" — the request is already done and re-enqueueing would produce a
-   * duplicate sprite.
+   * A `stage === 'completed'` status doc short-circuits to "not stale" ONLY
+   * when it is also a current-schema checkpoint (`isCurrentSchemaCheckpoint`)
+   * — the request genuinely finished under the resumable pipeline and
+   * re-enqueueing would produce a duplicate sprite. A legacy, pre-checkpoint
+   * status doc can also read `stage === 'completed'`, but that reflects the
+   * OLD retired pipeline finishing, not a publishable v1 result (its output
+   * was never durably checkpointed or published under the new schema) — such
+   * a doc falls through to the ordinary heartbeat-staleness check below so it
+   * eventually reclaims and gets a full fresh run instead of deadlocking
+   * forever. See `isLegacyIssueRunStatusShape` in
+   * `issue-pipeline-checkpoint.ts` for the worker-side counterpart that
+   * reinitializes such a claim to a fresh v1 checkpoint once reclaimed.
    */
   async function isClaimStale(input: {
     readonly claim: {
@@ -415,7 +445,7 @@ export function createIssueIngesterController(
     if (!Number.isFinite(claimAgeMs) || claimAgeMs < input.ttlMs) return false;
     const status = await readCompletionStage(input.claim.issueNumber, input.claim.fingerprint);
     if (!status) return true;
-    if (status.stage === 'completed') return false;
+    if (status.stage === 'completed' && status.isCurrentSchemaCheckpoint) return false;
     if (!status.updatedAt) return true;
     const heartbeatAgeMs = input.nowMs - Date.parse(status.updatedAt);
     if (!Number.isFinite(heartbeatAgeMs)) return true;

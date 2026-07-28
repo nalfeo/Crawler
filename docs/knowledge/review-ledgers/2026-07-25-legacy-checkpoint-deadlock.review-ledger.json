@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "legacy-checkpoint-deadlock",
+  "task_title": "Fix legacy asset-request checkpoint deadlock",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (rubber-duck, gpt-5.5) before implementation. 1 blocking issue: the proposed ingester 'real completion' discriminator (bare hasStages) was too weak and could recreate the deadlock for a doc with an incidental object-valued stages field; resolved by requiring version===ISSUE_PIPELINE_CHECKPOINT_VERSION && typeof stages==='object' && stages!==null, imported via a new dependency-free issue-status-key.ts module to avoid a circular import. 4 non-blocking suggestions, all addressed: (1) tightened isLegacyIssueRunStatusShape to require a positive-integer issueNumber, non-empty fingerprint/stage, and a parseable updatedAt; (2) added identity-mismatch tests for both issueNumber and fingerprint; (3) added a test proving a legacy completed doc with a FRESH heartbeat still blocks reclaim (only stale legacy-completed docs reclaim); (4) documented the residual legacy-vs-malformed ambiguity tradeoff in a code comment on isLegacyIssueRunStatusShape. Reviewer endorsed the root-cause diagnosis and the fresh-reprocess-over-fake-success product choice; no publisher code change needed."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "action-required-retrigger",
+  "task_title": "Auto-retrigger parked CI checks",
+  "estimated_apples": 2,
+  "stages": {},
+  "apples_rescored_from": 3,
+  "rescore_reason": "Started as a 3-apple diagnosis plus possible workflow intervention; the actual landed diff is a small, isolated tail-fix workflow and classifier with no median-path behavior change."
+}

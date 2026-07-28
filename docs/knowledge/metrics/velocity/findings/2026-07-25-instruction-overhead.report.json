@@ -1,0 +1,394 @@
+{
+  "schema": "crawler-velocity-report/v1",
+  "experimentId": "instruction-overhead",
+  "hypothesis": "The repo's instruction surface (AGENTS.md + .github/copilot-instructions.md + .github/instructions/, ~65KB / ~16K tokens loaded into every session) is a net context tax on a small, well-scoped feature task. Removing it should reduce tool-result bytes and output tokens to first green, with turns roughly unchanged. NOTE: the verifier only checks the PR's own tests, so it CANNOT see policy compliance. A win here means 'cheaper to reach green', never 'instructions are not worth their cost'.",
+  "factor": "environment",
+  "packId": "smoke-blood-pool",
+  "startedAt": "2026-07-25T17:10:35.299Z",
+  "finishedAt": "2026-07-25T17:49:07.342Z",
+  "arms": [
+    {
+      "armId": "full-instructions",
+      "description": "Status quo: repo instruction surface present and untouched.",
+      "trials": 3,
+      "passed": 3,
+      "passRate": 1,
+      "modelCalls": {
+        "n": 3,
+        "median": 8,
+        "mean": 8.333333333333334,
+        "min": 8,
+        "max": 9
+      },
+      "outputTokens": {
+        "n": 3,
+        "median": 9886,
+        "mean": 9924,
+        "min": 9755,
+        "max": 10131
+      },
+      "nanoAiu": {
+        "n": 3,
+        "median": 57799635000,
+        "mean": 65917165000,
+        "min": 57068535000,
+        "max": 82883325000
+      },
+      "sessionDurationMs": {
+        "n": 3,
+        "median": 216683,
+        "mean": 212385.33333333334,
+        "min": 203722,
+        "max": 216751
+      },
+      "toolResultBytes": {
+        "n": 3,
+        "median": 63078,
+        "mean": 63166.333333333336,
+        "min": 62999,
+        "max": 63422
+      },
+      "compactions": {
+        "n": 3,
+        "median": 0,
+        "mean": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    {
+      "armId": "trimmed-instructions",
+      "description": "Instruction surface removed: no AGENTS.md, no copilot-instructions.md, no .github/instructions/. Skills and agent definitions are left intact so only one factor moves.",
+      "trials": 3,
+      "passed": 3,
+      "passRate": 1,
+      "modelCalls": {
+        "n": 3,
+        "median": 9,
+        "mean": 9,
+        "min": 8,
+        "max": 10
+      },
+      "outputTokens": {
+        "n": 3,
+        "median": 11044,
+        "mean": 10728,
+        "min": 9444,
+        "max": 11696
+      },
+      "nanoAiu": {
+        "n": 3,
+        "median": 57181455000,
+        "mean": 56182755000,
+        "min": 48818040000,
+        "max": 62548770000
+      },
+      "sessionDurationMs": {
+        "n": 3,
+        "median": 209962,
+        "mean": 212499.66666666666,
+        "min": 189333,
+        "max": 238204
+      },
+      "toolResultBytes": {
+        "n": 3,
+        "median": 63368,
+        "mean": 63756.666666666664,
+        "min": 63087,
+        "max": 64815
+      },
+      "compactions": {
+        "n": 3,
+        "median": 0,
+        "mean": 0,
+        "min": 0,
+        "max": 0
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "metric": "modelCalls",
+      "baselineArm": "full-instructions",
+      "treatmentArm": "trimmed-instructions",
+      "baselineMedian": 8,
+      "treatmentMedian": 9,
+      "medianDelta": 1,
+      "ci95": [-1, 2],
+      "cliffsDelta": 0.4444444444444444,
+      "effectSizeLabel": "medium",
+      "conclusive": false
+    },
+    {
+      "metric": "outputTokens",
+      "baselineArm": "full-instructions",
+      "treatmentArm": "trimmed-instructions",
+      "baselineMedian": 9886,
+      "treatmentMedian": 11044,
+      "medianDelta": 1158,
+      "ci95": [-687, 1941],
+      "cliffsDelta": 0.3333333333333333,
+      "effectSizeLabel": "medium",
+      "conclusive": false
+    },
+    {
+      "metric": "nanoAiu",
+      "baselineArm": "full-instructions",
+      "treatmentArm": "trimmed-instructions",
+      "baselineMedian": 57799635000,
+      "treatmentMedian": 57181455000,
+      "medianDelta": -618180000,
+      "ci95": [-34065285000, 5480235000],
+      "cliffsDelta": -0.3333333333333333,
+      "effectSizeLabel": "medium",
+      "conclusive": false
+    },
+    {
+      "metric": "sessionDurationMs",
+      "baselineArm": "full-instructions",
+      "treatmentArm": "trimmed-instructions",
+      "baselineMedian": 216683,
+      "treatmentMedian": 209962,
+      "medianDelta": -6721,
+      "ci95": [-27418, 34482],
+      "cliffsDelta": -0.1111111111111111,
+      "effectSizeLabel": "negligible",
+      "conclusive": false
+    },
+    {
+      "metric": "toolResultBytes",
+      "baselineArm": "full-instructions",
+      "treatmentArm": "trimmed-instructions",
+      "baselineMedian": 63078,
+      "treatmentMedian": 63368,
+      "medianDelta": 290,
+      "ci95": [-335, 1816],
+      "cliffsDelta": 0.5555555555555556,
+      "effectSizeLabel": "large",
+      "conclusive": false
+    },
+    {
+      "metric": "compactions",
+      "baselineArm": "full-instructions",
+      "treatmentArm": "trimmed-instructions",
+      "baselineMedian": 0,
+      "treatmentMedian": 0,
+      "medianDelta": 0,
+      "ci95": [0, 0],
+      "cliffsDelta": 0,
+      "effectSizeLabel": "negligible",
+      "conclusive": false
+    }
+  ],
+  "trials": [
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "full-instructions",
+      "repetition": 1,
+      "sessionId": "297ed9ab-e6b9-4fcb-b26b-4fb7433cc5af",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 9,
+        "outputTokens": 9886,
+        "toolCalls": 11,
+        "nanoAiu": 82883325000,
+        "sessionDurationMs": 216683,
+        "apiDurationMs": 173165,
+        "linesAdded": 18,
+        "linesRemoved": 5,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 63422,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\instruction-overhead\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__full-instructions__r1.jsonl",
+      "startedAt": "2026-07-25T17:10:35.300Z",
+      "finishedAt": "2026-07-25T17:17:13.265Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "full-instructions",
+      "repetition": 2,
+      "sessionId": "fa66329e-ffa5-4c61-bd33-8e29f93f8fce",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 8,
+        "outputTokens": 9755,
+        "toolCalls": 10,
+        "nanoAiu": 57068535000,
+        "sessionDurationMs": 216751,
+        "apiDurationMs": 164656,
+        "linesAdded": 14,
+        "linesRemoved": 5,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 62999,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\instruction-overhead\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__full-instructions__r2.jsonl",
+      "startedAt": "2026-07-25T17:17:13.265Z",
+      "finishedAt": "2026-07-25T17:23:14.119Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "full-instructions",
+      "repetition": 3,
+      "sessionId": "5ec08572-d26b-47d1-8cb2-088728c8a1dc",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 8,
+        "outputTokens": 10131,
+        "toolCalls": 10,
+        "nanoAiu": 57799635000,
+        "sessionDurationMs": 203722,
+        "apiDurationMs": 162740,
+        "linesAdded": 17,
+        "linesRemoved": 5,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 63078,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\instruction-overhead\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__full-instructions__r3.jsonl",
+      "startedAt": "2026-07-25T17:23:14.121Z",
+      "finishedAt": "2026-07-25T17:30:07.663Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "trimmed-instructions",
+      "repetition": 1,
+      "sessionId": "c8b4f984-c320-4aad-ab51-c3bf22cfeacd",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 9,
+        "outputTokens": 11696,
+        "toolCalls": 11,
+        "nanoAiu": 57181455000,
+        "sessionDurationMs": 238204,
+        "apiDurationMs": 184405,
+        "linesAdded": 22,
+        "linesRemoved": 6,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 63368,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\instruction-overhead\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__trimmed-instructions__r1.jsonl",
+      "startedAt": "2026-07-25T17:30:07.663Z",
+      "finishedAt": "2026-07-25T17:36:48.307Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "trimmed-instructions",
+      "repetition": 2,
+      "sessionId": "6ca5295d-d294-4213-a09c-a6754c8f4ced",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 10,
+        "outputTokens": 11044,
+        "toolCalls": 12,
+        "nanoAiu": 62548770000,
+        "sessionDurationMs": 209962,
+        "apiDurationMs": 173118,
+        "linesAdded": 18,
+        "linesRemoved": 4,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 64815,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\instruction-overhead\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__trimmed-instructions__r2.jsonl",
+      "startedAt": "2026-07-25T17:36:48.308Z",
+      "finishedAt": "2026-07-25T17:43:48.444Z"
+    },
+    {
+      "taskId": "pr1799-increase-blood-pool-shape-variance-and-scale-ini",
+      "armId": "trimmed-instructions",
+      "repetition": 3,
+      "sessionId": "ba49152b-2027-4464-b3b2-f49ef294c38d",
+      "verifierPassed": true,
+      "verifierExitCode": 0,
+      "error": null,
+      "metrics": {
+        "modelCalls": 8,
+        "outputTokens": 9444,
+        "toolCalls": 10,
+        "nanoAiu": 48818040000,
+        "sessionDurationMs": 189333,
+        "apiDurationMs": 148086,
+        "linesAdded": 14,
+        "linesRemoved": 5,
+        "filesModified": 2
+      },
+      "context": {
+        "available": true,
+        "compactions": 0,
+        "peakContextTokens": 0,
+        "compactionTokensUsed": 0,
+        "toolResultBytes": 63087,
+        "largestToolResultBytes": 22613,
+        "largestToolResultName": "view"
+      },
+      "leakSignals": [],
+      "budgetExhausted": false,
+      "transcriptPath": "C:\\Users\\nalfeo\\AppData\\Local\\Temp\\crawler-velocity\\trials\\instruction-overhead\\pr1799-increase-blood-pool-shape-variance-and-scale-ini__trimmed-instructions__r3.jsonl",
+      "startedAt": "2026-07-25T17:43:48.444Z",
+      "finishedAt": "2026-07-25T17:49:07.330Z"
+    }
+  ],
+  "verdict": "INCONCLUSIVE — no metric produced a bootstrap interval that excludes zero at the available sample size. This is not evidence of \"no effect\"; it is an absence of evidence. Increase trials per arm or pick a task where the hypothesised effect is larger.",
+  "warnings": [
+    "Residual risk: trials are not network-sandboxed, so a determined path to a public mirror of the solution can exist.",
+    "Residual risk: the model may have memorised this public repository during training, which cannot be falsified from inside this harness."
+  ]
+}

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-ingester-controller.js';
+import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-status-key.js';
 import type { RunStore } from './store/types.js';
 
 export const ISSUE_PIPELINE_CHECKPOINT_VERSION = 1;
@@ -89,6 +89,47 @@ export function createIssueCheckpointController(options: {
   };
 }
 
+/**
+ * Structural shape of the flat status doc written by the pre-checkpoint
+ * pipeline (see `IssueRunStatus` in `issue-pipeline.ts` prior to commit
+ * 49d133cea, which introduced this v1 checkpoint schema). That legacy doc has
+ * no `version`/`stages` fields at all — those are new in v1 — so their
+ * absence, combined with the presence of the legacy doc's own required
+ * fields, is the discriminator used to recognize it.
+ *
+ * NOTE (documented tradeoff, per review): a genuinely corrupt *current-schema*
+ * checkpoint that happens to be missing exactly `version` and `stages` while
+ * otherwise retaining valid `issueNumber`/`fingerprint`/`stage`/`updatedAt`
+ * values is structurally indistinguishable from a legacy doc and will be
+ * treated as one (silently reinitialized rather than raising
+ * `checkpoint-invalid`). This is accepted as reasonable: every current-schema
+ * writer always includes both `version` and `stages`, so hitting this case in
+ * practice would itself indicate storage-level corruption shaped exactly like
+ * the retired pipeline's doc — vanishingly unlikely, and no worse than
+ * treating it as a fresh re-run.
+ */
+export function isLegacyIssueRunStatusShape(raw: unknown): raw is {
+  readonly issueNumber: number;
+  readonly fingerprint: string;
+  readonly stage: string;
+  readonly updatedAt: string;
+} {
+  if (raw === null || typeof raw !== 'object') return false;
+  const obj = raw as Record<string, unknown>;
+  if ('version' in obj || 'stages' in obj) return false;
+  if (
+    typeof obj.issueNumber !== 'number' ||
+    !Number.isInteger(obj.issueNumber) ||
+    obj.issueNumber <= 0
+  ) {
+    return false;
+  }
+  if (typeof obj.fingerprint !== 'string' || obj.fingerprint.trim() === '') return false;
+  if (typeof obj.stage !== 'string' || obj.stage.trim() === '') return false;
+  if (typeof obj.updatedAt !== 'string' || Number.isNaN(Date.parse(obj.updatedAt))) return false;
+  return true;
+}
+
 export async function loadIssueCheckpoint(
   controller: IssueCheckpointController,
 ): Promise<IssuePipelineCheckpoint> {
@@ -115,6 +156,40 @@ export async function loadIssueCheckpoint(
   }
   const parsed = issuePipelineCheckpointSchema.safeParse(raw);
   if (!parsed.success) {
+    if (isLegacyIssueRunStatusShape(raw)) {
+      if (
+        raw.issueNumber !== controller.issueNumber ||
+        raw.fingerprint !== controller.fingerprint
+      ) {
+        // Matches the identity-mismatch behavior below for valid-but-foreign
+        // checkpoints: a legacy doc for a different issue/fingerprint is
+        // never safe to reinitialize over.
+        throw new IssuePipelineCheckpointError(
+          `Checkpoint ${controller.key} belongs to a different issue request`,
+        );
+      }
+      // Pre-checkpoint legacy status doc for THIS issue/fingerprint. Its own
+      // completion state — even `stage: 'completed'` — is not a publishable
+      // v1 result: the retired pipeline never wrote the per-stage artifact
+      // references the new pipeline resumes from, and its output was never
+      // published under the new schema. Discard it and reinitialize a fresh
+      // v1 checkpoint so the request gets a full, safe re-run instead of
+      // permanently deadlocking on `checkpoint-invalid`. This return value is
+      // NOT persisted here — the caller's first `runCheckpointStage` call
+      // durably overwrites the legacy blob at `controller.key`.
+      return {
+        version: ISSUE_PIPELINE_CHECKPOINT_VERSION,
+        issueNumber: controller.issueNumber,
+        fingerprint: controller.fingerprint,
+        stage: 'queued',
+        updatedAt: controller.now().toISOString(),
+        stages: {},
+      };
+    }
+    // Genuinely malformed/corrupt current-schema JSON (missing/renamed
+    // fields, wrong `version`, wrong types, etc.) — fail closed exactly as
+    // before. Do not weaken this path; only recognized legacy shapes above
+    // are auto-recovered.
     throw new IssuePipelineCheckpointError(
       `Checkpoint ${controller.key} failed validation: ${parsed.error.message}`,
     );
