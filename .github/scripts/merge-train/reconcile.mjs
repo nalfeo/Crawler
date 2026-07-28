@@ -74,7 +74,11 @@ import { LIFECYCLE_MARKER, parseLifecycleComment } from '../ci-recovery/pr-lifec
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
-const { promotionToken: token, workflowDispatchToken, updateBranchToken } = resolveMergeTrainTokens(process.env);
+const {
+  promotionToken: token,
+  workflowDispatchToken,
+  updateBranchToken,
+} = resolveMergeTrainTokens(process.env);
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
@@ -209,7 +213,10 @@ function renderEmptyTrainIncidentBody({ now, stalledPulls }) {
 
 async function listOpenIncidentIssues() {
   const encodedLabel = encodeURIComponent(EMPTY_TRAIN_INCIDENT_LABEL);
-  return paginate(token, `/repos/${owner}/${repo}/issues?state=open&labels=${encodedLabel}&per_page=100`);
+  return paginate(
+    token,
+    `/repos/${owner}/${repo}/issues?state=open&labels=${encodedLabel}&per_page=100`,
+  );
 }
 
 function findManagedEmptyTrainIncident(openIncidents) {
@@ -744,7 +751,10 @@ if (queued.length === 0) {
     if (pull.base?.ref !== 'main') return false;
     if (pull.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) return false;
     const updatedAtMs = Date.parse(String(pull.updated_at || pull.created_at || ''));
-    return Number.isFinite(updatedAtMs) && now.getTime() - updatedAtMs >= EMPTY_TRAIN_LIVENESS_THRESHOLD_MS;
+    return (
+      Number.isFinite(updatedAtMs) &&
+      now.getTime() - updatedAtMs >= EMPTY_TRAIN_LIVENESS_THRESHOLD_MS
+    );
   });
   const admissionByNumber = new Map();
   for (const pull of staleCandidates) {

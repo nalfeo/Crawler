@@ -51,6 +51,10 @@ that the resolution failed.
 
 ## Critical Rules
 
+- **`claude-sonnet-4.5` is deprecated — do NOT use it.** All `task()` calls that
+  specify `model="claude-sonnet-4.5"` will fail at `session.create`. Use
+  `claude-sonnet-4.6` or `claude-sonnet-5` for code review and general tasks.
+  <!-- Source issue: #2209 — deprecated 2026-05-06 -->
 - All game randomness uses `SeededRandom` — NEVER `Math.random()`
 - ECS systems are deterministic and usually shaped as `(world: GameWorld) => void` (pipeline systems may accept/return deterministic data)
 - No Phaser imports in `src/core/` — the bridge pattern keeps logic portable
