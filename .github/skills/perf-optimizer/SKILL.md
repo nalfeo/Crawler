@@ -230,11 +230,15 @@ suite size dominates runtime.** Stryker re-runs the configured suite once per
 mutant, so the full unit suite takes over an hour on a single file, while the
 same mutants against one covering test file finish in well under a minute.
 
-Exit 0 means every mutant was detected. Exit 1 means one of:
+Exit 0 means every mutant was detected (or the surviving count is within the
+configured `--max-survivors` tolerance). Exit 1 means one of:
 
 - **survivors** — the tests pass with your source deliberately broken. Either
   strengthen them, or state in the PR why the surviving mutants are
   gameplay-irrelevant. Do not raise `--max-survivors` to go green (AGENTS.md r11).
+- **ignored mutants** — `// Stryker disable` comments or excluded mutators in
+  range prevented those mutants from ever being applied. The run may cover only
+  part of the target; inspect whether the disabled code should be tested.
 - **no-coverage mutants** — the tests you named never execute the code. A green
   run here would have meant nothing.
 - **no report** — Stryker crashed. This is a failure, never a pass.

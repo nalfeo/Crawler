@@ -42,11 +42,14 @@ Options:
   --max-survivors <n>    Tolerated surviving mutants (default 0).
   --type-check           Enable Stryker's TypeScript checker (slower).
   --concurrency <n>      Stryker worker count (default 4).
-  --json                 Emit the machine-readable verdict as JSON.
+  --json                 Emit the machine-readable verdict as JSON on stdout.
+                         All diagnostics (Stryker logs, auto-derive status) are
+                         routed to stderr so stdout carries only the JSON payload.
   -h, --help             Show this help.
 
-Exit codes: 0 = every mutant detected; 1 = survivors, no-coverage mutants,
-mutants without a verdict, or no mutants at all.
+Exit codes: 0 = every mutant detected (or within --max-survivors tolerance);
+1 = survivors above tolerance, ignored mutants, no-coverage mutants, mutants
+without a verdict, or no mutants at all.
 
 Scope the LINE RANGE to the code you changed. Mutating a whole file re-runs the
 suite for every mutant in it and is dramatically slower.
@@ -86,7 +89,10 @@ function main() {
           `Pass --tests explicitly, e.g. --tests tests/unit/<area>/<name>.test.ts`,
       );
     }
-    process.stdout.write(`Auto-derived covering tests: ${tests.join(', ')}\n`);
+    const msg = `Auto-derived covering tests: ${tests.join(', ')}\n`;
+    // In --json mode stdout must carry only the final JSON payload.
+    if (options.json) process.stderr.write(msg);
+    else process.stdout.write(msg);
   }
 
   // A stale report from a previous run would let a crashed Stryker read as a
@@ -105,11 +111,21 @@ function main() {
   ];
   if (!options.typeCheck) args.push('--checkers', '');
 
+  // In --json mode stdout must be reserved for the final machine-readable
+  // payload: route Stryker's own stdout (clear-text reporter + progress) to
+  // stderr so callers can reliably parse the JSON without stripping log noise.
+  const childStdio = options.json ? ['inherit', 'pipe', 'inherit'] : 'inherit';
+
   const started = Date.now();
   const run = spawnSync(process.execPath, args, {
-    stdio: 'inherit',
+    stdio: childStdio,
     env: { ...process.env, STRYKER_TEST_INCLUDE: tests.join(',') },
   });
+  // Forward Stryker's captured stdout to our stderr when in --json mode so
+  // progress / reporter lines stay visible but don't pollute the JSON stream.
+  if (options.json && run.stdout != null && run.stdout.length > 0) {
+    process.stderr.write(run.stdout);
+  }
   const elapsedSec = Math.round((Date.now() - started) / 1000);
 
   if (run.error) fail(`Failed to launch Stryker: ${run.error.message}`);
@@ -136,7 +152,7 @@ function main() {
     );
   } else {
     process.stdout.write(
-      `\n${formatSummary(result, { target: target.spec, tests, derived })}\nelapsed: ${elapsedSec}s\n`,
+      `\n${formatSummary(result, { target: target.spec, tests, derived, maxSurvivors: options.maxSurvivors })}\nelapsed: ${elapsedSec}s\n`,
     );
   }
 

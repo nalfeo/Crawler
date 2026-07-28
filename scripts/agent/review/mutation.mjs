@@ -219,14 +219,17 @@ export function evaluateReport(report, options = {}) {
       const status = mutant?.status;
       const where = `${file}:${mutant?.location?.start?.line ?? '?'}`;
       const label = `${mutant?.mutatorName ?? 'Mutant'} at ${where}`;
-      if (status === 'Killed') counts.killed += 1;
-      else if (status === 'Timeout') counts.timeout += 1;
-      else if (status === 'Survived') {
-        counts.survived += 1;
-        survivors.push(label);
-      } else if (status === 'NoCoverage') {
-        counts.noCoverage += 1;
-        uncovered.push(label);
+      if (DETECTED.has(status)) {
+        if (status === 'Killed') counts.killed += 1;
+        else counts.timeout += 1;
+      } else if (UNDETECTED.has(status)) {
+        if (status === 'Survived') {
+          counts.survived += 1;
+          survivors.push(label);
+        } else {
+          counts.noCoverage += 1;
+          uncovered.push(label);
+        }
       } else if (INVALID.has(status)) counts.invalid += 1;
       else if (status === 'Ignored') counts.ignored += 1;
     }
@@ -249,6 +252,12 @@ export function evaluateReport(report, options = {}) {
         ? 'No mutants were generated. The run proved nothing -- check the target path and line range.'
         : `All ${total} mutant(s) were ignored or errored, so not one produced a usable verdict. The run ` +
           'proved nothing -- check for `// Stryker disable` comments or excluded mutators in range.',
+    );
+  }
+  if (counts.ignored > 0) {
+    failures.push(
+      `${counts.ignored} mutant(s) were IGNORED and never applied. The run may cover only part of the ` +
+        'target -- check for `// Stryker disable` comments or excluded mutators in range.',
     );
   }
   if (counts.noCoverage > 0) {
@@ -284,6 +293,7 @@ export function evaluateReport(report, options = {}) {
 /** Render a short human summary of an `evaluateReport` result. */
 export function formatSummary(result, context = {}) {
   const { counts, score } = result;
+  const maxSurvivors = context.maxSurvivors ?? 0;
   const lines = [];
   if (context.target) lines.push(`target: ${context.target}`);
   if (context.tests?.length) {
@@ -296,7 +306,11 @@ export function formatSummary(result, context = {}) {
   );
   lines.push(`score:   ${score === null ? 'n/a' : `${score.toFixed(2)}%`}`);
   if (result.ok) {
-    lines.push('PASS: every mutant in scope was detected by the selected tests.');
+    const passMsg =
+      maxSurvivors > 0
+        ? `PASS: within the configured survivor tolerance (≤${maxSurvivors} surviving mutant(s) allowed).`
+        : 'PASS: every mutant in scope was detected by the selected tests.';
+    lines.push(passMsg);
   } else {
     lines.push('FAIL:');
     for (const failure of result.failures) lines.push(`  - ${failure}`);

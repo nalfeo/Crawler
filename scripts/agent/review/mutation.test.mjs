@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { test } from 'node:test';
 
 import {
@@ -161,7 +162,7 @@ test('collectTestFiles does not traverse a symlinked directory', () => {
 });
 
 function sep() {
-  return process.platform === 'win32' ? '\\' : '/';
+  return path.sep;
 }
 
 // --- evaluateReport --------------------------------------------------------
@@ -278,6 +279,15 @@ test('evaluateReport aggregates mutants across multiple files', () => {
   assert.deepEqual(result.survivors, ['EqualityOperator at src/b.ts:9']);
 });
 
+test('evaluateReport fails a mixed Killed+Ignored report even though valid > 0', () => {
+  // Regression: a mixed report has valid > 0 so the valid===0 guard does not fire,
+  // but the ignored mutant was never applied -- it should be flagged.
+  const result = evaluateReport(report([mutant('Killed'), mutant('Ignored', 2)]));
+  assert.equal(result.ok, false);
+  assert.equal(result.counts.ignored, 1);
+  assert.match(result.failures.join('\n'), /IGNORED/);
+});
+
 // --- formatSummary ---------------------------------------------------------
 
 test('formatSummary reports a pass', () => {
@@ -286,6 +296,23 @@ test('formatSummary reports a pass', () => {
   });
   assert.match(summary, /PASS/);
   assert.match(summary, /src\/a\.ts:1-2/);
+});
+
+test('formatSummary with nonzero maxSurvivors says tolerance instead of all-detected', () => {
+  const result = evaluateReport(report([mutant('Killed'), mutant('Survived', 2)]), {
+    maxSurvivors: 1,
+  });
+  const summary = formatSummary(result, { target: 'src/a.ts', maxSurvivors: 1 });
+  assert.match(summary, /PASS/);
+  assert.match(summary, /tolerance/);
+  assert.doesNotMatch(summary, /every mutant in scope was detected/);
+});
+
+test('formatSummary with zero maxSurvivors says all-detected when passing', () => {
+  const result = evaluateReport(report([mutant('Killed')]));
+  const summary = formatSummary(result, { target: 'src/a.ts', maxSurvivors: 0 });
+  assert.match(summary, /PASS/);
+  assert.match(summary, /every mutant in scope was detected/);
 });
 
 test('formatSummary lists every survivor when there is more than one', () => {
