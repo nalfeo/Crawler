@@ -34,7 +34,7 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
       line-height: var(--leading-body-medium, 20px);
     }
     main { display: grid; gap: 16px; padding: 18px; }
-    header, .toolbar, .section-heading, .run-heading {
+    header, .toolbar, .section-heading, .run-heading, .asset-summary {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
@@ -131,6 +131,38 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
     .pill.info { border-color: var(--accent); color: var(--accent); }
     .stack { display: grid; gap: 8px; }
     .run { display: grid; gap: 10px; }
+    .asset-content { display: grid; gap: 12px; padding: 12px; }
+    .asset-summary { width: 100%; }
+    .asset-summary-title { display: flex; align-items: center; gap: 8px; }
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+    }
+    .stage-card {
+      display: grid;
+      align-content: start;
+      gap: 5px;
+      min-height: 118px;
+      padding: 10px;
+      border: 1px solid var(--border-color-default, #30363d);
+      border-top-width: 3px;
+      border-radius: 7px;
+      background: var(--subtle);
+    }
+    .stage-card.success { border-top-color: var(--success); }
+    .stage-card.warning { border-top-color: var(--warning); }
+    .stage-card.danger { border-top-color: var(--danger); }
+    .stage-card.info { border-top-color: var(--accent); }
+    .stage-card .lane { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    .sort-button {
+      min-height: auto;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 12px;
+    }
     .run-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--text-color-muted, #8b949e); font-size: 12px; }
     details.group { overflow: hidden; }
     details.group > summary { padding: 10px 12px; cursor: pointer; font-weight: var(--font-weight-semibold, 600); }
@@ -181,6 +213,26 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
       <div class="section-heading"><h2>CI Recovery</h2></div>
       <div id="recovery"></div>
     </section>
+    <details id="asset-pipeline" class="group">
+      <summary>
+        <span class="asset-summary">
+          <span class="asset-summary-title">
+            <span>Asset Request Pipeline</span>
+            <span id="asset-health" class="pill info">loading</span>
+          </span>
+          <span id="asset-summary-meta" class="muted">Loading issue and workflow state…</span>
+        </span>
+      </summary>
+      <div class="asset-content">
+        <div id="asset-warnings" class="message warning" hidden></div>
+        <div id="asset-timeline" class="timeline"></div>
+        <div class="section-heading">
+          <h3>Open asset requests</h3>
+          <span id="asset-issue-meta" class="muted"></span>
+        </div>
+        <div id="asset-issues"></div>
+      </div>
+    </details>
     <section>
       <div class="section-heading">
         <h2>Active and queued workflows</h2>
@@ -192,12 +244,24 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
   <script>
     const tokenQuery = location.search;
     const refreshButton = document.getElementById('refresh');
+    const assetDetails = document.getElementById('asset-pipeline');
     let currentState = null;
+    let assetSeverity = null;
+    let assetUserToggled = false;
+    let assetSort = 'state';
 
     const endpoint = (path) => path + tokenQuery;
     const text = (value) => value == null || value === '' ? '—' : String(value);
     const shortSha = (value) => value ? String(value).slice(0, 8) : 'not built';
     const formatTime = (value) => value ? new Date(value).toLocaleString() : 'unknown';
+    const formatDuration = (value) => {
+      if (value == null) return 'not started';
+      const seconds = Math.max(0, Math.round(value / 1000));
+      if (seconds < 60) return seconds + 's';
+      const minutes = Math.floor(seconds / 60);
+      const remainder = seconds % 60;
+      return minutes + 'm' + (remainder ? ' ' + remainder + 's' : '');
+    };
     const age = (value) => {
       if (!value) return 'unknown';
       const seconds = Math.max(0, Math.round((Date.now() - Date.parse(value)) / 1000));
@@ -227,8 +291,8 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
       return node('span', { className: 'pill ' + tone }, label);
     }
     function toneForState(state) {
-      if (/fail|error|block|malformed|duplicate/i.test(state)) return 'danger';
-      if (/queue|wait|pending|test|progress|transition/i.test(state)) return 'warning';
+      if (/fail|error|block|malformed|duplicate|stale|cancel|timed_out|queue-without-pr|promotion-branch/i.test(state)) return 'danger';
+      if (/queue|wait|pending|test|progress|transition|truncated/i.test(state)) return 'warning';
       if (/success|ready|promot|complete/i.test(state)) return 'success';
       return 'info';
     }
@@ -310,6 +374,119 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
         );
       });
     }
+    const severityRank = { success: 0, info: 1, warning: 2, danger: 3 };
+    const assetStateRank = (state) => {
+      if (/fail|stale|cancel|timed|without-pr/i.test(state)) return 0;
+      if (/unknown/i.test(state)) return 1;
+      if (/queue|progress|pending|waiting|requested/i.test(state)) return 2;
+      if (/complete|success/i.test(state)) return 3;
+      return 4;
+    };
+    function renderAssetTimeline(stages) {
+      return stages.map((stage) => {
+        const tone = toneForState(stage.state);
+        return node('article', { className: 'stage-card ' + tone },
+          node('span', { className: 'lane muted' }, stage.lane),
+          node('strong', {}, link(stage.url, stage.label)),
+          pill(text(stage.state), tone),
+          node('span', {}, stage.detail),
+          node('span', { className: 'muted' },
+            formatDuration(stage.elapsedMs),
+            stage.startedAt ? ' · started ' + age(stage.startedAt) : '',
+          ),
+        );
+      });
+    }
+    function sortAssetIssues(issues) {
+      return [...issues].sort((left, right) => {
+        if (assetSort === 'number') return left.number - right.number;
+        if (assetSort === 'updated') {
+          return (Date.parse(right.updatedAt || '') || 0) - (Date.parse(left.updatedAt || '') || 0);
+        }
+        return assetStateRank(left.state) - assetStateRank(right.state) || left.number - right.number;
+      });
+    }
+    function assetSortHeader(label, sort) {
+      const marker = assetSort === sort ? ' ▲' : '';
+      const button = node('button', { className: 'sort-button', title: 'Sort by ' + label }, label + marker);
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        assetSort = sort;
+        if (currentState?.snapshot?.assetPipeline) {
+          renderAssetPipeline(currentState.snapshot.assetPipeline);
+        }
+      });
+      return node('th', {}, button);
+    }
+    function renderAssetIssueTable(issues) {
+      if (!issues.length) {
+        return node('div', { className: 'empty' }, 'No open asset-request issues.');
+      }
+      const rows = sortAssetIssues(issues).map((issue) => {
+        const stateCell = node('td', {}, pill(issue.state, toneForState(issue.state)));
+        if (issue.attribution === 'inferred') stateCell.append(' ', pill('inferred', 'info'));
+        if (issue.attribution === 'partial') stateCell.append(' ', pill('partial', 'warning'));
+        const links = node('div', { className: 'meta' },
+          issue.commentUrl ? link(issue.commentUrl, 'marker') : null,
+          issue.workflowUrl ? link(issue.workflowUrl, 'workflow') : null,
+          issue.summaryUrl ? link(issue.summaryUrl, 'summary') : null,
+        );
+        return node('tr', {},
+          node('td', {}, link(issue.url, '#' + issue.number + ' ' + issue.title)),
+          node('td', {}, issue.stage),
+          stateCell,
+          node('td', {}, issue.updatedAt ? age(issue.updatedAt) : '—'),
+          node('td', {}, issue.detail, links),
+        );
+      });
+      return node('div', { className: 'table-wrap' }, node('table', {},
+        node('thead', {}, node('tr', {},
+          assetSortHeader('Issue', 'number'),
+          node('th', {}, 'Stage'),
+          assetSortHeader('State', 'state'),
+          assetSortHeader('Updated', 'updated'),
+          node('th', {}, 'Detail'),
+        )),
+        node('tbody', {}, rows),
+      ));
+    }
+    function renderAssetPipeline(pipeline) {
+      const previousSeverity = assetSeverity;
+      const worsened =
+        previousSeverity != null &&
+        severityRank[pipeline.severity] > severityRank[previousSeverity];
+      if (previousSeverity == null) {
+        assetDetails.open = pipeline.defaultExpanded;
+      } else if (worsened) {
+        assetUserToggled = false;
+        assetDetails.open = true;
+      } else if (!assetUserToggled && previousSeverity !== pipeline.severity) {
+        assetDetails.open = pipeline.defaultExpanded;
+      }
+      assetSeverity = pipeline.severity;
+
+      const health = document.getElementById('asset-health');
+      health.className = 'pill ' + pipeline.severity;
+      health.textContent = pipeline.severity;
+      document.getElementById('asset-summary-meta').textContent =
+        pipeline.counts.total + ' open · ' +
+        pipeline.counts.complete + ' complete · ' +
+        pipeline.counts.active + ' active · ' +
+        pipeline.counts.failed + ' failed · ' +
+        pipeline.counts.stale + ' stale · ' +
+        pipeline.counts.truncated + ' truncated';
+      const warningBox = document.getElementById('asset-warnings');
+      warningBox.hidden = pipeline.warnings.length === 0;
+      warningBox.replaceChildren(...pipeline.warnings.map((warning) => node('span', {}, warning)));
+      replaceChildren('asset-timeline', renderAssetTimeline(pipeline.stages));
+      document.getElementById('asset-issue-meta').textContent =
+        pipeline.counts.unknown + ' unknown · ' +
+        pipeline.counts.truncated + ' truncated · ordered by ' + assetSort;
+      replaceChildren('asset-issues', renderAssetIssueTable(pipeline.issues));
+    }
+    assetDetails.addEventListener('toggle', (event) => {
+      if (event.isTrusted) assetUserToggled = true;
+    });
     function render(state) {
       currentState = state;
       refreshButton.disabled = Boolean(state.refreshing);
@@ -370,6 +547,8 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
       const recoverySection = document.getElementById('recovery-section');
       recoverySection.hidden = snapshot.train.recovery.length === 0;
       replaceChildren('recovery', renderPullTable(snapshot.train.recovery, 'recovery'));
+
+      renderAssetPipeline(snapshot.assetPipeline);
 
       document.getElementById('run-meta').textContent =
         actions.activeRunCount + ' active runs · ' +

@@ -50,4 +50,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
           MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,Security checks' }}
+          # Rollback switch: set repo variable CI_CONFLICT_COORDINATION_ENFORCE=1
+          # to restore group serialization. Default is discovery-only.
+          CI_CONFLICT_COORDINATION_ENFORCE: ${{ vars.CI_CONFLICT_COORDINATION_ENFORCE || '0' }}
         run: node .github/scripts/ci-conflict-coordinator/reconcile.mjs

@@ -72,6 +72,7 @@ test('latent backlog unions merge-train, recovery and externally-blocked demand'
     // Excluded from both: no queue label, and explicitly opted out of recovery.
     { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
   ];
+<<<<<<< HEAD
   // #1 counts via the merge-train queue, #2 via recovery backlog. As of the
   // emergency router fix 492bb4be8 ("unstarve the repair window"), externally
   // blocked labels — including `merge-train-blocked` (#3) — are excluded from
@@ -79,6 +80,13 @@ test('latent backlog unions merge-train, recovery and externally-blocked demand'
   // `ci-recovery-opt-out` label (#4) is excluded as before. So the deduplicated
   // latent-backlog demand is {#1, #2} => 2.
   assert.equal(countLatentBacklog({ pullRequests, repository }), 2);
+=======
+  // PR #1: merge-train queue entry (counted). PR #2: recovery backlog entry (counted).
+  // PR #3: externally blocked (merge-train-blocked) — counted as latent demand for sweep
+  // budgeting even though CI Recovery skips dispatching to it.
+  // PR #4: ci-recovery-opt-out — excluded from both queues.
+  assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
+>>>>>>> origin/main
 });
 
 // The test above is named for a union, NOT for deduplication, because the three
