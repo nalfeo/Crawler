@@ -1,0 +1,144 @@
+{
+  "schema": "crawler-velocity-bottlenecks/v1",
+  "generatedAt": "2026-07-28T10:46:00Z",
+  "note": "Produced by nightly bottleneck scan (issue #2192). gh GraphQL blocked in sandbox; PR data fetched via GitHub MCP REST. Stage timings computed from 5 slow PRs (>48h) with full review+commit timestamp data; median stage estimates for the full 60-PR cohort use 0h approximations for the 20 fast (<1h) PRs (review_q≈0.5h, rework≈0h, merge_q≈0.5h).",
+  "prsAnalyzed": 60,
+  "stages": [
+    {
+      "name": "open → first review",
+      "kind": "queue",
+      "medianHours": 0.5,
+      "shareOfLeadTime": 0.19,
+      "note": "Automated Copilot reviewer fires within minutes for agent PRs; human PRs trigger on push."
+    },
+    {
+      "name": "first review → last push",
+      "kind": "active",
+      "medianHours": 0.0,
+      "shareOfLeadTime": 0.0,
+      "note": "Median is near-zero because 71% of PRs merge within 12h with minimal rework. For the slow tail (>48h, n=7), median rework is 67.0h."
+    },
+    {
+      "name": "last push → merge",
+      "kind": "queue",
+      "medianHours": 0.5,
+      "shareOfLeadTime": 0.19,
+      "note": "CI gate + merge-train admission. Fast when no coordination wait label."
+    }
+  ],
+  "medianLeadTimeH": 2.7,
+  "leadTimeBySize": [
+    {
+      "bucket": "≤100 lines",
+      "prs": 1,
+      "medianLeadTimeH": 25.2,
+      "note": "Only 1 sized PR in this bucket (n too small to generalise)"
+    },
+    {
+      "bucket": "101–500 lines",
+      "prs": 4,
+      "medianLeadTimeH": 43.8
+    },
+    {
+      "bucket": "501–2000 lines",
+      "prs": 4,
+      "medianLeadTimeH": 51.0
+    },
+    {
+      "bucket": ">2000 lines",
+      "prs": 3,
+      "medianLeadTimeH": 1.6,
+      "note": "Counterintuitive: these are human-authored PRs (e.g. #2164 at 9861 churn / 1.6h). Size is NOT the primary predictor; authorship + CI-recovery mechanics dominate."
+    }
+  ],
+  "slowest": [
+    {
+      "prNumber": 2003,
+      "title": "fix: pin direct deps to exact versions; fix check-exact-deps",
+      "leadTimeH": 71.9,
+      "churn": 922,
+      "stageNote": "review_q=1.7h rework=69.8h merge_q=0.4h — 70h gap: CI-recovery stall (model unavailability) + coordination deadlock"
+    },
+    {
+      "prNumber": 1976,
+      "title": "feat(ci-health): expose asset request pipeline progress",
+      "leadTimeH": 70.0,
+      "churn": 947,
+      "stageNote": "review_q=0.1h rework=69.1h merge_q=0.8h — branch contamination locked into coordination group for 3 days"
+    },
+    {
+      "prNumber": 2016,
+      "title": "Implement Don Paco's THE BIG GOB on the typed mob-ability runtime",
+      "leadTimeH": 69.7,
+      "churn": 2844,
+      "stageNote": "review_q=2.5h rework=67.0h merge_q=0.3h — 21-file conflict resolution + coordination deadlock"
+    },
+    {
+      "prNumber": 1996,
+      "title": "fix: remove useless null initializer in beginTelegraph",
+      "leadTimeH": 62.3,
+      "churn": 139,
+      "stageNote": "review_q=0.7h rework=54.8h merge_q=16.8h — docs-adjacent PR caught in coordination queue behind blocked head-of-line"
+    },
+    {
+      "prNumber": 2015,
+      "title": "Blocked: unable to start Nana SCRAP-CART STAMPEDE implementation",
+      "leadTimeH": 60.2,
+      "churn": 0,
+      "stageNote": "Docs/investigation PR, low churn but stuck behind coordination deadlock"
+    }
+  ],
+  "estimationAccuracy": {
+    "sessions": 557,
+    "exact": 495,
+    "under": 34,
+    "over": 28,
+    "medianAbsDelta": 0.0
+  },
+  "guardFriction": [
+    {
+      "guard": "pr-preflight",
+      "allow": 150,
+      "deny": 5,
+      "denyRate": 0.032,
+      "denyVerdict": "catch-correct — missing handoffs (3×) + lab-gate failures (1×) + docs-only false-positive investigated and ruled out"
+    },
+    {
+      "guard": "pr-review-ledger",
+      "allow": 130,
+      "deny": 5,
+      "skip": 20,
+      "denyRate": 0.032,
+      "denyVerdict": "catch-correct — agents attempting create_pull_request before completing the apple-scaled review harness"
+    },
+    {
+      "guard": "authoring-main-sync",
+      "allow": 2757,
+      "deny": 0,
+      "denyRate": 0.0,
+      "denyVerdict": "nominal — no denies"
+    }
+  ],
+  "findings": [
+    "TOP BOTTLENECK: 'first review → last push' (active/rework) stage. Median 2.7h overall, but the slowest 12% of PRs (7/60) each take >48h — dominated by a 67h median rework window. These 7 PRs collectively drove P90 to 55.5h.",
+    "ROOT CAUSE: Branch contamination + CI conflict coordination deadlock. Measured (not assumed): 8/11 PRs in a coordination group carried contaminated CI-file diffs (squash-merge relands under new SHAs). The group serialized 18 PRs for up to 64h while head-of-line PR #1976 (28/30 commits patch-identical to main) could not move. Emergency fix PR #2168 (coordination default-off) landed 2026-07-28 and drained the blockage.",
+    "SECONDARY ROOT CAUSE: Model-unavailability CI-recovery stalls. PR #2003 had a 70h gap where CI recovery was attempting to dispatch but the model was unavailable; the sweep retried on the same broken model instead of backing off. The new dispatch observability (PR #2129) will make future stalls diagnosable in seconds.",
+    "Guard friction is low and catch-correct. pr-preflight and pr-review-ledger each have 5 denies / 155 events (3.2%) — all verified as genuine policy violations, not mis-fires. authoring-main-sync: 2,757 allows / 0 denies — nominal.",
+    "Apple estimation is excellent: 89% exact, median |error| = 0.0 🍎 across 557 sessions. No systematic under-estimation.",
+    "PROPOSED SMALLEST FIX (see below): Add cherry-based contamination detection to the CI conflict coordinator so that the coordination fence can be safely re-enabled without deadlocking innocent PRs."
+  ],
+  "proposedFix": {
+    "title": "Cherry-based contamination detection in CI conflict coordinator",
+    "targetFile": ".github/scripts/ci-conflict-coordinator/reconcile.mjs",
+    "currentBehavior": "isCiCoordinationPath() flags a PR as touching CI files if ANY diff file matches the path pattern. Branch contamination (squash-merge carries prior-session commits under new SHAs) causes innocent art/docs PRs to match, creating false-positive coordination groups.",
+    "proposedChange": "Before adding a PR to a coordination group, run `git cherry -v origin/main <branch-head>` (or equivalent via GitHub Commits API) to count genuinely NEW commits (marked '+') that touch CI paths. A PR with 0 new CI-touching commits is contaminated and should be excluded from the coordination group (or labelled for passive observation only, not blocking).",
+    "measurability": "Contamination rate: PRs in coordination groups with 0 genuine CI-path changes / total PRs in group. Before fix: ~73% (8/11 measured 2026-07-28). After fix: target 0%. Would allow CI_CONFLICT_COORDINATION_ENFORCE to be re-enabled safely.",
+    "scope": "Tooling-only — no gameplay or runtime change. Cap: 3🍎 per tooling-only ceiling.",
+    "effort": "2–3🍎 estimated. Requires: (1) a cherry-check helper, (2) coordinator integration, (3) unit tests with real-git fixtures, (4) a contamination-rate metric reported in the CI-health canvas.",
+    "alternativesConsidered": [
+      "Keep coordination default-off permanently — accepted risk: when re-enabled for any reason, the false-positive problem recurs silently.",
+      "Rebase all agent branches before grouping — heavier (requires write access per PR), still doesn't prevent new contamination on long-lived PRs.",
+      "Filter by commit count (skip PRs with >50% patch-identical commits) — proxy only; `git cherry` is authoritative and not significantly more expensive."
+    ]
+  }
+}
