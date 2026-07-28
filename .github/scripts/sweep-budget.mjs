@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 import {
   hydrateRecoveryOwnership,
+  isExternallyBlocked,
   recoveryBacklogEntries,
 } from './ci-recovery/router.mjs';
 import { paginate, request } from './ci-recovery/github.mjs';
@@ -88,6 +89,21 @@ export function countLatentBacklog({ pullRequests, repository, now = new Date() 
       (pullRequest) => pullRequest.number,
     ),
   ]);
+  // Externally-blocked PRs (e.g. merge-train-blocked) are excluded from CI
+  // Recovery slot consumption but still represent latent CI demand that will
+  // eventually need runner capacity, so they count toward the sweep budget.
+  for (const pr of pullRequests) {
+    if (
+      pr.state === 'open' &&
+      !pr.draft &&
+      pr.base?.ref === 'main' &&
+      pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+      !(pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out') &&
+      isExternallyBlocked(pr)
+    ) {
+      numbers.add(pr.number);
+    }
+  }
   return numbers.size;
 }
 
