@@ -15,7 +15,7 @@ ci-policy, agent-tooling
 ## Apples
 
 3🍎 estimated, 3🍎 actual (tooling-only cap). Summary:
-`docs/knowledge/metrics/apples/2026-07-27-mutation-proof-command.json`
+`docs/knowledge/metrics/apples/2026-07-28-mutation-proof-command.json`
 
 ## What Was Done
 
