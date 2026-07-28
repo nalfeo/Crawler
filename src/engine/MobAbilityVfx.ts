@@ -30,9 +30,11 @@ import {
 } from '../core/index.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { ftToPx } from '../shared/units.js';
+import { SeededRandom } from '../shared/random.js';
 
 /** Prefix of every `sourceId` produced by `mobAbilitySourceId()` in core. */
 const MOB_ABILITY_SOURCE_PREFIX = 'mob-ability:';
+const SHELL_COMPANY_LOCKDOWN_ABILITY_ID = 'kingpin-molt-shell-company-lockdown';
 
 // Ground-plane depths: below living entities (0) but above terrain/trails so the
 // danger circle reads as painted on the floor beneath the fight.
@@ -51,6 +53,9 @@ const COLOR_BERSERK_RED = 0xff4d4d;
 const COLOR_BERSERK_DUST = 0xc98b56;
 const COLOR_BERSERK_ENVELOPE = 0xff6b6b;
 const COLOR_BERSERK_LEAF = 0x8bd17c;
+// Kingpin Molt: tide-blue shell lockdown colours
+const COLOR_TIDE_BLUE = 0x0ea5e9;
+const COLOR_SHELL_EDGE = 0x7dd3fc;
 
 const BURST_LIFETIME_MS = 560;
 const CAST_START_LIFETIME_MS = 320;
@@ -196,17 +201,32 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     radiusPx: number,
     progress: number,
     dangerColor: 'ability-theme' | 'hostile-red',
+    abilityId: string,
   ): void {
     gfx.clear();
     if (dangerColor === 'ability-theme') {
-      const pulse = 0.75 + 0.25 * Math.sin(progress * Math.PI * 2);
-      gfx.lineStyle(2 + 2 * progress, COLOR_BERSERK_RED, 0.65 + 0.25 * pulse);
-      gfx.strokeCircle(cx, cy, radiusPx);
-      gfx.lineStyle(2, COLOR_BERSERK_GOLD, 0.8);
-      gfx.strokeCircle(cx, cy, radiusPx * (0.4 + 0.5 * progress));
-      gfx.fillStyle(COLOR_BERSERK_GREEN, 0.12 + 0.18 * progress);
-      gfx.fillCircle(cx, cy, radiusPx * (0.25 + 0.55 * progress));
-      return;
+      if (abilityId === BAMBOO_FED_BERSERK_ABILITY_ID) {
+        // Big Panda Wei: green/gold/red berserk aura
+        const pulse = 0.75 + 0.25 * Math.sin(progress * Math.PI * 2);
+        gfx.lineStyle(2 + 2 * progress, COLOR_BERSERK_RED, 0.65 + 0.25 * pulse);
+        gfx.strokeCircle(cx, cy, radiusPx);
+        gfx.lineStyle(2, COLOR_BERSERK_GOLD, 0.8);
+        gfx.strokeCircle(cx, cy, radiusPx * (0.4 + 0.5 * progress));
+        gfx.fillStyle(COLOR_BERSERK_GREEN, 0.12 + 0.18 * progress);
+        gfx.fillCircle(cx, cy, radiusPx * (0.25 + 0.55 * progress));
+        return;
+      }
+      if (abilityId === SHELL_COMPANY_LOCKDOWN_ABILITY_ID) {
+        // Kingpin Molt: tide-blue shell closing aura
+        gfx.lineStyle(3 + 2 * progress, COLOR_TIDE_BLUE, 0.7 + 0.2 * progress);
+        gfx.strokeCircle(cx, cy, radiusPx);
+        gfx.lineStyle(2, COLOR_SHELL_EDGE, 0.5 + 0.3 * progress);
+        gfx.strokeCircle(cx, cy, radiusPx * (0.5 + 0.4 * progress));
+        gfx.fillStyle(COLOR_TIDE_BLUE, 0.08 + 0.15 * progress);
+        gfx.fillCircle(cx, cy, radiusPx * progress);
+        return;
+      }
+      // Unknown ability-theme — fall through to hostile-red as safe default
     }
     // Committed footprint outline (hostile red), urgency-pulsing thickness.
     const thickness = 2 + 2 * progress;
@@ -255,23 +275,15 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     gfx.fillCircle(cx, cy, radiusPx * 0.5);
   }
 
-  function makeDeterministicRand(seedBase: number): () => number {
-    let seed = seedBase & 0x7fffffff;
-    return () => {
-      seed = (seed * 16807) % 2147483647;
-      return (seed & 0x7fffffff) / 2147483647;
-    };
-  }
-
   function spawnBerserkFlair(x: number, y: number, radiusPx: number, seedBase: number): void {
     if (!enabled) return;
-    const rand = makeDeterministicRand(seedBase);
+    const rng = new SeededRandom(seedBase);
     for (let i = 0; i < 4; i += 1) {
-      const angle = rand() * Math.PI * 2;
-      const dist = radiusPx * (0.3 + rand() * 1.1);
+      const angle = rng.next() * Math.PI * 2;
+      const dist = radiusPx * (0.3 + rng.next() * 1.1);
       const particle = canAddRectangle
-        ? scene.add.rectangle(x, y, 2 + rand() * 2, 7 + rand() * 6, COLOR_BERSERK_GREEN)
-        : scene.add.circle(x, y, 2 + rand() * 0.8, COLOR_BERSERK_GREEN);
+        ? scene.add.rectangle(x, y, 2 + rng.next() * 2, 7 + rng.next() * 6, COLOR_BERSERK_GREEN)
+        : scene.add.circle(x, y, 2 + rng.next() * 0.8, COLOR_BERSERK_GREEN);
       particle.setAngle?.((angle * 180) / Math.PI);
       particle.setDepth(BURST_DEPTH);
       particle.setBlendMode('ADD');
@@ -283,7 +295,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y + Math.sin(angle) * dist,
         alpha: { from: 0.95, to: 0 },
         scale: { from: 1, to: 0.1 },
-        duration: 200 + rand() * 260,
+        duration: 200 + rng.next() * 260,
         ease: 'Quad.easeOut',
         onComplete: () => {
           transientCircles.delete(particle);
@@ -294,11 +306,11 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       transientTweens.set(particle, tween);
     }
     for (let i = 0; i < 3; i += 1) {
-      const angle = rand() * Math.PI * 2;
-      const dist = radiusPx * (0.25 + rand() * 0.9);
+      const angle = rng.next() * Math.PI * 2;
+      const dist = radiusPx * (0.25 + rng.next() * 0.9);
       const particle = canAddEllipse
-        ? scene.add.ellipse(x, y, 4 + rand() * 3, 2 + rand() * 2, COLOR_BERSERK_LEAF)
-        : scene.add.circle(x, y, 1.5 + rand() * 1.2, COLOR_BERSERK_LEAF);
+        ? scene.add.ellipse(x, y, 4 + rng.next() * 3, 2 + rng.next() * 2, COLOR_BERSERK_LEAF)
+        : scene.add.circle(x, y, 1.5 + rng.next() * 1.2, COLOR_BERSERK_LEAF);
       particle.setAngle?.((angle * 180) / Math.PI);
       particle.setDepth(BURST_DEPTH);
       particle.setBlendMode('ADD');
@@ -310,7 +322,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y + Math.sin(angle) * dist,
         alpha: { from: 0.9, to: 0 },
         scale: { from: 1, to: 0.2 },
-        duration: 180 + rand() * 220,
+        duration: 180 + rng.next() * 220,
         ease: 'Quad.easeOut',
         onComplete: () => {
           transientCircles.delete(particle);
@@ -321,23 +333,23 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       transientTweens.set(particle, tween);
     }
     for (let i = 0; i < 3; i += 1) {
-      const angle = rand() * Math.PI * 2;
-      const dist = radiusPx * (0.2 + rand() * 0.8);
+      const angle = rng.next() * Math.PI * 2;
+      const dist = radiusPx * (0.2 + rng.next() * 0.8);
       const particle = canAddRectangle
         ? scene.add.rectangle(
             x,
             y,
-            3 + rand() * 2,
-            3 + rand() * 2,
+            3 + rng.next() * 2,
+            3 + rng.next() * 2,
             i % 2 === 0 ? COLOR_BERSERK_ENVELOPE : COLOR_BERSERK_GOLD,
           )
         : scene.add.circle(
             x,
             y,
-            1.8 + rand() * 0.7,
+            1.8 + rng.next() * 0.7,
             i % 2 === 0 ? COLOR_BERSERK_ENVELOPE : COLOR_BERSERK_GOLD,
           );
-      particle.setAngle?.(rand() * 360);
+      particle.setAngle?.(rng.next() * 360);
       particle.setDepth(BURST_DEPTH);
       particle.setBlendMode('ADD');
       ignoreUi(particle);
@@ -348,7 +360,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y + Math.sin(angle) * dist,
         alpha: { from: 0.95, to: 0 },
         scale: { from: 1, to: 0.1 },
-        duration: 200 + rand() * 260,
+        duration: 200 + rng.next() * 260,
         ease: 'Quad.easeOut',
         onComplete: () => {
           transientCircles.delete(particle);
@@ -359,8 +371,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       transientTweens.set(particle, tween);
     }
     for (let i = 0; i < 2; i += 1) {
-      const angle = rand() * Math.PI * 2;
-      const dist = radiusPx * (0.4 + rand() * 0.45);
+      const angle = rng.next() * Math.PI * 2;
+      const dist = radiusPx * (0.4 + rng.next() * 0.45);
       const afterimage = scene.add.circle(x, y, radiusPx * 0.18, COLOR_BERSERK_RED, 0.25);
       afterimage.setDepth(BURST_DEPTH);
       afterimage.setBlendMode('ADD');
@@ -372,7 +384,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y - Math.sin(angle) * dist,
         alpha: { from: 0.25, to: 0 },
         scale: { from: 1, to: 0.65 },
-        duration: 150 + rand() * 100,
+        duration: 150 + rng.next() * 100,
         ease: 'Sine.easeOut',
         onComplete: () => {
           transientCircles.delete(afterimage);
@@ -391,11 +403,11 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     seedBase: number,
   ): void {
     if (!enabled) return;
-    const rand = makeDeterministicRand(seedBase);
+    const rng = new SeededRandom(seedBase);
     for (let i = 0; i < 4; i += 1) {
-      const angle = rand() * Math.PI * 2;
-      const dist = radiusPx * (0.12 + rand() * 0.22);
-      const dust = scene.add.circle(x, y, 1 + rand() * 1.6, COLOR_BERSERK_DUST);
+      const angle = rng.next() * Math.PI * 2;
+      const dist = radiusPx * (0.12 + rng.next() * 0.22);
+      const dust = scene.add.circle(x, y, 1 + rng.next() * 1.6, COLOR_BERSERK_DUST);
       dust.setDepth(BURST_DEPTH);
       dust.setBlendMode('ADD');
       ignoreUi(dust);
@@ -406,7 +418,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y + Math.sin(angle) * dist,
         alpha: { from: 0.45, to: 0 },
         scale: { from: 1, to: 0.4 },
-        duration: 120 + rand() * 120,
+        duration: 120 + rng.next() * 120,
         ease: 'Sine.easeOut',
         onComplete: () => {
           transientCircles.delete(dust);
@@ -450,7 +462,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         ignoreUi(gfx);
         telegraphGfx.set(cue.casterEid, gfx);
       }
-      drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress, cue.dangerColor);
+      drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress, cue.dangerColor, cue.abilityId);
     }
 
     // ── Resolution bursts (drain the durable pending-burst queue) ─────────
