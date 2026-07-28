@@ -358,6 +358,57 @@ describe('validateCompatibleBoundaries — documented seam/edge-consistency chec
   });
 });
 
+describe('validateTerrainPack — VENDORED_MIN_EDGE_PASS_RATE default constant is exercised end-to-end', () => {
+  /**
+   * The existing caeles fixture test calls validateTerrainPack with the pristine
+   * atlas (rate 0.957), which passes at any constant ≤ 0.957 — including the
+   * old 0.85 floor — and therefore does NOT test that VENDORED_MIN_EDGE_PASS_RATE
+   * is actually 0.90.
+   *
+   * This suite constructs a deterministic "degraded" atlas by swapping the
+   * frameIndex assignments for two pairs of opposite-corner masks in the
+   * manifest (masks 3↔12 and 7↔14; pixel data is unchanged). The swap drops
+   * the edge-pass rate from 0.957 to 0.8936 (168/188 edges pass), placing it
+   * in the 0.85–0.90 window: above the old 0.85 floor but below the new 0.90
+   * floor.
+   *
+   * Reverting VENDORED_MIN_EDGE_PASS_RATE to 0.85 would cause the second test
+   * to fail because boundary-mismatch would no longer appear in the issues.
+   */
+  const caeles = buildCaelesFixturePack(readVendoredTemplate());
+  const atlasBuf = atlasBufferOf(caeles);
+
+  function swappedManifest(): TerrainPackDef {
+    const masks = caeles.manifest.wallAutotile.masks.map((m) => ({ ...m }));
+    for (const [a, b] of [
+      [3, 12],
+      [7, 14],
+    ] as [number, number][]) {
+      const ia = masks.findIndex((m) => m.maskId === a);
+      const ib = masks.findIndex((m) => m.maskId === b);
+      const tmp = masks[ia]!.frameIndex;
+      masks[ia] = { ...masks[ia]!, frameIndex: masks[ib]!.frameIndex };
+      masks[ib] = { ...masks[ib]!, frameIndex: tmp };
+    }
+    return { ...caeles.manifest, wallAutotile: { ...caeles.manifest.wallAutotile, masks } };
+  }
+
+  it('rate-0.8936 atlas passes validateCompatibleBoundaries at explicit 0.85 (proves rate > old floor)', () => {
+    const atlas = decodePng(atlasBuf);
+    const result = validateCompatibleBoundaries(swappedManifest(), atlas, {
+      minEdgePassRate: 0.85,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('rate-0.8936 atlas: validateTerrainPack without options reports boundary-mismatch (VENDORED_MIN_EDGE_PASS_RATE enforced at 0.90)', () => {
+    const result = validateTerrainPack(swappedManifest(), atlasBuf);
+    // boundary-mismatch appears because the production default (0.90) rejects rate 0.8936.
+    // If VENDORED_MIN_EDGE_PASS_RATE were reverted to 0.85, this assertion would fail.
+    expect(result.issues.some((i) => i.code === 'boundary-mismatch')).toBe(true);
+  });
+});
+
 describe('validateManifestSchema', () => {
   it('accepts the real built manifests', () => {
     expect(validateManifestSchema(buildIndustrialCavePack().manifest).ok).toBe(true);
