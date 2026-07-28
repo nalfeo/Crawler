@@ -44,6 +44,17 @@
     "path": "by-sha/2f7a66a9e5ceb16c21dd8611ead4612c0e605234.json"
   },
   {
+    "commit": "e4244373d77e1be3ac697944361777d70262394b",
+    "commitDate": "2026-07-28T06:27:54-07:00",
+    "commitSubject": "Centralize CI liveness cadence and add scheduled stale-state reclaim sweep (#2101)",
+    "capturedAt": "2026-07-28T14:28:07.834Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30364315931",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/e4244373d77e1be3ac697944361777d70262394b.json"
+  },
+  {
     "commit": "4a7200bf08a65d816c219924234ae895806ad881",
     "commitDate": "2026-07-28T06:19:51Z",
     "commitSubject": "fix(ci): publish docs-update PRs with PAT auth (#2155)",
