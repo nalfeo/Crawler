@@ -926,6 +926,43 @@ test('mainAttributionVerdict reports a genuine completed failure on the current 
   assert.match(verdict.reason, /concluded failure/);
 });
 
+test('mainAttributionVerdict treats timed_out as red (genuine failure evidence)', () => {
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ conclusion: 'timed_out' })],
+  });
+  assert.equal(verdict.verdict, 'red');
+  assert.match(verdict.reason, /concluded timed_out/);
+});
+
+test('mainAttributionVerdict treats cancelled as unknown, not red', () => {
+  // A manually cancelled run proves nothing about main. Classifying it as red
+  // would suppress bisection/ejection until the next daily backstop, exactly
+  // like the old promotion gate deadlock (ADR 0077).
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [makeCiRun({ conclusion: 'cancelled' })],
+  });
+  assert.equal(verdict.verdict, 'unknown');
+  assert.match(verdict.reason, /non-authoritative conclusion cancelled/);
+});
+
+test('mainAttributionVerdict falls through to an authoritative run when the newest is cancelled', () => {
+  // If there is an older completed authoritative run but the newest is cancelled,
+  // the newest takes the slot (find() picks first match of the sorted list);
+  // that one is unknown, not red. The caller re-runs when the next schedule run arrives.
+  const verdict = mainAttributionVerdict({
+    mainSha: baseSha,
+    runs: [
+      makeCiRun({ created_at: '2024-01-01T01:00:00Z', conclusion: 'cancelled' }),
+      makeCiRun({ created_at: '2024-01-01T00:00:00Z', conclusion: 'failure' }),
+    ],
+  });
+  // The most recently created authoritative run is the cancelled one → unknown
+  assert.equal(verdict.verdict, 'unknown');
+  assert.match(verdict.reason, /non-authoritative conclusion cancelled/);
+});
+
 test('mainAttributionVerdict ignores a train fast-path push run and stays unknown', () => {
   // Only evidence for the current SHA is a fast-path push run (docs_only
   // shortcut); that is not authoritative full-CI evidence, so the verdict must
@@ -1079,6 +1116,21 @@ test('planAttributedPrefixPromotion is a noop on an empty queue without probing 
   });
   assert.deepEqual(plan, { action: 'noop' });
   assert.equal(probes, 0);
+});
+
+test('planAttributedPrefixPromotion fails open when the probe throws', async () => {
+  // A transient GitHub API error must NOT abort reconciliation. The design treats
+  // unavailable evidence as `unknown`, so a thrown probe falls through to the
+  // original bisection plan (ADR 0077).
+  const states = ['success', 'failure', 'failure'];
+  const plan = await planAttributedPrefixPromotion({
+    prefixStates: states,
+    mainVerdict: async () => {
+      throw new Error('GitHub API 503 Service Unavailable');
+    },
+  });
+  // Falls back to the normal plan — still ejects and bisects
+  assert.deepEqual(plan, planPrefixPromotion(states));
 });
 
 test('trainCheckTitle distinguishes queued, failed, and successful completed checks', () => {

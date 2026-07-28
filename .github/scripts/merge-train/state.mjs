@@ -289,7 +289,17 @@ export async function planAttributedPrefixPromotion({ prefixStates, mainVerdict 
   const plan = planPrefixPromotion(prefixStates);
   if (prefixStates[prefixStates.length - 1] !== 'failure') return plan;
 
-  const { verdict, reason } = (await mainVerdict()) || {};
+  // Any probe error fails open: treat it as `unknown` so a transient API failure
+  // does not abort reconciliation (ADR 0077 — unavailable evidence attributes nothing).
+  let verdictResult;
+  try {
+    verdictResult = (await mainVerdict()) || {};
+  } catch (err) {
+    const msg = err?.message || String(err);
+    process.stderr.write(`[merge-train] mainVerdict probe failed (treating as unknown): ${msg}\n`);
+    verdictResult = { verdict: 'unknown', reason: `attribution probe failed: ${msg}` };
+  }
+  const { verdict, reason } = verdictResult;
   if (verdict !== 'red') return plan;
 
   const attribution = reason || 'main is red';

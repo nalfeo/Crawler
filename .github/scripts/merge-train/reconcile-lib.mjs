@@ -461,13 +461,27 @@ export function mainAttributionVerdict({ mainSha, runs }) {
       reason: `full-CI run for current main ${mainSha} is still ${authoritative[0].status}`,
     };
   }
-  if (latestCompleted.conclusion !== 'success') {
+  // Only conclusions that represent an actual test failure count as positive red
+  // evidence. Infra-only outcomes (cancelled, skipped, stale, neutral) are not
+  // authoritative: treat them the same as `unknown` so a manually cancelled run
+  // does not suppress bisection/ejection until the next daily backstop.
+  // Mirrors the incident router's gate (incident.mjs: only failure/timed_out/
+  // startup_failure/action_required raise incidents).
+  const FAILURE_CONCLUSIONS = new Set(['failure', 'timed_out', 'startup_failure', 'action_required']);
+  if (FAILURE_CONCLUSIONS.has(latestCompleted.conclusion)) {
     return {
       verdict: 'red',
       reason: `latest completed full-CI run for current main ${mainSha} concluded ${latestCompleted.conclusion}`,
     };
   }
-  return { verdict: 'green', reason: null };
+  if (latestCompleted.conclusion === 'success') {
+    return { verdict: 'green', reason: null };
+  }
+  // cancelled / skipped / stale / neutral — not authoritative evidence either way
+  return {
+    verdict: 'unknown',
+    reason: `latest completed full-CI run for current main ${mainSha} has non-authoritative conclusion ${latestCompleted.conclusion}`,
+  };
 }
 
 export function promotionStaleReason({ currentMain, currentPr, expectedBase, pr, repository }) {

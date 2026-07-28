@@ -530,8 +530,12 @@ jobs:
             # Not a deferral: the merge train proves (landedCommitProofError,
             # merge-train/reconcile-lib.mjs) that this landed commit's tree is
             # byte-identical to the validated candidate prefix tree, and that
-            # candidate already passed the full merge gate. Re-running the heavy
-            # suite here would re-test an identical tree.
+            # candidate already passed the merge-train validation gate
+            # (static, unit, sprite, health, security). Re-running the heavy
+            # suite here would re-test an identical tree. Integration, headless,
+            # and E2E gates are covered unconditionally by the daily backstop
+            # schedule run (ci.yml schedule trigger), which forces all scope
+            # flags off regardless of change content.
             echo "✅ Main-push heavy CI skipped: landed tree is byte-identical to the validated candidate tree"
             exit 0
           fi
