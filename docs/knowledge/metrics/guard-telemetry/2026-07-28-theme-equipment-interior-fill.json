@@ -1,0 +1,59 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "theme-equipment-interior-fill",
+  "date": "2026-07-28",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 1737,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 1731
+    },
+    "pr-preflight": {
+      "allow": 3
+    },
+    "pr-review-ledger": {
+      "allow": 3
+    }
+  },
+  "tools": {
+    "ask_user": 6,
+    "create": 26,
+    "create_pull_request": 6,
+    "edit": 184,
+    "exit_plan_mode": 1,
+    "extensions_reload": 13,
+    "glob": 11,
+    "grep": 167,
+    "list_canvas_capabilities": 2,
+    "open_canvas": 22,
+    "playwright-browser_click": 10,
+    "playwright-browser_close": 3,
+    "playwright-browser_console_messages": 3,
+    "playwright-browser_evaluate": 20,
+    "playwright-browser_find": 15,
+    "playwright-browser_navigate": 20,
+    "playwright-browser_network_requests": 1,
+    "playwright-browser_run_code_unsafe": 2,
+    "playwright-browser_snapshot": 5,
+    "playwright-browser_take_screenshot": 22,
+    "playwright-browser_wait_for": 7,
+    "powershell": 509,
+    "read_agent": 14,
+    "read_powershell": 7,
+    "read_text_file": 1,
+    "rename_branch": 3,
+    "rename_session": 1,
+    "rg": 89,
+    "send_session_message": 7,
+    "skill": 8,
+    "sql": 12,
+    "task": 12,
+    "task_complete": 1,
+    "update_pull_request": 6,
+    "view": 521
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

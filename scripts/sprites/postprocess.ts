@@ -129,16 +129,27 @@ export function postprocessWithTrace(
   let image = decodePng(rawPng);
   const backgroundSource = image;
 
-  // Determine if enclosed-region cleanup should run
-  const enclosedRegionMode: EnclosedBackgroundMode =
-    options.modules?.enclosedBackgroundMode ?? 'enabled';
-  const shouldRunEnclosedBackgroundCleanup =
-    enclosedRegionMode !== 'disabled' && (brief.type === 'enemy' || brief.type === 'character');
-
   // Load the pipeline template for this sprite type
   const pipeline = getPipelineForType(brief.type);
   const activeModules = getActiveModules(pipeline, brief.type);
   const disabledModules = new Set(normalizeDisabledModules(options.disabledModules, brief));
+
+  // Determine if enclosed-region cleanup should run. It runs for every sprite
+  // type whose pipeline keeps the `enclosed-regions` module active — i.e. all
+  // types except those that explicitly disable it (tiles, vfx) or that pass it
+  // in `disabledModules` at runtime, and unless the global escape hatch
+  // `enclosedBackgroundMode: 'disabled'` is set. Deriving the flag from the
+  // effective pipeline (rather than a hard-coded type list) also keeps
+  // `background-rekey`'s post-resize enclosed-island clearing tied to the SAME
+  // opt-out, so disabling `enclosed-regions` truly disables all enclosed
+  // cleanup instead of leaving the rekey pass punching holes.
+  const enclosedRegionMode: EnclosedBackgroundMode =
+    options.modules?.enclosedBackgroundMode ?? 'enabled';
+  const enclosedRegionsActive =
+    activeModules.some(({ name }) => name === 'enclosed-regions') &&
+    !disabledModules.has('enclosed-regions');
+  const shouldRunEnclosedBackgroundCleanup =
+    enclosedRegionMode !== 'disabled' && enclosedRegionsActive;
 
   // Execute each module in the pipeline
   for (const { name, config } of activeModules) {
