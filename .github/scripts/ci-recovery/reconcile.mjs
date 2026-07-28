@@ -2918,9 +2918,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   const hasReviewThreadBlockers = normalized.some((blocker) => blocker.kind === 'review-thread');
   const hasCiOnlyBlockers =
     normalized.length > 0 &&
-    normalized.every(
-      (blocker) => blocker.kind === 'ci-failure' || blocker.kind === 'ci-retrigger',
-    );
+    normalized.every((blocker) => blocker.kind === 'ci-failure' || blocker.kind === 'ci-retrigger');
   const taskBody = [
     `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,
     '@copilot Please recover this PR from the exact blockers below.',

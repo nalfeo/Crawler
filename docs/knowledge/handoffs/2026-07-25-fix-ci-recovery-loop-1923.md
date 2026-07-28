@@ -20,7 +20,7 @@ The CI recovery automation failed to converge on PR #1923 after 2 attempts. PR #
 1. **Thread 1 (owner-blind exits):** Two reported owner-blind early-exit paths in `reconcile.mjs` bypassed Phase A's R05 stale-automation release:
    - `ci-recovery-opt-out` exit at line ~1170 (before Phase A at line ~1248) — fires regardless of who holds the label
    - `train-conflict-predecessor-pending` exit at line ~1788 (after Phase A) — fires regardless of ownership when a merge-train predecessor is queued
-   Both exits could strand the ci-owner fence indefinitely on PRs with a stale automation lock.
+     Both exits could strand the ci-owner fence indefinitely on PRs with a stale automation lock.
 
 2. **Thread 2 (dead code):** `buildTerminalDispatchTable()` and `selectTerminalAction()` in `dispatch-table.mjs` were a dead parallel implementation — `reconcile.mjs` only imported `DISPATCH_ACTION` and `selectEarlyAction`. The real terminal cascade remains inline in `reconcile.mjs` at lines 2145–2426.
 

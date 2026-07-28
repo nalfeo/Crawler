@@ -280,6 +280,15 @@ jobs:
         if: env.DOCS_ONLY != 'true'
         run: npm run check:wired-systems
 
+      # Exact-version guard: block any PR that introduces a semver range into
+      # direct deps, devDeps, optionalDeps, or overrides. Ranges allow unrelated
+      # lockfile regeneration to silently advance a package version before
+      # Microsoft's 7-day npm proxy quarantine completes, causing false-404
+      # failures on npm ci. Runs on all non-docs PRs; no false-positive risk.
+      - name: Exact dependency versions
+        if: env.DOCS_ONLY != 'true'
+        run: npm run security:exact-deps
+
       # copilot-guards + review-ledger validator tests (node:test). These run
       # nowhere else in CI; this is their merge-gate home.
       - name: Guard + review-ledger tests
