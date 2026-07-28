@@ -45,10 +45,23 @@ const STRUCTURE_FLOOR = Number(process.env.STRUCTURE_FLOOR ?? 5);
  * blank texture trivially has no border frame.
  *
  * Threshold derived from the whole 470-PNG shipped corpus, not fit to the
- * offending samples: at a floor of 5, the ONLY non-placeholder file that fails
- * is `welcome-room-floor-plate-clean-v2-var-0` (2.5), alongside all 17
- * `*-placeholder.png` files and `temp_floor_0.png` (0.0-0.6) — which the metric
- * rediscovered independently. Zero false positives on legitimate art.
+ * offending samples. What the corpus measurement establishes is PRECISION: of
+ * the 86 files scoring below a floor of 5, exactly 85 are `*-placeholder.png` /
+ * `temp_*` scaffolding and exactly ONE is real shipped art —
+ * `welcome-room-floor-plate-clean-v2-var-0` (2.5). Zero false positives on
+ * legitimate art.
+ *
+ * It establishes NOTHING about recall, and this check is NOT a placeholder
+ * detector: 47 of the 132 placeholder/temp files score ABOVE the floor, up to
+ * `temp_slime.png` at 66.2. A placeholder can carry plenty of structure. Do not
+ * cite this measurement as evidence that the gate finds unfinished art; it only
+ * shows that what it flags is almost never legitimate.
+ *
+ * (An earlier draft of this docstring claimed the metric "rediscovered every
+ * placeholder independently". That was false — generalised from an
+ * ascending-sorted top-18 window, where naturally only placeholders appear. The
+ * qualifier above is the load-bearing part; a tidier phrasing is the dangerous
+ * one.)
  *
  * The finding that motivated it: the v2 plates scored 2.5 / 6.0 / 9.5 while the
  * v1 plates they replaced — rejected for a baked frame — scored 17.5 / 22.7 /
