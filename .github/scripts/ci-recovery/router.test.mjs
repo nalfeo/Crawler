@@ -73,7 +73,14 @@ test('periodic cadence is centralized in ci-liveness-sweep', async () => {
   );
   assert.match(livenessWorkflow, /cron:\s*'\*\/10 \* \* \* \*'/);
   assert.match(livenessWorkflow, /workflow_id:\s*'ci-recovery-router\.yml'/);
-  assert.match(livenessWorkflow, /workflow_id:\s*'ci-recovery\.yml'/);
+  // Closed-fence reclaim is now routed through the router's reaper pass
+  // (selectReaperBatch combined pool) rather than dispatched directly from the
+  // liveness sweep. Verify the router script contains the closed-fence scan.
+  const routerScript = await readFile(
+    new URL('../ci-recovery/router.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(routerScript, /closed.*fence.*candidate|closedFenceCandidates/i);
 });
 
 function pickInvariantDispatchCaps(resolved) {

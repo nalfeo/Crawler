@@ -34,63 +34,6 @@ jobs:
             });
             core.notice(`dispatched ci-recovery-router.yml ref=${ref}`);
 
-      - name: Reclaim closed/merged owner fences
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const ref = context.payload.repository?.default_branch || 'main';
-            const cap = 2;
-            const labels = await github.paginate(github.rest.issues.listLabelsForRepo, {
-              owner,
-              repo,
-              per_page: 100,
-            });
-            const numbers = [...new Set(
-              labels
-                .map((label) => String(label.name || ''))
-                .filter((name) => name.startsWith('ci-owner-pr-'))
-                .map((name) => Number.parseInt(name.slice('ci-owner-pr-'.length), 10))
-                .filter((number) => Number.isInteger(number) && number > 0),
-            )].sort((a, b) => a - b);
-
-            let dispatched = 0;
-            for (const number of numbers) {
-              if (dispatched >= cap) break;
-              let pull;
-              try {
-                pull = (
-                  await github.rest.pulls.get({
-                    owner,
-                    repo,
-                    pull_number: number,
-                  })
-                ).data;
-              } catch (error) {
-                const status = error?.status ? `status=${error.status}` : 'status=unknown';
-                core.notice(`skip owner-fence #${number}: pull lookup failed (${status})`);
-                continue;
-              }
-              if (String(pull.state || '').toLowerCase() === 'open') continue;
-              await github.rest.actions.createWorkflowDispatch({
-                owner,
-                repo,
-                workflow_id: 'ci-recovery.yml',
-                ref,
-                inputs: {
-                  operation: 'reconcile',
-                  pr_number: String(number),
-                  trigger: 'liveness-sweep:closed-owner-fence',
-                  lease_id: '',
-                },
-              });
-              dispatched += 1;
-              core.notice(`reclaim owner-fence pr=#${number} state=${pull.state}`);
-            }
-            core.info(
-              `closed-owner-fence sweep complete candidates=${numbers.length} dispatched=${dispatched} cap=${cap}`,
-            );
-
       - name: Trigger CI conflict coordinator sweep
         uses: actions/github-script@v7
         with:
@@ -104,6 +47,50 @@ jobs:
               ref,
             });
             core.notice(`dispatched ci-conflict-coordinator.yml ref=${ref}`);
+
+      - name: Scan for parked action_required checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const ref = context.payload.repository?.default_branch || 'main';
+            const workflowsToCheck = ['ci.yml', 'security-review.yml'];
+            // Bound per sweep to prevent burst-dispatching when many runs are parked.
+            const cap = 3;
+            let dispatched = 0;
+            for (const workflowId of workflowsToCheck) {
+              if (dispatched >= cap) break;
+              let runs;
+              try {
+                runs = await github.rest.actions.listWorkflowRuns({
+                  owner,
+                  repo,
+                  workflow_id: workflowId,
+                  status: 'action_required',
+                  per_page: 10,
+                });
+              } catch (error) {
+                core.notice(`skip action_required scan workflow=${workflowId}: ${error.message}`);
+                continue;
+              }
+              for (const run of runs.data.workflow_runs) {
+                if (dispatched >= cap) break;
+                try {
+                  await github.rest.actions.createWorkflowDispatch({
+                    owner,
+                    repo,
+                    workflow_id: 'action-required-retrigger.yml',
+                    ref,
+                    inputs: { run_id: String(run.id) },
+                  });
+                  dispatched += 1;
+                  core.notice(`dispatched action-required-retrigger run=${run.id} workflow=${workflowId}`);
+                } catch (error) {
+                  core.notice(`skip action-required-retrigger run=${run.id}: ${error.message}`);
+                }
+              }
+            }
+            core.info(`action-required backstop sweep complete dispatched=${dispatched} cap=${cap}`);
 
       - name: Trigger disposition detection when available
         uses: actions/github-script@v7

@@ -1,0 +1,168 @@
+name: CI PR Disposition
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  disposition:
+    concurrency:
+      group: crawler-ci-pr-disposition
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted disposition script
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Detect and close superseded duplicate PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Duplicate detection: scan open PRs for coordinator comments that
+            // mark them as 'superseded' (full-tree no-ops after another PR landed).
+            // A superseded PR is safe to close because its diff is already
+            // represented by the proof-designated representative PR. This
+            // implements #1857 duplicate auto-close acceptance criterion.
+            const { owner, repo } = context.repo;
+            const COORDINATOR_MARKER = '<!-- crawler-ci-conflict-coordinator:v1 -->';
+            const COORDINATOR_DATA_PREFIX = '<!-- crawler-ci-conflict-coordinator-data:';
+            const COORDINATOR_APP_ID = 990625; // GitHub Copilot / trusted automation app id
+
+            function isTrustedComment(comment) {
+              const appId = comment.performed_via_github_app?.id;
+              if (appId && Number(appId) === COORDINATOR_APP_ID) return true;
+              const assoc = String(comment.author_association || '').toUpperCase();
+              return ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(assoc);
+            }
+
+            function parseCoordinatorState(body) {
+              if (!String(body || '').trimStart().startsWith(COORDINATOR_MARKER)) return null;
+              const escaped = COORDINATOR_DATA_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const match = String(body).match(new RegExp(`${escaped}([A-Za-z0-9_-]+)\\s*-->`));
+              if (!match) return null;
+              try {
+                return JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8'));
+              } catch {
+                return null;
+              }
+            }
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+            let closedCount = 0;
+            const closedPrNumbers = [];
+            for (const pull of pulls) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: pull.number, per_page: 100,
+              });
+              const coordComment = comments.find(
+                (c) => String(c.body || '').trimStart().startsWith(COORDINATOR_MARKER) &&
+                  isTrustedComment(c),
+              );
+              if (!coordComment) continue;
+              const state = parseCoordinatorState(coordComment.body);
+              if (!state) continue;
+              const proofs = Array.isArray(state.proofs) ? state.proofs : [];
+              const prProof = proofs.find((p) => Number(p.number) === Number(pull.number));
+              if (!prProof || prProof.status !== 'superseded') continue;
+              const representedBy = (prProof.representedBy || []).join(', #') || 'main';
+              const closeBody = [
+                '<!-- crawler-ci-disposition:v1 -->',
+                `This PR is a full-tree no-op after #${representedBy} landed (fingerprint \`${String(prProof.fingerprint || '').slice(0, 12)}\`).`,
+                'Closing automatically as a deterministic duplicate.',
+              ].join('\n');
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pull.number, body: closeBody,
+              });
+              await github.rest.pulls.update({
+                owner, repo, pull_number: pull.number, state: 'closed',
+              });
+              closedPrNumbers.push(pull.number);
+              closedCount += 1;
+              core.notice(`closed-duplicate pr=#${pull.number} represented-by=${representedBy}`);
+            }
+            core.info(`duplicate-detection complete closed=${closedCount} prs=${closedPrNumbers.join(',')}`);
+
+      - name: Detect and quarantine abandoned PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Abandon quarantine: scan open PRs that have been in ci-recovery-waiting
+            // state with no owner activity for longer than the abandon threshold.
+            // Quarantined PRs are labeled 'ci-conflict-abandon' so the conflict
+            // coordinator excludes them from ordering (D11 non-blocking phase).
+            // This implements #1857 abandon-quarantine acceptance criterion.
+            const { owner, repo } = context.repo;
+            const WAITING_LABEL = 'ci-recovery-waiting';
+            const OWNER_LABEL_PREFIX = 'ci-owner-pr-';
+            const ABANDON_THRESHOLD_DAYS = 14;
+            const ABANDON_LABEL = 'ci-conflict-abandon';
+            const STATE_MARKER = '<!-- crawler-ci-state:v1 -->';
+
+            const now = new Date();
+            const thresholdMs = ABANDON_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
+
+            function parseStateComment(body) {
+              const encoded = String(body || '').match(
+                /<!-- crawler-ci-state-data:([A-Za-z0-9_-]+)\s*-->/,
+              );
+              if (!encoded) return null;
+              try {
+                return JSON.parse(Buffer.from(encoded[1], 'base64url').toString('utf8'));
+              } catch {
+                return null;
+              }
+            }
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+            let quarantinedCount = 0;
+            const quarantinedPrNumbers = [];
+            for (const pull of pulls) {
+              const labelNames = (pull.labels || []).map((l) => String(l.name || ''));
+              // Only consider PRs that are waiting and not already quarantined or owned.
+              if (!labelNames.includes(WAITING_LABEL)) continue;
+              if (labelNames.includes(ABANDON_LABEL)) continue;
+              if (labelNames.some((n) => n.startsWith(OWNER_LABEL_PREFIX))) continue;
+
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: pull.number, per_page: 100,
+              });
+              const stateComments = comments.filter((c) =>
+                String(c.body || '').trimStart().startsWith(STATE_MARKER),
+              );
+              if (stateComments.length !== 1) continue;
+              const state = parseStateComment(stateComments[0].body);
+              if (!state || state.owner !== 'none') continue;
+              const lastProgress = Date.parse(state.progressAt || state.updatedAt || '');
+              if (!Number.isFinite(lastProgress)) continue;
+              if (now.getTime() - lastProgress < thresholdMs) continue;
+
+              const quarantineBody = [
+                '<!-- crawler-ci-disposition:v1 -->',
+                `This PR has been waiting without owner activity for more than ${ABANDON_THRESHOLD_DAYS} days (last progress: \`${new Date(lastProgress).toISOString()}\`).`,
+                'Marking as abandoned so CI conflict coordination can proceed unblocked.',
+                'Remove the `ci-conflict-abandon` label to re-enter the coordination queue.',
+              ].join('\n');
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pull.number, body: quarantineBody,
+              });
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: pull.number, labels: [ABANDON_LABEL],
+              });
+              quarantinedPrNumbers.push(pull.number);
+              quarantinedCount += 1;
+              core.notice(`quarantined-abandoned pr=#${pull.number} last-progress=${new Date(lastProgress).toISOString()}`);
+            }
+            core.info(`abandon-quarantine complete quarantined=${quarantinedCount} prs=${quarantinedPrNumbers.join(',')}`);
