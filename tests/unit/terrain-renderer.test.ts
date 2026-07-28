@@ -49,10 +49,17 @@ class MockRenderTexture {
   depth = 0;
   readonly stamps: StampCall[] = [];
   readonly fills: FillCall[] = [];
+  /** Cleared regions, in call order, so tests can assert draw ORDER vs stamps. */
+  readonly clears: FillCall[] = [];
 
   setOrigin(x: number, y: number): this {
     this.originX = x;
     this.originY = y;
+    return this;
+  }
+
+  clear(x: number, y: number, w: number, h: number): this {
+    this.clears.push({ color: 0, alpha: 0, x, y, w, h });
     return this;
   }
 
