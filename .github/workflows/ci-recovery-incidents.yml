@@ -31,25 +31,34 @@ jobs:
     # cause is fixed — incident.mjs itself must not auto-close on that kind
     # of success (it re-checks the head's attested merge-train provenance
     # before closing), so routing it here is safe either way.
-    # Scheduled `CI` runs only route while the train is enabled, matching
-    # `ci.yml`'s own gating of the schedule trigger (`changes` job) — when the
-    # train is disabled, a scheduled run is a no-op success that must not be
-    # allowed to auto-close a real, still-open incident.
+    # Scheduled `CI` runs: the train-gate step below handles the
+    # MERGE_TRAIN_ENABLED guard so the schedule+train check is defined in
+    # .github/actions/train-gate/action.yml (single definition).
     if: >-
       github.event.workflow_run.event != 'pull_request' &&
       (github.event.workflow_run.name != 'CI' ||
        github.event.workflow_run.event == 'push' ||
-       (github.event.workflow_run.event == 'schedule' && vars.MERGE_TRAIN_ENABLED == 'true'))
+       github.event.workflow_run.event == 'schedule')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout trusted incident router
+      - name: Checkout for local actions
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      - name: Train gate
+        id: train-gate
+        uses: ./.github/actions/train-gate
+        with:
+          # Gate only applies to scheduled CI runs (other workflows and push
+          # events are always eligible — see job-level if: above).
+          event-is-schedule: ${{ github.event.workflow_run.name == 'CI' && github.event.workflow_run.event == 'schedule' }}
+          merge-train-enabled: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
+
       - name: Deduplicate incident and assign Copilot
+        if: steps.train-gate.outputs.enabled == 'true'
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}

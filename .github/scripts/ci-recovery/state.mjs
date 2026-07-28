@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 
-export const STATE_MARKER = '<!-- crawler-ci-state:v1 -->';
-export const STATE_DATA_PREFIX = '<!-- crawler-ci-state-data:';
+import { STATE_DATA_PREFIX, STATE_MARKER } from './markers.mjs';
+
+export { STATE_MARKER, STATE_DATA_PREFIX };
 export const OWNER_LABEL_PREFIX = 'ci-owner-pr-';
 export const WAITING_LABEL = 'ci-recovery-waiting';
 export const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';

@@ -1,14 +1,7 @@
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './state.mjs';
+import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './markers.mjs';
 
-export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
-
-/**
- * Marker embedded in retroactive plan comments posted by the CI recovery
- * reconciler when a linked issue has an intake requirement but no Copilot plan
- * comment was ever posted. Used as an idempotency key so the reconciler never
- * posts the retroactive plan comment twice.
- */
-export const ISSUE_RECOVERY_PLAN_MARKER = '<!-- crawler-ci-recovery-plan:v1 -->';
+export { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER };
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
 const RECOVERY_PLAN_APPROACH_MAX_LENGTH = 20_000;
 const RECOVERY_PLAN_CHECKLIST_MAX_ITEMS = 20;

@@ -51,6 +51,10 @@ import {
   waitForOutstandingCount,
 } from './router.mjs';
 import {
+  MANAGED_COMMENT_MARKERS,
+  MANAGED_COMMENT_PREFIX,
+} from './markers.mjs';
+import {
   automationProgressKey,
   blockerFingerprint,
   makeState,
@@ -1578,6 +1582,8 @@ test('managed recovery comments do not feed the recovery router', () => {
     '<!-- crawler-merge-train:v1 -->\nstatus',
     '<!-- crawler-review-request:v1 head=x reason=ready -->',
     '<!-- crawler-review-conflict:v1 episode=x head=y base=z -->',
+    '<!-- crawler-pr-lifecycle:v1 -->\nlifecycle',
+    '<!-- crawler-ci-conflict-coordinator:v1 -->\ncoordinator',
   ]) {
     assert.equal(isManagedCommentEvent({ comment: { body } }, 'issue_comment'), true);
   }
@@ -1592,16 +1598,18 @@ test('managed recovery comments do not feed the recovery router', () => {
 
 test('managed recovery comments are rejected by the workflow job guard', () => {
   assert.equal(typeof routeJob.if, 'string');
-  for (const marker of [
-    '<!-- crawler-ci-state:v1 -->',
-    '<!-- crawler-ci-task:v1',
-    '<!-- crawler-merge-train:v1 -->',
-    '<!-- crawler-review-request:v1',
-    '<!-- crawler-review-conflict:v1',
-  ]) {
+  // All managed-comment markers start with '<!-- crawler-' (MANAGED_COMMENT_PREFIX).
+  // The YAML filter uses a single prefix check so new markers are covered
+  // automatically without editing the workflow file.
+  assert.ok(
+    routeJob.if.includes(`!startsWith(github.event.comment.body, '${MANAGED_COMMENT_PREFIX}')`),
+    `expected job guard to use the shared managed-comment prefix '${MANAGED_COMMENT_PREFIX}'`,
+  );
+  // Every marker in MANAGED_COMMENT_MARKERS must satisfy the shared prefix.
+  for (const marker of MANAGED_COMMENT_MARKERS) {
     assert.ok(
-      routeJob.if.includes(`!startsWith(github.event.comment.body, '${marker}')`),
-      `expected job guard for ${marker}`,
+      marker.startsWith(MANAGED_COMMENT_PREFIX),
+      `marker '${marker}' does not start with MANAGED_COMMENT_PREFIX '${MANAGED_COMMENT_PREFIX}'`,
     );
   }
 });

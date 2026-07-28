@@ -32,11 +32,14 @@ export const REQUIRED_CHECK_NAME = 'merge-train';
 // key on, and a squash-merged commit must instead earn ordinary push-CI
 // evidence. This name is distinct so it never collides with that machinery.
 export const PROMOTION_POSTCONDITION_CHECK_NAME = 'merge-train-promotion-postcondition';
-export const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
+import {
+  MERGE_TRAIN_STATUS_MARKER as STATUS_MARKER,
+  MERGE_TRAIN_LANDED_MARKER as LANDED_MARKER,
+} from '../ci-recovery/markers.mjs';
+export { STATUS_MARKER, LANDED_MARKER };
 // Distinct sticky marker for the durable landed-completion comment. Kept
 // separate from STATUS_MARKER so the permanent landed record is never
 // overwritten by an ordinary queue-state update (renderStatus).
-export const LANDED_MARKER = '<!-- crawler-merge-train-landed:v1 -->';
 // Structured commit-message trailer keys. The exact same title/message are
 // used both for the local candidate squash commits (buildCandidate) and for
 // the real GitHub squash-merge commit_title/commit_message, so the durable
