@@ -2816,6 +2816,30 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       await assertExpectedMetadataUnchanged('queue-merge-train');
       process.stdout.write(`queue unchanged merge-train pr=#${prNumber}\n`);
     }
+    // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
+    // strict up-to-date merge policy does not block it forever.  readToken is
+    // CRAWLER_CI_PAT || GITHUB_TOKEN — CRAWLER_CI_PAT emits normal push events
+    // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
+    if (pr.mergeable_state === 'behind') {
+      if (live) {
+        try {
+          await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
+            method: 'PUT',
+            body: { expected_head_sha: pr.head.sha },
+          });
+          process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
+        } catch (err) {
+          // 422 covers "already up-to-date" and stale expected_head_sha — log
+          // it so stale-head races are visible and not silently swallowed.
+          if (err.status !== 422) throw err;
+          process.stderr.write(
+            `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
+          );
+        }
+      } else {
+        process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
+      }
+    }
     await closeLoopIncidentOnConvergence();
     process.exit(0);
   }
@@ -2841,10 +2865,34 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       { pullRequestId: review.id, headOid: pr.head.sha },
     );
     process.stdout.write(`auto-merge armed pr=#${prNumber}\n`);
-    await closeLoopIncidentOnConvergence();
   } else {
     process.stdout.write(`dry-run would-arm-auto-merge pr=#${prNumber}\n`);
   }
+  // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
+  // strict up-to-date merge policy does not block it forever.  readToken is
+  // CRAWLER_CI_PAT || GITHUB_TOKEN — CRAWLER_CI_PAT emits normal push events
+  // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
+  if (pr.mergeable_state === 'behind') {
+    if (live) {
+      try {
+        await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
+          method: 'PUT',
+          body: { expected_head_sha: pr.head.sha },
+        });
+        process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
+      } catch (err) {
+        // 422 covers "already up-to-date" and stale expected_head_sha — log
+        // it so stale-head races are visible and not silently swallowed.
+        if (err.status !== 422) throw err;
+        process.stderr.write(
+          `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
+        );
+      }
+    } else {
+      process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
+    }
+  }
+  await closeLoopIncidentOnConvergence();
   process.exit(0);
 } else if (terminalRow.action === DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED) {
   process.stdout.write(`skip pr=#${prNumber} reason=stale-automation-exhausted\n`);

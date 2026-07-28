@@ -145,9 +145,7 @@ export function stalledAdmissionEligiblePulls({
       return nowMs - anchorMs >= thresholdMs;
     })
     .sort(
-      (left, right) =>
-        stallAnchorMs(left) - stallAnchorMs(right) ||
-        left.number - right.number,
+      (left, right) => stallAnchorMs(left) - stallAnchorMs(right) || left.number - right.number,
     );
 }
 
@@ -273,13 +271,17 @@ export function resolveMergeTrainTokens(environment) {
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
   // The repository App receives 403 from workflow_dispatch; never reuse it here.
   const workflowDispatchToken = environment.GITHUB_TOKEN || '';
+  // CRAWLER_CI_PAT is a user token that emits normal push events (re-triggers
+  // required CI); GITHUB_TOKEN is recursion-suppressed for push events so
+  // update-branch via GITHUB_TOKEN does not restart required checks.
+  const updateBranchToken = environment.CRAWLER_CI_PAT || environment.GITHUB_TOKEN || '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
   }
   if (!workflowDispatchToken) {
     throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
   }
-  return { promotionToken, workflowDispatchToken };
+  return { promotionToken, workflowDispatchToken, updateBranchToken };
 }
 
 export function mergeTrainGitEnvironment(environment, overrides = {}) {
@@ -418,10 +420,7 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
       // Auto-resolve: if the only conflict is INDEX.md (a generated file that
       // must not appear on PR branches), keep HEAD's version and continue the
       // candidate build rather than aborting the whole train.
-      if (
-        unmergedFiles.length > 0 &&
-        unmergedFiles.every((f) => f === INDEX_MD_PATH)
-      ) {
+      if (unmergedFiles.length > 0 && unmergedFiles.every((f) => f === INDEX_MD_PATH)) {
         git(['checkout', 'HEAD', '--', INDEX_MD_PATH]);
         // A squash-merge leaves newly-added files from the merged branch as
         // untracked (not staged). Stage everything so the candidate commit
@@ -532,7 +531,12 @@ export function mainAttributionVerdict({ mainSha, runs }) {
   // does not suppress bisection/ejection until the next daily backstop.
   // Mirrors the incident router's gate (incident.mjs: only failure/timed_out/
   // startup_failure/action_required raise incidents).
-  const FAILURE_CONCLUSIONS = new Set(['failure', 'timed_out', 'startup_failure', 'action_required']);
+  const FAILURE_CONCLUSIONS = new Set([
+    'failure',
+    'timed_out',
+    'startup_failure',
+    'action_required',
+  ]);
   if (FAILURE_CONCLUSIONS.has(latestCompleted.conclusion)) {
     return {
       verdict: 'red',
