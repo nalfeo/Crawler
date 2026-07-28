@@ -30,6 +30,9 @@ import {
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
   shouldDispatchMergeTrainFill,
+  ABANDON_CANDIDATE_LABEL,
+  QUARANTINE_COMMENT_MARKER,
+  parseDispositionCommand,
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
@@ -1271,4 +1274,77 @@ test('legacy v1 automation state without progressKey is never classified as exha
     'retry',
     'legacy v1 state with attempt>=2 but no progressKey must be retried, not released',
   );
+});
+
+// ---------------------------------------------------------------------------
+// Disposition constants
+// ---------------------------------------------------------------------------
+
+test('ABANDON_CANDIDATE_LABEL is the expected label string', () => {
+  assert.equal(ABANDON_CANDIDATE_LABEL, 'abandon-candidate');
+});
+
+test('QUARANTINE_COMMENT_MARKER is the expected marker string', () => {
+  assert.ok(String(QUARANTINE_COMMENT_MARKER).startsWith('<!-- '), 'must be an HTML comment marker');
+  assert.ok(QUARANTINE_COMMENT_MARKER.includes('quarantine'), 'must include "quarantine"');
+});
+
+// ---------------------------------------------------------------------------
+// parseDispositionCommand — exact-match human-gated revival
+// ---------------------------------------------------------------------------
+
+test('parseDispositionCommand: "KEEP" (exact) → "KEEP"', () => {
+  assert.equal(parseDispositionCommand('KEEP'), 'KEEP');
+});
+
+test('parseDispositionCommand: "ABANDON" (exact) → "ABANDON"', () => {
+  assert.equal(parseDispositionCommand('ABANDON'), 'ABANDON');
+});
+
+test('parseDispositionCommand: leading/trailing whitespace is trimmed', () => {
+  assert.equal(parseDispositionCommand('  KEEP  '), 'KEEP');
+  assert.equal(parseDispositionCommand('\nABANDON\n'), 'ABANDON');
+});
+
+test('parseDispositionCommand: substrings do NOT match', () => {
+  // "KEEP" embedded in other text must not trigger revival.
+  assert.equal(parseDispositionCommand('please KEEP this PR'), null);
+  assert.equal(parseDispositionCommand('KEEP this alive'), null);
+  assert.equal(parseDispositionCommand('I want to KEEP it'), null);
+  assert.equal(parseDispositionCommand('ABANDON this idea'), null);
+  assert.equal(parseDispositionCommand('should we ABANDON?'), null);
+});
+
+test('parseDispositionCommand: lowercase or mixed-case does NOT match (case-sensitive)', () => {
+  assert.equal(parseDispositionCommand('keep'), null);
+  assert.equal(parseDispositionCommand('Keep'), null);
+  assert.equal(parseDispositionCommand('abandon'), null);
+  assert.equal(parseDispositionCommand('Abandon'), null);
+});
+
+test('parseDispositionCommand: quoted text does NOT match', () => {
+  assert.equal(parseDispositionCommand('> KEEP'), null);
+  assert.equal(parseDispositionCommand('`KEEP`'), null);
+  assert.equal(parseDispositionCommand('"ABANDON"'), null);
+});
+
+test('parseDispositionCommand: empty, null, undefined → null', () => {
+  assert.equal(parseDispositionCommand(''), null);
+  assert.equal(parseDispositionCommand(null), null);
+  assert.equal(parseDispositionCommand(undefined), null);
+});
+
+test('parseDispositionCommand: other valid comment text (e.g. LGTM) → null', () => {
+  assert.equal(parseDispositionCommand('LGTM'), null);
+  assert.equal(parseDispositionCommand('APPROVED FOR CHECK-IN'), null);
+  assert.equal(parseDispositionCommand('This PR looks good'), null);
+});
+
+test('parseDispositionCommand: green CI or other-author text does NOT unlock', () => {
+  // The issue states: "green CI, other authors, quoted text, or substrings do not."
+  // This tests that a CI status comment (which isn't from the owner) cannot
+  // accidentally parse as KEEP.  The command parser itself is agnostic to
+  // author; the caller (workflow) must gate on author identity separately.
+  assert.equal(parseDispositionCommand('All checks passed'), null);
+  assert.equal(parseDispositionCommand('✅ CI green'), null);
 });

@@ -23,19 +23,59 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Detect and close superseded duplicate PRs
+      - name: Detect and close provable duplicate PRs
         uses: actions/github-script@v7
         with:
           script: |
-            // Duplicate detection: scan open PRs for coordinator comments that
-            // mark them as 'superseded' (full-tree no-ops after another PR landed).
-            // A superseded PR is safe to close because its diff is already
-            // represented by the proof-designated representative PR. This
-            // implements #1857 duplicate auto-close acceptance criterion.
+            // Duplicate detection — deterministic proof rules only.
+            // Auto-closes a PR ONLY when one of these proof rules fires:
+            //   1. empty-diff: the PR's diff is zero (all changes already on main)
+            //   2. coordinator-superseded: coordinator marked this PR as a full-tree no-op (legacy, retained)
+            // SIBLING_MERGED: merged sibling closes same issue (issue may still be open) — suspicious
+            //   but NOT a proof. Routes to quarantine (adds abandon-candidate label for step 2 pickup).
+            // Any uncertainty routes to quarantine (step 2), never to auto-close.
+            //
+            // Scope: ALL open PRs except those already quarantined or abandoned.
+            // A PR that can hold a blocking slot must be checked, regardless of labels.
+            //
+            // Golden fixture: PR #1630 / PR #1575 / issue #1568 — rule 1 fires,
+            // closes #1630, cites #1575 as the superseder.
+
+            const { pathToFileURL } = await import('url');
+            const workspace = process.env.GITHUB_WORKSPACE;
+            const { detectDuplicateProof, detectQuarantineEvidence } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/duplicate-detect.mjs`).href
+            );
+            const {
+              PHASE,
+              LIFECYCLE_MARKER,
+              PHASE_LABELS,
+              applyLifecycleDecision,
+              makeDuplicateCloseComment,
+              parseLifecycleComment,
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`).href
+            );
+
             const { owner, repo } = context.repo;
+            const ABANDON_CANDIDATE_LABEL = 'abandon-candidate';
+            const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED]; // 'ci-lifecycle-quarantined'
+            const ABANDONED_LABEL = PHASE_LABELS[PHASE.ABANDONED]; // 'ci-lifecycle-abandoned'
+            const REQUIRED_DISPOSITION_LABELS = [
+              ABANDON_CANDIDATE_LABEL,
+              QUARANTINED_LABEL,
+              ABANDONED_LABEL,
+            ];
+            const LABEL_COLORS = {
+              [ABANDON_CANDIDATE_LABEL]: '8b949e',
+              [QUARANTINED_LABEL]: 'fbca04',
+              [ABANDONED_LABEL]: '5319e7',
+            };
+
+            // Coordinator-based superseded detection (legacy proof rule — retained).
             const COORDINATOR_MARKER = '<!-- crawler-ci-conflict-coordinator:v1 -->';
             const COORDINATOR_DATA_PREFIX = '<!-- crawler-ci-conflict-coordinator-data:';
-            const COORDINATOR_APP_ID = 990625; // GitHub Copilot / trusted automation app id
+            const COORDINATOR_APP_ID = 990625;
 
             function isTrustedComment(comment) {
               const appId = comment.performed_via_github_app?.id;
@@ -49,120 +89,789 @@ jobs:
               const escaped = COORDINATOR_DATA_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
               const match = String(body).match(new RegExp(`${escaped}([A-Za-z0-9_-]+)\\s*-->`));
               if (!match) return null;
-              try {
-                return JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8'));
-              } catch {
-                return null;
+              try { return JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8')); }
+              catch { return null; }
+            }
+
+            async function upsertLifecycleComment(prNumber, body) {
+              const existingComments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: prNumber, per_page: 100,
+              });
+              const existing = existingComments.find((c) => String(c.body || '').includes(LIFECYCLE_MARKER));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+              }
+
+              async function ensureLabel(name) {
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  try {
+                    await github.rest.issues.createLabel({
+                      owner,
+                      repo,
+                      name,
+                      color: LABEL_COLORS[name] || '8b949e',
+                    });
+                  } catch (createError) {
+                    if (createError.status !== 422) throw createError;
+                  }
+                }
+              }
+
+              async function ensureDispositionLabels() {
+                for (const label of REQUIRED_DISPOSITION_LABELS) {
+                  await ensureLabel(label);
+                }
+              }
+
+              async function addLabelStrict(prNumber, label) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+              }
+
+              async function removeLabelBestEffort(prNumber, label) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
               }
             }
+
+            async function getClosingIssues(prNumber) {
+              try {
+                const result = await github.graphql(`
+                  query($owner: String!, $repo: String!, $number: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $number) {
+                        closingIssuesReferences(first: 100) {
+                          nodes { number state }
+                        }
+                      }
+                    }
+                  }
+                `, { owner, repo, number: prNumber });
+                return result.repository?.pullRequest?.closingIssuesReferences?.nodes || [];
+              } catch (error) {
+                core.warning(`getClosingIssues pr=#${prNumber}: ${error.message}`);
+                return [];
+              }
+            }
+
+            const mergedSiblingsByIssueCache = new Map();
+            async function getMergedSiblingsForIssue(issueNumber) {
+              const normalizedIssue = Number(issueNumber);
+              if (!Number.isInteger(normalizedIssue) || normalizedIssue <= 0) return [];
+              if (mergedSiblingsByIssueCache.has(normalizedIssue)) {
+                return mergedSiblingsByIssueCache.get(normalizedIssue);
+              }
+
+              const siblings = [];
+              let cursor = null;
+              while (true) {
+                const result = await github.graphql(`
+                  query($owner: String!, $repo: String!, $issueNumber: Int!, $after: String) {
+                    repository(owner: $owner, name: $repo) {
+                      issue(number: $issueNumber) {
+                        closedByPullRequestsReferences(first: 100, after: $after) {
+                          nodes {
+                            number
+                            merged
+                            closingIssuesReferences(first: 100) {
+                              nodes { number }
+                            }
+                          }
+                          pageInfo { hasNextPage endCursor }
+                        }
+                      }
+                    }
+                  }
+                `, { owner, repo, issueNumber: normalizedIssue, after: cursor });
+
+                const connection = result.repository?.issue?.closedByPullRequestsReferences;
+                const nodes = connection?.nodes || [];
+                for (const node of nodes) {
+                  if (!node?.merged) continue;
+                  siblings.push({
+                    number: Number(node.number),
+                    merged: true,
+                    closingIssueNumbers: (node.closingIssuesReferences?.nodes || []).map((i) => Number(i.number)),
+                  });
+                }
+
+                if (!connection?.pageInfo?.hasNextPage) break;
+                cursor = connection.pageInfo.endCursor;
+              }
+
+              mergedSiblingsByIssueCache.set(normalizedIssue, siblings);
+              return siblings;
+            }
+
+            await ensureDispositionLabels();
 
             const pulls = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', per_page: 100,
             });
+
+            // Scope: ALL open PRs except those already quarantined or abandoned.
+            // A PR that holds a blocking cluster/ordering slot must be evaluated
+            // regardless of which other labels it carries.
+            const inScope = pulls.filter((p) => {
+              const labels = (p.labels || []).map((l) => String(l.name || ''));
+              return !labels.includes(QUARANTINED_LABEL) && !labels.includes(ABANDONED_LABEL);
+            });
+
+            if (!inScope.length) {
+              core.info('duplicate-detection: no in-scope PRs, skipping');
+              return;
+            }
+
             let closedCount = 0;
+            let suspiciousCount = 0;
             const closedPrNumbers = [];
-            for (const pull of pulls) {
+
+            for (const pull of inScope) {
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: pull.number, per_page: 100,
               });
-              const coordComment = comments.find(
-                (c) => String(c.body || '').trimStart().startsWith(COORDINATOR_MARKER) &&
-                  isTrustedComment(c),
-              );
-              if (!coordComment) continue;
-              const state = parseCoordinatorState(coordComment.body);
-              if (!state) continue;
-              const proofs = Array.isArray(state.proofs) ? state.proofs : [];
-              const prProof = proofs.find((p) => Number(p.number) === Number(pull.number));
-              if (!prProof || prProof.status !== 'superseded') continue;
-              const representedBy = (prProof.representedBy || []).join(', #') || 'main';
-              const closeBody = [
-                '<!-- crawler-ci-disposition:v1 -->',
-                `This PR is a full-tree no-op after #${representedBy} landed (fingerprint \`${String(prProof.fingerprint || '').slice(0, 12)}\`).`,
-                'Closing automatically as a deterministic duplicate.',
-              ].join('\n');
-              await github.rest.issues.createComment({
-                owner, repo, issue_number: pull.number, body: closeBody,
-              });
-              await github.rest.pulls.update({
-                owner, repo, pull_number: pull.number, state: 'closed',
-              });
-              closedPrNumbers.push(pull.number);
-              closedCount += 1;
-              core.notice(`closed-duplicate pr=#${pull.number} represented-by=${representedBy}`);
-            }
-            core.info(`duplicate-detection complete closed=${closedCount} prs=${closedPrNumbers.join(',')}`);
 
-      - name: Detect and quarantine abandoned PRs
+              // Coordinator-based superseded check (legacy proof rule, retained).
+              const coordComment = comments.find(
+                (c) => String(c.body || '').trimStart().startsWith(COORDINATOR_MARKER) && isTrustedComment(c),
+              );
+              if (coordComment) {
+                const state = parseCoordinatorState(coordComment.body);
+                const proofs = Array.isArray(state?.proofs) ? state.proofs : [];
+                const prProof = proofs.find((p) => Number(p.number) === Number(pull.number));
+                if (prProof?.status === 'superseded') {
+                  const representedBy = (prProof.representedBy || []).join(', #') || 'main';
+                  const closeBody = makeDuplicateCloseComment(pull.number, {
+                    proofRule: 'empty-diff',
+                    supersederPr: Number((prProof.representedBy || [])[0]) || null,
+                    reason: `coordinator-superseded fingerprint=${String(prProof.fingerprint || '').slice(0, 12)} represented-by=#${representedBy}`,
+                  });
+                  try { await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: closeBody }); }
+                  catch (e) { core.warning(`createComment coordinator-close pr=#${pull.number}: ${e.message}`); }
+                  await applyLifecycleDecision({
+                    prNumber: pull.number,
+                    currentPhase: null,
+                    targetPhase: PHASE.ABANDONED,
+                    blockReason: `coordinator-superseded:represented-by-${representedBy}`,
+                    headSha: pull.head.sha,
+                    mode: 'live',
+                    writeComment: (n, body) => upsertLifecycleComment(n, body),
+                    addLabel: (n, label) => addLabelStrict(n, label),
+                    removeLabel: (n, label) => removeLabelBestEffort(n, label),
+                  });
+                  try { await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' }); }
+                  catch (e) { core.warning(`pulls.update close pr=#${pull.number}: ${e.message}`); }
+                  closedPrNumbers.push(pull.number);
+                  closedCount += 1;
+                  core.notice(`closed-duplicate pr=#${pull.number} rule=coordinator-superseded represented-by=#${representedBy}`);
+                  continue;
+                }
+              }
+
+              // New deterministic proof rules (Issue 8).
+              const closingIssues = await getClosingIssues(pull.number);
+              const ownIssueNums = closingIssues.map((i) => Number(i.number));
+              const siblingsByIssue = await Promise.all(
+                ownIssueNums.map((n) => getMergedSiblingsForIssue(n)),
+              );
+              const mergedSiblings = siblingsByIssue.flat();
+              const dedupedSiblings = [...new Map(mergedSiblings.map((s) => [s.number, s])).values()];
+
+              // Fetch full PR details (needed for additions/deletions — not in list response).
+              let fullPr = pull;
+              try {
+                const { data } = await github.rest.pulls.get({ owner, repo, pull_number: pull.number });
+                fullPr = data;
+              } catch (e) {
+                core.warning(`pulls.get pr=#${pull.number}: ${e.message}`);
+              }
+
+              const proof = detectDuplicateProof(
+                { number: pull.number, additions: fullPr.additions, deletions: fullPr.deletions },
+                { closingIssues, mergedSiblings: dedupedSiblings },
+              );
+
+              if (proof.proofRule) {
+                // Re-validate proof against live PR facts before mutating state.
+                let livePr;
+                try {
+                  const { data } = await github.rest.pulls.get({ owner, repo, pull_number: pull.number });
+                  livePr = data;
+                } catch (e) {
+                  core.warning(`pulls.get live-proof-check pr=#${pull.number}: ${e.message}`);
+                  continue;
+                }
+                const headDrifted = String(livePr.head?.sha || '') !== String(fullPr.head?.sha || '');
+                const baseDrifted = String(livePr.base?.sha || '') !== String(fullPr.base?.sha || '');
+                if (headDrifted || baseDrifted) {
+                  core.notice(`skip-close-drift pr=#${pull.number} head_drift=${headDrifted} base_drift=${baseDrifted}`);
+                  continue;
+                }
+
+                const liveClosingIssues = await getClosingIssues(pull.number);
+                const liveOwnIssueNums = liveClosingIssues.map((i) => Number(i.number));
+                const liveSiblingsByIssue = await Promise.all(
+                  liveOwnIssueNums.map((n) => getMergedSiblingsForIssue(n)),
+                );
+                const liveMergedSiblings = liveSiblingsByIssue.flat();
+                const liveDedupedSiblings = [...new Map(liveMergedSiblings.map((s) => [s.number, s])).values()];
+                const liveProof = detectDuplicateProof(
+                  { number: pull.number, additions: livePr.additions, deletions: livePr.deletions },
+                  { closingIssues: liveClosingIssues, mergedSiblings: liveDedupedSiblings },
+                );
+                const stillMatches =
+                  liveProof.proofRule === proof.proofRule &&
+                  Number(liveProof.supersederPr ?? 0) === Number(proof.supersederPr ?? 0);
+                if (!stillMatches) {
+                  core.notice(`skip-close-proof-drift pr=#${pull.number} old_rule=${proof.proofRule ?? 'none'} new_rule=${liveProof.proofRule ?? 'none'}`);
+                  continue;
+                }
+
+                const closeBody = makeDuplicateCloseComment(pull.number, liveProof);
+                try { await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: closeBody }); }
+                catch (e) { core.warning(`createComment proof-close pr=#${pull.number}: ${e.message}`); }
+                await applyLifecycleDecision({
+                  prNumber: pull.number,
+                  currentPhase: null,
+                  targetPhase: PHASE.ABANDONED,
+                  blockReason: `duplicate-${liveProof.proofRule}`,
+                  headSha: livePr.head.sha,
+                  mode: 'live',
+                  writeComment: (n, body) => upsertLifecycleComment(n, body),
+                  addLabel: (n, label) => addLabelStrict(n, label),
+                  removeLabel: (n, label) => removeLabelBestEffort(n, label),
+                });
+                try { await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' }); }
+                catch (e) { core.warning(`pulls.update close pr=#${pull.number}: ${e.message}`); }
+                closedPrNumbers.push(pull.number);
+                closedCount += 1;
+                core.notice(`closed-duplicate pr=#${pull.number} rule=${liveProof.proofRule} superseder=${liveProof.supersederPr ?? 'none'} reason=${liveProof.reason}`);
+                continue;
+              }
+
+              // SIBLING_MERGED is quarantine evidence (not a proof): merged sibling closes
+              // same issue but issue may still be open. Tag for quarantine in step 2.
+              const evidence = detectQuarantineEvidence(
+                { number: pull.number },
+                { closingIssues, mergedSiblings: dedupedSiblings },
+              );
+              if (evidence.evidenceRule) {
+                const labelNames = (pull.labels || []).map((l) => String(l.name || ''));
+                if (!labelNames.includes(ABANDON_CANDIDATE_LABEL)) {
+                  await addLabelStrict(pull.number, ABANDON_CANDIDATE_LABEL);
+                  suspiciousCount += 1;
+                  core.notice(`sibling-merged-suspect pr=#${pull.number} evidence=${evidence.evidenceRule} superseder=${evidence.supersederPr ?? 'none'} → tagged abandon-candidate for quarantine`);
+                }
+              }
+            }
+
+            core.info(`duplicate-detection complete closed=${closedCount} suspicious-tagged=${suspiciousCount} prs=${closedPrNumbers.join(',')}`);
+
+      - name: Quarantine abandon-candidate PRs (lifecycle FSM, non-blocking)
         uses: actions/github-script@v7
         with:
           script: |
-            // Abandon quarantine: scan open PRs that have been in ci-recovery-waiting
-            // state with no owner activity for longer than the abandon threshold.
-            // Quarantined PRs are labeled 'ci-conflict-abandon' so the conflict
-            // coordinator excludes them from ordering (D11 non-blocking phase).
-            // This implements #1857 abandon-quarantine acceptance criterion.
+            // Quarantine: PRs that are likely-superfluous but NOT provably so are
+            // moved to the lifecycle QUARANTINED phase. This:
+            //   - Immediately evicts them from every blocking position (D11 invariant).
+            //   - Applies human-approval-required so they can't accidentally merge.
+            //   - Posts a human-decision comment with an exact KEEP/ABANDON resolve path.
+            //   - Never auto-closes — waits for the owner.
+            //
+            // Quarantine criteria (any one triggers):
+            //   1. ci-recovery-waiting + no owner + idle ≥ ABANDON_THRESHOLD_DAYS
+            //      with corroborating evidence (closed linked issue or sibling suspect)
+            //   2. abandon-candidate label (explicit human/agent proposal, OR step 1 sibling-suspect)
+            //
+            // A PR behind a quarantined PR is still admitted and merged (D11).
+
+            const { pathToFileURL } = await import('url');
+            const workspace = process.env.GITHUB_WORKSPACE;
+            const {
+              PHASE,
+              LIFECYCLE_MARKER,
+              PHASE_LABELS,
+              applyLifecycleDecision,
+              makeQuarantineComment,
+              parseLifecycleComment,
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`).href
+            );
+
             const { owner, repo } = context.repo;
             const WAITING_LABEL = 'ci-recovery-waiting';
             const OWNER_LABEL_PREFIX = 'ci-owner-pr-';
             const ABANDON_THRESHOLD_DAYS = 14;
-            const ABANDON_LABEL = 'ci-conflict-abandon';
+            const ABANDON_CANDIDATE_LABEL = 'abandon-candidate';
+            const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED]; // 'ci-lifecycle-quarantined'
+            const ABANDONED_LABEL = PHASE_LABELS[PHASE.ABANDONED];     // 'ci-lifecycle-abandoned'
+            const HUMAN_APPROVAL_LABEL = 'human-approval-required';
+            const DISPOSITION_APPROVAL_LABEL = 'ci-disposition-approval-gate';
             const STATE_MARKER = '<!-- crawler-ci-state:v1 -->';
+            const REQUIRED_DISPOSITION_LABELS = [
+              ABANDON_CANDIDATE_LABEL,
+              QUARANTINED_LABEL,
+              ABANDONED_LABEL,
+              DISPOSITION_APPROVAL_LABEL,
+            ];
+            const LABEL_COLORS = {
+              [ABANDON_CANDIDATE_LABEL]: '8b949e',
+              [QUARANTINED_LABEL]: 'fbca04',
+              [ABANDONED_LABEL]: '5319e7',
+              [DISPOSITION_APPROVAL_LABEL]: 'b60205',
+            };
+            const TRUSTED_LIFECYCLE_APP_IDS = new Set([15368, 990625]);
 
             const now = new Date();
             const thresholdMs = ABANDON_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
 
             function parseStateComment(body) {
-              const encoded = String(body || '').match(
-                /<!-- crawler-ci-state-data:([A-Za-z0-9_-]+)\s*-->/,
-              );
+              const encoded = String(body || '').match(/<!-- crawler-ci-state-data:([A-Za-z0-9_-]+)\s*-->/);
               if (!encoded) return null;
+              try { return JSON.parse(Buffer.from(encoded[1], 'base64url').toString('utf8')); }
+              catch { return null; }
+            }
+
+            async function upsertLifecycleComment(prNumber, body) {
+              const existingComments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: prNumber, per_page: 100,
+              });
+              const existing = existingComments.find((c) => String(c.body || '').includes(LIFECYCLE_MARKER));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+              }
+
+              async function ensureLabel(name) {
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  try {
+                    await github.rest.issues.createLabel({
+                      owner,
+                      repo,
+                      name,
+                      color: LABEL_COLORS[name] || '8b949e',
+                    });
+                  } catch (createError) {
+                    if (createError.status !== 422) throw createError;
+                  }
+                }
+              }
+
+              async function ensureDispositionLabels() {
+                for (const label of REQUIRED_DISPOSITION_LABELS) {
+                  await ensureLabel(label);
+                }
+              }
+
+              async function addLabelStrict(prNumber, label) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+              }
+
+              async function removeLabelBestEffort(prNumber, label) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+              }
+
+              function isTrustedLifecycleComment(comment) {
+                const assoc = String(comment.author_association || '').toUpperCase();
+                if (['OWNER', 'MEMBER', 'COLLABORATOR'].includes(assoc)) return true;
+                const appId = Number(comment.performed_via_github_app?.id || 0);
+                return TRUSTED_LIFECYCLE_APP_IDS.has(appId);
+              }
+
+              function parseCurrentLifecycleRecord(comments, prNumber) {
+                const lifecycleComments = comments.filter(
+                  (comment) =>
+                    String(comment.body || '').includes(LIFECYCLE_MARKER) &&
+                    isTrustedLifecycleComment(comment),
+                );
+                if (lifecycleComments.length > 1) {
+                  core.warning(`quarantine-skip pr=#${prNumber} reason=multiple-trusted-lifecycle-comments`);
+                  return { blocked: true, record: null };
+                }
+                if (lifecycleComments.length === 0) return { blocked: false, record: null };
+                try {
+                  return { blocked: false, record: parseLifecycleComment(lifecycleComments[0].body) };
+                } catch (error) {
+                  core.warning(`quarantine-skip pr=#${prNumber} reason=invalid-lifecycle-comment message=${error.message}`);
+                  return { blocked: true, record: null };
+                }
+              }
+            }
+
+            async function getClosingIssues(prNumber) {
               try {
-                return JSON.parse(Buffer.from(encoded[1], 'base64url').toString('utf8'));
-              } catch {
-                return null;
+                const result = await github.graphql(`
+                  query($owner: String!, $repo: String!, $number: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $number) {
+                        closingIssuesReferences(first: 100) {
+                          nodes { number state }
+                        }
+                      }
+                    }
+                  }
+                `, { owner, repo, number: prNumber });
+                return result.repository?.pullRequest?.closingIssuesReferences?.nodes || [];
+              } catch (error) {
+                core.warning(`getClosingIssues pr=#${prNumber}: ${error.message}`);
+                return [];
               }
             }
 
             const pulls = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', per_page: 100,
             });
+            await ensureDispositionLabels();
+
             let quarantinedCount = 0;
             const quarantinedPrNumbers = [];
+
             for (const pull of pulls) {
               const labelNames = (pull.labels || []).map((l) => String(l.name || ''));
-              // Only consider PRs that are waiting and not already quarantined or owned.
-              if (!labelNames.includes(WAITING_LABEL)) continue;
-              if (labelNames.includes(ABANDON_LABEL)) continue;
-              if (labelNames.some((n) => n.startsWith(OWNER_LABEL_PREFIX))) continue;
+
+              // Skip already quarantined/abandoned PRs.
+              if (labelNames.includes(QUARANTINED_LABEL)) continue;
+              if (labelNames.includes(ABANDONED_LABEL)) continue;
+
+              // Determine why this PR is a quarantine candidate.
+              let quarantineReason = null;
+              let lastActivityIso = null;
+              let comments = null;
+
+              if (labelNames.includes(ABANDON_CANDIDATE_LABEL)) {
+                // Explicit proposal by a human, agent, or step 1 sibling-suspect tagging.
+                quarantineReason = 'abandon-candidate-label';
+              } else if (labelNames.includes(WAITING_LABEL) && !labelNames.some((n) => n.startsWith(OWNER_LABEL_PREFIX))) {
+                // Waiting with no active owner — check if stale WITH corroborating evidence.
+                // Require a closed linked issue (not just idleness) to reduce false positives.
+                comments = await github.paginate(github.rest.issues.listComments, {
+                  owner, repo, issue_number: pull.number, per_page: 100,
+                });
+                const stateComment = comments.find((c) => String(c.body || '').trimStart().startsWith(STATE_MARKER));
+                if (stateComment) {
+                  const state = parseStateComment(stateComment.body);
+                  if (state && state.owner === 'none') {
+                    const lastProgress = Date.parse(state.progressAt || state.updatedAt || '');
+                    if (Number.isFinite(lastProgress) && now.getTime() - lastProgress >= thresholdMs) {
+                      // Require corroborating evidence: at least one closing issue must be CLOSED.
+                      const closingIssues = await getClosingIssues(pull.number);
+                      const hasClosedLinkedIssue = closingIssues.some(
+                        (i) => String(i?.state ?? '').toUpperCase() === 'CLOSED',
+                      );
+                      if (hasClosedLinkedIssue) {
+                        quarantineReason = `dead-session-${ABANDON_THRESHOLD_DAYS}-days-closed-issue`;
+                        lastActivityIso = new Date(lastProgress).toISOString();
+                      } else {
+                        core.info(`stale-pr pr=#${pull.number} idle>${ABANDON_THRESHOLD_DAYS}d but no closed linked issue — skipping quarantine`);
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (!quarantineReason) continue;
+              if (!comments) {
+                comments = await github.paginate(github.rest.issues.listComments, {
+                  owner, repo, issue_number: pull.number, per_page: 100,
+                });
+              }
+              const lifecycleRead = parseCurrentLifecycleRecord(comments, pull.number);
+              if (lifecycleRead.blocked) continue;
+              const lifecycle = lifecycleRead.record;
+
+              // Apply lifecycle QUARANTINED via the authoritative FSM.
+              await applyLifecycleDecision({
+                prNumber: pull.number,
+                currentPhase: lifecycle?.phase ?? null,
+                currentHeadSha: lifecycle?.headSha ?? null,
+                targetPhase: PHASE.QUARANTINED,
+                blockReason: `quarantine:${quarantineReason}`,
+                headSha: pull.head.sha,
+                mode: 'live',
+                writeComment: (n, body) => upsertLifecycleComment(n, body),
+                addLabel: (n, label) => addLabelStrict(n, label),
+                removeLabel: (n, label) => removeLabelBestEffort(n, label),
+              });
+
+              // Apply human-approval-required to block accidental merge while quarantined.
+              if (!labelNames.includes(HUMAN_APPROVAL_LABEL)) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: pull.number,
+                  labels: [HUMAN_APPROVAL_LABEL, DISPOSITION_APPROVAL_LABEL],
+                });
+              }
+
+              // Post the human-decision comment (KEEP / ABANDON).
+              const quarantineBody = makeQuarantineComment(pull.number, {
+                reason: quarantineReason,
+                lastActivity: lastActivityIso || undefined,
+                thresholdDays: quarantineReason.startsWith('dead-session') ? ABANDON_THRESHOLD_DAYS : undefined,
+              });
+              try {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: quarantineBody });
+              } catch (e) {
+                core.warning(`createComment quarantine pr=#${pull.number}: ${e.message}`);
+              }
+
+              quarantinedPrNumbers.push(pull.number);
+              quarantinedCount += 1;
+              core.notice(`quarantined pr=#${pull.number} reason=${quarantineReason} last-activity=${lastActivityIso ?? 'n/a'}`);
+            }
+
+            core.info(`quarantine complete quarantined=${quarantinedCount} prs=${quarantinedPrNumbers.join(',')}`);
+
+      - name: Handle KEEP/ABANDON human-decision comments (quarantine revival)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Revival handler: scan quarantined PRs for KEEP or ABANDON commands.
+            //
+            // Rules (acceptance criterion: "human-gated revival is exact-match"):
+            //   - Accepted from: PR opener (self-command), repo OWNER/MEMBER/COLLABORATOR,
+            //     trusted bots.  This ensures humans can act on Copilot-authored PRs.
+            //   - Commands must be the EXACT string "KEEP" or "ABANDON" (case-sensitive,
+            //     no substrings, no quoted text).
+            //   - Commands must appear AFTER the most recent quarantine comment — prevents
+            //     stale pre-quarantine commands from acting on a newly quarantined PR.
+            //   - KEEP → revive to QUEUED (remove quarantine, human-approval-required,
+            //     abandon-candidate so step 2 cannot re-quarantine on the next sweep)
+            //   - ABANDON → close the PR permanently
+            //
+            // A revived PR re-enters the normal lifecycle cleanly with no orphaned fences.
+
+            const { pathToFileURL } = await import('url');
+            const workspace = process.env.GITHUB_WORKSPACE;
+            const {
+              PHASE,
+              LIFECYCLE_MARKER,
+              PHASE_LABELS,
+              applyLifecycleDecision,
+              parseLifecycleComment,
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`).href
+            );
+            const {
+              parseDispositionCommand,
+              QUARANTINE_COMMENT_MARKER,
+              TRUSTED_ASSOCIATIONS,
+              TRUSTED_BOT_LOGINS,
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/state.mjs`).href
+            );
+
+            const { owner, repo } = context.repo;
+            const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED]; // 'ci-lifecycle-quarantined'
+            const HUMAN_APPROVAL_LABEL = 'human-approval-required';
+            const ABANDON_CANDIDATE_LABEL = 'abandon-candidate';
+            const DISPOSITION_APPROVAL_LABEL = 'ci-disposition-approval-gate';
+            const REQUIRED_DISPOSITION_LABELS = [
+              QUARANTINED_LABEL,
+              ABANDON_CANDIDATE_LABEL,
+              DISPOSITION_APPROVAL_LABEL,
+            ];
+            const LABEL_COLORS = {
+              [QUARANTINED_LABEL]: 'fbca04',
+              [ABANDON_CANDIDATE_LABEL]: '8b949e',
+              [DISPOSITION_APPROVAL_LABEL]: 'b60205',
+            };
+
+            async function upsertLifecycleComment(prNumber, body) {
+              const existingComments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: prNumber, per_page: 100,
+              });
+              const existing = existingComments.find((c) => String(c.body || '').includes(LIFECYCLE_MARKER));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+              }
+
+              async function ensureLabel(name) {
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  try {
+                    await github.rest.issues.createLabel({
+                      owner,
+                      repo,
+                      name,
+                      color: LABEL_COLORS[name] || '8b949e',
+                    });
+                  } catch (createError) {
+                    if (createError.status !== 422) throw createError;
+                  }
+                }
+              }
+
+              async function ensureDispositionLabels() {
+                for (const label of REQUIRED_DISPOSITION_LABELS) {
+                  await ensureLabel(label);
+                }
+              }
+
+              async function addLabelStrict(prNumber, label) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+              }
+
+              async function removeLabelBestEffort(prNumber, label) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+              }
+            }
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+            await ensureDispositionLabels();
+
+            const quarantinedPulls = pulls.filter((p) =>
+              (p.labels || []).some((l) => l.name === QUARANTINED_LABEL),
+            );
+
+            if (!quarantinedPulls.length) {
+              core.info('revival-handler: no quarantined PRs found');
+              return;
+            }
+
+            let revivedCount = 0;
+            let abandonedCount = 0;
+
+            for (const pull of quarantinedPulls) {
+              const prOwnerLogin = String(pull.user?.login || '').toLowerCase();
+              if (!prOwnerLogin) continue;
 
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: pull.number, per_page: 100,
               });
-              const stateComments = comments.filter((c) =>
-                String(c.body || '').trimStart().startsWith(STATE_MARKER),
-              );
-              if (stateComments.length !== 1) continue;
-              const state = parseStateComment(stateComments[0].body);
-              if (!state || state.owner !== 'none') continue;
-              const lastProgress = Date.parse(state.progressAt || state.updatedAt || '');
-              if (!Number.isFinite(lastProgress)) continue;
-              if (now.getTime() - lastProgress < thresholdMs) continue;
 
-              const quarantineBody = [
-                '<!-- crawler-ci-disposition:v1 -->',
-                `This PR has been waiting without owner activity for more than ${ABANDON_THRESHOLD_DAYS} days (last progress: \`${new Date(lastProgress).toISOString()}\`).`,
-                'Marking as abandoned so CI conflict coordination can proceed unblocked.',
-                'Remove the `ci-conflict-abandon` label to re-enter the coordination queue.',
-              ].join('\n');
-              await github.rest.issues.createComment({
-                owner, repo, issue_number: pull.number, body: quarantineBody,
-              });
-              await github.rest.issues.addLabels({
-                owner, repo, issue_number: pull.number, labels: [ABANDON_LABEL],
-              });
-              quarantinedPrNumbers.push(pull.number);
-              quarantinedCount += 1;
-              core.notice(`quarantined-abandoned pr=#${pull.number} last-progress=${new Date(lastProgress).toISOString()}`);
+              // Find the LATEST quarantine comment to anchor KEEP/ABANDON commands.
+              // Only commands posted AFTER the quarantine comment are honored; this
+              // prevents a stale pre-quarantine KEEP/ABANDON from acting on a newly
+              // quarantined PR.
+              const quarantineComments = comments.filter(
+                (c) => String(c.body || '').includes(QUARANTINE_COMMENT_MARKER),
+              );
+              if (!quarantineComments.length) {
+                core.warning(`quarantined PR #${pull.number} has no quarantine comment — skipping revival check`);
+                continue;
+              }
+              const latestQuarantine = quarantineComments.sort(
+                (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+              )[0];
+              const quarantineTime = new Date(latestQuarantine.created_at).getTime();
+
+              // Find the LAST trusted command posted after the quarantine comment.
+              // Accept: PR opener (self-command), repo OWNER/MEMBER/COLLABORATOR, trusted bots.
+              // This mirrors the canonical isTrustedComment pattern used by reconcile.mjs
+              // and step 1 of this workflow — so a human OWNER can KEEP/ABANDON a Copilot PR.
+              let command = null;
+              for (const comment of comments) {
+                // Only consider commands strictly after the quarantine comment.
+                if (new Date(comment.created_at).getTime() <= quarantineTime) continue;
+                const authorLogin = String(comment.user?.login || '').toLowerCase();
+                const authorAssoc = String(comment.author_association || '').toUpperCase();
+                const isTrusted =
+                  authorLogin === prOwnerLogin ||
+                  TRUSTED_ASSOCIATIONS.has(authorAssoc) ||
+                  TRUSTED_BOT_LOGINS.has(authorLogin);
+                if (!isTrusted) continue;
+                const parsed = parseDispositionCommand(comment.body);
+                if (parsed) command = parsed; // last trusted command wins
+              }
+
+              if (!command) continue;
+
+              if (command === 'KEEP') {
+                // Revive: remove quarantine, remove human-approval-required, set QUEUED.
+                await applyLifecycleDecision({
+                  prNumber: pull.number,
+                  currentPhase: PHASE.QUARANTINED,
+                  currentHeadSha: pull.head.sha,
+                  targetPhase: PHASE.QUEUED,
+                  blockReason: null,
+                  headSha: pull.head.sha,
+                  mode: 'live',
+                  writeComment: (n, body) => upsertLifecycleComment(n, body),
+                  addLabel: (n, label) => addLabelStrict(n, label),
+                  removeLabel: (n, label) => removeLabelBestEffort(n, label),
+                });
+                // Remove quarantine-specific labels. Keep the shared human-approval label
+                // unless this disposition workflow added it (tracked by marker label).
+                const labelNames = (pull.labels || []).map((l) => l.name);
+                const labelsToRemove = [ABANDON_CANDIDATE_LABEL, DISPOSITION_APPROVAL_LABEL];
+                if (labelNames.includes(DISPOSITION_APPROVAL_LABEL)) {
+                  labelsToRemove.push(HUMAN_APPROVAL_LABEL);
+                }
+                for (const labelToRemove of labelsToRemove) {
+                  if (labelNames.includes(labelToRemove)) {
+                    try {
+                      await github.rest.issues.removeLabel({ owner, repo, issue_number: pull.number, name: labelToRemove });
+                    } catch (e) {
+                      if (e.status !== 404) core.warning(`removeLabel ${labelToRemove} pr=#${pull.number}: ${e.message}`);
+                    }
+                  }
+                }
+                try {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: pull.number,
+                    body: `<!-- crawler-ci-disposition:v1 -->\nPR revived by owner comment \`KEEP\`. Re-entering normal lifecycle as \`queued\`.`,
+                  });
+                } catch (e) {
+                  core.warning(`createComment KEEP revival pr=#${pull.number}: ${e.message}`);
+                }
+                revivedCount += 1;
+                core.notice(`revived pr=#${pull.number} command=KEEP owner=${prOwnerLogin}`);
+              } else if (command === 'ABANDON') {
+                // Abandon: update lifecycle to ABANDONED, close the PR.
+                await applyLifecycleDecision({
+                  prNumber: pull.number,
+                  currentPhase: PHASE.QUARANTINED,
+                  currentHeadSha: pull.head.sha,
+                  targetPhase: PHASE.ABANDONED,
+                  blockReason: 'owner-abandon-command',
+                  headSha: pull.head.sha,
+                  mode: 'live',
+                  writeComment: (n, body) => upsertLifecycleComment(n, body),
+                  addLabel: (n, label) => addLabelStrict(n, label),
+                  removeLabel: (n, label) => removeLabelBestEffort(n, label),
+                });
+                try {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: pull.number,
+                    body: `<!-- crawler-ci-disposition:v1 -->\nPR closed by owner comment \`ABANDON\`.`,
+                  });
+                } catch (e) {
+                  core.warning(`createComment ABANDON pr=#${pull.number}: ${e.message}`);
+                }
+                try {
+                  await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' });
+                } catch (e) {
+                  core.warning(`pulls.update ABANDON pr=#${pull.number}: ${e.message}`);
+                }
+                abandonedCount += 1;
+                core.notice(`abandoned pr=#${pull.number} command=ABANDON owner=${prOwnerLogin}`);
+              }
             }
-            core.info(`abandon-quarantine complete quarantined=${quarantinedCount} prs=${quarantinedPrNumbers.join(',')}`);
+
+            core.info(`revival-handler complete revived=${revivedCount} abandoned=${abandonedCount}`);

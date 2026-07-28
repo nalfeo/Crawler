@@ -92,25 +92,12 @@ jobs:
             }
             core.info(`action-required backstop sweep complete dispatched=${dispatched} cap=${cap}`);
 
-      - name: Trigger disposition detection when available
+      - name: Trigger disposition detection
         uses: actions/github-script@v7
         with:
           script: |
             const { owner, repo } = context.repo;
             const ref = context.payload.repository?.default_branch || 'main';
-            try {
-              await github.rest.actions.getWorkflow({
-                owner,
-                repo,
-                workflow_id: 'ci-pr-disposition.yml',
-              });
-            } catch (error) {
-              if (error?.status === 404) {
-                core.notice('skip disposition detection: ci-pr-disposition.yml not present');
-                return;
-              }
-              throw error;
-            }
             await github.rest.actions.createWorkflowDispatch({
               owner,
               repo,
