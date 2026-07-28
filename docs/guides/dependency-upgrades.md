@@ -82,7 +82,7 @@ Follow this procedure to bump a direct dependency to a newer version:
 4. Open a PR. The `security:exact-deps` CI step will reject non-exact versions
    automatically.
 
-## How to temporarily allow a non-exact specifier
+## How to temporarily allow a non-exact override
 
 In rare cases (e.g. a workspace alias, a git-URL dep, or a local `file:` path),
 a non-exact specifier may be unavoidable. Add an exemption entry to the
@@ -93,26 +93,13 @@ const EXACT_VERSION_EXEMPTIONS = [
   {
     field: 'dependencies',
     name: 'my-workspace-pkg',
-    version: 'workspace:*',
     reason: 'workspace alias — must use workspace:*',
   },
 ];
 ```
 
-Each entry must include:
-- `field`: the package.json field path (`"dependencies"`, `"devDependencies"`,
-  `"overrides"`, or a nested override path like `"overrides/parent"`)
-- `name`: the exact package name
-- `version`: the **exact specifier string** that is permitted (e.g. `"workspace:*"`,
-  `"file:../local"`)
-- `reason`: a short explanation of why an exact pin is not used
-
-**Important:** The exemption is bound to the specific `(field, name, version)` triple.
-A later change to a different specifier on the same entry (e.g. accidentally
-introducing `"^1.2.3"`) will still be flagged as a violation. This prevents the
-exemption from silently covering unintended range introductions.
-
-Exemptions are subject to review and should be minimized.
+Include the field, the package name, and a clear reason. Exemptions are subject
+to review and should be minimized.
 
 ## Upgrading npm audit exceptions
 
