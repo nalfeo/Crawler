@@ -538,7 +538,9 @@ test('grouping-derived labels are drained, not published, while enforcement is o
     source.indexOf('reason=all-pulls-non-blocking') - 900,
     source.indexOf('reason=all-pulls-non-blocking'),
   );
+  assert.match(nonBlockingBlock, /removeLabel\(pull, ORDER_WAIT_LABEL\)/);
   assert.match(nonBlockingBlock, /removeLabel\(pull, COORDINATED_LABEL\)/);
+  assert.match(nonBlockingBlock, /removeLabel\(pull, LEADER_LABEL\)/);
 });
 test('coordinator only trusts recovery state comments from trusted authors', () => {
   const source = readFileSync(
