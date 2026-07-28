@@ -234,6 +234,59 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
     ),
     [],
   );
+  // Regression: reviewer used "required the detailed plan to be posted on the issue"
+  // which the original regex (planSubject-only) did not match.
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            trustedRoot(
+              'Issue #1307 explicitly required the detailed plan to be posted on the issue before any code was written. This note confirms that requirement was not met; recording the plan only in-session does not satisfy the issue-specific constraint. Since the timing requirement cannot be repaired retroactively, obtain an explicit maintainer waiver before approval.',
+            ),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  // Variation: "required a plan to be posted" (no adjective, no "the")
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('Issue #1307 required a plan to be posted on the issue.')],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  // Variation: "required the plan to be posted" (no adjective)
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('Issue #1307 required the plan to be posted before merging.')],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  // Non-matching: "plan" mentioned but not in a "plan to be posted" pattern
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('Issue #1307: please post a plan at your convenience.')],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
 });
 
 test('kickoff comment body includes the required planning instructions', () => {
