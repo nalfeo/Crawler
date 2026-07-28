@@ -2752,10 +2752,11 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     await completeWaitingExit(waitingTransition);
   }
 
-  // Close any open loop-incident for this PR — it was filed when the retry
-  // budget was exhausted, but the PR has since converged (CI passing, no
-  // blockers).  Non-fatal: a failure to close must not block the merge.
-  if (live) {
+  const closeLoopIncidentOnConvergence = async () => {
+    // Close any open loop-incident for this PR — it was filed when the retry
+    // budget was exhausted, but the PR has since converged (CI passing, no
+    // blockers). Non-fatal: a failure to close must not block merge actions.
+    if (!live) return;
     try {
       const closeResult = await closeLoopIncident({
         request,
@@ -2776,7 +2777,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
         .slice(0, 500);
       process.stderr.write(`loop-incident-close-failed pr=#${prNumber} err=${safeMsg}\n`);
     }
-  }
+  };
 
   if (terminalRow.action === DISPATCH_ACTION.QUEUE_MERGE_TRAIN) {
     await removePrLabel(BLOCKED_LABEL);
@@ -2816,6 +2817,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       process.stdout.write(`queued merge-train pr=#${prNumber}\n`);
       await dispatchWorkflow('ci-recovery-router.yml', {});
     } else {
+      await assertExpectedMetadataUnchanged('queue-merge-train');
       process.stdout.write(`queue unchanged merge-train pr=#${prNumber}\n`);
     }
     // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
@@ -2842,6 +2844,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
         process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
       }
     }
+    await closeLoopIncidentOnConvergence();
     process.exit(0);
   }
 
@@ -2893,6 +2896,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
     }
   }
+  await closeLoopIncidentOnConvergence();
   process.exit(0);
 } else if (terminalRow.action === DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED) {
   process.stdout.write(`skip pr=#${prNumber} reason=stale-automation-exhausted\n`);

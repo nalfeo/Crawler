@@ -3873,9 +3873,7 @@ test('live reconcile calls update-branch for a clean-BEHIND PR at QUEUE_MERGE_TR
     // Provide passing required checks so the PR reaches QUEUE_MERGE_TRAIN.
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
       body: {
-        check_runs: [
-          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
-        ],
+        check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
@@ -13564,15 +13562,109 @@ test('converged PR (ARM_AUTO_MERGE) automatically closes an open loop incident i
   );
 
   const closeCall = mutatingCalls.find(
-    (call) =>
-      call.method === 'PATCH' &&
-      call.url === `/repos/${OWNER}/${REPO}/issues/501`,
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/501`,
   );
   assert.ok(closeCall, 'must PATCH the loop incident issue to close it');
   assert.equal(closeCall.body?.state, 'closed', 'state must be closed');
   assert.equal(closeCall.body?.state_reason, 'completed', 'state_reason must be completed');
 });
 
+test('converged PR (ARM_AUTO_MERGE) must not close loop incident when arm-auto-merge metadata guard fails', async (t) => {
+  const movedHead = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  let pullFetches = 0;
+  const loopIncidentIssue = {
+    number: 502,
+    title: `CI recovery loop: PR #${PR_NUM}`,
+    body: '<!-- crawler-pr-loop-incident:v1 -->\nThis is a loop incident.',
+    pull_request: undefined,
+  };
+  const priorMarkerComment = {
+    id: 500,
+    body: reviewRequestMarker({ headSha: HEAD_SHA, reason: 'ready' }),
+    author_association: 'OWNER',
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      const head = pullFetches < 3 ? HEAD_SHA : movedHead;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          head: { ...trustedReviewWakePr().head, sha: head },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [priorMarkerComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [loopIncidentIssue] }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/502`]: () => ({ body: { number: 502 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=head-sha-moved-before-mutation phase=arm-auto-merge expected=${HEAD_SHA} actual=${movedHead}`,
+    ),
+    'stale metadata must abort before arm-auto-merge mutations',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /loop-incident-closed pr=#42 issue=#502/,
+    'must not close the loop incident when the arm-auto-merge metadata guard fails',
+  );
+  assert.equal(
+    pullFetches,
+    3,
+    'state-comment and arm-auto-merge guards must re-fetch live metadata',
+  );
+  const closeCall = mutatingCalls.find(
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/502`,
+  );
+  assert.equal(
+    closeCall,
+    undefined,
+    'must not PATCH-close the loop incident on metadata-guard skip',
+  );
+});
 test('converged PR (ARM_AUTO_MERGE) skips loop-incident close when no incident exists', async (t) => {
   // No open loop incident for this PR — closeLoopIncident must be a no-op.
   const { server, port, mutatingCalls } = await startServer({
@@ -13637,7 +13729,8 @@ test('converged PR (ARM_AUTO_MERGE) skips loop-incident close when no incident e
 //
 // Simulates the race where closeLoopIncident failed at the ARM_AUTO_MERGE
 // convergence point and the PR then merged.  The pull_request_target:closed
-// trigger reaches reconcile with pr.state='merged', hits the early-exit block,
+// trigger reaches reconcile with pr.state='closed' + merged=true, hits the
+// early-exit block,
 // and must close the incident there before exiting.
 test('merged PR event closes an open loop incident even when ARM_AUTO_MERGE path already exited', async (t) => {
   const loopIncidentIssue = {
@@ -13649,7 +13742,7 @@ test('merged PR event closes an open loop incident even when ARM_AUTO_MERGE path
 
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: { ...basePr(), state: 'merged' },
+      body: { ...basePr(), state: 'closed', merged: true },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
@@ -13672,13 +13765,12 @@ test('merged PR event closes an open loop incident even when ARM_AUTO_MERGE path
 
   assert.match(
     stdout,
-    /loop-incident-closed pr=#42 issue=#503 reason=pr-merged/,
+    /loop-incident-closed pr=#42 issue=#503 reason=pr-closed/,
     'merged-PR path must close the open loop incident',
   );
 
   const closeCall = mutatingCalls.find(
-    (call) =>
-      call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/503`,
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/503`,
   );
   assert.ok(closeCall, 'must PATCH the loop incident issue to close it');
   assert.equal(closeCall.body?.state, 'closed', 'state must be closed');
