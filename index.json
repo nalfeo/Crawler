@@ -1,5 +1,16 @@
 [
   {
+    "commit": "8f7d4ea99122f93ccf7f8c1af2f454845d4ee13a",
+    "commitDate": "2026-07-28T13:41:44Z",
+    "commitSubject": "feat(terrain): Floor 2 industrial linework as edge-Wang path tiles (#2184)",
+    "capturedAt": "2026-07-28T14:57:35.053Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30366165943",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/8f7d4ea99122f93ccf7f8c1af2f454845d4ee13a.json"
+  },
+  {
     "commit": "2c1dd9ac7d1a883e65ba4993a14f8e5f98bf12df",
     "commitDate": "2026-07-28T09:30:46Z",
     "commitSubject": "fix: pin direct deps to exact versions; fix check-exact-deps exemption binding and path resolution (#2003)",
