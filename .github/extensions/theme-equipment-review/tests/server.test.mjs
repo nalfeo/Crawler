@@ -302,3 +302,191 @@ test('synth-roster forwards only the four brief fields', async () => {
     await server.close();
   }
 });
+
+test('reuses one list result for concurrent and closely-spaced callers', async () => {
+  const server = await fixture();
+  try {
+    const headers = { 'X-Canvas-Token': server.token };
+    await Promise.all([
+      fetch(`${server.url}api/sets`, { headers }),
+      fetch(`${server.url}api/sets`, { headers }),
+    ]);
+    await fetch(`${server.url}api/sets`, { headers });
+    // One for the startup allowlist check, one shared by every read after it.
+    assert.equal(server.commands.filter((command) => command.action === 'list').length, 1);
+  } finally {
+    await server.close();
+  }
+});
+
+test('expires the list cache so a new set becomes visible', async () => {
+  const server = await fixture({ listTtlMs: 10 });
+  try {
+    const headers = { 'X-Canvas-Token': server.token };
+    await fetch(`${server.url}api/sets`, { headers });
+    await new Promise((done) => setTimeout(done, 25));
+    await fetch(`${server.url}api/sets`, { headers });
+    assert.ok(server.commands.filter((command) => command.action === 'list').length >= 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test('invalidates the list cache after a plan is saved', async () => {
+  const server = await fixture();
+  try {
+    const headers = { 'X-Canvas-Token': server.token, 'Content-Type': 'application/json' };
+    await fetch(`${server.url}api/sets`, { headers: { 'X-Canvas-Token': server.token } });
+    const before = server.commands.filter((command) => command.action === 'list').length;
+    await fetch(`${server.url}api/save-plan`, {
+      method: 'POST',
+      headers: { ...headers, Origin: new URL(server.url).origin },
+      body: JSON.stringify({ plan: { id: 'pirate' } }),
+    });
+    await fetch(`${server.url}api/sets`, { headers: { 'X-Canvas-Token': server.token } });
+    assert.equal(server.commands.filter((command) => command.action === 'list').length, before + 1);
+  } finally {
+    await server.close();
+  }
+});
+
+test('broadcasts state once an init dispatch produces it', async () => {
+  let hasState = false;
+  const server = await fixture({
+    watchIntervalMs: 10,
+    runCommand: async (command) => {
+      if (command.action === 'list')
+        return { sets: [{ id: 'classic-fantasy' }], storeStatus: 'ok' };
+      if (command.action === 'state') {
+        if (!hasState) throw new Error('State for "classic-fantasy" was not found.');
+        return { id: 'classic-fantasy', stateRevision: 1 };
+      }
+      return {};
+    },
+  });
+  try {
+    const events = await fetch(`${server.url}events?token=${encodeURIComponent(server.token)}`);
+    const reader = events.body.getReader();
+    await reader.read();
+    await fetch(`${server.url}api/dispatch`, {
+      method: 'POST',
+      headers: {
+        'X-Canvas-Token': server.token,
+        'Content-Type': 'application/json',
+        Origin: new URL(server.url).origin,
+      },
+      body: JSON.stringify({ action: 'init' }),
+    });
+    hasState = true;
+    const chunk = await reader.read();
+    const payload = new TextDecoder().decode(chunk.value);
+    assert.match(payload, /"stateRevision":1/);
+    await reader.cancel().catch(() => {});
+  } finally {
+    await server.close();
+  }
+});
+
+test('stops watching when the store fails rather than retrying for twenty minutes', async () => {
+  let stateCalls = 0;
+  const warnings = [];
+  const server = await fixture({
+    watchIntervalMs: 10,
+    log: (message, level) => warnings.push({ message, level }),
+    runCommand: async (command) => {
+      if (command.action === 'list')
+        return { sets: [{ id: 'classic-fantasy' }], storeStatus: 'ok' };
+      if (command.action === 'state') {
+        stateCalls += 1;
+        throw new Error('AuthenticationFailed: server failed to authenticate the request');
+      }
+      return {};
+    },
+  });
+  try {
+    await fetch(`${server.url}api/dispatch`, {
+      method: 'POST',
+      headers: {
+        'X-Canvas-Token': server.token,
+        'Content-Type': 'application/json',
+        Origin: new URL(server.url).origin,
+      },
+      body: JSON.stringify({ action: 'init' }),
+    });
+    await new Promise((done) => setTimeout(done, 80));
+    assert.equal(stateCalls, 1, 'an unrecoverable store error must stop the watch immediately');
+    assert.ok(warnings.some((entry) => /state watch .* stopped/.test(entry.message)));
+  } finally {
+    await server.close();
+  }
+});
+
+test('a non-init dispatch does not start a watch', async () => {
+  const server = await fixture({ watchIntervalMs: 10 });
+  try {
+    await fetch(`${server.url}api/dispatch`, {
+      method: 'POST',
+      headers: {
+        'X-Canvas-Token': server.token,
+        'Content-Type': 'application/json',
+        Origin: new URL(server.url).origin,
+      },
+      body: JSON.stringify({ action: 'run-phase' }),
+    });
+    const before = server.commands.filter((command) => command.action === 'state').length;
+    await new Promise((done) => setTimeout(done, 60));
+    assert.equal(server.commands.filter((command) => command.action === 'state').length, before);
+  } finally {
+    await server.close();
+  }
+});
+
+test('watches the set that was dispatched even if the selection changes mid-flight', async () => {
+  let releaseDispatch;
+  const gate = new Promise((resolve) => {
+    releaseDispatch = resolve;
+  });
+  const watched = [];
+  const server = await fixture({
+    watchIntervalMs: 10,
+    dispatchWorkflow: async (action, forSetId) => {
+      await gate;
+      return { dispatched: true, action, setId: forSetId };
+    },
+    runCommand: async (command) => {
+      if (command.action === 'list') {
+        return { sets: [{ id: 'classic-fantasy' }, { id: 'pirate' }], storeStatus: 'ok' };
+      }
+      if (command.action === 'state') {
+        watched.push(command.setId);
+        throw new Error(`State for "${command.setId}" was not found.`);
+      }
+      return {};
+    },
+  });
+  try {
+    const headers = {
+      'X-Canvas-Token': server.token,
+      'Content-Type': 'application/json',
+      Origin: new URL(server.url).origin,
+    };
+    const dispatch = fetch(`${server.url}api/dispatch`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ action: 'init' }),
+    });
+    // The user navigates to another set while the dispatch is still in flight.
+    await fetch(`${server.url}api/select`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ setId: 'pirate' }),
+    });
+    releaseDispatch();
+    await dispatch;
+    await new Promise((done) => setTimeout(done, 40));
+    assert.ok(watched.length > 0, 'the watch must actually run');
+    assert.deepEqual([...new Set(watched)], ['classic-fantasy']);
+  } finally {
+    await server.close();
+  }
+});

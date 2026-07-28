@@ -136,8 +136,61 @@ spread rather than silently moving the headline. The worst round is your
 defensible headline, never the best.
 
 **Run the finished bench in at least two separate process invocations and
-publish the range**, not one run's median. A single invocation's median is
-itself a sample.
+publish the observed span**, not one run's median. A single invocation's median
+is itself a sample.
+
+**Say "observed", not "range" — a 3-invocation span is not a bound.** The
+across-invocation spread is itself under-sampled at n=3, and a tight-looking
+interval invites readers to treat it as a bound it never earned. Measured on
+this rig: a bench published at `1.171–1.180x` and `1.343–1.458x` off three
+invocations had an independent fourth land **outside both, in opposite
+directions** (`1.296x` and `1.303x`). List the observed medians per invocation,
+label them observed, and expect ±0.1x. If one interval comes out implausibly
+tight next to the others, that is a sampling artifact, not precision.
+
+**Report a weak panel as weak instead of averaging it into the headline.** When
+one panel scores materially worse on rounds-won or worst-round than its
+siblings, name it as marginal and rest the verdict on the strong panels — ideally
+the one carrying the most production calls. Folding a ⚠️ panel into a single
+confident number is how a mixed result gets published as a clean one.
+
+**Size each timed round to tens of milliseconds.** Sub-millisecond rounds are
+unusable no matter how many of them you run: timer granularity and scheduler
+jitter dominate, and pairing cannot rescue you because the noise is not shared
+between the two halves of a round. An LOS bench with ~1500-3000 calls per round
+swung paired ratios **0.64x-1.37x on byte-identical code**; raising it to
+30k-60k calls (~10-25ms per round) collapsed that to a stable ~1.0x. If your
+per-call cost is sub-microsecond, raise the call count until each round clears
+~10ms — do not compensate by adding rounds.
+
+**Run the equivalence oracle AFTER the timed rounds, never before.** A recording
+or tracing wrapper is usually a subclass or a swapped-in callback, so exercising
+it teaches V8's inline caches that the call sites are polymorphic — and it does
+that _only_ for the variants the oracle touched. Every timed round afterwards is
+then measuring a handicap you introduced. This applies to any pre-flight
+correctness check, including a drift guard that proves your inlined baseline
+copy still matches the real function; put all of them at the end.
+
+**Build both variants from the real runtime object, not a fresh clone.** Objects
+assembled at load time often carry installed callbacks, populated caches, or
+non-null fields that the hot path branches on, and a bare clone silently
+short-circuits them. In this repo `attachBarriersToFloorMap` installs two lookup
+closures on the live `FloorMap`, and `isPassableAt` early-outs when they are
+null — so timing the real map against a clean clone gives one side two live
+closure calls per probe and the other a null check. That single asymmetry
+flipped a result by ~1.6x in **both** directions across two revisions of the
+same bench. `null -> function` is also a hidden-class transition. These fields
+are frequently private with setters and no getters, so probe the object rather
+than assuming.
+
+**Do not assume an ablation is a bound without checking what it removed.** "Detach
+subsystem X and compare" measures the cost of _consulting_ X, which is only a
+lower bound on removing it if X was actually doing work. Print the subsystem's
+size and both variants' result counts: if the counts are identical, the variants
+did identical work and any early-exit argument you were about to make does not
+apply. A barrier-overlay diagnostic here was reported as a floor on that
+reasoning, then found to be running against a registry holding **0 entries** for
+the whole fixture.
 
 Do not benchmark while review agents or other sessions are running — an
 observed baseline worst round went 208us -> 1138us purely from a busy machine.
@@ -146,6 +199,12 @@ observed baseline worst round went 208us -> 1138us purely from a busy machine.
 are the reference implementations of this whole pattern: inlined verbatim
 baseline, ablation variants, rotating lead, rotated warmup, lockstep
 byte-exact equivalence oracle, and paired per-round ratio reporting.
+`scripts/agent/perf/bench-line-of-sight.ts` additionally shows the ordering and
+round-sizing rules above, an ordered probe-trace oracle for a caller-supplied
+callback, and what a **null** result looks like next to a real one measured on
+the same rig — a candidate at 0.897x-1.111x with 1-11/15 rounds won, beside a
+subsystem ablation at 1.438x-2.275x with 15/15. Read it before reporting a
+marginal win.
 
 To get the `before` side, extract the pre-change file from git rather than
 stashing, so both versions are importable at once:
@@ -257,6 +316,37 @@ RunStats DRIFT in 1 run(s):
 
 That is your change altering the game. Fix the change. Do not regenerate the
 baseline.
+
+**A green fingerprint on a fixture that never executes your branch is
+trivially green.** It proves the diff did not perturb the replayed sim in some
+_other_ way — real, but small. It says nothing about the branch itself. If your
+fast path only fires in a state Floor 1 never enters (an empty registry, a
+disabled feature, a mode the gate sample does not exercise), report the 24/24 as
+covering collateral perturbation only, and name the test that is actually
+gating correctness. Taking a tautological pass as coverage of the one hazard it
+structurally cannot reach is the `spawnerSystem` shape in AGENTS.md r9.
+
+## Proving your correctness test can fail (mutation)
+
+A perf change that skips work needs a test proving the skipped work was
+genuinely unnecessary — and that test is worthless unless you have watched it go
+red. Break the fast path deliberately and confirm the failure. Minimum two
+mutations for a caching/short-circuit change:
+
+- force the fast path to always take the skip branch → must fail
+- remove the invalidation (cache the verdict, never re-read) → must fail
+
+**Print the mutation's diff or installed-site count before you trust a green
+suite.** A mutation that silently failed to apply and a test that genuinely
+cannot fail produce **identical** output — a green run — and the green reads as
+_"the test is decorative, go weaken it"_, which is the most dangerous possible
+inversion. `git diff --stat` showing `0 files changed`, or a printed count of
+patched sites, distinguishes them in one line.
+
+The concrete trap on Windows: a PowerShell `String.Replace` using `` `r`n ``
+against an LF file (Prettier and git normalize to LF) matches nothing and
+no-ops silently. Use `` `n ``, and verify the edit landed before believing the
+result.
 
 ## Reporting template
 

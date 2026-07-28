@@ -128,6 +128,22 @@ export interface RunStore {
    *   create-only write).
    */
   putConditional?(key: string, data: Buffer, conditions: ConditionalWriteConditions): Promise<void>;
+  /**
+   * Strength of this store's {@link putConditional} guarantee.
+   *
+   * The presence of `getWithETag`/`putConditional` does NOT by itself imply
+   * atomic compare-and-swap: {@link LocalRunStore} implements both, but its
+   * `stat`-then-`put` sequence is not atomic across processes. Callers that
+   * depend on CAS for correctness on a shared store MUST check this capability
+   * rather than feature-detecting the methods.
+   *
+   * - `atomic` — the backing store enforces the precondition server-side
+   *   (Azure `If-Match`/`If-None-Match`); safe for cross-machine locking.
+   * - `best-effort` — the precondition is checked then written non-atomically;
+   *   adequate for single-process tests and local development only.
+   * - `unsupported` (or omitted) — no conditional write available.
+   */
+  readonly conditionalWrites?: 'atomic' | 'best-effort' | 'unsupported';
   /** Human-readable backend tag surfaced in /api/health. */
   readonly backend: 'local' | 'azure-blob';
 }

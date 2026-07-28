@@ -212,7 +212,45 @@ that falsifies the check and violates AGENTS.md r11.
 checked a narrowed run against a full-gate baseline. Re-run with the same
 `--seeds`/`--weapons`/`--max-frames`.)
 
-### 7. Report
+### 7. Prove your regression test can fail — BLOCKING GATE
+
+A test that passes without exercising the behaviour it names is worth less than
+no test, because it _also_ consumes the reviewer's trust. This repo has a
+documented history of them (see "Proving your correctness test can fail" in
+`references/measurement-recipes.md`). Reading the test is not proof. Break the
+source on purpose and confirm the suite notices:
+
+```bash
+npm run test:mutate -- src/core/map/astar-grid.ts:295-335 \
+  --tests tests/ecs/astar-grid-equivalence.test.ts
+```
+
+Scope `--tests` to the file(s) covering your change. **This is not a nicety —
+suite size dominates runtime.** Stryker re-runs the configured suite once per
+mutant, so the full unit suite takes over an hour on a single file, while the
+same mutants against one covering test file finish in well under a minute.
+
+Exit 0 means every mutant was detected (or the surviving count is within the
+configured `--max-survivors` tolerance). Exit 1 means one of:
+
+- **survivors** — the tests pass with your source deliberately broken. Either
+  strengthen them, or state in the PR why the surviving mutants are
+  gameplay-irrelevant. Do not raise `--max-survivors` to go green (AGENTS.md r11).
+- **ignored mutants** — `// Stryker disable` comments or excluded mutators in
+  range prevented those mutants from ever being applied. The run may cover only
+  part of the target; inspect whether the disabled code should be tested.
+- **no-coverage mutants** — the tests you named never execute the code. A green
+  run here would have meant nothing.
+- **no report** — Stryker crashed. This is a failure, never a pass.
+
+Pass `--max-survivors <n>` only with an explicit written justification; it can
+never launder a no-coverage result into a pass.
+
+> A mutation that fails to apply and a test that genuinely cannot fail produce
+> identical output. If a suite comes back green under mutation, confirm the
+> mutant count in the summary is non-zero before concluding the test is weak.
+
+### 8. Report
 
 State, in the PR and handoff:
 

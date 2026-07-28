@@ -60,6 +60,7 @@ function makeFixture(files: Record<string, string>): string {
         include: [
           'vite.config.ts',
           'vitest.config.ts',
+          'vitest.mutation.config.ts',
           'src/**/*.ts',
           'tests/**/*.ts',
           'scripts/**/*.ts',
@@ -115,7 +116,15 @@ if (result.kind === 'ready') {
 describe('verify-fast full-project typecheck', () => {
   it
     .skipIf(!hasBash)
-    .each(['src', 'tests', 'scripts', 'tools', 'vite.config.ts', 'vitest.config.ts'] as const)(
+    .each([
+      'src',
+      'tests',
+      'scripts',
+      'tools',
+      'vite.config.ts',
+      'vitest.config.ts',
+      'vitest.mutation.config.ts',
+    ] as const)(
     'fails for a %s-only narrowed property error',
     (directory) => {
       const files: Record<string, string> = {
@@ -125,6 +134,7 @@ describe('verify-fast full-project typecheck', () => {
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
         'vitest.config.ts': 'export const vitestRootValue = 1;\n',
+        'vitest.mutation.config.ts': 'export const vitestMutationValue = 1;\n',
       };
       const errorPath = (() => {
         switch (directory) {
@@ -134,6 +144,8 @@ describe('verify-fast full-project typecheck', () => {
             return 'vite.config.ts';
           case 'vitest.config.ts':
             return 'vitest.config.ts';
+          case 'vitest.mutation.config.ts':
+            return 'vitest.mutation.config.ts';
           default:
             return `${directory}/narrowing.ts`;
         }

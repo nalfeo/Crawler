@@ -35,6 +35,7 @@ import {
   ORDER_WAIT_LABEL,
   changeStatsFromFiles,
   ciFilesFor,
+  coordinationEnforcementEnabled,
   discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
@@ -841,17 +842,36 @@ for (const group of groups) {
 
   // Fence every member before exposing one slot, so concurrent train runs can
   // observe zero active slots briefly but never two.
+  //
+  // With enforcement disabled (the default) we keep discovery/reporting but
+  // actively UNFENCE: ORDER_WAIT is removed from every member. Removing (rather
+  // than merely not-adding) is what drains labels stranded by a previous
+  // enforcing run — no manual cleanup pass is needed.
+  //
+  // SAFETY INVARIANT (independent of the kill switch): auto-merge is ALWAYS
+  // disarmed for a PR that a human must approve, that an agent actively owns
+  // (shepherd lease), or whose ownership record is corrupt. Those gates are
+  // enforced asynchronously by CI recovery / the merge train, so leaving an
+  // already-armed auto-merge in place would let GitHub merge the PR the moment
+  // its checks pass — before any of those reconcilers next run. Serialization
+  // is what we are switching off here; human/agent ownership gates are not.
+  const enforceCoordination = coordinationEnforcementEnabled(process.env);
   for (const pull of group.pulls) {
     await addLabel(pull, COORDINATED_LABEL);
-    await addLabel(pull, ORDER_WAIT_LABEL);
-    await disableAutoMerge(pull);
-    if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
-    else await removeLabel(pull, LEADER_LABEL);
-    const escalated =
-      proofByNumber.get(pull.number)?.status === 'ambiguous' ||
+    const ownershipGated =
       Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
       Boolean(recoveryByNumber.get(pull.number)?.shepherdLease) ||
       Boolean(humanApprovalByNumber.get(pull.number));
+    if (enforceCoordination) {
+      await addLabel(pull, ORDER_WAIT_LABEL);
+      await disableAutoMerge(pull);
+    } else {
+      await removeLabel(pull, ORDER_WAIT_LABEL);
+      if (ownershipGated) await disableAutoMerge(pull);
+    }
+    if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
+    else await removeLabel(pull, LEADER_LABEL);
+    const escalated = proofByNumber.get(pull.number)?.status === 'ambiguous' || ownershipGated;
     if (escalated) await addLabel(pull, ESCALATION_LABEL);
     else await removeLabel(pull, ESCALATION_LABEL);
   }
