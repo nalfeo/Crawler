@@ -741,6 +741,7 @@ if (git(['rev-parse', 'refs/remotes/origin/main']) !== mainSha) {
   throw new Error('Fetched main does not match the API-observed main SHA');
 }
 
+const enforceCoordination = coordinationEnforcementEnabled(process.env);
 for (const group of groups) {
   const groupComments = new Map();
   for (const pull of group.pulls) {
@@ -772,6 +773,20 @@ for (const group of groups) {
   if (blockingPulls.length === 0) {
     // All pulls in this group are non-blocking (quarantined/abandoned). Nothing to
     // coordinate — skip proof collection and selection for this group entirely.
+    //
+    // These PRs stay in groupedNumbers, so the orphan-drain loop above never sees
+    // them. Reconcile the grouping-derived labels here or they strand forever.
+    // ESCALATION_LABEL is deliberately left alone: it can encode a real ownership
+    // gate, and this path returns before ownership is evaluated. Removing it would
+    // also re-expose the PR to CI-recovery dispatch, which a quarantined/abandoned
+    // PR should not receive.
+    if (!enforceCoordination) {
+      for (const pull of group.pulls) {
+        await removeLabel(pull, ORDER_WAIT_LABEL);
+        await removeLabel(pull, COORDINATED_LABEL);
+        await removeLabel(pull, LEADER_LABEL);
+      }
+    }
     process.stdout.write(
       `skip group=${group.groupId} reason=all-pulls-non-blocking members=${group.pulls.map((p) => p.number).join(',')}\n`,
     );
@@ -857,7 +872,6 @@ for (const group of groups) {
   // already-armed auto-merge in place would let GitHub merge the PR the moment
   // its checks pass — before any of those reconcilers next run. Serialization
   // is what we are switching off here; human/agent ownership gates are not.
-  const enforceCoordination = coordinationEnforcementEnabled(process.env);
   for (const pull of group.pulls) {
     const ownershipGated =
       Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
@@ -901,8 +915,16 @@ for (const group of groups) {
     } else {
       selectionBindingDrift = bindingCheck.reason;
       escalations.push(bindingCheck.reason);
-      for (const pull of group.pulls) {
-        await addLabel(pull, ESCALATION_LABEL);
+      // Binding drift is a group-derived signal: it means a group-mate's head
+      // moved out from under the selection. With enforcement off there is no
+      // fence to protect, so escalating here would re-apply the very label the
+      // member loop above just drained (and would withhold CI-recovery dispatch
+      // from PRs that are not actually blocked). Keep the reason in `escalations`
+      // so the coordinator comment still reports it.
+      if (enforceCoordination) {
+        for (const pull of group.pulls) {
+          await addLabel(pull, ESCALATION_LABEL);
+        }
       }
       process.stdout.write(`retain fenced group=${group.groupId} reason=${bindingCheck.reason}\n`);
     }
