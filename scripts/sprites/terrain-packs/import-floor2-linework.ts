@@ -147,15 +147,29 @@ function chunkify(tile: RgbaImage, blockPx: number): RgbaImage {
  * exact repetition complaint that drove the Floor 2 rework. The offset is a
  * fixed function of the frame index, and a multiple of the texture block size so
  * it never cuts a block in half.
+ *
+ * The outermost `EDGE_LOCK_PX` ring of every cell is exempt and always samples
+ * at offset zero. That ring is exactly the pixels the Wang stub contract
+ * compares, so locking it makes every frame present byte-identical bytes on a
+ * connected edge — joins are seamless by construction instead of by luck. The
+ * texture discontinuity this introduces is invisible: it sits inside noisy
+ * metal, and neighbouring tiles already carry different weathering anyway.
  */
+const EDGE_LOCK_PX = 2;
+
 function sampleTile(
   tile: RgbaImage,
   frame: number,
   x: number,
   y: number,
 ): [number, number, number] {
-  const sx = (x + frame * 38) % tile.width;
-  const sy = (y + frame * 24) % tile.height;
+  const locked =
+    x < EDGE_LOCK_PX ||
+    y < EDGE_LOCK_PX ||
+    x >= LINEWORK_CELL_PX - EDGE_LOCK_PX ||
+    y >= LINEWORK_CELL_PX - EDGE_LOCK_PX;
+  const sx = (x + (locked ? 0 : frame * 38)) % tile.width;
+  const sy = (y + (locked ? 0 : frame * 24)) % tile.height;
   const i = (sy * tile.width + sx) * 4;
   return [tile.data[i] as number, tile.data[i + 1] as number, tile.data[i + 2] as number];
 }
@@ -187,8 +201,33 @@ function clamp8(v: number): number {
  */
 const RIM_SCALE = 0.55;
 
-/** Stepped cylinder: crown offset toward the near edge, dark far edge. */
-const PIPE_BANDS = [0.72, 1.3, 1.02, 0.76, 0.52] as const;
+/**
+ * Stepped cylinder, authored as non-uniform bands.
+ *
+ * Two things make a small pipe read as round rather than as a flat stripe:
+ *
+ * 1. **The specular must sit near the lit edge, not past the middle.** An
+ *    earlier uniform 5-band split put the crown at ~70% across, which on a
+ *    horizontal run is *below* centre — the eye reads that as a flat plate with
+ *    a stray light line rather than a tube. `t` is therefore taken as
+ *    `(1 - shade) / 2` so band 0 is the up/left edge.
+ * 2. **The bands must not be equal width.** A real cylinder has a narrow
+ *    specular and a wide body; equal fifths give five stripes of identical
+ *    weight, which is exactly the "flat" read the human called out. The stops
+ *    below are a thin rim, a thin crown, two wide body bands, then a thin
+ *    shadow and a dark far rim.
+ *
+ * Widths are chosen so that at the shipped 18px bore each band survives the
+ * on-screen downscale as at least one pixel.
+ */
+const PIPE_STOPS = [
+  { t: 0.1, gain: 0.32 },
+  { t: 0.3, gain: 1.55 },
+  { t: 0.53, gain: 1.16 },
+  { t: 0.76, gain: 0.88 },
+  { t: 0.9, gain: 0.62 },
+  { t: Number.POSITIVE_INFINITY, gain: 0.34 },
+] as const;
 /** Rail head: bright running surface, dark web at the outside. */
 const RAIL_BANDS = [1.12, 0.94, 0.66] as const;
 /** Cross-members sit lower than the body, with a slight crown of their own. */
@@ -201,9 +240,16 @@ function bandGain(bands: readonly number[], shade: number): number {
   return bands[i] as number;
 }
 
+/** Non-uniform band lookup. `shade` in [-1, 1]; band 0 is the up/left edge. */
+function stopGain(stops: readonly { t: number; gain: number }[], shade: number): number {
+  const t = (1 - shade) / 2;
+  for (const stop of stops) if (t < stop.t) return stop.gain;
+  return stops[stops.length - 1]?.gain ?? 1;
+}
+
 function memberGain(cls: number, shade: number, round: boolean): number {
   if (cls === LINEWORK_PIXEL.Rail) {
-    return round ? bandGain(PIPE_BANDS, shade) : bandGain(RAIL_BANDS, Math.abs(shade) * 2 - 1);
+    return round ? stopGain(PIPE_STOPS, shade) : bandGain(RAIL_BANDS, Math.abs(shade) * 2 - 1);
   }
   if (cls === LINEWORK_PIXEL.Tie) return bandGain(TIE_BANDS, shade);
   return bandGain(TIE_BANDS, shade) * 1.12;

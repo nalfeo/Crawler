@@ -83,20 +83,35 @@ type Curve =
  * the third leg of a T) can be clipped, and so cross-member phase is anchored to
  * the edge — which is what keeps ties off the boundary rows.
  */
-function project(curve: Curve, x: number, y: number): { off: number; along: number } | null {
+function project(
+  curve: Curve,
+  x: number,
+  y: number,
+): { off: number; along: number; dx: number; dy: number } | null {
   if (curve.kind === 'line') {
     const dx = x - curve.px;
     const dy = y - curve.py;
     const along = dx * curve.ux + dy * curve.uy;
     if (along < 0 || along > curve.alongMax) return null;
-    return { off: dx * -curve.uy + dy * curve.ux, along };
+    return {
+      off: dx * -curve.uy + dy * curve.ux,
+      along,
+      // Displacement from the closest centreline point to the pixel, in cell
+      // space. Needed because `off`'s SIGN is curve-relative: a straight entered
+      // from N and one entered from W disagree about which side is positive, so
+      // shading off `off` alone lights vertical and horizontal runs from
+      // opposite directions. Screen-space displacement has no such ambiguity.
+      dx: dx - along * curve.ux,
+      dy: dy - along * curve.uy,
+    };
   }
   const dx = x - curve.cx;
   const dy = y - curve.cy;
   if (dx * curve.signX < 0 || dy * curve.signY < 0) return null;
   const r = Math.hypot(dx, dy);
   const angle = Math.atan2(Math.abs(dy), Math.abs(dx));
-  return { off: r - curve.radius, along: curve.radius * angle };
+  const scale = r === 0 ? 0 : 1 - curve.radius / r;
+  return { off: r - curve.radius, along: curve.radius * angle, dx: dx * scale, dy: dy * scale };
 }
 
 /** Half-length stub from one edge to the cell centre. */
@@ -247,6 +262,28 @@ function isRail(off: number, profile: LineworkProfile): boolean {
 }
 
 /**
+ * Which side of its own centreline a pixel sits on, relative to the key light.
+ *
+ * Returns +1 on the lit (up/left) side and -1 on the shadowed (down/right) side.
+ * The light is fixed in SCREEN space, which is the whole point: `off`'s sign is
+ * defined relative to each curve's own travel direction, so a vertical and a
+ * horizontal pipe shaded from `off` end up lit from opposite sides and the run
+ * reads as a flat painted stripe rather than a tube.
+ *
+ * The dominant axis — rather than a dot product with a 45-degree vector — is
+ * what keeps the JOIN CONTRACT intact. On a boundary row an arc's normal is
+ * nearly, but not exactly, axis-aligned (the pixel centre sits half a pixel
+ * inside the cell), so a continuous projection would give a corner frame a
+ * fractionally different value from the straight it must butt against, and the
+ * two could land in different shading bands. Taking the dominant axis collapses
+ * that difference to zero on every boundary row.
+ */
+function litFraction(dx: number, dy: number): number {
+  if (dx === 0 && dy === 0) return 0;
+  return Math.abs(dx) >= Math.abs(dy) ? -Math.sign(dx) : -Math.sign(dy);
+}
+
+/**
  * Rasterise one mask into a 64x64 classification grid plus a cross-section
  * coordinate per pixel.
  *
@@ -290,7 +327,13 @@ export function rasterizeLineworkFrame(
           value = LINEWORK_PIXEL.Rail;
           // Distance out from this member's own centreline, normalised.
           cross = (Math.abs(p.off) - profile.railOffset) / profile.railHalfWidth;
-          if (profile.railOffset === 0) cross = p.off / profile.railHalfWidth;
+          // A single-bore member (a pipe) is a cylinder, so it must be lit from
+          // ONE fixed screen direction regardless of which way the run travels.
+          // `litFraction` supplies that side; the normalised bore offset supplies
+          // the depth, so +1 is the lit silhouette edge and -1 the shadowed one.
+          if (profile.railOffset === 0) {
+            cross = litFraction(p.dx, p.dy) * (Math.abs(p.off) / profile.railHalfWidth);
+          }
           break;
         }
         const len = curveLength(curve);
