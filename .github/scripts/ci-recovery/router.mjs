@@ -392,9 +392,9 @@ export function collectPrNumbers({
         !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
         !hasHealthyOwnerForSweep(pullRequest, now),
     );
-    return selectRepairWindowPulls({ direct, waitingTransitions, sweep, now })
-      .sort(ageOrder)
-      .map((pullRequest) => pullRequest.number);
+    return selectRepairWindowPulls({ direct, waitingTransitions, sweep, now }).map(
+      (pullRequest) => pullRequest.number,
+    );
   }
   const directNumbers = eventPrNumbers(payload);
   const numbers = new Set(directNumbers);
