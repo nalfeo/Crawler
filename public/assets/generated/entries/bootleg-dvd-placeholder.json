@@ -1,0 +1,13 @@
+{
+  "briefId": "bootleg-dvd",
+  "spriteName": "bootleg-dvd",
+  "assetPath": "generated/bootleg-dvd-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.426Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "placeholder": true
+}

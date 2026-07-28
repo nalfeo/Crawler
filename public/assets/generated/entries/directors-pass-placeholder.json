@@ -1,0 +1,13 @@
+{
+  "briefId": "directors-pass",
+  "spriteName": "directors-pass",
+  "assetPath": "generated/directors-pass-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.406Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "placeholder": true
+}

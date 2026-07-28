@@ -19,7 +19,14 @@ import {
   UnapproveError,
   MANIFEST_VERSION,
   type Manifest,
+  type ManifestEntry,
 } from '../../../scripts/sprites/approve.js';
+import {
+  composeManifestFromShards,
+  shardPathForKey,
+  writeShard,
+} from '../../../scripts/sprites/generated-shards.js';
+import { deriveGeneratedCatalogRow } from '../../../src/shared/generated-catalog.js';
 
 interface FakeRunOptions {
   readonly briefId?: string;
@@ -154,8 +161,31 @@ function writeFakeRun(
   return { runDir, briefId };
 }
 
+/**
+ * Compose the aggregate manifest view from the on-disk per-asset shards. The
+ * aggregate `manifest.json` is no longer written by approve/unapprove — the
+ * shards under `entries/` are the source of truth — so tests read it back
+ * through the same composer the build + engine use.
+ */
 function readManifest(manifestPath: string): Manifest {
-  return JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
+  return composeManifestFromShards(path.dirname(manifestPath)) as Manifest;
+}
+
+/** Absolute generated dir (holding `entries/`) for a given aggregate path. */
+function generatedDirOf(manifestPath: string): string {
+  return path.dirname(manifestPath);
+}
+
+/**
+ * Derive the composed `generated:` catalog row for a variant directly from its
+ * shard — the catalog is no longer written by approve, it is composed at
+ * read-time from the manifest, so tests assert the derivation.
+ */
+function deriveCatalogRow(manifestPath: string, variantId: string) {
+  const manifest = readManifest(manifestPath);
+  const entry = manifest.entries[variantId];
+  if (!entry) return undefined;
+  return deriveGeneratedCatalogRow(variantId, entry as ManifestEntry);
 }
 
 describe('approveVariant', () => {
@@ -262,7 +292,10 @@ describe('approveVariant', () => {
         },
       },
     };
-    writeFileSync(manifestPath, JSON.stringify(seeded));
+    // Seed two unrelated entries as shards (the source of truth).
+    for (const [key, entry] of Object.entries(seeded.entries)) {
+      writeShard(generatedDirOf(manifestPath), key, entry as ManifestEntry);
+    }
 
     const { runDir, briefId } = writeFakeRun(repoRoot);
     approveVariant({
@@ -451,9 +484,10 @@ describe('approveVariant', () => {
     const manifest = readManifest(manifestPath);
     const legacy: Record<string, unknown> = { ...manifest.entries['iron-sword-var-1']! };
     delete legacy.contentHash;
-    writeFileSync(
-      manifestPath,
-      JSON.stringify({ version: manifest.version, entries: { 'iron-sword-var-1': legacy } }),
+    writeShard(
+      generatedDirOf(manifestPath),
+      'iron-sword-var-1',
+      legacy as unknown as ManifestEntry,
     );
 
     // Same bytes still on disk → fallback hash of the asset matches → refused.
@@ -515,8 +549,10 @@ describe('approveVariant', () => {
     } catch (err) {
       expect((err as ApproveError).kind).toBe('variant-not-found');
     }
-    // Manifest must NOT have been created when validation failed.
-    expect(existsSync(manifestPath)).toBe(false);
+    // Shard must NOT have been created when validation failed.
+    expect(existsSync(shardPathForKey(generatedDirOf(manifestPath), 'iron-sword-var-9'))).toBe(
+      false,
+    );
   });
 
   it('throws processed-missing when the variant PNG is absent', () => {
@@ -550,23 +586,6 @@ describe('approveVariant', () => {
         now: fixedNow,
       }),
     ).toThrowError(/summary\.json/);
-  });
-
-  it('throws manifest-invalid when manifest.json exists with a wrong version', () => {
-    mkdirSync(path.dirname(manifestPath), { recursive: true });
-    writeFileSync(manifestPath, JSON.stringify({ version: 99, entries: {} }));
-    const { runDir } = writeFakeRun(repoRoot);
-    expect(() =>
-      approveVariant({
-        runDir,
-        variantIndex: 0,
-        manifestPath,
-        catalogPath,
-        publicAssetsDir,
-        repoRoot,
-        now: fixedNow,
-      }),
-    ).toThrowError(/Unsupported manifest version/);
   });
 
   it('falls back to chosen.anchor (brief source) when no derived sidecar exists', () => {
@@ -656,7 +675,7 @@ describe('approveVariant', () => {
     expect('weapon' in entry.anchors).toBe(false);
   });
 
-  it('persists approved sprite to both manifest and catalog', () => {
+  it('persists approved sprite to manifest and derives its catalog row', () => {
     const { runDir, briefId } = writeFakeRun(repoRoot, {
       variantIndices: [0, 1],
       chosenIndex: 1,
@@ -671,14 +690,13 @@ describe('approveVariant', () => {
       now: fixedNow,
     });
 
-    // Verify manifest has the entry
-    const manifest: Manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    // Verify manifest (composed from shards) has the entry
+    const manifest = readManifest(manifestPath);
     const variantId = `${briefId}-var-1`;
     expect(manifest.entries).toHaveProperty(variantId);
 
-    // Verify catalog has the entry with correct structure
-    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<Record<string, unknown>>;
-    const catalogEntry = catalog.find((e) => e.id === `generated:${variantId}`);
+    // Verify the catalog row derived from the shard has the correct structure.
+    const catalogEntry = deriveCatalogRow(manifestPath, variantId);
     expect(catalogEntry).toBeDefined();
     expect(catalogEntry).toMatchObject({
       kind: 'sprite',
@@ -689,7 +707,7 @@ describe('approveVariant', () => {
     });
   });
 
-  it('tags the catalog entry with the brief sprite type when the brief YAML is present', () => {
+  it('tags the derived catalog row with the brief sprite type when the brief YAML is present', () => {
     const { runDir, briefId } = writeFakeRun(repoRoot, {
       variantIndices: [0, 1],
       chosenIndex: 1,
@@ -710,8 +728,7 @@ describe('approveVariant', () => {
       now: fixedNow,
     });
 
-    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<Record<string, unknown>>;
-    const catalogEntry = catalog.find((e) => e.id === `generated:${briefId}-var-1`);
+    const catalogEntry = deriveCatalogRow(manifestPath, `${briefId}-var-1`);
     expect(catalogEntry).toBeDefined();
     expect(catalogEntry!.tags).toEqual(['item', 'generated', 'pipeline-approved']);
     // The resolved type is also stamped on the manifest entry itself.
@@ -733,8 +750,7 @@ describe('approveVariant', () => {
       now: fixedNow,
     });
 
-    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<Record<string, unknown>>;
-    const catalogEntry = catalog.find((e) => e.id === `generated:${briefId}-var-1`);
+    const catalogEntry = deriveCatalogRow(manifestPath, `${briefId}-var-1`);
     expect(catalogEntry!.tags).toEqual(['generated', 'pipeline-approved']);
     // No resolvable brief ⇒ the manifest entry's type is null.
     expect(entry.type).toBeNull();
@@ -767,11 +783,9 @@ describe('approveVariant', () => {
       expect(manifest.entries).toHaveProperty('flame-dagger-var-1');
       expect(manifest.entries).not.toHaveProperty('flame-dagger-v2-var-1');
 
-      const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<
-        Record<string, unknown>
-      >;
-      expect(catalog.find((e) => e.id === 'generated:flame-dagger-var-1')).toBeDefined();
-      expect(catalog.find((e) => e.id === 'generated:flame-dagger-v2-var-1')).toBeUndefined();
+      // The derived catalog id is keyed by the bare manifest key.
+      expect(deriveCatalogRow(manifestPath, 'flame-dagger-var-1')).toBeDefined();
+      expect(deriveCatalogRow(manifestPath, 'flame-dagger-v2-var-1')).toBeUndefined();
     });
 
     it('ships character-typed item art BARE (classified-dossier-v1 → classified-dossier)', () => {
@@ -903,11 +917,8 @@ describe('unapproveVariant', () => {
     // PNG is deleted.
     expect(existsSync(assetAbs)).toBe(false);
 
-    // Catalog entry is gone.
-    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as ReadonlyArray<{
-      id: string;
-    }>;
-    expect(catalog.find((e) => e.id === `generated:${variantId}`)).toBeUndefined();
+    // The shard is gone, so the derived catalog row disappears too.
+    expect(deriveCatalogRow(manifestPath, variantId)).toBeUndefined();
   });
 
   it('preserves other manifest entries when one variant is unapproved', () => {
@@ -989,9 +1000,10 @@ describe('unapproveVariant', () => {
     }
   });
 
-  it('throws manifest-invalid for a corrupt manifest file', () => {
-    mkdirSync(path.dirname(manifestPath), { recursive: true });
-    writeFileSync(manifestPath, 'not json {{{{');
+  it('throws manifest-invalid for a corrupt shard file', () => {
+    const shardPath = shardPathForKey(generatedDirOf(manifestPath), 'iron-sword-var-1');
+    mkdirSync(path.dirname(shardPath), { recursive: true });
+    writeFileSync(shardPath, 'not json {{{{');
     expect(() =>
       unapproveVariant({
         variantId: 'iron-sword-var-1',
@@ -1048,59 +1060,7 @@ describe('unapproveVariant', () => {
     expect(updatedManifest.entries['iron-sword-var-1']).toBeUndefined();
   });
 
-  it('manifest version mismatch throws manifest-invalid', () => {
-    mkdirSync(path.dirname(manifestPath), { recursive: true });
-    writeFileSync(
-      manifestPath,
-      JSON.stringify({ version: 99, entries: { 'iron-sword-var-1': {} } }),
-    );
-    try {
-      unapproveVariant({
-        variantId: 'iron-sword-var-1',
-        manifestPath,
-        catalogPath,
-        publicAssetsDir,
-      });
-    } catch (err) {
-      expect((err as UnapproveError).kind).toBe('manifest-invalid');
-    }
-  });
-
-  it('entries: [] (array) throws manifest-invalid, not not-found', () => {
-    mkdirSync(path.dirname(manifestPath), { recursive: true });
-    writeFileSync(manifestPath, JSON.stringify({ version: 1, entries: [] }));
-    try {
-      unapproveVariant({
-        variantId: 'iron-sword-var-1',
-        manifestPath,
-        catalogPath,
-        publicAssetsDir,
-      });
-      throw new Error('expected to throw');
-    } catch (err) {
-      expect((err as UnapproveError).kind).toBe('manifest-invalid');
-    }
-  });
-
-  it('entries: null throws manifest-invalid', () => {
-    mkdirSync(path.dirname(manifestPath), { recursive: true });
-    writeFileSync(manifestPath, JSON.stringify({ version: 1, entries: null }));
-    try {
-      unapproveVariant({
-        variantId: 'iron-sword-var-1',
-        manifestPath,
-        catalogPath,
-        publicAssetsDir,
-      });
-      throw new Error('expected to throw');
-    } catch (err) {
-      expect((err as UnapproveError).kind).toBe('manifest-invalid');
-    }
-  });
-
   it('__proto__ as variantId throws not-found (no prototype traversal)', () => {
-    mkdirSync(path.dirname(manifestPath), { recursive: true });
-    writeFileSync(manifestPath, JSON.stringify({ version: 1, entries: {} }));
     try {
       unapproveVariant({
         variantId: '__proto__',
@@ -1114,54 +1074,27 @@ describe('unapproveVariant', () => {
     }
   });
 
-  it('does not delete files outside generated/ when variantId contains path traversal', () => {
-    // Seed a manifest entry with a traversal-style key to simulate a malformed
-    // manifest. unapproveVariant must remove the manifest entry but NOT delete
-    // anything outside public/assets/generated/.
-    //
-    // From publicAssetsDir/generated, `../../../outside` resolves to
-    // <repoRoot>/outside.png (3 levels: generated → assets → public → repoRoot).
-    // Using only `../../outside` would target <repoRoot>/public/outside.png, which
-    // is a different path than where we place the sentinel — the guard would pass
-    // the test vacuously even if it were removed.
+  it('does not read or delete files outside entries/ when variantId contains path traversal', () => {
+    // A traversal-style variantId must be rejected before any fs read/unlink so
+    // it can never escape the entries/ tree. From <generatedDir>/entries,
+    // `../../../outside` would resolve to <repoRoot>/outside.json.
     const traversalKey = '../../../outside';
-    const outsideFile = path.join(repoRoot, 'outside.png');
-    writeFileSync(outsideFile, Buffer.from('OUTSIDE'));
-    mkdirSync(path.dirname(manifestPath), { recursive: true });
-    writeFileSync(
-      manifestPath,
-      JSON.stringify({
-        version: 1,
-        entries: {
-          [traversalKey]: {
-            briefId: 'iron-sword',
-            spriteName: traversalKey,
-            assetPath: `generated/${traversalKey}.png`,
-            approvedAt: '2026-01-01T00:00:00.000Z',
-            sourceRun: 'generated/runs/iron-sword/run-01',
-            variantIndex: 0,
-            anchor: null,
-            anchors: { hold: null, centerOfGravity: null },
-            sensorScore: '7/7',
-            judgeScore: null,
-            type: null,
-          },
-        },
-      }),
-    );
+    const outsideShard = path.join(repoRoot, 'outside.json');
+    writeFileSync(outsideShard, JSON.stringify({ briefId: 'x' }));
 
-    // Should not throw but must NOT delete the outside file.
-    unapproveVariant({
-      variantId: traversalKey,
-      manifestPath,
-      catalogPath,
-      publicAssetsDir,
-    });
+    try {
+      unapproveVariant({
+        variantId: traversalKey,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+      });
+      throw new Error('expected to throw');
+    } catch (err) {
+      expect((err as UnapproveError).kind).toBe('not-found');
+    }
 
     // The outside file is untouched.
-    expect(existsSync(outsideFile)).toBe(true);
-    // The manifest entry was removed.
-    const updatedManifest = readManifest(manifestPath);
-    expect(updatedManifest.entries[traversalKey]).toBeUndefined();
+    expect(existsSync(outsideShard)).toBe(true);
   });
 });

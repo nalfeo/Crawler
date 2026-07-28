@@ -1,0 +1,13 @@
+{
+  "briefId": "smoke-bomb",
+  "spriteName": "smoke-bomb",
+  "assetPath": "generated/smoke-bomb-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.383Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "placeholder": true
+}

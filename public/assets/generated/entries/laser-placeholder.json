@@ -1,0 +1,12 @@
+{
+  "briefId": "laser",
+  "spriteName": "laser",
+  "assetPath": "generated/laser-placeholder.png",
+  "approvedAt": "2026-07-18T02:44:38.894Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "placeholder": true
+}

@@ -1,0 +1,13 @@
+{
+  "briefId": "floor-key-bronze",
+  "spriteName": "floor-key-bronze",
+  "assetPath": "generated/floor-key-bronze-placeholder.png",
+  "approvedAt": "2026-06-23T00:55:52.050Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "item",
+  "placeholder": true
+}

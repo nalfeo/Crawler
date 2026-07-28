@@ -1,0 +1,12 @@
+{
+  "briefId": "echo-bell",
+  "spriteName": "echo-bell",
+  "assetPath": "generated/echo-bell-placeholder.png",
+  "approvedAt": "2026-07-18T03:05:06.443Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "placeholder": true
+}

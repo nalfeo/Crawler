@@ -1,0 +1,13 @@
+{
+  "briefId": "iron-sword",
+  "spriteName": "iron-sword",
+  "assetPath": "generated/iron-sword-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.363Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "weapon",
+  "placeholder": true
+}

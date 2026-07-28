@@ -1,0 +1,13 @@
+{
+  "briefId": "sturdy-belt",
+  "spriteName": "sturdy-belt",
+  "assetPath": "generated/sturdy-belt-placeholder.png",
+  "approvedAt": "2026-07-06T00:00:00.000Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "equipment",
+  "placeholder": true
+}

@@ -1,0 +1,13 @@
+{
+  "briefId": "storm-sling",
+  "spriteName": "storm-sling",
+  "assetPath": "generated/storm-sling-placeholder.png",
+  "approvedAt": "2026-07-18T03:40:52.652Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "weapon",
+  "placeholder": true
+}

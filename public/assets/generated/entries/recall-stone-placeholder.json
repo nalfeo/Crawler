@@ -1,0 +1,13 @@
+{
+  "briefId": "recall-stone",
+  "spriteName": "recall-stone",
+  "assetPath": "generated/recall-stone-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.395Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "placeholder": true
+}

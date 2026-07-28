@@ -1,0 +1,13 @@
+{
+  "briefId": "health-vial",
+  "spriteName": "health-vial",
+  "assetPath": "generated/health-vial-placeholder.png",
+  "approvedAt": "2026-06-23T00:55:52.051Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "placeholder": true
+}

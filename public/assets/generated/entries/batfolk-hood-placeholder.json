@@ -1,0 +1,13 @@
+{
+  "briefId": "batfolk-hood",
+  "spriteName": "batfolk-hood",
+  "assetPath": "generated/batfolk-hood-placeholder.png",
+  "approvedAt": "2026-07-18T02:49:24.814Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "equipment",
+  "placeholder": true
+}
