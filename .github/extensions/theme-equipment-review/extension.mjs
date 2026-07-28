@@ -25,7 +25,7 @@ function log(message, level = 'info') {
 }
 
 const runCommand = createSerializedThemeEquipmentReviewRunner((command) =>
-  runThemeEquipmentReviewCommand(command, REPO_ROOT),
+  runThemeEquipmentReviewCommand(command, REPO_ROOT, log),
 );
 
 async function ensureServer(ctx) {

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "sweep-budget-latent-backlog",
+  "task_title": "Fix stale latent-backlog expectation greening main",
+  "estimated_apples": 1,
+  "stages": {}
+}

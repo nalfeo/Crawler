@@ -12,9 +12,13 @@
  * --------------
  * Every blob artifact category is cached: downloaded sheets, raw/processed
  * variants, brief snapshots, metadata, judge output, scorecards, summaries, and
- * derived previews. The ONE exclusion is the mutable, ETag-controlled workflow
- * queue document (`workflow-state/queue.json`) — caching it read-through would
- * serve a stale concurrency token and break optimistic locking.
+ * derived previews. The exclusions are the mutable **coordination documents**
+ * — small JSON blobs whose current value drives an optimistic-locking, claim,
+ * or resume decision (the workflow queue, theme-set state, the asset-request
+ * ingest ledger, per-issue checkpoints). Caching those read-through would serve
+ * a stale concurrency token and break optimistic locking. The registry of those
+ * keys, and the audit of mutable-but-still-cacheable families, lives in
+ * `./cache-policy.ts`.
  *
  * Semantics (ADR 0065; list-snapshot semantics updated by
  * docs/knowledge/adr/2026-07-22-sprite-list-cache-swr.md)
@@ -60,9 +64,15 @@
  * for exact response snapshots; listings come from pinned list snapshots.
  */
 
-import { WORKFLOW_STATE_KEY } from '../sidecar/workflow-state.js';
 import type { SharedResourceCache } from './shared-cache.js';
-import { StoreNotFoundError, type ListOptions, type RunStore } from './types.js';
+import { isCacheableKey } from './cache-policy.js';
+import {
+  StoreConditionalWriteError,
+  StoreNotFoundError,
+  type ConditionalWriteConditions,
+  type ListOptions,
+  type RunStore,
+} from './types.js';
 
 /** cacache key prefixes keep blob artifacts and list snapshots in disjoint namespaces. */
 const BLOB_PREFIX = 'blob:';
@@ -70,12 +80,11 @@ const LIST_PREFIX = 'list:';
 const DERIVED_PREFIX = 'derived:';
 
 /**
- * Default cacheability predicate: cache every key EXCEPT the mutable,
- * ETag-controlled workflow queue document.
+ * Default cacheability predicate. Re-exported from `./cache-policy.js`, which
+ * is the single registry of mutable coordination documents that must never be
+ * served from this cache.
  */
-export function isCacheableKey(key: string): boolean {
-  return key !== WORKFLOW_STATE_KEY;
-}
+export { isCacheableKey, isCoordinationKey } from './cache-policy.js';
 
 /** Persisted list-snapshot shape: the epoch it was captured at plus the keys. */
 interface ListSnapshot {
@@ -119,6 +128,21 @@ export function hasDerivedResourceCache(store: RunStore): store is RunStore & De
 
 export class CachingRunStore implements RunStore, DerivedResourceCache {
   readonly backend: RunStore['backend'];
+  /**
+   * Mirrors the inner store's conditional-write guarantee, or `'unsupported'`
+   * when the inner store cannot do conditional writes at all.
+   */
+  readonly conditionalWrites: RunStore['conditionalWrites'];
+  /**
+   * Assigned in the constructor ONLY when the inner store implements it — see
+   * the constructor comment on why these must not be prototype methods.
+   */
+  readonly getWithETag?: (key: string) => Promise<{ data: Buffer; etag: string }>;
+  readonly putConditional?: (
+    key: string,
+    data: Buffer,
+    conditions: ConditionalWriteConditions,
+  ) => Promise<void>;
   private readonly inner: RunStore;
   private readonly cache: SharedResourceCache;
   private readonly shouldCache: (key: string) => boolean;
@@ -152,15 +176,95 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     this.cache = options.cache;
     this.shouldCache = options.shouldCache ?? isCacheableKey;
     this.offline = options.offline ?? false;
+
+    // Conditional-write forwarding is assigned as INSTANCE FIELDS, never
+    // prototype methods: `RunStore.getWithETag`/`putConditional` are optional,
+    // and callers feature-detect them with `typeof store.putConditional ===
+    // 'function'`. A prototype method would make that check truthy even when
+    // the inner store cannot honour it, silently degrading a compare-and-swap
+    // into an unconditional overwrite. Only expose them when the inner store
+    // genuinely implements both.
+    const innerGetWithETag = options.inner.getWithETag;
+    const innerPutConditional = options.inner.putConditional;
+    if (typeof innerGetWithETag === 'function' && typeof innerPutConditional === 'function') {
+      this.getWithETag = (key) => this.forwardGetWithETag(key);
+      this.putConditional = (key, data, conditions) =>
+        this.forwardPutConditional(key, data, conditions);
+      // Mirror the inner store's guarantee. An inner store that exposes the
+      // methods but declares no capability is treated as `unsupported` so a
+      // caller requiring atomic CAS fails loudly rather than assuming safety.
+      this.conditionalWrites = options.inner.conditionalWrites ?? 'unsupported';
+    } else {
+      this.conditionalWrites = 'unsupported';
+    }
+  }
+
+  /**
+   * Authoritative ETag read. Deliberately does NOT populate the blob cache: an
+   * ETag is only meaningful against the authoritative store, and a cached copy
+   * captured alongside it could not be invalidated when another machine writes.
+   */
+  private async forwardGetWithETag(key: string): Promise<{ data: Buffer; etag: string }> {
+    const innerGetWithETag = this.inner.getWithETag;
+    if (innerGetWithETag === undefined) {
+      throw new Error(`Inner store (${this.inner.backend}) does not support getWithETag`);
+    }
+    // Offline mode never contacts the inner store, and there is no cached
+    // substitute that can carry a valid ETag — fail rather than fabricate one.
+    if (this.offline) {
+      throw new StoreNotFoundError(key);
+    }
+    return innerGetWithETag.call(this.inner, key);
+  }
+
+  /**
+   * Authoritative conditional write. On success the bytes are published through
+   * exactly the same serialization / token-snapshot / epoch-bump path as
+   * `put()`. On failure the attempted bytes are NEVER published; the cached
+   * entry is invalidated instead, because the write we lost to belongs to
+   * another writer whose value we do not have.
+   */
+  private async forwardPutConditional(
+    key: string,
+    data: Buffer,
+    conditions: ConditionalWriteConditions,
+  ): Promise<void> {
+    const innerPutConditional = this.inner.putConditional;
+    if (innerPutConditional === undefined) {
+      throw new Error(`Inner store (${this.inner.backend}) does not support putConditional`);
+    }
+    // Checked before any serialization so an offline conditional write makes
+    // zero inner calls and cannot mutate cache state.
+    if (this.offline) {
+      throw new StoreConditionalWriteError(
+        `Cannot perform a conditional write to ${key} while Azure is offline`,
+      );
+    }
+    await this.serializeKeyWrite(key, async () => {
+      await this.invalidateDerivedResources(key);
+      if (!this.shouldCache(key)) {
+        await innerPutConditional.call(this.inner, key, data, conditions);
+        this.cache.bumpEpoch();
+        return;
+      }
+      const cacheKey = `${BLOB_PREFIX}${key}`;
+      const tokenSnapshot = this.cache.readMutationToken(cacheKey);
+      try {
+        await innerPutConditional.call(this.inner, key, data, conditions);
+      } catch (err) {
+        // The precondition failed (or the write errored): our bytes were never
+        // committed. Drop any cached entry so the next read fetches whatever
+        // the winning writer stored.
+        await this.invalidateCachedBlob(cacheKey);
+        throw err;
+      }
+      await this.publishAfterAuthoritativeWrite(cacheKey, data, tokenSnapshot);
+      this.cache.bumpEpoch();
+    });
   }
 
   async put(key: string, data: Buffer): Promise<void> {
-    // Serialize same-key writes: wait for any in-flight put on this key to
-    // complete first, then execute ours. This prevents a stale v1 from
-    // overwriting a newer v2 that committed to both inner and cache first.
-    const previous = this.putInFlight.get(key);
-    const work = (async () => {
-      if (previous !== undefined) await previous.catch(() => {});
+    await this.serializeKeyWrite(key, async () => {
       await this.invalidateDerivedResources(key);
       if (this.shouldCache(key)) {
         const cacheKey = `${BLOB_PREFIX}${key}`;
@@ -171,29 +275,29 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
         const tokenSnapshot = this.cache.readMutationToken(cacheKey);
         // Authoritative write first; only mirror into the cache once it succeeds.
         await this.inner.put(key, data);
-        // Guard: only publish to cache when no concurrent writer claimed the key.
-        if (this.cache.readMutationToken(cacheKey) === tokenSnapshot) {
-          const publishToken = this.cache.bumpMutationToken(cacheKey);
-          const cacheWriteOk = await this.cache.set(cacheKey, data, undefined, publishToken);
-          if (!cacheWriteOk && this.cache.readMutationToken(cacheKey) === publishToken) {
-            await this.cache.remove(cacheKey);
-            this.cache.bumpMutationToken(cacheKey);
-          }
-        } else {
-          // A concurrent cross-instance writer published while our inner.put was
-          // in-flight. Their cache content may pre-date our authoritative commit
-          // (e.g. they committed to the inner store BEFORE us but published to
-          // cache BEFORE our post-put check). Invalidate so future reads fall
-          // through to the authoritative store rather than serving stale bytes.
-          await this.cache.remove(cacheKey);
-          this.cache.bumpMutationToken(cacheKey);
-        }
+        await this.publishAfterAuthoritativeWrite(cacheKey, data, tokenSnapshot);
       } else {
         // Non-cacheable key: just do the authoritative write.
         await this.inner.put(key, data);
       }
       // A new/changed blob may change what listings return — invalidate snapshots.
       this.cache.bumpEpoch();
+    });
+  }
+
+  /**
+   * Serializes writes to a single key: waits for any in-flight write on this
+   * key to complete first, then runs ours. This prevents a stale v1 from
+   * overwriting a newer v2 that committed to both inner and cache first.
+   *
+   * Shared by `put` and `putConditional` so a conditional write can never
+   * interleave its cache publication with a plain write to the same key.
+   */
+  private async serializeKeyWrite(key: string, write: () => Promise<void>): Promise<void> {
+    const previous = this.putInFlight.get(key);
+    const work = (async () => {
+      if (previous !== undefined) await previous.catch(() => {});
+      await write();
     })();
     this.putInFlight.set(key, work);
     try {
@@ -204,6 +308,39 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
         this.putInFlight.delete(key);
       }
     }
+  }
+
+  /**
+   * Publishes `data` to the blob cache after the authoritative write for
+   * `cacheKey` has already succeeded. `tokenSnapshot` must have been read
+   * BEFORE that authoritative write.
+   */
+  private async publishAfterAuthoritativeWrite(
+    cacheKey: string,
+    data: Buffer,
+    tokenSnapshot: string | undefined,
+  ): Promise<void> {
+    // Guard: only publish to cache when no concurrent writer claimed the key.
+    if (this.cache.readMutationToken(cacheKey) === tokenSnapshot) {
+      const publishToken = this.cache.bumpMutationToken(cacheKey);
+      const cacheWriteOk = await this.cache.set(cacheKey, data, undefined, publishToken);
+      if (!cacheWriteOk && this.cache.readMutationToken(cacheKey) === publishToken) {
+        await this.invalidateCachedBlob(cacheKey);
+      }
+    } else {
+      // A concurrent cross-instance writer published while our authoritative
+      // write was in-flight. Their cache content may pre-date our commit (e.g.
+      // they committed to the inner store BEFORE us but published to cache
+      // BEFORE our post-write check). Invalidate so future reads fall through
+      // to the authoritative store rather than serving stale bytes.
+      await this.invalidateCachedBlob(cacheKey);
+    }
+  }
+
+  /** Drops the cached blob for `cacheKey` and claims the key's mutation token. */
+  private async invalidateCachedBlob(cacheKey: string): Promise<void> {
+    await this.cache.remove(cacheKey);
+    this.cache.bumpMutationToken(cacheKey);
   }
 
   async get(key: string): Promise<Buffer> {

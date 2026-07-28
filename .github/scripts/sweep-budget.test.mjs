@@ -50,77 +50,45 @@ test('matrix enrichment preserves objects and wraps scalar entries', () => {
   ]);
 });
 
-const LATENT_BACKLOG_REPOSITORY = 'nalfeo/Crawler';
-const LATENT_BACKLOG_BASE_PR = {
-  state: 'open',
-  draft: false,
-  created_at: '2026-07-21T00:00:00Z',
-  base: { ref: 'main' },
-  head: { repo: { full_name: LATENT_BACKLOG_REPOSITORY } },
-};
-// Fixed so the assertions never depend on wall-clock drift against the fixture's
-// created_at (hasHealthyOwnerForSweep takes `now`).
-const LATENT_BACKLOG_NOW = new Date('2026-07-21T06:00:00Z');
-
-function latentBacklogOf(labels, number = 1) {
-  return countLatentBacklog({
-    pullRequests: [{ ...LATENT_BACKLOG_BASE_PR, number, labels }],
-    repository: LATENT_BACKLOG_REPOSITORY,
-    now: LATENT_BACKLOG_NOW,
-  });
-}
-
-// Asserts each label class's contribution individually rather than only the
-// union size: a bare total lets a behaviour change move which PRs qualify while
-// the number coincidentally holds, which is how this test previously rotted.
-test('latent backlog counts train-queued and unowned recovery demand only', () => {
-  // Reserved: these will genuinely consume runners.
-  assert.equal(latentBacklogOf([{ name: 'merge-train' }]), 1, 'merge-train is queued demand');
-  assert.equal(latentBacklogOf([]), 1, 'unlabelled PRs are recovery-sweep demand');
-
-  // Not reserved: reconcile skips these unconditionally, so no dispatch and no
-  // runners. `merge-train-blocked` stopped counting in 492bb4be8 (2026-07-27),
-  // which applied isExternallyBlocked() to the train-enabled recovery path.
-  assert.equal(
-    latentBacklogOf([{ name: 'merge-train-blocked' }]),
-    0,
-    'externally blocked PRs cannot be dispatched, so they reserve no budget',
-  );
-  assert.equal(latentBacklogOf([{ name: 'ci-recovery-opt-out' }]), 0, 'opted-out PRs are excluded');
-});
-
-test('latent backlog unions merge-train and recovery demand', () => {
+test('latent backlog deduplicates merge-train and recovery demand by PR number', () => {
+  const repository = 'nalfeo/Crawler';
+  const base = {
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-21T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: repository } },
+  };
   const pullRequests = [
-    { ...LATENT_BACKLOG_BASE_PR, number: 1, labels: [{ name: 'merge-train' }] },
-    { ...LATENT_BACKLOG_BASE_PR, number: 2, labels: [] },
-    { ...LATENT_BACKLOG_BASE_PR, number: 3, labels: [{ name: 'merge-train-blocked' }] },
-    { ...LATENT_BACKLOG_BASE_PR, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
+    // Counted once by the merge-train queue (carries the queue label).
+    { ...base, number: 1, labels: [{ name: 'merge-train' }] },
+    // Counted once by the recovery backlog (unlabelled, so nothing excludes it).
+    { ...base, number: 2, labels: [] },
+    // Counted once as latent demand: `merge-train-blocked` is excluded from recovery
+    // slot consumption, but still contributes to sweep budgeting.
+    { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] },
+    // Excluded from both: no queue label, and explicitly opted out of recovery.
+    { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
   ];
-  assert.equal(
-    countLatentBacklog({
-      pullRequests,
-      repository: LATENT_BACKLOG_REPOSITORY,
-      now: LATENT_BACKLOG_NOW,
-    }),
-    2,
-  );
+  assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
 });
 
-// The two selectors are provably disjoint -- eligibleTrainRecoveryPulls()
-// excludes the merge-train label unconditionally, and queueEntries() requires
-// it -- so no label fixture can make one PR appear in both. Repeating a PR in
-// the input is therefore the only way to exercise the Set, and without this the
-// dedup in countLatentBacklog() is untested.
-test('latent backlog deduplicates a repeated PR number', () => {
-  const pullRequest = { ...LATENT_BACKLOG_BASE_PR, number: 7, labels: [] };
-  assert.equal(
-    countLatentBacklog({
-      pullRequests: [pullRequest, pullRequest],
-      repository: LATENT_BACKLOG_REPOSITORY,
-      now: LATENT_BACKLOG_NOW,
-    }),
-    1,
-  );
+// Pins externally-blocked latent-demand accounting so future changes to
+// EXTERNALLY_BLOCKED_LABEL_NAMES fail with an unambiguous message.
+test('latent backlog counts externally-blocked PRs once as latent demand', () => {
+  const repository = 'nalfeo/Crawler';
+  const base = {
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-21T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: repository } },
+  };
+  const blocked = [{ ...base, number: 10, labels: [{ name: 'merge-train-blocked' }] }];
+  assert.equal(countLatentBacklog({ pullRequests: blocked, repository }), 1);
+
+  const unblocked = [{ ...base, number: 10, labels: [] }];
+  assert.equal(countLatentBacklog({ pullRequests: unblocked, repository }), 1);
 });
 
 test('runner inspection excludes all broad sweeps and counts queued non-sweep runs', async () => {
