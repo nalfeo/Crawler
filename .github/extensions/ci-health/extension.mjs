@@ -205,7 +205,7 @@ const session = await joinSession({
       id: 'ci-health',
       displayName: 'CI Health',
       description:
-        'Show live Merge Train order, active GitHub Actions runs and jobs, and repository-visible hosted runner pressure.',
+        'Show live Merge Train order, Asset Request Pipeline progress, active GitHub Actions jobs, and repository-visible runner pressure.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -268,6 +268,21 @@ const session = await joinSession({
                 visibleHostedQueued: payload.snapshot.actions.visibleHostedQueued,
               },
               activeRunCount: payload.snapshot.actions.activeRunCount,
+              assetPipeline: {
+                severity: payload.snapshot.assetPipeline.severity,
+                active: payload.snapshot.assetPipeline.active,
+                counts: payload.snapshot.assetPipeline.counts,
+                latestRun: payload.snapshot.assetPipeline.latestRun,
+                stages: payload.snapshot.assetPipeline.stages.map((stage) => ({
+                  id: stage.id,
+                  label: stage.label,
+                  lane: stage.lane,
+                  state: stage.state,
+                  detail: stage.detail,
+                  elapsedMs: stage.elapsedMs,
+                  url: stage.url,
+                })),
+              },
               warnings: payload.snapshot.actions.warnings,
             };
           },

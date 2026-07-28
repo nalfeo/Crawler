@@ -23,6 +23,7 @@ import {
   changeStatsFromFiles,
   ciFilesFor,
   clusterPullRequests,
+  coordinationEnforcementEnabled,
   discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
@@ -805,4 +806,36 @@ test('renderCoordinatorComment round-trips overlapFilesCount through parse', () 
   // "…and N more" must be rendered for the truncated portion.
   const hiddenCount = 50 - MAX_OVERLAP_FILES;
   assert.ok(body.includes(`…and ${hiddenCount} more`));
+});
+
+test('coordination enforcement defaults to OFF (discovery-only)', () => {
+  // The fence is a pessimistic lock with ~100:1 asymmetric cost, so absence of
+  // the flag must mean "do not serialize" rather than "serialize".
+  assert.equal(coordinationEnforcementEnabled({}), false);
+  assert.equal(
+    coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: undefined }),
+    false,
+  );
+  assert.equal(coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: '' }), false);
+  assert.equal(coordinationEnforcementEnabled(null), false);
+  assert.equal(coordinationEnforcementEnabled(undefined), false);
+});
+
+test('coordination enforcement is enabled only by an exact "1"', () => {
+  assert.equal(coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: '1' }), true);
+  // Surrounding whitespace from workflow YAML interpolation must still enable it.
+  assert.equal(coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: ' 1 ' }), true);
+});
+
+test('coordination enforcement rejects truthy-looking non-"1" values', () => {
+  // Fail OPEN: anything ambiguous must NOT re-arm the fence, because a false
+  // positive stalls an entire overlap group for hours while a false negative
+  // costs one rebase plus one parallel CI re-run.
+  for (const value of ['true', 'yes', 'on', 'enabled', '0', 'false', '2', '01']) {
+    assert.equal(
+      coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: value }),
+      false,
+      `expected ${JSON.stringify(value)} to leave enforcement disabled`,
+    );
+  }
 });

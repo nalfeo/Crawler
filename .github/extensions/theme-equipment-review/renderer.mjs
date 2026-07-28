@@ -41,7 +41,12 @@ export function renderHtml(bootstrap) {
     .up.active { border-color: var(--true-color-green,#3fb950); }
     .down.active { border-color: var(--true-color-red,#f85149); }
     .error { color: var(--true-color-red,#f85149); white-space: pre-wrap; }
+    .brief-edit { min-height: 220px; font: var(--text-code-inline,12px)/1.5 var(--font-mono,monospace); white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+    .brief-error { color: var(--true-color-red,#f85149); white-space: pre-wrap; font-size: 12px; margin: 4px 0 0; }
+    .bulk-skips { margin: 8px 0 0; font-size: 13px; }
+    .bulk-skips ul { margin: 4px 0 0; padding-left: 20px; color: var(--text-color-muted,#8b949e); }
     .gate-list { margin: 8px 0 0; padding-left: 20px; }
+    .judge-hint { margin: 8px 0 0; padding: 8px 10px; font-size: 13px; border-radius: 6px; background: rgba(210,153,34,0.12); border: 1px solid rgba(210,153,34,0.4); }
     .spinner { padding: 40px; text-align: center; color: var(--text-color-muted,#8b949e); }
     label { display: block; margin: 10px 0 0; font-weight: 600; }
     label .muted { font-weight: 400; }
@@ -67,6 +72,22 @@ export function renderHtml(bootstrap) {
     let draft = null;
     let selectedPhase = null;
     let busy = false;
+    let lastBulkResult = null;
+    /** Per-item draft text keyed by item id; survives re-renders. */
+    const draftBriefs = new Map();
+    const BULK_NOUNS = { roster: 'items', briefs: 'briefs', 'sprite-sheets': 'sheets', 'variant-approval': 'items' };
+    // Truthful Run-button label, derived from the SAME server plan (state.runPhase,
+    // computed via planRunPhase) that describes the work a run-phase dispatch does:
+    // a run regenerates every unresolved item and always judges the collection once.
+    // When nothing is unresolved it regenerates nothing and only produces the judge —
+    // so the label must say "judge", not "regenerate 0", or it lies about the work.
+    function runPhaseLabel(plan, phase) {
+      if (!plan || plan.phase === null) return 'Run / rerun unresolved items on GitHub';
+      if (plan.regenerateCount > 0) {
+        return 'Regenerate ' + plan.regenerateCount + ' unresolved ' + (BULK_NOUNS[phase] || 'items') + ' + judge on GitHub';
+      }
+      return plan.collectionJudgeMissing ? 'Judge collection cohesion on GitHub' : 'Re-judge collection cohesion on GitHub';
+    }
     let dispatchNotice = null;
     const app = document.querySelector('#app');
     const phases = ['roster','briefs','sprite-sheets','variant-approval','complete'];
@@ -114,6 +135,7 @@ export function renderHtml(bootstrap) {
       try {
         state = await request('/api/state');
         selectedPhase = state.phase === 'complete' ? 'variant-approval' : state.phase;
+        lastBulkResult = null;
         view = 'board';
         render();
       } catch (error) {
@@ -371,58 +393,20 @@ export function renderHtml(bootstrap) {
     }
 
     function artifactHtml(item, artifact) {
+      if (artifact.kind === 'selected-brief' && selectedPhase === 'briefs' && selectedPhase === state.phase) {
+        return '<div class="artifact">' +
+          '<strong>' + esc(artifact.kind) + '</strong>' +
+          '<textarea class="brief-edit" spellcheck="false" data-brief-item="' + esc(item.id) + '" data-artifact="' + esc(artifact.id) + '" readonly>Loading…</textarea>' +
+          '<div class="brief-error" data-brief-error="' + esc(item.id) + '"></div>' +
+          (artifact.summary ? '<pre>' + esc(artifact.summary) + '</pre>' : '') +
+        '</div>';
+      }
       const previewable = ['raw-sheet','approved-variant','selected-brief'].includes(artifact.kind);
       return '<div class="artifact">' +
         '<strong>' + esc(artifact.kind) + '</strong>' +
         (previewable ? '<div class="preview" data-item="' + esc(item.id) + '" data-artifact="' + esc(artifact.id) + '">Loading…</div>' : '') +
         (artifact.summary ? '<pre>' + esc(artifact.summary) + '</pre>' : '') +
       '</div>';
-    }
-
-    const PHASE_NOUNS = {
-      'roster': 'roster entries',
-      'briefs': 'briefs',
-      'sprite-sheets': 'sprite sheets',
-      'variant-approval': 'variant sets',
-    };
-
-    /**
-     * What a run-phase dispatch would actually do right now, for the CURRENT
-     * phase (run-phase always targets state.phase, never the tab the user is
-     * browsing).
-     *
-     * This MIRRORS isThemeSetItemResolvedForPhase in
-     * scripts/sprites/theme-equipment-set.ts: the runner regenerates every item
-     * that is not frozen and not up-reviewed — including an item that already
-     * has artifacts but has not been reviewed yet. Counting only artifact-less
-     * items would understate the work and tell the user "re-judge only" right
-     * before a click regenerated all 18 briefs.
-     */
-    function runPhaseWork() {
-      const phase = state.phase;
-      let unresolved = 0;
-      let rejected = 0;
-      let withArtifacts = 0;
-      for (const item of state.items) {
-        const record = item.phases[phase];
-        if (!record) continue;
-        if (item.revisionStatus === 'frozen' || item.frozenPhases.includes(phase) || record.review.verdict === 'up') continue;
-        unresolved++;
-        if (record.review.verdict === 'down') rejected++;
-        if (record.artifacts.length) withArtifacts++;
-      }
-      return { unresolved, rejected, withArtifacts, noun: PHASE_NOUNS[phase] || 'items' };
-    }
-
-    function runPhaseLabel() {
-      if (busy) return 'Dispatching…';
-      const work = runPhaseWork();
-      // A zero-item run is still meaningful: run-phase always re-judges
-      // collection cohesion at the end.
-      if (!work.unresolved) return 'Re-judge collection cohesion on GitHub';
-      const verb = work.withArtifacts ? 'Regenerate' : 'Generate';
-      const detail = work.rejected && work.rejected < work.unresolved ? ' (' + work.rejected + ' rejected)' : '';
-      return verb + ' ' + work.unresolved + ' ' + work.noun + ' on GitHub' + detail;
     }
 
     function itemCard(item) {
@@ -447,7 +431,7 @@ export function renderHtml(bootstrap) {
       app.innerHTML =
         '<header><h1>' + esc(state.displayName) + '</h1><div class="subtitle">' + esc(state.id) + ' · durable revision ' + state.stateRevision + '</div>' +
         '<div class="metrics"><span class="pill">Phase: ' + esc(state.phase) + '</span><span class="pill">Weapons ' + state.coverage.weaponTypeCount + '/' + MIN_WEAPON_TYPES + '+</span><span class="pill">Slots ' + state.coverage.coveredSlotCount + '/' + MIN_SLOTS + '+</span><span class="pill">Publication ' + esc(state.publication.status) + '</span>' +
-        '<button data-back>← All sets</button></div>' +
+        '<button data-back>← All sets</button><button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div>' +
         '<nav class="tabs">' + phases.map(p => '<button class="tab ' + (p === selectedPhase ? 'active' : '') + '" data-phase="' + p + '">' + esc(p) + '</button>').join('') + '</nav></header>' +
         '<main>' +
         (selectedRecord ? '<section class="panel"><div class="panel-head"><div><strong>Collection cohesion</strong><div class="muted">' +
@@ -456,15 +440,20 @@ export function renderHtml(bootstrap) {
           (selectedRecord.collectionJudge ? '<p>' + esc(selectedRecord.collectionJudge.rationale) + '</p>' : '') +
           (selectedPhase === state.phase ? '<textarea maxlength="2000" data-feedback="collection" placeholder="Optional whole-set feedback">' + esc(selectedRecord.humanReview.feedback || '') + '</textarea>' + reviewButtons(selectedRecord.humanReview,'collection') : '') +
         '</section>' : '') +
-        '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Up-reviewed and frozen items are skipped; every other item regenerates. Run generates artifacts on GitHub (minutes); Advance only moves the phase pointer once the gate is open.</div></div>' +
+        (selectedPhase === state.phase ?
+        '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Approved items remain frozen; rejected items alone regenerate.</div></div>' +
         '<div class="controls">' +
-          (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>' + esc(runPhaseLabel()) + '</button>' : '') +
+          (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>' + esc(runPhaseLabel(state.runPhase, state.phase)) + '</button>' : '') +
+          (state.phase !== 'complete' && state.bulkApprove && state.bulkApprove.count > 0 ? '<button class="primary" data-approve-remaining ' + (busy ? 'disabled' : '') + '>Approve remaining ' + state.bulkApprove.count + ' ' + esc(BULK_NOUNS[state.phase] || 'items') + '</button>' : '') +
           (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
-          (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>' + (busy ? 'Dispatching…' : 'Publish complete set atomically on GitHub') + '</button>' : '') +
-          '<button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div></div>' +
+          (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>Publish complete set atomically on GitHub</button>' : '') +
+          '</div></div>' +
+          (state.phase !== 'complete' && state.runPhase && state.runPhase.judgeOnly && state.runPhase.collectionJudgeMissing ? '<div class="judge-hint">Every item in this phase is approved, but the collection judge is missing — Advance stays locked until it lands. Click <strong>' + esc(runPhaseLabel(state.runPhase, state.phase)) + '</strong> to generate it (it regenerates nothing).</div>' : '') +
+          (lastBulkResult && lastBulkResult.skipped && lastBulkResult.skipped.length ? '<div class="bulk-skips"><strong>Skipped ' + lastBulkResult.skipped.length + ':</strong><ul>' + lastBulkResult.skipped.map(s => '<li>' + esc(s.reason) + '</li>').join('') + '</ul></div>' : '') +
           (dispatchNotice ? '<p class="' + (dispatchNotice.tone === 'error' ? 'error' : 'muted') + '">' + esc(dispatchNotice.text) + '</p>' : '') +
           (!state.gate.canAdvance && state.gate.reasons.length ? '<ul class="gate-list">' + state.gate.reasons.map(r => '<li>' + esc(r.message) + '</li>').join('') + '</ul>' : '') +
-        '</section>' +
+        '</section>'
+        : (selectedPhase !== 'complete' ? '<section class="panel"><div class="muted">Advancement controls for the active phase (<strong>' + esc(state.phase) + '</strong>) live on its own tab. This tab is ' + (phases.indexOf(selectedPhase) < phases.indexOf(state.phase) ? 'an earlier, completed phase' : 'a later phase, not yet active') + ' — review-only.</div></section>' : '')) +
         (selectedPhase === 'complete' ? '<section class="panel">The complete set is held until one atomic publication workflow succeeds.</section>' :
           '<section class="grid">' + state.items.map(itemCard).join('') + '</section>') +
         '</main>';
@@ -476,12 +465,31 @@ export function renderHtml(bootstrap) {
       document.querySelector('[data-back]')?.addEventListener('click', () => { dispatchNotice = null; loadIndex(); });
       document.querySelectorAll('[data-phase]').forEach(button => button.addEventListener('click', () => {
         selectedPhase = button.dataset.phase;
+        lastBulkResult = null;
         render();
+      }));
+      document.querySelectorAll('.brief-edit').forEach(area => area.addEventListener('input', () => {
+        const itemId = area.dataset.briefItem;
+        if (area.value !== area.dataset.original) {
+          draftBriefs.set(itemId, area.value);
+        } else {
+          draftBriefs.delete(itemId);
+        }
+        const dirty = draftBriefs.has(itemId);
+        const upButton = document.querySelector('[data-review="item"][data-id="' + CSS.escape(itemId) + '"][data-verdict="up"]');
+        if (upButton) upButton.textContent = dirty ? '💾 Save and Approve' : '👍 Approve';
       }));
       document.querySelectorAll('[data-review]').forEach(button => button.addEventListener('click', async () => {
         const scope = button.dataset.review;
         const id = button.dataset.id;
         const verdict = button.dataset.verdict === 'clear' ? null : button.dataset.verdict;
+        if (scope === 'item' && verdict === 'up') {
+          const briefEl = document.querySelector('.brief-edit[data-brief-item="' + CSS.escape(id) + '"]');
+          if (briefEl && briefEl.dataset.loaded === '1' && draftBriefs.has(id)) {
+            await saveAndApproveBrief(id, briefEl);
+            return;
+          }
+        }
         const feedbackEl = document.querySelector('[data-feedback="' + (scope === 'item' ? CSS.escape(id) : 'collection') + '"]');
         await mutate(scope === 'item' ? '/api/review-item' : '/api/review-set', {
           ...(scope === 'item' ? { itemId: id } : {}),
@@ -489,6 +497,13 @@ export function renderHtml(bootstrap) {
           expectedRevision: state.stateRevision,
         });
       }));
+      document.querySelector('[data-approve-remaining]')?.addEventListener('click', async () => {
+        const result = await mutate('/api/approve-remaining', { expectedRevision: state.stateRevision });
+        if (result && result.bulkResult) {
+          lastBulkResult = result.bulkResult;
+          render();
+        }
+      });
       document.querySelector('[data-advance]')?.addEventListener('click', () => mutate('/api/advance', { expectedRevision: state.stateRevision }));
       document.querySelector('[data-refresh]')?.addEventListener('click', load);
       document.querySelectorAll('[data-dispatch]').forEach(button => button.addEventListener('click', async () => {
@@ -529,6 +544,30 @@ export function renderHtml(bootstrap) {
       }));
     }
 
+    async function saveAndApproveBrief(itemId, briefEl) {
+      if (busy) return;
+      const errEl = document.querySelector('[data-brief-error="' + CSS.escape(itemId) + '"]');
+      if (errEl) errEl.textContent = '';
+      busy = true;
+      try {
+        const result = await request('/api/save-and-approve-brief', {
+          method: 'POST',
+          body: JSON.stringify({ itemId, briefText: briefEl.value, expectedRevision: state.stateRevision }),
+        });
+        state = result;
+        lastBulkResult = null;
+        draftBriefs.delete(itemId);
+        busy = false;
+        render();
+      } catch (error) {
+        busy = false;
+        // Keep the dirty draft: surface the error inline and do NOT re-render.
+        if (errEl) errEl.textContent = error.message;
+        else alert(error.message);
+        if (error.message.includes('revision-conflict')) await load();
+      }
+    }
+
     async function mutate(path, body, receivesState = true) {
       if (busy) return null;
       busy = true;
@@ -548,6 +587,31 @@ export function renderHtml(bootstrap) {
     }
 
     async function loadPreviews() {
+      for (const area of document.querySelectorAll('.brief-edit')) {
+        if (area.dataset.loaded === '1') continue;
+        try {
+          const url = '/api/artifact?itemId=' + encodeURIComponent(area.dataset.briefItem) + '&artifactId=' + encodeURIComponent(area.dataset.artifact);
+          const response = await fetch(url, { headers: apiHeaders });
+          if (!response.ok) throw new Error(await response.text());
+          const text = await response.text();
+          area.dataset.original = text;
+          area.dataset.loaded = '1';
+          area.removeAttribute('readonly');
+          // Restore any draft the user typed before this render cycle.
+          const savedDraft = draftBriefs.get(area.dataset.briefItem);
+          if (savedDraft !== undefined) {
+            area.value = savedDraft;
+            const upButton = document.querySelector('[data-review="item"][data-id="' + CSS.escape(area.dataset.briefItem) + '"][data-verdict="up"]');
+            if (upButton) upButton.textContent = '💾 Save and Approve';
+          } else {
+            area.value = text;
+          }
+        } catch (error) {
+          area.value = '';
+          area.removeAttribute('readonly');
+          area.placeholder = 'Brief unavailable: ' + error.message;
+        }
+      }
       for (const target of document.querySelectorAll('.preview')) {
         try {
           const url = '/api/artifact?itemId=' + encodeURIComponent(target.dataset.item) + '&artifactId=' + encodeURIComponent(target.dataset.artifact);

@@ -12,13 +12,24 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { writeIndustrialCavePack } from './build-industrial-cave.js';
 import { writeCaelesFixturePack } from './build-caeles-fixture.js';
+import { applySharedBasePoolRestyle } from './rebuild-shared-base-pools.js';
 import {
   validateTerrainPack,
   validatePoolAndDoorImages,
   validateManifestSchema,
   validateWallAutotileImagePath,
+  validateWallAccentImagePaths,
+  validateWallAccentTopology,
+  validateCrossPackWallSilhouettes,
+  validateVariantTransformEligibility,
+  validateGroundDecalImages,
 } from './validate.js';
-import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
+import { decodePng } from './png-buffer.js';
+import {
+  RUNTIME_TERRAIN_PACK_IDS,
+  type TerrainPackDef,
+} from '../../../src/shared/terrain-pack-types.js';
+import { getAvailableFloorIds, getFloorManifest } from '../../../src/shared/floor-registry.js';
 
 function repoRootFromHere(): string {
   return path.resolve(import.meta.dirname, '..', '..', '..');
@@ -28,11 +39,40 @@ function runBuild(): void {
   const repoRoot = repoRootFromHere();
   writeIndustrialCavePack(repoRoot);
   writeCaelesFixturePack(repoRoot);
+  // `writeIndustrialCavePack` emits plain procedural floor/corridor tiles and a
+  // manifest with no pool weights. The shipped Floor 2 art is that output plus
+  // the shared-base restyle, so the two steps are ONE build — running the pack
+  // write alone silently reverts the restyle and the weighted distribution.
+  applySharedBasePoolRestyle();
 }
 
 function runValidate(): void {
   const repoRoot = repoRootFromHere();
-  const packs = [{ id: 'industrial-cave' }, { id: 'caeles-fixture' }];
+  const manifestDir = path.join(repoRoot, 'src', 'shared', 'data', 'terrain-packs');
+  const packs = fs
+    .readdirSync(manifestDir)
+    .filter((fileName) => fileName.endsWith('.manifest.json'))
+    .map((fileName) => ({ id: fileName.replace(/\.manifest\.json$/, '') }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const decodedPacks: Array<{
+    id: string;
+    manifest: TerrainPackDef;
+    wallAtlas: ReturnType<typeof decodePng>;
+  }> = [];
+  const coResidentPairs = new Set<string>();
+  for (const floorId of getAvailableFloorIds()) {
+    const floor = getFloorManifest(floorId);
+    if (!floor) continue;
+    const ids = [floor.terrainPackId, floor.terrainPacks?.stone, floor.terrainPacks?.cave]
+      .filter((id): id is NonNullable<typeof id> => id !== undefined)
+      .filter((id, index, all) => all.indexOf(id) === index)
+      .sort();
+    for (let leftIndex = 0; leftIndex < ids.length; leftIndex++) {
+      for (let rightIndex = leftIndex + 1; rightIndex < ids.length; rightIndex++) {
+        coResidentPairs.add(`${ids[leftIndex]}:${ids[rightIndex]}`);
+      }
+    }
+  }
   let allOk = true;
   for (const pack of packs) {
     const manifestPath = path.join(
@@ -86,6 +126,8 @@ function runValidate(): void {
 
     // Pool/door image paths carry their own traversal checks internally.
     const poolResult = validatePoolAndDoorImages(manifest, { repoRoot });
+    const accentPathResult = validateWallAccentImagePaths(manifest, { repoRoot });
+    const decalPathResult = validateGroundDecalImages(manifest, { repoRoot });
 
     // Now safe to read atlas bytes — path has been validated and confirmed safe above.
     const atlasRelPath = manifest.wallAutotile.imagePath.replace(/\\/g, '/');
@@ -93,14 +135,95 @@ function runValidate(): void {
     const atlasBytes = fs.readFileSync(atlasAbsPath);
     const result = validateTerrainPack(manifestJson, atlasBytes);
 
-    const allIssues = [...result.issues, ...poolResult.issues];
-    if (result.ok && poolResult.ok) {
+    const allIssues = [
+      ...result.issues,
+      ...poolResult.issues,
+      ...accentPathResult.issues,
+      ...decalPathResult.issues,
+    ];
+
+    // Wall-accent topology ("no spill") — only meaningful once paths/dims are
+    // confirmed safe above; skip if the accent path validation already failed
+    // (avoids reading an unsafe/missing path).
+    const wallAtlas = decodePng(atlasBytes);
+    if (accentPathResult.ok) {
+      for (const accent of manifest.wallAccents ?? []) {
+        const accentAbsPath = path.join(repoRoot, 'public', accent.imagePath.replace(/\\/g, '/'));
+        const accentAtlas = decodePng(fs.readFileSync(accentAbsPath));
+        const topologyResult = validateWallAccentTopology(
+          manifest,
+          wallAtlas,
+          accentAtlas,
+          accent.id,
+        );
+        allIssues.push(...topologyResult.issues);
+      }
+    }
+
+    // Transform-eligibility ("seam closure") — only meaningful once pool
+    // image paths/dims are confirmed safe above.
+    if (poolResult.ok) {
+      const poolsToCheck: Array<[string, typeof manifest.floorPool]> = [
+        ['floorPool', manifest.floorPool],
+        ['corridorPool', manifest.corridorPool],
+        ...Object.entries(manifest.specialFloorPools ?? {}).map(
+          ([key, pool]) =>
+            [`specialFloorPools.${key}`, pool] as [string, typeof manifest.floorPool],
+        ),
+      ];
+      for (const [label, pool] of poolsToCheck) {
+        for (const variant of pool) {
+          const variantAbsPath = path.join(
+            repoRoot,
+            'public',
+            variant.imagePath.replace(/\\/g, '/'),
+          );
+          const variantImg = decodePng(fs.readFileSync(variantAbsPath));
+          const transformResult = validateVariantTransformEligibility(variantImg, variant, label);
+          allIssues.push(...transformResult.issues);
+        }
+      }
+    }
+
+    if (
+      result.ok &&
+      poolResult.ok &&
+      accentPathResult.ok &&
+      decalPathResult.ok &&
+      allIssues.length === 0
+    ) {
       console.log(`[${pack.id}] OK`);
+      if ((RUNTIME_TERRAIN_PACK_IDS as readonly string[]).includes(pack.id)) {
+        decodedPacks.push({ id: pack.id, manifest, wallAtlas });
+      }
     } else {
       allOk = false;
       console.error(`[${pack.id}] FAILED:`);
       for (const issue of allIssues) {
         console.error(`  - (${issue.code}) ${issue.message}`);
+      }
+    }
+  }
+  for (let leftIndex = 0; leftIndex < decodedPacks.length; leftIndex++) {
+    const left = decodedPacks[leftIndex];
+    if (!left) continue;
+    for (let rightIndex = leftIndex + 1; rightIndex < decodedPacks.length; rightIndex++) {
+      const right = decodedPacks[rightIndex];
+      if (!right) continue;
+      const pairId = [left.id, right.id].sort().join(':');
+      if (!coResidentPairs.has(pairId)) continue;
+      const result = validateCrossPackWallSilhouettes(
+        left.manifest,
+        left.wallAtlas,
+        right.manifest,
+        right.wallAtlas,
+      );
+      if (!result.ok) {
+        allOk = false;
+        console.error(`[${left.id} vs ${right.id}] FAILED:`);
+        for (const issue of result.issues) {
+          console.error(`  - (${issue.code}) ${issue.message}`);
+        }
       }
     }
   }

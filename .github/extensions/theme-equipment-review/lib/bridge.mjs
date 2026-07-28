@@ -16,7 +16,15 @@ function cliEntryResolverFor(repoRoot, log) {
   }
   return resolver;
 }
-const SERIALIZED_ACTIONS = new Set(['state', 'item-review', 'set-review', 'advance', 'save-plan']);
+const SERIALIZED_ACTIONS = new Set([
+  'state',
+  'item-review',
+  'set-review',
+  'advance',
+  'save-plan',
+  'approve-remaining',
+  'save-and-approve-brief',
+]);
 const SET_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Roster synthesis makes a chat call; give it more headroom than a state read. */
 const SYNTH_TIMEOUT_MS = 240_000;

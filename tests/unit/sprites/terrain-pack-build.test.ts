@@ -108,12 +108,22 @@ describe('buildIndustrialCavePack (authored)', () => {
     }
     expect(hasOpaquePixel).toBe(true);
   });
-  it('produces 3-5 floor variants, 3-5 corridor variants, and exactly 4 door PNGs', () => {
-    expect(result.manifest.floorPool.length).toBeGreaterThanOrEqual(3);
-    expect(result.manifest.floorPool.length).toBeLessThanOrEqual(5);
-    expect(result.manifest.corridorPool.length).toBeGreaterThanOrEqual(3);
-    expect(result.manifest.corridorPool.length).toBeLessThanOrEqual(5);
+  it('produces exactly 8 floor variants, 8 corridor variants, 4 wall accents, and exactly 4 door PNGs (grown from 4/4/0 2026-07-25)', () => {
+    expect(result.manifest.floorPool.length).toBe(8);
+    expect(result.manifest.corridorPool.length).toBe(8);
+    expect(result.manifest.wallAccents).toHaveLength(4);
     expect(Object.keys(result.manifest.doorSet)).toHaveLength(4);
+  });
+
+  it('every floor/corridor variant declares allowedTransforms including "none", with >=24 combos per pool', () => {
+    for (const pool of [result.manifest.floorPool, result.manifest.corridorPool]) {
+      let totalCombos = 0;
+      for (const variant of pool) {
+        expect(variant.allowedTransforms).toContain('none');
+        totalCombos += variant.allowedTransforms?.length ?? 1;
+      }
+      expect(totalCombos).toBeGreaterThanOrEqual(24);
+    }
   });
 
   it('passes full validateTerrainPack (schema + dimensions + mask coverage + seam check)', () => {
