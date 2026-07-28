@@ -184,6 +184,23 @@ Screenshots are in the session `files/visual-review/` dir (not committed).
   do. Don't double-bump.
 - The scratch set and `_seed-scratch.ts` were deleted before PR; re-seed a fresh
   scratch set if you need to re-verify — never `run-phase` a real set mid-review.
+- **NEVER open a canvas bound to a durable coordination set (e.g.
+  `classic-fantasy-basic-leather`) from a branch that lacks PR #2119's cache fix.**
+  On `main`, `CachingRunStore` treats `theme-sets/<id>/state.json` as an immutable
+  read-through blob in a shared `cacache` dir outside any worktree, so the canvas
+  serves a **stale revision** even after `extensions_reload` (Defect A). Worse, on
+  `main` `CachingRunStore` implements neither `getWithETag` nor `putConditional`, so
+  the CLI's compare-and-swap feature-test is false and every "CAS" silently degrades
+  to an **unconditional overwrite** (Defect B) — a bulk "Approve remaining" computed
+  from the stale snapshot will clobber newer Azure state with no conflict error, and
+  the `expectedRevision` guard cannot catch it because it compares against the same
+  stale revision it just read. This bit this session live: the panel rendered
+  "Judge 5/5 · Approve remaining 18 briefs" while real Azure state was rev 83 with
+  `collectionJudge=MISSING` and only 2 items up. Mitigation used: killed the
+  theme-equipment-review extension PID so the panel port refused connections
+  (there is no close-canvas tool, and a bound instance cannot be rebound to another
+  setId). Only reopen a live-set panel after rebasing onto a `main` that carries
+  #2119's cache fix, then re-read from Azure fresh before trusting the DOM.
 
 ## Rebase resolution vs PR #2119 (`nalfeo-theme-set-index`) — READ BEFORE RESOLVING THE renderer.mjs CONFLICT
 
