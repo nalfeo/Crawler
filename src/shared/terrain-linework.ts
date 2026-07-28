@@ -639,7 +639,12 @@ function buryCrossings(
 
   for (let index = 0; index < occupancy.length; index++) {
     if (occupancy[index] === LINEWORK_GROUND && buryUnder[index]) {
-      renderOccupancy[index] = LINEWORK_BURIED;
+      // Only bury two-connection tiles. Sinking a T-junction or cross would
+      // sever whichever branches were not part of the crossing, violating the
+      // "cannot sever a branch" invariant the same way as the margin pass.
+      if (popcount4(masks[index] ?? 0) <= 2) {
+        renderOccupancy[index] = LINEWORK_BURIED;
+      }
     }
   }
 

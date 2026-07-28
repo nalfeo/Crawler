@@ -197,20 +197,100 @@ describe('planLinework placement gate', () => {
     expect(pipe, 'floor must ship a pipe layer').toBeDefined();
 
     let crossings = 0;
+    let buriedCrossings = 0;
     for (let i = 0; i < pipe!.plan.occupancy.length; i++) {
       const onTrack = (track!.plan.renderOccupancy[i] ?? LINEWORK_EMPTY) !== LINEWORK_EMPTY;
       const onPipe = (pipe!.plan.occupancy[i] ?? LINEWORK_EMPTY) !== LINEWORK_EMPTY;
       if (!onTrack || !onPipe) continue;
       crossings++;
-      // The whole point of the burial pass: at a shared tile the pipe is BELOW
-      // grade, so nothing of it is drawn there.
-      expect(
-        pipe!.plan.renderOccupancy[i],
-        `pipe still drawn on track tile ${i % MAP_SIZE},${Math.floor(i / MAP_SIZE)}`,
-      ).toBe(LINEWORK_BURIED);
+      const mask = pipe!.plan.masks[i] ?? 0;
+      const connections = [1, 2, 4, 8].filter((b) => mask & b).length;
+      if (connections <= 2) {
+        // A straight or corner pipe tile at a track crossing must be buried.
+        expect(
+          pipe!.plan.renderOccupancy[i],
+          `pipe still drawn on track tile ${i % MAP_SIZE},${Math.floor(i / MAP_SIZE)}`,
+        ).toBe(LINEWORK_BURIED);
+        buriedCrossings++;
+      } else {
+        // A T-junction or cross at a crossing must NOT be buried — sinking it
+        // would sever whichever branch was not part of the crossing.
+        expect(
+          pipe!.plan.renderOccupancy[i],
+          `junction buried at track tile ${i % MAP_SIZE},${Math.floor(i / MAP_SIZE)} (${connections} connections)`,
+        ).not.toBe(LINEWORK_BURIED);
+      }
     }
     expect(crossings, 'synthetic floor produced no crossings to guard').toBeGreaterThan(0);
-    expect(pipe!.plan.buriedCount).toBeGreaterThanOrEqual(crossings);
+    expect(buriedCrossings, 'no two-connection crossing was buried').toBeGreaterThan(0);
+  });
+
+  it('never buries a pipe T-junction or cross at a track crossing', () => {
+    // Regression guard for the seed-loop junction bug: the seed loop was burying
+    // every overlap with track unconditionally, including T-junctions and crosses.
+    // Sinking a junction severs whichever branch was not part of the crossing,
+    // splitting one connected run into three or four isolated stubs.
+    //
+    // We simulate track crossing exactly at the junction tiles by setting
+    // buryUnder=1 only for those tiles.  Their arms remain visible, so the
+    // fixpoint cannot strand them; only the seed loop's missing guard mattered.
+    const { routable, wall } = buildSyntheticMap();
+    const pipeId = (manifest.linework ?? []).find((l) => l.kind === 'pipe')?.id;
+    expect(pipeId, 'manifest must have a pipe layer').toBeDefined();
+
+    // Natural plan — no burial — to discover junction positions.
+    const naturalPlan = planLinework({
+      width: MAP_SIZE,
+      height: MAP_SIZE,
+      routable,
+      wall,
+      hubs: HUBS,
+      floorSeed: 42,
+      params: paramsFor(pipeId!),
+    });
+
+    // buryUnder marks only junction tiles (T-junction / cross).
+    // This simulates a track crossing at the exact junction cell; the arms
+    // are left uncovered so the fixpoint cannot strand the junction.
+    const junctionBuryUnder = new Uint8Array(MAP_SIZE * MAP_SIZE);
+    let junctionCount = 0;
+    for (let i = 0; i < naturalPlan.occupancy.length; i++) {
+      if (!naturalPlan.occupancy[i]) continue;
+      const m = naturalPlan.masks[i] ?? 0;
+      const connections = [1, 2, 4, 8].filter((b) => m & b).length;
+      if (connections > 2) {
+        junctionBuryUnder[i] = 1;
+        junctionCount++;
+      }
+    }
+    expect(junctionCount, 'plan produced no T-junctions or crosses to guard').toBeGreaterThan(0);
+
+    // Same request + same seed → deterministic, identical occupancy.
+    const buriedPlan = planLinework({
+      width: MAP_SIZE,
+      height: MAP_SIZE,
+      routable,
+      wall,
+      hubs: HUBS,
+      floorSeed: 42,
+      buryUnder: junctionBuryUnder,
+      params: paramsFor(pipeId!),
+    });
+
+    let junctionsChecked = 0;
+    for (let i = 0; i < naturalPlan.occupancy.length; i++) {
+      if (!naturalPlan.occupancy[i]) continue;
+      const m = naturalPlan.masks[i] ?? 0;
+      const connections = [1, 2, 4, 8].filter((b) => m & b).length;
+      if (connections <= 2) continue; // straight/corner — burial allowed
+      // T-junction (3) or cross (4): must stay visible.
+      expect(
+        buriedPlan.renderOccupancy[i],
+        `junction at ${i % MAP_SIZE},${Math.floor(i / MAP_SIZE)} (${connections} connections) was buried`,
+      ).not.toBe(LINEWORK_BURIED);
+      junctionsChecked++;
+    }
+    expect(junctionsChecked, 'no T-junctions or crosses were checked').toBeGreaterThan(0);
   });
 
   it('never leaves a visible tile with no visible connection', () => {
