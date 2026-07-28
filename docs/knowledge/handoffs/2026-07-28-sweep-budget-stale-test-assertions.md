@@ -35,7 +35,7 @@ the diff context alone. The recovery loop escalated to issue #2139.
 ## Root cause
 
 `8889d27f` modified `sweep-budget.mjs` (lines 91–106) to add an `isExternallyBlocked` path that
-contributes blocked PRs to the latent-demand count rather than skipping them entirely.  The
+contributes blocked PRs to the latent-demand count rather than skipping them entirely. The
 corresponding pinning tests (`test 5` and `test 6`) were not updated to reflect the new semantic.
 
 ## Fix

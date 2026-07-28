@@ -83,25 +83,19 @@ export function enrichMatrix(entries, slots, scalarKey = 'value') {
 }
 
 export function countLatentBacklog({ pullRequests, repository, now = new Date() }) {
+  const baseEligible = pullRequests.filter(
+    (pr) =>
+      pr.state === 'open' &&
+      !pr.draft &&
+      pr.base?.ref === 'main' &&
+      pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase(),
+  );
   const numbers = new Set([
     ...queueEntries(pullRequests, repository).map((pullRequest) => pullRequest.number),
     ...recoveryBacklogEntries(pullRequests, repository, now).map(
       (pullRequest) => pullRequest.number,
     ),
-    // Externally-blocked PRs (e.g. merge-train-blocked) are excluded from
-    // eligibleTrainRecoveryPulls so they don't consume recovery slots, but they
-    // still represent latent demand that should be counted for sweep budgeting.
-    ...(pullRequests || [])
-      .filter(
-        (pr) =>
-          pr.state === 'open' &&
-          !pr.draft &&
-          pr.base?.ref === 'main' &&
-          pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
-          !(pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out') &&
-          isExternallyBlocked(pr),
-      )
-      .map((pr) => pr.number),
+    ...baseEligible.filter(isExternallyBlocked).map((pr) => pr.number),
   ]);
   return numbers.size;
 }
