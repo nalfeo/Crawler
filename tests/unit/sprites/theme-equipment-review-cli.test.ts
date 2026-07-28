@@ -337,8 +337,7 @@ describe('save-and-approve-brief command', () => {
     // A new nonce-keyed brief was written to the store.
     expect(store.mem.size).toBeGreaterThan(keysBefore);
     const newKeys = [...store.mem.keys()].filter(
-      (k) =>
-        k.startsWith(`theme-sets/${state.id}/artifacts/${item.id}/r`) && k.endsWith('.yaml'),
+      (k) => k.startsWith(`theme-sets/${state.id}/artifacts/${item.id}/r`) && k.endsWith('.yaml'),
     );
     // Old r0 key + new r1 nonce-keyed key = at least 2 brief keys.
     expect(newKeys.length).toBeGreaterThanOrEqual(2);
