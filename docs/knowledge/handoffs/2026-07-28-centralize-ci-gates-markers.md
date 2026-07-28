@@ -38,9 +38,7 @@ Each script file previously defined its own marker constants. They now import fr
 **`ci-recovery-router.yml`** — Simplified 5-marker managed-comment `if:` filter to a single `!startsWith(github.event.comment.body, '<!-- crawler-')` prefix check. New markers are automatically covered.
 
 **`ci.yml` (changes job)**:
-- Checkout moved before the train-gate step (local composite actions require checkout)
-- `train-gate` step added after checkout for observability and consistency
-- Job-level `if: github.event_name != 'schedule' || vars.MERGE_TRAIN_ENABLED == 'true'` KEPT because downstream jobs check `needs.changes.outputs.*` — skipped `changes` cascades as skipped in dependent jobs
+- The temporary `train-gate` step was REMOVED during PR recovery because the scheduled `changes` job is intentionally the unconditional full-CI backstop; leaving the step in place created dead, misleading gate output without affecting control flow.
 
 **`ci-recovery-incidents.yml` (route-incident job)**:
 - Checkout is now unconditional (first step) — needed for local action resolution
@@ -55,7 +53,9 @@ Each script file previously defined its own marker constants. They now import fr
 
 ### Modified tests
 
-**`router.test.mjs`** — Imports `MANAGED_COMMENT_MARKERS` and `MANAGED_COMMENT_PREFIX` from `markers.mjs`. Updated YAML guard test to check for prefix instead of explicit markers. Added invariant test: every `MANAGED_COMMENT_MARKERS` entry must start with `MANAGED_COMMENT_PREFIX`.
+**`router.test.mjs`** — Imports the centralized marker constants from `markers.mjs`. Updated the YAML guard test to check for the shared prefix, expanded managed-marker fixtures to cover the newly centralized incident/loop markers, and added an inventory test proving `MANAGED_COMMENT_MARKERS` covers every exported managed marker/prefix.
+
+**`review-wake-bridge.mjs` / `review-wake-bridge.test.mjs`** — Added `.github/scripts/ci-recovery/markers.mjs` to the privileged recovery execution boundary so the immutable protected-path check stays aligned with the new import closure.
 
 **`tests/unit/merge-train-workflow-wakeups.test.ts`** — Updated test `'reconciles a completed scheduled CI run only while the merge train is enabled'`: the job-level `if:` now admits all schedule events (gate is in the step, not the YAML condition). Added new test `'train-gate step enforces MERGE_TRAIN_ENABLED for schedule-triggered CI wakes'` that validates the step is present, wired correctly, and that checkout precedes it.
 
@@ -63,16 +63,15 @@ Each script file previously defined its own marker constants. They now import fr
 
 1. **Prefix-based routing, not an explicit array**: `isManagedCommentEvent` and the YAML filter both use `'<!-- crawler-'` as a prefix check. New markers auto-covered; the `MANAGED_COMMENT_MARKERS` array is for tests/inventory, not routing.
 
-2. **ci.yml keeps dual gate**: The job-level `if:` must stay on the `changes` job to preserve downstream job cascade behavior. The `train-gate` step in ci.yml always outputs `enabled=true` (job-level `if:` already filtered) but establishes consistency across all 3 guarded workflows.
+2. **ci.yml schedule backstop stays unconditional**: `ci.yml` is the daily full-CI backstop, so it should not consult the train gate at all. The shared `train-gate` action remains authoritative for the workflows that truly need schedule+flag gating (`merge-train.yml` and `ci-recovery-incidents.yml`).
 
 3. **Checkout before local composite action**: GitHub Actions requires the repo to be checked out before `uses: ./.github/actions/...` can resolve. All 3 guarded workflows have a checkout step before the `train-gate` step. For `merge-train.yml`, a sparse checkout fetches only `.github/actions` (fast, minimal data) before the gate; the full checkout happens after and overwrites it.
 
 4. **Backward-compatible re-export pattern**: Downstream code that imports from `state.mjs`, `review-request.mjs`, etc. is unchanged. Each "home" file simply re-exports the constant it received from `markers.mjs`.
 
-## Remaining gaps (non-blocking)
+## Recovery follow-up
 
-- `reconcile.mjs` uses its own local `TASK_COMMENT_MARKER_PATTERN` regex rather than importing from `markers.mjs`. This could be cleaned up in a follow-on session.
-- The `MERGE_TRAIN_LANDED_MARKER` constant is in `markers.mjs` and is covered by the prefix filter, but is not in the `MANAGED_COMMENT_MARKERS` array (for the same reason `MERGE_TRAIN_LANDED_MARKER` wasn't in the old list — it's a terminal state comment that should still route through the router). This is intentional.
+- PR review recovery centralized the remaining live marker literals that had been called out (`ci-incident`, `merge-train-empty-incident`, `pr-loop-incident`, and the loop-fingerprint prefix), switched `reconcile.mjs` to consume the shared merge-train/task markers at its call sites, and removed the dead `ci.yml` train-gate step.
 
 ## Apples
 

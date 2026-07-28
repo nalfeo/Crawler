@@ -18,7 +18,12 @@
  */
 import { createHash } from 'node:crypto';
 
-export const LOOP_INCIDENT_MARKER = '<!-- crawler-pr-loop-incident:v1 -->';
+import {
+  LOOP_INCIDENT_FINGERPRINT_PREFIX,
+  LOOP_INCIDENT_MARKER,
+} from './markers.mjs';
+
+export { LOOP_INCIDENT_MARKER, LOOP_INCIDENT_FINGERPRINT_PREFIX };
 export const LOOP_INCIDENT_LABEL = 'ci-loop-incident';
 
 /**
@@ -98,7 +103,7 @@ export function buildLoopIncidentBody({
 
   return [
     LOOP_INCIDENT_MARKER,
-    `<!-- crawler-pr-loop-fingerprint:${fingerprint} -->`,
+    `${LOOP_INCIDENT_FINGERPRINT_PREFIX}${fingerprint} -->`,
     '',
     `The automated CI recovery pipeline made no progress on **PR #${prNumber}** after repeated attempts. An investigation agent has been assigned to diagnose the root cause.`,
     '',

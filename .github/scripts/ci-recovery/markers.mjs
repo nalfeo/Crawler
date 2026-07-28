@@ -36,6 +36,9 @@ export const STATE_DATA_PREFIX = '<!-- crawler-ci-state-data:';
  */
 export const TASK_COMMENT_MARKER = '<!-- crawler-ci-task:v1';
 
+/** Leading marker for repository-level CI incident issues. */
+export const CI_INCIDENT_MARKER = '<!-- crawler-ci-incident:v1 -->';
+
 // ---------------------------------------------------------------------------
 // Merge-train status comments
 // ---------------------------------------------------------------------------
@@ -45,6 +48,9 @@ export const MERGE_TRAIN_STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
 
 /** Leading marker for the durable landed-completion comment on a PR. */
 export const MERGE_TRAIN_LANDED_MARKER = '<!-- crawler-merge-train-landed:v1 -->';
+
+/** Leading marker for merge-train empty-queue incident issues. */
+export const MERGE_TRAIN_EMPTY_INCIDENT_MARKER = '<!-- crawler-merge-train-empty-incident:v1 -->';
 
 // ---------------------------------------------------------------------------
 // Review-request / conflict comments
@@ -97,6 +103,16 @@ export const COORDINATOR_MARKER = '<!-- crawler-ci-conflict-coordinator:v1 -->';
 export const COORDINATOR_DATA_PREFIX = '<!-- crawler-ci-conflict-coordinator-data:';
 
 // ---------------------------------------------------------------------------
+// PR loop-incident issue markers
+// ---------------------------------------------------------------------------
+
+/** Leading marker for PR recovery loop-incident issues. */
+export const LOOP_INCIDENT_MARKER = '<!-- crawler-pr-loop-incident:v1 -->';
+
+/** Inline data prefix embedded in PR recovery loop-incident issues. */
+export const LOOP_INCIDENT_FINGERPRINT_PREFIX = '<!-- crawler-pr-loop-fingerprint:';
+
+// ---------------------------------------------------------------------------
 // Shared prefix & router filter list
 // ---------------------------------------------------------------------------
 
@@ -109,21 +125,31 @@ export const COORDINATOR_DATA_PREFIX = '<!-- crawler-ci-conflict-coordinator-dat
 export const MANAGED_COMMENT_PREFIX = '<!-- crawler-';
 
 /**
- * Explicit list of managed-comment marker prefixes that can appear as
- * standalone `issue_comment` events on pull requests and would otherwise
- * trigger the CI-recovery router unnecessarily.
+ * Explicit inventory of every exported managed marker/prefix string. When a new
+ * managed marker is added above, update this array in the same file; tests
+ * verify the inventory covers every exported string that shares the managed
+ * comment prefix.
  *
  * Used by tests. The YAML-level filter and `isManagedCommentEvent()` in router.mjs
  * both use `MANAGED_COMMENT_PREFIX` (the shared prefix) instead of iterating this
- * array, so new markers are automatically covered without editing the list.
- * This array is the canonical JS-side inventory of known managed-comment markers.
+ * array, so routing stays a one-file edit.
  */
 export const MANAGED_COMMENT_MARKERS = [
   STATE_MARKER,
   TASK_COMMENT_MARKER,
+  CI_INCIDENT_MARKER,
+  STATE_DATA_PREFIX,
   MERGE_TRAIN_STATUS_MARKER,
+  MERGE_TRAIN_LANDED_MARKER,
+  MERGE_TRAIN_EMPTY_INCIDENT_MARKER,
   REVIEW_REQUEST_MARKER,
   REVIEW_CONFLICT_MARKER,
   LIFECYCLE_MARKER,
+  LIFECYCLE_DATA_PREFIX,
   COORDINATOR_MARKER,
+  COORDINATOR_DATA_PREFIX,
+  ISSUE_INTAKE_MARKER,
+  ISSUE_RECOVERY_PLAN_MARKER,
+  LOOP_INCIDENT_MARKER,
+  LOOP_INCIDENT_FINGERPRINT_PREFIX,
 ];
