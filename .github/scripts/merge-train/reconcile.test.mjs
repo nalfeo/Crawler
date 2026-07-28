@@ -1010,10 +1010,28 @@ test('planAttributedPrefixPromotion ejects nothing while main is red', async () 
   assert.match(plan.attribution, /full-CI run/);
 });
 
+test('planAttributedPrefixPromotion promotes a proven-green prefix mid-bisection while main is red', async () => {
+  // Regression: bisection has proven prefix 1 green but has not yet resolved
+  // prefixes 2-3, so planPrefixPromotion asks for another `validate` round.
+  // Pausing there would strand a repair PR sitting at prefix 1 -- and `main`
+  // cannot go green until that repair lands, so the train would deadlock
+  // permanently, reinstating the very bug this change removes.
+  const states = ['success', 'missing', 'missing', 'failure'];
+  assert.equal(planPrefixPromotion(states).action, 'validate', 'precondition: mid-bisection');
+
+  const plan = await planAttributedPrefixPromotion({ prefixStates: states, mainVerdict: RED });
+  assert.equal(plan.action, 'promote');
+  assert.equal(plan.greenPrefixLength, 1);
+  assert.equal(plan.validationIndex, 0);
+  assert.equal(plan.firstFailure, -1);
+});
+
 test('planAttributedPrefixPromotion skips further bisection rounds entirely while main is red', async () => {
   for (const [states, todayAction] of [
     [['missing', 'missing', 'missing', 'failure'], 'validate'],
     [['pending', 'pending', 'pending', 'failure'], 'wait'],
+    // Bisection has converged on green=0/red=1: today this ejects entry 0.
+    [['failure', 'failure'], 'promote'],
   ]) {
     assert.equal(
       planPrefixPromotion(states).action,

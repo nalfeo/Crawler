@@ -268,14 +268,14 @@ export function planPrefixPromotion(prefixStates) {
  *
  *   - maximal success              -> promote. `mainVerdict` is never consulted.
  *   - maximal failure + not 'red'  -> unchanged bisect/isolate/eject.
- *   - maximal failure + 'red'      -> nothing is ever ejected. An already-proven
- *                                     green prefix STILL promotes (that is how a
- *                                     queued PR that FIXES `main` lands), but
- *                                     `firstFailure` is suppressed to -1; any
- *                                     further bisection round becomes
- *                                     `action: 'pause'` instead, so no rounds
- *                                     are spent isolating an unattributable
- *                                     failure.
+ *   - maximal failure + 'red'      -> nothing is ever ejected. The largest
+ *                                     already-proven green prefix STILL
+ *                                     promotes (that is how a queued PR that
+ *                                     FIXES `main` lands) with `firstFailure`
+ *                                     suppressed to -1. Only when NO prefix is
+ *                                     proven green does this return
+ *                                     `action: 'pause'`, so no rounds are spent
+ *                                     isolating an unattributable failure.
  *
  * `mainVerdict` is a zero-arg (optionally async) probe so that the
  * "never consulted on the promotion path" property is directly observable; it
@@ -293,11 +293,29 @@ export async function planAttributedPrefixPromotion({ prefixStates, mainVerdict 
   if (verdict !== 'red') return plan;
 
   const attribution = reason || 'main is red';
-  // `promote` here is the bisection ISOLATE outcome: a proven-green prefix plus
-  // the index to eject. Keep the promotion, drop the ejection.
-  if (plan.action === 'promote') return { ...plan, firstFailure: -1, attribution };
-  // Anything else (another bisection round, or a wait on one) would only spend
-  // rounds narrowing a failure no queued PR is responsible for.
+  // An already-proven green prefix STILL promotes -- that is how a queued PR
+  // which FIXES `main` lands. Only the ejection index is suppressed. This is
+  // computed directly from `prefixStates` rather than read off `plan`, because
+  // mid-bisection states such as ['success','missing','missing','failure']
+  // return `action: 'validate'` (another round) even though prefix 1 is already
+  // proven green -- pausing there would strand the repair and deadlock the
+  // train, since `main` cannot go green until the repair lands.
+  let greenPrefixLength = 0;
+  for (let index = 0; index < prefixStates.length - 1; index += 1) {
+    if (prefixStates[index] === 'success') greenPrefixLength = index + 1;
+  }
+  if (greenPrefixLength > 0) {
+    return {
+      action: 'promote',
+      greenPrefixLength,
+      firstFailure: -1,
+      validationIndex: greenPrefixLength - 1,
+      attribution,
+    };
+  }
+  // Nothing is proven green, so there is nothing to promote and nothing that can
+  // be honestly attributed. Any further bisection round would only spend rounds
+  // narrowing a failure no queued PR is responsible for.
   return { action: 'pause', reason: attribution, greenPrefixLength: 0, firstFailure: -1 };
 }
 
