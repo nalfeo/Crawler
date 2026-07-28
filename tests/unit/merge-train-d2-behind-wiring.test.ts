@@ -5,10 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const RECONCILE_PATH = path.join(REPO_ROOT, '.github/scripts/merge-train/reconcile.mjs');
-const RECONCILE_LIB_PATH = path.join(
-  REPO_ROOT,
-  '.github/scripts/merge-train/reconcile-lib.mjs',
-);
+const RECONCILE_LIB_PATH = path.join(REPO_ROOT, '.github/scripts/merge-train/reconcile-lib.mjs');
 
 describe('merge-train D2 fix: auto-update clean-BEHIND admitted PRs', () => {
   it('fetches authoritative per-PR state BEFORE eligible() to share one snapshot', () => {
