@@ -84,7 +84,7 @@
       "abilityId": "don-paco-the-big-gob",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "llama-boss",
         "approvedAssetId": "llama-boss-var-8",
@@ -93,19 +93,31 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-don-paco",
+      "arenaLabEvidence": "Verified in the canonical combat arena preset `f2-don-paco` with deterministic observation: frame 539 (8983.33ms) has no cue/banner/projectiles/zones. Frame 540 (9000ms) starts the locked hostile-red cone telegraph with exact `THE BIG GOB — Don Paco's painting the whole block!` announcement and visible cone/path/landing-circle diff. Frame 624 (10400ms) resolves the cast and launches 5 committed projectiles. Frame 654 (10900ms) all 5 impacts resolve into 5 persistent slicks on the committed landing circles; frame 655 confirms the slick set persists after impact. Frame 894 (14900ms) the first slick set fully expires and cleans up. Frame 1278 (21300ms) the second cast's 5 impacts/slicks resolve at the same committed cadence. Headless cadence/impact proof is covered by `scripts/agent/don-paco-arena-evidence.ts`; deterministic runtime coverage in `tests/unit/mob-abilities/big-gob.test.ts` covers inside/outside damage plus while-inside-only slow + 4s expiry; browser observation is in `tests/e2e/don-paco-arena-observation.test.ts`. Production remains blocked behind `floor2-boss-production-enable`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
-      "implementationPullRequest": null,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1952,
+        "state": "open",
+        "title": "Implement Don Paco's THE BIG GOB ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1952"
+      },
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 2016,
+        "state": "open",
+        "title": "Implement Don Paco's THE BIG GOB on the typed mob-ability runtime",
+        "url": "https://github.com/nalfeo/Crawler/pull/2016"
+      },
       "blockers": ["floor2-boss-production-enable"]
     },
     {
@@ -135,17 +147,11 @@
       "implementationIssue": {
         "kind": "issue",
         "number": 1957,
-        "state": "closed",
+        "state": "open",
         "title": "Implement Big Panda Wei's BAMBOO-FED BERSERK ability",
         "url": "https://github.com/nalfeo/Crawler/issues/1957"
       },
-      "implementationPullRequest": {
-        "kind": "pull-request",
-        "number": 1960,
-        "state": "merged",
-        "title": "Implement Big Panda Wei's BAMBOO-FED BERSERK ability",
-        "url": "https://github.com/nalfeo/Crawler/pull/1960"
-      },
+      "implementationPullRequest": null,
       "blockers": ["floor2-boss-production-enable"]
     },
     {
@@ -198,7 +204,7 @@
       "abilityId": "king-skritt-roman-candle-coronation",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "in-progress",
       "bossArt": {
         "runtimeBriefId": "kobold-boss",
         "approvedAssetId": "kobold-boss-var-0",
@@ -207,18 +213,24 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "in-progress",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
+      "arenaLabState": "in-progress",
+      "arenaLabPresetId": "f2-king-skritt",
       "arenaLabEvidence": null,
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1955,
+        "state": "open",
+        "title": "Implement King Skritt's ROMAN-CANDLE CORONATION ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1955"
+      },
       "implementationPullRequest": null,
       "blockers": ["floor2-boss-production-enable"]
     },
@@ -226,7 +238,7 @@
       "abilityId": "sovereign-cap-spore-bloom",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "myconid-boss",
         "approvedAssetId": "myconid-boss-var-0",
@@ -235,47 +247,31 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-sovereign-cap",
+      "arenaLabEvidence": "Verified in canonical combat arena preset `f2-sovereign-cap` with deterministic runtime + browser evidence: frame 539 has no cue/zone; frame 540 starts the locked three-circle hostile-red telegraph with exact `SOVEREIGN SPORE BLOOM \u2014 The colony claims this ground!` announcement; frame 636 resolves impact and opens one runtime-owned persistent toxic cloud zone over the same committed three circles; frame 666 confirms repeated cloud damage inside the zone; frame 876 confirms exact 4s cloud expiry/visual cleanup; frame 1176 starts second telegraph and frame 1272 resolves second cast. Evidence is covered by `tests/unit/mob-abilities/sovereign-spore-bloom.test.ts`, `scripts/agent/sovereign-cap-arena-evidence.ts`, and `tests/e2e/sovereign-cap-arena-observation.test.ts`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
-      "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
-    },
-    {
-      "abilityId": "big-mama-bufo-tongue-repossession",
-      "designState": "approved",
-      "foundationState": "verified",
-      "runtimeState": "not-started",
-      "bossArt": {
-        "runtimeBriefId": "toadkin-boss",
-        "approvedAssetId": "toadkin-boss-var-0",
-        "evidenceKind": "manifest-only",
-        "sourceBriefPath": null,
-        "assetRequest": null,
-        "runtimeWiringState": "verified"
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1951,
+        "state": "open",
+        "title": "Implement The Sovereign Cap's SOVEREIGN SPORE BLOOM ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1951"
       },
-      "telegraphVfxState": "planned",
-      "telegraphVfxAssetRequest": null,
-      "codexIconState": "not-requested",
-      "codexIconAssetRequest": null,
-      "castAnimationState": "not-authored",
-      "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
-      "animationLabState": "not-required",
-      "animationLabEvidence": null,
-      "implementationIssue": null,
-      "implementationPullRequest": null,
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 2012,
+        "state": "open",
+        "title": "Implement Sovereign Cap Spore Bloom in typed mob-ability runtime (multi-circle telegraph + persistent toxic zones)",
+        "url": "https://github.com/nalfeo/Crawler/pull/2012"
+      },
       "blockers": ["floor2-boss-production-enable"]
     },
     {
@@ -310,7 +306,7 @@
       "abilityId": "plague-boss-squick-undercity-mob-call",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "ratfolk-boss",
         "approvedAssetId": "ratfolk-boss-var-0",
@@ -319,19 +315,31 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-squick",
+      "arenaLabEvidence": "Verified in canonical combat-arena preset `f2-squick` via deterministic headless observation (`tests/e2e/squick-arena-observation.test.ts`) and cadence evidence capture (`scripts/agent/squick-arena-evidence.ts`): first telegraph at 11000ms, first resolve at 12500ms, second resolve at 25000ms, committed three-circle summon geometry reused through resolve, and owned summon cap enforced at <=6.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
-      "implementationPullRequest": null,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1956,
+        "state": "open",
+        "title": "Implement Plague-Boss Squick's UNDERCITY MOB CALL ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1956"
+      },
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 1962,
+        "state": "open",
+        "title": "Implement Squick UNDERCITY MOB CALL on typed mob-ability runtime with deterministic cap/cadence enforcement",
+        "url": "https://github.com/nalfeo/Crawler/pull/1962"
+      },
       "blockers": ["floor2-boss-production-enable"]
     },
     {
@@ -590,6 +598,34 @@
       "bossArt": {
         "runtimeBriefId": "snailfolk-boss",
         "approvedAssetId": "snailfolk-boss-var-0",
+        "evidenceKind": "manifest-only",
+        "sourceBriefPath": null,
+        "assetRequest": null,
+        "runtimeWiringState": "verified"
+      },
+      "telegraphVfxState": "planned",
+      "telegraphVfxAssetRequest": null,
+      "codexIconState": "not-requested",
+      "codexIconAssetRequest": null,
+      "castAnimationState": "not-authored",
+      "castAnimationAssetRequest": null,
+      "arenaLabState": "blocked",
+      "arenaLabPresetId": null,
+      "arenaLabEvidence": null,
+      "animationLabState": "not-required",
+      "animationLabEvidence": null,
+      "implementationIssue": null,
+      "implementationPullRequest": null,
+      "blockers": ["floor2-boss-production-enable"]
+    },
+    {
+      "abilityId": "big-mama-bufo-tongue-repossession",
+      "designState": "approved",
+      "foundationState": "verified",
+      "runtimeState": "not-started",
+      "bossArt": {
+        "runtimeBriefId": "toadkin-boss",
+        "approvedAssetId": "toadkin-boss-var-0",
         "evidenceKind": "manifest-only",
         "sourceBriefPath": null,
         "assetRequest": null,

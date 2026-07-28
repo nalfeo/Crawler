@@ -1,7 +1,6 @@
 /**
- * Mob-ability VFX renderer — procedural presentation for currently implemented
- * boss abilities (Queen Mab Verdigris Glamour, Big Panda Wei Berserk, and
- * Sovereign Cap Spore Bloom).
+ * Mob-ability VFX renderer — the procedural presentation layer for Queen Mab's
+ * Verdigris Glamour (and future generic mob abilities).
  *
  * Reads from committed public state:
  *   - `world.mobAbilities.cues` — the telegraph cue rebuilt each tick by the
@@ -26,14 +25,15 @@ import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import {
   BAMBOO_FED_BERSERK_ABILITY_ID,
-  SOVEREIGN_SPORE_BLOOM_ABILITY_ID,
   ROMAN_CANDLE_CORONATION_ABILITY_ID,
+  DON_PACO_BIG_GOB_ABILITY_ID,
+  SOVEREIGN_SPORE_BLOOM_ABILITY_ID,
+  circlesForMobAbilityGeometry,
   getMobAbilityActiveAura,
   getStatusEffects,
 } from '../core/index.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { ftToPx } from '../shared/units.js';
-import { SeededRandom } from '../shared/random.js';
 
 /** Prefix of every `sourceId` produced by `mobAbilitySourceId()` in core. */
 const MOB_ABILITY_SOURCE_PREFIX = 'mob-ability:';
@@ -42,6 +42,8 @@ const MOB_ABILITY_SOURCE_PREFIX = 'mob-ability:';
 // danger circle reads as painted on the floor beneath the fight.
 const TELEGRAPH_DEPTH = -14;
 const TARNISH_DEPTH = -13;
+const SLICK_DEPTH = -12;
+const PROJECTILE_DEPTH = -11;
 const BURST_DEPTH = WORLD_VFX_DEPTH.spellCast;
 
 const COLOR_HOSTILE_RED = 0xef4444;
@@ -64,6 +66,9 @@ const COLOR_BERSERK_LEAF = 0x8bd17c;
 const COLOR_SPORE_RIM = 0xc4f36b;
 const COLOR_SPORE_FOG = 0x5b7f44;
 const COLOR_SPORE_PUFF = 0xe8ffb5;
+const COLOR_GOB_TRAIL = 0x7cff4f;
+const COLOR_GOB_SLIME = 0x39d353;
+const COLOR_GOB_STEAM = 0xb7ff80;
 
 const BURST_LIFETIME_MS = 560;
 const CAST_START_LIFETIME_MS = 320;
@@ -95,6 +100,9 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
   const coronationProjectileLastPos = new Map<number, { x: number; y: number }>();
   const castStartSeen = new Set<number>();
+  let projectileGfx: Phaser.GameObjects.Graphics | undefined;
+  let slickGfx: Phaser.GameObjects.Graphics | undefined;
+  const slickLastGeom = new Map<string, { x: number; y: number; r: number }>();
   /**
    * Transient circles created by spawnRing/spawnBurst/spawnCastStart.
    * Each entry is removed by its `onComplete` callback when the tween finishes
@@ -230,6 +238,29 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     );
   }
 
+  function spawnBigGobBurst(x: number, y: number, radiusPx: number): void {
+    if (!enabled) return;
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.35,
+      radiusPx * 1.45,
+      COLOR_GOB_TRAIL,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnRing(
+      x,
+      y,
+      radiusPx * 0.15,
+      radiusPx * 1.1,
+      COLOR_GOB_STEAM,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+    spawnSparkBurst(x, y, radiusPx * 1.1, [COLOR_GOB_TRAIL, COLOR_GOB_STEAM] as const, 26);
+  }
+
   /** Sovereign Cap–specific fungal puff burst for SPORE BLOOM resolutions. */
   function spawnSporeBurst(x: number, y: number, radiusPx: number): void {
     if (!enabled) return;
@@ -274,7 +305,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   }
 
   /** Redraw one locked telegraph circle: footprint, anticipation fill, runes. */
-  function drawTelegraphCircle(
+  function drawTelegraph(
     gfx: Phaser.GameObjects.Graphics,
     cx: number,
     cy: number,
@@ -311,26 +342,59 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     }
   }
 
-  function drawSporeCloudCircle(
+  function drawProjectileFanTelegraph(
     gfx: Phaser.GameObjects.Graphics,
-    cx: number,
-    cy: number,
-    radiusPx: number,
-    lifeProgress: number,
+    cue: GameWorld['mobAbilities']['cues'][number],
   ): void {
-    const alpha = 0.22 + 0.08 * Math.sin(lifeProgress * Math.PI * 4);
-    gfx.fillStyle(COLOR_SPORE_FOG, alpha);
-    gfx.fillCircle(cx, cy, radiusPx);
-    gfx.lineStyle(3, COLOR_SPORE_RIM, 0.95);
-    gfx.strokeCircle(cx, cy, radiusPx);
-    gfx.lineStyle(1.5, COLOR_SPORE_PUFF, 0.55);
-    for (let i = 0; i < 6; i += 1) {
-      const a = (i / 6) * Math.PI * 2 + lifeProgress * Math.PI * 2;
+    if (cue.geometry.kind !== 'projectile-fan') return;
+    const originX = ftToPx(cue.geometry.originX);
+    const originY = ftToPx(cue.geometry.originY);
+    gfx.lineStyle(2 + cue.telegraphProgress * 2, COLOR_HOSTILE_RED, 0.9);
+    for (const path of cue.geometry.paths) {
+      gfx.lineBetween(originX, originY, ftToPx(path.endX), ftToPx(path.endY));
+      gfx.strokeCircle(ftToPx(path.endX), ftToPx(path.endY), ftToPx(path.impactRadiusFt));
+      gfx.fillStyle(COLOR_HOSTILE_RED, 0.06 + cue.telegraphProgress * 0.12);
+      gfx.fillCircle(
+        ftToPx(path.endX),
+        ftToPx(path.endY),
+        ftToPx(path.impactRadiusFt) * cue.telegraphProgress,
+      );
+    }
+    const halfAngleRad = (cue.geometry.coneAngleDeg * Math.PI) / 360;
+    const leftRad = cue.geometry.facingRad - halfAngleRad;
+    const rightRad = cue.geometry.facingRad + halfAngleRad;
+    gfx.lineBetween(
+      originX,
+      originY,
+      originX + Math.cos(leftRad) * ftToPx(cue.geometry.rangeFt),
+      originY + Math.sin(leftRad) * ftToPx(cue.geometry.rangeFt),
+    );
+    gfx.lineBetween(
+      originX,
+      originY,
+      originX + Math.cos(rightRad) * ftToPx(cue.geometry.rangeFt),
+      originY + Math.sin(rightRad) * ftToPx(cue.geometry.rangeFt),
+    );
+    const arcSteps = Math.max(8, cue.geometry.paths.length * 3);
+    for (let i = 0; i < arcSteps; i += 1) {
+      const a0 = leftRad + ((rightRad - leftRad) * i) / arcSteps;
+      const a1 = leftRad + ((rightRad - leftRad) * (i + 1)) / arcSteps;
       gfx.lineBetween(
-        cx + Math.cos(a) * radiusPx * 0.5,
-        cy + Math.sin(a) * radiusPx * 0.5,
-        cx + Math.cos(a) * radiusPx * 0.8,
-        cy + Math.sin(a) * radiusPx * 0.8,
+        originX + Math.cos(a0) * ftToPx(cue.geometry.rangeFt),
+        originY + Math.sin(a0) * ftToPx(cue.geometry.rangeFt),
+        originX + Math.cos(a1) * ftToPx(cue.geometry.rangeFt),
+        originY + Math.sin(a1) * ftToPx(cue.geometry.rangeFt),
+      );
+    }
+    gfx.fillStyle(COLOR_GOB_TRAIL, 0.18 + cue.telegraphProgress * 0.12);
+    gfx.fillCircle(originX, originY, ftToPx(1.1 + cue.telegraphProgress * 0.4));
+    for (let i = 0; i < 3; i += 1) {
+      const a = cue.geometry.facingRad + (i - 1) * 0.35;
+      gfx.fillStyle(COLOR_GOB_STEAM, 0.4 + cue.telegraphProgress * 0.2);
+      gfx.fillCircle(
+        originX + Math.cos(a) * ftToPx(1.2 + cue.telegraphProgress * 0.4),
+        originY + Math.sin(a) * ftToPx(1.2 + cue.telegraphProgress * 0.4),
+        2 + cue.telegraphProgress * 2,
       );
     }
   }
@@ -363,15 +427,44 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     gfx.fillCircle(cx, cy, radiusPx * 0.5);
   }
 
+  function drawSporeCloudCircle(
+    gfx: Phaser.GameObjects.Graphics,
+    cx: number,
+    cy: number,
+    radiusPx: number,
+    lifeProgress: number,
+  ): void {
+    const alpha = 0.22 + 0.08 * Math.sin(lifeProgress * Math.PI * 4);
+    gfx.lineStyle(3, COLOR_SPORE_RIM, 0.75 + 0.15 * Math.sin(lifeProgress * Math.PI * 6));
+    gfx.strokeCircle(cx, cy, radiusPx);
+    gfx.lineStyle(2, COLOR_SPORE_FOG, 0.45);
+    gfx.strokeCircle(cx, cy, radiusPx * 0.8);
+    gfx.fillStyle(COLOR_SPORE_FOG, alpha);
+    gfx.fillCircle(cx, cy, radiusPx * 0.92);
+    for (let i = 0; i < 5; i += 1) {
+      const a = (i / 5) * Math.PI * 2 + lifeProgress * Math.PI * 2;
+      gfx.fillStyle(COLOR_SPORE_PUFF, 0.28);
+      gfx.fillCircle(cx + Math.cos(a) * radiusPx * 0.52, cy + Math.sin(a) * radiusPx * 0.52, 2.5);
+    }
+  }
+
+  function makeDeterministicRand(seedBase: number): () => number {
+    let seed = seedBase & 0x7fffffff;
+    return () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed & 0x7fffffff) / 2147483647;
+    };
+  }
+
   function spawnBerserkFlair(x: number, y: number, radiusPx: number, seedBase: number): void {
     if (!enabled) return;
-    const rng = new SeededRandom(seedBase);
+    const rand = makeDeterministicRand(seedBase);
     for (let i = 0; i < 4; i += 1) {
-      const angle = rng.next() * Math.PI * 2;
-      const dist = radiusPx * (0.3 + rng.next() * 1.1);
+      const angle = rand() * Math.PI * 2;
+      const dist = radiusPx * (0.3 + rand() * 1.1);
       const particle = canAddRectangle
-        ? scene.add.rectangle(x, y, 2 + rng.next() * 2, 7 + rng.next() * 6, COLOR_BERSERK_GREEN)
-        : scene.add.circle(x, y, 2 + rng.next() * 0.8, COLOR_BERSERK_GREEN);
+        ? scene.add.rectangle(x, y, 2 + rand() * 2, 7 + rand() * 6, COLOR_BERSERK_GREEN)
+        : scene.add.circle(x, y, 2 + rand() * 0.8, COLOR_BERSERK_GREEN);
       particle.setAngle?.((angle * 180) / Math.PI);
       particle.setDepth(BURST_DEPTH);
       particle.setBlendMode('ADD');
@@ -383,7 +476,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y + Math.sin(angle) * dist,
         alpha: { from: 0.95, to: 0 },
         scale: { from: 1, to: 0.1 },
-        duration: 200 + rng.next() * 260,
+        duration: 200 + rand() * 260,
         ease: 'Quad.easeOut',
         onComplete: () => {
           transientCircles.delete(particle);
@@ -394,11 +487,11 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       transientTweens.set(particle, tween);
     }
     for (let i = 0; i < 3; i += 1) {
-      const angle = rng.next() * Math.PI * 2;
-      const dist = radiusPx * (0.25 + rng.next() * 0.9);
+      const angle = rand() * Math.PI * 2;
+      const dist = radiusPx * (0.25 + rand() * 0.9);
       const particle = canAddEllipse
-        ? scene.add.ellipse(x, y, 4 + rng.next() * 3, 2 + rng.next() * 2, COLOR_BERSERK_LEAF)
-        : scene.add.circle(x, y, 1.5 + rng.next() * 1.2, COLOR_BERSERK_LEAF);
+        ? scene.add.ellipse(x, y, 4 + rand() * 3, 2 + rand() * 2, COLOR_BERSERK_LEAF)
+        : scene.add.circle(x, y, 1.5 + rand() * 1.2, COLOR_BERSERK_LEAF);
       particle.setAngle?.((angle * 180) / Math.PI);
       particle.setDepth(BURST_DEPTH);
       particle.setBlendMode('ADD');
@@ -410,7 +503,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y + Math.sin(angle) * dist,
         alpha: { from: 0.9, to: 0 },
         scale: { from: 1, to: 0.2 },
-        duration: 180 + rng.next() * 220,
+        duration: 180 + rand() * 220,
         ease: 'Quad.easeOut',
         onComplete: () => {
           transientCircles.delete(particle);
@@ -421,23 +514,23 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       transientTweens.set(particle, tween);
     }
     for (let i = 0; i < 3; i += 1) {
-      const angle = rng.next() * Math.PI * 2;
-      const dist = radiusPx * (0.2 + rng.next() * 0.8);
+      const angle = rand() * Math.PI * 2;
+      const dist = radiusPx * (0.2 + rand() * 0.8);
       const particle = canAddRectangle
         ? scene.add.rectangle(
             x,
             y,
-            3 + rng.next() * 2,
-            3 + rng.next() * 2,
+            3 + rand() * 2,
+            3 + rand() * 2,
             i % 2 === 0 ? COLOR_BERSERK_ENVELOPE : COLOR_BERSERK_GOLD,
           )
         : scene.add.circle(
             x,
             y,
-            1.8 + rng.next() * 0.7,
+            1.8 + rand() * 0.7,
             i % 2 === 0 ? COLOR_BERSERK_ENVELOPE : COLOR_BERSERK_GOLD,
           );
-      particle.setAngle?.(rng.next() * 360);
+      particle.setAngle?.(rand() * 360);
       particle.setDepth(BURST_DEPTH);
       particle.setBlendMode('ADD');
       ignoreUi(particle);
@@ -448,7 +541,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y + Math.sin(angle) * dist,
         alpha: { from: 0.95, to: 0 },
         scale: { from: 1, to: 0.1 },
-        duration: 200 + rng.next() * 260,
+        duration: 200 + rand() * 260,
         ease: 'Quad.easeOut',
         onComplete: () => {
           transientCircles.delete(particle);
@@ -459,8 +552,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       transientTweens.set(particle, tween);
     }
     for (let i = 0; i < 2; i += 1) {
-      const angle = rng.next() * Math.PI * 2;
-      const dist = radiusPx * (0.4 + rng.next() * 0.45);
+      const angle = rand() * Math.PI * 2;
+      const dist = radiusPx * (0.4 + rand() * 0.45);
       const afterimage = scene.add.circle(x, y, radiusPx * 0.18, COLOR_BERSERK_RED, 0.25);
       afterimage.setDepth(BURST_DEPTH);
       afterimage.setBlendMode('ADD');
@@ -472,7 +565,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y - Math.sin(angle) * dist,
         alpha: { from: 0.25, to: 0 },
         scale: { from: 1, to: 0.65 },
-        duration: 150 + rng.next() * 100,
+        duration: 150 + rand() * 100,
         ease: 'Sine.easeOut',
         onComplete: () => {
           transientCircles.delete(afterimage);
@@ -491,11 +584,11 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     seedBase: number,
   ): void {
     if (!enabled) return;
-    const rng = new SeededRandom(seedBase);
+    const rand = makeDeterministicRand(seedBase);
     for (let i = 0; i < 4; i += 1) {
-      const angle = rng.next() * Math.PI * 2;
-      const dist = radiusPx * (0.12 + rng.next() * 0.22);
-      const dust = scene.add.circle(x, y, 1 + rng.next() * 1.6, COLOR_BERSERK_DUST);
+      const angle = rand() * Math.PI * 2;
+      const dist = radiusPx * (0.12 + rand() * 0.22);
+      const dust = scene.add.circle(x, y, 1 + rand() * 1.6, COLOR_BERSERK_DUST);
       dust.setDepth(BURST_DEPTH);
       dust.setBlendMode('ADD');
       ignoreUi(dust);
@@ -506,7 +599,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         y: y + Math.sin(angle) * dist,
         alpha: { from: 0.45, to: 0 },
         scale: { from: 1, to: 0.4 },
-        duration: 120 + rng.next() * 120,
+        duration: 120 + rand() * 120,
         ease: 'Sine.easeOut',
         onComplete: () => {
           transientCircles.delete(dust);
@@ -672,8 +765,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         continue;
       }
 
-      // ── Circle / spawn-circles ───────────────────────────────────────────
-      const circles = cue.geometry.kind === 'circle' ? [cue.geometry] : cue.geometry.circles;
+      // ── Circle / spawn-circles / projectile-fan ──────────────────────────
+      const circles = circlesForMobAbilityGeometry(cue.geometry);
       if (circles.length === 0) continue;
       liveCasters.add(cue.casterEid);
       const first = circles[0]!;
@@ -697,16 +790,129 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         telegraphGfx.set(cue.casterEid, gfx);
       }
       gfx.clear();
-      for (const circle of circles) {
-        drawTelegraphCircle(
-          gfx,
-          ftToPx(circle.x),
-          ftToPx(circle.y),
-          ftToPx(circle.radiusFt),
-          cue.telegraphProgress,
-          cue.dangerColor,
+      if (cue.geometry.kind === 'projectile-fan') {
+        drawProjectileFanTelegraph(gfx, cue);
+      } else {
+        for (const circle of circles) {
+          drawTelegraph(
+            gfx,
+            ftToPx(circle.x),
+            ftToPx(circle.y),
+            ftToPx(circle.radiusFt),
+            cue.telegraphProgress,
+            cue.dangerColor,
+          );
+        }
+      }
+    }
+
+    // ── In-flight Don Paco projectiles ──────────────────────────────────────
+    if (runtime.activeProjectiles.length > 0) {
+      if (projectileGfx === undefined && enabled) {
+        projectileGfx = scene.add.graphics();
+        projectileGfx.setDepth(PROJECTILE_DEPTH);
+        projectileGfx.setBlendMode('ADD');
+        ignoreUi(projectileGfx);
+      }
+      projectileGfx?.clear();
+      for (const projectile of runtime.activeProjectiles) {
+        if (projectileGfx === undefined) continue;
+        const progress = Math.min(
+          1,
+          Math.max(0, projectile.elapsedMs / projectile.travelDurationMs),
+        );
+        const currentX =
+          projectile.path.startX + (projectile.path.endX - projectile.path.startX) * progress;
+        const currentY =
+          projectile.path.startY + (projectile.path.endY - projectile.path.startY) * progress;
+        projectileGfx.lineStyle(3, COLOR_GOB_TRAIL, 0.8);
+        projectileGfx.lineBetween(
+          ftToPx(projectile.path.startX),
+          ftToPx(projectile.path.startY),
+          ftToPx(currentX),
+          ftToPx(currentY),
+        );
+        projectileGfx.fillStyle(COLOR_GOB_TRAIL, 0.95);
+        projectileGfx.fillCircle(ftToPx(currentX), ftToPx(currentY), 4);
+        projectileGfx.fillStyle(COLOR_GOB_STEAM, 0.35);
+        projectileGfx.fillCircle(
+          ftToPx(currentX - (projectile.path.endX - projectile.path.startX) * 0.04),
+          ftToPx(currentY - (projectile.path.endY - projectile.path.startY) * 0.04),
+          2.5,
         );
       }
+    } else if (projectileGfx) {
+      projectileGfx.destroy();
+      projectileGfx = undefined;
+    }
+
+    // ── Persistent slick rims ────────────────────────────────────────────────
+    if (runtime.activeZones.length > 0) {
+      if (slickGfx === undefined && enabled) {
+        slickGfx = scene.add.graphics();
+        slickGfx.setDepth(SLICK_DEPTH);
+        slickGfx.setBlendMode('ADD');
+        ignoreUi(slickGfx);
+      }
+      slickGfx?.clear();
+      const nextKeys = new Set<string>();
+      for (const zone of runtime.activeZones) {
+        const key = `${zone.sourceId}:${zone.circle.x}:${zone.circle.y}`;
+        nextKeys.add(key);
+        slickLastGeom.set(key, {
+          x: ftToPx(zone.circle.x),
+          y: ftToPx(zone.circle.y),
+          r: ftToPx(zone.circle.radiusFt),
+        });
+        if (slickGfx === undefined) continue;
+        const cx = ftToPx(zone.circle.x);
+        const cy = ftToPx(zone.circle.y);
+        const radiusPx = ftToPx(zone.circle.radiusFt);
+        const bubbleAlpha = 0.35 + 0.15 * Math.sin((zone.remainingMs / 120) % (Math.PI * 2));
+        slickGfx.lineStyle(3, COLOR_GOB_STEAM, 0.95);
+        slickGfx.strokeCircle(cx, cy, radiusPx);
+        slickGfx.lineStyle(2, COLOR_GOB_TRAIL, 0.75);
+        slickGfx.strokeCircle(cx, cy, radiusPx * 0.82);
+        slickGfx.fillStyle(COLOR_GOB_SLIME, 0.16);
+        slickGfx.fillCircle(cx, cy, radiusPx * 0.92);
+        for (let i = 0; i < 5; i += 1) {
+          const a = (i / 5) * Math.PI * 2 + zone.remainingMs / 600;
+          slickGfx.fillStyle(COLOR_GOB_STEAM, bubbleAlpha);
+          slickGfx.fillCircle(
+            cx + Math.cos(a) * radiusPx * 0.58,
+            cy + Math.sin(a) * radiusPx * 0.58,
+            2.5,
+          );
+        }
+      }
+      for (const [key, geom] of [...slickLastGeom.entries()]) {
+        if (nextKeys.has(key)) continue;
+        slickLastGeom.delete(key);
+        spawnRing(
+          geom.x,
+          geom.y,
+          geom.r,
+          geom.r * 0.4,
+          COLOR_GOB_STEAM,
+          CLEANUP_LIFETIME_MS,
+          BURST_DEPTH,
+        );
+      }
+    } else {
+      for (const geom of slickLastGeom.values()) {
+        spawnRing(
+          geom.x,
+          geom.y,
+          geom.r,
+          geom.r * 0.4,
+          COLOR_GOB_STEAM,
+          CLEANUP_LIFETIME_MS,
+          BURST_DEPTH,
+        );
+      }
+      slickLastGeom.clear();
+      slickGfx?.destroy();
+      slickGfx = undefined;
     }
 
     // Track Roman Candle projectile positions from authoritative runtime ownership.
@@ -757,14 +963,20 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
           ? spawnSporeBurst
           : burst.abilityId === UNDERCITY_MOB_CALL_ABILITY_ID
             ? spawnUndercityBurst
-            : spawnBurst;
+            : burst.abilityId === DON_PACO_BIG_GOB_ABILITY_ID
+              ? spawnBigGobBurst
+              : spawnBurst;
       if (geom.kind === 'circle') {
         const cx = ftToPx(geom.x);
         const cy = ftToPx(geom.y);
         const r = ftToPx(geom.radiusFt);
         spawn(cx, cy, r);
-      } else {
+      } else if (geom.kind === 'spawn-circles') {
         for (const circle of geom.circles) {
+          spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        }
+      } else {
+        for (const circle of circlesForMobAbilityGeometry(geom)) {
           spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
         }
       }
@@ -786,13 +998,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       }
       gfx.clear();
       const lifeProgress = Math.min(1, Math.max(0, zone.elapsedMs / zone.durationMs));
-      const circles =
-        zone.geometry.kind === 'circle'
-          ? [zone.geometry]
-          : zone.geometry.kind === 'radial-projectiles'
-            ? []
-            : zone.geometry.circles;
-      for (const circle of circles) {
+      for (const circle of circlesForMobAbilityGeometry(zone.geometry)) {
         drawSporeCloudCircle(
           gfx,
           ftToPx(circle.x),
@@ -946,10 +1152,15 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     berserkAuraGfx.clear();
     for (const gfx of cloudZoneGfx.values()) gfx.destroy();
     cloudZoneGfx.clear();
+    projectileGfx?.destroy();
+    projectileGfx = undefined;
+    slickGfx?.destroy();
+    slickGfx = undefined;
     berserkAuraLastPos.clear();
     berserkAuraLastPulseFrame.clear();
     tarnishLastPos.clear();
     berserkAuraSeen.clear();
+    slickLastGeom.clear();
     lastGeom.clear();
     coronationProjectileLastPos.clear();
     castStartSeen.clear();

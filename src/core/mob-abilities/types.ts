@@ -72,22 +72,33 @@ export interface MobAbilityRadialProjectilesGeometry {
   readonly offsetDeg: number;
 }
 
+export interface MobAbilityProjectileFanPath {
+  readonly kind: 'projectile-path';
+  readonly startX: number;
+  readonly startY: number;
+  readonly endX: number;
+  readonly endY: number;
+  readonly impactRadiusFt: number;
+}
+
+export interface MobAbilityProjectileFanGeometry {
+  readonly kind: 'projectile-fan';
+  readonly originX: number;
+  readonly originY: number;
+  readonly facingRad: number;
+  readonly coneAngleDeg: number;
+  readonly rangeFt: number;
+  readonly paths: readonly MobAbilityProjectileFanPath[];
+}
+
 export type MobAbilityGeometry =
   | MobAbilityCircleGeometry
   | MobAbilitySpawnCirclesGeometry
   | MobAbilityMultiCircleGeometry
-  | MobAbilityRadialProjectilesGeometry;
+  | MobAbilityRadialProjectilesGeometry
+  | MobAbilityProjectileFanGeometry;
 
-/** Flatten any geometry variant to an array of individual circles. Radial-projectile geometry has no circles — returns empty. */
-export function mobAbilityGeometryCircles(
-  geometry: MobAbilityGeometry,
-): readonly MobAbilityCircleGeometry[] {
-  if (geometry.kind === 'circle') return [geometry];
-  if (geometry.kind === 'radial-projectiles') return [];
-  return geometry.circles;
-}
-
-export type MobAbilityTargetingMode = 'player-position' | 'self';
+export type MobAbilityTargetingMode = 'player-direction' | 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
 
 export interface MobAbilitySelfBuffDefinition {
@@ -163,6 +174,13 @@ export interface MobAbilityRuntimeDefinition {
          * telegraph-start; never uses `Math.random()` or wall-clock time.
          */
         readonly alternateOffsetDeg: number;
+      }
+    | {
+        readonly kind: 'projectile-fan';
+        readonly count: number;
+        readonly coneAngleDeg: number;
+        readonly rangeFt: number;
+        readonly impactRadiusFt: number;
       };
   /** Optional custom geometry commit from a locked origin position (e.g. triangle around player). */
   readonly commitGeometry?: (ctx: {
@@ -263,6 +281,10 @@ export interface MobAbilityRuntime {
   readonly pendingBursts: Array<MobAbilityBurst>;
   /** Active self-buffs authored by ability handlers and ticked by the runtime. */
   readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
+  /** In-flight ability projectiles authored by typed handlers and ticked by the runtime. */
+  readonly activeProjectiles: MobAbilityActiveProjectileState[];
+  /** Persistent ability zones authored by typed handlers and ticked by the runtime. */
+  readonly activeZones: MobAbilityActiveZoneState[];
   /** Runtime-owned persistent zones (e.g. Sovereign Cap toxic clouds). */
   readonly ownedZones: MobAbilityOwnedZone[];
   /**
@@ -284,6 +306,28 @@ export interface MobAbilityActiveBuffState {
   readonly meleeDamageMultiplier: number;
   readonly knockbackResistanceMultiplier: number;
   readonly auraRadiusFt: number;
+  remainingMs: number;
+}
+
+export interface MobAbilityActiveProjectileState {
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly path: MobAbilityProjectileFanPath;
+  readonly damageAmount: number;
+  readonly zoneDurationMs: number;
+  readonly slowMultiplier: number;
+  readonly travelDurationMs: number;
+  readonly onImpact: (world: GameWorld, projectile: MobAbilityActiveProjectileState) => void;
+  elapsedMs: number;
+}
+
+export interface MobAbilityActiveZoneState {
+  readonly abilityId: string;
+  readonly casterEid: number;
+  readonly sourceId: string;
+  readonly circle: MobAbilityCircleGeometry;
+  readonly slowMultiplier: number;
   remainingMs: number;
 }
 
@@ -311,6 +355,8 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     cues: [],
     pendingBursts: [],
     activeBuffsByEntity: new Map(),
+    activeProjectiles: [],
+    activeZones: [],
     ownedZones: [],
     registrationTokens: new Map(),
     nextToken: 0,
@@ -346,4 +392,33 @@ export function pushMobAbilityBurst(bursts: MobAbilityBurst[], burst: MobAbility
   if (bursts.length > MOB_ABILITY_BURST_CAP) {
     bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
   }
+}
+
+export function circlesForMobAbilityGeometry(
+  geometry: MobAbilityGeometry,
+): readonly MobAbilityCircleGeometry[] {
+  switch (geometry.kind) {
+    case 'circle':
+      return [geometry];
+    case 'spawn-circles':
+    case 'multi-circle':
+      return geometry.circles;
+    case 'radial-projectiles':
+      // Radial-projectile spokes are rendered as lines, not circles;
+      // callers that draw spokes handle this geometry kind explicitly.
+      return [];
+    case 'projectile-fan':
+      return geometry.paths.map((path) => ({
+        kind: 'circle',
+        x: path.endX,
+        y: path.endY,
+        radiusFt: path.impactRadiusFt,
+      }));
+  }
+}
+
+export function mobAbilityGeometryCircles(
+  geometry: MobAbilityGeometry,
+): readonly MobAbilityCircleGeometry[] {
+  return circlesForMobAbilityGeometry(geometry);
 }
