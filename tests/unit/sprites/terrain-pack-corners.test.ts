@@ -620,7 +620,10 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
           break;
         }
       }
-      expect(spillIndex, 'canonical silhouette must have at least one non-fully-opaque pixel').toBeGreaterThan(-1);
+      expect(
+        spillIndex,
+        'canonical silhouette must have at least one non-fully-opaque pixel',
+      ).toBeGreaterThan(-1);
 
       // Paint a visible spill pixel in the accent.
       const accent = decodePng(readFileSync(path.join(tempPack, accentFile)));
@@ -630,17 +633,21 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
       accent.data[spillIndex] = 255;
       writeFileSync(path.join(tempPack, accentFile), encodePng(accent));
 
-      const repaired = processWallAccents(tempPack).find((f) =>
-        f.relPath.endsWith(accentFile),
-      );
-      expect(repaired, 'processWallAccents must emit a repaired file when a spill exists').toBeDefined();
+      const repaired = processWallAccents(tempPack).find((f) => f.relPath.endsWith(accentFile));
+      expect(
+        repaired,
+        'processWallAccents must emit a repaired file when a spill exists',
+      ).toBeDefined();
 
       const repairedImg = decodePng(repaired!.bytes);
       let spill = 0;
       for (let i = 3; i < canonical.data.length; i += 4) {
         if (repairedImg.data[i]! !== 0 && !isFullyOpaqueWallAlpha(canonical.data[i]!)) spill += 1;
       }
-      expect(spill, 'processWallAccents must clip all accent pixels outside the fully-opaque silhouette').toBe(0);
+      expect(
+        spill,
+        'processWallAccents must clip all accent pixels outside the fully-opaque silhouette',
+      ).toBe(0);
     } finally {
       rmSync(tempPack, { recursive: true, force: true });
     }

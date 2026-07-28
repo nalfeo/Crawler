@@ -256,16 +256,6 @@ export function cornerIsWallFromMask(mask: number, corner: QuadrantCorner): bool
   return quadrantStateFromMaskImpl(mask, corner) === 'full';
 }
 
-/** Decode all 4 corner wall/floor expectations of a canonical mask. */
-export function cornerCoverageFromMask(mask: number): Readonly<Record<QuadrantCorner, boolean>> {
-  return {
-    NW: cornerIsWallFromMask(mask, 'NW'),
-    NE: cornerIsWallFromMask(mask, 'NE'),
-    SE: cornerIsWallFromMask(mask, 'SE'),
-    SW: cornerIsWallFromMask(mask, 'SW'),
-  };
-}
-
 function quadrantStateFromMaskImpl(mask: number, corner: QuadrantCorner): QuadrantState {
   const [cardA, cardB] = CORNER_ADJACENCY[corner];
   const bitA = MASK_BIT[cardA];

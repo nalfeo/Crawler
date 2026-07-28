@@ -104,7 +104,7 @@ const DECAL_MIN_GROUND_FRACTION = 0.35;
 /** Terrain families that a mixed-biome floor may assign to different packs. */
 export type TerrainPackFamily = 'stone' | 'cave';
 
-export function familyForTerrain(terrain: TerrainType): TerrainPackFamily {
+function familyForTerrain(terrain: TerrainType): TerrainPackFamily {
   return terrain === TerrainType.CAVE_WALL || terrain === TerrainType.CAVE_FLOOR ? 'cave' : 'stone';
 }
 
