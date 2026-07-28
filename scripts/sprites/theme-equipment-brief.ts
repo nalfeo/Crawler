@@ -14,8 +14,23 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
 import type { ThemeEquipmentSetItem, ThemeEquipmentSetState } from './theme-equipment-set.js';
 
-/** Default number of judged variants when a hand-edited brief omits `judge.maxVariants`. */
-export const THEME_EQUIPMENT_DEFAULT_JUDGE_MAX_VARIANTS = 16;
+/**
+ * Default number of judged variants when a hand-edited brief omits
+ * `judge.maxVariants`. Lowered 16 → 6 (2026-07-28): the judge only keeps the
+ * best 3 variants anyway, so judging 16 spent ~2.6× the Azure vision calls for
+ * no selection benefit. 6 keeps a comfortable margin above the keep-3 target
+ * while cutting the dominant cost of the variant-approval rejudge.
+ */
+export const THEME_EQUIPMENT_DEFAULT_JUDGE_MAX_VARIANTS = 6;
+
+/**
+ * Number of variants the theme-equipment variant-approval rejudge judges in
+ * parallel. The rejudge path carries no judge budget and no judge cache, so
+ * bounded parallelism is race-free there (see `runJudgePass`), and Azure 429/5xx
+ * backoff already lives in the provider transport layer. 4 turns the ~6-call
+ * rejudge from 6 serial waves into ⌈6/4⌉ = 2, without a new rate-limit path.
+ */
+export const THEME_EQUIPMENT_JUDGE_CONCURRENCY = 4;
 
 /** Durable run-store key for an item's selected brief at a given revision. */
 export function selectedBriefKey(
