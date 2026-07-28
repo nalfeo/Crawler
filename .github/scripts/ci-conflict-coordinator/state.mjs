@@ -8,6 +8,28 @@ export const COORDINATED_LABEL = 'ci-conflict-coordinated';
 export const LEADER_LABEL = 'ci-conflict-leader';
 export const ESCALATION_LABEL = 'ci-conflict-escalation';
 export const ORDER_WAIT_LABEL = 'ci-conflict-order-wait';
+
+/**
+ * Enforcement kill switch for CI conflict coordination.
+ *
+ * When DISABLED (the default) the coordinator still *discovers* and reports
+ * overlap groups — the comment, the `ci-conflict-coordinated` label and all
+ * escalation signals keep working — but it stops *serializing*: it no longer
+ * applies `ci-conflict-order-wait`, no longer disarms auto-merge, and the merge
+ * train stops consulting coordinator slot ordering at promotion time.
+ *
+ * Rationale: filename overlap is not proof of conflict. The fence is a
+ * pessimistic lock with ~100:1 asymmetric cost — a false positive stalls the
+ * whole group for hours (measured: 18 PRs, up to 64h), while a false negative
+ * costs one rebase plus one parallel CI re-run. Branch contamination made most
+ * overlaps spurious, so the lock fired mostly on non-conflicts.
+ *
+ * Set `CI_CONFLICT_COORDINATION_ENFORCE=1` to restore serialization. This is the
+ * rollback switch — it requires no code change or redeploy.
+ */
+export function coordinationEnforcementEnabled(env = process.env) {
+  return String(env?.CI_CONFLICT_COORDINATION_ENFORCE ?? '').trim() === '1';
+}
 export const MIN_CLUSTER_SIZE = 3;
 // GitHub caps issue/PR comment bodies at 65 536 characters. A cluster sharing
 // hundreds of CI paths would breach that limit if we render or encode the full
