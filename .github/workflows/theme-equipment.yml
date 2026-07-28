@@ -1,5 +1,9 @@
 name: Theme Equipment Set Pipeline
 
+# Embed the action + set id in the run name so the review canvas can correlate a
+# dispatched run back to the set it belongs to (matched on displayTitle).
+run-name: Theme Equipment ${{ inputs.action }} · ${{ inputs.set_id }}
+
 on:
   workflow_dispatch:
     inputs:

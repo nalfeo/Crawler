@@ -347,15 +347,24 @@ function refuseUnbypassedCi(env: NodeJS.ProcessEnv): void {
  * two-part ask — overall cohesion AND any individual outlier(s) — so the
  * model cannot satisfy the prompt by only ever reporting an aggregate
  * score.
+ *
+ * The prompt is deliberately grounded to suppress hallucinated
+ * false-negatives: the judge must score only what is clearly visible, must
+ * not infer unseen surface properties (polish, reflectivity, sheen) or
+ * penalize an item's inherent form (a bow is curved), and may only flag an
+ * outlier that contradicts a named clause of the design language with visible
+ * evidence. Scoring is graduated (a single minor deviation must not drop below
+ * 3) rather than hard-capping at 2 on any claimed outlier — the old cap turned
+ * one hallucinated defect into a full-collection veto.
  */
 function buildCollectionJudgeInstructions(
   state: ThemeEquipmentSetState,
   order: readonly string[],
 ): { readonly systemInstructions: string; readonly userPrompt: string } {
   const systemInstructions =
-    'You are a strict art director scoring one themed equipment/weapon collection for a ' +
-    'top-down action game. Score 1 (incoherent) to 5 (flawless, ship-ready) as an integer. ' +
-    'Always return a single JSON object of the exact shape {"score": <integer 1-5>, ' +
+    'You are a fair but rigorous art director scoring one themed equipment/weapon collection ' +
+    'for a top-down action game. Score 1 (incoherent) to 5 (flawless, ship-ready) as an ' +
+    'integer. Always return a single JSON object of the exact shape {"score": <integer 1-5>, ' +
     '"rationale": <string>} and nothing else — no markdown, no surrounding prose.';
   const userPrompt =
     `Theme: "${state.displayName}" (set id "${state.id}").\n` +
@@ -364,8 +373,26 @@ function buildCollectionJudgeInstructions(
     'Judge the collection as a whole against the design language above. Your rationale MUST ' +
     'explicitly address BOTH: (1) overall theme cohesion across every item, and (2) any ' +
     'individual item(s) that read as outliers breaking the design language (name them by ' +
-    'label/position, or state plainly that none do). A collection with even one glaring ' +
-    'outlier must not score above 2, regardless of how cohesive the rest is.';
+    'label/position, or state plainly that none do).\n\n' +
+    'Grounding rules — follow all of them:\n' +
+    '- Judge ONLY what is clearly and unambiguously visible. Do NOT infer material or surface ' +
+    'properties you cannot directly see — finish, polish, reflectivity, sheen, gloss, ' +
+    'weight, temperature, or wear. A normal metallic highlight on a small sprite is not ' +
+    '"polished" or "reflective"; matte-vs-glossy is usually indeterminable at this scale, so ' +
+    'do not treat it as a defect.\n' +
+    "- Do NOT penalize an item's inherent, correct form. A bow is curved, a blade tapers, a " +
+    'ring is round, an axe has a wide head — these are the natural shapes of the objects and ' +
+    'are NOT deviations unless the design language explicitly forbids them.\n' +
+    '- Flag an item as an outlier ONLY when it clearly and specifically contradicts a stated ' +
+    'clause of the authored design language above. Name the clause it violates and the ' +
+    'visible evidence for it. If you cannot point to a specific violated clause backed by ' +
+    'something you can actually see, do NOT flag it.\n' +
+    '- Minor sprite-scale rendering artifacts and anti-aliasing are not design-language ' +
+    'violations.\n\n' +
+    'Scoring guidance: the score should reflect the proportion and severity of genuine, ' +
+    'clearly-visible deviations. A single minor deviation in an otherwise-cohesive set should ' +
+    'not drop the score below 3. Reserve 1-2 for collections where multiple items, or a ' +
+    'dominant central item, plainly and visibly break the design language.';
   return { systemInstructions, userPrompt };
 }
 

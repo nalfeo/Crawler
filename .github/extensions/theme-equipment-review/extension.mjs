@@ -6,6 +6,7 @@ import {
   dispatchThemeEquipmentWorkflow,
   resolveThemeSetId,
   runThemeEquipmentReviewCommand,
+  themeEquipmentRunStatus,
 } from './lib/bridge.mjs';
 import { startThemeEquipmentReviewServer } from './lib/server.mjs';
 import { renderHtml } from './renderer.mjs';
@@ -53,6 +54,7 @@ async function ensureServer(ctx) {
     runCommand,
     dispatchWorkflow: (action, currentSetId) =>
       dispatchThemeEquipmentWorkflow(REPO_ROOT, currentSetId, action),
+    runStatus: (currentSetId) => themeEquipmentRunStatus(REPO_ROOT, currentSetId),
     log,
   }).then((server) => {
     instances.set(ctx.instanceId, server);

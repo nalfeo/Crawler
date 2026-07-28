@@ -434,6 +434,34 @@ describe('judgeThemeEquipmentCollectionWithVision', () => {
     );
   });
 
+  it('grounds the collection-judge prompt against hallucinated false-negatives', async () => {
+    const provider = fakeProvider({ score: 4, rationale: 'ok' });
+    await judgeThemeEquipmentCollectionWithVision({
+      state: makeState(),
+      tiles,
+      provider,
+      env: {},
+    });
+    const request = (provider.evaluate as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as EvaluateRequest;
+    const prompt = request.userPrompt;
+    // Still demands the two-part cohesion + outlier answer.
+    expect(prompt).toMatch(/cohesion/i);
+    expect(prompt).toMatch(/outlier/i);
+    // Must not infer unseen surface properties (the "polished iron" failure).
+    expect(prompt).toMatch(/do not infer/i);
+    expect(prompt).toMatch(/polish/i);
+    expect(prompt).toMatch(/reflectivity/i);
+    // Must not penalize inherent form (the "bow is curved" failure).
+    expect(prompt).toMatch(/inherent, correct form/i);
+    expect(prompt).toMatch(/bow is curved/i);
+    // Must tie any outlier to a named design-language clause.
+    expect(prompt).toMatch(/name the clause/i);
+    // The brittle hard cap that turned one claimed outlier into a veto is gone.
+    expect(prompt).not.toMatch(/must not score above 2/i);
+    expect(prompt).toMatch(/should not drop the score below 3/i);
+  });
+
   it('throws malformed for a response missing the required shape', async () => {
     const provider = fakeProvider({ score: 4 }); // missing rationale
     await expect(
