@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d34daf6adb40201fce02f92bf5993223209eb990",
+    "commitDate": "2026-07-28T19:41:53Z",
+    "commitSubject": "fix(ci): remove deprecated claude-sonnet-4.5 model references (#2210)",
+    "capturedAt": "2026-07-28T20:37:24.775Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30393686087",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/d34daf6adb40201fce02f92bf5993223209eb990.json"
+  },
+  {
     "commit": "94047f6306251d2f9df05ad8ca7653d0440a9f3c",
     "commitDate": "2026-07-28T19:22:19Z",
     "commitSubject": "ci-harness: centralize CI schedule+train gate and managed-comment markers (#2200)",
