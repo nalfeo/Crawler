@@ -255,3 +255,42 @@ export async function fileLoopIncident({
 
   return { action: 'created', issueNumber: issue.number };
 }
+
+/**
+ * Close an open loop-incident issue for a PR if one exists.
+ *
+ * Called by the reconciler when it reaches a converged state (ARM_AUTO_MERGE /
+ * QUEUE_MERGE_TRAIN) for a PR that previously triggered a loop incident.
+ * Idempotent: if no open incident exists this is a no-op.
+ *
+ * @param {object} opts
+ * @param {Function} opts.request   - github.mjs `request` helper
+ * @param {Function} opts.paginate  - github.mjs `paginate` helper
+ * @param {string}  opts.token      - PAT with issues:write
+ * @param {string}  opts.owner
+ * @param {string}  opts.repo
+ * @param {number}  opts.prNumber
+ * @returns {Promise<{action: 'closed', issueNumber: number}|{action: 'not-found'}>}
+ */
+export async function closeLoopIncident({ request, paginate, token, owner, repo, prNumber }) {
+  const title = loopIncidentTitle(prNumber);
+
+  const openIssues = await paginate(
+    token,
+    `/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent(LOOP_INCIDENT_LABEL)}`,
+  );
+  const existing = openIssues.find(
+    (issue) => !issue.pull_request && String(issue.title).toLowerCase() === title.toLowerCase(),
+  );
+
+  if (!existing) {
+    return { action: 'not-found' };
+  }
+
+  await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+    method: 'PATCH',
+    body: { state: 'closed', state_reason: 'completed' },
+  });
+
+  return { action: 'closed', issueNumber: existing.number };
+}

@@ -45,7 +45,7 @@ import {
   humanApprovalRejection,
   requiresHumanApproval,
 } from '../merge-train/human-approval.mjs';
-import { fileLoopIncident } from './loop-incident-lib.mjs';
+import { closeLoopIncident, fileLoopIncident } from './loop-incident-lib.mjs';
 import { createUnexpectedErrorHandler } from './unexpected-error.mjs';
 import {
   buildRetroactivePlanComment,
@@ -2715,6 +2715,32 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       await updateState(convergedState);
     }
     await completeWaitingExit(waitingTransition);
+  }
+
+  // Close any open loop-incident for this PR — it was filed when the retry
+  // budget was exhausted, but the PR has since converged (CI passing, no
+  // blockers).  Non-fatal: a failure to close must not block the merge.
+  if (live) {
+    try {
+      const closeResult = await closeLoopIncident({
+        request,
+        paginate,
+        token: pat,
+        owner,
+        repo,
+        prNumber,
+      });
+      if (closeResult.action === 'closed') {
+        process.stdout.write(
+          `loop-incident-closed pr=#${prNumber} issue=#${closeResult.issueNumber}\n`,
+        );
+      }
+    } catch (err) {
+      const safeMsg = String(err.message || err)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 500);
+      process.stderr.write(`loop-incident-close-failed pr=#${prNumber} err=${safeMsg}\n`);
+    }
   }
 
   if (terminalRow.action === DISPATCH_ACTION.QUEUE_MERGE_TRAIN) {

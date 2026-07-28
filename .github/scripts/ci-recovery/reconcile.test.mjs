@@ -13311,3 +13311,139 @@ test('dry-run: R06 merge-train-owned exit still runs outdated-thread cleanup', a
   // No mutations in dry-run mode.
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
+
+// ---------------------------------------------------------------------------
+// Auto-close loop incident on convergence (regression for incident #2196)
+// ---------------------------------------------------------------------------
+
+test('converged PR (ARM_AUTO_MERGE) automatically closes an open loop incident in live mode', async (t) => {
+  // Simulates a PR that previously exhausted the CI recovery retry budget
+  // (incident filed), then had its CI failures fixed and passed all checks.
+  // The reconciler must close the incident when it converges.
+  const loopIncidentIssue = {
+    number: 501,
+    title: `CI recovery loop: PR #${PR_NUM}`,
+    body: '<!-- crawler-pr-loop-incident:v1 -->\nThis is a loop incident.',
+    pull_request: undefined,
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    // Return passing check runs for ci + Security checks so admission is satisfied.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // Loop incident list and close routes:
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [loopIncidentIssue] }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/501`]: () => ({ body: { number: 501 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /loop-incident-closed pr=#42 issue=#501/,
+    'converged PR must auto-close the open loop incident',
+  );
+
+  const closeCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'PATCH' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/501`,
+  );
+  assert.ok(closeCall, 'must PATCH the loop incident issue to close it');
+  assert.equal(closeCall.body?.state, 'closed', 'state must be closed');
+  assert.equal(closeCall.body?.state_reason, 'completed', 'state_reason must be completed');
+});
+
+test('converged PR (ARM_AUTO_MERGE) skips loop-incident close when no incident exists', async (t) => {
+  // No open loop incident for this PR — closeLoopIncident must be a no-op.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    // Return passing check runs for ci + Security checks so admission is satisfied.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // Empty incident list:
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.doesNotMatch(
+    stdout,
+    /loop-incident-closed/,
+    'must not log loop-incident-closed when no incident exists',
+  );
+  const closeCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'PATCH' &&
+      /\/issues\/\d+$/.test(call.url.split('?')[0]) &&
+      !call.url.includes('/comments/'),
+  );
+  assert.equal(closeCalls.length, 0, 'must not PATCH any issue when no loop incident exists');
+});
