@@ -42,7 +42,7 @@ import {
 import type { TerrainPackId, TransformId } from '../../shared/terrain-pack-types.js';
 import {
   resolveDoorRenderMode,
-  GENERATED_DOOR_TEXTURE_KEY,
+  ALL_GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_SHEET_KEY,
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
@@ -338,6 +338,24 @@ declare global {
         | { playerName: string; playerGender: 'female' | 'male' | 'other' }
         | undefined;
       getDirectorCommentaryText?: () => string | null;
+      /**
+       * Dev-only: which art each door tile rendered from on the last overlay
+       * pass, in the REAL game (the probe lab has its own copy of this seam).
+       */
+      getDoorRenderSummary?: () => {
+        closedPackCount: number;
+        closedGeneratedCount: number;
+        closedKenneyCount: number;
+        closedColorCount: number;
+        openPackCount: number;
+        openGeneratedCount: number;
+        openKenneyCount: number;
+        openColorCount: number;
+        renderableClosedCount: number;
+        renderableOpenCount: number;
+      };
+      /** Dev-only: is a texture key actually registered in the Phaser cache? */
+      hasTexture?: (key: string) => boolean;
       lighting: {
         getConfig: () => LightingConfig;
         setConfig: (partial: Partial<LightingConfig>) => void;
@@ -476,18 +494,22 @@ export class MainGameScene extends Phaser.Scene {
     closedKenneyCount: number;
     closedColorCount: number;
     openPackCount: number;
+    openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    renderableOpenCount: number;
   } = {
     closedPackCount: 0,
     closedGeneratedCount: 0,
     closedKenneyCount: 0,
     closedColorCount: 0,
     openPackCount: 0,
+    openGeneratedCount: 0,
     openKenneyCount: 0,
     openColorCount: 0,
     renderableClosedCount: 0,
+    renderableOpenCount: 0,
   };
 
   /** Dynamic darkness overlay rendered from a configurable light field. */
@@ -958,6 +980,13 @@ export class MainGameScene extends Phaser.Scene {
                   | { playerName: string; playerGender: 'female' | 'male' | 'other' }
                   | undefined,
               getDirectorCommentaryText: () => this.directorCommentaryText?.text ?? null,
+              // Door-art provenance for the REAL game, not just the probe lab.
+              // Without this the only instrument for "which door art actually
+              // rendered" lived in main-scene-probe-lab, so a lab-green door
+              // e2e could coexist with the game drawing placeholder art and
+              // nothing would disagree.
+              getDoorRenderSummary: () => this.getDoorRenderSummary(),
+              hasTexture: (key: string) => this.textures.exists(key),
             }
           : {}),
         lighting: {
@@ -1924,9 +1953,11 @@ export class MainGameScene extends Phaser.Scene {
     closedKenneyCount: number;
     closedColorCount: number;
     openPackCount: number;
+    openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    renderableOpenCount: number;
   } {
     return this.doorRenderSummary;
   }
@@ -2804,9 +2835,11 @@ export class MainGameScene extends Phaser.Scene {
         closedKenneyCount: 0,
         closedColorCount: 0,
         openPackCount: 0,
+        openGeneratedCount: 0,
         openKenneyCount: 0,
         openColorCount: 0,
         renderableClosedCount: 0,
+        renderableOpenCount: 0,
       };
       return;
     }
@@ -2820,21 +2853,31 @@ export class MainGameScene extends Phaser.Scene {
     const tileSize = floorMap.config.tileSizeFt * PIXELS_PER_FOOT;
     const hasSheet = this.textures.exists(DOOR_SHEET_KEY);
 
-    // Derive the generated closed-door scale ONCE from the texture's ACTUAL
-    // loaded width (mirrors terrain-renderer's resolveGeneratedScale): a usable
-    // width yields tileSize/width so the single 256² PNG fills exactly one tile;
-    // a missing texture or a zero/undefined width falls through to Kenney.
-    let generatedDoorScale: number | null = null;
-    if (this.textures.exists(GENERATED_DOOR_TEXTURE_KEY)) {
-      const source = this.textures.get(GENERATED_DOOR_TEXTURE_KEY).getSourceImage() as {
-        width?: number;
-      };
+    // Derive each generated door texture's scale ONCE from its ACTUAL loaded
+    // width (mirrors terrain-renderer's resolveGeneratedScale). Doors are
+    // WIDTH-authoritative: `tileSize / srcWidth` makes the art exactly fill its
+    // doorway horizontally, and the height then FOLLOWS the art's aspect ratio.
+    // A square 256² texture therefore still renders as exactly one tile (the
+    // historical behaviour), while a taller 1:1.75 door renders ~7ft and
+    // overlaps the wall tile above it — which is how a real doorway reads next
+    // to a 5.75ft avatar, and how tall set-piece props already behave.
+    //
+    // The art contract this relies on: door textures must be FULL-BLEED
+    // horizontally (leaf + jambs touch both side edges) and bottom-aligned, so
+    // canvas width == doorway width and the canvas bottom == the floor line.
+    // Pinned deterministically by tests/unit/generated-door-art.test.ts.
+    const generatedDoorScales = new Map<string, number>();
+    for (const key of ALL_GENERATED_DOOR_TEXTURE_KEYS) {
+      if (!this.textures.exists(key)) {
+        continue;
+      }
+      const source = this.textures.get(key).getSourceImage() as { width?: number };
       const srcWidth = typeof source?.width === 'number' ? source.width : 0;
       if (srcWidth > 0) {
-        generatedDoorScale = tileSize / srcWidth;
+        generatedDoorScales.set(key, tileSize / srcWidth);
       }
     }
-    const hasGeneratedClosed = generatedDoorScale !== null;
+    const availableGeneratedKeys: ReadonlySet<string> = new Set(generatedDoorScales.keys());
     const doorManifest = this.options.floorId ? getFloorManifest(this.options.floorId) : undefined;
     const terrainPackId =
       doorManifest?.terrainPacks?.stone ??
@@ -2846,15 +2889,26 @@ export class MainGameScene extends Phaser.Scene {
     // already rebuilt the camera ignore lists. Without pinning uiCamera.ignore
     // here, the scroll-locked UI camera renders them at raw world coordinates, so
     // doors appear pinned to the screen and "follow" the player. Centralized here
-    // so every image branch (generated + both Kenney frames) gets it.
+    // so every image branch (pack + generated + both Kenney frames) gets it.
+    //
+    // Anchored BOTTOM-centre on the tile's bottom edge, not centre-centre on the
+    // tile: art taller than one tile then grows UPWARD into the wall above
+    // instead of straddling the doorway. For square art (every Kenney frame,
+    // every pack cell, and the historical 256² generated door) bottom-anchoring
+    // at the tile's bottom edge is pixel-identical to centre-anchoring at the
+    // tile centre, so this is a no-op until taller door art lands.
     const addDoorImage = (
       px: number,
-      py: number,
+      tileBottomY: number,
       key: string,
       frame: number | undefined,
       scale: number,
     ): void => {
-      const img = this.add.image(px, py, key, frame).setOrigin(0.5).setDepth(-19).setScale(scale);
+      const img = this.add
+        .image(px, tileBottomY, key, frame)
+        .setOrigin(0.5, 1)
+        .setDepth(-19)
+        .setScale(scale);
       this.uiCamera?.ignore(img);
       this.doorImages.push(img);
     };
@@ -2864,6 +2918,7 @@ export class MainGameScene extends Phaser.Scene {
     let closedKenneyCount = 0;
     let closedColorCount = 0;
     let openPackCount = 0;
+    let openGeneratedCount = 0;
     let openKenneyCount = 0;
     let openColorCount = 0;
 
@@ -2888,7 +2943,7 @@ export class MainGameScene extends Phaser.Scene {
         }
         const isOpen = tm.isPassable(x, y);
         const cx = x * tileSize + tileSize / 2;
-        const cy = y * tileSize + tileSize / 2;
+        const tileBottomY = y * tileSize + tileSize;
         const orientation = resolveDoorOrientationFromFlanks(horizontalDoorway);
         const packDoorVariant = activeDoorSet
           ? resolveDoorPoolVariant(activeDoorSet, { isOpen, orientation })
@@ -2898,14 +2953,21 @@ export class MainGameScene extends Phaser.Scene {
             ? packDoorVariant.textureKey
             : undefined;
         const mode = resolveDoorRenderMode(isOpen, {
-          hasGeneratedClosed,
+          orientation,
+          availableGeneratedKeys,
           hasSheet,
           packDoorTextureKey,
         });
 
         switch (mode.kind) {
           case 'pack': {
-            addDoorImage(cx, cy, mode.textureKey, undefined, tileSize / TERRAIN_PACK_CELL_PX);
+            addDoorImage(
+              cx,
+              tileBottomY,
+              mode.textureKey,
+              undefined,
+              tileSize / TERRAIN_PACK_CELL_PX,
+            );
             if (isOpen) {
               openPackCount += 1;
             } else {
@@ -2914,20 +2976,31 @@ export class MainGameScene extends Phaser.Scene {
             break;
           }
           case 'generated': {
-            // 'generated' is only chosen when hasGeneratedClosed, so
-            // generatedDoorScale is non-null here (?? 1 is unreachable but keeps
-            // the type checker happy without a non-null assertion).
-            addDoorImage(cx, cy, GENERATED_DOOR_TEXTURE_KEY, undefined, generatedDoorScale ?? 1);
-            closedGeneratedCount += 1;
+            // 'generated' is only chosen for a key present in
+            // availableGeneratedKeys, which is built from generatedDoorScales, so
+            // the lookup always hits (?? 1 is unreachable but keeps the type
+            // checker happy without a non-null assertion).
+            addDoorImage(
+              cx,
+              tileBottomY,
+              mode.textureKey,
+              undefined,
+              generatedDoorScales.get(mode.textureKey) ?? 1,
+            );
+            if (isOpen) {
+              openGeneratedCount += 1;
+            } else {
+              closedGeneratedCount += 1;
+            }
             break;
           }
           case 'kenney-closed': {
-            addDoorImage(cx, cy, DOOR_SHEET_KEY, DOOR_CLOSED_FRAME, tileSize / 16);
+            addDoorImage(cx, tileBottomY, DOOR_SHEET_KEY, DOOR_CLOSED_FRAME, tileSize / 16);
             closedKenneyCount += 1;
             break;
           }
           case 'kenney-open': {
-            addDoorImage(cx, cy, DOOR_SHEET_KEY, DOOR_OPEN_FRAME, tileSize / 16);
+            addDoorImage(cx, tileBottomY, DOOR_SHEET_KEY, DOOR_OPEN_FRAME, tileSize / 16);
             openKenneyCount += 1;
             break;
           }
@@ -2954,10 +3027,12 @@ export class MainGameScene extends Phaser.Scene {
       closedKenneyCount,
       closedColorCount,
       openPackCount,
+      openGeneratedCount,
       openKenneyCount,
       openColorCount,
       renderableClosedCount:
         closedPackCount + closedGeneratedCount + closedKenneyCount + closedColorCount,
+      renderableOpenCount: openPackCount + openGeneratedCount + openKenneyCount + openColorCount,
     };
   }
 
