@@ -32,3 +32,9 @@ enemies, ci-policy
 
 - Push the merged repair head so GitHub reruns the authoritative PR workflows on the conflict-free branch.
 - If fresh CI reports anything new, inspect the new run rather than assuming it shares run `30188372832`'s root cause.
+
+## Follow-up merge note
+
+- A later recovery pass unshallowed the repo, merged newer `origin/main` again at local head `b391c106`, and confirmed the merge applied cleanly with no new manual conflict edits.
+- Separate-model validators re-checked all seven previously resolved PR review threads after that merge; each remained addressed on the merged head.
+- `npm run verify:pr-prereqs` still passes on the merged head. `npm run verify:fast` is environment-blocked in this sandbox because the repo toolchain dependencies are absent, causing `npx` to fall back to non-project `tsc`/ESLint packages instead of the checked-in workspace versions.
