@@ -5647,6 +5647,246 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
   );
 });
 
+test('ci-only task body omits review-thread protocol and requires push-based progress', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'Lightweight Checks',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1/job/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.ok(
+    taskCommentCall.body.body.includes('**CI-only protocol:**'),
+    'ci-only recovery task should include explicit CI-only guidance',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('do not reply to this task comment with status updates'),
+    'ci-only recovery task should forbid status-only task-comment replies',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**Review-thread protocol:**'),
+    false,
+    'ci-only recovery task should omit review-thread protocol text',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes(
+      'A top-level PR comment is never sufficient for a review-thread blocker',
+    ),
+    false,
+    'ci-only recovery task should omit review-thread-only marker instructions',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('do not use it in an addressed marker'),
+    false,
+    'ci-only recovery task should omit addressed-marker hint from branch-head line',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('replies in each thread'),
+    false,
+    'ci-only recovery task should omit thread-reply instruction from human-approval note',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('review feedback'),
+    false,
+    'ci-only recovery task should omit review-feedback step from required-order line',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('thread resolution'),
+    false,
+    'ci-only recovery task should omit thread-resolution step from required-order line',
+  );
+});
+
+test('merge-train-noop task body uses generic repair protocol, not ci-only or review-thread', async (t) => {
+  // A merge-train-noop blocker means the PR squash diff is already in the
+  // train base — neither a CI failure nor a review-thread.  The task body
+  // must select the generic **Repair protocol** branch, not the CI-only branch.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-noop' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  assert.ok(
+    taskCommentCall.body.body.includes('**Repair protocol:**'),
+    'merge-train-noop task should use generic repair protocol',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**CI-only protocol:**'),
+    false,
+    'merge-train-noop task should not use CI-only protocol',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('**Review-thread protocol:**'),
+    false,
+    'merge-train-noop task should not use review-thread protocol',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('review feedback'),
+    false,
+    'merge-train-noop task should omit review-feedback from required-order line',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('thread resolution'),
+    false,
+    'merge-train-noop task should omit thread-resolution from required-order line',
+  );
+});
+
 test('task body includes human-approval note when pendingHumanApproval is true', async (t) => {
   // When a PR has human-approval-required AND unresolved review threads, the
   // recovery agent MUST still fix the threads (the gate blocks merge only).
