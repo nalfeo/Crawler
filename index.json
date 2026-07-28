@@ -1,5 +1,16 @@
 [
   {
+    "commit": "dd0ee956b3b53a8914e65d512adb8edecf45289b",
+    "commitDate": "2026-07-28T14:34:18Z",
+    "commitSubject": "fix(ci): stop the conflict coordinator labelling non-conflicting PRs as conflict-managed (#2186)",
+    "capturedAt": "2026-07-28T15:39:27.367Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30369603102",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/dd0ee956b3b53a8914e65d512adb8edecf45289b.json"
+  },
+  {
     "commit": "3e9d303cc7438090c1f108ade79913e8bdf66b9d",
     "commitDate": "2026-07-28T14:09:09Z",
     "commitSubject": "fix(terrain-packs): close the blob47 corner-coverage blind spot and round cave corners (#2189)",
