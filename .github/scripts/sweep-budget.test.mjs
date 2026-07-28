@@ -64,20 +64,18 @@ test('latent backlog deduplicates merge-train and recovery demand by PR number',
     { ...base, number: 1, labels: [{ name: 'merge-train' }] },
     // Counted once by the recovery backlog (unlabelled, so nothing excludes it).
     { ...base, number: 2, labels: [] },
-    // Excluded from the queue (no queue label) and from the recovery backlog
-    // (externally blocked), but counted via the externally-blocked third source —
-    // merge-train-blocked PRs still represent latent demand for sweep budgeting.
+    // Counted once as latent demand: `merge-train-blocked` is excluded from recovery
+    // slot consumption, but still contributes to sweep budgeting.
     { ...base, number: 3, labels: [{ name: 'merge-train-blocked' }] },
-    // Excluded from everything: no queue label, and explicitly opted out of recovery.
+    // Excluded from both: no queue label, and explicitly opted out of recovery.
     { ...base, number: 4, labels: [{ name: 'ci-recovery-opt-out' }] },
   ];
   assert.equal(countLatentBacklog({ pullRequests, repository }), 3);
 });
 
-// Pins the externally-blocked counting on its own, so a future change to
-// EXTERNALLY_BLOCKED_LABEL_NAMES fails here with an unambiguous message instead
-// of silently shifting the aggregate count in the test above.
-test('latent backlog counts externally-blocked PRs as demand via the third source', () => {
+// Pins externally-blocked latent-demand accounting so future changes to
+// EXTERNALLY_BLOCKED_LABEL_NAMES fail with an unambiguous message.
+test('latent backlog counts externally-blocked PRs once as latent demand', () => {
   const repository = 'nalfeo/Crawler';
   const base = {
     state: 'open',
