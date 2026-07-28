@@ -64,6 +64,7 @@ import {
 } from './png-buffer.js';
 import type { BuildOutputFile } from './build-industrial-cave.js';
 import { renderDoorTile } from './procedural-surfaces.js';
+import { isWallAlpha } from './wall-opacity.js';
 
 const CAELES_FIXTURE_PACK_ID = 'caeles-fixture' as const;
 
@@ -158,7 +159,7 @@ export function deriveTemplateCellMasks(sourceCells: readonly RgbaImage[]): {
   }
 
   const isWall = (cell: RgbaImage, x: number, y: number): boolean =>
-    cell.data[(y * cell.width + x) * 4 + 3]! >= 128;
+    isWallAlpha(cell.data[(y * cell.width + x) * 4 + 3]!);
 
   const signatures = sourceCells.map((cell) => {
     const size = cell.width;

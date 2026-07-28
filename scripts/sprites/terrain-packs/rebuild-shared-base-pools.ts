@@ -705,7 +705,7 @@ function flattenTilingFrames(img: RgbaImage): void {
       let opaque = true;
       for (let y = 0; y < CELL && opaque; y++) {
         for (let x = 0; x < CELL; x++) {
-          if (img.data[((cy + y) * img.width + cx + x) * 4 + 3]! < 128) {
+          if (!isWallAlpha(img.data[((cy + y) * img.width + cx + x) * 4 + 3]!)) {
             opaque = false;
             break;
           }
