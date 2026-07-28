@@ -28,10 +28,9 @@ jobs:
         with:
           script: |
             // Duplicate detection — deterministic proof rules only.
-            // Auto-closes a PR ONLY when one of the two proof rules fires:
-            //   1. linked-issue-closed-by-sibling: a closing issue is CLOSED and a merged sibling closes it
-            //   2. empty-diff: the PR's diff is zero (all changes already on main)
-            //   3. coordinator-superseded: coordinator marked this PR as a full-tree no-op (legacy, retained)
+            // Auto-closes a PR ONLY when one of these proof rules fires:
+            //   1. empty-diff: the PR's diff is zero (all changes already on main)
+            //   2. coordinator-superseded: coordinator marked this PR as a full-tree no-op (legacy, retained)
             // SIBLING_MERGED: merged sibling closes same issue (issue may still be open) — suspicious
             //   but NOT a proof. Routes to quarantine (adds abandon-candidate label for step 2 pickup).
             // Any uncertainty routes to quarantine (step 2), never to auto-close.
@@ -62,6 +61,16 @@ jobs:
             const ABANDON_CANDIDATE_LABEL = 'abandon-candidate';
             const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED]; // 'ci-lifecycle-quarantined'
             const ABANDONED_LABEL = PHASE_LABELS[PHASE.ABANDONED]; // 'ci-lifecycle-abandoned'
+            const REQUIRED_DISPOSITION_LABELS = [
+              ABANDON_CANDIDATE_LABEL,
+              QUARANTINED_LABEL,
+              ABANDONED_LABEL,
+            ];
+            const LABEL_COLORS = {
+              [ABANDON_CANDIDATE_LABEL]: '8b949e',
+              [QUARANTINED_LABEL]: 'fbca04',
+              [ABANDONED_LABEL]: '5319e7',
+            };
 
             // Coordinator-based superseded detection (legacy proof rule — retained).
             const COORDINATOR_MARKER = '<!-- crawler-ci-conflict-coordinator:v1 -->';
@@ -94,6 +103,42 @@ jobs:
               } else {
                 await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
               }
+
+              async function ensureLabel(name) {
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  try {
+                    await github.rest.issues.createLabel({
+                      owner,
+                      repo,
+                      name,
+                      color: LABEL_COLORS[name] || '8b949e',
+                    });
+                  } catch (createError) {
+                    if (createError.status !== 422) throw createError;
+                  }
+                }
+              }
+
+              async function ensureDispositionLabels() {
+                for (const label of REQUIRED_DISPOSITION_LABELS) {
+                  await ensureLabel(label);
+                }
+              }
+
+              async function addLabelStrict(prNumber, label) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+              }
+
+              async function removeLabelBestEffort(prNumber, label) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+              }
             }
 
             async function getClosingIssues(prNumber) {
@@ -116,31 +161,56 @@ jobs:
               }
             }
 
-            // Fetch at least maxMerged recently-merged PRs and their closing issues.
-            // Paginates until enough merged PRs are collected (not just closed PRs).
-            async function buildMergedSiblingIndex(maxMerged = 60) {
-              const siblingsByIssue = new Map();
-              let mergedCount = 0;
-              for await (const page of github.paginate.iterator(github.rest.pulls.list, {
-                owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 100,
-              })) {
-                for (const pr of page.data) {
-                  if (!pr.merged_at) continue; // skip unmerged closed PRs
-                  const issues = await getClosingIssues(pr.number);
-                  if (!issues.length) { mergedCount++; continue; }
-                  const issueNums = issues.map((i) => Number(i.number));
-                  const entry = { number: pr.number, merged: true, closingIssueNumbers: issueNums };
-                  for (const n of issueNums) {
-                    if (!siblingsByIssue.has(n)) siblingsByIssue.set(n, []);
-                    siblingsByIssue.get(n).push(entry);
-                  }
-                  mergedCount++;
-                  if (mergedCount >= maxMerged) break;
-                }
-                if (mergedCount >= maxMerged) break;
+            const mergedSiblingsByIssueCache = new Map();
+            async function getMergedSiblingsForIssue(issueNumber) {
+              const normalizedIssue = Number(issueNumber);
+              if (!Number.isInteger(normalizedIssue) || normalizedIssue <= 0) return [];
+              if (mergedSiblingsByIssueCache.has(normalizedIssue)) {
+                return mergedSiblingsByIssueCache.get(normalizedIssue);
               }
-              return siblingsByIssue;
+
+              const siblings = [];
+              let cursor = null;
+              while (true) {
+                const result = await github.graphql(`
+                  query($owner: String!, $repo: String!, $issueNumber: Int!, $after: String) {
+                    repository(owner: $owner, name: $repo) {
+                      issue(number: $issueNumber) {
+                        closedByPullRequestsReferences(first: 100, after: $after) {
+                          nodes {
+                            number
+                            merged
+                            closingIssuesReferences(first: 100) {
+                              nodes { number }
+                            }
+                          }
+                          pageInfo { hasNextPage endCursor }
+                        }
+                      }
+                    }
+                  }
+                `, { owner, repo, issueNumber: normalizedIssue, after: cursor });
+
+                const connection = result.repository?.issue?.closedByPullRequestsReferences;
+                const nodes = connection?.nodes || [];
+                for (const node of nodes) {
+                  if (!node?.merged) continue;
+                  siblings.push({
+                    number: Number(node.number),
+                    merged: true,
+                    closingIssueNumbers: (node.closingIssuesReferences?.nodes || []).map((i) => Number(i.number)),
+                  });
+                }
+
+                if (!connection?.pageInfo?.hasNextPage) break;
+                cursor = connection.pageInfo.endCursor;
+              }
+
+              mergedSiblingsByIssueCache.set(normalizedIssue, siblings);
+              return siblings;
             }
+
+            await ensureDispositionLabels();
 
             const pulls = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', per_page: 100,
@@ -158,8 +228,6 @@ jobs:
               core.info('duplicate-detection: no in-scope PRs, skipping');
               return;
             }
-
-            const siblingsByIssue = await buildMergedSiblingIndex();
 
             let closedCount = 0;
             let suspiciousCount = 0;
@@ -195,8 +263,8 @@ jobs:
                     headSha: pull.head.sha,
                     mode: 'live',
                     writeComment: (n, body) => upsertLifecycleComment(n, body),
-                    addLabel: async (n, label) => { try { await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: [label] }); } catch (e) { core.warning(`addLabel pr=#${n} label=${label}: ${e.message}`); } },
-                    removeLabel: async (n, label) => { try { await github.rest.issues.removeLabel({ owner, repo, issue_number: n, name: label }); } catch (e) { if (e.status !== 404) core.warning(`removeLabel pr=#${n} label=${label}: ${e.message}`); } },
+                    addLabel: (n, label) => addLabelStrict(n, label),
+                    removeLabel: (n, label) => removeLabelBestEffort(n, label),
                   });
                   try { await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' }); }
                   catch (e) { core.warning(`pulls.update close pr=#${pull.number}: ${e.message}`); }
@@ -210,7 +278,10 @@ jobs:
               // New deterministic proof rules (Issue 8).
               const closingIssues = await getClosingIssues(pull.number);
               const ownIssueNums = closingIssues.map((i) => Number(i.number));
-              const mergedSiblings = ownIssueNums.flatMap((n) => siblingsByIssue.get(n) || []);
+              const siblingsByIssue = await Promise.all(
+                ownIssueNums.map((n) => getMergedSiblingsForIssue(n)),
+              );
+              const mergedSiblings = siblingsByIssue.flat();
               const dedupedSiblings = [...new Map(mergedSiblings.map((s) => [s.number, s])).values()];
 
               // Fetch full PR details (needed for additions/deletions — not in list response).
@@ -228,25 +299,60 @@ jobs:
               );
 
               if (proof.proofRule) {
-                const closeBody = makeDuplicateCloseComment(pull.number, proof);
+                // Re-validate proof against live PR facts before mutating state.
+                let livePr;
+                try {
+                  const { data } = await github.rest.pulls.get({ owner, repo, pull_number: pull.number });
+                  livePr = data;
+                } catch (e) {
+                  core.warning(`pulls.get live-proof-check pr=#${pull.number}: ${e.message}`);
+                  continue;
+                }
+                const headDrifted = String(livePr.head?.sha || '') !== String(fullPr.head?.sha || '');
+                const baseDrifted = String(livePr.base?.sha || '') !== String(fullPr.base?.sha || '');
+                if (headDrifted || baseDrifted) {
+                  core.notice(`skip-close-drift pr=#${pull.number} head_drift=${headDrifted} base_drift=${baseDrifted}`);
+                  continue;
+                }
+
+                const liveClosingIssues = await getClosingIssues(pull.number);
+                const liveOwnIssueNums = liveClosingIssues.map((i) => Number(i.number));
+                const liveSiblingsByIssue = await Promise.all(
+                  liveOwnIssueNums.map((n) => getMergedSiblingsForIssue(n)),
+                );
+                const liveMergedSiblings = liveSiblingsByIssue.flat();
+                const liveDedupedSiblings = [...new Map(liveMergedSiblings.map((s) => [s.number, s])).values()];
+                const liveProof = detectDuplicateProof(
+                  { number: pull.number, additions: livePr.additions, deletions: livePr.deletions },
+                  { closingIssues: liveClosingIssues, mergedSiblings: liveDedupedSiblings },
+                );
+                const stillMatches =
+                  liveProof.proofRule === proof.proofRule &&
+                  Number(liveProof.supersederPr ?? 0) === Number(proof.supersederPr ?? 0);
+                if (!stillMatches) {
+                  core.notice(`skip-close-proof-drift pr=#${pull.number} old_rule=${proof.proofRule ?? 'none'} new_rule=${liveProof.proofRule ?? 'none'}`);
+                  continue;
+                }
+
+                const closeBody = makeDuplicateCloseComment(pull.number, liveProof);
                 try { await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: closeBody }); }
                 catch (e) { core.warning(`createComment proof-close pr=#${pull.number}: ${e.message}`); }
                 await applyLifecycleDecision({
                   prNumber: pull.number,
                   currentPhase: null,
                   targetPhase: PHASE.ABANDONED,
-                  blockReason: `duplicate-${proof.proofRule}`,
-                  headSha: pull.head.sha,
+                  blockReason: `duplicate-${liveProof.proofRule}`,
+                  headSha: livePr.head.sha,
                   mode: 'live',
                   writeComment: (n, body) => upsertLifecycleComment(n, body),
-                  addLabel: async (n, label) => { try { await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: [label] }); } catch (e) { core.warning(`addLabel pr=#${n} label=${label}: ${e.message}`); } },
-                  removeLabel: async (n, label) => { try { await github.rest.issues.removeLabel({ owner, repo, issue_number: n, name: label }); } catch (e) { if (e.status !== 404) core.warning(`removeLabel pr=#${n} label=${label}: ${e.message}`); } },
+                  addLabel: (n, label) => addLabelStrict(n, label),
+                  removeLabel: (n, label) => removeLabelBestEffort(n, label),
                 });
                 try { await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' }); }
                 catch (e) { core.warning(`pulls.update close pr=#${pull.number}: ${e.message}`); }
                 closedPrNumbers.push(pull.number);
                 closedCount += 1;
-                core.notice(`closed-duplicate pr=#${pull.number} rule=${proof.proofRule} superseder=${proof.supersederPr ?? 'none'} reason=${proof.reason}`);
+                core.notice(`closed-duplicate pr=#${pull.number} rule=${liveProof.proofRule} superseder=${liveProof.supersederPr ?? 'none'} reason=${liveProof.reason}`);
                 continue;
               }
 
@@ -259,13 +365,9 @@ jobs:
               if (evidence.evidenceRule) {
                 const labelNames = (pull.labels || []).map((l) => String(l.name || ''));
                 if (!labelNames.includes(ABANDON_CANDIDATE_LABEL)) {
-                  try {
-                    await github.rest.issues.addLabels({ owner, repo, issue_number: pull.number, labels: [ABANDON_CANDIDATE_LABEL] });
-                    suspiciousCount += 1;
-                    core.notice(`sibling-merged-suspect pr=#${pull.number} evidence=${evidence.evidenceRule} superseder=${evidence.supersederPr ?? 'none'} → tagged abandon-candidate for quarantine`);
-                  } catch (e) {
-                    core.warning(`addLabel abandon-candidate pr=#${pull.number}: ${e.message}`);
-                  }
+                  await addLabelStrict(pull.number, ABANDON_CANDIDATE_LABEL);
+                  suspiciousCount += 1;
+                  core.notice(`sibling-merged-suspect pr=#${pull.number} evidence=${evidence.evidenceRule} superseder=${evidence.supersederPr ?? 'none'} → tagged abandon-candidate for quarantine`);
                 }
               }
             }
@@ -311,7 +413,21 @@ jobs:
             const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED]; // 'ci-lifecycle-quarantined'
             const ABANDONED_LABEL = PHASE_LABELS[PHASE.ABANDONED];     // 'ci-lifecycle-abandoned'
             const HUMAN_APPROVAL_LABEL = 'human-approval-required';
+            const DISPOSITION_APPROVAL_LABEL = 'ci-disposition-approval-gate';
             const STATE_MARKER = '<!-- crawler-ci-state:v1 -->';
+            const REQUIRED_DISPOSITION_LABELS = [
+              ABANDON_CANDIDATE_LABEL,
+              QUARANTINED_LABEL,
+              ABANDONED_LABEL,
+              DISPOSITION_APPROVAL_LABEL,
+            ];
+            const LABEL_COLORS = {
+              [ABANDON_CANDIDATE_LABEL]: '8b949e',
+              [QUARANTINED_LABEL]: 'fbca04',
+              [ABANDONED_LABEL]: '5319e7',
+              [DISPOSITION_APPROVAL_LABEL]: 'b60205',
+            };
+            const TRUSTED_LIFECYCLE_APP_IDS = new Set([15368, 990625]);
 
             const now = new Date();
             const thresholdMs = ABANDON_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
@@ -332,6 +448,68 @@ jobs:
                 await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
               } else {
                 await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+              }
+
+              async function ensureLabel(name) {
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  try {
+                    await github.rest.issues.createLabel({
+                      owner,
+                      repo,
+                      name,
+                      color: LABEL_COLORS[name] || '8b949e',
+                    });
+                  } catch (createError) {
+                    if (createError.status !== 422) throw createError;
+                  }
+                }
+              }
+
+              async function ensureDispositionLabels() {
+                for (const label of REQUIRED_DISPOSITION_LABELS) {
+                  await ensureLabel(label);
+                }
+              }
+
+              async function addLabelStrict(prNumber, label) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+              }
+
+              async function removeLabelBestEffort(prNumber, label) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+              }
+
+              function isTrustedLifecycleComment(comment) {
+                const assoc = String(comment.author_association || '').toUpperCase();
+                if (['OWNER', 'MEMBER', 'COLLABORATOR'].includes(assoc)) return true;
+                const appId = Number(comment.performed_via_github_app?.id || 0);
+                return TRUSTED_LIFECYCLE_APP_IDS.has(appId);
+              }
+
+              function parseCurrentLifecycleRecord(comments, prNumber) {
+                const lifecycleComments = comments.filter(
+                  (comment) =>
+                    String(comment.body || '').includes(LIFECYCLE_MARKER) &&
+                    isTrustedLifecycleComment(comment),
+                );
+                if (lifecycleComments.length > 1) {
+                  core.warning(`quarantine-skip pr=#${prNumber} reason=multiple-trusted-lifecycle-comments`);
+                  return { blocked: true, record: null };
+                }
+                if (lifecycleComments.length === 0) return { blocked: false, record: null };
+                try {
+                  return { blocked: false, record: parseLifecycleComment(lifecycleComments[0].body) };
+                } catch (error) {
+                  core.warning(`quarantine-skip pr=#${prNumber} reason=invalid-lifecycle-comment message=${error.message}`);
+                  return { blocked: true, record: null };
+                }
               }
             }
 
@@ -358,6 +536,7 @@ jobs:
             const pulls = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', per_page: 100,
             });
+            await ensureDispositionLabels();
 
             let quarantinedCount = 0;
             const quarantinedPrNumbers = [];
@@ -372,6 +551,7 @@ jobs:
               // Determine why this PR is a quarantine candidate.
               let quarantineReason = null;
               let lastActivityIso = null;
+              let comments = null;
 
               if (labelNames.includes(ABANDON_CANDIDATE_LABEL)) {
                 // Explicit proposal by a human, agent, or step 1 sibling-suspect tagging.
@@ -379,7 +559,7 @@ jobs:
               } else if (labelNames.includes(WAITING_LABEL) && !labelNames.some((n) => n.startsWith(OWNER_LABEL_PREFIX))) {
                 // Waiting with no active owner — check if stale WITH corroborating evidence.
                 // Require a closed linked issue (not just idleness) to reduce false positives.
-                const comments = await github.paginate(github.rest.issues.listComments, {
+                comments = await github.paginate(github.rest.issues.listComments, {
                   owner, repo, issue_number: pull.number, per_page: 100,
                 });
                 const stateComment = comments.find((c) => String(c.body || '').trimStart().startsWith(STATE_MARKER));
@@ -405,27 +585,37 @@ jobs:
               }
 
               if (!quarantineReason) continue;
+              if (!comments) {
+                comments = await github.paginate(github.rest.issues.listComments, {
+                  owner, repo, issue_number: pull.number, per_page: 100,
+                });
+              }
+              const lifecycleRead = parseCurrentLifecycleRecord(comments, pull.number);
+              if (lifecycleRead.blocked) continue;
+              const lifecycle = lifecycleRead.record;
 
               // Apply lifecycle QUARANTINED via the authoritative FSM.
               await applyLifecycleDecision({
                 prNumber: pull.number,
-                currentPhase: null,
+                currentPhase: lifecycle?.phase ?? null,
+                currentHeadSha: lifecycle?.headSha ?? null,
                 targetPhase: PHASE.QUARANTINED,
                 blockReason: `quarantine:${quarantineReason}`,
                 headSha: pull.head.sha,
                 mode: 'live',
                 writeComment: (n, body) => upsertLifecycleComment(n, body),
-                addLabel: async (n, label) => { try { await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: [label] }); } catch (e) { core.warning(`addLabel pr=#${n} label=${label}: ${e.message}`); } },
-                removeLabel: async (n, label) => { try { await github.rest.issues.removeLabel({ owner, repo, issue_number: n, name: label }); } catch (e) { if (e.status !== 404) core.warning(`removeLabel pr=#${n} label=${label}: ${e.message}`); } },
+                addLabel: (n, label) => addLabelStrict(n, label),
+                removeLabel: (n, label) => removeLabelBestEffort(n, label),
               });
 
               // Apply human-approval-required to block accidental merge while quarantined.
               if (!labelNames.includes(HUMAN_APPROVAL_LABEL)) {
-                try {
-                  await github.rest.issues.addLabels({ owner, repo, issue_number: pull.number, labels: [HUMAN_APPROVAL_LABEL] });
-                } catch (e) {
-                  core.warning(`addLabel human-approval-required pr=#${pull.number}: ${e.message}`);
-                }
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: pull.number,
+                  labels: [HUMAN_APPROVAL_LABEL, DISPOSITION_APPROVAL_LABEL],
+                });
               }
 
               // Post the human-decision comment (KEEP / ABANDON).
@@ -490,6 +680,17 @@ jobs:
             const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED]; // 'ci-lifecycle-quarantined'
             const HUMAN_APPROVAL_LABEL = 'human-approval-required';
             const ABANDON_CANDIDATE_LABEL = 'abandon-candidate';
+            const DISPOSITION_APPROVAL_LABEL = 'ci-disposition-approval-gate';
+            const REQUIRED_DISPOSITION_LABELS = [
+              QUARANTINED_LABEL,
+              ABANDON_CANDIDATE_LABEL,
+              DISPOSITION_APPROVAL_LABEL,
+            ];
+            const LABEL_COLORS = {
+              [QUARANTINED_LABEL]: 'fbca04',
+              [ABANDON_CANDIDATE_LABEL]: '8b949e',
+              [DISPOSITION_APPROVAL_LABEL]: 'b60205',
+            };
 
             async function upsertLifecycleComment(prNumber, body) {
               const existingComments = await github.paginate(github.rest.issues.listComments, {
@@ -501,11 +702,48 @@ jobs:
               } else {
                 await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
               }
+
+              async function ensureLabel(name) {
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  try {
+                    await github.rest.issues.createLabel({
+                      owner,
+                      repo,
+                      name,
+                      color: LABEL_COLORS[name] || '8b949e',
+                    });
+                  } catch (createError) {
+                    if (createError.status !== 422) throw createError;
+                  }
+                }
+              }
+
+              async function ensureDispositionLabels() {
+                for (const label of REQUIRED_DISPOSITION_LABELS) {
+                  await ensureLabel(label);
+                }
+              }
+
+              async function addLabelStrict(prNumber, label) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+              }
+
+              async function removeLabelBestEffort(prNumber, label) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+              }
             }
 
             const pulls = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', per_page: 100,
             });
+            await ensureDispositionLabels();
 
             const quarantinedPulls = pulls.filter((p) =>
               (p.labels || []).some((l) => l.name === QUARANTINED_LABEL),
@@ -575,14 +813,17 @@ jobs:
                   headSha: pull.head.sha,
                   mode: 'live',
                   writeComment: (n, body) => upsertLifecycleComment(n, body),
-                  addLabel: async (n, label) => { try { await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: [label] }); } catch (e) { core.warning(`addLabel pr=#${n} label=${label}: ${e.message}`); } },
-                  removeLabel: async (n, label) => { try { await github.rest.issues.removeLabel({ owner, repo, issue_number: n, name: label }); } catch (e) { if (e.status !== 404) core.warning(`removeLabel pr=#${n} label=${label}: ${e.message}`); } },
+                  addLabel: (n, label) => addLabelStrict(n, label),
+                  removeLabel: (n, label) => removeLabelBestEffort(n, label),
                 });
-                // Also remove human-approval-required and abandon-candidate if present
-                // (quarantine placed them; failing to remove abandon-candidate would cause
-                //  step 2 to re-quarantine this PR on the very next sweep run).
+                // Remove quarantine-specific labels. Keep the shared human-approval label
+                // unless this disposition workflow added it (tracked by marker label).
                 const labelNames = (pull.labels || []).map((l) => l.name);
-                for (const labelToRemove of [HUMAN_APPROVAL_LABEL, ABANDON_CANDIDATE_LABEL]) {
+                const labelsToRemove = [ABANDON_CANDIDATE_LABEL, DISPOSITION_APPROVAL_LABEL];
+                if (labelNames.includes(DISPOSITION_APPROVAL_LABEL)) {
+                  labelsToRemove.push(HUMAN_APPROVAL_LABEL);
+                }
+                for (const labelToRemove of labelsToRemove) {
                   if (labelNames.includes(labelToRemove)) {
                     try {
                       await github.rest.issues.removeLabel({ owner, repo, issue_number: pull.number, name: labelToRemove });
@@ -612,8 +853,8 @@ jobs:
                   headSha: pull.head.sha,
                   mode: 'live',
                   writeComment: (n, body) => upsertLifecycleComment(n, body),
-                  addLabel: async (n, label) => { try { await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: [label] }); } catch (e) { core.warning(`addLabel pr=#${n} label=${label}: ${e.message}`); } },
-                  removeLabel: async (n, label) => { try { await github.rest.issues.removeLabel({ owner, repo, issue_number: n, name: label }); } catch (e) { if (e.status !== 404) core.warning(`removeLabel pr=#${n} label=${label}: ${e.message}`); } },
+                  addLabel: (n, label) => addLabelStrict(n, label),
+                  removeLabel: (n, label) => removeLabelBestEffort(n, label),
                 });
                 try {
                   await github.rest.issues.createComment({

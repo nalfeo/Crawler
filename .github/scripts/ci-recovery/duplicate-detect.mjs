@@ -4,13 +4,12 @@
  * Pure module: no side effects, no async, no GitHub API calls.  The caller is
  * responsible for fetching and supplying all required facts.
  *
- * Implements TWO auto-close proof rules.  Auto-close happens ONLY when one of
- * these rules returns a non-null proof.  Any uncertainty routes to quarantine,
- * never to a close (conservatism invariant).
+ * Implements deterministic auto-close proof rules. Auto-close happens ONLY when
+ * one of these rules returns a non-null proof. Any uncertainty routes to
+ * quarantine, never to a close (conservatism invariant).
  *
  * Auto-close proof rules (deterministic):
- *   1. LINKED_ISSUE_SIBLING — closing issue CLOSED + merged sibling closes same issue
- *   2. EMPTY_DIFF            — PR diff is zero (all changes already on main)
+ *   1. EMPTY_DIFF — PR diff is zero (all changes already on main)
  *
  * Quarantine-evidence helper (not a proof — routes to quarantine, not close):
  *   SIBLING_MERGED — merged sibling closes same issue (issue may still be open).
@@ -23,23 +22,12 @@
  *   GitHub issue #1892 (CI-harness redesign, Issue 8)
  *
  * Golden incident fixture: PR #1630 / PR #1575 / issue #1568.
- *   PR #1630 (WIP re-implementation) closes issue #1568.
- *   Issue #1568 was CLOSED after PR #1575 merged (also closing #1568).
- *   Rule 1 fires: detectDuplicateProof({number:1630}, {closingIssues:[{number:1568,state:'CLOSED'}],
- *     mergedSiblings:[{number:1575,merged:true,closingIssueNumbers:[1568]}]})
- *   → { proofRule: 'linked-issue-closed-by-sibling', supersederPr: 1575, reason: '...' }
+ *   Shared closing issue + merged sibling is quarantine evidence, not an
+ *   auto-close proof.
  */
 
 /** Canonical proof-rule identifiers. */
 export const PROOF_RULES = {
-  /**
-   * A closing issue of this PR is CLOSED, and a different merged PR closes the
-   * same issue (making it the effective superseder of this PR's intent).
-   * Covers: "linked issue closed by sibling merged PR".
-   * → Auto-close proof.
-   */
-  LINKED_ISSUE_SIBLING: 'linked-issue-closed-by-sibling',
-
   /**
    * A sibling PR — sharing one or more closing issues — has MERGED, even if
    * the shared issue is not yet CLOSED.
@@ -58,41 +46,6 @@ export const PROOF_RULES = {
    */
   EMPTY_DIFF: 'empty-diff',
 };
-
-/**
- * Try proof rule LINKED_ISSUE_SIBLING:
- *   - One of the PR's closing issues is state=CLOSED (or stateReason=completed).
- *   - A different merged sibling PR closes the same issue.
- *
- * @param {number} prNumber
- * @param {{ number: number, state: string }[]} closingIssues
- * @param {{ number: number, merged: boolean, closingIssueNumbers: number[] }[]} mergedSiblings
- * @returns {{ proved: boolean, supersederPr: number|null, reason: string|null }}
- */
-export function proveLinkedIssueSiblingClosed(prNumber, closingIssues, mergedSiblings) {
-  const closedIssueNumbers = new Set(
-    (closingIssues || [])
-      .filter((issue) => String(issue?.state ?? '').toUpperCase() === 'CLOSED')
-      .map((issue) => Number(issue.number)),
-  );
-  if (closedIssueNumbers.size === 0) {
-    return { proved: false, supersederPr: null, reason: null };
-  }
-
-  for (const sibling of mergedSiblings || []) {
-    if (!sibling.merged || Number(sibling.number) === Number(prNumber)) continue;
-    for (const issueNum of sibling.closingIssueNumbers || []) {
-      if (closedIssueNumbers.has(Number(issueNum))) {
-        return {
-          proved: true,
-          supersederPr: Number(sibling.number),
-          reason: `sibling-pr-#${sibling.number}-merged-closing-closed-issue-#${issueNum}`,
-        };
-      }
-    }
-  }
-  return { proved: false, supersederPr: null, reason: null };
-}
 
 /**
  * Try proof rule SIBLING_MERGED:
@@ -147,8 +100,8 @@ export function proveEmptyDiff(pr) {
 
 /**
  * Run all AUTO-CLOSE proof rules in priority order and return the first
- * successful proof.  Only LINKED_ISSUE_SIBLING and EMPTY_DIFF are proofs;
- * SIBLING_MERGED is quarantine evidence only (see detectQuarantineEvidence).
+ * successful proof. Only EMPTY_DIFF is an auto-close proof; SIBLING_MERGED is
+ * quarantine evidence only (see detectQuarantineEvidence).
  *
  * Conservatism invariant: returns `{ proofRule: null }` — never auto-closes —
  * unless one of the deterministic proof rules succeeds.  The caller MUST route
@@ -167,35 +120,24 @@ export function proveEmptyDiff(pr) {
  */
 export function detectDuplicateProof(pr, context = {}) {
   const prNumber = Number(pr?.number);
-  const closingIssues = context.closingIssues || [];
-  const mergedSiblings = context.mergedSiblings || [];
+  void context;
 
   if (!Number.isInteger(prNumber) || prNumber <= 0) {
     return { proofRule: null, supersederPr: null, reason: null };
   }
 
-  // Rule 1: linked-issue-closed-by-sibling (closed issue + merged sibling closes same issue)
-  const r1 = proveLinkedIssueSiblingClosed(prNumber, closingIssues, mergedSiblings);
-  if (r1.proved) {
-    return {
-      proofRule: PROOF_RULES.LINKED_ISSUE_SIBLING,
-      supersederPr: r1.supersederPr,
-      reason: r1.reason,
-    };
-  }
-
-  // Rule 2 (SIBLING_MERGED) is quarantine evidence only — NOT an auto-close proof.
+  // SIBLING_MERGED is quarantine evidence only — NOT an auto-close proof.
   // Two PRs can legitimately reference the same issue (feature + tests, etc.);
   // "sibling merged + same issue" alone is not deterministic proof of redundancy.
   // The caller must use detectQuarantineEvidence() for suspicion-based quarantine.
 
-  // Rule 3: empty-diff (all changes already on main)
-  const r3 = proveEmptyDiff(pr);
-  if (r3.proved) {
+  // Rule 1: empty-diff (all changes already on main)
+  const r1 = proveEmptyDiff(pr);
+  if (r1.proved) {
     return {
       proofRule: PROOF_RULES.EMPTY_DIFF,
       supersederPr: null,
-      reason: r3.reason,
+      reason: r1.reason,
     };
   }
 
