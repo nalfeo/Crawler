@@ -34,10 +34,8 @@ import {
   type QueuedAssetCheckin,
 } from './checkin.js';
 import {
-  mergeCatalogs,
   mergeManifests,
   parseAssetIssueBody,
-  type CatalogEntry,
   type GeneratedManifest,
 } from './asset-issues.js';
 import { writeCatalogJson } from './catalog-io.js';
@@ -82,7 +80,6 @@ export const realExec: Exec = (command, args, options) =>
   });
 
 const MANIFEST_REL = path.join('public', 'assets', 'generated', 'manifest.json');
-const CATALOG_REL = path.join('src', 'shared', 'data', 'sprite-catalog.json');
 
 function readJsonSafe<T>(absPath: string, fallback: T): T {
   if (!existsSync(absPath)) return fallback;
@@ -160,17 +157,10 @@ export async function copyArtSurface(
   mkdirSync(path.dirname(destManifestPath), { recursive: true });
   await writeCatalogJson(destManifestPath, mergedManifest);
 
-  const destCatalogPath = path.join(destRepoRoot, CATALOG_REL);
-  const srcCatalogPath = path.join(srcRepoRoot, CATALOG_REL);
-  const destCatalog = readJsonSafe<CatalogEntry[]>(destCatalogPath, []);
-  const srcCatalog = readJsonSafe<CatalogEntry[]>(srcCatalogPath, []);
-  const catalogIds = new Set([...manifestKeys].map((key) => `generated:${key}`));
-  const overlayCatalog = srcCatalog.filter(
-    (entry) => typeof entry.id === 'string' && catalogIds.has(entry.id),
-  );
-  const mergedCatalog = mergeCatalogs(destCatalog, overlayCatalog);
-  mkdirSync(path.dirname(destCatalogPath), { recursive: true });
-  await writeCatalogJson(destCatalogPath, mergedCatalog);
+  // `src/shared/data/sprite-catalog.json` is deliberately NOT overlaid here.
+  // Generated rows are derived from the manifest at read time
+  // (src/shared/generated-catalog.ts), so a check-in touches exactly one shared
+  // committed JSON file instead of two — halving the art-conflict surface.
 }
 
 function makeReadManifest(repoRoot: string): () => Promise<CheckinManifest> {

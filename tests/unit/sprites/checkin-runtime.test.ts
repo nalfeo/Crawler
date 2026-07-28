@@ -129,19 +129,19 @@ describe('checkin-runtime copyArtSurface (selective projection)', () => {
     expect(manifest.entries['queued-var-1']).toBeUndefined();
   });
 
-  it('merges ONLY the unqueued catalog entry onto the worktree base, preserving its existing entries', async () => {
+  it('leaves the sprite catalog untouched, so an art check-in mutates only the manifest', async () => {
     seedSrc();
     seedDestBase();
+    const catalogPath = path.join(destRepoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
+    const catalogBefore = readFileSync(catalogPath, 'utf8');
     const deps = createDefaultCheckinDeps(srcRepoRoot);
 
     await deps.copyArtSurface(srcRepoRoot, destRepoRoot, [asset()]);
 
-    const catalog = JSON.parse(
-      readFileSync(path.join(destRepoRoot, 'src', 'shared', 'data', 'sprite-catalog.json'), 'utf8'),
-    ) as Array<{ id: string }>;
-    const ids = catalog.map((entry) => entry.id).sort();
-    expect(ids).toEqual(['generated:preexisting-var-0', 'generated:unqueued-var-2']);
-    expect(ids).not.toContain('generated:queued-var-1');
+    // Writing both the manifest and the catalog made every pair of parallel art
+    // check-ins conflict by construction. The catalog's `generated:` rows only
+    // restate manifest data, so the projection no longer touches them.
+    expect(readFileSync(catalogPath, 'utf8')).toBe(catalogBefore);
   });
 
   it('leaves manifest/catalog untouched when the asset has no manifestKey (still copies the PNG)', async () => {

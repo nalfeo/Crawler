@@ -244,11 +244,9 @@ describe('runQueueCommit (control flow)', () => {
     expect(
       line.some((l) => l === 'git worktree add /tmp/qc-xyz --detach refs/queue-commit/base-qc-xyz'),
     ).toBe(true);
-    expect(
-      line.some(
-        (l) => l === 'git add -- public/assets/generated src/shared/data/sprite-catalog.json',
-      ),
-    ).toBe(true);
+    // The sprite catalog is deliberately NOT staged: check-ins write only the
+    // manifest, so two art queue commits no longer conflict by construction.
+    expect(line.some((l) => l === 'git add -- public/assets/generated')).toBe(true);
     expect(line.some((l) => l === 'git diff --cached --quiet')).toBe(true);
     expect(line.some((l) => l.startsWith('git commit --no-verify -m'))).toBe(true);
     expect(
