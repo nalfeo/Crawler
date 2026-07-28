@@ -79,6 +79,27 @@ export function validateManifestSchema(manifestJson: unknown): ValidationResult 
   return { ok: false, issues };
 }
 
+/**
+ * Validate a manifest object that was produced by the generation CLI, where
+ * the pack `id` may be a not-yet-registered string (floor1-dungeon / floor1-cave
+ * are generated before their IDs are added to TERRAIN_PACK_IDS and manifests
+ * committed). All fields other than `id` are validated against the same strict
+ * schema as `validateManifestSchema`; only the `id` check is relaxed to accept
+ * any non-empty string.
+ */
+export function validateGenManifestSchema(manifestJson: unknown): ValidationResult {
+  const relaxedSchema = terrainPackDefSchema.extend({ id: z.string().min(1) });
+  const result = relaxedSchema.safeParse(manifestJson);
+  if (result.success) {
+    return { ok: true, issues: [] };
+  }
+  const issues = result.error.issues.map((issue: z.ZodIssue) => ({
+    code: 'schema',
+    message: `${issue.path.join('.')}: ${issue.message}`,
+  }));
+  return { ok: false, issues };
+}
+
 /** Validate the atlas PNG's dimensions match the manifest's declared grid + cell size. */
 export function validateAtlasDimensions(
   manifest: TerrainPackDef,
@@ -490,11 +511,79 @@ export function validatePoolAndDoorImages(
 }
 
 /**
- * Validate every `wallAccents[]` entry's imagePath: allowed root, exists,
- * decodes as PNG, and is EXACTLY the same 8×6×64px grid as `wallAutotile`
- * (2026-07-25 refinement #3 — accent atlases share the wall atlas's grid so
- * frame N of an accent overlays frame N of the wall for the same mask).
+ * Validate every `groundDecals[]` entry's imagePath: path must be within the
+ * allowed asset root, exist on disk, decode as PNG, and have dimensions
+ * exactly `cellPx * frames` wide by `cellPx` tall (horizontal sprite atlas).
+ * Path traversal (`..`) is rejected explicitly.
  */
+export function validateGroundDecalImages(
+  manifest: TerrainPackDef,
+  options: PoolImageValidationOptions,
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+
+  for (const decalSet of manifest.groundDecals ?? []) {
+    const context = `groundDecals[${decalSet.textureKey}]`;
+    const normalized = decalSet.imagePath.replace(/\\/g, '/');
+
+    if (normalized.includes('..')) {
+      fail(
+        issues,
+        'path-traversal',
+        `${context}: imagePath contains '..' (path traversal prevented): ${decalSet.imagePath}`,
+      );
+      continue;
+    }
+
+    if (!normalized.startsWith(ALLOWED_IMAGEPATH_PREFIX)) {
+      fail(
+        issues,
+        'path-not-in-allowed-root',
+        `${context}: imagePath '${decalSet.imagePath}' must start with '${ALLOWED_IMAGEPATH_PREFIX}'`,
+      );
+      continue;
+    }
+
+    const absPath = path.join(options.repoRoot, 'public', normalized);
+    let pngBytes: Buffer;
+    try {
+      pngBytes = readFileSync(absPath);
+    } catch (err) {
+      fail(
+        issues,
+        'image-missing',
+        `${context}: imagePath '${decalSet.imagePath}' could not be read at ${absPath}: ${String(err)}`,
+      );
+      continue;
+    }
+    let img: RgbaImage;
+    try {
+      img = decodePng(pngBytes);
+    } catch (err) {
+      fail(
+        issues,
+        'image-not-png',
+        `${context}: '${decalSet.imagePath}' could not be decoded as PNG: ${String(err)}`,
+      );
+      continue;
+    }
+
+    const expectedWidth = decalSet.cellPx * decalSet.frames;
+    const expectedHeight = decalSet.cellPx;
+    if (img.width !== expectedWidth || img.height !== expectedHeight) {
+      fail(
+        issues,
+        'image-wrong-size',
+        `${context}: '${decalSet.imagePath}' must be ${expectedWidth}×${expectedHeight} ` +
+          `(${decalSet.frames} frames × ${decalSet.cellPx}px), got ${img.width}×${img.height}`,
+      );
+    }
+  }
+
+  return { ok: issues.length === 0, issues };
+}
+
+
 export function validateWallAccentImagePaths(
   manifest: TerrainPackDef,
   options: PoolImageValidationOptions,

@@ -17,12 +17,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { decodePng, type RgbaImage } from '../png-buffer.js';
 import {
-  validateManifestSchema,
   validateAtlasDimensions,
   validateMaskCoverage,
   validateCompatibleBoundaries,
   validateWallAutotileImagePath,
   validatePoolAndDoorImages,
+  validateGenManifestSchema,
   type ValidationResult,
 } from '../validate.js';
 import type { TerrainPackDef } from '../../../../src/shared/terrain-pack-types.js';
@@ -161,7 +161,11 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const atlas = decodePng(atlasBytes);
   const typed = manifest as TerrainPackDef;
   return reportValidation(spec.id, [
-    validateManifestSchema(manifest),
+    // Use the gen-specific schema validator: the pack id ('floor1-dungeon',
+    // 'floor1-cave') is intentionally not yet in TERRAIN_PACK_IDS — these are
+    // generation targets that get registered once their manifests are committed.
+    // All non-id fields are validated against the same strict schema.
+    validateGenManifestSchema(manifest),
     validateAtlasDimensions(typed, atlas),
     validateMaskCoverage(typed),
     validateCompatibleBoundaries(typed, atlas, { minEdgePassRate: 1.0 }),

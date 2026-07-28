@@ -81,6 +81,21 @@ export function computeEdgeBandMeans(image: RgbaImage, bandPx = EDGE_BAND_PX): E
  * mirror axis (axes, for `flipHV`) is non-directional per
  * `DIRECTIONAL_ASYMMETRY_THRESHOLD`. Pure function of the image's pixels —
  * same input always yields the same allowed-transform list.
+ *
+ * **What this check guarantees:** Applying the returned transforms to a pool
+ * tile will not introduce obvious visual directionality artifacts (upside-down
+ * light sources, gravity-fed drips pointing the wrong way, etc.). Tiles that
+ * fail on an axis get a smaller allowed-transform set; the threshold is
+ * documented and not silently tuned.
+ *
+ * **What this check does NOT guarantee:** It does not prove pixel-exact seam
+ * continuity between a flipped tile and its unflipped neighbour. For shared-
+ * base pool tiles, seamlessness is guaranteed by a different mechanism: every
+ * variant's BORDER pixels are byte-restored from the canonical base
+ * (`floor-0`/`corridor-0`), so any pair of adjacent tiles always share the
+ * same border regardless of transform (see `validatePoolBorderConsistency`).
+ * This function is therefore complementary, not a substitute, for that
+ * structural seam-closure proof.
  */
 export function deriveAllowedTransforms(image: RgbaImage): TransformId[] {
   const means = computeEdgeBandMeans(image);

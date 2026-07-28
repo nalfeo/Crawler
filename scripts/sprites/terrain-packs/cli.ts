@@ -22,6 +22,7 @@ import {
   validateWallAccentTopology,
   validateCrossPackWallSilhouettes,
   validateVariantTransformEligibility,
+  validateGroundDecalImages,
 } from './validate.js';
 import { decodePng } from './png-buffer.js';
 import {
@@ -126,6 +127,7 @@ function runValidate(): void {
     // Pool/door image paths carry their own traversal checks internally.
     const poolResult = validatePoolAndDoorImages(manifest, { repoRoot });
     const accentPathResult = validateWallAccentImagePaths(manifest, { repoRoot });
+    const decalPathResult = validateGroundDecalImages(manifest, { repoRoot });
 
     // Now safe to read atlas bytes — path has been validated and confirmed safe above.
     const atlasRelPath = manifest.wallAutotile.imagePath.replace(/\\/g, '/');
@@ -133,7 +135,12 @@ function runValidate(): void {
     const atlasBytes = fs.readFileSync(atlasAbsPath);
     const result = validateTerrainPack(manifestJson, atlasBytes);
 
-    const allIssues = [...result.issues, ...poolResult.issues, ...accentPathResult.issues];
+    const allIssues = [
+      ...result.issues,
+      ...poolResult.issues,
+      ...accentPathResult.issues,
+      ...decalPathResult.issues,
+    ];
 
     // Wall-accent topology ("no spill") — only meaningful once paths/dims are
     // confirmed safe above; skip if the accent path validation already failed
@@ -156,10 +163,14 @@ function runValidate(): void {
     // Transform-eligibility ("seam closure") — only meaningful once pool
     // image paths/dims are confirmed safe above.
     if (poolResult.ok) {
-      for (const [label, pool] of [
-        ['floorPool', manifest.floorPool] as const,
-        ['corridorPool', manifest.corridorPool] as const,
-      ]) {
+      const poolsToCheck: Array<[string, typeof manifest.floorPool]> = [
+        ['floorPool', manifest.floorPool],
+        ['corridorPool', manifest.corridorPool],
+        ...Object.entries(manifest.specialFloorPools ?? {}).map(
+          ([key, pool]) => [`specialFloorPools.${key}`, pool] as [string, typeof manifest.floorPool],
+        ),
+      ];
+      for (const [label, pool] of poolsToCheck) {
         for (const variant of pool) {
           const variantAbsPath = path.join(
             repoRoot,
@@ -173,7 +184,7 @@ function runValidate(): void {
       }
     }
 
-    if (result.ok && poolResult.ok && accentPathResult.ok && allIssues.length === 0) {
+    if (result.ok && poolResult.ok && accentPathResult.ok && decalPathResult.ok && allIssues.length === 0) {
       console.log(`[${pack.id}] OK`);
       if ((RUNTIME_TERRAIN_PACK_IDS as readonly string[]).includes(pack.id)) {
         decodedPacks.push({ id: pack.id, manifest, wallAtlas });

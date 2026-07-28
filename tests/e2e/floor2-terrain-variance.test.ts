@@ -57,8 +57,12 @@ describe('Floor 2 terrain-cohesion render guard (industrial-cave shared-base poo
     expect(summary.packFloorCount, `summary=${JSON.stringify(summary)}`).toBeGreaterThan(0);
 
     // --- Base-dominant distribution ---
-    // `floor-0` (plain base, weight 10) and `floor-1` (quiet mottle, weight 8)
-    // are the calm ground; `floor-2..7` (weight 1 each) are sparse punctuation.
+    // The quiet-ground class has TWO members: `floor-0` (plain base, weight 10)
+    // and `floor-1` (quiet mottle, weight 8). Both are calm, seamless tiles that
+    // read as "background" — they are deliberately separated so seam-closure is
+    // provable for each independently. `floor-2..7` (weight 1 each) are sparse
+    // punctuation. The PR gate is therefore "quiet-ground CLASS (floor-0 +
+    // floor-1) covers 65–85% of floor tiles", not "floor-0 alone".
     const counts = summary.packFloorSourceCounts;
     const totalFloor = Object.values(counts).reduce((sum, n) => sum + n, 0);
     expect(totalFloor, `floor source counts=${JSON.stringify(counts)}`).toBeGreaterThan(0);
@@ -73,6 +77,16 @@ describe('Floor 2 terrain-cohesion render guard (industrial-cave shared-base poo
     expect(quietShare, `detail must not be starved out entirely; ${context_}`).toBeLessThanOrEqual(
       0.85,
     );
+
+    // Within the quiet class, `floor-0` (weight 10) must be the single most
+    // common variant — it is the border-match anchor for the shared-base pool
+    // and should appear more often than any other individual source.
+    const floor0Count = counts['floor-0'] ?? 0;
+    const floor1Count = counts['floor-1'] ?? 0;
+    expect(
+      floor0Count,
+      `floor-0 must be the single most common variant (weight 10 > floor-1 weight 8); ${context_}`,
+    ).toBeGreaterThan(floor1Count);
 
     // Every detail variant still reaches the real bake — a weight regression
     // that silently drops one would otherwise pass the band above.

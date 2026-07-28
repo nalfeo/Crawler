@@ -300,9 +300,14 @@ export type SpecialFloorPoolsDef = z.infer<typeof specialFloorPoolsSchema>;
  * larger than one cell and is positioned independently of the tile grid.
  *
  * Decals are stamped into the SAME terrain RenderTexture after the per-tile pass,
- * spanning `spanTiles`×`spanTiles` cells, only where the whole footprint is
- * eligible ground. Being an overlay they never modify a pool tile's border, so
- * the seamlessness contract is untouched.
+ * spanning `spanTiles`×`spanTiles` cells. The renderer **clips** rather than
+ * rejects: it stamps any decal whose center tile is eligible ground, then
+ * overpaints the surrounding wall tiles so the decal fades into geometry.
+ * Decals whose rotated AABB is only partially covered by eligible ground are
+ * therefore accepted and their out-of-bounds pixels are covered by the wall
+ * overpaint pass — the whole footprint is NOT required to be eligible ground.
+ * Being an overlay they never modify a pool tile's border, so the seamlessness
+ * contract is untouched.
  */
 const groundDecalSetSchema = z
   .object({

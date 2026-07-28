@@ -136,7 +136,7 @@ async function requestMaterialPng(
       });
     } catch (err) {
       lastError = new Error(`network error calling Azure images/generations: ${String(err)}`);
-      await sleep(retryDelayMs(attempt));
+      if (attempt < MAX_ATTEMPTS) await sleep(retryDelayMs(attempt));
       continue;
     }
 
@@ -148,12 +148,14 @@ async function requestMaterialPng(
         throw new Error(message);
       }
       lastError = new Error(message);
-      const waitMs = retryDelayMs(attempt, response, body);
-      console.warn(
-        `  throttled (${response.status}); retrying in ${Math.round(waitMs / 1000)}s ` +
-          `(attempt ${attempt}/${MAX_ATTEMPTS})`,
-      );
-      await sleep(waitMs);
+      if (attempt < MAX_ATTEMPTS) {
+        const waitMs = retryDelayMs(attempt, response, body);
+        console.warn(
+          `  throttled (${response.status}); retrying in ${Math.round(waitMs / 1000)}s ` +
+            `(attempt ${attempt}/${MAX_ATTEMPTS})`,
+        );
+        await sleep(waitMs);
+      }
       continue;
     }
 
