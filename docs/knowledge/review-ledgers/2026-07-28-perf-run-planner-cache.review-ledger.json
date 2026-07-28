@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "perf-run-planner-cache",
+  "task_title": "perf: cache estimateCurrentRunPlan on quest-state key",
+  "estimated_apples": 2,
+  "stages": {}
+}
