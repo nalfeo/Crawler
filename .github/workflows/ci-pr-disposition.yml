@@ -185,7 +185,8 @@ jobs:
                     supersederPr: Number((prProof.representedBy || [])[0]) || null,
                     reason: `coordinator-superseded fingerprint=${String(prProof.fingerprint || '').slice(0, 12)} represented-by=#${representedBy}`,
                   });
-                  await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: closeBody });
+                  try { await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: closeBody }); }
+                  catch (e) { core.warning(`createComment coordinator-close pr=#${pull.number}: ${e.message}`); }
                   await applyLifecycleDecision({
                     prNumber: pull.number,
                     currentPhase: null,
@@ -197,7 +198,8 @@ jobs:
                     addLabel: async (n, label) => { try { await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: [label] }); } catch (e) { core.warning(`addLabel pr=#${n} label=${label}: ${e.message}`); } },
                     removeLabel: async (n, label) => { try { await github.rest.issues.removeLabel({ owner, repo, issue_number: n, name: label }); } catch (e) { if (e.status !== 404) core.warning(`removeLabel pr=#${n} label=${label}: ${e.message}`); } },
                   });
-                  await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' });
+                  try { await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' }); }
+                  catch (e) { core.warning(`pulls.update close pr=#${pull.number}: ${e.message}`); }
                   closedPrNumbers.push(pull.number);
                   closedCount += 1;
                   core.notice(`closed-duplicate pr=#${pull.number} rule=coordinator-superseded represented-by=#${representedBy}`);
@@ -227,7 +229,8 @@ jobs:
 
               if (proof.proofRule) {
                 const closeBody = makeDuplicateCloseComment(pull.number, proof);
-                await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: closeBody });
+                try { await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: closeBody }); }
+                catch (e) { core.warning(`createComment proof-close pr=#${pull.number}: ${e.message}`); }
                 await applyLifecycleDecision({
                   prNumber: pull.number,
                   currentPhase: null,
@@ -239,7 +242,8 @@ jobs:
                   addLabel: async (n, label) => { try { await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: [label] }); } catch (e) { core.warning(`addLabel pr=#${n} label=${label}: ${e.message}`); } },
                   removeLabel: async (n, label) => { try { await github.rest.issues.removeLabel({ owner, repo, issue_number: n, name: label }); } catch (e) { if (e.status !== 404) core.warning(`removeLabel pr=#${n} label=${label}: ${e.message}`); } },
                 });
-                await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' });
+                try { await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' }); }
+                catch (e) { core.warning(`pulls.update close pr=#${pull.number}: ${e.message}`); }
                 closedPrNumbers.push(pull.number);
                 closedCount += 1;
                 core.notice(`closed-duplicate pr=#${pull.number} rule=${proof.proofRule} superseder=${proof.supersederPr ?? 'none'} reason=${proof.reason}`);
@@ -417,7 +421,11 @@ jobs:
 
               // Apply human-approval-required to block accidental merge while quarantined.
               if (!labelNames.includes(HUMAN_APPROVAL_LABEL)) {
-                await github.rest.issues.addLabels({ owner, repo, issue_number: pull.number, labels: [HUMAN_APPROVAL_LABEL] });
+                try {
+                  await github.rest.issues.addLabels({ owner, repo, issue_number: pull.number, labels: [HUMAN_APPROVAL_LABEL] });
+                } catch (e) {
+                  core.warning(`addLabel human-approval-required pr=#${pull.number}: ${e.message}`);
+                }
               }
 
               // Post the human-decision comment (KEEP / ABANDON).
@@ -426,7 +434,11 @@ jobs:
                 lastActivity: lastActivityIso || undefined,
                 thresholdDays: quarantineReason.startsWith('dead-session') ? ABANDON_THRESHOLD_DAYS : undefined,
               });
-              await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: quarantineBody });
+              try {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body: quarantineBody });
+              } catch (e) {
+                core.warning(`createComment quarantine pr=#${pull.number}: ${e.message}`);
+              }
 
               quarantinedPrNumbers.push(pull.number);
               quarantinedCount += 1;
@@ -439,14 +451,17 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            // Revival handler: scan quarantined PRs for owner KEEP or ABANDON commands.
+            // Revival handler: scan quarantined PRs for KEEP or ABANDON commands.
             //
             // Rules (acceptance criterion: "human-gated revival is exact-match"):
-            //   - Only the PR author/owner's standalone trimmed "KEEP" or "ABANDON" acts.
-            //   - Green CI, other authors, quoted text, or substrings do NOT trigger.
+            //   - Accepted from: PR opener (self-command), repo OWNER/MEMBER/COLLABORATOR,
+            //     trusted bots.  This ensures humans can act on Copilot-authored PRs.
+            //   - Commands must be the EXACT string "KEEP" or "ABANDON" (case-sensitive,
+            //     no substrings, no quoted text).
             //   - Commands must appear AFTER the most recent quarantine comment — prevents
             //     stale pre-quarantine commands from acting on a newly quarantined PR.
-            //   - KEEP → revive to QUEUED (remove quarantine + human-approval-required, add merge-train)
+            //   - KEEP → revive to QUEUED (remove quarantine, human-approval-required,
+            //     abandon-candidate so step 2 cannot re-quarantine on the next sweep)
             //   - ABANDON → close the PR permanently
             //
             // A revived PR re-enters the normal lifecycle cleanly with no orphaned fences.
@@ -465,6 +480,8 @@ jobs:
             const {
               parseDispositionCommand,
               QUARANTINE_COMMENT_MARKER,
+              TRUSTED_ASSOCIATIONS,
+              TRUSTED_BOT_LOGINS,
             } = await import(
               pathToFileURL(`${workspace}/.github/scripts/ci-recovery/state.mjs`).href
             );
@@ -472,6 +489,7 @@ jobs:
             const { owner, repo } = context.repo;
             const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED]; // 'ci-lifecycle-quarantined'
             const HUMAN_APPROVAL_LABEL = 'human-approval-required';
+            const ABANDON_CANDIDATE_LABEL = 'abandon-candidate';
 
             async function upsertLifecycleComment(prNumber, body) {
               const existingComments = await github.paginate(github.rest.issues.listComments, {
@@ -525,15 +543,23 @@ jobs:
               )[0];
               const quarantineTime = new Date(latestQuarantine.created_at).getTime();
 
-              // Find the LAST owner command posted after the quarantine comment.
+              // Find the LAST trusted command posted after the quarantine comment.
+              // Accept: PR opener (self-command), repo OWNER/MEMBER/COLLABORATOR, trusted bots.
+              // This mirrors the canonical isTrustedComment pattern used by reconcile.mjs
+              // and step 1 of this workflow — so a human OWNER can KEEP/ABANDON a Copilot PR.
               let command = null;
               for (const comment of comments) {
                 // Only consider commands strictly after the quarantine comment.
                 if (new Date(comment.created_at).getTime() <= quarantineTime) continue;
                 const authorLogin = String(comment.user?.login || '').toLowerCase();
-                if (authorLogin !== prOwnerLogin) continue;
+                const authorAssoc = String(comment.author_association || '').toUpperCase();
+                const isTrusted =
+                  authorLogin === prOwnerLogin ||
+                  TRUSTED_ASSOCIATIONS.has(authorAssoc) ||
+                  TRUSTED_BOT_LOGINS.has(authorLogin);
+                if (!isTrusted) continue;
                 const parsed = parseDispositionCommand(comment.body);
-                if (parsed) command = parsed; // last owner command wins
+                if (parsed) command = parsed; // last trusted command wins
               }
 
               if (!command) continue;
@@ -552,19 +578,27 @@ jobs:
                   addLabel: async (n, label) => { try { await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: [label] }); } catch (e) { core.warning(`addLabel pr=#${n} label=${label}: ${e.message}`); } },
                   removeLabel: async (n, label) => { try { await github.rest.issues.removeLabel({ owner, repo, issue_number: n, name: label }); } catch (e) { if (e.status !== 404) core.warning(`removeLabel pr=#${n} label=${label}: ${e.message}`); } },
                 });
-                // Also remove human-approval-required if present (quarantine placed it).
+                // Also remove human-approval-required and abandon-candidate if present
+                // (quarantine placed them; failing to remove abandon-candidate would cause
+                //  step 2 to re-quarantine this PR on the very next sweep run).
                 const labelNames = (pull.labels || []).map((l) => l.name);
-                if (labelNames.includes(HUMAN_APPROVAL_LABEL)) {
-                  try {
-                    await github.rest.issues.removeLabel({ owner, repo, issue_number: pull.number, name: HUMAN_APPROVAL_LABEL });
-                  } catch (e) {
-                    if (e.status !== 404) core.warning(`removeLabel human-approval-required pr=#${pull.number}: ${e.message}`);
+                for (const labelToRemove of [HUMAN_APPROVAL_LABEL, ABANDON_CANDIDATE_LABEL]) {
+                  if (labelNames.includes(labelToRemove)) {
+                    try {
+                      await github.rest.issues.removeLabel({ owner, repo, issue_number: pull.number, name: labelToRemove });
+                    } catch (e) {
+                      if (e.status !== 404) core.warning(`removeLabel ${labelToRemove} pr=#${pull.number}: ${e.message}`);
+                    }
                   }
                 }
-                await github.rest.issues.createComment({
-                  owner, repo, issue_number: pull.number,
-                  body: `<!-- crawler-ci-disposition:v1 -->\nPR revived by owner comment \`KEEP\`. Re-entering normal lifecycle as \`queued\`.`,
-                });
+                try {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: pull.number,
+                    body: `<!-- crawler-ci-disposition:v1 -->\nPR revived by owner comment \`KEEP\`. Re-entering normal lifecycle as \`queued\`.`,
+                  });
+                } catch (e) {
+                  core.warning(`createComment KEEP revival pr=#${pull.number}: ${e.message}`);
+                }
                 revivedCount += 1;
                 core.notice(`revived pr=#${pull.number} command=KEEP owner=${prOwnerLogin}`);
               } else if (command === 'ABANDON') {
@@ -581,11 +615,19 @@ jobs:
                   addLabel: async (n, label) => { try { await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: [label] }); } catch (e) { core.warning(`addLabel pr=#${n} label=${label}: ${e.message}`); } },
                   removeLabel: async (n, label) => { try { await github.rest.issues.removeLabel({ owner, repo, issue_number: n, name: label }); } catch (e) { if (e.status !== 404) core.warning(`removeLabel pr=#${n} label=${label}: ${e.message}`); } },
                 });
-                await github.rest.issues.createComment({
-                  owner, repo, issue_number: pull.number,
-                  body: `<!-- crawler-ci-disposition:v1 -->\nPR closed by owner comment \`ABANDON\`.`,
-                });
-                await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' });
+                try {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: pull.number,
+                    body: `<!-- crawler-ci-disposition:v1 -->\nPR closed by owner comment \`ABANDON\`.`,
+                  });
+                } catch (e) {
+                  core.warning(`createComment ABANDON pr=#${pull.number}: ${e.message}`);
+                }
+                try {
+                  await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' });
+                } catch (e) {
+                  core.warning(`pulls.update ABANDON pr=#${pull.number}: ${e.message}`);
+                }
                 abandonedCount += 1;
                 core.notice(`abandoned pr=#${pull.number} command=ABANDON owner=${prOwnerLogin}`);
               }

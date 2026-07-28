@@ -6,23 +6,46 @@
   "estimated_apples": 4,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A: event-driven (rejected: higher GitHub Actions complexity, event ordering with batch sweeps). Alt B: git/patch-based proof only (rejected: LINKED_ISSUE_SIBLING + EMPTY_DIFF cover the real incident cases without per-PR compare calls). Alt C: quarantine-only (rejected: empty-diff auto-close is provably correct and reduces human load). Blocking concerns addressed: (1) revival anchored to post-quarantine comments; (2) EMPTY_DIFF uses pulls.get not list; (3) scope expanded to all open non-terminated PRs; (4) SIBLING_MERGED demoted to quarantine evidence not auto-close. Non-blocking: pagination fixed; stale trigger requires closed issue; pathToFileURL used. divergence=minor (design unchanged, 4 blocking defects corrected)."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "gpt-5.3-codex",
+            "claude-sonnet-4.6",
+            "gpt-5.4"
+          ],
+          "concerns_count": 3,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
     }
   }
 }
