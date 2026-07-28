@@ -1,5 +1,16 @@
 [
   {
+    "commit": "55e8e4d1c24cc8c65fb46e959284a5a6f0b05646",
+    "commitDate": "2026-07-28T21:05:36Z",
+    "commitSubject": "fix(theme-equipment): cap collection-cohesion contact sheet at one tile per item (#2225)",
+    "capturedAt": "2026-07-28T22:12:02.778Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30399866380",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/55e8e4d1c24cc8c65fb46e959284a5a6f0b05646.json"
+  },
+  {
     "commit": "d34daf6adb40201fce02f92bf5993223209eb990",
     "commitDate": "2026-07-28T19:41:53Z",
     "commitSubject": "fix(ci): remove deprecated claude-sonnet-4.5 model references (#2210)",
