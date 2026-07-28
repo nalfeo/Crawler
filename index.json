@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ba7e5eb296d89b67e79126e45829d8009fd7bc35",
+    "commitDate": "2026-07-28T21:35:25Z",
+    "commitSubject": "feat(sprites): add missing v2 floor-plate tile briefs (#2226)",
+    "capturedAt": "2026-07-28T22:41:20.564Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30401831865",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/ba7e5eb296d89b67e79126e45829d8009fd7bc35.json"
+  },
+  {
     "commit": "55e8e4d1c24cc8c65fb46e959284a5a6f0b05646",
     "commitDate": "2026-07-28T21:05:36Z",
     "commitSubject": "fix(theme-equipment): cap collection-cohesion contact sheet at one tile per item (#2225)",
