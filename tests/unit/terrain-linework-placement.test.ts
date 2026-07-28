@@ -21,12 +21,17 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   planLinework,
+  LINEWORK_BURIED,
   LINEWORK_EMPTY,
   LINEWORK_WALL_ENTRY,
   type LineworkHub,
   type LineworkLayerParams,
   type LineworkPlanRequest,
 } from '../../src/shared/terrain-linework.js';
+import {
+  EDGE_WANG_DIRECTIONS,
+  EDGE_WANG_OPPOSITE_BIT,
+} from '../../src/shared/terrain-pack-mask.js';
 import type { TerrainPackDef } from '../../src/shared/terrain-pack-types.js';
 
 const MIN_LONG_RUNS = 6;
@@ -109,6 +114,47 @@ function request(layerId: string, floorSeed: number): LineworkPlanRequest {
 
 const LAYER_IDS = (manifest.linework ?? []).map((l) => l.id);
 
+/** Layer ids in the order the renderer plans them: track owns the surface. */
+const ORDERED_LAYER_IDS = [...(manifest.linework ?? [])]
+  .sort((a, b) => (a.kind === 'track' ? 0 : 1) - (b.kind === 'track' ? 0 : 1))
+  .map((l) => l.id);
+
+function kindOf(layerId: string): string {
+  return (manifest.linework ?? []).find((l) => l.id === layerId)?.kind ?? '';
+}
+
+/**
+ * Plan every layer the way the renderer does: in track-first order, each layer
+ * seeing the accumulated occupancy of the ones before it, and pipes burying
+ * themselves under it.
+ *
+ * Planning layers in isolation would make `renderRuns` identical to `runs` and
+ * the visible-network gate below would prove nothing.
+ */
+function planFloor(floorSeed: number): { id: string; plan: ReturnType<typeof planLinework> }[] {
+  const { routable, wall } = buildSyntheticMap();
+  const taken = new Uint8Array(MAP_SIZE * MAP_SIZE);
+  const planned: { id: string; plan: ReturnType<typeof planLinework> }[] = [];
+  for (const id of ORDERED_LAYER_IDS) {
+    const plan = planLinework({
+      width: MAP_SIZE,
+      height: MAP_SIZE,
+      routable,
+      wall,
+      avoid: taken,
+      buryUnder: kindOf(id) === 'pipe' ? Uint8Array.from(taken) : undefined,
+      hubs: HUBS,
+      floorSeed,
+      params: paramsFor(id),
+    });
+    for (let i = 0; i < plan.occupancy.length; i++) {
+      if ((plan.occupancy[i] ?? LINEWORK_EMPTY) !== LINEWORK_EMPTY) taken[i] = 1;
+    }
+    planned.push({ id, plan });
+  }
+  return planned;
+}
+
 describe('planLinework placement gate', () => {
   it('ships the layers this suite guards', () => {
     expect(LAYER_IDS.length).toBeGreaterThan(0);
@@ -120,21 +166,89 @@ describe('planLinework placement gate', () => {
       let longRuns = 0;
       let total = 0;
       let nearHub = 0;
-      for (const id of LAYER_IDS) {
-        const plan = planLinework(request(id, floorSeed));
-        longRuns += plan.runs.filter((r) => r.tileCount >= MIN_RUN_TILES).length;
-        total += plan.tileCount;
-        nearHub += plan.hubTileCount;
+      // Measured on the VISIBLE network. Gating on the topological runs would
+      // let burial fragment a 40-tile pipe into four stubs while the numbers
+      // stayed green, because the route is still one route underground.
+      for (const { plan } of planFloor(floorSeed)) {
+        longRuns += plan.renderRuns.filter((r) => r.tileCount >= MIN_RUN_TILES).length;
+        for (const run of plan.renderRuns) {
+          total += run.tileCount;
+          nearHub += run.hubTileCount;
+        }
       }
       expect(total).toBeGreaterThan(0);
       expect(
         longRuns,
-        `seed ${floorSeed}: only ${longRuns} runs of >= ${MIN_RUN_TILES} tiles`,
+        `seed ${floorSeed}: only ${longRuns} visible runs of >= ${MIN_RUN_TILES} tiles`,
       ).toBeGreaterThanOrEqual(MIN_LONG_RUNS);
       expect(
         nearHub / total,
         `seed ${floorSeed}: concentration ${(nearHub / total).toFixed(3)}`,
       ).toBeGreaterThanOrEqual(MIN_CONCENTRATION);
+    }
+  });
+
+  it('sinks pipe runs under the track they cross rather than drawing over it', () => {
+    const floorSeed = 2026;
+    const planned = planFloor(floorSeed);
+    const track = planned.find((p) => kindOf(p.id) === 'track');
+    const pipe = planned.find((p) => kindOf(p.id) === 'pipe');
+    expect(track, 'floor must ship a track layer').toBeDefined();
+    expect(pipe, 'floor must ship a pipe layer').toBeDefined();
+
+    let crossings = 0;
+    for (let i = 0; i < pipe!.plan.occupancy.length; i++) {
+      const onTrack = (track!.plan.renderOccupancy[i] ?? LINEWORK_EMPTY) !== LINEWORK_EMPTY;
+      const onPipe = (pipe!.plan.occupancy[i] ?? LINEWORK_EMPTY) !== LINEWORK_EMPTY;
+      if (!onTrack || !onPipe) continue;
+      crossings++;
+      // The whole point of the burial pass: at a shared tile the pipe is BELOW
+      // grade, so nothing of it is drawn there.
+      expect(
+        pipe!.plan.renderOccupancy[i],
+        `pipe still drawn on track tile ${i % MAP_SIZE},${Math.floor(i / MAP_SIZE)}`,
+      ).toBe(LINEWORK_BURIED);
+    }
+    expect(crossings, 'synthetic floor produced no crossings to guard').toBeGreaterThan(0);
+    expect(pipe!.plan.buriedCount).toBeGreaterThanOrEqual(crossings);
+  });
+
+  it('never leaves a visible tile with no visible connection', () => {
+    // A tile whose neighbours all went under would otherwise be stamped with the
+    // empty frame 0 — an invisible hole in the middle of a run.
+    for (const floorSeed of [3, 2026]) {
+      for (const { id, plan } of planFloor(floorSeed)) {
+        for (let i = 0; i < plan.renderOccupancy.length; i++) {
+          const cell = plan.renderOccupancy[i] ?? LINEWORK_EMPTY;
+          if (cell === LINEWORK_EMPTY || cell === LINEWORK_BURIED) continue;
+          expect(
+            plan.renderMasks[i],
+            `${id} seed ${floorSeed}: stranded tile at ${i % MAP_SIZE},${Math.floor(i / MAP_SIZE)}`,
+          ).not.toBe(0);
+        }
+      }
+    }
+  });
+
+  it('keeps the visible masks reciprocal after burial', () => {
+    for (const { id, plan } of planFloor(77)) {
+      for (let i = 0; i < plan.renderMasks.length; i++) {
+        const mask = plan.renderMasks[i] ?? 0;
+        if (!mask) continue;
+        const tx = i % MAP_SIZE;
+        const ty = Math.floor(i / MAP_SIZE);
+        for (const { bit, dx, dy, dir } of EDGE_WANG_DIRECTIONS) {
+          if (!(mask & bit)) continue;
+          const nx = tx + dx;
+          const ny = ty + dy;
+          expect(nx >= 0 && ny >= 0 && nx < MAP_SIZE && ny < MAP_SIZE).toBe(true);
+          const neighbour = plan.renderMasks[ny * MAP_SIZE + nx] ?? 0;
+          expect(
+            neighbour & EDGE_WANG_OPPOSITE_BIT[dir],
+            `${id}: one-sided join at ${tx},${ty} -> ${dir}`,
+          ).not.toBe(0);
+        }
+      }
     }
   });
 

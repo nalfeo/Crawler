@@ -443,7 +443,7 @@
         "textureKey": "terrain-pack-industrial-cave-linework-pipe-props",
         "cellPx": 64,
         "frameStart": 3,
-        "frames": 1,
+        "frames": 3,
         "orientToRun": false,
         "density": 0.03
       }
