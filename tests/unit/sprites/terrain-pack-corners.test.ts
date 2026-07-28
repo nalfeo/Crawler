@@ -50,7 +50,15 @@ import {
   type RgbaImage,
 } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 import { deriveTemplateCellMasks } from '../../../scripts/sprites/terrain-packs/build-caeles-fixture.js';
-import { restyleWallAtlas } from '../../../scripts/sprites/terrain-packs/rebuild-shared-base-pools.js';
+import {
+  processWallAccents,
+  restyleWallAtlas,
+} from '../../../scripts/sprites/terrain-packs/rebuild-shared-base-pools.js';
+import {
+  WALL_OPACITY_THRESHOLD,
+  isFullyOpaqueWallAlpha,
+  isWallAlpha,
+} from '../../../scripts/sprites/terrain-packs/wall-opacity.js';
 import {
   BLOB47_CANONICAL_MASKS,
   MASK_BIT,
@@ -400,7 +408,7 @@ describe('rounded cave corners', () => {
     // while the wall body a little further in is still solid.
     const size = cellSize();
     const inset = Math.round(size * 0.1875); // WALL_INSET_PX / TERRAIN_PACK_CELL_PX
-    expect(alphaAt(0, inset, inset)).toBeLessThan(128);
+    expect(alphaAt(0, inset, inset)).toBeLessThan(WALL_OPACITY_THRESHOLD);
     expect(alphaAt(0, Math.floor(size / 2), Math.floor(size / 2))).toBe(255);
   });
 
@@ -562,8 +570,8 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
           const py = row * CELL_PX + y;
           const a = atlas.data[(py * atlas.width + px) * 4 + 3]!;
           total += 1;
-          if (a >= 128) opaque += 1;
-          bits.push(a >= 128 ? '1' : '0');
+          if (isWallAlpha(a)) opaque += 1;
+          bits.push(isWallAlpha(a) ? '1' : '0');
         }
       }
       if (opaque === total) solid += 1;
@@ -579,9 +587,62 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
       const accent = decodePng(readFileSync(accentPath));
       let spill = 0;
       for (let i = 3; i < canonical.data.length; i += 4) {
-        if (accent.data[i]! !== 0 && canonical.data[i]! < 128) spill += 1;
+        if (accent.data[i]! !== 0 && !isWallAlpha(canonical.data[i]!)) spill += 1;
       }
       expect(spill, `${path.basename(accentPath)} spills outside the wall`).toBe(0);
+    }
+  });
+
+  it('processWallAccents clips accent pixels that spill outside the fully-opaque silhouette', () => {
+    // Hermetic: runs against an ISOLATED COPY of the pack. Corrupting the
+    // committed accent would race every other suite that reads it.
+    const tempPack = mkdtempSync(path.join(tmpdir(), 'terrain-pack-'));
+    try {
+      const sourcePack = path.join(repoRoot(), ...INDUSTRIAL_CAVE_DIR);
+      for (const entry of readdirSync(sourcePack)) {
+        copyFileSync(path.join(sourcePack, entry), path.join(tempPack, entry));
+      }
+
+      const accentFiles = readdirSync(tempPack)
+        .filter((f) => f.startsWith('accent-') && f.endsWith('.png'))
+        .sort();
+      expect(accentFiles.length).toBeGreaterThan(0);
+      const accentFile = accentFiles[0]!;
+
+      // The canonical silhouette is a pure function of the mask set. A pixel
+      // where the canonical alpha is < 255 is outside the fully-opaque wall
+      // zone — exactly the zone processWallAccents clips against.
+      const canonical = composeCanonicalAtlas();
+      let spillIndex = -1;
+      for (let i = 3; i < canonical.data.length; i += 4) {
+        if (!isFullyOpaqueWallAlpha(canonical.data[i]!)) {
+          spillIndex = i;
+          break;
+        }
+      }
+      expect(spillIndex, 'canonical silhouette must have at least one non-fully-opaque pixel').toBeGreaterThan(-1);
+
+      // Paint a visible spill pixel in the accent.
+      const accent = decodePng(readFileSync(path.join(tempPack, accentFile)));
+      accent.data[spillIndex - 3] = 200;
+      accent.data[spillIndex - 2] = 200;
+      accent.data[spillIndex - 1] = 200;
+      accent.data[spillIndex] = 255;
+      writeFileSync(path.join(tempPack, accentFile), encodePng(accent));
+
+      const repaired = processWallAccents(tempPack).find((f) =>
+        f.relPath.endsWith(accentFile),
+      );
+      expect(repaired, 'processWallAccents must emit a repaired file when a spill exists').toBeDefined();
+
+      const repairedImg = decodePng(repaired!.bytes);
+      let spill = 0;
+      for (let i = 3; i < canonical.data.length; i += 4) {
+        if (repairedImg.data[i]! !== 0 && !isFullyOpaqueWallAlpha(canonical.data[i]!)) spill += 1;
+      }
+      expect(spill, 'processWallAccents must clip all accent pixels outside the fully-opaque silhouette').toBe(0);
+    } finally {
+      rmSync(tempPack, { recursive: true, force: true });
     }
   });
 });

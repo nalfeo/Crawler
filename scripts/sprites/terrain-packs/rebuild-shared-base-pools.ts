@@ -204,16 +204,16 @@ const ACCENT_CHROMA_TOLERANCE = 1;
  * an accent stopping a pixel short of the curve — invisible at play scale, and
  * accents are restrained interior detail by design anyway.
  */
-export function processWallAccents(): readonly WrittenFile[] {
+export function processWallAccents(packDir: string = PACK_DIR): readonly WrittenFile[] {
   const wall = composeCanonicalSilhouetteAtlas();
   const out: WrittenFile[] = [];
   const files = fs
-    .readdirSync(PACK_DIR)
+    .readdirSync(packDir)
     .filter((f) => f.startsWith('accent-') && f.endsWith('.png'))
     .sort();
 
   for (const file of files) {
-    const rel = path.join(PACK_DIR, file);
+    const rel = path.join(packDir, file);
     const img = decodePng(fs.readFileSync(rel));
     if (img.width !== wall.width || img.height !== wall.height) {
       throw new Error(

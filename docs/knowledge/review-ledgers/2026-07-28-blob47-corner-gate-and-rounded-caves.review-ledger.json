@@ -3,7 +3,7 @@
   "date": "2026-07-28",
   "session_slug": "blob47-corner-gate-and-rounded-caves",
   "task_title": "Close blob47 corner-coverage blind spot, round cave corners, and stop the wall silhouette self-perpetuating",
-  "estimated_apples": 4,
+  "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
