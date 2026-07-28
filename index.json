@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0857cc2c6a00ea821035fca10abb698896178120",
+    "commitDate": "2026-07-27T16:12:14-07:00",
+    "commitSubject": "fix(ci): correct stale latent-backlog expectation greening main (#2131)",
+    "capturedAt": "2026-07-28T00:23:09.657Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30313921107",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/0857cc2c6a00ea821035fca10abb698896178120.json"
+  },
+  {
     "commit": "5f11f52d74eef021abc36e35f23eb5c16b41f879",
     "commitDate": "2026-07-27T11:42:27Z",
     "commitSubject": "fix: add INDEX.md to .prettierignore to fix Docs Update Loop CI (#2078)",
