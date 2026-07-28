@@ -184,3 +184,41 @@ Screenshots are in the session `files/visual-review/` dir (not committed).
   do. Don't double-bump.
 - The scratch set and `_seed-scratch.ts` were deleted before PR; re-seed a fresh
   scratch set if you need to re-verify — never `run-phase` a real set mid-review.
+
+## Rebase resolution vs PR #2119 (`nalfeo-theme-set-index`) — READ BEFORE RESOLVING THE renderer.mjs CONFLICT
+
+PR #2119 touches the **same Run-label region** of `renderer.mjs` and will conflict
+with Change 5 on rebase. #2119 adds a pair of **client-side** helpers:
+
+- `function runPhaseWork()` — a hand-maintained re-implementation of
+  `isThemeSetItemResolvedForPhase` inside the renderer (its own handoff admits the
+  first version counted the wrong items: "rejected items plus items with zero
+  artifacts" instead of the runner's `isThemeSetItemResolvedForPhase`).
+- `function runPhaseLabel()` (**zero-arg**) — calls `runPhaseWork()`, returns
+  `'Dispatching…'` while `busy`.
+
+Change 5 supersedes both with the **server-computed** plan: `planRunPhase(state)`
+(in `theme-equipment-set.ts`, sharing the real predicate) → exposed as
+`state.runPhase` → consumed by our `runPhaseLabel(plan, phase)`. A second copy of
+the resolution rule in the renderer is exactly the drift hazard that made the Run
+label lie in the first place.
+
+**Correct resolution — do NOT keep both:**
+
+1. **Delete** #2119's `runPhaseWork()` and its zero-arg `runPhaseLabel()` entirely.
+   Keep our `runPhaseLabel(plan, phase)` (reads `state.runPhase`) and the
+   `esc(runPhaseLabel(state.runPhase, state.phase))` button binding.
+2. Keep the conditional `.judge-hint` guidance line and its `.judge-hint` CSS.
+3. `grep` the renderer for any remaining call to the deleted zero-arg helpers —
+   there must be none. Also confirm no other #2119 code references `runPhaseWork`.
+4. Minor UX delta: #2119's label returned `'Dispatching…'` while `busy`; ours does
+   not (the button already carries the `disabled` attr when `busy`, so it is
+   functionally inert — no regression). Do not reintroduce a client-side predicate
+   to restore that text; if the "Dispatching…" affordance is wanted, add a `busy`
+   branch to our `runPhaseLabel(plan, phase)` — it must not recompute the plan.
+5. Re-run `node --check .github/extensions/theme-equipment-review/renderer.mjs`,
+   `npm run verify:fast`, and the live judge-only verification (scratch set) after
+   the rebase, since the label path is what's being touched.
+
+As of 2026-07-27 #2119 was OPEN/BLOCKED (auto-merge not armed), so no conflict
+existed yet; this note is for whoever performs the eventual rebase.
