@@ -335,3 +335,116 @@ describe('deriveTemplateCellMasks', () => {
     }
   });
 });
+
+describe('rounded cave corners', () => {
+  const kit = generateQuadrantKit();
+
+  /** Alpha of the composed silhouette for `mask` at cell-space (x, y). */
+  function alphaAt(mask: number, x: number, y: number): number {
+    const cell = composeWallCellOutput(mask, kit);
+    return cell.data[(y * cell.width + x) * 4 + 3]!;
+  }
+
+  function cellSize(): number {
+    return composeWallCellOutput(255, kit).width;
+  }
+
+  it('rounds the exposed convex corner of an isolated wall cell', () => {
+    // Mask 0 has no neighbours, so all four of its corners are `open`: the two
+    // inset lines meet inside the cell and there is nothing to seam against.
+    // Rounding means the extreme inset corner pixel is now (mostly) cut away
+    // while the wall body a little further in is still solid.
+    const size = cellSize();
+    const inset = Math.round(size * 0.1875); // WALL_INSET_PX / TERRAIN_PACK_CELL_PX
+    expect(alphaAt(0, inset, inset)).toBeLessThan(128);
+    expect(alphaAt(0, Math.floor(size / 2), Math.floor(size / 2))).toBe(255);
+  });
+
+  it('produces anti-aliased (partial-alpha) pixels along every rounded arc', () => {
+    // A hard-edged 90-degree notch yields only 0 or 255. Partial alpha is the
+    // observable signature of the arc, and is what makes the curve survive the
+    // downscale to final tile size.
+    for (const mask of [0, 15]) {
+      const cell = composeWallCellOutput(mask, kit);
+      let partial = 0;
+      for (let i = 3; i < cell.data.length; i += 4) {
+        const a = cell.data[i]!;
+        if (a > 0 && a < 255) partial += 1;
+      }
+      expect(partial).toBeGreaterThan(0);
+    }
+  });
+
+  it('leaves mask 255 completely solid — no corner is rounded away', () => {
+    // 255 is wall on all sides AND all diagonals, so every one of its corners
+    // must meet a neighbouring wall flush. Rounding it would punch a visible
+    // pinhole at every interior 4-cell junction of a solid rock mass.
+    const cell = composeWallCellOutput(255, kit);
+    for (let i = 3; i < cell.data.length; i += 4) {
+      expect(cell.data[i]).toBe(255);
+    }
+  });
+
+  it('keeps single-cardinal insets straight so connected walls seam cleanly', () => {
+    // Mask 1 (N only) is inset off E/S/W but reaches the N edge. The inset line
+    // on each side must run perfectly straight all the way to y=0, because the
+    // wall cell to the north continues it. Rounding the wall END here would
+    // pinch the join at every straight wall run.
+    const size = cellSize();
+    const inset = Math.round(size * 0.1875);
+    // Sample the vertical inset line on the west side, from the top edge down
+    // past the corner radius. Wall starts at x === inset, so x-1 is floor and
+    // x is wall, at every y in the band the rounding could have reached.
+    for (let y = 0; y < inset * 2; y += 1) {
+      expect(alphaAt(1, inset - 1, y)).toBe(0);
+      expect(alphaAt(1, inset + 1, y)).toBe(255);
+    }
+  });
+
+  it('scoops the concave corner all the way through the corner sample square', () => {
+    // The corner-coverage gate samples the outer 9% of the cell at each corner
+    // and requires a `concave` corner to read FLOOR. The quarter-disc bite has
+    // radius = inset, and the sample square's far diagonal is inset*0.48*sqrt(2)
+    // away, so the whole square is inside the arc. Assert it directly rather
+    // than trusting the arithmetic.
+    const size = cellSize();
+    const sample = Math.ceil(size * 0.09);
+    // Mask 15 = N|E|S|W with no diagonals → all four corners are `concave`.
+    for (let y = 0; y < sample; y += 1) {
+      for (let x = 0; x < sample; x += 1) {
+        expect(alphaAt(15, x, y)).toBe(0);
+        expect(alphaAt(15, size - 1 - x, y)).toBe(0);
+        expect(alphaAt(15, x, size - 1 - y)).toBe(0);
+        expect(alphaAt(15, size - 1 - x, size - 1 - y)).toBe(0);
+      }
+    }
+  });
+
+  it('never touches the cardinal edge sample band', () => {
+    // AUTHORED_EDGE_SAMPLING excludes the outer 25% of each edge and samples a
+    // 15%-thick band. Rounding lives entirely in the outer 18.75% corner boxes,
+    // so for every mask the sampled span of a present cardinal must be fully
+    // opaque and of an absent cardinal fully transparent — i.e. edge coverage
+    // still depends ONLY on the cardinal bit, which is the tiling invariant.
+    const size = cellSize();
+    const lo = Math.ceil(size * 0.25);
+    const hi = Math.floor(size * 0.75);
+    const band = Math.floor(size * 0.15);
+    for (const mask of BLOB47_CANONICAL_MASKS) {
+      const cell = composeWallCellOutput(mask, kit);
+      const at = (x: number, y: number) => cell.data[(y * cell.width + x) * 4 + 3]!;
+      const north = (mask & MASK_BIT.N) !== 0 ? 255 : 0;
+      const south = (mask & MASK_BIT.S) !== 0 ? 255 : 0;
+      const west = (mask & MASK_BIT.W) !== 0 ? 255 : 0;
+      const east = (mask & MASK_BIT.E) !== 0 ? 255 : 0;
+      for (let i = lo; i < hi; i += 1) {
+        for (let d = 0; d < band; d += 1) {
+          expect(at(i, d)).toBe(north);
+          expect(at(i, size - 1 - d)).toBe(south);
+          expect(at(d, i)).toBe(west);
+          expect(at(size - 1 - d, i)).toBe(east);
+        }
+      }
+    }
+  });
+});

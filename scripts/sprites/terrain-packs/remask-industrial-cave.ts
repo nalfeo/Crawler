@@ -83,8 +83,8 @@ function meanOpaqueRgb(
  * Pure transform: stencil the generated atlas with the corrected procedural
  * per-mask silhouettes. No filesystem access.
  */
-export function remaskIndustrialCaveAtlas(shippedAtlasPng: Buffer): RemaskResult {
-  const atlas = decodePng(shippedAtlasPng);
+export function remaskIndustrialCaveAtlas(sourceAtlasPng: Buffer): RemaskResult {
+  const atlas = decodePng(sourceAtlasPng);
   const quadrantKit = generateQuadrantKit();
   const framesNeedingFill: number[] = [];
   let clearedPixels = 0;
@@ -124,6 +124,28 @@ export function remaskIndustrialCaveAtlas(shippedAtlasPng: Buffer): RemaskResult
   return { atlas: encodePng(atlas), report: { framesNeedingFill, clearedPixels } };
 }
 
+/**
+ * Build-time INPUT: the raw Azure-generated rock atlas, before any masking.
+ *
+ * Every cell of this image is textured edge to edge, so it is a strict superset
+ * of any silhouette we could ever want to cut from it. Always re-masking from
+ * here (rather than from the already-masked shipped atlas) makes the operation
+ * idempotent and — critically — lets the silhouette geometry GROW as well as
+ * shrink. Re-masking a masked atlas can only ever remove more rock, so a
+ * geometry change that needs texture where the previous mask was transparent
+ * would leave holes.
+ *
+ * It lives outside `public/` so this ~300KB build-time-only input is never
+ * served to clients.
+ */
+const SOURCE_ATLAS_REL_PATH = path.join(
+  'assets-src',
+  'terrain-packs',
+  'industrial-cave',
+  'wall-atlas-generated.png',
+);
+
+/** Shipped OUTPUT: the masked atlas the runtime loads. */
 const ATLAS_REL_PATH = path.join(
   'public',
   'assets',
@@ -133,9 +155,9 @@ const ATLAS_REL_PATH = path.join(
 );
 
 export function writeRemaskedIndustrialCaveAtlas(repoRoot: string): RemaskReport {
-  const atlasPath = path.join(repoRoot, ATLAS_REL_PATH);
-  const { atlas, report } = remaskIndustrialCaveAtlas(fs.readFileSync(atlasPath));
-  fs.writeFileSync(atlasPath, atlas);
+  const sourcePath = path.join(repoRoot, SOURCE_ATLAS_REL_PATH);
+  const { atlas, report } = remaskIndustrialCaveAtlas(fs.readFileSync(sourcePath));
+  fs.writeFileSync(path.join(repoRoot, ATLAS_REL_PATH), atlas);
   return report;
 }
 
