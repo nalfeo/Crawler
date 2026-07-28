@@ -15,7 +15,7 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
-import { MERGE_TRAIN_EMPTY_INCIDENT_MARKER } from '../ci-recovery/markers.mjs';
+import { MERGE_TRAIN_EMPTY_INCIDENT_MARKER as EMPTY_TRAIN_INCIDENT_MARKER } from '../ci-recovery/markers.mjs';
 import { coordinationEnforcementEnabled } from '../ci-conflict-coordinator/state.mjs';
 import { ciConflictOrderReasonForPromotion } from './ci-conflict-order.mjs';
 import {
