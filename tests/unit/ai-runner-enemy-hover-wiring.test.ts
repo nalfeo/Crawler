@@ -11,6 +11,10 @@ describe('AI runner paused enemy hover wiring', () => {
     expect(source).toContain('const syncPausedEnemyHoverTooltip = (): void => {');
     expect(source).toContain('const simulationPaused = scene?.isSimulationPaused?.() ?? isPaused;');
     expect(source).toContain('resolveEnemyDisplayName(world, eid)');
+    expect(source).toContain('.setDepth(UI_DEPTH_CUTOFF)');
+    expect(source).not.toMatch(
+      /const ensurePausedEnemyHoverText = \(\): Phaser\.GameObjects\.Text \| null => \{[\s\S]*?getCamera\('ui'\)[\s\S]*?pausedEnemyHoverText[\s\S]*?return pausedEnemyHoverText;/,
+    );
     expect(source).toContain('`eid: ${hoveredEnemy.eid}\\n`');
     expect(source).toContain('`health: ${hoveredEnemy.currentHp}/${hoveredEnemy.maxHp}`');
     expect(source).toContain('syncPausedEnemyHoverTooltip();');

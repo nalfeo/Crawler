@@ -75,7 +75,7 @@ import {
   getQuestDef,
   objectiveTarget,
 } from '../../shared/quest-types.js';
-import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
+import { UI_DEPTH_CUTOFF, WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt } from '../../shared/units.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -1741,12 +1741,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           padding: { x: 8, y: 6 },
           lineSpacing: 4,
         })
-        .setDepth(WORLD_VFX_DEPTH.debugPath + 10)
+        .setDepth(UI_DEPTH_CUTOFF)
         .setScrollFactor(0)
         .setVisible(false);
-      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
-        pausedEnemyHoverText,
-      );
     }
     return pausedEnemyHoverText;
   };
