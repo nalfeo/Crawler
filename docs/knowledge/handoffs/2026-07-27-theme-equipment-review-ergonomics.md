@@ -10,13 +10,14 @@ sprite-workflow
 
 ## Summary
 
-Five ergonomics fixes to the theme-equipment review canvas
+Six ergonomics fixes to the theme-equipment review canvas
 (`.github/extensions/theme-equipment-review/`) and the durable review state
 machine (`scripts/sprites/theme-equipment-set.ts`). The maintainer was being
 stalled by a treadmill: approving the set-level "collection" and then reviewing
 items one at a time silently wiped the collection approval, and there was no way
 to bulk-approve or hand-edit a brief. A fifth fix closes the loop so bulk-approve
-no longer dead-ends at a locked Advance with no explanation.
+no longer dead-ends at a locked Advance with no explanation; a sixth scopes the
+phase advancement controls to the active phase's own tab.
 
 ## The changes
 
@@ -89,6 +90,14 @@ collectionJudgeMissing`, "Re-judge collection cohesion on GitHub" when the judge
    generates it (regenerating nothing). The label is derived from the same
    computation as the work it triggers, so it can never overstate the work.
 
+6. **Phase advancement controls scoped to the active phase's own tab.** The Run /
+   "Approve remaining" / Advance controls, the gate-blocker list, and the
+   `.judge-hint` guidance previously rendered regardless of which phase tab was
+   being viewed (they effectively lived on the roster page). The renderer now
+   gates the entire phase-controls block on `selectedPhase === state.phase`, so a
+   maintainer viewing a non-active tab sees the items for that phase but no
+   advancement affordances — the controls always sit on the tab they act on.
+
 ## Bug caught by rule-#9 canvas verification (422 preview)
 
 While verifying Save-and-Approve in the running canvas, the new `r1` brief preview
@@ -158,6 +167,11 @@ Screenshots are in the session `files/visual-review/` dir (not committed).
   no backticks introduced into the renderer template literal, label/guidance
   escaped and `state.runPhase` null-guarded, guidance predicate matches the label
   it references.
+  **code_review** (round 3, gpt-5.6-terra): reviewed Change 6 (tab-scoped
+  advancement controls) + the #2119 merge resolution. 1 Medium finding: a stale
+  #2119 renderer test asserted the deleted client-side predicate
+  (`work.withArtifacts ? 'Regenerate' : 'Generate'`) — retargeted to the surviving
+  server-plan label `'Judge collection cohesion on GitHub'`. Otherwise clean.
 - Ledger: `docs/knowledge/review-ledgers/2026-07-27-theme-equipment-review-ergonomics.review-ledger.json`
   (validates, exit 0).
 
@@ -292,3 +306,54 @@ regenerates nothing once all resolved).
 **When #2119 eventually merges:** git will see these store changes as already-applied
 (same commit content), so the merge/rebase is a no-op for them — no re-resolution
 needed. Only re-check that no NEW #2119 renderer code references the deleted helpers.
+
+### FOLLOW-UP (2026-07-28) — #2119 merged to `main`; `origin/main` merged into this branch
+
+PR #2119 (`nalfeo-theme-set-index`) merged to `main` (`f34efc79a`). `origin/main` was
+merged into this branch (commit `6931571e7`) rather than rebased — PR #2138
+squash-merges, so branch history is irrelevant to the final tree and a single merge
+commit is far safer than replaying 16 commits. Auto-merge results:
+
+- **`theme-equipment-set.ts` + `scripts/sprites/store/**` auto-merged cleanly.** Both
+feature sets survived: my four functions (`planApproveRemaining`,
+`approveRemainingThemeSetPhase`, `applyEditedThemeSetBrief`, `planRunPhase`) AND
+#2119's store-layer CAS (revision-conflict + `conditionalWrites === 'atomic'` gate)
+  are both present. Because the earlier cherry-pick already carried #2119's store
+  content, git saw it as already-applied — no store re-resolution.
+- **`renderer.mjs` conflict resolved exactly as documented above:** kept my whole
+  renderer (server-plan-driven `runPhaseLabel(plan, phase)`), deleted #2119's
+  client-side `runPhaseWork()` / zero-arg `runPhaseLabel()` / `PHASE_NOUNS`, preserved
+  #2119's separate `dispatchNotice` banner. `bridge.mjs`: unioned #2119's
+  `cliEntryResolvers` with my `SERIALIZED_ACTIONS`. `theme-equipment-set.test.ts`
+  add/add and the review-ledger add/add resolved by keeping both sides.
+- **Stale #2119 renderer test retargeted** (`renderer.test.mjs` line 16): it asserted
+  the deleted client-side predicate; now asserts the surviving server-plan label
+  `'Judge collection cohesion on GitHub'`. Committed `e04ec2133`.
+- `node --check renderer.mjs` OK; extension tests pass (renderer 10, bridge 8,
+  server 16, cli-bundle 10 — run each file individually via `node --test <path>`, a
+  dir-level run gives a spurious `MODULE_NOT_FOUND`); sprites vitest
+  `--project sprites theme-equipment` 117 pass; `verify:fast` green.
+
+**Post-merge live re-verification (rule #9, fresh Azure reads — NOT cache):** with the
+cache-policy fix now on-branch via the merge, panels read fresh durable state, closing
+the stale-snapshot hazard on this branch.
+
+- **Live set `classic-fantasy-basic-leather`** — fresh CLI read: azure-blob **rev 85**,
+  phase `briefs`, all 18 items `up`, `collectionJudge` PRESENT (score 4),
+  `humanReview` up, `bulkApprove.count=0`, `runPhase.regenerateCount=0`. The maintainer
+  has since used the new tools; the set is now Advance-ready. Playwright DOM at the
+  live panel matched exactly: Run "Re-judge collection cohesion on GitHub",
+  Approve-remaining absent (count 0), **Advance enabled**, gate blockers `[]`, 18 up —
+  the exact success state this work targeted (rev 85 > reviewer's earlier stale rev 83
+  → cache fix confirmed active). Evidence:
+  `files/visual-review/postmerge-live-rev85-advance-unlocked.png`.
+- **Change 5 judge-missing case, re-verified against a fresh durable read** (reviewer
+  requirement #3): seeded a scratch set `scratch-judge-missing` (azure-blob rev 1: 18
+  items `up`, `collectionJudge: null`, `humanReview` verdict null, phase `briefs`).
+  Fresh CLI read confirmed judge MISSING / all resolved. Playwright DOM: Run label
+  **"Judge collection cohesion on GitHub"** (not "Regenerate 0 …"), the conditional
+  `.judge-hint` guidance line present, Approve-remaining absent (count 0), Advance
+  **blocked** with gate blocker "Collection judge score is missing for phase
+  'briefs'". Asserted against the fresh rev-1 read, not cache. Evidence:
+  `files/visual-review/postmerge-scratch-judge-missing-label.png`. Scratch set + temp
+  seed/delete scripts removed after verification.
