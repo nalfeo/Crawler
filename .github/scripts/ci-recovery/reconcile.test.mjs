@@ -13447,3 +13447,55 @@ test('converged PR (ARM_AUTO_MERGE) skips loop-incident close when no incident e
   );
   assert.equal(closeCalls.length, 0, 'must not PATCH any issue when no loop incident exists');
 });
+
+// Regression: merged-PR cleanup path.
+//
+// Simulates the race where closeLoopIncident failed at the ARM_AUTO_MERGE
+// convergence point and the PR then merged.  The pull_request_target:closed
+// trigger reaches reconcile with pr.state='merged', hits the early-exit block,
+// and must close the incident there before exiting.
+test('merged PR event closes an open loop incident even when ARM_AUTO_MERGE path already exited', async (t) => {
+  const loopIncidentIssue = {
+    number: 503,
+    title: `CI recovery loop: PR #${PR_NUM}`,
+    body: '<!-- crawler-pr-loop-incident:v1 -->\nLoop incident that was not closed at convergence.',
+    pull_request: undefined,
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'merged' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    // Loop incident list and close routes:
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [loopIncidentIssue] }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/503`]: () => ({ body: { number: 503 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  // The script exits 0 (the merged-PR skip path is a clean exit).
+  if (!assertSuccessfulExit(t, code, stderr, 'merged-pr loop-incident cleanup', true)) return;
+
+  assert.match(
+    stdout,
+    /loop-incident-closed pr=#42 issue=#503 reason=pr-merged/,
+    'merged-PR path must close the open loop incident',
+  );
+
+  const closeCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/503`,
+  );
+  assert.ok(closeCall, 'must PATCH the loop incident issue to close it');
+  assert.equal(closeCall.body?.state, 'closed', 'state must be closed');
+  assert.equal(closeCall.body?.state_reason, 'completed', 'state_reason must be completed');
+});

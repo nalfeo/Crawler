@@ -1101,6 +1101,32 @@ if (pr.state !== 'open') {
   if (labelExists || staleOwningState || hasPrLabel(labelName)) {
     stopIfReleaseConvergedElsewhere(await release(`pr-${pr.state}`));
   }
+  // Merged/closed PR cleanup: close any open loop-incident that was not
+  // already closed at the ARM_AUTO_MERGE convergence point (e.g. a transient
+  // API failure at that call site).  Non-fatal: skip on error so the label
+  // cleanup and process.exit path are never blocked.
+  if (live) {
+    try {
+      const closeResult = await closeLoopIncident({
+        request,
+        paginate,
+        token: pat,
+        owner,
+        repo,
+        prNumber,
+      });
+      if (closeResult.action === 'closed') {
+        process.stdout.write(
+          `loop-incident-closed pr=#${prNumber} issue=#${closeResult.issueNumber} reason=pr-${pr.state}\n`,
+        );
+      }
+    } catch (err) {
+      const safeMsg = String(err.message || err)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 500);
+      process.stderr.write(`loop-incident-close-failed pr=#${prNumber} err=${safeMsg}\n`);
+    }
+  }
   process.stdout.write(`skip pr=#${prNumber} state=${pr.state}\n`);
   process.exit(0);
 }
