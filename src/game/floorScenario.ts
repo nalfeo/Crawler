@@ -30,7 +30,11 @@ import {
   type StampedSetPieceNpc,
 } from '../core/map/stampSetPiece.js';
 import { carveConnectorToReachable, carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
-import { getSetPieceDef, getSetPieceFootprint } from '../shared/set-piece-types.js';
+import {
+  getSetPieceDef,
+  getSetPieceFootprint,
+  isStructuralSetPieceProp,
+} from '../shared/set-piece-types.js';
 import {
   Position,
   Rotation,
@@ -1946,16 +1950,17 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // instances on `world.setPieceProps` — NOT ECS entities — so they layer over
   // the baked terrain and around the NPCs without consuming entity ids or
   // entering the collision grid: no effect on collision, pathing, RNG, or
-  // balance. Wall/door-kind props are SKIPPED: under the prefab-room model the
-  // carved terrain layer is authoritative for walls/doors, so re-drawing them as
-  // sprites would double-render/z-fight the baked tiles. Their role is purely to
-  // define the shell in the def (composition gate + door-tile source of truth).
+  // balance. Wall/door-kind props are SKIPPED via the shared
+  // `isStructuralSetPieceProp` predicate: under the prefab-room model the carved
+  // terrain layer is authoritative for walls/doors, so re-drawing them as sprites
+  // would double-render/z-fight the baked tiles. Their role is purely to define
+  // the shell in the def (composition gate + door-tile source of truth). The
+  // predicate is shared with the Set Piece Lab so a preview cannot drift from
+  // what actually ships.
   if (welcomeStamp) {
     const welcomeDef = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
     const structuralPropIds = new Set(
-      (welcomeDef?.props ?? [])
-        .filter((prop) => prop.kind === 'wall' || prop.kind === 'door')
-        .map((prop) => prop.id),
+      (welcomeDef?.props ?? []).filter(isStructuralSetPieceProp).map((prop) => prop.id),
     );
     for (const stampedProp of welcomeStamp.props) {
       if (stampedProp.render.label && structuralPropIds.has(stampedProp.render.label)) {

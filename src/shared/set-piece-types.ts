@@ -78,6 +78,35 @@ export const PROP_KIND_Z: Readonly<Record<SetPiecePropKind, number>> = Object.fr
   actor: 50,
 });
 
+/**
+ * Prop kinds whose visual is owned by the CARVED TERRAIN LAYER, not by the prop.
+ *
+ * Under the prefab-room model a `kind:'wall'` / `kind:'door'` prop exists in the
+ * def to define the shell — it is the composition gate's wall ring and map-gen's
+ * door-tile source of truth — but it must NEVER be rendered as a sprite. The
+ * generator has already written STONE_WALL / DOOR tiles at those coordinates, so
+ * drawing the prop on top double-renders and z-fights the baked tile with
+ * (typically stock placeholder) art.
+ *
+ * Every renderer that stamps a set piece MUST filter on this predicate. It is
+ * shared rather than duplicated because the Set Piece Lab drifted from the real
+ * game on exactly this rule and spent a full session presenting a blue-grey
+ * Kenney wall ring that the game does not draw — laundering a wrong image as
+ * visual evidence.
+ */
+export const STRUCTURAL_PROP_KINDS: readonly SetPiecePropKind[] = Object.freeze([
+  'wall',
+  'door',
+] as const);
+
+/**
+ * True when a prop's visual comes from carved terrain and the prop must not be
+ * rendered. See {@link STRUCTURAL_PROP_KINDS}.
+ */
+export function isStructuralSetPieceProp(prop: { readonly kind: SetPiecePropKind }): boolean {
+  return STRUCTURAL_PROP_KINDS.includes(prop.kind);
+}
+
 export type SpriteSourceKind = 'catalog' | 'sheet' | 'custom';
 
 /** Reuse an existing sprite-catalog entry. */
