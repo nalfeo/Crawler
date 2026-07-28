@@ -254,6 +254,10 @@ export function evaluateReport(report, options = {}) {
           'proved nothing -- check for `// Stryker disable` comments or excluded mutators in range.',
     );
   }
+  // Separate check from `valid === 0`: even in a mixed report (e.g. Killed +
+  // Ignored), the Ignored mutants were never applied, so a range containing
+  // `// Stryker disable` comments can silently escape coverage.  Fail loudly
+  // regardless of how many other mutants were killed.
   if (counts.ignored > 0) {
     failures.push(
       `${counts.ignored} mutant(s) were IGNORED and never applied. The run may cover only part of the ` +
