@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2f7a66a9e5ceb16c21dd8611ead4612c0e605234",
+    "commitDate": "2026-07-28T08:07:40Z",
+    "commitSubject": "feat(terrain): rebuild Floor 2 terrain on a shared base with weighted pools and cross-tile ground decals (#2164)",
+    "capturedAt": "2026-07-28T09:22:26.824Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30342159637",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/2f7a66a9e5ceb16c21dd8611ead4612c0e605234.json"
+  },
+  {
     "commit": "4a7200bf08a65d816c219924234ae895806ad881",
     "commitDate": "2026-07-28T06:19:51Z",
     "commitSubject": "fix(ci): publish docs-update PRs with PAT auth (#2155)",
