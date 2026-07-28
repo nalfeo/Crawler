@@ -15,6 +15,7 @@ import {
   canAdvanceThemeSet,
   loadThemeEquipmentSetState,
   planApproveRemaining,
+  planRunPhase,
   saveThemeEquipmentSetState,
   themeEquipmentSetPlanSchema,
   themeEquipmentSetStateKey,
@@ -283,6 +284,7 @@ export function presentState(state: ThemeEquipmentSetState): Record<string, unkn
     ...state,
     gate: advance,
     bulkApprove: planApproveRemaining(state),
+    runPhase: planRunPhase(state),
     coverage: {
       weaponTypes: [...weaponTypes].sort(),
       weaponTypeCount: weaponTypes.size,

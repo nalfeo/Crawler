@@ -23,6 +23,14 @@
           "resolved_count": 1,
           "clean": true,
           "notes": "code-review agent traced all four fixes + the 422 patch, ran tsc/node --check/affected unit tests (92+7 pass). No significant issues: verdict-change never mutates artifacts so the narrowed invalidation is sound; approve-remaining label+action share one predicate, empty batch = no write, all null->up preserve set-level review, single CAS; save-and-approve validates (enableJudge+validateBriefYaml, no disk write) before writing to a NEW revision key so a failed CAS never corrupts the live brief; renderer label derived from planApproveRemaining; 422 fix normalizes backslashes without over-matching. One trivial non-blocking finding: a duplicated `if (!setId)` 409 guard in lib/server.mjs (190-197) — removed."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Change 5 (honest judge-only Run label): new pure planRunPhase in theme-equipment-set.ts derives {regenerateCount, judgeOnly, collectionJudgeMissing} from the SAME isThemeSetItemResolvedForPhase predicate the pipeline (runThemeEquipmentSetPhase) uses, so the label can never overstate the work; presentState exposes runPhase; renderer runPhaseLabel composes the button text (regenerate N + judge / 'Judge collection cohesion' / 'Re-judge collection cohesion') and a conditional .judge-hint guidance line renders only when judgeOnly && collectionJudgeMissing. Reviewer confirmed: down/null items count as regenerations and frozen/up do not; TS phase-narrowing correct; no backticks introduced into the renderer template literal (node --check clean); label/guidance HTML-escaped and state.runPhase null-guarded; guidance predicate matches the label it references; 5 new unit tests adequate. No significant issues found."
         }
       ]
     }

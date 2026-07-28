@@ -984,8 +984,55 @@ export function approveRemainingThemeSetPhase(input: unknown): ThemeSetBulkAppro
 }
 
 /**
- * Applies a hand-edited brief as a new immutable brief revision, then approves
- * the item — in one mutation. Editing a brief changes artifact *content*, so
+ * A read-only description of what a `run-phase` dispatch would do RIGHT NOW,
+ * derived from the same resolution predicate the pipeline uses
+ * (`isThemeSetItemResolvedForPhase`) so the canvas label can never lie about
+ * the work. A run always (re)generates every currently-unresolved item and then
+ * judges the whole collection exactly once (see `runThemeEquipmentSetPhase`);
+ * when nothing is unresolved the run regenerates nothing and only produces the
+ * collection judge — which is exactly the state that otherwise dead-ends the
+ * maintainer at Advance (`collectionJudge` is required by `canAdvanceThemeSet`).
+ */
+export interface ThemeSetRunPhasePlan {
+  /** Current phase, or `null` when the set is not in a reviewable phase. */
+  readonly phase: ThemeEquipmentSetReviewPhase | null;
+  /** Number of items a run would (re)generate — every non-resolved item. */
+  readonly regenerateCount: number;
+  /** True when a run regenerates nothing and would only judge the collection. */
+  readonly judgeOnly: boolean;
+  /** True when the current phase has no collection judge yet (blocks Advance). */
+  readonly collectionJudgeMissing: boolean;
+}
+
+/**
+ * Pure plan for the `run-phase` control in the current phase. Never mutates.
+ * Drives the Run button's truthful label and the "a run is required to produce
+ * the collection judge" guidance — both derived from this one computation so the
+ * label matches the work (mirrors `planApproveRemaining`). Returns a `phase:null`
+ * empty plan for non-review phases or unparseable input.
+ */
+export function planRunPhase(input: unknown): ThemeSetRunPhasePlan {
+  const parsed = themeEquipmentSetStateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { phase: null, regenerateCount: 0, judgeOnly: false, collectionJudgeMissing: false };
+  }
+  const state = parsed.data;
+  if (!isReviewPhase(state.phase)) {
+    return { phase: null, regenerateCount: 0, judgeOnly: false, collectionJudgeMissing: false };
+  }
+  const phase = state.phase;
+  const regenerateCount = state.items.filter(
+    (item) => !isThemeSetItemResolvedForPhase(item, phase),
+  ).length;
+  return {
+    phase,
+    regenerateCount,
+    judgeOnly: regenerateCount === 0,
+    collectionJudgeMissing: state.phases[phase].collectionJudge === null,
+  };
+}
+
+/**
  * (unlike a verdict change) it MUST invalidate the set-level briefs review: the
  * collection judgment and human sign-off were formed against the old brief text.
  *

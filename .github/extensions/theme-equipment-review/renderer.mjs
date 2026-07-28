@@ -46,6 +46,7 @@ export function renderHtml(bootstrap) {
     .bulk-skips { margin: 8px 0 0; font-size: 13px; }
     .bulk-skips ul { margin: 4px 0 0; padding-left: 20px; color: var(--text-color-muted,#8b949e); }
     .gate-list { margin: 8px 0 0; padding-left: 20px; }
+    .judge-hint { margin: 8px 0 0; padding: 8px 10px; font-size: 13px; border-radius: 6px; background: rgba(210,153,34,0.12); border: 1px solid rgba(210,153,34,0.4); }
     .spinner { padding: 40px; text-align: center; color: var(--text-color-muted,#8b949e); }
     label { display: block; margin: 10px 0 0; font-weight: 600; }
     label .muted { font-weight: 400; }
@@ -73,6 +74,18 @@ export function renderHtml(bootstrap) {
     let busy = false;
     let lastBulkResult = null;
     const BULK_NOUNS = { roster: 'items', briefs: 'briefs', 'sprite-sheets': 'sheets', 'variant-approval': 'items' };
+    // Truthful Run-button label, derived from the SAME server plan (state.runPhase,
+    // computed via planRunPhase) that describes the work a run-phase dispatch does:
+    // a run regenerates every unresolved item and always judges the collection once.
+    // When nothing is unresolved it regenerates nothing and only produces the judge —
+    // so the label must say "judge", not "regenerate 0", or it lies about the work.
+    function runPhaseLabel(plan, phase) {
+      if (!plan || plan.phase === null) return 'Run / rerun unresolved items on GitHub';
+      if (plan.regenerateCount > 0) {
+        return 'Regenerate ' + plan.regenerateCount + ' unresolved ' + (BULK_NOUNS[phase] || 'items') + ' + judge on GitHub';
+      }
+      return plan.collectionJudgeMissing ? 'Judge collection cohesion on GitHub' : 'Re-judge collection cohesion on GitHub';
+    }
     const app = document.querySelector('#app');
     const phases = ['roster','briefs','sprite-sheets','variant-approval','complete'];
     const MIN_WEAPON_TYPES = 5;
@@ -396,11 +409,12 @@ export function renderHtml(bootstrap) {
         '</section>' : '') +
         '<section class="panel"><div class="panel-head"><div><strong>Phase controls</strong><div class="muted">Approved items remain frozen; rejected items alone regenerate.</div></div>' +
         '<div class="controls">' +
-          (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>Run / rerun unresolved items on GitHub</button>' : '') +
+          (state.phase !== 'complete' ? '<button data-dispatch="run-phase" ' + (busy ? 'disabled' : '') + '>' + esc(runPhaseLabel(state.runPhase, state.phase)) + '</button>' : '') +
           (state.phase !== 'complete' && state.bulkApprove && state.bulkApprove.count > 0 ? '<button class="primary" data-approve-remaining ' + (busy || selectedPhase !== state.phase ? 'disabled' : '') + '>Approve remaining ' + state.bulkApprove.count + ' ' + esc(BULK_NOUNS[state.phase] || 'items') + '</button>' : '') +
           (state.phase !== 'complete' ? '<button data-advance ' + (!state.gate.canAdvance || busy ? 'disabled' : '') + '>Advance to ' + esc(state.gate.toPhase || 'next phase') + '</button>' : '') +
           (state.phase === 'complete' && state.publication.status === 'held' ? '<button data-dispatch="publish" ' + (busy ? 'disabled' : '') + '>Publish complete set atomically on GitHub</button>' : '') +
           '<button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div></div>' +
+          (state.phase !== 'complete' && state.runPhase && state.runPhase.judgeOnly && state.runPhase.collectionJudgeMissing ? '<div class="judge-hint">Every item in this phase is approved, but the collection judge is missing — Advance stays locked until it lands. Click <strong>' + esc(runPhaseLabel(state.runPhase, state.phase)) + '</strong> to generate it (it regenerates nothing).</div>' : '') +
           (lastBulkResult && lastBulkResult.skipped && lastBulkResult.skipped.length ? '<div class="bulk-skips"><strong>Skipped ' + lastBulkResult.skipped.length + ':</strong><ul>' + lastBulkResult.skipped.map(s => '<li>' + esc(s.reason) + '</li>').join('') + '</ul></div>' : '') +
           (!state.gate.canAdvance && state.gate.reasons.length ? '<ul class="gate-list">' + state.gate.reasons.map(r => '<li>' + esc(r.message) + '</li>').join('') + '</ul>' : '') +
         '</section>' +

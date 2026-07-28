@@ -10,14 +10,15 @@ sprite-workflow
 
 ## Summary
 
-Four ergonomics fixes to the theme-equipment review canvas
+Five ergonomics fixes to the theme-equipment review canvas
 (`.github/extensions/theme-equipment-review/`) and the durable review state
 machine (`scripts/sprites/theme-equipment-set.ts`). The maintainer was being
 stalled by a treadmill: approving the set-level "collection" and then reviewing
 items one at a time silently wiped the collection approval, and there was no way
-to bulk-approve or hand-edit a brief.
+to bulk-approve or hand-edit a brief. A fifth fix closes the loop so bulk-approve
+no longer dead-ends at a locked Advance with no explanation.
 
-## The four changes
+## The changes
 
 1. **An up-vote no longer invalidates the collection.** `applyThemeSetItemReview`
    previously reset `state.phases[phase]` (both `collectionJudge` and set-level
@@ -65,6 +66,29 @@ to bulk-approve or hand-edit a brief.
    `state.bulkApprove.count` (`planApproveRemaining`) — the **same predicate** the
    action uses, so the label can't diverge from what the button does.
 
+5. **Honest judge-only Run label + guidance (closes the bulk-approve dead-end).**
+   Bulk-approving every item leaves the phase in a state where every item is `up`
+   but the phase's `collectionJudge` is still `null` — and `canAdvanceThemeSet`
+   requires `collectionJudge.score >= 3`, so **Advance stays locked with no
+   on-screen explanation** (the exact "I approved everything but there's no
+   continue button" dead-end that motivated this whole work item). A `run-phase`
+   dispatch fixes it because `runThemeEquipmentSetPhase` executes every
+   _unresolved_ item and then judges the collection exactly once — so when nothing
+   is unresolved a run **regenerates nothing and only produces the judge**. But the
+   Run button used to read "Run / rerun unresolved items on GitHub", which lies in
+   that state. New pure `planRunPhase(state)` returns
+   `{ phase, regenerateCount, judgeOnly, collectionJudgeMissing }` derived from the
+   **same** `isThemeSetItemResolvedForPhase` predicate the pipeline uses;
+   `presentState` exposes it as `runPhase`. The renderer's `runPhaseLabel` composes
+   the button text from that plan — "Regenerate N unresolved … + judge" when work
+   remains, **"Judge collection cohesion on GitHub"** when `judgeOnly &&
+collectionJudgeMissing`, "Re-judge collection cohesion on GitHub" when the judge
+   already exists — and a conditional `.judge-hint` line renders only in the
+   judge-missing state, telling the maintainer every item is approved but the
+   collection judge is missing, Advance is locked until it lands, and clicking Run
+   generates it (regenerating nothing). The label is derived from the same
+   computation as the work it triggers, so it can never overstate the work.
+
 ## Bug caught by rule-#9 canvas verification (422 preview)
 
 While verifying Save-and-Approve in the running canvas, the new `r1` brief preview
@@ -95,6 +119,15 @@ the running canvas with Playwright:
   `r1` brief preview renders the hand-edited YAML with no 422
   (`verify-05-save-approve-persisted-r1.png`).
 - Invalid-YAML failure contract: exit 1, no store write, no revision bump.
+- **(d)** Change 5 (judge-only Run label): seeded a second local scratch set
+  `scratch-judge-only` (all items `up`, `collectionJudge: null`, phase `roster`).
+  In the running canvas the Run button read **"Judge collection cohesion on
+  GitHub"** (not "Regenerate 0 …"), the conditional guidance line rendered
+  ("Every item in this phase is approved, but the collection judge is missing —
+  Advance stays locked until it lands. Click Judge collection cohesion on GitHub
+  to generate it (it regenerates nothing)."), Advance was disabled, and the gate
+  list showed only "Collection judge score is missing for phase 'roster'" —
+  `change5-judge-only-run-label.png`.
 
 Screenshots are in the session `files/visual-review/` dir (not committed).
 
@@ -102,7 +135,8 @@ Screenshots are in the session `files/visual-review/` dir (not committed).
 
 - `tests/unit/sprites/theme-equipment-set.test.ts` — narrowed invalidation,
   approve-remaining (skips, empty-batch no-write, set-preservation, single bump),
-  save-and-approve brief mutation. (55 pass)
+  save-and-approve brief mutation, **`planRunPhase` (5 tests: unresolved counts,
+  judge-only, re-judge, non-review phase)**. (60 pass)
 - `tests/unit/sprites/load-brief.test.ts` — `validateBriefYaml` (32 pass).
 - `tests/unit/sprites/theme-equipment-review-cli.test.ts` — approve-remaining +
   save-and-approve CLI, and a **backslash-uri preview regression test** for the 422
@@ -116,17 +150,24 @@ Screenshots are in the session `files/visual-review/` dir (not committed).
 - **plan_review** (gpt-5.4): 5 concerns (all in Change 3), all resolved — Change 3
   re-architected from in-place overwrite to a proper new-revision artifact mutation.
   `plan_divergence: major_fork`.
-- **code_review** (claude-sonnet-4.6): clean, 1 trivial finding (duplicated
-  `if (!setId)` 409 guard in `lib/server.mjs`) fixed.
+- **code_review** (round 1, claude-sonnet-4.6): clean, 1 trivial finding
+  (duplicated `if (!setId)` 409 guard in `lib/server.mjs`) fixed.
+  **code_review** (round 2, gpt-5.6-sol): clean — reviewed Change 5; confirmed
+  `planRunPhase`'s `regenerateCount` matches the pipeline's unresolved-item set,
+  no backticks introduced into the renderer template literal, label/guidance
+  escaped and `state.runPhase` null-guarded, guidance predicate matches the label
+  it references.
 - Ledger: `docs/knowledge/review-ledgers/2026-07-27-theme-equipment-review-ergonomics.review-ledger.json`
   (validates, exit 0).
 
 ## Files
 
-- `scripts/sprites/theme-equipment-set.ts` — Changes 1, 2, 3 state logic.
+- `scripts/sprites/theme-equipment-set.ts` — Changes 1, 2, 3 state logic +
+  Change 5 `planRunPhase`.
 - `scripts/sprites/theme-equipment-brief.ts` (new) — shared brief helpers.
 - `scripts/sprites/theme-equipment-runner.ts` — extraction (behavior-preserving).
-- `scripts/sprites/theme-equipment-review-cli.ts` — CLI actions + 422 fix.
+- `scripts/sprites/theme-equipment-review-cli.ts` — CLI actions + 422 fix +
+  `runPhase` in `presentState`.
 - `scripts/sprites/load-brief.ts` — `validateBriefYaml`.
 - `.github/extensions/theme-equipment-review/{renderer,lib/bridge,lib/server}.mjs`,
   `extension.mjs` — canvas UI + actions.

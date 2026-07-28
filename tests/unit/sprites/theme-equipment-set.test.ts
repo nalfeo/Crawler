@@ -20,6 +20,7 @@ import {
   markThemeEquipmentSetPublished,
   parseThemeEquipmentSetState,
   planApproveRemaining,
+  planRunPhase,
   recordThemeSetItemPhaseArtifacts,
   reviseRejectedThemeSetItem,
   saveThemeEquipmentSetState,
@@ -1037,6 +1038,69 @@ describe('approve remaining (bulk up-vote)', () => {
     expect(result.reasons).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'phase-not-reviewable' })]),
     );
+  });
+});
+
+describe('planRunPhase (truthful Run-button plan)', () => {
+  it('reports judge-only when every item is resolved but the collection judge is missing', () => {
+    const ready = readyForPhase(makeState({ phase: 'briefs' }), 'briefs');
+    const state = parseThemeEquipmentSetState({
+      ...ready,
+      phases: {
+        ...ready.phases,
+        briefs: { ...ready.phases.briefs, collectionJudge: null },
+      },
+    });
+
+    const plan = planRunPhase(state);
+
+    expect(plan.phase).toBe('briefs');
+    expect(plan.regenerateCount).toBe(0);
+    expect(plan.judgeOnly).toBe(true);
+    expect(plan.collectionJudgeMissing).toBe(true);
+  });
+
+  it('counts every unresolved item as a regeneration and is not judge-only', () => {
+    // roster phase, every verdict null → every item is unresolved.
+    const state = makeState();
+
+    const plan = planRunPhase(state);
+
+    expect(plan.phase).toBe('roster');
+    expect(plan.regenerateCount).toBe(state.items.length);
+    expect(plan.judgeOnly).toBe(false);
+    expect(plan.collectionJudgeMissing).toBe(true);
+  });
+
+  it('treats rejected (down) items as unresolved regenerations', () => {
+    const ready = readyForPhase(makeState()); // all up, judged
+    const state = withItemVerdict(ready, 0, 'down');
+
+    const plan = planRunPhase(state);
+
+    expect(plan.regenerateCount).toBe(1);
+    expect(plan.judgeOnly).toBe(false);
+  });
+
+  it('is not judge-missing once the collection judge exists', () => {
+    const state = readyForPhase(makeState()); // all up + collectionJudge score 3
+
+    const plan = planRunPhase(state);
+
+    expect(plan.regenerateCount).toBe(0);
+    expect(plan.judgeOnly).toBe(true);
+    expect(plan.collectionJudgeMissing).toBe(false);
+  });
+
+  it('returns an empty plan for a non-review phase', () => {
+    const complete = parseThemeEquipmentSetState({ ...makeState(), phase: 'complete' });
+
+    const plan = planRunPhase(complete);
+
+    expect(plan.phase).toBeNull();
+    expect(plan.regenerateCount).toBe(0);
+    expect(plan.judgeOnly).toBe(false);
+    expect(plan.collectionJudgeMissing).toBe(false);
   });
 });
 
