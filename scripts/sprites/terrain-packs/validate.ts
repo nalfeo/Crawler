@@ -435,17 +435,34 @@ export function validateAuthoredSilhouetteExact(
  * required and any regression there is a real bug.
  *
  * `vendored` packs are assembled from real external line art we do not
- * control. The caeles-fixture build script greedily assigns the 47 canonical
- * masks to the 47 best-matching template cells (by this same edge
- * classifier, see `build-caeles-fixture.ts`), which reaches ~0.93-0.94 on the
- * verified fixture — high enough to prove the assignment is meaningfully
- * mask-compatible (a blind/positional assignment measures ~0.55-0.65 on the
- * same fixture), but real hand-drawn guide art won't hit 100%. 0.85 leaves
- * headroom below the measured rate while still failing loudly if a future
- * re-import regresses the assignment quality.
+ * control, so they cannot be expected to hit 100%. The caeles fixture measures
+ * **0.957 (180/188)**, and the 8 residual misses are a single, well-understood
+ * class rather than noise: every one is a `wall -> floor` misread, exactly two
+ * per compass direction, confined to masks {1, 2, 4, 5, 8, 10} — the four
+ * single-arm stubs plus the two straight corridors. Hand-drawn line art draws a
+ * wall reached by one narrow arm thin, so that edge band is mostly floor with a
+ * thin stroke through it and this mean-based classifier reads floor. Every
+ * corner (3/6/9/12), T (7/11/13/14) and 15 pass. That fuzziness is inherent to
+ * the artwork, not a mapping defect, which is exactly what this relaxed floor
+ * exists to tolerate.
+ *
+ * 0.90 leaves 10 samples of headroom below the measured rate — enough that a
+ * future re-import which thins a few more arms won't false-trip, while still
+ * failing loudly on a regressed cell->mask assignment (a blind/positional
+ * assignment measures ~0.55-0.65 on the same fixture).
+ *
+ * Note this check is no longer the primary defence against a scrambled
+ * assignment: `validateCompatibleCorners` requires 1.0 for BOTH provenance
+ * kinds and is discrete rather than fuzzy, so it catches a bad mapping harder
+ * and sooner. This floor is a secondary signal.
+ *
+ * (Was 0.85, calibrated when the caeles cell->mask table came from a greedy
+ * search. That search is gone — the table is now derived from the artwork
+ * itself and cross-checked against the published cr31 layout — which lifted the
+ * measured rate and left the old floor with 20 samples of unnecessary slack.)
  */
 const AUTHORED_MIN_EDGE_PASS_RATE = 1.0;
-const VENDORED_MIN_EDGE_PASS_RATE = 0.85;
+const VENDORED_MIN_EDGE_PASS_RATE = 0.9;
 
 /**
  * Minimum corner-signature separation (Euclidean over mean-alpha and
