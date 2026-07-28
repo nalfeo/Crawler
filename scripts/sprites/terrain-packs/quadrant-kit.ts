@@ -21,7 +21,13 @@
  */
 import type { QuadrantCorner, QuadrantState } from '../../../src/shared/terrain-pack-mask.js';
 import { QUADRANT_CORNERS } from '../../../src/shared/terrain-pack-mask.js';
-import { createImage, fillRect, type RgbaImage } from './png-buffer.js';
+import {
+  createImage,
+  eraseQuarterDisc,
+  fillRect,
+  roundConvexCorner,
+  type RgbaImage,
+} from './png-buffer.js';
 
 /** Source quadrant size in px — 4 quadrants of this size compose one 256x256 wall cell. */
 export const QUADRANT_SRC_PX = 128;
@@ -43,6 +49,36 @@ const WALL_INSET_PX = 48;
 
 /** Industrial-cave wall color (opaque dark rock). Deterministic, original palette choice. */
 const WALL_COLOR: readonly [number, number, number, number] = [58, 56, 64, 255];
+
+/**
+ * Corner rounding radius (px, cell space) applied to exposed wall corners.
+ *
+ * Caves are eroded, not cut, so their silhouettes should have no sharp
+ * 90-degree corners. Equal to `WALL_INSET_PX` so a convex corner rounds across
+ * exactly the inset it sits on — the wall meets the floor tangentially instead
+ * of stepping — and so a `concave` bite reaches the full depth of the notch it
+ * replaces.
+ *
+ * CRITICAL — why this value is safe for both validator gates. All rounding is
+ * confined to a `WALL_INSET_PX`-sized square at a cell corner, i.e. the outer
+ * 48/256 = 18.75% of each axis:
+ *
+ *  - Cardinal edge gate: `AUTHORED_EDGE_SAMPLING.marginFraction` is 0.25, so the
+ *    sampled span along any edge is [64, 192] of 256. The `concave` bite lives
+ *    in [0, 48]; the `open` round lives in [48, 96] but only on the axis facing
+ *    INTO the cell, never within the 38.4px edge band. Neither reaches a
+ *    sampled band.
+ *  - Corner coverage gate: `AUTHORED_CORNER_SAMPLING.sampleFraction` is 0.09, so
+ *    the sample square is the outer ~23px at the cell corner. `concave` must
+ *    read floor there and the r=48 bite covers [0, 23] entirely (max distance
+ *    from the corner is 23*sqrt(2) = 32.5 < 48). `open` already reads floor
+ *    there and the round never touches it. `full` — the one state whose corner
+ *    must read wall — is not rounded at all.
+ *
+ * Both properties are asserted, not assumed: see
+ * `tests/unit/sprites/terrain-pack-corners.test.ts`.
+ */
+const CORNER_RADIUS_PX = WALL_INSET_PX;
 
 /**
  * Per-corner geometry: which local edges are the OUTER (cardinal-facing) edges,
@@ -86,13 +122,30 @@ const QUADRANT_GEOMETRY: Record<QuadrantCorner, QuadrantGeometry> = {
  * isolated cell) is thus inset on BOTH outer edges: convex corners are bevelled
  * and an isolated wall still renders a visible centre block.
  *
- * `concave` (both cardinals present, diagonal ABSENT): both outer edges are
- * fully solid — same as `full` so far — but the inner corner (cell-centre-
- * facing) has a `WALL_INSET_PX × WALL_INSET_PX` notch carved out to represent
- * the missing diagonal neighbour (floor cell on that diagonal). This makes
- * `concave` visually distinct from `full` while preserving the cardinal-edge
- * compatibility invariant (the notch is at the inner corner, far from the
- * outer-edge sample bands used by the validator).
+ * `concave` (both cardinals present, diagonal ABSENT): both outer edges reach
+ * their cell boundary — same as `full` along the edges — but a quarter-disc of
+ * radius `CORNER_RADIUS_PX` is bitten out of the OUTER corner (the corner facing
+ * the missing diagonal neighbour). That is the defining visual of a blob47 inner
+ * corner: the diagonal cell is floor, so the wall must be nicked back there.
+ *
+ * Corner rounding. Caves are eroded, not cut, so no exposed corner is left at
+ * 90 degrees:
+ *   - `concave` → the notch is a quarter-disc bite, so the wall sweeps around
+ *     the floor poking in at the diagonal.
+ *   - `open` → the two inset lines meet at a genuine convex corner inside this
+ *     cell; it is rounded tangent to both insets.
+ *   - `edgeA` / `edgeB` → deliberately NOT rounded. Exactly one cardinal is
+ *     wall, so the single inset line runs straight on into the connected
+ *     neighbour's matching quadrant. There is no corner to round, and rounding
+ *     there would pinch the wall at every wall-to-wall seam.
+ *   - `full` → solid, nothing to round.
+ *
+ * All rounding is confined to a `WALL_INSET_PX` square at the cell corner, i.e.
+ * the outer 18.75% of each axis, which sits entirely inside
+ * `AUTHORED_EDGE_SAMPLING`'s 25% corner-exclusion margin (sampled edge span is
+ * [64, 192] of 256). The cardinal-edge compatibility invariant is therefore
+ * preserved (still provably 100%) while the corner now carries the diagonal
+ * information the corner-coverage validator checks.
  *
  * Because "present cardinal → wall reaches that edge; absent cardinal → inset
  * off it" holds independently per cardinal, each cell edge's wall/no-wall
@@ -119,17 +172,42 @@ function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): RgbaImage
   const [r, g, b, a] = WALL_COLOR;
   fillRect(img, left, top, right - left, bottom - top, r, g, b, a);
 
-  // 'concave': both cardinals present (wall reaches both outer edges) but the
-  // diagonal is ABSENT → carve a notch from the INNER corner (cell-centre-facing
-  // side) to distinguish it from 'full' (all three bits set, solid throughout).
-  // The notch is at the quadrant's inner corner — the intersection of the two
-  // INNER (non-outer) edges — and is `WALL_INSET_PX` wide on each axis.
-  // It never overlaps the outer-edge sample bands, so cardinal-edge compatibility
-  // is preserved (provably 100%) for both 'concave' and 'full'.
+  // Local coordinates of this quadrant's OUTER corner (the cell corner) and the
+  // inward direction from it. Every rounding operation below is expressed
+  // relative to these so the four corners share one code path.
+  const outerX = geom.nearLeftIsEdgeB ? 0 : QUADRANT_SRC_PX;
+  const outerY = geom.nearTopIsEdgeA ? 0 : QUADRANT_SRC_PX;
+  const inX: -1 | 1 = geom.nearLeftIsEdgeB ? 1 : -1;
+  const inY: -1 | 1 = geom.nearTopIsEdgeA ? 1 : -1;
+
   if (state === 'concave') {
-    const notchX = geom.nearLeftIsEdgeB ? QUADRANT_SRC_PX - WALL_INSET_PX : 0;
-    const notchY = geom.nearTopIsEdgeA ? QUADRANT_SRC_PX - WALL_INSET_PX : 0;
-    fillRect(img, notchX, notchY, WALL_INSET_PX, WALL_INSET_PX, 0, 0, 0, 0);
+    // Both cardinals present (wall reaches both outer edges) but the diagonal is
+    // ABSENT → bite a rounded notch out of the OUTER corner (the corner facing
+    // the missing diagonal neighbour). This is what makes an inner corner read
+    // as an inner corner instead of flat wall, and is what `cornerIsWallFromMask`
+    // / the corner-coverage validator assert.
+    //
+    // The bite is a quarter-disc rather than a square so the wall sweeps around
+    // the floor that pokes in at the diagonal — an eroded scoop, which is the
+    // whole point of a cave silhouette.
+    eraseQuarterDisc(img, outerX, outerY, CORNER_RADIUS_PX, inX, inY);
+  } else if (!cardAPresent && !cardBPresent) {
+    // 'open': inset off BOTH outer edges, so the two inset lines meet at a real
+    // convex corner INSIDE this cell. Round it.
+    //
+    // This is the only state with an exposed convex corner. In 'edgeA'/'edgeB'
+    // exactly one cardinal is wall, so the single inset line runs straight on
+    // into the connected neighbour's matching quadrant — there is no corner
+    // there, and rounding one would pinch the wall at every wall-to-wall seam.
+    // 'full' is solid.
+    roundConvexCorner(
+      img,
+      outerX + inX * WALL_INSET_PX,
+      outerY + inY * WALL_INSET_PX,
+      CORNER_RADIUS_PX,
+      inX,
+      inY,
+    );
   }
 
   return img;

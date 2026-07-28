@@ -39,7 +39,7 @@ import { decodePng } from '../../../scripts/sprites/terrain-packs/png-buffer.js'
 import {
   BORDER_MARGIN_PX,
   rebuildSharedBasePools,
-  retuneWallAccents,
+  processWallAccents,
   restyleWallAtlas,
 } from '../../../scripts/sprites/terrain-packs/rebuild-shared-base-pools.js';
 import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
@@ -642,7 +642,7 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
   // above. The explicit coverage assertion below exists so this guard cannot
   // silently degrade to near-zero if a derivation stops emitting files.
   it('committed pack art is a fixed point of the shared-base rebuild', () => {
-    const derived = [...rebuildSharedBasePools(), ...retuneWallAccents(), ...restyleWallAtlas()];
+    const derived = [...rebuildSharedBasePools(), ...processWallAccents(), ...restyleWallAtlas()];
     const derivedPaths = new Set(derived.map((f) => path.basename(f.relPath)));
 
     // Every pool variant the manifest ships must be re-emitted by the rebuild —
