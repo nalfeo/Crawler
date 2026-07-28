@@ -11,6 +11,17 @@
     "path": "by-sha/5fa649de5642b9479821fa29ecae280c18d0edb5.json"
   },
   {
+    "commit": "c90801a2e7710cd8a8556d666aa26cccd490421a",
+    "commitDate": "2026-07-28T03:31:19Z",
+    "commitSubject": "perf(barriers): skip barrier lookup closures when the registry is empty (#2121)",
+    "capturedAt": "2026-07-28T04:38:45.899Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30326577242",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/c90801a2e7710cd8a8556d666aa26cccd490421a.json"
+  },
+  {
     "commit": "f34efc79a153971c2d89990ac58255041ad4f330",
     "commitDate": "2026-07-28T03:19:06Z",
     "commitSubject": "Stop caching mutable coordination docs, forward conditional writes, and make the theme-equipment canvas honest (#2119)",
