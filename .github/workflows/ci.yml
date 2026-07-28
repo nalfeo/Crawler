@@ -67,6 +67,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Train gate
+        id: train-gate
+        uses: ./.github/actions/train-gate
+        with:
+          event-is-schedule: ${{ github.event_name == 'schedule' }}
+          merge-train-enabled: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
+
       - name: Detect art-only change set
         id: detect
         env:

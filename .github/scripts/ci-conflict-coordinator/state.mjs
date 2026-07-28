@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
 
 import { isHealthyRecoveryOwner, isHealthyShepherdLease } from '../ci-recovery/state.mjs';
+import {
+  COORDINATOR_DATA_PREFIX,
+  COORDINATOR_MARKER,
+} from '../ci-recovery/markers.mjs';
 
-export const COORDINATOR_MARKER = '<!-- crawler-ci-conflict-coordinator:v1 -->';
-export const COORDINATOR_DATA_PREFIX = '<!-- crawler-ci-conflict-coordinator-data:';
+export { COORDINATOR_MARKER, COORDINATOR_DATA_PREFIX };
 export const COORDINATED_LABEL = 'ci-conflict-coordinated';
 export const LEADER_LABEL = 'ci-conflict-leader';
 export const ESCALATION_LABEL = 'ci-conflict-escalation';
