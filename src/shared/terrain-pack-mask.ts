@@ -219,3 +219,108 @@ export function quadrantStateFromMask(mask: number, corner: QuadrantCorner): Qua
   // hasA && hasB
   return (mask & bitDiag) !== 0 ? 'full' : 'concave';
 }
+
+// --- Edge-matching ("2-edge") Wang tiles: the PATH counterpart of blob47 ---
+
+/**
+ * Blob47 above is a CORNER-matching Wang set, which is what makes it good at
+ * terrain patches. Its sibling is the EDGE-matching set, which is what makes
+ * paths and pipes: a tile's four edges are each either "path" or "blank", so a
+ * complete set is 2^4 = 16 tiles, and neighbouring tiles agree exactly when the
+ * shared edge has the same state on both sides.
+ *
+ * (Reference: cr31's Wang-tile pages — `wang/intro.html` "edge matching Wang
+ * tiles tend to produce path or maze designs", `wang/2edge.html`, which ships a
+ * PIPE tileset as its worked example, and `wang/shape.html`, whose rule that a
+ * tile is "never extended to cover any neighboring tile" is the join contract
+ * encoded by `EdgeWangStubContract` below.)
+ *
+ * Those 16 masks are exactly the segment vocabulary a linework run needs:
+ *
+ *   popcount 0 → 1 empty tile
+ *   popcount 1 → 4 end-caps      (N / E / S / W)
+ *   popcount 2 → 2 straights + 4 corners
+ *   popcount 3 → 4 T-junctions
+ *   popcount 4 → 1 cross
+ *
+ * so the renderer never carries an orientation: it derives the 4-bit mask from
+ * neighbouring occupancy and uses it DIRECTLY as the frame index. That identity
+ * (`frameIndex === maskId`) is why an edge-Wang atlas needs no `masks` table,
+ * unlike `wallAutotile`.
+ *
+ * Bit order is the SAME as `MASK_BIT` (N=1, E=2, S=4, W=8) so the two families
+ * can never disagree about what "north" means.
+ */
+export const EDGE_WANG_FRAME_COUNT = 16;
+
+/** The 4 cardinal directions in edge-Wang bit order, with their tile deltas. */
+export const EDGE_WANG_DIRECTIONS = [
+  { dir: 'N', bit: MASK_BIT.N, dx: 0, dy: -1 },
+  { dir: 'E', bit: MASK_BIT.E, dx: 1, dy: 0 },
+  { dir: 'S', bit: MASK_BIT.S, dx: 0, dy: 1 },
+  { dir: 'W', bit: MASK_BIT.W, dx: -1, dy: 0 },
+] as const satisfies ReadonlyArray<{
+  dir: 'N' | 'E' | 'S' | 'W';
+  bit: number;
+  dx: number;
+  dy: number;
+}>;
+
+/** The opposite direction bit — the edge a neighbour shares with this tile. */
+export const EDGE_WANG_OPPOSITE_BIT: Readonly<Record<'N' | 'E' | 'S' | 'W', number>> = {
+  N: MASK_BIT.S,
+  E: MASK_BIT.W,
+  S: MASK_BIT.N,
+  W: MASK_BIT.E,
+};
+
+/**
+ * Derive a tile's 4-bit edge-Wang mask from a flat row-major occupancy grid
+ * (non-zero = this tile carries the run). Out-of-bounds neighbours are
+ * unoccupied, so a run reaching the map border ends in an end-cap rather than
+ * pointing at nothing.
+ */
+export function edgeWangMaskFromOccupancy(
+  occupancy: Uint8Array,
+  width: number,
+  height: number,
+  tx: number,
+  ty: number,
+): number {
+  let mask = 0;
+  for (const { bit, dx, dy } of EDGE_WANG_DIRECTIONS) {
+    const nx = tx + dx;
+    const ny = ty + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+    if (occupancy[ny * width + nx]) mask |= bit;
+  }
+  return mask;
+}
+
+/**
+ * The join contract, in the form the derivation enforces and the committed-art
+ * guard checks.
+ *
+ * Every frame whose mask has direction D set must present the SAME stub on
+ * edge D: pixels in `[offsetPx, offsetPx + widthPx)` along that edge are opaque
+ * and every other pixel on that edge is transparent. Two neighbouring tiles
+ * whose masks agree therefore butt together with no gap and no overlap, by
+ * construction — coherence is structural, not a tuning knob.
+ *
+ * The offset is measured left-to-right for the N/S edges and top-to-bottom for
+ * the E/W edges, so a single (offset, width) pair describes all four edges of a
+ * square cell.
+ */
+export interface EdgeWangStubContract {
+  readonly cellPx: number;
+  readonly offsetPx: number;
+  readonly widthPx: number;
+}
+
+/** Inclusive-exclusive pixel span of the stub along any edge. */
+export function edgeWangStubSpan(contract: EdgeWangStubContract): {
+  readonly start: number;
+  readonly end: number;
+} {
+  return { start: contract.offsetPx, end: contract.offsetPx + contract.widthPx };
+}
