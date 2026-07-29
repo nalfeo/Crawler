@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "wire-player-walk-art-scale-parity",
+  "task_title": "Wire real player walk art and lock player/NPC scale parity",
+  "estimated_apples": 2,
+  "stages": {}
+}

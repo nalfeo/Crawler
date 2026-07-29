@@ -742,11 +742,11 @@ describe('createPhaserBridge', () => {
 
   it('prefers Kenney sprite + frame when the sheet texture exists', () => {
     // Exclude the generated player art so this exercises the Kenney FALLBACK.
-    // The `player` render kind now also pins generated art (the Rhea Vale walk
-    // sheet), which otherwise wins and hides this branch.
+    // The `player` render kind now also pins generated art (the real walk
+    // cycle sheet), which otherwise wins and hides this branch.
     const { scene, images } = createSceneStub({
       kenneyLoaded: true,
-      textureExists: (key) => !key.startsWith('rhea-vale-v1'),
+      textureExists: (key) => !key.startsWith('player-walk-cycle'),
     });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -777,9 +777,10 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('rhea-vale-v1-var-0-walk');
-    // 64px art at 0.72 => 46px drawn box == 5.75 ft, matching the NPC scale.
-    expect(images[0]?.scaleX).toBeCloseTo(0.72, 5);
+    expect(images[0]?.textureKey).toBe('player-walk-cycle');
+    // 64px art at 0.71875 => exactly 46px drawn box == 5.75 ft, matching the
+    // welcome-room NPCs. See `player-npc-scale-parity.test.ts` for the guard.
+    expect(images[0]?.scaleX).toBeCloseTo(0.71875, 5);
   });
 
   it('fades the skull marker out quickly while the corpse desaturates and fades', () => {
