@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0d6233c5e928d3b643d9b9f8c1a9640a3645b32d",
+    "commitDate": "2026-07-29T00:31:14Z",
+    "commitSubject": "CI: auto-detect and close PRs whose diff is byte-identical to main (#2235)",
+    "capturedAt": "2026-07-29T01:38:10.632Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30411823416",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/0d6233c5e928d3b643d9b9f8c1a9640a3645b32d.json"
+  },
+  {
     "commit": "e0f9d56efae7bbb8b2551bc61276873912b655f5",
     "commitDate": "2026-07-29T00:17:14Z",
     "commitSubject": "fix(security): bind check-exact-deps exemptions to exact version; fix cross-platform repoRoot path (#2244)",
