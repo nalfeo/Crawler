@@ -90,6 +90,10 @@ export function countLatentBacklog({ pullRequests, repository, now = new Date() 
       pr.base?.ref === 'main' &&
       pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase(),
   );
+  // Externally-blocked PRs (e.g. merge-train-blocked) are excluded from CI
+  // Recovery slot consumption but still represent latent CI demand that will
+  // eventually need runner capacity, so they count toward the sweep budget —
+  // even when they carry ci-recovery-opt-out.
   const numbers = new Set([
     ...queueEntries(pullRequests, repository).map((pullRequest) => pullRequest.number),
     ...recoveryBacklogEntries(pullRequests, repository, now).map(
@@ -97,21 +101,6 @@ export function countLatentBacklog({ pullRequests, repository, now = new Date() 
     ),
     ...baseEligible.filter(isExternallyBlocked).map((pr) => pr.number),
   ]);
-  // Externally-blocked PRs (e.g. merge-train-blocked) are excluded from CI
-  // Recovery slot consumption but still represent latent CI demand that will
-  // eventually need runner capacity, so they count toward the sweep budget.
-  for (const pr of pullRequests) {
-    if (
-      pr.state === 'open' &&
-      !pr.draft &&
-      pr.base?.ref === 'main' &&
-      pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
-      !(pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out') &&
-      isExternallyBlocked(pr)
-    ) {
-      numbers.add(pr.number);
-    }
-  }
   return numbers.size;
 }
 
