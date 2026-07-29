@@ -1,5 +1,16 @@
 [
   {
+    "commit": "294babfc902a07dffb7dc109e8eeb3906b2eb635",
+    "commitDate": "2026-07-29T18:07:00Z",
+    "commitSubject": "feat(ci): detect silent merge reverts that survive to HEAD (#2282) (#2316)",
+    "capturedAt": "2026-07-29T19:14:02.874Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30479172965",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/294babfc902a07dffb7dc109e8eeb3906b2eb635.json"
+  },
+  {
     "commit": "fc18e06381ca7464f560fbb058ce8745353c2cc6",
     "commitDate": "2026-07-29T17:33:12Z",
     "commitSubject": "fix(sprites): restore Rhea Vale player art broken by unshipped placeholder wiring (#2321)",
