@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
 import {
@@ -9,6 +7,7 @@ import {
 import { floor1EnemyPack, floor2EnemyPack } from '../../src/shared/enemy-packs.js';
 import type { EntitySpriteMappings } from '../../src/shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
+import { loadShippedManifest } from '../helpers/generated-manifest.js';
 
 /**
  * Guard A — Floor-2 enemy art WIRING completeness (data surfaces + all-80
@@ -34,11 +33,7 @@ const MAPPINGS = ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings;
 
 /** Load the shipped generated manifest into a registry (real art, not a stub). */
 function loadShippedRegistry(): ReturnType<typeof buildGeneratedSpriteRegistry> {
-  const manifestPath = fileURLToPath(
-    new URL('../../public/assets/generated/manifest.json', import.meta.url),
-  );
-  const raw = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  return buildGeneratedSpriteRegistry(raw);
+  return buildGeneratedSpriteRegistry(loadShippedManifest());
 }
 
 describe('Floor 2 enemy art wiring — data surfaces', () => {

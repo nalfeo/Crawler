@@ -1,0 +1,29 @@
+{
+  "briefId": "equipment/weapon/moon-scythe",
+  "spriteName": "equipment/weapon/moon-scythe",
+  "assetPath": "generated/equipment/weapon/moon-scythe.png",
+  "approvedAt": "2026-07-18T00:00:00.000Z",
+  "sourceRun": "manual-authored/moon-scythe",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "manual-authored",
+  "judgeScore": null,
+  "type": "weapon",
+  "contentHash": "4fd795466d0eb0480e0667510313e77d5ca05cc36b1a64855343cadb3b8f7a33",
+  "equipment": {
+    "stableId": "weapon.moon-scythe",
+    "runtimeKey": "equipment/weapon/moon-scythe",
+    "category": "weapon",
+    "family": "magic-focus",
+    "slot": "weapon",
+    "productionWaveId": "floor2-equipment-weapon-magic-focus"
+  },
+  "opaqueBounds": {
+    "x": 19,
+    "y": 7,
+    "width": 17,
+    "height": 54,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

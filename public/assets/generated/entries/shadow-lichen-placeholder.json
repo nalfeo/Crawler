@@ -1,0 +1,20 @@
+{
+  "briefId": "shadow-lichen",
+  "spriteName": "shadow-lichen",
+  "assetPath": "generated/shadow-lichen-placeholder.png",
+  "approvedAt": "2026-07-18T02:44:38.905Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "opaqueBounds": {
+    "x": 3,
+    "y": 4,
+    "width": 10,
+    "height": 10,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

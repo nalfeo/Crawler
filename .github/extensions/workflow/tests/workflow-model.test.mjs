@@ -367,29 +367,28 @@ before(() => {
   mkdirSync(path.join(root, 'plans'), { recursive: true });
   mkdirSync(path.join(root, 'briefs'), { recursive: true });
   mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
+  mkdirSync(path.join(root, 'public', 'assets', 'generated', 'entries'), { recursive: true });
   writeFileSync(path.join(root, 'plans', 'floor1.art.yaml'), PLAN_YAML);
   writeFileSync(path.join(root, 'briefs', 'enemy-goblin.yaml'), 'type: enemy\nname: goblin\n');
   // Approved goblin asset present on disk; a placeholder entry that must NOT be
   // treated as promoted; a promoted (non-placeholder) run id to collect.
   writeFileSync(path.join(root, 'public', 'assets', 'generated', 'goblin.png'), 'png');
   writeFileSync(
-    path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+    path.join(root, 'public', 'assets', 'generated', 'entries', 'goblin.json'),
     JSON.stringify({
-      version: 1,
-      entries: {
-        'enemy::goblin': {
-          briefId: 'goblin',
-          assetPath: 'generated/goblin.png',
-          sourceRun: 'runs/enemy-goblin/2026-07-02T21-45-32-1de0721b',
-          variantIndex: 0,
-        },
-        'weapon::sword': {
-          briefId: 'sword',
-          assetPath: 'generated/sword.png',
-          sourceRun: 'placeholder',
-          variantIndex: 0,
-        },
-      },
+      briefId: 'goblin',
+      assetPath: 'generated/goblin.png',
+      sourceRun: 'runs/enemy-goblin/2026-07-02T21-45-32-1de0721b',
+      variantIndex: 0,
+    }),
+  );
+  writeFileSync(
+    path.join(root, 'public', 'assets', 'generated', 'entries', 'sword.json'),
+    JSON.stringify({
+      briefId: 'sword',
+      assetPath: 'generated/sword.png',
+      sourceRun: 'placeholder',
+      variantIndex: 0,
     }),
   );
 });
@@ -447,21 +446,17 @@ test('loadBacklog normalizes Windows-style sourceRun into the two-segment promot
   const root = mkdtempSync(path.join(tmpdir(), 'workflow-winpath-'));
   try {
     mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
+    mkdirSync(path.join(root, 'public', 'assets', 'generated', 'entries'), { recursive: true });
     writeFileSync(path.join(root, 'public', 'assets', 'generated', 'orc.png'), 'png');
     writeFileSync(
-      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+      path.join(root, 'public', 'assets', 'generated', 'entries', 'orc.json'),
       JSON.stringify({
-        version: 1,
-        entries: {
-          'enemy::orc': {
-            briefId: 'orc',
-            assetPath: 'generated/orc.png',
-            // Backslash-separated path as produced on Windows: must be normalized
-            // and keyed by the last TWO segments, matching the sidecar.
-            sourceRun: 'runs\\enemy-orc\\2026-07-05T10-11-12-abcd1234',
-            variantIndex: 0,
-          },
-        },
+        briefId: 'orc',
+        assetPath: 'generated/orc.png',
+        // Backslash-separated path as produced on Windows: must be normalized
+        // and keyed by the last TWO segments, matching the sidecar.
+        sourceRun: 'runs\\enemy-orc\\2026-07-05T10-11-12-abcd1234',
+        variantIndex: 0,
       }),
     );
     const backlog = loadBacklog({ repoRoot: root, spriteIds: new Set(), itemIds: new Set() });

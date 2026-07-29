@@ -5,6 +5,7 @@ import {
   getVitePortForMode,
 } from './scripts/shared/session-server-ports.js';
 import { labTuningSavePlugin } from './tools/vite-plugin-save-tuning';
+import { generatedManifestPlugin } from './tools/vite-plugin-generated-manifest';
 
 const basePaths: Record<string, string> = {
   local: '/',
@@ -40,7 +41,10 @@ export default defineConfig(({ mode }) => {
       __CRAWLER_SPRITES_SIDECAR_BASE_URL__: JSON.stringify(sessionPorts.sidecarBaseUrl),
       'import.meta.env.VITE_SPRITES_SIDECAR_BASE_URL': JSON.stringify(sessionPorts.sidecarBaseUrl),
     },
-    plugins: mode === 'lab' ? [labTuningSavePlugin()] : [],
+    plugins:
+      mode === 'lab'
+        ? [generatedManifestPlugin(), labTuningSavePlugin()]
+        : [generatedManifestPlugin()],
     build: {
       target: 'es2022',
       outDir: process.env.BUILD_OUTDIR ?? 'dist',

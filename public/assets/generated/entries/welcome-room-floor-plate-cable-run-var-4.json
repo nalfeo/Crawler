@@ -1,0 +1,114 @@
+{
+  "briefId": "welcome-room-floor-plate-cable-run",
+  "spriteName": "welcome-room-floor-plate-cable-run-var-4",
+  "assetPath": "generated/welcome-room-floor-plate-cable-run-var-4.png",
+  "approvedAt": "2026-07-27T07:10:50.992Z",
+  "sourceRun": "generated/runs/welcome-room-floor-plate-cable-run/2026-07-27T06-48-17-cd3b4673",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 127,
+        "y": 127
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-27T06:50:23.567Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a cable run with taped-down straps is clear and fits the dark-fantasy dungeon studio aesthetic. The grime and adhesive marks add a sense of wear and realism, but the cable's curve could be slightly more natural."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline, palette, and shading. The tonal range and desaturation are consistent with the style, but the tape's yellow could be slightly more muted to better align with the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline, palette, and shading. The tonal range and desaturation are consistent with the style, but the tape's yellow could be slightly more muted to better align with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The candidate fully matches the brief, including the cool grey concrete base, flat cable, and acid-yellow tape straps. The grime and adhesive ghosts are appropriately subtle."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette of the cable and tape is clear and distinct at game scale. The elements are well-integrated into the tile without any visual integrity defects."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The candidate adheres to the brief and is stylistically consistent with the references. Minor improvements could enhance the overall quality.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4618,
+      "completionTokens": 300,
+      "totalTokens": 4918
+    }
+  },
+  "type": "tile",
+  "contentHash": "8cca5f367cd556d3efeeb807fd7dd07911ddc1072191fac24b2abb433199c031",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-cable-run\\2026-07-27T06-48-17-cd3b4673\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-cable-run\\2026-07-27T06-48-17-cd3b4673\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-cable-run\\2026-07-27T06-48-17-cd3b4673\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}

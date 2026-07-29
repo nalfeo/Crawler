@@ -1,0 +1,39 @@
+{
+  "briefId": "bent-pipe-v1",
+  "spriteName": "bent-pipe-v1-var-5",
+  "assetPath": "generated/bent-pipe-v1-var-5.png",
+  "approvedAt": "2026-06-08T19:08:16.273Z",
+  "sourceRun": "generated/runs/bent-pipe-v1/2026-06-08T17-00-57-6d29558d",
+  "variantIndex": 5,
+  "anchor": {
+    "x": 16,
+    "y": 67,
+    "source": "manual"
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "type": "weapon",
+  "anchors": {
+    "hold": {
+      "x": 16,
+      "y": 67,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 16,
+      "y": 67,
+      "source": "manual"
+    }
+  },
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "contentHash": "f3dae58264f6ca83ee1490c86c00092226c48017064aab420e090b18384acfac",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 64,
+    "height": 68,
+    "canvasWidth": 64,
+    "canvasHeight": 68
+  }
+}

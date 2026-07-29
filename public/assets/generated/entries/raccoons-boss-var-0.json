@@ -1,0 +1,42 @@
+{
+  "briefId": "raccoons-boss",
+  "spriteName": "raccoons-boss-var-0",
+  "assetPath": "generated/raccoons-boss-var-0.png",
+  "approvedAt": "2026-07-08T02:58:02.672Z",
+  "sourceRun": "generated/runs/raccoons-boss/2026-07-08T02-47-01-09a78ec7",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 32,
+    "y": 34,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 34,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 34,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "type": "enemy",
+  "contentHash": "ea2857fe1e048936703db89dcfdba8e07dac647905b857dacd45a27ccbd1f6d6",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 58,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

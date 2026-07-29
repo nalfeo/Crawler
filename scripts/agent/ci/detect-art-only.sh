@@ -5,7 +5,9 @@
 # surfaces, and security-impact flags).
 #
 # art_only=true  — every changed file is under the approved-art surface:
-#   - public/assets/generated/**        (sprites + manifest.json)
+#   - public/assets/generated/**        (sprite PNGs + per-asset manifest shards
+#                                        under entries/; the aggregate manifest.json
+#                                        is a gitignored build artifact, never in a diff)
 #   - src/shared/data/sprite-catalog.json
 # When art-only, CI skips heavy gameplay gates (integration, headless, e2e, build)
 # but still runs typecheck/lint/format/unit.
