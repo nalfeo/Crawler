@@ -455,8 +455,10 @@ type ControlsWithGui = HTMLElement & { __labGui?: GUI };
  * This takes priority over the persisted selection on purpose: a link that
  * silently lands on whatever scenario you last had open is not a jump-to link,
  * and the whole point is to make "go look at exactly this" reproducible for the
- * next agent or session. An unknown id falls through to the normal defaults
- * rather than throwing, so a stale link degrades to the default scenario.
+ * next agent or session. An unknown (but non-empty) id falls back to the
+ * default preset rather than returning `null`, so a stale link does not
+ * silently restore the persisted scenario (which could be an unrelated spawner
+ * preset the user happened to have open last time).
  */
 function scenarioPresetIdFromUrl(): AiRunnerScenarioPresetId | null {
   if (typeof window === 'undefined') return null;
@@ -464,7 +466,7 @@ function scenarioPresetIdFromUrl(): AiRunnerScenarioPresetId | null {
   if (!requested) return null;
   return AI_RUNNER_SCENARIO_PRESETS.some((preset) => preset.id === requested)
     ? (requested as AiRunnerScenarioPresetId)
-    : null;
+    : DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
 }
 
 interface AiRunnerLabState {
@@ -627,11 +629,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
   const panelRoot = document.createElement('div');
   controls.append(panelRoot);
-  let currentSeed = persisted?.seed ?? INITIAL_SEED;
+  // When `?scenario=<id>` is present we want the deep link to be fully
+  // reproducible: use the preset's own default seed and force floor1, so a
+  // tab that last ran Floor 2 with a different seed doesn't contaminate the
+  // inspection scene with the wrong floor or the wrong RNG state.
+  const urlScenario = scenarioPresetIdFromUrl();
   let selectedScenarioPresetId =
-    scenarioPresetIdFromUrl() ??
+    urlScenario ??
     persisted?.scenarioPresetId ??
     DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
+  let currentSeed =
+    urlScenario != null
+      ? (getAiRunnerScenarioPreset(urlScenario)?.defaultSeed ?? INITIAL_SEED)
+      : (persisted?.seed ?? INITIAL_SEED);
   let pendingRunSettingsNote: string | null = null;
   let arenaEntryFrame: number | null = null;
 
@@ -819,7 +829,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     autoFloor2ProgressionSystem(world, playerEid);
     runSettlementMaintenancePlanner(world);
   };
-  let currentFloor = persisted?.floorId ?? 'floor1';
+  let currentFloor = urlScenario != null ? 'floor1' : (persisted?.floorId ?? 'floor1');
   let stagedSeedText = String(currentSeed);
   let stagedRunTarget: AiRunnerRunTargetKey | null = null;
   const recorderControls = createSessionRecorderControls({

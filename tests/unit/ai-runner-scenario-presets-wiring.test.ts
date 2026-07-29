@@ -114,5 +114,30 @@ describe('AI runner scenario presets wiring', () => {
       expect(playerTile.y).toBeGreaterThan(roomMinY);
       expect(playerTile.y).toBeLessThan(roomMaxY);
     });
+
+    it('contains at least one T-junction stub (degree-3 wall cluster) per material pack', () => {
+      // A T-junction is a stub tile with three orthogonal wall-stub neighbours.
+      // Without at least one per pack the scene only exercises convex corners
+      // (elbows) and misses the three-neighbour silhouette case entirely.
+      const { stubs, materialSeamX } = TERRAIN_JUNCTION_SLICE;
+      const stubSet = new Set(stubs.map((s) => `${s.x},${s.y}`));
+      const stubNeighborCount = (x: number, y: number): number =>
+        [
+          [x - 1, y],
+          [x + 1, y],
+          [x, y - 1],
+          [x, y + 1],
+        ].filter(([nx, ny]) => stubSet.has(`${nx},${ny}`)).length;
+
+      const hasTeeOnStoneSide = stubs
+        .filter((s) => s.x < materialSeamX)
+        .some((s) => stubNeighborCount(s.x, s.y) >= 3);
+      const hasTeeOnCaveSide = stubs
+        .filter((s) => s.x >= materialSeamX)
+        .some((s) => stubNeighborCount(s.x, s.y) >= 3);
+
+      expect(hasTeeOnStoneSide).toBe(true);
+      expect(hasTeeOnCaveSide).toBe(true);
+    });
   });
 });

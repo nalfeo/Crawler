@@ -421,20 +421,32 @@ const TERRAIN_JUNCTION_SLICE = {
     { x: 16, y: 10 }, // east wall, cave side
   ],
   /**
-   * Free-standing stubs. A wall tile with no wall neighbours on two adjacent
-   * sides is the only way to see a CONVEX corner, which is the case the
-   * `rounded`/`square` styles differ on most visibly. One per material.
+   * Free-standing stubs. Elbows (L-shaped, two orthogonal neighbours) expose
+   * CONVEX corners, which is the adjacency where `rounded`/`square` styles
+   * differ most visibly. T-junctions (degree-3 cluster, three orthogonal
+   * neighbours) exercise the three-neighbour silhouette case that the convex
+   * corner alone misses. One elbow and one T-junction per material pack so
+   * both corner styles are covered for each terrain type.
    */
   stubs: [
+    // Elbows (convex corners): stone side, upper-left
     { x: 4, y: 3 },
     { x: 5, y: 3 },
     { x: 4, y: 4 },
+    // Elbows (convex corners): cave side, upper-right
     { x: 19, y: 3 },
     { x: 20, y: 3 },
     { x: 19, y: 4 },
+    // T-junction: stone side, lower-left — (5,16) has three wall neighbours
     { x: 4, y: 16 },
     { x: 5, y: 16 },
+    { x: 6, y: 16 },
     { x: 5, y: 17 },
+    // T-junction: cave side, lower-right — (20,16) has three wall neighbours
+    { x: 19, y: 16 },
+    { x: 20, y: 16 },
+    { x: 21, y: 16 },
+    { x: 20, y: 17 },
   ],
   /** Centre of the chamber, facing the north wall's two doors and the seam. */
   playerTile: { x: 11, y: 10 },
