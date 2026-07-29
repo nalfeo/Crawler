@@ -44,16 +44,16 @@ const GRID_SIZE_FT = 6;
 const ENEMY_COUNT = 10;
 const ENEMY_MARGIN_FT = 4;
 const LAB_ID = 'movement-lab';
-const PLAYER_WALK_TEXTURE_KEY = 'player-walk-placeholder-v1-var-0';
+const PLAYER_WALK_TEXTURE_KEY = 'player-walk-cycle';
 
 function buildMovementLabSpriteRegistry() {
   return buildGeneratedSpriteRegistry({
     version: 1,
     entries: {
       [PLAYER_WALK_TEXTURE_KEY]: {
-        briefId: 'player-walk-placeholder-v1',
+        briefId: PLAYER_WALK_TEXTURE_KEY,
         spriteName: PLAYER_WALK_TEXTURE_KEY,
-        assetPath: 'generated/rhea-vale-v1-var-0-walk.png',
+        assetPath: 'generated/player-walk-cycle.png',
         approvedAt: '2026-08-01T00:00:00.000Z',
         sourceRun: 'movement-lab',
         variantIndex: 0,
@@ -63,8 +63,8 @@ function buildMovementLabSpriteRegistry() {
         animation: {
           frameWidth: 64,
           frameHeight: 64,
-          frameCount: 3,
-          frameRate: 6,
+          frameCount: 4,
+          frameRate: 8,
           loop: true,
         },
       },

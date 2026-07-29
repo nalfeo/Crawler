@@ -26,9 +26,9 @@
       "kenneySpriteId": "player",
       "kenneyScale": 1.6,
       "generated": {
-        "briefId": "player-walk-placeholder-v1",
-        "pinnedTextureKey": "player-walk-placeholder-v1-var-0",
-        "scale": 0.72
+        "briefId": "player-walk-cycle",
+        "pinnedTextureKey": "player-walk-cycle",
+        "scale": 0.71875
       }
     },
     "enemy": {
