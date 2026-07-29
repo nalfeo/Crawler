@@ -1,0 +1,34 @@
+{
+  "briefId": "tile-door-v1",
+  "spriteName": "tile-door-v1-var-0",
+  "assetPath": "generated/tile-door-v1-var-0.png",
+  "approvedAt": "2026-07-08T00:10:13.492Z",
+  "sourceRun": "generated/runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "type": null,
+  "contentHash": "6754586514ec029463932f028e9f784476a14e618a25b7d90215011bc80184df",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

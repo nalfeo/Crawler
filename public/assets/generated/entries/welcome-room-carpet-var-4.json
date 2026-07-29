@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-carpet",
+  "spriteName": "welcome-room-carpet-var-4",
+  "assetPath": "generated/welcome-room-carpet-var-4.png",
+  "approvedAt": "2026-07-26T21:31:45.127Z",
+  "sourceRun": "generated/runs/welcome-room-carpet/2026-07-26T21-10-52-db84f4f6",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 64,
+    "y": 75,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 64,
+      "y": 75,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 64,
+      "y": 75,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 64,
+        "y": 75
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-26T21:12:50.530Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design captures the essence of a worn, threadbare carpet in a derelict setting. The frayed edges, threadbare patches, and worn center lane align with the darkly humorous and decayed aesthetic of Crawler. However, the worn patches could be slightly more irregular and varied in size to enhance the sense of age and wear."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a consistent outline weight, color palette, and shading style that matches the references. However, the border stripe could be slightly more integrated into the overall texture to better match the references' level of detail."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a consistent outline weight, color palette, and shading style that matches the references. However, the border stripe could be slightly more integrated into the overall texture to better match the references' level of detail."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite accurately depicts a moth-eaten, threadbare red runner carpet with all the specified elements: pile texture, threadbare patches, frayed edges, worn center lane, and a decorative border stripe."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and the threadbare patches and frayed edges are easily distinguishable at game scale. The sprite reads well against the dark floor tile in the readability composite."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a flat, top-down view of a rectangular carpet with no perspective distortion. The edges are clean, and the fringe is well-contained within the canvas."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4419,
+      "completionTokens": 406,
+      "totalTokens": 4825
+    }
+  },
+  "type": "prop",
+  "contentHash": "8d122c618c3f79b4f6e158672ad604ea073291fa8e1a9649cbf3ffb2189faba4",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-carpet\\2026-07-26T21-10-52-db84f4f6\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-carpet\\2026-07-26T21-10-52-db84f4f6\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-carpet\\2026-07-26T21-10-52-db84f4f6\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 8,
+    "width": 112,
+    "height": 141,
+    "canvasWidth": 128,
+    "canvasHeight": 157
+  }
+}

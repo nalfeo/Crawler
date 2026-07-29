@@ -1,0 +1,21 @@
+{
+  "briefId": "compass-charm",
+  "spriteName": "compass-charm",
+  "assetPath": "generated/compass-charm-placeholder.png",
+  "approvedAt": "2026-07-18T04:15:33.306Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "equipment",
+  "opaqueBounds": {
+    "x": 30,
+    "y": 9,
+    "width": 68,
+    "height": 105,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  },
+  "placeholder": true
+}

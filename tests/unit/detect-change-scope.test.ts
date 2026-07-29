@@ -153,6 +153,16 @@ const cases: Case[] = [
     expected: F(true, false, true, false, false, false, false, true, false, true, false),
   },
   {
+    // The manifest source of truth is now per-asset shards under entries/. A
+    // pure art check-in touches its PNG + its own shard — both must classify as
+    // art-only / asset-visual so parallel art PRs stay conflict-free and skip
+    // heavy gameplay gates.
+    name: 'generated manifest shard (per-asset)',
+    files: ['public/assets/generated/entries/equipment/weapon/bone-saw.json'],
+    //                          art   docs  gsafe sponly sptch  vis   game  asset devt
+    expected: F(true, false, true, false, false, false, false, true, false, true, false),
+  },
+  {
     name: 'sprite catalog data',
     files: ['src/shared/data/sprite-catalog.json'],
     expected: F(true, false, true, false, false, false, false, true, false, true, false),

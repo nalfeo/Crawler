@@ -12677,6 +12677,188 @@ test('same check rerun with only a new run URL still reaches the stale-retry cei
 });
 
 // ---------------------------------------------------------------------------
+// #1939 / #2268 regression: fresh ci-failure copilot first appearing after
+// a failed dispatch must NOT trigger blocker-progressed
+// ---------------------------------------------------------------------------
+//
+// This reproduces the exact loop observed in production incident #2268:
+// - PR #1939 had two unresolved review-thread blockers
+// - CI Recovery dispatched @copilot (attempt=1) to fix them
+// - @copilot failed at session.create (model "claude-sonnet-4.5" deprecated)
+// - GitHub created a check named "copilot" that concluded `failure`
+// - On the next reconcile sweep the `ci-failure copilot` blocker FIRST APPEARED
+// - Before the fix: new blocker → new fingerprint → 'progressed' → attempt reset to 1
+// - After the fix: copilot excluded from fingerprint → same fingerprint → stale-retry
+//   → attempt increments to 2 as intended
+
+test('fresh ci-failure copilot first appearing after an initial dispatch does not trigger blocker-progressed (PR #1939 / #2268 regression)', async (t) => {
+  const thread = {
+    id: 'PRRT_kwDOSvo2Ms6Tt_4M',
+    isResolved: false,
+    isOutdated: false,
+    path: 'scripts/agent/security/check-exact-deps.mjs',
+    line: 106,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_r3649391364',
+          body: 'Exemption is keyed only on field+name, not version.',
+          author: { login: 'copilot-pull-request-reviewer' },
+          authorAssociation: 'COLLABORATOR',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3649391364`,
+        },
+      ],
+    },
+  };
+  const persistedBlockers = [
+    {
+      kind: 'review-thread',
+      id: reviewThreadBlockerId(thread),
+      threadId: thread.id,
+      // Include path as reconcile.mjs would when it first builds this blocker
+      // from the live GraphQL thread data (path is fingerprint-relevant).
+      path: thread.path,
+      summary:
+        'copilot-pull-request-reviewer: Exemption is keyed only on field+name, not version.',
+      url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3649391364`,
+    },
+  ];
+  const persistedFingerprint = blockerFingerprint(persistedBlockers);
+  const staleAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 960,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: persistedFingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: persistedBlockers,
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, persistedFingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  // The dispatched @copilot session failed at session.create (model deprecated).
+  // GitHub created a check-run literally named "copilot" that concludes `failure`.
+  const copilotFailureCheck = {
+    id: 99,
+    name: 'copilot',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/30410219329/job/90444419451`,
+  };
+  const capturedPatches = [];
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      capturedPatches.push(body);
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 961 } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      // Return the review thread still unresolved (same as before the failed dispatch).
+      return { body: gqlReviewThreads([thread]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [copilotFailureCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /assigned copilot pr=#42/);
+
+  // The fresh ci-failure copilot must NOT be classified as a new fingerprint
+  // (blocker-progressed). Before the fix this would have reset attempt to 1.
+  assert.ok(
+    !mutatingCalls.some((call) => {
+      if (call.method !== 'PATCH') return false;
+      try {
+        return parseStateComment(call.body?.body)?.trigger === 'blocker-progressed';
+      } catch {
+        return false;
+      }
+    }),
+    'the first appearance of ci-failure copilot must never be classified as blocker-progressed',
+  );
+
+  // The state must use the stale-automation-retry path, not reset to attempt=1.
+  const retryPatch = capturedPatches.find(
+    (patch) => parseStateComment(patch.body)?.trigger === 'stale-automation-retry',
+  );
+  assert.ok(
+    retryPatch,
+    'must carry trigger=stale-automation-retry when ci-failure copilot first appears alongside existing blockers',
+  );
+
+  const finalPatch = capturedPatches.at(-1);
+  assert.ok(finalPatch, 'a final state PATCH must be issued');
+  const finalState = parseStateComment(finalPatch.body);
+  assert.equal(
+    finalState?.attempt,
+    2,
+    'attempt must carry forward and increment (1 -> 2), not reset to 1 on the first appearance of ci-failure copilot',
+  );
+  assert.equal(finalState?.owner, 'automation');
+  assert.equal(finalState?.status, 'dispatched');
+});
+
+// ---------------------------------------------------------------------------
 // #1883 regression: waiting PR with zero blockers + green CI is re-admitted
 // ---------------------------------------------------------------------------
 

@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-exit-sign",
+  "spriteName": "welcome-room-exit-sign-var-0",
+  "assetPath": "generated/welcome-room-exit-sign-var-0.png",
+  "approvedAt": "2026-07-25T21:50:24.517Z",
+  "sourceRun": "generated/runs/welcome-room-exit-sign/2026-07-25T21-44-51-40a11370",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 48,
+    "y": 34,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 48,
+      "y": 34,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 48,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 48,
+        "y": 34
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T21:46:57.945Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a grimy, half-lit exit sign is well-executed and fits the darkly humorous and derelict aesthetic of Crawler. The imbalance in lighting is clear, and the grime and damage are effectively conveyed. However, the sign could lean slightly more into the 'threadbare and over-used' mood with more pronounced damage or wear."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. However, the lighting on the brighter side of the sign is slightly too saturated and could be dulled to better align with the muted tones of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. However, the lighting on the brighter side of the sign is slightly too saturated and could be dulled to better align with the muted tones of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite accurately depicts a rectangular, wall-mounted exit sign with the specified proportions, lighting imbalance, and grime. The word 'EXIT' is legible and appropriately styled."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, and the word 'EXIT' is easily readable. The sign's proportions and placement within the cell are correct, and the object is immediately recognizable."
+    },
+    "presentation": {
+      "score": 4,
+      "rationale": "The sprite is a self-contained, wall-mounted object with no extraneous elements. However, the slight tilt of the sign could be exaggerated further to emphasize the missing bolt and enhance the sense of disrepair."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with minor issues that can be improved.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4575,
+      "completionTokens": 416,
+      "totalTokens": 4991
+    }
+  },
+  "type": "prop",
+  "contentHash": "9e71bdbe9885f8e6c9f0669ea7e90016c0bbf32373b5e753813da114f82cae14",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-exit-sign\\2026-07-25T21-44-51-40a11370\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-exit-sign\\2026-07-25T21-44-51-40a11370\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-exit-sign\\2026-07-25T21-44-51-40a11370\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 5,
+    "width": 86,
+    "height": 58,
+    "canvasWidth": 96,
+    "canvasHeight": 69
+  }
+}

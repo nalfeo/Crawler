@@ -1,0 +1,42 @@
+{
+  "briefId": "npc-welcome-goon",
+  "spriteName": "npc-welcome-goon-var-0",
+  "assetPath": "generated/npc-welcome-goon-var-0.png",
+  "approvedAt": "2026-07-08T07:32:28.699Z",
+  "sourceRun": "generated/runs/npc-welcome-goon/2026-07-08T07-12-20-9e177903",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 32,
+    "y": 60,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 60,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 35,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "5",
+  "type": "character",
+  "contentHash": "4a94885db58138a75ecadc4f30804c7330cf6a189ef82eac937bcef116156c8b",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-welcome-goon\\2026-07-08T07-12-20-9e177903\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 3,
+    "width": 52,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

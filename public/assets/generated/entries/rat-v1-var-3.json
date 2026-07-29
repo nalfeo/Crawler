@@ -1,0 +1,37 @@
+{
+  "briefId": "rat-v1",
+  "spriteName": "rat-v1-var-3",
+  "assetPath": "generated/rat-v1-var-3.png",
+  "approvedAt": "2026-06-29T06:42:37.502Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Vk2mJP/rat-v1/2026-06-29T06-31-08-ce20206f",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 28,
+    "y": 30,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 28,
+      "y": 30,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 28,
+      "y": 30,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/8",
+  "judgeScore": "4",
+  "type": "enemy",
+  "contentHash": "3dd55e3d2012c2770557094414df62c96c11f1b2381a8741d43ccb75798dfe10",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 11,
+    "width": 58,
+    "height": 42,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}
