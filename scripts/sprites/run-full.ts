@@ -33,6 +33,11 @@ import {
   writeEffectivePipelineSnapshot,
   writePostprocessProfile,
 } from './postprocess-overrides.js';
+import {
+  frameSequenceDisabledModules,
+  computeFrameSequenceUnionCropRect,
+  type PostprocessOptions,
+} from './postprocess.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import { pickChosen, rankCandidates, type RunSummary } from './run-artifacts.js';
 
@@ -82,17 +87,42 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
   } = core;
 
   const nowIso = (options.now ?? (() => new Date()))().toISOString();
-  await writePostprocessProfile(store, `${identity.brief}/${identity.runId}`, {}, nowIso);
+  // Frame-sequence briefs disable trim-and-fit (post-resize per-frame
+  // independent trim) to keep every frame at the same canvas mapping.
+  // transparent-trim is no longer disabled here: it now uses a shared union
+  // bounding box (sharedCropRect below) so all frames are cropped to the SAME
+  // tight content region before resizing — this preserves both uniform
+  // scale/floor-line AND good content density (no 256×1024 → 16px-wide shrink).
+  const postprocessOptions: PostprocessOptions = {
+    disabledModules: frameSequenceDisabledModules(brief),
+  };
+  await writePostprocessProfile(
+    store,
+    `${identity.brief}/${identity.runId}`,
+    postprocessOptions,
+    nowIso,
+  );
   await writeEffectivePipelineSnapshot({
     store,
     baseKey: `${identity.brief}/${identity.runId}`,
     brief,
-    options: {},
+    options: postprocessOptions,
     manualAnchor: null,
     manualWeaponAnchor: null,
     facing: null,
     nowIso,
   });
+
+  // For frame-sequence briefs: compute the union opaque bbox across all raw
+  // frames (after background removal) so transparent-trim gives every pose
+  // the same crop-to-canvas mapping. Not persisted to the profile because it
+  // must be freshly derived from the current raw frames on each run/rerun.
+  const sharedCropRect = brief.frameSequence.enabled
+    ? computeFrameSequenceUnionCropRect(sliced)
+    : null;
+  const postprocessOptionsWithCrop: PostprocessOptions = sharedCropRect
+    ? { ...postprocessOptions, sharedCropRect }
+    : postprocessOptions;
 
   // --- Postprocess + score each variant via the shared run pipeline. ---
   // Keep the post-processed buffers so the diversity pass doesn't re-read
@@ -108,6 +138,7 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
       raw: sliced[i]!,
       brief,
       palette,
+      options: postprocessOptionsWithCrop,
       traceRefs: {
         overrideProfilePath: store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
         effectivePipelineSnapshotPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_JSON_KEY)),
@@ -187,7 +218,7 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
       profilePath: store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
       snapshotJsonPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_JSON_KEY)),
       snapshotYamlPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_YAML_KEY)),
-      options: {},
+      options: postprocessOptionsWithCrop,
       manualAnchor: null,
       manualWeaponAnchor: null,
       facing: null,

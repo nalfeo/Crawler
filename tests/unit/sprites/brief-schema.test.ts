@@ -26,6 +26,7 @@ const validBrief: Brief = {
   minVariations: 4,
   judge: { enabled: false, maxVariants: 16 },
   postprocessing: { trimAndFit: false, minDimension: 64, paletteMode: 'strict' },
+  frameSequence: { enabled: false, frameCount: 3, frameRate: 8, loop: true },
 };
 
 describe('briefSchema', () => {
@@ -303,6 +304,105 @@ describe('briefSchema', () => {
     if (result.success) {
       expect(result.data.variations).toEqual(['spiked pommel']);
     }
+  });
+
+  describe('frameSequence (opt-in walk-cycle mode)', () => {
+    it('defaults to disabled, leaving existing briefs completely unaffected', () => {
+      const parsed = briefSchema.parse(validBrief);
+      expect(parsed.frameSequence).toEqual({
+        enabled: false,
+        frameCount: 3,
+        frameRate: 8,
+        loop: true,
+      });
+    });
+
+    it('defaults to disabled when frameSequence is entirely absent from the brief', () => {
+      // This guards the key backward-compat contract: an existing brief that
+      // predates the frameSequence field must parse successfully and default to
+      // the disabled state — the schema must supply the default, not the caller.
+      const { frameSequence: _removed, ...briefWithoutFrameSequence } = validBrief;
+      const result = briefSchema.safeParse(briefWithoutFrameSequence);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.frameSequence).toMatchObject({ enabled: false });
+      }
+    });
+
+    it('accepts an enabled sequence brief whose sheet is a single row of frameCount cells', () => {
+      const result = briefSchema.safeParse({
+        ...validBrief,
+        generation: { sheet: { rows: 1, cols: 3, emptyCells: [], nativeCanvas: 384 } },
+        frameSequence: { enabled: true, frameCount: 3, frameRate: 8, loop: true },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an enabled sequence brief with rows !== 1', () => {
+      const result = briefSchema.safeParse({
+        ...validBrief,
+        generation: { sheet: { rows: 2, cols: 3, emptyCells: [], nativeCanvas: 192 } },
+        frameSequence: { enabled: true, frameCount: 3, frameRate: 8, loop: true },
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const messages = result.error.issues.map((i) => i.message);
+        expect(messages.some((m) => m.includes('rows === 1'))).toBe(true);
+      }
+    });
+
+    it('rejects an enabled sequence brief whose cols does not match frameCount', () => {
+      const result = briefSchema.safeParse({
+        ...validBrief,
+        generation: { sheet: { rows: 1, cols: 4, emptyCells: [], nativeCanvas: 256 } },
+        frameSequence: { enabled: true, frameCount: 3, frameRate: 8, loop: true },
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const messages = result.error.issues.map((i) => i.message);
+        expect(messages.some((m) => m.includes('cols === frameSequence.frameCount'))).toBe(true);
+      }
+    });
+
+    it('rejects an enabled sequence brief with any empty cells', () => {
+      const result = briefSchema.safeParse({
+        ...validBrief,
+        generation: { sheet: { rows: 1, cols: 3, emptyCells: [[0, 1]], nativeCanvas: 192 } },
+        frameSequence: { enabled: true, frameCount: 3, frameRate: 8, loop: true },
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const messages = result.error.issues.map((i) => i.message);
+        expect(messages.some((m) => m.includes('no empty cells'))).toBe(true);
+      }
+    });
+
+    it('does not apply frameSequence cross-validation when disabled, even with a mismatched grid', () => {
+      // A 2x2 grid would violate every frameSequence rule, but since it's
+      // disabled the normal (non-sequence) sheet validation still applies
+      // and this remains a perfectly ordinary valid brief.
+      const result = briefSchema.safeParse({
+        ...validBrief,
+        generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
+        frameSequence: { enabled: false, frameCount: 3, frameRate: 8, loop: true },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects frameCount outside the documented [2, 8] range', () => {
+      expect(
+        briefSchema.safeParse({
+          ...validBrief,
+          frameSequence: { enabled: false, frameCount: 1, frameRate: 8, loop: true },
+        }).success,
+      ).toBe(false);
+      expect(
+        briefSchema.safeParse({
+          ...validBrief,
+          frameSequence: { enabled: false, frameCount: 9, frameRate: 8, loop: true },
+        }).success,
+      ).toBe(false);
+    });
   });
 });
 

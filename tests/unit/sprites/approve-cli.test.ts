@@ -1,11 +1,13 @@
 /**
- * Unit tests for approve-cli.ts — specifically the idempotent already-approved
- * retry path (concern #6).
+ * Unit tests for approve-cli.ts — the idempotent already-approved retry path
+ * for both `--variant` (concern #6) and `--sequence` (round-1 code review
+ * finding: the same retry gap existed for frame-sequence approvals).
  *
- * Strategy: mock the three I/O boundaries (`approveVariant`, `loadApprovedEntry`,
- * and `runQueueCommit`) so the test exercises only the CLI's own wiring logic,
- * verifying that an `already-approved` entry re-enters `runQueueCommit` and
- * returns exit code 0 instead of the old early-exit with a non-zero code.
+ * Strategy: mock the I/O boundaries (`approveVariant`/`approveFrameSequence`,
+ * `loadApprovedEntry`/`loadApprovedFrameSequenceEntry`, and `runQueueCommit`)
+ * so the test exercises only the CLI's own wiring logic, verifying that an
+ * `already-approved` entry re-enters `runQueueCommit` and returns exit code 0
+ * instead of the old early-exit with a non-zero code.
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
@@ -29,6 +31,21 @@ const mocks = vi.hoisted(() => {
     type: null,
   };
 
+  const FAKE_SEQUENCE_ENTRY = {
+    briefId: 'player-walk-cycle',
+    spriteName: 'player-walk-cycle',
+    assetPath: 'generated/player-walk-cycle.png',
+    approvedAt: '2026-07-01T00:00:00.000Z',
+    sourceRun: 'generated/runs/player-walk-cycle/2026-07-01T00-00-00-deadbeef',
+    variantIndex: 0,
+    anchor: null,
+    anchors: { hold: null, centerOfGravity: null },
+    sensorScore: 'frame-sequence',
+    judgeScore: null,
+    type: null,
+    animation: { frameWidth: 64, frameHeight: 64, frameCount: 4, frameRate: 8, loop: true },
+  };
+
   const runQueueCommit = vi.fn(async () => ({
     status: 'committed' as const,
     branch: 'assets/queue',
@@ -36,6 +53,7 @@ const mocks = vi.hoisted(() => {
   }));
 
   const loadApprovedEntry = vi.fn(() => FAKE_ENTRY);
+  const loadApprovedFrameSequenceEntry = vi.fn(() => FAKE_SEQUENCE_ENTRY);
 
   class ApproveError extends Error {
     constructor(
@@ -51,7 +69,20 @@ const mocks = vi.hoisted(() => {
     throw new ApproveError('already-approved', 'variant 1 already approved');
   });
 
-  return { runQueueCommit, loadApprovedEntry, approveVariant, ApproveError, FAKE_ENTRY };
+  const approveFrameSequence = vi.fn(() => {
+    throw new ApproveError('already-approved', 'player-walk-cycle already approved');
+  });
+
+  return {
+    runQueueCommit,
+    loadApprovedEntry,
+    loadApprovedFrameSequenceEntry,
+    approveVariant,
+    approveFrameSequence,
+    ApproveError,
+    FAKE_ENTRY,
+    FAKE_SEQUENCE_ENTRY,
+  };
 });
 
 vi.mock('../../../scripts/sprites/queue-commit.js', () => ({
@@ -69,6 +100,8 @@ vi.mock('../../../scripts/sprites/approve.js', async (importOriginal) => {
     ...original,
     approveVariant: mocks.approveVariant,
     loadApprovedEntry: mocks.loadApprovedEntry,
+    approveFrameSequence: mocks.approveFrameSequence,
+    loadApprovedFrameSequenceEntry: mocks.loadApprovedFrameSequenceEntry,
     ApproveError: mocks.ApproveError,
   };
 });
@@ -132,6 +165,65 @@ describe('approve-cli already-approved idempotent retry (concern #6)', () => {
     const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
 
     // No stored entry → nothing to make durable; original error code preserved.
+    expect(exitCode).not.toBe(0);
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+});
+
+describe('approve-cli --sequence already-approved idempotent retry (round-1 code review finding)', () => {
+  let savedCI: string | undefined;
+
+  beforeEach(() => {
+    savedCI = process.env.CI;
+    delete process.env.CI;
+    mocks.runQueueCommit.mockClear();
+    mocks.loadApprovedFrameSequenceEntry.mockClear();
+    mocks.approveFrameSequence.mockClear();
+  });
+
+  afterEach(() => {
+    if (savedCI !== undefined) {
+      process.env.CI = savedCI;
+    }
+  });
+
+  it('re-enters runQueueCommit for an already-approved frame sequence and returns exit code 0', async () => {
+    const exitCode = await main(
+      ['/fake/runs/player-walk-cycle/run-01', '--sequence'],
+      '/fake/repo',
+    );
+
+    // The critical invariant this test guards: exits 0 (was 1 before the fix)
+    // even when the sequence was already approved, because the CLI re-runs
+    // queue-commit instead of dead-ending on `already-approved`.
+    expect(exitCode).toBe(0);
+    expect(mocks.runQueueCommit).toHaveBeenCalledOnce();
+
+    const callArgs = (mocks.runQueueCommit.mock.calls[0] as unknown[]) ?? [];
+    const assets = callArgs[1] as Array<{ manifestKey: string }>;
+    expect(assets[0]?.manifestKey).toBe('player-walk-cycle');
+  });
+
+  it('returns exit code 0 on CI without calling runQueueCommit (already-approved sequence CI path)', async () => {
+    process.env.CI = 'true';
+
+    const exitCode = await main(
+      ['/fake/runs/player-walk-cycle/run-01', '--sequence'],
+      '/fake/repo',
+    );
+
+    expect(exitCode).toBe(0);
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+
+  it('returns a non-zero exit code when the stored sequence manifest entry cannot be found', async () => {
+    mocks.loadApprovedFrameSequenceEntry.mockReturnValueOnce(null as never);
+
+    const exitCode = await main(
+      ['/fake/runs/player-walk-cycle/run-01', '--sequence'],
+      '/fake/repo',
+    );
+
     expect(exitCode).not.toBe(0);
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });

@@ -50,6 +50,18 @@ interface RgbaImage {
 export type SpeckleMode = 'edge-drop' | 'preserve-orphans' | 'disabled';
 export type EnclosedBackgroundMode = 'enabled' | 'disabled';
 
+/**
+ * Tight opaque bounding box of a sprite frame, in pixel coordinates relative
+ * to the top-left corner of the full cell (before any cropping or resizing).
+ * All four edges are inclusive. Exported for frame-sequence union-crop logic.
+ */
+export interface OpaqueRect {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
 export interface PostprocessOptions {
   /** Canonical template module names to pass through without executing. */
   readonly disabledModules?: ReadonlyArray<string>;
@@ -66,6 +78,19 @@ export interface PostprocessOptions {
     readonly speckleMode?: SpeckleMode;
     readonly enclosedBackgroundMode?: EnclosedBackgroundMode;
   };
+  /**
+   * When set (for frame-sequence briefs), the `transparent-trim` module crops
+   * every frame to this pre-computed union bounding box + proportional margin
+   * instead of computing a per-frame tight bbox. This ensures every frame in
+   * the ordered walk cycle uses the SAME crop-to-canvas mapping (identical
+   * scale factor and floor-line placement) rather than a per-frame independent
+   * bbox that varies with silhouette width from pose to pose.
+   *
+   * Computed at runtime by {@link computeFrameSequenceUnionCropRect}; do NOT
+   * persist this field to disk — it must be re-derived from the current raw
+   * frames on every run/rerun so it stays current if frames are regenerated.
+   */
+  readonly sharedCropRect?: OpaqueRect;
 }
 
 export function postprocess(
@@ -112,6 +137,30 @@ export function normalizeDisabledModules(value: unknown, brief: Brief): string[]
     );
   }
   return activeNames.filter((name) => requested.has(name));
+}
+
+/**
+ * Modules that MUST be disabled for `frameSequence`-enabled briefs so every
+ * frame keeps uniform scale and centering across the ordered walk cycle.
+ *
+ * `transparent-trim` is no longer disabled here: it now uses a pre-computed
+ * union bounding box (passed as {@link PostprocessOptions.sharedCropRect}) so
+ * every frame is cropped to the SAME bbox + margin before resizing. Callers
+ * must supply `sharedCropRect` via {@link computeFrameSequenceUnionCropRect}.
+ *
+ * `trim-and-fit` is still disabled because it re-trims AFTER resize using an
+ * independent per-frame bbox, which would reintroduce different centering
+ * offsets per pose even after the initial crop is uniform.
+ *
+ * Returns `[]` for non-frame-sequence briefs (no behavior change) and filters
+ * to only modules actually active for this brief's type.
+ */
+export function frameSequenceDisabledModules(brief: Brief): string[] {
+  if (!brief.frameSequence.enabled) return [];
+  const activeNames = new Set(
+    getActiveModules(getPipelineForType(brief.type), brief.type).map(({ name }) => name),
+  );
+  return ['trim-and-fit'].filter((name) => activeNames.has(name));
 }
 
 export function postprocessWithTrace(
@@ -213,6 +262,7 @@ export function postprocessWithTrace(
       },
       backgroundSource,
       shouldRunEnclosedBackgroundCleanup,
+      sharedCropRect: options.sharedCropRect,
     });
   }
 
@@ -959,3 +1009,110 @@ function upscaleNearest(image: RgbaImage, dstW: number, dstH: number): RgbaImage
 // Re-export the internal image type so tests can build images without going
 // through PNG encoding/decoding.
 export type { RgbaImage };
+
+/**
+ * Compute the tight opaque bounding box of an image WITHOUT creating a new
+ * cropped image. Returns null when the image is entirely transparent.
+ *
+ * Used by {@link computeFrameSequenceUnionCropRect} to derive a shared crop
+ * rect across all frames of a walk-cycle brief.
+ */
+export function computeOpaqueRect(image: RgbaImage): OpaqueRect | null {
+  const { width, height, data } = image;
+  let top = height;
+  let bottom = -1;
+  let left = width;
+  let right = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const a = data[(y * width + x) * 4 + 3] ?? 0;
+      if (a > 0) {
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+  }
+  if (bottom === -1) return null;
+  return { left, top, right, bottom };
+}
+
+/**
+ * Crop a source image to the given rect (inclusive on all sides) plus a
+ * uniform `margin` padding on every edge. Source pixels outside the image
+ * bounds default to fully transparent. Returns an image of dimensions
+ * `(right - left + 1 + 2*margin) × (bottom - top + 1 + 2*margin)`.
+ *
+ * Used by the `transparent-trim` module when {@link PostprocessOptions.sharedCropRect}
+ * is set, so all frames in a walk-cycle brief are cropped to the same bbox.
+ */
+export function cropRectWithMargin(image: RgbaImage, rect: OpaqueRect, margin: number): RgbaImage {
+  const m = Math.max(0, Math.trunc(margin));
+  const contentW = Math.max(0, rect.right - rect.left + 1);
+  const contentH = Math.max(0, rect.bottom - rect.top + 1);
+  const newW = contentW + m * 2;
+  const newH = contentH + m * 2;
+  if (newW === 0 || newH === 0) return { width: 0, height: 0, data: new Uint8Array(0) };
+  const dst = new Uint8Array(newW * newH * 4); // initialized to 0 (transparent)
+  for (let y = 0; y < contentH; y++) {
+    const srcY = rect.top + y;
+    if (srcY < 0 || srcY >= image.height) continue;
+    const srcRowBase = srcY * image.width;
+    const dstRowBase = (y + m) * newW;
+    for (let x = 0; x < contentW; x++) {
+      const srcX = rect.left + x;
+      if (srcX < 0 || srcX >= image.width) continue;
+      const si = (srcRowBase + srcX) * 4;
+      const di = (dstRowBase + x + m) * 4;
+      dst[di] = image.data[si] ?? 0;
+      dst[di + 1] = image.data[si + 1] ?? 0;
+      dst[di + 2] = image.data[si + 2] ?? 0;
+      dst[di + 3] = image.data[si + 3] ?? 0;
+    }
+  }
+  return { width: newW, height: newH, data: dst };
+}
+
+/**
+ * Compute the UNION opaque bounding box across all raw frame PNGs in a
+ * frame-sequence brief. Each frame is decoded and passed through a minimal
+ * background-removal pass so background pixels do not inflate the bbox.
+ *
+ * Returns null when all frames are fully transparent (degenerate; the
+ * `transparent-trim` module skips trimming when it receives null and leaves
+ * the frame unchanged).
+ *
+ * This is the ONLY source of truth for the shared-crop rect that
+ * `postprocessWithTrace` uses (via {@link PostprocessOptions.sharedCropRect})
+ * to give every frame in a walk cycle the same scale factor and floor-line
+ * placement. Callers MUST recompute this value from the current raw frames
+ * on every run/rerun rather than persisting it to disk.
+ */
+export function computeFrameSequenceUnionCropRect(
+  rawPngs: ReadonlyArray<Buffer>,
+): OpaqueRect | null {
+  if (rawPngs.length === 0) return null;
+  let unionLeft = Infinity;
+  let unionTop = Infinity;
+  let unionRight = -Infinity;
+  let unionBottom = -Infinity;
+  let foundAny = false;
+  for (const raw of rawPngs) {
+    const image = decodePng(raw);
+    // Run the same flood-fill background removal the pipeline uses so the bbox
+    // only covers the character/subject, not the model-generated background.
+    const bgRemoved = removeBackgroundB(image);
+    const rect = computeOpaqueRect(bgRemoved);
+    if (rect !== null) {
+      foundAny = true;
+      if (rect.left < unionLeft) unionLeft = rect.left;
+      if (rect.top < unionTop) unionTop = rect.top;
+      if (rect.right > unionRight) unionRight = rect.right;
+      if (rect.bottom > unionBottom) unionBottom = rect.bottom;
+    }
+  }
+  return foundAny
+    ? { left: unionLeft, top: unionTop, right: unionRight, bottom: unionBottom }
+    : null;
+}

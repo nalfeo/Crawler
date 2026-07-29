@@ -49,6 +49,8 @@
 import { createHash } from 'node:crypto';
 import { PNG } from 'pngjs';
 import { deriveOpaqueBounds, type DerivedBounds } from './derive-opaque-bounds.js';
+import { packFrameStrip } from './pack-frame-strip.js';
+import { checkFrameCoherence, type FrameCoherenceOptions } from './sensors/frame-coherence.js';
 import {
   copyFileSync,
   existsSync,
@@ -166,6 +168,22 @@ export interface ManifestEntry {
   readonly effectiveAnchorSource?: ManifestAnchor['source'] | null;
   readonly facingDirection?: 'left' | 'right';
   /**
+   * Present only on entries approved via `approveFrameSequence` (Slice B
+   * walk-cycle animation sheets). Mirrors the shared descriptor Slice A's
+   * `src/shared/generated-assets.ts` declares — kept structurally identical
+   * here so this file does not need to import across the ownership boundary.
+   * `assetPath` for an animated entry is a single strip PNG containing
+   * `frameCount` consecutive `frameWidth × frameHeight` cells with no
+   * margin/spacing, ready for `Phaser.Loader.LoaderPlugin#spritesheet`.
+   */
+  readonly animation?: {
+    readonly frameWidth: number;
+    readonly frameHeight: number;
+    readonly frameCount: number;
+    readonly frameRate: number;
+    readonly loop: boolean;
+  };
+  /**
    * True when this entry is a placeholder stand-in (not real generated art).
    * Placeholder entries are excluded from the derived sprite-catalog rows. See
    * `src/shared/generated-catalog.ts#isPlaceholderManifestEntry`.
@@ -199,7 +217,11 @@ export class ApproveError extends Error {
       | 'variant-not-found'
       | 'processed-missing'
       | 'already-approved'
-      | 'manifest-invalid',
+      | 'manifest-invalid'
+      // Frame-sequence-only kinds (approveFrameSequence):
+      | 'not-frame-sequence'
+      | 'frame-missing'
+      | 'frame-incoherent',
     message: string,
   ) {
     super(message);
@@ -233,6 +255,7 @@ interface RunSummaryShape {
       readonly reason?: string;
       readonly pixels?: ReadonlyArray<unknown>;
     }>;
+    readonly processedPath?: string;
     readonly derivedAnchor?: { readonly x: number; readonly y: number } | null;
     readonly derivedAnchors?: {
       readonly hold?: { readonly x: number; readonly y: number } | null;
@@ -251,6 +274,18 @@ interface RunSummaryShape {
       readonly direction?: 'left' | 'right';
       readonly applyToAllVariants?: boolean;
     } | null;
+  } | null;
+  /**
+   * Present only when `brief.frameSequence.enabled` (see `run-artifacts.ts`).
+   * Carries the ordered animation-cycle intent through to
+   * `approveFrameSequence`, which stamps the shared `animation` descriptor
+   * (frameWidth/frameHeight are measured from the packed strip, not stored
+   * here) onto the manifest entry.
+   */
+  readonly frameSequence?: {
+    readonly frameCount?: number;
+    readonly frameRate?: number;
+    readonly loop?: boolean;
   } | null;
 }
 
@@ -467,6 +502,226 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   return entry;
 }
 
+export interface ApproveFrameSequenceOptions {
+  /** Absolute path to the run directory (`generated/runs/<brief>/<runId>`). */
+  readonly runDir: string;
+  /**
+   * Absolute path to `public/assets/generated/manifest.json`. The aggregate
+   * itself is a gitignored build artifact; approve derives the generated
+   * directory from this path and writes the per-asset shard under
+   * `entries/<key>.json`. Kept as the anchor path so callers don't need to know
+   * the shard layout.
+   */
+  readonly manifestPath: string;
+  /**
+   * @deprecated The `generated:` catalog rows are now DERIVED from the manifest
+   * shards (see `src/shared/generated-catalog.ts`); approve no longer writes the
+   * catalog. Accepted for backward compatibility and ignored.
+   */
+  readonly catalogPath?: string;
+  /** Absolute path to `public/assets/` (parent of `generated/`). */
+  readonly publicAssetsDir: string;
+  /** Absolute path to the repo root, used to compute `sourceRun` relative path. */
+  readonly repoRoot: string;
+  /**
+   * Stable repo-relative source identity for rematerialized runs. When omitted,
+   * derives the path from `runDir` exactly as before.
+   */
+  readonly sourceRunOverride?: string;
+  /** Clock injection for deterministic tests. Defaults to `() => new Date()`. */
+  readonly now?: () => Date;
+  /** Injected fs for tests. Defaults to `node:fs`. */
+  readonly fs?: ApproveFs;
+  /**
+   * Allow overwriting an already-approved entry with identical content.
+   * Default false: approving an exact-duplicate strip throws
+   * `ApproveError('already-approved')`.
+   */
+  readonly allowReapprove?: boolean;
+  /**
+   * Override the coherence-gate thresholds. Defaults to
+   * `frame-coherence.ts`'s own defaults. Present for tests only — do NOT
+   * loosen these in production callers just to force a failing generation
+   * to pass; regenerate instead.
+   */
+  readonly coherence?: FrameCoherenceOptions;
+}
+
+/**
+ * Approve an ENTIRE frame-sequence run (a walk-cycle animation sheet, Slice
+ * B) as a single unit — unlike `approveVariant`, which approves exactly one
+ * design-alternative cell, this reads every ordered frame the run produced,
+ * runs the deterministic cross-frame coherence gate (`frame-coherence.ts`),
+ * packs the frames into one horizontal strip PNG, and writes a manifest
+ * entry carrying the shared `animation` descriptor. Refuses to approve
+ * (and writes nothing) when the run isn't a frame-sequence run, is missing
+ * a frame, or fails the coherence gate — this hard gate must never be
+ * bypassed by a caller relaxing `coherence` outside of tests.
+ *
+ * Steps:
+ *   1. Load and validate `summary.json`, requiring `frameSequence` present.
+ *   2. Locate all `frameCount` candidates by index (0..frameCount-1, in
+ *      that ORDER — cycle order, not sensor-score rank).
+ *   3. Verify every frame's processed PNG exists.
+ *   4. Run `checkFrameCoherence` across the ordered frames; throw
+ *      `ApproveError('frame-incoherent')` on failure.
+ *   5. Pack the frames into one strip PNG → `publicAssetsDir/generated/<briefId>.png`.
+ *   6. Load + upsert + write `manifest.json` with the `animation` descriptor.
+ *   7. Return the new manifest entry.
+ */
+export function approveFrameSequence(options: ApproveFrameSequenceOptions): ManifestEntry {
+  const fs = options.fs ?? DEFAULT_FS;
+  const now = options.now ?? (() => new Date());
+
+  const summaryPath = path.join(options.runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${options.runDir}`);
+  }
+
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const sourceRun = options.sourceRunOverride
+    ? normalizeSourceRunOverride(options.sourceRunOverride)
+    : toRepoRelativePosix(options.repoRoot, options.runDir);
+  const rawBriefId = summary.brief;
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+
+  const frameSequence = summary.frameSequence;
+  const frameCount = frameSequence?.frameCount;
+  if (!frameSequence || typeof frameCount !== 'number' || frameCount < 2) {
+    throw new ApproveError(
+      'not-frame-sequence',
+      `summary.json has no valid "frameSequence" field (brief must opt into ` +
+        `frameSequence.enabled): ${summaryPath}`,
+    );
+  }
+  const frameRate = frameSequence.frameRate;
+  const loop = frameSequence.loop;
+  if (typeof frameRate !== 'number' || typeof loop !== 'boolean') {
+    throw new ApproveError(
+      'not-frame-sequence',
+      `summary.json's "frameSequence" field is missing frameRate/loop: ${summaryPath}`,
+    );
+  }
+
+  // Ordered frames 0..frameCount-1 — cycle order, NOT sensor-score rank.
+  const candidatesByIndex = new Map((summary.candidates ?? []).map((c) => [c.index, c]));
+  const processedDir = path.join(options.runDir, 'processed');
+  const frameBuffers: Buffer[] = [];
+  const frameBreakdowns: Array<NonNullable<RunSummaryShape['candidates']>[number]['breakdown']> =
+    [];
+  for (let i = 0; i < frameCount; i++) {
+    const candidate = candidatesByIndex.get(i);
+    if (!candidate) {
+      throw new ApproveError(
+        'frame-missing',
+        `Frame ${i} not in summary.json candidates (need indices 0..${frameCount - 1})`,
+      );
+    }
+    const padded = padIndex(i);
+    const runLocalPng = path.join(processedDir, `${padded}.png`);
+    const declaredPng = candidate.processedPath
+      ? path.isAbsolute(candidate.processedPath)
+        ? candidate.processedPath
+        : path.join(options.repoRoot, candidate.processedPath)
+      : runLocalPng;
+    // `approveVariant` always resolves the run-local `processed/NN.png` path
+    // first and only falls back to the declared processedPath when the local
+    // file is absent. Do the same here: a rematerialized or reprocessed run
+    // will have written fresh bytes to the run-local path — preferring the
+    // declared absolute path from the original machine would silently pack
+    // stale bytes from before the reprocess (reviewer finding, PR #2302).
+    const processedPng = fs.existsSync(runLocalPng)
+      ? runLocalPng
+      : fs.existsSync(declaredPng)
+        ? declaredPng
+        : runLocalPng;
+    if (!fs.existsSync(processedPng)) {
+      throw new ApproveError(
+        'frame-missing',
+        `Processed PNG not found for frame ${i}: ${processedPng}`,
+      );
+    }
+    frameBuffers.push(fs.readFileSync(processedPng));
+    frameBreakdowns.push(candidate.breakdown);
+  }
+
+  // HARD GATE: cross-frame coherence. Never weaken these thresholds to force
+  // a lucky generation through — regenerate instead. See frame-coherence.ts.
+  // Pass `loop` so the wrap-around seam (final→first) is checked when the
+  // animation loops — a drifted loop seam plays on every cycle iteration.
+  const coherence = checkFrameCoherence(frameBuffers, { ...options.coherence, loop });
+  if (!coherence.ok) {
+    throw new ApproveError(
+      'frame-incoherent',
+      `Frame sequence for brief "${briefId}" failed the cross-frame coherence gate: ${coherence.reason ?? 'unknown reason'}`,
+    );
+  }
+
+  const strip = packFrameStrip(frameBuffers);
+
+  const generatedDir = path.join(options.publicAssetsDir, 'generated');
+  const assetAbsPath = path.join(generatedDir, `${briefId}.png`);
+  const contentHash = createHash('sha256').update(strip.buffer).digest('hex');
+
+  if (!options.allowReapprove) {
+    const existing = readManifestEntry(fs, options.manifestPath, briefId);
+    if (existing) {
+      const storedHash =
+        existing.contentHash && existing.contentHash.length > 0
+          ? existing.contentHash
+          : hashFileIfExists(fs, assetAbsPath);
+      if (storedHash !== null && storedHash === contentHash) {
+        throw new ApproveError(
+          'already-approved',
+          `Frame sequence ${briefId} is already approved with identical content. ` +
+            `Re-generate to change the cycle, or pass allowReapprove to overwrite it.`,
+        );
+      }
+    }
+  }
+
+  fs.mkdirSync(generatedDir, { recursive: true });
+  fs.writeFileSync(assetAbsPath, strip.buffer);
+
+  const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);
+
+  // Ambiguous across multiple poses — leave unset rather than picking one
+  // frame's anchor arbitrarily. Consumers of animated entries derive
+  // gameplay anchoring differently (Slice A's concern), not from this field.
+  const entry: ManifestEntry = {
+    briefId,
+    spriteName: briefId,
+    assetPath: `generated/${briefId}.png`,
+    approvedAt: now().toISOString(),
+    sourceRun,
+    variantIndex: 0,
+    anchor: null,
+    anchors: { hold: null, centerOfGravity: null },
+    // Sensor score reported for frame 0 only — frame-sequence entries are
+    // approved as one unit via the coherence gate above, not per-variant
+    // sensor scoring.
+    sensorScore: 'frame-sequence',
+    judgeScore: null,
+    sensorBreakdown: frameBreakdowns[0],
+    judgeScorecard: null,
+    type,
+    contentHash,
+    animation: {
+      frameWidth: strip.frameWidth,
+      frameHeight: strip.frameHeight,
+      frameCount: strip.frameCount,
+      frameRate,
+      loop,
+    },
+  };
+
+  upsertManifest(fs, options.manifestPath, entry, briefId);
+  return entry;
+}
+
 /** Deterministic identity + content hash for one run variant, resolved WITHOUT mutating anything. */
 export interface VariantIdentity {
   /** Canonical brief id (item-alias `-vN` stripped when applicable). */
@@ -550,6 +805,40 @@ export function loadApprovedEntry(options: {
   const fs = options.fs ?? DEFAULT_FS;
   const identity = resolveVariantIdentity(options.runDir, options.variantIndex, fs);
   return readManifestEntry(fs, options.manifestPath, identity.variantId);
+}
+
+/**
+ * Frame-sequence counterpart to `loadApprovedEntry`: loads the manifest entry
+ * for a frame-sequence run that is ALREADY approved with identical content,
+ * WITHOUT mutating anything. Returns null when no such entry exists.
+ *
+ * Closes the same retry gap `loadApprovedEntry` closes for `--variant`
+ * approvals: re-running `approveFrameSequence` after a failed queue-commit
+ * throws `ApproveError('already-approved')` before `runQueueCommit` ever
+ * executes (the manifest write already succeeded), so the CLI's "re-run to
+ * retry queue-commit" advice would otherwise be false for `--sequence`. The
+ * caller catches `already-approved`, loads the existing entry via this
+ * helper, and falls through to `runQueueCommit` exactly as the `--variant`
+ * path does.
+ */
+export function loadApprovedFrameSequenceEntry(options: {
+  readonly runDir: string;
+  readonly manifestPath: string;
+  readonly repoRoot: string;
+  readonly fs?: ApproveFs;
+}): ManifestEntry | null {
+  const fs = options.fs ?? DEFAULT_FS;
+  const summaryPath = path.join(options.runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${options.runDir}`);
+  }
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const rawBriefId = summary.brief;
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  return readManifestEntry(fs, options.manifestPath, briefId);
 }
 
 function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {

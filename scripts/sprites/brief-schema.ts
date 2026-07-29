@@ -320,6 +320,34 @@ export const briefSchema = z
       })
       .strict()
       .default({ trimAndFit: false, minDimension: 64, paletteMode: 'none' }),
+    /**
+     * Opt-in ORDERED frame-sequence mode (walk-cycle animation sheets).
+     *
+     * When enabled, the sheet's cells are NOT independent design
+     * alternatives of one static sprite (the normal sheet-mode meaning) —
+     * they are an ORDERED sequence of poses of the SAME subject, read
+     * left-to-right, meant to be packed into a single horizontal
+     * animation strip and played back frame-by-frame in the engine.
+     *
+     * Strictly opt-in and fully backward-compatible: every existing brief
+     * omits this field and behaves exactly as before. When enabled,
+     * `generation.sheet` is cross-validated (see `superRefine` below) to be
+     * a single row of exactly `frameCount` cells with no empty cells —
+     * this reuses the existing grid/slicing machinery (`slice-sheet.ts`)
+     * instead of introducing a parallel layout system.
+     */
+    frameSequence: z
+      .object({
+        enabled: z.boolean().default(false),
+        /** Ordered pose-frame count. Target for a walk cycle: 3. */
+        frameCount: z.number().int().min(2).max(8).default(3),
+        /** Intended playback rate (frames per second) for the packed strip. */
+        frameRate: z.number().positive().default(8),
+        /** Whether playback should loop. */
+        loop: z.boolean().default(true),
+      })
+      .strict()
+      .default({ enabled: false, frameCount: 3, frameRate: 8, loop: true }),
   })
   .strict()
   .superRefine((brief, ctx) => {
@@ -380,6 +408,32 @@ export const briefSchema = z
         path: ['generation', 'sheet'],
         message: `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${nativeCanvas / cols}x${nativeCanvas / rows})`,
       });
+    }
+    // frameSequence mode reuses the sheet grid as an ordered single-row strip:
+    // cols must equal frameCount and every cell must be a required frame.
+    if (brief.frameSequence.enabled) {
+      const { frameCount } = brief.frameSequence;
+      if (rows !== 1) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['generation', 'sheet', 'rows'],
+          message: `frameSequence.enabled requires generation.sheet.rows === 1 (ordered frames read left-to-right in a single row), got ${rows}`,
+        });
+      }
+      if (cols !== frameCount) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['generation', 'sheet', 'cols'],
+          message: `frameSequence.enabled requires generation.sheet.cols === frameSequence.frameCount (${frameCount}), got ${cols}`,
+        });
+      }
+      if (emptyCells.length > 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['generation', 'sheet', 'emptyCells'],
+          message: `frameSequence.enabled requires no empty cells — every cell is a required ordered frame`,
+        });
+      }
     }
   });
 

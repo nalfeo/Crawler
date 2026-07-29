@@ -458,10 +458,35 @@ function sheetLayoutBlock(brief: Brief, count: number): string {
   } else {
     lines.push('Every cell must contain exactly one variant — no empty cells.');
   }
-  lines.push(
-    'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose within the orientation rule, construction, material distribution, shading direction, and contrasting accent colors. Preserve subject identity, gameplay role, orientation, rendering style, and floor-context intensity. Do not reduce diversity to different shades of one dominant color. If the subject description leaves room for interpretation, cover the design space rather than producing near-duplicates.',
-  );
+  lines.push(brief.frameSequence.enabled ? walkCycleSequenceLine(brief) : variantExplorationLine());
   return lines.join('\n');
+}
+
+/**
+ * The default (non-sequence) instruction: cells are independent design
+ * alternatives of one static sprite, and the model should explore the
+ * design space rather than produce near-duplicates.
+ */
+function variantExplorationLine(): string {
+  return 'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose within the orientation rule, construction, material distribution, shading direction, and contrasting accent colors. Preserve subject identity, gameplay role, orientation, rendering style, and floor-context intensity. Do not reduce diversity to different shades of one dominant color. If the subject description leaves room for interpretation, cover the design space rather than producing near-duplicates.';
+}
+
+/**
+ * The frame-sequence instruction: cells are ORDERED FRAMES of ONE walk
+ * cycle for the SAME character, not independent design alternatives. This
+ * is the opposite intent of `variantExplorationLine` — identity, palette,
+ * outfit, and proportions must be held IDENTICAL across every cell, and the
+ * only thing allowed to change is the walking pose (limb/leg placement),
+ * read left-to-right as one continuous stride cycle.
+ */
+function walkCycleSequenceLine(brief: Brief): string {
+  const { frameCount } = brief.frameSequence;
+  return [
+    `These ${frameCount} cells are NOT independent design alternatives — they are ORDERED FRAMES of a single side-view walk-cycle animation for the exact same character, read left-to-right as one continuous walking stride.`,
+    'Keep identity strictly IDENTICAL across every frame: the same character, same face/head, same outfit and accessories, same color palette, same body proportions, same overall scale, and the same side-view (profile) orientation and camera angle.',
+    'The ONLY thing that may change between frames is the walking pose: leg stride and arm swing progressing smoothly through one gait cycle (for example: left leg forward / neutral mid-stride / right leg forward), so that played back in sequence the character appears to walk in place.',
+    "Do not change the character's design, clothing, colors, or size between frames. Do not add or remove props between frames. Do not have the character face a different direction in different frames.",
+  ].join('\n');
 }
 
 /**
@@ -509,6 +534,11 @@ function sheetConstraintsBlock(brief: Brief): string {
     '- Do NOT add numbers, labels, captions, watermarks, signatures, borders, dividers, or any text anywhere on the sheet or in any individual cell.',
     `- Use a transparent background, or one flat high-contrast background color that is clearly distinct from the sprite palette, consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Do NOT add any ground, cast, contact, or drop shadow beneath or around any variant — every cell must sit on a clean background with no shadow on the floor (shading and volume on the subject itself are fine). No per-cell background variation, no decorative borders between cells.`,
     '- Do not draw a frame, header, or footer around the grid.',
+    ...(brief.frameSequence.enabled
+      ? [
+          '- REMINDER: these are frames of ONE walk cycle for ONE character — identical identity, outfit, palette, and scale in every cell; only the leg/arm pose progresses between cells.',
+        ]
+      : []),
   ].join('\n');
 }
 

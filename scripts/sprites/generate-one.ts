@@ -159,6 +159,7 @@ export type RunSummaryIdentity = Pick<
   | 'variations'
 > & {
   readonly referenceSprites?: RunSummary['referenceSprites'];
+  readonly frameSequence?: RunSummary['frameSequence'];
 };
 
 /**
@@ -440,6 +441,15 @@ export async function generateSheetCore(
       skippedReason: expansion.skippedReason,
     },
     ...(referenceSprites ? { referenceSprites } : {}),
+    ...(brief.frameSequence.enabled
+      ? {
+          frameSequence: {
+            frameCount: brief.frameSequence.frameCount,
+            frameRate: brief.frameSequence.frameRate,
+            loop: brief.frameSequence.loop,
+          },
+        }
+      : {}),
   };
 
   return {
