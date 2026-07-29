@@ -628,17 +628,16 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
         : path.join(options.repoRoot, candidate.processedPath)
       : runLocalPng;
     // `approveVariant` always resolves the run-local `processed/NN.png` path
-    // and never trusts `summary.json`'s stored `processedPath`. Do the same
-    // here: prefer the declared path when it exists (it may point outside
-    // `runDir`, e.g. a rematerialized run), but fall back to the run-local
-    // path rather than failing outright when a run was moved/copied to a new
-    // workspace root and the summary's absolute `processedPath` from the
-    // original machine is now stale (round-2 multi-model review finding).
-    const processedPng = fs.existsSync(declaredPng)
-      ? declaredPng
-      : fs.existsSync(runLocalPng)
-        ? runLocalPng
-        : declaredPng;
+    // first and only falls back to the declared processedPath when the local
+    // file is absent. Do the same here: a rematerialized or reprocessed run
+    // will have written fresh bytes to the run-local path — preferring the
+    // declared absolute path from the original machine would silently pack
+    // stale bytes from before the reprocess (reviewer finding, PR #2302).
+    const processedPng = fs.existsSync(runLocalPng)
+      ? runLocalPng
+      : fs.existsSync(declaredPng)
+        ? declaredPng
+        : runLocalPng;
     if (!fs.existsSync(processedPng)) {
       throw new ApproveError(
         'frame-missing',
@@ -651,7 +650,9 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
 
   // HARD GATE: cross-frame coherence. Never weaken these thresholds to force
   // a lucky generation through — regenerate instead. See frame-coherence.ts.
-  const coherence = checkFrameCoherence(frameBuffers, options.coherence);
+  // Pass `loop` so the wrap-around seam (final→first) is checked when the
+  // animation loops — a drifted loop seam plays on every cycle iteration.
+  const coherence = checkFrameCoherence(frameBuffers, { ...options.coherence, loop });
   if (!coherence.ok) {
     throw new ApproveError(
       'frame-incoherent',

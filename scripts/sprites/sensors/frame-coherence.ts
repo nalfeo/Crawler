@@ -77,6 +77,14 @@ export interface FrameCoherenceOptions {
   readonly maxPaletteDistance?: number;
   readonly maxMassDeltaRatio?: number;
   readonly maxBaselineDeltaPx?: number;
+  /**
+   * When true, also check the final→first frame pair so the loop seam is
+   * validated alongside interior pairs. A sequence can drift gradually enough
+   * that every consecutive interior pair stays under the thresholds while the
+   * wrap-around seam has a large palette, mass, or baseline jump — yet it will
+   * still play that seam on every loop iteration.
+   */
+  readonly loop?: boolean;
 }
 
 export interface FrameCoherencePairResult {
@@ -148,8 +156,9 @@ function lowestOpaqueRow(image: RgbaImage): number {
 /**
  * Compare a sequence of already-decoded/post-processed frame PNG buffers
  * (in cycle order) for cross-frame coherence. Returns one pair result per
- * consecutive pair (frames.length - 1 pairs); `ok` is true iff every pair
- * passes both thresholds.
+ * consecutive adjacent pair and, when `options.loop` is true, one additional
+ * result for the final→first wrap-around seam; `ok` is true iff every pair
+ * passes all thresholds.
  *
  * Fewer than 2 frames trivially passes (nothing to compare).
  */
@@ -170,10 +179,21 @@ export function checkFrameCoherence(
   const masses = images.map((img) => gatherOpaquePixels(img).length);
   const baselines = images.map((img) => lowestOpaqueRow(img));
 
+  // Build the list of frame-index pairs to compare. For a looping animation
+  // the final frame plays directly into frame 0, so include that wrap-around
+  // pair when `loop` is requested — a sequence can pass every interior pair
+  // while the loop seam has a large palette, mass, or baseline jump.
+  const pairIndices: Array<[number, number]> = [];
+  for (let i = 0; i < images.length - 1; i++) {
+    pairIndices.push([i, i + 1]);
+  }
+  if (options.loop === true && images.length >= 2) {
+    pairIndices.push([images.length - 1, 0]);
+  }
+
   const pairs: FrameCoherencePairResult[] = [];
   let allOk = true;
-  for (let i = 0; i < images.length - 1; i++) {
-    const j = i + 1;
+  for (const [i, j] of pairIndices) {
     const paletteDistance = histogramDistance(histograms[i]!, histograms[j]!);
     const massA = masses[i]!;
     const massB = masses[j]!;

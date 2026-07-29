@@ -19,6 +19,8 @@ import {
   trimTransparentEdges,
   fitWithinNearest,
   scaleToMinDimension,
+  cropRectWithMargin,
+  type OpaqueRect,
 } from './postprocess.js';
 import { resizeSpriteStrategy } from './size-variants.js';
 import {
@@ -48,6 +50,13 @@ export interface ModuleContext {
   readonly pushStep: (id: string, label: string, image: RgbaImage) => void;
   readonly backgroundSource?: RgbaImage;
   readonly shouldRunEnclosedBackgroundCleanup?: boolean;
+  /**
+   * When set (for frame-sequence briefs), `transparent-trim` uses this
+   * pre-computed union bounding box instead of per-frame tight-bbox detection.
+   * Ensures every frame in the ordered cycle shares the same crop-to-canvas
+   * mapping (identical scale factor and floor-line placement).
+   */
+  readonly sharedCropRect?: OpaqueRect;
 }
 
 export type ModuleHandler = (
@@ -103,6 +112,36 @@ export const postprocessModules: Record<string, ModuleHandler> = {
   'transparent-trim': (image, params, ctx) => {
     const marginFraction = (params.marginFraction as number) ?? 0.06;
     const minMarginPx = (params.minMarginPx as number) ?? 1;
+
+    if (ctx.sharedCropRect) {
+      // Frame-sequence brief: crop every frame to the pre-computed union bbox
+      // so all poses share the same crop-to-canvas mapping. A per-frame
+      // independent bbox would give each pose its own scale factor (striding
+      // poses are wider than standing ones), breaking the uniform scale and
+      // floor-line the animation strip requires.
+      const { left, top, right, bottom } = ctx.sharedCropRect;
+      const contentW = Math.max(0, right - left + 1);
+      const contentH = Math.max(0, bottom - top + 1);
+      if (contentW === 0 || contentH === 0) {
+        ctx.pushStep('transparent-trim', 'Transparent trim (skipped, empty union bbox)', image);
+        return image;
+      }
+      const normalizedMarginFraction =
+        Number.isFinite(marginFraction) && marginFraction > 0 ? marginFraction : 0;
+      const normalizedMinMarginPx =
+        Number.isFinite(minMarginPx) && minMarginPx > 0 ? Math.trunc(minMarginPx) : 0;
+      const marginPx = Math.max(
+        normalizedMinMarginPx,
+        Math.round(Math.max(contentW, contentH) * normalizedMarginFraction),
+      );
+      const result = cropRectWithMargin(image, ctx.sharedCropRect, marginPx);
+      ctx.pushStep(
+        'transparent-trim',
+        `Transparent trim (${marginPx}px margin, shared union bbox ${contentW}x${contentH})`,
+        result,
+      );
+      return result;
+    }
 
     const tightlyTrimmed = trimTransparentEdges(image);
     if (tightlyTrimmed.width > 0 && tightlyTrimmed.height > 0) {

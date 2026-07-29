@@ -179,4 +179,75 @@ describe('checkFrameCoherence', () => {
       true,
     );
   });
+
+  describe('loop seam (final→first pair)', () => {
+    it('does NOT check loop seam without loop:true', () => {
+      // Without loop:true, a drifted final→first seam is not caught.
+      const frames = [
+        buildFrame({ body: BODY, outfit: OUTFIT, legOffset: -2 }),
+        buildFrame({ body: BODY, outfit: OUTFIT, legOffset: 0 }),
+        // Last frame drifts drastically — only caught when loop:true.
+        buildFrame({ body: OTHER_BODY, outfit: OTHER_OUTFIT, legOffset: 2 }),
+      ];
+      const result = checkFrameCoherence(frames);
+      // Interior pairs 0→1 pass; 1→2 fails. But we still only check N-1 pairs.
+      expect(result.pairs).toHaveLength(2);
+    });
+
+    it('fails a looping sequence whose final→first seam has a drifted palette', () => {
+      // Frames 0 and 1 are coherent; frame 2 (the last) has a completely
+      // different palette. Without loop:true, only pairs 0→1 and 1→2 are
+      // checked and 1→2 would fail anyway. With loop:true, the extra pair
+      // 2→0 is also checked and must independently reflect the seam drift.
+      const frames = [
+        buildFrame({ body: BODY, outfit: OUTFIT, legOffset: -2 }),
+        buildFrame({ body: BODY, outfit: OUTFIT, legOffset: 0 }),
+        buildFrame({ body: OTHER_BODY, outfit: OTHER_OUTFIT, legOffset: 2 }),
+      ];
+      const result = checkFrameCoherence(frames, { loop: true });
+      expect(result.pairs).toHaveLength(3); // includes the loop seam
+      const loopSeamPair = result.pairs.find((p) => p.frameA === 2 && p.frameB === 0);
+      expect(loopSeamPair).toBeDefined();
+      expect(loopSeamPair!.ok).toBe(false);
+    });
+
+    it('catches a seam that would drift past thresholds only at the loop boundary', () => {
+      // All interior consecutive pairs are coherent. Only frame2→frame0
+      // has a large vertical shift (loop seam). Without loop:true this
+      // passes; with loop:true it is rejected.
+      const coherentBase = { body: BODY, outfit: OUTFIT } as const;
+      const frames = [
+        buildFrame({ ...coherentBase, legOffset: -2 }), // frame 0 — normal
+        buildFrame({ ...coherentBase, legOffset: 0 }), // frame 1 — normal
+        buildFrame({ ...coherentBase, legOffset: 2, verticalShift: -10 }), // frame 2 — shifted up
+      ];
+
+      const noLoop = checkFrameCoherence(frames, { loop: false });
+      // frame 1→2 fails because of the vertical shift
+      expect(noLoop.pairs).toHaveLength(2);
+
+      const withLoop = checkFrameCoherence(frames, { loop: true });
+      // Adds the seam pair (frame2→frame0), both 1→2 and 2→0 fail
+      expect(withLoop.pairs).toHaveLength(3);
+      const seamPair = withLoop.pairs.find((p) => p.frameA === 2 && p.frameB === 0);
+      expect(seamPair).toBeDefined();
+      // The seam compares the vertically shifted frame 2 against the normal
+      // frame 0 — the baseline delta must be ≥ the vertical shift amount.
+      expect(seamPair!.baselineDeltaPx).toBeGreaterThan(DEFAULT_MAX_BASELINE_DELTA_PX);
+    });
+
+    it('passes a coherent looping cycle including the loop seam', () => {
+      const frames = [
+        buildFrame({ body: BODY, outfit: OUTFIT, legOffset: -2 }),
+        buildFrame({ body: BODY, outfit: OUTFIT, legOffset: 0 }),
+        buildFrame({ body: BODY, outfit: OUTFIT, legOffset: 2 }),
+      ];
+      const result = checkFrameCoherence(frames, { loop: true });
+      expect(result.pairs).toHaveLength(3); // 0→1, 1→2, 2→0
+      expect(result.ok).toBe(true);
+      const seamPair = result.pairs.find((p) => p.frameA === 2 && p.frameB === 0);
+      expect(seamPair).toBeDefined();
+      expect(seamPair!.ok).toBe(true);
+    });
+  });
 });

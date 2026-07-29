@@ -317,6 +317,18 @@ describe('briefSchema', () => {
       });
     });
 
+    it('defaults to disabled when frameSequence is entirely absent from the brief', () => {
+      // This guards the key backward-compat contract: an existing brief that
+      // predates the frameSequence field must parse successfully and default to
+      // the disabled state — the schema must supply the default, not the caller.
+      const { frameSequence: _removed, ...briefWithoutFrameSequence } = validBrief;
+      const result = briefSchema.safeParse(briefWithoutFrameSequence);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.frameSequence).toMatchObject({ enabled: false });
+      }
+    });
+
     it('accepts an enabled sequence brief whose sheet is a single row of frameCount cells', () => {
       const result = briefSchema.safeParse({
         ...validBrief,
