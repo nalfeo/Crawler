@@ -126,12 +126,7 @@ describe('parseAckTrailers', () => {
   it('does not treat a mixed body paragraph as a trailer block', () => {
     // The last paragraph mixes prose and a trailer-looking line; since not all
     // lines match the trailer regex, the whole paragraph is body text.
-    const msg = [
-      'feat: subject',
-      '',
-      'Some body prose.',
-      `${ACK_TRAILER}: a.json`,
-    ].join('\n');
+    const msg = ['feat: subject', '', 'Some body prose.', `${ACK_TRAILER}: a.json`].join('\n');
     expect(parseAckTrailers(msg).size).toBe(0);
   });
 });
