@@ -295,7 +295,9 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   let sliceResult: BriefSliceResult;
   try {
     sliceResult = priorGrid
-      ? sliceSheetWithGrid(sheetPng, priorGrid)
+      ? sliceSheetWithGrid(sheetPng, priorGrid, {
+          fixedGrid: brief.frameSequence?.enabled === true,
+        })
       : sliceSheetFromBrief(sheetPng, brief);
   } catch (err) {
     throw new RerunError('slice-failed', err instanceof Error ? err.message : String(err));
