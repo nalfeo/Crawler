@@ -1,5 +1,16 @@
 [
   {
+    "commit": "edf3ba86a82e0ee4889974d43979a49e31d53b44",
+    "commitDate": "2026-07-29T09:12:59Z",
+    "commitSubject": "fix(vfx): recalibrate blood-footprint spacing to the rhea-vale-v1 player sprite (#2303)",
+    "capturedAt": "2026-07-29T10:24:48.853Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30439574890",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/edf3ba86a82e0ee4889974d43979a49e31d53b44.json"
+  },
+  {
     "commit": "2b939c54b074a295831d84e7e193f1ea24bb0bd4",
     "commitDate": "2026-07-29T08:46:05Z",
     "commitSubject": "fix(ci-recovery): exclude self-generated copilot failure from blockerFingerprint (#2270)",
