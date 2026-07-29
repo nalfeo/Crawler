@@ -4,10 +4,29 @@ import { SeededRandom, hashStringToSeed } from './random.js';
 const BLOOD_POOL_LIFETIME_MS = 30_000;
 export const BLOODY_FOOTPRINT_SOURCE_LIFETIME_MS = 5_000;
 const BLOODY_FOOTPRINT_LIFETIME_MS = 5_000;
-export const BLOODY_FOOTPRINT_EMIT_DISTANCE_FT = 0.42;
+/**
+ * Along-path distance between consecutive prints, i.e. one walking step.
+ *
+ * Calibrated to the shipping `rhea-vale-v1` player sprite, whose drawn content
+ * is 58 px tall at scale 0.72 → 5.22 ft (see `entity-sprite-mappings.json`).
+ * A human's walking step length is ~0.41 x height → 5.22 x 0.41 ≈ 2.1 ft.
+ *
+ * MUST stay at least 2x the longest unsmeared print (~1.00 ft, asserted by
+ * `blood-surfaces.test.ts`) or consecutive prints overlap and the trail reads
+ * as a continuous streak rather than discrete alternating steps. The previous
+ * 0.42 ft was tuned for the retired 3.2 ft Kenney knight sprite and left the
+ * spacing SHORTER than a single print.
+ */
+export const BLOODY_FOOTPRINT_EMIT_DISTANCE_FT = 2.1;
 export const MAX_BLOOD_POOLS = 150;
 export const MAX_BLOODY_FOOTPRINTS = 160;
-export const MAX_BLOODY_FOOTPRINT_EMITS_PER_FRAME = 24;
+/**
+ * Per-frame emit cap. Also sets the teleport-detection threshold
+ * (`MAX_CONTINUOUS_FOOTPRINT_GAP_FT = this x EMIT_DISTANCE`), so it moves
+ * inversely with the stride to hold that threshold at ~10 ft:
+ * 5 x 2.1 = 10.5 ft (previously 24 x 0.42 = 10.08 ft).
+ */
+export const MAX_BLOODY_FOOTPRINT_EMITS_PER_FRAME = 5;
 
 const BLOOD_POOL_BASE_RADIUS_FT = 1.0;
 const BLOOD_POOL_MAX_EXTRA_RADIUS_FT = 2.25;
@@ -252,6 +271,24 @@ export function createBloodPoolSurface(params: {
   };
 }
 
+/**
+ * Builds one deterministic blood footprint stamp.
+ *
+ * Geometry is calibrated to the shipping `rhea-vale-v1` player sprite (5.22 ft
+ * drawn). The renderer (`PlayerTrailVfx`) draws a heel ellipse at the origin
+ * plus a toe ellipse offset forward, both rotated to `angleRad`, so along the
+ * heading a print spans
+ * `[-heelRadiusXFt, toeOffsetFt + toeRadiusXFt]`:
+ *
+ * * length 0.85-1.00 ft (unsmeared) — matches the sprite's drawn boots
+ * * width  0.36-0.44 ft — keeps a foot-like ~2.3:1 length:width ratio
+ * * lateral offset ±0.35-0.45 ft — a 0.70-0.90 ft track, so left/right prints
+ *   read as two distinct feet under the sprite's wide boot stance
+ *
+ * These were previously ~1.63x smaller (tuned for the retired 3.2 ft Kenney
+ * knight). `blood-surfaces.test.ts` pins the length band and asserts the
+ * spacing invariant against `BLOODY_FOOTPRINT_EMIT_DISTANCE_FT`.
+ */
 export function createBloodFootprintSurface(params: {
   worldSeed: number;
   footprintId: number;
@@ -274,9 +311,9 @@ export function createBloodFootprintSurface(params: {
   const perpX = -Math.sin(angleRad);
   const perpY = Math.cos(angleRad);
   const side = stampId % 2 === 0 ? -1 : 1;
-  const lateralOffsetFt = 0.13 + rng.next() * 0.05;
-  const forwardJitterFt = (rng.next() - 0.5) * 0.06;
-  const lateralJitterFt = (rng.next() - 0.5) * 0.03;
+  const lateralOffsetFt = 0.35 + rng.next() * 0.1;
+  const forwardJitterFt = (rng.next() - 0.5) * 0.1;
+  const lateralJitterFt = (rng.next() - 0.5) * 0.05;
   const smearFactor = clamp01(
     (strideDistanceFt - BLOODY_FOOTPRINT_EMIT_DISTANCE_FT) /
       (BLOODY_FOOTPRINT_EMIT_DISTANCE_FT * 1.5),
@@ -292,12 +329,12 @@ export function createBloodFootprintSurface(params: {
     createdAtMs,
     expiresAtMs: createdAtMs + BLOODY_FOOTPRINT_LIFETIME_MS,
     angleRad,
-    heelRadiusXFt: 0.14 + rng.next() * 0.03,
-    heelRadiusYFt: 0.1 + rng.next() * 0.02,
-    toeRadiusXFt: 0.18 + rng.next() * 0.04 + smearFactor * 0.06,
-    toeRadiusYFt: 0.11 + rng.next() * 0.03,
-    toeOffsetFt: 0.2 + rng.next() * 0.05 + smearFactor * 0.12,
-    smearLengthFt: smearFactor > 0 ? 0.18 + smearFactor * (0.18 + rng.next() * 0.1) : 0,
-    smearWidthFt: 0.07 + rng.next() * 0.03,
+    heelRadiusXFt: 0.23 + rng.next() * 0.04,
+    heelRadiusYFt: 0.16 + rng.next() * 0.03,
+    toeRadiusXFt: 0.29 + rng.next() * 0.05 + smearFactor * 0.1,
+    toeRadiusYFt: 0.18 + rng.next() * 0.04,
+    toeOffsetFt: 0.33 + rng.next() * 0.06 + smearFactor * 0.2,
+    smearLengthFt: smearFactor > 0 ? 0.29 + smearFactor * (0.29 + rng.next() * 0.16) : 0,
+    smearWidthFt: 0.11 + rng.next() * 0.05,
   };
 }

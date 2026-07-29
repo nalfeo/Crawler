@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "ci-recovery-loop-pr-2006",
+  "task_title": "CI recovery loop: PR #2006",
+  "estimated_apples": 2,
+  "stages": {}
+}
