@@ -129,19 +129,19 @@ describe('checkin-runtime copyArtSurface (selective projection)', () => {
     expect(manifest.entries['queued-var-1']).toBeUndefined();
   });
 
-  it('merges ONLY the unqueued catalog entry onto the worktree base, preserving its existing entries', async () => {
+  it('leaves the sprite catalog untouched, so an art check-in mutates only the manifest', async () => {
     seedSrc();
     seedDestBase();
+    const catalogPath = path.join(destRepoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
+    const catalogBefore = readFileSync(catalogPath, 'utf8');
     const deps = createDefaultCheckinDeps(srcRepoRoot);
 
     await deps.copyArtSurface(srcRepoRoot, destRepoRoot, [asset()]);
 
-    const catalog = JSON.parse(
-      readFileSync(path.join(destRepoRoot, 'src', 'shared', 'data', 'sprite-catalog.json'), 'utf8'),
-    ) as Array<{ id: string }>;
-    const ids = catalog.map((entry) => entry.id).sort();
-    expect(ids).toEqual(['generated:preexisting-var-0', 'generated:unqueued-var-2']);
-    expect(ids).not.toContain('generated:queued-var-1');
+    // Writing both the manifest and the catalog made every pair of parallel art
+    // check-ins conflict by construction. The catalog's `generated:` rows only
+    // restate manifest data, so the projection no longer touches them.
+    expect(readFileSync(catalogPath, 'utf8')).toBe(catalogBefore);
   });
 
   it('leaves manifest/catalog untouched when the asset has no manifestKey (still copies the PNG)', async () => {
@@ -171,6 +171,87 @@ describe('checkin-runtime copyArtSurface (selective projection)', () => {
     // skipped entirely rather than touching (or corrupting) the base copy.
     expect(readFileSync(manifestPath, 'utf8')).toBe(manifestBefore);
     expect(readFileSync(catalogPath, 'utf8')).toBe(catalogBefore);
+  });
+});
+
+describe('overlayCatalogEntries — canonical order after insert', () => {
+  const roots: string[] = [];
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  function writeCatalog(repoRoot: string, entries: unknown[]): void {
+    const p = path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
+    mkdirSync(path.dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify(entries, null, 2));
+  }
+
+  function readCatalog(repoRoot: string): Array<Record<string, unknown>> {
+    const p = path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
+    return JSON.parse(readFileSync(p, 'utf8')) as Array<Record<string, unknown>>;
+  }
+
+  it('inserts a new generated: entry into a catalog that ends with sprite: entries, restoring canonical sort order', async () => {
+    // This is the ordering regression described in PR #2248 review:
+    // the committed catalog currently ends with `sprite:*` entries; appending
+    // a `generated:*` row without sorting leaves it out of order and the
+    // mandatory `check:sort-assets` CI step rejects the promotion.
+    const src = mkdtempSync(path.join(tmpdir(), 'overlay-src-'));
+    const dest = mkdtempSync(path.join(tmpdir(), 'overlay-dest-'));
+    roots.push(src, dest);
+
+    // Source has the new generated: entry to be overlaid.
+    writeCatalog(src, [{ id: 'generated:zzz-sprite-var-0', kind: 'sprite', label: 'zzz sprite' }]);
+
+    // Destination catalog ends with sprite: entries (kind="sheet" comes first in canonical order).
+    writeCatalog(dest, [
+      { id: 'sprite:aaa-sheet', kind: 'sheet', label: 'aaa sheet' },
+      { id: 'sprite:mmm-sheet', kind: 'sheet', label: 'mmm sheet' },
+      { id: 'generated:aaa-sprite-var-0', kind: 'sprite', label: 'aaa sprite' },
+    ]);
+
+    const { overlayCatalogEntries } = await import('../../../scripts/sprites/checkin-runtime.js');
+    const changed = await overlayCatalogEntries(src, dest, ['generated:zzz-sprite-var-0']);
+    expect(changed).toBe(true);
+
+    const result = readCatalog(dest);
+    const ids = result.map((e) => e.id as string);
+    // Sheets must come first, then sprites sorted by id.
+    expect(ids).toEqual([
+      'sprite:aaa-sheet',
+      'sprite:mmm-sheet',
+      'generated:aaa-sprite-var-0',
+      'generated:zzz-sprite-var-0',
+    ]);
+  });
+
+  it('replaces an existing entry and keeps canonical order intact', async () => {
+    const src = mkdtempSync(path.join(tmpdir(), 'overlay-src-'));
+    const dest = mkdtempSync(path.join(tmpdir(), 'overlay-dest-'));
+    roots.push(src, dest);
+
+    writeCatalog(src, [
+      { id: 'generated:aaa-sprite-var-0', kind: 'sprite', label: 'updated label', tags: ['new'] },
+    ]);
+    writeCatalog(dest, [
+      { id: 'sprite:aaa-sheet', kind: 'sheet', label: 'aaa sheet' },
+      { id: 'generated:aaa-sprite-var-0', kind: 'sprite', label: 'old label' },
+      { id: 'generated:zzz-sprite-var-0', kind: 'sprite', label: 'zzz sprite' },
+    ]);
+
+    const { overlayCatalogEntries } = await import('../../../scripts/sprites/checkin-runtime.js');
+    const changed = await overlayCatalogEntries(src, dest, ['generated:aaa-sprite-var-0']);
+    expect(changed).toBe(true);
+
+    const result = readCatalog(dest);
+    expect(result.find((e) => e.id === 'generated:aaa-sprite-var-0')?.label).toBe('updated label');
+    const ids = result.map((e) => e.id as string);
+    expect(ids).toEqual([
+      'sprite:aaa-sheet',
+      'generated:aaa-sprite-var-0',
+      'generated:zzz-sprite-var-0',
+    ]);
   });
 });
 

@@ -14,7 +14,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Exec } from './checkin.js';
-import { copyArtSurface, makeCheckinFileLock, realExec } from './checkin-runtime.js';
+import {
+  copyArtSurface,
+  makeCheckinFileLock,
+  overlayCatalogEntries,
+  realExec,
+} from './checkin-runtime.js';
 import type { QueueCommitDeps } from './queue-commit.js';
 
 /**
@@ -67,6 +72,7 @@ export function createDefaultQueueCommitDeps(
   return {
     exec,
     copyArtSurface,
+    overlayCatalogEntries,
     makeTempDir: () => Promise.resolve(mkdtempSync(path.join(tmpdir(), 'asset-queue-commit-'))),
     removeDir: async (dir) => {
       // rmSync can throw EPERM on Windows while git still briefly holds a lock on

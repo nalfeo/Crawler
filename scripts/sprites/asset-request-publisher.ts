@@ -313,16 +313,11 @@ export async function validateExactAssetPayloads(
 ): Promise<void> {
   const sourceManifest = readJson(path.join(sourceRoot, MANIFEST_REL));
   const destinationManifest = readJson(path.join(destinationRoot, MANIFEST_REL));
-  const sourceCatalog = readJson(path.join(sourceRoot, CATALOG_REL));
-  const destinationCatalog = readJson(path.join(destinationRoot, CATALOG_REL));
   if (!isRecord(sourceManifest) || !isRecord(sourceManifest.entries)) {
     throw new Error('Source generated manifest is invalid');
   }
   if (!isRecord(destinationManifest) || !isRecord(destinationManifest.entries)) {
     throw new Error('Destination generated manifest is invalid');
-  }
-  if (!Array.isArray(sourceCatalog) || !Array.isArray(destinationCatalog)) {
-    throw new Error('Sprite catalog is invalid');
   }
 
   for (const asset of assets) {
@@ -332,34 +327,26 @@ export async function validateExactAssetPayloads(
     if (sourceEntry === undefined) {
       throw new Error(`Source manifest entry ${key} is missing`);
     }
-    const sourceCatalogEntry = sourceCatalog.find(
-      (entry) => isRecord(entry) && entry.id === `generated:${key}`,
-    );
-    if (!sourceCatalogEntry) {
-      throw new Error(`Source catalog entry generated:${key} is missing`);
-    }
+    // The sprite catalog is deliberately NOT validated here. Art check-ins no
+    // longer carry `src/shared/data/sprite-catalog.json` (see
+    // scripts/sprites/checkin.ts > ASSET_SURFACE_PATHS), so a locally-approved
+    // asset has a catalog row while main does not. Requiring one — or requiring
+    // both sides to match — would reject every republish of already-landed art.
     const sourcePng = path.join(sourceRoot, 'public', 'assets', ...asset.assetPath.split('/'));
     if (!existsSync(sourcePng)) throw new Error(`Source PNG ${asset.assetPath} is missing`);
 
     const destinationEntry = destinationManifest.entries[key];
-    const destinationCatalogEntry = destinationCatalog.find(
-      (entry) => isRecord(entry) && entry.id === `generated:${key}`,
-    );
     const destinationPng = path.join(
       destinationRoot,
       'public',
       'assets',
       ...asset.assetPath.split('/'),
     );
-    const destinationExists =
-      destinationEntry !== undefined ||
-      destinationCatalogEntry !== undefined ||
-      existsSync(destinationPng);
+    const destinationExists = destinationEntry !== undefined || existsSync(destinationPng);
     if (!destinationExists) continue;
 
     const exact =
       stableJson(sourceEntry) === stableJson(destinationEntry) &&
-      stableJson(sourceCatalogEntry) === stableJson(destinationCatalogEntry) &&
       existsSync(destinationPng) &&
       hashFile(sourcePng) === hashFile(destinationPng);
     if (!exact) {

@@ -77,6 +77,17 @@ export interface QueueCommitDeps {
     destRepoRoot: string,
     assets: readonly CheckinAsset[],
   ) => Promise<void>;
+  /**
+   * Overlay ONLY the named catalog ids from the source tree onto the worktree.
+   * Required by catalog-only flows (see
+   * {@link QueueCommitOptions.catalogEntryIds}); defaults to a no-op for callers
+   * that never set `catalogEntryIds`.
+   */
+  readonly overlayCatalogEntries?: (
+    srcRepoRoot: string,
+    destRepoRoot: string,
+    ids: readonly string[],
+  ) => Promise<boolean>;
   /** Create + return an empty temp directory for the throwaway worktree. */
   readonly makeTempDir: () => Promise<string>;
   /** Remove a directory tree (best-effort cleanup). */
@@ -139,9 +150,28 @@ export interface QueueCommitOptions {
     destinationRoot: string,
     assets: readonly CheckinAsset[],
   ) => Promise<void>;
+  /**
+   * Catalog ids whose rows must also be carried into the queue commit.
+   *
+   * Art check-ins leave this unset: a generated catalog row merely restates its
+   * manifest entry, so staging both made every pair of parallel art check-ins
+   * conflict by construction.
+   *
+   * Catalog-ONLY flows (the sidecar Tag/metadata route) MUST set it. Their edits
+   * exist nowhere but `sprite-catalog.json`, so without it `git add` stages
+   * nothing, the no-op guard fires, and the edit is silently dropped across
+   * worktrees/sessions.
+   */
+  readonly catalogEntryIds?: readonly string[];
 }
 
 const DEFAULT_MAX_ATTEMPTS = 5;
+
+/**
+ * Repo-relative catalog path staged by catalog-only flows. POSIX separators:
+ * this is a git pathspec, not a filesystem path.
+ */
+const CATALOG_STAGE_PATH = 'src/shared/data/sprite-catalog.json';
 
 /**
  * Validate that each asset path is a safe repo-relative POSIX path under the art
@@ -346,10 +376,28 @@ export async function runQueueCommit(
             );
           }
         }
-        // UNION the live asset entries onto the tip's manifest/catalog + copy PNGs.
+        // UNION the live asset entries onto the tip's manifest + copy PNGs.
         await deps.copyArtSurface(sourceRoot, worktree, assets);
-        // Fixed allowlist: only generated art + the catalog can ever be staged.
-        await mustGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
+
+        // Catalog-only flows additionally overlay their edited rows; art
+        // check-ins do not, so they touch exactly one shared committed file.
+        const catalogEntryIds = options.catalogEntryIds ?? [];
+        const stagePaths: string[] = [...ASSET_SURFACE_PATHS];
+        if (catalogEntryIds.length > 0) {
+          if (deps.overlayCatalogEntries === undefined) {
+            throw new QueueCommitError(
+              'invalid-asset-path',
+              'catalogEntryIds was supplied but deps.overlayCatalogEntries is missing; ' +
+                'the catalog edit would be silently dropped from the queue commit.',
+            );
+          }
+          await deps.overlayCatalogEntries(sourceRoot, worktree, catalogEntryIds);
+          stagePaths.push(CATALOG_STAGE_PATH);
+        }
+
+        // Fixed allowlist: only generated art (+ the catalog, for catalog-only
+        // flows that opted in above) can ever be staged.
+        await mustGit(deps.exec, worktree, ['add', '--', ...stagePaths]);
 
         // No-op guard: if nothing staged, the queue already carries identical
         // bytes — skip the commit+push so repeated identical saves don't churn.
