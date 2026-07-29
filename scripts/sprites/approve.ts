@@ -61,6 +61,7 @@ import path from 'node:path';
 import { canonicalItemBriefId, itemArtIdentitySet } from '../../src/shared/item-sprites.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { formatJsonFilesSync } from './catalog-io.js';
+import { shardPathForKey } from './generated-shards.js';
 
 /** Subset of `node:fs` calls approveVariant needs. Exposed for tests. */
 export interface ApproveFs {
@@ -164,6 +165,23 @@ export interface ManifestEntry {
   readonly effectivePipelineSnapshotYamlPath?: string | null;
   readonly effectiveAnchorSource?: ManifestAnchor['source'] | null;
   readonly facingDirection?: 'left' | 'right';
+  /**
+   * True when this entry is a placeholder stand-in (not real generated art).
+   * Placeholder entries are excluded from the derived sprite-catalog rows. See
+   * `src/shared/generated-catalog.ts#isPlaceholderManifestEntry`.
+   */
+  readonly placeholder?: boolean;
+  /**
+   * Optional per-asset catalog overrides. The `generated:` sprite-catalog rows
+   * are DERIVED from this manifest; this field is the single home for the small
+   * set of hand-authored deviations (rich descriptions, deliberate tag
+   * overrides) that derivation cannot reconstruct. The override shards with its
+   * asset, so it never reintroduces a shared mega-file.
+   */
+  readonly catalog?: {
+    readonly description?: string;
+    readonly tags?: readonly string[];
+  };
 }
 
 export interface Manifest {
@@ -247,10 +265,20 @@ export interface ApproveVariantOptions {
   readonly runDir: string;
   /** Variant index, as it appears in `summary.json.candidates[i].index`. */
   readonly variantIndex: number;
-  /** Absolute path to `public/assets/generated/manifest.json`. Created if missing. */
+  /**
+   * Absolute path to `public/assets/generated/manifest.json`. The aggregate
+   * itself is a gitignored build artifact; approve derives the generated
+   * directory from this path and writes the per-asset shard under
+   * `entries/<key>.json`. Kept as the anchor path so callers don't need to know
+   * the shard layout.
+   */
   readonly manifestPath: string;
-  /** Absolute path to `src/shared/data/sprite-catalog.json`. Updated with approved sprite. */
-  readonly catalogPath: string;
+  /**
+   * @deprecated The `generated:` catalog rows are now DERIVED from the manifest
+   * shards (see `src/shared/generated-catalog.ts`); approve no longer writes the
+   * catalog. Accepted for backward compatibility and ignored.
+   */
+  readonly catalogPath?: string;
   /** Absolute path to `public/assets/` (parent of `generated/`). */
   readonly publicAssetsDir: string;
   /** Absolute path to the repo root, used to compute `sourceRun` relative path. */
@@ -403,6 +431,12 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
 
   const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);
 
+  // Preserve any hand-authored catalog override (rich description / deliberate
+  // tag override) from a prior approval of this variant. Overrides live on the
+  // shard so re-approving real art must not silently drop them.
+  const existingEntry = readManifestEntry(fs, options.manifestPath, variantId);
+  const preservedCatalog = existingEntry?.catalog;
+
   const entry: ManifestEntry = {
     briefId,
     // Variant-unique sprite name == manifest key == engine texture key.
@@ -426,10 +460,10 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     effectivePipelineSnapshotYamlPath: summary.postprocessOverrides?.snapshotYamlPath ?? null,
     effectiveAnchorSource: anchors.hold?.source ?? null,
     facingDirection: resolveFacingDirection(summary, options.variantIndex),
+    ...(preservedCatalog ? { catalog: preservedCatalog } : {}),
   };
 
   upsertManifest(fs, options.manifestPath, entry, variantId);
-  upsertCatalog(fs, options.catalogPath, entry, variantId, entry.type);
   return entry;
 }
 
@@ -551,22 +585,21 @@ function resolveBriefType(fs: ApproveFs, repoRoot: string, briefPath?: string): 
 }
 
 /**
- * Read the manifest entry stored under `entryKey`, or null when the manifest is
- * missing/unparseable or has no such entry. Best-effort: a corrupt manifest
- * reads as "no entry" so approval proceeds (corruption surfaces via
- * `upsertManifest`'s own validation).
+ * Read the manifest entry stored in the per-asset shard for `entryKey`, or null
+ * when the shard is missing/unparseable. Best-effort: a corrupt shard reads as
+ * "no entry" so approval proceeds (it will be overwritten by the write below).
  */
 function readManifestEntry(
   fs: ApproveFs,
   manifestPath: string,
   entryKey: string,
 ): ManifestEntry | null {
-  if (!fs.existsSync(manifestPath)) {
+  const shardPath = shardPathForKey(path.dirname(manifestPath), entryKey);
+  if (!fs.existsSync(shardPath)) {
     return null;
   }
   try {
-    const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Partial<Manifest>;
-    return parsed.entries?.[entryKey] ?? null;
+    return JSON.parse(fs.readFileSync(shardPath, 'utf8')) as ManifestEntry;
   } catch {
     return null;
   }
@@ -585,9 +618,12 @@ function hashFileIfExists(fs: ApproveFs, absPath: string): string | null {
 }
 
 /**
- * Read + upsert + write the manifest atomically (best-effort). The manifest
- * file is small and tracked in git; pretty-printing with stable key order
- * keeps diffs reviewable.
+ * Write the manifest entry to its own per-asset shard
+ * (`entries/<entryKey>.json`). Sharding is the whole point of this design: two
+ * approvals touching different assets never touch the same file, so parallel
+ * art PRs no longer conflict by construction. The aggregate `manifest.json` is a
+ * gitignored build artifact composed from these shards (see
+ * `scripts/sprites/build-manifest.ts` and the Vite plugin).
  */
 function upsertManifest(
   fs: ApproveFs,
@@ -595,119 +631,12 @@ function upsertManifest(
   entry: ManifestEntry,
   entryKey: string,
 ): void {
-  let current: Manifest;
-  if (fs.existsSync(manifestPath)) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Partial<Manifest>;
-      if (parsed.version !== MANIFEST_VERSION) {
-        throw new ApproveError(
-          'manifest-invalid',
-          `Unsupported manifest version: ${String(parsed.version)} (expected ${MANIFEST_VERSION})`,
-        );
-      }
-      current = {
-        version: MANIFEST_VERSION,
-        entries: { ...(parsed.entries ?? {}) },
-      };
-    } catch (err) {
-      if (err instanceof ApproveError) throw err;
-      throw new ApproveError(
-        'manifest-invalid',
-        `manifest.json is not parseable: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  } else {
-    current = { version: MANIFEST_VERSION, entries: {} };
-  }
-
-  // Stable key order: sort keys with localeCompare so multiple approvals don't
-  // shuffle the file and the order matches the check:sort-assets CI validator.
-  const nextEntries: Record<string, ManifestEntry> = { ...current.entries, [entryKey]: entry };
-  const sortedKeys = Object.keys(nextEntries).sort((a, b) => a.localeCompare(b));
-  const sorted: Record<string, ManifestEntry> = {};
-  for (const key of sortedKeys) {
-    sorted[key] = nextEntries[key]!;
-  }
-
-  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-  const next: Manifest = { version: MANIFEST_VERSION, entries: sorted };
-  fs.writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
-}
-
-/**
- * Convert manifest entry to catalog entry and upsert into catalog.json.
- * Catalog entries need additional fields for the game, so we construct the full entry here.
- */
-function upsertCatalog(
-  fs: ApproveFs,
-  catalogPath: string,
-  manifestEntry: ManifestEntry,
-  catalogId: string,
-  briefType: SpriteType | null,
-): void {
-  let catalog: Array<Record<string, unknown>>;
-
-  if (fs.existsSync(catalogPath)) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
-      catalog = Array.isArray(raw) ? raw : [];
-    } catch (_err) {
-      console.warn(`Could not parse catalog (${catalogPath}), starting fresh`);
-      catalog = [];
-    }
-  } else {
-    catalog = [];
-  }
-
-  // Create catalog entry from manifest entry. The sprite type (from the brief)
-  // is included as the first tag so generated sprites are discoverable by type.
-  const tags = briefType
-    ? [briefType, 'generated', 'pipeline-approved']
-    : ['generated', 'pipeline-approved'];
-
-  // Preserve any existing hand-authored description so approve does not clobber
-  // richer catalog copy that was written after initial generation.
-  const existingEntry = catalog.find((e) => e.id === `generated:${catalogId}`);
-  const existingDescription =
-    typeof existingEntry?.description === 'string' &&
-    existingEntry.description !== `Generated sprite from brief: ${manifestEntry.briefId}.`
-      ? existingEntry.description
-      : null;
-
-  const catalogEntry: Record<string, unknown> = {
-    id: `generated:${catalogId}`,
-    kind: 'sprite',
-    label: manifestEntry.spriteName,
-    description: existingDescription ?? `Generated sprite from brief: ${manifestEntry.briefId}.`,
-    tags,
-    spriteId: manifestEntry.spriteName,
-    sheetKey: 'generated-manifest',
-    assetPath: manifestEntry.assetPath,
-    frame: 0,
-    col: 0,
-    row: 0,
-  };
-
-  // Remove existing entry with same ID if present, then add new one
-  const filtered = catalog.filter((e) => e.id !== catalogEntry.id);
-  filtered.push(catalogEntry);
-  filtered.sort((a, b) => {
-    const aKind = a.kind === 'sheet' ? 0 : 1;
-    const bKind = b.kind === 'sheet' ? 0 : 1;
-    if (aKind !== bKind) return aKind - bKind;
-    const aId = typeof a.id === 'string' ? a.id : '';
-    const bId = typeof b.id === 'string' ? b.id : '';
-    return aId.localeCompare(bId);
-  });
-
-  // Write updated catalog
-  fs.mkdirSync(path.dirname(catalogPath), { recursive: true });
-  fs.writeFileSync(catalogPath, `${JSON.stringify(filtered, null, 2)}\n`);
+  const shardPath = shardPathForKey(path.dirname(manifestPath), entryKey);
+  fs.mkdirSync(path.dirname(shardPath), { recursive: true });
+  fs.writeFileSync(shardPath, `${JSON.stringify(entry, null, 2)}\n`);
   // Apply Prettier so the on-disk format matches the committed style enforced
-  // by `format:check`. All catalog write paths must go through formatJsonFilesSync
-  // to ensure deterministic formatting regardless of which tool last wrote the
-  // file. See scripts/sprites/catalog-io.ts.
-  formatJsonFilesSync([catalogPath]);
+  // by `format:check`.
+  formatJsonFilesSync([shardPath]);
 }
 
 function parseSummary(raw: string, summaryPath: string): RunSummaryShape {
@@ -889,13 +818,21 @@ export class UnapproveError extends Error {
 export interface UnapproveVariantOptions {
   /**
    * Variant id (`<briefId>-var-<N>`), the manifest key to remove.
-   * Must match an entry key in `manifest.json` exactly.
+   * Must match a shard file name in `entries/` exactly.
    */
   readonly variantId: string;
-  /** Absolute path to `public/assets/generated/manifest.json`. */
+  /**
+   * Absolute path to `public/assets/generated/manifest.json`. The aggregate is a
+   * gitignored build artifact; unapprove derives the generated directory from
+   * this path and deletes the per-asset shard under `entries/<key>.json`.
+   */
   readonly manifestPath: string;
-  /** Absolute path to `src/shared/data/sprite-catalog.json`. */
-  readonly catalogPath: string;
+  /**
+   * @deprecated The `generated:` catalog rows are DERIVED from the manifest
+   * shards; unapprove no longer edits the catalog. Accepted for backward
+   * compatibility and ignored.
+   */
+  readonly catalogPath?: string;
   /** Absolute path to `public/assets/` (parent of `generated/`). */
   readonly publicAssetsDir: string;
   /**
@@ -911,111 +848,76 @@ export interface UnapproveVariantOptions {
 /**
  * Evict one approved variant from the repo's checked-in art surface.
  *
- * This is the inverse of `approveVariant`. It removes the manifest entry,
- * removes the catalog entry, and (by default) deletes the PNG from
- * `public/assets/generated/`.
+ * This is the inverse of `approveVariant`. It deletes the per-asset manifest
+ * shard and (by default) the PNG from `public/assets/generated/`. The
+ * `generated:` catalog rows are derived from the manifest, so removing the shard
+ * removes the catalog row automatically — there is no separate catalog edit.
  *
  * Steps:
- *   1. Load `manifest.json` and locate the entry for `variantId`.
- *   2. Remove the entry and write the updated manifest back.
- *   3. Remove the `generated:<variantId>` entry from `sprite-catalog.json`.
- *   4. If `deleteAsset` is true (default), delete the PNG file.
- *   5. Return the removed manifest entry.
+ *   1. Locate the shard for `variantId` under `entries/`.
+ *   2. Read + return the entry, then delete the shard.
+ *   3. If `deleteAsset` is true (default), delete the PNG file.
  *
- * Throws `UnapproveError('not-found')` when `variantId` is absent from the
- * manifest, or `UnapproveError('manifest-invalid')` for a corrupt manifest.
+ * Throws `UnapproveError('not-found')` when the shard is absent, or
+ * `UnapproveError('manifest-invalid')` for a corrupt shard.
  */
 export function unapproveVariant(options: UnapproveVariantOptions): ManifestEntry {
   const deleteAsset = options.deleteAsset !== false;
   const fs = options.fs ?? DEFAULT_UNAPPROVE_FS;
 
-  // 1. Load + validate the manifest.
-  if (!fs.existsSync(options.manifestPath)) {
+  const generatedDir = path.dirname(options.manifestPath);
+  const shardsRoot = path.join(generatedDir, 'entries');
+  // `shardPathForKey` routes through `assertSafeManifestKey`, which throws for an
+  // unsafe key (empty, `..`/`.` segment, absolute, or backslash) BEFORE any fs
+  // access. Convert that into the unapprove contract: an unsafe key is simply
+  // "not approved", never a leaked low-level error and never an fs touch.
+  let shardPath: string;
+  try {
+    shardPath = shardPathForKey(generatedDir, options.variantId);
+  } catch {
     throw new UnapproveError(
       'not-found',
-      `Manifest not found — no approved sprites at: ${options.manifestPath}`,
+      `Variant "${options.variantId}" is not approved (unsafe manifest key).`,
     );
   }
 
-  let manifest: Manifest;
+  // Defense-in-depth: even for a key that passed `assertSafeManifestKey`, refuse
+  // any shard path that resolves outside the entries/ tree.
+  if (!path.resolve(shardPath).startsWith(path.resolve(shardsRoot) + path.sep)) {
+    throw new UnapproveError(
+      'not-found',
+      `Variant "${options.variantId}" is not approved (shard path escapes entries/).`,
+    );
+  }
+
+  // 1. Locate the shard.
+  if (!fs.existsSync(shardPath)) {
+    throw new UnapproveError(
+      'not-found',
+      `Variant "${options.variantId}" is not approved (no shard at ${shardPath}).`,
+    );
+  }
+
+  // 2. Read + validate the entry, then delete the shard.
+  let entry: ManifestEntry;
   try {
-    const parsed = JSON.parse(fs.readFileSync(options.manifestPath, 'utf8')) as Partial<Manifest>;
-    if (parsed.version !== MANIFEST_VERSION) {
-      throw new UnapproveError(
-        'manifest-invalid',
-        `Unsupported manifest version: ${String(parsed.version)} (expected ${MANIFEST_VERSION})`,
-      );
-    }
-    // Validate entries shape: must be a plain non-array object (or absent).
-    if (
-      parsed.entries !== undefined &&
-      (typeof parsed.entries !== 'object' ||
-        parsed.entries === null ||
-        Array.isArray(parsed.entries))
-    ) {
-      throw new UnapproveError(
-        'manifest-invalid',
-        `manifest.json has invalid entries field: expected a plain object`,
-      );
-    }
-    manifest = { version: MANIFEST_VERSION, entries: { ...(parsed.entries ?? {}) } };
+    entry = JSON.parse(fs.readFileSync(shardPath, 'utf8')) as ManifestEntry;
   } catch (err) {
-    if (err instanceof UnapproveError) throw err;
     throw new UnapproveError(
       'manifest-invalid',
-      `manifest.json is not parseable: ${err instanceof Error ? err.message : String(err)}`,
+      `Shard ${shardPath} is not parseable: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  fs.unlinkSync(shardPath);
 
-  // 2. Find the entry — use hasOwnProperty to avoid prototype-chain traversal
-  //    for keys like `__proto__` that would otherwise resolve through the object
-  //    prototype and produce a false 200 eviction.
-  const entry = Object.prototype.hasOwnProperty.call(manifest.entries, options.variantId)
-    ? manifest.entries[options.variantId]
-    : undefined;
-  if (!entry) {
-    throw new UnapproveError(
-      'not-found',
-      `Variant "${options.variantId}" is not in the manifest and cannot be unapproved.`,
-    );
-  }
-
-  // 3. Remove from manifest and write back (stable key order preserved).
-  const nextEntries: Record<string, ManifestEntry> = { ...manifest.entries };
-  delete nextEntries[options.variantId];
-  const sortedKeys = Object.keys(nextEntries).sort();
-  const sorted: Record<string, ManifestEntry> = {};
-  for (const key of sortedKeys) {
-    sorted[key] = nextEntries[key]!;
-  }
-  const next: Manifest = { version: MANIFEST_VERSION, entries: sorted };
-  fs.writeFileSync(options.manifestPath, `${JSON.stringify(next, null, 2)}\n`);
-
-  // 4. Remove from catalog (best-effort — a corrupt/missing catalog must not
-  //    block the manifest eviction that already succeeded above).
-  if (fs.existsSync(options.catalogPath)) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(options.catalogPath, 'utf8'));
-      const catalog: Array<Record<string, unknown>> = Array.isArray(raw) ? raw : [];
-      const catalogId = `generated:${options.variantId}`;
-      const filtered = catalog.filter((e) => e.id !== catalogId);
-      if (filtered.length !== catalog.length) {
-        fs.writeFileSync(options.catalogPath, `${JSON.stringify(filtered, null, 2)}\n`);
-        formatJsonFilesSync([options.catalogPath]);
-      }
-    } catch {
-      // Best-effort: don't block eviction if catalog is corrupt.
-    }
-  }
-
-  // 5. Delete the on-disk PNG when requested.
+  // 3. Delete the on-disk PNG when requested.
   if (deleteAsset) {
-    const generatedDir = path.join(options.publicAssetsDir, 'generated');
-    const assetAbsPath = path.join(generatedDir, `${options.variantId}.png`);
+    const assetGeneratedDir = path.join(options.publicAssetsDir, 'generated');
+    const assetAbsPath = path.join(assetGeneratedDir, `${options.variantId}.png`);
     // Safety guard: ensure the resolved path stays inside generated/ to prevent
     // a variantId like `../../etc/passwd` from traversing outside the tree.
-    if (!path.resolve(assetAbsPath).startsWith(path.resolve(generatedDir) + path.sep)) {
-      // Skip deletion — manifest + catalog were already cleaned up above.
+    if (!path.resolve(assetAbsPath).startsWith(path.resolve(assetGeneratedDir) + path.sep)) {
+      // Skip deletion — the shard was already removed above.
       return entry;
     }
     if (fs.existsSync(assetAbsPath)) {

@@ -9,9 +9,16 @@ import {
   type SpriteCatalogEntry,
   type SpriteCatalogRecord,
 } from '../../src/shared/sprite-catalog.js';
-import { writeCatalogJson } from './catalog-io.js';
+import {
+  composeFullCatalog,
+  GENERATED_ID_PREFIX,
+  isGeneratedCatalogId,
+} from '../../src/shared/generated-catalog.js';
+import { composeManifestFromShards, readShard, writeShard } from './generated-shards.js';
+import { formatJsonFilesSync, writeCatalogJson } from './catalog-io.js';
 
 export const DEFAULT_CATALOG_PATH = 'src/shared/data/sprite-catalog.json';
+export const DEFAULT_GENERATED_DIR = 'public/assets/generated';
 export const DEFAULT_MIN_SCORE = 70;
 
 const draftSchema = z
@@ -70,6 +77,7 @@ export type MetadataProviderMode = 'auto' | 'heuristic' | 'openai';
 
 interface CliArgs {
   catalogPath: string;
+  generatedDir: string;
   provider: MetadataProviderMode;
   ids?: string[];
   force: boolean;
@@ -79,6 +87,7 @@ interface CliArgs {
 
 function parseArgs(argv: readonly string[]): CliArgs {
   let catalogPath = DEFAULT_CATALOG_PATH;
+  let generatedDir = DEFAULT_GENERATED_DIR;
   let provider: CliArgs['provider'] = 'auto';
   let force = false;
   let dryRun = false;
@@ -89,6 +98,9 @@ function parseArgs(argv: readonly string[]): CliArgs {
     const arg = argv[i];
     if (arg === '--catalog') {
       catalogPath = argv[i + 1] ?? DEFAULT_CATALOG_PATH;
+      i += 1;
+    } else if (arg === '--generated-dir') {
+      generatedDir = argv[i + 1] ?? DEFAULT_GENERATED_DIR;
       i += 1;
     } else if (arg === '--provider') {
       const value = argv[i + 1];
@@ -115,7 +127,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     }
   }
 
-  return { catalogPath, provider, ids, force, dryRun, minScore };
+  return { catalogPath, generatedDir, provider, ids, force, dryRun, minScore };
 }
 
 function normalizeItems(items: readonly string[] | undefined): string[] {
@@ -559,10 +571,15 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const provider = await resolveProvider(args.provider);
   const absoluteCatalogPath = resolve(args.catalogPath);
-  const raw = JSON.parse(readFileSync(absoluteCatalogPath, 'utf-8'));
-  const catalog = parseSpriteCatalog(raw);
+  const generatedDir = resolve(args.generatedDir);
 
-  const result = await runMetadataPipeline(catalog, {
+  // `generated:` rows are no longer committed to sprite-catalog.json — they are
+  // derived from the per-asset manifest shards (see src/shared/generated-catalog.ts).
+  // Compose the full catalog so the pipeline can enrich generated sprites too.
+  const baseCatalog = parseSpriteCatalog(JSON.parse(readFileSync(absoluteCatalogPath, 'utf-8')));
+  const fullCatalog = composeFullCatalog(baseCatalog, composeManifestFromShards(generatedDir));
+
+  const result = await runMetadataPipeline(fullCatalog, {
     provider,
     ids: args.ids,
     force: args.force,
@@ -583,7 +600,41 @@ async function main(): Promise<void> {
     return;
   }
 
-  await writeCatalogJson(absoluteCatalogPath, result.updated);
+  const generatedChangedIds = result.changedIds.filter((id) => isGeneratedCatalogId(id));
+  const nonGeneratedChangedIds = result.changedIds.filter((id) => !isGeneratedCatalogId(id));
+
+  // Non-generated rows: overlay ONLY the changed ids onto the committed catalog
+  // so a concurrent edit to a different row is preserved.
+  if (nonGeneratedChangedIds.length > 0) {
+    const merged = parseSpriteCatalog(
+      mergeChangedCatalogEntries(baseCatalog, result.updated, nonGeneratedChangedIds),
+    );
+    await writeCatalogJson(absoluteCatalogPath, merged);
+  }
+
+  // Generated rows: persist the LLM description/tags as a `catalog` override on
+  // each changed shard — the single per-asset source of truth. A shard that
+  // vanished (concurrently unapproved) is skipped.
+  const updatedById = new Map(result.updated.map((row) => [row.id, row]));
+  const writtenShardPaths: string[] = [];
+  for (const id of generatedChangedIds) {
+    const key = id.slice(GENERATED_ID_PREFIX.length);
+    const entry = readShard(generatedDir, key);
+    if (!entry) continue;
+    const row = updatedById.get(id);
+    if (!row) continue;
+    writtenShardPaths.push(
+      writeShard(generatedDir, key, {
+        ...entry,
+        catalog: { description: row.description, tags: [...row.tags] },
+      }),
+    );
+  }
+  // Match the Prettier formatting the committed shards are stored in, so a
+  // metadata edit produces a value-only diff and not spurious `tags` reflow.
+  if (writtenShardPaths.length > 0) {
+    formatJsonFilesSync(writtenShardPaths);
+  }
 }
 
 const entry = process.argv[1];

@@ -429,7 +429,7 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(EXTENSION_SOURCE, /entry\.contentHash = sha256Hex\(bytes\)/);
   assert.match(
     EXTENSION_SOURCE,
-    /if \(hasMetadata \|\| wrotePng\) {\s*writeJsonFile\(MANIFEST_PATH, data\.manifest\)/,
+    /if \(hasMetadata \|\| wrotePng\) {\s*writeShard\(key, data\.manifest\.entries\[key\]\)/,
   );
 });
 

@@ -1,0 +1,42 @@
+{
+  "briefId": "glow-worm",
+  "spriteName": "glow-worm-var-6",
+  "assetPath": "generated/glow-worm-var-6.png",
+  "approvedAt": "2026-07-08T01:15:47.082Z",
+  "sourceRun": "generated/runs/glow-worm/2026-07-08T01-02-04-36775a47",
+  "variantIndex": 6,
+  "anchor": {
+    "x": 31,
+    "y": 32,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": "enemy",
+  "contentHash": "e92f8e50db15bf3d7ed923b38f26a2abfeb10792facc03641ba499c7a80e4923",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\glow-worm\\2026-07-08T01-02-04-36775a47\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 11,
+    "width": 57,
+    "height": 41,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

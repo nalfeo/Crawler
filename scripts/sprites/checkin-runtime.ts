@@ -33,17 +33,8 @@ import {
   type ExecResult,
   type QueuedAssetCheckin,
 } from './checkin.js';
-import {
-  mergeCatalogs,
-  mergeManifests,
-  parseAssetIssueBody,
-  type CatalogEntry,
-  type GeneratedManifest,
-} from './asset-issues.js';
-import { writeCatalogJson } from './catalog-io.js';
-
-/** Repo-relative path of the committed sprite catalog. */
-const CATALOG_REL = path.join('src', 'shared', 'data', 'sprite-catalog.json');
+import { parseAssetIssueBody } from './asset-issues.js';
+import { composeManifestFromShards, shardPathForKey } from './generated-shards.js';
 
 export const realExec: Exec = (command, args, options) =>
   new Promise<ExecResult>((resolve) => {
@@ -84,17 +75,6 @@ export const realExec: Exec = (command, args, options) =>
     );
   });
 
-const MANIFEST_REL = path.join('public', 'assets', 'generated', 'manifest.json');
-
-function readJsonSafe<T>(absPath: string, fallback: T): T {
-  if (!existsSync(absPath)) return fallback;
-  try {
-    return JSON.parse(readFileSync(absPath, 'utf8')) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 /**
  * Copy ONLY `assets`' PNGs — plus their corresponding manifest/catalog
  * entries — from the live `srcRepoRoot` onto the freshly-checked-out worktree
@@ -104,29 +84,30 @@ function readJsonSafe<T>(absPath: string, fallback: T): T {
  * the resulting branch diff so the branch content and the filed issue payload
  * stay aligned (see ADR 0066 / concern #2).
  *
- * Manifest and catalog entries are UNIONED onto the worktree's own (base
- * branch) copy via the same pure `mergeManifests`/`mergeCatalogs` helpers the
- * asset-pr consolidator uses, so a selective per-branch delta composes
- * correctly regardless of processing order downstream.
+ * Only the PNG and its per-asset manifest shard (`entries/<key>.json`) are
+ * projected. The aggregate `manifest.json` is a gitignored build artifact and
+ * the `generated:` sprite-catalog rows are derived at read-time, so neither is
+ * written here — that is exactly what scopes a check-in's branch diff to the new
+ * PNG(s) + their own shard(s), which never collide across disjoint check-ins.
  *
  * Concurrency semantics (accepted tradeoff — see ADR 0066 and the PR1
  * queue-commit ADR): this is a WHOLE-ASSET projection, not a field-level merge.
- * For a given manifest key it is last-writer-wins — the PNG is a whole-file
- * `cpSync` overlay and the manifest/catalog entry is replaced wholesale by the
- * live source entry. When the SAME key is edited concurrently from two stale
- * worktrees, the second durable commit's entry/PNG wins even if the first was
- * newer; this is a valid fast-forward push, so no data is corrupted, but a
- * newer edit CAN be superseded by an older one for that key. This matches the
- * maintainer-accepted "manifest = sole authority, whole-asset" design; a
- * field-level/delta merge is deliberately out of scope. The
- * `same-key concurrent edits are last-writer-wins` regression test documents
- * and pins this behavior.
+ * For a given manifest key it is last-writer-wins — both the PNG and the shard
+ * are whole-file `cpSync` overlays replaced wholesale by the live source. When
+ * the SAME key is edited concurrently from two stale worktrees, the second
+ * durable commit's shard/PNG wins even if the first was newer; this is a valid
+ * fast-forward push, so no data is corrupted, but a newer edit CAN be superseded
+ * by an older one for that key. This matches the maintainer-accepted "manifest =
+ * sole authority, whole-asset" design; a field-level/delta merge is deliberately
+ * out of scope. The `same-key concurrent edits are last-writer-wins` regression
+ * test documents and pins this behavior.
  */
 export async function copyArtSurface(
   srcRepoRoot: string,
   destRepoRoot: string,
   assets: readonly CheckinAsset[],
 ): Promise<void> {
+  // 1. Copy each approved PNG.
   for (const asset of assets) {
     const relSegments = asset.assetPath.split('/');
     const src = path.join(srcRepoRoot, 'public', 'assets', ...relSegments);
@@ -136,91 +117,31 @@ export async function copyArtSurface(
     cpSync(src, dest);
   }
 
+  // 2. Copy each asset's manifest shard (the sole committed source of truth).
+  const srcGeneratedDir = path.join(srcRepoRoot, 'public', 'assets', 'generated');
+  const destGeneratedDir = path.join(destRepoRoot, 'public', 'assets', 'generated');
   const manifestKeys = new Set(
     assets
       .map((asset) => asset.manifestKey)
       .filter((key): key is string => typeof key === 'string'),
   );
-  if (manifestKeys.size === 0) return;
-
-  const destManifestPath = path.join(destRepoRoot, MANIFEST_REL);
-  const srcManifestPath = path.join(srcRepoRoot, MANIFEST_REL);
-  const destManifest = readJsonSafe<GeneratedManifest>(destManifestPath, {
-    version: 1,
-    entries: {},
-  });
-  const srcManifest = readJsonSafe<GeneratedManifest>(srcManifestPath, { version: 1, entries: {} });
-  const overlayEntries: Record<string, Record<string, unknown>> = {};
   for (const key of manifestKeys) {
-    const entry = srcManifest.entries?.[key];
-    if (entry !== undefined) overlayEntries[key] = entry;
+    const srcShard = shardPathForKey(srcGeneratedDir, key);
+    if (!existsSync(srcShard)) continue;
+    const destShard = shardPathForKey(destGeneratedDir, key);
+    mkdirSync(path.dirname(destShard), { recursive: true });
+    cpSync(srcShard, destShard);
   }
-  const mergedManifest = mergeManifests(destManifest, {
-    version: srcManifest.version,
-    entries: overlayEntries,
-  });
-  mkdirSync(path.dirname(destManifestPath), { recursive: true });
-  await writeCatalogJson(destManifestPath, mergedManifest);
-
-  // `src/shared/data/sprite-catalog.json` is deliberately NOT overlaid here.
-  // A generated catalog row merely restates its manifest entry, so writing both
-  // made every pair of parallel art check-ins conflict by construction. Art
-  // check-ins now touch exactly one shared committed JSON file instead of two.
-  //
-  // Catalog-ONLY flows (the sidecar Tag/metadata route) still have real edits
-  // that live nowhere else; they overlay explicitly via
-  // `overlayCatalogEntries` + `QueueCommitOptions.catalogEntryIds`.
-}
-
-/**
- * Overlay ONLY `ids`' catalog rows from `srcRepoRoot` onto `destRepoRoot`.
- *
- * Used by catalog-only flows (the sidecar metadata/Tag route) whose edits exist
- * nowhere but `sprite-catalog.json`, so `copyArtSurface`'s manifest+PNG
- * projection would stage nothing and the queue commit would silently no-op.
- *
- * Deliberately narrow: it replaces/inserts exactly the named ids and preserves
- * every other row on the destination, so it can never clobber a concurrent
- * writer's unrelated entry.
- *
- * @returns `true` when the destination catalog changed on disk.
- */
-export async function overlayCatalogEntries(
-  srcRepoRoot: string,
-  destRepoRoot: string,
-  ids: readonly string[],
-): Promise<boolean> {
-  if (ids.length === 0) return false;
-
-  const wanted = new Set(ids);
-  const srcPath = path.join(srcRepoRoot, CATALOG_REL);
-  const destPath = path.join(destRepoRoot, CATALOG_REL);
-  const srcCatalog = readJsonSafe<CatalogEntry[]>(srcPath, []);
-  const destCatalog = readJsonSafe<CatalogEntry[]>(destPath, []);
-  if (!Array.isArray(srcCatalog) || !Array.isArray(destCatalog)) return false;
-
-  const srcEntries = srcCatalog.filter((entry) => {
-    const id = (entry as { id?: unknown }).id;
-    return typeof id === 'string' && wanted.has(id);
-  });
-  if (srcEntries.length === 0) return false;
-
-  // mergeCatalogs handles replace-or-insert and restores canonical order
-  // (sheet entries first, then by id lexicographically), matching check:sort-assets.
-  const merged = mergeCatalogs(destCatalog, srcEntries);
-
-  const before = existsSync(destPath) ? readFileSync(destPath, 'utf8').toString() : null;
-  mkdirSync(path.dirname(destPath), { recursive: true });
-  await writeCatalogJson(destPath, merged);
-  return readFileSync(destPath, 'utf8').toString() !== before;
 }
 
 function makeReadManifest(repoRoot: string): () => Promise<CheckinManifest> {
   return () => {
-    const manifestPath = path.join(repoRoot, 'public', 'assets', 'generated', 'manifest.json');
+    // The aggregate manifest.json is a gitignored build artifact that may be
+    // absent, so compose the read-model directly from the committed per-asset
+    // shards (the source of truth).
+    const generatedDir = path.join(repoRoot, 'public', 'assets', 'generated');
     try {
-      const raw = readFileSync(manifestPath, 'utf8');
-      return Promise.resolve(JSON.parse(raw) as CheckinManifest);
+      return Promise.resolve(composeManifestFromShards(generatedDir) as CheckinManifest);
     } catch {
       return Promise.resolve({});
     }

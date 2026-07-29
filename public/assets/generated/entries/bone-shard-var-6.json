@@ -1,0 +1,29 @@
+{
+  "briefId": "bone-shard",
+  "spriteName": "bone-shard-var-6",
+  "assetPath": "generated/bone-shard-var-6.png",
+  "approvedAt": "2026-07-01T23:57:27.537Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-dmeXcS/bone-shard-v1/2026-07-01T22-43-18-d7d3dcba",
+  "variantIndex": 6,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 29,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "2",
+  "type": "item",
+  "contentHash": "ece75a36d13fa3bc89dfba9b6a6ec57c744ff53b1d58fcb2ea6f4962a6bf1cf7",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 57,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

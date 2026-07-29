@@ -87,6 +87,8 @@
     "sprites:generate-wiring": "tsx scripts/sprites/generate-wiring-cli.ts",
     "sprites:reprocess:welcome-room": "tsx scripts/sprites/reprocess-welcome-room-cli.ts",
     "sprites:reconcile-queue": "tsx scripts/sprites/reconcile-queue-cli.ts",
+    "sprites:build-manifest": "tsx scripts/sprites/build-manifest.ts",
+    "sprites:check-manifest": "tsx scripts/sprites/check-manifest.ts",
     "terrain-packs:build": "tsx scripts/sprites/terrain-packs/cli.ts build",
     "terrain-packs:validate": "tsx scripts/sprites/terrain-packs/cli.ts validate",
     "terrain-packs:generate-motifs": "tsx scripts/sprites/terrain-packs/generate-industrial-cave-motifs.ts",

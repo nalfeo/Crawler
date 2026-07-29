@@ -1,0 +1,41 @@
+{
+  "briefId": "spell-broker-v2",
+  "spriteName": "spell-broker-v2-var-8",
+  "assetPath": "generated/spell-broker-v2-var-8.png",
+  "approvedAt": "2026-07-06T17:32:20.371Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-bzhzL9/spell-broker-v2/2026-07-03T21-48-49-f858f61a",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 32,
+    "y": 63,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 63,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 30,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/8",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "86b77ebea8f209014228918719ebb2a853b0b2abeb01c7634b9bdb51f7821962",
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": "brief",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 57,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

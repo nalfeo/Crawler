@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-floor-path",
+  "spriteName": "welcome-room-floor-path-var-5",
+  "assetPath": "generated/welcome-room-floor-path-var-5.png",
+  "approvedAt": "2026-07-25T21:24:10.632Z",
+  "sourceRun": "generated/runs/welcome-room-floor-path/2026-07-25T21-02-56-215dc2ec",
+  "variantIndex": 5,
+  "anchor": {
+    "x": 34,
+    "y": 59,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 34,
+      "y": 59,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 31,
+        "y": 31
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 5,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T21:04:46.255Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a worn walking route is well-executed with a subtle, speckled pattern that conveys wear without appearing as a distinct object. The design feels grounded in the Crawler aesthetic and matches the darkly humorous, overused dungeon setting."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering style aligns well with the references in terms of pixel density, color palette, and overall finish. However, the lack of a hard outline, while intentional and correct for this brief, makes it slightly less consistent with the typical Crawler style."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering style aligns well with the references in terms of pixel density, color palette, and overall finish. However, the lack of a hard outline, while intentional and correct for this brief, makes it slightly less consistent with the typical Crawler style."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite adheres closely to the brief, with a scattered grain pattern, no solid areas, no outlines, and a subtle tonal shift that blends into the floor. The speckle is arranged into a track as specified, with the correct density and fading."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the track is visible at game scale, but the subtlety of the design may make it less immediately noticeable to players. This is in line with the brief's requirements, but it slightly impacts readability."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a well-executed floor decal with no extraneous elements, solid areas, or outlines. It adheres to the specified tile footprint and perspective."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The candidate adheres to the brief's requirements and is not fundamentally broken or unacceptable.",
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 4020,
+      "completionTokens": 410,
+      "totalTokens": 4430
+    }
+  },
+  "type": "prop",
+  "contentHash": "926f1c5897adda2a5dab22b9d5d381bf1173cf0877d1daf1353e6bfd6224539d",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-path\\2026-07-25T21-02-56-215dc2ec\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-path\\2026-07-25T21-02-56-215dc2ec\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-path\\2026-07-25T21-02-56-215dc2ec\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 21,
+    "y": 3,
+    "width": 21,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

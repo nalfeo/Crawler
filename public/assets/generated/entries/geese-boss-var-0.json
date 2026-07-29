@@ -1,0 +1,45 @@
+{
+  "briefId": "geese-boss",
+  "spriteName": "geese-boss-var-0",
+  "assetPath": "generated/geese-boss-var-0.png",
+  "approvedAt": "2026-07-08T02:46:21.682Z",
+  "sourceRun": "generated/runs/geese-boss/2026-07-08T02-42-19-28e76d2b",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 32,
+    "y": 35,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 35,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 35,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "type": "enemy",
+  "contentHash": "fac31bffd27ac7215f1215fed322e71bf95b8d3321f8665c0bb89d47de0eb8d5",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 5,
+    "width": 58,
+    "height": 53,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "catalog": {
+    "description": "Don Honkrado the Godgoose — mafia godfather goose, Floor 2 boss. Square compact body, tucked neck, pinstripe salvage-strap waistcoat, brass gear cufflinks, wide-brim fedora, cigar in beak. Current sprite is 64x64 v1; a 128x128 large-variant regeneration from the authored brief is pending."
+  }
+}

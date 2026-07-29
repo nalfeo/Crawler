@@ -9,6 +9,7 @@ import {
   validateExactAssetPayloads,
 } from '../../../scripts/sprites/asset-request-publisher.js';
 import type { CheckinAsset, Exec } from '../../../scripts/sprites/checkin.js';
+import { shardPathForKey } from '../../../scripts/sprites/generated-shards.js';
 import { issueCheckpointKey } from '../../../scripts/sprites/issue-pipeline-checkpoint.js';
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
 
@@ -146,39 +147,24 @@ describe('exact generated-asset collision validation', () => {
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   });
 
-  function writeSurface(
-    root: string,
-    catalogLabel: string,
-    png: Buffer,
-    manifestOverride?: Record<string, unknown>,
-  ): CheckinAsset {
+  function writeSurface(root: string, catalogLabel: string, png: Buffer): CheckinAsset {
     const key = 'bone-dagger-var-0';
     const assetPath = `generated/${key}.png`;
     const pngPath = path.join(root, 'public', 'assets', 'generated', `${key}.png`);
     mkdirSync(path.dirname(pngPath), { recursive: true });
-    mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
     writeFileSync(pngPath, png);
+    const shardPath = shardPathForKey(path.join(root, 'public', 'assets', 'generated'), key);
+    mkdirSync(path.dirname(shardPath), { recursive: true });
     writeFileSync(
-      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
+      shardPath,
       JSON.stringify({
-        version: 1,
-        entries: {
-          [key]: {
-            briefId: 'bone-dagger',
-            spriteName: key,
-            assetPath,
-            sourceRun: 'bone-dagger/run-1',
-            variantIndex: 0,
-            ...manifestOverride,
-          },
-        },
+        briefId: 'bone-dagger',
+        spriteName: key,
+        assetPath,
+        sourceRun: 'bone-dagger/run-1',
+        variantIndex: 0,
+        catalog: { description: catalogLabel },
       }),
-    );
-    writeFileSync(
-      path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
-      JSON.stringify([
-        { id: `generated:${key}`, label: catalogLabel, path: `/assets/${assetPath}` },
-      ]),
     );
     return {
       assetPath,
@@ -188,48 +174,23 @@ describe('exact generated-asset collision validation', () => {
     };
   }
 
-  it('accepts an exact idempotent payload (manifest + PNG identical)', async () => {
+  it('accepts an exact idempotent payload and rejects any shard or PNG difference', async () => {
     const source = mkdtempSync(path.join(os.tmpdir(), 'publisher-source-'));
     const exact = mkdtempSync(path.join(os.tmpdir(), 'publisher-exact-'));
-    roots.push(source, exact);
+    const conflict = mkdtempSync(path.join(os.tmpdir(), 'publisher-conflict-'));
+    const shardOnly = mkdtempSync(path.join(os.tmpdir(), 'publisher-shard-'));
+    roots.push(source, exact, conflict, shardOnly);
     const asset = writeSurface(source, 'Bone dagger', Buffer.from([1, 2, 3]));
     writeSurface(exact, 'Bone dagger', Buffer.from([1, 2, 3]));
+    writeSurface(conflict, 'Different label', Buffer.from([1, 2, 4]));
+    // Identical PNG, differing shard payload — must still be rejected.
+    writeSurface(shardOnly, 'Different label', Buffer.from([1, 2, 3]));
 
     await expect(validateExactAssetPayloads(source, exact, [asset])).resolves.toBeUndefined();
-  });
-
-  it('accepts a catalog-only difference — catalog is no longer part of the collision check', async () => {
-    const source = mkdtempSync(path.join(os.tmpdir(), 'publisher-source-'));
-    const catalogDiff = mkdtempSync(path.join(os.tmpdir(), 'publisher-catalog-diff-'));
-    roots.push(source, catalogDiff);
-    const asset = writeSurface(source, 'Bone dagger', Buffer.from([1, 2, 3]));
-    writeSurface(catalogDiff, 'Different label', Buffer.from([1, 2, 3]));
-
-    await expect(validateExactAssetPayloads(source, catalogDiff, [asset])).resolves.toBeUndefined();
-  });
-
-  it('rejects a manifest-only difference', async () => {
-    const source = mkdtempSync(path.join(os.tmpdir(), 'publisher-source-'));
-    const manifestDiff = mkdtempSync(path.join(os.tmpdir(), 'publisher-manifest-diff-'));
-    roots.push(source, manifestDiff);
-    const asset = writeSurface(source, 'Bone dagger', Buffer.from([1, 2, 3]));
-    writeSurface(manifestDiff, 'Bone dagger', Buffer.from([1, 2, 3]), {
-      sourceRun: 'bone-dagger/run-2',
-    });
-
-    await expect(validateExactAssetPayloads(source, manifestDiff, [asset])).rejects.toThrow(
+    await expect(validateExactAssetPayloads(source, conflict, [asset])).rejects.toThrow(
       'conflicting payload',
     );
-  });
-
-  it('rejects a PNG-only difference', async () => {
-    const source = mkdtempSync(path.join(os.tmpdir(), 'publisher-source-'));
-    const pngDiff = mkdtempSync(path.join(os.tmpdir(), 'publisher-png-diff-'));
-    roots.push(source, pngDiff);
-    const asset = writeSurface(source, 'Bone dagger', Buffer.from([1, 2, 3]));
-    writeSurface(pngDiff, 'Bone dagger', Buffer.from([1, 2, 4]));
-
-    await expect(validateExactAssetPayloads(source, pngDiff, [asset])).rejects.toThrow(
+    await expect(validateExactAssetPayloads(source, shardOnly, [asset])).rejects.toThrow(
       'conflicting payload',
     );
   });

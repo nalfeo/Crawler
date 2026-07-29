@@ -30,7 +30,13 @@ import {
   FLOOR2_HARVESTABLE_START_INDEX,
 } from '../../src/shared/harvestableDefs.js';
 import { isPlaceholderEntry, resolveItemSprite } from '../../src/shared/item-sprites.js';
+import {
+  loadShippedManifestRaw,
+  shippedManifestShardsExist,
+} from '../helpers/generated-manifest.js';
 
+// Only used for `path.dirname(...)` to resolve shipped PNG paths; the aggregate
+// file itself is a build artifact and is never read here (see the shard helper).
 const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
 
 /**
@@ -209,10 +215,10 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
   // rather than re-reading + re-parsing the on-disk manifest for every row.
   let sharedRealRegistry: Awaited<ReturnType<typeof fetchGeneratedSpriteRegistry>> | null = null;
   beforeAll(async () => {
-    if (!existsSync(REPO_MANIFEST)) {
+    if (!shippedManifestShardsExist()) {
       return;
     }
-    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const raw = loadShippedManifestRaw();
     const fetcher = (async () =>
       new Response(raw, {
         status: 200,
@@ -225,11 +231,11 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
   });
 
   it('parses the checked-in manifest without throwing', async () => {
-    if (!existsSync(REPO_MANIFEST)) {
+    if (!shippedManifestShardsExist()) {
       // First boot in a fresh checkout. The loader must still soft-fail.
       return;
     }
-    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const raw = loadShippedManifestRaw();
     const fetcher = (async () =>
       new Response(raw, {
         status: 200,
@@ -310,11 +316,11 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
   );
 
   it('wires the welcome-room set-piece props to shipped generated art (no placeholders)', async () => {
-    if (!existsSync(REPO_MANIFEST)) {
+    if (!shippedManifestShardsExist()) {
       // Fresh checkout without generated art on disk — nothing to observe.
       return;
     }
-    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const raw = loadShippedManifestRaw();
     const fetcher = (async () =>
       new Response(raw, {
         status: 200,
@@ -391,11 +397,11 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
   });
 
   it('wires each welcome-room NPC to its own shipped generated sprite (no placeholders)', async () => {
-    if (!existsSync(REPO_MANIFEST)) {
+    if (!shippedManifestShardsExist()) {
       // Fresh checkout without generated art on disk — nothing to observe.
       return;
     }
-    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const raw = loadShippedManifestRaw();
     const fetcher = (async () =>
       new Response(raw, {
         status: 200,
@@ -439,11 +445,11 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
   });
 
   it('wires all Floor-1 harvestable nodes to real approved art, not placeholders', async () => {
-    if (!existsSync(REPO_MANIFEST)) {
+    if (!shippedManifestShardsExist()) {
       // Fresh checkout without generated art on disk — nothing to observe.
       return;
     }
-    const raw = readFileSync(REPO_MANIFEST, 'utf8');
+    const raw = loadShippedManifestRaw();
     const fetcher = (async () =>
       new Response(raw, {
         status: 200,

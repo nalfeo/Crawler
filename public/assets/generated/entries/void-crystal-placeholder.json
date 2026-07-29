@@ -1,0 +1,21 @@
+{
+  "briefId": "void-crystal",
+  "spriteName": "void-crystal",
+  "assetPath": "generated/void-crystal-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.328Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 10,
+    "height": 11,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

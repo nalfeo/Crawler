@@ -16,6 +16,7 @@ import { createLogger } from '../../src/shared/logger.js';
 import { approveVariant } from './approve.js';
 import type { CheckinAsset, Exec } from './checkin.js';
 import { realExec } from './checkin-runtime.js';
+import { shardPathForKey } from './generated-shards.js';
 import {
   createIssueCheckpointController,
   isTransientPipelineError,
@@ -311,38 +312,30 @@ export async function validateExactAssetPayloads(
   destinationRoot: string,
   assets: readonly CheckinAsset[],
 ): Promise<void> {
-  const sourceManifest = readJson(path.join(sourceRoot, MANIFEST_REL));
-  const destinationManifest = readJson(path.join(destinationRoot, MANIFEST_REL));
-  if (!isRecord(sourceManifest) || !isRecord(sourceManifest.entries)) {
-    throw new Error('Source generated manifest is invalid');
-  }
-  if (!isRecord(destinationManifest) || !isRecord(destinationManifest.entries)) {
-    throw new Error('Destination generated manifest is invalid');
-  }
+  const sourceGeneratedDir = path.join(sourceRoot, 'public', 'assets', 'generated');
+  const destinationGeneratedDir = path.join(destinationRoot, 'public', 'assets', 'generated');
 
   for (const asset of assets) {
     const key = asset.manifestKey;
     if (!key) continue;
-    const sourceEntry = sourceManifest.entries[key];
-    if (sourceEntry === undefined) {
-      throw new Error(`Source manifest entry ${key} is missing`);
+    const sourceShardPath = shardPathForKey(sourceGeneratedDir, key);
+    if (!existsSync(sourceShardPath)) {
+      throw new Error(`Source manifest shard ${key} is missing`);
     }
-    // The sprite catalog is deliberately NOT validated here. Art check-ins no
-    // longer carry `src/shared/data/sprite-catalog.json` (see
-    // scripts/sprites/checkin.ts > ASSET_SURFACE_PATHS), so a locally-approved
-    // asset has a catalog row while main does not. Requiring one — or requiring
-    // both sides to match — would reject every republish of already-landed art.
+    const sourceEntry = readJson(sourceShardPath);
     const sourcePng = path.join(sourceRoot, 'public', 'assets', ...asset.assetPath.split('/'));
     if (!existsSync(sourcePng)) throw new Error(`Source PNG ${asset.assetPath} is missing`);
 
-    const destinationEntry = destinationManifest.entries[key];
+    const destinationShardPath = shardPathForKey(destinationGeneratedDir, key);
+    const destinationShardExists = existsSync(destinationShardPath);
+    const destinationEntry = destinationShardExists ? readJson(destinationShardPath) : undefined;
     const destinationPng = path.join(
       destinationRoot,
       'public',
       'assets',
       ...asset.assetPath.split('/'),
     );
-    const destinationExists = destinationEntry !== undefined || existsSync(destinationPng);
+    const destinationExists = destinationShardExists || existsSync(destinationPng);
     if (!destinationExists) continue;
 
     const exact =
@@ -391,7 +384,7 @@ export async function reconcileCanonicalPr(
   const body =
     '## Generated art batch\n\n' +
     '- Automatically postprocessed, judged, and selected by the asset-request pipeline.\n' +
-    '- Contains only generated PNGs, the generated manifest, and sprite catalog entries.\n' +
+    '- Contains only generated PNGs and their per-asset manifest shards.\n' +
     '- Ready for human review; this workflow never auto-merges.\n\n' +
     `Workflow run: ${env.GITHUB_SERVER_URL ?? 'https://github.com'}/${env.GITHUB_REPOSITORY ?? ''}/actions/runs/${env.GITHUB_RUN_ID ?? ''}`;
 

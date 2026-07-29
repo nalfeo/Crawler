@@ -27,10 +27,13 @@ import { hashStringToSeed } from '../../src/shared/random.js';
 /**
  * The art surface a check-in WRITES (repo-relative, POSIX separators).
  *
- * `src/shared/data/sprite-catalog.json` is deliberately absent: its `generated:`
- * rows merely restate manifest data, so writing both made every pair of
- * parallel art check-ins conflict by construction. New check-ins therefore
- * touch exactly one shared committed JSON file.
+ * Only `public/assets/generated` — which holds both the approved PNGs and the
+ * per-asset manifest shards under `entries/`. The aggregate `manifest.json` is a
+ * gitignored build artifact and the `generated:` sprite-catalog rows are derived
+ * at read-time from the shards, so NEITHER the aggregate nor
+ * `src/shared/data/sprite-catalog.json` is part of the check-in write surface
+ * anymore. This is what keeps two disjoint check-ins from ever touching the same
+ * file.
  *
  * This is NOT the same list as {@link ART_SURFACE_ALLOWLIST}: we stopped
  * producing catalog changes, but in-flight branches and CI's own art-only

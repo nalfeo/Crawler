@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
@@ -25,6 +25,7 @@ import {
   formatBossAbilityStatusReport,
   loadFloor2BossAbilityStatus,
 } from '../../scripts/agent/boss-ability-status-lib.js';
+import { loadShippedManifest } from '../helpers/generated-manifest.js';
 
 const manifestSchema = z
   .object({
@@ -589,14 +590,7 @@ describe('Floor 2 boss ability delivery status', () => {
 
 describe('Floor 2 boss ability art evidence', () => {
   it('matches the real runtime art resolver and shipped manifest for all 18 bosses', () => {
-    const manifest = manifestSchema.parse(
-      JSON.parse(
-        readFileSync(
-          fileURLToPath(new URL('../../public/assets/generated/manifest.json', import.meta.url)),
-          'utf8',
-        ),
-      ),
-    );
+    const manifest = manifestSchema.parse(loadShippedManifest());
     const bossesById = new Map(
       floor2EnemyPack.archetypes
         .filter((archetype) => archetype.isBoss === true)

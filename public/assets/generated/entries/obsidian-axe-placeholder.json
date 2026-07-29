@@ -1,0 +1,21 @@
+{
+  "briefId": "obsidian-axe",
+  "spriteName": "obsidian-axe",
+  "assetPath": "generated/obsidian-axe-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.373Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "opaqueBounds": {
+    "x": 3,
+    "y": 4,
+    "width": 10,
+    "height": 8,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

@@ -21,6 +21,7 @@ import { loadRunSummary, rejudgeRun, repostprocessRun } from './rerun.js';
 import type { RunSummary } from './run-artifacts.js';
 import { LocalRunStore } from './store/local-store.js';
 import { ApproveError, approveVariant } from './approve.js';
+import { composeManifestFromShards } from './generated-shards.js';
 
 const TARGET_SET_PIECE_ID = 'welcome-room';
 const TARGET_PREFIX = 'welcome-room-';
@@ -106,16 +107,6 @@ function parseSetPieces(raw: string): SetPiecesFile {
   } catch (err) {
     throw new ReprocessError(
       `set-pieces.json is not parseable: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-}
-
-function parseManifest(raw: string): ManifestFile {
-  try {
-    return JSON.parse(raw) as ManifestFile;
-  } catch (err) {
-    throw new ReprocessError(
-      `manifest.json is not parseable: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
@@ -415,7 +406,9 @@ export async function main(cwd: string): Promise<number> {
   loadEnvLocal(repoRoot);
   const manifestPath = path.join(repoRoot, 'public', 'assets', 'generated', 'manifest.json');
   const setPiecesPath = path.join(repoRoot, 'src', 'shared', 'data', 'set-pieces.json');
-  const manifest = parseManifest(readFileSync(manifestPath, 'utf8'));
+  // Source of truth is the per-asset shard set (`entries/<key>.json`); the
+  // aggregate `manifest.json` is a build artifact and is not read here.
+  const manifest = composeManifestFromShards(path.dirname(manifestPath)) as ManifestFile;
   const setPieces = parseSetPieces(readFileSync(setPiecesPath, 'utf8'));
   const spriteIds = collectWelcomeRoomSpriteIds(setPieces);
   const targets = buildReprocessTargets(spriteIds, manifest, repoRoot);

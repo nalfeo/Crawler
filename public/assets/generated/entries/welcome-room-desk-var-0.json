@@ -1,0 +1,42 @@
+{
+  "briefId": "welcome-room-desk",
+  "spriteName": "welcome-room-desk-var-0",
+  "assetPath": "generated/welcome-room-desk-var-0.png",
+  "approvedAt": "2026-07-08T21:58:11.557Z",
+  "sourceRun": "../nalfeo-upgraded-enigma/generated/runs/welcome-room-desk/2026-07-08T04-10-13-f8ac9632",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 72,
+    "y": 49,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 72,
+      "y": 49,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 72,
+      "y": 49,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "8403bdae0aaad37ccd06439ea3e0ea84172c78b6e001f71110bfcfc24bbd56c4",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-desk\\2026-07-08T04-10-13-f8ac9632\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-desk\\2026-07-08T04-10-13-f8ac9632\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-desk\\2026-07-08T04-10-13-f8ac9632\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 8,
+    "width": 128,
+    "height": 79,
+    "canvasWidth": 144,
+    "canvasHeight": 95
+  }
+}

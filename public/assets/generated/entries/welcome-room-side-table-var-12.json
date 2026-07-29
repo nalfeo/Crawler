@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-side-table",
+  "spriteName": "welcome-room-side-table-var-12",
+  "assetPath": "generated/welcome-room-side-table-var-12.png",
+  "approvedAt": "2026-07-25T06:50:05.210Z",
+  "sourceRun": "generated/runs/welcome-room-side-table/2026-07-25T06-03-29-87d2f53d",
+  "variantIndex": 12,
+  "anchor": {
+    "x": 34,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 34,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 34,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 12,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T06:05:59.174Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design fits the dark-fantasy aesthetic of Crawler and aligns with the cozy, weathered furniture theme. The table's worn wood texture and muted colors match the requested style, but the lack of tarnished gold or faded red accents slightly detracts from the intended showbiz element."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a similar palette, shading style, and outline weight as the references. However, the wood texture is slightly noisier than the references, which could be simplified for better consistency."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a similar palette, shading style, and outline weight as the references. However, the wood texture is slightly noisier than the references, which could be simplified for better consistency."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a small, weathered, dark-wood side table with a readable silhouette and appropriate proportions for the described purpose."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, and the table reads well against the dark floor tile in the readability composite. The contact shadow is appropriately placed and enhances the sense of grounding."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a cohesive, grounded object with a clear top-down perspective and a proper tile footprint. It is not overly detailed and fits well within the game world."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2831,
+      "completionTokens": 379,
+      "totalTokens": 3210
+    }
+  },
+  "type": "prop",
+  "contentHash": "6bc62c16de8c3a5a40847f46c65b458a88ab27065bbc7a186c676cf5f871f7de",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-side-table\\2026-07-25T06-03-29-87d2f53d\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-side-table\\2026-07-25T06-03-29-87d2f53d\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-side-table\\2026-07-25T06-03-29-87d2f53d\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 57,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

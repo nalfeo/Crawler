@@ -1,0 +1,37 @@
+{
+  "briefId": "flame-dagger",
+  "spriteName": "flame-dagger-var-3",
+  "assetPath": "generated/flame-dagger-var-3.png",
+  "approvedAt": "2026-07-02T03:02:53.052Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Ot8mWB/flame-dagger-v2/2026-07-01T23-42-47-e5841d6b",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 31,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "2",
+  "type": "weapon",
+  "contentHash": "07299e230d7ccfd469dbea9de3053da5f49405f9af97188a8bd77d14fa4c1fb3",
+  "opaqueBounds": {
+    "x": 21,
+    "y": 3,
+    "width": 22,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

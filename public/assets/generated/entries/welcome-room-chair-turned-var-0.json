@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-chair-turned",
+  "spriteName": "welcome-room-chair-turned-var-0",
+  "assetPath": "generated/welcome-room-chair-turned-var-0.png",
+  "approvedAt": "2026-07-25T21:53:35.948Z",
+  "sourceRun": "generated/runs/welcome-room-chair-turned/2026-07-25T21-48-38-a32205d8",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 26,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 26,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 24,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 26,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T21:49:44.710Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The chair has a clear identity as a worn, turned-away wooden chair, and the slight tilt and wear details add character. However, the sulky, deliberate mood could be emphasized more with additional asymmetry or exaggerated wear."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in terms of outline weight, shading, and muted palette. The wood texture and color are consistent with the welcome-room set."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in terms of outline weight, shading, and muted palette. The wood texture and color are consistent with the welcome-room set."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a wooden chair turned away from the viewer, with visible back slats, a worn seat, and a slightly tilted frame. It matches the proportions and description in the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the chair is easily recognizable at game scale. However, the slight tilt and wear details could be more pronounced to enhance the visual storytelling."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The chair is a grounded, single object with a clear base and appropriate perspective. It fills the cell as required, with no floating or disconnected elements."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major flaws that would prevent its use in-game.",
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 3737,
+      "completionTokens": 362,
+      "totalTokens": 4099
+    }
+  },
+  "type": "prop",
+  "contentHash": "419a348c508465a62b434d9b3ccf3d16d0a0e1e56f7a0f03c8df4dd2ce1f090a",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 45,
+    "height": 58,
+    "canvasWidth": 52,
+    "canvasHeight": 64
+  }
+}

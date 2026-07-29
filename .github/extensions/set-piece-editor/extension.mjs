@@ -47,8 +47,29 @@ const SHEET_PATHS = {
 function getSetPiecesPath() {
   return join(REPO_ROOT, 'src', 'shared', 'data', 'set-pieces.json');
 }
-function getGeneratedManifestPath() {
-  return join(REPO_ROOT, 'public', 'assets', 'generated', 'manifest.json');
+function getGeneratedShardsDir() {
+  return join(REPO_ROOT, 'public', 'assets', 'generated', 'entries');
+}
+// The aggregate manifest.json is a gitignored build artifact; the committed
+// per-asset shards under entries/ are the source of truth. Walk them to recover
+// the manifest keys (the POSIX shard path minus `.json`).
+function listShardKeys(dir, rel = '') {
+  const out = [];
+  let dirents;
+  try {
+    dirents = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const dirent of dirents) {
+    const childRel = rel ? `${rel}/${dirent.name}` : dirent.name;
+    if (dirent.isDirectory()) {
+      out.push(...listShardKeys(join(dir, dirent.name), childRel));
+    } else if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.json')) {
+      out.push(childRel.slice(0, -'.json'.length));
+    }
+  }
+  return out;
 }
 function getSubstratePath() {
   return join(REPO_ROOT, 'src', 'shared', 'data', 'set-piece-substrate.json');
@@ -57,15 +78,9 @@ function getNpcSpriteMapPath() {
   return join(REPO_ROOT, 'src', 'shared', 'data', 'npc-sprite-map.json');
 }
 function readGeneratedSpriteIds() {
-  try {
-    const manifestPath = getGeneratedManifestPath();
-    if (existsSync(manifestPath)) {
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
-      const entries = manifest?.entries ?? {};
-      return Object.keys(entries).sort();
-    }
-  } catch {
-    // fall through to directory scan
+  const keys = listShardKeys(getGeneratedShardsDir());
+  if (keys.length > 0) {
+    return keys.sort();
   }
   try {
     const generatedDir = join(REPO_ROOT, 'public', 'assets', 'generated');

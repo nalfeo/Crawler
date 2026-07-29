@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-stanchion-pair",
+  "spriteName": "welcome-room-stanchion-pair-var-4",
+  "assetPath": "generated/welcome-room-stanchion-pair-var-4.png",
+  "approvedAt": "2026-07-27T04:43:23.032Z",
+  "sourceRun": "generated/runs/welcome-room-stanchion-pair/2026-07-27T04-37-48-935a355a",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 63,
+    "y": 47,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 63,
+      "y": 47,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 63,
+      "y": 47,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 63,
+        "y": 47
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-27T04:39:36.733Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design aligns well with the Crawler aesthetic, featuring a clear and authored concept with a dark-fantasy feel. The muted colors and worn textures fit the theme, but the posts could have slightly more visual interest or unique detailing to enhance the authored contradiction."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, palette depth, shading, and overall finish. The materials and colors are consistent with the approved references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, palette depth, shading, and overall finish. The materials and colors are consistent with the approved references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite accurately depicts two stanchion posts with weighted bases, vertical posts, ball finials, and a drooping velvet rope. The negative space is preserved as required, and the rope does not touch the floor."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and immediately recognizable as two upright stanchion posts with a rope. The bases, posts, and rope are distinct and legible at game scale, with no visual integrity defects."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a grounded, world-space object with a clear base and appropriate perspective. It fits well within the specified tile footprint and adheres to the brief's spatial requirements."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4393,
+      "completionTokens": 388,
+      "totalTokens": 4781
+    }
+  },
+  "type": "prop",
+  "contentHash": "cd4065837e45444909461d3fc090230a54e231e0a73fc97bfbc645e63c648e8f",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-stanchion-pair\\2026-07-27T04-37-48-935a355a\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-stanchion-pair\\2026-07-27T04-37-48-935a355a\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-stanchion-pair\\2026-07-27T04-37-48-935a355a\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 114,
+    "height": 72,
+    "canvasWidth": 128,
+    "canvasHeight": 86
+  }
+}

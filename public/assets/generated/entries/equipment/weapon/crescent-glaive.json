@@ -1,0 +1,29 @@
+{
+  "briefId": "equipment/weapon/crescent-glaive",
+  "spriteName": "equipment/weapon/crescent-glaive",
+  "assetPath": "generated/equipment/weapon/crescent-glaive-placeholder.png",
+  "approvedAt": "2026-07-17T00:00:00.000Z",
+  "sourceRun": "floor2-equipment-placeholder/v1",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "weapon",
+  "equipment": {
+    "stableId": "weapon.crescent-glaive",
+    "runtimeKey": "equipment/weapon/crescent-glaive",
+    "category": "weapon",
+    "family": "polearm",
+    "slot": "weapon",
+    "productionWaveId": "floor2-equipment-weapon-polearm"
+  },
+  "opaqueBounds": {
+    "x": 1,
+    "y": 0,
+    "width": 13,
+    "height": 16,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

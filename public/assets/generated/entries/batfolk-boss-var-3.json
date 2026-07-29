@@ -1,0 +1,42 @@
+{
+  "briefId": "batfolk-boss",
+  "spriteName": "batfolk-boss-var-3",
+  "assetPath": "generated/batfolk-boss-var-3.png",
+  "approvedAt": "2026-07-08T02:26:21.357Z",
+  "sourceRun": "generated/runs/batfolk-boss/2026-07-08T02-18-01-208c1100",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 32,
+    "y": 34,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 34,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "type": "enemy",
+  "contentHash": "e05d1df2db53e4a5ec2be2e494d3a278ac8913b51a3e2497e09e3c511bf7abfc",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-boss\\2026-07-08T02-18-01-208c1100\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-boss\\2026-07-08T02-18-01-208c1100\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-boss\\2026-07-08T02-18-01-208c1100\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 3,
+    "width": 48,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

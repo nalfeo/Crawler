@@ -1,0 +1,42 @@
+{
+  "briefId": "goblin-grunt",
+  "spriteName": "goblin-grunt-var-6",
+  "assetPath": "generated/goblin-grunt-var-6.png",
+  "approvedAt": "2026-07-08T03:27:54.398Z",
+  "sourceRun": "generated/runs/goblin-grunt/2026-07-08T03-07-44-38236e80",
+  "variantIndex": 6,
+  "anchor": {
+    "x": 31,
+    "y": 32,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "type": "enemy",
+  "contentHash": "8b9bbf8a5f3d78bafc41fcab807148a877c9f9f07711336007e824972d09b3db",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-grunt\\2026-07-08T03-07-44-38236e80\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 4,
+    "width": 52,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

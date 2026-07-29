@@ -1,0 +1,37 @@
+{
+  "briefId": "camera-lens",
+  "spriteName": "camera-lens-var-0",
+  "assetPath": "generated/camera-lens-var-0.png",
+  "approvedAt": "2026-07-02T03:01:49.053Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-UTQS7o/camera-lens-v1/2026-07-02T00-15-27-88f5a172",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 31,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "2",
+  "type": "item",
+  "contentHash": "d0ee6e94ebcca556d2f3d05888ca3b20dffe5c13b853d8fee0fc31b1c5e84cc9",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 3,
+    "width": 48,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

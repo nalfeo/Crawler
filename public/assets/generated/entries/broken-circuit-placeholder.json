@@ -1,0 +1,21 @@
+{
+  "briefId": "broken-circuit",
+  "spriteName": "broken-circuit",
+  "assetPath": "generated/broken-circuit-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.418Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "opaqueBounds": {
+    "x": 3,
+    "y": 5,
+    "width": 10,
+    "height": 7,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

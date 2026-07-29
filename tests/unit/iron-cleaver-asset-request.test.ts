@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { PNG } from 'pngjs';
+import { loadShippedManifest } from '../helpers/generated-manifest.js';
 
 const RUNTIME_KEY = 'equipment/weapon/iron-cleaver';
 
@@ -11,8 +12,7 @@ function repoPath(relativePath: string): string {
 
 describe('iron-cleaver asset request', () => {
   it('ships a generated-manifest entry keyed by the exact runtime key', () => {
-    const manifestPath = repoPath('public/assets/generated/manifest.json');
-    const raw = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    const raw = loadShippedManifest() as {
       readonly entries: Record<
         string,
         {
