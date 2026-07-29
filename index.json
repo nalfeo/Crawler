@@ -1,5 +1,16 @@
 [
   {
+    "commit": "05f53db702f61a3b618ede1c5c01f7a3b7fd6fcd",
+    "commitDate": "2026-07-29T19:05:32Z",
+    "commitSubject": "fix(ai-runner-lab): sync default pathingMode/decisionMode/retreatThreshold to DEFAULT_CONFIG (#2318)",
+    "capturedAt": "2026-07-29T20:13:12.174Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30483594400",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/05f53db702f61a3b618ede1c5c01f7a3b7fd6fcd.json"
+  },
+  {
     "commit": "1290c601bff50a7499540e270ef80f8df74f90f3",
     "commitDate": "2026-07-29T18:22:56Z",
     "commitSubject": "fix(engine): wire real player walk art and lock player/NPC scale parity (#2322)",
