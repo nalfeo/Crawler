@@ -3,7 +3,7 @@
 ## Aesthetic Reference
 
 **Camera / readability:** RimWorld, Prison Architect (top-down, clear readability at
-small sizes). These govern *legibility and camera*, not character rendering.
+small sizes). These govern _legibility and camera_, not character rendering.
 
 **Character & world rendering (AUTHORITATIVE):** EarthBound, Chrono Trigger, Undertale,
 The Legend of Zelda (A Link to the Past / Link's Awakening).
@@ -15,7 +15,7 @@ WRONG for this game, however competent it looks in isolation.
 > This section exists because it was previously absent. With no proportion or
 > rendering guidance, every art wave re-invented the style from scratch and the
 > generator's default — gritty semi-realistic pixel art — won by default. Several
-> waves were spent actively briefing *against* the correct style ("seven heads tall",
+> waves were spent actively briefing _against_ the correct style ("seven heads tall",
 > "do NOT draw chibi"). Do not repeat that. If a brief and this guide disagree, this
 > guide wins and the brief is the bug.
 

@@ -193,6 +193,12 @@ describe('combat-arena-lab wiring', () => {
     expect(preset.customSpawnFn).toBeTypeOf('function');
   });
 
+  it('includes the canonical Big Mama Bufo boss-ability preset', () => {
+    const preset = getEnemyPreset('f2-big-mama-bufo');
+    expect(preset.id).toBe('f2-big-mama-bufo');
+    expect(preset.customSpawnFn).toBeTypeOf('function');
+  });
+
   // ── arena-data.ts: ALL_ARCHETYPES ─────────────────────────────────────────
 
   it('ALL_ARCHETYPES contains archetypes from floor1 and floor2', () => {

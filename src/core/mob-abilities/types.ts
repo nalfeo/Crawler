@@ -42,6 +42,18 @@ export interface MobAbilitySpawnCirclesGeometry {
   readonly circles: readonly MobAbilityCircleGeometry[];
 }
 
+export interface MobAbilityLaneGeometry {
+  readonly kind: 'lane';
+  readonly originX: number;
+  readonly originY: number;
+  readonly endX: number;
+  readonly endY: number;
+  readonly dirX: number;
+  readonly dirY: number;
+  readonly widthFt: number;
+  readonly lengthFt: number;
+}
+
 /** Multi-circle geometry committed by a custom `commitGeometry` hook (e.g. Sovereign Cap triangle). */
 export interface MobAbilityMultiCircleGeometry {
   readonly kind: 'multi-circle';
@@ -94,6 +106,7 @@ export interface MobAbilityProjectileFanGeometry {
 export type MobAbilityGeometry =
   | MobAbilityCircleGeometry
   | MobAbilitySpawnCirclesGeometry
+  | MobAbilityLaneGeometry
   | MobAbilityMultiCircleGeometry
   | MobAbilityRadialProjectilesGeometry
   | MobAbilityProjectileFanGeometry;
@@ -155,6 +168,11 @@ export interface MobAbilityRuntimeDefinition {
   /** Committed geometry footprint authored by this ability. */
   readonly geometry:
     | { readonly kind: 'circle'; readonly radiusFt: number }
+    | {
+        readonly kind: 'lane';
+        readonly widthFt: number;
+        readonly maxRangeFt: number;
+      }
     | {
         readonly kind: 'spawn-circles';
         readonly count: number;
@@ -281,6 +299,8 @@ export interface MobAbilityRuntime {
   readonly pendingBursts: Array<MobAbilityBurst>;
   /** Active self-buffs authored by ability handlers and ticked by the runtime. */
   readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
+  /** Active recovery windows that temporarily suppress caster movement/attacks. */
+  readonly recoveriesByEntity: Map<number, MobAbilityRecoveryState>;
   /** In-flight ability projectiles authored by typed handlers and ticked by the runtime. */
   readonly activeProjectiles: MobAbilityActiveProjectileState[];
   /** Persistent ability zones authored by typed handlers and ticked by the runtime. */
@@ -346,6 +366,12 @@ export interface MobAbilityOwnedZone {
   readonly tick: MobAbilityOwnedZoneTick;
 }
 
+export interface MobAbilityRecoveryState {
+  readonly abilityId: string;
+  readonly sourceId: string;
+  remainingMs: number;
+}
+
 /** Create the default-off, empty runtime state for a fresh world. */
 export function createMobAbilityRuntime(): MobAbilityRuntime {
   return {
@@ -355,6 +381,7 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     cues: [],
     pendingBursts: [],
     activeBuffsByEntity: new Map(),
+    recoveriesByEntity: new Map(),
     activeProjectiles: [],
     activeZones: [],
     ownedZones: [],
@@ -400,6 +427,8 @@ export function circlesForMobAbilityGeometry(
   switch (geometry.kind) {
     case 'circle':
       return [geometry];
+    case 'lane':
+      return [];
     case 'spawn-circles':
     case 'multi-circle':
       return geometry.circles;
