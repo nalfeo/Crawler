@@ -12477,7 +12477,29 @@ test('same check rerun with only a new run URL stays on stale-retry path and car
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(stdout, /assigned copilot pr=#42/);
+
+  // After the PR #2010 / incident #2326 fix: when ci-failure copilot is the
+  // ONLY remaining blocker (no review threads, no other ci-failures), the
+  // reconciler now excludes it from blockersPresent (same exclusion as the
+  // fingerprint). Instead of dispatching Copilot again (which would fail at
+  // session.create), it transitions to WAIT_ADMISSION so the PR waits for the
+  // required checks to run. This is the correct outcome: the self-generated
+  // failure cannot be fixed by re-dispatching.
+  assert.match(
+    stdout,
+    /skipping-copilot-self-failure pr=#42 blockers-effective=0/,
+    'must log the self-skip when ci-failure copilot is the only remaining blocker',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /assigned copilot pr=#42/,
+    'must NOT dispatch Copilot when ci-failure copilot is the only remaining blocker',
+  );
+  assert.match(
+    stdout,
+    /wait pr=#42 admission=/,
+    'must transition to WAIT_ADMISSION when ci-failure copilot is the only remaining blocker and required checks are absent',
+  );
 
   assert.ok(
     !mutatingCalls.some((call) => {
@@ -12490,32 +12512,21 @@ test('same check rerun with only a new run URL stays on stale-retry path and car
     }),
     'a same-check rerun with only a new run URL must never be classified as blocker-progressed',
   );
-  const releasePatch = capturedPatches.find(
-    (patch) => parseStateComment(patch.body)?.trigger === 'stale-automation-retry',
-  );
-  assert.ok(
-    releasePatch,
-    'the release state must carry trigger=stale-automation-retry when only the run url changed',
-  );
 
   const finalPatch = capturedPatches.at(-1);
   assert.ok(finalPatch, 'a final state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
   assert.equal(
     finalState?.attempt,
-    2,
-    'attempt must carry forward and increment (1 -> 2), not reset to 1',
+    1,
+    'attempt must carry forward without increment for WAIT_ADMISSION (not a retry dispatch)',
   );
-  assert.equal(finalState?.owner, 'automation');
-  assert.equal(finalState?.status, 'dispatched');
-  // Plan-review follow-up: the fingerprint must ignore `url` for liveness
-  // purposes, but the persisted state must still be refreshed with the
-  // LATEST live url for display/evidence -- otherwise a human following the
-  // link in the recovery comment would land on a stale, superseded run.
+  assert.equal(finalState?.owner, 'none');
+  assert.equal(finalState?.status, 'waiting');
   assert.equal(
-    finalState?.blockers?.[0]?.url,
-    rerunCheck.html_url,
-    'the rewritten state must carry the latest live check-run url for display, even though it is excluded from the fingerprint',
+    finalState?.trigger,
+    'admission-wait',
+    'state trigger must be admission-wait when ci-failure copilot only leads to WAIT_ADMISSION',
   );
 });
 
@@ -12644,14 +12655,32 @@ test('same check rerun with only a new run URL still reaches the stale-retry cei
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  // This is the takeover-eligibility gate: after the retry ceiling, a
-  // same-fingerprint (url-only-changed) retry must RELEASE ownership rather
-  // than being misread as new progress and looping forever.
-  assert.match(stdout, /released stale automation pr=#42 attempts=2/);
+  // After the PR #2010 / incident #2326 fix: when ci-failure copilot is the
+  // ONLY remaining blocker, the reconciler no longer dispatches Copilot (which
+  // would fail at session.create again). Instead it transitions to WAIT_ADMISSION
+  // so the PR waits for the required checks to run. Importantly, no loop incident
+  // is filed — the PR is not stuck in an automation loop; it is simply waiting for
+  // required CI to run. The stale lock IS released (the WAIT_ADMISSION path calls
+  // release('admission-wait')) so the PR becomes acquirable again.
   assert.match(
     stdout,
-    /loop-incident pr=#42 issue=#1809 action=created/,
-    'exhaustion must file a loop incident so a human/investigation agent is notified',
+    /skipping-copilot-self-failure pr=#42 blockers-effective=0/,
+    'must log the self-skip when ci-failure copilot is the only remaining blocker',
+  );
+  assert.match(
+    stdout,
+    /wait pr=#42 admission=/,
+    'must transition to WAIT_ADMISSION rather than filing a loop incident',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /loop-incident pr=#42/,
+    'must NOT file a loop incident when ci-failure copilot is the only remaining blocker',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /assigned copilot pr=#42/,
+    'must NOT dispatch Copilot when ci-failure copilot is the only remaining blocker',
   );
   assert.ok(
     !mutatingCalls.some((call) => {
@@ -12667,12 +12696,11 @@ test('same check rerun with only a new run URL still reaches the stale-retry cei
 
   const finalState = parseStateComment(stateComment.body);
   assert.equal(finalState.owner, 'none');
-  assert.equal(finalState.status, 'idle');
-  assert.equal(finalState.trigger, 'stale-automation-exhausted');
+  assert.equal(finalState.status, 'waiting');
+  assert.equal(finalState.trigger, 'admission-wait');
   assert.equal(finalState.attempt, 2);
-  // The now-idle, unowned state is the reaper/takeover-eligible outcome: the
-  // repository owner label is gone and a new dispatch or a human/shepherd can
-  // freely acquire ownership on the next reconcile pass.
+  // The now-waiting, unowned state is the correct outcome: the repository owner
+  // label is released so the PR can be freely re-acquired on the next pass.
   assert.equal(repositoryLabelExists, false);
 });
 
@@ -12856,6 +12884,180 @@ test('fresh ci-failure copilot first appearing after an initial dispatch does no
   );
   assert.equal(finalState?.owner, 'automation');
   assert.equal(finalState?.status, 'dispatched');
+});
+
+// ---------------------------------------------------------------------------
+// PR #2010 / incident #2326 regression: ci-failure copilot as the ONLY
+// remaining blocker must be skipped and the PR admitted to merge, not re-
+// dispatched into an endless session.create failure loop.
+// ---------------------------------------------------------------------------
+
+test('ci-failure copilot as the only remaining blocker (all review threads resolved) skips re-dispatch and arms auto-merge (PR #2010 / incident #2326 regression)', async (t) => {
+  // After the near-typo SHA promotion auto-resolved the ADR review thread on PR
+  // #2010, the self-generated `ci-failure copilot` check (produced when Copilot
+  // failed at session.create due to the deprecated claude-sonnet-4.5 model)
+  // remained as the only "blocker". Before this fix the terminal table evaluated
+  // blockersPresent=true (ci-failure copilot counted as a real blocker) and
+  // dispatched Copilot again, which failed again, repeating the cycle until the
+  // stale-retry ceiling filed loop incident #2326.
+  //
+  // After the fix: effectiveBlockers excludes ci-failure copilot, so
+  // blockersPresent=false and the PR is admitted to ARM_AUTO_MERGE instead.
+
+  const staleAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+  // The persisted fingerprint uses blockerFingerprint([]) because ci-failure
+  // copilot is excluded from the fingerprint — same exclusion as this fix.
+  const persistedFingerprint = blockerFingerprint([]);
+  const stateComment = {
+    id: 970,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: persistedFingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: [
+          {
+            kind: 'ci-failure',
+            id: 'copilot',
+            summary:
+              'Request session.create failed with message: Model "claude-sonnet-4.5" is not available.',
+            url: `https://github.com/${OWNER}/${REPO}/actions/runs/30475922485/job/90657475101`,
+          },
+        ],
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, persistedFingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+
+  // The failed Copilot session created a check-run named "copilot" that
+  // concluded failure (session.create error with deprecated model).
+  const copilotFailureCheck = {
+    id: 99,
+    name: 'copilot',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/30475922485/job/90657475101`,
+  };
+
+  let repositoryLabelPresent = true;
+  const capturedPatches = [];
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelPresent
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelPresent = false;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      capturedPatches.push(body);
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id } };
+    },
+    // closeLoopIncidentOnConvergence searches for an open loop incident to close.
+    // Return an empty list so it exits with action=not-found (no mutation needed).
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-29T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      // All review threads are resolved — return no unresolved threads.
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          copilotFailureCheck,
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The fix: ci-failure copilot is the only remaining blocker, so the
+  // reconciler must log the self-skip and NOT dispatch Copilot.
+  assert.match(
+    stdout,
+    /skipping-copilot-self-failure pr=#42 blockers-effective=0 ci-failure-copilot=self-generated/,
+    'must log the self-skip when ci-failure copilot is the only remaining blocker',
+  );
+
+  // Must NOT dispatch Copilot — the only "blocker" is self-generated noise.
+  assert.doesNotMatch(
+    stdout,
+    /assigned copilot pr=#42/,
+    'must NOT dispatch Copilot when ci-failure copilot is the only remaining blocker',
+  );
+
+  // Must arm auto-merge (PR is effectively clean).
+  assert.match(
+    stdout,
+    /auto-merge armed pr=#42/,
+    'must arm auto-merge when ci-failure copilot is the only remaining blocker',
+  );
+
+  // Stale lock must be released (label deleted).
+  const labelDeleteCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'DELETE' && call.url.includes(`/labels/${encodeURIComponent(LABEL)}`),
+  );
+  assert.ok(
+    labelDeleteCall,
+    'must delete the repository fence label when releasing the stale automation lock',
+  );
+
+  // The enablePullRequestAutoMerge GraphQL mutation must have been called.
+  const autoMergeCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('enablePullRequestAutoMerge'),
+  );
+  assert.ok(autoMergeCall, 'enablePullRequestAutoMerge mutation must be called for ARM_AUTO_MERGE');
 });
 
 // ---------------------------------------------------------------------------
