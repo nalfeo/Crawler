@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2b939c54b074a295831d84e7e193f1ea24bb0bd4",
+    "commitDate": "2026-07-29T08:46:05Z",
+    "commitSubject": "fix(ci-recovery): exclude self-generated copilot failure from blockerFingerprint (#2270)",
+    "capturedAt": "2026-07-29T09:53:25.916Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30437444896",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/2b939c54b074a295831d84e7e193f1ea24bb0bd4.json"
+  },
+  {
     "commit": "bc91f34498fca5ef9e3fe01233324fe9cf6ae9ce",
     "commitDate": "2026-07-29T03:44:51Z",
     "commitSubject": "docs: enrich foundry-retirement ADRs with historical context from stuck PR #1886 (#2271)",
