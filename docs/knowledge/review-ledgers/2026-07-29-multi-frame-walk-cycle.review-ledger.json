@@ -1,0 +1,57 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "multi-frame-walk-cycle",
+  "task_title": "Multi-frame walk-cycle generation (Slice B)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "",
+      "summary": "Adversarial review (gpt-5.4, high reasoning) enumerated 3 credible alternatives (per-frame single-sprite generation instead of one sheet; extending the Azure provider to a rectangular canvas to keep frameCount=3; a first-class sheet-layout contract decoupled from frameSequence.enabled) and argued each against the chosen design. Verdict: approved_with_changes, no architecture change warranted. 8 concerns raised, all resolved: (1) coherence gate too weak to prove 'ordered same character' -> addressed by adding a third deterministic signal (baseline/floor-line pixel-delta, DEFAULT_MAX_BASELINE_DELTA_PX=6px) alongside palette+mass, directly enforcing the build-prompt.ts 'same floor line' instruction instead of trusting the prompt alone; re-verified real checked-in asset still passes (0px delta every pair). (2) baseline/origin stability was prompt-only, not deterministic -> same fix as (1); also inspected pack-frame-strip.ts and confirmed it does a straight per-cell copy with no independent repositioning/cropping, so no hidden bug there. (3) slicing mode encoded implicitly, rerun/approval could drift -> verified sliceSheetWithGrid's fixedGrid flag is derived directly from brief.frameSequence?.enabled at every call site (rerun.ts line 299), not a separate manually-set flag, so no drift risk exists; documented as already-resolved-by-design. (4) coherence gate runs only at approval time, not generation-time scoring -> acknowledged as a legitimate future hardening (cheaper failure sooner) but explicitly out of this task's scope, which defines the hard gate as an approval-time block; recorded as a follow-on, not silently dropped. (5) frameCount>=2 schema implies broader support than validated -> acknowledged; the real brief and all tests exercise frameCount=4 only; documented as a known scope limit, schema intentionally left general for future briefs rather than artificially restricted to exactly 4. (6) brief-level sensor relaxations (anchor center-of-mass, interiorHoles maxPixels=64) risk being overfit to one run -> both changes are precedented, existing conventions used by other standing-biped/prop briefs (welcome-goon-v2.yaml, sweaty-merchant-v2.yaml, welcome-room-kitchenette.yaml) for the identical documented reason, not novel one-off relaxations; the coherence gate itself (the task's actual hard gate) was NOT touched by this tuning. (7) frameCount=4 vs provider capability is tech debt -> accepted tradeoff, documented in PR/handoff, provider-rectangle-canvas extension deferred as larger/riskier scope than justified by this task. (8) missing regression test for the exact slicing bug that motivated the fix -> already present (tests/unit/sprites/slice-sheet.test.ts describe block 'sliceSheetFromBrief: frameSequence bypasses gutter detection', verified via direct file inspection, not newly added)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round-1 code review (claude-sonnet-4.6, agent_type=code-review) reviewed the full branch diff vs origin/main (21 files, +1792/-46) across correctness, data flow/determinism, API contracts, security/trust-boundaries, runtime wiring, and regression coverage. Found 1 Medium finding: approve-cli.ts --sequence path had no retry path for a failed queue-commit -- re-running the approve threw already-approved before reaching runQueueCommit, making the shared re-run-to-retry warning false for that path (the --variant path already had this retry dance from a prior concern #6 fix). Fixed by adding loadApprovedFrameSequenceEntry (approve.ts) and mirroring the --variant already-approved catch-and-retry logic in approve-cli.ts --sequence branch, so it now falls through to the same shared runQueueCommit block. Added 3 new unit tests mirroring existing --variant retry coverage (approve-cli.test.ts). Re-ran verify:fast: 227/227 tests pass, tsc clean. All other categories reported clean with no findings."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview", "claude-opus-4.7"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "summary": "Fanned out the full branch diff to three code-review agents on distinct models: gpt-5.3-codex (0 findings, clean), claude-opus-4.7 acting as security-review (0 findings, clean - no injection/secrets/trust-boundary issues in the sidecar/CLI/queue-commit paths), and gemini-3.1-pro-preview (2 findings). Adjudicator (claude-sonnet-5) reviewed all reports: gemini finding 1 (Critical) - postprocess.ts ran per-frame independent transparent-trim before resize-nearest, giving each walk-cycle pose its own scale factor and breaking uniform scale/floor-line across the strip - confirmed valid and is exactly the class of bug the coherence gate exists to catch; fixed by adding frameSequenceDisabledModules(brief) to skip transparent-trim/trim-and-fit for frame-sequence briefs, threaded through run-full.ts and rerun.ts default mode. gemini finding 2 (Medium) - sensors/frame-coherence.ts massDeltaRatio computed 1 (100% different) for two fully-transparent frames instead of 0 - confirmed valid arithmetic bug (division by near-zero denominator); fixed the zero-mass short-circuit and added a regression test. Both fixes verified via targeted tests (postprocess-disabled-modules.test.ts: 6/6, frame-coherence.test.ts zero-mass case) plus full verify:fast (462/462) before commit 5a360f0cb. Round 1 resolves 2 concerns; 1 further concern (stale processedPath fallback) surfaced in round 2."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round-2 targeted re-review of the approve.ts frame-sequence path (gpt-5.3-codex). Finding: when a run is rematerialized/copied to a new machine, the processedPath stored in summary.json is the absolute path from the original machine; approveFrameSequence chose declaredPng (the stale absolute path) over runLocalPng (the current workspace path), silently packing stale bytes while recording the copied run as sourceRun. Fix (commit 24f7a02): prefer runDir/processed/NN.png whenever it exists, fall back to the declared processedPath only when the run-local file is absent. Adjudicator confirmed the fix is correct and equivalent to the approveVariant parity the function claimed. All 3 concerns across both rounds are now resolved."
+        }
+      ]
+    }
+  }
+}
