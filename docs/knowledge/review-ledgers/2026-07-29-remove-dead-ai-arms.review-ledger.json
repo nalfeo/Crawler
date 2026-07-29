@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "remove-dead-ai-arms",
+  "task_title": "Remove dead AI A/B arms (legacy/navmesh pathing, slackAware decisions)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "adversarial": false,
+      "alternatives_considered": 0,
+      "plan_divergence": "",
+      "notes": ""
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}
