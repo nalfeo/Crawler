@@ -16,7 +16,7 @@ do with dependencies.
 Exact versions prevent this by ensuring that no direct package version can advance
 without an explicit, intentional edit to `package.json`.
 
-> **Scope note:** Exact top-level pinning guards against *direct* dependency drift.
+> **Scope note:** Exact top-level pinning guards against _direct_ dependency drift.
 > Transitive dependency versions are locked by `package-lock.json` separately, but
 > upstream package ranges may still allow transitive churn. The exact-deps policy
 > is the primary control for the direct layer; the lockfile is the control for
@@ -42,17 +42,21 @@ Follow this procedure to bump a direct dependency to a newer version:
 
 2. **Edit `package.json` directly.** Change the version field for the target
    package to the new exact version string (no `^` or `~`):
+
    ```json
    "typescript": "6.1.0"
    ```
 
 3. **Update the lockfile:**
+
    ```sh
    npm install --package-lock-only
    ```
+
    This regenerates `package-lock.json` without touching `node_modules`.
 
 4. **Verify the installation works locally:**
+
    ```sh
    npm ci
    npm run verify:fast
@@ -82,7 +86,7 @@ Follow this procedure to bump a direct dependency to a newer version:
 4. Open a PR. The `security:exact-deps` CI step will reject non-exact versions
    automatically.
 
-## How to temporarily allow a non-exact override
+## How to temporarily allow a non-exact specifier
 
 In rare cases (e.g. a workspace alias, a git-URL dep, or a local `file:` path),
 a non-exact specifier may be unavoidable. Add an exemption entry to the
@@ -93,13 +97,27 @@ const EXACT_VERSION_EXEMPTIONS = [
   {
     field: 'dependencies',
     name: 'my-workspace-pkg',
+    version: 'workspace:*',
     reason: 'workspace alias — must use workspace:*',
   },
 ];
 ```
 
-Include the field, the package name, and a clear reason. Exemptions are subject
-to review and should be minimized.
+Each entry must include:
+
+- `field`: the package.json field path (`"dependencies"`, `"devDependencies"`,
+  `"overrides"`, or a nested override path like `"overrides/parent"`)
+- `name`: the exact package name
+- `version`: the **exact specifier string** that is permitted (e.g. `"workspace:*"`,
+  `"file:../local"`)
+- `reason`: a short explanation of why an exact pin is not used
+
+**Important:** The exemption is bound to the specific `(field, name, version)` triple.
+A later change to a different specifier on the same entry (e.g. accidentally
+introducing `"^1.2.3"`) will still be flagged as a violation. This prevents the
+exemption from silently covering unintended range introductions.
+
+Exemptions are subject to review and should be minimized.
 
 ## Upgrading npm audit exceptions
 

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import process from 'node:process';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { isExactVersion, findRangeViolations } from './check-exact-deps.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
 // isExactVersion unit tests
@@ -22,6 +30,31 @@ test('isExactVersion: accepts pre-release suffix', () => {
 test('isExactVersion: accepts build-metadata suffix', () => {
   assert.equal(isExactVersion('1.0.0+build.123'), true);
   assert.equal(isExactVersion('1.0.0-beta.1+build.1'), true);
+});
+
+// SemVer boundary cases — regression tests for false-positives/negatives
+test('isExactVersion: accepts pre-release with internal hyphen (e.g. beta-1)', () => {
+  // "1.0.0-beta-1" is valid SemVer: pre-release identifier "beta-1" contains a hyphen
+  assert.equal(isExactVersion('1.0.0-beta-1'), true);
+  assert.equal(isExactVersion('2.3.4-rc-2.build-5'), true);
+});
+
+test('isExactVersion: rejects leading zeros in version core', () => {
+  // SemVer 2.0.0 §2: numeric identifiers must not have leading zeros
+  assert.equal(isExactVersion('01.2.3'), false);
+  assert.equal(isExactVersion('1.02.3'), false);
+  assert.equal(isExactVersion('1.2.03'), false);
+});
+
+test('isExactVersion: rejects underscore in pre-release identifier', () => {
+  // SemVer identifiers are [0-9A-Za-z-] only; underscore is not allowed
+  assert.equal(isExactVersion('1.0.0-alpha_1'), false);
+  assert.equal(isExactVersion('1.0.0-_bad'), false);
+});
+
+test('isExactVersion: rejects trailing dot in pre-release', () => {
+  // "1.0.0-alpha." has an empty identifier after the trailing dot
+  assert.equal(isExactVersion('1.0.0-alpha.'), false);
 });
 
 test('isExactVersion: rejects caret range', () => {
@@ -154,105 +187,136 @@ test('findRangeViolations: exact versions with pre-release pass', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Exemption binding: version must match exactly
+// Exemptions: version-bound — a later change to a different specifier must
+// NOT be silently covered by an exemption for the original specifier.
 // ---------------------------------------------------------------------------
 
-// Helper: create a module-level clone that injects test-only exemptions so we
-// can exercise the exemption path without mutating the real EXACT_VERSION_EXEMPTIONS.
-async function findRangeViolationsWithExemptions(pkg, exemptions) {
-  // Re-export findRangeViolations via a data: URL that shadows the exemption
-  // list — only viable in ESM.  We monkey-patch the module via a wrapper that
-  // re-implements the minimal logic under test rather than reloading the whole
-  // module with a different exemption array (which node:test/ESM caching makes
-  // unreliable).  This wrapper only tests the exemption guard, not the full
-  // loop; the existing tests cover the full loop.
-  function isExemptLocal(field, name, version) {
-    return exemptions.some(
-      (e) => e.field === field && e.name === name && e.version === version,
-    );
-  }
-
-  const violations = [];
-  const directFields = ['dependencies', 'devDependencies', 'optionalDependencies'];
-  for (const field of directFields) {
-    const entries = pkg[field];
-    if (!entries || typeof entries !== 'object') continue;
-    for (const [name, version] of Object.entries(entries)) {
-      if (isExemptLocal(field, name, version)) continue;
-      if (!/^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/.test(version)) {
-        violations.push({ field, name, version });
-      }
-    }
-  }
-  if (pkg.overrides && typeof pkg.overrides === 'object') {
-    function checkOverridesLocal(obj, field) {
-      for (const [key, value] of Object.entries(obj)) {
-        if (typeof value === 'string') {
-          if (isExemptLocal(field, key, value)) continue;
-          if (!/^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/.test(value)) {
-            violations.push({ field, name: key, version: value });
-          }
-        } else if (value && typeof value === 'object') {
-          checkOverridesLocal(value, `${field}/${key}`);
-        }
-      }
-    }
-    checkOverridesLocal(pkg.overrides, 'overrides');
-  }
-  return violations;
-}
-
-test('exemption: exact version+field+name match suppresses violation', async () => {
-  const pkg = { dependencies: { 'my-pkg': 'workspace:*' } };
-  const exemptions = [
-    { field: 'dependencies', name: 'my-pkg', version: 'workspace:*', reason: 'workspace alias' },
-  ];
-  const violations = await findRangeViolationsWithExemptions(pkg, exemptions);
-  assert.deepEqual(violations, []);
-});
-
-test('exemption: mismatched version does NOT suppress violation', async () => {
-  // The package later changed from workspace:* to a caret range. The old
-  // exemption (keyed to workspace:*) must NOT silence the new range violation.
-  const pkg = { dependencies: { 'my-pkg': '^1.2.3' } };
-  const exemptions = [
-    { field: 'dependencies', name: 'my-pkg', version: 'workspace:*', reason: 'workspace alias' },
-  ];
-  const violations = await findRangeViolationsWithExemptions(pkg, exemptions);
+test('findRangeViolations: workspace: specifier is not an exact version without exemption', () => {
+  // workspace:* should be detected as a non-exact specifier
+  const pkg = { dependencies: { 'my-local-pkg': 'workspace:*' } };
+  const violations = findRangeViolations(pkg);
   assert.equal(violations.length, 1);
-  assert.equal(violations[0].name, 'my-pkg');
-  assert.equal(violations[0].version, '^1.2.3');
+  assert.equal(violations[0].name, 'my-local-pkg');
 });
 
-test('exemption: nested override path must be included in field key', async () => {
+test('findRangeViolations: workspace: specifier passes when exempted for that exact version string', () => {
+  // Exercise the injectable exemptions parameter — verifies that the version-binding
+  // bug (keying only on field+name) cannot regress. The exemption below covers
+  // workspace:* but NOT ^1.0.0; a specifier change must still trigger a violation.
+  const exemptions = [
+    { field: 'dependencies', name: 'my-local-pkg', version: 'workspace:*', reason: 'test fixture' },
+  ];
+
+  // Exact triple passes
+  const pkgA = { dependencies: { 'my-local-pkg': 'workspace:*' } };
+  assert.deepEqual(findRangeViolations(pkgA, exemptions), []);
+
+  // Different specifier on the same field/name is NOT covered — regression guard
+  const pkgB = { dependencies: { 'my-local-pkg': '^1.0.0' } };
+  const violations = findRangeViolations(pkgB, exemptions);
+  assert.equal(
+    violations.length,
+    1,
+    'version-bound exemption: changed specifier must still be reported',
+  );
+  assert.equal(violations[0].version, '^1.0.0');
+
+  // Nested override triple also uses version-binding
+  const overrideExemptions = [
+    {
+      field: 'overrides/parent',
+      name: 'child',
+      version: 'workspace:*',
+      reason: 'test fixture',
+    },
+  ];
+  const pkgC = { overrides: { parent: { child: 'workspace:*' } } };
+  assert.deepEqual(findRangeViolations(pkgC, overrideExemptions), []);
+
+  const pkgD = { overrides: { parent: { child: '^1.0.0' } } };
+  const overrideViolations = findRangeViolations(pkgD, overrideExemptions);
+  assert.equal(
+    overrideViolations.length,
+    1,
+    'nested override: changed specifier must still be reported',
+  );
+});
+
+test('findRangeViolations: violation includes version field so callers can match exemption', () => {
+  const pkg = { dependencies: { lodash: '^4.0.0' } };
+  const [violation] = findRangeViolations(pkg);
+  assert.equal(typeof violation.version, 'string');
+  assert.equal(violation.version, '^4.0.0');
+});
+
+test('findRangeViolations: nested override field path is stable for exemption matching', () => {
+  // The field for a nested override child uses "/" separator, e.g. "overrides/parent".
+  // This is the stable path that an exemption entry would use in its `field` key.
   const pkg = {
     overrides: {
-      parent: {
-        child: 'workspace:*',
+      grandparent: {
+        parent: {
+          child: '^1.0.0',
+        },
       },
     },
   };
-  // Exemption uses the full "overrides/parent" path — matches the nested field.
-  const exemptions = [
-    { field: 'overrides/parent', name: 'child', version: 'workspace:*', reason: 'workspace' },
-  ];
-  const violations = await findRangeViolationsWithExemptions(pkg, exemptions);
-  assert.deepEqual(violations, []);
-});
-
-test('exemption: nested override path mismatch does NOT suppress violation', async () => {
-  const pkg = {
-    overrides: {
-      parent: {
-        child: 'workspace:*',
-      },
-    },
-  };
-  // Exemption uses only "overrides" (wrong path), so it must not match.
-  const exemptions = [
-    { field: 'overrides', name: 'child', version: 'workspace:*', reason: 'wrong path' },
-  ];
-  const violations = await findRangeViolationsWithExemptions(pkg, exemptions);
+  const violations = findRangeViolations(pkg);
   assert.equal(violations.length, 1);
+  assert.equal(violations[0].field, 'overrides/grandparent/parent');
   assert.equal(violations[0].name, 'child');
+  assert.equal(violations[0].version, '^1.0.0');
+});
+
+test('findRangeViolations: exact version with different specifier triggers violation even if name matches', () => {
+  // Illustrates the security of the version-bound exemption approach: two entries
+  // with the same name but different specifiers are independently evaluated. If only
+  // one specifier is exempt, the other still triggers.
+  const pkg = {
+    dependencies: { mypkg: 'workspace:*' },
+    devDependencies: { mypkg: '^1.0.0' },
+  };
+  const violations = findRangeViolations(pkg);
+  // Both are non-exact; neither is exempt (empty EXACT_VERSION_EXEMPTIONS)
+  assert.equal(violations.length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Percent-encoded path regression — fileURLToPath vs URL.pathname
+// ---------------------------------------------------------------------------
+
+test('repoRoot: resolves package.json correctly from a path containing spaces', () => {
+  // Regression test for the percent-encoded-path bug:
+  //   Old code: new URL(import.meta.url).pathname  → leaves %20 in the path
+  //   New code: fileURLToPath(import.meta.url)     → decodes %20 → space
+  //
+  // We copy the script to a temp directory whose name contains a space, then
+  // run it as a subprocess. If repoRoot() resolves incorrectly, node cannot
+  // find package.json and exits with code 2. The fixture package.json has
+  // all-exact versions so exit 0 proves the full path round-trip works.
+  const tmpBase = mkdtempSync(join(tmpdir(), 'check exact deps '));
+  try {
+    const scriptDir = join(tmpBase, 'scripts', 'agent', 'security');
+    mkdirSync(scriptDir, { recursive: true });
+
+    // Minimal all-exact package.json at the fake repo root
+    writeFileSync(
+      join(tmpBase, 'package.json'),
+      JSON.stringify({ name: 'space-test-fixture', dependencies: { pkg: '1.0.0' } }),
+    );
+
+    // Copy the script to the spaced path so import.meta.url carries %20
+    const destScript = join(scriptDir, 'check-exact-deps.mjs');
+    copyFileSync(join(__dirname, 'check-exact-deps.mjs'), destScript);
+
+    const result = spawnSync(process.execPath, [destScript], { encoding: 'utf8' });
+    assert.notEqual(
+      result.status,
+      2,
+      `repoRoot crashed (could not read package.json): ${result.stderr}`,
+    );
+    assert.equal(result.status, 0, `Unexpected exit code ${result.status}: ${result.stderr}`);
+  } finally {
+    rmSync(tmpBase, { recursive: true, force: true });
+  }
 });
