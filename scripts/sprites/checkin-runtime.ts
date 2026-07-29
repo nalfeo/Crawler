@@ -42,6 +42,9 @@ import {
 } from './asset-issues.js';
 import { writeCatalogJson } from './catalog-io.js';
 
+/** Repo-relative path of the committed sprite catalog. */
+const CATALOG_REL = path.join('src', 'shared', 'data', 'sprite-catalog.json');
+
 export const realExec: Exec = (command, args, options) =>
   new Promise<ExecResult>((resolve) => {
     execFile(
@@ -82,7 +85,6 @@ export const realExec: Exec = (command, args, options) =>
   });
 
 const MANIFEST_REL = path.join('public', 'assets', 'generated', 'manifest.json');
-const CATALOG_REL = path.join('src', 'shared', 'data', 'sprite-catalog.json');
 
 function readJsonSafe<T>(absPath: string, fallback: T): T {
   if (!existsSync(absPath)) return fallback;
@@ -160,17 +162,57 @@ export async function copyArtSurface(
   mkdirSync(path.dirname(destManifestPath), { recursive: true });
   await writeCatalogJson(destManifestPath, mergedManifest);
 
-  const destCatalogPath = path.join(destRepoRoot, CATALOG_REL);
-  const srcCatalogPath = path.join(srcRepoRoot, CATALOG_REL);
-  const destCatalog = readJsonSafe<CatalogEntry[]>(destCatalogPath, []);
-  const srcCatalog = readJsonSafe<CatalogEntry[]>(srcCatalogPath, []);
-  const catalogIds = new Set([...manifestKeys].map((key) => `generated:${key}`));
-  const overlayCatalog = srcCatalog.filter(
-    (entry) => typeof entry.id === 'string' && catalogIds.has(entry.id),
-  );
-  const mergedCatalog = mergeCatalogs(destCatalog, overlayCatalog);
-  mkdirSync(path.dirname(destCatalogPath), { recursive: true });
-  await writeCatalogJson(destCatalogPath, mergedCatalog);
+  // `src/shared/data/sprite-catalog.json` is deliberately NOT overlaid here.
+  // A generated catalog row merely restates its manifest entry, so writing both
+  // made every pair of parallel art check-ins conflict by construction. Art
+  // check-ins now touch exactly one shared committed JSON file instead of two.
+  //
+  // Catalog-ONLY flows (the sidecar Tag/metadata route) still have real edits
+  // that live nowhere else; they overlay explicitly via
+  // `overlayCatalogEntries` + `QueueCommitOptions.catalogEntryIds`.
+}
+
+/**
+ * Overlay ONLY `ids`' catalog rows from `srcRepoRoot` onto `destRepoRoot`.
+ *
+ * Used by catalog-only flows (the sidecar metadata/Tag route) whose edits exist
+ * nowhere but `sprite-catalog.json`, so `copyArtSurface`'s manifest+PNG
+ * projection would stage nothing and the queue commit would silently no-op.
+ *
+ * Deliberately narrow: it replaces/inserts exactly the named ids and preserves
+ * every other row on the destination, so it can never clobber a concurrent
+ * writer's unrelated entry.
+ *
+ * @returns `true` when the destination catalog changed on disk.
+ */
+export async function overlayCatalogEntries(
+  srcRepoRoot: string,
+  destRepoRoot: string,
+  ids: readonly string[],
+): Promise<boolean> {
+  if (ids.length === 0) return false;
+
+  const wanted = new Set(ids);
+  const srcPath = path.join(srcRepoRoot, CATALOG_REL);
+  const destPath = path.join(destRepoRoot, CATALOG_REL);
+  const srcCatalog = readJsonSafe<CatalogEntry[]>(srcPath, []);
+  const destCatalog = readJsonSafe<CatalogEntry[]>(destPath, []);
+  if (!Array.isArray(srcCatalog) || !Array.isArray(destCatalog)) return false;
+
+  const srcEntries = srcCatalog.filter((entry) => {
+    const id = (entry as { id?: unknown }).id;
+    return typeof id === 'string' && wanted.has(id);
+  });
+  if (srcEntries.length === 0) return false;
+
+  // mergeCatalogs handles replace-or-insert and restores canonical order
+  // (sheet entries first, then by id lexicographically), matching check:sort-assets.
+  const merged = mergeCatalogs(destCatalog, srcEntries);
+
+  const before = existsSync(destPath) ? readFileSync(destPath, 'utf8').toString() : null;
+  mkdirSync(path.dirname(destPath), { recursive: true });
+  await writeCatalogJson(destPath, merged);
+  return readFileSync(destPath, 'utf8').toString() !== before;
 }
 
 function makeReadManifest(repoRoot: string): () => Promise<CheckinManifest> {

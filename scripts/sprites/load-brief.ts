@@ -145,6 +145,20 @@ export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): Loade
 }
 
 /**
+ * Validate a brief from a raw YAML string exactly as far as `loadBrief` does —
+ * schema + per-type defaults **and** palette resolution — but WITHOUT any disk
+ * writes. Used by the review canvas to validate a hand-edited brief before
+ * persisting it: it throws on a schema violation or an unresolvable palette id,
+ * so the CLI can reject the edit inline and never write a broken brief. Unlike
+ * `materializeAndLoadBrief` it does not stage the YAML to `generated/…`.
+ */
+export function validateBriefYaml(raw: string, opts: LoadBriefOptions = {}): LoadedBrief {
+  const brief = loadBriefFromYaml(raw, opts);
+  const palette = (opts.loadPalette ?? defaultPaletteLoader(opts.projectRoot))(brief.palette.id);
+  return { brief, palette, briefPath: '<in-memory>' };
+}
+
+/**
  * Merge a minimal brief on top of per-type defaults. Pure; exposed so tests
  * can exercise the merge semantics directly without disk I/O.
  *

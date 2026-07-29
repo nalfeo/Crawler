@@ -7,11 +7,36 @@
  *
  * It now boots Phaser + {@link createPhaserBridge} and stamps the selected set
  * piece into a synthesized, room-sized floor (Design A: one focused diorama per
- * set piece). That means the preview is byte-faithful to the game:
+ * set piece):
  *   - terrain (floor + walls) is baked by {@link buildTerrainLayer} at depth -20,
  *   - props are spawned via {@link addSetPieceProp} and rendered by the bridge's
  *     real set-piece pass (generated-art resolution, tint, per-layer depth),
  *   - NPCs are spawned via {@link spawnNpc} and render as their real sprites.
+ *
+ * FIDELITY CONTRACT — read this before trusting a screenshot from this lab.
+ *
+ * The lab synthesizes its own room instead of running map generation, so two
+ * things the real game decides elsewhere must be mirrored here BY HAND. Both
+ * were wrong at once, and the lab meanwhile claimed to be "byte-faithful to the
+ * game", so every visual review of `welcome-room` was conducted against a room
+ * the player never sees — wrong wall art AND the opposite floor temperature:
+ *
+ *  1. INTERIOR TERRAIN. The game carves a set-piece room as STONE_FLOOR and then
+ *     `tagRoomAsSafe` (floorScenario.ts:1034-1040) repaints safe rooms to
+ *     SAFE_ROOM_FLOOR — warm orange brick, not the cool blue-grey of
+ *     STONE_FLOOR. The lab hardcoded STONE_FLOOR for every def. See
+ *     {@link LAB_INTERIOR_TERRAIN}.
+ *  2. WALL/DOOR PROPS. Under the prefab-room model the carved terrain layer is
+ *     authoritative for walls and doors, so the game SKIPS every `kind:'wall'`
+ *     and `kind:'door'` prop (floorScenario.ts:1955-1963) rather than
+ *     double-rendering them over the baked tiles. The lab drew them, painting a
+ *     blue-grey Kenney placeholder ring over the correct generated stone.
+ *
+ * `tests/unit/set-piece-lab-fidelity.test.ts` pins both rules against the real
+ * game's own predicate so this cannot silently drift again. A lab that renders
+ * something the game does not is worse than no lab: it launders a wrong image
+ * as evidence, and "observe before done" is the backstop that is supposed to
+ * catch exactly that.
  *
  * The floor is sized to the set-piece footprint plus a 1-tile wall border, so a
  * back-wall prop (set-piece y = 0) sits flush under the top wall — this makes
@@ -39,13 +64,7 @@ import { buildTerrainLayer } from '../../engine/terrain-renderer.js';
 import { GAME } from '../../shared/constants.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { createLogger } from '../../shared/logger.js';
-import {
-  BiomeType,
-  TerrainType,
-  TilePresets,
-  type MapConfig,
-  type RoomBounds,
-} from '../../shared/map-types.js';
+import { BiomeType, TilePresets, type MapConfig, type RoomBounds } from '../../shared/map-types.js';
 import { getNpcDef } from '../../shared/npc-types.js';
 import { ENTITY_DEPTH, TERRAIN_DEPTH, setPieceZToDepth } from '../../shared/render-depths.js';
 import {
@@ -54,12 +73,14 @@ import {
   getAllSetPieceDefs,
   getSetPieceDef,
   getSetPieceFootprint,
+  isStructuralSetPieceProp,
   type SetPieceDef,
   type SetPieceNpcAnchorRole,
   type SpriteRef,
 } from '../../shared/set-piece-types.js';
 import { ftToPx } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
+import { LAB_BORDER_TERRAIN, labInteriorTerrainFor } from './fidelity.js';
 import { isSetPieceRenderReady, spriteRefRendersPersistentPlaceholder } from './readiness.js';
 
 const LAB_ID = 'set-piece-lab';
@@ -359,11 +380,15 @@ interface LabRoom {
  * footprint plus a 1-tile wall border. The interior therefore equals the
  * footprint, so a set-piece prop authored at row 0 lands flush against the top
  * wall (demonstrating banner-over-wall + rug-over-floor layering).
+ *
+ * The interior terrain comes from {@link labInteriorTerrainFor}, NOT a literal —
+ * see `./fidelity.js` for why that rule is shared and unit-tested.
  */
 function buildRoomForDef(def: SetPieceDef): LabRoom {
   const footprint = getSetPieceFootprint(def);
   const widthTiles = footprint.width + 2;
   const heightTiles = footprint.height + 2;
+  const interiorTerrain = labInteriorTerrainFor(def.id);
 
   const config: MapConfig = {
     widthTiles,
@@ -384,7 +409,7 @@ function buildRoomForDef(def: SetPieceDef): LabRoom {
       const idx = ty * widthTiles + tx;
       const isBorder = tx === 0 || ty === 0 || tx === widthTiles - 1 || ty === heightTiles - 1;
       tileMap.flags[idx] = isBorder ? TilePresets.WALL : TilePresets.FLOOR;
-      terrain[idx] = isBorder ? TerrainType.STONE_WALL : TerrainType.STONE_FLOOR;
+      terrain[idx] = isBorder ? LAB_BORDER_TERRAIN : interiorTerrain;
     }
   }
 
@@ -481,7 +506,20 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   let restartScene = () => undefined as void;
   let resetCamera = () => undefined as void;
 
-  function updateInfoPanel(def: SetPieceDef, npcCount: number, propCount: number): void {
+  /**
+   * @param propCount   props actually RENDERED (structural wall/door props are
+   *                    excluded — the carved terrain owns those tiles).
+   * @param skippedCount structural props deliberately not drawn. Reported
+   *                    explicitly so the panel never claims a count the screen
+   *                    does not show; a silently-inflated number is how a
+   *                    preview starts lying about what shipped.
+   */
+  function updateInfoPanel(
+    def: SetPieceDef,
+    npcCount: number,
+    propCount: number,
+    skippedCount: number,
+  ): void {
     const footprint = getSetPieceFootprint(def);
     const requests = collectCustomArtRequests([def]);
     const lines: string[] = [];
@@ -494,6 +532,11 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     }
     lines.push('');
     lines.push(`<b>Props:</b> ${propCount} · <b>NPCs:</b> ${npcCount}`);
+    if (skippedCount > 0) {
+      lines.push(
+        `<span style="color:#94a3b8">+${skippedCount} wall/door props not drawn — carved terrain owns the shell (matches the game)</span>`,
+      );
+    }
     for (const npc of def.npcs ?? []) {
       const color = npc.anchorRole ? NPC_ANCHOR_COLOR[npc.anchorRole] : '#e2e8f0';
       const anchor = npc.anchorRole
@@ -533,6 +576,20 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
      * Kenney→custom conversion).
      */
     private expectedPersistentPlaceholderCount = 0;
+
+    /**
+     * The floor map + baked terrain RenderTexture from the last bake, kept so
+     * the terrain can be RE-baked once generated tile textures finish loading.
+     *
+     * create() must bake immediately (so the room is never blank), but at that
+     * point `warmGeneratedSprites()` has not resolved, so every generated tile
+     * key is missing and `buildTerrainLayer` falls through to its flat-colour
+     * path. Without a re-bake the lab shows a solid colour floor that the real
+     * game never renders — which silently invalidates any visual review done
+     * here. Re-baking on load-complete makes the lab floor the game floor.
+     */
+    private bakedFloorMap: FloorMap | null = null;
+    private terrainRt: Phaser.GameObjects.RenderTexture | null = null;
 
     constructor() {
       super({ key: SCENE_KEY });
@@ -586,10 +643,25 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       // Bake terrain to a single flat RenderTexture beneath the entity plane.
       const terrain = buildTerrainLayer(this, floorMap);
       terrain.rt.setDepth(-20);
+      this.bakedFloorMap = floorMap;
+      this.terrainRt = terrain.rt;
 
       // Stamp the set piece: pure, deterministic tile → world-feet placement.
+      // Structural (wall/door) props are SKIPPED to match the real game — the
+      // carved terrain layer already owns those tiles. See the fidelity contract
+      // in this file's header and `isStructuralSetPieceProp`.
       const stamp = stampSetPiece(def, { roomBounds, tileSizeFt: TILE_SIZE_FT });
+      const structuralPropIds = new Set(
+        def.props.filter(isStructuralSetPieceProp).map((prop) => prop.id),
+      );
+      let renderedPropCount = 0;
+      let skippedStructuralCount = 0;
       for (const prop of stamp.props) {
+        if (prop.render.label && structuralPropIds.has(prop.render.label)) {
+          skippedStructuralCount += 1;
+          continue;
+        }
+        renderedPropCount += 1;
         addSetPieceProp(this.world, prop.x, prop.y, prop.render);
         // Count intentional queued-art stand-ins (custom sprites with no
         // placeholder) so the readiness gate expects them to stay Rectangles
@@ -674,7 +746,7 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 
       restartScene = () => this.scene.restart();
       resetCamera = () => this.fitCamera();
-      updateInfoPanel(def, stamp.npcs.length, stamp.props.length);
+      updateInfoPanel(def, stamp.npcs.length, renderedPropCount, skippedStructuralCount);
 
       this.events.once('shutdown', () => {
         this.input.off('wheel');
@@ -765,6 +837,19 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       });
     }
 
+    /**
+     * Rebuild the terrain RenderTexture now that generated tile art is loaded.
+     * Safe to call when the scene has been torn down or never baked.
+     */
+    private rebakeTerrain(): void {
+      const floorMap = this.bakedFloorMap;
+      if (!floorMap || !this.scene.isActive()) return;
+      this.terrainRt?.destroy();
+      const terrain = buildTerrainLayer(this, floorMap);
+      terrain.rt.setDepth(-20);
+      this.terrainRt = terrain.rt;
+    }
+
     private async warmGeneratedSprites(): Promise<void> {
       try {
         const registry = await fetchGeneratedSpriteRegistry();
@@ -772,6 +857,9 @@ function createSetPieceLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         if (registry.size === 0 || !this.load) return;
         const queued = preloadGeneratedSprites(this.load, registry);
         if (queued.length === 0) return;
+        // Re-bake terrain once the generated tile textures are resident; the
+        // create()-time bake could only reach the flat-colour fallback.
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => this.rebakeTerrain());
         this.load.start();
       } catch (error) {
         logger.warn('Generated sprite load failed; continuing with built-in sprites', {

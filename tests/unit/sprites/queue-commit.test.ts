@@ -244,11 +244,9 @@ describe('runQueueCommit (control flow)', () => {
     expect(
       line.some((l) => l === 'git worktree add /tmp/qc-xyz --detach refs/queue-commit/base-qc-xyz'),
     ).toBe(true);
-    expect(
-      line.some(
-        (l) => l === 'git add -- public/assets/generated src/shared/data/sprite-catalog.json',
-      ),
-    ).toBe(true);
+    // The sprite catalog is deliberately NOT staged: check-ins write only the
+    // manifest, so two art queue commits no longer conflict by construction.
+    expect(line.some((l) => l === 'git add -- public/assets/generated')).toBe(true);
     expect(line.some((l) => l === 'git diff --cached --quiet')).toBe(true);
     expect(line.some((l) => l.startsWith('git commit --no-verify -m'))).toBe(true);
     expect(
@@ -526,7 +524,17 @@ describe('runQueueCommit (control flow)', () => {
 // Layer 2: real git (temp bare origin + live clone)
 // ---------------------------------------------------------------------------
 
-const GIT_TIMEOUT_MS = 30_000;
+/**
+ * These four tests shell out to real `git` against a temp bare origin, so their
+ * wall time is dominated by process spawns rather than by the assertion. Vitest
+ * runs test FILES in parallel workers, so under a full-project run (~120 files)
+ * they contend for the machine with every other file's git/fs work: this file
+ * takes ~33s in isolation and ~76s under full load, which put the no-clobber
+ * test intermittently over a 30s budget. Raised to 60s — the property under test
+ * is "a concurrent writer's entry survives the retry", never "the retry is fast",
+ * so a generous budget costs nothing and removes a load-sensitive flake.
+ */
+const GIT_TIMEOUT_MS = 60_000;
 const PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03, 0xfe, 0xdc, 0xba, 0x98,
 ]);
@@ -749,6 +757,93 @@ describe('runQueueCommit (real git)', () => {
         opts,
       );
       expect(second.status).toBe('noop');
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'durably queues a catalog-ONLY edit when the caller opts in via catalogEntryIds',
+    async () => {
+      // Regression: the sidecar Tag/metadata route mutates ONLY
+      // `sprite-catalog.json` (runMetadataPipeline never writes the manifest or a
+      // PNG). Art check-ins deliberately stage just `public/assets/generated`, so
+      // without the `catalogEntryIds` opt-in `git add` would stage nothing, the
+      // no-op guard would fire, and the metadata edit would be silently dropped
+      // from assets/queue — the exact failure that route was built to prevent.
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+      const deps = realGitDeps(liveDir);
+      const asset: CheckinAsset = {
+        assetPath: 'generated/alpha.png',
+        manifestKey: 'alpha',
+        briefId: null,
+        variantIndex: null,
+      };
+
+      // 1. Normal art check-in seeds the queue.
+      const seeded = await runQueueCommit(liveDir, [asset], deps, {
+        message: 'chore(assets): add alpha',
+      });
+      expect(seeded.status).toBe('committed');
+
+      // 2. Metadata run edits ONLY the catalog row — no manifest, no PNG.
+      const catalog = readJson<Array<Record<string, unknown>>>(catalogPath(liveDir));
+      const row = catalog.find((entry) => entry.id === 'generated:alpha');
+      expect(row).toBeDefined();
+      row!.description = 'A tagged alpha sprite.';
+      row!.tags = ['weapon', 'generated', 'pipeline-approved'];
+      writeJson(catalogPath(liveDir), catalog);
+
+      const tagged = await runQueueCommit(liveDir, [asset], deps, {
+        message: 'chore(assets): metadata for 1 sprite(s)',
+        catalogEntryIds: ['generated:alpha'],
+      });
+
+      // Must NOT be a no-op, and the edit must actually be on the branch.
+      expect(tagged.status).toBe('committed');
+      gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      const queued = JSON.parse(
+        gitSync(liveDir, 'show', 'FETCH_HEAD:src/shared/data/sprite-catalog.json'),
+      ) as Array<Record<string, unknown>>;
+      const queuedRow = queued.find((entry) => entry.id === 'generated:alpha');
+      expect(queuedRow?.description).toBe('A tagged alpha sprite.');
+      expect(queuedRow?.tags).toEqual(['weapon', 'generated', 'pipeline-approved']);
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'leaves the catalog untouched for an ordinary art check-in (single-file conflict surface)',
+    async () => {
+      // The point of narrowing the staged surface: two parallel art check-ins
+      // must not both rewrite `sprite-catalog.json` and conflict by construction.
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+
+      const result = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        realGitDeps(liveDir),
+        { message: 'chore(assets): add alpha' },
+      );
+      expect(result.status).toBe('committed');
+
+      gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      const changed = gitSync(liveDir, 'diff', '--name-only', 'origin/main', 'FETCH_HEAD')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+      expect(changed).not.toContain('src/shared/data/sprite-catalog.json');
+      expect(changed.every((file) => file.startsWith('public/assets/generated/'))).toBe(true);
     },
     GIT_TIMEOUT_MS,
   );

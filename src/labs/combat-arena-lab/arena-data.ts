@@ -18,6 +18,7 @@ import {
   activateMobAbilityEncounter,
   createUndercityMobCallDefinition,
   createBambooFedBerserkDefinition,
+  createDonPacoBigGobDefinition,
   createSovereignSporeBloomDefinition,
   createVerdigrisGlamourDefinition,
   createRomanCandleCoronationDefinition,
@@ -533,6 +534,7 @@ const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-
 const F2_SOVEREIGN_CAP = floor2EnemyPack.archetypes.find((a) => a.id === 'myconid-boss')!;
 /** King Skritt the Unburnt — the kobold boss that owns Roman Candle Coronation. */
 const F2_KING_SKRITT = floor2EnemyPack.archetypes.find((a) => a.id === 'kobold-boss')!;
+const F2_DON_PACO = floor2EnemyPack.archetypes.find((a) => a.id === 'llama-boss')!;
 
 /**
  * Spawn Queen Mab and arm Verdigris Glamour through the CANONICAL mob-ability
@@ -632,6 +634,22 @@ function spawnKingSkryttArena(
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   setMobAbilitiesEnabled(world, true);
   registerMobAbility(world, eid, createRomanCandleCoronationDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
+function spawnDonPacoArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_DON_PACO);
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createDonPacoBigGobDefinition());
   activateMobAbilityEncounter(world);
   return [eid];
 }
@@ -740,6 +758,15 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
       'King Skritt the Unburnt solo, with ROMAN-CANDLE CORONATION armed through the canonical mob-ability runtime: 8s eligibility, 1.3s twelve-spoke hostile-red telegraph, twelve simultaneous crown-flame projectiles, alternating 15-degree rotation every other cast.',
     entries: [],
     customSpawnFn: spawnKingSkryttArena,
+  },
+  {
+    id: 'f2-don-paco',
+    name: "F2: Don Paco 'The Gob' (THE BIG GOB)",
+    floor: 'floor2',
+    description:
+      "Don Paco 'The Gob' solo, with THE BIG GOB armed through the canonical mob-ability runtime: 9s eligibility, 1.4s locked 70-degree cone showing five committed paths and landing circles, then five caustic globs that leave 4s slowing slicks.",
+    entries: [],
+    customSpawnFn: spawnDonPacoArena,
   },
   // ── Custom / blank ───────────────────────────────────────────────────────
   {

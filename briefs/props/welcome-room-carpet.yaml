@@ -1,0 +1,108 @@
+type: prop
+name: welcome-room-carpet
+description: |
+  A moth-eaten, threadbare red runner carpet viewed from directly above
+  (top-down floor plane), pixel art. The carpet belongs to the "welcome room"
+  — the dungeon's tired reception area for a deranged reality-TV show that
+  has been running far too long. Three bored lifers (a goon, a merchant, and
+  a spell broker) have walked this carpet for years and it shows.
+
+  CANVAS SHAPE: approximately 2:1 landscape (wider than tall). The carpet is
+  a RUNNER — long and narrow, laying flat on the floor. It fills most of the
+  canvas width and most of the canvas height.
+
+  TOP-DOWN FLOOR PLANE — VIEW FROM DIRECTLY ABOVE:
+  You are looking straight down at the carpet lying flat on the floor. The
+  carpet is a flat rectangle. There is NO perspective, no three-quarter view,
+  no front elevation, no side view. The surface texture is the only thing
+  visible. Treat it exactly like painting a flat tabletop seen from overhead.
+
+  CARPET CONSTRUCTION — WHAT TO DRAW:
+  A deep-red to burgundy-crimson runner carpet with:
+  1. PILE TEXTURE — short dense pile rendered as dithered tonal variation
+     across the surface (not a flat fill). Slight sheen direction, as if the
+     pile is brushed in one direction. 3–4 distinct tonal stops: deep crimson
+     shadow, mid crimson base, slightly lighter crimson highlight on pile tops.
+  2. THREADBARE WORN PATCHES — 2–4 patches scattered across the carpet,
+     especially down the central traffic lane, where the pile is crushed flat
+     and the backing shows through as a lighter desaturated tone (pale beige or
+     pale tan warp threads). These should be irregularly shaped, not circles or
+     rectangles. The worst patch(es) should be clearly visible at game scale.
+  3. FRAYED / FRINGED EDGES — the two short ends (left and right) of the
+     runner have fringe: short dangling thread-ends rendered as a row of
+     individual pixels or pixel-pairs in various cream/tan/off-white shades,
+     slightly irregular in length (some short, some broken off). These fringe
+     pixels are still within the canvas; they do not overflow.
+  4. WORN CENTRE LANE — the central ~30% of the carpet width (running the
+     full length) is visibly more compressed than the edges: slightly lighter,
+     slightly flatter pile, possibly one extra threadbare patch.
+  5. BORDER STRIPE — a thin decorative border (1–2 pixels wide at output
+     scale, so 4–8 pixels at source) in a dark gold or dark teal/green tone
+     running near the long edges. It too is worn — faded, interrupted, not
+     crisply drawn — but still legible.
+
+  COLOUR PALETTE — COOL DUNGEON, NOT HOTEL LOBBY:
+  Deep burgundy/crimson: approximately rgb(140, 35, 45) — dark maroon as base.
+  Mid crimson: approximately rgb(165, 48, 55).
+  Pile highlight: approximately rgb(190, 65, 70).
+  Threadbare backing: approximately rgb(200, 180, 155) — pale beige warp.
+  Fringe thread: approximately rgb(210, 195, 165) — cream, slightly varied.
+  Border stripe: approximately rgb(100, 80, 35) — dark worn gold, or
+                 alternatively rgb(40, 75, 80) — dark teal (choose one, not both).
+  Deepest shadow at seams and folds: approximately rgb(80, 15, 25).
+  Pixel dithering strongly encouraged for the pile surface and worn patches.
+  Do NOT use bright saturated red, neon crimson, or clean hotel-lobby red.
+  The carpet should look like it is at least ten years past its last cleaning.
+
+  WHAT TO AVOID:
+  - Flat single-fill red with no texture (previous version failure)
+  - Clean unworn carpet with no threadbare patches or fraying
+  - Perspective view or 3/4 top-down (must be directly overhead, flat plane)
+  - Dark hard outline around the carpet border (the edges blend into transparency)
+  - Black or near-black backgrounds (use bright magenta or cyan so it keys out)
+  - Single-colour fill with only slight border variation
+
+  BACKGROUND:
+  Fully transparent where there is no carpet, OR use flat bright magenta
+  (#ff00ff) or electric cyan (#00ffff) as keyout colour for the sheet cells.
+  The carpet itself sits on a transparent background after keying.
+
+  The carpet reads in the game at approximately 2 tiles × 1 tile (pixel art
+  rendered at roughly 32px tall in-engine). Keep tile-count in the pile texture
+  above 3 stops so it reads at that scale, but do not over-detail for larger
+  sizes that will never be seen.
+
+# Canvas is 2:1 landscape to match the runner's real proportions.
+# Height-authoritative renderer: width follows from the sprite's own aspect.
+size:
+  width: 128
+  height: 64
+
+tags:
+  - welcome-room
+  - floor
+  - prop
+  - carpet
+  - reality-show
+  - pixel-dungeon
+
+sensors:
+  anchor:
+    mode: center-of-mass
+  opaqueRatio:
+    min: 0.50
+    max: 0.90
+
+judge:
+  enabled: true
+  maxVariants: 16
+
+minVariations: 2
+
+variations:
+  - carpet with heavier threadbare wear concentrated near the centre, nearly
+    transparent backing showing through in a large oval patch; fringe mostly
+    intact at both ends
+  - carpet with more visible pile direction sheen and a mostly-intact border
+    stripe; smaller scattered threadbare spots rather than one large patch;
+    a few fringe threads visibly knotted or broken off

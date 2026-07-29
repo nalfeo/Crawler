@@ -12,8 +12,6 @@ on:
   workflow_run:
     workflows: ['CI']
     types: [completed]
-  schedule:
-    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -28,11 +26,7 @@ jobs:
         (github.event_name != 'pull_request_target' ||
          github.event.pull_request.head.repo.full_name == github.repository) &&
         (github.event_name != 'issue_comment' ||
-         (!startsWith(github.event.comment.body, '<!-- crawler-ci-state:v1 -->') &&
-          !startsWith(github.event.comment.body, '<!-- crawler-ci-task:v1') &&
-          !startsWith(github.event.comment.body, '<!-- crawler-merge-train:v1 -->') &&
-          !startsWith(github.event.comment.body, '<!-- crawler-review-request:v1') &&
-          !startsWith(github.event.comment.body, '<!-- crawler-review-conflict:v1')))
+         !startsWith(github.event.comment.body, '<!-- crawler-'))
       }}
     # Backpressure: EVERY router invocation -- direct PR events, sweeps, and
     # workflow_run alike, regardless of MERGE_TRAIN_ENABLED -- shares one

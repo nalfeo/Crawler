@@ -1,0 +1,37 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "ci-delivery-emergency-unfence",
+  "date": "2026-07-28",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 165,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 151
+    },
+    "pr-preflight": {
+      "allow": 7
+    },
+    "pr-review-ledger": {
+      "allow": 5,
+      "skip": 1,
+      "deny": 1
+    }
+  },
+  "tools": {
+    "create": 1,
+    "create_pull_request": 14,
+    "edit": 11,
+    "grep": 9,
+    "powershell": 62,
+    "read_agent": 2,
+    "read_powershell": 1,
+    "rg": 18,
+    "sql": 1,
+    "task": 2,
+    "view": 44
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

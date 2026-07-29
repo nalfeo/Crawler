@@ -10,7 +10,6 @@ import {
 import {
   BiomeType,
   RoomRole,
-  TilePresets,
   TerrainType,
   type MapConfig,
   type RoomBounds,
@@ -30,7 +29,13 @@ import {
   type StampedSetPiece,
   type StampedSetPieceNpc,
 } from '../core/map/stampSetPiece.js';
-import { getSetPieceDef, getSetPieceFootprint } from '../shared/set-piece-types.js';
+import { applySolidProps } from '../core/map/applySolidProps.js';
+import { carveConnectorToReachable, carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
+import {
+  getSetPieceDef,
+  getSetPieceFootprint,
+  isStructuralSetPieceProp,
+} from '../shared/set-piece-types.js';
 import {
   Position,
   Rotation,
@@ -161,7 +166,7 @@ const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 // component carries matching dimensions in feet (px / PIXELS_PER_FOOT).
 const WELCOME_SIGN_WIDTH = 6;
 const WELCOME_SIGN_HEIGHT = 3.25;
-const WELCOME_ROOM_SET_PIECE_ID = 'welcome-room';
+export const WELCOME_ROOM_SET_PIECE_ID = 'welcome-room';
 
 /** Blood colours for Floor 1 enemy archetypes. */
 const BLOOD_COLOR_RAT = DEFAULT_BLOOD_COLOR; // red — 0xcc0000
@@ -1019,6 +1024,9 @@ function chooseObjectiveTiles(world: GameWorld): {
 function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
+  for (const safeRoom of floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE)) {
+    floorMap.roomGraph.setRole(safeRoom.id, RoomRole.NORMAL);
+  }
   const tile = floorMap.worldToTile(roomPos.x, roomPos.y);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) return;
@@ -1368,6 +1376,7 @@ function spawnNpcFromPlacement(
 function computeWelcomeRoomStamp(
   world: GameWorld,
   welcomeOfficePos: { x: number; y: number },
+  carved: boolean,
 ): StampedSetPiece | null {
   const floorMap = world.floorMap;
   if (!floorMap) {
@@ -1386,57 +1395,86 @@ function computeWelcomeRoomStamp(
   return stampSetPiece(def, {
     roomBounds: room.bounds,
     tileSizeFt: floorMap.config.tileSizeFt,
+    // When the prefab was carved, the room's bounds ARE the footprint, so anchor
+    // the def's (0,0) to the top-left corner: the authored wall ring coincides
+    // with the carved perimeter walls and interior props/NPCs land inside. Without
+    // a carve (rollback fallback) keep the historical interior-centred placement.
+    anchor: carved ? 'bounds-topleft' : 'interior-center',
   });
 }
 
 /**
- * Apply authored structural set-piece props (wall/door) onto real map tiles.
- *
- * Set-piece dressing is mostly render-only, but structural props must also
- * mutate map terrain semantics so authored walls/doors render as wall/door
- * terrain, and authored doors are treated as real door tiles at runtime.
+ * Carve the welcome-room prefab so it is authoritative for its room geometry:
+ * resize the welcome-office hub room to the prefab footprint, wall its perimeter,
+ * punch the declared door(s), and reconnect corridors — all as TILE WRITES, never
+ * ECS entities (allocating entity ids for dressing would perturb the global RNG
+ * and break headless↔rendered determinism; see world-objects.ts). Returns whether
+ * the prefab was carved and, when fitted, the recentred hub tile (the new room's
+ * interior centre) so downstream NPC/sign placement uses a tile guaranteed to lie
+ * inside the resized room. `fitted: false` ⇒ nothing was mutated and the caller
+ * keeps the legacy render-only stamp so Floor 1 stays winnable (rollback safety).
  */
-function applyWelcomeRoomStructuralTiles(world: GameWorld, stamp: StampedSetPiece): void {
+function carveWelcomeRoomPrefab(
+  world: GameWorld,
+  welcomeOfficePos: { x: number; y: number },
+): {
+  fitted: boolean;
+  recentredWelcomePos?: { x: number; y: number };
+  welcomeRoomId?: number;
+  /**
+   * Re-runs `applySolidProps` for this carve. The welcome room is the ONLY
+   * carved set piece that also goes through `tagRoomAsSafe`, whose
+   * `restoreRoomInterior` call repaints every interior tile back to plain
+   * floor — silently wiping the furniture collision the carve just wrote.
+   * The caller must invoke this AFTER `tagRoomAsSafe` so the flags survive.
+   * (Discovered by probing the running game: unit tests were green while the
+   * feature was fully inert on a real floor.)
+   */
+  reapplySolidProps?: () => void;
+} {
   const floorMap = world.floorMap;
-  if (!floorMap) return;
+  if (!floorMap) return { fitted: false };
   const def = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
-  if (!def) return;
-
-  const propById = new Map(def.props.map((prop) => [prop.id, prop]));
-  const applied = new Set<string>();
-  const mapWidth = floorMap.config.widthTiles;
-  for (const stampedProp of stamp.props) {
-    const propId = stampedProp.render.label;
-    if (!propId || applied.has(propId)) continue;
-    const prop = propById.get(propId);
-    if (!prop) continue;
-    applied.add(propId);
-    if (prop.kind !== 'wall' && prop.kind !== 'door') continue;
-
-    const terrain = prop.kind === 'wall' ? TerrainType.STONE_WALL : TerrainType.DOOR;
-    for (let dy = 0; dy < prop.height; dy += 1) {
-      for (let dx = 0; dx < prop.width; dx += 1) {
-        const tx = stampedProp.tileX + dx;
-        const ty = stampedProp.tileY + dy;
-        if (!floorMap.tileMap.inBounds(tx, ty)) continue;
-        const idx = ty * mapWidth + tx;
-        if (prop.kind === 'door') {
-          floorMap.tileMap.setFlags(tx, ty, TilePresets.DOOR_OPEN);
-          floorMap.terrain[idx] = terrain;
-        } else if (floorMap.terrain[idx] !== TerrainType.DOOR) {
-          // Always set wall physics flags when stamping a wall prop — interior
-          // tiles start passable so the old `!isPassable` guard would silently
-          // skip the physics update, leaving a tile that looks like a wall but
-          // lets the player walk through it.  The welcome-room set-piece no
-          // longer includes wall-kind props (its structure comes from the dungeon
-          // generator), so this branch is a defensive guard for any future
-          // set-piece that authors explicit interior walls.
-          floorMap.tileMap.setFlags(tx, ty, TilePresets.WALL);
-          floorMap.terrain[idx] = terrain;
-        }
-      }
-    }
+  if (!def) return { fitted: false };
+  const officeTile = floorMap.worldToTile(welcomeOfficePos.x, welcomeOfficePos.y);
+  const roomId = floorMap.roomGraph.getRoomAt(officeTile.x, officeTile.y);
+  const room = roomId >= 0 ? floorMap.roomGraph.get(roomId) : undefined;
+  if (!room) return { fitted: false };
+  // Carve paints the interior as plain STONE_FLOOR; the subsequent tagRoomAsSafe
+  // upgrades it to SAFE_ROOM_FLOOR, keeping the safe-room tint logic in one place.
+  const result = carveSetPieceRoom(floorMap, room, def);
+  // Record the hub room id regardless of fit: carveSetPieceRoom resizes this same
+  // room in place (id unchanged), and on no-fit it is still the room production
+  // treats as the welcome office. The reachability gate resolves the room by this
+  // id and then asserts bounds == footprint, so a no-fit is a hard gate failure
+  // rather than a silently-shipped legacy room.
+  if (!result.fitted || !result.bounds) {
+    // Loud, structured degradation signal (parent-session pushback): a no-fit
+    // falls back to the legacy render-only stamp so Floor 1 stays winnable, but
+    // that is NOT an acceptable resting state — it means the prefab is not
+    // authoritative for its room. Zero degradations is the expected steady state;
+    // the reachability sweep also reports this as a first-class number and fails
+    // hard on it. Emitting here makes it observable in game/headless logs too.
+    // (console.warn touches no RNG/entity ids, so determinism is preserved.)
+    console.warn(
+      `[set-piece:degraded] welcome-room prefab did not carve (reason=${result.reason ?? 'unknown'}); ` +
+        `shipping legacy render-only fallback for room ${room.id}. Carve tiers 1–2 under-powered.`,
+    );
+    return { fitted: false, welcomeRoomId: room.id };
   }
+  const centreTileX = result.bounds.x + Math.floor(result.bounds.width / 2);
+  const centreTileY = result.bounds.y + Math.floor(result.bounds.height / 2);
+  const carvedBounds = result.bounds;
+  const carvedDoors = result.doors ?? [];
+  const originTileX = result.originTileX ?? carvedBounds.x;
+  const originTileY = result.originTileY ?? carvedBounds.y;
+  return {
+    fitted: true,
+    recentredWelcomePos: floorMap.tileToWorld(centreTileX, centreTileY),
+    welcomeRoomId: room.id,
+    reapplySolidProps: () =>
+      applySolidProps(floorMap, def, originTileX, originTileY, carvedBounds, carvedDoors),
+  };
 }
 
 /**
@@ -1519,18 +1557,36 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const maxHp = (world.stores.health.max[playerEid] ?? 100) + floor1Config.player.hpBonus;
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
-  const {
-    welcomeOfficePos,
-    safeRoomPos,
-    staircasePos,
-    slimeRatRoomPos,
-    spellQuestGiverPos,
-    shopRoomPos,
-    questItemPos,
-  } = chooseObjectiveTiles(world);
+  const objectiveTiles = chooseObjectiveTiles(world);
+  const { staircasePos, slimeRatRoomPos, spellQuestGiverPos, shopRoomPos, questItemPos } =
+    objectiveTiles;
+  // `welcomeOfficePos` and `safeRoomPos` are mutable: carving the welcome-room
+  // prefab (below) resizes the hub room, so we recentre BOTH onto the carved
+  // room's interior centre. They are the same hub room by construction
+  // (chooseObjectiveTiles sets safeRoomPos = welcomeOfficePos), so a stale
+  // safeRoomPos would key the safe-room proximity marker (safeRoomDiscovered)
+  // and NPC placement off the pre-carve centre (plan-review concern #5).
+  let welcomeOfficePos = objectiveTiles.welcomeOfficePos;
+  let safeRoomPos = objectiveTiles.safeRoomPos;
+  // Carve the welcome-room prefab so it OWNS its geometry: the hub room is resized
+  // to the prefab footprint with a real impassable wall ring + a real door, all as
+  // tile writes (never ECS entities → determinism preserved). Runs BEFORE
+  // tagRoomAsSafe (so the safe tint/role lands on the carved geometry) and BEFORE
+  // the spawn-reachability mask (so NPC routability sees the carved walls/doors).
+  // On no-fit it mutates nothing and we keep the legacy render-only stamp.
+  const welcomeCarve = carveWelcomeRoomPrefab(world, welcomeOfficePos);
+  if (welcomeCarve.fitted && welcomeCarve.recentredWelcomePos) {
+    welcomeOfficePos = welcomeCarve.recentredWelcomePos;
+    safeRoomPos = welcomeCarve.recentredWelcomePos;
+  }
   // The welcome room is the only safe room on Floor 1 — the bar/hub where all
   // three quest NPCs live. The shop and spell-broker rooms are regular rooms.
   tagRoomAsSafe(world, welcomeOfficePos);
+  // MUST follow tagRoomAsSafe: its `restoreRoomInterior` repaints the whole
+  // interior back to plain floor, wiping the furniture collision written during
+  // the carve. Re-applying here is idempotent and keeps the revert-on-disconnect
+  // guard in one place.
+  welcomeCarve.reapplySolidProps?.();
 
   // Door-gate every special room. Corridors carved between room centres regularly
   // clip a room's bounding-box perimeter at non-door tiles, letting enemies tunnel
@@ -1590,6 +1646,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     spellQuestGiverNpcEid: null,
     shopkeeperNpcEid: null,
     questItemEid: null,
+    welcomeRoomId: welcomeCarve.welcomeRoomId ?? null,
+    welcomeRoomCarved: welcomeCarve.fitted,
     bossRoomDoorEids: new Map([
       ['slime-rat', []],
       ['staircase', []],
@@ -1694,13 +1752,84 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const floor1State = world.floorScenario;
   const npcPlacements = floor1Manifest.npcPlacements;
   const occupiedNpcTiles = new Set<string>();
-  const spawnReachableMask =
+  let spawnReachableMask =
     world.floorMap == null
       ? null
       : buildReachableFromSpawnMask(
           world.floorMap,
           buildInitiallyLockedDoorTileSet(world.floorMap, [staircasePos, slimeRatRoomPos]),
         );
+  // Lock-aware welcome-hub reachability repair. The welcome room is the SAFE hub on
+  // Floor 1's critical path and must be reachable in the LOCKED initial state
+  // (before the player unlocks the staircase / slime-rat quest doors).
+  // carveSetPieceRoom's connectivity backstop is intentionally lock-unaware — a pure
+  // core module cannot know Floor 1's quest locks — so on some seeds the carved hub
+  // ends up reachable only THROUGH an initially-locked door, stranding it (and its
+  // quest NPCs) until unlock. NPC routability then scatters those NPCs outside the
+  // room. Detect it here (the layer that owns the lock model) and carve a direct,
+  // unlocked connector from the hub's door to the nearest lock-aware-reachable tile,
+  // forbidding the tunnel from routing through the locked rooms' footprints so it can
+  // never open a bypass into gated content (rule #12). Then rebuild the mask so NPC
+  // placement below sees the new connection. Deterministic: BFS with a fixed
+  // neighbour order, no RNG.
+  if (
+    welcomeCarve.fitted &&
+    welcomeCarve.welcomeRoomId != null &&
+    world.floorMap != null &&
+    spawnReachableMask != null
+  ) {
+    const fm = world.floorMap;
+    const welcomeRoom = fm.roomGraph.get(welcomeCarve.welcomeRoomId);
+    const primaryDoor = welcomeRoom?.doors[0];
+    if (welcomeRoom && primaryDoor) {
+      const b = welcomeRoom.bounds;
+      const interiorX = b.x + Math.floor(b.width / 2);
+      const interiorY = b.y + Math.floor(b.height / 2);
+      if (!isSpawnReachableTile(fm, spawnReachableMask, interiorX, interiorY)) {
+        const avoid = new Set<number>();
+        for (const center of [staircasePos, slimeRatRoomPos]) {
+          const t = fm.worldToTile(center.x, center.y);
+          const rid = fm.roomGraph.getRoomAt(t.x, t.y);
+          const lockedRoom = rid >= 0 ? fm.roomGraph.get(rid) : undefined;
+          if (!lockedRoom) continue;
+          const lb = lockedRoom.bounds;
+          for (let yy = lb.y; yy < lb.y + lb.height; yy += 1) {
+            for (let xx = lb.x; xx < lb.x + lb.width; xx += 1) {
+              avoid.add(yy * fm.width + xx);
+            }
+          }
+        }
+        for (const otherRoom of fm.roomGraph.getAll()) {
+          if (otherRoom.id === welcomeRoom.id) continue;
+          const ob = otherRoom.bounds;
+          for (let yy = ob.y; yy < ob.y + ob.height; yy += 1) {
+            for (let xx = ob.x; xx < ob.x + ob.width; xx += 1) {
+              avoid.add(yy * fm.width + xx);
+            }
+          }
+        }
+        // Forbid the connector from carving the welcome room's OWN footprint
+        // (interior + perimeter ring) — except the door it starts from. Without
+        // this the BFS tunnels the shortest route through wall rock, which can
+        // clip the room's own perimeter and open plain-floor breaches in the
+        // prefab wall ring (observed on seed 21: 5 non-door breaches). The hub
+        // already has a real door; the repair must only EXTEND that door outward
+        // through exterior rock, never punch new holes in the shell.
+        const primaryDoorIdx = primaryDoor.y * fm.width + primaryDoor.x;
+        for (let yy = b.y; yy < b.y + b.height; yy += 1) {
+          for (let xx = b.x; xx < b.x + b.width; xx += 1) {
+            const idx = yy * fm.width + xx;
+            if (idx !== primaryDoorIdx) avoid.add(idx);
+          }
+        }
+        carveConnectorToReachable(fm, primaryDoor.x, primaryDoor.y, spawnReachableMask, avoid);
+        spawnReachableMask = buildReachableFromSpawnMask(
+          fm,
+          buildInitiallyLockedDoorTileSet(fm, [staircasePos, slimeRatRoomPos]),
+        );
+      }
+    }
+  }
   // Dedicated deterministic stream for NPC tile scatter so shared-room hubs (the
   // welcome bar) spread out per seed without consuming — or being perturbed by —
   // the shared gameplay RNG that drives enemies, loot, and props.
@@ -1716,10 +1845,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // themed props. When present it drives NPC placement (replacing the scatter
   // fallback); the objective anchors below then auto-follow each NPC's actual
   // spawned tile.
-  const welcomeStamp = computeWelcomeRoomStamp(world, welcomeOfficePos);
+  const welcomeStamp = computeWelcomeRoomStamp(world, welcomeOfficePos, welcomeCarve.fitted);
   const stampedNpcByType = new Map<string, StampedSetPieceNpc>();
   if (welcomeStamp) {
-    applyWelcomeRoomStructuralTiles(world, welcomeStamp);
     for (const npc of welcomeStamp.npcs) {
       stampedNpcByType.set(npc.npcTypeId, npc);
     }
@@ -1848,9 +1976,22 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // instances on `world.setPieceProps` — NOT ECS entities — so they layer over
   // the baked terrain and around the NPCs without consuming entity ids or
   // entering the collision grid: no effect on collision, pathing, RNG, or
-  // balance.
+  // balance. Wall/door-kind props are SKIPPED via the shared
+  // `isStructuralSetPieceProp` predicate: under the prefab-room model the carved
+  // terrain layer is authoritative for walls/doors, so re-drawing them as sprites
+  // would double-render/z-fight the baked tiles. Their role is purely to define
+  // the shell in the def (composition gate + door-tile source of truth). The
+  // predicate is shared with the Set Piece Lab so a preview cannot drift from
+  // what actually ships.
   if (welcomeStamp) {
+    const welcomeDef = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
+    const structuralPropIds = new Set(
+      (welcomeDef?.props ?? []).filter(isStructuralSetPieceProp).map((prop) => prop.id),
+    );
     for (const stampedProp of welcomeStamp.props) {
+      if (stampedProp.render.label && structuralPropIds.has(stampedProp.render.label)) {
+        continue;
+      }
       addSetPieceProp(world, stampedProp.x, stampedProp.y, stampedProp.render);
     }
   }

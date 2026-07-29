@@ -78,15 +78,13 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "don-paco-the-big-gob",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "llama-boss",
         "approvedAssetId": "llama-boss-var-8",
@@ -95,28 +93,32 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-don-paco",
+      "arenaLabEvidence": "Verified in the canonical combat arena preset `f2-don-paco` with deterministic observation: frame 539 (8983.33ms) has no cue/banner/projectiles/zones. Frame 540 (9000ms) starts the locked hostile-red cone telegraph with exact `THE BIG GOB — Don Paco's painting the whole block!` announcement and visible cone/path/landing-circle diff. Frame 624 (10400ms) resolves the cast and launches 5 committed projectiles. Frame 654 (10900ms) all 5 impacts resolve into 5 persistent slicks on the committed landing circles; frame 655 confirms the slick set persists after impact. Frame 894 (14900ms) the first slick set fully expires and cleans up. Frame 1278 (21300ms) the second cast's 5 impacts/slicks resolve at the same committed cadence. Headless cadence/impact proof is covered by `scripts/agent/don-paco-arena-evidence.ts`; deterministic runtime coverage in `tests/unit/mob-abilities/big-gob.test.ts` covers inside/outside damage plus while-inside-only slow + 4s expiry; browser observation is in `tests/e2e/don-paco-arena-observation.test.ts`. Production remains blocked behind `floor2-boss-production-enable`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1952,
+        "state": "open",
+        "title": "Implement Don Paco's THE BIG GOB ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1952"
+      },
       "implementationPullRequest": {
         "kind": "pull-request",
-        "number": 1960,
+        "number": 2016,
         "state": "open",
-        "title": "Implement Big Panda Wei's BAMBOO-FED BERSERK ability",
-        "url": "https://github.com/nalfeo/Crawler/pull/1960"
+        "title": "Implement Don Paco's THE BIG GOB on the typed mob-ability runtime",
+        "url": "https://github.com/nalfeo/Crawler/pull/2016"
       },
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "big-panda-wei-bamboo-fed-berserk",
@@ -150,9 +152,7 @@
         "url": "https://github.com/nalfeo/Crawler/issues/1957"
       },
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "queen-mab-verdigris-glamour",
@@ -198,9 +198,7 @@
         "title": "feat(bosses): Queen Mab Verdigris Glamour \u2014 arena-only ability runtime slice (production-off)",
         "url": "https://github.com/nalfeo/Crawler/pull/1273"
       },
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "king-skritt-roman-candle-coronation",
@@ -234,9 +232,7 @@
         "url": "https://github.com/nalfeo/Crawler/issues/1955"
       },
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "sovereign-cap-spore-bloom",
@@ -276,9 +272,7 @@
         "title": "Implement Sovereign Cap Spore Bloom in typed mob-ability runtime (multi-circle telegraph + persistent toxic zones)",
         "url": "https://github.com/nalfeo/Crawler/pull/2012"
       },
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "overseer-fizzwick-clockwork-kill-saw",
@@ -306,9 +300,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "plague-boss-squick-undercity-mob-call",
@@ -382,9 +374,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "countess-vesper-midnight-resonance",
@@ -418,9 +408,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "kingpin-molt-shell-company-lockdown",
@@ -448,9 +436,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "broodfather-chitin-turnover",
@@ -484,9 +470,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "foreman-grubbs-undermine-the-union",
@@ -514,9 +498,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "boss-bandit-rocco-highway-robbery",
@@ -544,9 +526,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "don-honkrado-omerta-honk",
@@ -580,9 +560,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "foreman-scorch-hellfire-shift-line",
@@ -610,9 +588,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "gastropod-godfather-long-squeeze",
@@ -640,9 +616,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     },
     {
       "abilityId": "big-mama-bufo-tongue-repossession",
@@ -670,9 +644,7 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": [
-        "floor2-boss-production-enable"
-      ]
+      "blockers": ["floor2-boss-production-enable"]
     }
   ]
 }

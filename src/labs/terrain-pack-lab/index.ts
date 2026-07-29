@@ -23,7 +23,8 @@ import { SeededRandom } from '../../shared/random.js';
 import { computeRawMask8, normalizeBlob47Mask } from '../../shared/terrain-pack-mask.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
 import {
-  pickPoolVariant,
+  pickPoolCombo,
+  pickWallAccentSelection,
   resolveDoorOrientationFromFlanks,
   resolveDoorPoolVariant,
 } from '../../shared/terrain-pack-variants.js';
@@ -159,10 +160,13 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     const atlasW = ATLAS_COLS * cell;
     const atlasH = ATLAS_ROWS * cell;
 
-    // ── Pool section (floor + corridor) ───────────────────────────────────
+    // ── Pool section (floor + corridor + role-keyed special-room floors) ──
     const poolEntries = [
       ...pack.floorPool.map((v) => ({ label: 'floor', v })),
       ...pack.corridorPool.map((v) => ({ label: 'corridor', v })),
+      ...Object.entries(pack.specialFloorPools ?? {}).flatMap(([key, pool]) =>
+        pool.map((v) => ({ label: key, v })),
+      ),
     ];
     const poolW = poolEntries.length * (cell + 4);
     const poolRowH = cell;
@@ -172,7 +176,12 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     const doorW = doorEntries.length * (cell + 4);
     const doorRowH = cell;
 
-    const totalW = Math.max(atlasW, poolW, doorW) + PADDING * 2;
+    // ── Wall-accents section (2026-07-25) ──────────────────────────────────
+    const wallAccents = pack.wallAccents ?? [];
+    const accentW = wallAccents.length * (cell + 4);
+    const accentRowH = cell;
+
+    const totalW = Math.max(atlasW, poolW, doorW, accentW) + PADDING * 2;
     const totalH =
       PADDING +
       LABEL_HEIGHT +
@@ -183,6 +192,9 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
       SECTION_GAP +
       LABEL_HEIGHT +
       doorRowH +
+      SECTION_GAP +
+      LABEL_HEIGHT +
+      accentRowH +
       PADDING;
 
     canvas.width = totalW;
@@ -257,7 +269,10 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     ctx.fillStyle = '#a0c8ff';
     ctx.font = 'bold 13px monospace';
     ctx.fillText(
-      `Floor Pool (${pack.floorPool.length})  +  Corridor Pool (${pack.corridorPool.length})`,
+      `Floor Pool (${pack.floorPool.length})  +  Corridor Pool (${pack.corridorPool.length})` +
+        Object.entries(pack.specialFloorPools ?? {})
+          .map(([key, pool]) => `  +  ${key} (${pool.length})`)
+          .join(''),
       PADDING,
       y + 13,
     );
@@ -324,6 +339,57 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
         ctx.strokeRect(dx + 0.5, y + 0.5, cell - 1, cell - 1);
       }
     }
+    y += doorRowH + SECTION_GAP;
+
+    // ── Draw wall-accent atlases (2026-07-25) ──────────────────────────────
+    // Shows the mask-255 (fully-enclosed interior) frame of each accent atlas
+    // as a representative swatch — that frame is the least likely to be
+    // clipped by the mask-aware silhouette stencil, so the motif is most
+    // visible there.
+    ctx.fillStyle = '#a0c8ff';
+    ctx.font = 'bold 13px monospace';
+    ctx.fillText(`Wall Accents (${wallAccents.length})`, PADDING, y + 13);
+    y += LABEL_HEIGHT + 4;
+
+    const solidFrameIndex = pack.wallAutotile.masks.find((m) => m.maskId === 255)?.frameIndex ?? 0;
+    let accentIdx = 0;
+    for (const accent of wallAccents) {
+      const dx = PADDING + accentIdx * (cell + 4);
+      accentIdx += 1;
+
+      ctx.fillStyle = '#2d2d4e';
+      ctx.fillRect(dx, y, cell, cell);
+
+      const accentEntry = getOrLoad(accent.textureKey, accent.imagePath);
+      if (accentEntry.loaded) {
+        const srcX = (solidFrameIndex % ATLAS_COLS) * pack.wallAutotile.cellPx;
+        const srcY = Math.floor(solidFrameIndex / ATLAS_COLS) * pack.wallAutotile.cellPx;
+        ctx.drawImage(
+          accentEntry.img,
+          srcX,
+          srcY,
+          pack.wallAutotile.cellPx,
+          pack.wallAutotile.cellPx,
+          dx,
+          y,
+          cell,
+          cell,
+        );
+      } else if (accentEntry.error) {
+        ctx.fillStyle = '#c0392b55';
+        ctx.fillRect(dx, y, cell, cell);
+      }
+
+      ctx.fillStyle = '#ff9f6b';
+      ctx.font = '9px monospace';
+      ctx.fillText(accent.id, dx + 2, y + cell - 3);
+
+      if (settings.showGrid) {
+        ctx.strokeStyle = '#ff9f6b44';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(dx + 0.5, y + 0.5, cell - 1, cell - 1);
+      }
+    }
   }
 
   // ── Map preview rendering ─────────────────────────────────────────────────
@@ -359,6 +425,11 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
 
     const atlasEntry = getOrLoad(`${settings.packId}:wall-autotile`, pack.wallAutotile.imagePath);
+    const wallAccents = pack.wallAccents ?? [];
+    const accentEntries = wallAccents.map((a) => ({
+      accent: a,
+      entry: getOrLoad(a.textureKey, a.imagePath),
+    }));
 
     const ATLAS_FW = pack.wallAutotile.cellPx;
     const ATLAS_FH = pack.wallAutotile.cellPx;
@@ -369,6 +440,29 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     const maskToFrame = new Map<number, number>(
       pack.wallAutotile.masks.map((e) => [e.maskId, e.frameIndex]),
     );
+
+    // Live diversity instrumentation (2026-07-25 refinement #4) — mirrors
+    // `TerrainLayerResult`'s histograms so this lab doubles as a quick visual
+    // probe without needing to boot the real Phaser scene.
+    let wallCount = 0;
+    let wallAccentedCount = 0;
+    const wallAccentCounts: Record<string, number> = {};
+    const floorSourceCounts: Record<string, number> = {};
+    const corridorSourceCounts: Record<string, number> = {};
+    const floorCombos = new Set<string>();
+    const corridorCombos = new Set<string>();
+
+    /** Draw `img` into a `cell`x`cell` destination cell, applying a pool-combo transform via canvas mirroring. */
+    function drawPoolTile(img: HTMLImageElement, dx: number, dy: number, transform: string): void {
+      mapCtx.save();
+      mapCtx.translate(dx + cell / 2, dy + cell / 2);
+      mapCtx.scale(
+        transform === 'flipH' || transform === 'flipHV' ? -1 : 1,
+        transform === 'flipV' || transform === 'flipHV' ? -1 : 1,
+      );
+      mapCtx.drawImage(img, -cell / 2, -cell / 2, cell, cell);
+      mapCtx.restore();
+    }
 
     for (let ty = 0; ty < map.height; ty++) {
       for (let tx = 0; tx < map.width; tx++) {
@@ -390,12 +484,25 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
           const arow = Math.floor(frameNum / ATLAS_COLS_PACK);
           const srcX = acol * (ATLAS_FW + ATLAS_SPACING);
           const srcY = arow * (ATLAS_FH + ATLAS_SPACING);
+          wallCount += 1;
 
           if (atlasEntry.loaded) {
             mapCtx.drawImage(atlasEntry.img, srcX, srcY, ATLAS_FW, ATLAS_FH, dx, dy, cell, cell);
           } else {
             mapCtx.fillStyle = FALLBACK_CSS[terrain] ?? '#553c75';
             mapCtx.fillRect(dx, dy, cell, cell);
+          }
+
+          // Accented walls add a SECOND stamp (same frame, accent texture) —
+          // mirrors the renderer's structural performance cap (refinement #6).
+          const accent = pickWallAccentSelection(wallAccents, seed, tx, ty);
+          if (accent) {
+            wallAccentedCount += 1;
+            wallAccentCounts[accent.id] = (wallAccentCounts[accent.id] ?? 0) + 1;
+            const accentEntry = accentEntries.find((a) => a.accent.id === accent.id)?.entry;
+            if (accentEntry?.loaded) {
+              mapCtx.drawImage(accentEntry.img, srcX, srcY, ATLAS_FW, ATLAS_FH, dx, dy, cell, cell);
+            }
           }
         } else if ((flags & TileFlags.DOOR) !== 0) {
           const leftTerrain = tx > 0 ? (map.terrain[idx - 1] as number) : TerrainType.VOID;
@@ -421,11 +528,13 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
             mapCtx.fillRect(dx, dy, cell, cell);
           }
         } else if (PACK_FLOOR_TERRAINS.has(terrain)) {
-          const variant = pickPoolVariant(pack.floorPool, seed, tx, ty);
-          if (variant) {
-            const entry = getOrLoad(variant.textureKey, variant.imagePath);
+          const combo = pickPoolCombo(pack.floorPool, seed, tx, ty);
+          if (combo) {
+            floorSourceCounts[combo.variant.id] = (floorSourceCounts[combo.variant.id] ?? 0) + 1;
+            floorCombos.add(`${combo.variant.id}:${combo.transform}`);
+            const entry = getOrLoad(combo.variant.textureKey, combo.variant.imagePath);
             if (entry.loaded) {
-              mapCtx.drawImage(entry.img, dx, dy, cell, cell);
+              drawPoolTile(entry.img, dx, dy, combo.transform);
             } else {
               mapCtx.fillStyle = FALLBACK_CSS[terrain] ?? '#4a3f35';
               mapCtx.fillRect(dx, dy, cell, cell);
@@ -435,11 +544,14 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
             mapCtx.fillRect(dx, dy, cell, cell);
           }
         } else if (PACK_CORRIDOR_TERRAINS.has(terrain)) {
-          const variant = pickPoolVariant(pack.corridorPool, seed, tx, ty);
-          if (variant) {
-            const entry = getOrLoad(variant.textureKey, variant.imagePath);
+          const combo = pickPoolCombo(pack.corridorPool, seed, tx, ty);
+          if (combo) {
+            corridorSourceCounts[combo.variant.id] =
+              (corridorSourceCounts[combo.variant.id] ?? 0) + 1;
+            corridorCombos.add(`${combo.variant.id}:${combo.transform}`);
+            const entry = getOrLoad(combo.variant.textureKey, combo.variant.imagePath);
             if (entry.loaded) {
-              mapCtx.drawImage(entry.img, dx, dy, cell, cell);
+              drawPoolTile(entry.img, dx, dy, combo.transform);
             } else {
               mapCtx.fillStyle = FALLBACK_CSS[terrain] ?? '#2d2d4e';
               mapCtx.fillRect(dx, dy, cell, cell);
@@ -455,7 +567,18 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
       }
     }
 
-    mapStatsEl.textContent = `${map.width}×${map.height}  Rooms: ${map.rooms.length}  Biome: ${biome}  Seed: ${seed}`;
+    const accentDensityPct =
+      wallCount > 0 ? ((wallAccentedCount / wallCount) * 100).toFixed(1) : '0';
+    const floorSourcesUsed = Object.keys(floorSourceCounts).length;
+    const corridorSourcesUsed = Object.keys(corridorSourceCounts).length;
+    mapStatsEl.textContent =
+      `${map.width}×${map.height}  Rooms: ${map.rooms.length}  Biome: ${biome}  Seed: ${seed}\n` +
+      `floor: ${floorSourcesUsed}/${pack.floorPool.length} sources, ${floorCombos.size} combos  |  ` +
+      `corridor: ${corridorSourcesUsed}/${pack.corridorPool.length} sources, ${corridorCombos.size} combos\n` +
+      `wall accents: ${wallAccentedCount}/${wallCount} (${accentDensityPct}%)  ` +
+      `[${Object.entries(wallAccentCounts)
+        .map(([id, n]) => `${id}:${n}`)
+        .join(' ')}]`;
   }
 
   // ── GUI controls ──────────────────────────────────────────────────────────

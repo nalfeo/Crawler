@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "theme-equipment-judge-speedup",
+  "task_title": "Speed up theme-equipment judging (cap 16->6 + bounded rejudge concurrency)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "convergent",
+      "notes": "Separate-model (rubber-duck/gpt-5.6-sol) plan review. 3 blocking concerns, all folded into the design pre-implementation: (1) strict concurrency validation (finite int >=1, reject NaN/Inf/fraction/neg) + clamp workers to min(concurrency,eligible) + judgeMaxVariants constrained 1..64; (2) on worker error, drain all in-flight workers before throwing (worker pool that self-catches; Promise.all settles then rethrow first error) - no orphaned Azure writes after rejection; (3) extend guard to reject concurrency>1 with judgeBudget OR judgeCache (cache check-then-call race). Non-blocking folded in: build returned Maps in considered-variant order (deterministic iteration); candidate-keyed test provider (detect cross-variant mis-association); rerun/theme wiring test (6 calls, peak concurrency 4); share the exported cap constant (no literal 6); document 62.5%-unjudged tradeoff in handoff; narrow claim to up to 8x rejudge / ~4x overall. Design shape unchanged -> convergent."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true
+    }
+  }
+}

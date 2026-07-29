@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "fix-ci-recovery-pr1939",
+  "task_title": "fix: check-exact-deps — version-bound exemptions, fileURLToPath path resolution; pin direct dep versions",
+  "estimated_apples": 2,
+  "stages": {}
+}

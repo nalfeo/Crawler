@@ -444,6 +444,112 @@ describe('FOV System', () => {
   });
 });
 
+describe('FOV System — whole-tile wall reveal', () => {
+  /** Collect the opaque tiles that have at least one visible sub-tile. */
+  function visibleOpaqueTiles(map: FloorMap): Array<[number, number]> {
+    const opaque: Array<[number, number]> = [];
+    for (let ty = 0; ty < map.height; ty++) {
+      for (let tx = 0; tx < map.width; tx++) {
+        if (!map.isVisible(tx, ty)) continue;
+        if (!map.tileMap.isTransparent(tx, ty)) opaque.push([tx, ty]);
+      }
+    }
+    return opaque;
+  }
+
+  /** True when every sub-tile of `(tx, ty)` is set in both bitmaps. */
+  function tileFullyLit(map: FloorMap, tx: number, ty: number): boolean {
+    const sf = map.subFactor;
+    for (let dy = 0; dy < sf; dy++) {
+      for (let dx = 0; dx < sf; dx++) {
+        const hx = tx * sf + dx;
+        const hy = ty * sf + dy;
+        if (!map.isVisibleSubtile(hx, hy) || !map.isDiscoveredSubtile(hx, hy)) return false;
+      }
+    }
+    return true;
+  }
+
+  for (const subFactor of [2, 4, 8]) {
+    it(`reveals every sub-tile of a seen wall tile at subFactor ${subFactor}`, () => {
+      const map = runFovAt(makeOpenMap(40, subFactor), 20, 20);
+      const opaque = visibleOpaqueTiles(map);
+
+      // The room's border walls sit inside the vision radius.
+      expect(opaque.length).toBeGreaterThan(0);
+      for (const [tx, ty] of opaque) {
+        expect(tileFullyLit(map, tx, ty), `wall tile (${tx},${ty}) only partially lit`).toBe(true);
+      }
+    });
+  }
+
+  it('fills the far side of a wall the player only grazes', () => {
+    // Vertical wall at column 12; the player stands well to its left, so
+    // shadowcasting only lands rays on the wall's left-facing sub-column.
+    const N = 40;
+    const col = 12;
+    const sf = 4;
+    const map = runFovAt(
+      makeOpenMap(N, sf, (t) => {
+        for (let y = 1; y < N - 1; y++) t.flags[y * N + col] = TilePresets.WALL;
+      }),
+      6,
+      10,
+    );
+
+    expect(map.isVisible(col, 10)).toBe(true);
+    // Far (right-most) sub-column of that wall tile — unreachable by any ray.
+    expect(map.isVisibleSubtile(col * sf + sf - 1, 10 * sf)).toBe(true);
+    expect(map.isDiscoveredSubtile(col * sf + sf - 1, 10 * sf)).toBe(true);
+  });
+
+  it('does not reveal wall tiles outside the field of view', () => {
+    const N = 40;
+    const col = 12;
+    const sf = 4;
+    const map = runFovAt(
+      makeOpenMap(N, sf, (t) => {
+        for (let y = 1; y < N - 1; y++) t.flags[y * N + col] = TilePresets.WALL;
+      }),
+      6,
+      10,
+    );
+
+    // The border wall hidden behind the blocking column stays unseen.
+    expect(map.isVisible(N - 1, 10)).toBe(false);
+    expect(map.isVisibleSubtile((N - 1) * sf, 10 * sf)).toBe(false);
+  });
+
+  it('keeps floor tiles at sub-tile granularity (walls are the only exception)', () => {
+    // The vision-radius ring must still cut floor tiles part-way; whole-tile
+    // filling is opaque-only.
+    const map = runFovAt(makeOpenMap(60, 4), 30, 30);
+    let partialFloorTiles = 0;
+    for (let ty = 0; ty < map.height; ty++) {
+      for (let tx = 0; tx < map.width; tx++) {
+        if (!map.isVisible(tx, ty)) continue;
+        if (!map.tileMap.isTransparent(tx, ty)) continue;
+        if (!tileFullyLit(map, tx, ty)) partialFloorTiles += 1;
+      }
+    }
+    expect(partialFloorTiles).toBeGreaterThan(0);
+  });
+
+  it('clears filled wall sub-tiles when the player moves away', () => {
+    const map = makeOpenMap(40, 4);
+    runFovAt(map, 2, 2); // hugging the top-left corner walls
+    // Top border wall directly above the player.
+    expect(map.isVisible(2, 0)).toBe(true);
+    expect(map.isVisibleSubtile(2 * 4 + 3, 3)).toBe(true);
+
+    runFovAt(map, 33, 33);
+    expect(map.isVisible(2, 0)).toBe(false);
+    expect(map.isVisibleSubtile(2 * 4 + 3, 3)).toBe(false);
+    // Discovered memory persists.
+    expect(map.isDiscoveredSubtile(2 * 4 + 3, 3)).toBe(true);
+  });
+});
+
 describe('FloorMap.clearVisibility — bounded bounding box', () => {
   it('only clears sub-tiles within the FOV footprint, not the full bitmap', () => {
     const config: MapConfig = {
