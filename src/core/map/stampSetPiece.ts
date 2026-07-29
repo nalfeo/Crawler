@@ -132,6 +132,16 @@ export interface StampSetPieceOptions {
   readonly roomBounds: RoomBounds;
   /** Feet per tile for the floor (e.g. 4.0). */
   readonly tileSizeFt: number;
+  /**
+   * How the def's (0,0) maps into the room:
+   *   - `interior-center` (default): historical behaviour — the def is aligned
+   *     within the 1-tile-inset interior per its `placement`.
+   *   - `bounds-topleft`: prefab-room mode — (0,0) maps to the room's top-left
+   *     bounds tile so the def's authored wall ring coincides with the room's
+   *     perimeter walls. Props may sit on the border ring; NPCs still clamp to
+   *     the interior so they never spawn on a wall.
+   */
+  readonly anchor?: 'interior-center' | 'bounds-topleft';
 }
 
 interface InteriorBounds {
@@ -197,7 +207,13 @@ function interiorOf(bounds: RoomBounds): InteriorBounds {
 export function computeStampOrigin(
   def: SetPieceDef,
   roomBounds: RoomBounds,
+  anchor: 'interior-center' | 'bounds-topleft' = 'interior-center',
 ): { originTileX: number; originTileY: number } {
+  if (anchor === 'bounds-topleft') {
+    // Prefab-room mode: the def's (0,0) IS the room's top-left corner so the
+    // authored wall ring lands exactly on the room's perimeter wall tiles.
+    return { originTileX: roomBounds.x, originTileY: roomBounds.y };
+  }
   const interior = interiorOf(roomBounds);
   const footprint = getSetPieceFootprint(def);
   const slackX = Math.max(0, interior.width - footprint.width);
@@ -220,8 +236,9 @@ export function computeStampOrigin(
  */
 export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): StampedSetPiece {
   const { roomBounds, tileSizeFt } = opts;
+  const anchor = opts.anchor ?? 'interior-center';
   const interior = interiorOf(roomBounds);
-  const { originTileX, originTileY } = computeStampOrigin(def, roomBounds);
+  const { originTileX, originTileY } = computeStampOrigin(def, roomBounds, anchor);
 
   // A room with no passable interior (width/height ≤ 0 after the 1-tile wall
   // inset) cannot host the set piece. Bail with the origin but no placements —
@@ -231,19 +248,32 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
     return { originTileX, originTileY, props: [], npcs: [] };
   }
 
+  // Region props are clamped into. In `bounds-topleft` (prefab) mode props may
+  // legitimately sit on the perimeter ring (wall/door art), so clamp to the full
+  // bounds; otherwise clamp to the interior as before.
+  const propRegion =
+    anchor === 'bounds-topleft'
+      ? {
+          minX: roomBounds.x,
+          minY: roomBounds.y,
+          maxX: roomBounds.x + roomBounds.width - 1,
+          maxY: roomBounds.y + roomBounds.height - 1,
+        }
+      : { minX: interior.minX, minY: interior.minY, maxX: interior.maxX, maxY: interior.maxY };
+
   const props: StampedSetPieceProp[] = [];
   flattenSetPieceLayers(def).forEach((draw, index) => {
     const { prop, layer, z, layerIndex } = draw;
     // Top-left tile of the prop footprint, clamped so the WHOLE footprint stays
-    // inside the interior. Clamping only the top-left let a multi-tile prop's
-    // right/bottom edge overflow onto wall tiles; bound the top-left by
+    // inside the clamp region. Clamping only the top-left let a multi-tile prop's
+    // right/bottom edge overflow; bound the top-left by
     // `maxX - (width - 1)` / `maxY - (height - 1)` instead. A prop bigger than
-    // the interior pins to the top-left (the `Math.max` floor); the degenerate
+    // the region pins to the top-left (the `Math.max` floor); the degenerate
     // interior is handled above.
-    const maxTileX = Math.max(interior.minX, interior.maxX - (prop.width - 1));
-    const maxTileY = Math.max(interior.minY, interior.maxY - (prop.height - 1));
-    const tileX = clamp(originTileX + prop.x, interior.minX, maxTileX);
-    const tileY = clamp(originTileY + prop.y, interior.minY, maxTileY);
+    const maxTileX = Math.max(propRegion.minX, propRegion.maxX - (prop.width - 1));
+    const maxTileY = Math.max(propRegion.minY, propRegion.maxY - (prop.height - 1));
+    const tileX = clamp(originTileX + prop.x, propRegion.minX, maxTileX);
+    const tileY = clamp(originTileY + prop.y, propRegion.minY, maxTileY);
     // Centre the sprite over the whole footprint (feet), then apply the layer's
     // sub-tile pixel offset (lab pixels → feet).
     const footprintCentreX = tileX * tileSizeFt + (prop.width * tileSizeFt) / 2;
@@ -254,10 +284,11 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
       ((layer.offsetX ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt + (layer.offsetXFt ?? 0);
     const offsetYFt =
       ((layer.offsetY ?? 0) / SET_PIECE_TILE_SIZE) * tileSizeFt + (layer.offsetYFt ?? 0);
-    // Render box in feet. An explicit `widthFt`/`heightFt` (validated as a pair)
-    // wins — the sprite is contain-fit inside it, so realistic sizing never
-    // stretches the art. Otherwise the base layer fills the prop footprint and
-    // accent layers keep their own (smaller) extent.
+    // Render box in feet. `heightFt` is AUTHORITATIVE for upright props: the
+    // renderer scales the sprite so its apparent vertical height matches, and the
+    // width follows the art's own aspect. Floor decals contain-fit both dims.
+    // Otherwise the base layer fills the prop footprint and accent layers keep
+    // their own (smaller) extent.
     let boxWidthFt: number;
     let boxHeightFt: number;
     if (layer.widthFt !== undefined && layer.heightFt !== undefined) {
@@ -276,7 +307,12 @@ export function stampSetPiece(def: SetPieceDef, opts: StampSetPieceOptions): Sta
       depth: setPieceZToDepth(z) + index * LAYER_DEPTH_EPSILON,
       widthFt: boxWidthFt,
       heightFt: boxHeightFt,
+      // Floor decals lie in the ground plane, so both declared feet are real
+      // ground extents and the renderer must contain-fit them. Upright props are
+      // height-authoritative so a conservative width can never flatten them.
+      ...(prop.kind === 'floor' ? { floorPlane: true } : {}),
       ...(layer.scale !== undefined ? { scale: layer.scale } : {}),
+      ...(layer.anchorBase !== undefined ? { anchorBase: layer.anchorBase } : {}),
       ...(layer.flipX !== undefined ? { flipX: layer.flipX } : {}),
       ...(layer.flipY !== undefined ? { flipY: layer.flipY } : {}),
       ...(layer.rotationDeg !== undefined ? { rotationDeg: layer.rotationDeg } : {}),

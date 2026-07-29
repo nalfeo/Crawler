@@ -829,7 +829,10 @@ test('invariant: every writable recovery status is dispatch-reachable through so
       trainEnabled: true,
       now: nowDate,
     });
-    assert.ok(numbers.includes(prNumber), `status=${status} must be reachable through schedule sweep`);
+    assert.ok(
+      numbers.includes(prNumber),
+      `status=${status} must be reachable through schedule sweep`,
+    );
   }
 });
 
@@ -896,7 +899,10 @@ test('repair wake invariant: schedule sweep reaches ownerless idle/waiting state
   });
 
   assert.ok(numbers.includes(3201), 'idle waiting PR should be repair-sweep reachable');
-  assert.ok(numbers.includes(3202), 'ownerless waiting+no-blockers PR should be repair-sweep reachable');
+  assert.ok(
+    numbers.includes(3202),
+    'ownerless waiting+no-blockers PR should be repair-sweep reachable',
+  );
   assert.ok(!numbers.includes(3203), 'genuine waiting-with-blockers PR should remain hidden');
 });
 
@@ -1388,7 +1394,10 @@ test('train PR-less default-branch CI sweeps preserve owner slots without redisp
     now: new Date('2026-07-17T12:10:00.000Z'),
   });
   // Verify the healthy-owner PR is excluded; order is rotation-based so compare as a set.
-  assert.deepEqual([...result].sort((a, b) => a - b), [2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(
+    [...result].sort((a, b) => a - b),
+    [2, 3, 4, 5, 6, 7],
+  );
 });
 
 test('train sweeps over-select past healthy owners to the next dispatchable PR', () => {
@@ -1455,7 +1464,10 @@ test('direct events retain a healthy owner while broad sweeps include stale and 
     trainEnabled: true,
     now: new Date('2026-07-17T12:10:00.000Z'),
   });
-  assert.deepEqual([...scheduleResult].sort((a, b) => a - b), [2, 3]);
+  assert.deepEqual(
+    [...scheduleResult].sort((a, b) => a - b),
+    [2, 3],
+  );
   assert.deepEqual(
     collectPrNumbers({
       payload: { pull_request: { number: 1 } },

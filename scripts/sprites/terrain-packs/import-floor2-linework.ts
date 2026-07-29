@@ -30,6 +30,7 @@ import { generateMaterial, loadEnvLocal } from './gen/azure-image.js';
 import {
   FLOOR2_LINEWORK_MATERIALS,
   FLOOR2_LINEWORK_PROPS,
+  FLOOR2_LINEWORK_WEAR,
   type SurfaceMaterialSpec,
 } from './gen/materials.js';
 import {
@@ -47,10 +48,11 @@ const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
 const PACK_DIR = path.join(REPO_ROOT, 'public', 'assets', 'terrain-packs', 'industrial-cave');
 
 const FRAME_COUNT = 16;
-const PROP_FRAME_COUNT = 4;
 
-/** Prop sheet quadrants; the generated sheet is a 2x2 grid. */
-const PROP_GRID = 2;
+/** Prop sheet cells; the generated sheet is a 3x2 grid (track row, pipe row). */
+const PROP_COLS = 3;
+const PROP_ROWS = 2;
+const PROP_FRAME_COUNT = PROP_COLS * PROP_ROWS;
 
 async function material(spec: SurfaceMaterialSpec): Promise<RgbaImage> {
   const generated = await generateMaterial({
@@ -240,7 +242,7 @@ const PIPE_STOPS = [
   { t: Number.POSITIVE_INFINITY, gain: 0.34 },
 ] as const;
 /** Rail head: bright running surface, dark web at the outside. */
-const RAIL_BANDS = [1.12, 0.94, 0.66] as const;
+const RAIL_BANDS = [1.25, 0.98, 0.58] as const;
 /** Cross-members sit lower than the body, with a slight crown of their own. */
 const TIE_BANDS = [0.86, 1.14, 0.9] as const;
 
@@ -258,11 +260,19 @@ function stopGain(stops: readonly { t: number; gain: number }[], shade: number):
   return stops[stops.length - 1]?.gain ?? 1;
 }
 
+/** A raised rivet band catches more light than the tube it wraps. */
+const COLLAR_GAIN = 1.45;
+
 function memberGain(cls: number, shade: number, round: boolean): number {
   if (cls === LINEWORK_PIXEL.Rail) {
     return round ? stopGain(PIPE_STOPS, shade) : bandGain(RAIL_BANDS, Math.abs(shade) * 2 - 1);
   }
-  if (cls === LINEWORK_PIXEL.Tie) return bandGain(TIE_BANDS, shade);
+  if (cls === LINEWORK_PIXEL.Tie) {
+    // On a round body the collar keeps the cylinder ramp and is simply lifted, so
+    // the band reads as raised hardware rather than a flat stripe painted across
+    // the tube.
+    return round ? stopGain(PIPE_STOPS, shade) * COLLAR_GAIN : bandGain(TIE_BANDS, shade);
+  }
   return bandGain(TIE_BANDS, shade) * 1.12;
 }
 
@@ -299,6 +309,33 @@ const PROP_PIXEL_STYLE: PixelArtMaterialStyle = {
   maxChroma: 6,
 };
 
+/**
+ * Track-specific restyle.
+ *
+ * The human called the shipped track "too light and too narrow". Only ONE of
+ * those is a brightness problem, and it is not the one it looks like:
+ * `restylePixelArtMaterial` normalises toward `targetMeanLuminance`, so raising
+ * the mean would make track objectively BRIGHTER — the opposite of the note, and
+ * a direct violation of the near-floor-tone rule above. "Too light" here means
+ * too WEAK: thin, low-contrast, washed into the floor. So the mean and the cap
+ * are held exactly where they are, and boldness comes from the three things that
+ * actually carry it — wider rails and sleepers (geometry), a wider value spread,
+ * and a much darker silhouette rim.
+ */
+const TRACK_PIXEL_STYLE: PixelArtMaterialStyle = {
+  ...LINEWORK_PIXEL_STYLE,
+  targetStdDev: 34,
+};
+
+/** Default silhouette darkening. */
+const RIM_SCALE_DEFAULT = RIM_SCALE;
+
+/** Track gets a near-black outline so rails read as drawn linework at zoom. */
+const TRACK_RIM_SCALE = 0.34;
+
+/** Props get the same treatment; they arrive from Azure with no outline at all. */
+const PROP_RIM_SCALE = 0.42;
+
 function isRim(cls: Uint8Array, size: number, x: number, y: number): boolean {
   const neighbours = [
     [x, y - 1],
@@ -315,12 +352,41 @@ function isRim(cls: Uint8Array, size: number, x: number, y: number): boolean {
   return false;
 }
 
+/**
+ * Corrosion overlay strength.
+ *
+ * The wear material is thresholded, not blended: only its dark tail becomes
+ * damage, so the clean metal between streaks stays clean. `WEAR_FLOOR` bounds
+ * how black a streak can get — beyond about 0.6 the pipe stops reading as a
+ * cylinder because the damage starts competing with the shading bands.
+ */
+const WEAR_CUT = 132;
+const WEAR_FLOOR = 0.36;
+
+/** Multiplicative darkening from the wear material at this pixel. */
+function wearGain(wear: RgbaImage | undefined, frame: number, x: number, y: number): number {
+  if (!wear) return 1;
+  const [r, g, b] = sampleTile(wear, frame, x, y);
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  if (lum >= WEAR_CUT) return 1;
+  return WEAR_FLOOR + (1 - WEAR_FLOOR) * (lum / WEAR_CUT);
+}
+
 function buildAtlas(
   profile: LineworkProfile,
   bodyTile: RgbaImage,
   tieTile: RgbaImage,
   /** True when the body is a single round tube rather than paired rail heads. */
   round: boolean,
+  style: PixelArtMaterialStyle = LINEWORK_PIXEL_STYLE,
+  rimScale: number = RIM_SCALE_DEFAULT,
+  /**
+   * Optional corrosion field. Sampled through `sampleTile`, so it inherits the
+   * edge lock verbatim: the outermost ring stays a pure function of
+   * (along-edge coordinate, depth) and every frame's stub still matches
+   * byte-for-byte.
+   */
+  wearTile?: RgbaImage,
 ): RgbaImage {
   const size = LINEWORK_CELL_PX;
   const width = size * FRAME_COUNT;
@@ -332,11 +398,16 @@ function buildAtlas(
         const c = cls[y * size + x] as number;
         const o = (y * width + frame * size + x) * 4;
         if (c === LINEWORK_PIXEL.Empty) continue;
-        const src = c === LINEWORK_PIXEL.Tie ? tieTile : bodyTile;
+        // Rails are the only member cut from the body material. Sleepers AND
+        // buffer stops are timber on a track, so the cap must follow the tie.
+        const src = c === LINEWORK_PIXEL.Rail ? bodyTile : tieTile;
         const [r, g, b] = sampleTile(src, frame, x, y);
+        const rim = isRim(cls, size, x, y);
+        // Damage rides the bore only. Collars are raised hardware and the rim is
+        // already near-black, so corroding either just muddies the silhouette.
+        const wear = rim || c !== LINEWORK_PIXEL.Rail ? 1 : wearGain(wearTile, frame, x, y);
         const gain =
-          memberGain(c, shade[y * size + x] as number, round) *
-          (isRim(cls, size, x, y) ? RIM_SCALE : 1);
+          memberGain(c, shade[y * size + x] as number, round) * (rim ? rimScale : 1) * wear;
         out.data[o] = clamp8(r * gain);
         out.data[o + 1] = clamp8(g * gain);
         out.data[o + 2] = clamp8(b * gain);
@@ -345,7 +416,7 @@ function buildAtlas(
       }
     }
   }
-  return restylePixelArtMaterial(out, LINEWORK_PIXEL_STYLE);
+  return restylePixelArtMaterial(out, style);
 }
 
 /**
@@ -359,7 +430,7 @@ function buildAtlas(
  * still protected as long as the object's outline is not itself background
  * coloured.
  */
-const PROP_KEY_TOLERANCE = 110;
+const PROP_KEY_TOLERANCE = 58;
 
 /** Pixels of antialiased key-colour fringe removed from every prop silhouette. */
 const PROP_ERODE_PX = 3;
@@ -398,7 +469,7 @@ function colourDistance(
 }
 
 /**
- * Cut the 2x2 generated prop sheet into four keyed 64px frames.
+ * Cut the 3x2 generated prop sheet into six keyed 64px frames.
  *
  * Chroma keying is DERIVATION, not synthesis: the object's silhouette and its
  * surface both come from the generated image, local code only decides which
@@ -412,110 +483,179 @@ function colourDistance(
  * cart, between the spokes of a valve wheel) is never reached from the border,
  * so it stays opaque instead of punching a hole through the sprite.
  */
+interface PropComponent {
+  readonly pixels: Int32Array;
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}
+
+/**
+ * Label the object mask into connected components, largest first.
+ *
+ * This replaces slicing the sheet into a rigid grid. The generator centres its
+ * objects only approximately: an object routinely overhangs its notional cell,
+ * and every object carries a faint contact shadow that keys as foreground. A
+ * grid slice therefore truncated the overhanging objects and, worse, let a few
+ * stray shadow pixels near a cell corner blow the bounding box wide open so the
+ * real object downscaled to a speck. Components have neither failure mode: an
+ * object is exactly one blob wherever it happens to sit, and shadow crumbs are
+ * simply the small components we drop.
+ */
+function propComponents(mask: Uint8Array, w: number, h: number): PropComponent[] {
+  const seen = new Uint8Array(w * h);
+  const found: PropComponent[] = [];
+  const stack: number[] = [];
+  for (let start = 0; start < mask.length; start++) {
+    if (!mask[start] || seen[start]) continue;
+    seen[start] = 1;
+    stack.length = 0;
+    stack.push(start);
+    const pixels: number[] = [];
+    let minX = w;
+    let minY = h;
+    let maxX = -1;
+    let maxY = -1;
+    while (stack.length > 0) {
+      const idx = stack.pop() as number;
+      const x = idx % w;
+      const y = (idx - x) / w;
+      pixels.push(idx);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      const neighbours = [
+        y > 0 ? idx - w : -1,
+        y < h - 1 ? idx + w : -1,
+        x > 0 ? idx - 1 : -1,
+        x < w - 1 ? idx + 1 : -1,
+      ];
+      for (const n of neighbours) {
+        if (n < 0 || seen[n] || !mask[n]) continue;
+        seen[n] = 1;
+        stack.push(n);
+      }
+    }
+    found.push({ pixels: Int32Array.from(pixels), minX, minY, maxX, maxY });
+  }
+  // Deterministic: area descending, then scan order, so an exact area tie can
+  // never reorder the sheet between runs.
+  found.sort((a, b) => b.pixels.length - a.pixels.length || a.pixels[0]! - b.pixels[0]!);
+  return found;
+}
+
+/** Reading order: row bands top to bottom, then left to right within a band. */
+function readingOrder(components: PropComponent[]): PropComponent[] {
+  const byY = [...components].sort(
+    (a, b) => (a.minY + a.maxY) / 2 - (b.minY + b.maxY) / 2 || a.minX - b.minX,
+  );
+  const ordered: PropComponent[] = [];
+  for (let row = 0; row < PROP_ROWS; row++) {
+    const band = byY.slice(row * PROP_COLS, (row + 1) * PROP_COLS);
+    band.sort((a, b) => (a.minX + a.maxX) / 2 - (b.minX + b.maxX) / 2);
+    ordered.push(...band);
+  }
+  return ordered;
+}
+
 function buildPropAtlas(sheet: RgbaImage): RgbaImage {
   const size = LINEWORK_CELL_PX;
   const width = size * PROP_FRAME_COUNT;
   const out: RgbaImage = { width, height: size, data: Buffer.alloc(width * size * 4) };
-  const qw = Math.floor(sheet.width / PROP_GRID);
-  const qh = Math.floor(sheet.height / PROP_GRID);
+  const w = sheet.width;
+  const h = sheet.height;
+  const at = (x: number, y: number): number => (y * w + x) * 4;
+
+  // Key colour = mean of the sheet's outermost ring, which is background
+  // everywhere by construction (the prompt demands a wide margin).
+  let kr = 0;
+  let kg = 0;
+  let kb = 0;
+  let ringCount = 0;
+  for (let x = 0; x < w; x++) {
+    for (const y of [0, h - 1]) {
+      const i = at(x, y);
+      kr += sheet.data[i] as number;
+      kg += sheet.data[i + 1] as number;
+      kb += sheet.data[i + 2] as number;
+      ringCount++;
+    }
+  }
+  kr /= ringCount;
+  kg /= ringCount;
+  kb /= ringCount;
+
+  // Flood the background inward from the sheet border.
+  const background = new Uint8Array(w * h);
+  const stack: number[] = [];
+  const push = (x: number, y: number): void => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const idx = y * w + x;
+    if (background[idx]) return;
+    const i = at(x, y);
+    const d = colourDistance(
+      sheet.data[i] as number,
+      sheet.data[i + 1] as number,
+      sheet.data[i + 2] as number,
+      kr,
+      kg,
+      kb,
+    );
+    if (d > PROP_KEY_TOLERANCE) return;
+    background[idx] = 1;
+    stack.push(idx);
+  };
+  for (let x = 0; x < w; x++) {
+    push(x, 0);
+    push(x, h - 1);
+  }
+  for (let y = 0; y < h; y++) {
+    push(0, y);
+    push(w - 1, y);
+  }
+  while (stack.length > 0) {
+    const idx = stack.pop() as number;
+    const x = idx % w;
+    const y = (idx - x) / w;
+    push(x, y - 1);
+    push(x + 1, y);
+    push(x, y + 1);
+    push(x - 1, y);
+  }
+
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < mask.length; i++) mask[i] = background[i] ? 0 : 1;
+
+  // Label BEFORE eroding. The erode is a halo trim, but a couple of pixels is
+  // enough to sever a cart's thin wall from its floor, and a severed object
+  // becomes two smaller components — which is how the six largest blobs stopped
+  // being the six objects.
+  const components = propComponents(mask, w, h);
+  if (components.length < PROP_FRAME_COUNT) {
+    throw new Error(
+      `Prop sheet keyed to ${components.length} objects, expected at least ${PROP_FRAME_COUNT}.`,
+    );
+  }
+  const frames = readingOrder(components.slice(0, PROP_FRAME_COUNT));
 
   for (let frame = 0; frame < PROP_FRAME_COUNT; frame++) {
-    const qx = (frame % PROP_GRID) * qw;
-    const qy = Math.floor(frame / PROP_GRID) * qh;
-    const at = (x: number, y: number): number => ((qy + y) * sheet.width + qx + x) * 4;
-
-    // Key colour = mean of the quadrant's outermost ring, which is background
-    // everywhere by construction (the prompt demands a wide margin).
-    let kr = 0;
-    let kg = 0;
-    let kb = 0;
-    let ringCount = 0;
-    for (let x = 0; x < qw; x++) {
-      for (const y of [0, qh - 1]) {
-        const i = at(x, y);
-        kr += sheet.data[i] as number;
-        kg += sheet.data[i + 1] as number;
-        kb += sheet.data[i + 2] as number;
-        ringCount++;
-      }
-    }
-    kr /= ringCount;
-    kg /= ringCount;
-    kb /= ringCount;
-
-    // Flood the background inward from the border.
-    const background = new Uint8Array(qw * qh);
-    const stack: number[] = [];
-    const push = (x: number, y: number): void => {
-      if (x < 0 || y < 0 || x >= qw || y >= qh) return;
-      const idx = y * qw + x;
-      if (background[idx]) return;
-      const i = at(x, y);
-      const d = colourDistance(
-        sheet.data[i] as number,
-        sheet.data[i + 1] as number,
-        sheet.data[i + 2] as number,
-        kr,
-        kg,
-        kb,
-      );
-      if (d > PROP_KEY_TOLERANCE) return;
-      background[idx] = 1;
-      stack.push(idx);
-    };
-    for (let x = 0; x < qw; x++) {
-      push(x, 0);
-      push(x, qh - 1);
-    }
-    for (let y = 0; y < qh; y++) {
-      push(0, y);
-      push(qw - 1, y);
-    }
-    while (stack.length > 0) {
-      const idx = stack.pop() as number;
-      const x = idx % qw;
-      const y = (idx - x) / qw;
-      push(x, y - 1);
-      push(x + 1, y);
-      push(x, y + 1);
-      push(x - 1, y);
-    }
-
-    const mask = new Uint8Array(qw * qh);
-    let minX = qw;
-    let minY = qh;
-    let maxX = -1;
-    let maxY = -1;
-    for (let y = 0; y < qh; y++) {
-      for (let x = 0; x < qw; x++) {
-        if (background[y * qw + x]) continue;
-        mask[y * qw + x] = 1;
-      }
-    }
+    const comp = frames[frame] as PropComponent;
+    // Only this component's own pixels are foreground, so a neighbouring
+    // object overlapping the bounding box cannot bleed into the frame.
+    const own = new Uint8Array(w * h);
+    for (const idx of comp.pixels) own[idx] = 1;
     // Erode the object by a couple of pixels. The generator antialiases every
     // object against the magenta field, so the outermost ring of "object" pixels
     // is really a magenta blend — leave it in and the sprite keeps a pink halo
     // and, after chroma normalisation, a lavender cast on anything light.
-    eroded(mask, qw, qh, PROP_ERODE_PX);
-    for (let y = 0; y < qh; y++) {
-      for (let x = 0; x < qw; x++) {
-        if (!mask[y * qw + x]) continue;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-    }
-    if (maxX < 0) {
-      throw new Error(
-        `Prop quadrant ${frame} keyed to nothing — the generated sheet has no object on a flat field.`,
-      );
-    }
+    eroded(own, w, h, PROP_ERODE_PX);
 
     // Square the bounding box so the downscale does not distort the object.
-    const side = Math.max(maxX - minX + 1, maxY - minY + 1);
-    const cx = Math.floor((minX + maxX) / 2);
-    const cy = Math.floor((minY + maxY) / 2);
+    const side = Math.max(comp.maxX - comp.minX + 1, comp.maxY - comp.minY + 1);
+    const cx = Math.floor((comp.minX + comp.maxX) / 2);
+    const cy = Math.floor((comp.minY + comp.maxY) / 2);
     const x0 = cx - Math.floor(side / 2);
     const y0 = cy - Math.floor(side / 2);
     const step = side / size;
@@ -536,9 +676,9 @@ function buildPropAtlas(sheet: RgbaImage): RgbaImage {
         for (let sy = sy0; sy < Math.max(sy1, sy0 + 1); sy++) {
           for (let sx = sx0; sx < Math.max(sx1, sx0 + 1); sx++) {
             total++;
-            if (sx < 0 || sy < 0 || sx >= qw || sy >= qh) continue;
-            if (!mask[sy * qw + sx]) continue;
-            const i = ((qy + sy) * sheet.width + qx + sx) * 4;
+            if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+            if (!own[sy * w + sx]) continue;
+            const i = at(sx, sy);
             r += sheet.data[i] as number;
             g += sheet.data[i + 1] as number;
             b += sheet.data[i + 2] as number;
@@ -554,7 +694,45 @@ function buildPropAtlas(sheet: RgbaImage): RgbaImage {
       }
     }
   }
-  return out;
+  return outlineProps(out);
+}
+
+/**
+ * Stamp a 1px near-black silhouette outline around every prop.
+ *
+ * The linework atlases get theirs from `isRim`; props are cut from a photograph
+ * so they arrive with no outline at all and read as mush at play scale against
+ * a busy cave floor. Darkening the existing edge pixel (rather than growing the
+ * sprite) keeps alpha binary and cannot change the sprite's footprint.
+ */
+function outlineProps(atlas: RgbaImage): RgbaImage {
+  const { width, height, data } = atlas;
+  const edge: number[] = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const o = (y * width + x) * 4;
+      if (data[o + 3] === 0) continue;
+      // Frame-local: the atlas is a strip, so a neighbour across a frame seam is
+      // a different sprite and must count as empty.
+      const local = x % LINEWORK_CELL_PX;
+      const open =
+        y === 0 ||
+        y === height - 1 ||
+        local === 0 ||
+        local === LINEWORK_CELL_PX - 1 ||
+        data[((y - 1) * width + x) * 4 + 3] === 0 ||
+        data[((y + 1) * width + x) * 4 + 3] === 0 ||
+        data[(y * width + x - 1) * 4 + 3] === 0 ||
+        data[(y * width + x + 1) * 4 + 3] === 0;
+      if (open) edge.push(o);
+    }
+  }
+  for (const o of edge) {
+    data[o] = clamp8((data[o] as number) * PROP_RIM_SCALE);
+    data[o + 1] = clamp8((data[o + 1] as number) * PROP_RIM_SCALE);
+    data[o + 2] = clamp8((data[o + 2] as number) * PROP_RIM_SCALE);
+  }
+  return atlas;
 }
 
 function write(relName: string, image: RgbaImage): void {
@@ -570,6 +748,7 @@ async function main(): Promise<void> {
   const timberRaw = await material(FLOOR2_LINEWORK_MATERIALS.timber);
   const ironRaw = await material(FLOOR2_LINEWORK_MATERIALS.iron);
   const propsRaw = await material(FLOOR2_LINEWORK_PROPS);
+  const wearRaw = await material(FLOOR2_LINEWORK_WEAR);
 
   const steel = chunkify(
     flatten(toMaterialTile(steelRaw, FLOOR2_LINEWORK_MATERIALS.steel.tile), TEXTURE_KEEP),
@@ -584,9 +763,20 @@ async function main(): Promise<void> {
     TEXTURE_BLOCK_PX,
   );
 
+  // Wear keeps its own contrast: flattening it toward the mean would erase the
+  // dark tail that IS the damage. It is chunkified so the streaks land on the
+  // same 2px pixel grid as everything else.
+  const wear = chunkify(toMaterialTile(wearRaw, FLOOR2_LINEWORK_WEAR.tile), TEXTURE_BLOCK_PX);
+
   console.log('Floor 2 linework: atlases');
-  write('linework-track.png', buildAtlas(TRACK_PROFILE, steel, timber, false));
-  write('linework-pipe.png', buildAtlas(PIPE_PROFILE, iron, iron, true));
+  write(
+    'linework-track.png',
+    buildAtlas(TRACK_PROFILE, steel, timber, false, TRACK_PIXEL_STYLE, TRACK_RIM_SCALE),
+  );
+  write(
+    'linework-pipe.png',
+    buildAtlas(PIPE_PROFILE, iron, iron, true, LINEWORK_PIXEL_STYLE, RIM_SCALE_DEFAULT, wear),
+  );
   write('linework-props.png', restylePixelArtMaterial(buildPropAtlas(propsRaw), PROP_PIXEL_STYLE));
 
   console.log(

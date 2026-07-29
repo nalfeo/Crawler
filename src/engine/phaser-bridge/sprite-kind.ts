@@ -1,4 +1,5 @@
 import { hasComponent } from 'bitecs';
+import npcSpriteMap from '../../shared/data/npc-sprite-map.json';
 import {
   AoeOnImpact,
   AreaDamage,
@@ -336,17 +337,24 @@ export function pickGeneratedEnemyTextureKey(
  *
  * NPCs resolve their generated art def-aware — by NPC def id — rather than via
  * a variant roll like enemies, because the shipped variants differ per NPC: the
- * Spell Broker's approved variant is `var-1` while the Goon and Merchant shipped
- * as `var-0`. Computing a variant index from a roll would therefore mis-pick the
- * broker. Values are the BARE manifest keys, which preload as individual Phaser
- * textures (verified for the welcome-room set-piece props in PR #905) — so a
- * caller only needs `scene.textures.exists(key)` to gate on availability.
+ * approved variants are `var-1` for the Goon and Spell Broker and `var-3` for
+ * the Merchant. Computing a variant index from a roll would therefore mis-pick
+ * every one of them. Values are the BARE manifest keys, which preload as
+ * individual Phaser textures (verified for the welcome-room set-piece props in
+ * PR #905) — so a caller only needs `scene.textures.exists(key)` to gate on
+ * availability.
+ *
+ * The Goon and Merchant point at `-v3-` regenerations: their `npc-*-var-0`
+ * predecessors shipped skin painted in the palette's saturated warm accent
+ * (see `docs/agent-os/sprite-style.md`).
+ *
+ * The mapping itself lives in `src/shared/data/npc-sprite-map.json` because the
+ * Set Piece Editor extension (standalone `.mjs`, cannot import TypeScript) has
+ * to resolve the same NPC art. It previously kept its own copy, which went stale
+ * the moment these two were repointed at `-v3-` — so the editor rendered
+ * already-replaced sprites and every screenshot taken from it was wrong.
  */
-export const GENERATED_KEY_BY_NPC_DEF: Readonly<Record<string, string>> = {
-  'tutorial-goon': 'npc-welcome-goon-var-0',
-  shopkeeper: 'npc-sweaty-merchant-var-0',
-  'spell-quest-giver': 'npc-spell-broker-var-1',
-};
+export const GENERATED_KEY_BY_NPC_DEF: Readonly<Record<string, string>> = npcSpriteMap.byNpcDefId;
 
 /**
  * Resolve the pinned generated texture key for an NPC def id, or `null` when

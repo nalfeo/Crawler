@@ -51,6 +51,35 @@ const anchorsSchema = z
   .strict();
 
 /**
+ * Bounding box of a sprite's non-transparent pixels, plus the canvas it was
+ * measured against so a consumer can tell when it has gone stale.
+ *
+ * ## Why this is not `anchor`
+ *
+ * `anchor` is derived per-brief by whichever sensor mode that brief configured,
+ * so it has no uniform meaning. Measured across the welcome room's 34 base
+ * layers: 16 anchors sit at the opaque bottom, 18 sit at the opaque centre, and
+ * one is `0,0`. A consumer asking "where does this object actually end" would
+ * therefore be right on roughly half the corpus and silently wrong on the rest,
+ * with no signal to tell the two apart. `opaqueBounds` has exactly one meaning
+ * for every sprite, which is the whole point of it being separate.
+ *
+ * Backfilled by `sprites:derive-opaque-bounds` and written at approval time.
+ */
+const opaqueBoundsSchema = z
+  .object({
+    x: z.number().int(),
+    y: z.number().int(),
+    width: z.number().int(),
+    height: z.number().int(),
+    canvasWidth: z.number().int(),
+    canvasHeight: z.number().int(),
+  })
+  .strict();
+
+export type OpaqueBounds = z.infer<typeof opaqueBoundsSchema>;
+
+/**
  * Manifest entry schema. Mirrors `ManifestEntry` from
  * `scripts/sprites/approve.ts`. Kept loose (`.passthrough()`) on unknown
  * fields so adding fields on the approve side does not require a coordinated
@@ -93,6 +122,7 @@ const manifestEntrySchema = z
      * pin the exact bytes a reference was sampled from (rerun reproducibility).
      */
     contentHash: z.string().optional(),
+    opaqueBounds: opaqueBoundsSchema.optional(),
     postprocessOverrideProfilePath: z.string().nullable().optional(),
     effectivePipelineSnapshotPath: z.string().nullable().optional(),
     effectivePipelineSnapshotYamlPath: z.string().nullable().optional(),
@@ -143,6 +173,12 @@ export interface GeneratedSpriteEntry {
   readonly weaponAnchor?: { readonly x: number; readonly y: number };
   /** True when the original manifest entry's anchor was null. */
   readonly anchorIsDefault: boolean;
+  /**
+   * Bounding box of the sprite's visible pixels. Absent on legacy entries not
+   * yet covered by `sprites:derive-opaque-bounds`; consumers must degrade to
+   * whole-canvas behaviour rather than assuming a box.
+   */
+  readonly opaqueBounds?: OpaqueBounds;
   readonly approvedAt: string;
   readonly sourceRun: string;
   readonly variantIndex: number;
@@ -262,6 +298,7 @@ function toRegistryEntry(entry: ManifestEntry, manifestKey: string): GeneratedSp
     centerOfGravity,
     ...(weaponAnchor !== undefined ? { weaponAnchor } : {}),
     anchorIsDefault: hold === null,
+    ...(entry.opaqueBounds !== undefined ? { opaqueBounds: entry.opaqueBounds } : {}),
     approvedAt: entry.approvedAt,
     sourceRun: entry.sourceRun,
     variantIndex: entry.variantIndex,
@@ -303,6 +340,101 @@ export function pickGeneratedVariant(
  * an actual loaded texture reference (e.g. in headless simulation or tests).
  */
 export const DEFAULT_GENERATED_FRAME_SIZE_PX = 64;
+
+/** Inputs for {@link resolveOpaqueFit}. */
+export interface OpaqueFitInput {
+  /** Opaque bounds from the manifest, or `undefined` for legacy entries. */
+  readonly bounds: OpaqueBounds | undefined;
+  /** Actual loaded texture size, used to validate the bounds and to fall back. */
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+  /** Declared size in pixels (feet already converted). */
+  readonly targetWidthPx: number;
+  readonly targetHeightPx: number;
+  /** True when the prop stands on its position; false = centred on it. */
+  readonly anchorBase: boolean;
+  /**
+   * True when both declared dimensions are real ground extents (rugs, decals),
+   * so the art is contain-fitted instead of height-authoritative.
+   */
+  readonly floorPlane: boolean;
+}
+
+/** Origin (0..1 of the frame) plus the uniform scale to apply. */
+export interface OpaqueFit {
+  readonly originX: number;
+  readonly originY: number;
+  readonly scale: number;
+}
+
+/**
+ * Resolve the origin + scale that make a prop's DECLARED feet describe its
+ * VISIBLE pixels rather than its canvas.
+ *
+ * Without this, both numbers are measured against the raw canvas, which
+ * includes the pipeline's standardized ~5%-per-side transparent safety margin.
+ * Two consequences, both measured in the welcome room:
+ *
+ *   1. A base-anchored prop is pinned by the canvas bottom rather than the
+ *      object's feet, so it floats above its floor line by the bottom margin —
+ *      up to 0.42 ft on `laundry-line`.
+ *   2. `heightFt` scales the canvas, so a prop declared 6 ft tall renders its
+ *      visible art ~10% shorter than 6 ft.
+ *
+ * Anchoring and scaling on the opaque bounds fixes both from data derived out
+ * of the shipped PNG, so it survives art regeneration — unlike hand-trimming
+ * the margin out of the file, which would break the manifest `contentHash`
+ * integrity check that `reconcile-queue` relies on and be undone by the next
+ * regeneration anyway.
+ *
+ * Falls back to whole-canvas behaviour when bounds are absent (legacy entries)
+ * or disagree with the loaded texture (art replaced without a re-derive), so a
+ * stale manifest degrades to the previous rendering rather than to garbage.
+ */
+/**
+ * The rectangle a sprite should actually be fitted/anchored on: its opaque
+ * bounds when they are present and consistent with the loaded texture,
+ * otherwise the whole canvas.
+ *
+ * Exported so callers that need a non-height-authoritative fit (doors are
+ * width-authoritative) can derive their own scale from the SAME box
+ * `resolveOpaqueFit` anchors on. Recomputing this validation at the call site
+ * is how origin and scale drift apart on malformed bounds.
+ */
+export function resolveOpaqueBox(
+  bounds: OpaqueBounds | undefined,
+  canvasWidth: number,
+  canvasHeight: number,
+): { x: number; y: number; width: number; height: number } {
+  const usable =
+    bounds !== undefined &&
+    bounds.canvasWidth === canvasWidth &&
+    bounds.canvasHeight === canvasHeight &&
+    bounds.width > 0 &&
+    bounds.height > 0 &&
+    bounds.x >= 0 &&
+    bounds.y >= 0 &&
+    bounds.x + bounds.width <= canvasWidth &&
+    bounds.y + bounds.height <= canvasHeight;
+  return usable ? bounds : { x: 0, y: 0, width: canvasWidth, height: canvasHeight };
+}
+
+export function resolveOpaqueFit(input: OpaqueFitInput): OpaqueFit {
+  const { bounds, canvasWidth, canvasHeight, targetWidthPx, targetHeightPx } = input;
+  if (canvasWidth <= 0 || canvasHeight <= 0) {
+    return { originX: 0.5, originY: input.anchorBase ? 1 : 0.5, scale: 1 };
+  }
+  const box = resolveOpaqueBox(bounds, canvasWidth, canvasHeight);
+  return {
+    originX: (box.x + box.width / 2) / canvasWidth,
+    originY: input.anchorBase
+      ? (box.y + box.height) / canvasHeight
+      : (box.y + box.height / 2) / canvasHeight,
+    scale: input.floorPlane
+      ? Math.min(targetWidthPx / box.width, targetHeightPx / box.height)
+      : targetHeightPx / box.height,
+  };
+}
 
 /**
  * Default visual width (and height) in world feet for a generated enemy sprite

@@ -191,6 +191,8 @@ interface MainSceneInternals {
     packGroundDecalCount: number;
     packLineworkTileCount: number;
     packLineworkPropCount: number;
+    packLineworkBuriedCount: number;
+    packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
     packLineworkRuns: readonly {
       layerId: string;
       tileCount: number;
@@ -204,9 +206,11 @@ interface MainSceneInternals {
     closedKenneyCount: number;
     closedColorCount: number;
     openPackCount: number;
+    openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    renderableOpenCount: number;
   };
 }
 
@@ -410,6 +414,8 @@ export interface TerrainRenderSummary {
   readonly packLineworkTileCount: number;
   /** Props (switch stands, carts, valves) placed on eligible linework tiles. */
   readonly packLineworkPropCount: number;
+  readonly packLineworkBuriedCount: number;
+  readonly packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
   /**
    * One entry per maximal connected component of every linework layer. This is
    * what the placement gate is asserted against headlessly: "at least 6 runs of
@@ -444,12 +450,16 @@ export interface DoorRenderSummary {
   readonly closedColorCount: number;
   /** Open doors rendered from a terrain-pack doorSet texture. */
   readonly openPackCount: number;
-  /** Open doors rendered from the Kenney open frame (non-destructive default). */
+  /** Open doors rendered from an approved GENERATED open-door texture. */
+  readonly openGeneratedCount: number;
+  /** Open doors rendered from the Kenney open frame (fallback). */
   readonly openKenneyCount: number;
   /** Open doors drawn as a solid-color fill (no art at all). */
   readonly openColorCount: number;
-  /** Sum of the three CLOSED buckets — total closed doors actually rendered. */
+  /** Sum of the four CLOSED buckets — total closed doors actually rendered. */
   readonly renderableClosedCount: number;
+  /** Sum of the four OPEN buckets — total open doors actually rendered. */
+  readonly renderableOpenCount: number;
 }
 
 export interface BloodSurfaceProbeSummary {
@@ -1135,6 +1145,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         packGroundDecalCount: summary?.packGroundDecalCount ?? 0,
         packLineworkTileCount: summary?.packLineworkTileCount ?? 0,
         packLineworkPropCount: summary?.packLineworkPropCount ?? 0,
+        packLineworkBuriedCount: summary?.packLineworkBuriedCount ?? 0,
+        packLineworkBuriedSample: summary?.packLineworkBuriedSample ?? [],
         packLineworkRuns: (summary?.packLineworkRuns ?? []).map((run) => ({
           layerId: run.layerId,
           tileCount: run.tileCount,
@@ -1155,9 +1167,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         closedKenneyCount: summary?.closedKenneyCount ?? 0,
         closedColorCount: summary?.closedColorCount ?? 0,
         openPackCount: summary?.openPackCount ?? 0,
+        openGeneratedCount: summary?.openGeneratedCount ?? 0,
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
+        renderableOpenCount: summary?.renderableOpenCount ?? 0,
       };
     },
 
