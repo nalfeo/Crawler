@@ -270,8 +270,9 @@ export function blockerFingerprint(blockers) {
   // appears as a NEW blocker on the next reconcile sweep. Including this
   // self-generated blocker in the fingerprint causes `automationStallAction`
   // to return 'progressed' on the FIRST cycle after a failed dispatch —
-  // resetting the attempt counter and giving the automation more retries than
-  // the stale-ceiling allows before filing a loop incident. Excluding it from
+  // resetting the attempt counter and granting exactly one extra dispatch
+  // cycle before the loop incident is filed (3 cycles instead of the
+  // intended 2). Excluding it from
   // the fingerprint lets the stale-retry path count correctly: the attempt
   // counter increments normally across cycles where the only new "change" is
   // this self-generated failure (the underlying blockers that caused the
