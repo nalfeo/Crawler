@@ -487,7 +487,9 @@ jobs:
             }
 
             // Get the blob SHA for a file path at a given git ref.
-            // Returns null when the file is absent (404) or the request fails.
+            // Returns null only when the file is proven absent (404).
+            // Throws for any other error (rate-limit, network, etc.) so the caller
+            // can fail closed rather than treating an API error as file absence.
             async function getBlobShaAtRef(path, ref) {
               try {
                 const { data } = await github.rest.repos.getContent({ owner, repo, path, ref });
@@ -496,8 +498,8 @@ jobs:
                 return String(data.sha || '') || null;
               } catch (error) {
                 if (error.status === 404) return null;
-                core.warning(`getContent ${path}@${ref}: ${error.message}`);
-                return null;
+                // Non-404: re-throw so caller can fail closed, not silently absent.
+                throw error;
               }
             }
 
@@ -517,14 +519,15 @@ jobs:
               owner, repo, state: 'open', per_page: 100,
             });
 
-            // Scope: non-draft open PRs that are not already quarantined, abandoned,
-            // or already labeled ci-already-landed (skip-if-already-processed).
+            // Scope: non-draft open PRs that are not already quarantined or
+            // permanently abandoned.  PRs labeled ci-already-landed are kept in
+            // scope so they can be re-evaluated when main advances or the PR is
+            // force-pushed (the label upsert is idempotent).
             const inScope = pulls.filter((p) => {
               if (p.draft) return false;
               const labels = (p.labels || []).map((l) => String(l.name || ''));
               if (labels.includes(QUARANTINED_LABEL)) return false;
               if (labels.includes(ABANDONED_LABEL)) return false;
-              if (labels.includes(ALREADY_LANDED_LABEL)) return false;
               return true;
             });
 
@@ -537,7 +540,6 @@ jobs:
 
             let allLandedCount = 0;
             let partialCount = 0;
-            let regressionCount = 0;
             const closedPrNumbers = [];
 
             for (const pull of inScope) {
@@ -560,12 +562,24 @@ jobs:
               }
 
               // For each file, get the blob SHA at main HEAD and classify.
-              const classifiedFiles = await Promise.all(
-                prFiles.map(async (file) => {
-                  const mainBlobSha = await getBlobShaAtRef(file.filename, mainSha);
-                  return classifyFile(file, mainBlobSha);
-                }),
-              );
+              // Also fetch the previous_filename blob SHA for renamed files to
+              // ensure the old path is absent before calling a rename LANDED.
+              // Any non-404 API error causes us to skip this PR (fail closed).
+              let classifiedFiles;
+              try {
+                classifiedFiles = await Promise.all(
+                  prFiles.map(async (file) => {
+                    const mainBlobSha = await getBlobShaAtRef(file.filename, mainSha);
+                    const mainPreviousFileBlobSha = (file.status === 'renamed' && file.previous_filename)
+                      ? await getBlobShaAtRef(file.previous_filename, mainSha)
+                      : undefined;
+                    return classifyFile(file, mainBlobSha, mainPreviousFileBlobSha);
+                  }),
+                );
+              } catch (error) {
+                core.warning(`already-landed: getBlobSha failed for pr=#${pull.number} — skipping (${error.message})`);
+                continue;
+              }
 
               const analysis = analyzeFiles(classifiedFiles);
               core.info(
@@ -608,7 +622,8 @@ jobs:
                   continue;
                 }
 
-                // Post the evidence comment, apply label, apply ABANDONED lifecycle, close.
+                // Post the evidence comment and apply the informational label.
+                // These are best-effort and do NOT constitute terminal state.
                 try {
                   await upsertAlreadyLandedComment(pull.number, commentBody, prComments);
                 } catch (error) {
@@ -621,6 +636,22 @@ jobs:
                   core.warning(`addLabel pr=#${pull.number}: ${error.message}`);
                 }
 
+                // Attempt to close BEFORE applying terminal lifecycle state.
+                // If close fails, skip the ABANDONED transition so the PR is not
+                // permanently excluded from future sweeps with a terminal label.
+                let closedSuccessfully = false;
+                try {
+                  await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' });
+                  closedSuccessfully = true;
+                } catch (error) {
+                  core.warning(`pulls.update close pr=#${pull.number}: ${error.message} — skipping terminal lifecycle`);
+                }
+
+                if (!closedSuccessfully) {
+                  continue;
+                }
+
+                // Close succeeded — now apply terminal ABANDONED lifecycle state.
                 // Find and parse the lifecycle comment for a clean phase transition.
                 const lifecycleComments = prComments.filter(
                   (c) => String(c.body || '').includes('<!-- crawler-pr-lifecycle:v1 -->') && isTrustedLifecycleComment(c),
@@ -642,35 +673,11 @@ jobs:
                   removeLabel: (n, label) => removeLabelBestEffort(n, label),
                 });
 
-                try {
-                  await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' });
-                } catch (error) {
-                  core.warning(`pulls.update close pr=#${pull.number}: ${error.message}`);
-                }
-
                 closedPrNumbers.push(pull.number);
                 allLandedCount += 1;
                 core.notice(
                   `already-landed: closed pr=#${pull.number} ` +
                   `files=${analysis.totalCount} main=${mainSha.slice(0, 12)}`,
-                );
-
-              } else if (analysis.verdict === VERDICT.REGRESSION_CANDIDATE) {
-                // Post warning comment + label. Do NOT close.
-                try {
-                  await upsertAlreadyLandedComment(pull.number, commentBody, prComments);
-                } catch (error) {
-                  core.warning(`createComment regression pr=#${pull.number}: ${error.message}`);
-                }
-                try {
-                  await addLabelStrict(pull.number, ALREADY_LANDED_LABEL);
-                } catch (error) {
-                  core.warning(`addLabel pr=#${pull.number}: ${error.message}`);
-                }
-                regressionCount += 1;
-                core.notice(
-                  `already-landed: regression-candidate pr=#${pull.number} ` +
-                  `differs=${analysis.differsCount} landed=${analysis.landedCount} total=${analysis.totalCount}`,
                 );
 
               } else if (analysis.verdict === VERDICT.PARTIAL) {
@@ -688,14 +695,15 @@ jobs:
                 partialCount += 1;
                 core.notice(
                   `already-landed: partial pr=#${pull.number} ` +
-                  `landed=${analysis.landedCount}/${analysis.totalCount}`,
+                  `landed=${analysis.landedCount}/${analysis.totalCount} ` +
+                  `differs=${analysis.differsCount}`,
                 );
               }
             }
 
             core.info(
               `already-landed complete ` +
-              `all-landed=${allLandedCount} partial=${partialCount} regression=${regressionCount} ` +
+              `all-landed=${allLandedCount} partial=${partialCount} ` +
               `closed=${closedPrNumbers.join(',')}`,
             );
 

@@ -55,13 +55,34 @@ test('classifyFile: modified file with matching main blob SHA → LANDED', () =>
   assert.equal(result.fileStatus, FILE_STATUS.LANDED);
 });
 
-test('classifyFile: renamed file where new path on main has same blob SHA → LANDED', () => {
+test('classifyFile: renamed file where new path on main has same blob SHA and old path is absent → LANDED', () => {
   const result = classifyFile(
     { filename: 'new-name.png', sha: 'aaa111', status: 'renamed', previous_filename: 'old-name.png' },
     'aaa111',
+    null, // old path absent from main → rename deletion landed
   );
   assert.equal(result.fileStatus, FILE_STATUS.LANDED);
   assert.equal(result.filename, 'new-name.png');
+});
+
+test('classifyFile: renamed file where new path matches but old path still on main → DELETION_DIFFERS', () => {
+  const result = classifyFile(
+    { filename: 'new-name.png', sha: 'aaa111', status: 'renamed', previous_filename: 'old-name.png' },
+    'aaa111',
+    'old-blob-sha', // old path still exists on main → rename not fully landed
+  );
+  assert.equal(result.fileStatus, FILE_STATUS.DELETION_DIFFERS);
+  assert.equal(result.filename, 'new-name.png');
+});
+
+test('classifyFile: renamed file where mainPreviousFileBlobSha not provided defaults to not checking old path → LANDED', () => {
+  // Backward-compat: when caller does not pass mainPreviousFileBlobSha, old-path check is skipped
+  const result = classifyFile(
+    { filename: 'new-name.png', sha: 'aaa111', status: 'renamed', previous_filename: 'old-name.png' },
+    'aaa111',
+    // mainPreviousFileBlobSha omitted
+  );
+  assert.equal(result.fileStatus, FILE_STATUS.LANDED);
 });
 
 test('classifyFile: copied file with matching main blob SHA → LANDED', () => {
@@ -177,10 +198,10 @@ test('analyzeFiles: single LANDED file → ALL_LANDED', () => {
 });
 
 // ---------------------------------------------------------------------------
-// analyzeFiles — REGRESSION_CANDIDATE
+// analyzeFiles — DIFFERS files are treated as "not confirmed landed" (not regression)
 // ---------------------------------------------------------------------------
 
-test('golden fixture PR #1975: 12 landed + 2 differs → REGRESSION_CANDIDATE', () => {
+test('golden fixture PR #1975: 12 landed + 2 differs → PARTIAL (differs treated as unconfirmed, not regression)', () => {
   const files = [
     ...Array.from({ length: 12 }, (_, i) => ({
       filename: `sprite-${i}.png`,
@@ -191,31 +212,32 @@ test('golden fixture PR #1975: 12 landed + 2 differs → REGRESSION_CANDIDATE', 
     { filename: 'old-version-b.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
   ];
   const result = analyzeFiles(files);
-  assert.equal(result.verdict, VERDICT.REGRESSION_CANDIDATE);
+  assert.equal(result.verdict, VERDICT.PARTIAL, 'DIFFERS prevents ALL_LANDED but does not trigger REGRESSION_CANDIDATE');
   assert.equal(result.totalCount, 14);
   assert.equal(result.landedCount, 12);
   assert.equal(result.differsCount, 2);
   assert.equal(result.newCount, 0);
 });
 
-test('analyzeFiles: single DIFFERS file → REGRESSION_CANDIDATE regardless of other statuses', () => {
+test('analyzeFiles: single DIFFERS file with landed → PARTIAL (not REGRESSION_CANDIDATE)', () => {
   const files = [
     { filename: 'good.png', status: 'added', fileStatus: FILE_STATUS.LANDED },
     { filename: 'bad.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
     { filename: 'new.yaml', status: 'added', fileStatus: FILE_STATUS.NEW_ON_PR },
   ];
   const result = analyzeFiles(files);
-  assert.equal(result.verdict, VERDICT.REGRESSION_CANDIDATE, 'DIFFERS beats PARTIAL');
+  assert.equal(result.verdict, VERDICT.PARTIAL, 'DIFFERS with some landed → PARTIAL');
   assert.equal(result.differsCount, 1);
 });
 
-test('analyzeFiles: only DIFFERS files → REGRESSION_CANDIDATE', () => {
+test('analyzeFiles: only DIFFERS files → NOT_LANDED (no landed files)', () => {
   const files = [
     { filename: 'a.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
   ];
   const result = analyzeFiles(files);
-  assert.equal(result.verdict, VERDICT.REGRESSION_CANDIDATE);
+  assert.equal(result.verdict, VERDICT.NOT_LANDED, 'only DIFFERS, no landed files → NOT_LANDED');
   assert.equal(result.landedCount, 0);
+  assert.equal(result.differsCount, 1);
 });
 
 // ---------------------------------------------------------------------------
@@ -289,22 +311,22 @@ test('analyzeFiles: null input → NOT_LANDED with zero counts', () => {
 // Conservatism invariant
 // ---------------------------------------------------------------------------
 
-test('conservatism: DIFFERS always beats PARTIAL even when most files are landed', () => {
+test('conservatism: DIFFERS prevents ALL_LANDED even when most files are landed → PARTIAL', () => {
   const files = [
     ...allLandedFiles(100),
-    { filename: 'one-bad.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
+    { filename: 'one-differs.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
   ];
   const result = analyzeFiles(files);
-  assert.equal(result.verdict, VERDICT.REGRESSION_CANDIDATE, 'DIFFERS must win over PARTIAL');
+  assert.equal(result.verdict, VERDICT.PARTIAL, 'DIFFERS prevents ALL_LANDED, yields PARTIAL');
 });
 
-test('conservatism: DIFFERS beats ALL_LANDED if all other files are landed', () => {
+test('conservatism: DIFFERS prevents ALL_LANDED if all other files are landed → PARTIAL', () => {
   const files = [
     { filename: 'landed.png', status: 'added', fileStatus: FILE_STATUS.LANDED },
     { filename: 'differs.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
   ];
   const result = analyzeFiles(files);
-  assert.equal(result.verdict, VERDICT.REGRESSION_CANDIDATE);
+  assert.equal(result.verdict, VERDICT.PARTIAL, 'DIFFERS with landed → PARTIAL not ALL_LANDED');
 });
 
 // ---------------------------------------------------------------------------
@@ -327,16 +349,17 @@ test('renderAlreadyLandedComment: ALL_LANDED includes auto-close note', () => {
   assert.ok(comment.includes('2057'), 'comment should include the PR number');
 });
 
-test('renderAlreadyLandedComment: REGRESSION_CANDIDATE includes warning and NOT auto-closed note', () => {
+test('renderAlreadyLandedComment: PARTIAL with differs includes differ note and NOT auto-closed', () => {
   const files = [
     ...allLandedFiles(12),
     { filename: 'differs.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
     { filename: 'differs2.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
   ];
   const analysis = analyzeFiles(files);
+  assert.equal(analysis.verdict, VERDICT.PARTIAL);
   const comment = renderAlreadyLandedComment(1975, analysis, 'abc');
-  assert.ok(comment.includes('NOT auto-closed'), 'regression comment should say NOT auto-closed');
-  assert.ok(comment.includes('⚠'), 'regression comment should include warning symbol');
+  assert.ok(comment.includes('NOT auto-closed'), 'PARTIAL comment should say NOT auto-closed');
+  assert.ok(comment.includes('different content'), 'should note differing content');
   assert.ok(comment.includes('1975'));
 });
 
@@ -413,11 +436,12 @@ test('end-to-end: one file absent from main → PARTIAL', () => {
   assert.equal(result.newCount, 1);
 });
 
-test('end-to-end: one file differs → REGRESSION_CANDIDATE', () => {
+test('end-to-end: one file differs → PARTIAL (not REGRESSION_CANDIDATE)', () => {
   const prFiles = [
     { filename: 'reg.png', sha: 'pr-old', status: 'modified' },
   ];
   const classified = prFiles.map((f) => classifyFile(f, 'main-newer'));
   const result = analyzeFiles(classified);
-  assert.equal(result.verdict, VERDICT.REGRESSION_CANDIDATE);
+  assert.equal(result.verdict, VERDICT.NOT_LANDED, 'single differs file with no landed → NOT_LANDED');
+  assert.equal(result.differsCount, 1);
 });

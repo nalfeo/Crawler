@@ -13,10 +13,12 @@
  *
  * Verdict rules (analyzeFiles):
  *   ALL_LANDED         — every file is LANDED or DELETION_LANDED → auto-close proof.
- *   REGRESSION_CANDIDATE — at least one file DIFFERS (exists on both sides with
- *                          different content) → flag for human, never auto-close.
- *   PARTIAL            — some files landed, none differ → comment + label, leave open.
- *   NOT_LANDED         — no files are landed → no action.
+ *   PARTIAL            — some files landed, rest not confirmed (differ or absent).
+ *                        Comments + label, leave open.
+ *   NOT_LANDED         — no files landed → no action.
+ *
+ * DIFFERS files (blob SHA mismatch) are treated as "not confirmed landed" rather
+ * than regression evidence; a two-way mismatch cannot establish regression direction.
  *
  * Design source: GitHub issue #2227.
  *
@@ -64,12 +66,18 @@ export const FILE_STATUS = Object.freeze({
 
 /**
  * ALL_LANDED         — auto-close proof: every changed file is already on main.
- * REGRESSION_CANDIDATE — at least one file differs; merging could regress content.
- * PARTIAL            — some files landed, some not; no files differ.
- * NOT_LANDED         — no files are landed; PR has genuinely new content.
+ * PARTIAL            — some files landed, rest not confirmed (absent, differ, or
+ *                      deletion pending); no files known to be fully absent.
+ * NOT_LANDED         — no files are landed; PR has genuinely new or differing content.
+ *
+ * Note: REGRESSION_CANDIDATE is retained for API compatibility but is no longer
+ * returned by analyzeFiles.  A two-way SHA mismatch alone cannot establish
+ * regression direction (the PR might be ahead of main, not behind), so differing
+ * files are treated as "not confirmed landed" rather than regression evidence.
  */
 export const VERDICT = Object.freeze({
   ALL_LANDED: 'all-landed',
+  /** @deprecated Not returned by analyzeFiles; retained for API compatibility. */
   REGRESSION_CANDIDATE: 'regression-candidate',
   PARTIAL: 'partial',
   NOT_LANDED: 'not-landed',
@@ -89,9 +97,14 @@ export const VERDICT = Object.freeze({
  * @param {string|null} mainBlobSha
  *   Blob SHA of this file at main HEAD, or null if the file is absent from main.
  *   For renamed files, this should be the blob SHA of the *new* filename on main.
+ * @param {string|null|undefined} [mainPreviousFileBlobSha]
+ *   For renamed files only: blob SHA of the *previous* filename at main HEAD.
+ *   - undefined (default): not checked.
+ *   - null: previous path is absent from main (deletion has landed).
+ *   - string: previous path still exists on main (deletion has NOT yet landed).
  * @returns {{ filename: string, status: string, fileStatus: string }}
  */
-export function classifyFile(prFile, mainBlobSha) {
+export function classifyFile(prFile, mainBlobSha, mainPreviousFileBlobSha = undefined) {
   const filename = String(prFile?.filename ?? '');
   const prStatus = String(prFile?.status ?? '');
   const prBlobSha = String(prFile?.sha ?? '');
@@ -112,7 +125,12 @@ export function classifyFile(prFile, mainBlobSha) {
     return { filename, status: prStatus, fileStatus: FILE_STATUS.NEW_ON_PR };
   }
   if (prBlobSha === mainBlobSha) {
-    // Blob SHAs match — content is byte-identical.
+    // Blob SHAs match — content is byte-identical on the new path.
+    // For renamed files, also require that the old path is absent from main.
+    if (prStatus === 'renamed' && mainPreviousFileBlobSha !== undefined && mainPreviousFileBlobSha !== null) {
+      // Old path still exists on main — the rename's deletion has NOT landed.
+      return { filename, status: prStatus, fileStatus: FILE_STATUS.DELETION_DIFFERS };
+    }
     return { filename, status: prStatus, fileStatus: FILE_STATUS.LANDED };
   }
   // File exists on both sides with different content.
@@ -128,7 +146,13 @@ export function classifyFile(prFile, mainBlobSha) {
  *
  * Conservatism invariant: never returns ALL_LANDED if any file has NEW_ON_PR,
  * DIFFERS, or DELETION_DIFFERS status (i.e., when there is any real remaining
- * content not yet on main, or any potential regression).
+ * content not yet on main, or any content that cannot be confirmed as landed).
+ *
+ * DIFFERS files are treated as "content not confirmed on main" rather than
+ * regression evidence — a two-way SHA mismatch cannot determine which side is
+ * newer without a three-way merge-base comparison.  They contribute to
+ * differsCount (informational) but do not trigger REGRESSION_CANDIDATE; instead
+ * they prevent ALL_LANDED and yield PARTIAL or NOT_LANDED.
  *
  * @param {{ filename: string, status: string, fileStatus: string }[]} classifiedFiles
  * @returns {{
@@ -172,14 +196,12 @@ export function analyzeFiles(classifiedFiles) {
   }
 
   let verdict;
-  if (differsCount > 0) {
-    // At least one file differs — potential regression, never auto-close.
-    verdict = VERDICT.REGRESSION_CANDIDATE;
-  } else if (landedCount === totalCount) {
+  if (landedCount === totalCount) {
     // All files landed — deterministic proof that PR adds nothing.
     verdict = VERDICT.ALL_LANDED;
   } else if (landedCount > 0) {
-    // Some files landed, rest genuinely new (no diffs).
+    // Some files landed, rest have unconfirmed or unmerged content.
+    // DIFFERS files count as "not confirmed landed" — don't treat as regression.
     verdict = VERDICT.PARTIAL;
   } else {
     // No files landed.
@@ -225,7 +247,7 @@ function fileStatusLabel(fileStatus) {
     case FILE_STATUS.NEW_ON_PR:
       return 'not on main (genuinely new)';
     case FILE_STATUS.DIFFERS:
-      return 'differs from main ⚠ regression candidate';
+      return 'differs from main (content not confirmed landed)';
     case FILE_STATUS.DELETION_DIFFERS:
       return 'still on main (deletion not landed)';
     default:
@@ -254,10 +276,13 @@ export function renderAlreadyLandedComment(prNumber, analysis, mainSha) {
 
   const headings = {
     [VERDICT.ALL_LANDED]: `## ✅ PR #${prNumber} — all content already on \`main\``,
-    [VERDICT.REGRESSION_CANDIDATE]: `## ⚠️ PR #${prNumber} — content analysis: regression candidates detected`,
     [VERDICT.PARTIAL]: `## 🔍 PR #${prNumber} — content analysis: ${landedCount} of ${totalCount} files already on \`main\``,
     [VERDICT.NOT_LANDED]: `## 🆕 PR #${prNumber} — content analysis: no files landed yet`,
   };
+
+  const differNote = differsCount > 0
+    ? [`**${differsCount} file${differsCount === 1 ? '' : 's'}** have different content from \`main\` — cannot confirm these are landed (no merge-base comparison).`, '']
+    : [];
 
   const summaries = {
     [VERDICT.ALL_LANDED]: [
@@ -265,17 +290,10 @@ export function renderAlreadyLandedComment(prNumber, analysis, mainSha) {
       '',
       'This PR delivers zero net content. It was auto-closed by the already-landed detector.',
     ],
-    [VERDICT.REGRESSION_CANDIDATE]: [
-      `**${differsCount} file${differsCount === 1 ? '' : 's'}** exist on both this PR and \`main\` (at \`${sha}\`) with **different content**.`,
-      'Merging this PR could overwrite newer content on `main` with an older version.',
-      '',
-      `${landedCount} of ${totalCount} files are already on \`main\` (byte-identical).`,
-      '',
-      '⚠️ **This PR was NOT auto-closed.** A human must review the differing files before deciding.',
-    ],
     [VERDICT.PARTIAL]: [
       `**${landedCount} of ${totalCount} file${totalCount === 1 ? '' : 's'}** are already on \`main\` (byte-identical at \`${sha}\`).`,
-      `**${newCount} file${newCount === 1 ? '' : 's'}** contain genuinely new content not yet on \`main\`.`,
+      ...differNote,
+      `**${newCount} file${newCount === 1 ? '' : 's'}** contain genuinely new or unconfirmed content not yet on \`main\`.`,
       '',
       'This PR was NOT auto-closed — it still has unmerged content.',
     ],
