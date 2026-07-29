@@ -14,11 +14,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Exec } from './checkin.js';
-import {
-  copyArtSurface,
-  makeCheckinFileLock,
-  realExec,
-} from './checkin-runtime.js';
+import { copyArtSurface, makeCheckinFileLock, realExec } from './checkin-runtime.js';
 import type { QueueCommitDeps } from './queue-commit.js';
 
 /**
