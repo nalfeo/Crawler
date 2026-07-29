@@ -10,7 +10,7 @@ const source = readFileSync(
 const workflow = parse(source) as {
   on?: Record<string, unknown>;
   concurrency?: Record<string, unknown>;
-  jobs?: Record<string, unknown>;
+  jobs?: Record<string, { steps?: Array<{ name?: string; with?: Record<string, unknown> }> }>;
 };
 
 describe('theme-equipment workflow', () => {
@@ -26,5 +26,15 @@ describe('theme-equipment workflow', () => {
     expect(encoded).toContain('THEME_PLAN_PATH');
     expect(source).not.toContain('"${{ inputs.set_id }}"');
     expect(source).not.toContain('"${{ inputs.plan_path }}"');
+  });
+
+  it('checks out full history for publish so the assets/queue merge finds a common ancestor', () => {
+    const steps = workflow.jobs?.run?.steps ?? [];
+    const publishCheckout = steps.find((step) => step.name === 'Checkout for publish');
+    expect(publishCheckout).toBeDefined();
+    // A shallow depth-1 clone makes `git merge` fail with "refusing to merge
+    // unrelated histories" because the fetched assets/queue and main tips share
+    // no common ancestor (queue-commit.ts). fetch-depth: 0 is required.
+    expect(publishCheckout?.with?.['fetch-depth']).toBe(0);
   });
 });
