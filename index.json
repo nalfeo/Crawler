@@ -1,5 +1,16 @@
 [
   {
+    "commit": "da9a32c93e95d8777e321f6f33014ffcfbba3902",
+    "commitDate": "2026-07-29T19:42:09Z",
+    "commitSubject": "fix(ci-recovery): exclude ci-failure copilot from blockersPresent to prevent self-dispatch loop (#2327)",
+    "capturedAt": "2026-07-29T20:48:46.276Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30486183380",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/da9a32c93e95d8777e321f6f33014ffcfbba3902.json"
+  },
+  {
     "commit": "c971eb6c03924c6bd2fe5ea8d73a5f911cbb0e25",
     "commitDate": "2026-07-29T19:28:01Z",
     "commitSubject": "Remove dead AI A/B arms (LEGACY/NAVMESH pathing, SLACK_AWARE decision) (#2320)",
