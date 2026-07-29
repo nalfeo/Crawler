@@ -10,11 +10,7 @@
       "width": 10,
       "height": 8,
       "description": "A cramped New York slice joint lifted straight off the corner, grease stains and all.",
-      "tags": [
-        "nyc",
-        "restaurant",
-        "named"
-      ],
+      "tags": ["nyc", "restaurant", "named"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -1390,10 +1386,7 @@
                 "requestId": "brick-pizza-oven",
                 "label": "Brick pizza oven",
                 "prompt": "A wood-fired brick pizza oven with a glowing arched mouth, 16x16 pixel art top-down.",
-                "tags": [
-                  "food",
-                  "appliance"
-                ],
+                "tags": ["food", "appliance"],
                 "placeholder": {
                   "source": "sheet",
                   "sheetKey": "kenney-tiny-town",
@@ -1421,10 +1414,7 @@
                 "prompt": "Hot pink and cyan neon sign reading JIMMY'S in a retro cursive script, glowing, pixel art.",
                 "widthTiles": 4,
                 "heightTiles": 1,
-                "tags": [
-                  "neon",
-                  "signage"
-                ]
+                "tags": ["neon", "signage"]
               }
             }
           ],
@@ -1526,11 +1516,7 @@
       "width": 9,
       "height": 7,
       "description": "A 24-hour bodega with a bulletproof counter, lottery tickets, and a very judgmental cat.",
-      "tags": [
-        "nyc",
-        "shop",
-        "named"
-      ],
+      "tags": ["nyc", "shop", "named"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -2627,9 +2613,7 @@
                 "requestId": "cash-register",
                 "label": "Cash register",
                 "prompt": "A chunky retro cash register, beige with green buttons, 16x16 pixel art.",
-                "tags": [
-                  "retail"
-                ]
+                "tags": ["retail"]
               },
               "offsetX": 2,
               "offsetY": -4
@@ -2707,11 +2691,7 @@
       "width": 12,
       "height": 6,
       "description": "An express platform ripped from underground, complete with flickering lights and one stalled train.",
-      "tags": [
-        "nyc",
-        "transit",
-        "named"
-      ],
+      "tags": ["nyc", "transit", "named"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -3952,9 +3932,7 @@
                 "requestId": "subway-turnstile",
                 "label": "Subway turnstile",
                 "prompt": "A metal subway turnstile with rotating arms, top-down 16x16 pixel art.",
-                "tags": [
-                  "transit"
-                ]
+                "tags": ["transit"]
               }
             }
           ],
@@ -4049,10 +4027,7 @@
       "width": 10,
       "height": 7,
       "description": "A chrome-and-vinyl diner booth set, bottomless coffee not guaranteed.",
-      "tags": [
-        "diner",
-        "named"
-      ],
+      "tags": ["diner", "named"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -5268,10 +5243,7 @@
                 "requestId": "coffee-mug",
                 "label": "Coffee mug",
                 "prompt": "A small white diner coffee mug with steam, 16x16 pixel art.",
-                "tags": [
-                  "food",
-                  "prop"
-                ]
+                "tags": ["food", "prop"]
               },
               "offsetX": 5,
               "offsetY": -2,
@@ -5369,11 +5341,7 @@
       "width": 9,
       "height": 8,
       "description": "A highway mini-mart with roller-grill hot dogs and a wall of energy drinks.",
-      "tags": [
-        "roadside",
-        "shop",
-        "named"
-      ],
+      "tags": ["roadside", "shop", "named"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -6597,10 +6565,7 @@
                 "label": "Glass-door drink cooler",
                 "prompt": "A tall glass-door refrigerator full of colorful drink bottles, top-down 16x16 pixel art tileable vertically.",
                 "heightTiles": 4,
-                "tags": [
-                  "retail",
-                  "appliance"
-                ]
+                "tags": ["retail", "appliance"]
               }
             }
           ],
@@ -6714,10 +6679,7 @@
       "maxWidth": 11,
       "maxHeight": 9,
       "description": "An exam room kit: paper-covered table, eye chart, and the lingering smell of antiseptic.",
-      "tags": [
-        "medical",
-        "themed"
-      ],
+      "tags": ["medical", "themed"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -7669,10 +7631,7 @@
                 "label": "Medical exam table",
                 "prompt": "A padded medical exam table with paper roll, light blue, top-down 16x16 pixel art.",
                 "widthTiles": 2,
-                "tags": [
-                  "medical",
-                  "furniture"
-                ]
+                "tags": ["medical", "furniture"]
               }
             }
           ],
@@ -7707,10 +7666,7 @@
                 "requestId": "eye-chart",
                 "label": "Snellen eye chart",
                 "prompt": "A wall-mounted Snellen eye chart poster, big E at top, 16x16 pixel art.",
-                "tags": [
-                  "medical",
-                  "signage"
-                ]
+                "tags": ["medical", "signage"]
               }
             }
           ],
@@ -7788,10 +7744,7 @@
       "maxWidth": 11,
       "maxHeight": 8,
       "description": "A waiting room of stiff chairs, a fish tank, and ten-year-old magazines.",
-      "tags": [
-        "medical",
-        "themed"
-      ],
+      "tags": ["medical", "themed"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -8631,9 +8584,7 @@
                 "requestId": "magazine-stack",
                 "label": "Magazine stack",
                 "prompt": "A small stack of dog-eared magazines, top-down 16x16 pixel art.",
-                "tags": [
-                  "prop"
-                ]
+                "tags": ["prop"]
               },
               "offsetX": 3,
               "offsetY": -2,
@@ -8654,9 +8605,7 @@
                 "requestId": "waiting-room-fish-tank",
                 "label": "Fish tank",
                 "prompt": "A glowing aquarium with a few orange fish and bubbles, top-down 16x16 pixel art.",
-                "tags": [
-                  "decoration"
-                ]
+                "tags": ["decoration"]
               }
             }
           ],
@@ -8719,11 +8668,7 @@
       "maxWidth": 10,
       "maxHeight": 8,
       "description": "Folding tables, a temperamental vending machine, and a microwave with a history.",
-      "tags": [
-        "office",
-        "industrial",
-        "themed"
-      ],
+      "tags": ["office", "industrial", "themed"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -9455,9 +9400,7 @@
                 "label": "Snack vending machine",
                 "prompt": "A red snack vending machine with a glass front and glowing buttons, top-down 16x16 pixel art.",
                 "heightTiles": 2,
-                "tags": [
-                  "appliance"
-                ]
+                "tags": ["appliance"]
               }
             }
           ],
@@ -9552,11 +9495,7 @@
       "maxWidth": 12,
       "maxHeight": 10,
       "description": "A maze of grey cubicles, dying potted plants, and a single motivational poster.",
-      "tags": [
-        "office",
-        "corporate",
-        "themed"
-      ],
+      "tags": ["office", "corporate", "themed"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -10513,10 +10452,7 @@
                 "requestId": "desktop-computer",
                 "label": "Desktop computer",
                 "prompt": "A beige CRT desktop computer and monitor, top-down 16x16 pixel art.",
-                "tags": [
-                  "office",
-                  "prop"
-                ]
+                "tags": ["office", "prop"]
               },
               "offsetX": 2,
               "offsetY": -3,
@@ -10644,10 +10580,7 @@
       "maxWidth": 10,
       "maxHeight": 9,
       "description": "A cozy living room kit: couch, coffee table, and a TV permanently tuned to the reality show.",
-      "tags": [
-        "home",
-        "themed"
-      ],
+      "tags": ["home", "themed"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -11623,9 +11556,7 @@
                 "requestId": "tv-remote",
                 "label": "TV remote",
                 "prompt": "A small black TV remote control, top-down 16x16 pixel art.",
-                "tags": [
-                  "prop"
-                ]
+                "tags": ["prop"]
               },
               "offsetX": 5,
               "offsetY": -1,
@@ -11649,9 +11580,7 @@
                 "label": "CRT television",
                 "prompt": "A boxy CRT television showing a glowing reality-show broadcast, top-down 16x16 pixel art.",
                 "widthTiles": 2,
-                "tags": [
-                  "appliance"
-                ]
+                "tags": ["appliance"]
               }
             }
           ],
@@ -11729,10 +11658,7 @@
       "maxWidth": 10,
       "maxHeight": 9,
       "description": "Rows of humming machines, a wall of detergent, and one sock that never makes it home.",
-      "tags": [
-        "services",
-        "themed"
-      ],
+      "tags": ["services", "themed"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -12565,9 +12491,7 @@
                 "label": "Washing machine",
                 "prompt": "A front-loading washing machine with a round glass door, top-down 16x16 pixel art tileable horizontally.",
                 "widthTiles": 4,
-                "tags": [
-                  "appliance"
-                ]
+                "tags": ["appliance"]
               }
             }
           ],
@@ -12666,10 +12590,7 @@
       "maxWidth": 12,
       "maxHeight": 9,
       "description": "Tiny desks, a chalkboard of half-erased equations, and a cubby of forgotten lunches.",
-      "tags": [
-        "school",
-        "themed"
-      ],
+      "tags": ["school", "themed"],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -13740,10 +13661,7 @@
                 "label": "Chalkboard",
                 "prompt": "A green chalkboard with faint white equations and a wooden frame, 16x16 pixel art tileable horizontally.",
                 "widthTiles": 4,
-                "tags": [
-                  "education",
-                  "signage"
-                ]
+                "tags": ["education", "signage"]
               }
             }
           ],
@@ -13786,9 +13704,7 @@
                 "requestId": "apple-on-desk",
                 "label": "Apple",
                 "prompt": "A shiny red apple, top-down 16x16 pixel art.",
-                "tags": [
-                  "prop"
-                ]
+                "tags": ["prop"]
               },
               "offsetX": 5,
               "offsetY": -2,
@@ -13885,12 +13801,7 @@
       "width": 7,
       "height": 7,
       "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off — the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
-      "tags": [
-        "reality-show",
-        "welcome",
-        "floor1",
-        "named"
-      ],
+      "tags": ["reality-show", "welcome", "floor1", "named"],
       "placement": {
         "verticalAlign": "top"
       },
@@ -13906,11 +13817,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 6.49,
-=======
               "widthFt": 5.93,
->>>>>>> Stashed changes
               "heightFt": 3.5
             },
             {
@@ -13918,11 +13825,7 @@
                 "source": "catalog",
                 "spriteId": "purple-potion-bottle-v1-var-4"
               },
-<<<<<<< Updated upstream
-              "widthFt": 0.63,
-=======
               "widthFt": 0.77,
->>>>>>> Stashed changes
               "heightFt": 0.77,
               "offsetXFt": 1,
               "offsetYFt": -1.25
@@ -13955,11 +13858,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-desk-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 6.48,
-=======
               "widthFt": 6.06,
->>>>>>> Stashed changes
               "heightFt": 4
             },
             {
@@ -13990,11 +13889,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-bookcase-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 7.22,
-=======
               "widthFt": 7.17,
->>>>>>> Stashed changes
               "heightFt": 6.8,
               "anchorBase": true
             },
@@ -14003,11 +13898,7 @@
                 "source": "catalog",
                 "spriteId": "purple-potion-bottle-v1-var-4"
               },
-<<<<<<< Updated upstream
-              "widthFt": 0.96,
-=======
               "widthFt": 1.18,
->>>>>>> Stashed changes
               "heightFt": 1.18,
               "offsetXFt": 1,
               "offsetYFt": -4.6
@@ -14030,11 +13921,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-side-table-var-12"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2.56,
-=======
               "widthFt": 2.6,
->>>>>>> Stashed changes
               "heightFt": 2.6
             },
             {
@@ -14042,11 +13929,7 @@
                 "source": "catalog",
                 "spriteId": "purple-potion-bottle-v1-var-4"
               },
-<<<<<<< Updated upstream
-              "widthFt": 0.85,
-=======
               "widthFt": 1.04,
->>>>>>> Stashed changes
               "heightFt": 1.04,
               "offsetYFt": -1.25
             }
@@ -14070,11 +13953,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-bunk-bed-var-6"
               },
-<<<<<<< Updated upstream
-              "widthFt": 6.78,
-=======
               "widthFt": 7.92,
->>>>>>> Stashed changes
               "heightFt": 6.6
             }
           ],
@@ -14116,11 +13995,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-mini-fridge-var-2"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2.95,
-=======
               "widthFt": 3.16,
->>>>>>> Stashed changes
               "heightFt": 3.3
             }
           ],
@@ -14140,11 +14015,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-trash-bin-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2.79,
-=======
               "widthFt": 3,
->>>>>>> Stashed changes
               "heightFt": 3,
               "anchorBase": true
             }
@@ -14162,11 +14033,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-potted-plant-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2.59,
-=======
               "widthFt": 3.2,
->>>>>>> Stashed changes
               "heightFt": 3.2,
               "anchorBase": true
             }
@@ -14187,11 +14054,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-lounge-stool-var-1"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2.08,
-=======
               "widthFt": 2.2,
->>>>>>> Stashed changes
               "heightFt": 2.2
             }
           ],
@@ -14213,11 +14076,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-chair-turned-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2.72,
-=======
               "widthFt": 2.84,
->>>>>>> Stashed changes
               "heightFt": 3.5,
               "anchorBase": true
             }
@@ -14240,11 +14099,7 @@
                 "spriteId": "welcome-room-floor-runner-var-10"
               },
               "widthFt": 3.57,
-<<<<<<< Updated upstream
-              "heightFt": 7.68
-=======
               "heightFt": 6.85
->>>>>>> Stashed changes
             }
           ],
           "sceneLayer": "default"
@@ -14260,11 +14115,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-rug-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 7,
-=======
               "widthFt": 6.35,
->>>>>>> Stashed changes
               "heightFt": 3.62
             }
           ],
@@ -14284,11 +14135,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-velvet-rope-var-2"
               },
-<<<<<<< Updated upstream
-              "widthFt": 5.13,
-=======
               "widthFt": 4.87,
->>>>>>> Stashed changes
               "heightFt": 3.4,
               "rotationDeg": 90,
               "flipX": true,
@@ -14314,11 +14161,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-floor-seam-var-9"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2,
-=======
               "widthFt": 0.77,
->>>>>>> Stashed changes
               "heightFt": 0.77
             }
           ],
@@ -14339,11 +14182,7 @@
                 "spriteId": "welcome-room-carpet-var-4"
               },
               "widthFt": 3.88,
-<<<<<<< Updated upstream
-              "heightFt": 4.89
-=======
               "heightFt": 4.76
->>>>>>> Stashed changes
             }
           ],
           "sceneLayer": "default"
@@ -14361,11 +14200,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-wall-banner-var-6"
               },
-<<<<<<< Updated upstream
-              "widthFt": 6.83,
-=======
               "widthFt": 6.06,
->>>>>>> Stashed changes
               "heightFt": 3.2,
               "anchorBase": true,
               "offsetYFt": 1.3
@@ -14388,11 +14223,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-show-poster-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 3.22,
-=======
               "widthFt": 3.25,
->>>>>>> Stashed changes
               "heightFt": 3.5,
               "offsetYFt": -0.7
             }
@@ -14413,11 +14244,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-camera-rig-var-4"
               },
-<<<<<<< Updated upstream
-              "widthFt": 4.38,
-=======
               "widthFt": 5,
->>>>>>> Stashed changes
               "heightFt": 5,
               "offsetYFt": 2.1,
               "anchorBase": true
@@ -14439,11 +14266,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-wall-shelf-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 4.26,
-=======
               "widthFt": 4,
->>>>>>> Stashed changes
               "heightFt": 2.69
             },
             {
@@ -14473,11 +14296,7 @@
                 "source": "catalog",
                 "spriteId": "prop-wall-sconce-v1-var-4"
               },
-<<<<<<< Updated upstream
-              "widthFt": 1.11,
-=======
               "widthFt": 1.6,
->>>>>>> Stashed changes
               "heightFt": 1.6,
               "offsetYFt": -0.5,
               "flipX": true
@@ -14499,11 +14318,7 @@
                 "source": "catalog",
                 "spriteId": "prop-wall-sconce-v1-var-2"
               },
-<<<<<<< Updated upstream
-              "widthFt": 1.24,
-=======
               "widthFt": 1.6,
->>>>>>> Stashed changes
               "heightFt": 1.6,
               "offsetYFt": -0.5
             }
@@ -14523,11 +14338,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-merchant-board-var-6"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2.62,
-=======
               "widthFt": 2.53,
->>>>>>> Stashed changes
               "heightFt": 3,
               "anchorBase": true
             }
@@ -14548,11 +14359,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-call-sheet-var-3"
               },
-<<<<<<< Updated upstream
-              "widthFt": 1.03,
-=======
               "widthFt": 0.98,
->>>>>>> Stashed changes
               "heightFt": 1.3,
               "anchorBase": true
             }
@@ -14574,11 +14381,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-history-board-var-3"
               },
-<<<<<<< Updated upstream
-              "widthFt": 3.7,
-=======
               "widthFt": 3.5,
->>>>>>> Stashed changes
               "heightFt": 4.5,
               "anchorBase": true
             }
@@ -14599,11 +14402,7 @@
                 "source": "catalog",
                 "spriteId": "prop-torch-v1-var-14"
               },
-<<<<<<< Updated upstream
-              "widthFt": 1.83,
-=======
               "widthFt": 2.8,
->>>>>>> Stashed changes
               "heightFt": 2.8,
               "offsetXFt": 0.5,
               "anchorBase": true
@@ -14625,11 +14424,7 @@
                 "source": "catalog",
                 "spriteId": "prop-wall-sconce-v1-var-6"
               },
-<<<<<<< Updated upstream
-              "widthFt": 1.24,
-=======
               "widthFt": 1.6,
->>>>>>> Stashed changes
               "heightFt": 1.6,
               "offsetYFt": -0.5,
               "flipX": true
@@ -14651,11 +14446,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-wall-shelf-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 4.26,
-=======
               "widthFt": 4,
->>>>>>> Stashed changes
               "heightFt": 2.69,
               "flipX": false
             },
@@ -14664,11 +14455,7 @@
                 "source": "catalog",
                 "spriteId": "purple-potion-bottle-v1-var-4"
               },
-<<<<<<< Updated upstream
-              "widthFt": 1.46,
-=======
               "widthFt": 1.8,
->>>>>>> Stashed changes
               "heightFt": 1.8,
               "offsetYFt": -1.25
             }
@@ -14689,11 +14476,7 @@
                 "source": "catalog",
                 "spriteId": "prop-torch-v1-var-8"
               },
-<<<<<<< Updated upstream
-              "widthFt": 1.98,
-=======
               "widthFt": 2.8,
->>>>>>> Stashed changes
               "heightFt": 2.8,
               "offsetYFt": -4,
               "anchorBase": true
@@ -14712,11 +14495,7 @@
                 "source": "catalog",
                 "spriteId": "prop-wall-sconce-v1-var-1"
               },
-<<<<<<< Updated upstream
-              "widthFt": 1.13,
-=======
               "widthFt": 1.6,
->>>>>>> Stashed changes
               "heightFt": 1.6,
               "offsetYFt": -0.5
             }
@@ -14739,11 +14518,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-exit-sign-wall-var-2"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2.5,
-=======
               "widthFt": 2.4,
->>>>>>> Stashed changes
               "heightFt": 1.77,
               "anchorBase": true,
               "offsetYFt": -3.2
@@ -14766,11 +14541,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-chore-rota-var-2"
               },
-<<<<<<< Updated upstream
-              "widthFt": 2.33,
-=======
               "widthFt": 3,
->>>>>>> Stashed changes
               "heightFt": 2.5,
               "anchorBase": true
             }
@@ -14791,11 +14562,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-laundry-line-var-0"
               },
-<<<<<<< Updated upstream
-              "widthFt": 7.43,
-=======
               "widthFt": 6,
->>>>>>> Stashed changes
               "heightFt": 3,
               "anchorBase": true
             }
@@ -15204,11 +14971,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-door-var-2"
               },
-<<<<<<< Updated upstream
-              "widthFt": 5.75,
-=======
               "widthFt": 6,
->>>>>>> Stashed changes
               "heightFt": 8
             }
           ],
@@ -15228,11 +14991,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-stanchion-pair-var-4"
               },
-<<<<<<< Updated upstream
-              "widthFt": 6,
-=======
               "widthFt": 5.64,
->>>>>>> Stashed changes
               "heightFt": 3.79
             }
           ],

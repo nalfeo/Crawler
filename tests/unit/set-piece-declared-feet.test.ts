@@ -36,24 +36,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
-<<<<<<< Updated upstream
-import manifest from '../../public/assets/generated/manifest.json' with { type: 'json' };
-=======
 import { composeManifestFromShards } from '../../scripts/sprites/generated-shards.js';
->>>>>>> Stashed changes
 import setPieces from '../../src/shared/data/set-pieces.json' with { type: 'json' };
 import { resolveOpaqueFit, type OpaqueBounds } from '../../src/shared/generated-assets.js';
 
 const ROOT = process.cwd();
-<<<<<<< Updated upstream
-const ENTRIES = manifest.entries as Record<
-=======
 const ENTRIES = composeManifestFromShards(path.join(ROOT, 'public', 'assets', 'generated'))
-  .entries as Record<
->>>>>>> Stashed changes
-  string,
-  { assetPath?: string; opaqueBounds?: OpaqueBounds }
->;
+  .entries as Record<string, { assetPath?: string; opaqueBounds?: OpaqueBounds }>;
 
 interface Native {
   readonly w: number;

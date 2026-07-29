@@ -3003,13 +3003,6 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             createDefaultQueueCommitDeps(deps.repoRoot, env),
             {
               message: `chore(assets): metadata for ${changedAssets.length} sprite(s)`,
-<<<<<<< Updated upstream
-              // Catalog-ONLY flow: the Tag edits live nowhere but the catalog,
-              // so without this the art-surface staging would match nothing and
-              // the queue commit would silently no-op, dropping the edit.
-              catalogEntryIds: changedGeneratedIds,
-=======
->>>>>>> Stashed changes
             },
           );
         } catch (err) {

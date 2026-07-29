@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
-<<<<<<< Updated upstream
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-=======
 import { resolve } from 'node:path';
 import { composeManifestFromShards } from '../../scripts/sprites/generated-shards.js';
->>>>>>> Stashed changes
 import {
   GENERATED_DOOR_TEXTURE_KEYS,
   ALL_GENERATED_DOOR_TEXTURE_KEYS,
@@ -77,14 +72,9 @@ function renderedFt(bounds: { width: number; height: number }): {
   };
 }
 
-<<<<<<< Updated upstream
-const manifest = JSON.parse(
-  readFileSync(resolve(process.cwd(), 'public/assets/generated/manifest.json'), 'utf8'),
-=======
-const manifest = composeManifestFromShards(
-  resolve(process.cwd(), 'public/assets/generated'),
->>>>>>> Stashed changes
-) as { entries: Record<string, ManifestEntry> };
+const manifest = composeManifestFromShards(resolve(process.cwd(), 'public/assets/generated')) as {
+  entries: Record<string, ManifestEntry>;
+};
 
 const approved = ALL_GENERATED_DOOR_TEXTURE_KEYS.map((key) => ({
   key,
