@@ -148,7 +148,7 @@ export function stripGeneratedRows(catalog: readonly SpriteCatalogRecord[]): Spr
  * Canonical catalog ordering: sheet entries first, then by id. Matches the
  * order historically written by `approve.ts#upsertCatalog`.
  */
-export function compareCatalogRows(a: SpriteCatalogRecord, b: SpriteCatalogRecord): number {
+function compareCatalogRows(a: SpriteCatalogRecord, b: SpriteCatalogRecord): number {
   const aKind = a.kind === 'sheet' ? 0 : 1;
   const bKind = b.kind === 'sheet' ? 0 : 1;
   if (aKind !== bKind) return aKind - bKind;

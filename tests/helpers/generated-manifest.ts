@@ -18,7 +18,7 @@ import {
 import type { GeneratedManifest } from '../../src/shared/generated-assets.js';
 
 /** Absolute path to the shipped generated dir (`public/assets/generated`). */
-export const SHIPPED_GENERATED_DIR = fileURLToPath(
+const SHIPPED_GENERATED_DIR = fileURLToPath(
   new URL('../../public/assets/generated', import.meta.url),
 );
 
