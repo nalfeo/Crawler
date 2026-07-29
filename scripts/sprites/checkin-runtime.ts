@@ -34,6 +34,7 @@ import {
   type QueuedAssetCheckin,
 } from './checkin.js';
 import {
+  mergeCatalogs,
   mergeManifests,
   parseAssetIssueBody,
   type CatalogEntry,
@@ -198,29 +199,15 @@ export async function overlayCatalogEntries(
   const destCatalog = readJsonSafe<CatalogEntry[]>(destPath, []);
   if (!Array.isArray(srcCatalog) || !Array.isArray(destCatalog)) return false;
 
-  const overlay = new Map<string, CatalogEntry>();
-  for (const entry of srcCatalog) {
+  const srcEntries = srcCatalog.filter((entry) => {
     const id = (entry as { id?: unknown }).id;
-    if (typeof id === 'string' && wanted.has(id)) overlay.set(id, entry);
-  }
-  if (overlay.size === 0) return false;
-
-  const merged: CatalogEntry[] = destCatalog.map((entry) => {
-    const id = (entry as { id?: unknown }).id;
-    if (typeof id !== 'string') return entry;
-    const replacement = overlay.get(id);
-    if (replacement === undefined) return entry;
-    overlay.delete(id);
-    return replacement;
+    return typeof id === 'string' && wanted.has(id);
   });
-  // Any id not already present on the destination is appended in `ids` order.
-  for (const id of ids) {
-    const remaining = overlay.get(id);
-    if (remaining !== undefined) {
-      merged.push(remaining);
-      overlay.delete(id);
-    }
-  }
+  if (srcEntries.length === 0) return false;
+
+  // mergeCatalogs handles replace-or-insert and restores canonical order
+  // (sheet entries first, then by id lexicographically), matching check:sort-assets.
+  const merged = mergeCatalogs(destCatalog, srcEntries);
 
   const before = existsSync(destPath) ? readFileSync(destPath, 'utf8').toString() : null;
   mkdirSync(path.dirname(destPath), { recursive: true });

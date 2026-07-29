@@ -57,7 +57,7 @@ So the constant was split rather than narrowed:
 
 ## Observe before done
 
-Real artifact: **`npm run test:sprites` — 1,879 passed, 1 skipped, 120 files.**
+Real artifact: **`npm run test:sprites` — 1,893 passed, 1 skipped, 120 files.**
 
 The meaningful proof is the real-git test
 `reconcile-queue.test.ts > runReconcile (real git) > (c) the promote→main diff is
