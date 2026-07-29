@@ -914,8 +914,10 @@ describe('approveVariant', () => {
           'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME',
         );
       }
-      // Manifest must NOT have been created — the veto must mutate nothing.
-      expect(existsSync(manifestPath)).toBe(false);
+      // Shard must NOT have been created — the veto must mutate nothing.
+      expect(existsSync(shardPathForKey(generatedDirOf(manifestPath), 'iron-sword-var-1'))).toBe(
+        false,
+      );
     });
 
     it('hard-blocked variant can be approved when allowHardBlocked is set', () => {
@@ -935,7 +937,9 @@ describe('approveVariant', () => {
       });
       // The entry is written — operator consciously overruled the veto.
       expect(entry.spriteName).toBe('iron-sword-var-1');
-      expect(existsSync(manifestPath)).toBe(true);
+      expect(existsSync(shardPathForKey(generatedDirOf(manifestPath), 'iron-sword-var-1'))).toBe(
+        true,
+      );
       // hardBlocked must be cleared (false) so the CI invariant doesn't reject
       // the manifest, and humanHardBlockOverride must be set as durable evidence.
       expect(entry.judgeScorecard?.hardBlocked).toBe(false);
