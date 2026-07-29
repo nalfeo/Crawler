@@ -281,6 +281,13 @@ jobs:
       - name: Generated-manifest invariants
         if: env.DOCS_ONLY != 'true'
         run: npm run sprites:check-manifest
+      # Manifest hard-block invariant: no approved shard entry may carry
+      # judgeScorecard.hardBlocked=true. The judge hard-block is a veto, not a
+      # score to be weighed. approve.ts gates this at approval-time; this
+      # check catches any entries that pre-dated the gate.
+      - name: Manifest hard-block check
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:manifest-hard-blocked
 
       - name: Lab gate check
         if: env.DOCS_ONLY != 'true'

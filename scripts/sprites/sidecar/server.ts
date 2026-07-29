@@ -506,7 +506,9 @@ function mapApproveError(reply: FastifyReply, err: unknown): { error: string; me
         ? 404
         : err.kind === 'already-approved'
           ? 409
-          : 500;
+          : err.kind === 'hard-blocked'
+            ? 422
+            : 500;
     reply.code(status);
     return { error: err.kind, message: err.message };
   }
@@ -2004,31 +2006,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           }
         }
       } catch (err) {
-        if (err instanceof ApproveError) {
-          // variant-not-found / processed-missing -> 404 (resource missing).
-          // already-approved                      -> 409 (conflict; exact dup).
-          // summary-invalid / manifest-invalid    -> 500 (server-side data corruption).
-          // run-not-found                          -> 404.
-          let status: number;
-          if (
-            err.kind === 'variant-not-found' ||
-            err.kind === 'processed-missing' ||
-            err.kind === 'run-not-found'
-          ) {
-            status = 404;
-          } else if (err.kind === 'already-approved') {
-            status = 409;
-          } else {
-            status = 500;
-          }
-          reply.code(status);
-          return { error: err.kind, message: err.message };
-        }
-        reply.code(500);
-        return {
-          error: 'approve-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
+        return mapApproveError(reply, err);
       } finally {
         hydrated?.cleanup();
       }

@@ -108,6 +108,7 @@
     "check:size-coverage": "tsx scripts/agent/health/check-size-coverage.ts",
     "check:weight-coverage": "tsx scripts/agent/health/check-weight-coverage.ts",
     "check:sort-assets": "tsx scripts/sprites/check-sort-assets.ts",
+    "check:manifest-hard-blocked": "tsx scripts/sprites/check-manifest-hard-blocked.ts",
     "check:aggregate-row-ownership": "tsx scripts/agent/health/check-aggregate-row-ownership.ts",
     "sprites:sort-assets": "tsx scripts/sprites/sort-assets.ts --apply",
     "boss-abilities:status": "tsx scripts/agent/boss-ability-status.ts",
