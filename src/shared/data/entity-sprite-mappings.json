@@ -26,9 +26,9 @@
       "kenneySpriteId": "player",
       "kenneyScale": 1.6,
       "generated": {
-        "briefId": "rhea-vale-v1-walk",
-        "pinnedTextureKey": "rhea-vale-v1-var-0-walk",
-        "scale": 0.72
+        "briefId": "player-walk-cycle",
+        "pinnedTextureKey": "player-walk-cycle",
+        "scale": 0.71875
       }
     },
     "enemy": {
