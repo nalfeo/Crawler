@@ -1,5 +1,16 @@
 [
   {
+    "commit": "664af544aa4a9dfe9901d19a40642bb2ffddcf81",
+    "commitDate": "2026-07-29T02:48:59Z",
+    "commitSubject": "refactor(agent-os): unify personas and agents into one guard-enforced system with a single routing manifest (#2130)",
+    "capturedAt": "2026-07-29T03:51:59.126Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30418170749",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/664af544aa4a9dfe9901d19a40642bb2ffddcf81.json"
+  },
+  {
     "commit": "d3781348fe48aa4415d0b15e3952d284582573b1",
     "commitDate": "2026-07-29T02:32:11Z",
     "commitSubject": "feat: Chronicle 2026-07-27 remediation — guard attribution, archive June handoffs, merge-train consolidation, preflight hardening (#2126)",
