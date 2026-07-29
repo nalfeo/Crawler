@@ -307,6 +307,58 @@ test('automationStallAction treats a same-fingerprint, different-url retry as wa
   );
 });
 
+test('ci-failure copilot is excluded from the blocker fingerprint so its first appearance after a dispatch cannot trigger blocker-progressed', () => {
+  // Production incident regression (PR #1939 / issue #2268, 2026-07-29): when
+  // CI Recovery dispatches @copilot to fix a PR and the session fails at
+  // session.create (e.g. model "claude-sonnet-4.5" deprecated), GitHub creates
+  // a check named "copilot" that concludes `failure`. On the next reconcile
+  // sweep this check FIRST APPEARS as a NEW `ci-failure copilot` blocker
+  // alongside the original review-thread blockers. Including it in the
+  // fingerprint caused `automationStallAction` to return 'progressed' —
+  // resetting the attempt counter on the first failed dispatch. Excluding it
+  // from the fingerprint lets the stale-retry ceiling count correctly.
+  const reviewThread = {
+    kind: 'review-thread',
+    id: 'review-thread:PRRT_kwDOSvo2Ms6Tt_4M:abc123abc123abc123',
+    summary: 'copilot-pull-request-reviewer: Please fix this.',
+  };
+  const copilotFailure = {
+    kind: 'ci-failure',
+    id: 'copilot',
+    summary: 'copilot concluded failure.',
+    url: 'https://github.com/nalfeo/Crawler/actions/runs/30410219329/job/90444419451',
+  };
+
+  // The fingerprint of [review-thread] must equal the fingerprint of
+  // [ci-failure copilot, review-thread] — the copilot failure must not
+  // change the fingerprint even when it first appears after a dispatch.
+  assert.equal(
+    blockerFingerprint([reviewThread]),
+    blockerFingerprint([copilotFailure, reviewThread]),
+    'ci-failure copilot must not participate in the fingerprint; its first appearance must not trigger blocker-progressed',
+  );
+
+  // Verify the symmetric case: [copilot + thread] === [thread] regardless of order.
+  assert.equal(
+    blockerFingerprint([copilotFailure, reviewThread]),
+    blockerFingerprint([reviewThread, copilotFailure]),
+    'fingerprint must be order-independent (normalizeBlockers sorts by kind+id)',
+  );
+
+  // A different ci-failure (non-copilot) MUST still change the fingerprint.
+  const otherCiFailure = {
+    kind: 'ci-failure',
+    id: 'ci',
+    summary: 'ci concluded failure.',
+    url: 'https://github.com/nalfeo/Crawler/actions/runs/11111/job/22222',
+  };
+  assert.notEqual(
+    blockerFingerprint([reviewThread]),
+    blockerFingerprint([otherCiFailure, reviewThread]),
+    'a non-copilot ci-failure must still change the fingerprint',
+  );
+});
+
 test('review-thread blocker identity changes when comments change', () => {
   const baseThread = {
     id: 'thread-1',
