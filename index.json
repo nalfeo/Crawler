@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f9bbd5955ceee6d6ce61ad7f53caeb653e211c0f",
+    "commitDate": "2026-07-29T22:13:25Z",
+    "commitSubject": "fix(terrain): square dungeon wall corners and flush door junctions (#2330)",
+    "capturedAt": "2026-07-29T23:21:16.789Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30495900808",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/f9bbd5955ceee6d6ce61ad7f53caeb653e211c0f.json"
+  },
+  {
     "commit": "da9a32c93e95d8777e321f6f33014ffcfbba3902",
     "commitDate": "2026-07-29T19:42:09Z",
     "commitSubject": "fix(ci-recovery): exclude ci-failure copilot from blockersPresent to prevent self-dispatch loop (#2327)",
