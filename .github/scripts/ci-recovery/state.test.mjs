@@ -418,6 +418,87 @@ test('review-thread blocker identity changes when comments change', () => {
       ],
     },
   };
+  const recoveryNoMarkerReplyThread = {
+    id: 'thread-1',
+    comments: {
+      nodes: [
+        {
+          id: 'comment-1',
+          body: 'Root finding',
+          author: { login: 'dev' },
+          authorAssociation: 'OWNER',
+        },
+        {
+          id: 'comment-2',
+          body: 'Still unresolved; this needs an external waiver.',
+          author: { login: 'copilot-swe-agent' },
+          authorAssociation: 'NONE',
+        },
+      ],
+    },
+  };
+  const recoveryMarkerReplyThread = {
+    id: 'thread-1',
+    comments: {
+      nodes: [
+        {
+          id: 'comment-1',
+          body: 'Root finding',
+          author: { login: 'dev' },
+          authorAssociation: 'OWNER',
+        },
+        {
+          id: 'comment-2',
+          body: '✅ Not applicable: requires explicit maintainer waiver outside this branch',
+          author: { login: 'copilot-swe-agent' },
+          authorAssociation: 'NONE',
+        },
+      ],
+    },
+  };
+  // A recovery reply that only quotes a prior task body containing a marker —
+  // the marker lives entirely in quoted "> " lines and must NOT be treated as a
+  // resolution marker (would recreate the churn loop this PR fixes).
+  const recoveryQuotedMarkerReplyThread = {
+    id: 'thread-1',
+    comments: {
+      nodes: [
+        {
+          id: 'comment-1',
+          body: 'Root finding',
+          author: { login: 'dev' },
+          authorAssociation: 'OWNER',
+        },
+        {
+          id: 'comment-2',
+          body: '> ✅ Addressed in abc1234: prior fix\n\nStill blocked; the quoted marker above is from a prior task, not a resolution.',
+          author: { login: 'copilot-swe-agent' },
+          authorAssociation: 'NONE',
+        },
+      ],
+    },
+  };
+  // A recovery reply with an invalid (non-SHA) marker token must NOT be treated
+  // as a resolution marker.
+  const recoveryInvalidTokenMarkerThread = {
+    id: 'thread-1',
+    comments: {
+      nodes: [
+        {
+          id: 'comment-1',
+          body: 'Root finding',
+          author: { login: 'dev' },
+          authorAssociation: 'OWNER',
+        },
+        {
+          id: 'comment-2',
+          body: '✅ Addressed in not-a-valid-sha: this token is invalid',
+          author: { login: 'copilot-swe-agent' },
+          authorAssociation: 'NONE',
+        },
+      ],
+    },
+  };
   const blocker = {
     kind: 'review-thread',
     id: reviewThreadBlockerId(baseThread),
@@ -429,6 +510,24 @@ test('review-thread blocker identity changes when comments change', () => {
   assert.notEqual(reviewThreadCommentDigest(baseThread), reviewThreadCommentDigest(laterThread));
   assert.notEqual(reviewThreadCommentDigest(baseThread), reviewThreadCommentDigest(editedThread));
   assert.equal(
+    reviewThreadCommentDigest(baseThread),
+    reviewThreadCommentDigest(recoveryNoMarkerReplyThread),
+  );
+  assert.notEqual(
+    reviewThreadCommentDigest(baseThread),
+    reviewThreadCommentDigest(recoveryMarkerReplyThread),
+  );
+  // quoted-marker recovery reply must NOT change digest
+  assert.equal(
+    reviewThreadCommentDigest(baseThread),
+    reviewThreadCommentDigest(recoveryQuotedMarkerReplyThread),
+  );
+  // invalid-token marker recovery reply must NOT change digest
+  assert.equal(
+    reviewThreadCommentDigest(baseThread),
+    reviewThreadCommentDigest(recoveryInvalidTokenMarkerThread),
+  );
+  assert.equal(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(identicalThread) }]),
   );
@@ -439,6 +538,26 @@ test('review-thread blocker identity changes when comments change', () => {
   assert.notEqual(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(editedThread) }]),
+  );
+  assert.equal(
+    blockerFingerprint([blocker]),
+    blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(recoveryNoMarkerReplyThread) }]),
+  );
+  assert.notEqual(
+    blockerFingerprint([blocker]),
+    blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(recoveryMarkerReplyThread) }]),
+  );
+  assert.equal(
+    blockerFingerprint([blocker]),
+    blockerFingerprint([
+      { ...blocker, id: reviewThreadBlockerId(recoveryQuotedMarkerReplyThread) },
+    ]),
+  );
+  assert.equal(
+    blockerFingerprint([blocker]),
+    blockerFingerprint([
+      { ...blocker, id: reviewThreadBlockerId(recoveryInvalidTokenMarkerThread) },
+    ]),
   );
 });
 
