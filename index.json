@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e7cd59ca5dbfe9aaa7ba4cb30b5c859152f4ed99",
+    "commitDate": "2026-07-29T01:00:20Z",
+    "commitSubject": "fix(fov): reveal and illuminate whole wall tiles when FOV hits them (#2262)",
+    "capturedAt": "2026-07-29T01:54:08.378Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30413296908",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/e7cd59ca5dbfe9aaa7ba4cb30b5c859152f4ed99.json"
+  },
+  {
     "commit": "0d6233c5e928d3b643d9b9f8c1a9640a3645b32d",
     "commitDate": "2026-07-29T00:31:14Z",
     "commitSubject": "CI: auto-detect and close PRs whose diff is byte-identical to main (#2235)",
