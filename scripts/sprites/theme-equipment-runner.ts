@@ -24,6 +24,8 @@ import {
   materializeAndLoadBrief,
   selectedBriefKey,
   selectedBriefRevision,
+  THEME_EQUIPMENT_JUDGE_CONCURRENCY,
+  THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS,
 } from './theme-equipment-brief.js';
 import { generateOne } from './generate-one.js';
 import { loadRecordedReferencePngs } from './load-reference-pngs.js';
@@ -479,6 +481,15 @@ export class ThemeEquipmentRunner {
       styleGuide: loadStyleGuide(this.deps.repoRoot),
       visionProvider: vision,
       force: true,
+      // Speed the variant-approval rejudge (the maintainer-facing wait): cap the
+      // judged set to at most 6 (never raising a brief that already asks for
+      // fewer) and fan out 4-at-a-time. This path passes no judge budget/cache,
+      // so bounded concurrency is race-free (see `runJudgePass`).
+      judgeMaxVariants: Math.min(
+        THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS,
+        loaded.brief.judge.maxVariants,
+      ),
+      concurrency: THEME_EQUIPMENT_JUDGE_CONCURRENCY,
       env: this.deps.env,
       now: this.deps.now,
     });
