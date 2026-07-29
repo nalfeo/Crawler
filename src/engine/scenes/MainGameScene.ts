@@ -459,6 +459,8 @@ export class MainGameScene extends Phaser.Scene {
     packGroundDecalCount: number;
     packLineworkTileCount: number;
     packLineworkPropCount: number;
+    packLineworkBuriedCount: number;
+    packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
     packLineworkRuns: readonly LineworkRunStats[];
     packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
   } = {
@@ -480,6 +482,8 @@ export class MainGameScene extends Phaser.Scene {
     packGroundDecalCount: 0,
     packLineworkTileCount: 0,
     packLineworkPropCount: 0,
+    packLineworkBuriedCount: 0,
+    packLineworkBuriedSample: [],
     packLineworkRuns: [],
     packLineworkHubs: [],
   };
@@ -1943,6 +1947,8 @@ export class MainGameScene extends Phaser.Scene {
     packGroundDecalCount: number;
     packLineworkTileCount: number;
     packLineworkPropCount: number;
+    packLineworkBuriedCount: number;
+    packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
     packLineworkRuns: readonly LineworkRunStats[];
     packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
   } {
@@ -2238,6 +2244,8 @@ export class MainGameScene extends Phaser.Scene {
       packGroundDecalCount,
       packLineworkTileCount,
       packLineworkPropCount,
+      packLineworkBuriedCount,
+      packLineworkBuriedSample,
       packLineworkRuns,
       packLineworkHubs,
     } = buildTerrainLayer(this, floorMap, {
@@ -2265,6 +2273,8 @@ export class MainGameScene extends Phaser.Scene {
       packGroundDecalCount,
       packLineworkTileCount,
       packLineworkPropCount,
+      packLineworkBuriedCount,
+      packLineworkBuriedSample,
       packLineworkRuns,
       packLineworkHubs,
     };
