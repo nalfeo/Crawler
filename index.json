@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fbd010559cb1ba5cc1325fb87c9a1e907571f3d0",
+    "commitDate": "2026-07-29T09:37:40Z",
+    "commitSubject": "feat(engine): add Phaser animation layer + player walk cycle (Slice A) (#2296)",
+    "capturedAt": "2026-07-29T10:44:51.903Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30441170923",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/fbd010559cb1ba5cc1325fb87c9a1e907571f3d0.json"
+  },
+  {
     "commit": "edf3ba86a82e0ee4889974d43979a49e31d53b44",
     "commitDate": "2026-07-29T09:12:59Z",
     "commitSubject": "fix(vfx): recalibrate blood-footprint spacing to the rhea-vale-v1 player sprite (#2303)",
