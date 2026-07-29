@@ -113,6 +113,17 @@ export const LOOP_INCIDENT_MARKER = '<!-- crawler-pr-loop-incident:v1 -->';
 export const LOOP_INCIDENT_FINGERPRINT_PREFIX = '<!-- crawler-pr-loop-fingerprint:';
 
 // ---------------------------------------------------------------------------
+// Already-landed detection comments
+// ---------------------------------------------------------------------------
+
+/**
+ * Leading marker for already-landed detection comments posted on a PR.
+ * Posted when all (or some) of a PR's changed files are detected to be
+ * byte-identical to the content already on `main`.
+ */
+export const ALREADY_LANDED_COMMENT_MARKER = '<!-- crawler-ci-already-landed:v1 -->';
+
+// ---------------------------------------------------------------------------
 // Shared prefix & router filter list
 // ---------------------------------------------------------------------------
 
@@ -152,4 +163,5 @@ export const MANAGED_COMMENT_MARKERS = [
   ISSUE_RECOVERY_PLAN_MARKER,
   LOOP_INCIDENT_MARKER,
   LOOP_INCIDENT_FINGERPRINT_PREFIX,
+  ALREADY_LANDED_COMMENT_MARKER,
 ];

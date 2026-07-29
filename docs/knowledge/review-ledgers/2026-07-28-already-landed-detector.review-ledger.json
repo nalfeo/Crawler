@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "already-landed-detector",
+  "task_title": "CI: auto-detect and close PRs whose diff is byte-identical to main",
+  "estimated_apples": 2,
+  "stages": {}
+}
