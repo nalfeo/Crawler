@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BLOODY_FOOTPRINT_EMIT_DISTANCE_FT,
   createBloodFootprintSurface,
   createBloodPoolSurface,
   isPointInsideBloodPool,
@@ -126,10 +127,10 @@ describe('blood surface helpers', () => {
       color: 0xcc0000,
       fromX: 0,
       fromY: 0,
-      toX: 0.42,
+      toX: BLOODY_FOOTPRINT_EMIT_DISTANCE_FT,
       toY: 0,
       createdAtMs: 100,
-      strideDistanceFt: 0.42,
+      strideDistanceFt: BLOODY_FOOTPRINT_EMIT_DISTANCE_FT,
     });
     const longStride = createBloodFootprintSurface({
       worldSeed: 7,
@@ -138,10 +139,10 @@ describe('blood surface helpers', () => {
       color: 0xcc0000,
       fromX: 0,
       fromY: 0,
-      toX: 0.42,
+      toX: BLOODY_FOOTPRINT_EMIT_DISTANCE_FT,
       toY: 0,
       createdAtMs: 100,
-      strideDistanceFt: 1.4,
+      strideDistanceFt: BLOODY_FOOTPRINT_EMIT_DISTANCE_FT * 3.33,
     });
 
     expect(shortStride.smearLengthFt).toBe(0);
@@ -211,6 +212,75 @@ describe('blood surface helpers', () => {
       const positiveCount = nonCoreInitialScales.filter((s) => s > 0).length;
       expect(positiveCount).toBeGreaterThan(0);
       expect(Math.max(...nonCoreInitialScales)).toBeGreaterThan(0.05);
+    });
+  });
+
+  // ─── Player-sprite calibration gate ─────────────────────────────────────
+  //
+  // The footprint constants must track the shipping player sprite. When
+  // #2254 swapped the player from the 3.2 ft Kenney knight to the 5.22 ft
+  // `rhea-vale-v1` sprite, these were left behind: stride spacing (0.42 ft)
+  // was SHORTER than one print (0.52-0.64 ft), so the trail rendered as a
+  // continuous streak instead of discrete alternating steps.
+  describe('player-sprite calibration', () => {
+    // Deterministic sample across stamp ids so both L/R sides and the full
+    // rng range of every radius are represented.
+    const SAMPLE = Array.from({ length: 200 }, (_, i) =>
+      createBloodFootprintSurface({
+        worldSeed: 1234,
+        footprintId: i + 1,
+        stampId: i,
+        color: 0xcc0000,
+        fromX: 0,
+        fromY: 0,
+        toX: BLOODY_FOOTPRINT_EMIT_DISTANCE_FT,
+        toY: 0,
+        createdAtMs: 0,
+        strideDistanceFt: BLOODY_FOOTPRINT_EMIT_DISTANCE_FT,
+      }),
+    );
+
+    /** Along-heading extent: heel sits behind the origin, toe ahead of it. */
+    const printLengthFt = (f: (typeof SAMPLE)[number]): number =>
+      f.heelRadiusXFt + f.toeOffsetFt + f.toeRadiusXFt;
+    const printWidthFt = (f: (typeof SAMPLE)[number]): number =>
+      2 * Math.max(f.heelRadiusYFt, f.toeRadiusYFt);
+
+    it('spaces strides at least twice the longest print so prints never overlap', () => {
+      const longestPrintFt = Math.max(...SAMPLE.map(printLengthFt));
+
+      // Hard gate. Before recalibration this ratio was 0.42 / 0.64 = 0.66.
+      expect(BLOODY_FOOTPRINT_EMIT_DISTANCE_FT / longestPrintFt).toBeGreaterThanOrEqual(2);
+    });
+
+    it('sizes prints to the 5.2 ft player sprite rather than the retired 3.2 ft knight', () => {
+      const lengths = SAMPLE.map(printLengthFt);
+      const widths = SAMPLE.map(printWidthFt);
+
+      // Band matches the sprite's drawn boots; the old constants produced
+      // 0.52-0.64 ft, well below this floor.
+      expect(Math.min(...lengths)).toBeGreaterThanOrEqual(0.85);
+      expect(Math.max(...lengths)).toBeLessThanOrEqual(1.05);
+      // Keep a foot-like silhouette rather than a circular blob.
+      const aspectRatios = SAMPLE.map((f) => printLengthFt(f) / printWidthFt(f));
+      expect(Math.min(...aspectRatios)).toBeGreaterThan(1.8);
+      expect(Math.max(...widths)).toBeLessThanOrEqual(0.46);
+    });
+
+    it('offsets left/right prints into a track that reads as two separate feet', () => {
+      const leftPrints = SAMPLE.filter((_, i) => i % 2 === 0);
+      const rightPrints = SAMPLE.filter((_, i) => i % 2 === 1);
+
+      expect(leftPrints.every((f) => f.y < 0)).toBe(true);
+      expect(rightPrints.every((f) => f.y > 0)).toBe(true);
+
+      // The two rows must not merge into one centre line: the lateral gap
+      // between opposing centerlines must exceed the SUM of both half-widths
+      // so that no edge of a left print overlaps an edge of a right print.
+      const nearestLeftFt = Math.max(...leftPrints.map((f) => f.y));
+      const nearestRightFt = Math.min(...rightPrints.map((f) => f.y));
+      const widestHalfWidthFt = Math.max(...SAMPLE.map(printWidthFt)) / 2;
+      expect(nearestRightFt - nearestLeftFt).toBeGreaterThan(2 * widestHalfWidthFt);
     });
   });
 });

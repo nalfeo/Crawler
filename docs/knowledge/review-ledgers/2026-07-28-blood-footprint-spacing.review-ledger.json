@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "blood-footprint-spacing",
+  "task_title": "Recalibrate blood-footprint spacing to the rhea-vale-v1 player sprite",
+  "estimated_apples": 2,
+  "stages": {}
+}
