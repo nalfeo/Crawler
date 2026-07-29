@@ -275,11 +275,12 @@ describe('blood surface helpers', () => {
       expect(rightPrints.every((f) => f.y > 0)).toBe(true);
 
       // The two rows must not merge into one centre line: the lateral gap
-      // between opposing prints has to clear their own half-widths.
+      // between opposing centerlines must exceed the SUM of both half-widths
+      // so that no edge of a left print overlaps an edge of a right print.
       const nearestLeftFt = Math.max(...leftPrints.map((f) => f.y));
       const nearestRightFt = Math.min(...rightPrints.map((f) => f.y));
       const widestHalfWidthFt = Math.max(...SAMPLE.map(printWidthFt)) / 2;
-      expect(nearestRightFt - nearestLeftFt).toBeGreaterThan(widestHalfWidthFt);
+      expect(nearestRightFt - nearestLeftFt).toBeGreaterThan(2 * widestHalfWidthFt);
     });
   });
 });
