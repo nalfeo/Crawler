@@ -1,22 +1,21 @@
 /**
- * Generated terrain-tile render guard (real MainGameScene).
+ * Terrain-tile render guard (real MainGameScene).
  *
- * Floor-1 terrain used to bake entirely from Kenney placeholder spritesheet
- * frames. w2 wires four human-approved GENERATED single-PNG tile textures
- * (stone-floor, stone-wall, boss-staircase-floor, safe-room-floor) so
- * `buildTerrainLayer` stamps the whole generated texture — scaled to the tile
- * size — instead of the Kenney frame, keeping the sheet frame + solid color as
- * ordered fallbacks.
+ * Floor 1 ships two co-resident terrain packs (`floor1-dungeon`, `floor1-cave`)
+ * that cover every wall, floor, corridor, and special-room tile. The legacy
+ * generated-single-image and Kenney-fallback paths are inactive on Floor 1.
+ * Floor 2 ships `industrial-cave`. This suite guards the FULL wiring chain for
+ * both floors in the real booted scene.
  *
- * Why e2e (not a lab-only claim): a green unit test proves `buildTerrainLayer`
- * chooses the generated branch in isolation, and a green map-gen-lab sprite mode only
- * knows Kenney frames — NEITHER proves the REAL MainGameScene loads the approved
- * PNGs and stamps them at floor-build time (AGENTS.md rule #10/#15: lab-only
+ * Why e2e (not a lab-only claim): a green unit test proves the renderer chooses
+ * the pack branch in isolation, and a green map-gen-lab sprite mode only knows
+ * Kenney frames — NEITHER proves the REAL MainGameScene loads the pack atlases
+ * and stamps them at floor-build time (AGENTS.md rule #10/#15: lab-only
  * validation is insufficient; observe in a real artifact). The
  * `main-scene-probe-lab` HOSTS the real scene booted through the shipped floor
- * bootstrap (BootScene preloads the generated sprites → MainGameScene bakes the
+ * bootstrap (BootScene preloads the terrain packs → MainGameScene bakes the
  * terrain in `drawFloorTerrain()` before the loadout modal opens), so
- * `getTerrainRenderSummary().generatedCount > 0` observes the actual engine
+ * `getTerrainRenderSummary().packWallCount > 0` observes the actual engine
  * render path.
  *
  * Determinism: fixed `worldSeed` (the lab's PROBE_SEED) and an exact integer
@@ -29,7 +28,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
 
-describe('Generated terrain-tile render guard', () => {
+describe('Terrain-pack render guard', () => {
   let browser: Browser;
   let context: BrowserContext;
   let page: Page;
@@ -44,7 +43,7 @@ describe('Generated terrain-tile render guard', () => {
     await closeQuietly(browser);
   });
 
-  it('stamps approved generated tile textures in the real booted scene', async () => {
+  it('renders Floor 1 terrain-pack wall and floor tiles in the real booted scene', async () => {
     // loadMainSceneProbeLab waits for probe.ready() — which requires the world +
     // player, both created in the same synchronous create() pass that already ran
     // drawFloorTerrain(). So the terrain bake (and its stored counts) is settled.
@@ -55,34 +54,50 @@ describe('Generated terrain-tile render guard', () => {
     let summary = await mainSceneProbe.getTerrainRenderSummary(page);
     const deadline = Date.now() + 5_000;
     while (
-      summary.generatedCount + summary.spriteCount + summary.colorCount === 0 &&
+      summary.packWallCount +
+        summary.packFloorCount +
+        summary.generatedCount +
+        summary.spriteCount +
+        summary.colorCount ===
+        0 &&
       Date.now() < deadline
     ) {
       await page.waitForTimeout(100);
       summary = await mainSceneProbe.getTerrainRenderSummary(page);
     }
 
-    const total = summary.generatedCount + summary.spriteCount + summary.colorCount;
+    const total =
+      summary.packWallCount +
+      summary.packFloorCount +
+      summary.packCorridorCount +
+      summary.packSpecialFloorCount +
+      summary.generatedCount +
+      summary.spriteCount +
+      summary.colorCount;
     expect(total, 'terrain should have been baked (nonzero tile total)').toBeGreaterThan(0);
 
-    // The core rule-#15 gate: approved generated tile textures actually stamp in
-    // the real render path. A Kenney-only render (the pre-w2 behavior) would
-    // report generatedCount === 0.
+    // Floor 1 ships two terrain packs (floor1-dungeon + floor1-cave): every wall
+    // tile comes from the pack atlas and every floor tile comes from the pack pool.
+    // A Kenney-only render (the pre-pack behavior) would report packWallCount === 0.
     expect(
-      summary.generatedCount,
-      `Floor 1 should stamp generated tile textures in the real scene; ` +
+      summary.packWallCount,
+      `Floor 1 should stamp terrain-pack wall tiles in the real scene; ` +
         `summary=${JSON.stringify(summary)}`,
     ).toBeGreaterThan(0);
 
-    // Floor 1 is a room-heavy stone dungeon: the generated stone floor/wall
-    // tiles dominate the Kenney-fallback corridor/door tiles. This makes the
-    // gate meaningful (not just "≥1 generated tile") without over-fitting the
-    // exact layout.
     expect(
-      summary.generatedCount,
-      `generated tiles should be the dominant provenance on Floor 1; ` +
+      summary.packFloorCount,
+      `Floor 1 should stamp terrain-pack floor tiles in the real scene; ` +
         `summary=${JSON.stringify(summary)}`,
-    ).toBeGreaterThan(summary.spriteCount);
+    ).toBeGreaterThan(0);
+
+    // Floor 1 is a room-heavy stone dungeon: pack floor tiles dominate corridor
+    // tiles. This makes the gate meaningful without over-fitting the exact layout.
+    expect(
+      summary.packFloorCount,
+      `pack floor tiles should be the dominant ground surface on Floor 1; ` +
+        `summary=${JSON.stringify(summary)}`,
+    ).toBeGreaterThan(summary.packCorridorCount);
   });
 
   it('Floor 2 renders terrain-pack (industrial-cave) wall and floor tiles in the real booted scene', async () => {
