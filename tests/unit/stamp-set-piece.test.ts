@@ -306,12 +306,14 @@ describe('stampSetPiece — props and layering', () => {
 
   it('honours an explicit feet box over the tile-derived footprint (no-stretch sizing)', () => {
     const stamp = stampSetPiece(welcomeRoom(), opts(ROOM_LARGE));
-    // welcome-rug is authored as a wider footprint but carries an explicit 8×4 ft box so
-    // the shipped 128×73 art is contain-fit at its true aspect (never stretched
-    // to the tile-derived footprint).
+    // welcome-rug occupies a 6×4 TILE footprint (12×8 ft) but carries an explicit
+    // feet box, which must win: the shipped art keeps its own aspect instead of
+    // being stretched to fill the tile box.
     const rug = stamp.props.find((p) => p.render.label === 'welcome-rug');
-    expect(rug?.render.widthFt).toBe(8);
-    expect(rug?.render.heightFt).toBe(4);
+    const authored = welcomeRoom().props.find((p) => p.id === 'welcome-rug')!.layers[0]!;
+    expect(rug?.render.widthFt).toBe(authored.widthFt);
+    expect(rug?.render.heightFt).toBe(authored.heightFt);
+    expect(rug?.render.widthFt).not.toBe(12); // 6 tiles × 2 ft/tile
   });
 
   it('falls back to the footprint (base) / native tile (accent) box when no feet box is authored', () => {

@@ -112,7 +112,11 @@ const box = (halfWidth: number, halfHeight: number, weight: number): PhysicsBody
  */
 export const PHYSICS_BODIES = {
   // --- Combatants ---
-  /** Player. Sprite 3×3 ft. */
+  /**
+   * Player. Foot-footprint collider (3 ft across), deliberately smaller than the
+   * ~5.75 ft drawn sprite — a full-height collider could not fit a 1-tile
+   * (4 ft) corridor. Render size lives in `entity-sprite-mappings.json`.
+   */
   player: circle(1.5, 180),
 
   /**

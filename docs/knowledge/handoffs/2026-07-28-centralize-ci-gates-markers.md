@@ -3,7 +3,7 @@
 **Date:** 2026-07-28  
 **PR:** Closes #1854  
 **Epic:** #1850 CI-harness redesign  
-**Apple estimate:** 3🍎 (actual: 3🍎 — exact)  
+**Apple estimate:** 3🍎 (actual: 3🍎 — exact)
 
 ## Systems touched
 
@@ -38,14 +38,17 @@ Each script file previously defined its own marker constants. They now import fr
 **`ci-recovery-router.yml`** — Simplified 5-marker managed-comment `if:` filter to a single `!startsWith(github.event.comment.body, '<!-- crawler-')` prefix check. New markers are automatically covered.
 
 **`ci.yml` (changes job)**:
+
 - The temporary `train-gate` step was REMOVED during PR recovery because the scheduled `changes` job is intentionally the unconditional full-CI backstop; leaving the step in place created dead, misleading gate output without affecting control flow.
 
 **`ci-recovery-incidents.yml` (route-incident job)**:
+
 - Checkout is now unconditional (first step) — needed for local action resolution
 - `train-gate` step is second; only the `node incident.mjs` work step is gated on train-gate output
 - Removed `vars.MERGE_TRAIN_ENABLED == 'true'` from job-level `if:` (was schedule+train clause only)
 
 **`merge-train.yml` (reconcile job)**:
+
 - Sparse checkout (`.github/actions` only) added as first step to enable local action resolution
 - `train-gate` step is second; app-token + full checkout + reconcile steps gated on output
 - Removed `vars.MERGE_TRAIN_ENABLED == 'true'` from job-level `if:` schedule clause

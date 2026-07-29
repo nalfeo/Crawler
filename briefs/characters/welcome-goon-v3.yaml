@@ -1,0 +1,183 @@
+# WELCOME-ROOM RECEPTION GOON — v3 (STYLE CORRECTION).
+#
+# WHY v3 EXISTS: v1 and v2 were both briefed in the WRONG ART DIRECTION.
+# `docs/knowledge/game-design/art-style-guide.md` had no proportion or rendering
+# guidance at all, so successive waves invented one and drifted toward gritty
+# semi-realism. v2 explicitly demanded "SEVEN HEADS TALL" and listed "do NOT draw
+# chibi / big-head cartoon proportions" as a hard negative. That is backwards.
+#
+# Crawler is CARTOONISH, NOT REALISTIC. The authoritative references are EarthBound,
+# Chrono Trigger, Undertale and Zelda (A Link to the Past / Link's Awakening).
+# Bobblehead proportions are CORRECT. See the style guide's "Character Proportions"
+# and "Rendering" sections, which this brief inherits and must not contradict.
+#
+# CARRIED FORWARD from earlier waves (each paid for, do not re-litigate):
+#  * DEFAULT size variant. `sizeVariant: tall` is actively harmful on this pipeline
+#    — the model draws square cells anyway and the slicer then cuts stacked columns.
+#  * ONE AXIS ONLY stated in source pixels. Stating both yields the stated one and a
+#    wrong other.
+#  * `sensors.anchor.mode: center-of-mass`. `grip` splits the bottom row into opaque
+#    runs and locks onto exactly ONE, so a two-booted figure fails even when
+#    perfectly centred. center-of-mass is what that sensor documents for non-held
+#    sprites. This ALSO retires v2's "feet must be fused into one shape" clause,
+#    which only ever existed to dodge the grip bug. Feet may be apart now.
+#  * `paletteMode: strict`. Prose does not control colour on this model; quantization
+#    does. The ramp guarantees the figure cannot come back as a dark blob.
+#  * VALUE STRUCTURE remains pass/fail — light torso, dark legs. That finding was
+#    about READABILITY at game scale and survives the style correction intact.
+type: character
+name: welcome-goon-v3
+description: |
+  A CARTOON PRODUCTION-STAFF GREETER working the check-in desk of a televised
+  dungeon reality show. A bored lifer who got stuck doing reception paperwork.
+
+  ART STYLE IS THE FIRST PRIORITY. Draw him in the style of EARTHBOUND, CHRONO
+  TRIGGER, UNDERTALE and ZELDA: A LINK TO THE PAST. Charming, cartoonish, friendly
+  chunky pixel art. This is NOT gritty, NOT painterly, NOT semi-realistic, NOT dark
+  fantasy, NOT Darkest Dungeon, NOT Diablo.
+
+  PROPORTIONS ARE BOBBLEHEAD AND THAT IS CORRECT:
+   - He is about THREE AND A HALF HEADS TALL in total.
+   - His HEAD IS BIG — roughly ONE THIRD of his whole height, a large rounded skull
+     sitting on a small body. A big head is a REQUIREMENT, not a defect.
+   - Body and limbs are SHORT, CHUNKY and SIMPLIFIED. Stubby arms and legs, simple
+     block feet, mitten-shaped hands with no individual fingers.
+   - His FACE is simple and readable: two large dark dot/bean eyes, little or no
+     nose, one simple mouth line. Heavy eyelids and a flat mouth carry his boredom.
+     Do NOT render a detailed realistic face, wrinkles, stubble texture or teeth.
+
+  RENDERING IS FLAT AND CLEAN:
+   - FLAT COLOUR FILLS with hard-edged cel shading. TWO OR THREE tonal stops per
+     material, maximum. No gradients, no soft airbrushed blending.
+   - MINIMAL DITHERING. Do NOT use dithered noise, grain, speckle, grime texture or
+     scattered stray pixels to suggest wear or age. If something is worn, draw it as
+     one or two deliberate simple shapes (a patch, a stain, a bent corner), not as
+     texture.
+   - A clean, consistent dark outline around the figure.
+   - Colours are warm and readable, never muddy, never desaturated to grey sludge.
+
+  PRODUCTION IDENTITY IS THE SECOND PRIORITY, and must read at game scale where he
+  is only about 40 pixels tall. Draw all three, big and simple:
+   - A LANYARD: a strap down his chest ending in a LAMINATED SHOW CREDENTIAL, a
+     bright rectangular badge at chest height. The badge is the single brightest,
+     most saturated thing in the sprite — his one focal accent.
+   - A HEADSET: a simple band over his big head with one earpiece cup and a slim
+     boom mic arm curving toward his mouth. Draw it as clean simple shapes.
+   - A CLIPBOARD held in BOTH mitten hands, flat against his belly and DEAD CENTRE
+     of his body, tilted up slightly. Both elbows tucked in against his ribs. It
+     must NOT be held out to one side and must NOT stick out past either hip.
+
+  ATTITUDE: BORED AND WEARY. Shoulders slumped and rolled forward, big head tipped
+  slightly down or to one side, heavy eyelids, flat mouth. Going through the motions
+  of a job he stopped caring about seasons ago. NOT alert, NOT imposing, NOT posing.
+
+  VALUE STRUCTURE IS PASS/FAIL. He stands on a mid-to-dark floor and must separate
+  from it at true game scale. Every early round came back as a dark blob. Therefore:
+
+  HE WEARS NO JACKET, COAT, BLAZER, SUIT, VEST OR OVERGARMENT OF ANY KIND. His whole
+  torso is ONE unbroken LIGHT BONE / TAUPE branded production polo shirt, sleeves
+  rolled to the elbow. That light shirt is the largest area of the sprite and is
+  clearly LIGHTER than everything around it. His bare forearms are light too.
+
+  The only DARK masses are his trousers, his shoes, his hair and the outline — and
+  together they must cover LESS area than the light shirt. Read him top to bottom:
+  light head, LIGHT torso and arms, dark legs. Three distinct value masses, never one
+  flat blob.
+
+  COLOUR ASSIGNMENT IS EXPLICIT. Quantization is strict, so every colour below is a
+  palette entry and each one belongs to ONE material. Do not borrow across materials:
+
+  - SKIN (face, neck, bare forearms, hands) uses the WARM TAN ramp ONLY:
+    rgb(88,56,38) shadow, rgb(134,92,62) mid, rgb(180,136,98) light,
+    rgb(220,180,140) highlight. His skin is TAN AND DESATURATED, the colour of
+    unbleached leather. It is NOT orange, NOT amber, NOT gold, NOT yellow.
+  - AMBER rgb(236,146,26) and rgb(255,200,74) are the LAMINATE BADGE ACCENT and
+    NOTHING ELSE. Together they occupy a handful of pixels on the badge. They must
+    NEVER appear on skin, hair, cloth or the clipboard. They are the two brightest
+    entries in the palette purely because a small badge needs to pop — brightness
+    here does NOT mean "use this for the face".
+  - TROUSERS AND SHOES use the NAVY ramp: rgb(30,32,46), rgb(48,52,72),
+    rgb(68,74,100). The legs must show at least two of these three so they read as
+    cloth with form.
+  - rgb(16,14,18) is the OUTLINE colour. It is a one-pixel contour line, never a
+    fill. The lower body must NOT be a solid mass of it.
+
+  HARD NEGATIVES:
+  - Do NOT paint the face, neck, arms or hands orange, amber, gold or yellow. Skin is
+    the tan ramp. This is the single most common failure on this brief.
+  - Do NOT fill the trousers, shoes or lower body with the near-black outline colour.
+    The legs are NAVY with visible tonal steps, not a black silhouette.
+  - Do NOT draw realistic, lanky, long-limbed, seven-heads-tall or adult-proportioned
+    anatomy. Do NOT make the head small. A small head is a FAILURE in this brief.
+  - Do NOT draw gritty, grimy, painterly, photorealistic or dark-fantasy rendering.
+  - Do NOT use heavy dithering, noise or grain anywhere.
+  - Do NOT draw sunglasses, shades or dark eyewear. His tired eyes are visible.
+  - Do NOT draw crossed or folded arms.
+  - Do NOT draw a closed dark suit, tuxedo or all-black outfit.
+  - Do NOT draw a velvet rope, doorway, desk, furniture or any second object other
+    than the clipboard.
+  - Do NOT draw a drop shadow, cast shadow or dark ellipse under him.
+  - Do NOT leave any fully enclosed pocket of background inside the figure. ZERO
+    enclosed transparent pixels. Forearms rest against the torso, the clipboard's
+    back edge touches his belly, the lanyard lies flat as two solid strips and never
+    forms an open ring, and the headset band sits on his hair with no gap under it.
+
+  He is one of THREE NPCs in this room and must read as the same cast — the same
+  bobblehead proportions, the same flat cel rendering, the same outline weight, and
+  the same discipline of ONE saturated focal accent (his is the amber credential).
+
+  SIZE ON THE SHEET: the standing figure spans roughly 200 of the 256 vertical source
+  pixels of its cell, centred, feet on a common invisible floor line near the bottom.
+  Let width come out at whatever the figure honestly needs — he will be relatively
+  WIDE for his height and that is correct — but keep him fully inside his own cell.
+
+  THE SHEET IS A 4 x 4 GRID OF SIXTEEN SEPARATE CELLS, and EVERY CELL MUST BE
+  ISLANDED. Each figure sits wholly inside its own cell with a WIDE EMPTY MARGIN of
+  flat background all the way around it — at least 25 source pixels on every side,
+  ABOVE AND BELOW as well as left and right. No figure may touch or approach its cell
+  edge. There is always a clear unbroken horizontal band of empty background between
+  every pair of ROWS and a clear unbroken vertical band between every pair of
+  COLUMNS. A figure that merges with its neighbour makes the whole sheet unusable.
+
+  THE SILHOUETTE MUST BE BALANCED. Draw a vertical line up from the midpoint between
+  his feet: the figure extends the SAME distance left and right of it. Nothing — not
+  an elbow, not the clipboard, not a hand — sticks out noticeably further on one
+  side. His weary slump is in the SHOULDERS, NECK AND HEAD, not a hip thrown sideways.
+
+  Standing upright in an idle stance, 3/4 view: camera looks slightly down, he is
+  turned a few degrees off straight-on, both eyes visible, shoulders nearly square.
+
+  MATERIAL AND PALETTE: light bone/taupe production polo (dominant mass), dark navy
+  trousers, dark grey headset and shoes, TAN DESATURATED skin from the warm tan ramp
+  (never orange or amber), a deep crimson lanyard strap, one small saturated amber
+  laminate badge — the amber belongs to that badge alone. Flat fills, 2-3 tonal stops
+  per material, clean dark outline. Never candy-glossy, never glowing.
+
+  Rendered in the game at roughly 6.6 feet tall (1 tile = 4 feet). Keep detail count
+  low enough that the badge, the headset and the slump all survive when he is only
+  about 40 pixels tall on screen.
+
+  SHEET BACKGROUND: every cell sits on ONE single flat uniform background colour,
+  identical in all cells, clearly distinct from the figure's colours so it keys out
+  cleanly. Do not alternate or checkerboard cell backgrounds and do not draw any
+  panel, border or frame behind the subject.
+palette:
+  id: welcome-room-goon
+postprocessing:
+  paletteMode: strict
+sensors:
+  anchor:
+    # See header: `grip` locks onto ONE bottom-row opaque run, so a two-footed
+    # figure fails even when perfectly centred. center-of-mass is the documented
+    # contract for non-held sprites.
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - production-staff
+  - npc
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 12
+minVariations: 0

@@ -1,0 +1,198 @@
+# ASPECT NOTE (Asset Forge, 2026-07-26): height-authoritative renderer, so the
+# canvas aspect IS the real-world proportion. 1 tile = 4 ft (PIXELS_PER_FOOT = 8
+# => 32 world px per tile). Three narrow lockers side by side are ~4.5 ft wide
+# total x 6 ft tall => 0.75:1, hence a 72x96 canvas. 96 < 2*72, so
+# resizeSpriteStrategy() returns 'fit' and the shipped canvas is exactly 72x96 —
+# the DRAWN aspect must match ~0.75:1 or the subject letterboxes and the feet
+# lift off the bottom band.
+# ROUND 2 REWRITE (Asset Forge). Round 1 failed BOTH the sensors and the VLM
+# judge (design_language 2/5, brief_match 1-2/5) and was rejected outright:
+#  - it drew TWO WIDE doors, not THREE NARROW ones;
+#  - all three lockers were identical — no sticker crust, no bare door, no dent,
+#    so the entire characterisation was missing;
+#  - the bank came out near-square and the 'fit' strategy letterboxed it, leaving
+#    no opaque pixel in the bottom 8 rows (`anchor-derivable` failure);
+#  - the metal read as flat and photo-smooth rather than Crawler pixel art.
+# ROUND 2 RESULT: the CONTENT fix worked — judge went to 5/5/5/5 and the sheet
+# now shows exactly three narrow doors with sticker-crust / bare / dented
+# differentiation. But `sizeVariant: tall` did nothing useful: the model ignored
+# the portrait cell layout and still drew a near-square bank sitting on a drawn
+# ground shadow, so all 9 slices letterboxed and failed `anchor-derivable`
+# ("no opaque pixel in bottom 8 rows, first opaque row y=82").
+#
+# ROUND 3: drop `sizeVariant` (back to reliable square cells), pin the width in
+# explicit SOURCE PIXELS, and forbid the drawn drop shadow that is holding the
+# plinth up off the bottom band. Sensor thresholds, judge bar and output size
+# are all unchanged — this is an art fix.
+type: prop
+name: welcome-room-lockers
+description: |
+  A BANK OF THREE NARROW PERSONAL LOCKERS standing side by side in one welded
+  row — one per NPC, each personalised completely differently. Front-elevation
+  3/4 view, looking straight at the doors — the same view as the already-approved
+  welcome-room-desk (which has "WELCOME" painted on its FRONT face). This is a
+  FACADE, not a top-down floorplan: vertical pixels are real vertical height.
+  Modern high-quality pixel art, silhouette readable at 16px.
+
+  REQUIREMENT A — THERE ARE EXACTLY THREE DOORS AND THEY ARE NARROW.
+  Read this before anything else. Round 1 drew TWO WIDE doors and every variant
+  was rejected. Count the doors before you finish: THREE. Not two. Not four.
+  Each door is only about 1.5 ft wide against a 6 ft height, so each door is
+  FOUR TIMES TALLER THAN IT IS WIDE — tall, skinny, letterbox-thin uprights
+  standing side by side. Two thin vertical seams divide the bank into three equal
+  narrow columns. If a door looks as wide as it is deep, or the bank looks like a
+  two-door wardrobe or a kitchen cabinet, it is WRONG.
+
+  REQUIREMENT B — THE THREE DOORS MUST NOT MATCH. Round 1 drew three identical
+  doors and scored 1/5 on brief match. The differences below are the entire point
+  of this prop and must be obvious at a glance, at 16px:
+  - LEFT DOOR — STICKER CRUST: a dense overlapping mat of small stickers and
+    decals covering most of the door, layered, corners curling, two half-scraped
+    off leaving pale ghost rectangles. Shapes and blobs only, never letters.
+  - MIDDLE DOOR — POINTEDLY BARE: not one sticker, not one mark, not one scuff
+    of decoration. Wiped-down plain metal. Leave it EMPTY. The emptiness is the
+    characterisation; do not "balance" it by adding detail.
+  - RIGHT DOOR — PUNCHED IN: a deep dent in the middle of the door with the sheet
+    metal buckled and star-creased around the impact, the door hanging visibly
+    out of true so it does not close flush against its frame, and the latch bent.
+  Somebody should be able to tell these three lockers apart from across a room.
+
+  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  The bank is approximately 4.5 FEET WIDE IN TOTAL x 6 FEET TALL, so the overall
+  bounding box must be clearly TALLER THAN IT IS WIDE (width : height =
+  0.75 : 1). Round 1 came back nearly square, which is wrong — make it distinctly
+  TALLER AND NARROWER than feels natural. Compose it inside the cell like this:
+  - THE FEET OF THE LOCKERS MUST REACH THE VERY BOTTOM of the cell and stand on
+    the bottom margin. Do NOT leave an empty band under them.
+  - The top edge nearly touches the TOP margin.
+  - It fills roughly 85-90% of the cell height.
+  RD 5 NOTE — YOU DROPPED A DOOR. Round 5 fixed the silhouette but came back
+  with TWO doors, and the judge correctly rejected it (brief_match 1/5). Keep
+  every RD 4 silhouette rule below AND keep THREE doors. Count them as you draw:
+  door 1, door 2, door 3, three handles, three latches, two vertical seams
+  between them. A two-door bank is an automatic reject no matter how good the
+  metal looks. The three doors are also each PERSONALISED DIFFERENTLY per
+  REQUIREMENT B above — sticker-crusted, pointedly bare, and punched-in dented.
+  Narrow the doors to fit three across; do not widen the bank.
+
+  RD 4 NOTE — OPEN UP THE SILHOUETTE. The bank came back as an almost solid
+  rectangle (71-73% of its bounding box was opaque; the budget is 65%). Do NOT
+  make the bank smaller or shorter to fix this. Instead cut real background into
+  the silhouette, the way a real locker bank does:
+  - The bank stands on FOUR SHORT SPLAYED LEGS about 5 px tall. There is a clear
+    OPEN GAP of transparent background under the plinth BETWEEN the legs, right
+    across the width of the bank. You can see the floor through it.
+  - The TOP is a shallow SLOPED anti-loitering cap that falls away to the right,
+    so the upper-right corner of the bounding box is empty background, and the
+    upper-left corner is cut by a small chamfer. The top of the bank is NOT a
+    full-width flat rectangle.
+  - The rearmost top corner of the receding 3/4 side face steps in, leaving
+    background in the corner rather than filling the box.
+  - Each door's vent slots are cut CLEANLY THROUGH into shadow, and the gap
+    between the bank and the ground is never filled with shading.
+  There must be no stray single transparent pixels floating INSIDE the metal —
+  interior specks are a defect. Keyed holes belong only under the plinth, in the
+  vent slots and outside the silhouette.
+
+  - MEASURE IT. The bank's FRONT FACE is 4.5 ft wide and 6 ft tall, but this is a
+    3/4 view, so the receding SIDE face adds drawn width: the full drawn bounding
+    box is about as wide as it is tall (roughly 1.04 : 1). Inside a 256x256 cell
+    that is a bounding box about 250 px wide and 240 px tall. Do NOT squeeze the
+    bank narrower than that — the earlier 0.75 : 1 target in this brief was a
+    flat-elevation figure and was simply wrong for a 3/4 view.
+  - NO DROP SHADOW, NO GROUND SHADOW, NO CAST SHADOW and no floor line beneath
+    the lockers. Round 2 drew a soft shadow puddle under the bank, which pushed
+    the metal up off the bottom of the cell. The lowest OPAQUE pixels in the cell
+    must be the locker feet themselves, sitting flat on the bottom edge of the
+    cell. Everything below the feet is transparent background and nothing else.
+
+  WHAT IT IS:
+  - Three tall narrow sheet-metal locker doors in one continuous welded bank,
+    separated by thin vertical seams, sharing a plinth at the bottom and a
+    slightly overhanging top.
+  - Each door has a slim vertical handle and a small latch, plus a row of
+    punched ventilation slots near the top of the door.
+  - Dull hammered sheet metal, rust bloom creeping up from the plinth, a bowed
+    seam where the bank has been shoved about too many times.
+
+  EACH LOCKER IS PERSONALISED DIFFERENTLY — see REQUIREMENT B above; it is the
+  single most important reading cue and the three doors must be UNMISTAKABLY
+  different from each other at 16px.
+
+  PIXEL-ART FINISH — ROUND 1 SCORED 2/5 ON DESIGN LANGUAGE. The round-1 metal
+  read as flat, smooth and photographic. This must look like deliberate,
+  hand-placed modern pixel art: a hard 1-pixel near-black outline round the whole
+  bank and round each door, 4-5 clearly separated tone steps in the metal (not a
+  smooth wash), explicit 1-pixel highlight and shadow lines on every seam, hinge
+  and vent slot, and restrained dithering for the rust bloom and the hammered
+  surface. No airbrush, no soft gradients, no blur, no noise texture.
+
+  IT IS NOT: a wardrobe, a bookcase, a cabinet of drawers, a fridge, a
+  server rack, a set of shelves, a chest of drawers, a door in a wall, or a
+  single locker. It is three narrow lockers in one bank.
+
+  MOOD — three NPCs are stuck living in this reality-show reception room
+  together, season after season, bored out of their minds, forbidden by dungeon
+  rules from leaving, harming each other or complaining while the cameras roll.
+  These lockers are the only private space any of them has. They sit in the half
+  of the room the camera rig does NOT cover. Institutional, worn, quietly hostile.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. It must sit beside
+  welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-crate-stack, welcome-room-carpet and prop-wall-sconce-v1 without
+  clashing: cool grey worn stone, warm-brown walnut wood, desaturated
+  production-set greys and blacks, tarnished brass, deep maroon — muted and
+  dusty. The metal is a desaturated institutional grey-green with cool grey
+  highlights and a dull orange-brown rust bloom at the plinth; the handles and
+  latches are tarnished brass. The sticker crust on locker 1 is the ONE place
+  saturated colour is allowed, and even there keep it dulled — faded mustard,
+  washed pink-grey, chalky green-grey. BANNED: neon, pure white, pure black,
+  saturated red, saturated yellow, orange, bright teal, cyan, blue, green,
+  magenta, purple, and showroom gloss.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The left edge of the
+  bank, the left flank of each handle and the upper-left lip of the dent catch
+  the highlight; each vertical seam throws a thin shadow to its right, and the
+  dent's shadow pools to its lower right. Every prop in this wave shares that one
+  light direction.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering for hammered metal and rust — no mushy
+  gradients, no airbrush, no floating unsupported elements. This prop is
+  GROUNDED: it rests on the stone floor.
+
+  NO TEXT of any kind: no readable letters, words, numbers, digits, name plates,
+  labels, brand marks, watermarks or signatures anywhere. The stickers are shapes
+  only.
+
+  BACKGROUND: fully transparent. Draw ONLY the bank of lockers. Do NOT paint a
+  wall behind it, a floor slab, a rectangular backing panel, a frame, a border, a
+  vignette, or any cast/contact/drop shadow on the ground. Every pixel that is
+  not the lockers themselves must be fully transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the sprite palette so it
+  can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 100
+  height: 96
+anchor:
+  x: 50
+  y: 90
+sensors:
+  anchor:
+    derive: true
+    bandRows: 8
+    centerToleranceX: 12
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - living-area
+  - furniture
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0
