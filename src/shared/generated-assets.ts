@@ -129,6 +129,34 @@ export const manifestEntrySchema = z
     effectiveAnchorSource: z.enum(['manual', 'derived', 'brief']).nullable().optional(),
     facingDirection: z.enum(['left', 'right']).optional(),
     /**
+     * Optional multi-frame animation descriptor. Present only on entries whose
+     * PNG is a horizontal spritesheet strip rather than a single frame. Absent
+     * entries keep loading as a flat image (backward compatible) — see
+     * `preloadGeneratedSprites` in `src/engine/generatedAssets/preload.ts`.
+     *
+     * CONTRACT (shared between the sprite-generation pipeline and the engine
+     * consumer — see `registerGeneratedSpriteAnimations` in
+     * `src/engine/generatedAssets/animations.ts`):
+     * - The PNG at `assetPath` is a **single row**, laid out left-to-right,
+     *   of `frameCount` frames each exactly `frameWidth` x `frameHeight` px,
+     *   with no padding/margin between frames (standard Phaser `spritesheet`
+     *   frame numbering: frame `0` is the leftmost cell, frame
+     *   `frameCount - 1` the rightmost).
+     * - **Frame `0` is the walk cycle's designated idle/resting pose.** When
+     *   the entity stops moving, the engine snaps back to frame 0 rather than
+     *   freezing on whatever mid-stride frame the loop was on — there is no
+     *   separate "idle" field; frame 0 of this same strip doubles as idle.
+     */
+    animation: z
+      .object({
+        frameWidth: z.number().int().positive(),
+        frameHeight: z.number().int().positive(),
+        frameCount: z.number().int().min(2),
+        frameRate: z.number().positive(),
+        loop: z.boolean().default(true),
+      })
+      .optional(),
+    /**
      * True when this entry is a placeholder stand-in (not real generated art).
      * Placeholder entries are excluded from the derived sprite-catalog rows.
      * Optional so pre-flag manifests still parse; the catalog composer falls
@@ -166,6 +194,14 @@ const generatedManifestSchema = z
 
 export type ManifestEntry = z.infer<typeof manifestEntrySchema>;
 export type GeneratedManifest = z.infer<typeof generatedManifestSchema>;
+
+/**
+ * Multi-frame animation descriptor for a generated spritesheet entry. The
+ * shared contract between the sprite-generation pipeline (which produces
+ * multi-frame sheets) and the engine (which plays them) — see
+ * `registerGeneratedSpriteAnimations` in `src/engine/generatedAssets/animations.ts`.
+ */
+export type GeneratedSpriteAnimation = NonNullable<ManifestEntry['animation']>;
 
 /**
  * Engine-facing view of one manifest entry. Resolves the anchor against
@@ -209,6 +245,11 @@ export interface GeneratedSpriteEntry {
   readonly sensorScore: string;
   readonly judgeScore: string | null;
   readonly facingDirection: 'left' | 'right';
+  /**
+   * Present when this variant's PNG is a horizontal multi-frame walk/anim
+   * strip rather than a single frame. See `GeneratedSpriteAnimation`.
+   */
+  readonly animation?: GeneratedSpriteAnimation;
 }
 
 /**
@@ -329,6 +370,7 @@ function toRegistryEntry(entry: ManifestEntry, manifestKey: string): GeneratedSp
     sensorScore: entry.sensorScore,
     judgeScore: entry.judgeScore,
     facingDirection: entry.facingDirection ?? 'right',
+    ...(entry.animation !== undefined ? { animation: entry.animation } : {}),
   };
 }
 

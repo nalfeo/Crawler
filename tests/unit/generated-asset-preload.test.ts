@@ -140,8 +140,8 @@ describe('preloadGeneratedSprites', () => {
     expect(image).toHaveBeenCalledWith('iron-sword', '/assets/generated/iron-sword.png');
     expect(image).toHaveBeenCalledWith('throwing-star', '/assets/generated/throwing-star.png');
     expect(queued).toEqual([
-      { textureKey: 'iron-sword', url: '/assets/generated/iron-sword.png' },
-      { textureKey: 'throwing-star', url: '/assets/generated/throwing-star.png' },
+      { textureKey: 'iron-sword', url: '/assets/generated/iron-sword.png', kind: 'image' },
+      { textureKey: 'throwing-star', url: '/assets/generated/throwing-star.png', kind: 'image' },
     ]);
   });
 
@@ -182,6 +182,60 @@ describe('preloadGeneratedSprites', () => {
       'skull-mace-var-2',
       '/assets/generated/skull-mace-var-2.png',
     );
+  });
+
+  it('routes an entry with an animation descriptor through loader.spritesheet', () => {
+    const image = vi.fn();
+    const spritesheet = vi.fn();
+    const registry = buildGeneratedSpriteRegistry({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'player-walk-v1-var-0': {
+          ...makeEntry('player-walk-v1'),
+          assetPath: 'generated/player-walk-v1-var-0.png',
+          animation: { frameWidth: 16, frameHeight: 16, frameCount: 3, frameRate: 6, loop: true },
+        },
+      },
+    });
+    const queued = preloadGeneratedSprites({ image, spritesheet }, registry);
+    expect(spritesheet).toHaveBeenCalledTimes(1);
+    expect(spritesheet).toHaveBeenCalledWith(
+      'player-walk-v1-var-0',
+      '/assets/generated/player-walk-v1-var-0.png',
+      { frameWidth: 16, frameHeight: 16 },
+    );
+    expect(image).not.toHaveBeenCalled();
+    expect(queued).toEqual([
+      {
+        textureKey: 'player-walk-v1-var-0',
+        url: '/assets/generated/player-walk-v1-var-0.png',
+        kind: 'spritesheet',
+      },
+    ]);
+  });
+
+  it('falls back to loader.image for an animated entry when spritesheet() is unavailable', () => {
+    const image = vi.fn();
+    const registry = buildGeneratedSpriteRegistry({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'player-walk-v1-var-0': {
+          ...makeEntry('player-walk-v1'),
+          assetPath: 'generated/player-walk-v1-var-0.png',
+          animation: { frameWidth: 16, frameHeight: 16, frameCount: 3, frameRate: 6, loop: true },
+        },
+      },
+    });
+    // Fake loader only implements image() — the defensive guard must still work.
+    const queued = preloadGeneratedSprites({ image }, registry);
+    expect(image).toHaveBeenCalledTimes(1);
+    expect(queued).toEqual([
+      {
+        textureKey: 'player-walk-v1-var-0',
+        url: '/assets/generated/player-walk-v1-var-0.png',
+        kind: 'image',
+      },
+    ]);
   });
 
   it('skips duplicate texture keys within a single call', () => {
