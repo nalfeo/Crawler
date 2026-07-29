@@ -12,6 +12,11 @@ import {
 } from '../../core/index.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import {
+  GENERATED_SPRITE_REGISTRY_KEY,
+  preloadGeneratedSprites,
+} from '../../engine/generatedAssets/index.js';
+import { buildGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { ftToPx, pxToFt } from '../../shared/units.js';
@@ -39,6 +44,33 @@ const GRID_SIZE_FT = 6;
 const ENEMY_COUNT = 10;
 const ENEMY_MARGIN_FT = 4;
 const LAB_ID = 'movement-lab';
+const PLAYER_WALK_TEXTURE_KEY = 'player-walk-placeholder-v1-var-0';
+
+function buildMovementLabSpriteRegistry() {
+  return buildGeneratedSpriteRegistry({
+    version: 1,
+    entries: {
+      [PLAYER_WALK_TEXTURE_KEY]: {
+        briefId: 'player-walk-placeholder-v1',
+        spriteName: PLAYER_WALK_TEXTURE_KEY,
+        assetPath: 'generated/rhea-vale-v1-var-0-walk.png',
+        approvedAt: '2026-08-01T00:00:00.000Z',
+        sourceRun: 'movement-lab',
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: 'n/a',
+        judgeScore: null,
+        animation: {
+          frameWidth: 64,
+          frameHeight: 64,
+          frameCount: 3,
+          frameRate: 6,
+          loop: true,
+        },
+      },
+    },
+  });
+}
 
 class TrailBuffer {
   private readonly points: Array<TrailPoint | undefined>;
@@ -183,6 +215,14 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       super({ key: 'MovementLabScene' });
     }
 
+    preload(): void {
+      const generatedRegistry = buildMovementLabSpriteRegistry();
+      this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, generatedRegistry);
+      if (this.load) {
+        preloadGeneratedSprites(this.load, generatedRegistry);
+      }
+    }
+
     create(): void {
       spawnEnemiesFromGui = (count: number) => {
         this.spawnEnemies(count);
@@ -315,6 +355,25 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         this.playerEid >= 0 ? (this.world.stores.velocity.y[this.playerEid] ?? 0) : 0;
       const enemyCount = query(this.world.ecs, [Enemy]).length;
 
+      // The player's game object is a Sprite (not a plain Image) only when its
+      // resolved texture carries an `animation` descriptor — see
+      // `playPlayerWalkAnimation` in PhaserBridge.ts. Introspecting the scene's
+      // display list (rather than adding a bridge-internal accessor) keeps this
+      // lab a pure OBSERVER of the animation layer, exercising the exact same
+      // public Phaser surface a real player render would.
+      const playerSprite = this.children.list.find(
+        (obj): obj is Phaser.GameObjects.Sprite =>
+          'anims' in obj && (obj as Partial<Phaser.GameObjects.Sprite>).anims !== undefined,
+      );
+      const walkAnim = playerSprite
+        ? {
+            textureKey: playerSprite.texture.key,
+            isPlaying: playerSprite.anims.isPlaying,
+            frameIndex: playerSprite.anims.currentFrame?.index ?? null,
+            flipX: playerSprite.flipX,
+          }
+        : null;
+
       // Read Phaser key states directly
       const kb = this.input.keyboard;
       const phaserW =
@@ -342,6 +401,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         frameCount: this.world.frameCount,
         playerEid: this.playerEid,
         keyLog: [...keyLog],
+        walkAnim,
       };
 
       info.textContent = [
@@ -350,6 +410,9 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         `Input: move(${this.inputState.moveX.toFixed(2)}, ${this.inputState.moveY.toFixed(2)})`,
         `RawKeys: ${rawKeysStr}  PhaserKeys: ${phaserKeysStr}`,
         `Speed: ${settings.speed.toFixed(1)}  Accel: ${settings.acceleration.toFixed(2)}  Fric: ${settings.friction.toFixed(2)}`,
+        walkAnim
+          ? `Walk anim: ${walkAnim.textureKey}  playing=${walkAnim.isPlaying}  frame=${walkAnim.frameIndex}  flipX=${walkAnim.flipX}`
+          : 'Walk anim: (player has no animation descriptor — static Image)',
       ].join('\n');
     }
 
@@ -548,6 +611,6 @@ registerLab('movement-lab', {
   category: 'Movement & Physics' as LabCategory,
   name: 'Movement Lab',
   description:
-    'Tune WASD movement with live speed, acceleration, friction, trail, and enemy spawn controls.',
+    'Tune WASD movement with live speed, acceleration, friction, trail, and enemy spawn controls. Also surfaces the player walk-animation state (texture, frame index, flip) driven by PhaserBridge.',
   create: createMovementLab,
 });

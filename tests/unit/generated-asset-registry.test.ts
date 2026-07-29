@@ -202,6 +202,118 @@ describe('loadGeneratedManifest — multiple variants per brief', () => {
   });
 });
 
+describe('manifest entry animation descriptor', () => {
+  const animatedEntry = {
+    ...baseEntry,
+    briefId: 'player-walk',
+    spriteName: 'player-walk-v1-var-0',
+    assetPath: 'generated/player-walk-v1-var-0.png',
+    animation: {
+      frameWidth: 16,
+      frameHeight: 16,
+      frameCount: 3,
+      frameRate: 6,
+      loop: true,
+    },
+  };
+
+  it('parses an entry with an animation descriptor', () => {
+    const manifest = parseGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: { 'player-walk-v1-var-0': animatedEntry },
+    });
+    expect(manifest.entries['player-walk-v1-var-0']?.animation).toEqual({
+      frameWidth: 16,
+      frameHeight: 16,
+      frameCount: 3,
+      frameRate: 6,
+      loop: true,
+    });
+  });
+
+  it('leaves animation undefined for an entry without the field', () => {
+    const manifest = parseGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: { 'iron-sword': baseEntry },
+    });
+    expect(manifest.entries['iron-sword']?.animation).toBeUndefined();
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: { 'iron-sword': baseEntry },
+    });
+    expect(registry.lookup('iron-sword')?.animation).toBeUndefined();
+  });
+
+  it('surfaces the animation descriptor on the registry entry', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: { 'player-walk-v1-var-0': animatedEntry },
+    });
+    expect(registry.lookup('player-walk')?.animation).toEqual({
+      frameWidth: 16,
+      frameHeight: 16,
+      frameCount: 3,
+      frameRate: 6,
+      loop: true,
+    });
+  });
+
+  it('defaults loop to true when omitted', () => {
+    const manifest = parseGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'player-walk-v1-var-0': {
+          ...animatedEntry,
+          animation: { frameWidth: 16, frameHeight: 16, frameCount: 3, frameRate: 6 },
+        },
+      },
+    });
+    expect(manifest.entries['player-walk-v1-var-0']?.animation?.loop).toBe(true);
+  });
+
+  it('rejects a frameCount below 2', () => {
+    expect(() =>
+      parseGeneratedManifest({
+        version: GENERATED_MANIFEST_VERSION,
+        entries: {
+          'player-walk-v1-var-0': {
+            ...animatedEntry,
+            animation: { ...animatedEntry.animation, frameCount: 1 },
+          },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it('rejects a non-positive frameRate', () => {
+    expect(() =>
+      parseGeneratedManifest({
+        version: GENERATED_MANIFEST_VERSION,
+        entries: {
+          'player-walk-v1-var-0': {
+            ...animatedEntry,
+            animation: { ...animatedEntry.animation, frameRate: 0 },
+          },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it('rejects non-positive frame dimensions', () => {
+    expect(() =>
+      parseGeneratedManifest({
+        version: GENERATED_MANIFEST_VERSION,
+        entries: {
+          'player-walk-v1-var-0': {
+            ...animatedEntry,
+            animation: { ...animatedEntry.animation, frameWidth: 0 },
+          },
+        },
+      }),
+    ).toThrow();
+  });
+});
+
 describe('buildGeneratedSpriteRegistry', () => {
   it('parses raw JSON and returns a lookup registry', () => {
     const registry = buildGeneratedSpriteRegistry({

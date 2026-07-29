@@ -54,6 +54,17 @@ const DEFAULT_ASSETS_BASE_URL = resolvePublicAssetUrl('assets');
 /** Minimum subset of `Phaser.Loader.LoaderPlugin` we need at preload. */
 export interface LoaderLike {
   image(key: string, url: string): unknown;
+  /**
+   * Optional — only required for entries carrying an `animation` descriptor
+   * (multi-frame spritesheets). Kept optional/guarded (like other Phaser
+   * methods in this codebase) so fake loaders in tests that only implement
+   * `image()` keep working unchanged.
+   */
+  spritesheet?(
+    key: string,
+    url: string,
+    frameConfig: { frameWidth: number; frameHeight: number },
+  ): unknown;
 }
 
 export interface FetchManifestOptions {
@@ -147,18 +158,19 @@ export interface PreloadOptions {
 }
 
 /**
- * Queue each generated sprite entry as a Phaser image load. Returns the
- * list of `{textureKey, url}` pairs that were queued so callers (and
- * tests) can introspect. Skips entries whose `textureKey` would collide
- * with one already queued earlier in the same call.
+ * Queue each generated sprite entry as a Phaser image (or spritesheet, for
+ * entries carrying an `animation` descriptor) load. Returns the list of
+ * queued entries — including which load path each took (`kind`) — so
+ * callers (and tests) can introspect. Skips entries whose `textureKey`
+ * would collide with one already queued earlier in the same call.
  */
 export function preloadGeneratedSprites(
   loader: LoaderLike,
   registry: GeneratedSpriteRegistry,
   options: PreloadOptions = {},
-): ReadonlyArray<{ textureKey: string; url: string }> {
+): ReadonlyArray<{ textureKey: string; url: string; kind: 'image' | 'spritesheet' }> {
   const base = normalizeBase(options.assetsBaseUrl ?? DEFAULT_ASSETS_BASE_URL);
-  const queued: { textureKey: string; url: string }[] = [];
+  const queued: { textureKey: string; url: string; kind: 'image' | 'spritesheet' }[] = [];
   const seen = new Set<string>();
   for (const entry of registry.entries()) {
     if (seen.has(entry.textureKey)) {
@@ -169,8 +181,16 @@ export function preloadGeneratedSprites(
       continue;
     }
     const url = `${base}${stripLeadingSlash(entry.assetPath)}`;
-    loader.image(entry.textureKey, url);
-    queued.push({ textureKey: entry.textureKey, url });
+    if (entry.animation !== undefined && typeof loader.spritesheet === 'function') {
+      loader.spritesheet(entry.textureKey, url, {
+        frameWidth: entry.animation.frameWidth,
+        frameHeight: entry.animation.frameHeight,
+      });
+      queued.push({ textureKey: entry.textureKey, url, kind: 'spritesheet' });
+    } else {
+      loader.image(entry.textureKey, url);
+      queued.push({ textureKey: entry.textureKey, url, kind: 'image' });
+    }
     seen.add(entry.textureKey);
   }
   if (queued.length > 0) {
