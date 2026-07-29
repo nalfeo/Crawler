@@ -577,11 +577,24 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
       );
     }
     const padded = padIndex(i);
-    const processedPng = candidate.processedPath
+    const runLocalPng = path.join(processedDir, `${padded}.png`);
+    const declaredPng = candidate.processedPath
       ? path.isAbsolute(candidate.processedPath)
         ? candidate.processedPath
         : path.join(options.repoRoot, candidate.processedPath)
-      : path.join(processedDir, `${padded}.png`);
+      : runLocalPng;
+    // `approveVariant` always resolves the run-local `processed/NN.png` path
+    // and never trusts `summary.json`'s stored `processedPath`. Do the same
+    // here: prefer the declared path when it exists (it may point outside
+    // `runDir`, e.g. a rematerialized run), but fall back to the run-local
+    // path rather than failing outright when a run was moved/copied to a new
+    // workspace root and the summary's absolute `processedPath` from the
+    // original machine is now stale (round-2 multi-model review finding).
+    const processedPng = fs.existsSync(declaredPng)
+      ? declaredPng
+      : fs.existsSync(runLocalPng)
+        ? runLocalPng
+        : declaredPng;
     if (!fs.existsSync(processedPng)) {
       throw new ApproveError(
         'frame-missing',

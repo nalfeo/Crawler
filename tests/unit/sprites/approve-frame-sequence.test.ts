@@ -53,6 +53,12 @@ interface FakeSequenceRunOptions {
   readonly height?: number;
   /** Omit the frameSequence field entirely, to test the not-frame-sequence guard. */
   readonly omitFrameSequence?: boolean;
+  /**
+   * Stamp a stale/bogus absolute `processedPath` onto every candidate, as if
+   * the run were generated on a different machine/worktree and rematerialized
+   * here — exercises the run-local fallback (round-2 multi-model finding).
+   */
+  readonly staleProcessedPath?: boolean;
 }
 
 const DEFAULT_FRAMES: ReadonlyArray<{
@@ -91,6 +97,16 @@ function writeFakeSequenceRun(
     score: 7,
     outOf: 7,
     breakdown: [{ sensor: 'palette', ok: true }],
+    ...(options.staleProcessedPath
+      ? {
+          processedPath: path.join(
+            tmpdir(),
+            'crawler-approve-seq-STALE-DOES-NOT-EXIST',
+            'processed',
+            `${String(index).padStart(2, '0')}.png`,
+          ),
+        }
+      : {}),
   }));
 
   writeFileSync(
@@ -277,5 +293,37 @@ describe('approveFrameSequence', () => {
     }
     expect(caught).toBeInstanceOf(ApproveError);
     expect((caught as ApproveError).kind).toBe('already-approved');
+  });
+
+  it("falls back to the run-local processed PNG when summary.json's stored processedPath is stale (round-2 multi-model finding)", () => {
+    // Simulates a run generated on a different machine/worktree and
+    // rematerialized here: summary.json's absolute processedPath entries
+    // point at a directory that does not exist locally, but the real PNGs
+    // are present under runDir/processed. Approval must not fail outright —
+    // it must fall back to the run-local path exactly as `approveVariant`
+    // always does.
+    const { runDir, briefId } = writeFakeSequenceRun(repoRoot, { staleProcessedPath: true });
+
+    const entry = approveFrameSequence({
+      runDir,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+
+    expect(entry.briefId).toBe(briefId);
+    expect(entry.animation).toEqual({
+      frameWidth: 8,
+      frameHeight: 8,
+      frameCount: 3,
+      frameRate: 8,
+      loop: true,
+    });
+    const assetAbs = path.join(publicAssetsDir, 'generated', `${briefId}.png`);
+    const strip = PNG.sync.read(readFileSync(assetAbs));
+    expect(strip.width).toBe(24);
+    expect(strip.height).toBe(8);
   });
 });
