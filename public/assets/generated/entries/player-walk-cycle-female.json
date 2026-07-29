@@ -1,0 +1,63 @@
+{
+  "briefId": "player-walk-cycle-female",
+  "spriteName": "player-walk-cycle-female",
+  "assetPath": "generated/player-walk-cycle-female.png",
+  "approvedAt": "2026-07-29T23:10:38.484Z",
+  "sourceRun": "generated/runs/player-walk-cycle-female/2026-07-29T23-07-14-c62b04fe",
+  "variantIndex": 0,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": null
+  },
+  "sensorScore": "frame-sequence",
+  "judgeScore": null,
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 144,
+        "y": 128
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": null,
+  "type": "character",
+  "contentHash": "7c139824fb3d1bf2a036981a264c67c1530c13d54bb6b4fd3a508dd3e89f3dd5",
+  "animation": {
+    "frameWidth": 256,
+    "frameHeight": 256,
+    "frameCount": 4,
+    "frameRate": 8,
+    "loop": true
+  }
+}

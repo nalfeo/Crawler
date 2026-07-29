@@ -1,0 +1,206 @@
+# PLAYER WALK CYCLE — FEMALE variant of the gender-matched trio.
+#
+# Sibling briefs: player-walk-cycle-male.yaml, player-walk-cycle-other.yaml.
+# All three share IDENTICAL build/proportions/outfit/empty-hands description
+# text verbatim — only the GENDER CUE paragraph differs — because a future
+# equipment-overlay system will layer art onto whichever of the three is
+# active at runtime (`world.playerGender`), and every overlay must land on
+# ONE consistent rig. Do not drift the shared paragraphs between the three
+# files without updating all three together.
+#
+# This brief opts into `frameSequence` (Slice B): the sheet's cells are NOT
+# independent design alternatives — they are ORDERED FRAMES of one side-view
+# walk cycle for the SAME contestant, sliced, normalized, and repacked into a
+# single-row strip and played back in the engine (the `animation` manifest
+# descriptor).
+#
+# SHEET SHAPE IS A 2x2 GRID, NOT A 1x4 STRIP (row-major reading order maps
+# directly to frame order: top-left=frame0/contact-L, top-right=frame1/
+# passing-L, bottom-left=frame2/contact-R, bottom-right=frame3/passing-R). A
+# square 512x512 native cell composes far more naturally for the model than a
+# tall, narrow 256x1024 cell, and — just as importantly — this sheet is now
+# sliced with the SAME content-aware gutter-detecting slicer used by every
+# other character/mob sheet in the repo (`sliceWithMap` in
+# scripts/sprites/slice-sheet.ts), not the old fixed-pixel-boundary cutter
+# that used to be special-cased for `frameSequence` briefs. That fixed-grid
+# cutter was removed (see issue #2336): it cut at rigid pixel boundaries with
+# zero regard for actual content, so a pose drawn even slightly wider than its
+# nominal cell got silently split/bled across two output frames — a defect
+# that passed every per-frame sensor (the bleed is edge-connected, not a fully
+# enclosed hole) and was only caught by direct visual inspection of the final
+# PNG. The content-aware slicer instead finds the REAL gutter from pixel
+# content, so it naturally tolerates normal model variance in pose width.
+#
+# ART STYLE matches the rest of the cast (see welcome-goon-v3.yaml): cartoon
+# EarthBound / Chrono Trigger / Undertale bobblehead proportions, flat cel
+# shading, clean dark outline. NOT gritty, NOT realistic.
+#
+# NOTE: cross-SHEET proportion/palette consistency across the three gender
+# variants is NOT deterministically gated (the frame-coherence sensor only
+# compares frames WITHIN one sheet). This is a documented soft guarantee —
+# see the PR/handoff for this brief.
+type: character
+name: player-walk-cycle-female
+description: |
+  THE PLAYER CHARACTER — a scrappy dungeon-crawling CONTESTANT on a televised
+  reality-show dungeon crawl. Determined, a little scruffy, clearly the
+  underdog hero rather than a staff member or monster.
+
+  ART STYLE IS THE FIRST PRIORITY. Draw in the style of EARTHBOUND, CHRONO
+  TRIGGER, UNDERTALE and ZELDA: A LINK TO THE PAST. Charming, cartoonish,
+  chunky pixel art. NOT gritty, NOT painterly, NOT semi-realistic, NOT dark
+  fantasy.
+
+  PROPORTIONS ARE BOBBLEHEAD: about THREE AND A HALF HEADS TALL total, with a
+  large rounded head (roughly one third of total height) on a short, chunky
+  body. Stubby arms and legs, simple block feet, mitten-shaped hands with no
+  individual fingers. Simple readable face: two dot/bean eyes, small nose,
+  a determined closed-mouth or slight grin. No realistic facial detail.
+
+  GENDER CUE (the ONLY thing that should differ from this character's other
+  two gender variants): shoulder-length hair worn back in a simple ponytail
+  or two short braids, and slightly longer eyelashes suggested with a single
+  thin line above each eye. Everything else — head size, body proportions,
+  height, silhouette width, outfit, and stance — must be IDENTICAL to the
+  character's male and androgynous variants. Do NOT draw a dress, skirt, or
+  any outfit piece different from the shared OUTFIT description below.
+
+  RENDERING IS FLAT AND CLEAN: flat colour fills with hard-edged cel shading,
+  two or three tonal stops per material, no gradients, no dithering or grain
+  texture. A clean, consistent dark outline around the figure.
+
+  OUTFIT: a simple worn adventurer's tunic (belted at the waist) over plain
+  trousers, sturdy boots, and a small satchel/pack strapped across the back.
+  No helmet — bare head with simple hair per the GENDER CUE above. The
+  contestant carries NO visible weapon or shield in hand; equipment is
+  layered on separately by the game, so the base body must read clearly with
+  empty hands.
+
+  VALUE STRUCTURE: a light-to-mid tunic as the largest, brightest mass (torso
+  and arms), clearly separating from darker trousers and boots below and from
+  a mid-tone floor. Three distinct value bands top to bottom: head, tunic/arms,
+  legs/boots — never one flat blob.
+
+  COLOUR: warm, desaturated adventurer palette — a muted green or brown tunic,
+  tan/leather belt and satchel, dark brown trousers and boots, warm tan skin
+  (never orange, amber, or gold), simple brown or dark-blond hair. Flat fills,
+  clean dark outline, never candy-glossy.
+
+  HARD NEGATIVES:
+   - Do NOT draw a weapon, shield, staff, or any held item in either hand.
+   - Do NOT draw armor plating, a cape, a hood, or a helmet.
+   - Do NOT draw realistic, lanky, seven-heads-tall, or adult-proportioned
+     anatomy. A small head is a FAILURE in this brief.
+   - Do NOT draw a dress, skirt, or any outfit silhouette different from the
+     shared tunic/trousers/boots OUTFIT description.
+   - Do NOT change the body build, height, or proportions from the shared
+     description — only the hair/eyelash gender cue may differ.
+   - Do NOT use heavy dithering, noise, or grain anywhere.
+   - Do NOT draw a drop shadow, cast shadow, or dark ellipse under the figure.
+   - Do NOT leave any fully enclosed pocket of background inside the figure.
+   - The satchel strap must lie FLUSH against the torso/shoulder with no
+     visible sliver or pocket of background colour showing between the strap
+     and the body. Keep each arm close against the torso (a relaxed walking
+     swing, not held away from the body) so no background-colour gap opens
+     up between an upper arm and the torso.
+   - CRITICAL SHEET LAYOUT: all 4 poses sit in a 2×2 grid, read in row-major
+     order — top-left, top-right, bottom-left, bottom-right — mapping
+     directly to contact-left, passing-left, contact-right, passing-right.
+     Each of the 4 cells is a separate, self-contained pose; do NOT draw one
+     continuous scene spanning multiple cells, and do NOT treat the top row
+     and bottom row as two different camera heights or moments — they are
+     simply the next two frames in the SAME walk cycle, at the SAME scale and
+     SAME floor-line height as the top row.
+
+  SIZE ON THE SHEET: the standing figure spans roughly 80-90% of its cell's
+  narrower axis, centered, feet on a common invisible floor line at the SAME
+  relative height within every cell — the floor line must be at the EXACT
+  SAME relative pixel height in all 4 cells so the walk cycle doesn't bob
+  vertically once the 4 frames are extracted and played back in sequence.
+
+  CELL CONTAINMENT: each cell is a 512×512 square. The ENTIRE pose for that
+  frame — including any forward-reaching leg, swinging arm, or trailing hand
+  from the walk stride, not just the resting torso width — must fit
+  COMPLETELY inside its own cell. Leave a generous, clearly visible margin of
+  plain background colour around every side of the figure within its cell
+  (do not let the figure crowd or touch the cell's edge), and keep a uniform
+  flat background gutter between all 4 cells — the full width between the
+  left and right columns, and the full height between the top and bottom
+  rows — so no two cells touch and no figure content bleeds from one cell
+  into its neighbor. If a stride pose would be too wide or too tall to leave
+  a clean margin on every side, draw a shorter, narrower stride instead — a
+  smaller stride is always correct; any bleed, ghosting, or cut-off limb is
+  always a FAILURE regardless of how small.
+
+  Rendered in the game at roughly 5.5 feet tall (1 tile = 4 feet). Keep detail
+  count low enough that the outfit and silhouette both survive when the
+  character is only about 40 pixels tall on screen.
+
+  SHEET BACKGROUND: every cell sits on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the figure's colours.
+  Do not alternate cell backgrounds and do not draw any panel, border, or
+  frame behind the subject.
+size:
+  # EXPLICIT OVERRIDE of the `character` type default (64x64, see
+  # data/sprite-types/character.json) — this trio's fixed parameter is a true
+  # 256x256 final frame size (no downscale from the 256px native cell), so the
+  # on-screen scale multiplier only needs a straightforward divide (0.72/4 ≈
+  # 0.18), verified empirically in the running game rather than trusted blind.
+  width: 256
+  height: 256
+anchor:
+  # Scaled proportionally from the character-type default {32,63} (which was
+  # tuned for a 64x64 canvas) to the same relative position on a 256x256
+  # canvas. sensors.anchor.mode below is center-of-mass, so this pinned value
+  # is not what the anchor sensor actually scores against — it only needs to
+  # satisfy the schema (0 <= x < width, 0 <= y < height) and roughly matches
+  # feet-center for any other future direct consumer of the field.
+  x: 128
+  y: 252
+frameSequence:
+  # 4 frames arranged in a 2x2 grid, sliced content-aware (see the header
+  # comment) then repacked into a single-row strip for playback. A 512x512
+  # native cell (1024/2) composes far more naturally for the model than a
+  # tall, narrow 256x1024 cell (the old 1x4 layout) — the final per-frame
+  # output is still resampled to 256x256 by the standard postprocess resize
+  # regardless of native cell shape (see player-walk-cycle.yaml for the
+  # original 3-vs-4 frame-count tradeoff writeup; unchanged here).
+  enabled: true
+  frameCount: 4
+  frameRate: 8
+  loop: true
+generation:
+  sheet:
+    rows: 2
+    cols: 2
+    emptyCells: []
+    nativeCanvas: 1024
+sensors:
+  anchor:
+    # A standing/walking biped is not a handheld weapon; see welcome-goon-v2
+    # and sweaty-merchant-v2 for the same override on other standing bipeds.
+    # `grip` locks onto a single boot's opaque run, so a natural stance width
+    # (or a mid-stride pose with one foot forward) reads as off-centre by
+    # half a stance width. `center-of-mass` is this sensor's own documented
+    # contract for "mobs and most non-held sprites".
+    mode: center-of-mass
+  interiorHoles:
+    # Mid-stride poses (frames where the legs separate) open a small enclosed
+    # gap of background between the legs that the strict default (0px)
+    # flags as a "hole". This is the SAME kind of legitimate interior
+    # negative-space several existing prop briefs already tolerate (e.g.
+    # welcome-room-kitchenette.yaml: 256px, welcome-room-cable-coil.yaml:
+    # 24px) rather than a stray background-bleed artifact. 64px comfortably
+    # covers the observed real leg-gap size (55px) with headroom, while
+    # staying far below the "wholesale bleed-through" range those other
+    # briefs cap at (256-512px).
+    maxPixels: 64
+judge:
+  enabled: false
+minVariations: 0
+tags:
+  - player
+  - contestant
+  - walk-cycle
+  - animation
+  - gender-female
