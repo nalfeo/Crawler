@@ -30,8 +30,7 @@ const hoisted = vi.hoisted(() => ({
 
 /** Stub rerun.js: capture rejudgeRun args and throw a sentinel. */
 vi.mock('../../../scripts/sprites/rerun.js', async (importActual) => {
-  const actual =
-    await importActual<typeof import('../../../scripts/sprites/rerun.js')>();
+  const actual = await importActual<typeof import('../../../scripts/sprites/rerun.js')>();
   return {
     ...actual,
     loadRunSummary: async () => ({ candidates: [] as unknown[] }),
@@ -46,9 +45,7 @@ vi.mock('../../../scripts/sprites/rerun.js', async (importActual) => {
 /** Stub materializeAndLoadBrief to skip disk I/O. */
 vi.mock('../../../scripts/sprites/theme-equipment-brief.js', async (importActual) => {
   const actual =
-    await importActual<
-      typeof import('../../../scripts/sprites/theme-equipment-brief.js')
-    >();
+    await importActual<typeof import('../../../scripts/sprites/theme-equipment-brief.js')>();
   return {
     ...actual,
     materializeAndLoadBrief: () => ({
@@ -64,28 +61,21 @@ vi.mock('../../../scripts/sprites/theme-equipment-brief.js', async (importActual
 
 /** Stub loadStyleGuide to skip repo-root disk reads. */
 vi.mock('../../../scripts/sprites/build-prompt.js', async (importActual) => {
-  const actual =
-    await importActual<typeof import('../../../scripts/sprites/build-prompt.js')>();
+  const actual = await importActual<typeof import('../../../scripts/sprites/build-prompt.js')>();
   return { ...actual, loadStyleGuide: () => 'guide' };
 });
 
 /** Stub loadRecordedReferencePngs to skip store reads. */
 vi.mock('../../../scripts/sprites/load-reference-pngs.js', async (importActual) => {
   const actual =
-    await importActual<
-      typeof import('../../../scripts/sprites/load-reference-pngs.js')
-    >();
+    await importActual<typeof import('../../../scripts/sprites/load-reference-pngs.js')>();
   return { ...actual, loadRecordedReferencePngs: () => [] as Buffer[] };
 });
 
 // Imported AFTER mocks so the runner binds the mocked dependencies.
-const {
-  ThemeEquipmentRunner,
-} = await import('../../../scripts/sprites/theme-equipment-runner.js');
-const {
-  THEME_EQUIPMENT_JUDGE_CONCURRENCY,
-  THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS,
-} = await import('../../../scripts/sprites/theme-equipment-brief.js');
+const { ThemeEquipmentRunner } = await import('../../../scripts/sprites/theme-equipment-runner.js');
+const { THEME_EQUIPMENT_JUDGE_CONCURRENCY, THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS } =
+  await import('../../../scripts/sprites/theme-equipment-brief.js');
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -169,9 +159,7 @@ describe('ThemeEquipmentRunner.approveVariantArtifacts — rejudge speedup wirin
           ],
         },
       },
-    } as unknown as Parameters<
-      InstanceType<typeof ThemeEquipmentRunner>['runPhase']
-    >[0];
+    } as unknown as Parameters<InstanceType<typeof ThemeEquipmentRunner>['runPhase']>[0];
 
     // Store the brief YAML at the key loadSelectedBrief reads.
     // selectedBriefKey → theme-sets/wiring-test-set/artifacts/iron-sword/r0/brief.yaml
@@ -195,15 +183,10 @@ describe('ThemeEquipmentRunner.approveVariantArtifacts — rejudge speedup wirin
 
     // Access the private method via cast to test the call site directly.
     const priv = runner as unknown as {
-      approveVariantArtifacts(
-        state: unknown,
-        item: unknown,
-      ): Promise<unknown>;
+      approveVariantArtifacts(state: unknown, item: unknown): Promise<unknown>;
     };
 
-    await expect(priv.approveVariantArtifacts(state, item)).rejects.toThrow(
-      '__rejudge_sentinel__',
-    );
+    await expect(priv.approveVariantArtifacts(state, item)).rejects.toThrow('__rejudge_sentinel__');
 
     const captured = hoisted.capturedRejudgeArgs.value as {
       judgeMaxVariants?: number;
