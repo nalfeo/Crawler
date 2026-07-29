@@ -78,8 +78,14 @@ test('dispatch aggregates pr-category denies', async () => {
     noopCtx,
   );
   assert.equal(result.permissionDecision, 'deny');
-  assert.match(result.permissionDecisionReason, /pr-a/);
-  assert.match(result.permissionDecisionReason, /pr-b/);
+  assert.match(
+    result.permissionDecisionReason,
+    /❌ \[copilot-guards\/pr-a \| tool:create_pull_request\] issue A/,
+  );
+  assert.match(
+    result.permissionDecisionReason,
+    /❌ \[copilot-guards\/pr-b \| tool:create_pull_request\] issue B/,
+  );
 });
 
 test('dispatch fail-closed deny on crash', async () => {
@@ -291,5 +297,53 @@ test('guard telemetry is written under the isolated temp cwd, never the repo roo
     path.resolve(telemetryCwd),
     path.resolve(process.cwd()),
     'dispatch tests must not use the repo root as cwd',
+  );
+});
+
+// Chronicle attributability: the permissionDecisionReason must embed both
+// guard-id and tool-name so session-store queries can attribute denials even
+// when `tool_start_name` is NULL for pre-empted tool calls.
+test('denial reason embeds guard-id and tool-name for session-store attribution', async () => {
+  const result = await dispatch(
+    [
+      {
+        id: 'shell-attr',
+        category: 'shell',
+        matches: () => true,
+        check: () => ({ decision: 'deny', reason: 'attribution test' }),
+      },
+    ],
+    'bash',
+    {},
+    noopCtx,
+  );
+  assert.equal(result.permissionDecision, 'deny');
+  // Format: [copilot-guards/<id> | tool:<tool>] <reason>
+  assert.match(result.permissionDecisionReason, /\[copilot-guards\/shell-attr \| tool:bash\]/);
+  assert.match(result.permissionDecisionReason, /attribution test/);
+});
+
+test('pr aggregate denial reason embeds one parseable marker per guard', async () => {
+  const result = await dispatch(
+    [
+      {
+        id: 'pr-attr',
+        category: 'pr',
+        matches: () => true,
+        check: () => ({ decision: 'deny', reason: 'pr attribution test' }),
+      },
+    ],
+    'create_pull_request',
+    {},
+    noopCtx,
+  );
+  assert.equal(result.permissionDecision, 'deny');
+  assert.match(
+    result.permissionDecisionReason,
+    /❌ \[copilot-guards\/pr-attr \| tool:create_pull_request\] pr attribution test/,
+  );
+  assert.doesNotMatch(
+    result.permissionDecisionReason,
+    /\[copilot-guards\/pr \| tool:create_pull_request\]/,
   );
 });

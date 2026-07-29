@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "chronicle-remediation",
+  "task_title": "feat: Chronicle 2026-07-27 remediation — guard attribution, archive June handoffs, merge-train consolidation, preflight hardening",
+  "estimated_apples": 2,
+  "stages": {}
+}
