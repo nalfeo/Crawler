@@ -22,7 +22,7 @@ three boss sprites were cyclically misassigned to the wrong filenames:
 | `geese-boss-var-0.png`     | Dark creature                          | Don Honkrado goose |
 
 The content hashes in the JSON entries matched the (wrong) PNG files, so integrity checks
-passed. The manifiest assembly logic and rendering pipeline were correct — only the
+passed. The manifest assembly logic and rendering pipeline were correct — only the
 physical PNG file content was wrong.
 
 ## Fix
@@ -48,7 +48,7 @@ variantIndex, catalog.description) was preserved in each entry.
 
 ## Systems Touched
 
-sprites, art-pipeline
+sprite-pipeline
 
 ## Files Touched
 
