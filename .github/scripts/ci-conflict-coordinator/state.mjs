@@ -1,13 +1,39 @@
 import { createHash } from 'node:crypto';
 
-import { isHealthyRecoveryOwner } from '../ci-recovery/state.mjs';
+import { isHealthyRecoveryOwner, isHealthyShepherdLease } from '../ci-recovery/state.mjs';
+import { COORDINATOR_DATA_PREFIX, COORDINATOR_MARKER } from '../ci-recovery/markers.mjs';
 
-export const COORDINATOR_MARKER = '<!-- crawler-ci-conflict-coordinator:v1 -->';
-export const COORDINATOR_DATA_PREFIX = '<!-- crawler-ci-conflict-coordinator-data:';
+export { COORDINATOR_MARKER, COORDINATOR_DATA_PREFIX };
 export const COORDINATED_LABEL = 'ci-conflict-coordinated';
 export const LEADER_LABEL = 'ci-conflict-leader';
 export const ESCALATION_LABEL = 'ci-conflict-escalation';
 export const ORDER_WAIT_LABEL = 'ci-conflict-order-wait';
+
+/**
+ * Enforcement kill switch for CI conflict coordination.
+ *
+ * When DISABLED (the default) the coordinator still *discovers* and reports
+ * overlap groups via the coordinator comment, but it actively drains the
+ * `ci-conflict-coordinated` and `ci-conflict-leader` labels and suppresses
+ * grouping-derived escalation signals (`ambiguous` supersession proofs and
+ * selection-binding drift). Only ownership-gated escalation signals keep
+ * working, and it stops *serializing*: it no longer applies
+ * `ci-conflict-order-wait`, no longer disarms auto-merge for grouping reasons,
+ * and the merge train stops consulting coordinator slot ordering at promotion
+ * time.
+ *
+ * Rationale: filename overlap is not proof of conflict. The fence is a
+ * pessimistic lock with ~100:1 asymmetric cost — a false positive stalls the
+ * whole group for hours (measured: 18 PRs, up to 64h), while a false negative
+ * costs one rebase plus one parallel CI re-run. Branch contamination made most
+ * overlaps spurious, so the lock fired mostly on non-conflicts.
+ *
+ * Set `CI_CONFLICT_COORDINATION_ENFORCE=1` to restore serialization. This is the
+ * rollback switch — it requires no code change or redeploy.
+ */
+export function coordinationEnforcementEnabled(env = process.env) {
+  return String(env?.CI_CONFLICT_COORDINATION_ENFORCE ?? '').trim() === '1';
+}
 export const MIN_CLUSTER_SIZE = 3;
 // GitHub caps issue/PR comment bodies at 65 536 characters. A cluster sharing
 // hundreds of CI paths would breach that limit if we render or encode the full
@@ -21,12 +47,8 @@ export const MAX_OVERLAP_FILES = 20;
 // active slot provided no healthy owner is found.
 export const DISPATCH_LEASE_MS = 30 * 60 * 1000; // 30 minutes
 
-const CI_PATH_PREFIXES = [
-  '.github/actions/',
-  '.github/scripts/',
-  '.github/workflows/',
-  'scripts/agent/',
-];
+const CI_WORKFLOW_PREFIX = '.github/workflows/';
+const CI_SCRIPT_DIRECTORY_RE = /^\.github\/scripts\/ci-[^/]+\//;
 
 function compact(value) {
   return String(value ?? '')
@@ -46,7 +68,7 @@ function hash(value) {
 
 export function isCiCoordinationPath(filePath) {
   const candidate = normalizedPath(filePath);
-  return CI_PATH_PREFIXES.some((prefix) => candidate.startsWith(prefix));
+  return candidate.startsWith(CI_WORKFLOW_PREFIX) || CI_SCRIPT_DIRECTORY_RE.test(candidate);
 }
 
 export function ciFilesFor(paths) {
@@ -117,21 +139,10 @@ export function clusterPullRequests(pullRequests, minimumSize = MIN_CLUSTER_SIZE
 
 export function discoverCoordinationClusters(
   pullRequests,
-  existingStates,
+  _existingStates,
   minimumSize = MIN_CLUSTER_SIZE,
 ) {
-  const managedMembers = new Set(
-    (existingStates || []).flatMap((state) => state.members || state.originalMembers || []),
-  );
-  return clusterPullRequests(pullRequests, 1).filter((component) =>
-    shouldCoordinateComponent(component, minimumSize, managedMembers),
-  );
-}
-
-function shouldCoordinateComponent(component, minimumSize, managedMembers) {
-  return (
-    component.length >= minimumSize || component.some((pull) => managedMembers.has(pull.number))
-  );
+  return clusterPullRequests(pullRequests, minimumSize);
 }
 
 export function overlappingFiles(pullRequests) {
@@ -178,8 +189,10 @@ export function mergeCoordinationGroups({ discoveredClusters, existingStates, op
   }
 
   for (const state of existingStates) {
-    const openMembers = state.members.filter((number) => openByNumber.has(number));
-    if (state.originalSize < MIN_CLUSTER_SIZE || openMembers.length === 0) continue;
+    const openMembers = state.members.filter(
+      (number) => (openByNumber.get(number)?.ciFiles.length ?? 0) > 0,
+    );
+    if (state.originalSize < MIN_CLUSTER_SIZE || openMembers.length < MIN_CLUSTER_SIZE) continue;
     seeds.push({
       numbers: new Set(openMembers),
       groupIds: new Set([state.groupId]),
@@ -308,6 +321,13 @@ export function dispatchKey({ groupId, active, baseSha, order }) {
 
 export function hasHealthyRecoveryOwner({ prNumber, recoveryState, headSha, now }) {
   return isHealthyRecoveryOwner({ prNumber, state: recoveryState, headSha, now });
+}
+
+// Only a live shepherd lease may hold the coordinator's active slot fenced.
+// Routine automation ownership must NOT, or the coordinator deadlocks against
+// its own dispatch (see isHealthyShepherdLease and issue #2095).
+export function hasHealthyShepherdLease({ prNumber, recoveryState, now }) {
+  return isHealthyShepherdLease({ prNumber, state: recoveryState, now });
 }
 
 export function shouldDispatchActiveSlot({

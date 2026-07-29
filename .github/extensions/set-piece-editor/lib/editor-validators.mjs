@@ -121,30 +121,60 @@ function validateSpriteRefLike(sprite, issuePrefix) {
   return issues;
 }
 
+/**
+ * Allowed keys on a prop. MUST stay in sync with `propSourceSchema` in
+ * `src/shared/set-piece-types.ts`. `solid` was the second drift found here:
+ * it shipped in the real schema but was missing from this list, so the editor
+ * would have rejected any room containing solid furniture.
+ */
+export const PROP_KEYS = new Set([
+  'id',
+  'kind',
+  'x',
+  'y',
+  'width',
+  'height',
+  'z',
+  'sceneLayer',
+  'solid',
+  'layers',
+]);
+
+/**
+ * Allowed keys on a sprite layer. MUST stay in sync with `spriteLayerSchema` in
+ * `src/shared/set-piece-types.ts` — this file is standalone .mjs and cannot
+ * import the zod schema, so the list is duplicated by necessity.
+ *
+ * `tests/editor-validators.test.mjs` parses the TS schema and asserts the two
+ * agree, because the previous drift here was a total save blocker: `anchorBase`
+ * shipped in the real schema and in 14 welcome-room props, but was missing from
+ * this list, so the editor rejected every room that used it — including the one
+ * it was open on. Same failure shape as the editor's stale private NPC sprite
+ * map (see `src/shared/data/npc-sprite-map.json`): a duplicated definition that
+ * silently fell behind its source of truth.
+ */
+export const LAYER_KEYS = new Set([
+  'sprite',
+  'offsetX',
+  'offsetY',
+  'offsetXFt',
+  'offsetYFt',
+  'widthFt',
+  'heightFt',
+  'anchorBase',
+  'scale',
+  'flipX',
+  'flipY',
+  'rotationDeg',
+  'tintHex',
+]);
+
 function validateLayer(layer, index) {
   const issues = [];
   if (!layer || typeof layer !== 'object') {
     return ['layers[' + index + '] must be an object'];
   }
-  reportUnknownKeys(
-    layer,
-    new Set([
-      'sprite',
-      'offsetX',
-      'offsetY',
-      'offsetXFt',
-      'offsetYFt',
-      'widthFt',
-      'heightFt',
-      'scale',
-      'flipX',
-      'flipY',
-      'rotationDeg',
-      'tintHex',
-    ]),
-    'layers[' + index + ']',
-    issues,
-  );
+  reportUnknownKeys(layer, LAYER_KEYS, 'layers[' + index + ']', issues);
   const sprite = layer.sprite;
   if (!sprite || typeof sprite !== 'object' || typeof sprite.source !== 'string') {
     issues.push('layers[' + index + '].sprite is required');
@@ -212,12 +242,7 @@ function validateProps(setPiece, boundW, boundH) {
       issues.push('props[' + i + '] must be an object');
       continue;
     }
-    reportUnknownKeys(
-      prop,
-      new Set(['id', 'kind', 'x', 'y', 'width', 'height', 'z', 'sceneLayer', 'layers']),
-      'props[' + i + ']',
-      issues,
-    );
+    reportUnknownKeys(prop, PROP_KEYS, 'props[' + i + ']', issues);
     if (typeof prop.id !== 'string' || prop.id.trim() === '') {
       issues.push('props[' + i + '].id is required');
     } else if (seen.has(prop.id)) {

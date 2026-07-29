@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "theme-equipment-interior-fill",
+  "task_title": "Enable enclosed interior-background cleanup for all non-tile sprite types",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Separate-model (gpt-5.6-sol) plan review, verdict minor-divergence. B1: rekey clearEnclosedIslands used the type/mode flag and ignored disabledModules[enclosed-regions], leaking the opt-out -> RESOLVED by deriving shouldRunEnclosedBackgroundCleanup from the effective pipeline (module active AND not disabled). B2: rekey double-pass is resize-scale dependent -> ACCEPTED as parity with the already-shipping enemy/character path; pipeline downscales so upscale-growth case is not the real path; documented + far-color survival test through full pipeline. NB VFX color-collision -> RESOLVED by opting VFX out via vfx.yml (glowing cores collide with background candidates). NB test-through-wrong-stage -> RESOLVED by asserting the post-enclosed-regions trace step directly + module-activity matrix incl equipment."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true
+    }
+  }
+}

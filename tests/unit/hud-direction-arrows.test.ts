@@ -128,6 +128,20 @@ describe('resolveDirectionArrowStates', () => {
     expect(state!.screenY).toBeGreaterThan(340);
   });
 
+  it('keeps crowded right-side arrows pinned to the right edge through later fan attempts', () => {
+    const states = resolveDirectionArrowStates(
+      Array.from({ length: 8 }, (_, index) => waypoint(`right-${index}`, 100, 0)),
+      0,
+      0,
+      1,
+    );
+
+    expect(states).toHaveLength(8);
+    for (const state of states) {
+      expect(state.screenX).toBeCloseTo(1280 / 2 + (1280 / 2 - 96), 0);
+    }
+  });
+
   it('compacts long distances and wraps labels into two bounded lines', () => {
     const [state] = resolveDirectionArrowStates(
       [
@@ -165,5 +179,61 @@ describe('resolveDirectionArrowStates', () => {
     );
 
     expect(state!.labelText.split('\n').every((line) => line.length <= 36)).toBe(true);
+  });
+
+  it('keeps an arrow on the same screen edge when the target angle varies slightly', () => {
+    // Regression: with the old ellipse approach a target that is far to the
+    // right but slightly above/below the player's y could produce arrows at
+    // different x-positions as the player moved. The rectangle-edge approach
+    // pins every arrow with |dy| << |dx| to the RIGHT boundary (x ≈ GAME.WIDTH
+    // - RING_INSET).  All three targets are to the right; only their y-offset
+    // differs by small amounts. All arrows must share the same side (x > CX).
+    const RIGHT_EDGE_X = 1280 / 2 + (1280 / 2 - 96); // CX + RX = 1184
+    const targets = [
+      waypoint('t1', 100, 0.01), // almost horizontal right, tiny positive dy
+      waypoint('t2', 100, -0.01), // almost horizontal right, tiny negative dy
+      waypoint('t3', 100, 0), // exactly horizontal right
+    ];
+    const states = resolveDirectionArrowStates(targets, 0, 0, 1);
+
+    expect(states).toHaveLength(3);
+    for (const state of states) {
+      // All arrows must be on the right half of the screen (x > CX = 640).
+      expect(state.screenX).toBeGreaterThan(640);
+      // All arrows must be within 1 px of the right boundary.
+      expect(state.screenX).toBeCloseTo(RIGHT_EDGE_X, 0);
+    }
+  });
+
+  it('pins arrows to the nearest screen edge not an intermediate ellipse position', () => {
+    // A target at 45° should land on the BOTTOM edge (since RY < RX the
+    // rectangle corner is at arctan(RY/RX) ≈ 25.9°, so 45° is on the bottom).
+    const [state] = resolveDirectionArrowStates([waypoint('se', 100, 100)], 0, 0, 1);
+    expect(state).toBeDefined();
+    // screenY should be at or very near the bottom boundary (CY + RY = 360+264 = 624).
+    const BOTTOM_EDGE_Y = 720 / 2 + (720 / 2 - 96); // CY + RY = 624
+    expect(state!.screenY).toBeCloseTo(BOTTOM_EDGE_Y, 0);
+  });
+
+  it('places axial directions exactly on the correct screen edge', () => {
+    // Straight right (angle=0): must land on right edge (x = CX+RX = 1184).
+    const [right] = resolveDirectionArrowStates([waypoint('r', 100, 0)], 0, 0, 1);
+    expect(right).toBeDefined();
+    expect(right!.screenX).toBeCloseTo(1280 / 2 + (1280 / 2 - 96), 0); // 1184
+
+    // Straight down (angle=π/2): must land on bottom edge (y = CY+RY = 624).
+    const [down] = resolveDirectionArrowStates([waypoint('d', 0, 100)], 0, 0, 1);
+    expect(down).toBeDefined();
+    expect(down!.screenY).toBeCloseTo(720 / 2 + (720 / 2 - 96), 0); // 624
+
+    // Straight up (angle=-π/2): must land on top edge (y = CY-RY = 96).
+    const [up] = resolveDirectionArrowStates([waypoint('u', 0, -100)], 0, 0, 1);
+    expect(up).toBeDefined();
+    expect(up!.screenY).toBeCloseTo(720 / 2 - (720 / 2 - 96), 0); // 96
+
+    // Straight left (angle=π): must land on left edge (x = CX-RX = 96).
+    const [left] = resolveDirectionArrowStates([waypoint('l', -100, 0)], 0, 0, 1);
+    expect(left).toBeDefined();
+    expect(left!.screenX).toBeCloseTo(1280 / 2 - (1280 / 2 - 96), 0); // 96
   });
 });

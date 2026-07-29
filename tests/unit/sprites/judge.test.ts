@@ -369,6 +369,39 @@ describe('judgeVariant — happy path', () => {
     });
   });
 
+  it('accepts a non-blocked response with a null hard_block.rationale (live judge output)', async () => {
+    // Regression: the vision judge legitimately returns rationale=null when
+    // nothing is blocked. The schema previously required a non-null string,
+    // which failed the whole paid run mid-flight (Actions run 30339239243).
+    const { provider } = stubProvider({
+      responseJson: {
+        confidence: 0.9,
+        hard_block: { blocked: false, instruction: null, rationale: null },
+        design_language: { score: 4, rationale: 'consistent' },
+        reference_style_match: { score: 4, rationale: 'matches finish' },
+        brief_match: { score: 4, rationale: 'matches brief' },
+        readability: { score: 4, rationale: 'reads cleanly' },
+      },
+    });
+
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [makeRefPng()],
+      brief: makeBrief(),
+      styleGuide: 'pixel art style guide content',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+
+    expect(scorecard.passed).toBe(true);
+    expect(scorecard.hardBlockEvaluated).toBe(true);
+    expect(scorecard.hardBlocked).toBe(false);
+    expect(scorecard.hardBlockInstruction).toBeNull();
+    expect(scorecard.hardBlockRationale).toBeNull();
+  });
+
   it('caps references at 3 to control cost', async () => {
     const { provider, calls } = stubProvider({
       responseJson: {
@@ -926,6 +959,11 @@ describe('judgeVariant — malformed responses', () => {
       blocked: false,
       instruction: JUDGE_HARD_BLOCK_PHRASE,
       rationale: 'not blocked but still emitted the phrase',
+    },
+    {
+      blocked: true,
+      instruction: JUDGE_HARD_BLOCK_PHRASE,
+      rationale: null,
     },
   ])('throws JudgeError(malformed) on hard_block contract mismatch: %j', async (hardBlock) => {
     const { provider } = stubProvider({

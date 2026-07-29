@@ -23,9 +23,11 @@ import {
   changeStatsFromFiles,
   ciFilesFor,
   clusterPullRequests,
+  coordinationEnforcementEnabled,
   discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
+  hasHealthyShepherdLease,
   isCoordinatorStateSemanticallyEqual,
   makeCoordinatorState,
   mergeCoordinationGroups,
@@ -55,20 +57,22 @@ function makePull(number, files, overrides = {}) {
   };
 }
 
-test('CI scope covers workflows, scripts, actions, and agent automation', () => {
+test('CI scope is limited to workflows and ci-prefixed script directories', () => {
   assert.deepEqual(
     ciFilesFor([
       '.github/workflows/ci.yml',
-      '.github/scripts/recover.mjs',
+      '.github/scripts/ci-recovery/reconcile.mjs',
+      '.github/scripts/ci-conflict-coordinator/state.mjs',
+      '.github/scripts/ci-recovery.mjs',
+      '.github/scripts/merge-train/reconcile.mjs',
       '.github/actions/setup/action.yml',
       'scripts/agent/verify-fast.sh',
       'src/game/ignored.ts',
     ]),
     [
-      '.github/actions/setup/action.yml',
-      '.github/scripts/recover.mjs',
+      '.github/scripts/ci-conflict-coordinator/state.mjs',
+      '.github/scripts/ci-recovery/reconcile.mjs',
       '.github/workflows/ci.yml',
-      'scripts/agent/verify-fast.sh',
     ],
   );
 });
@@ -100,9 +104,9 @@ test('cluster threshold excludes two PRs and includes three', () => {
 test('overlap clusters are transitive across different CI files', () => {
   const clusters = clusterPullRequests([
     makePull(1, ['.github/workflows/ci.yml']),
-    makePull(2, ['.github/workflows/ci.yml', 'scripts/agent/preflight.sh']),
-    makePull(3, ['scripts/agent/preflight.sh']),
-    makePull(4, ['.github/scripts/unrelated.mjs']),
+    makePull(2, ['.github/workflows/ci.yml', '.github/scripts/ci-recovery/reconcile.mjs']),
+    makePull(3, ['.github/scripts/ci-recovery/reconcile.mjs']),
+    makePull(4, ['.github/scripts/merge-train/reconcile.mjs']),
   ]);
   assert.deepEqual(
     clusters.map((cluster) => cluster.map((pull) => pull.number)),
@@ -129,7 +133,7 @@ test('leader ranking prefers green, then completeness, then oldest', () => {
   );
 });
 
-test('managed groups continue after open membership falls below three', () => {
+test('managed groups dissolve after open membership falls below three', () => {
   const pulls = [
     makePull(1, ['.github/workflows/ci.yml']),
     makePull(2, ['.github/workflows/ci.yml']),
@@ -150,18 +154,60 @@ test('managed groups continue after open membership falls below three', () => {
     overlapFiles: ['.github/workflows/ci.yml'],
     updatedAt: '2026-07-20T00:00:00Z',
   });
+
   const groups = mergeCoordinationGroups({
     discoveredClusters: [],
     existingStates: [state],
     openPulls: pulls,
   });
-  assert.equal(groups.length, 1);
-  assert.equal(groups[0].groupId, 'ci-conflict-existing');
+  assert.deepEqual(groups, []);
+});
+
+test('persisted groups dissolve when surviving open members fall below threshold', () => {
+  const eligible = makePull(1, ['.github/workflows/ci.yml']);
+  const outOfScope = makePull(2, ['src/game/ignored.ts']);
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-existing',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [eligible, outOfScope],
+    proofs: [],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  const groups = mergeCoordinationGroups({
+    discoveredClusters: [],
+    existingStates: [state],
+    openPulls: [eligible, outOfScope],
+  });
+
+  assert.deepEqual(groups, []);
+});
+
+test('persisted groups disappear when every open member becomes out of scope', () => {
+  const pulls = [makePull(1, ['src/game/one.ts']), makePull(2, ['scripts/agent/two.mjs'])];
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-existing',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: pulls,
+    proofs: [],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+
   assert.deepEqual(
-    groups[0].pulls.map((pull) => pull.number),
-    [1, 2],
+    mergeCoordinationGroups({
+      discoveredClusters: [],
+      existingStates: [state],
+      openPulls: pulls,
+    }),
+    [],
   );
-  assert.deepEqual(groups[0].originalMembers, [1, 2, 3]);
 });
 
 test('fresh two-PR overlap stays below threshold without persisted managed state', () => {
@@ -172,7 +218,7 @@ test('fresh two-PR overlap stays below threshold without persisted managed state
   assert.deepEqual(discoverCoordinationClusters(pulls, []), []);
 });
 
-test('managed group can absorb a new two-PR overlap after shrinking below threshold', () => {
+test('stale managed history does not re-promote a fresh two-PR overlap', () => {
   const pulls = [
     makePull(3, ['.github/workflows/ci.yml']),
     makePull(4, ['.github/workflows/ci.yml']),
@@ -195,12 +241,7 @@ test('managed group can absorb a new two-PR overlap after shrinking below thresh
     overlapFiles: ['.github/workflows/ci.yml'],
     updatedAt: '2026-07-20T00:00:00Z',
   });
-  assert.deepEqual(
-    discoverCoordinationClusters(pulls, [state]).map((cluster) =>
-      cluster.map((pull) => pull.number),
-    ),
-    [[3, 4]],
-  );
+  assert.deepEqual(discoverCoordinationClusters(pulls, [state]), []);
 });
 
 test('coordinator state comment is parseable and semantic updates are idempotent', () => {
@@ -250,6 +291,52 @@ test('healthy shepherd lease suppresses ordered recovery dispatch', () => {
       now: new Date('2026-07-20T00:10:00Z'),
     }),
     false,
+  );
+});
+
+// Regression: 2026-07-27 merge-train outage. The coordinator's active-slot fence
+// used hasHealthyRecoveryOwner, which is true for ordinary automation ownership.
+// Since the coordinator dispatches that automation itself, the active slot became
+// permanently unsafe, activeNumber stuck at null, and a 12-PR cluster with a clean
+// leader could never promote. Only a live shepherd lease may fence the slot. #2095
+test('routine automation ownership does not count as a shepherd lease (active-slot fence)', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const recoveryState = makeRecoveryState({
+    prNumber: 7,
+    headSha: active.headSha,
+    fingerprint: 'f'.repeat(64),
+    owner: 'automation',
+    status: 'dispatched',
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  const now = new Date('2026-07-20T00:05:00Z');
+  // Still a healthy owner for dispatch-suppression purposes...
+  assert.equal(
+    hasHealthyRecoveryOwner({ prNumber: 7, recoveryState, headSha: active.headSha, now }),
+    true,
+  );
+  // ...but it must NOT fence the active slot.
+  assert.equal(hasHealthyShepherdLease({ prNumber: 7, recoveryState, now }), false);
+});
+
+test('live shepherd lease still fences the active slot', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const recoveryState = makeRecoveryState({
+    prNumber: 7,
+    headSha: active.headSha,
+    fingerprint: 'f'.repeat(64),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: 'lease-7',
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  assert.equal(
+    hasHealthyShepherdLease({
+      prNumber: 7,
+      recoveryState,
+      now: new Date('2026-07-20T00:10:00Z'),
+    }),
+    true,
   );
 });
 
@@ -400,6 +487,47 @@ test('coordinator validates automation ownership against the live PR head', () =
   assert.match(source, /headSha:\s*pull\.headSha/);
 });
 
+test('grouping-derived labels are drained, not published, while enforcement is off', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  // The unenforced branch must REMOVE (not merely omit) every grouping-derived
+  // label, so labels stranded by an earlier enforcing run drain without a manual
+  // cleanup pass. The grouping predicate keys on CI-filename identity rather than
+  // any real conflict test (issue #2180), so publishing them marks PRs that do not
+  // conflict as conflict-managed.
+  const unenforced = source.slice(source.indexOf('Unenforced (the default)'));
+  assert.match(unenforced, /removeLabel\(pull, ORDER_WAIT_LABEL\)/);
+  assert.match(unenforced, /removeLabel\(pull, COORDINATED_LABEL\)/);
+  assert.match(unenforced, /removeLabel\(pull, LEADER_LABEL\)/);
+
+  // Selection-binding drift is group-derived. Escalating on it while unenforced
+  // would re-apply the label the member loop just drained and would withhold
+  // CI-recovery dispatch from PRs that are not actually blocked, so that
+  // escalation must stay gated behind enforcement.
+  const driftBlock = source.slice(
+    source.indexOf('selectionBindingDrift = bindingCheck.reason'),
+    source.indexOf('const priorStates'),
+  );
+  assert.match(driftBlock, /if \(enforceCoordination\) \{/);
+  assert.ok(
+    driftBlock.indexOf('if (enforceCoordination) {') <
+      driftBlock.indexOf('addLabel(pull, ESCALATION_LABEL)'),
+    'binding-drift escalation must be gated behind enforcement',
+  );
+
+  // Groups whose members are all non-blocking return early, before the member
+  // loop, and stay in groupedNumbers, so the orphan drain never sees them. They
+  // must reconcile their own labels or those labels strand forever.
+  const nonBlockingBlock = source.slice(
+    source.indexOf('reason=all-pulls-non-blocking') - 900,
+    source.indexOf('reason=all-pulls-non-blocking'),
+  );
+  assert.match(nonBlockingBlock, /removeLabel\(pull, ORDER_WAIT_LABEL\)/);
+  assert.match(nonBlockingBlock, /removeLabel\(pull, COORDINATED_LABEL\)/);
+  assert.match(nonBlockingBlock, /removeLabel\(pull, LEADER_LABEL\)/);
+});
 test('coordinator only trusts recovery state comments from trusted authors', () => {
   const source = readFileSync(
     path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
@@ -433,15 +561,25 @@ test('post-close proof guard revalidates the duplicate PR head before leaving it
   assert.match(source, /postTarget\?\.base\?\.ref !== BASE_REF/);
 });
 
-test('workflow is event-driven and has a five-minute scheduling backstop', () => {
-  const workflow = readFileSync(
+test('coordinator remains event-driven while liveness cadence moves to ci-liveness-sweep', () => {
+  const coordinatorWorkflow = readFileSync(
     path.resolve('.github/workflows/ci-conflict-coordinator.yml'),
     'utf8',
   );
-  assert.match(workflow, /types:\s*\[opened, reopened, synchronize, ready_for_review, closed\]/);
-  assert.match(workflow, /workflow_run:\s*\r?\n\s+workflows:\s*\['CI'\]/);
-  assert.match(workflow, /cron:\s*'\*\/5 \* \* \* \*'/);
-  assert.match(workflow, /group:\s*crawler-ci-conflict-coordinator/);
+  const livenessWorkflow = readFileSync(
+    path.resolve('.github/workflows/ci-liveness-sweep.yml'),
+    'utf8',
+  );
+  assert.match(
+    coordinatorWorkflow,
+    /types:\s*\[opened, reopened, synchronize, ready_for_review, closed\]/,
+  );
+  assert.match(coordinatorWorkflow, /workflow_run:\s*\r?\n\s+workflows:\s*\['CI'\]/);
+  assert.doesNotMatch(coordinatorWorkflow, /cron:/);
+  assert.match(coordinatorWorkflow, /group:\s*crawler-ci-conflict-coordinator/);
+  assert.match(livenessWorkflow, /cron:\s*'\*\/10 \* \* \* \*'/);
+  assert.match(livenessWorkflow, /workflow_id:\s*'ci-conflict-coordinator\.yml'/);
+  assert.match(livenessWorkflow, /workflow_id:\s*'ci-recovery-router\.yml'/);
 });
 
 function git(cwd, args, options = {}) {
@@ -705,4 +843,36 @@ test('renderCoordinatorComment round-trips overlapFilesCount through parse', () 
   // "…and N more" must be rendered for the truncated portion.
   const hiddenCount = 50 - MAX_OVERLAP_FILES;
   assert.ok(body.includes(`…and ${hiddenCount} more`));
+});
+
+test('coordination enforcement defaults to OFF (discovery-only)', () => {
+  // The fence is a pessimistic lock with ~100:1 asymmetric cost, so absence of
+  // the flag must mean "do not serialize" rather than "serialize".
+  assert.equal(coordinationEnforcementEnabled({}), false);
+  assert.equal(
+    coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: undefined }),
+    false,
+  );
+  assert.equal(coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: '' }), false);
+  assert.equal(coordinationEnforcementEnabled(null), false);
+  assert.equal(coordinationEnforcementEnabled(undefined), false);
+});
+
+test('coordination enforcement is enabled only by an exact "1"', () => {
+  assert.equal(coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: '1' }), true);
+  // Surrounding whitespace from workflow YAML interpolation must still enable it.
+  assert.equal(coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: ' 1 ' }), true);
+});
+
+test('coordination enforcement rejects truthy-looking non-"1" values', () => {
+  // Fail OPEN: anything ambiguous must NOT re-arm the fence, because a false
+  // positive stalls an entire overlap group for hours while a false negative
+  // costs one rebase plus one parallel CI re-run.
+  for (const value of ['true', 'yes', 'on', 'enabled', '0', 'false', '2', '01']) {
+    assert.equal(
+      coordinationEnforcementEnabled({ CI_CONFLICT_COORDINATION_ENFORCE: value }),
+      false,
+      `expected ${JSON.stringify(value)} to leave enforcement disabled`,
+    );
+  }
 });

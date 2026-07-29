@@ -229,48 +229,77 @@ interface CollisionFingerprint {
 // track any gameplay significance separately from this test.
 //   seed  42:  8/267.30000019073486/10/6   →  6/246.44999980926514/10/8
 //
-// 2026-07-26 re-baseline — Floor 1 harvestables excluded from all special rooms
+// 2026-07-25 re-baseline — authoritative welcome-room prefab shell/door carve
+// (issue #2000): the room now writes real walls + door tiles during mapgen, so
+// early movement/combat interactions in this 1500-frame slice shift. Values
+// below are pinned from deterministic CI runs.
+//   seed   7:  3/145.74999713897705/10/0   →  4/143.47999715805054/10/2
+//   seed  13:  7/194.30000114440918/15/1   →  6/198.60000228881836/10/0
+//   seed  42:  6/246.44999980926514/10/8   →  5/184.30000019073486/10/10
+//   seed 137:  8/298.67000061273575/10/0   →  3/224.3999987244606/5/0
 //
-// Floor 1 harvestables no longer use any special-room candidate (including the
-// boss-stair room); placement is now restricted to `RoomRole.NORMAL` only. That
-// intentionally changes where early AI detours and nearby combat opportunities
-// occur in this 1500-frame slice, so seeds 7 and 137 drift while 13/42 remain
-// unchanged. Re-baseline pinned only after the test's two-invocation determinism
-// check stayed green on the new branch head.
-//   seed   7:  3/145.74999713897705/10/0   →  3/140.7499976158142/10/0
-//   seed 137:  8/298.67000061273575/10/0   →  3/204.19999891519547/50/2
+// 2026-07-29 re-baseline — applySolidProps: welcome-room bulk furniture now
+// writes real WINDOW (impassable/transparent) collision tiles. Previously the
+// feature was fully inert on a real floor (tagRoomAsSafe's restoreRoomInterior
+// repainted interior tiles back to plain floor, wiping the collision tiles
+// before the first frame). The fix was to call applySolidProps AFTER
+// tagRoomAsSafe, so solid-prop tiles survive into the live floor. This changes
+// the per-frame collision-pair set, cascades through applyDamage's RNG draws,
+// and drifts all four seeds. Determinism test (two back-to-back invocations per
+// seed) passed with the new values, confirming stability.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  4/143.47999715805054/10/2   →  5/140.30000066757202/5/2
+//   seed  13:  6/198.60000228881836/10/0   →  3/183.00000154972076/5/0
+//   seed  42:  5/184.30000019073486/10/10  →  3/199.30000019073486/10/2
+//   seed 137:  3/224.3999987244606/5/0     →  3/152.7199993133545/5/0
+//
+// 2026-07-29 merge-from-main re-baseline — welcome-room collision tiles +
+// Floor 1 harvestables restricted to normal rooms
+//
+// Merging this branch over main combined the live welcome-room wall/window tile
+// changes above with the branch-local harvestable placement change
+// (`spawnFloor1HarvestableNodes()` now excludes special rooms and boss-stair
+// candidates). That shifts early detours, crowding, and collision-pair order in
+// the 1500-frame slice, so all four seeds drift again on the merged head.
+// Re-baseline pinned only after the two-invocation determinism check stayed
+// green on the merged branch head.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  5/140.30000066757202/5/2    →  4/109.17999935150146/10/2
+//   seed  13:  3/183.00000154972076/5/0    →  4/222.70000231266022/15/0
+//   seed  42:  3/199.30000019073486/10/2   →  2/194.59999990463257/10/4
+//   seed 137:  3/152.7199993133545/5/0     →  4/188.7999992966652/5/0
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 246.44999980926514,
+    kills: 2,
+    damageDealt: 194.59999990463257,
     damageTaken: 10,
-    finalScore: 8,
+    finalScore: 4,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 140.7499976158142,
+    kills: 4,
+    damageDealt: 109.17999935150146,
     damageTaken: 10,
-    finalScore: 0,
+    finalScore: 2,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 194.30000114440918,
+    kills: 4,
+    damageDealt: 222.70000231266022,
     damageTaken: 15,
-    finalScore: 1,
+    finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 204.19999891519547,
-    damageTaken: 50,
-    finalScore: 2,
+    kills: 4,
+    damageDealt: 188.7999992966652,
+    damageTaken: 5,
+    finalScore: 0,
   },
 };
 

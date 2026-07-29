@@ -346,7 +346,17 @@ export interface SceneStub {
  * probe so tests can exercise both the procedural and Kenney sprite-sheet paths.
  */
 export function createSceneStub(
-  options: { kenneyLoaded?: boolean; withGraphics?: boolean } = {},
+  options: {
+    kenneyLoaded?: boolean;
+    withGraphics?: boolean;
+    /**
+     * Narrows which texture keys `textures.exists` reports. Needed to separate
+     * the generated-art path from the Kenney-sheet fallback now that render
+     * kinds (e.g. `player`) can have BOTH — without it every key exists and the
+     * generated branch always wins, hiding the fallback path from tests.
+     */
+    textureExists?: (key: string) => boolean;
+  } = {},
 ): SceneStub {
   const images: MockImage[] = [];
   const graphics: MockGraphics[] = [];
@@ -371,7 +381,9 @@ export function createSceneStub(
     return mockText as unknown as Phaser.GameObjects.Text;
   });
 
-  const textures = options.kenneyLoaded ? { exists: (_key: string) => true } : undefined;
+  const textures = options.kenneyLoaded
+    ? { exists: (key: string) => options.textureExists?.(key) ?? true }
+    : undefined;
 
   return {
     graphics,

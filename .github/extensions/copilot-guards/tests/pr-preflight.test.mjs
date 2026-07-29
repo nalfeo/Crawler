@@ -4,6 +4,9 @@ import {
   checkHandoff,
   checkForbiddenPaths,
   checkCrossSystemAdr,
+  checkMainSync,
+  checkIndexMdNotModified,
+  evaluatePreflightChecks,
   HANDOFF_DATED_RE,
   TRIVIAL_PATH_RE,
 } from '../guards/pr-preflight.mjs';
@@ -107,4 +110,96 @@ test('checkCrossSystemAdr silent when ADR added', () => {
     'docs/knowledge/adr/0001-cross-cutting-change.md',
   ]);
   assert.equal(r, null);
+});
+
+test('checkMainSync is silent when pre-publish sync is current', () => {
+  const warning = checkMainSync('/repo', () => ({
+    status: 'success',
+    branchChanged: false,
+    message: 'current',
+  }));
+  assert.equal(warning, null);
+});
+
+test('checkMainSync warns without denying when sync is deferred', () => {
+  const warning = checkMainSync('/repo', () => ({
+    status: 'deferred-dirty',
+    branchChanged: false,
+    message: 'dirty worktree',
+  }));
+  assert.match(warning, /Publication remains allowed/);
+  assert.match(warning, /dirty worktree/);
+});
+
+test('checkMainSync invalidates prior validation when the branch changed', () => {
+  const warning = checkMainSync('/repo', () => ({
+    status: 'success',
+    branchChanged: true,
+    message: 'rebased',
+  }));
+  assert.match(warning, /Rerun affected validation/);
+});
+
+test('checkIndexMdNotModified denies when INDEX.md is in the diff', () => {
+  const result = checkIndexMdNotModified(['docs/knowledge/handoffs/INDEX.md']);
+  assert.ok(result, 'expected deny when INDEX.md is modified');
+  assert.match(result, /INDEX\.md must not be committed to a feature PR branch/);
+  assert.match(result, /git restore --source=\$\(git merge-base origin\/main HEAD\)/);
+  assert.match(result, /automation\/docs-update PR/);
+});
+
+test('checkIndexMdNotModified denies when INDEX.md appears alongside other files', () => {
+  const result = checkIndexMdNotModified(['src/core/foo.ts', 'docs/knowledge/handoffs/INDEX.md']);
+  assert.ok(result, 'expected deny when INDEX.md is present with other changes');
+});
+
+test('checkIndexMdNotModified allows diffs that do not touch INDEX.md', () => {
+  assert.equal(checkIndexMdNotModified(['src/core/foo.ts']), null);
+  assert.equal(checkIndexMdNotModified(['docs/knowledge/handoffs/2026-07-28-test.md']), null);
+  assert.equal(checkIndexMdNotModified([]), null);
+});
+
+test('checkIndexMdNotModified matches Windows-style paths', () => {
+  const result = checkIndexMdNotModified(['docs\\knowledge\\handoffs\\INDEX.md']);
+  assert.ok(result, 'expected deny for Windows-style path');
+});
+
+test('checkIndexMdNotModified allows automation/docs-update branch', () => {
+  const result = checkIndexMdNotModified(['docs/knowledge/handoffs/INDEX.md'], {
+    currentBranch: 'automation/docs-update',
+  });
+  assert.equal(result, null);
+});
+
+test('checkIndexMdNotModified supports explicit merge-base restoration source', () => {
+  const result = checkIndexMdNotModified(['docs/knowledge/handoffs/INDEX.md'], {
+    mergeBase: 'abc123def',
+  });
+  assert.ok(result, 'expected deny when INDEX.md is present');
+  assert.match(result, /git restore --source=abc123def/);
+});
+
+test('preflight preserves sync warning alongside an unrelated deny', () => {
+  const result = evaluatePreflightChecks({
+    files: ['src/core/foo.ts'],
+    addedFiles: [],
+    cwd: '/repo',
+    warnings: ['sync deferred'],
+  });
+  assert.equal(result.decision, 'deny');
+  assert.match(result.reason, /No new handoff/);
+  assert.equal(result.additionalContext, 'sync deferred');
+});
+
+test('preflight allows a sync warning when no hard findings exist', () => {
+  const result = evaluatePreflightChecks({
+    files: ['docs/foo.md'],
+    addedFiles: [],
+    cwd: '/repo',
+    warnings: ['sync deferred'],
+  });
+  assert.deepEqual(result, {
+    decision: 'allow',
+    additionalContext: 'sync deferred',
+  });
 });

@@ -2581,34 +2581,98 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }
 
-      // Mob-ability circle avoidance: if the player is inside a committed
-      // telegraph circle, flee outward using the same committed geometry the
-      // renderer draws — no information advantage over what the player sees.
-      // Runs only when no projectile threat is in the dodge horizon.
-      for (const cue of ctx.world.mobAbilities.cues) {
-        if (cue.phase !== 'telegraph') continue;
-        const { geometry } = cue;
-        if (geometry.kind !== 'circle') continue;
-        const dx = ctx.playerX - geometry.x;
-        const dy = ctx.playerY - geometry.y;
-        // Use squared distance to match the damage resolver exactly (no sqrt).
-        // The resolver uses `if (dx² + dy² > r²) continue;` so damage hits when
-        // dx² + dy² <= r². The AI must avoid using the SAME geometry contract,
-        // so it continues (skips avoidance) only when strictly outside: dx² + dy² > r².
+      // Mob-ability circle avoidance: if the player is inside committed
+      // telegraph OR active persistent-zone circles, flee outward using the same
+      // geometry consumed by renderer and damage resolution.
+      const maybeDodgeCircle = (circle: { x: number; y: number; radiusFt: number }): boolean => {
+        const dx = ctx.playerX - circle.x;
+        const dy = ctx.playerY - circle.y;
         const distSq = dx * dx + dy * dy;
-        const r2 = geometry.radiusFt * geometry.radiusFt;
-        if (distSq > r2) continue;
-        // Compute unit vector for dodge direction.
+        const r2 = circle.radiusFt * circle.radiusFt;
+        if (distSq > r2) return false;
         const dist = Math.sqrt(distSq);
         if (dist > Number.EPSILON) {
           this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
           this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
         } else {
-          // Player is exactly at the circle center — flee along kite orbit tangent.
           this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
           this.dodgeVecY = 0;
         }
-        return BTStatus.SUCCESS;
+        return true;
+      };
+      for (const cue of ctx.world.mobAbilities.cues) {
+        if (cue.phase !== 'telegraph') continue;
+        const { geometry } = cue;
+        if (geometry.kind === 'radial-projectiles') {
+          const relX = ctx.playerX - geometry.casterX;
+          const relY = ctx.playerY - geometry.casterY;
+          const radialDist = Math.hypot(relX, relY);
+          if (radialDist <= geometry.spokeLengthFt) {
+            const stepDeg = 360 / geometry.count;
+            const playerAngleDeg = ((((Math.atan2(relY, relX) * 180) / Math.PI) % 360) + 360) % 360;
+            let nearestDeltaDeg = 180;
+            let nearestSpokeRad = 0;
+            for (let i = 0; i < geometry.count; i += 1) {
+              const spokeDeg = (i / geometry.count) * 360 + geometry.offsetDeg;
+              const deltaDeg = ((playerAngleDeg - spokeDeg + 540) % 360) - 180;
+              const absDeltaDeg = Math.abs(deltaDeg);
+              if (absDeltaDeg < nearestDeltaDeg) {
+                nearestDeltaDeg = absDeltaDeg;
+                nearestSpokeRad = (spokeDeg * Math.PI) / 180;
+              }
+            }
+            const laneHalfWidthDeg =
+              (Math.atan2(PROJECTILE_DODGE_CLEARANCE_FT, Math.max(radialDist, 1e-6)) * 180) /
+              Math.PI;
+            if (nearestDeltaDeg <= Math.min(stepDeg * 0.45, laneHalfWidthDeg)) {
+              const spokeDirX = Math.cos(nearestSpokeRad);
+              const spokeDirY = Math.sin(nearestSpokeRad);
+              const cross = relX * spokeDirY - relY * spokeDirX;
+              const side = cross >= 0 ? 1 : -1;
+              this.dodgeVecX = -spokeDirY * side * PROJECTILE_DODGE_VECTOR_SCALE;
+              this.dodgeVecY = spokeDirX * side * PROJECTILE_DODGE_VECTOR_SCALE;
+              return BTStatus.SUCCESS;
+            }
+          }
+          continue;
+        }
+        if (geometry.kind === 'projectile-fan') {
+          const dx = ctx.playerX - geometry.originX;
+          const dy = ctx.playerY - geometry.originY;
+          const distSq = dx * dx + dy * dy;
+          const rangeSq = geometry.rangeFt * geometry.rangeFt;
+          const targetAngle = Math.atan2(dy, dx);
+          const delta = Math.atan2(
+            Math.sin(targetAngle - geometry.facingRad),
+            Math.cos(targetAngle - geometry.facingRad),
+          );
+          const halfRad = (geometry.coneAngleDeg * Math.PI) / 360;
+          if (distSq <= rangeSq && Math.abs(delta) <= halfRad) {
+            const lateralSign =
+              Math.abs(delta) <= Number.EPSILON ? this.kiteOrbitSign : Math.sign(delta);
+            const lateralX = -Math.sin(geometry.facingRad) * lateralSign;
+            const lateralY = Math.cos(geometry.facingRad) * lateralSign;
+            this.dodgeVecX = lateralX * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = lateralY * PROJECTILE_DODGE_VECTOR_SCALE;
+            return BTStatus.SUCCESS;
+          }
+          continue;
+        }
+        const cueCircles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        for (const circle of cueCircles) {
+          if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
+        }
+      }
+      for (const zone of ctx.world.mobAbilities.ownedZones) {
+        const { geometry } = zone;
+        if (geometry.kind === 'radial-projectiles' || geometry.kind === 'projectile-fan') continue;
+        const zoneCircles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        for (const circle of zoneCircles) {
+          if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
+        }
+      }
+      for (const zone of ctx.world.mobAbilities.activeZones) {
+        if (maybeDodgeCircle(zone.circle)) return BTStatus.SUCCESS;
       }
 
       // Enemy-body dodging remains suspended during retreat and engagement:
@@ -3726,12 +3790,41 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.farmPullX = 0;
           this.farmPullY = 0;
         }
+        const preserveMobAbilityDodge =
+          world.mobAbilities.cues.some((cue) => cue.phase === 'telegraph') ||
+          world.mobAbilities.activeZones.some((zone) => {
+            const dx = playerX - zone.circle.x;
+            const dy = playerY - zone.circle.y;
+            return dx * dx + dy * dy <= zone.circle.radiusFt * zone.circle.radiusFt;
+          }) ||
+          world.mobAbilities.ownedZones.some((zone) => {
+            const zoneCircles =
+              zone.geometry.kind === 'circle'
+                ? [zone.geometry]
+                : zone.geometry.kind === 'multi-circle'
+                  ? zone.geometry.circles
+                  : [];
+            return zoneCircles.some((circle) => {
+              const dx = playerX - circle.x;
+              const dy = playerY - circle.y;
+              return dx * dx + dy * dy <= circle.radiusFt * circle.radiusFt;
+            });
+          });
         // The steering heading already encodes predictive spacing; blending the
         // legacy single-closest-threat dodge on top would double-count and
         // reintroduce the oscillation that widening it caused (commit f4f538d7),
         // so retire the additive travel dodge whenever steering drives the frame.
-        this.dodgeVecX = 0;
-        this.dodgeVecY = 0;
+        // Mob-ability danger cues are different: their committed geometry is not
+        // represented in travel steering, so preserve that dodge contribution.
+        // Slick-zone occupancy: if the player is currently inside an active zone,
+        // the zone-branch dodge vector must also be preserved so the AI exits
+        // rather than walking through the slick after travel steering takes over.
+        // Runtime-owned zones need the same protection so travel steering does
+        // not wipe the outward cloud/surface dodge it just computed earlier.
+        if (!preserveMobAbilityDodge) {
+          this.dodgeVecX = 0;
+          this.dodgeVecY = 0;
+        }
       }
     }
 

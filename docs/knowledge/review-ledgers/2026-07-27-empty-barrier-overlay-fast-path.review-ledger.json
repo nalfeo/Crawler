@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "empty-barrier-overlay-fast-path",
+  "task_title": "Skip barrier lookup closures when the registry is empty",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Reviewer was asked to red-team shape (c) (live-size gate) and argue for (a) closure-internal check or (b) cached presence flag instead. It upheld (c): (a) still pays ~34M closure invocations, (b) is a staleness hazard. Verdict SHIP WITH CHANGES with 3 required changes: (1) use two separate presence fields so neither setter clobbers the other (already caught and fixed before the review returned); (2) expand regression coverage to independent ring-only/tile-only/drop/reassignment/custom-callback cases; (3) prove a stable win for the exact live-size implementation before shipping. All 3 done. Reviewer independently confirmed the emptiness equivalence with file:line and found no concrete staleness scenario.",
+      "adversarial": true,
+      "alternatives_considered": 2
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

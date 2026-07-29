@@ -89,6 +89,7 @@ function mockInstance() {
     committedTargetGeneration: null,
     resolvedCasts: 0,
     announcementsEmitted: 1,
+    ownedEntityGenerations: new Map<number, number>(),
     registrationToken: 1,
   } as const;
 }
@@ -114,6 +115,107 @@ describe('MobAbilityVfx', () => {
     const telegraphGfx = graphicsObjects[0];
     expect(telegraphGfx).toBeDefined();
     expect(telegraphGfx!.strokeCircle).toHaveBeenCalledWith(ftToPx(40), ftToPx(40), ftToPx(12));
+  });
+
+  it('draws each committed spawn-circle in a multi-circle telegraph', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'plague-boss-squick-undercity-mob-call',
+      casterEid: 11,
+      phase: 'telegraph',
+      telegraphProgress: 0.25,
+      geometry: {
+        kind: 'spawn-circles',
+        circles: [
+          { kind: 'circle', x: 32, y: 32, radiusFt: 4 },
+          { kind: 'circle', x: 40, y: 32, radiusFt: 4 },
+          { kind: 'circle', x: 36, y: 39, radiusFt: 4 },
+        ],
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'UNDERCITY MOB CALL — The guild always collects!',
+    });
+    world.mobAbilities.byEntity.set(11, mockInstance());
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.strokeCircle).toHaveBeenCalledTimes(3);
+  });
+
+  it('draws Don Paco projectile-fan telegraphs with five landing circles and path lines', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'don-paco-the-big-gob',
+      casterEid: 14,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'projectile-fan',
+        originX: 40,
+        originY: 10,
+        facingRad: Math.PI / 2,
+        coneAngleDeg: 70,
+        rangeFt: 30,
+        paths: [
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 22.79,
+            endY: 34.57,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 30.99,
+            endY: 38.61,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 40,
+            endY: 40,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 49.01,
+            endY: 38.61,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 57.21,
+            endY: 34.57,
+            impactRadiusFt: 3,
+          },
+        ],
+      },
+      dangerColor: 'hostile-red',
+      announcementText: "THE BIG GOB — Don Paco's painting the whole block!",
+    });
+    world.mobAbilities.byEntity.set(14, mockInstance());
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.strokeCircle).toHaveBeenCalledTimes(5);
+    expect(telegraphGfx!.lineBetween).toHaveBeenCalled();
   });
 
   it('draws the Tarnished indicator ring for debuffed entities', () => {
@@ -165,11 +267,36 @@ describe('MobAbilityVfx', () => {
     // (instead of the old resolvedCasts polling which broke when byEntity was
     // cleared before PhaserBridge.sync ran).
     world.mobAbilities.cues.length = 0;
-    world.mobAbilities.pendingBursts.push({ kind: 'circle', x: 40, y: 40, radiusFt: 12 });
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+    });
     vfx.update(world);
 
     // Resolution burst emits rings (circles/tweened objects).
     expect(circles.length).toBeGreaterThan(circlesBeforeBurst);
+  });
+
+  it('dispatches Squick bursts through the undercity-specific renderer path', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const vfx = createMobAbilityVfx(scene);
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+    });
+    vfx.update(world);
+    const genericCircleCount = circles.length;
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'plague-boss-squick-undercity-mob-call',
+      geometry: { kind: 'circle', x: 42, y: 39, radiusFt: 12 },
+    });
+    vfx.update(world);
+    const undercityCircleCount = circles.length - genericCircleCount;
+
+    expect(undercityCircleCount).toBeGreaterThan(genericCircleCount);
   });
 
   it('retires telegraph graphics when the cue ends', () => {
@@ -228,6 +355,34 @@ describe('MobAbilityVfx', () => {
     expect(cleanupPoof!.y).toBe(ftToPx(20));
   });
 
+  it('draws persistent sovereign cloud rims for runtime-owned zones', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.ownedZones.push({
+      id: 42,
+      abilityId: 'sovereign-cap-spore-bloom',
+      casterEid: 9,
+      sourceId: 'mob-ability:sovereign-cap-spore-bloom:9',
+      geometry: {
+        kind: 'multi-circle',
+        circles: [
+          { kind: 'circle', x: 30, y: 30, radiusFt: 8 },
+          { kind: 'circle', x: 35, y: 28, radiusFt: 8 },
+          { kind: 'circle', x: 25, y: 28, radiusFt: 8 },
+        ],
+      },
+      durationMs: 4000,
+      tickIntervalMs: 500,
+      elapsedMs: 1500,
+      nextTickAtMs: 2000,
+      tick: () => {},
+    });
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+    const cloudGfx = graphicsObjects[0]!;
+    expect(cloudGfx.strokeCircle).toHaveBeenCalledWith(ftToPx(30), ftToPx(30), ftToPx(8));
+  });
+
   it('emits deterministic berserk motif shapes for active bamboo-fed buffs', () => {
     const { scene } = createSceneStub();
     const world = createTestWorld();
@@ -248,5 +403,25 @@ describe('MobAbilityVfx', () => {
 
     expect(scene.add.rectangle).toHaveBeenCalled();
     expect(scene.add.ellipse).toHaveBeenCalled();
+  });
+
+  it('draws persistent slick rims for active Don Paco zones', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.activeZones.push({
+      abilityId: 'don-paco-the-big-gob',
+      casterEid: 5,
+      sourceId: 'mob-ability:don-paco-the-big-gob:5:slick',
+      circle: { kind: 'circle', x: 30, y: 35, radiusFt: 3 },
+      remainingMs: 4000,
+      slowMultiplier: 0.65,
+    });
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const slick = graphicsObjects[0];
+    expect(slick).toBeDefined();
+    expect(slick!.strokeCircle).toHaveBeenCalledWith(ftToPx(30), ftToPx(35), ftToPx(3));
   });
 });

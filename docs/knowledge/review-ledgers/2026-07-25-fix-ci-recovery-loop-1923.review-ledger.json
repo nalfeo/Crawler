@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "fix-ci-recovery-loop-1923",
+  "task_title": "Fix 4 reviewer thread defects in PR #1923 dispatch-table refactor",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Concern 1: narrowed the stale-owner claim to the two reported owner-blind exits rather than every early skip. Concern 2: added validation-rebase auto-rebase-failure backoff regression coverage in reconcile.test.mjs. Concern 3: kept the invariant scoped to Phase A and added explicit reconcile-level regressions for the inline owner-blind exits instead of a larger helper refactor."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

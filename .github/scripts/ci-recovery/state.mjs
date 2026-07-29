@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 
-export const STATE_MARKER = '<!-- crawler-ci-state:v1 -->';
-export const STATE_DATA_PREFIX = '<!-- crawler-ci-state-data:';
+import { STATE_DATA_PREFIX, STATE_MARKER } from './markers.mjs';
+
+export { STATE_MARKER, STATE_DATA_PREFIX };
 export const OWNER_LABEL_PREFIX = 'ci-owner-pr-';
 export const WAITING_LABEL = 'ci-recovery-waiting';
 export const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';
@@ -67,11 +68,10 @@ export const LIFECYCLE_PHASES = {
   ABANDONED: 'abandoned',
 };
 
-export const TERMINAL_PHASES = new Set([
-  LIFECYCLE_PHASES.DONE,
-  LIFECYCLE_PHASES.QUARANTINED,
-  LIFECYCLE_PHASES.ABANDONED,
-]);
+// QUARANTINED is intentionally NOT terminal: a human can revive a quarantined
+// PR to QUEUED by commenting "KEEP" (see parseDispositionCommand). Only DONE
+// and ABANDONED are true dead ends with no further lifecycle transitions.
+export const TERMINAL_PHASES = new Set([LIFECYCLE_PHASES.DONE, LIFECYCLE_PHASES.ABANDONED]);
 
 // Structurally non-blocking phases (D11): a PR in one of these can never be a
 // merge-train admission candidate, a conflict-cluster leader, or an ordering
@@ -169,13 +169,13 @@ export function evaluateAdmission(prFacts, config = {}) {
 export function isTrustedTrainPromotionCheck(check, trustedAppId) {
   return Boolean(
     check &&
-      check.name === 'merge-train' &&
-      check.status === 'completed' &&
-      check.conclusion === 'success' &&
-      Number.isInteger(trustedAppId) &&
-      Number(check.app?.id) === trustedAppId &&
-      typeof check.external_id === 'string' &&
-      TRAIN_PROMOTION_FINGERPRINT_SHAPE.test(check.external_id),
+    check.name === 'merge-train' &&
+    check.status === 'completed' &&
+    check.conclusion === 'success' &&
+    Number.isInteger(trustedAppId) &&
+    Number(check.app?.id) === trustedAppId &&
+    typeof check.external_id === 'string' &&
+    TRAIN_PROMOTION_FINGERPRINT_SHAPE.test(check.external_id),
   );
 }
 
@@ -201,7 +201,14 @@ export function isTrainFastPathPushRun(run, trustedAppId, checkRuns) {
 }
 
 const validOwners = new Set(['automation', 'shepherd', 'none']);
-const validStatuses = new Set(['active', 'dispatched', 'escalated', 'idle', 'waiting']);
+export const RECOVERY_STATUSES = Object.freeze([
+  'active',
+  'dispatched',
+  'escalated',
+  'idle',
+  'waiting',
+]);
+const validStatuses = new Set(RECOVERY_STATUSES);
 
 export function shouldMutateRecoveryState(mode, operation) {
   return mode === 'live' || (mode === 'dry-run' && operation.startsWith('lease-'));
@@ -454,9 +461,9 @@ export function assertOwnershipInvariant({ labelExists, state }) {
 export function isDuplicateDispatch(state, fingerprint) {
   return Boolean(
     state &&
-      state.owner === 'automation' &&
-      ['active', 'dispatched', 'escalated'].includes(state.status) &&
-      state.fingerprint === fingerprint,
+    state.owner === 'automation' &&
+    ['active', 'dispatched', 'escalated'].includes(state.status) &&
+    state.fingerprint === fingerprint,
   );
 }
 
@@ -492,6 +499,25 @@ export function automationStallAction({
   // stale-retry logic) so legacy states always receive a single retry.
   const stallAttempt = state.progressKey ? state.attempt : 0;
   return stallAttempt >= 2 ? 'release' : 'retry';
+}
+
+// True only for a live *shepherd* lease — a human/session-driven owner that is
+// actively editing the branch. Routine `automation` ownership is deliberately
+// excluded.
+//
+// Incident 2026-07-27: the conflict coordinator's `activeSafe` gate used
+// `isHealthyRecoveryOwner`, which also returns true for ordinary
+// `owner=automation` states. Because the coordinator dispatches CI recovery for
+// its own active slot, every dispatch immediately made the slot "healthy",
+// which forced `activeSafe=false`, left `activeNumber=null`, and re-fenced the
+// whole group. A 12-PR cluster sat with `ORDER_WAIT` on every member and a
+// clean (`proof=applied`) leader that could never promote. Splitting the
+// shepherd case out restores the behaviour the coordinator comment always
+// described. See issue #2095.
+export function isHealthyShepherdLease({ prNumber, state, now = new Date() }) {
+  if (!state || state.prNumber !== prNumber) return false;
+  if (state.owner !== 'shepherd') return false;
+  return state.status === 'active' && !isLeaseExpired(state, now);
 }
 
 export function isHealthyRecoveryOwner({ prNumber, state, headSha = null, now = new Date() }) {
@@ -650,4 +676,38 @@ export function shouldSkipRepoIncidentWorkflowRun(run) {
     event === 'pull_request_target' ||
     (Array.isArray(run?.pull_requests) && run.pull_requests.length > 0)
   );
+}
+
+// ---------------------------------------------------------------------------
+// Disposition labels and markers
+// ---------------------------------------------------------------------------
+
+/** Label applied to PRs that a human or agent explicitly proposes for abandonment. */
+export const ABANDON_CANDIDATE_LABEL = 'abandon-candidate';
+
+/**
+ * Marker written into the quarantine human-decision comment so the revival
+ * handler can identify it. Different from STATE_MARKER so the two comment
+ * types are never confused.
+ */
+export const QUARANTINE_COMMENT_MARKER = '<!-- crawler-ci-quarantine:v1 -->';
+
+/**
+ * Parse a PR comment body for an exact-match KEEP or ABANDON disposition
+ * command posted by the PR owner.
+ *
+ * Rules (acceptance criterion: "human-gated revival is exact-match"):
+ *   - Comment body trimmed must equal "KEEP" or "ABANDON" (case-sensitive,
+ *     standalone — no quoted text, no substrings, no other authors).
+ *   - Returns 'KEEP', 'ABANDON', or null.
+ *   - A non-owner comment, a substring match, or any other text returns null.
+ *
+ * @param {string} commentBody - raw comment body text
+ * @returns {'KEEP' | 'ABANDON' | null}
+ */
+export function parseDispositionCommand(commentBody) {
+  const trimmed = String(commentBody ?? '').trim();
+  if (trimmed === 'KEEP') return 'KEEP';
+  if (trimmed === 'ABANDON') return 'ABANDON';
+  return null;
 }

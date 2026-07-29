@@ -102,6 +102,14 @@ interface MainSceneInternals {
   world?: GameWorld;
   playerEid?: number;
   bridge?: unknown;
+  /**
+   * Darkness/fog RenderTexture drawn over the terrain. Exposed to the probe
+   * purely so art observations can inspect terrain as authored: the torch
+   * radius is small enough that cave rock and wall lighting are unreadable in
+   * a normal screenshot, which previously led to a wall restyle being judged
+   * against the flagstone spawn room instead of the cave.
+   */
+  lightOverlayRt?: { visible: boolean };
   hudUi?: {
     isMapOverlayOpen(): boolean;
     getFamilyRelationshipsState(): {
@@ -171,6 +179,26 @@ interface MainSceneInternals {
     packWallCount: number;
     packFloorCount: number;
     packCorridorCount: number;
+    packSpecialFloorCount: number;
+    packFloorSourceCounts: Record<string, number>;
+    packFloorTransformCounts: Record<string, number>;
+    packFloorComboCounts: Record<string, number>;
+    packCorridorSourceCounts: Record<string, number>;
+    packCorridorTransformCounts: Record<string, number>;
+    packCorridorComboCounts: Record<string, number>;
+    packWallAccentedCount: number;
+    packWallAccentCounts: Record<string, number>;
+    packGroundDecalCount: number;
+    packLineworkTileCount: number;
+    packLineworkPropCount: number;
+    packLineworkBuriedCount: number;
+    packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
+    packLineworkRuns: readonly {
+      layerId: string;
+      tileCount: number;
+      hubTileCount: number;
+    }[];
+    packLineworkHubs: readonly { tx: number; ty: number }[];
   };
   getDoorRenderSummary(): {
     closedPackCount: number;
@@ -178,9 +206,11 @@ interface MainSceneInternals {
     closedKenneyCount: number;
     closedColorCount: number;
     openPackCount: number;
+    openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    renderableOpenCount: number;
   };
 }
 
@@ -351,6 +381,54 @@ export interface TerrainRenderSummary {
   readonly packFloorCount: number;
   /** CORRIDOR tiles stamped from a terrain-pack `corridorPool` variant. */
   readonly packCorridorCount: number;
+  /** Role-keyed special-room floor tiles stamped from a terrain pack. */
+  readonly packSpecialFloorCount: number;
+  /**
+   * Live diversity instrumentation (2026-07-25 terrain-variance refinement
+   * #4): per-source and per-transform stamp counts from the REAL bake, so an
+   * e2e probe can assert "all 8 sources used" / histogram shape against the
+   * actual booted scene rather than just a synthetic sample.
+   */
+  readonly packFloorSourceCounts: Record<string, number>;
+  readonly packFloorTransformCounts: Record<string, number>;
+  readonly packFloorComboCounts: Record<string, number>;
+  readonly packCorridorSourceCounts: Record<string, number>;
+  readonly packCorridorTransformCounts: Record<string, number>;
+  readonly packCorridorComboCounts: Record<string, number>;
+  /** Number of WALL tiles that additionally received an accent-atlas stamp. */
+  readonly packWallAccentedCount: number;
+  /** Per-accent-id stamp counts. */
+  readonly packWallAccentCounts: Record<string, number>;
+  /**
+   * Cross-tile ground decals stamped between the ground and cover paint passes.
+   * The only pack mechanism that can express a feature larger than one cell, so
+   * this is the seam proving decals actually placed in the REAL booted scene.
+   */
+  readonly packGroundDecalCount: number;
+  /**
+   * Industrial-linework tiles stamped by the path pass (all layers summed).
+   * Unlike decals, these are chosen by TOPOLOGY: each tile's frame is its 2-edge
+   * Wang mask over the occupancy grid, so a non-zero count here proves that
+   * routed multi-tile runs — not scattered stamps — reached the real bake.
+   */
+  readonly packLineworkTileCount: number;
+  /** Props (switch stands, carts, valves) placed on eligible linework tiles. */
+  readonly packLineworkPropCount: number;
+  readonly packLineworkBuriedCount: number;
+  readonly packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
+  /**
+   * One entry per maximal connected component of every linework layer. This is
+   * what the placement gate is asserted against headlessly: "at least 6 runs of
+   * at least 40 tiles, with at least 60% of total run length near a boss den or
+   * the resource heart" is a pure function of this array.
+   */
+  readonly packLineworkRuns: readonly {
+    readonly layerId: string;
+    readonly tileCount: number;
+    readonly hubTileCount: number;
+  }[];
+  /** Hub tiles (boss dens + resource heart) the concentration is measured against. */
+  readonly packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
 }
 
 /**
@@ -372,12 +450,16 @@ export interface DoorRenderSummary {
   readonly closedColorCount: number;
   /** Open doors rendered from a terrain-pack doorSet texture. */
   readonly openPackCount: number;
-  /** Open doors rendered from the Kenney open frame (non-destructive default). */
+  /** Open doors rendered from an approved GENERATED open-door texture. */
+  readonly openGeneratedCount: number;
+  /** Open doors rendered from the Kenney open frame (fallback). */
   readonly openKenneyCount: number;
   /** Open doors drawn as a solid-color fill (no art at all). */
   readonly openColorCount: number;
-  /** Sum of the three CLOSED buckets — total closed doors actually rendered. */
+  /** Sum of the four CLOSED buckets — total closed doors actually rendered. */
   readonly renderableClosedCount: number;
+  /** Sum of the four OPEN buckets — total open doors actually rendered. */
+  readonly renderableOpenCount: number;
 }
 
 export interface BloodSurfaceProbeSummary {
@@ -419,6 +501,12 @@ export interface MainSceneProbeApi {
   advanceSimulationFrames(frames: number): void;
   /** Overwrite the player's FEET position and zero its velocity. */
   setPlayerFeet(x: number, y: number): void;
+  /**
+   * Show/hide the darkness+fog overlay. Art-observation affordance only —
+   * lets a screenshot show terrain as authored rather than as torch-lit.
+   * Returns false when the overlay does not exist yet.
+   */
+  setLightingOverlayVisible(visible: boolean): boolean;
   /** Seed an authoritative blood pool directly into the live world. */
   seedBloodPool(x: number, y: number, color: number): number | null;
   /** World + display-list summary for blood pools / bloody footprints. */
@@ -757,6 +845,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.advanceSimulationFrames?.(frames);
     },
 
+    setLightingOverlayVisible: (visible: boolean): boolean => {
+      const rt = getScene()?.lightOverlayRt;
+      if (!rt) return false;
+      rt.visible = visible;
+      return true;
+    },
+
     setPlayerFeet: (x: number, y: number) => {
       const scene = getScene();
       const world = scene?.world;
@@ -1038,6 +1133,29 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         packWallCount: summary?.packWallCount ?? 0,
         packFloorCount: summary?.packFloorCount ?? 0,
         packCorridorCount: summary?.packCorridorCount ?? 0,
+        packSpecialFloorCount: summary?.packSpecialFloorCount ?? 0,
+        packFloorSourceCounts: summary?.packFloorSourceCounts ?? {},
+        packFloorTransformCounts: summary?.packFloorTransformCounts ?? {},
+        packFloorComboCounts: summary?.packFloorComboCounts ?? {},
+        packCorridorSourceCounts: summary?.packCorridorSourceCounts ?? {},
+        packCorridorTransformCounts: summary?.packCorridorTransformCounts ?? {},
+        packCorridorComboCounts: summary?.packCorridorComboCounts ?? {},
+        packWallAccentedCount: summary?.packWallAccentedCount ?? 0,
+        packWallAccentCounts: summary?.packWallAccentCounts ?? {},
+        packGroundDecalCount: summary?.packGroundDecalCount ?? 0,
+        packLineworkTileCount: summary?.packLineworkTileCount ?? 0,
+        packLineworkPropCount: summary?.packLineworkPropCount ?? 0,
+        packLineworkBuriedCount: summary?.packLineworkBuriedCount ?? 0,
+        packLineworkBuriedSample: summary?.packLineworkBuriedSample ?? [],
+        packLineworkRuns: (summary?.packLineworkRuns ?? []).map((run) => ({
+          layerId: run.layerId,
+          tileCount: run.tileCount,
+          hubTileCount: run.hubTileCount,
+        })),
+        packLineworkHubs: (summary?.packLineworkHubs ?? []).map((hub) => ({
+          tx: hub.tx,
+          ty: hub.ty,
+        })),
       };
     },
 
@@ -1049,9 +1167,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         closedKenneyCount: summary?.closedKenneyCount ?? 0,
         closedColorCount: summary?.closedColorCount ?? 0,
         openPackCount: summary?.openPackCount ?? 0,
+        openGeneratedCount: summary?.openGeneratedCount ?? 0,
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
+        renderableOpenCount: summary?.renderableOpenCount ?? 0,
       };
     },
 

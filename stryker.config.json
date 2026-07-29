@@ -16,6 +16,6 @@
   },
   "testRunnerNodeArgs": ["--experimental-vm-modules"],
   "vitest": {
-    "configFile": "vitest.config.ts"
+    "configFile": "vitest.mutation.config.ts"
   }
 }

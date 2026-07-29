@@ -245,6 +245,44 @@ describe('Floor 2 boss ability catalog', () => {
     expect(values.get('stacking')).toBe(false);
   });
 
+  it("preserves Don Paco's THE BIG GOB contract", () => {
+    const don = getFloor2BossAbilityByBossId('llama-boss');
+    expect(don).toMatchObject({
+      id: 'don-paco-the-big-gob',
+      attackName: 'THE BIG GOB',
+      announcementText: "Don Paco's painting the whole block!",
+      timing: {
+        firstEligibleAfterMs: 9000,
+        cooldownMs: 9000,
+        cooldownAnchor: 'resolution',
+        randomJitterMs: 0,
+      },
+      targeting: {
+        mode: 'player-direction',
+        lockAt: 'telegraph-start',
+        tracksPlayer: false,
+        origin: 'locked',
+      },
+      telegraph: {
+        durationMs: 1400,
+        shape: 'cone',
+        dangerColor: 'hostile-red',
+      },
+    });
+    expect(don?.telegraph.metrics).toEqual(
+      expect.arrayContaining([
+        { id: 'angle', value: 70, unit: 'degrees' },
+        { id: 'range', value: 30, unit: 'feet' },
+        { id: 'projectile-count', value: 5, unit: 'count' },
+      ]),
+    );
+    const values = effectValuesForBoss('llama-boss');
+    expect(values.get('projectile-count')).toBe(5);
+    expect(values.get('damage-profile')).toBe('moderate');
+    expect(values.get('slick-duration')).toBe(4000);
+    expect(values.get('slow-rule')).toBe('while-inside');
+  });
+
   it('projects codex content without delivery metadata', () => {
     for (const ability of FLOOR2_BOSS_ABILITY_CATALOG.entries) {
       const codex = toBossAbilityCodexEntry(ability);
@@ -272,37 +310,51 @@ describe('Floor 2 boss ability delivery status', () => {
     );
   });
 
-  it('derives all current work as blocked without storing an overall stage', () => {
+  it('derives the current backlog as blocked with the active king-skritt slice in progress', () => {
     const records = buildBossAbilityStatusRecords();
-    expect(records.every((record) => record.stage === 'blocked')).toBe(true);
+    const stageCounts = records.reduce<Record<string, number>>((counts, record) => {
+      counts[record.stage] = (counts[record.stage] ?? 0) + 1;
+      return counts;
+    }, {});
+    expect(stageCounts).toMatchObject({ blocked: 17, 'in-progress': 1 });
+    expect(Object.keys(stageCounts).sort()).toEqual(['blocked', 'in-progress']);
 
-    // Queen Mab and Big Panda Wei runtime/telegraph/arena slices are verified,
-    // but both stay blocked overall behind the separate production-enable gate
+    // Queen Mab, Big Panda Wei, and Sovereign Cap runtime/telegraph/arena slices are verified,
+    // but all stay blocked overall behind the separate production-enable gate
     // for real-game enablement/balance.
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
     expect(queen?.status.arenaLabState).toBe('verified');
     expect(queen?.status.runtimeState).toBe('verified');
     expect(queen?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    const squick = records.find((record) => record.ability.bossArchetypeId === 'ratfolk-boss');
+    expect(squick?.status.arenaLabState).toBe('verified');
+    expect(squick?.status.runtimeState).toBe('verified');
+    expect(squick?.status.telegraphVfxState).toBe('verified');
+    expect(squick?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     const panda = records.find((record) => record.ability.bossArchetypeId === 'panda-boss');
     expect(panda?.status.arenaLabState).toBe('verified');
     expect(panda?.status.runtimeState).toBe('verified');
     expect(panda?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
-    // The other 16 abilities remain blocked purely by the production-enable
+    const sovereign = records.find((record) => record.ability.bossArchetypeId === 'myconid-boss');
+    expect(sovereign?.status.arenaLabState).toBe('verified');
+    expect(sovereign?.status.runtimeState).toBe('verified');
+    expect(sovereign?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    // The other abilities remain blocked purely by the production-enable
     // gate; arena slices must not promote them to ready.
     for (const record of records.filter(
       (candidate) =>
         candidate.ability.bossArchetypeId !== 'faerie-boss' &&
-        candidate.ability.bossArchetypeId !== 'panda-boss',
+        candidate.ability.bossArchetypeId !== 'ratfolk-boss' &&
+        candidate.ability.bossArchetypeId !== 'panda-boss' &&
+        candidate.ability.bossArchetypeId !== 'myconid-boss',
     )) {
       expect(record.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     }
   });
 
-  it('promotes the 16-boss backlog only when the production-enable gate is verified', () => {
+  it('promotes the not-started backlog only when the production-enable gate is verified', () => {
     const backlog = FLOOR2_BOSS_ABILITY_STATUS.entries.filter(
-      (entry) =>
-        entry.abilityId !== 'queen-mab-verdigris-glamour' &&
-        entry.abilityId !== 'big-panda-wei-bamboo-fed-berserk',
+      (entry) => entry.runtimeState === 'not-started',
     );
     expect(backlog.every((entry) => entry.foundationState === 'verified')).toBe(true);
 
@@ -312,12 +364,10 @@ describe('Floor 2 boss ability delivery status', () => {
         gate.id === 'floor2-boss-production-enable' ? { ...gate, state: 'verified' } : gate,
       ),
     });
-    const promotedBacklog = promoted.entries.filter(
-      (entry) =>
-        entry.abilityId !== 'queen-mab-verdigris-glamour' &&
-        entry.abilityId !== 'big-panda-wei-bamboo-fed-berserk',
+    const promotedBacklog = promoted.entries.filter((entry) =>
+      backlog.some((candidate) => candidate.abilityId === entry.abilityId),
     );
-    expect(promotedBacklog).toHaveLength(16);
+    expect(promotedBacklog).toHaveLength(backlog.length);
     expect(
       promotedBacklog.every((entry) => deriveBossAbilityDeliveryStage(entry, promoted) === 'ready'),
     ).toBe(true);
@@ -524,7 +574,7 @@ describe('Floor 2 boss ability delivery status', () => {
   it('prints a complete non-failing backlog report', () => {
     const report = formatBossAbilityStatusReport();
     expect(report).toContain('Floor 2 boss abilities: 18');
-    expect(report).toContain('Stages: blocked=18');
+    expect(report).toContain('Stages: blocked=17, in-progress=1');
     for (const ability of FLOOR2_BOSS_ABILITY_CATALOG.entries) {
       expect(report).toContain(`${ability.bossName} — ${ability.attackName}`);
     }

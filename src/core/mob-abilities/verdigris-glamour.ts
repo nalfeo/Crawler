@@ -31,7 +31,11 @@ import {
   type BossAbilityDef,
 } from '../../shared/boss-abilities.js';
 import type { GameWorld } from '../world.js';
-import type { MobAbilityResolveContext, MobAbilityRuntimeDefinition } from './types.js';
+import {
+  mobAbilityGeometryCircles,
+  type MobAbilityResolveContext,
+  type MobAbilityRuntimeDefinition,
+} from './types.js';
 
 export const VERDIGRIS_GLAMOUR_ABILITY_ID = 'queen-mab-verdigris-glamour';
 
@@ -206,7 +210,6 @@ function makeResolveHandler(ability: BossAbilityDef) {
   const tuning = readTarnishedTuning(ability);
   return function resolveVerdigrisGlamour(world: GameWorld, ctx: MobAbilityResolveContext): void {
     const { geometry, casterEid, sourceId } = ctx;
-    const r2 = geometry.radiusFt * geometry.radiusFt;
     // Every damageable entity inside the committed circle (except the caster)
     // takes moderate damage and is Tarnished. Entities outside are untouched.
     for (const eid of query(world.ecs, [Position, Health])) {
@@ -218,19 +221,30 @@ function makeResolveHandler(ability: BossAbilityDef) {
         // spawned enemy, that enemy must not inherit the lock and take damage.
         continue;
       }
-      const dx = (world.stores.position.x[eid] ?? 0) - geometry.x;
-      const dy = (world.stores.position.y[eid] ?? 0) - geometry.y;
-      if (dx * dx + dy * dy > r2) continue;
       const targetX = world.stores.position.x[eid] ?? 0;
       const targetY = world.stores.position.y[eid] ?? 0;
+      let sourceX = targetX;
+      let sourceY = targetY;
+      let inside = false;
+      for (const circle of mobAbilityGeometryCircles(geometry)) {
+        const cdx = (world.stores.position.x[eid] ?? 0) - circle.x;
+        const cdy = (world.stores.position.y[eid] ?? 0) - circle.y;
+        if (cdx * cdx + cdy * cdy <= circle.radiusFt * circle.radiusFt) {
+          inside = true;
+          sourceX = circle.x;
+          sourceY = circle.y;
+          break;
+        }
+      }
+      if (!inside) continue;
       applyDamage(world, eid, tuning.damageAmount, targetX, targetY, {
         origin: 'enemy',
         affinity: 'magic',
         scaleWithPrimary: false,
         canCrit: false,
         sourceEid: casterEid,
-        sourceX: geometry.x,
-        sourceY: geometry.y,
+        sourceX,
+        sourceY,
       });
       // Only Tarnish a target that survived the hit. If the 20 damage was lethal
       // the player is now at 0 HP and must not retain status effects during

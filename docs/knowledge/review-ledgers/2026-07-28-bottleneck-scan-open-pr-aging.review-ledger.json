@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "bottleneck-scan-open-pr-aging",
+  "task_title": "bottleneck-scan open-PR aging panel",
+  "estimated_apples": 2,
+  "stages": {}
+}
