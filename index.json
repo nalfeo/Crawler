@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ab5d61b5d723f0665245f52cb12c4cd2cec9cb7b",
+    "commitDate": "2026-07-29T10:02:13Z",
+    "commitSubject": "fix(merge-train): non-fatal update-branch errors to prevent queue deadlock (#2306)",
+    "capturedAt": "2026-07-29T11:11:53.390Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30442712244",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/ab5d61b5d723f0665245f52cb12c4cd2cec9cb7b.json"
+  },
+  {
     "commit": "fbd010559cb1ba5cc1325fb87c9a1e907571f3d0",
     "commitDate": "2026-07-29T09:37:40Z",
     "commitSubject": "feat(engine): add Phaser animation layer + player walk cycle (Slice A) (#2296)",
