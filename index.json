@@ -1,5 +1,16 @@
 [
   {
+    "commit": "12b6f5bdfd2e271ed0ec72a7ae2f3df192aec33a",
+    "commitDate": "2026-07-29T00:03:31Z",
+    "commitSubject": "chore(assets): reconcile queued sprite edits (6 art paths) (#2251)",
+    "capturedAt": "2026-07-29T01:05:47.155Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30410170169",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/12b6f5bdfd2e271ed0ec72a7ae2f3df192aec33a.json"
+  },
+  {
     "commit": "b856527912de6455cc2890dcd00de9e751051bac",
     "commitDate": "2026-07-28T23:54:18Z",
     "commitSubject": "feat(terrain): add Floor 1 biome terrain packs (dungeon + cave) (#2236)",
