@@ -9,8 +9,14 @@ function createGraphicsStub() {
     clear: vi.fn(),
     lineStyle: vi.fn(),
     fillStyle: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
+    fillPath: vi.fn(),
     strokeCircle: vi.fn(),
     fillCircle: vi.fn(),
+    fillPoints: vi.fn(),
     lineBetween: vi.fn(),
     setDepth: vi.fn().mockReturnThis(),
     setBlendMode: vi.fn().mockReturnThis(),
@@ -144,6 +150,46 @@ describe('MobAbilityVfx', () => {
     const telegraphGfx = graphicsObjects[0];
     expect(telegraphGfx).toBeDefined();
     expect(telegraphGfx!.strokeCircle).toHaveBeenCalledTimes(3);
+  });
+
+  it('draws committed lane telegraphs using the same locked endpoints', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'big-mama-bufo-tongue-repossession',
+      casterEid: 19,
+      phase: 'telegraph',
+      telegraphProgress: 0.4,
+      geometry: {
+        kind: 'lane',
+        originX: 10,
+        originY: 20,
+        endX: 30,
+        endY: 20,
+        dirX: 1,
+        dirY: 0,
+        widthFt: 3,
+        lengthFt: 20,
+      },
+      dangerColor: 'ability-theme',
+      announcementText: "TONGUE REPOSSESSION — Big Mama wants what's hers!",
+    });
+    world.mobAbilities.byEntity.set(19, mockInstance());
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.beginPath).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.moveTo).toHaveBeenCalledWith(ftToPx(10), ftToPx(21.5));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(30), ftToPx(21.5));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(30), ftToPx(18.5));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(10), ftToPx(18.5));
+    expect(telegraphGfx!.closePath).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.fillPath).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.fillStyle).toHaveBeenCalledWith(0x59c36a, expect.any(Number));
+    expect(telegraphGfx!.lineBetween).toHaveBeenCalled();
   });
 
   it('draws Don Paco projectile-fan telegraphs with five landing circles and path lines', () => {
@@ -297,6 +343,41 @@ describe('MobAbilityVfx', () => {
     const undercityCircleCount = circles.length - genericCircleCount;
 
     expect(undercityCircleCount).toBeGreaterThan(genericCircleCount);
+  });
+
+  it('renders Tongue Repossession lane bursts through the dedicated committed-lane VFX path', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const vfx = createMobAbilityVfx(scene);
+    const laneGeometry = {
+      kind: 'lane' as const,
+      originX: 10,
+      originY: 10,
+      endX: 20,
+      endY: 10,
+      dirX: 1,
+      dirY: 0,
+      widthFt: 3,
+      lengthFt: 10,
+    };
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: laneGeometry,
+    });
+    vfx.update(world);
+    const genericLaneBurstCircleCount = circles.length;
+
+    world.mobAbilities.pendingBursts.push({
+      abilityId: 'big-mama-bufo-tongue-repossession',
+      geometry: laneGeometry,
+    });
+    vfx.update(world);
+    const tongueLaneBurstCircleCount = circles.length - genericLaneBurstCircleCount;
+
+    expect(tongueLaneBurstCircleCount).toBeGreaterThan(0);
+    expect(scene.add.rectangle).toHaveBeenCalled();
+    expect(scene.add.ellipse).toHaveBeenCalled();
   });
 
   it('retires telegraph graphics when the cue ends', () => {

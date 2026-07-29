@@ -28,16 +28,16 @@ from advancing without an explicit, reviewable edit to `package.json`.
 
 ## Files changed
 
-| File | Change |
-|------|--------|
-| `package.json` | All 35 direct dep/devDep/override entries changed from `^`/`~` ranges to exact versions |
-| `package-lock.json` | Lockfile metadata synced — root package entry now mirrors exact versions |
-| `.npmrc` | New: `save-exact=true` — ensures future installs write exact versions |
-| `scripts/agent/security/check-exact-deps.mjs` | New: deterministic validator using strict exact-semver regex; checks deps/devDeps/optionalDeps and nested overrides |
-| `scripts/agent/security/check-exact-deps.test.mjs` | New: 21 unit tests covering all major specifier forms |
-| `package.json` (scripts) | Added `security:exact-deps` script; wired into `security:check` |
-| `.github/workflows/ci.yml` | Added blocking `Exact dependency versions` step in `check-lightweight` job |
-| `docs/guides/dependency-upgrades.md` | New: documents the intentional upgrade procedure, quarantine wait, and exemption process |
+| File                                               | Change                                                                                                              |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `package.json`                                     | All 35 direct dep/devDep/override entries changed from `^`/`~` ranges to exact versions                             |
+| `package-lock.json`                                | Lockfile metadata synced — root package entry now mirrors exact versions                                            |
+| `.npmrc`                                           | New: `save-exact=true` — ensures future installs write exact versions                                               |
+| `scripts/agent/security/check-exact-deps.mjs`      | New: deterministic validator using strict exact-semver regex; checks deps/devDeps/optionalDeps and nested overrides |
+| `scripts/agent/security/check-exact-deps.test.mjs` | New: 21 unit tests covering all major specifier forms                                                               |
+| `package.json` (scripts)                           | Added `security:exact-deps` script; wired into `security:check`                                                     |
+| `.github/workflows/ci.yml`                         | Added blocking `Exact dependency versions` step in `check-lightweight` job                                          |
+| `docs/guides/dependency-upgrades.md`               | New: documents the intentional upgrade procedure, quarantine wait, and exemption process                            |
 
 ## Key design decisions
 
@@ -56,7 +56,7 @@ ensures the guard runs in both paths.
 current lockfile version) with no false-positive risk, so it belongs in the blocking
 CI path.
 
-**Goal scope:** The guard prevents *direct* dependency drift. Transitive dependency
+**Goal scope:** The guard prevents _direct_ dependency drift. Transitive dependency
 versions remain controlled by `package-lock.json`; the exact-deps policy does not
 attempt to also guard transitives.
 

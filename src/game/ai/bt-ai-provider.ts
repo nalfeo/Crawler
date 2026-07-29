@@ -25,6 +25,7 @@ import {
   type FamilyId,
   type GameWorld,
 } from '../../core/index.js';
+import { getBodyHalfHeight, getBodyHalfWidth } from '../../core/physics-body.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
 import type { InputState } from '../../shared/input.js';
 import {
@@ -2641,6 +2642,36 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
           continue;
         }
+        if (geometry.kind === 'lane') {
+          const segX = geometry.endX - geometry.originX;
+          const segY = geometry.endY - geometry.originY;
+          const segLenSq = segX * segX + segY * segY;
+          if (segLenSq <= Number.EPSILON) continue;
+          const relX = ctx.playerX - geometry.originX;
+          const relY = ctx.playerY - geometry.originY;
+          const t = Math.max(0, Math.min(1, (relX * segX + relY * segY) / segLenSq));
+          const closestX = geometry.originX + segX * t;
+          const closestY = geometry.originY + segY * t;
+          const offX = ctx.playerX - closestX;
+          const offY = ctx.playerY - closestY;
+          const laneHalfWidth = geometry.widthFt * 0.5;
+          const playerBodyRadius = Math.max(
+            getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
+            getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
+          );
+          const hitClearance = laneHalfWidth + playerBodyRadius;
+          const offDistSq = offX * offX + offY * offY;
+          if (offDistSq > hitClearance * hitClearance) continue;
+          const offDist = Math.sqrt(offDistSq);
+          if (offDist > Number.EPSILON) {
+            this.dodgeVecX = (offX / offDist) * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = (offY / offDist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          } else {
+            this.dodgeVecX = -geometry.dirY * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = geometry.dirX * PROJECTILE_DODGE_VECTOR_SCALE;
+          }
+          return BTStatus.SUCCESS;
+        }
         if (geometry.kind === 'projectile-fan') {
           const dx = ctx.playerX - geometry.originX;
           const dy = ctx.playerY - geometry.originY;
@@ -2663,15 +2694,31 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
           continue;
         }
-        const cueCircles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        const cueCircles =
+          geometry.kind === 'circle'
+            ? [geometry]
+            : geometry.kind === 'spawn-circles' || geometry.kind === 'multi-circle'
+              ? geometry.circles
+              : [];
         for (const circle of cueCircles) {
           if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
         }
       }
       for (const zone of ctx.world.mobAbilities.ownedZones) {
         const { geometry } = zone;
-        if (geometry.kind === 'radial-projectiles' || geometry.kind === 'projectile-fan') continue;
-        const zoneCircles = geometry.kind === 'circle' ? [geometry] : geometry.circles;
+        if (
+          geometry.kind === 'lane' ||
+          geometry.kind === 'radial-projectiles' ||
+          geometry.kind === 'projectile-fan'
+        ) {
+          continue;
+        }
+        const zoneCircles =
+          geometry.kind === 'circle'
+            ? [geometry]
+            : geometry.kind === 'spawn-circles' || geometry.kind === 'multi-circle'
+              ? geometry.circles
+              : [];
         for (const circle of zoneCircles) {
           if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
         }

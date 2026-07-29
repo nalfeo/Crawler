@@ -127,7 +127,11 @@ export function classifyFile(prFile, mainBlobSha, mainPreviousFileBlobSha = unde
   if (prBlobSha === mainBlobSha) {
     // Blob SHAs match — content is byte-identical on the new path.
     // For renamed files, also require that the old path is absent from main.
-    if (prStatus === 'renamed' && mainPreviousFileBlobSha !== undefined && mainPreviousFileBlobSha !== null) {
+    if (
+      prStatus === 'renamed' &&
+      mainPreviousFileBlobSha !== undefined &&
+      mainPreviousFileBlobSha !== null
+    ) {
       // Old path still exists on main — the rename's deletion has NOT landed.
       return { filename, status: prStatus, fileStatus: FILE_STATUS.DELETION_DIFFERS };
     }
@@ -280,9 +284,13 @@ export function renderAlreadyLandedComment(prNumber, analysis, mainSha) {
     [VERDICT.NOT_LANDED]: `## 🆕 PR #${prNumber} — content analysis: no files landed yet`,
   };
 
-  const differNote = differsCount > 0
-    ? [`**${differsCount} file${differsCount === 1 ? '' : 's'}** have different content from \`main\` — cannot confirm these are landed (no merge-base comparison).`, '']
-    : [];
+  const differNote =
+    differsCount > 0
+      ? [
+          `**${differsCount} file${differsCount === 1 ? '' : 's'}** have different content from \`main\` — cannot confirm these are landed (no merge-base comparison).`,
+          '',
+        ]
+      : [];
 
   const summaries = {
     [VERDICT.ALL_LANDED]: [
@@ -297,9 +305,7 @@ export function renderAlreadyLandedComment(prNumber, analysis, mainSha) {
       '',
       'This PR was NOT auto-closed — it still has unmerged content.',
     ],
-    [VERDICT.NOT_LANDED]: [
-      'No files from this PR are present on `main` yet.',
-    ],
+    [VERDICT.NOT_LANDED]: ['No files from this PR are present on `main` yet.'],
   };
 
   const heading = headings[verdict] ?? `## PR #${prNumber} — already-landed analysis`;

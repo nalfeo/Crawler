@@ -101,7 +101,7 @@
       "castAnimationAssetRequest": null,
       "arenaLabState": "verified",
       "arenaLabPresetId": "f2-don-paco",
-      "arenaLabEvidence": "Verified in the canonical combat arena preset `f2-don-paco` with deterministic observation: frame 539 (8983.33ms) has no cue/banner/projectiles/zones. Frame 540 (9000ms) starts the locked hostile-red cone telegraph with exact `THE BIG GOB — Don Paco's painting the whole block!` announcement and visible cone/path/landing-circle diff. Frame 624 (10400ms) resolves the cast and launches 5 committed projectiles. Frame 654 (10900ms) all 5 impacts resolve into 5 persistent slicks on the committed landing circles; frame 655 confirms the slick set persists after impact. Frame 894 (14900ms) the first slick set fully expires and cleans up. Frame 1278 (21300ms) the second cast's 5 impacts/slicks resolve at the same committed cadence. Headless cadence/impact proof is covered by `scripts/agent/don-paco-arena-evidence.ts`; deterministic runtime coverage in `tests/unit/mob-abilities/big-gob.test.ts` covers inside/outside damage plus while-inside-only slow + 4s expiry; browser observation is in `tests/e2e/don-paco-arena-observation.test.ts`. Production remains blocked behind `floor2-boss-production-enable`.",
+      "arenaLabEvidence": "Verified in the canonical combat arena preset `f2-don-paco` with deterministic observation: frame 539 (8983.33ms) has no cue/banner/projectiles/zones. Frame 540 (9000ms) starts the locked hostile-red cone telegraph with exact `THE BIG GOB \u2014 Don Paco's painting the whole block!` announcement and visible cone/path/landing-circle diff. Frame 624 (10400ms) resolves the cast and launches 5 committed projectiles. Frame 654 (10900ms) all 5 impacts resolve into 5 persistent slicks on the committed landing circles; frame 655 confirms the slick set persists after impact. Frame 894 (14900ms) the first slick set fully expires and cleans up. Frame 1278 (21300ms) the second cast's 5 impacts/slicks resolve at the same committed cadence. Headless cadence/impact proof is covered by `scripts/agent/don-paco-arena-evidence.ts`; deterministic runtime coverage in `tests/unit/mob-abilities/big-gob.test.ts` covers inside/outside damage plus while-inside-only slow + 4s expiry; browser observation is in `tests/e2e/don-paco-arena-observation.test.ts`. Production remains blocked behind `floor2-boss-production-enable`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": {
@@ -622,7 +622,7 @@
       "abilityId": "big-mama-bufo-tongue-repossession",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "toadkin-boss",
         "approvedAssetId": "toadkin-boss-var-0",
@@ -631,18 +631,24 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-big-mama-bufo",
+      "arenaLabEvidence": "Verified in canonical combat-arena preset `f2-big-mama-bufo` with deterministic cadence and lock evidence: first telegraph frame 480 (8000ms), first resolution frame 555 (9250ms), second telegraph frame 1035 (17250ms), second resolution frame 1110 (18500ms). Hit/miss paths consume the same committed lane from telegraph lock; hit pulls to exactly 5ft in front of Bufo in open space, miss leaves sidestepped player untouched, miss recovery briefly suppresses movement/attacks, collision-safe pull fallback never places the player in blocked geometry, and the renderer consumes the committed lane for the wet tongue streak, elastic trail, swamp spray, mucus strings, drag dust, and retract snap burst. Evidence is captured in `tests/unit/mob-abilities/tongue-repossession.test.ts`, `tests/unit/mob-ability-vfx.test.ts`, `scripts/agent/big-mama-bufo-arena-evidence.ts`, and `tests/e2e/big-mama-bufo-arena-observation.test.ts`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1950,
+        "state": "open",
+        "title": "Implement Big Mama Bufo's TONGUE REPOSSESSION ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1950"
+      },
       "implementationPullRequest": null,
       "blockers": ["floor2-boss-production-enable"]
     }

@@ -52,6 +52,7 @@ On Windows, paths with spaces produce percent-encoded segments (e.g. `%20`), bre
 ## Tests added
 
 `scripts/agent/security/check-exact-deps.test.mjs` — 4 new regression tests:
+
 1. Exact version+field+name match suppresses violation ✅
 2. Version mismatch does NOT suppress violation ✅
 3. Nested override path must be included in field key ✅

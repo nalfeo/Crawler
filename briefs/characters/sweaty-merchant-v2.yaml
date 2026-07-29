@@ -172,9 +172,10 @@ description: |
   horizontally to fill the cell — but keep the whole figure and his tray fully
   inside its own cell with clear breathing room on every side.
 
-  EVERY CELL MUST BE ISLANDED. Each figure — including every corner of his tray — sits wholly inside its own cell with a WIDE EMPTY  MARGIN of flat background all the way around it, at least 25 source pixels on
-  every side. No figure may touch, overlap, or come near the edge of its cell, and
-  no two neighbouring figures may run into one another. He is therefore clearly
+  EVERY CELL MUST BE ISLANDED. Each figure — including every corner of his tray —
+  sits wholly inside its own cell with a WIDE EMPTY MARGIN of flat background all
+  the way around it, at least 25 source pixels on every side. No figure may touch,
+  overlap, or come near the edge of its cell, and
   NARROWER than his cell: he is tall and slim in a square cell, with generous
   empty background to his left and right.
 
