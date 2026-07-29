@@ -199,7 +199,8 @@ export class ApproveError extends Error {
       | 'variant-not-found'
       | 'processed-missing'
       | 'already-approved'
-      | 'manifest-invalid',
+      | 'manifest-invalid'
+      | 'hard-blocked',
     message: string,
   ) {
     super(message);
@@ -239,7 +240,12 @@ interface RunSummaryShape {
       readonly centerOfGravity?: { readonly x: number; readonly y: number } | null;
     } | null;
     readonly judgeScorecard?:
-      | (Readonly<Record<string, unknown>> & { readonly minScore?: number })
+      | (Readonly<Record<string, unknown>> & {
+          readonly minScore?: number;
+          readonly hardBlocked?: boolean;
+          readonly passed?: boolean;
+          readonly hardBlockInstruction?: string | null;
+        })
       | null;
   }>;
   readonly postprocessOverrides?: {
@@ -298,6 +304,12 @@ export interface ApproveVariantOptions {
    * Set true only for deliberate programmatic re-approval.
    */
   readonly allowReapprove?: boolean;
+  /**
+   * Allow approving a variant whose judge scorecard has `hardBlocked === true`.
+   * Default false: hard-blocked variants throw `ApproveError('hard-blocked')`.
+   * Set true only when a human consciously overrules the judge's veto.
+   */
+  readonly allowHardBlocked?: boolean;
 }
 
 /**
@@ -344,6 +356,33 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
       'variant-not-found',
       `Variant ${options.variantIndex} not in summary.json candidates ` +
         `(have: ${(summary.candidates ?? []).map((c) => c.index).join(', ') || 'none'})`,
+    );
+  }
+
+  // Hard-block gate: a judge-issued hard-block is a veto, not a score to be
+  // weighed. Refuse the approval unless the caller explicitly opts out with
+  // `allowHardBlocked: true` (reserved for conscious human overrides only).
+  if (candidate.judgeScorecard?.hardBlocked === true && !options.allowHardBlocked) {
+    const instruction = candidate.judgeScorecard.hardBlockInstruction;
+    throw new ApproveError(
+      'hard-blocked',
+      `Variant ${options.variantIndex} was hard-blocked by the judge and cannot be approved. ` +
+        (instruction ? `Judge instruction: "${instruction}". ` : '') +
+        `Pass allowHardBlocked: true (or --allow-hard-blocked on the CLI) to override deliberately.`,
+    );
+  }
+
+  // Soft warning: judge scored `passed: false` but did not hard-block. The art
+  // may still be approvable, but the operator should be aware.
+  if (
+    candidate.judgeScorecard !== null &&
+    candidate.judgeScorecard !== undefined &&
+    candidate.judgeScorecard.passed === false &&
+    candidate.judgeScorecard.hardBlocked !== true
+  ) {
+    process.stderr.write(
+      `⚠ Warning: approving variant ${options.variantIndex} whose judge scorecard has passed=false. ` +
+        `The judge flagged this art as below threshold — proceed only if you have reviewed it.\n`,
     );
   }
 

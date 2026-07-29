@@ -24,19 +24,22 @@ import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 interface ParsedArgs {
   readonly runDir: string;
   readonly variantIndex: number;
+  readonly allowHardBlocked: boolean;
 }
 
 function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   if (argv.length === 0) {
     throw new Error(
       'Usage: npm run sprites:approve -- <runDir> --variant N\n' +
-        '  <runDir>      Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
-        '  --variant N   Variant index (0-based) to approve',
+        '  <runDir>              Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
+        '  --variant N           Variant index (0-based) to approve\n' +
+        '  --allow-hard-blocked  Override the judge hard-block veto (use consciously)',
     );
   }
 
   let runDir: string | undefined;
   let variantIndex: number | undefined;
+  let allowHardBlocked = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -57,6 +60,8 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
         throw new Error(`--variant must be a non-negative integer, got: ${value}`);
       }
       variantIndex = parsed;
+    } else if (arg === '--allow-hard-blocked') {
+      allowHardBlocked = true;
     } else if (!arg.startsWith('-')) {
       if (runDir !== undefined) {
         throw new Error(`Unexpected positional argument: ${arg} (already have ${runDir})`);
@@ -74,7 +79,7 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
     throw new Error('Missing required --variant N');
   }
 
-  return { runDir, variantIndex };
+  return { runDir, variantIndex, allowHardBlocked };
 }
 
 function exitCodeForError(kind: ApproveError['kind']): number {
@@ -86,6 +91,8 @@ function exitCodeForError(kind: ApproveError['kind']): number {
     case 'summary-invalid':
     case 'manifest-invalid':
       return 3;
+    case 'hard-blocked':
+      return 4;
     default:
       return 1;
   }
@@ -119,6 +126,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
         catalogPath,
         publicAssetsDir,
         repoRoot,
+        allowHardBlocked: parsed.allowHardBlocked,
       });
       process.stdout.write(
         `Approved ${entry.briefId} variant ${entry.variantIndex}\n` +
