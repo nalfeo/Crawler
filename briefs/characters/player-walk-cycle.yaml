@@ -1,0 +1,119 @@
+# PLAYER WALK CYCLE — first multi-frame animation sheet through the pipeline.
+#
+# This brief opts into `frameSequence` (Slice B): the sheet's cells are NOT
+# independent design alternatives — they are ORDERED FRAMES of one side-view
+# walk cycle for the SAME contestant, packed into a single horizontal strip
+# and played back in the engine (Slice A consumes the `animation` manifest
+# descriptor this produces).
+#
+# ART STYLE matches the rest of the cast (see welcome-goon-v3.yaml): cartoon
+# EarthBound / Chrono Trigger / Undertale bobblehead proportions, flat cel
+# shading, clean dark outline. NOT gritty, NOT realistic.
+type: character
+name: player-walk-cycle
+description: |
+  THE PLAYER CHARACTER — a scrappy dungeon-crawling CONTESTANT on a televised
+  reality-show dungeon crawl. Determined, a little scruffy, clearly the
+  underdog hero rather than a staff member or monster.
+
+  ART STYLE IS THE FIRST PRIORITY. Draw in the style of EARTHBOUND, CHRONO
+  TRIGGER, UNDERTALE and ZELDA: A LINK TO THE PAST. Charming, cartoonish,
+  chunky pixel art. NOT gritty, NOT painterly, NOT semi-realistic, NOT dark
+  fantasy.
+
+  PROPORTIONS ARE BOBBLEHEAD: about THREE AND A HALF HEADS TALL total, with a
+  large rounded head (roughly one third of total height) on a short, chunky
+  body. Stubby arms and legs, simple block feet, mitten-shaped hands with no
+  individual fingers. Simple readable face: two dot/bean eyes, small nose,
+  a determined closed-mouth or slight grin. No realistic facial detail.
+
+  RENDERING IS FLAT AND CLEAN: flat colour fills with hard-edged cel shading,
+  two or three tonal stops per material, no gradients, no dithering or grain
+  texture. A clean, consistent dark outline around the figure.
+
+  OUTFIT: a simple worn adventurer's tunic (belted at the waist) over plain
+  trousers, sturdy boots, and a small satchel/pack strapped across the back.
+  No helmet — bare head with simple short hair. The contestant carries NO
+  visible weapon or shield in hand; equipment is layered on separately by the
+  game, so the base body must read clearly with empty hands.
+
+  VALUE STRUCTURE: a light-to-mid tunic as the largest, brightest mass (torso
+  and arms), clearly separating from darker trousers and boots below and from
+  a mid-tone floor. Three distinct value bands top to bottom: head, tunic/arms,
+  legs/boots — never one flat blob.
+
+  COLOUR: warm, desaturated adventurer palette — a muted green or brown tunic,
+  tan/leather belt and satchel, dark brown trousers and boots, warm tan skin
+  (never orange, amber, or gold), simple brown or dark-blond hair. Flat fills,
+  clean dark outline, never candy-glossy.
+
+  HARD NEGATIVES:
+   - Do NOT draw a weapon, shield, staff, or any held item in either hand.
+   - Do NOT draw armor plating, a cape, a hood, or a helmet.
+   - Do NOT draw realistic, lanky, seven-heads-tall, or adult-proportioned
+     anatomy. A small head is a FAILURE in this brief.
+   - Do NOT use heavy dithering, noise, or grain anywhere.
+   - Do NOT draw a drop shadow, cast shadow, or dark ellipse under the figure.
+   - Do NOT leave any fully enclosed pocket of background inside the figure.
+
+  SIZE ON THE SHEET: the standing figure spans roughly 80-90% of its cell's
+  narrower axis, centered, feet on a common invisible floor line near the
+  bottom of every frame — the floor line must be at the EXACT SAME pixel
+  height in every frame so the walk cycle doesn't bob vertically.
+
+  Rendered in the game at roughly 5.5 feet tall (1 tile = 4 feet). Keep detail
+  count low enough that the outfit and silhouette both survive when the
+  character is only about 40 pixels tall on screen.
+
+  SHEET BACKGROUND: every cell sits on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the figure's colours.
+  Do not alternate cell backgrounds and do not draw any panel, border, or
+  frame behind the subject.
+frameSequence:
+  # 4 frames, not the originally-targeted 3: Azure's images/edits endpoint
+  # only accepts square 1024x1024 or the fixed rectangles 1024x1536/1536x1024
+  # (see azure-openai.ts), and frameSequence requires nativeCanvas evenly
+  # divisible by frameCount with a single SQUARE nativeCanvas. 1024 has no
+  # factor of 3, so an exact 3-frame square sheet isn't requestable without
+  # extending the provider to support Azure's non-square rectangles (a much
+  # larger, riskier change to already-tested square-canvas infra). 4 divides
+  # 1024 cleanly (256px cells) and ships on today's infra; the brief's own
+  # tiebreakers rank "frame count beyond 3" lowest priority, i.e. tolerable.
+  enabled: true
+  frameCount: 4
+  frameRate: 8
+  loop: true
+generation:
+  sheet:
+    rows: 1
+    cols: 4
+    emptyCells: []
+    nativeCanvas: 1024
+sensors:
+  anchor:
+    # A standing/walking biped is not a handheld weapon; see welcome-goon-v2
+    # and sweaty-merchant-v2 for the same override on other standing bipeds.
+    # `grip` locks onto a single boot's opaque run, so a natural stance width
+    # (or a mid-stride pose with one foot forward) reads as off-centre by
+    # half a stance width. `center-of-mass` is this sensor's own documented
+    # contract for "mobs and most non-held sprites".
+    mode: center-of-mass
+  interiorHoles:
+    # Mid-stride poses (frames where the legs separate) open a small enclosed
+    # gap of background between the legs that the strict default (0px)
+    # flags as a "hole". This is the SAME kind of legitimate interior
+    # negative-space several existing prop briefs already tolerate (e.g.
+    # welcome-room-kitchenette.yaml: 256px, welcome-room-cable-coil.yaml:
+    # 24px) rather than a stray background-bleed artifact. 64px comfortably
+    # covers the observed real leg-gap size (55px) with headroom, while
+    # staying far below the "wholesale bleed-through" range those other
+    # briefs cap at (256-512px).
+    maxPixels: 64
+judge:
+  enabled: false
+minVariations: 0
+tags:
+  - player
+  - contestant
+  - walk-cycle
+  - animation

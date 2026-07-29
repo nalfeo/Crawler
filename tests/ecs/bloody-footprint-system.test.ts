@@ -3,6 +3,7 @@ import { spawnPlayer } from '../../src/core/helpers.js';
 import { bloodyFootprintSystem } from '../../src/core/systems/bloodyFootprintSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import {
+  BLOODY_FOOTPRINT_EMIT_DISTANCE_FT,
   BLOODY_FOOTPRINT_SOURCE_LIFETIME_MS,
   createBloodPoolSurface,
   mixBloodColors,
@@ -10,6 +11,12 @@ import {
 
 const GREEN_BLOOD = 0x22aa44;
 const BLUE_BLOOD = 0x4466cc;
+/**
+ * One walk step. Slightly over the emit threshold because `Math.hypot` can
+ * return marginally under an exact-threshold delta (e.g. 2.0999999999999996
+ * for a 2.1 ft move), which would round the emit count down to zero.
+ */
+const STEP_FT = BLOODY_FOOTPRINT_EMIT_DISTANCE_FT * 1.05;
 
 describe('bloodyFootprintSystem', () => {
   it('activates a footprint source from a blood pool and stamps colored footprints while moving', () => {
@@ -32,7 +39,7 @@ describe('bloodyFootprintSystem', () => {
     bloodyFootprintSystem(world);
     expect(world.bloodyFootprintState.source?.color).toBe(GREEN_BLOOD);
 
-    world.stores.position.x[playerEid] = 1.2;
+    world.stores.position.x[playerEid] = STEP_FT;
     world.elapsedMs += 200;
     bloodyFootprintSystem(world);
 
