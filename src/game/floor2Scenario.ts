@@ -942,14 +942,15 @@ export function initializeFloor2Scenario(
   world.featureUnlocks.spells = true;
   // Floor 2 runtime owns the generated-equipment reward economy; enable the
   // full dependency closure so Floor 2 achievement equipment rewards, the
-  // Quartermaster/shop stock economy, and boss-chest rarity rewards can all
-  // resolve in shipped gameplay paths. `floor2EquipmentEconomy` gates
+  // Quartermaster/shop stock economy, and boss-chest reward resolution can all
+  // run in shipped gameplay paths. `floor2EquipmentEconomy` gates
   // Quartermaster stock generation/purchasing (quartermaster-stock.ts,
   // quartermaster-purchase.ts) and boss chest reward resolution
   // (boss-chest-resolver.ts) — both already wired to real Floor 2 events but
   // previously inert because this flag defaulted to false in the shipped
-  // path (see docs/knowledge/epics/floor-2-equipment/PLAN.md economy
-  // contract: 85/15 boss chest rarity, guaranteed Quartermaster + 1-2 shops).
+  // path. Boss chests currently resolve at Common rarity (tier1, see
+  // boss-chest-resolver.ts); the 85/15 Uncommon/Rare split from
+  // PLAN.md §E3-C is a future task not yet implemented.
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentRewards = true;
