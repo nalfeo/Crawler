@@ -1,5 +1,16 @@
 [
   {
+    "commit": "243eb7aae6f2360e7bef7e48b1b63861bf3b8821",
+    "commitDate": "2026-07-29T03:34:35Z",
+    "commitSubject": "chore(assets): reconcile queued sprite edits (2 art paths) (#2291)",
+    "capturedAt": "2026-07-29T04:36:00.927Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30420115995",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/243eb7aae6f2360e7bef7e48b1b63861bf3b8821.json"
+  },
+  {
     "commit": "664af544aa4a9dfe9901d19a40642bb2ffddcf81",
     "commitDate": "2026-07-29T02:48:59Z",
     "commitSubject": "refactor(agent-os): unify personas and agents into one guard-enforced system with a single routing manifest (#2130)",
