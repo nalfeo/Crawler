@@ -1,0 +1,42 @@
+{
+  "briefId": "crystal-scuttler",
+  "spriteName": "crystal-scuttler-var-1",
+  "assetPath": "generated/crystal-scuttler-var-1.png",
+  "approvedAt": "2026-07-08T01:15:48.168Z",
+  "sourceRun": "generated/runs/crystal-scuttler/2026-07-08T01-07-50-f90c26a1",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 33,
+    "y": 33,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 33,
+      "y": 33,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 33,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": "enemy",
+  "contentHash": "c51b7224ca3fd26c15c9b871a98904f0d872793514023c2cb86c7b3585453c1d",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crystal-scuttler\\2026-07-08T01-07-50-f90c26a1\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crystal-scuttler\\2026-07-08T01-07-50-f90c26a1\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\crystal-scuttler\\2026-07-08T01-07-50-f90c26a1\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 4,
+    "width": 58,
+    "height": 55,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

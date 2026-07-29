@@ -1,0 +1,108 @@
+{
+  "briefId": "ritual-dagger-v1",
+  "spriteName": "ritual-dagger-v1-var-3",
+  "assetPath": "generated/ritual-dagger-v1-var-3.png",
+  "approvedAt": "2026-07-25T05:35:33.532Z",
+  "sourceRun": "generated/runs/ritual-dagger-v1/2026-07-25T05-32-12-e32ce037",
+  "variantIndex": 3,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 32,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=20 is outside ±3 of center 32"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -57.13° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 3,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:34:15.772Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a jagged obsidian dagger with glowing runes and a bone hilt is well-executed and fits the dark-fantasy aesthetic of Crawler. The addition of the raven feather adds a ceremonial and mysterious flair, aligning with the brief's intent."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference sprites in terms of outline weight, shading, and palette depth. The glowing runes are well-integrated and do not overpower the design. However, the feather's texture could be slightly more refined to better match the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference sprites in terms of outline weight, shading, and palette depth. The glowing runes are well-integrated and do not overpower the design. However, the feather's texture could be slightly more refined to better match the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a jagged obsidian dagger with a bone hilt, glowing green runes, and a raven feather tied to the hilt, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity issues. The glowing runes and feather are easily identifiable, and the overall design reads well against the dark floor tile."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 2540,
+      "completionTokens": 342,
+      "totalTokens": 2882
+    }
+  },
+  "type": "weapon",
+  "contentHash": "93969afc6b7d1adbde18fc8579ed4b650c3eefab6bdf1cee30cdaf4c7e4a5894",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/ritual-dagger-v1/2026-07-25T05-32-12-e32ce037/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ritual-dagger-v1/2026-07-25T05-32-12-e32ce037/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ritual-dagger-v1/2026-07-25T05-32-12-e32ce037/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 9,
+    "y": 3,
+    "width": 45,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

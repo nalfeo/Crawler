@@ -33,11 +33,11 @@
  *                                                   [--assets-dir <path>]
  *   npm run sprites:normalize-item-art -- --dry-run
  */
-import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseSpriteCatalog } from '../../src/shared/sprite-catalog.js';
 import { formatJsonFiles } from './catalog-io.js';
+import { composeManifestFromShards, writeShard, deleteShard } from './generated-shards.js';
 
 // ---------------------------------------------------------------------------
 // Allowlist — the ONLY concepts this migration is permitted to touch.
@@ -470,16 +470,12 @@ async function main(): Promise<void> {
     : ITEM_ART_CONCEPTS;
 
   const manifestPath = path.resolve(args.manifestPath);
-  const catalogPath = path.resolve(args.catalogPath);
+  const generatedDir = path.dirname(manifestPath);
   const assetsDir = path.resolve(args.assetsDir);
 
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as GeneratedManifest;
-  // Parse the catalog as raw JSON so we can edit only the migrated records in
-  // place and preserve every other record's on-disk key/array order (see
-  // `applyPlanToData`). We still run it through the zod schema purely to validate
-  // shape — the parsed result is discarded so it can't reorder keys on write.
-  const catalog = JSON.parse(readFileSync(catalogPath, 'utf-8')) as CatalogRecordRaw[];
-  parseSpriteCatalog(catalog);
+  // Source of truth is the per-asset shard set (`entries/<key>.json`); the
+  // aggregate `manifest.json` is a build artifact and is not read here.
+  const manifest = composeManifestFromShards(generatedDir);
 
   const plan = planMigration(manifest, concepts);
 
@@ -566,22 +562,45 @@ async function main(): Promise<void> {
     rmSync(png);
   }
 
-  // 2. Rewrite manifest + catalog.
-  const next = applyPlanToData(manifest, catalog, plan);
-  writeFileSync(manifestPath, `${JSON.stringify(next.manifest, null, 2)}\n`, 'utf-8');
-  writeFileSync(catalogPath, `${JSON.stringify(next.catalog, null, 2)}\n`, 'utf-8');
+  // 2. Rewrite the per-asset shards. Renames write the new `entries/<newKey>.json`
+  //    and delete the old shard; retires delete the shard. The `generated:`
+  //    catalog rows are NOT committed — they derive from the manifest at
+  //    read-time (src/shared/generated-catalog.ts) — so no catalog file is
+  //    written: the derived id/label/description/assetPath follow the new key
+  //    automatically.
+  const writtenShardPaths: string[] = [];
+  for (const r of plan.renames) {
+    const entry = manifest.entries[r.oldKey];
+    if (!entry) {
+      throw new Error(`Rename planned for "${r.oldKey}" but its shard is missing.`);
+    }
+    const nextEntry = {
+      ...entry,
+      briefId: r.newBriefId,
+      spriteName: r.newKey,
+      assetPath: r.newAssetPath,
+    };
+    writtenShardPaths.push(writeShard(generatedDir, r.newKey, nextEntry));
+    if (r.newKey !== r.oldKey) {
+      deleteShard(generatedDir, r.oldKey);
+    }
+  }
+  for (const r of plan.retires) {
+    deleteShard(generatedDir, r.key);
+  }
 
-  // 3. Re-apply Prettier to the two files we just wrote. The committed manifest +
-  //    catalog are Prettier-formatted; a raw `JSON.stringify(…, 2)` differs from
-  //    Prettier's style (e.g. Prettier keeps short arrays inline), which would
-  //    otherwise show up as wholesale whitespace churn and fail `format:check`.
-  //    formatJsonFiles (catalog-io.ts) is the shared formatting helper so all
-  //    write paths stay in sync.
-  await formatJsonFiles([manifestPath, catalogPath]);
+  // 3. Re-apply Prettier to the shards we just wrote. Committed shards are
+  //    Prettier-formatted; a raw `JSON.stringify(…, 2)` differs from Prettier's
+  //    style and would otherwise fail `format:check`. formatJsonFiles
+  //    (catalog-io.ts) is the shared formatting helper so all write paths stay
+  //    in sync.
+  if (writtenShardPaths.length) {
+    await formatJsonFiles(writtenShardPaths);
+  }
 
   process.stdout.write(
     `Applied: renamed ${plan.renames.length}, retired ${plan.retires.length}. ` +
-      `Wrote + formatted manifest + catalog.\n`,
+      `Wrote + formatted shards.\n`,
   );
 }
 

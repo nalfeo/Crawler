@@ -273,6 +273,15 @@ jobs:
         if: env.DOCS_ONLY != 'true'
         run: npm run check:sort-assets
 
+      # Sharded-manifest invariants (deterministic, exit-coded): every per-asset
+      # shard parses against the schema, composing the aggregate from shards is
+      # deterministic, the committed sprite-catalog.json carries NO generated:
+      # rows (they must be derived), and the composed full catalog has unique
+      # ids. Guards the sharding contract that keeps parallel art PRs conflict-free.
+      - name: Generated-manifest invariants
+        if: env.DOCS_ONLY != 'true'
+        run: npm run sprites:check-manifest
+
       - name: Lab gate check
         if: env.DOCS_ONLY != 'true'
         run: bash scripts/agent/lab-gate-check.sh

@@ -32,6 +32,14 @@ generated/
 !public/assets/generated/
 !public/assets/generated/**
 
+# The aggregate manifest is a BUILD ARTIFACT composed from the per-asset shards
+# under public/assets/generated/entries/ (see tools/vite-plugin-generated-manifest.ts
+# and scripts/sprites/build-manifest.ts). It is intentionally NOT committed:
+# keeping it out of git is what lets two art check-ins touching different assets
+# never conflict on a shared mega-file. This ignore must come AFTER the
+# !public/assets/generated/** negation above so it wins.
+public/assets/generated/manifest.json
+
 _check-merge.sh
 
 

@@ -1,0 +1,29 @@
+{
+  "briefId": "equipment/weapon/meteor-hammer",
+  "spriteName": "equipment/weapon/meteor-hammer",
+  "assetPath": "generated/equipment/weapon/meteor-hammer-placeholder.png",
+  "approvedAt": "2026-07-18T04:30:00.000Z",
+  "sourceRun": "floor2-equipment-placeholder/v1",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "weapon",
+  "equipment": {
+    "stableId": "weapon.meteor-hammer",
+    "runtimeKey": "equipment/weapon/meteor-hammer",
+    "category": "weapon",
+    "family": "trap",
+    "slot": "weapon",
+    "productionWaveId": "floor2-equipment-weapon-trap"
+  },
+  "opaqueBounds": {
+    "x": 1,
+    "y": 2,
+    "width": 14,
+    "height": 13,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

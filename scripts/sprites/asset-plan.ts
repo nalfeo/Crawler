@@ -3,7 +3,7 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { SPRITES } from '../../src/engine/sprites/index.js';
-import { parseGeneratedManifest, type ManifestEntry } from '../../src/shared/generated-assets.js';
+import { type ManifestEntry } from '../../src/shared/generated-assets.js';
 import {
   briefKey,
   resolveArtPlanStatus,
@@ -13,6 +13,7 @@ import {
 } from '../../src/shared/art-plan-status.js';
 import { ITEM_CATALOG } from '../../src/shared/items.js';
 import { SPRITE_TYPES, minimalBriefSchema } from './brief-schema.js';
+import { loadGeneratedManifest } from './generated-shards.js';
 
 const slugSchema = z
   .string()
@@ -177,12 +178,8 @@ export function loadApprovedSprites(
   repoRoot: string,
   manifestPath: string = DEFAULT_MANIFEST_PATH,
 ): ApprovedSpriteIndex {
-  const absoluteManifestPath = path.resolve(repoRoot, manifestPath);
-  if (!existsSync(absoluteManifestPath)) {
-    return new Map<string, ApprovedSpriteRecord>();
-  }
-  const rawManifest = JSON.parse(readFileSync(absoluteManifestPath, 'utf8')) as unknown;
-  const manifest = parseGeneratedManifest(rawManifest);
+  const generatedDir = path.dirname(path.resolve(repoRoot, manifestPath));
+  const manifest = loadGeneratedManifest(generatedDir);
   const out = new Map<string, ApprovedSpriteRecord>();
   for (const [mapKey, entry] of Object.entries(manifest.entries)) {
     if (entry.sourceRun === 'placeholder') {

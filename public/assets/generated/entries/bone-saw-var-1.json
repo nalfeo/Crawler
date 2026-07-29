@@ -1,0 +1,42 @@
+{
+  "briefId": "bone-saw",
+  "spriteName": "bone-saw-var-1",
+  "assetPath": "generated/bone-saw-var-1.png",
+  "approvedAt": "2026-07-18T02:58:53.059Z",
+  "sourceRun": "generated/runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 33,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 33,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 29,
+      "y": 28,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "0ced674d567b500e572fcf4ccc6904fad39cd12b759e03d5c1df3456f85d7a64",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 3,
+    "width": 34,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}
