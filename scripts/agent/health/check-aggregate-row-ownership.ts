@@ -34,7 +34,7 @@
 
 import { execFileSync } from 'node:child_process';
 import process from 'node:process';
-import { Report, fromRepo } from '../shared/report.js';
+import { Report } from '../shared/report.js';
 import {
   REGISTRY,
   MIN_EXPECTED_ROWS_IN_CI,
@@ -110,6 +110,7 @@ function fileAtRef(ref: string, repoRelPath: string): string | null {
 }
 
 let totalRowsChecked = 0;
+let filesWithRowsChecked = 0; // how many files were actually parsed and compared
 
 for (const entry of REGISTRY) {
   const { path: relPath, extractRows } = entry;
@@ -146,6 +147,13 @@ for (const entry of REGISTRY) {
     continue;
   }
 
+  // PR did not touch this file — no regeneration happened, so no revert risk.
+  // A 3-way merge of an untouched file simply takes main's current content.
+  if (prContent === mergeBaseContent) {
+    report.info(`${relPath}: file unchanged in this PR — skipping staleness check.`);
+    continue;
+  }
+
   // Parse rows from all three versions.
   let prRows, mergeBaseRows, mainRows;
   try {
@@ -163,6 +171,7 @@ for (const entry of REGISTRY) {
   // Run the ownership check.
   const result = checkRowOwnership(prRows, mergeBaseRows, mainRows);
   totalRowsChecked += result.rowsChecked;
+  filesWithRowsChecked++;
 
   for (const finding of result.findings) {
     report.error(finding.detail, { file: relPath });
@@ -172,10 +181,13 @@ for (const entry of REGISTRY) {
   report.info(`${relPath}: ${result.rowsChecked} rows checked — ${status}.`);
 }
 
-// Canary: 0 rows checked in CI means something is broken (checkout config, etc.).
-if (totalRowsChecked < MIN_EXPECTED_ROWS_IN_CI) {
+// Canary: if a file was parsed and compared but produced 0 rows, something is broken
+// (wrong file structure, wrong git paths). This fires only when the guard actually
+// ran on a changed file but found nothing — 0 rows is fine if no registered file
+// was touched by the PR (skipped-unchanged is the expected path for most PRs).
+if (filesWithRowsChecked > 0 && totalRowsChecked < MIN_EXPECTED_ROWS_IN_CI) {
   report.error(
-    `Aggregate row ownership guard checked 0 rows across all registered files. ` +
+    `Aggregate row ownership guard parsed ${filesWithRowsChecked} changed file(s) but checked 0 rows total. ` +
       `This indicates a configuration failure — expected at least ${MIN_EXPECTED_ROWS_IN_CI} row. ` +
       `Check that origin/main is fetched and the registered file paths are correct.`,
     {

@@ -5,7 +5,6 @@ import {
   checkRowOwnership,
   extractBossAbilityRows,
   extractManifestRows,
-  type OwnershipCheckResult,
   type RowMap,
 } from '../../../scripts/agent/health/check-aggregate-row-ownership-lib.js';
 
