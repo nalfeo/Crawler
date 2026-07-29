@@ -186,7 +186,7 @@ export class MockImage {
  * plays that per-tick advance role explicitly so a test can deterministically
  * assert "the frame index advances while playing, holds while stopped".
  */
-export class MockAnimationManager {
+class MockAnimationManager {
   private readonly configs = new Map<
     string,
     { frameCount: number; frameRate: number; repeat: number }
@@ -224,7 +224,7 @@ export class MockAnimationManager {
  * animation. Not part of the production `AnimationManagerLike`/`Sprite.anims`
  * surface the bridge calls — only `play`/`stop`/`currentFrame` are.
  */
-export class MockAnimationState {
+class MockAnimationState {
   private currentKey: string | null = null;
   private frameIndex = 0;
   private playing = false;
@@ -285,7 +285,7 @@ export class MockAnimationState {
 }
 
 /** `MockImage` plus the `.anims` surface `scene.add.sprite(...)` results carry. */
-export class MockSprite extends MockImage {
+class MockSprite extends MockImage {
   readonly anims: MockAnimationState;
 
   constructor(
