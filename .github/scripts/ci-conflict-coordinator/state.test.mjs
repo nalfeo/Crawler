@@ -566,7 +566,10 @@ test('coordinator remains event-driven while liveness cadence moves to ci-livene
     path.resolve('.github/workflows/ci-conflict-coordinator.yml'),
     'utf8',
   );
-  const livenessWorkflow = readFileSync(path.resolve('.github/workflows/ci-liveness-sweep.yml'), 'utf8');
+  const livenessWorkflow = readFileSync(
+    path.resolve('.github/workflows/ci-liveness-sweep.yml'),
+    'utf8',
+  );
   assert.match(
     coordinatorWorkflow,
     /types:\s*\[opened, reopened, synchronize, ready_for_review, closed\]/,

@@ -52,7 +52,7 @@
  */
 
 import { parseAssetIssueBody } from './asset-issues.js';
-import { ASSET_CHECKIN_LABEL, ASSET_SURFACE_PATHS, type Exec } from './checkin.js';
+import { ART_SURFACE_ALLOWLIST, ASSET_CHECKIN_LABEL, type Exec } from './checkin.js';
 
 /** How the reconcile cycle resolved. */
 export type ReconcileStatus = 'noop' | 'pr-open';
@@ -255,7 +255,7 @@ async function mustGh(exec: Exec, cwd: string, args: readonly string[]): Promise
 /**
  * Is `p` inside the art-surface allowlist? A path is trusted iff it is exactly
  * `src/shared/data/sprite-catalog.json` OR lives under `public/assets/generated/`.
- * Matches `detect-art-only.sh` (and PR1's `ASSET_SURFACE_PATHS`) EXACTLY so the
+ * Matches `detect-art-only.sh` (and PR1's `ART_SURFACE_ALLOWLIST`) EXACTLY so the
  * guard and the CI art-only classifier agree by construction — a promote→main
  * diff the guard accepts is precisely one `ci.yml` classifies `art_only=true`.
  *
@@ -267,7 +267,7 @@ export function isArtSurfacePath(p: string): boolean {
   if (p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.includes('\\')) return false;
   const segments = p.split('/');
   if (segments.some((s) => s === '' || s === '.' || s === '..')) return false;
-  for (const surface of ASSET_SURFACE_PATHS) {
+  for (const surface of ART_SURFACE_ALLOWLIST) {
     // A surface entry is a single file (e.g. the catalog JSON) or a directory
     // (e.g. `public/assets/generated`). File entries match EXACTLY; directory
     // entries match DESCENDANTS ONLY. Never accept a bare directory path as
@@ -304,7 +304,7 @@ export function assertArtSurfaceOnly(
     throw new ReconcileError(
       'untrusted-diff',
       `Refusing to arm auto-merge: the promotion diff touches ${offenders.length} path(s) ` +
-        `outside the art-surface allowlist (${ASSET_SURFACE_PATHS.join(', ')}): ` +
+        `outside the art-surface allowlist (${ART_SURFACE_ALLOWLIST.join(', ')}): ` +
         `${offenders.join(', ')}. This should be impossible by construction; refusing ` +
         `to land a non-art change on ${baseBranch} and escalating.`,
     );
@@ -507,7 +507,7 @@ export async function computeClosingIssueNumbers(
   // an asset is closable only when path + manifest contentHash both match.
   const lsResult = await exec(
     'git',
-    ['ls-tree', '--name-only', '-r', promotedRef, '--', ...ASSET_SURFACE_PATHS],
+    ['ls-tree', '--name-only', '-r', promotedRef, '--', ...ART_SURFACE_ALLOWLIST],
     { cwd: repoRoot },
   );
   if (lsResult.code !== 0) return { issueNumbers: [], complete: false };
@@ -721,7 +721,7 @@ export async function runReconcile(
       baseRef,
       queueRef,
       '--',
-      ...ASSET_SURFACE_PATHS,
+      ...ART_SURFACE_ALLOWLIST,
     ]);
     const queueVsMainArt = parseNameOnly(delta);
     if (queueVsMainArt.length === 0) {

@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { countSheetRows, validateSetPieceCandidate } from '../lib/editor-validators.mjs';
+import {
+  countSheetRows,
+  validateSetPieceCandidate,
+  LAYER_KEYS,
+  PROP_KEYS,
+} from '../lib/editor-validators.mjs';
 
 test('countSheetRows includes final spaced row', () => {
   // tiny-dungeon spritesheet: 11 rows of 16px with 1px spacing, 0 margin.
@@ -375,5 +381,69 @@ test('validateSetPieceCandidate rejects invalid npc sceneLayer type', () => {
 
   assert.ok(
     issues.some((issue) => issue.includes('npcs[0].sceneLayer must be a non-empty string')),
+  );
+});
+
+// --- schema drift guard -----------------------------------------------------
+// This extension is standalone .mjs and cannot import the zod schema, so its
+// allow-lists are hand-copied from `src/shared/set-piece-types.ts`. That copy
+// has now silently fallen behind TWICE, and both were total save blockers:
+//   * `anchorBase` — used by 14 shipped welcome-room props; the editor rejected
+//     every room that used it, including the one it was open on.
+//   * `solid`      — shipped with real collision; would have blocked any room
+//     containing solid furniture the moment someone edited one.
+// Parsing the TS schema here means the next field to land cannot repeat this.
+test('editor allow-lists do not drift from the canonical zod schema', () => {
+  const ts = readFileSync(
+    new URL('../../../../src/shared/set-piece-types.ts', import.meta.url),
+    'utf8',
+  );
+
+  const keysOf = (schemaName) => {
+    const start = ts.indexOf(`const ${schemaName} = z`);
+    assert.ok(start >= 0, `could not locate ${schemaName} in set-piece-types.ts`);
+    const open = ts.indexOf('.object({', start);
+    assert.ok(open >= 0, `could not locate .object({ for ${schemaName}`);
+    // Walk braces so nested object literals (e.g. inline sub-schemas) do not
+    // truncate the slice early.
+    let depth = 0;
+    let end = -1;
+    for (let i = ts.indexOf('{', open); i < ts.length; i += 1) {
+      if (ts[i] === '{') depth += 1;
+      else if (ts[i] === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    assert.ok(end > 0, `unbalanced braces reading ${schemaName}`);
+    const body = ts.slice(open, end);
+    // Top-level keys only: `    key: z.` at exactly one indent level inside the
+    // object literal.
+    return new Set([...body.matchAll(/^ {4}(\w+):\s*z\./gm)].map((m) => m[1]));
+  };
+
+  const schemaLayer = keysOf('spriteLayerSchema');
+  const schemaProp = keysOf('propSourceSchema');
+
+  // Sanity: the parse actually found something, so a regex that silently
+  // matches nothing cannot make this test vacuously green.
+  assert.ok(schemaLayer.size >= 10, `parsed too few layer keys: ${[...schemaLayer]}`);
+  assert.ok(schemaProp.size >= 8, `parsed too few prop keys: ${[...schemaProp]}`);
+  assert.ok(schemaLayer.has('anchorBase'), 'parser missed anchorBase');
+  assert.ok(schemaProp.has('solid'), 'parser missed solid');
+
+  const missing = (schema, allowed) => [...schema].filter((k) => !allowed.has(k));
+  assert.deepEqual(
+    missing(schemaLayer, LAYER_KEYS),
+    [],
+    'layer fields in the zod schema that the editor would reject as unknown',
+  );
+  assert.deepEqual(
+    missing(schemaProp, PROP_KEYS),
+    [],
+    'prop fields in the zod schema that the editor would reject as unknown',
   );
 });

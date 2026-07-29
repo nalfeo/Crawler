@@ -272,8 +272,7 @@ export async function applyLifecycleDecision({
   // always rewritten. This prevents a wired caller from inadvertently leaving the lifecycle
   // comment bound to a stale head after a force-push when it forgets to pass currentHeadSha.
   const samePhase = currentPhase === targetPhase;
-  const headShaChanged =
-    currentHeadSha == null || compact(currentHeadSha) !== compact(headSha);
+  const headShaChanged = currentHeadSha == null || compact(currentHeadSha) !== compact(headSha);
   if (samePhase && !headShaChanged) {
     return { acted: false, noOp: true, phase: currentPhase, reason: 'already-in-phase' };
   }
@@ -381,7 +380,9 @@ export function formatRawLabelOutcome(prNumber, outcome) {
  */
 export function makeQuarantineComment(prNumber, evidence) {
   const reason = compact(evidence?.reason || 'no-activity');
-  const lastActivity = evidence?.lastActivity ? ` (last activity: \`${evidence.lastActivity}\`)` : '';
+  const lastActivity = evidence?.lastActivity
+    ? ` (last activity: \`${evidence.lastActivity}\`)`
+    : '';
   const thresholdDays = Number(evidence?.thresholdDays) > 0 ? evidence.thresholdDays : null;
   const thresholdNote = thresholdDays ? ` for more than ${thresholdDays} days` : '';
 
@@ -420,14 +421,12 @@ export function makeDuplicateCloseComment(prNumber, proof) {
   const reason = compact(proof?.reason || '');
   const superseder = proof?.supersederPr ? `#${proof.supersederPr}` : 'a previously merged PR';
 
-  const ruleExplanation = {
-    'linked-issue-closed-by-sibling':
-      `A closing issue of this PR was already closed by ${superseder}, which merged first.`,
-    'sibling-merged':
-      `A sibling PR (${superseder}) that closes the same issue has already merged.`,
-    'empty-diff':
-      'This PR\'s diff against its base is empty — all changes are already on `main`.',
-  }[ruleLabel] || `Proof rule \`${ruleLabel}\` fired.`;
+  const ruleExplanation =
+    {
+      'linked-issue-closed-by-sibling': `A closing issue of this PR was already closed by ${superseder}, which merged first.`,
+      'sibling-merged': `A sibling PR (${superseder}) that closes the same issue has already merged.`,
+      'empty-diff': "This PR's diff against its base is empty — all changes are already on `main`.",
+    }[ruleLabel] || `Proof rule \`${ruleLabel}\` fired.`;
 
   return [
     '<!-- crawler-ci-disposition:v1 -->',
@@ -441,4 +440,3 @@ export function makeDuplicateCloseComment(prNumber, proof) {
     '_No heuristics were used. If this is incorrect, please re-open and add context._',
   ].join('\n');
 }
-

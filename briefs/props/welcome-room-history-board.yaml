@@ -1,0 +1,147 @@
+# ASPECT NOTE (Asset Forge, 2026-07-26): 1 map tile = 4 ft, renderer is
+# height-authoritative, so the canvas aspect IS the real-world proportion. This
+# is a FLAT wall-mounted board seen face-on — a flat plane has no receding side
+# face, so the drawn bounding box equals the flat elevation aspect (unlike the
+# 3/4 carcass props, where the side face adds drawn width). Intended real size is
+# 3.5 ft wide x 4.5 ft tall. The physically meaningful dimension is the 4.5 ft
+# HEIGHT, so height is declared (108) and width is DERIVED: 108 * 3.5 / 4.5 = 84.
+# Neither axis is >= 2x the other, so resizeSpriteStrategy() returns 'fit' and the
+# shipped canvas is exactly 84x108 — the DRAWN aspect must land near 0.78:1 or
+# the subject letterboxes, hence the explicit fill instructions below.
+#
+# WALL-MOUNTED: no grounded base, so the `prop` default bottom-centre grip anchor
+# is wrong semantics here; centre-of-mass is the correct, still-enforced sensor
+# (same as welcome-room-chore-rota and welcome-room-wall-shelf).
+type: prop
+name: welcome-room-history-board
+description: |
+  A WALL-MOUNTED HISTORY BOARD: a battered flat board covered in years of crude
+  scratched marks that record who has loved and hated whom in this room, season
+  after season. Front-elevation view, looking STRAIGHT AT THE FACE of the board —
+  the same view as the already-approved welcome-room-desk and
+  welcome-room-chore-rota. Draw it as a FLAT BOARD FACADE seen face-on. Modern
+  high-quality pixel art, and every mark on it must still read at game scale.
+
+  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  The board is approximately 3.5 FEET WIDE x 4.5 FEET TALL. Its bounding box must
+  be slightly TALLER THAN IT IS WIDE (width : height = 0.78 : 1) — a modest
+  PORTRAIT rectangle. It is NOT square, NOT a landscape sign, NOT a long thin
+  banner. It fills roughly 85-90% of the cell on BOTH axes, with only the standard
+  small margin around it — it must NOT be a small object floating in a big empty
+  cell. EXACTLY ONE BOARD PER CELL; never stack two boards.
+
+  WHAT IT IS:
+  - ONE flat rectangular board — scavenged plank panel — with a visible slight
+    thickness along its lower and right edges so it reads as a physical object
+    hanging off a wall rather than a painted rectangle. Corners knocked and
+    rounded from years of handling; one corner split; a nail or bent hook at the
+    top edge with the board hanging very slightly CROOKED.
+  - THREE COLUMNS scratched down the face, divided by two wobbly hand-drawn
+    vertical rules that drift off true. Each column is HEADED BY ONE CRUDE
+    STICK-FIGURE DOODLE, drawn like a child's chalk scrawl, and the three figures
+    must be TELLABLE APART AT A GLANCE by silhouette alone:
+      1. a BIG BROAD-SHOULDERED BRUTE figure — wide heavy body, tiny head;
+      2. a WOMAN figure — narrower body with a clear triangular skirt shape;
+      3. a HOODED ROBE figure — a pointed hood and a long featureless robe, no
+         legs.
+  - A GRID OF TALLY MARKS filling the middle band of the board: clusters of
+    upright strokes with a diagonal fifth stroke across each group of four,
+    dozens of them, crowded in some places and sparse in others, counting far too
+    many seasons.
+  - HEARTS DRAWN BETWEEN PAIRS AND THEN DESTROYED — this is the whole point of the
+    prop and must be the most legible thing on the board after the figures:
+    several crude scratched HEART shapes drawn between two of the columns, each
+    one later CROSSED OUT with a hard slashing X that overshoots it; then another
+    heart redrawn between a DIFFERENT pair of columns; then that one crossed out
+    too. At least three hearts, at least two of them violently struck through.
+    One heart is scrubbed into an angry smear.
+  - A CHORE-ROTA STRIP along the bottom: a short row of boxes with crude initial-
+    like scratch marks that have been scored out and re-scored, with ARROWS
+    swapping entries from one box to another and then back again.
+  - Every mark is hand-cut with a blade or charcoal stick: wobbly, uneven, never
+    ruled straight, layered over older half-erased marks.
+
+  LEGIBILITY — MOST IMPORTANT RENDERING NOTE:
+  Draw BOLD. Big fat marks, high contrast against the board face, generous space
+  between them. Few large marks beat many small ones. Any mark thinner or smaller
+  than the stick figures' limbs will turn to mush at game scale — do not draw fine
+  detail, do not draw a dense field of tiny scratches, and do not fill every inch.
+
+  NO ACTUAL LETTERS OR NUMBERS ANYWHERE. This is a hard rule. Use ONLY tally
+  strokes, hearts, X's, arrows, boxes and crude figures. No readable letterforms,
+  no words, no digits, no dates, no captions, no signatures, no watermarks. The
+  "initials" in the rota strip are abstract scratchy squiggles that merely suggest
+  handwriting from a distance — never actual glyphs.
+
+  IT IS NOT: a chalkboard with legible writing, a poster, a painting, a calendar
+  with numbers, a ledger, a window, a door, a chessboard, or a book. It is a
+  scratched-up hand-marked history board.
+
+  MOOD — three NPCs (a big welcome goon, a merchant woman, a hooded spell broker)
+  are stuck living in this reality-show reception room together, season after
+  season, forbidden by dungeon rules from leaving, harming each other, or
+  complaining while the cameras roll. They have cycled through liking, lusting,
+  loving and hating each other in every combination for years, and this board is
+  the only place that record exists. It hangs in the half of the room the camera
+  rig does NOT cover. Petty, obsessive, worn, faintly unsettling — never charming
+  or decorative.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. It must sit beside
+  welcome-room-desk, welcome-room-bookcase, welcome-room-chore-rota and
+  prop-wall-sconce-v1 without clashing: cool grey worn stone, warm-brown walnut
+  wood, desaturated production-set greys and blacks, tarnished brass, deep maroon
+  — muted and dusty. The board face is a dulled warm grey-brown timber; the
+  figures, tallies, boxes and arrows are a dark desaturated charcoal-brown; the
+  hearts and the crossings-out are a single restrained faded maroon, the only
+  saturated accent in the sprite; the hook is tarnished brass. BANNED: neon, pure
+  white, pure black, saturated red, blood red, saturated yellow, orange, teal,
+  cyan, blue, green, magenta, purple, and chalk-white.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The top and left edges
+  of the board carry the highlight; the lower and right edge thickness carries the
+  shadow. Every prop in this wave shares that one light direction.
+
+  RENDERING: hard 1-pixel dark outline on the board silhouette, 3-5 tone stops for
+  the timber, restrained dithering for grain and grime — no mushy gradients, no
+  airbrush, no floating unsupported elements. This prop is WALL-MOUNTED: it hangs
+  on the stone wall and does NOT rest on the floor.
+
+  BACKGROUND: fully transparent. Draw ONLY the board and what is scratched on it.
+  Do NOT paint a slab of stone wall behind it, a rectangular stone panel, a second
+  backing plate, a frame, a border, a vignette, or any cast/contact/drop shadow —
+  the wall is already painted underneath this art in the game. Every pixel outside
+  the board's own silhouette must be fully transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the board's colours so it
+  can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 84
+  height: 108
+anchor:
+  x: 42
+  y: 54
+sensors:
+  # A flat board is near-rectangular and fills far more of its bounding box than
+  # the `prop` default [0.10, 0.65] range, which is tuned for irregular grounded
+  # props. Same 0.88 cap and reasoning as the already-approved
+  # welcome-room-show-poster / welcome-room-exit-sign; a real background-removal
+  # failure still lands at ~0.95-1.0 and is caught.
+  opaqueRatio:
+    min: 0.40
+    max: 0.88
+  # Wall-mounted: it hangs, so a bottom-centre grip anchor is meaningless.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - living-area
+  - wall-mounted
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

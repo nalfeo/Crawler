@@ -1,0 +1,33 @@
+type: prop
+name: welcome-room-cable-coil
+sizeVariant: wide
+description: |
+  A loose coil of thick black production cable dumped against the wall, taped down at one end with gaffer tape gone grey. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.
+
+  Rendered in the game at approximately 2.5 x 1.5 feet (1 tile = 16px = 2 feet). The art must read believably at that size — keep detail count low enough to survive at 16px and do not over-detail.
+
+  This prop must sit beside the already-approved welcome-room art without clashing: welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope, welcome-sign-left-v1 and prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass hardware, hard dark outline, muted and dusty, never bright or saturated.
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells. Do not alternate or checkerboard
+  the cell backgrounds, do not use a different background colour per cell, and
+  do not draw any panel, border or frame behind the subject.
+sensors:
+  # The coil rests on the floor but is deliberately asymmetric (tight coil at
+  # one end, loose taped tail at the other), so its bottom-center grip lands
+  # off-center. Center-of-mass is the correct anchor for this silhouette.
+  anchor:
+    mode: center-of-mass
+  # A coil of cable genuinely encloses a small hole at its center — that is the
+  # subject, not a post-processing artifact. Allow a few pixels only, so a real
+  # background-bleed hole is still caught.
+  interiorHoles:
+    maxPixels: 24
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0
