@@ -1,0 +1,21 @@
+{
+  "briefId": "sponsor-contract",
+  "spriteName": "sponsor-contract",
+  "assetPath": "generated/sponsor-contract-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.408Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "opaqueBounds": {
+    "x": 2,
+    "y": 4,
+    "width": 12,
+    "height": 9,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

@@ -17,6 +17,7 @@ import {
   ApproveError,
   type Manifest,
 } from '../../../scripts/sprites/approve.js';
+import { composeManifestFromShards } from '../../../scripts/sprites/generated-shards.js';
 
 /** A solid-color opaque square, distinct per frame index by a small shape nudge. */
 function makeFrame(
@@ -136,8 +137,14 @@ function writeFakeSequenceRun(
   return { runDir, briefId };
 }
 
+/**
+ * Compose the aggregate manifest view from the on-disk per-asset shards. The
+ * aggregate `manifest.json` is no longer written by approve — the shards
+ * under `entries/` are the source of truth — so tests read it back through
+ * the same composer the build + engine use.
+ */
 function readManifest(manifestPath: string): Manifest {
-  return JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
+  return composeManifestFromShards(path.dirname(manifestPath)) as Manifest;
 }
 
 describe('approveFrameSequence', () => {
@@ -217,9 +224,9 @@ describe('approveFrameSequence', () => {
     expect(caught).toBeInstanceOf(ApproveError);
     expect((caught as ApproveError).kind).toBe('frame-incoherent');
 
-    // Nothing should have been written: no manifest, no asset.
+    // Nothing should have been written: no manifest shard, no asset.
     const assetAbs = path.join(publicAssetsDir, 'generated');
-    expect(() => readFileSync(manifestPath)).toThrow();
+    expect(Object.keys(readManifest(manifestPath).entries)).toHaveLength(0);
     expect(() => readFileSync(path.join(assetAbs, 'player-walk.png'))).toThrow();
   });
 

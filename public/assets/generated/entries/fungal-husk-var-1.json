@@ -1,0 +1,42 @@
+{
+  "briefId": "fungal-husk",
+  "spriteName": "fungal-husk-var-1",
+  "assetPath": "generated/fungal-husk-var-1.png",
+  "approvedAt": "2026-07-08T01:32:32.058Z",
+  "sourceRun": "generated/runs/fungal-husk/2026-07-08T01-28-28-7bbe0b07",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 32,
+    "y": 34,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 34,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": "enemy",
+  "contentHash": "3119152bd454c1bd8a7420a135b8af77a2327c2bd0013dd2b159d68095626d75",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\fungal-husk\\2026-07-08T01-28-28-7bbe0b07\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\fungal-husk\\2026-07-08T01-28-28-7bbe0b07\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\fungal-husk\\2026-07-08T01-28-28-7bbe0b07\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 3,
+    "width": 47,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

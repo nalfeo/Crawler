@@ -1,0 +1,21 @@
+{
+  "briefId": "band-of-fortune",
+  "spriteName": "band-of-fortune",
+  "assetPath": "generated/band-of-fortune-placeholder.png",
+  "approvedAt": "2026-07-06T00:00:00.000Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "equipment",
+  "opaqueBounds": {
+    "x": 11,
+    "y": 30,
+    "width": 106,
+    "height": 68,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  },
+  "placeholder": true
+}

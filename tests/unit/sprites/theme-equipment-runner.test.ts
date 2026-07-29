@@ -318,6 +318,11 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
       mkdirSync(generatedRoot, { recursive: true });
       mkdirSync(path.dirname(catalogPath), { recursive: true });
       writeFileSync(path.join(generatedRoot, 'manifest.json'), '{"existing":true}\n');
+      mkdirSync(path.join(generatedRoot, 'entries'), { recursive: true });
+      writeFileSync(
+        path.join(generatedRoot, 'entries', 'iron-sword-var-0.json'),
+        '{"briefId":"iron-sword"}\n',
+      );
       writeFileSync(catalogPath, '{"sprites":[]}\n');
       await store.put('iron-sword/run-1/summary.json', Buffer.from('{"candidates":[]}'));
       await store.put('iron-sword/run-1/processed/04.png', Buffer.from('png'));
@@ -335,6 +340,12 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
       expect(
         readFileSync(path.join(stageRoot, 'src', 'shared', 'data', 'sprite-catalog.json'), 'utf8'),
       ).toContain('sprites');
+      // Per-asset shards under entries/ are staged alongside the aggregate.
+      expect(
+        existsSync(
+          path.join(stageRoot, 'public', 'assets', 'generated', 'entries', 'iron-sword-var-0.json'),
+        ),
+      ).toBe(true);
       const stagedRun = path.join(stageRoot, 'generated', 'runs', 'iron-sword', 'run-1');
       expect(existsSync(path.join(stagedRun, 'summary.json'))).toBe(true);
       expect(existsSync(path.join(stagedRun, 'processed', '04.png'))).toBe(true);

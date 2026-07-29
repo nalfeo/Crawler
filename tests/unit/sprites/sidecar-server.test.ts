@@ -39,6 +39,11 @@ import {
   type QueuedAssetCheckin,
 } from '../../../scripts/sprites/checkin.js';
 import { parseAssetIssueBody } from '../../../scripts/sprites/asset-issues.js';
+import {
+  writeShard,
+  composeManifestFromShards,
+  shardPathForKey,
+} from '../../../scripts/sprites/generated-shards.js';
 import type { FastifyInstance } from 'fastify';
 
 function writeMinimalRun(
@@ -297,24 +302,15 @@ describe('buildServer routes (inject)', () => {
 
   it('GET /api/runs marks promoted runs from Azure-style sourceRun paths', async () => {
     const generatedDir = path.join(root, 'public', 'assets', 'generated');
-    mkdirSync(generatedDir, { recursive: true });
-    writeFileSync(
-      path.join(generatedDir, 'manifest.json'),
-      JSON.stringify({
-        version: 1,
-        entries: {
-          'iron-sword-var-1': {
-            sourceRun: path.join(
-              root,
-              'tmp',
-              'azure-hydration',
-              'iron-sword',
-              '2026-06-04T12-00-00-deadbeef',
-            ),
-          },
-        },
-      }),
-    );
+    writeShard(generatedDir, 'iron-sword-var-1', {
+      sourceRun: path.join(
+        root,
+        'tmp',
+        'azure-hydration',
+        'iron-sword',
+        '2026-06-04T12-00-00-deadbeef',
+      ),
+    } as never);
     const res = await app.inject({ method: 'GET', url: '/api/runs?promoted=promoted' });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -1506,10 +1502,12 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       copyArtSurface: async () => undefined,
       removeDir: async () => undefined,
       listQueuedAssets: async () => new Map(queued),
-      readManifest: async () =>
-        JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-          entries: Record<string, { briefId?: string; sourceRun?: string }>;
-        },
+      readManifest: () =>
+        Promise.resolve(
+          composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
+            entries: Record<string, { briefId?: string; sourceRun?: string }>;
+          },
+        ),
       env: {},
       now: () => new Date('2026-07-20T12:00:00.000Z'),
     };
@@ -1557,9 +1555,9 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     // The asset was actually copied to the public dir.
     const assetAbs = path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`);
     expect(readFileSync(assetAbs).toString()).toBe('PNG-01');
-    // Manifest was created on disk too.
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    expect(manifest.entries[`${briefId}-var-1`].variantIndex).toBe(1);
+    // Manifest shard was created on disk too.
+    const manifest = composeManifestFromShards(path.dirname(manifestPath));
+    expect(manifest.entries[`${briefId}-var-1`]?.variantIndex).toBe(1);
   });
 
   it('accepts and queues a variant in one operation', async () => {
@@ -1735,9 +1733,11 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
 
     expect(res.statusCode).toBe(409);
     expect(res.json()).toMatchObject({ error: 'content-conflict' });
-    // approveVariant must NEVER have run: no PNG, no manifest.
+    // approveVariant must NEVER have run: no PNG, no manifest shard.
     expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
-    expect(existsSync(manifestPath)).toBe(false);
+    expect(
+      existsSync(shardPathForKey(path.join(publicAssetsDir, 'generated'), `${briefId}-var-1`)),
+    ).toBe(false);
   });
 
   it('fails closed (409) when the queued issue predates content hashes and equality cannot be established', async () => {
@@ -1808,9 +1808,11 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
 
     expect(res.statusCode).toBe(502);
     expect(res.json()).toMatchObject({ error: 'gh-failed' });
-    // The failure happened before any mutation: no PNG, no manifest.
+    // The failure happened before any mutation: no PNG, no manifest shard.
     expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
-    expect(existsSync(manifestPath)).toBe(false);
+    expect(
+      existsSync(shardPathForKey(path.join(publicAssetsDir, 'generated'), `${briefId}-var-1`)),
+    ).toBe(false);
   });
 
   it('maps a queue-list failure from the POST-nothing-to-checkin retry reconciliation to the same structured body, not a generic 500', async () => {
@@ -1841,10 +1843,12 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
         if (listCalls <= 2) return Promise.resolve(new Map<string, QueuedAssetCheckin>());
         return Promise.reject(new CheckinError('gh-failed', 'gh issue list failed: boom'));
       },
-      readManifest: async () =>
-        JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-          entries: Record<string, { briefId?: string; sourceRun?: string }>;
-        },
+      readManifest: () =>
+        Promise.resolve(
+          composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
+            entries: Record<string, { briefId?: string; sourceRun?: string }>;
+          },
+        ),
       env: {},
       now: () => new Date('2026-07-20T12:00:00.000Z'),
     };
@@ -2052,7 +2056,9 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(hostile.statusCode).toBe(403);
     expect(hostile.json()).toMatchObject({ error: 'forbidden-origin' });
     expect(existsSync(assetAbs)).toBe(false);
-    expect(existsSync(manifestPath)).toBe(false);
+    expect(
+      existsSync(shardPathForKey(path.join(publicAssetsDir, 'generated'), `${briefId}-var-1`)),
+    ).toBe(false);
 
     // A fully external origin is likewise rejected.
     const external = await app.inject({
@@ -2333,30 +2339,22 @@ describe('DELETE /api/manifest/:variantId', () => {
   let app: FastifyInstance;
   const briefId = 'iron-sword';
 
-  /** Write a manifest with one approved variant entry. */
+  /** Write an approved variant as its per-asset manifest shard. */
   function writeApprovedManifest(variantId: string = `${briefId}-var-1`): void {
-    mkdirSync(path.dirname(manifestPath), { recursive: true });
-    writeFileSync(
-      manifestPath,
-      JSON.stringify({
-        version: 1,
-        entries: {
-          [variantId]: {
-            briefId,
-            spriteName: variantId,
-            assetPath: `generated/${variantId}.png`,
-            approvedAt: '2026-06-08T15:30:00.000Z',
-            sourceRun: `generated/runs/${briefId}/run-01`,
-            variantIndex: 1,
-            anchor: null,
-            anchors: { hold: null, centerOfGravity: null },
-            sensorScore: '7/7',
-            judgeScore: '4',
-            type: null,
-          },
-        },
-      }),
-    );
+    const generatedDir = path.join(publicAssetsDir, 'generated');
+    writeShard(generatedDir, variantId, {
+      briefId,
+      spriteName: variantId,
+      assetPath: `generated/${variantId}.png`,
+      approvedAt: '2026-06-08T15:30:00.000Z',
+      sourceRun: `generated/runs/${briefId}/run-01`,
+      variantIndex: 1,
+      anchor: null,
+      anchors: { hold: null, centerOfGravity: null },
+      sensorScore: '7/7',
+      judgeScore: '4',
+      type: null,
+    } as never);
   }
 
   /** Write a stub PNG at the generated asset path. */
@@ -2409,7 +2407,7 @@ describe('DELETE /api/manifest/:variantId', () => {
     expect(body.spriteName).toBe(variantId);
 
     // Manifest entry gone.
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const manifest = composeManifestFromShards(path.dirname(manifestPath));
     expect(manifest.entries[variantId]).toBeUndefined();
 
     // PNG deleted.
@@ -2508,7 +2506,7 @@ describe('DELETE /api/manifest/:variantId', () => {
     expect(body.message).toContain('https://github.com/nalfeo/Crawler/issues/42');
 
     // Manifest entry must NOT have been removed.
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const manifest = composeManifestFromShards(path.dirname(manifestPath));
     expect(manifest.entries[variantId]).toBeDefined();
   });
 });
@@ -3160,50 +3158,36 @@ describe('sidecar POST /api/checkin', () => {
     expect(external.json()).toMatchObject({ error: 'forbidden-origin' });
   });
 
-  it('/api/workflow/metadata executes the durable queue-commit for changed generated entries (#1)', async () => {
-    // Seed a generated catalog entry the heuristic provider will enrich (empty
-    // tags + placeholder description) plus its matching manifest entry, so the
-    // route maps the changed `generated:` id back to a real asset and actually
-    // runs the durable queue-commit. The temp repoRoot is not a git repo, so the
-    // real queue-commit path deterministically fails — a `queueCommit` field with
-    // status 'failed' proves the route REACHED and EXECUTED the durable push.
-    // Before the #1 fix this route never ran queue-commit at all, silently
-    // dropping the metadata edit across worktrees/sessions.
+  it('/api/workflow/metadata persists the Tag edit to the shard and executes the durable queue-commit for changed generated entries (#1)', async () => {
+    // Seed a base catalog (no generated: rows — those are DERIVED from shards
+    // now) plus a manifest shard for the sprite. The composed generated row is
+    // deliberately incomplete (empty tags + placeholder description via a
+    // `catalog` override) so the heuristic provider produces a real change, and
+    // its PNG exists so the changed shard resolves to a stageable asset.
+    //
+    // This asserts TWO real guarantees (not just "the route called
+    // queue-commit"): (a) the Tag edit is PERSISTED onto the shard's `catalog`
+    // override — the local durability the old narrowed-ASSET_SURFACE_PATHS bug
+    // silently dropped — and (b) the route mapped that shard into a non-empty
+    // changedAssets set and executed the durable push (queueCommit not null).
+    // The temp repoRoot is not a git repo, so the push itself deterministically
+    // fails here; that the edit actually LANDS on assets/queue is proven
+    // separately by the real-git "durably lands a Tag/metadata edit …" test in
+    // queue-commit.test.ts.
     mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
     writeFileSync(
       path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
-      JSON.stringify([
-        {
-          id: 'generated:my-sword-var-0',
-          kind: 'sprite',
-          label: 'my sword',
-          description: 'Description pending.',
-          tags: [],
-          spriteId: 'my-sword',
-          sheetKey: 'generated',
-          frame: 0,
-          col: 0,
-          row: 0,
-        },
-      ]),
+      JSON.stringify([]),
     );
-    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
-    writeFileSync(
-      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
-      JSON.stringify({
-        entries: {
-          'my-sword-var-0': {
-            assetPath: 'generated/my-sword-var-0.png',
-            briefId: 'my-sword',
-            variantIndex: 0,
-          },
-        },
-      }),
-    );
-    writeFileSync(
-      path.join(root, 'public', 'assets', 'generated', 'my-sword-var-0.png'),
-      Buffer.from('PNG'),
-    );
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    mkdirSync(generatedDir, { recursive: true });
+    writeShard(generatedDir, 'my-sword-var-0', {
+      assetPath: 'generated/my-sword-var-0.png',
+      briefId: 'my-sword',
+      variantIndex: 0,
+      catalog: { description: 'Description pending.', tags: [] },
+    } as never);
+    writeFileSync(path.join(generatedDir, 'my-sword-var-0.png'), Buffer.from('PNG'));
 
     app = buildServer({
       repoRoot: root,
@@ -3222,9 +3206,22 @@ describe('sidecar POST /api/checkin', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.changedCount).toBeGreaterThanOrEqual(1);
-    // The route mapped the changed generated id to its manifest asset and ran
-    // the durable queue-commit; in this non-git temp root the push fails, which
-    // is the deterministic proof it actually executed (not null, not skipped).
+
+    // (a) The Tag edit is durably persisted ONTO the shard — the placeholder
+    // description/empty tags were replaced. This is exactly the write the old
+    // narrowed-write-surface bug silently dropped; a green run without this
+    // assertion cannot distinguish "edit persisted" from "edit lost".
+    const persisted = JSON.parse(
+      readFileSync(shardPathForKey(generatedDir, 'my-sword-var-0'), 'utf8'),
+    ) as { catalog?: { description?: string; tags?: string[] } };
+    expect(persisted.catalog?.description).not.toBe('Description pending.');
+    expect((persisted.catalog?.description ?? '').length).toBeGreaterThan(0);
+    expect((persisted.catalog?.tags ?? []).length).toBeGreaterThan(0);
+
+    // (b) The route mapped the changed generated id to its manifest asset and
+    // ran the durable queue-commit; in this non-git temp root the push fails,
+    // which is the deterministic proof it actually executed (not null, not
+    // skipped).
     expect(body.queueCommit).not.toBeNull();
     expect(body.queueCommit.status).toBe('failed');
   });
@@ -3233,25 +3230,22 @@ describe('sidecar POST /api/checkin', () => {
     // A generated entry that already has complete metadata produces no change,
     // so there is nothing to re-queue: the route must return queueCommit:null
     // rather than fabricating a committed/failed push. The client relies on this
-    // to PRESERVE (not overwrite) the item's prior durability (#1c/#7).
+    // to PRESERVE (not overwrite) the item's prior durability (#1c/#7). The
+    // complete metadata is carried as a `catalog` override on the shard.
     mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
     writeFileSync(
       path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
-      JSON.stringify([
-        {
-          id: 'generated:done-var-0',
-          kind: 'sprite',
-          label: 'done sword',
-          description: 'A finished sword sprite.',
-          tags: ['sprite', 'weapon'],
-          spriteId: 'done-sword',
-          sheetKey: 'generated',
-          frame: 0,
-          col: 0,
-          row: 0,
-        },
-      ]),
+      JSON.stringify([]),
     );
+    const doneGeneratedDir = path.join(root, 'public', 'assets', 'generated');
+    mkdirSync(doneGeneratedDir, { recursive: true });
+    writeShard(doneGeneratedDir, 'done-var-0', {
+      assetPath: 'generated/done-var-0.png',
+      briefId: 'done',
+      variantIndex: 0,
+      catalog: { description: 'A finished sword sprite.', tags: ['sprite', 'weapon'] },
+    } as never);
+    writeFileSync(path.join(doneGeneratedDir, 'done-var-0.png'), Buffer.from('PNG'));
 
     app = buildServer({
       repoRoot: root,
@@ -3275,46 +3269,28 @@ describe('sidecar POST /api/checkin', () => {
   });
 
   it('/api/workflow/metadata reports FAILED (not null) when a changed generated id has no manifest entry (#1c/#7)', async () => {
-    // A generated catalog entry changed, but the manifest has no entry for it, so
-    // its asset cannot be staged for the durable re-queue. The catalog write
-    // still lands locally, but the assets/queue branch is NOT updated — the route
-    // must report status:'failed' so the client shows red, NOT queueCommit:null
-    // (which the client reads as "preserve prior durability" and would surface as
-    // a false green "ready to use"). Before this fix, a resolvable-asset miss
-    // silently returned null.
+    // A generated entry changed, but its PNG asset is missing on disk, so it
+    // cannot be staged for the durable re-queue. The `catalog` override still
+    // lands locally on the shard, but the assets/queue branch is NOT updated —
+    // the route must report status:'failed' so the client shows red, NOT
+    // queueCommit:null (which the client reads as "preserve prior durability" and
+    // would surface as a false green "ready to use"). Before this fix, an
+    // unresolvable-asset miss silently returned null.
     mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
     writeFileSync(
       path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
-      JSON.stringify([
-        {
-          id: 'generated:orphan-var-0',
-          kind: 'sprite',
-          label: 'orphan sword',
-          description: 'Description pending.',
-          tags: [],
-          spriteId: 'orphan-sword',
-          sheetKey: 'generated',
-          frame: 0,
-          col: 0,
-          row: 0,
-        },
-      ]),
+      JSON.stringify([]),
     );
-    // Manifest exists but has NO entry for `orphan-var-0` (only an unrelated key),
-    // so the changed generated id cannot be resolved to an asset path.
-    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
-    writeFileSync(
-      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
-      JSON.stringify({
-        entries: {
-          'unrelated-var-0': {
-            assetPath: 'generated/unrelated-var-0.png',
-            briefId: 'unrelated',
-            variantIndex: 0,
-          },
-        },
-      }),
-    );
+    // The shard exists (so the row composes + the override write lands) but its
+    // PNG is deliberately absent, so the changed id cannot resolve to an asset.
+    const orphanGeneratedDir = path.join(root, 'public', 'assets', 'generated');
+    mkdirSync(orphanGeneratedDir, { recursive: true });
+    writeShard(orphanGeneratedDir, 'orphan-var-0', {
+      assetPath: 'generated/orphan-var-0.png',
+      briefId: 'orphan',
+      variantIndex: 0,
+      catalog: { description: 'Description pending.', tags: [] },
+    } as never);
 
     app = buildServer({
       repoRoot: root,
@@ -3339,53 +3315,31 @@ describe('sidecar POST /api/checkin', () => {
   });
 
   it('/api/workflow/metadata reports FAILED when only a SUBSET of changed generated ids resolve (mixed case)', async () => {
-    // Two generated entries change; only one has a manifest entry. The partial
-    // resolve must still return status:'failed' — committing only the subset
-    // would silently under-report durability for the unresolved entry.
+    // Two generated entries change; only one has a resolvable PNG asset. The
+    // partial resolve must still return status:'failed' — committing only the
+    // subset would silently under-report durability for the unresolved entry.
     mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
     writeFileSync(
       path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
-      JSON.stringify([
-        {
-          id: 'generated:resolved-var-0',
-          kind: 'sprite',
-          label: 'resolved sprite',
-          description: 'Description pending.',
-          tags: [],
-          spriteId: 'resolved-sprite',
-          sheetKey: 'generated',
-          frame: 0,
-          col: 0,
-          row: 0,
-        },
-        {
-          id: 'generated:missing-var-0',
-          kind: 'sprite',
-          label: 'missing sprite',
-          description: 'Description pending.',
-          tags: [],
-          spriteId: 'missing-sprite',
-          sheetKey: 'generated',
-          frame: 1,
-          col: 1,
-          row: 0,
-        },
-      ]),
+      JSON.stringify([]),
     );
-    // Manifest has an entry for `resolved-var-0` but NOT for `missing-var-0`.
-    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
-    writeFileSync(
-      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
-      JSON.stringify({
-        entries: {
-          'resolved-var-0': {
-            assetPath: 'generated/resolved-var-0.png',
-            briefId: 'resolved',
-            variantIndex: 0,
-          },
-        },
-      }),
-    );
+    // Both shards exist (so both rows compose + change), but only resolved-var-0
+    // has its PNG on disk; missing-var-0's PNG is absent.
+    const subsetGeneratedDir = path.join(root, 'public', 'assets', 'generated');
+    mkdirSync(subsetGeneratedDir, { recursive: true });
+    writeShard(subsetGeneratedDir, 'resolved-var-0', {
+      assetPath: 'generated/resolved-var-0.png',
+      briefId: 'resolved',
+      variantIndex: 0,
+      catalog: { description: 'Description pending.', tags: [] },
+    } as never);
+    writeFileSync(path.join(subsetGeneratedDir, 'resolved-var-0.png'), Buffer.from('PNG'));
+    writeShard(subsetGeneratedDir, 'missing-var-0', {
+      assetPath: 'generated/missing-var-0.png',
+      briefId: 'missing',
+      variantIndex: 1,
+      catalog: { description: 'Description pending.', tags: [] },
+    } as never);
 
     app = buildServer({
       repoRoot: root,
@@ -3673,26 +3627,19 @@ describe('storage run enrichment endpoint', () => {
     );
 
     // Manifest: two approved variants for iron-sword (indexes 0 and 2), both
-    // sourced from RUN. firstApproved should be the lowest index (0).
-    mkdirSync(path.join(root, 'public', 'assets', 'generated'), { recursive: true });
-    writeFileSync(
-      path.join(root, 'public', 'assets', 'generated', 'manifest.json'),
-      JSON.stringify({
-        version: 1,
-        entries: {
-          'iron-sword-var-2': {
-            briefId: 'iron-sword',
-            variantIndex: 2,
-            sourceRun: `runs/iron-sword/${RUN}`,
-          },
-          'iron-sword-var-0': {
-            briefId: 'iron-sword',
-            variantIndex: 0,
-            sourceRun: `runs/iron-sword/${RUN}`,
-          },
-        },
-      }),
-    );
+    // sourced from RUN. firstApproved should be the lowest index (0). Seeded as
+    // per-asset shards (the aggregate is now a build artifact composed on read).
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    writeShard(generatedDir, 'iron-sword-var-2', {
+      briefId: 'iron-sword',
+      variantIndex: 2,
+      sourceRun: `runs/iron-sword/${RUN}`,
+    } as never);
+    writeShard(generatedDir, 'iron-sword-var-0', {
+      briefId: 'iron-sword',
+      variantIndex: 0,
+      sourceRun: `runs/iron-sword/${RUN}`,
+    } as never);
 
     app = buildServer({ repoRoot: root, runsDir, version: 'test' });
   });

@@ -23,7 +23,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -211,15 +211,19 @@ function makeClosingExec(
       : promotedPaths
           .filter((p) => p.startsWith('public/assets/'))
           .map((p) => p.slice('public/assets/'.length));
-  const manifest = {
-    version: 1,
-    entries: Object.fromEntries(
-      inferredManifestAssetPaths.map((assetPath, i) => [
-        `k${i}`,
-        { assetPath, contentHash: TEST_CONTENT_HASH },
-      ]),
-    ),
-  };
+  // In the sharded world the promoted tree carries one self-contained shard per
+  // asset under entries/<key>.json (the aggregate manifest.json is gitignored).
+  // Build a shardPath -> entry map so `git show <ref>:<shardPath>` can return the
+  // single entry the reconciler reads, and expose the shard paths via ls-tree.
+  const shardEntries = new Map<string, { assetPath: string; contentHash: string }>();
+  for (const assetPath of inferredManifestAssetPaths) {
+    const key = assetPath.replace('generated/', '').replace('.png', '');
+    shardEntries.set(`public/assets/generated/entries/${key}.json`, {
+      assetPath,
+      contentHash: TEST_CONTENT_HASH,
+    });
+  }
+  const lsTreePaths = [...promotedPaths, ...shardEntries.keys()];
   return (command, args) => {
     if (command === 'gh' && args[0] === 'issue' && args[1] === 'list') {
       if (issueListFails) return Promise.resolve({ stdout: '', stderr: 'error', code: 1 });
@@ -237,10 +241,18 @@ function makeClosingExec(
     }
     if (command === 'git' && args[0] === 'ls-tree') {
       if (lsTreeFails) return Promise.resolve({ stdout: '', stderr: 'error', code: 1 });
-      return Promise.resolve({ stdout: promotedPaths.join('\n'), stderr: '', code: 0 });
+      return Promise.resolve({ stdout: lsTreePaths.join('\n'), stderr: '', code: 0 });
     }
     if (command === 'git' && args[0] === 'show') {
-      return Promise.resolve({ stdout: JSON.stringify(manifest), stderr: '', code: 0 });
+      // args[1] is `<ref>:<shardPath>`; the first colon separates them and shard
+      // paths never contain a colon.
+      const spec = typeof args[1] === 'string' ? args[1] : '';
+      const shardPath = spec.slice(spec.indexOf(':') + 1);
+      const entry = shardEntries.get(shardPath);
+      if (entry === undefined) {
+        return Promise.resolve({ stdout: '', stderr: 'missing', code: 1 });
+      }
+      return Promise.resolve({ stdout: JSON.stringify(entry), stderr: '', code: 0 });
     }
     return Promise.resolve({ stdout: '', stderr: `unexpected ${command} ${args[0]}`, code: 1 });
   };
@@ -619,18 +631,12 @@ function toUrl(p: string): string {
   return p.split(path.sep).join('/');
 }
 
-function manifestPath(repo: string): string {
-  return path.join(repo, 'public', 'assets', 'generated', 'manifest.json');
-}
 function catalogPath(repo: string): string {
   return path.join(repo, 'src', 'shared', 'data', 'sprite-catalog.json');
 }
 function writeJson(file: string, value: unknown): void {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
-}
-function readJson<T>(file: string): T {
-  return JSON.parse(readFileSync(file, 'utf8')) as T;
 }
 
 interface Repos {
@@ -652,7 +658,9 @@ function setupRepos(): Repos {
   gitSync(liveDir, 'config', 'commit.gpgsign', 'false');
   gitSync(liveDir, 'remote', 'add', 'origin', toUrl(originDir));
   // Seed an art-free base on main so the queue branch's diff is art-only.
-  writeJson(manifestPath(liveDir), { version: 1, entries: {} });
+  // The aggregate manifest.json is a gitignored build artifact in the sharded
+  // world, so the committed base carries only the (empty) catalog. Art lands
+  // later as per-asset shards under public/assets/generated/entries/.
   writeJson(catalogPath(liveDir), []);
   gitSync(liveDir, 'add', '-A');
   gitSync(liveDir, 'commit', '--no-verify', '-m', 'base');
@@ -672,23 +680,18 @@ function seedQueueWithArt(
     // Base the queue on main so its non-art files match main (art-only diff).
     gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
     const genDir = path.join(wt, 'public', 'assets', 'generated');
-    mkdirSync(genDir, { recursive: true });
-    const mPath = path.join(wt, 'public', 'assets', 'generated', 'manifest.json');
-    const cPath = path.join(wt, 'src', 'shared', 'data', 'sprite-catalog.json');
-    const manifest = readJson<{ version: number; entries: Record<string, unknown> }>(mPath);
-    const catalog = readJson<Array<Record<string, unknown>>>(cPath);
+    const entriesDir = path.join(genDir, 'entries');
+    mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
       writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
-      manifest.entries[key] = {
+      // One self-contained shard per asset — the sharded source of truth.
+      writeJson(path.join(entriesDir, `${key}.json`), {
         assetPath: `generated/${key}.png`,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
-      };
-      catalog.push({ id: `generated:${key}`, kind: 'sprite', assetPath: `generated/${key}.png` });
+      });
     }
-    writeJson(mPath, manifest);
-    writeJson(cPath, catalog);
-    gitSync(wt, 'add', '--', 'public/assets/generated', 'src/shared/data/sprite-catalog.json');
+    gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `queue art: ${keys.join(', ')}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
     gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${queueBranch}`);
@@ -708,23 +711,17 @@ function addArtDirectlyToMain(liveDir: string, keys: readonly string[]): void {
   try {
     gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
     const genDir = path.join(wt, 'public', 'assets', 'generated');
-    mkdirSync(genDir, { recursive: true });
-    const mPath = path.join(wt, 'public', 'assets', 'generated', 'manifest.json');
-    const cPath = path.join(wt, 'src', 'shared', 'data', 'sprite-catalog.json');
-    const manifest = readJson<{ version: number; entries: Record<string, unknown> }>(mPath);
-    const catalog = readJson<Array<Record<string, unknown>>>(cPath);
+    const entriesDir = path.join(genDir, 'entries');
+    mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
       writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
-      manifest.entries[key] = {
+      writeJson(path.join(entriesDir, `${key}.json`), {
         assetPath: `generated/${key}.png`,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
-      };
-      catalog.push({ id: `generated:${key}`, kind: 'sprite', assetPath: `generated/${key}.png` });
+      });
     }
-    writeJson(mPath, manifest);
-    writeJson(cPath, catalog);
-    gitSync(wt, 'add', '--', 'public/assets/generated', 'src/shared/data/sprite-catalog.json');
+    gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `direct-to-main art: ${keys.join(', ')}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
     gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/main`);

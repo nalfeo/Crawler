@@ -1,0 +1,37 @@
+{
+  "briefId": "dragon-scale",
+  "spriteName": "dragon-scale-var-2",
+  "assetPath": "generated/dragon-scale-var-2.png",
+  "approvedAt": "2026-07-01T23:57:00.694Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-T1qiNe/dragon-scale-v3/2026-07-01T23-13-49-35c69f47",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 37,
+    "y": 59,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 37,
+      "y": 59,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 34,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "2",
+  "type": "item",
+  "contentHash": "856b6b7385148d4bf461a2b9de301105eac6660106add6809b44262726bb2ed7",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 3,
+    "width": 56,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}
