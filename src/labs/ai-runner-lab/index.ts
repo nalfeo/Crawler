@@ -24,6 +24,7 @@ import {
   type FusedHeadingDebug,
 } from '../../game/ai/index.js';
 import { initNavmesh, isNavmeshReady } from '../../game/ai/navmesh/index.js';
+import { DEFAULT_CONFIG } from '../../game/ai/bt-ai-tuning.js';
 import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
@@ -626,7 +627,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let arenaEntryFrame: number | null = null;
 
   // AI configuration state. The A/B mode selection (pathingMode/decisionMode)
-  // both default LEGACY → byte-identical to main. All fields persist across lab
+  // both default to production defaults (DEFAULT_CONFIG) so a fresh lab session
+  // matches the shipped game. All fields persist across lab
   // reloads; pathingMode/decisionMode are passed into every BehaviorTreeAI the
   // lab constructs.
   const aiConfig: {
@@ -640,8 +642,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     merchantWeaponPurchase: boolean;
     seamWeight: number;
   } = {
-    pathingMode: persisted?.pathingMode ?? AIPathingMode.LEGACY,
-    decisionMode: persisted?.decisionMode ?? AIDecisionMode.LEGACY,
+    pathingMode: persisted?.pathingMode ?? DEFAULT_CONFIG.pathingMode,
+    decisionMode: persisted?.decisionMode ?? DEFAULT_CONFIG.decisionMode,
     visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
     visualNavmesh: persisted?.aiConfig?.visualNavmesh ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
@@ -654,7 +656,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let ai = new BehaviorTreeAI({
     seed: currentSeed,
     aggression: 1,
-    retreatThreshold: 0.15,
+    retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+    farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
     debug: true,
     pathingMode: aiConfig.pathingMode,
     decisionMode: aiConfig.decisionMode,
@@ -1265,7 +1268,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     ai = new BehaviorTreeAI({
       seed: currentSeed,
       aggression: 1,
-      retreatThreshold: 0.15,
+      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
       debug: true,
       pathingMode: aiConfig.pathingMode,
       decisionMode: aiConfig.decisionMode,
@@ -1408,7 +1412,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     ai = new BehaviorTreeAI({
       seed: currentSeed,
       aggression: 1,
-      retreatThreshold: 0.15,
+      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
       debug: true,
       pathingMode: aiConfig.pathingMode,
       decisionMode: aiConfig.decisionMode,
