@@ -446,6 +446,45 @@ export class FloorMap implements FloorMapData {
   }
 
   /**
+   * Mark **every** sub-tile of tile `(tx, ty)` as visible and discovered.
+   *
+   * Used by the FOV system for opaque tiles. Shadowcasting only reports the
+   * sub-tiles a ray physically lands on, so a wall would otherwise be revealed
+   * (and lit) as a ragged partial block with the rest of the same tile still
+   * black. A wall the player can see is seen as a whole tile.
+   *
+   * Cheap: `subFactor` row fills plus one tile-cache write, and the FOV system
+   * calls it at most once per opaque tile per pass.
+   */
+  markTileVisibleAndDiscovered(tx: number, ty: number): void {
+    const tw = this.config.widthTiles;
+    if (tx < 0 || tx >= tw || ty < 0 || ty >= this.config.heightTiles) return;
+
+    const sf = this._subFactor;
+    const sw = this.subWidth;
+    const hx0 = tx * sf;
+    const hy0 = ty * sf;
+    const hx1 = hx0 + sf - 1;
+    const hy1 = hy0 + sf - 1;
+    for (let hy = hy0; hy <= hy1; hy++) {
+      const rowStart = hy * sw + hx0;
+      const rowEnd = rowStart + sf;
+      this.visible.fill(1, rowStart, rowEnd);
+      this.discovered.fill(1, rowStart, rowEnd);
+    }
+
+    const tileIdx = ty * tw + tx;
+    this.tileVisible[tileIdx] = 1;
+    this.tileDiscovered[tileIdx] = 1;
+
+    // Expand the bounding box that clearVisibility() will zero next frame.
+    if (hx0 < this.lastFovMinX) this.lastFovMinX = hx0;
+    if (hy0 < this.lastFovMinY) this.lastFovMinY = hy0;
+    if (hx1 > this.lastFovMaxX) this.lastFovMaxX = hx1;
+    if (hy1 > this.lastFovMaxY) this.lastFovMaxY = hy1;
+  }
+
+  /**
    * Clear the per-frame visibility bitmap (called before each FOV recompute).
    * Does NOT clear `discovered` — explored terrain persists for the floor.
    *
