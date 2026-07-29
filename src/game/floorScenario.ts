@@ -41,6 +41,7 @@ import {
   Rotation,
   Player,
   Health,
+  Harvestable,
   BroadcastScore,
   Size,
   Sprite,
@@ -439,6 +440,15 @@ function tileKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
+function isTileWithinRoomBounds(room: RoomData, tx: number, ty: number): boolean {
+  return (
+    tx >= room.bounds.x &&
+    tx < room.bounds.x + room.bounds.width &&
+    ty >= room.bounds.y &&
+    ty < room.bounds.y + room.bounds.height
+  );
+}
+
 /**
  * Minimum Chebyshev tile distance between two NPCs placed in the same room. A
  * value of 3 leaves at least two empty tiles between any pair, so shared-room
@@ -791,6 +801,104 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
       spawnHarvestableNode(world, pos.x, pos.y, defIndex);
     }
   }
+
+  const spawnRoom = floorMap.spawnRoom;
+  if (!spawnRoom) {
+    return;
+  }
+  const hasSpawnRoomHarvestable = Array.from(query(world.ecs, [Harvestable, Position])).some(
+    (eid) => {
+      const tile = floorMap.worldToTile(
+        world.stores.position.x[eid] ?? 0,
+        world.stores.position.y[eid] ?? 0,
+      );
+      return isTileWithinRoomBounds(spawnRoom, tile.x, tile.y);
+    },
+  );
+  if (hasSpawnRoomHarvestable) {
+    return;
+  }
+
+  const blockedTiles = new Set<string>();
+  for (const eid of query(world.ecs, [Position])) {
+    const tile = floorMap.worldToTile(
+      world.stores.position.x[eid] ?? 0,
+      world.stores.position.y[eid] ?? 0,
+    );
+    if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
+      blockedTiles.add(tileKey(tile.x, tile.y));
+    }
+  }
+
+  const minX = spawnRoom.bounds.x + 1;
+  const minY = spawnRoom.bounds.y + 1;
+  const maxX = spawnRoom.bounds.x + spawnRoom.bounds.width - 2;
+  const maxY = spawnRoom.bounds.y + spawnRoom.bounds.height - 2;
+  const isLegalSpawnRoomTile = (tx: number, ty: number): boolean =>
+    tx >= minX &&
+    tx <= maxX &&
+    ty >= minY &&
+    ty <= maxY &&
+    floorMap.tileMap.isPassable(tx, ty) &&
+    !blockedTiles.has(tileKey(tx, ty));
+  const spawnTile = floorMap.playerSpawn;
+  const doorTiles = spawnRoom.doors ?? [];
+  let guaranteeTile: TilePoint | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestSpawnDistanceSq = Number.NEGATIVE_INFINITY;
+  for (let ty = minY; ty <= maxY; ty += 1) {
+    for (let tx = minX; tx <= maxX; tx += 1) {
+      if (!isLegalSpawnRoomTile(tx, ty)) {
+        continue;
+      }
+      const spawnDistanceSq = (tx - spawnTile.x) ** 2 + (ty - spawnTile.y) ** 2;
+      const nearestDoorDistanceSq =
+        doorTiles.length === 0
+          ? Number.POSITIVE_INFINITY
+          : Math.min(...doorTiles.map((door) => (tx - door.x) ** 2 + (ty - door.y) ** 2));
+      const score = Math.min(spawnDistanceSq, nearestDoorDistanceSq);
+      if (
+        score > bestScore ||
+        (score === bestScore && spawnDistanceSq > bestSpawnDistanceSq) ||
+        (score === bestScore &&
+          spawnDistanceSq === bestSpawnDistanceSq &&
+          (guaranteeTile === null ||
+            ty < guaranteeTile.y ||
+            (ty === guaranteeTile.y && tx < guaranteeTile.x)))
+      ) {
+        guaranteeTile = { x: tx, y: ty };
+        bestScore = score;
+        bestSpawnDistanceSq = spawnDistanceSq;
+      }
+    }
+  }
+  if (!guaranteeTile) {
+    return;
+  }
+
+  const guaranteePos = floorMap.tileToWorld(guaranteeTile.x, guaranteeTile.y);
+  let relocatedEid: number | null = null;
+  let farthestDistanceSq = Number.NEGATIVE_INFINITY;
+  for (const eid of query(world.ecs, [Harvestable, Position])) {
+    const tile = floorMap.worldToTile(
+      world.stores.position.x[eid] ?? 0,
+      world.stores.position.y[eid] ?? 0,
+    );
+    if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
+      continue;
+    }
+    const distanceSq = (tile.x - spawnTile.x) ** 2 + (tile.y - spawnTile.y) ** 2;
+    if (distanceSq > farthestDistanceSq) {
+      farthestDistanceSq = distanceSq;
+      relocatedEid = eid;
+    }
+  }
+  if (relocatedEid === null) {
+    return;
+  }
+
+  world.stores.position.x[relocatedEid] = guaranteePos.x;
+  world.stores.position.y[relocatedEid] = guaranteePos.y;
 }
 
 function chooseObjectiveTiles(world: GameWorld): {
