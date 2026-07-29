@@ -33,6 +33,7 @@ import {
   validateAuthoredSilhouetteExact,
   validateCompatibleBoundaries,
   validateCompatibleCorners,
+  validateCrossPackWallSilhouettes,
 } from '../../../scripts/sprites/terrain-packs/validate.js';
 import {
   ATLAS_GRID_COLS,
@@ -42,6 +43,11 @@ import {
 } from '../../../scripts/sprites/terrain-packs/atlas-grid.js';
 import { composeWallCellOutput } from '../../../scripts/sprites/terrain-packs/compose-wall-cell.js';
 import { generateQuadrantKit } from '../../../scripts/sprites/terrain-packs/quadrant-kit.js';
+import {
+  DECLARED_WALL_CORNER_STYLE_PACK_IDS,
+  DEFAULT_WALL_CORNER_STYLE,
+  wallCornerStyleForPack,
+} from '../../../scripts/sprites/terrain-packs/wall-corner-style.js';
 import {
   compositeInto,
   createImage,
@@ -498,6 +504,239 @@ describe('rounded cave corners', () => {
         }
       }
     }
+  });
+});
+
+describe('square dungeon corners', () => {
+  // Dungeons are CUT, not eroded. The same quadrant kit is reused so every
+  // tiling invariant is shared, but the corner treatment is rectilinear: the
+  // concave bite is a square notch and the convex corner is left sharp.
+  const kit = generateQuadrantKit('square');
+
+  function alphaAt(mask: number, x: number, y: number): number {
+    const cell = composeWallCellOutput(mask, kit);
+    return cell.data[(y * cell.width + x) * 4 + 3]!;
+  }
+
+  function cellSize(): number {
+    return composeWallCellOutput(255, kit).width;
+  }
+
+  it('leaves the exposed convex corner sharp instead of rounding it', () => {
+    // The mirror of the rounded suite's first test: on mask 0 the extreme inset
+    // corner pixel must still be SOLID wall. This is the user-visible defect —
+    // a dungeon corridor end that reads as a bevelled cave mouth.
+    const size = cellSize();
+    const inset = Math.round(size * 0.1875);
+    expect(alphaAt(0, inset, inset)).toBe(255);
+    expect(alphaAt(0, inset + 1, inset + 1)).toBe(255);
+    expect(alphaAt(0, inset - 1, inset - 1)).toBe(0);
+  });
+
+  it('emits ZERO partial-alpha pixels across all 47 masks', () => {
+    // Anti-aliasing is the observable signature of an arc. A purely rectilinear
+    // silhouette is axis-aligned everywhere, so every pixel is fully floor or
+    // fully wall. This is the strongest single assertion that no curve remains.
+    for (const mask of BLOB47_CANONICAL_MASKS) {
+      const cell = composeWallCellOutput(mask, kit);
+      let partial = 0;
+      for (let i = 3; i < cell.data.length; i += 4) {
+        const a = cell.data[i]!;
+        if (a > 0 && a < 255) partial += 1;
+      }
+      expect({ mask, partial }).toEqual({ mask, partial: 0 });
+    }
+  });
+
+  it('leaves mask 255 completely solid', () => {
+    const cell = composeWallCellOutput(255, kit);
+    for (let i = 3; i < cell.data.length; i += 4) {
+      expect(cell.data[i]).toBe(255);
+    }
+  });
+
+  it('still scoops the concave corner through the corner sample square', () => {
+    // The square notch is inset x inset at the outer corner, and the corner
+    // gate samples the outer 9%, so the notch covers it outright. Keeping this
+    // green is what lets the pack switch corner style without regressing
+    // `validateCompatibleCorners`.
+    const size = cellSize();
+    const sample = Math.ceil(size * 0.09);
+    for (let y = 0; y < sample; y += 1) {
+      for (let x = 0; x < sample; x += 1) {
+        expect(alphaAt(15, x, y)).toBe(0);
+        expect(alphaAt(15, size - 1 - x, y)).toBe(0);
+        expect(alphaAt(15, x, size - 1 - y)).toBe(0);
+        expect(alphaAt(15, size - 1 - x, size - 1 - y)).toBe(0);
+      }
+    }
+  });
+
+  it('never touches the cardinal edge sample band', () => {
+    // Identical invariant to the rounded kit: edge coverage must depend ONLY on
+    // the cardinal bit, so square and rounded packs remain mutually tileable and
+    // `validateCompatibleBoundaries` stays at 1.0.
+    const size = cellSize();
+    const lo = Math.ceil(size * 0.25);
+    const hi = Math.floor(size * 0.75);
+    const band = Math.floor(size * 0.15);
+    for (const mask of BLOB47_CANONICAL_MASKS) {
+      const cell = composeWallCellOutput(mask, kit);
+      const at = (x: number, y: number) => cell.data[(y * cell.width + x) * 4 + 3]!;
+      const north = (mask & MASK_BIT.N) !== 0 ? 255 : 0;
+      const south = (mask & MASK_BIT.S) !== 0 ? 255 : 0;
+      const west = (mask & MASK_BIT.W) !== 0 ? 255 : 0;
+      const east = (mask & MASK_BIT.E) !== 0 ? 255 : 0;
+      for (let i = lo; i < hi; i += 1) {
+        for (let d = 0; d < band; d += 1) {
+          expect(at(i, d)).toBe(north);
+          expect(at(i, size - 1 - d)).toBe(south);
+          expect(at(d, i)).toBe(west);
+          expect(at(size - 1 - d, i)).toBe(east);
+        }
+      }
+    }
+  });
+
+  it('differs from the rounded kit on exactly the corner-treated masks', () => {
+    // Guards against the parameter being silently inert (both styles identical)
+    // or over-broad (changing masks that have no exposed corner at all).
+    const rounded = generateQuadrantKit();
+    const differing = BLOB47_CANONICAL_MASKS.filter((mask) => {
+      const a = composeWallCellOutput(mask, kit);
+      const b = composeWallCellOutput(mask, rounded);
+      return Buffer.compare(Buffer.from(a.data), Buffer.from(b.data)) !== 0;
+    });
+    const expected = BLOB47_CANONICAL_MASKS.filter((mask) =>
+      QUADRANT_CORNERS.some((corner) => {
+        const state = quadrantStateFromMask(mask, corner);
+        return state === 'open' || state === 'concave';
+      }),
+    );
+    expect(differing).toEqual(expected);
+  });
+});
+
+describe('wall corner style is pinned per pack', () => {
+  it('assigns square corners to dungeons and rounded corners to caves', () => {
+    expect(wallCornerStyleForPack('floor1-dungeon')).toBe('square');
+    expect(wallCornerStyleForPack('floor1-cave')).toBe('rounded');
+    expect(wallCornerStyleForPack('industrial-cave')).toBe('rounded');
+    expect(wallCornerStyleForPack('caeles-fixture')).toBe('rounded');
+  });
+
+  it('defaults unknown packs to rounded so caves stay byte-stable', () => {
+    expect(wallCornerStyleForPack('some-future-cavern')).toBe(DEFAULT_WALL_CORNER_STYLE);
+    expect(DEFAULT_WALL_CORNER_STYLE).toBe('rounded');
+  });
+
+  it('resolves prototype-chain pack ids to the rounded default', () => {
+    // `ComposePackInput.id` is an arbitrary string. A plain-object lookup would
+    // return `Object`/`Object.prototype`/a function for these ids — all truthy,
+    // so `?? DEFAULT` would NOT fire and a non-style value would reach the
+    // geometry branch. The registry is a Map specifically to close this.
+    for (const id of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+      expect(wallCornerStyleForPack(id)).toBe('rounded');
+    }
+  });
+
+  it('declares a style for every shipped pack, so a new pack cannot silently inherit cave geometry', () => {
+    // The fallback above exists for synthetic/fixture ids only. A SHIPPED pack
+    // that relied on it would take eroded cave corners by omission — exactly the
+    // defect this module was added to fix. Forcing every committed pack to be
+    // listed turns "someone forgot" from a silent art regression into a failing
+    // test that demands an explicit geometry decision.
+    const shipped = readdirSync(path.join(repoRoot(), 'public', 'assets', 'terrain-packs'), {
+      withFileTypes: true,
+    })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+    expect(shipped.length).toBeGreaterThan(0);
+    const declared = new Set(DECLARED_WALL_CORNER_STYLE_PACK_IDS);
+    expect(shipped.filter((id) => !declared.has(id))).toEqual([]);
+  });
+});
+
+describe('cross-pack seam compatibility across corner styles', () => {
+  // Floor 1 runs BOTH packs at once (`floor1.manifest.json`: stone ->
+  // floor1-dungeon, cave -> floor1-cave), so a square-cornered masonry cell can
+  // sit directly beside a rounded eroded cell. What must hold is that the seam
+  // between them is invisible: the two cells agree on every pixel of the shared
+  // cell boundary. The interior corner treatment is allowed to differ — those
+  // pixels are never adjacent to another cell (ADR 0078).
+  const cave = readCommittedPack('floor1-cave');
+  const dungeon = readCommittedPack('floor1-dungeon');
+  const caveAtlas = decodePng(cave.atlas);
+  const dungeonAtlas = decodePng(dungeon.atlas);
+
+  function frameOffset(manifest: TerrainPackDef, maskId: number): number {
+    const frame = manifest.wallAutotile.masks.find((m) => m.maskId === maskId)!.frameIndex;
+    const col = frame % manifest.wallAutotile.gridCols;
+    const row = Math.floor(frame / manifest.wallAutotile.gridCols);
+    return (row * CELL_PX * ATLAS_WIDTH_PX + col * CELL_PX) * 4;
+  }
+
+  it('the two co-resident Floor 1 packs are seam-compatible despite differing corner styles', () => {
+    expect(wallCornerStyleForPack('floor1-dungeon')).not.toBe(
+      wallCornerStyleForPack('floor1-cave'),
+    );
+    const result = validateCrossPackWallSilhouettes(
+      cave.manifest,
+      caveAtlas,
+      dungeon.manifest,
+      dungeonAtlas,
+    );
+    expect(result.issues).toEqual([]);
+  });
+
+  it('still rejects a mismatch ON the shared cell boundary', () => {
+    // The no-notch guarantee itself must remain enforced. Flip one pixel of the
+    // dungeon atlas that lies on a cell's outermost ring; the gate must catch
+    // it even though the two packs are allowed to differ internally.
+    const broken = { ...dungeonAtlas, data: Buffer.from(dungeonAtlas.data) };
+    // (0,0) of mask 255's cell — on the ring, and solid in both packs.
+    const base = frameOffset(dungeon.manifest, 255);
+    broken.data[base + 3] = 0;
+    const result = validateCrossPackWallSilhouettes(
+      cave.manifest,
+      caveAtlas,
+      dungeon.manifest,
+      broken,
+    );
+    expect(result.issues.some((i) => i.code === 'cross-pack-seam-mismatch')).toBe(true);
+  });
+
+  it('tolerates an INTERIOR-only difference between differently-styled packs', () => {
+    // The relaxation, stated positively: an interior pixel is never adjacent to
+    // a neighbouring cell, so it cannot produce a seam artifact.
+    const altered = { ...dungeonAtlas, data: Buffer.from(dungeonAtlas.data) };
+    const base = frameOffset(dungeon.manifest, 255);
+    const interior = base + ((CELL_PX >> 1) * ATLAS_WIDTH_PX + (CELL_PX >> 1)) * 4;
+    altered.data[interior + 3] = 0;
+    const result = validateCrossPackWallSilhouettes(
+      cave.manifest,
+      caveAtlas,
+      dungeon.manifest,
+      altered,
+    );
+    expect(result.issues).toEqual([]);
+  });
+
+  it('keeps FULL-cell equality for two packs that share a corner style', () => {
+    // The strong rule is not gone — it still applies wherever it is free, which
+    // is every same-style pair. Guards against the relaxation leaking wider.
+    const altered = { ...caveAtlas, data: Buffer.from(caveAtlas.data) };
+    const base = frameOffset(cave.manifest, 255);
+    const interior = base + ((CELL_PX >> 1) * ATLAS_WIDTH_PX + (CELL_PX >> 1)) * 4;
+    altered.data[interior + 3] = 0;
+    const result = validateCrossPackWallSilhouettes(
+      cave.manifest,
+      caveAtlas,
+      cave.manifest,
+      altered,
+    );
+    expect(result.issues.some((i) => i.code === 'cross-pack-silhouette-mismatch')).toBe(true);
   });
 });
 

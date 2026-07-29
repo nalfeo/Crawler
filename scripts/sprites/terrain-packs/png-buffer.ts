@@ -72,6 +72,25 @@ export function fillRect(
 }
 
 /**
+ * Erase an axis-aligned rectangle (clamped to image bounds) by zeroing alpha.
+ *
+ * The square-corner counterpart to `eraseQuarterDisc`: it takes a hard-edged
+ * bite out of a silhouette. Like that helper it only touches alpha, leaving RGB
+ * intact so a later re-texture pass still reads the original colour underneath,
+ * and it produces exclusively 0-or-unchanged alpha — no anti-aliased fringe,
+ * which is precisely what makes a cut (rather than eroded) wall read as cut.
+ */
+export function eraseRect(img: RgbaImage, x0: number, y0: number, w: number, h: number): void {
+  const xEnd = Math.min(img.width, x0 + w);
+  const yEnd = Math.min(img.height, y0 + h);
+  for (let y = Math.max(0, y0); y < yEnd; y++) {
+    for (let x = Math.max(0, x0); x < xEnd; x++) {
+      img.data[(y * img.width + x) * 4 + 3] = 0;
+    }
+  }
+}
+
+/**
  * Coverage of one pixel by a disc, estimated by uniform supersampling.
  *
  * Returns the fraction (0..1) of the pixel's area that lies INSIDE the disc.

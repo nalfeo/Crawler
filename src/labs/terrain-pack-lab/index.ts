@@ -29,6 +29,7 @@ import {
   resolveDoorPoolVariant,
 } from '../../shared/terrain-pack-variants.js';
 import { TERRAIN_FALLBACK_COLORS, colorToCss } from '../../shared/terrain-colors.js';
+import { PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES } from '../../engine/terrain-renderer.js';
 import type { TerrainPackId } from '../../shared/terrain-pack-types.js';
 
 const LAB_ID = 'terrain-pack-lab';
@@ -41,6 +42,16 @@ const ATLAS_ROWS = 6;
 
 /** Terrain types considered walls for 47-mask connectivity. */
 const PACK_WALL_TERRAINS = new Set<number>([TerrainType.STONE_WALL, TerrainType.CAVE_WALL]);
+
+/**
+ * Terrain a wall's 47-mask must READ as wall, which is a superset of the tiles
+ * that are themselves wall-stamped (a door is a hole in a wall line, so its
+ * neighbours must reach it flush). Imported from the renderer rather than
+ * re-declared so the lab preview can never disagree with the real game about
+ * which frame a wall beside a door selects.
+ */
+const PACK_WALL_MASK_NEIGHBOR_TERRAINS: ReadonlySet<number> =
+  PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES as ReadonlySet<number>;
 
 /** Terrain types rendered using the floor pool. */
 const PACK_FLOOR_TERRAINS = new Set<number>([TerrainType.STONE_FLOOR, TerrainType.CAVE_FLOOR]);
@@ -476,7 +487,7 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
           // Compute 47-mask for this wall tile
           const rawMask = computeRawMask8(tx, ty, map.width, map.height, (nx, ny) => {
             const ni = ny * map.width + nx;
-            return PACK_WALL_TERRAINS.has(map.terrain[ni] as number);
+            return PACK_WALL_MASK_NEIGHBOR_TERRAINS.has(map.terrain[ni] as number);
           });
           const maskIndex = normalizeBlob47Mask(rawMask);
           const frameNum = maskToFrame.get(maskIndex) ?? 0;
