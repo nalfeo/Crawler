@@ -6,8 +6,8 @@
  * knob-set that maximises the Floor-1 tournament objective. This module owns the
  * side-effect-free building blocks that decision needs:
  *
- *   - `enumerateCombos()` — the 8 pathing×decision cells (LEGACY+LEGACY first, so
- *     it is always the incumbent/control the leaderboard compares against).
+ *   - `enumerateCombos()` — the active pathing×decision cells (RISK_REWARD_FUSED+LEGACY
+ *     first, so it is always the incumbent/control the leaderboard compares against).
  *   - `KNOB_RANGES` — search bounds DERIVED FROM THE CURRENT SSOT (`DEFAULT_CONFIG`
  *     in `bt-ai-tuning.ts`), NOT the stale `hill-climb.ts` ranges (which disagree
  *     with SSOT by up to 8× on scanRadius/rangedSafeDistance/grabRadius and set
@@ -36,40 +36,35 @@ import {
 } from '../../../src/game/ai/types.js';
 import { DEFAULT_CONFIG } from '../../../src/game/ai/bt-ai-tuning.js';
 
-/** A pathing × decision cell of the 4×2 A/B grid. */
+/** A pathing × decision cell of the A/B grid. */
 export interface Combo {
   pathing: AIPathingModeValue;
   decision: AIDecisionModeValue;
 }
 
-/** Stable, human-readable id for a combo, e.g. `"legacy+legacy"`. */
+/** Stable, human-readable id for a combo, e.g. `"riskRewardFused+legacy"`. */
 export function comboId(combo: Combo): string {
   return `${combo.pathing}+${combo.decision}`;
 }
 
-/** The canonical id for the LEGACY+LEGACY combo — the tournament's reference incumbent. */
-export const LEGACY_COMBO_ID = 'legacy+legacy';
+/** The canonical id for the RISK_REWARD_FUSED+LEGACY combo — the tournament's reference incumbent. */
+export const LEGACY_COMBO_ID = 'riskRewardFused+legacy';
 
 /**
- * All 8 pathing×decision combos, with LEGACY+LEGACY FIRST so it is always the
+ * All pathing×decision combos, with RISK_REWARD_FUSED+LEGACY first so it is always the
  * incumbent/control the tournament ranks every tuned combo against (the flip is
- * only ever away from LEGACY, human-gated).
+ * only ever away from RISK_REWARD_FUSED, human-gated).
  */
 export function enumerateCombos(): Combo[] {
-  const pathings: AIPathingModeValue[] = [
-    AIPathingMode.LEGACY,
-    AIPathingMode.RISK_REWARD_FUSED,
-    AIPathingMode.NAVMESH,
-    AIPathingMode.NAVMESH_FUSED,
-  ];
-  const decisions: AIDecisionModeValue[] = [AIDecisionMode.LEGACY, AIDecisionMode.SLACK_AWARE];
+  const pathings: AIPathingModeValue[] = [AIPathingMode.RISK_REWARD_FUSED];
+  const decisions: AIDecisionModeValue[] = [AIDecisionMode.LEGACY];
   const combos: Combo[] = [];
   for (const pathing of pathings) {
     for (const decision of decisions) {
       combos.push({ pathing, decision });
     }
   }
-  // LEGACY+LEGACY is already first (pathings[0]×decisions[0]).
+  // RISK_REWARD_FUSED+LEGACY is already first (pathings[0]×decisions[0]).
   return combos;
 }
 
@@ -96,8 +91,7 @@ export type TunableKnob =
   | 'farmPullWeight'
   | 'scanRadius'
   | 'retreatDangerRadius'
-  | 'opportunisticGrabRadius'
-  | 'seamWeight';
+  | 'opportunisticGrabRadius';
 
 export interface KnobRange {
   key: TunableKnob;
@@ -125,7 +119,6 @@ export const KNOB_RANGES: readonly KnobRange[] = [
   { key: 'scanRadius', min: 25, max: 100, step: 15, minStep: 7.5 }, // SSOT 50 (secondary)
   { key: 'retreatDangerRadius', min: 10, max: 60, step: 10, minStep: 5 }, // SSOT 20 (secondary)
   { key: 'opportunisticGrabRadius', min: 8, max: 40, step: 6, minStep: 3 }, // SSOT 18 (secondary)
-  { key: 'seamWeight', min: 0, max: 4, step: 0.5, minStep: 0.25 }, // SSOT 2 (NAVMESH_FUSED only)
 ];
 
 /**
@@ -172,17 +165,12 @@ export type SweepConfig = Partial<AIConfig> & {
 };
 
 /**
- * The tunable knobs applicable to a combo. `seamWeight` ONLY applies to
- * NAVMESH_FUSED — every other pathing mode forces it to 0 at the call site, so
- * tuning it elsewhere is a no-op that would only waste search budget.
+ * The tunable knobs applicable to a combo.
  */
-export function knobsForCombo(combo: Combo, includeSecondary = false): TunableKnob[] {
+export function knobsForCombo(_combo: Combo, includeSecondary = false): TunableKnob[] {
   const knobs: TunableKnob[] = [...PRIMARY_KNOBS];
   if (includeSecondary) {
     knobs.push(...SECONDARY_KNOBS);
-  }
-  if (combo.pathing === AIPathingMode.NAVMESH_FUSED) {
-    knobs.push('seamWeight');
   }
   return knobs;
 }
@@ -190,8 +178,8 @@ export function knobsForCombo(combo: Combo, includeSecondary = false): TunableKn
 /**
  * The base (search-seed) config for a combo: the current SSOT default value of
  * every tunable knob, plus the combo's two modes. This doubles as the combo's
- * tuned-search starting point AND the LEGACY control's config when combo is
- * LEGACY+LEGACY.
+ * tuned-search starting point AND the incumbent control's config when combo is
+ * RISK_REWARD_FUSED+LEGACY.
  */
 export function baseConfigForCombo(combo: Combo): SweepConfig {
   const config: SweepConfig = {

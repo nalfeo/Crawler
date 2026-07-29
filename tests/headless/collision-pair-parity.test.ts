@@ -268,37 +268,48 @@ interface CollisionFingerprint {
 //   seed  13:  4/222.70000231266022/15/0   →  3/183.00000154972076/5/0
 //   seed  42:  2/194.59999990463257/10/4   →  3/199.30000019073486/10/2
 //   seed 137:  4/188.7999992966652/5/0     →  3/152.7199993133545/5/0
+// ## 2026-07-29 re-baseline — AIPathingMode.LEGACY removed; pathing mode updated to RISK_REWARD_FUSED
+//
+// LEGACY pathing was retired as a dead A/B arm (PR remove-dead-ai-arms). The runSlice
+// helper was updated from AIPathingMode.LEGACY → AIPathingMode.RISK_REWARD_FUSED (the
+// sole remaining + shipped mode). RISK_REWARD_FUSED and LEGACY differ in how they compute
+// headings (danger-aware fan scorer vs fixed-priority direction), so fingerprints
+// naturally diverge. Verified stable (determinism test below passed on the same CI run):
+//   seed   7: 5/140.30/5/2  →  6/152.18/0/2
+//   seed  13: 3/183.00/5/0  →  3/141.60/5/0
+//   seed  42: 3/199.30/10/2 →  3/192.45/5/6
+//   seed 137: 3/152.72/5/0  →  2/113.68/0/0
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 3,
-    damageDealt: 199.30000019073486,
-    damageTaken: 10,
-    finalScore: 2,
+    damageDealt: 192.44999933242798,
+    damageTaken: 5,
+    finalScore: 6,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 140.30000066757202,
-    damageTaken: 5,
+    kills: 6,
+    damageDealt: 152.18000078201294,
+    damageTaken: 0,
     finalScore: 2,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 3,
-    damageDealt: 183.00000154972076,
+    damageDealt: 141.6000019311905,
     damageTaken: 5,
     finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 152.7199993133545,
-    damageTaken: 5,
+    kills: 2,
+    damageDealt: 113.67999935150146,
+    damageTaken: 0,
     finalScore: 0,
   },
 };
@@ -308,7 +319,7 @@ const PARITY_SEEDS = Object.keys(GOLDEN_FINGERPRINTS).map(Number);
 async function runSlice(seed: number): Promise<RunStats> {
   const ai = new BehaviorTreeAI({
     seed,
-    pathingMode: AIPathingMode.LEGACY,
+    pathingMode: AIPathingMode.RISK_REWARD_FUSED,
     retreatThreshold: 0.15,
     farmPullWeight: 0.07,
   });

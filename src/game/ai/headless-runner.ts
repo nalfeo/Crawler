@@ -33,7 +33,6 @@ import {
 } from '../floor2Scenario.js';
 import {
   AIDecisionDebugState,
-  AIPathingMode,
   AIState,
   type AIInputProvider,
   type AIPathingModeValue,
@@ -54,7 +53,6 @@ import {
 import { runSettlementMaintenancePlanner } from './settlement-maintenance-planner.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
-import { initNavmesh } from './navmesh/index.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import {
@@ -522,7 +520,6 @@ export async function runHeadless(
     getDecisionMode?: () => string;
     getPathingMode?: () => AIPathingModeValue;
     getFloor2HuntFamilyId?: () => FamilyId | null;
-    disposeNavmesh?: () => void;
   };
   let lastFrameX = world.stores.position.x[playerEid] ?? 0;
   let lastFrameY = world.stores.position.y[playerEid] ?? 0;
@@ -621,10 +618,8 @@ export async function runHeadless(
     // `urgency` (from the post-tick `runPlan`). That is an observability
     // superset, NOT part of the deterministic sim: game behavior/determinism
     // stays byte-identical to main; only the emitted telemetry field set is
-    // broader. Prefer `decisionRunPlan` — the plan the SLACK_AWARE F1/F2 filters
-    // actually consulted this frame — falling back to the post-tick `runPlan`.
-    // In LEGACY `decisionRunPlan` is always null, so this falls back to
-    // `runPlan`, selecting the same plan a legacy-aware provider would.
+    // broader. Falls back to the post-tick `runPlan` when no decision-time
+    // plan is available.
     const tacticalDebug = navProvider.getTacticalRunDebug?.();
     const runPlan = tacticalDebug?.decisionRunPlan ?? tacticalDebug?.runPlan ?? null;
     const decisionMode = navProvider.getDecisionMode?.();
@@ -679,17 +674,6 @@ export async function runHeadless(
       ...canonicalPostSystems,
       ...(config.simulationOptions?.postSystems ?? []),
     ];
-
-    // Navmesh-routed pathing (NAVMESH and NAVMESH_FUSED) needs the recast WASM
-    // runtime initialized before the synchronous sim loop runs (the provider's
-    // poll() is sync and throws if the navmesh is not ready). Centralizing the
-    // await here means every headless caller — CLI, ai:ab-pathing-mode,
-    // ai:navmesh-sweep, and the determinism/functional tests — is covered without
-    // each remembering to init. LEGACY/RISK_REWARD_FUSED never touch it.
-    const pathingMode = navProvider.getPathingMode?.();
-    if (pathingMode === AIPathingMode.NAVMESH || pathingMode === AIPathingMode.NAVMESH_FUSED) {
-      await initNavmesh();
-    }
 
     // Main simulation loop
     while (frameCount < mergedConfig.maxFrames) {
@@ -1180,12 +1164,6 @@ export async function runHeadless(
       }
     }
     return crashStats;
-  } finally {
-    // Free the per-floor recast navmesh + query WASM allocations (outside the JS
-    // GC). No-op for LEGACY/RISK_REWARD_FUSED (no handle was ever built). Without
-    // this, the navmesh-sweep's sequential navmesh-routed runs would leak one
-    // handle each.
-    navProvider.disposeNavmesh?.();
   }
 
   const wallTimeMs = Date.now() - startTime;
