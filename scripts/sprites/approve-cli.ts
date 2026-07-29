@@ -22,6 +22,7 @@ import {
   approveVariant,
   ApproveError,
   loadApprovedEntry,
+  loadApprovedFrameSequenceEntry,
   type ManifestEntry,
 } from './approve.js';
 import { runQueueCommit } from './queue-commit.js';
@@ -140,10 +141,6 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
     let entry: ManifestEntry;
     let alreadyApproved = false;
     if (parsed.sequence) {
-      // Frame-sequence (walk-cycle) approvals are a newer, simpler path than
-      // the variant retry-on-already-approved dance below: a duplicate
-      // frame-sequence approval is just reported as a failure (regenerate to
-      // change the cycle) rather than retried through queue-commit.
       try {
         entry = approveFrameSequence({
           runDir,
@@ -152,20 +149,42 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
           publicAssetsDir,
           repoRoot,
         });
+        process.stdout.write(
+          `Approved ${entry.briefId} frame sequence\n` +
+            `  asset: ${entry.assetPath}\n` +
+            `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
+            `  source: ${entry.sourceRun}\n` +
+            `  animation: ${entry.animation ? JSON.stringify(entry.animation) : '(none)'}\n`,
+        );
       } catch (err) {
-        if (err instanceof ApproveError) {
+        // Mirror the `--variant` retry dance below: an exact-duplicate
+        // re-approve is NOT a terminal failure for durability. The manifest
+        // entry already exists, but its earlier best-effort queue-commit may
+        // never have landed on assets/queue. Load the stored entry and fall
+        // through to the SAME queue-commit block below so re-running the
+        // approve genuinely RETRIES the durable push — which is exactly what
+        // the failure warning tells the operator to do. Before this fix the
+        // CLI exited here, never reaching queue-commit, so that advice was
+        // false for `--sequence` (round-1 code review finding).
+        if (err instanceof ApproveError && err.kind === 'already-approved') {
+          const existing = loadApprovedFrameSequenceEntry({ runDir, manifestPath, repoRoot });
+          if (!existing) {
+            process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
+            return exitCodeForError(err.kind);
+          }
+          entry = existing;
+          alreadyApproved = true;
+          process.stdout.write(
+            `Already approved ${entry.briefId} frame sequence \u2014 retrying durable queue-commit\n` +
+              `  asset: ${entry.assetPath}\n`,
+          );
+        } else if (err instanceof ApproveError) {
           process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
           return exitCodeForError(err.kind);
+        } else {
+          throw err;
         }
-        throw err;
       }
-      process.stdout.write(
-        `Approved ${entry.briefId} frame sequence\n` +
-          `  asset: ${entry.assetPath}\n` +
-          `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
-          `  source: ${entry.sourceRun}\n` +
-          `  animation: ${entry.animation ? JSON.stringify(entry.animation) : '(none)'}\n`,
-      );
     } else {
       const variantIndex = parsed.variantIndex!;
       try {

@@ -750,6 +750,40 @@ export function loadApprovedEntry(options: {
   return readManifestEntry(fs, options.manifestPath, identity.variantId);
 }
 
+/**
+ * Frame-sequence counterpart to `loadApprovedEntry`: loads the manifest entry
+ * for a frame-sequence run that is ALREADY approved with identical content,
+ * WITHOUT mutating anything. Returns null when no such entry exists.
+ *
+ * Closes the same retry gap `loadApprovedEntry` closes for `--variant`
+ * approvals: re-running `approveFrameSequence` after a failed queue-commit
+ * throws `ApproveError('already-approved')` before `runQueueCommit` ever
+ * executes (the manifest write already succeeded), so the CLI's "re-run to
+ * retry queue-commit" advice would otherwise be false for `--sequence`. The
+ * caller catches `already-approved`, loads the existing entry via this
+ * helper, and falls through to `runQueueCommit` exactly as the `--variant`
+ * path does.
+ */
+export function loadApprovedFrameSequenceEntry(options: {
+  readonly runDir: string;
+  readonly manifestPath: string;
+  readonly repoRoot: string;
+  readonly fs?: ApproveFs;
+}): ManifestEntry | null {
+  const fs = options.fs ?? DEFAULT_FS;
+  const summaryPath = path.join(options.runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${options.runDir}`);
+  }
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const rawBriefId = summary.brief;
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  return readManifestEntry(fs, options.manifestPath, briefId);
+}
+
 function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {
   const facing = summary.postprocessOverrides?.facing;
   if (

@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "multi-frame-walk-cycle",
+  "task_title": "Multi-frame walk-cycle generation (Slice B)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "",
+      "summary": "Adversarial review (gpt-5.4, high reasoning) enumerated 3 credible alternatives (per-frame single-sprite generation instead of one sheet; extending the Azure provider to a rectangular canvas to keep frameCount=3; a first-class sheet-layout contract decoupled from frameSequence.enabled) and argued each against the chosen design. Verdict: approved_with_changes, no architecture change warranted. 8 concerns raised, all resolved: (1) coherence gate too weak to prove 'ordered same character' -> addressed by adding a third deterministic signal (baseline/floor-line pixel-delta, DEFAULT_MAX_BASELINE_DELTA_PX=6px) alongside palette+mass, directly enforcing the build-prompt.ts 'same floor line' instruction instead of trusting the prompt alone; re-verified real checked-in asset still passes (0px delta every pair). (2) baseline/origin stability was prompt-only, not deterministic -> same fix as (1); also inspected pack-frame-strip.ts and confirmed it does a straight per-cell copy with no independent repositioning/cropping, so no hidden bug there. (3) slicing mode encoded implicitly, rerun/approval could drift -> verified sliceSheetWithGrid's fixedGrid flag is derived directly from brief.frameSequence?.enabled at every call site (rerun.ts line 299), not a separate manually-set flag, so no drift risk exists; documented as already-resolved-by-design. (4) coherence gate runs only at approval time, not generation-time scoring -> acknowledged as a legitimate future hardening (cheaper failure sooner) but explicitly out of this task's scope, which defines the hard gate as an approval-time block; recorded as a follow-on, not silently dropped. (5) frameCount>=2 schema implies broader support than validated -> acknowledged; the real brief and all tests exercise frameCount=4 only; documented as a known scope limit, schema intentionally left general for future briefs rather than artificially restricted to exactly 4. (6) brief-level sensor relaxations (anchor center-of-mass, interiorHoles maxPixels=64) risk being overfit to one run -> both changes are precedented, existing conventions used by other standing-biped/prop briefs (welcome-goon-v2.yaml, sweaty-merchant-v2.yaml, welcome-room-kitchenette.yaml) for the identical documented reason, not novel one-off relaxations; the coherence gate itself (the task's actual hard gate) was NOT touched by this tuning. (7) frameCount=4 vs provider capability is tech debt -> accepted tradeoff, documented in PR/handoff, provider-rectangle-canvas extension deferred as larger/riskier scope than justified by this task. (8) missing regression test for the exact slicing bug that motivated the fix -> already present (tests/unit/sprites/slice-sheet.test.ts describe block 'sliceSheetFromBrief: frameSequence bypasses gutter detection', verified via direct file inspection, not newly added)."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}
