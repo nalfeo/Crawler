@@ -18,9 +18,14 @@
  *      generated rows) has unique ids — no committed row collides with a
  *      derived generated row.
  *   5. Every non-placeholder shard derives exactly one row.
+ *   6. The aggregate `manifest.json` is NOT tracked by git. It is a build
+ *      artifact composed from shards; a re-committed (resurrected) aggregate
+ *      would silently diverge from the shards, so its presence in the index is
+ *      a hard failure rather than latent corruption.
  *
  * Usage: `npm run sprites:check-manifest`
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -124,6 +129,31 @@ function main(): void {
   if (derived !== nonPlaceholder) {
     errors.push(
       `derived generated rows (${derived}) != non-placeholder shards (${nonPlaceholder})`,
+    );
+  }
+
+  // 6. The aggregate manifest.json must not be tracked by git (resurrection
+  //    guard). Existence on disk is fine — it is a gitignored build artifact —
+  //    but being in the index means it will drift from the shards silently.
+  const aggregateRel = 'public/assets/generated/manifest.json';
+  try {
+    const tracked = execFileSync('git', ['ls-files', '--', aggregateRel], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    }).trim();
+    if (tracked.length > 0) {
+      errors.push(
+        `${aggregateRel} is tracked by git — it must be a gitignored build ` +
+          `artifact composed from shards, not a committed file (run ` +
+          `\`git rm --cached ${aggregateRel}\`)`,
+      );
+    }
+  } catch (err) {
+    // git unavailable (e.g. a source tarball) — skip rather than false-fail.
+    console.warn(
+      `  (skipped aggregate resurrection check: git unavailable — ${
+        err instanceof Error ? err.message : err
+      })`,
     );
   }
 
