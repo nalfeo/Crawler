@@ -57,7 +57,12 @@ test('classifyFile: modified file with matching main blob SHA → LANDED', () =>
 
 test('classifyFile: renamed file where new path on main has same blob SHA and old path is absent → LANDED', () => {
   const result = classifyFile(
-    { filename: 'new-name.png', sha: 'aaa111', status: 'renamed', previous_filename: 'old-name.png' },
+    {
+      filename: 'new-name.png',
+      sha: 'aaa111',
+      status: 'renamed',
+      previous_filename: 'old-name.png',
+    },
     'aaa111',
     null, // old path absent from main → rename deletion landed
   );
@@ -67,7 +72,12 @@ test('classifyFile: renamed file where new path on main has same blob SHA and ol
 
 test('classifyFile: renamed file where new path matches but old path still on main → DELETION_DIFFERS', () => {
   const result = classifyFile(
-    { filename: 'new-name.png', sha: 'aaa111', status: 'renamed', previous_filename: 'old-name.png' },
+    {
+      filename: 'new-name.png',
+      sha: 'aaa111',
+      status: 'renamed',
+      previous_filename: 'old-name.png',
+    },
     'aaa111',
     'old-blob-sha', // old path still exists on main → rename not fully landed
   );
@@ -78,7 +88,12 @@ test('classifyFile: renamed file where new path matches but old path still on ma
 test('classifyFile: renamed file where mainPreviousFileBlobSha not provided defaults to not checking old path → LANDED', () => {
   // Backward-compat: when caller does not pass mainPreviousFileBlobSha, old-path check is skipped
   const result = classifyFile(
-    { filename: 'new-name.png', sha: 'aaa111', status: 'renamed', previous_filename: 'old-name.png' },
+    {
+      filename: 'new-name.png',
+      sha: 'aaa111',
+      status: 'renamed',
+      previous_filename: 'old-name.png',
+    },
     'aaa111',
     // mainPreviousFileBlobSha omitted
   );
@@ -109,12 +124,18 @@ test('classifyFile: modified file absent from main → NEW_ON_PR', () => {
 // ---------------------------------------------------------------------------
 
 test('classifyFile: modified file where main has different content → DIFFERS', () => {
-  const result = classifyFile({ filename: 'sprite.png', sha: 'pr111', status: 'modified' }, 'main222');
+  const result = classifyFile(
+    { filename: 'sprite.png', sha: 'pr111', status: 'modified' },
+    'main222',
+  );
   assert.equal(result.fileStatus, FILE_STATUS.DIFFERS);
 });
 
 test('classifyFile: added file where main already has different content → DIFFERS', () => {
-  const result = classifyFile({ filename: 'manifest.json', sha: 'pr_v1', status: 'added' }, 'main_v2');
+  const result = classifyFile(
+    { filename: 'manifest.json', sha: 'pr_v1', status: 'added' },
+    'main_v2',
+  );
   assert.equal(result.fileStatus, FILE_STATUS.DIFFERS);
 });
 
@@ -124,7 +145,11 @@ test('classifyFile: added file where main already has different content → DIFF
 
 test('classifyFile: removed file that no longer exists on main → DELETION_LANDED', () => {
   const result = classifyFile(
-    { filename: 'old-sprite.png', sha: '0000000000000000000000000000000000000000', status: 'removed' },
+    {
+      filename: 'old-sprite.png',
+      sha: '0000000000000000000000000000000000000000',
+      status: 'removed',
+    },
     null,
   );
   assert.equal(result.fileStatus, FILE_STATUS.DELETION_LANDED);
@@ -212,7 +237,11 @@ test('golden fixture PR #1975: 12 landed + 2 differs → PARTIAL (differs treate
     { filename: 'old-version-b.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
   ];
   const result = analyzeFiles(files);
-  assert.equal(result.verdict, VERDICT.PARTIAL, 'DIFFERS prevents ALL_LANDED but does not trigger REGRESSION_CANDIDATE');
+  assert.equal(
+    result.verdict,
+    VERDICT.PARTIAL,
+    'DIFFERS prevents ALL_LANDED but does not trigger REGRESSION_CANDIDATE',
+  );
   assert.equal(result.totalCount, 14);
   assert.equal(result.landedCount, 12);
   assert.equal(result.differsCount, 2);
@@ -231,9 +260,7 @@ test('analyzeFiles: single DIFFERS file with landed → PARTIAL (not REGRESSION_
 });
 
 test('analyzeFiles: only DIFFERS files → NOT_LANDED (no landed files)', () => {
-  const files = [
-    { filename: 'a.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
-  ];
+  const files = [{ filename: 'a.png', status: 'modified', fileStatus: FILE_STATUS.DIFFERS }];
   const result = analyzeFiles(files);
   assert.equal(result.verdict, VERDICT.NOT_LANDED, 'only DIFFERS, no landed files → NOT_LANDED');
   assert.equal(result.landedCount, 0);
@@ -380,8 +407,16 @@ test('renderAlreadyLandedComment: PARTIAL includes landed count and new count', 
 
 test('renderAlreadyLandedComment: evidence table contains filenames', () => {
   const files = [
-    { filename: 'public/assets/generated/manifest.json', status: 'modified', fileStatus: FILE_STATUS.LANDED },
-    { filename: 'src/shared/data/sprite-catalog.json', status: 'modified', fileStatus: FILE_STATUS.DIFFERS },
+    {
+      filename: 'public/assets/generated/manifest.json',
+      status: 'modified',
+      fileStatus: FILE_STATUS.LANDED,
+    },
+    {
+      filename: 'src/shared/data/sprite-catalog.json',
+      status: 'modified',
+      fileStatus: FILE_STATUS.DIFFERS,
+    },
   ];
   const analysis = analyzeFiles(files);
   const comment = renderAlreadyLandedComment(99, analysis, 'sha1');
@@ -437,11 +472,13 @@ test('end-to-end: one file absent from main → PARTIAL', () => {
 });
 
 test('end-to-end: one file differs → PARTIAL (not REGRESSION_CANDIDATE)', () => {
-  const prFiles = [
-    { filename: 'reg.png', sha: 'pr-old', status: 'modified' },
-  ];
+  const prFiles = [{ filename: 'reg.png', sha: 'pr-old', status: 'modified' }];
   const classified = prFiles.map((f) => classifyFile(f, 'main-newer'));
   const result = analyzeFiles(classified);
-  assert.equal(result.verdict, VERDICT.NOT_LANDED, 'single differs file with no landed → NOT_LANDED');
+  assert.equal(
+    result.verdict,
+    VERDICT.NOT_LANDED,
+    'single differs file with no landed → NOT_LANDED',
+  );
   assert.equal(result.differsCount, 1);
 });

@@ -1,0 +1,59 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "big-mama-bufo-tongue-repossession",
+  "task_title": "Implement Big Mama Bufo TONGUE REPOSSESSION",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review compared (1) ability-local lane state vs runtime lane geometry and (2) spawned tongue actor vs committed lane artifact. Kept runtime lane artifact to preserve canonical shared geometry across AI/hit/VFX, but tightened contract usage by treating gameplay origin as authoritative and validating catalog-derived tuning; later fixes addressed lane dangerColor handling and added lane-burst coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6",
+            "gpt-5.3-codex"
+          ],
+          "concerns_count": 2,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
