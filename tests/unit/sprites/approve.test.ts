@@ -19,7 +19,6 @@ import {
   UnapproveError,
   MANIFEST_VERSION,
   type Manifest,
-  type ManifestEntry,
 } from '../../../scripts/sprites/approve.js';
 import {
   composeManifestFromShards,
@@ -27,6 +26,7 @@ import {
   writeShard,
 } from '../../../scripts/sprites/generated-shards.js';
 import { deriveGeneratedCatalogRow } from '../../../src/shared/generated-catalog.js';
+import type { ManifestEntry as GeneratedManifestEntry } from '../../../src/shared/generated-assets.js';
 
 interface FakeRunOptions {
   readonly briefId?: string;
@@ -185,7 +185,7 @@ function deriveCatalogRow(manifestPath: string, variantId: string) {
   const manifest = readManifest(manifestPath);
   const entry = manifest.entries[variantId];
   if (!entry) return undefined;
-  return deriveGeneratedCatalogRow(variantId, entry as ManifestEntry);
+  return deriveGeneratedCatalogRow(variantId, entry as unknown as GeneratedManifestEntry);
 }
 
 describe('approveVariant', () => {
@@ -294,7 +294,7 @@ describe('approveVariant', () => {
     };
     // Seed two unrelated entries as shards (the source of truth).
     for (const [key, entry] of Object.entries(seeded.entries)) {
-      writeShard(generatedDirOf(manifestPath), key, entry as ManifestEntry);
+      writeShard(generatedDirOf(manifestPath), key, entry as unknown as GeneratedManifestEntry);
     }
 
     const { runDir, briefId } = writeFakeRun(repoRoot);
@@ -487,7 +487,7 @@ describe('approveVariant', () => {
     writeShard(
       generatedDirOf(manifestPath),
       'iron-sword-var-1',
-      legacy as unknown as ManifestEntry,
+      legacy as unknown as GeneratedManifestEntry,
     );
 
     // Same bytes still on disk → fallback hash of the asset matches → refused.

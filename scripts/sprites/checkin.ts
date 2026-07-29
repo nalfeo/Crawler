@@ -24,11 +24,17 @@
 
 import { hashStringToSeed } from '../../src/shared/random.js';
 
-/** The art surface a check-in captures (repo-relative, POSIX separators). */
-export const ASSET_SURFACE_PATHS = [
-  'public/assets/generated',
-  'src/shared/data/sprite-catalog.json',
-] as const;
+/**
+ * The art surface a check-in captures (repo-relative, POSIX separators).
+ *
+ * Only `public/assets/generated` — which holds both the approved PNGs and the
+ * per-asset manifest shards under `entries/`. The aggregate `manifest.json` is a
+ * gitignored build artifact and the `generated:` sprite-catalog rows are derived
+ * at read-time from the shards, so NEITHER the aggregate nor
+ * `src/shared/data/sprite-catalog.json` is part of the check-in surface anymore.
+ * This is what keeps two disjoint check-ins from ever touching the same file.
+ */
+export const ASSET_SURFACE_PATHS = ['public/assets/generated'] as const;
 
 /** Label applied to every check-in tracking issue. */
 export const ASSET_CHECKIN_LABEL = 'asset-checkin';
