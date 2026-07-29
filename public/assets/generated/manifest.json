@@ -9489,6 +9489,25 @@
         "canvasHeight": 16
       }
     },
+    "player-walk-placeholder-v1-var-0": {
+      "briefId": "player-walk-placeholder-v1",
+      "spriteName": "player-walk-placeholder-v1-var-0",
+      "assetPath": "generated/rhea-vale-v1-var-0-walk.png",
+      "approvedAt": "2026-08-01T00:00:00.000Z",
+      "sourceRun": "hand-authored/player-walk-placeholder-v1",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "n/a",
+      "judgeScore": null,
+      "type": null,
+      "animation": {
+        "frameWidth": 64,
+        "frameHeight": 64,
+        "frameCount": 3,
+        "frameRate": 6,
+        "loop": true
+      }
+    },
     "producers-note-placeholder": {
       "briefId": "producers-note",
       "spriteName": "producers-note",

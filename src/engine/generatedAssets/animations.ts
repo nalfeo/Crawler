@@ -33,11 +33,13 @@ export function walkAnimationKey(textureKey: string): string {
 /** Minimum subset of `Phaser.Animations.AnimationManager` this module needs. */
 export interface AnimationManagerLike {
   exists(key: string): boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- structural glue type: must
-  // accept Phaser's real `Animation` config object (frames typed as `string | AnimationFrame[]`)
-  // without importing Phaser's animation types here, and accept plain test-stub configs too.
+  // Structural glue type: must accept Phaser's real `Animation` config object
+  // (frames typed as `string | AnimationFrame[]`) without importing Phaser's
+  // animation types here, and accept plain test-stub configs too.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create(config: { key: string; frames: any; frameRate: number; repeat: number }): unknown;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see create() above.
+  // See create() above.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   generateFrameNumbers(textureKey: string, config: { start: number; end: number }): any;
 }
 

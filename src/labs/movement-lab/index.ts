@@ -315,6 +315,25 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         this.playerEid >= 0 ? (this.world.stores.velocity.y[this.playerEid] ?? 0) : 0;
       const enemyCount = query(this.world.ecs, [Enemy]).length;
 
+      // The player's game object is a Sprite (not a plain Image) only when its
+      // resolved texture carries an `animation` descriptor — see
+      // `playPlayerWalkAnimation` in PhaserBridge.ts. Introspecting the scene's
+      // display list (rather than adding a bridge-internal accessor) keeps this
+      // lab a pure OBSERVER of the animation layer, exercising the exact same
+      // public Phaser surface a real player render would.
+      const playerSprite = this.children.list.find(
+        (obj): obj is Phaser.GameObjects.Sprite =>
+          'anims' in obj && (obj as Partial<Phaser.GameObjects.Sprite>).anims !== undefined,
+      );
+      const walkAnim = playerSprite
+        ? {
+            textureKey: playerSprite.texture.key,
+            isPlaying: playerSprite.anims.isPlaying,
+            frameIndex: playerSprite.anims.currentFrame?.index ?? null,
+            flipX: playerSprite.flipX,
+          }
+        : null;
+
       // Read Phaser key states directly
       const kb = this.input.keyboard;
       const phaserW =
@@ -342,6 +361,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         frameCount: this.world.frameCount,
         playerEid: this.playerEid,
         keyLog: [...keyLog],
+        walkAnim,
       };
 
       info.textContent = [
@@ -350,6 +370,9 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         `Input: move(${this.inputState.moveX.toFixed(2)}, ${this.inputState.moveY.toFixed(2)})`,
         `RawKeys: ${rawKeysStr}  PhaserKeys: ${phaserKeysStr}`,
         `Speed: ${settings.speed.toFixed(1)}  Accel: ${settings.acceleration.toFixed(2)}  Fric: ${settings.friction.toFixed(2)}`,
+        walkAnim
+          ? `Walk anim: ${walkAnim.textureKey}  playing=${walkAnim.isPlaying}  frame=${walkAnim.frameIndex}  flipX=${walkAnim.flipX}`
+          : 'Walk anim: (player has no animation descriptor — static Image)',
       ].join('\n');
     }
 
@@ -548,6 +571,6 @@ registerLab('movement-lab', {
   category: 'Movement & Physics' as LabCategory,
   name: 'Movement Lab',
   description:
-    'Tune WASD movement with live speed, acceleration, friction, trail, and enemy spawn controls.',
+    'Tune WASD movement with live speed, acceleration, friction, trail, and enemy spawn controls. Also surfaces the player walk-animation state (texture, frame index, flip) driven by PhaserBridge.',
   create: createMovementLab,
 });
