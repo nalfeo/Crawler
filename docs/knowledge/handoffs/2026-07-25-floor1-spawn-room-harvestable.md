@@ -40,6 +40,11 @@ focused regression coverage and the required ledger/handoff artifacts.
 - I attempted to post the required pre-coding plan comment on issue #1934 from
   this sandbox, but both `gh issue comment` and a direct REST fallback returned
   403s here. The same plan was recorded in-session instead.
+- Update (2026-07-29): issue #1934 now has a retroactive plan comment posted by
+  the CI recovery flow under the owner account. That fixes the older "issue has
+  no plan comment" fact, but it does not by itself waive the original
+  pre-coding timing requirement; PR #2006's review thread still needs explicit
+  maintainer acknowledgment before it can be resolved deterministically.
 - `npm ci` remains blocked in this sandbox because some lockfile tarballs still
   resolve to `ms-feed-2.pkgs.visualstudio.com`; I used no-save public-registry
   installs plus `npx` for local validation instead.
