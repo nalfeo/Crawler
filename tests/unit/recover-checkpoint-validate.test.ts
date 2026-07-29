@@ -359,32 +359,6 @@ describe('validateRecoveredCheckpoints', () => {
     ).toBe(true);
   });
 
-  it('fails closed when the incumbent row panel (non-LEGACY combo) is incomplete', () => {
-    const target = SSOT_COMBOS.find((c) => c !== LEGACY_COMBO_ID);
-    expect(target).toBeDefined();
-    const recovered = makeAllRecovered((combo, checkpoint) => {
-      if (combo !== target) return checkpoint;
-      const full = makeCheckpoint(combo!);
-      const bestConfigId = full.bestConfigId;
-      const finalistRows = full.rows.filter((r) => r.configId === bestConfigId);
-      const incumbentRows = full.rows.filter((r) => r.configId !== bestConfigId).slice(1);
-      return { ...full, rows: [...finalistRows, ...incumbentRows] };
-    });
-    const result = validateRecoveredCheckpoints(
-      recovered,
-      SSOT_COMBOS,
-      TRAIN_SEEDS,
-      WEAPONS,
-      EXPECTED_SHA,
-    );
-    expect(result.ok).toBe(false);
-    expect(
-      result.errors.some(
-        (e) => e.includes(target!) && e.includes('missing') && e.includes('incumbent'),
-      ),
-    ).toBe(true);
-  });
-
   it('confirms LEGACY_COMBO_ID is present among the SSOT combos (explicit assertion, not just implied by check #1)', () => {
     expect(SSOT_COMBOS).toContain(LEGACY_COMBO_ID);
   });

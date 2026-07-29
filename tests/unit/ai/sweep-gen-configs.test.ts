@@ -96,7 +96,6 @@ describe('baseConfigForCombo', () => {
       expect(config[knob]).toBe(DEFAULT_CONFIG[knob]);
     }
   });
-
 });
 
 describe('KNOB_RANGES', () => {

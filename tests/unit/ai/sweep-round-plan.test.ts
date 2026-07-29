@@ -1366,18 +1366,16 @@ describe('extractLegacyBaselineShard (derive a fresh legacy+legacy baseline shar
     expect(Object.keys(extracted.configs)).toEqual([BASE_ID]);
     expect(extracted.configs[BASE_ID]).toEqual(BASE);
     expect(extracted.rows).toHaveLength(2);
-    expect(extracted.rows.every((r) => r.combo === 'riskRewardFused+legacy' && r.configId === BASE_ID)).toBe(
-      true,
-    );
+    expect(
+      extracted.rows.every((r) => r.combo === 'riskRewardFused+legacy' && r.configId === BASE_ID),
+    ).toBe(true);
   });
 
   it('rejects a checkpoint whose combo does not match the canonical LEGACY combo ID', () => {
     const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(150));
     // Directly set a non-canonical combo to verify the guard fires.
     const fakeCheckpoint = { ...checkpoint, combo: 'some-other-combo+mode' } as typeof checkpoint;
-    expect(() => extractLegacyBaselineShard(fakeCheckpoint)).toThrow(
-      /checkpoint combo must be/,
-    );
+    expect(() => extractLegacyBaselineShard(fakeCheckpoint)).toThrow(/checkpoint combo must be/);
   });
 
   it('rejects a legacy+legacy checkpoint whose round-0 config is not the canonical LEGACY base', () => {

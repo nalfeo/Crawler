@@ -484,7 +484,10 @@ async function searchCombo(
       // gate is correct by default rather than silently falling back to
       // the pre-fix behaviour of gating against the combo's own baseline.
       const legacyBase = register(
-        baseConfigForCombo({ pathing: AIPathingMode.RISK_REWARD_FUSED, decision: AIDecisionMode.LEGACY }),
+        baseConfigForCombo({
+          pathing: AIPathingMode.RISK_REWARD_FUSED,
+          decision: AIDecisionMode.LEGACY,
+        }),
       );
       const legacyRows = await runTasks(
         buildTasks([legacyBase], LEGACY_COMBO_ID, opts.weapons, opts.trainSeeds),

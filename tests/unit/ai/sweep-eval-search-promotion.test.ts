@@ -386,7 +386,10 @@ describe('assertLegacyBaselineProvenance', () => {
   // The declared config/id must be the CANONICAL incumbent base config — see the
   // "tuned riskRewardFused+legacy candidate" test below for the exact spoof this guards.
   const CANONICAL_LEGACY_ID = configId(
-    baseConfigForCombo({ pathing: AIPathingMode.RISK_REWARD_FUSED, decision: AIDecisionMode.LEGACY }),
+    baseConfigForCombo({
+      pathing: AIPathingMode.RISK_REWARD_FUSED,
+      decision: AIDecisionMode.LEGACY,
+    }),
   );
   const VALID_META: ShardMeta = {
     schemaVersion: SHARD_SCHEMA_VERSION,
@@ -539,7 +542,10 @@ describe('assertLegacyBaselineProvenance', () => {
     // configId(body) produces a different id, catching the tampered body.
     const artifact = validArtifact();
     const tunedBody = {
-      ...baseConfigForCombo({ pathing: AIPathingMode.RISK_REWARD_FUSED, decision: AIDecisionMode.LEGACY }),
+      ...baseConfigForCombo({
+        pathing: AIPathingMode.RISK_REWARD_FUSED,
+        decision: AIDecisionMode.LEGACY,
+      }),
       aggression: 1.5,
     };
     artifact.configs[CANONICAL_LEGACY_ID] = tunedBody;

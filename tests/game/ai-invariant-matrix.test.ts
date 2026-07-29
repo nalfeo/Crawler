@@ -15,11 +15,7 @@ import {
 } from '../../src/game/floorScenario.js';
 import { createInputState } from '../../src/shared/input.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
-import {
-  AINpcInteractionAction,
-  AIPathingMode,
-  AIState,
-} from '../../src/game/ai/types.js';
+import { AINpcInteractionAction, AIPathingMode, AIState } from '../../src/game/ai/types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import {
   AI_INVARIANT,

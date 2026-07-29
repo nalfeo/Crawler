@@ -42,7 +42,14 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
   });
 
   it('parses both axes together alongside other flags', () => {
-    const args = cli('--seed', '99', '--decision-mode', 'legacy', '--pathing-mode', 'riskRewardFused');
+    const args = cli(
+      '--seed',
+      '99',
+      '--decision-mode',
+      'legacy',
+      '--pathing-mode',
+      'riskRewardFused',
+    );
     expect(args.seed).toBe(99);
     expect(args.decisionMode).toBe(AIDecisionMode.LEGACY);
     expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
