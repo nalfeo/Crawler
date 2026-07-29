@@ -170,30 +170,20 @@ describe('approve-cli already-approved idempotent retry (concern #6)', () => {
   });
 });
 
-<<<<<<< HEAD
 describe('approve-cli --allow-hard-blocked flag and exit-code-4 (hard-blocked)', () => {
-=======
-describe('approve-cli --sequence already-approved idempotent retry (round-1 code review finding)', () => {
->>>>>>> origin/main
   let savedCI: string | undefined;
 
   beforeEach(() => {
     savedCI = process.env.CI;
     delete process.env.CI;
     mocks.runQueueCommit.mockClear();
-<<<<<<< HEAD
     mocks.loadApprovedEntry.mockClear();
     mocks.approveVariant.mockClear();
-=======
-    mocks.loadApprovedFrameSequenceEntry.mockClear();
-    mocks.approveFrameSequence.mockClear();
->>>>>>> origin/main
   });
 
   afterEach(() => {
     if (savedCI !== undefined) {
       process.env.CI = savedCI;
-<<<<<<< HEAD
     } else {
       delete process.env.CI;
     }
@@ -215,7 +205,32 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
 
     const exitCode = await main(
       ['/fake/runs/iron-sword/run-01', '--variant', '1', '--allow-hard-blocked'],
-=======
+      '/fake/repo',
+    );
+
+    expect(exitCode).toBe(0);
+
+    // Verify allowHardBlocked: true was forwarded to approveVariant.
+    const callArgs = (mocks.approveVariant.mock.calls[0] as unknown[]) ?? [];
+    const opts = callArgs[0] as { allowHardBlocked?: boolean };
+    expect(opts.allowHardBlocked).toBe(true);
+  });
+});
+
+describe('approve-cli --sequence already-approved idempotent retry (round-1 code review finding)', () => {
+  let savedCI: string | undefined;
+
+  beforeEach(() => {
+    savedCI = process.env.CI;
+    delete process.env.CI;
+    mocks.runQueueCommit.mockClear();
+    mocks.loadApprovedFrameSequenceEntry.mockClear();
+    mocks.approveFrameSequence.mockClear();
+  });
+
+  afterEach(() => {
+    if (savedCI !== undefined) {
+      process.env.CI = savedCI;
     }
   });
 
@@ -241,18 +256,10 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
 
     const exitCode = await main(
       ['/fake/runs/player-walk-cycle/run-01', '--sequence'],
->>>>>>> origin/main
       '/fake/repo',
     );
 
     expect(exitCode).toBe(0);
-<<<<<<< HEAD
-
-    // Verify allowHardBlocked: true was forwarded to approveVariant.
-    const callArgs = (mocks.approveVariant.mock.calls[0] as unknown[]) ?? [];
-    const opts = callArgs[0] as { allowHardBlocked?: boolean };
-    expect(opts.allowHardBlocked).toBe(true);
-=======
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 
@@ -266,6 +273,5 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
 
     expect(exitCode).not.toBe(0);
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
->>>>>>> origin/main
   });
 });

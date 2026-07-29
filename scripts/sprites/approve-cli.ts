@@ -30,10 +30,6 @@ import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 
 interface ParsedArgs {
   readonly runDir: string;
-<<<<<<< HEAD
-  readonly variantIndex: number;
-  readonly allowHardBlocked: boolean;
-=======
   /** Absent when `--sequence` is set — a frame-sequence run approves as one unit. */
   readonly variantIndex?: number;
   /**
@@ -41,34 +37,26 @@ interface ParsedArgs {
    * single design-candidate variant. Mutually exclusive with `--variant`.
    */
   readonly sequence: boolean;
->>>>>>> origin/main
+  readonly allowHardBlocked: boolean;
 }
 
 function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   if (argv.length === 0) {
     throw new Error(
       'Usage: npm run sprites:approve -- <runDir> --variant N\n' +
-<<<<<<< HEAD
-        '  <runDir>              Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
-        '  --variant N           Variant index (0-based) to approve\n' +
-        '  --allow-hard-blocked  Override the judge hard-block veto (use consciously)',
-=======
         '   or: npm run sprites:approve -- <runDir> --sequence\n' +
-        '  <runDir>      Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
-        '  --variant N   Variant index (0-based) to approve as a standalone sprite\n' +
-        '  --sequence    Approve every ordered frame of a frameSequence run as one\n' +
-        '                walk-cycle animation sheet (mutually exclusive with --variant)',
->>>>>>> origin/main
+        '  <runDir>              Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
+        '  --variant N           Variant index (0-based) to approve as a standalone sprite\n' +
+        '  --sequence            Approve every ordered frame of a frameSequence run as one\n' +
+        '                        walk-cycle animation sheet (mutually exclusive with --variant)\n' +
+        '  --allow-hard-blocked  Override the judge hard-block veto (use consciously)',
     );
   }
 
   let runDir: string | undefined;
   let variantIndex: number | undefined;
-<<<<<<< HEAD
   let allowHardBlocked = false;
-=======
   let sequence = false;
->>>>>>> origin/main
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -113,11 +101,7 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
     throw new Error('Missing required --variant N (or pass --sequence for a frame-sequence run)');
   }
 
-<<<<<<< HEAD
-  return { runDir, variantIndex, allowHardBlocked };
-=======
-  return { runDir, variantIndex, sequence };
->>>>>>> origin/main
+  return { runDir, variantIndex, allowHardBlocked, sequence };
 }
 
 function exitCodeForError(kind: ApproveError['kind']): number {
@@ -131,14 +115,12 @@ function exitCodeForError(kind: ApproveError['kind']): number {
     case 'summary-invalid':
     case 'manifest-invalid':
       return 3;
-<<<<<<< HEAD
     case 'hard-blocked':
-=======
+      return 4;
     case 'frame-incoherent':
       // Distinct exit code: this is the hard coherence gate refusing to ship
       // drifted art, not a plain input/config error. Callers/CI should treat
       // this as "regenerate the sequence", not "fix a path typo".
->>>>>>> origin/main
       return 4;
     default:
       return 1;
@@ -165,39 +147,9 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
   try {
     let entry: ManifestEntry;
     let alreadyApproved = false;
-<<<<<<< HEAD
-    try {
-      entry = approveVariant({
-        runDir,
-        variantIndex: parsed.variantIndex,
-        manifestPath,
-        catalogPath,
-        publicAssetsDir,
-        repoRoot,
-        allowHardBlocked: parsed.allowHardBlocked,
-      });
-      process.stdout.write(
-        `Approved ${entry.briefId} variant ${entry.variantIndex}\n` +
-          `  asset: ${entry.assetPath}\n` +
-          `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
-          `  source: ${entry.sourceRun}\n` +
-          `  sensors: ${entry.sensorScore}${entry.judgeScore !== null ? ` · judge ${entry.judgeScore}` : ''}\n`,
-      );
-    } catch (err) {
-      // An exact-duplicate re-approve is NOT a terminal failure for durability:
-      // the entry already exists in the manifest, but its earlier best-effort
-      // queue-commit may never have landed on assets/queue. Load the stored
-      // entry and fall through to the SAME queue-commit block below so re-running
-      // the approve genuinely RETRIES the durable push — which is exactly what the
-      // failure warning tells the operator to do. Before this the CLI exited here,
-      // never reaching queue-commit, so that advice was false (concern #6).
-      if (err instanceof ApproveError && err.kind === 'already-approved') {
-        const existing = loadApprovedEntry({
-=======
     if (parsed.sequence) {
       try {
         entry = approveFrameSequence({
->>>>>>> origin/main
           runDir,
           manifestPath,
           catalogPath,
@@ -250,6 +202,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
           catalogPath,
           publicAssetsDir,
           repoRoot,
+          allowHardBlocked: parsed.allowHardBlocked,
         });
         process.stdout.write(
           `Approved ${entry.briefId} variant ${entry.variantIndex}\n` +

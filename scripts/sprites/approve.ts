@@ -233,14 +233,11 @@ export class ApproveError extends Error {
       | 'processed-missing'
       | 'already-approved'
       | 'manifest-invalid'
-<<<<<<< HEAD
-      | 'hard-blocked',
-=======
+      | 'hard-blocked'
       // Frame-sequence-only kinds (approveFrameSequence):
       | 'not-frame-sequence'
       | 'frame-missing'
       | 'frame-incoherent',
->>>>>>> origin/main
     message: string,
   ) {
     super(message);
