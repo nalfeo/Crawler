@@ -368,6 +368,40 @@ jobs:
         continue-on-error: true
         run: npm run typecheck
 
+  # Job 2b: Silent merge-revert guard (issue #2282).
+  #
+  # Its own job rather than a step in check-lightweight, because it needs the
+  # FULL history (`fetch-depth: 0`) to resolve merge bases, and that fetch cost
+  # should not land on the fast lightweight job.
+  #
+  # Deliberately NOT gated on DOCS_ONLY: a merge can silently revert a policy
+  # doc or an ADR just as easily as a source file, and those reverts are just
+  # as invisible in review.
+  check-silent-reverts:
+    name: Silent Merge-Revert Guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the guard resolves merge bases and walks every merge
+          # commit on the branch. A shallow clone cannot do that — the guard
+          # detects this and FAILS CLOSED rather than passing vacuously.
+          fetch-depth: 0
+          # The default `pull_request` checkout is GitHub's synthetic merge
+          # commit, which would itself be walked as a merge and can never carry
+          # an ack trailer. Check out the real PR head instead.
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: ./.github/actions/setup-node
+        with:
+          install-playwright: 'false'
+
+      - name: Silent merge-revert guard
+        env:
+          SILENT_REVERT_BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+        run: npm run check:silent-reverts
+
   # Job 3: Unit tests (critical path, must pass)
   # Runs WITHOUT coverage instrumentation so the gate stays fast (~27 s).
   # v8 coverage adds ~5× overhead (~140 s); it runs separately in the advisory
@@ -596,6 +630,7 @@ jobs:
         changes,
         check-lightweight,
         check-aggregate-rows,
+        check-silent-reverts,
         test-unit,
         test-integration,
         test-sprites,
@@ -665,6 +700,19 @@ jobs:
           # job still runs (and succeeds) so the human-approval gate is
           # unconditionally enforced for labeled docs-only PRs.
           check "Lightweight Checks"            "${{ needs.check-lightweight.result }}"
+          # Silent merge-revert guard (#2282). PR-only by construction, so a
+          # skip is legitimate ONLY on non-pull_request events. Any other skip
+          # fails closed rather than being counted as a pass.
+          silent_revert_result="${{ needs.check-silent-reverts.result }}"
+          if [ "$silent_revert_result" = "success" ]; then
+            echo "✅ Silent merge-revert guard: success"
+          elif [ "$silent_revert_result" = "skipped" ] && \
+               [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "✅ Silent merge-revert guard: skipped (not a pull_request event)"
+          else
+            echo "❌ Silent merge-revert guard: $silent_revert_result"
+            exit 1
+          fi
           # Unit tests: skipped for sprites_only (allow_skipped=true).
           check "Unit tests"                    "${{ needs.test-unit.result }}"        "true"
           # Integration tests: skipped for art_only or sprites_only (allow_skipped=true).
