@@ -39,6 +39,13 @@ export interface CliOptions {
   uxGoal: string;
   setupFile: string | null;
   skipProbeWait: boolean;
+  /**
+   * How long to wait for the surface's readiness probe. The default suits DOM/UI
+   * surfaces, but an engine-backed surface on a cold Playwright profile has to
+   * fetch and decode the whole generated-sprite set before it reports ready, so
+   * heavy surfaces (e.g. the set-piece lab) need to raise this.
+   */
+  probeTimeoutMs: number;
   screenshotName: string;
   viewportWidth: number;
   viewportHeight: number;
@@ -226,6 +233,7 @@ export function parseArgs(argv: string[]): CliOptions {
       'clear slot layout, readable typography, strong hierarchy, coherent spacing, icon-first item representation',
     setupFile: null,
     skipProbeWait: false,
+    probeTimeoutMs: 45_000,
     screenshotName: 'ux-surface',
     viewportWidth: 1600,
     viewportHeight: 1000,
@@ -299,6 +307,15 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === '--no-probe-wait') {
       opts.skipProbeWait = true;
+      continue;
+    }
+    if (arg === '--probe-timeout-ms' && next) {
+      const value = Number(next);
+      if (!Number.isInteger(value) || value < 1_000 || value > 600_000) {
+        throw new Error(`invalid ${arg} "${next}" (expected integer 1000..600000)`);
+      }
+      opts.probeTimeoutMs = value;
+      i += 1;
       continue;
     }
     if (arg === '--screenshot-name' && next) {
@@ -588,7 +605,10 @@ Return ONLY this JSON schema:
 }
 
 async function captureScreenshot(
-  opts: Pick<CliOptions, 'labUrl' | 'setupFile' | 'skipProbeWait' | 'waitMs' | 'clip' | 'viewport'>,
+  opts: Pick<
+    CliOptions,
+    'labUrl' | 'setupFile' | 'skipProbeWait' | 'waitMs' | 'clip' | 'viewport' | 'probeTimeoutMs'
+  >,
   outPath: string,
   cropsDir: string | null,
 ): Promise<CaptureResult> {
@@ -613,7 +633,7 @@ async function captureScreenshot(
       );
     },
     opts.skipProbeWait,
-    { timeout: 45_000 },
+    { timeout: opts.probeTimeoutMs },
   );
   await page.waitForTimeout(250);
   if (opts.setupFile) {

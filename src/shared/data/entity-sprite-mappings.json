@@ -24,7 +24,12 @@
     "player": {
       "proceduralTexture": "player",
       "kenneySpriteId": "player",
-      "kenneyScale": 1.6
+      "kenneyScale": 1.6,
+      "generated": {
+        "briefId": "rhea-vale-v1",
+        "pinnedTextureKey": "rhea-vale-v1-var-0",
+        "scale": 0.72
+      }
     },
     "enemy": {
       "proceduralTexture": "enemy",

@@ -52,7 +52,7 @@
  */
 
 import { parseAssetIssueBody } from './asset-issues.js';
-import { ASSET_CHECKIN_LABEL, ASSET_SURFACE_PATHS, type Exec } from './checkin.js';
+import { ART_SURFACE_ALLOWLIST, ASSET_CHECKIN_LABEL, type Exec } from './checkin.js';
 
 /** How the reconcile cycle resolved. */
 export type ReconcileStatus = 'noop' | 'pr-open';
@@ -253,26 +253,11 @@ async function mustGh(exec: Exec, cwd: string, args: readonly string[]): Promise
 }
 
 /**
- * The guard's TOLERANCE surface — the set of paths a promotion diff may touch
- * without being rejected. It is deliberately BROADER than `ASSET_SURFACE_PATHS`
- * (what check-in actually WRITES, now only the sharded generated dir): the
- * committed `sprite-catalog.json` no longer receives generated rows, but a diff
- * that touches it (e.g. a hand-authored/sheet row, or migration cleanup) is
- * still art-surface and safe to auto-merge. Keeping the guard tolerant of the
- * catalog matches `detect-art-only.sh`'s classifier so a promote→main diff the
- * guard accepts is precisely one CI classifies `art_only=true`.
- */
-const ART_SURFACE_ALLOWLIST = [
-  ...ASSET_SURFACE_PATHS,
-  'src/shared/data/sprite-catalog.json',
-] as const;
-
-/**
  * Is `p` inside the art-surface allowlist? A path is trusted iff it is exactly
  * `src/shared/data/sprite-catalog.json` OR lives under `public/assets/generated/`.
- * Matches `detect-art-only.sh` EXACTLY so the guard and the CI art-only
- * classifier agree by construction — a promote→main diff the guard accepts is
- * precisely one `ci.yml` classifies `art_only=true`.
+ * Matches `detect-art-only.sh` (and `checkin.ts`'s `ART_SURFACE_ALLOWLIST`) EXACTLY so the
+ * guard and the CI art-only classifier agree by construction — a promote→main
+ * diff the guard accepts is precisely one `ci.yml` classifies `art_only=true`.
  *
  * Path handling is strict: reject absolute paths, backslashes, and any `.`/`..`
  * segment so a crafted entry can never escape the allowlist via traversal.
@@ -522,7 +507,7 @@ export async function computeClosingIssueNumbers(
   // an asset is closable only when path + manifest contentHash both match.
   const lsResult = await exec(
     'git',
-    ['ls-tree', '--name-only', '-r', promotedRef, '--', ...ASSET_SURFACE_PATHS],
+    ['ls-tree', '--name-only', '-r', promotedRef, '--', ...ART_SURFACE_ALLOWLIST],
     { cwd: repoRoot },
   );
   if (lsResult.code !== 0) return { issueNumbers: [], complete: false };
@@ -739,7 +724,7 @@ export async function runReconcile(
       baseRef,
       queueRef,
       '--',
-      ...ASSET_SURFACE_PATHS,
+      ...ART_SURFACE_ALLOWLIST,
     ]);
     const queueVsMainArt = parseNameOnly(delta);
     if (queueVsMainArt.length === 0) {

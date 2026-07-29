@@ -1,0 +1,99 @@
+# ASPECT NOTE (Asset Forge, 2026-07-25): the set-piece renderer is now
+# HEIGHT-AUTHORITATIVE (PhaserBridge scales by heightFt / nativeHeightPx and the
+# rendered WIDTH follows the PNG canvas aspect), so the canvas aspect ratio IS
+# the object's real-world proportions. This is ~1.5 ft wide x 2 ft tall, hence a
+# 48x64 canvas (0.75:1). 48x64 is a moderate aspect, so resizeSpriteStrategy()
+# returns 'fit' and the shipped canvas is exactly 48x64.
+type: prop
+name: welcome-room-call-sheet
+description: |
+  Production paperwork pinned to a rough stone dungeon wall: a dog-eared CALL
+  SHEET — a shooting schedule for the day — several sheets deep on a clipboard,
+  the top page curling away from the wall. Front-elevation 3/4 view, looking at
+  the face of the wall, the same view as the already-approved welcome-room-desk
+  (which has "WELCOME" painted on its FRONT face). Modern high-quality pixel art,
+  silhouette readable at 16px.
+
+  REAL-WORLD SIZE: approximately 1.5 FEET WIDE x 2 FEET TALL — a PORTRAIT sheet
+  of paper, noticeably taller than it is wide (about 3 wide to 4 tall). Not
+  square, not landscape. It should fill roughly 80-90% of its cell; do not draw a
+  small object floating in a big empty cell.
+
+  WHAT IT IS: a stack of several thin paper sheets, held together at the top by
+  a battered clipboard clip or a bulldog clip, or simply nailed/taped through the
+  top corners. You can see the edges of the two or three sheets underneath
+  offset slightly behind the top one. The top sheet has CURLED: its bottom
+  corner has lifted and rolled forward, casting a small shadow on the sheet
+  beneath. Corners are dog-eared and soft; one corner is torn off entirely.
+  The paper carries a shooting schedule: horizontal rows of tiny illegible
+  hand-ruled text, a few ruled column lines, a couple of items scratched out, and
+  one item ringed. Keep the text as abstract pixel dashes — it must read as
+  "dense typed schedule" at a glance, never as legible words.
+
+  MOOD — a grimy reality-TV dungeon set, threadbare and over-used. This is the
+  welcome room, the dungeon's shabby reception, re-dressed for the cameras season
+  after season. Three NPCs have been stuck living in it for years and are bored
+  out of their minds; this call sheet has been up so long it has yellowed, gone
+  limp, gathered dust along its top edge and been thumbed at the corners a
+  thousand times. It is admin nobody reads any more.
+
+  IT IS NOT: a poster, a painting, a map, a scroll, a banner, a flag, a wooden
+  sign, a plaque, a book, a shield, a window, or a door. It is loose paperwork on
+  a wall.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. This must sit beside the
+  already-approved welcome-room-desk, welcome-room-bookcase,
+  welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope,
+  welcome-room-show-poster, welcome-sign-left-v1 and prop-wall-sconce-v1 without
+  clashing: deep maroon, dark walnut, tarnished brass, muted and dusty, never
+  bright and never saturated. Keep the paper DARK, DUSTY and DESATURATED — a
+  grimy greyed-out ochre that has yellowed and dulled in a windowless dungeon,
+  NOT bright golden-tan parchment and NOT a clean treasure map. The clip is
+  tarnished, knocked-back brass. The ink is a dulled dark brown-grey, never pure
+  black. BANNED: neon, pure white, pure black, saturated red, saturated yellow,
+  orange, teal, cyan, blue, green, magenta, purple, and any speckle of a hue that
+  is not in the maroon / walnut / brass / dusty-ochre family.
+
+  RENDERING: hard dark contour in the house prop style, muted interior shading,
+  lit from above (the wall sconces are overhead), soft one-pixel contact shadow
+  down and to the right. This prop is WALL-MOUNTED: it hangs on the wall and does
+  not rest on the floor.
+
+  BACKGROUND: fully transparent. Draw ONLY the paperwork and its clip/fixings. Do
+  NOT paint the stone wall behind it, and do not paint a backing panel, frame,
+  border or vignette — the wall is already painted underneath this art in the
+  game. Every pixel that is not paperwork must be fully transparent.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the
+  paperwork's colours so it can be keyed out cleanly. Do not alternate or
+  checkerboard the cell backgrounds, and do not draw any panel, border or frame
+  behind the subject.
+size:
+  width: 48
+  height: 64
+anchor:
+  x: 24
+  y: 56
+sensors:
+  # A pinned sheet of paper is a deliberately near-rectangular flat object, so it
+  # fills far more of its bounding box than the `prop` default range
+  # [0.10, 0.65], which is tuned for irregular grounded props. Same reasoning and
+  # same 0.85 cap as the sibling welcome-room-wall-banner brief; a genuine
+  # background-removal failure lands at ~0.95-1.0 and is still caught.
+  opaqueRatio:
+    min: 0.35
+    max: 0.88
+  # Wall-mounted: no grounded base, so bottom-center grip is meaningless.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - wall-mounted
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

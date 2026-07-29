@@ -33,8 +33,12 @@ import {
   type ExecResult,
   type QueuedAssetCheckin,
 } from './checkin.js';
-import { parseAssetIssueBody } from './asset-issues.js';
+import { mergeCatalogs, parseAssetIssueBody, type CatalogEntry } from './asset-issues.js';
+import { writeCatalogJson } from './catalog-io.js';
 import { composeManifestFromShards, shardPathForKey } from './generated-shards.js';
+
+/** Repo-relative path of the committed sprite catalog. */
+const CATALOG_REL = path.join('src', 'shared', 'data', 'sprite-catalog.json');
 
 export const realExec: Exec = (command, args, options) =>
   new Promise<ExecResult>((resolve) => {
@@ -75,6 +79,14 @@ export const realExec: Exec = (command, args, options) =>
     );
   });
 
+function readJsonSafe<T>(absPath: string, fallback: T): T {
+  if (!existsSync(absPath)) return fallback;
+  try {
+    return JSON.parse(readFileSync(absPath, 'utf8')) as T;
+  } catch {
+    return fallback;
+  }
+}
 /**
  * Copy ONLY `assets`' PNGs — plus their corresponding manifest/catalog
  * entries — from the live `srcRepoRoot` onto the freshly-checked-out worktree
@@ -132,6 +144,46 @@ export async function copyArtSurface(
     mkdirSync(path.dirname(destShard), { recursive: true });
     cpSync(srcShard, destShard);
   }
+}
+
+/**
+ * Overlay ONLY `ids`' catalog rows from `srcRepoRoot` onto `destRepoRoot`.
+ *
+ * Used by catalog-only flows (the sidecar metadata/Tag route) whose edits exist
+ * nowhere but `sprite-catalog.json`, so `copyArtSurface`'s shard+PNG projection
+ * would stage nothing and the queue commit would silently no-op.
+ *
+ * Deliberately narrow: it replaces/inserts exactly the named ids and preserves
+ * every other row on the destination, so it can never clobber a concurrent
+ * writer's unrelated entry.
+ *
+ * @returns `true` when the destination catalog changed on disk.
+ */
+export async function overlayCatalogEntries(
+  srcRepoRoot: string,
+  destRepoRoot: string,
+  ids: readonly string[],
+): Promise<boolean> {
+  if (ids.length === 0) return false;
+
+  const wanted = new Set(ids);
+  const srcPath = path.join(srcRepoRoot, CATALOG_REL);
+  const destPath = path.join(destRepoRoot, CATALOG_REL);
+  const srcCatalog = readJsonSafe<CatalogEntry[]>(srcPath, []);
+  const destCatalog = readJsonSafe<CatalogEntry[]>(destPath, []);
+  if (!Array.isArray(srcCatalog) || !Array.isArray(destCatalog)) return false;
+
+  const srcEntries = srcCatalog.filter((entry) => {
+    const id = (entry as { id?: unknown }).id;
+    return typeof id === 'string' && wanted.has(id);
+  });
+  if (srcEntries.length === 0) return false;
+
+  const merged = mergeCatalogs(destCatalog, srcEntries);
+  const before = existsSync(destPath) ? readFileSync(destPath, 'utf8').toString() : null;
+  mkdirSync(path.dirname(destPath), { recursive: true });
+  await writeCatalogJson(destPath, merged);
+  return readFileSync(destPath, 'utf8').toString() !== before;
 }
 
 function makeReadManifest(repoRoot: string): () => Promise<CheckinManifest> {

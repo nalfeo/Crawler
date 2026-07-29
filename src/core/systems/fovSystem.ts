@@ -11,6 +11,9 @@
  * (persistent) bitmaps for O(1) tile-level queries by other systems (enemy AI,
  * rendering fog-of-war, discovered-terrain dimming).
  *
+ * Opaque tiles are an exception to the sub-tile rule: when any ray reaches a
+ * wall, the **whole** wall tile is marked visible/discovered (see `onVisible`).
+ *
  * ## Performance shape
  *
  * fovSystem accounts for ~1.88% of headless simulation time per
@@ -131,15 +134,30 @@ function createPassState(floorMap: FloorMap): FovPassState {
     // seam, FOV rejects it too. Memoized per tile so the ray is walked once per
     // tile rather than once per sub-tile mapping to it.
     const tileIdx = ty * tileW + tx;
+    const firstTouchThisPass = state.seamGen[tileIdx] !== state.generation;
     let seamBlocked: boolean;
-    if (state.seamGen[tileIdx] === state.generation) {
-      seamBlocked = state.seamValue[tileIdx] !== 0;
-    } else {
+    if (firstTouchThisPass) {
       seamBlocked = tileMap.hasBlockedCornerSeam(state.originTileX, state.originTileY, tx, ty);
       state.seamGen[tileIdx] = state.generation;
       state.seamValue[tileIdx] = seamBlocked ? 1 : 0;
+    } else {
+      seamBlocked = state.seamValue[tileIdx] !== 0;
     }
     if (seamBlocked) return;
+
+    // Opaque tiles are revealed as WHOLE tiles. Shadowcasting only reports the
+    // sub-tiles a ray physically lands on — the face of the wall nearest the
+    // player — so at sub-tile resolution a seen wall would render half-lit with
+    // the rest of the same tile still black. Filling the tile makes walls read
+    // as solid blocks and lets the light field illuminate all of it.
+    //
+    // The seam memo doubles as the "already expanded this pass" flag: the fill
+    // covers every sub-tile of the tile, so later sub-tiles of the same tile
+    // have nothing left to add.
+    if ((flags[tileIdx]! & TileFlags.TRANSPARENT) === 0) {
+      if (firstTouchThisPass) floorMap.markTileVisibleAndDiscovered(tx, ty);
+      return;
+    }
 
     floorMap.markVisibleAndDiscovered(hx, hy);
   };

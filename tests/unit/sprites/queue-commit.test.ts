@@ -15,7 +15,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -244,6 +244,8 @@ describe('runQueueCommit (control flow)', () => {
     expect(
       line.some((l) => l === 'git worktree add /tmp/qc-xyz --detach refs/queue-commit/base-qc-xyz'),
     ).toBe(true);
+    // The sprite catalog is deliberately NOT staged: check-ins write only the
+    // manifest, so two art queue commits no longer conflict by construction.
     expect(line.some((l) => l === 'git add -- public/assets/generated')).toBe(true);
     expect(line.some((l) => l === 'git diff --cached --quiet')).toBe(true);
     expect(line.some((l) => l.startsWith('git commit --no-verify -m'))).toBe(true);
@@ -569,6 +571,9 @@ function toUrl(p: string): string {
 function shardFilePath(repo: string, key: string): string {
   return path.join(repo, 'public', 'assets', 'generated', 'entries', `${key}.json`);
 }
+function catalogPath(repo: string): string {
+  return path.join(repo, 'src', 'shared', 'data', 'sprite-catalog.json');
+}
 
 function writeJson(file: string, value: unknown): void {
   mkdirSync(path.dirname(file), { recursive: true });
@@ -596,6 +601,7 @@ function setupRepos(): Repos {
   const keepPath = path.join(liveDir, 'public', 'assets', 'generated', 'entries', '.gitkeep');
   mkdirSync(path.dirname(keepPath), { recursive: true });
   writeFileSync(keepPath, '');
+  writeJson(catalogPath(liveDir), []);
   gitSync(liveDir, 'add', '-A');
   gitSync(liveDir, 'commit', '-m', 'base');
   gitSync(liveDir, 'push', 'origin', 'main');
@@ -608,6 +614,11 @@ function stageAssetOnDisk(liveDir: string, key: string, png: Buffer): void {
   mkdirSync(genDir, { recursive: true });
   writeFileSync(path.join(genDir, `${key}.png`), png);
   writeJson(shardFilePath(liveDir, key), { assetPath: `generated/${key}.png`, spriteName: key });
+  const catalog = existsSync(catalogPath(liveDir))
+    ? readJson<Array<Record<string, unknown>>>(catalogPath(liveDir))
+    : [];
+  catalog.push({ id: `generated:${key}`, kind: 'sprite', assetPath: `generated/${key}.png` });
+  writeJson(catalogPath(liveDir), catalog);
 }
 
 /**
@@ -762,6 +773,93 @@ describe('runQueueCommit (real git)', () => {
         opts,
       );
       expect(second.status).toBe('noop');
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'durably queues a catalog-ONLY edit when the caller opts in via catalogEntryIds',
+    async () => {
+      // Regression: the sidecar Tag/metadata route mutates ONLY
+      // `sprite-catalog.json` (runMetadataPipeline never writes the manifest or a
+      // PNG). Art check-ins deliberately stage just `public/assets/generated`, so
+      // without the `catalogEntryIds` opt-in `git add` would stage nothing, the
+      // no-op guard would fire, and the metadata edit would be silently dropped
+      // from assets/queue — the exact failure that route was built to prevent.
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+      const deps = realGitDeps(liveDir);
+      const asset: CheckinAsset = {
+        assetPath: 'generated/alpha.png',
+        manifestKey: 'alpha',
+        briefId: null,
+        variantIndex: null,
+      };
+
+      // 1. Normal art check-in seeds the queue.
+      const seeded = await runQueueCommit(liveDir, [asset], deps, {
+        message: 'chore(assets): add alpha',
+      });
+      expect(seeded.status).toBe('committed');
+
+      // 2. Metadata run edits ONLY the catalog row — no manifest, no PNG.
+      const catalog = readJson<Array<Record<string, unknown>>>(catalogPath(liveDir));
+      const row = catalog.find((entry) => entry.id === 'generated:alpha');
+      expect(row).toBeDefined();
+      row!.description = 'A tagged alpha sprite.';
+      row!.tags = ['weapon', 'generated', 'pipeline-approved'];
+      writeJson(catalogPath(liveDir), catalog);
+
+      const tagged = await runQueueCommit(liveDir, [asset], deps, {
+        message: 'chore(assets): metadata for 1 sprite(s)',
+        catalogEntryIds: ['generated:alpha'],
+      });
+
+      // Must NOT be a no-op, and the edit must actually be on the branch.
+      expect(tagged.status).toBe('committed');
+      gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      const queued = JSON.parse(
+        gitSync(liveDir, 'show', 'FETCH_HEAD:src/shared/data/sprite-catalog.json'),
+      ) as Array<Record<string, unknown>>;
+      const queuedRow = queued.find((entry) => entry.id === 'generated:alpha');
+      expect(queuedRow?.description).toBe('A tagged alpha sprite.');
+      expect(queuedRow?.tags).toEqual(['weapon', 'generated', 'pipeline-approved']);
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'leaves the catalog untouched for an ordinary art check-in (single-file conflict surface)',
+    async () => {
+      // The point of narrowing the staged surface: two parallel art check-ins
+      // must not both rewrite `sprite-catalog.json` and conflict by construction.
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+
+      const result = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        realGitDeps(liveDir),
+        { message: 'chore(assets): add alpha' },
+      );
+      expect(result.status).toBe('committed');
+
+      gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      const changed = gitSync(liveDir, 'diff', '--name-only', 'origin/main', 'FETCH_HEAD')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+      expect(changed).not.toContain('src/shared/data/sprite-catalog.json');
+      expect(changed.every((file) => file.startsWith('public/assets/generated/'))).toBe(true);
     },
     GIT_TIMEOUT_MS,
   );

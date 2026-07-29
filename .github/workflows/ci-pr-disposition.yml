@@ -374,6 +374,339 @@ jobs:
 
             core.info(`duplicate-detection complete closed=${closedCount} suspicious-tagged=${suspiciousCount} prs=${closedPrNumbers.join(',')}`);
 
+      - name: Detect content-identical (already-landed) PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Already-landed detection — deterministic content comparison via blob SHAs.
+            //
+            // For each open PR, fetches the list of changed files and compares the blob
+            // SHA of each file at PR HEAD vs. main HEAD.  Identical blob SHA means
+            // byte-identical content (git blobs are content-addressed).
+            //
+            // Verdicts:
+            //   ALL_LANDED         — every changed file already on main → auto-close.
+            //   REGRESSION_CANDIDATE — a file differs on both sides → flag, never close.
+            //   PARTIAL            — some files landed, rest genuinely new → comment + label.
+            //   NOT_LANDED         — no files landed → no action.
+            //
+            // Scope: all open non-draft PRs except those already quarantined, abandoned,
+            // or already carrying the ci-already-landed label (idempotent).
+            //
+            // Design source: GitHub issue #2227.
+            // Golden fixtures: PR #2057/#2112 → ALL_LANDED; PR #1975 → REGRESSION_CANDIDATE;
+            //                  PR #2124 → PARTIAL (14 of 18 landed).
+
+            const { pathToFileURL } = await import('url');
+            const workspace = process.env.GITHUB_WORKSPACE;
+            const {
+              analyzeFiles,
+              classifyFile,
+              renderAlreadyLandedComment,
+              VERDICT,
+              ALREADY_LANDED_COMMENT_MARKER,
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/already-landed.mjs`).href
+            );
+            const {
+              PHASE,
+              PHASE_LABELS,
+              applyLifecycleDecision,
+              parseLifecycleComment,
+            } = await import(
+              pathToFileURL(`${workspace}/.github/scripts/ci-recovery/pr-lifecycle.mjs`).href
+            );
+
+            const { owner, repo } = context.repo;
+            const ALREADY_LANDED_LABEL = 'ci-already-landed';
+            const QUARANTINED_LABEL = PHASE_LABELS[PHASE.QUARANTINED];
+            const ABANDONED_LABEL = PHASE_LABELS[PHASE.ABANDONED];
+            const TRUSTED_LIFECYCLE_APP_IDS = new Set([15368, 990625]);
+            const LABEL_COLORS = {
+              [ALREADY_LANDED_LABEL]: 'bfd4f2',
+            };
+
+            async function ensureLabel(name) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                try {
+                  await github.rest.issues.createLabel({
+                    owner, repo, name,
+                    color: LABEL_COLORS[name] || '8b949e',
+                  });
+                } catch (createError) {
+                  if (createError.status !== 422) throw createError;
+                }
+              }
+            }
+
+            async function addLabelStrict(prNumber, label) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+            }
+
+            async function removeLabelBestEffort(prNumber, label) {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+
+            function isTrustedLifecycleComment(comment) {
+              const assoc = String(comment.author_association || '').toUpperCase();
+              if (['OWNER', 'MEMBER', 'COLLABORATOR'].includes(assoc)) return true;
+              const appId = Number(comment.performed_via_github_app?.id || 0);
+              return TRUSTED_LIFECYCLE_APP_IDS.has(appId);
+            }
+
+            async function upsertLifecycleComment(prNumber, body) {
+              const existingComments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: prNumber, per_page: 100,
+              });
+              const lifecycleMarker = '<!-- crawler-pr-lifecycle:v1 -->';
+              const lifecycleExisting = existingComments.find((c) => String(c.body || '').includes(lifecycleMarker));
+              if (lifecycleExisting) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: lifecycleExisting.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+              }
+            }
+
+            // Upsert the already-landed comment (idempotent via marker).
+            async function upsertAlreadyLandedComment(prNumber, body, existingComments) {
+              const existing = existingComments.find(
+                (c) => String(c.body || '').includes(ALREADY_LANDED_COMMENT_MARKER),
+              );
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+              }
+            }
+
+            // Get the blob SHA for a file path at a given git ref.
+            // Returns null only when the file is proven absent (404).
+            // Throws for any other error (rate-limit, network, etc.) so the caller
+            // can fail closed rather than treating an API error as file absence.
+            async function getBlobShaAtRef(path, ref) {
+              try {
+                const { data } = await github.rest.repos.getContent({ owner, repo, path, ref });
+                // getContent may return an array for directories; guard against it.
+                if (Array.isArray(data)) return null;
+                return String(data.sha || '') || null;
+              } catch (error) {
+                if (error.status === 404) return null;
+                // Non-404: re-throw so caller can fail closed, not silently absent.
+                throw error;
+              }
+            }
+
+            await ensureLabel(ALREADY_LANDED_LABEL);
+
+            // Get main HEAD SHA.
+            let mainSha;
+            try {
+              const { data: branch } = await github.rest.repos.getBranch({ owner, repo, branch: 'main' });
+              mainSha = branch.commit.sha;
+            } catch (error) {
+              core.warning(`Failed to get main HEAD SHA: ${error.message}`);
+              return;
+            }
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+
+            // Scope: non-draft open PRs that are not already quarantined or
+            // permanently abandoned.  PRs labeled ci-already-landed are kept in
+            // scope so they can be re-evaluated when main advances or the PR is
+            // force-pushed (the label upsert is idempotent).
+            const inScope = pulls.filter((p) => {
+              if (p.draft) return false;
+              const labels = (p.labels || []).map((l) => String(l.name || ''));
+              if (labels.includes(QUARANTINED_LABEL)) return false;
+              if (labels.includes(ABANDONED_LABEL)) return false;
+              return true;
+            });
+
+            if (!inScope.length) {
+              core.info('already-landed: no in-scope PRs to check');
+              return;
+            }
+
+            core.info(`already-landed: checking ${inScope.length} PRs against main@${mainSha.slice(0, 12)}`);
+
+            let allLandedCount = 0;
+            let partialCount = 0;
+            const closedPrNumbers = [];
+
+            for (const pull of inScope) {
+              core.info(`already-landed: scanning PR #${pull.number} (${pull.head.sha.slice(0, 8)})`);
+
+              // Fetch the list of files changed in this PR.
+              let prFiles;
+              try {
+                prFiles = await github.paginate(github.rest.pulls.listFiles, {
+                  owner, repo, pull_number: pull.number, per_page: 100,
+                });
+              } catch (error) {
+                core.warning(`pulls.listFiles pr=#${pull.number}: ${error.message}`);
+                continue;
+              }
+
+              if (!prFiles.length) {
+                core.info(`already-landed: pr=#${pull.number} has zero changed files — skipping`);
+                continue;
+              }
+
+              // For each file, get the blob SHA at main HEAD and classify.
+              // Also fetch the previous_filename blob SHA for renamed files to
+              // ensure the old path is absent before calling a rename LANDED.
+              // Any non-404 API error causes us to skip this PR (fail closed).
+              let classifiedFiles;
+              try {
+                classifiedFiles = await Promise.all(
+                  prFiles.map(async (file) => {
+                    const mainBlobSha = await getBlobShaAtRef(file.filename, mainSha);
+                    const mainPreviousFileBlobSha = (file.status === 'renamed' && file.previous_filename)
+                      ? await getBlobShaAtRef(file.previous_filename, mainSha)
+                      : undefined;
+                    return classifyFile(file, mainBlobSha, mainPreviousFileBlobSha);
+                  }),
+                );
+              } catch (error) {
+                core.warning(`already-landed: getBlobSha failed for pr=#${pull.number} — skipping (${error.message})`);
+                continue;
+              }
+
+              const analysis = analyzeFiles(classifiedFiles);
+              core.info(
+                `already-landed: pr=#${pull.number} verdict=${analysis.verdict} ` +
+                `landed=${analysis.landedCount}/${analysis.totalCount} ` +
+                `differs=${analysis.differsCount}`,
+              );
+
+              if (analysis.verdict === VERDICT.NOT_LANDED) {
+                // No files landed — PR has entirely new content, nothing to report.
+                continue;
+              }
+
+              // Fetch PR comments for idempotency check.
+              let prComments;
+              try {
+                prComments = await github.paginate(github.rest.issues.listComments, {
+                  owner, repo, issue_number: pull.number, per_page: 100,
+                });
+              } catch (error) {
+                core.warning(`listComments pr=#${pull.number}: ${error.message}`);
+                prComments = [];
+              }
+
+              const commentBody = renderAlreadyLandedComment(pull.number, analysis, mainSha);
+
+              if (analysis.verdict === VERDICT.ALL_LANDED) {
+                // Re-validate proof against live PR facts before mutating state.
+                // Bail out if the head has drifted since we started scanning.
+                let livePr;
+                try {
+                  const { data } = await github.rest.pulls.get({ owner, repo, pull_number: pull.number });
+                  livePr = data;
+                } catch (error) {
+                  core.warning(`pulls.get live-check pr=#${pull.number}: ${error.message}`);
+                  continue;
+                }
+                if (livePr.head.sha !== pull.head.sha) {
+                  core.notice(`already-landed: skip-close-drift pr=#${pull.number} head changed`);
+                  continue;
+                }
+
+                // Post the evidence comment and apply the informational label.
+                // These are best-effort and do NOT constitute terminal state.
+                try {
+                  await upsertAlreadyLandedComment(pull.number, commentBody, prComments);
+                } catch (error) {
+                  core.warning(`createComment already-landed pr=#${pull.number}: ${error.message}`);
+                }
+
+                try {
+                  await addLabelStrict(pull.number, ALREADY_LANDED_LABEL);
+                } catch (error) {
+                  core.warning(`addLabel pr=#${pull.number}: ${error.message}`);
+                }
+
+                // Attempt to close BEFORE applying terminal lifecycle state.
+                // If close fails, skip the ABANDONED transition so the PR is not
+                // permanently excluded from future sweeps with a terminal label.
+                let closedSuccessfully = false;
+                try {
+                  await github.rest.pulls.update({ owner, repo, pull_number: pull.number, state: 'closed' });
+                  closedSuccessfully = true;
+                } catch (error) {
+                  core.warning(`pulls.update close pr=#${pull.number}: ${error.message} — skipping terminal lifecycle`);
+                }
+
+                if (!closedSuccessfully) {
+                  continue;
+                }
+
+                // Close succeeded — now apply terminal ABANDONED lifecycle state.
+                // Find and parse the lifecycle comment for a clean phase transition.
+                const lifecycleComments = prComments.filter(
+                  (c) => String(c.body || '').includes('<!-- crawler-pr-lifecycle:v1 -->') && isTrustedLifecycleComment(c),
+                );
+                const lifecycleRecord = lifecycleComments.length === 1
+                  ? (() => { try { return parseLifecycleComment(lifecycleComments[0].body); } catch { return null; } })()
+                  : null;
+
+                await applyLifecycleDecision({
+                  prNumber: pull.number,
+                  currentPhase: lifecycleRecord?.phase ?? null,
+                  currentHeadSha: lifecycleRecord?.headSha ?? null,
+                  targetPhase: PHASE.ABANDONED,
+                  blockReason: 'already-landed:all-files-byte-identical',
+                  headSha: livePr.head.sha,
+                  mode: 'live',
+                  writeComment: (n, body) => upsertLifecycleComment(n, body),
+                  addLabel: (n, label) => addLabelStrict(n, label),
+                  removeLabel: (n, label) => removeLabelBestEffort(n, label),
+                });
+
+                closedPrNumbers.push(pull.number);
+                allLandedCount += 1;
+                core.notice(
+                  `already-landed: closed pr=#${pull.number} ` +
+                  `files=${analysis.totalCount} main=${mainSha.slice(0, 12)}`,
+                );
+
+              } else if (analysis.verdict === VERDICT.PARTIAL) {
+                // Post informational comment + label. Do NOT close.
+                try {
+                  await upsertAlreadyLandedComment(pull.number, commentBody, prComments);
+                } catch (error) {
+                  core.warning(`createComment partial pr=#${pull.number}: ${error.message}`);
+                }
+                try {
+                  await addLabelStrict(pull.number, ALREADY_LANDED_LABEL);
+                } catch (error) {
+                  core.warning(`addLabel pr=#${pull.number}: ${error.message}`);
+                }
+                partialCount += 1;
+                core.notice(
+                  `already-landed: partial pr=#${pull.number} ` +
+                  `landed=${analysis.landedCount}/${analysis.totalCount} ` +
+                  `differs=${analysis.differsCount}`,
+                );
+              }
+            }
+
+            core.info(
+              `already-landed complete ` +
+              `all-landed=${allLandedCount} partial=${partialCount} ` +
+              `closed=${closedPrNumbers.join(',')}`,
+            );
+
       - name: Quarantine abandon-candidate PRs (lifecycle FSM, non-blocking)
         uses: actions/github-script@v7
         with:
