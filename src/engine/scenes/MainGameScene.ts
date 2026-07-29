@@ -3071,10 +3071,26 @@ export class MainGameScene extends Phaser.Scene {
             const fit = generatedDoorFits.get(mode.textureKey);
             if (mode.quarterTurnsCcw === 1) {
               // Vertical doorway wearing face-on art: turn it 90° CCW, matching
-              // the terrain packs' own measured convention. The wall run is
-              // up↕down here, so the door must span the tile in Y — and after the
-              // turn the art's WIDTH maps to on-screen height, which is why the
-              // same width-authoritative `scale` is correct for both branches.
+              // the terrain packs' own measured convention. Rotation swaps which
+              // screen axis each art axis lands on: the art's HEIGHT becomes the
+              // on-screen X extent (along the corridor) and its WIDTH becomes the
+              // on-screen Y extent (across the gap in the north↕south wall run).
+              //
+              // Stated plainly because the height-authoritative rule is a worse
+              // fit here than on the horizontal branch, and the comment this
+              // replaced claimed the opposite: `doorTargetHeightPx / box.height`
+              // pins the 6.5 ft axis along the CORRIDOR, so a turned door
+              // overhangs ~1.25 ft onto the walkable floor either side, while the
+              // free width axis is what spans the 4 ft doorway gap. On the
+              // horizontal branch the free axis overhangs onto WALL tiles, which
+              // is why the trade was accepted there.
+              //
+              // This branch is unreachable today — `quarterTurnsCcw` is only ever
+              // 1 for the two vertical keys, and neither has approved art, so
+              // every vertical doorway currently falls back to unrotated face-on
+              // horizontal art. Revisit the axis choice when the side pair ships;
+              // do not assume the horizontal rule transfers.
+              //
               // Pivot and position on the opaque-box centre.
               addDoorImage(
                 cx,
