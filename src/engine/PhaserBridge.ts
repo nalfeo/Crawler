@@ -504,6 +504,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
    * `generatedFacingByTexture` whenever the registry identity changes.
    */
   const generatedBoundsByTexture = new Map<string, OpaqueBounds>();
+  const playerWalkMovingByEid = new Map<number, boolean>();
   const mobMotionStates = new Map<number, MobMotionRenderState>();
   const mobFlashOverlays = new Map<number, Phaser.GameObjects.Image>();
   let lastRenderMs: number | null = null;
@@ -598,19 +599,28 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const animatable = obj as Partial<Phaser.GameObjects.Sprite>;
         const anims = animatable.anims;
         if (!anims || typeof anims.play !== 'function') {
+          playerWalkMovingByEid.delete(eid);
           return;
         }
-        if (!generatedAnimationByTexture.has(obj.texture.key)) {
+        const walkAnimation = generatedAnimationByTexture.get(obj.texture.key);
+        if (!walkAnimation) {
+          playerWalkMovingByEid.delete(eid);
           return;
         }
         const vx = velocity.x[eid] ?? 0;
         const vy = velocity.y[eid] ?? 0;
         const isMoving = vx * vx + vy * vy > PLAYER_WALK_SPEED_EPSILON_SQ;
+        const wasMoving = playerWalkMovingByEid.get(eid) ?? false;
         if (isMoving) {
-          // `true` (ignoreIfPlaying) avoids restarting the cycle from frame 0
-          // every render tick while the player keeps moving.
-          anims.play(walkAnimationKey(obj.texture.key), true);
-        } else if (typeof anims.stop === 'function') {
+          // `true` (ignoreIfPlaying) avoids restarting looped cycles from frame 0
+          // every render tick while the player keeps moving. For one-shot
+          // (`loop=false`) walk strips, replay only when movement transitions from
+          // rest -> moving; otherwise Phaser marks the anim complete and repeated
+          // `play()` would incorrectly loop the one-shot on every sync.
+          if (walkAnimation.loop || !wasMoving) {
+            anims.play(walkAnimationKey(obj.texture.key), true);
+          }
+        } else if (wasMoving && typeof anims.stop === 'function') {
           anims.stop();
           // `stop()` freezes on whatever mid-stride frame the cycle was on —
           // explicitly snap back to frame 0, the sheet's designated idle
@@ -620,6 +630,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             (animatable as Phaser.GameObjects.Sprite).setFrame(0);
           }
         }
+        playerWalkMovingByEid.set(eid, isMoving);
       };
 
       const ensureMobMotionState = (
@@ -2014,6 +2025,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         }
         visual.obj.destroy();
         visuals.delete(eid);
+        playerWalkMovingByEid.delete(eid);
         // Remove weapon anchor so dead/despawned entities don't leave stale
         // offsets that could be picked up if the eid is reused later.
         world.entityWeaponAnchors.delete(eid);

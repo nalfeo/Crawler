@@ -12,6 +12,11 @@ import {
 } from '../../core/index.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import {
+  GENERATED_SPRITE_REGISTRY_KEY,
+  preloadGeneratedSprites,
+} from '../../engine/generatedAssets/index.js';
+import { buildGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { ftToPx, pxToFt } from '../../shared/units.js';
@@ -39,6 +44,33 @@ const GRID_SIZE_FT = 6;
 const ENEMY_COUNT = 10;
 const ENEMY_MARGIN_FT = 4;
 const LAB_ID = 'movement-lab';
+const PLAYER_WALK_TEXTURE_KEY = 'player-walk-placeholder-v1-var-0';
+
+function buildMovementLabSpriteRegistry() {
+  return buildGeneratedSpriteRegistry({
+    version: 1,
+    entries: {
+      [PLAYER_WALK_TEXTURE_KEY]: {
+        briefId: 'player-walk-placeholder-v1',
+        spriteName: PLAYER_WALK_TEXTURE_KEY,
+        assetPath: 'generated/rhea-vale-v1-var-0-walk.png',
+        approvedAt: '2026-08-01T00:00:00.000Z',
+        sourceRun: 'movement-lab',
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: 'n/a',
+        judgeScore: null,
+        animation: {
+          frameWidth: 64,
+          frameHeight: 64,
+          frameCount: 3,
+          frameRate: 6,
+          loop: true,
+        },
+      },
+    },
+  });
+}
 
 class TrailBuffer {
   private readonly points: Array<TrailPoint | undefined>;
@@ -181,6 +213,14 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 
     constructor() {
       super({ key: 'MovementLabScene' });
+    }
+
+    preload(): void {
+      const generatedRegistry = buildMovementLabSpriteRegistry();
+      this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, generatedRegistry);
+      if (this.load) {
+        preloadGeneratedSprites(this.load, generatedRegistry);
+      }
     }
 
     create(): void {

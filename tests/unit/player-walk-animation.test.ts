@@ -57,6 +57,32 @@ function buildTestRegistry() {
   });
 }
 
+function buildTestRegistryWithLoop(loop: boolean) {
+  return buildGeneratedSpriteRegistry({
+    version: 1,
+    entries: {
+      [PLAYER_WALK_TEXTURE_KEY]: {
+        briefId: 'player-walk-placeholder-v1',
+        spriteName: 'Player walk placeholder',
+        assetPath: `generated/${PLAYER_WALK_TEXTURE_KEY}.png`,
+        approvedAt: '2026-01-01T00:00:00.000Z',
+        sourceRun: 'test-fixture',
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: 'n/a',
+        judgeScore: null,
+        animation: {
+          frameWidth: 64,
+          frameHeight: 64,
+          frameCount: 3,
+          frameRate: 6,
+          loop,
+        },
+      },
+    },
+  });
+}
+
 /** Drives one bridge render tick, then advances the mock animation clock. */
 function stepFrame(
   bridge: ReturnType<typeof createPhaserBridge>,
@@ -181,5 +207,42 @@ describe('player walk-cycle animation (hard success gate)', () => {
     addComponent(world.ecs, eid, set(Velocity, { x: 3, y: 0 }));
     bridge.sync(world);
     expect(player.flipX).toBe(false);
+  });
+
+  it('plays non-looping walk strips once per movement episode', () => {
+    const generatedRegistry = buildTestRegistryWithLoop(false);
+    const { scene, sprites } = createSceneStub({ generatedRegistry });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    addComponent(world.ecs, eid, set(Velocity, { x: 3, y: 0 }));
+
+    bridge.sync(world);
+    const player = sprites[0]!;
+    expect(player.anims.isPlaying).toBe(true);
+
+    for (let i = 0; i < 8; i += 1) {
+      stepFrame(bridge, world, sprites, 1000 / 6);
+    }
+    expect(player.anims.isPlaying).toBe(false);
+    expect(player.anims.currentFrame.index).toBe(2);
+
+    for (let i = 0; i < 4; i += 1) {
+      stepFrame(bridge, world, sprites, 1000 / 6);
+      expect(player.anims.isPlaying).toBe(false);
+      expect(player.anims.currentFrame.index).toBe(2);
+    }
+
+    addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
+    bridge.sync(world);
+    expect(player.frame).toBe(0);
+
+    addComponent(world.ecs, eid, set(Velocity, { x: 3, y: 0 }));
+    bridge.sync(world);
+    expect(player.anims.isPlaying).toBe(true);
   });
 });

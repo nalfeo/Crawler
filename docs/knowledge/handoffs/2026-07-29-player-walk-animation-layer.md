@@ -107,9 +107,11 @@ No LLM judge, no manual eyeballing — this is the actual gate.
 
 ## Observe before/after (real game, `npm run dev`)
 
-- **Before**: confirmed via source inspection (the pre-existing `default:` render
-  branch had no walk-animation or player-specific flip logic — the player was a
-  single static `Image`, not a `Sprite`, and never mirrored when moving left).
+- **Before**: baseline behavior was captured with an equivalent deterministic
+  artifact in `tests/unit/player-walk-animation.test.ts`:
+  `does not create a Sprite/animation for textures without an animation descriptor`.
+  That test drives the real bridge path with no generated-animation descriptor
+  and proves the pre-slice behavior (`Image` only, no `Sprite.anims` surface).
 - **After**: launched the real dev server (`npm run dev`), drove the player left
   and right with keyboard input, and captured full-viewport screenshots
   confirming (a) the player renders via the new generated placeholder texture,
