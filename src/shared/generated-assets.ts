@@ -133,6 +133,19 @@ const manifestEntrySchema = z
      * PNG is a horizontal spritesheet strip rather than a single frame. Absent
      * entries keep loading as a flat image (backward compatible) — see
      * `preloadGeneratedSprites` in `src/engine/generatedAssets/preload.ts`.
+     *
+     * CONTRACT (shared between the sprite-generation pipeline and the engine
+     * consumer — see `registerGeneratedSpriteAnimations` in
+     * `src/engine/generatedAssets/animations.ts`):
+     * - The PNG at `assetPath` is a **single row**, laid out left-to-right,
+     *   of `frameCount` frames each exactly `frameWidth` x `frameHeight` px,
+     *   with no padding/margin between frames (standard Phaser `spritesheet`
+     *   frame numbering: frame `0` is the leftmost cell, frame
+     *   `frameCount - 1` the rightmost).
+     * - **Frame `0` is the walk cycle's designated idle/resting pose.** When
+     *   the entity stops moving, the engine snaps back to frame 0 rather than
+     *   freezing on whatever mid-stride frame the loop was on — there is no
+     *   separate "idle" field; frame 0 of this same strip doubles as idle.
      */
     animation: z
       .object({

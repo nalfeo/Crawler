@@ -612,6 +612,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           anims.play(walkAnimationKey(obj.texture.key), true);
         } else if (typeof anims.stop === 'function') {
           anims.stop();
+          // `stop()` freezes on whatever mid-stride frame the cycle was on —
+          // explicitly snap back to frame 0, the sheet's designated idle
+          // pose, so resting always reads as a clean standing frame rather
+          // than a frozen stride. See `GeneratedSpriteAnimation` contract.
+          if (typeof (animatable as Partial<Phaser.GameObjects.Sprite>).setFrame === 'function') {
+            (animatable as Phaser.GameObjects.Sprite).setFrame(0);
+          }
         }
       };
 
@@ -1495,11 +1502,20 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             } else {
               img.setScale(visual.baseScale);
               if (entityType === 'player') {
-                const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
-                const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
-                const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
-                if (typeof img.setFlipX === 'function') {
-                  img.setFlipX(shouldMirror);
+                // Unlike the enemy branch (which is nearly always moving toward a
+                // target), the player frequently has vx === 0 — standing still, or
+                // walking straight up/down. Only re-derive facing when there is a
+                // clear horizontal velocity signal; otherwise keep the sprite's
+                // current flip so the player doesn't snap to "face left" every
+                // time they stop or move vertically.
+                const vx = velocity.x[eid] ?? 0;
+                if (Math.abs(vx) > ENEMY_RIGHTWARD_FLIP_EPSILON) {
+                  const movingRight = vx > 0;
+                  const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
+                  const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
+                  if (typeof img.setFlipX === 'function') {
+                    img.setFlipX(shouldMirror);
+                  }
                 }
                 playPlayerWalkAnimation(img, eid);
               } else if (entityType !== 'npc' && typeof img.setFlipX === 'function') {

@@ -72,6 +72,11 @@ export class MockImage {
     return this;
   }
 
+  setFrame(frame: number): this {
+    this.frame = frame;
+    return this;
+  }
+
   setAlpha(alpha: number): this {
     this.alpha = alpha;
     return this;

@@ -89,6 +89,8 @@ describe('player walk-cycle animation (hard success gate)', () => {
     const player = sprites[0]!;
     expect(player.textureKey).toBe(PLAYER_WALK_TEXTURE_KEY);
     expect(player.anims.isPlaying).toBe(true);
+    // Moving right with the default (right-facing) texture must not mirror.
+    expect(player.flipX).toBe(false);
 
     const framesSeenWhileMoving: number[] = [player.anims.currentFrame.index];
     for (let i = 0; i < 6; i += 1) {
@@ -109,12 +111,21 @@ describe('player walk-cycle animation (hard success gate)', () => {
     addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
     bridge.sync(world);
     expect(player.anims.isPlaying).toBe(false);
+    // Stopping (vx === 0) must NOT re-derive facing — the player should keep
+    // facing right (its last horizontal direction), not snap to mirrored.
+    expect(player.flipX).toBe(false);
     const frozenFrame = player.anims.currentFrame.index;
 
     for (let i = 0; i < 6; i += 1) {
       stepFrame(bridge, world, sprites, 1000 / 6);
       expect(player.anims.currentFrame.index).toBe(frozenFrame);
     }
+
+    // Stopping mid-stride must snap the DISPLAYED sprite frame back to 0 —
+    // the walk sheet's designated idle pose — not freeze on whatever
+    // mid-cycle frame the loop happened to be on (contract documented on
+    // `GeneratedSpriteEntry['animation']` in `src/shared/generated-assets.ts`).
+    expect(player.frame).toBe(0);
   });
 
   it('does not create a Sprite/animation for textures without an animation descriptor', () => {
@@ -135,5 +146,40 @@ describe('player walk-cycle animation (hard success gate)', () => {
 
     expect(sprites).toHaveLength(0);
     expect(images).toHaveLength(1);
+  });
+
+  it('preserves horizontal facing when moving vertically or at rest, and mirrors when moving left', () => {
+    const generatedRegistry = buildTestRegistry();
+    const { scene, sprites } = createSceneStub({ generatedRegistry });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    // Move left first — should mirror.
+    addComponent(world.ecs, eid, set(Velocity, { x: -3, y: 0 }));
+    bridge.sync(world);
+    const player = sprites[0]!;
+    expect(player.flipX).toBe(true);
+
+    // Now walk straight up (vx === 0) — facing must be preserved (still mirrored).
+    addComponent(world.ecs, eid, set(Velocity, { x: 0, y: -3 }));
+    bridge.sync(world);
+    expect(player.anims.isPlaying).toBe(true);
+    expect(player.flipX).toBe(true);
+
+    // Come to a full stop — facing must still be preserved.
+    addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
+    bridge.sync(world);
+    expect(player.anims.isPlaying).toBe(false);
+    expect(player.flipX).toBe(true);
+
+    // Finally move right — should un-mirror.
+    addComponent(world.ecs, eid, set(Velocity, { x: 3, y: 0 }));
+    bridge.sync(world);
+    expect(player.flipX).toBe(false);
   });
 });
