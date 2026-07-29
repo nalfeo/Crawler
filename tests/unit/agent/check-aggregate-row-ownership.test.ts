@@ -354,6 +354,45 @@ describe('checkRowOwnership', () => {
     expect(result.rowsChecked).toBe(0);
     expect(result.findings).toHaveLength(0);
   });
+
+  // --- Field-level stale: PR updates one field but leaves another at the stale value ---
+
+  it('detects field-level staleness: PR updates one field but leaves another at stale merge-base value', () => {
+    // base={state:'old',note:'x'}, main={state:'new',note:'x'}, PR={state:'old',note:'y'}
+    // PR changed note but left state at the stale value — whole-row stale check passes (rows differ)
+    // but field-level check must catch state.
+    const mergeBase = rowsFrom({ 'boss-slam': { state: 'old', note: 'x' } });
+    const main = rowsFrom({ 'boss-slam': { state: 'new', note: 'x' } });
+    const pr = rowsFrom({ 'boss-slam': { state: 'old', note: 'y' } });
+    const result = checkRowOwnership(pr, mergeBase, main);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]!.kind).toBe('stale');
+    expect(result.findings[0]!.fieldPath).toBe('state');
+    expect(result.findings[0]!.rowKey).toBe('boss-slam');
+    expect(result.findings[0]!.detail).toMatch(/field '?state'?.*stale/i);
+  });
+
+  it('passes when PR updates all stale fields along with other changes', () => {
+    const mergeBase = rowsFrom({ 'boss-slam': { state: 'old', note: 'x' } });
+    const main = rowsFrom({ 'boss-slam': { state: 'new', note: 'x' } });
+    const pr = rowsFrom({ 'boss-slam': { state: 'new', note: 'y' } }); // state updated, note changed
+    const result = checkRowOwnership(pr, mergeBase, main);
+    expect(result.findings).toHaveLength(0);
+  });
+
+  it('detects a field added to main after branch fork that is absent from PR row (PR changed other fields)', () => {
+    // Main added newField after branch fork. PR updates another field (x) but doesn't include newField.
+    // Because PR changed the row (x: 1→2), Rule 2 doesn't fire — Rule 3 must catch newField.
+    const mergeBase = rowsFrom({ 'sprite-a': { x: 1 } });
+    const main = rowsFrom({ 'sprite-a': { x: 1, newField: 'added' } }); // newField added to main
+    const pr = rowsFrom({ 'sprite-a': { x: 2 } }); // PR changed x but omits newField
+    const result = checkRowOwnership(pr, mergeBase, main);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]!.kind).toBe('deleted-field');
+    expect(result.findings[0]!.fieldPath).toBe('newField');
+    expect(result.findings[0]!.rowKey).toBe('sprite-a');
+    expect(result.findings[0]!.detail).toMatch(/after this branch forked/i);
+  });
 });
 
 // ---------------------------------------------------------------------------

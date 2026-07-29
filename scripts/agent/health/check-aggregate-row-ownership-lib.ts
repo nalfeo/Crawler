@@ -221,14 +221,44 @@ export function checkRowOwnership(
       continue; // Don't also report field deletions for the same stale row.
     }
 
-    // Rule 3: Field deleted by PR — row exists in all three but a field was stripped.
-    // Only checked when the row differs from the merge-base (if equal, stale check covers it).
+    // Rule 3: Per-field checks — row exists in all three versions and PR changed the row.
+    // (Rule 2 covers the whole-row stale case; we reach here only when PR[key] != mergeBase[key].)
+    //
+    // For each field that appears in main (the authoritative source):
+    //   a. Main-only field (added after branch fork) absent from PR → deleted-field.
+    //   b. Field in both mergeBase and main, deleted by PR → deleted-field.
+    //   c. Field in both mergeBase and main, present in PR but kept at the stale merge-base
+    //      value while main has advanced it → stale (field-level).
     const mergeBaseParsed = JSON.parse(mergeBaseValue) as Record<string, unknown>;
     const mainParsed = JSON.parse(mainValue) as Record<string, unknown>;
     const prParsed = JSON.parse(prValue) as Record<string, unknown>;
 
-    for (const field of Object.keys(mergeBaseParsed)) {
-      if (!(field in prParsed) && field in mainParsed) {
+    for (const field of Object.keys(mainParsed)) {
+      const fieldInMergeBase = field in mergeBaseParsed;
+      const fieldInPr = field in prParsed;
+
+      if (!fieldInMergeBase) {
+        // Field only in main (added after branch fork) — if PR omits it, flag it.
+        if (!fieldInPr) {
+          findings.push({
+            rowKey: key,
+            kind: 'deleted-field',
+            fieldPath: field,
+            detail:
+              `Row '${key}': field '${field}' was added to origin/main after this branch ` +
+              `forked but is absent from this PR's version of the row. ` +
+              `Fix: rebase onto origin/main or add the missing field.`,
+          });
+        }
+        continue;
+      }
+
+      // Field exists in both mergeBase and main.
+      const mergeBaseFieldStr = canonicalize(mergeBaseParsed[field]);
+      const mainFieldStr = canonicalize(mainParsed[field]);
+
+      if (!fieldInPr) {
+        // Rule 3b: Field deleted by PR but present in both mergeBase and main.
         findings.push({
           rowKey: key,
           kind: 'deleted-field',
@@ -237,6 +267,24 @@ export function checkRowOwnership(
             `Row '${key}': field '${field}' was removed by this PR but exists ` +
             `in both the merge-base and origin/main. If removal is intentional, ` +
             `the field must also be removed from origin/main before this PR merges.`,
+        });
+        continue;
+      }
+
+      // Rule 3c: Field-level stale — PR updated other fields but left this one at the
+      // stale merge-base value while main has since advanced it.
+      const prFieldStr = canonicalize(prParsed[field]);
+      if (prFieldStr === mergeBaseFieldStr && mergeBaseFieldStr !== mainFieldStr) {
+        findings.push({
+          rowKey: key,
+          kind: 'stale',
+          fieldPath: field,
+          detail:
+            `Row '${key}': field '${field}' has the same value as the merge-base, ` +
+            `but origin/main has a newer value for this field. This PR updated other ` +
+            `fields in the row but left '${field}' at the stale merge-base value, ` +
+            `which would silently revert main's update on merge. ` +
+            `Fix: update this field to match origin/main's value.`,
         });
       }
     }
