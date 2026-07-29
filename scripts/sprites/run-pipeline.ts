@@ -331,6 +331,22 @@ export interface JudgePassArgs {
    * preserve their prior verdicts). Omit to consider every variant.
    */
   readonly variantIndexes?: ReadonlySet<number>;
+  /**
+   * Cap the number of judged variants (highest sensor score first). Overrides
+   * `brief.judge.maxVariants` when set. Must be a finite integer in `1..64`
+   * (the brief schema's own `judge.maxVariants` range).
+   */
+  readonly judgeMaxVariants?: number;
+  /**
+   * Number of variants to judge in parallel. Defaults to `1` (the sequential
+   * loop, byte-identical to prior behaviour). Must be a finite integer `>= 1`.
+   * Values `> 1` require NO `judgeBudget` and NO `judgeCache` — both introduce
+   * cross-call races (a shared budget gate, and a check-then-call cache miss) —
+   * so `runJudgePass` throws if either is supplied with `concurrency > 1`. The
+   * only production caller that sets this is the theme-equipment variant-approval
+   * rejudge, which passes neither.
+   */
+  readonly concurrency?: number;
 }
 
 export interface JudgePassResult {
@@ -366,10 +382,17 @@ export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult
     return { judgePlan, judgeSkipReason };
   }
 
-  // Decide which considered variants are judge-eligible. Cap by maxVariants to
-  // bound cost; ranking by sensor score spends budget on the best candidates.
+  // Resolve + validate the judged-variant cap. A caller override wins over the
+  // brief's own cap; both must be a finite integer in the brief schema's range.
+  const rawCap = args.judgeMaxVariants ?? brief.judge.maxVariants;
+  if (!Number.isInteger(rawCap) || rawCap < 1 || rawCap > 64) {
+    throw new Error(`runJudgePass: judge cap must be an integer in 1..64 (got ${String(rawCap)}).`);
+  }
+
+  // Decide which considered variants are judge-eligible. Cap by the resolved
+  // cap to bound cost; ranking by sensor score spends on the best candidates.
   const ordered = [...consideredVariants].sort((a, b) => b.score - a.score || a.index - b.index);
-  const eligible = new Set(ordered.slice(0, brief.judge.maxVariants).map((e) => e.index));
+  const eligible = new Set(ordered.slice(0, rawCap).map((e) => e.index));
 
   for (const e of consideredVariants) {
     if (!eligible.has(e.index)) {
@@ -378,53 +401,137 @@ export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult
     }
   }
 
-  // Sequential judging keeps Azure rate-limit headroom predictable and makes
-  // per-variant errors easy to attribute, same as the generation pipeline.
+  // Validate concurrency. 1 = the historical sequential loop (below). Values
+  // > 1 fan out a bounded worker pool and are incompatible with the budget gate
+  // and the judge cache, both of which race across concurrent judge calls.
+  const concurrency = args.concurrency ?? 1;
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error(
+      `runJudgePass: concurrency must be an integer >= 1 (got ${String(concurrency)}).`,
+    );
+  }
+  if (concurrency > 1 && (args.judgeBudget || args.judgeCache)) {
+    throw new Error(
+      'runJudgePass: concurrency > 1 is incompatible with judgeBudget/judgeCache ' +
+        '(both race across concurrent judge calls); use concurrency 1 for ' +
+        'budgeted or cached runs.',
+    );
+  }
+
+  const providerMissingMessage =
+    'runJudgePass: judging requested but no vision provider supplied. Configure ' +
+    'AZURE_OPENAI_VISION_DEPLOYMENT (and SPRITES_VISION_PROVIDER=azure-openai) or ' +
+    'disable judging.';
+
+  // Shared judge-call argument shape. `provider` is passed explicitly (already
+  // null-checked by each path) so this stays a pure function of the variant.
+  const buildJudgeArgs = (e: ProcessedVariant, provider: VisionProvider) => ({
+    processed: e.processed,
+    referencePngs: args.referencePngs,
+    brief,
+    styleGuide: args.styleGuide,
+    provider,
+    variantIndex: e.index,
+    // The judge sidecar (`NN.judge.json`) is written with `writeFileSync`, so
+    // `processedDir` must be a real local path. For non-local stores
+    // `store.resolve()` returns a blob URL that `path.join` would mangle into
+    // an ENOENT path. Omit it off-local: the scorecard is still embedded in
+    // the run summary, so no judge data is lost.
+    ...(args.store.backend === 'local'
+      ? { processedDir: args.store.resolve(args.storeKey('processed')) }
+      : {}),
+    variantPath: e.processedPath,
+    ...(args.judgeCache ? { cache: args.judgeCache } : {}),
+    ...(args.now ? { now: args.now } : {}),
+    ...(args.env ? { env: args.env } : {}),
+  });
+
+  if (concurrency === 1) {
+    // Sequential judging keeps Azure rate-limit headroom predictable and makes
+    // per-variant errors easy to attribute, same as the generation pipeline.
+    for (const e of consideredVariants) {
+      if (!eligible.has(e.index)) continue;
+      if (!args.visionProvider) {
+        throw new Error(providerMissingMessage);
+      }
+      // Budget gate runs BEFORE the call so a blown budget skips cheaply. Cache
+      // hits cost $0 of Azure spend, so they bypass the gate.
+      if (args.judgeBudget && args.judgeBudget.wouldExceed() && !args.judgeCache) {
+        args.judgeBudget.recordSkip();
+        const warn = args.warn ?? logger.warn.bind(logger);
+        warn(`judge-budget exhausted: skipping variant ${e.index} (${args.judgeBudget.format()})`);
+        judgePlan.set(e.index, null);
+        judgeSkipReason.set(e.index, 'over-budget');
+        continue;
+      }
+      const cacheMissesBefore = args.judgeCache?.stats.misses ?? 0;
+      const scorecard = await judgeVariant(buildJudgeArgs(e, args.visionProvider));
+      const newAzureCall = args.judgeCache
+        ? args.judgeCache.stats.misses > cacheMissesBefore
+        : true;
+      if (newAzureCall && args.judgeBudget && scorecard.usage) {
+        args.judgeBudget.recordCall(scorecard.usage);
+      }
+      judgePlan.set(e.index, scorecard);
+      judgeSkipReason.set(e.index, null);
+    }
+    return { judgePlan, judgeSkipReason };
+  }
+
+  // Parallel path (concurrency > 1): a bounded worker pool. No budget and no
+  // cache (both rejected above), so there is no cross-call accounting to race —
+  // only independent Azure calls whose 429/5xx backoff already lives in the
+  // provider transport. On the first error we STOP handing out new work and let
+  // every in-flight worker settle before rethrowing, so no judge call starts —
+  // or writes a sidecar — after `runJudgePass` has already rejected.
+  const eligibleVariants = consideredVariants.filter((e) => eligible.has(e.index));
+  const results = new Map<number, JudgeScorecard>();
+  let nextIndex = 0;
+  let aborted = false;
+  let firstError: unknown = null;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      if (aborted) return;
+      // `nextIndex++` is atomic in JS's single-threaded event loop (no await
+      // between the read and the increment), so no two workers claim the same
+      // variant.
+      const cursor = nextIndex++;
+      if (cursor >= eligibleVariants.length) return;
+      const e = eligibleVariants[cursor];
+      if (e === undefined) return;
+      if (!args.visionProvider) {
+        if (!aborted) {
+          aborted = true;
+          firstError = new Error(providerMissingMessage);
+        }
+        return;
+      }
+      try {
+        const scorecard = await judgeVariant(buildJudgeArgs(e, args.visionProvider));
+        results.set(e.index, scorecard);
+      } catch (err) {
+        if (!aborted) {
+          aborted = true;
+          firstError = err;
+        }
+        return;
+      }
+    }
+  };
+  const workerCount = Math.min(concurrency, eligibleVariants.length);
+  // Each worker self-catches, so `Promise.all` never short-circuits: it settles
+  // only once every in-flight call has completed, then we rethrow the first
+  // error. This is the drain-before-throw guarantee.
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  if (aborted) {
+    throw firstError;
+  }
+  // Fold results into the maps in `consideredVariants` order so Map iteration
+  // order is identical to the sequential path (parallel completion order is
+  // otherwise nondeterministic).
   for (const e of consideredVariants) {
     if (!eligible.has(e.index)) continue;
-    if (!args.visionProvider) {
-      throw new Error(
-        'runJudgePass: judging requested but no vision provider supplied. Configure ' +
-          'AZURE_OPENAI_VISION_DEPLOYMENT (and SPRITES_VISION_PROVIDER=azure-openai) or ' +
-          'disable judging.',
-      );
-    }
-    // Budget gate runs BEFORE the call so a blown budget skips cheaply. Cache
-    // hits cost $0 of Azure spend, so they bypass the gate.
-    if (args.judgeBudget && args.judgeBudget.wouldExceed() && !args.judgeCache) {
-      args.judgeBudget.recordSkip();
-      const warn = args.warn ?? logger.warn.bind(logger);
-      warn(`judge-budget exhausted: skipping variant ${e.index} (${args.judgeBudget.format()})`);
-      judgePlan.set(e.index, null);
-      judgeSkipReason.set(e.index, 'over-budget');
-      continue;
-    }
-    const cacheMissesBefore = args.judgeCache?.stats.misses ?? 0;
-    const scorecard = await judgeVariant({
-      processed: e.processed,
-      referencePngs: args.referencePngs,
-      brief,
-      styleGuide: args.styleGuide,
-      provider: args.visionProvider,
-      variantIndex: e.index,
-      // The judge sidecar (`NN.judge.json`) is written with `writeFileSync`, so
-      // `processedDir` must be a real local path. For non-local stores
-      // `store.resolve()` returns a blob URL that `path.join` would mangle into
-      // an ENOENT path. Omit it off-local: the scorecard is still embedded in
-      // the run summary, so no judge data is lost.
-      ...(args.store.backend === 'local'
-        ? { processedDir: args.store.resolve(args.storeKey('processed')) }
-        : {}),
-      variantPath: e.processedPath,
-      ...(args.judgeCache ? { cache: args.judgeCache } : {}),
-      ...(args.now ? { now: args.now } : {}),
-      ...(args.env ? { env: args.env } : {}),
-    });
-    const newAzureCall = args.judgeCache ? args.judgeCache.stats.misses > cacheMissesBefore : true;
-    if (newAzureCall && args.judgeBudget && scorecard.usage) {
-      args.judgeBudget.recordCall(scorecard.usage);
-    }
-    judgePlan.set(e.index, scorecard);
+    judgePlan.set(e.index, results.get(e.index) ?? null);
     judgeSkipReason.set(e.index, null);
   }
 

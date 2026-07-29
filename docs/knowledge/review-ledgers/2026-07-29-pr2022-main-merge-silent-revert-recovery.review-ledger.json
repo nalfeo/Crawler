@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "pr2022-main-merge-silent-revert-recovery",
+  "task_title": "Recover PR #2022 from the latest main merge conflict without reverting main",
+  "estimated_apples": 2,
+  "stages": {}
+}
