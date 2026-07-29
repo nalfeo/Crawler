@@ -108,6 +108,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.requestAchievementsToggle()),
   requestBossChestsToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestBossChestsToggle()),
+  requestQuartermasterToggle: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.requestQuartermasterToggle()),
   requestInventoryToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestInventoryToggle()),
   requestEquipToggle: (page: Page): Promise<void> =>
@@ -126,6 +128,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.tapAbilitiesButton()),
   tapBossChestButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapBossChestButton()),
+  tapQuartermasterButton: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.tapQuartermasterButton()),
   queueAbilitiesAndAchievementsToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesAndAchievementsToggle()),
   queueInteraction: (page: Page): Promise<void> =>
@@ -162,6 +166,25 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.acknowledgeRewardOpening()),
   getWorldElapsedMs: (page: Page): Promise<number | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getWorldElapsedMs()),
+  getPlayerGold: (page: Page): Promise<number | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getPlayerGold()),
+  setPlayerGold: (page: Page, amount: number): Promise<void> =>
+    page.evaluate((v) => window.__mainSceneProbe!.setPlayerGold(v), amount),
+  getQuartermasterStockSnapshot: (
+    page: Page,
+  ): Promise<
+    ReadonlyArray<{
+      stockId: string;
+      offerId: string;
+      quantity: number;
+      unitPrice: number;
+      displayName: string | null;
+    }>
+  > => page.evaluate(() => window.__mainSceneProbe!.getQuartermasterStockSnapshot()),
+  purchaseFirstQuartermasterOffer: (
+    page: Page,
+  ): Promise<{ ok: boolean; reason?: string; goldSpent?: number }> =>
+    page.evaluate(() => window.__mainSceneProbe!.purchaseFirstQuartermasterOffer()),
   getRewardAudioCueLog: (page: Page): Promise<readonly RewardAudioCueLogEntryProbe[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
   clearRewardAudioCueLog: (page: Page): Promise<void> =>

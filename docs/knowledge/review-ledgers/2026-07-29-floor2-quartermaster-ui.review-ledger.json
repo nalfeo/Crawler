@@ -1,0 +1,22 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "floor2-quartermaster-ui",
+  "task_title": "Floor 2 Quartermaster purchase UI",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "convergent",
+      "notes": "Reviewed plan. Blocking: corner-button hit exclusion, nullable offer data, missing purchase test, probe helper update gap, dirty-check must include gold. Non-blocking: primarySurfaceCount, HUD panelOpen, economy gate. All blocking items addressed in implementation. Convergent — no fork needed.",
+      "model": "gpt-5.4"
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}
