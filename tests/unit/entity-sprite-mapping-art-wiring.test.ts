@@ -15,6 +15,10 @@
  * rename, typo, or unshipped-art wiring fails CI instead of silently falling
  * back to placeholder art.
  */
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
 import type { EntitySpriteMappings } from '../../src/shared/data/entity-sprite-mappings.js';
@@ -28,9 +32,9 @@ const wiredKinds = Object.entries(MAPPINGS.renderKinds).filter(
 );
 
 describe('entity-sprite-mappings generated art wiring', () => {
-  const registry = shippedManifestShardsExist()
-    ? buildGeneratedSpriteRegistry(loadShippedManifest())
-    : null;
+  const manifest = shippedManifestShardsExist() ? loadShippedManifest() : null;
+  const registry = manifest !== null ? buildGeneratedSpriteRegistry(manifest) : null;
+  const SHIPPED_PUBLIC_ASSETS_DIR = fileURLToPath(new URL('../../public/assets', import.meta.url));
 
   it.runIf(registry !== null)('wires at least one render kind to generated art', () => {
     expect(wiredKinds.length).toBeGreaterThan(0);
@@ -54,8 +58,20 @@ describe('entity-sprite-mappings generated art wiring', () => {
       () => {
         // The pinned key is a manifest ENTRY KEY (= Phaser texture key), which
         // is what `scene.textures.exists()` is gated on at render time.
-        const keys = (registry?.entries() ?? []).map((entry) => entry.textureKey);
-        expect(keys).toContain(generated.pinnedTextureKey);
+        const entry = (registry?.entries() ?? []).find(
+          (candidate) => candidate.textureKey === generated.pinnedTextureKey,
+        );
+        expect(entry).toBeDefined();
+        const assetPath = entry?.assetPath;
+        expect(assetPath).toBeDefined();
+        if (assetPath === undefined) return;
+        const absoluteAssetPath = path.join(SHIPPED_PUBLIC_ASSETS_DIR, assetPath);
+        expect(existsSync(absoluteAssetPath)).toBe(true);
+
+        const declaredHash = manifest?.entries[generated.pinnedTextureKey]?.contentHash;
+        if (declaredHash === undefined) return;
+        const fileHash = createHash('sha256').update(readFileSync(absoluteAssetPath)).digest('hex');
+        expect(fileHash).toBe(declaredHash);
       },
     );
   }
