@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "remove-dead-ai-arms",
+  "task_title": "Remove dead AI A/B arms (legacy/navmesh pathing, slackAware decisions)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "minor",
+      "notes": "Alt A/B/C/D enumerated; Plan A chosen. Revised scope: include lab UI, CLI, ai-sweep.yml, gen-configs, decision-mode-telemetry test. Compiler-driven pruning strategy adopted. Runtime fingerprint verification added."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

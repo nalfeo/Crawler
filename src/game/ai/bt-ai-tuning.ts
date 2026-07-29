@@ -11,28 +11,6 @@
  */
 import { AIDecisionMode, AIPathingMode, type AIConfig } from './types.js';
 
-// Slice 4b: NAVMESH_FUSED tangential-seam-following weight. This is the human-
-// adjudicated production weight from the mandatory two-stage tuning sweep
-// (`npm run ai:navmesh-seam-sweep`), NOT a silently-tuned number (rule #12/#13):
-//
-//   2026-07-08 — operator picked W=2 from the 6-point sweep [0,0.5,1,2,3,4]
-//   (12 seeds × 3 weapons = 36 pairs/weight). W=2 is the Pareto sweet spot:
-//   highest seam alignment among the zero-fallback / no-regression weights
-//   (meanSeamAlign 0.972), 0 partial-path fallbacks, wins 30/36 and completions
-//   31/36 both == the pure-NAVMESH baseline (hard gate held, no orbit-collapse).
-//   W≥3 bought marginal alignment (0.982→0.987) but re-introduced 18 off-mesh
-//   fallbacks and shaved a completion; W=4 also lost a win — strictly worse.
-//
-// At weight 0 the whole tangential-seam block in computeRiskRewardFusedHeading is
-// skipped, so NAVMESH_FUSED is byte-identical to Slice 4a (that dormancy is the
-// A/B control, locked by tests/unit/ai/navmesh-pathing.test.ts). Because the seam
-// weight only applies when pathingMode === NAVMESH_FUSED (an opt-in A/B mode, NOT
-// the default), raising this from 0→2 does NOT change LEGACY / RISK_REWARD_FUSED
-// (the production default since the 2026-07-21 AI Sweep winner promotion) /
-// pure-NAVMESH: all three stay byte-identical regardless of this weight.
-// Do NOT re-tune this without a fresh operator-adjudicated sweep.
-const NAVMESH_FUSED_SEAM_WEIGHT = 2;
-
 // Production default AI config. Promoted from the AI Sweep winner (2026-07-21):
 // GitHub Actions recovery run 29893475612, leaderboard artifact provenance
 // workflowSha=18929bed51edb1979db2650e3329cf4fe63ff418. Composite and
@@ -69,20 +47,10 @@ export const DEFAULT_CONFIG: Required<AIConfig> = {
   // mode that previously forced this to 0.0 and blew the floor-clear budget.
   // Raised 0.07→0.12 by the AI Sweep winner promotion above.
   farmPullWeight: 0.12,
-  // A/B axis 1 (pathingMode) was promoted OFF LEGACY by the AI Sweep winner
-  // above: RISK_REWARD_FUSED is now the production default. Axis 2
-  // (decisionMode) stays LEGACY — the winner didn't change it. A caller can
-  // still opt back into the pre-promotion movement path by passing
-  // pathingMode: AIPathingMode.LEGACY explicitly. Full pre-promotion parity also
-  // requires retreatThreshold: 0.15 and farmPullWeight: 0.07.
+  // A/B axis 1: RISK_REWARD_FUSED is the 2026-07-21 AI Sweep winner (294/300).
+  // A/B axis 2: LEGACY — fixed-priority Track A ladder.
   pathingMode: AIPathingMode.RISK_REWARD_FUSED,
   decisionMode: AIDecisionMode.LEGACY,
-  // Slice 4b tangential-seam term. The production weight (NAVMESH_FUSED_SEAM_WEIGHT
-  // = 2) only takes effect when a caller opts into pathingMode NAVMESH_FUSED; every
-  // other mode (including the RISK_REWARD_FUSED default) forces the seam weight to
-  // 0 at the call site, so LEGACY / RISK_REWARD_FUSED / pure-NAVMESH stay mutually
-  // byte-identical with respect to this weight.
-  seamWeight: NAVMESH_FUSED_SEAM_WEIGHT,
   debug: false,
 };
 
@@ -241,21 +209,6 @@ export const LINE_OF_SIGHT_SAMPLE_FT = 1;
 // wedge against the wall it was routing around (observed as a multi-second
 // EXPLORE oscillation that collapses travel efficiency).
 export const WAYPOINT_ARRIVE_FT = 1;
-// Distance (ft) within which a navmesh route's FINAL waypoint must land within
-// the resolved goal for the route to count as goal-REACHING (2 tiles at 4ft/tile).
-// recast's computePath returns success=true with a nearest-reachable PARTIAL
-// route — final waypoint hundreds of feet short — when the goal lies in a
-// navmesh polygon component disconnected from the start. Under the pinned
-// deterministic config recast polygon connectivity is a strict SUBSET of the
-// 4-connected grid at thin/door connectors, so a goal the grid BFS calls
-// reachable can still be navmesh-unreachable. A genuinely connected goal
-// reliably lands the final waypoint on the goal tile (the Gate-2 determinism
-// test asserts <1.5 tiles); this 2-tile threshold clears that proven tolerance
-// with margin yet is ~50x tighter than any observed stub (≈457ft in the seed-1
-// trace), so it flags severed-connector partials without false-positiving on
-// good routes. See moveTowardViaNavmesh's partial-path guard + the 2026-07-08
-// navmesh-pathing-mode handoff lesson.
-export const NAV_GOAL_REACHED_FT = 8;
 // Wedge recovery for path-following: if the player is aiming at a waypoint but
 // collision keeps it from advancing more than MOVE_WEDGE_PROGRESS_FT per frame
 // for MOVE_WEDGE_FRAMES straight frames, it is wedged on a choke/corner (e.g. a

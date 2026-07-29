@@ -5,10 +5,7 @@
  * These are the deterministic building blocks the combo × hill-climb sweep is
  * built on, so their invariants are locked here rather than only observed in a
  * cloud run:
- *   - the 8 combos are exactly the 4 pathing × 2 decision cells, LEGACY+LEGACY
- *     first (the incumbent/control the leaderboard always ranks against);
- *   - `seamWeight` is a tunable ONLY for NAVMESH_FUSED (every other mode forces
- *     it to 0 at the call site, so tuning it elsewhere would waste budget);
+ *   - the single incumbent combo (RISK_REWARD_FUSED+LEGACY) is returned first;
  *   - the base config is the CURRENT SSOT (`DEFAULT_CONFIG`), not stale
  *     hill-climb ranges, and every search band actually contains its SSOT value;
  *   - coordinate-ascent neighbours stay in-range, clamp at boundaries, dedup,
@@ -35,33 +32,29 @@ import {
 import { DEFAULT_CONFIG } from '../../../src/game/ai/bt-ai-tuning.js';
 import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 
-const NAVMESH_FUSED: Combo = {
-  pathing: AIPathingMode.NAVMESH_FUSED,
-  decision: AIDecisionMode.LEGACY,
-};
-const LEGACY_LEGACY: Combo = {
-  pathing: AIPathingMode.LEGACY,
+const RISK_REWARD_LEGACY: Combo = {
+  pathing: AIPathingMode.RISK_REWARD_FUSED,
   decision: AIDecisionMode.LEGACY,
 };
 
 describe('enumerateCombos', () => {
-  it('yields exactly the 8 pathing × decision cells', () => {
+  it('yields exactly the 1 pathing × decision cell', () => {
     const combos = enumerateCombos();
-    expect(combos).toHaveLength(8);
+    expect(combos).toHaveLength(1);
     const ids = combos.map(comboId);
-    expect(new Set(ids).size).toBe(8); // all unique
+    expect(new Set(ids).size).toBe(1); // all unique
   });
 
-  it('lists LEGACY+LEGACY first so it is the incumbent/control', () => {
+  it('lists RISK_REWARD_FUSED+LEGACY first so it is the incumbent/control', () => {
     const first = enumerateCombos()[0];
-    expect(first).toEqual(LEGACY_LEGACY);
-    expect(comboId(first!)).toBe('legacy+legacy');
+    expect(first).toEqual(RISK_REWARD_LEGACY);
+    expect(comboId(first!)).toBe('riskRewardFused+legacy');
   });
 
-  it('covers all 4 pathing modes and both decision modes', () => {
+  it('covers the 1 pathing mode and 1 decision mode', () => {
     const combos = enumerateCombos();
-    expect(new Set(combos.map((c) => c.pathing)).size).toBe(4);
-    expect(new Set(combos.map((c) => c.decision)).size).toBe(2);
+    expect(new Set(combos.map((c) => c.pathing)).size).toBe(1);
+    expect(new Set(combos.map((c) => c.decision)).size).toBe(1);
   });
 });
 
@@ -79,24 +72,15 @@ describe('comboId / parseComboId', () => {
 
 describe('knobsForCombo', () => {
   it('always includes the primary knobs', () => {
-    const knobs = knobsForCombo(LEGACY_LEGACY);
+    const knobs = knobsForCombo(RISK_REWARD_LEGACY);
     for (const k of PRIMARY_KNOBS) {
       expect(knobs).toContain(k);
     }
   });
 
-  it('adds seamWeight ONLY for NAVMESH_FUSED', () => {
-    expect(knobsForCombo(NAVMESH_FUSED)).toContain('seamWeight');
-    for (const combo of enumerateCombos()) {
-      if (combo.pathing !== AIPathingMode.NAVMESH_FUSED) {
-        expect(knobsForCombo(combo, true)).not.toContain('seamWeight');
-      }
-    }
-  });
-
   it('adds the secondary knobs only when requested', () => {
-    expect(knobsForCombo(LEGACY_LEGACY, false)).not.toContain(SECONDARY_KNOBS[0]);
-    const withSecondary = knobsForCombo(LEGACY_LEGACY, true);
+    expect(knobsForCombo(RISK_REWARD_LEGACY, false)).not.toContain(SECONDARY_KNOBS[0]);
+    const withSecondary = knobsForCombo(RISK_REWARD_LEGACY, true);
     for (const k of SECONDARY_KNOBS) {
       expect(withSecondary).toContain(k);
     }
@@ -105,18 +89,12 @@ describe('knobsForCombo', () => {
 
 describe('baseConfigForCombo', () => {
   it('applies the combo modes and seeds every knob from the SSOT default', () => {
-    const config = baseConfigForCombo(NAVMESH_FUSED);
-    expect(config.pathingMode).toBe(AIPathingMode.NAVMESH_FUSED);
+    const config = baseConfigForCombo(RISK_REWARD_LEGACY);
+    expect(config.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
     expect(config.decisionMode).toBe(AIDecisionMode.LEGACY);
-    for (const knob of knobsForCombo(NAVMESH_FUSED, true)) {
+    for (const knob of knobsForCombo(RISK_REWARD_LEGACY, true)) {
       expect(config[knob]).toBe(DEFAULT_CONFIG[knob]);
     }
-    expect(config.seamWeight).toBe(DEFAULT_CONFIG.seamWeight);
-  });
-
-  it('omits seamWeight from the base config of non-NAVMESH_FUSED combos', () => {
-    const config = baseConfigForCombo(LEGACY_LEGACY);
-    expect(config.seamWeight).toBeUndefined();
   });
 });
 
@@ -141,13 +119,13 @@ describe('KNOB_RANGES', () => {
 describe('configId', () => {
   it('is stable and independent of knob insertion order', () => {
     const a: SweepConfig = {
-      pathingMode: AIPathingMode.LEGACY,
+      pathingMode: AIPathingMode.RISK_REWARD_FUSED,
       decisionMode: AIDecisionMode.LEGACY,
       aggression: 1,
       dodgeWeight: 0.25,
     };
     const b: SweepConfig = {
-      pathingMode: AIPathingMode.LEGACY,
+      pathingMode: AIPathingMode.RISK_REWARD_FUSED,
       decisionMode: AIDecisionMode.LEGACY,
       dodgeWeight: 0.25,
       aggression: 1,
@@ -156,7 +134,7 @@ describe('configId', () => {
   });
 
   it('changes when a tunable knob value changes', () => {
-    const base = baseConfigForCombo(LEGACY_LEGACY);
+    const base = baseConfigForCombo(RISK_REWARD_LEGACY);
     const bumped: SweepConfig = { ...base, aggression: (base.aggression ?? 1) + 0.5 };
     expect(configId(bumped)).not.toBe(configId(base));
   });
@@ -165,7 +143,7 @@ describe('configId', () => {
 describe('neighbors', () => {
   it('probes +step and -step for a mid-range knob, staying in range', () => {
     const base: SweepConfig = {
-      pathingMode: AIPathingMode.LEGACY,
+      pathingMode: AIPathingMode.RISK_REWARD_FUSED,
       decisionMode: AIDecisionMode.LEGACY,
       aggression: 1,
     };
@@ -180,7 +158,7 @@ describe('neighbors', () => {
 
   it('drops the boundary direction that cannot move (clamped)', () => {
     const base: SweepConfig = {
-      pathingMode: AIPathingMode.LEGACY,
+      pathingMode: AIPathingMode.RISK_REWARD_FUSED,
       decisionMode: AIDecisionMode.LEGACY,
       aggression: 0, // min of the band
     };
@@ -192,7 +170,7 @@ describe('neighbors', () => {
 
   it('honours a per-knob step override and stops refining below minStep', () => {
     const base: SweepConfig = {
-      pathingMode: AIPathingMode.LEGACY,
+      pathingMode: AIPathingMode.RISK_REWARD_FUSED,
       decisionMode: AIDecisionMode.LEGACY,
       aggression: 1,
     };
@@ -204,8 +182,8 @@ describe('neighbors', () => {
   });
 
   it('produces only unique candidates (deduped by configId)', () => {
-    const base = baseConfigForCombo(NAVMESH_FUSED);
-    const out = neighbors(base, knobsForCombo(NAVMESH_FUSED, true));
+    const base = baseConfigForCombo(RISK_REWARD_LEGACY);
+    const out = neighbors(base, knobsForCombo(RISK_REWARD_LEGACY, true));
     const ids = out.map(configId);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).not.toContain(configId(base)); // never re-emits the centre

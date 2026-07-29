@@ -236,42 +236,44 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     });
   });
 
-  it('checkpoint-init hard-fails unconditionally when the legacy+legacy baseline shard is missing for a non-LEGACY combo -- no resumed-combo exemption', () => {
+  it('checkpoint-init hard-fails unconditionally when the riskRewardFused+legacy baseline shard is missing for a non-incumbent combo -- no resumed-combo exemption', () => {
     // A prior version of this check silently fell back to each non-LEGACY
     // combo's own base as incumbent whenever `legacy+legacy` appeared in
     // `resumedCombos`, reasoning that the derivation might have failed
     // independently of resume-import's own job result. That reasoning no
-    // longer holds: `resume-import`'s "Derive legacy+legacy baseline
-    // shard"/"Upload derived legacy+legacy baseline shard" steps have no
+    // longer holds: `resume-import`'s "Derive riskRewardFused+legacy baseline
+    // shard"/"Upload derived riskRewardFused+legacy baseline shard" steps have no
     // `continue-on-error`, and `checkpoint-init` already requires
     // `needs.resume-import.result == 'success'` -- so a successful
-    // resume-import that resumed legacy+legacy GUARANTEES the derived
+    // resume-import that resumed riskRewardFused+legacy GUARANTEES the derived
     // baseline artifact was uploaded. A still-missing artifact here can now
     // ONLY mean a genuine infra fault (e.g. an artifact-download race), which
     // must fail loudly rather than silently narrow the in-search safety net
-    // for every non-LEGACY combo (found in review, superseding the earlier
+    // for every non-incumbent combo (found in review, superseding the earlier
     // resumed-combo exemption).
     const doc = loadWorkflow();
     const script = allRunSteps(getJob(doc, 'checkpoint-init'));
     expect(script).not.toContain('RESUMED_COMBOS');
     expect(script).not.toMatch(/jq -e --arg c "legacy\+legacy" 'index\(\$c\) != null'/);
     expect(script).not.toContain('falls back to its own base as the in-search incumbent');
-    expect(script).toContain('is required for non-LEGACY combo');
+    expect(script).toContain('is required for non-incumbent combo');
     expect(script).toContain('exit 1');
     // The unconditional hard-fail branch must not be gated behind any
     // resumedCombos check -- it is the ONLY branch left when the file is
     // missing.
-    const ifMissingBlock = script.split('if [ ! -f "baseline-legacy+legacy.json" ]; then')[1];
+    const ifMissingBlock = script.split(
+      'if [ ! -f "baseline-riskRewardFused+legacy.json" ]; then',
+    )[1];
     expect(ifMissingBlock).toBeDefined();
     const beforeElse = ifMissingBlock?.split(/\belse\b/)[0] ?? '';
     expect(beforeElse).toContain('exit 1');
   });
 
-  it("checkpoint-init's legacy+legacy download step's if-no-artifact-found:warn is a display-only choice -- the actual gate is the Build round-0 checkpoint step's own explicit file check + exit 1, not the download step's own error handling", () => {
+  it("checkpoint-init's riskRewardFused+legacy download step's if-no-artifact-found:warn is a display-only choice -- the actual gate is the Build round-0 checkpoint step's own explicit file check + exit 1, not the download step's own error handling", () => {
     const doc = loadWorkflow();
     const checkpointInit = getJob(doc, 'checkpoint-init');
     const downloadStep = (checkpointInit.steps ?? []).find(
-      (s) => s.with?.pattern === 'search-baseline-legacy+legacy',
+      (s) => s.with?.pattern === 'search-baseline-riskRewardFused+legacy',
     );
     expect(downloadStep?.with?.['if-no-artifact-found']).toBe('warn');
   });
@@ -741,18 +743,18 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(script).toContain('exit 1');
     });
 
-    it('derives and uploads a fresh legacy+legacy baseline shard from its OWN resumed checkpoint, ONLY when legacy+legacy is itself in resumedCombos (closes the non-LEGACY incumbent gap for a resumed legacy+legacy run)', () => {
+    it('derives and uploads a fresh riskRewardFused+legacy baseline shard from its OWN resumed checkpoint, ONLY when riskRewardFused+legacy is itself in resumedCombos (closes the non-incumbent gap for a resumed riskRewardFused+legacy run)', () => {
       const doc = loadWorkflow();
       const job = getJob(doc, 'resume-import');
       const deriveStep = (job.steps ?? []).find((s) =>
-        s.name?.startsWith('Derive legacy+legacy baseline shard'),
+        s.name?.startsWith('Derive riskRewardFused+legacy baseline shard'),
       );
       expect(deriveStep).toBeDefined();
       expect(deriveStep?.if).toContain(
-        "contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy')",
+        "contains(fromJSON(steps.resume.outputs.resumedCombos), 'riskRewardFused+legacy')",
       );
       // `continue-on-error` was REMOVED (found in review): a resumed
-      // legacy+legacy checkpoint has ALREADY passed `resume-check` (which
+      // riskRewardFused+legacy checkpoint has ALREADY passed `resume-check` (which
       // requires a complete, duplicate-free, rectangular baseline panel),
       // so extraction failing here means this step's own invariant is
       // broken. Silently tolerating that failure would fall back to the
@@ -762,43 +764,43 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(deriveStep?.['continue-on-error']).toBeUndefined();
       expect(deriveStep?.run).toContain('--mode extract-legacy-baseline');
       expect(deriveStep?.run).toContain(
-        '--checkpoint "resumed/search-checkpoint-init-legacy+legacy.json"',
+        '--checkpoint "resumed/search-checkpoint-init-riskRewardFused+legacy.json"',
       );
       // Local output filename MUST match the `baseline` job's own convention
       // (`baseline-$COMBO.json`) -- `checkpoint-init`'s existing
       // pattern-based download step looks for exactly this filename, and
       // actions/download-artifact@v4 restores files under their ORIGINALLY
       // uploaded name, not the artifact name.
-      expect(deriveStep?.run).toContain('--out "baseline-legacy+legacy.json"');
+      expect(deriveStep?.run).toContain('--out "baseline-riskRewardFused+legacy.json"');
 
       const uploadStep = (job.steps ?? []).find((s) =>
-        s.name?.startsWith('Upload derived legacy+legacy baseline shard'),
+        s.name?.startsWith('Upload derived riskRewardFused+legacy baseline shard'),
       );
       expect(uploadStep).toBeDefined();
       expect(uploadStep?.uses).toBe('actions/upload-artifact@v4');
       expect(uploadStep?.if).toContain(
-        "contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy')",
+        "contains(fromJSON(steps.resume.outputs.resumedCombos), 'riskRewardFused+legacy')",
       );
       // The `hashFiles(...) != ''` guard was REMOVED along with
       // `continue-on-error` -- the derive step now either succeeds (file
       // exists) or fails the job outright, so this upload step's `if:` no
       // longer needs to defensively check for the file's existence.
-      expect(uploadStep?.if).not.toContain("hashFiles('baseline-legacy+legacy.json')");
-      expect(uploadStep?.with?.name).toBe('search-baseline-legacy+legacy');
-      expect(uploadStep?.with?.path).toBe('baseline-legacy+legacy.json');
+      expect(uploadStep?.if).not.toContain("hashFiles('baseline-riskRewardFused+legacy.json')");
+      expect(uploadStep?.with?.name).toBe('search-baseline-riskRewardFused+legacy');
+      expect(uploadStep?.with?.path).toBe('baseline-riskRewardFused+legacy.json');
     });
 
-    it('uploads the resumed-checkpoints bundle SECOND-TO-LAST -- strictly after both the legacy+legacy derive AND upload steps -- so its existence depends on the WHOLE job succeeding', () => {
+    it('uploads the resumed-checkpoints bundle SECOND-TO-LAST -- strictly after both the riskRewardFused+legacy derive AND upload steps -- so its existence depends on the WHOLE job succeeding', () => {
       const doc = loadWorkflow();
       const job = getJob(doc, 'resume-import');
       const steps = job.steps ?? [];
       const indexOf = (predicate: (s: (typeof steps)[number]) => boolean): number =>
         steps.findIndex(predicate);
       const deriveIdx = indexOf((s) =>
-        Boolean(s.name?.startsWith('Derive legacy+legacy baseline shard')),
+        Boolean(s.name?.startsWith('Derive riskRewardFused+legacy baseline shard')),
       );
       const uploadDerivedIdx = indexOf((s) =>
-        Boolean(s.name?.startsWith('Upload derived legacy+legacy baseline shard')),
+        Boolean(s.name?.startsWith('Upload derived riskRewardFused+legacy baseline shard')),
       );
       const uploadResumedIdx = indexOf((s) =>
         Boolean(s.name?.startsWith('Upload resumed checkpoints bundle')),
@@ -812,12 +814,12 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(tierUploadIdx).toBeGreaterThanOrEqual(0);
       // Without `continue-on-error`, a step failure stops every LATER step in
       // the same job from running -- so ordering the resumed-checkpoints
-      // upload after both legacy-baseline steps means: if either of those
+      // upload after both incumbent-baseline steps means: if either of those
       // fails, this upload never runs and `resumed-checkpoints` is never
       // created this run. Placing it BEFORE them (the original ordering)
       // would let it survive a later derive/upload failure, silently handing
       // `round1-candidates`/`round1-select`/`validate` a partial bundle
-      // missing the legacy+legacy baseline while `resume-import`'s own job
+      // missing the riskRewardFused+legacy baseline while `resume-import`'s own job
       // conclusion was 'failure' (found in review).
       expect(uploadResumedIdx).toBeGreaterThan(deriveIdx);
       expect(uploadResumedIdx).toBeGreaterThan(uploadDerivedIdx);

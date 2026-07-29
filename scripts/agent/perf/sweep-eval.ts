@@ -56,10 +56,10 @@
  *
  * Usage
  * -----
- *   npm run ai:sweep-eval -- --stage search          --combo legacy+legacy --train-seeds 1-80 --workers 4 --rounds 3 --out search.json
- *   npm run ai:sweep-eval -- --stage search-baseline --combo legacy+legacy --train-seeds 1-80 --workers 4 --out baseline.json
- *   npm run ai:sweep-eval -- --stage search-eval     --combo legacy+legacy --config-id <id> --config-json '{"...":...}' --train-seeds 1-80 --workers 4 --out shard.json
- *   npm run ai:sweep-eval -- --stage validate        --combo navmeshFused+slackAware --search-artifact search.json --seeds 1-100 --workers 4 --out validate.json
+ *   npm run ai:sweep-eval -- --stage search          --combo riskRewardFused+legacy --train-seeds 1-80 --workers 4 --rounds 3 --out search.json
+ *   npm run ai:sweep-eval -- --stage search-baseline --combo riskRewardFused+legacy --train-seeds 1-80 --workers 4 --out baseline.json
+ *   npm run ai:sweep-eval -- --stage search-eval     --combo riskRewardFused+legacy --config-id <id> --config-json '{"...":...}' --train-seeds 1-80 --workers 4 --out shard.json
+ *   npm run ai:sweep-eval -- --stage validate        --combo riskRewardFused+legacy --search-artifact search.json --seeds 1-100 --workers 4 --out validate.json
  */
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -230,8 +230,8 @@ function winsOf(rows: readonly RunRow[], id: string): number {
  * runs — the exact wiring bug class a review would otherwise only catch by
  * re-deriving this logic by hand.
  *
- * `incumbentCombo` defaults to `comboStr` when omitted (the `legacy+legacy`
- * case where combo IS the incumbent). For non-LEGACY combos whose LEGACY
+ * `incumbentCombo` defaults to `comboStr` when omitted (the `riskRewardFused+legacy`
+ * case where combo IS the incumbent). For non-incumbent combos whose incumbent
  * baseline rows are threaded in from `searchCombo`, pass `LEGACY_COMBO_ID`
  * so `buildLeaderboard` can locate the incumbent rows by their actual combo
  * tag — without this, `winsVsIncumbentDelta` is always `null` and every
@@ -291,12 +291,12 @@ interface SearchResult {
  * boundary, plus per-row `safeRoomMs` sanity (a pre-v2 baseline could parse
  * as valid JSON yet lack `safeRoomMs`, silently reverting win recomputation to
  * raw-time semantics and undercounting the incumbent). Also validates the
- * artifact's sole config/id is the CANONICAL LEGACY base config — not merely
- * "exactly one config, tagged combo=legacy+legacy" — because a same-build
- * `--stage search-eval` shard for a *tuned* `legacy+legacy` candidate also
- * has one config, `meta.stage='search'`, LEGACY-tagged rows, and valid row
+ * artifact's sole config/id is the CANONICAL incumbent base config — not merely
+ * "exactly one config, tagged combo=riskRewardFused+legacy" — because a same-build
+ * `--stage search-eval` shard for a *tuned* `riskRewardFused+legacy` candidate also
+ * has one config, `meta.stage='search'`, incumbent-tagged rows, and valid row
  * facts, so it would otherwise pass every prior check and silently replace
- * the fixed incumbent with a tuned (non-canonical) LEGACY variant.
+ * the fixed incumbent with a tuned (non-canonical) incumbent variant.
  *
  * @param expected the caller's calibration to check the artifact against — floor/
  *   budget/frames PLUS the current-build fingerprint (see
@@ -325,14 +325,14 @@ export function assertLegacyBaselineProvenance(
     );
   }
   const canonicalLegacyConfig = baseConfigForCombo({
-    pathing: AIPathingMode.LEGACY,
+    pathing: AIPathingMode.RISK_REWARD_FUSED,
     decision: AIDecisionMode.LEGACY,
   });
   const canonicalLegacyConfigId = configId(canonicalLegacyConfig);
   if (legacyId !== canonicalLegacyConfigId) {
     throw new Error(
-      `--legacy-baseline artifact configId '${legacyId}' is not the canonical LEGACY base config ` +
-        `(expected '${canonicalLegacyConfigId}'). A tuned legacy+legacy shard must not be used as ` +
+      `--legacy-baseline artifact configId '${legacyId}' is not the canonical incumbent base config ` +
+        `(expected '${canonicalLegacyConfigId}'). A tuned riskRewardFused+legacy shard must not be used as ` +
         `the fixed incumbent. Produce it via '--stage search-baseline --combo ${LEGACY_COMBO_ID}'.`,
     );
   }
@@ -350,10 +350,10 @@ export function assertLegacyBaselineProvenance(
   const storedBody = stableStringify(artifact.configs[legacyId]!);
   if (storedBody !== canonicalLegacyBody) {
     throw new Error(
-      `--legacy-baseline artifact config body does not match the canonical LEGACY base config. ` +
+      `--legacy-baseline artifact config body does not match the canonical incumbent base config. ` +
         `Config key '${legacyId}' is correct, but the stored config body's values differ from ` +
-        `the untuned canonical LEGACY base. The config body must be exactly the canonical ` +
-        `LEGACY base, not a tuned variant under a canonical-looking key.`,
+        `the untuned canonical incumbent base. The config body must be exactly the canonical ` +
+        `incumbent base, not a tuned variant under a canonical-looking key.`,
     );
   }
   const rowCombos = new Set(artifact.rows.map((r) => r.combo));
@@ -400,13 +400,13 @@ async function searchCombo(
     rounds: number;
     secondary: boolean;
     floorId: string;
-    /** When provided and the combo is not `legacy+legacy`, this PRE-VALIDATED
+    /** When provided and the combo is not `riskRewardFused+legacy`, this PRE-VALIDATED
      *  (see {@link assertLegacyBaselineProvenance}) shard's rows/config are
      *  injected into `allRows`/`configs` and used as the safety-gate incumbent
      *  — exactly mirroring {@link initCheckpoint} in `round-plan.ts`. This is
-     *  an OPTIMIZATION to reuse one LEGACY baseline across multiple combo
+     *  an OPTIMIZATION to reuse one incumbent baseline across multiple combo
      *  searches in a session — NOT a correctness requirement: when omitted,
-     *  `searchCombo` evaluates the LEGACY baseline itself so the gate is
+     *  `searchCombo` evaluates the incumbent baseline itself so the gate is
      *  threaded correctly by default either way. */
     legacyBaseline?: ShardArtifact;
   },
@@ -450,20 +450,20 @@ async function searchCombo(
     `[${comboStr}] baseline ${base.id.slice(0, 48)} score=${currentScore.toExponential(3)} wins=${winsOf(allRows, currentId)}/${opts.weapons.length * opts.trainSeeds.length}`,
   );
 
-  // Incumbent for the safety gate: use the LEGACY incumbent for non-LEGACY
+  // Incumbent for the safety gate: use the incumbent for non-incumbent
   // combos so that the in-search net-win check mirrors the final graduation
   // gate (`selectQualifiedWinner`), exactly like `round-plan.ts`'s
-  // `initCheckpoint`. For `legacy+legacy` the combo IS the LEGACY incumbent,
+  // `initCheckpoint`. For `riskRewardFused+legacy` the combo IS the incumbent,
   // so no separate baseline is needed.
   //
-  // `opts.legacyBaseline` lets a caller sweeping multiple non-LEGACY combos in
-  // one session pass a PRE-COMPUTED LEGACY shard to avoid re-running the
-  // LEGACY baseline once per combo. It is an optimization, NOT a correctness
-  // requirement: when omitted, this function computes the LEGACY baseline
+  // `opts.legacyBaseline` lets a caller sweeping multiple non-incumbent combos in
+  // one session pass a PRE-COMPUTED incumbent shard to avoid re-running the
+  // incumbent baseline once per combo. It is an optimization, NOT a correctness
+  // requirement: when omitted, this function computes the incumbent baseline
   // itself (one extra headless eval pass) so the safety gate is threaded
   // correctly by default, with no opt-in flag required to avoid silently
   // falling back to the pre-fix bug (gating against the combo's own
-  // baseline instead of the fixed LEGACY incumbent).
+  // baseline instead of the fixed incumbent).
   const comboIsLegacy = comboStr === LEGACY_COMBO_ID;
   let incumbentConfigId = base.id;
   let incumbentCombo = comboStr;
@@ -484,7 +484,10 @@ async function searchCombo(
       // gate is correct by default rather than silently falling back to
       // the pre-fix behaviour of gating against the combo's own baseline.
       const legacyBase = register(
-        baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+        baseConfigForCombo({
+          pathing: AIPathingMode.RISK_REWARD_FUSED,
+          decision: AIDecisionMode.LEGACY,
+        }),
       );
       const legacyRows = await runTasks(
         buildTasks([legacyBase], LEGACY_COMBO_ID, opts.weapons, opts.trainSeeds),
@@ -920,7 +923,7 @@ async function main(argv: readonly string[]): Promise<void> {
     { id: search.bestConfigId, config: finalist },
   ];
   const incumbent = baseConfigForCombo({
-    pathing: AIPathingMode.LEGACY,
+    pathing: AIPathingMode.RISK_REWARD_FUSED,
     decision: AIDecisionMode.LEGACY,
   });
   const incumbentId = configId(incumbent);
@@ -938,7 +941,7 @@ async function main(argv: readonly string[]): Promise<void> {
     floorId: args.floorId,
   };
   // The finalist rows are tagged with the combo under test; the incumbent rows
-  // are always tagged legacy+legacy so the aggregator groups + dedups them.
+  // are always tagged riskRewardFused+legacy so the aggregator groups + dedups them.
   const rows: RunRow[] = [];
   rows.push(
     ...(await runTasks(
@@ -952,7 +955,7 @@ async function main(argv: readonly string[]): Promise<void> {
       ...(await runTasks(
         buildTasks(
           [toEval[1]!],
-          comboId({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+          comboId({ pathing: AIPathingMode.RISK_REWARD_FUSED, decision: AIDecisionMode.LEGACY }),
           args.weapons,
           args.seeds,
         ),

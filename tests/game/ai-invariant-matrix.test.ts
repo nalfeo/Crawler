@@ -15,12 +15,7 @@ import {
 } from '../../src/game/floorScenario.js';
 import { createInputState } from '../../src/shared/input.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
-import {
-  AIDecisionMode,
-  AINpcInteractionAction,
-  AIPathingMode,
-  AIState,
-} from '../../src/game/ai/types.js';
+import { AINpcInteractionAction, AIPathingMode, AIState } from '../../src/game/ai/types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import {
   AI_INVARIANT,
@@ -29,7 +24,6 @@ import {
   defineAiInvariantSuite,
   type AIInvariantAxis,
   type AIInvariantCase,
-  type AIInvariantTrace,
 } from '../fixtures/ai-invariant-harness.js';
 
 function makeRoom(
@@ -168,12 +162,6 @@ function setupAcceptedDetour(
   return { ai: createAi(axis, seed), world, player, spellNpcEid };
 }
 
-function assertModeActivation(trace: AIInvariantTrace, axis: AIInvariantAxis): void {
-  if (axis.decisionMode === AIDecisionMode.SLACK_AWARE) {
-    expect(trace.effectiveRunPlan.source).toBe('decision');
-  }
-}
-
 const cases: AIInvariantCase[] = [
   {
     id: 'goal-state-replans-live-route-head',
@@ -198,7 +186,6 @@ const cases: AIInvariantCase[] = [
       });
       expect(after.decision.reason).toContain('Slime Rat room');
       expect(after.effectiveRunPlan.routeHeadId).toBe('kill-slime-rat');
-      assertModeActivation(after, axis);
       return after;
     },
   },
@@ -311,7 +298,7 @@ const cases: AIInvariantCase[] = [
     invariant: AI_INVARIANT.PARTIAL_PATH_REJECTION,
     axes: SLICE_A_DECISION_AXES,
     locomotion: {
-      assertedPathingModes: [AIPathingMode.LEGACY],
+      assertedPathingModes: [AIPathingMode.RISK_REWARD_FUSED],
       owner: 'slice-a',
     },
     run(axis) {
@@ -341,7 +328,6 @@ const cases: AIInvariantCase[] = [
       expect(trace.decision.targetX).toBeNull();
       expect(trace.decision.targetY).toBeNull();
       expect(trace.movement).toEqual({ x: 0, y: 0 });
-      expect(trace.navPartialPathFallbacks).toBe(0);
       return trace;
     },
   },
@@ -365,9 +351,6 @@ const cases: AIInvariantCase[] = [
       expect(trace.decision.state).toBe(AIState.EXPLORE);
       expect(trace.decision.targetEid).toBe(shopkeeperNpcEid);
       expect(trace.effectiveRunPlan.routeHeadId).toBe('meet-shopkeeper');
-      if (axis.decisionMode === AIDecisionMode.SLACK_AWARE) {
-        expect(trace.effectiveRunPlan.slackMs).toBeLessThan(0);
-      }
       return trace;
     },
   },
@@ -422,9 +405,6 @@ const cases: AIInvariantCase[] = [
       });
       expect(trace.decision.reason).toBe('Heading to the stairs to clear the floor');
       expect(trace.effectiveRunPlan.routeHeadId).toBe('take-stairs');
-      if (axis.decisionMode === AIDecisionMode.SLACK_AWARE) {
-        expect(trace.effectiveRunPlan.slackMs).toBeLessThan(0);
-      }
       return trace;
     },
   },

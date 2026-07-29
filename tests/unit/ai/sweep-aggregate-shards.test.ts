@@ -195,32 +195,43 @@ describe('mergeShards', () => {
   });
 
   it('throws on a conflicting config definition for the same id', () => {
-    const r = row({ combo: 'legacy+legacy', configId: 'c', weapon: 'sword', seed: 1 });
+    const r = row({ combo: 'riskRewardFused+legacy', configId: 'c', weapon: 'sword', seed: 1 });
     const s1: ShardArtifact = {
       meta: META,
-      configs: { c: { pathingMode: AIPathingMode.LEGACY, decisionMode: AIDecisionMode.LEGACY } },
+      configs: {
+        c: { pathingMode: AIPathingMode.RISK_REWARD_FUSED, decisionMode: AIDecisionMode.LEGACY },
+      },
       rows: [r],
     };
     const s2: ShardArtifact = {
       meta: META,
       // same id, different knobs → definitionally a runner bug / tamper
-      configs: { c: { pathingMode: AIPathingMode.NAVMESH, decisionMode: AIDecisionMode.LEGACY } },
+      configs: {
+        c: {
+          pathingMode: AIPathingMode.RISK_REWARD_FUSED,
+          decisionMode: AIDecisionMode.LEGACY,
+          aggression: 1.5,
+        },
+      },
       rows: [row({ ...r, weapon: 'bow' })],
     };
     expect(() => mergeShards([s1, s2])).toThrow(/Conflicting config definition for id c/);
   });
 
   it('merges config definitions across shards', () => {
-    const cfg = { pathingMode: AIPathingMode.LEGACY, decisionMode: AIDecisionMode.LEGACY };
+    const cfg = {
+      pathingMode: AIPathingMode.RISK_REWARD_FUSED,
+      decisionMode: AIDecisionMode.LEGACY,
+    };
     const s1: ShardArtifact = {
       meta: META,
       configs: { c: cfg },
-      rows: [row({ combo: 'legacy+legacy', configId: 'c', weapon: 'sword', seed: 1 })],
+      rows: [row({ combo: 'riskRewardFused+legacy', configId: 'c', weapon: 'sword', seed: 1 })],
     };
     const s2: ShardArtifact = {
       meta: META,
       configs: {},
-      rows: [row({ combo: 'legacy+legacy', configId: 'c', weapon: 'bow', seed: 1 })],
+      rows: [row({ combo: 'riskRewardFused+legacy', configId: 'c', weapon: 'bow', seed: 1 })],
     };
     const merged = mergeShards([s1, s2]);
     expect(merged.configs.c).toEqual(cfg);
@@ -300,8 +311,13 @@ describe('buildLeaderboard', () => {
   });
 
   it('attaches config definitions when provided', () => {
-    const cfg = { pathingMode: AIPathingMode.LEGACY, decisionMode: AIDecisionMode.LEGACY };
-    const rows = [row({ combo: 'legacy+legacy', configId: 'c', weapon: 'sword', seed: 1 })];
+    const cfg = {
+      pathingMode: AIPathingMode.RISK_REWARD_FUSED,
+      decisionMode: AIDecisionMode.LEGACY,
+    };
+    const rows = [
+      row({ combo: 'riskRewardFused+legacy', configId: 'c', weapon: 'sword', seed: 1 }),
+    ];
     const [lb] = buildLeaderboard(rows, { configs: { c: cfg } });
     expect(lb!.config).toEqual(cfg);
   });
