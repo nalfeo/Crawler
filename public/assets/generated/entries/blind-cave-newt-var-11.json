@@ -1,0 +1,42 @@
+{
+  "briefId": "blind-cave-newt",
+  "spriteName": "blind-cave-newt-var-11",
+  "assetPath": "generated/blind-cave-newt-var-11.png",
+  "approvedAt": "2026-07-08T01:15:45.871Z",
+  "sourceRun": "generated/runs/blind-cave-newt/2026-07-08T00-59-07-35bb45f3",
+  "variantIndex": 11,
+  "anchor": {
+    "x": 31,
+    "y": 31,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "type": "enemy",
+  "contentHash": "ce7de98797ee2f7b7540c6854160d2a40c9da31dbdf7748b56feb1591b5fa52c",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\blind-cave-newt\\2026-07-08T00-59-07-35bb45f3\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 10,
+    "width": 56,
+    "height": 43,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

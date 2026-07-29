@@ -20,7 +20,7 @@
  * @module workflow/workflow-model
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { parse as parseYaml } from 'yaml';
@@ -366,7 +366,7 @@ const generatedManifestSchema = z
 // NEW: node orchestrator replacing the monolith's Vite-specific data plumbing.
 // ===========================================================================
 
-const MANIFEST_REL = path.join('public', 'assets', 'generated', 'manifest.json');
+const SHARDS_REL = path.join('public', 'assets', 'generated', 'entries');
 const ASSETS_ROOT_REL = path.join('public', 'assets');
 
 /**
@@ -409,13 +409,41 @@ export function sourceRunMatchesRun(sourceRun, briefId, runId) {
   return briefSegment === briefId && runSegment === runId;
 }
 
-/** Read the generated manifest from disk. Returns `null` (never throws) if absent. */
+/**
+ * Compose the generated manifest from the committed per-asset shards under
+ * `entries/`. The aggregate `manifest.json` is a gitignored build artifact, so
+ * the shards are the source of truth. Returns `null` (never throws) if absent.
+ */
 function readManifest(repoRoot) {
-  try {
-    return JSON.parse(readFileSync(path.join(repoRoot, MANIFEST_REL), 'utf8'));
-  } catch {
-    return null;
-  }
+  const shardsDir = path.join(repoRoot, SHARDS_REL);
+  if (!existsSync(shardsDir)) return null;
+  const entries = {};
+  const walk = (abs, rel) => {
+    let dirents;
+    try {
+      dirents = readdirSync(abs, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const dirent of dirents) {
+      const childRel = rel ? `${rel}/${dirent.name}` : dirent.name;
+      if (dirent.isDirectory()) {
+        walk(path.join(abs, dirent.name), childRel);
+      } else if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.json')) {
+        const key = childRel.slice(0, -'.json'.length);
+        try {
+          entries[key] = JSON.parse(readFileSync(path.join(abs, dirent.name), 'utf8'));
+        } catch {
+          // skip an unreadable/corrupt shard — degrade rather than crash
+        }
+      }
+    }
+  };
+  walk(shardsDir, '');
+  const sortedKeys = Object.keys(entries).sort();
+  const sorted = {};
+  for (const key of sortedKeys) sorted[key] = entries[key];
+  return { version: 1, entries: sorted };
 }
 
 /** Build a `{ relPath: rawYamlString }` map from a yaml-reader listing. */

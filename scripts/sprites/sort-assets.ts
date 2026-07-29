@@ -1,20 +1,22 @@
 #!/usr/bin/env node
 /**
- * sort-assets.ts — One-shot normalizer for manifest.json and sprite-catalog.json.
+ * sort-assets.ts — One-shot normalizer for sprite-catalog.json.
  *
  * Usage:
  *   npx tsx scripts/sprites/sort-assets.ts [--apply]
  *
  * Without --apply: prints what would change (dry-run).
- * With --apply:    sorts and writes both files in place.
+ * With --apply:    sorts and writes the catalog in place.
  *
  * Canonical order:
- *   manifest.json       → entry keys sorted lexicographically.
  *   sprite-catalog.json → sheet entries first (kind="sheet"), then by id.
  *
  * This matches the sort order enforced on every write by:
- *   - scripts/sprites/approve.ts > upsertManifest
  *   - scripts/sprites/approve.ts > upsertCatalog
+ *
+ * The aggregate manifest.json is no longer normalized here: it is a build
+ * artifact composed from per-asset shards (scripts/sprites/build-manifest.ts),
+ * gitignored, and merge-conflict-free by construction (one file per asset).
  */
 
 import { readFileSync } from 'node:fs';
@@ -26,34 +28,6 @@ import { writeCatalogJson } from './catalog-io.js';
 const apply = process.argv.includes('--apply');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-
-// ---------------------------------------------------------------------------
-// manifest.json
-// ---------------------------------------------------------------------------
-
-const MANIFEST_PATH = path.join('public', 'assets', 'generated', 'manifest.json');
-
-async function sortManifest(): Promise<void> {
-  const absPath = path.resolve(repoRoot, MANIFEST_PATH);
-  const manifest = JSON.parse(readFileSync(absPath, 'utf8')) as {
-    version: number;
-    entries: Record<string, unknown>;
-  };
-
-  const sorted = { ...manifest };
-  sorted.entries = Object.fromEntries(
-    Object.entries(manifest.entries).sort(([a], [b]) => a.localeCompare(b)),
-  );
-
-  if (apply) {
-    // Write through the canonical formatter so the result exactly matches
-    // what approve.ts / checkin-runtime.ts produce (Prettier-formatted JSON).
-    await writeCatalogJson(absPath, sorted);
-    console.log(`✅ Sorted ${MANIFEST_PATH}`);
-  } else {
-    console.log(`[dry-run] Would sort entries in ${MANIFEST_PATH}`);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // sprite-catalog.json
@@ -88,7 +62,6 @@ async function sortCatalog(): Promise<void> {
   }
 }
 
-await sortManifest();
 await sortCatalog();
 
 if (!apply) {

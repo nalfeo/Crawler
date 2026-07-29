@@ -15,20 +15,16 @@
  * shared Kenney villager at runtime, which reads as "that NPC has no art yet"
  * rather than as a bug.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import npcSpriteMap from '../../src/shared/data/npc-sprite-map.json' with { type: 'json' };
+import { loadShippedManifest } from '../helpers/generated-manifest.js';
 import {
   GENERATED_KEY_BY_NPC_DEF,
   pickGeneratedNpcTextureKey,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
 
 function approvedSpriteKeys(): Set<string> {
-  const manifestPath = join(process.cwd(), 'public', 'assets', 'generated', 'manifest.json');
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
-    entries?: Record<string, unknown>;
-  };
+  const manifest = loadShippedManifest();
   return new Set(Object.keys(manifest.entries ?? {}));
 }
 

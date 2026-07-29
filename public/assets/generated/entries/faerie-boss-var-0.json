@@ -1,0 +1,42 @@
+{
+  "briefId": "faerie-boss",
+  "spriteName": "faerie-boss-var-0",
+  "assetPath": "generated/faerie-boss-var-0.png",
+  "approvedAt": "2026-07-16T22:15:00.000Z",
+  "sourceRun": "generated/runs/faerie-boss-v1/2026-07-16T21-50-50-e48c978a",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 33,
+    "y": 71,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 33,
+      "y": 71,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 33,
+      "y": 71,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": null,
+  "type": "enemy",
+  "contentHash": "a1b54fa041f94f9dae1ed0bceae5303f172c6098fce8728eb8fce6a67c1a8cce",
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 54,
+    "height": 114,
+    "canvasWidth": 68,
+    "canvasHeight": 128
+  }
+}

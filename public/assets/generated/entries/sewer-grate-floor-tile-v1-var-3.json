@@ -1,0 +1,37 @@
+{
+  "briefId": "sewer-grate-floor-tile-v1",
+  "spriteName": "sewer-grate-floor-tile-v1-var-3",
+  "assetPath": "generated/sewer-grate-floor-tile-v1-var-3.png",
+  "approvedAt": "2026-07-01T23:52:39.663Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-HarkdK/sewer-grate-floor-tile-v1/2026-06-30T04-58-24-e7dea160",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 125,
+    "y": 254,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 125,
+      "y": 254,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 125,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "5/7",
+  "judgeScore": null,
+  "type": "tile",
+  "contentHash": "ca2e3aa7ccf1d42af0f4b53619dc78bc6ba833934c3a49c02ee8005b8485bef6",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 252,
+    "height": 255,
+    "canvasWidth": 252,
+    "canvasHeight": 255
+  }
+}

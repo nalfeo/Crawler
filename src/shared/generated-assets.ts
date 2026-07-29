@@ -85,7 +85,7 @@ export type OpaqueBounds = z.infer<typeof opaqueBoundsSchema>;
  * fields so adding fields on the approve side does not require a coordinated
  * engine update.
  */
-const manifestEntrySchema = z
+export const manifestEntrySchema = z
   .object({
     briefId: z.string().min(1),
     spriteName: z.string().min(1),
@@ -155,6 +155,30 @@ const manifestEntrySchema = z
         frameRate: z.number().positive(),
         loop: z.boolean().default(true),
       })
+      .optional(),
+    /**
+     * True when this entry is a placeholder stand-in (not real generated art).
+     * Placeholder entries are excluded from the derived sprite-catalog rows.
+     * Optional so pre-flag manifests still parse; the catalog composer falls
+     * back to an `-placeholder` asset-path check when this is absent. See
+     * `generated-catalog.ts#isPlaceholderManifestEntry`.
+     */
+    placeholder: z.boolean().optional(),
+    /**
+     * Optional per-asset catalog overrides. The sprite catalog's `generated:`
+     * rows are DERIVED from this manifest (see `generated-catalog.ts`); this
+     * field is the single home for the small set of hand-authored deviations
+     * (rich descriptions, deliberate tag overrides) that derivation cannot
+     * reconstruct. When absent, the composer derives description + tags from
+     * `briefId`/`type`. The override shards with its asset, so it never
+     * reintroduces a shared mega-file.
+     */
+    catalog: z
+      .object({
+        description: z.string().min(1).optional(),
+        tags: z.array(z.string().min(1)).optional(),
+      })
+      .strict()
       .optional(),
   })
   .passthrough();

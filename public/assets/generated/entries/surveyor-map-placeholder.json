@@ -1,0 +1,20 @@
+{
+  "briefId": "surveyor-map",
+  "spriteName": "surveyor-map",
+  "assetPath": "generated/surveyor-map-placeholder.png",
+  "approvedAt": "2026-07-18T03:32:13.535Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 10,
+    "height": 11,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

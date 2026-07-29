@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-laundry-line",
+  "spriteName": "welcome-room-laundry-line-var-0",
+  "assetPath": "generated/welcome-room-laundry-line-var-0.png",
+  "approvedAt": "2026-07-26T23:39:45.232Z",
+  "sourceRun": "generated/runs/welcome-room-laundry-line/2026-07-26T23-30-54-ecd3afb0",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 64,
+    "y": 31,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 64,
+      "y": 31,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 64,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 64,
+        "y": 31
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-26T23:32:15.145Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a sagging washing line with damp, worn garments fits the darkly humorous and derelict aesthetic of Crawler. The garments and their arrangement convey the intended mood of domestic intrusion into a workplace. However, the design could benefit from slightly more exaggerated sagging or asymmetry to enhance the sense of weight and neglect."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a hard 1-pixel outline, appropriate shading stops, and a muted palette that aligns well with the references. However, the cord's outline could be slightly more consistent with the references' line weight."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a hard 1-pixel outline, appropriate shading stops, and a muted palette that aligns well with the references. However, the cord's outline could be slightly more consistent with the references' line weight."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts a sagging washing line with damp, worn costume and uniform pieces, as described in the brief. The garments are appropriately varied and include the specified maroon tabard as an accent."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the garments are distinguishable at game scale. However, the cord's sag could be more pronounced to enhance the visual cue of weight and tension."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite adheres to the specified proportions and layout, with the cord spanning the full width and the garments hanging downwards. The background is fully transparent, and the sprite is presented as a single, cohesive object."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 4128,
+      "completionTokens": 416,
+      "totalTokens": 4544
+    }
+  },
+  "type": "prop",
+  "contentHash": "5da788e9a1cba34362381449603f64fd88eb9ea1ec2f84da812339cb474745b3",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-laundry-line\\2026-07-26T23-30-54-ecd3afb0\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-laundry-line\\2026-07-26T23-30-54-ecd3afb0\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-laundry-line\\2026-07-26T23-30-54-ecd3afb0\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 9,
+    "width": 114,
+    "height": 46,
+    "canvasWidth": 128,
+    "canvasHeight": 64
+  }
+}

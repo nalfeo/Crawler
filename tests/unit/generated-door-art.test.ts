@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { loadShippedManifest } from '../helpers/generated-manifest.js';
 import {
   GENERATED_DOOR_TEXTURE_KEYS,
   ALL_GENERATED_DOOR_TEXTURE_KEYS,
@@ -72,9 +71,9 @@ function renderedFt(bounds: { width: number; height: number }): {
   };
 }
 
-const manifest = JSON.parse(
-  readFileSync(resolve(process.cwd(), 'public/assets/generated/manifest.json'), 'utf8'),
-) as { entries: Record<string, ManifestEntry> };
+const manifest = loadShippedManifest() as unknown as {
+  entries: Record<string, ManifestEntry>;
+};
 
 const approved = ALL_GENERATED_DOOR_TEXTURE_KEYS.map((key) => ({
   key,
