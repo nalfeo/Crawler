@@ -143,6 +143,17 @@
     "path": "by-sha/050728b5c8b75d2aaf3b1a5aa4a764985e41e7b2.json"
   },
   {
+    "commit": "4f6e0eb9e87d9612a0b035430285058c0ebc5044",
+    "commitDate": "2026-07-28T22:33:08-07:00",
+    "commitSubject": "fix(sprites): shard the generated manifest + derive the catalog to end art-PR merge conflicts (#2286)",
+    "capturedAt": "2026-07-29T06:26:07.294Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30425890714",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/4f6e0eb9e87d9612a0b035430285058c0ebc5044.json"
+  },
+  {
     "commit": "dfff87d7886ea002710e246573a9dc3a3e0e6f19",
     "commitDate": "2026-07-28T22:07:49Z",
     "commitSubject": "fix(terrain-packs): tighten the vendored edge-pass floor to 0.90 (#2232)",
