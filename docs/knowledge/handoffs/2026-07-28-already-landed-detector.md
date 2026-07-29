@@ -9,30 +9,32 @@
 
 Added a deterministic "content already on main" detector to the CI recovery sweep.  
 Open PRs whose entire diff is byte-identical to `main` are automatically labeled  
-`ci-already-landed` and closed.  Partial matches and regression candidates are  
+`ci-already-landed` and closed. Partial matches and regression candidates are  
 flagged with a comment and label but left open for human triage.
 
 ## Problem
 
 Four open sprite PRs (#2057, #1975, #2112, #2124) sat `DIRTY` for days because  
-their art had already landed via other routes.  They could never self-resolve  
+their art had already landed via other routes. They could never self-resolve  
 because every art check-in touches shared registries (`manifest.json`,  
-`sprite-catalog.json`), creating permanent conflicts.  This detector removes  
+`sprite-catalog.json`), creating permanent conflicts. This detector removes  
 content-free zombie PRs automatically.
 
 ## Approach
 
-**Key insight:** Git blobs are content-addressed.  The GitHub REST API exposes each  
+**Key insight:** Git blobs are content-addressed. The GitHub REST API exposes each  
 file's blob SHA in both `pulls.listFiles` (PR HEAD) and `repos.getContent` (any ref).  
 Equal SHAs ↔ byte-identical content — no git worktrees, no cloning required.
 
 **Algorithm (pure module `already-landed.mjs`):**
+
 1. For each file in the PR (`pulls.listFiles`), fetch its blob SHA at PR HEAD.
 2. Fetch the same path's blob SHA at `main` HEAD (`repos.getContent`).
 3. Classify each file with `classifyFile()` → `FILE_STATUS` enum.
 4. Aggregate file statuses into a `VERDICT` via `analyzeFiles()`.
 
 **Verdict priority (conservatism invariant — never auto-close when uncertain):**
+
 - `REGRESSION_CANDIDATE` — any `DIFFERS` file: flag for human, never close.
 - `ALL_LANDED` — all files `LANDED` or `DELETION_LANDED`: comment + label + close.
 - `PARTIAL` — some landed, none differ: comment + label, leave open.
@@ -44,23 +46,24 @@ ci-recovery, ci-automation
 
 ## Files changed
 
-| File | Change |
-| ---- | ------ |
-| `.github/scripts/ci-recovery/already-landed.mjs` | **New** — pure analysis module |
-| `.github/scripts/ci-recovery/already-landed.test.mjs` | **New** — 36 tests |
-| `.github/scripts/ci-recovery/markers.mjs` | Added `ALREADY_LANDED_COMMENT_MARKER`, updated `MANAGED_COMMENT_MARKERS` |
-| `.github/workflows/ci-pr-disposition.yml` | Added "Detect content-identical (already-landed) PRs" step |
+| File                                                  | Change                                                                   |
+| ----------------------------------------------------- | ------------------------------------------------------------------------ |
+| `.github/scripts/ci-recovery/already-landed.mjs`      | **New** — pure analysis module                                           |
+| `.github/scripts/ci-recovery/already-landed.test.mjs` | **New** — 36 tests                                                       |
+| `.github/scripts/ci-recovery/markers.mjs`             | Added `ALREADY_LANDED_COMMENT_MARKER`, updated `MANAGED_COMMENT_MARKERS` |
+| `.github/workflows/ci-pr-disposition.yml`             | Added "Detect content-identical (already-landed) PRs" step               |
 
 ## Tests
 
 36 new tests in `already-landed.test.mjs`:
+
 - All five `FILE_STATUS` values (including edge cases: null prFile, null mainBlobSha).
 - All four `VERDICT` values with conservatism invariant checks.
 - Golden fixtures for all four issue PRs (#2057 → ALL_LANDED, #1975 → REGRESSION_CANDIDATE, #2112 → ALL_LANDED, #2124 → PARTIAL).
 - `renderAlreadyLandedComment()` output checks for all verdict branches.
 
 Pre-existing failure: `router.test.mjs` fails due to missing `yaml` npm package in  
-the local environment — unrelated to this work.  504 of 505 ci-recovery tests pass.
+the local environment — unrelated to this work. 504 of 505 ci-recovery tests pass.
 
 ## Design decisions
 
