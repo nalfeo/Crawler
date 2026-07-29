@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d3781348fe48aa4415d0b15e3952d284582573b1",
+    "commitDate": "2026-07-29T02:32:11Z",
+    "commitSubject": "feat: Chronicle 2026-07-27 remediation — guard attribution, archive June handoffs, merge-train consolidation, preflight hardening (#2126)",
+    "capturedAt": "2026-07-29T03:41:41.806Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30417530015",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/d3781348fe48aa4415d0b15e3952d284582573b1.json"
+  },
+  {
     "commit": "bcf29730802e014df811f5ff2c5052abd49c2428",
     "commitDate": "2026-07-29T01:48:43Z",
     "commitSubject": "perf(sprites): speed up theme-equipment rejudge ~4× (rejudge-only cap 6 + concurrency 4) (#2259)",
