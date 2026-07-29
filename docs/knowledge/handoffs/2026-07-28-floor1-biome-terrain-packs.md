@@ -81,62 +81,6 @@ reproducible but does **not** allow re-tuning luminance targets, which needs the
 raw material. That was judged the right trade (10 KB vs 19 MB) and matches
 convention, but it is a real constraint on future retexturing.
 
-## Human review found a defect that ALL eight deterministic guards passed
-
-The single most valuable finding of this session came from a human looking at a
-screenshot, not from any gate. Asked for screenshots, the maintainer immediately
-said: _"Wtf are all the grid lines everywhere?"_
-
-The welcome-room floor rendered as **graph paper**. Cause was my own prompt in
-`FLOOR1_SPECIAL_FLOOR_SPECS`: it asked for "thin brass inlay lines and a faint
-engraved geometric border pattern **repeating across the surface**". The model
-complied exactly. Because the tile is _seamless_, those lines chained across
-every tile boundary into unbroken lines spanning the entire room — and the
-welcome room is the spawn room, so it was the first thing a player ever saw.
-
-**Why every guard was blind, which is the durable lesson.** The bad tile's
-column standard deviation was **11.58 — LOWER than the ordinary floor's 12.49**.
-A perfect lattice is a _low-variance, high-regularity_ signal: it is
-statistically **calmer** than good art while being visually far worse. The
-guards measure mean luminance, standard deviation, silhouette geometry and seam
-byte-identity. Not one of them can see structure, by construction.
-
-| tile               | field mean | peak col  | bright-line cols   | col SD | mean chroma |
-| ------------------ | ---------- | --------- | ------------------ | ------ | ----------- |
-| `floor-0` (normal) | 74.8       | 82.2      | none               | 12.49  | 24          |
-| welcome **before** | 84.5       | **133.1** | **10, 21, 42, 53** | 11.58  | 21.8        |
-| welcome **after**  | 84.0       | 91.4      | **none**           | 8.08   | 10.5        |
-
-**Fixed**, and promoted into a deterministic guard (project rule #9): the new
-`anti-lattice` test reduces each tile to per-column and per-row mean-luminance
-profiles and fails if the brightest line exceeds **3.4σ** of its own axis.
-
-- Scored **per axis**, combined with `max`, **never pooled** — pooling column
-  and row deltas into one distribution was shown non-monotonic by the Floor 2
-  session across six tiles, so a pooled score cannot even be read directionally.
-- Threshold **calibrated on 46 committed pool tiles across three independently
-  generated packs** (`floor1-dungeon`, `floor1-cave`, `industrial-cave`), worst
-  case 2.75.
-- **Negative control run**: the guard was executed against the restored gridded
-  tile and _failed_, reporting `special-welcome-0.png (z=4.11)`. An unvalidated
-  guard is not a guard.
-
-Regeneration cost exactly **one Azure call**: `loadMaterial` keys its cache on
-`spec.cacheKey`, so bumping that one key (`floor1-welcome-floor-v2`) rebuilt one
-material and left every other byte identical — 6 cache hits, 1 generated. Use
-this, never `--force`, for a single-material fix.
-
-## Out of scope: the welcome-sign clipping is pre-existing
-
-The same screenshot review flagged the arrow sign as visually clipped. It is
-**not** from this branch: `git diff --name-only origin/main...HEAD` touches none
-of `textures.ts`, `floorScenario.ts`, `PhaserBridge.ts`, `sprite-kind.ts`. The
-bake is provably correct — `TEX_WELCOME_SIGN` is 48x26 px for a 6 x 3.25 ft
-sprite at 8 px/ft, exactly 1:1 with no scaling, and `"WELCOME"` at
-`bold 9px monospace` measures 34.64 px centred in a 48 px board (spans
-6.7...41.3). So the artifact is display-side, and the root cause is not
-established. It deserves its own investigation rather than a drive-by fix here.
-
 ## Rejected review remedy (recorded deliberately)
 
 `gemini-3.1-pro-preview` correctly observed that `floor1-cave`'s `doorSet` and
