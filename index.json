@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e0f9d56efae7bbb8b2551bc61276873912b655f5",
+    "commitDate": "2026-07-29T00:17:14Z",
+    "commitSubject": "fix(security): bind check-exact-deps exemptions to exact version; fix cross-platform repoRoot path (#2244)",
+    "capturedAt": "2026-07-29T01:15:36.225Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30410725367",
+    "winRate": 0.9816666666666667,
+    "totalWins": 589,
+    "totalRuns": 600,
+    "path": "by-sha/e0f9d56efae7bbb8b2551bc61276873912b655f5.json"
+  },
+  {
     "commit": "12b6f5bdfd2e271ed0ec72a7ae2f3df192aec33a",
     "commitDate": "2026-07-29T00:03:31Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (6 art paths) (#2251)",
