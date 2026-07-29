@@ -3158,17 +3158,22 @@ describe('sidecar POST /api/checkin', () => {
     expect(external.json()).toMatchObject({ error: 'forbidden-origin' });
   });
 
-  it('/api/workflow/metadata executes the durable queue-commit for changed generated entries (#1)', async () => {
+  it('/api/workflow/metadata persists the Tag edit to the shard and executes the durable queue-commit for changed generated entries (#1)', async () => {
     // Seed a base catalog (no generated: rows — those are DERIVED from shards
     // now) plus a manifest shard for the sprite. The composed generated row is
     // deliberately incomplete (empty tags + placeholder description via a
     // `catalog` override) so the heuristic provider produces a real change, and
-    // its PNG exists so the changed shard resolves to a stageable asset. The temp
-    // repoRoot is not a git repo, so the real queue-commit path deterministically
-    // fails — a `queueCommit` field with status 'failed' proves the route REACHED
-    // and EXECUTED the durable push. Before the #1 fix this route never ran
-    // queue-commit at all, silently dropping the metadata edit across
-    // worktrees/sessions.
+    // its PNG exists so the changed shard resolves to a stageable asset.
+    //
+    // This asserts TWO real guarantees (not just "the route called
+    // queue-commit"): (a) the Tag edit is PERSISTED onto the shard's `catalog`
+    // override — the local durability the old narrowed-ASSET_SURFACE_PATHS bug
+    // silently dropped — and (b) the route mapped that shard into a non-empty
+    // changedAssets set and executed the durable push (queueCommit not null).
+    // The temp repoRoot is not a git repo, so the push itself deterministically
+    // fails here; that the edit actually LANDS on assets/queue is proven
+    // separately by the real-git "durably lands a Tag/metadata edit …" test in
+    // queue-commit.test.ts.
     mkdirSync(path.join(root, 'src', 'shared', 'data'), { recursive: true });
     writeFileSync(
       path.join(root, 'src', 'shared', 'data', 'sprite-catalog.json'),
@@ -3201,9 +3206,22 @@ describe('sidecar POST /api/checkin', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.changedCount).toBeGreaterThanOrEqual(1);
-    // The route mapped the changed generated id to its manifest asset and ran
-    // the durable queue-commit; in this non-git temp root the push fails, which
-    // is the deterministic proof it actually executed (not null, not skipped).
+
+    // (a) The Tag edit is durably persisted ONTO the shard — the placeholder
+    // description/empty tags were replaced. This is exactly the write the old
+    // narrowed-write-surface bug silently dropped; a green run without this
+    // assertion cannot distinguish "edit persisted" from "edit lost".
+    const persisted = JSON.parse(
+      readFileSync(shardPathForKey(generatedDir, 'my-sword-var-0'), 'utf8'),
+    ) as { catalog?: { description?: string; tags?: string[] } };
+    expect(persisted.catalog?.description).not.toBe('Description pending.');
+    expect((persisted.catalog?.description ?? '').length).toBeGreaterThan(0);
+    expect((persisted.catalog?.tags ?? []).length).toBeGreaterThan(0);
+
+    // (b) The route mapped the changed generated id to its manifest asset and
+    // ran the durable queue-commit; in this non-git temp root the push fails,
+    // which is the deterministic proof it actually executed (not null, not
+    // skipped).
     expect(body.queueCommit).not.toBeNull();
     expect(body.queueCommit.status).toBe('failed');
   });

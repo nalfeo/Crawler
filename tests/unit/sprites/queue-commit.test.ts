@@ -767,6 +767,72 @@ describe('runQueueCommit (real git)', () => {
   );
 
   it(
+    'durably lands a Tag/metadata edit (shard catalog override) on assets/queue',
+    async () => {
+      // Replaces the retired `catalogEntryIds`-opt-in durability test. Under the
+      // shard design a Tag edit is a `catalog` override written ONTO the existing
+      // per-asset shard (exactly what the sidecar /api/workflow/metadata route
+      // does via writeShard), so it stages naturally under public/assets/generated
+      // and must reach assets/queue with NO separate catalog write path. This
+      // proves the durability GUARANTEE (the edit lands on the queue), only the
+      // mechanism changed from the sibling's catalog-only flow.
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+
+      // 1) Seed the queue with the base asset (PNG + minimal shard).
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+      const deps = realGitDeps(liveDir);
+      const first = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        deps,
+        { message: 'chore(assets): add alpha' },
+      );
+      expect(first.status).toBe('committed');
+
+      // 2) The Tag edit: rewrite alpha's shard with a `catalog` override (same
+      //    PNG). This is a metadata-only change to a file already under the art
+      //    surface — no sprite-catalog.json touched, no opt-in list.
+      writeJson(shardFilePath(liveDir, 'alpha'), {
+        assetPath: 'generated/alpha.png',
+        spriteName: 'alpha',
+        catalog: { description: 'Hand-tuned alpha blade.', tags: ['weapon', 'generated'] },
+      });
+
+      // 3) Re-queue: a metadata-only shard change IS a change, so it commits.
+      const edit = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        deps,
+        { message: 'chore(assets): metadata for alpha' },
+      );
+      expect(edit.status).toBe('committed');
+
+      // 4) The override is DURABLE: it is present on the assets/queue branch, not
+      //    just the local working tree.
+      const queued = queueManifest(liveDir);
+      const alpha = queued.entries.alpha as { catalog?: { description?: string; tags?: string[] } };
+      expect(alpha.catalog?.description).toBe('Hand-tuned alpha blade.');
+      expect(alpha.catalog?.tags).toEqual(['weapon', 'generated']);
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
     "preserves a concurrent writer's entry across a forced push-rejection retry (no clobber)",
     async () => {
       const { root, liveDir } = setupRepos();
