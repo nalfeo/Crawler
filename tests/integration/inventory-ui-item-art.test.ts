@@ -27,8 +27,6 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
 import {
   fetchGeneratedSpriteRegistry,
   GENERATED_SPRITE_REGISTRY_KEY,
@@ -42,8 +40,10 @@ import { hashStringToSeed } from '../../src/shared/random.js';
 import { createInventoryUI } from '../../src/engine/InventoryUI.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
-
-const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
+import {
+  loadShippedManifestRaw,
+  shippedManifestShardsExist,
+} from '../helpers/generated-manifest.js';
 
 /** The 14 active single-lineage item icons + the bat weaponId alias. */
 const ITEM_ART_EXPECTATIONS: ReadonlyArray<{ itemId: string; concept: string }> = [
@@ -173,7 +173,7 @@ function uiSeedFor(itemId: string, world: GameWorld): number {
 }
 
 async function loadRealShippedRegistry(): Promise<GeneratedSpriteRegistry> {
-  const raw = readFileSync(REPO_MANIFEST, 'utf8');
+  const raw = loadShippedManifestRaw();
   const fetcher = (async () =>
     new Response(raw, {
       status: 200,
@@ -184,7 +184,7 @@ async function loadRealShippedRegistry(): Promise<GeneratedSpriteRegistry> {
 
 describe('InventoryUI real render path over the shipped manifest (observe-before-done)', () => {
   it('renders each normalized item to its resolver-chosen real texture, never a placeholder', async () => {
-    if (!existsSync(REPO_MANIFEST)) {
+    if (!shippedManifestShardsExist()) {
       // Fresh checkout with no generated art on disk — nothing to observe.
       return;
     }
