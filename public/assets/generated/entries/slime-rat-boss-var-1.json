@@ -6,26 +6,26 @@
   "sourceRun": "generated/runs/slime-rat-boss/2026-07-07T23-58-08-2a147cd7",
   "variantIndex": 1,
   "anchor": {
-    "x": 70,
+    "x": 32,
     "y": 35,
     "source": "derived"
   },
   "anchors": {
     "hold": {
-      "x": 70,
+      "x": 32,
       "y": 35,
       "source": "derived"
     },
     "centerOfGravity": {
-      "x": 70,
+      "x": 32,
       "y": 35,
       "source": "derived"
     }
   },
   "sensorScore": "7/7",
-  "judgeScore": "3",
+  "judgeScore": "5",
   "type": "enemy",
-  "contentHash": "26ae10343ddb1896b24bd1920dbab160c32a079f8092b0dc9f55239cf8cdc488",
+  "contentHash": "fac31bffd27ac7215f1215fed322e71bf95b8d3321f8665c0bb89d47de0eb8d5",
   "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.yaml",
@@ -33,9 +33,9 @@
   "facingDirection": "right",
   "opaqueBounds": {
     "x": 3,
-    "y": 3,
+    "y": 5,
     "width": 58,
-    "height": 58,
+    "height": 53,
     "canvasWidth": 64,
     "canvasHeight": 64
   }
