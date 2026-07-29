@@ -2587,6 +2587,26 @@ let dispatchProgressAt = now.toISOString();
 // cap turns that reasoning into a runtime assertion instead of leaving an
 // unbounded `for (;;)` relying on the invariant holding forever.
 const MAX_TERMINAL_PASSES = 2;
+// Exclude the self-generated ci-failure copilot blocker from the effective
+// blocker count when deciding whether to dispatch — same exclusion as
+// blockerFingerprint() in state.mjs. When ci-failure copilot is the ONLY
+// remaining blocker (all review threads resolved, e.g. via near-typo
+// promotion), the PR is effectively clean and should be admitted to merge
+// rather than re-dispatching Copilot to "fix" its own failed session.
+// The blocker is still included in `normalized` for logging and task-body
+// context when other real blockers are also present.
+// Observed in production: PR #2010 / incident #2326 — ADR thread was
+// auto-resolved via 2-digit near-typo promotion, but ci-failure copilot
+// (from the prior failed session) remained as the sole blocker, causing an
+// extra unnecessary dispatch cycle.
+const effectiveBlockers = normalized.filter(
+  (b) => !(b.kind === 'ci-failure' && b.id === 'copilot'),
+);
+if (normalized.length > 0 && effectiveBlockers.length === 0) {
+  process.stdout.write(
+    `skipping-copilot-self-failure pr=#${prNumber} blockers-effective=0 ci-failure-copilot=self-generated\n`,
+  );
+}
 let terminalRow;
 // Snapshot the {row, ctx, pass} that produced the FINAL terminal decision so the
 // decision-log line uses the exact context that selected the row (not a
@@ -2599,7 +2619,7 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
   // owner/status/stallAction.
   const stateProgressKey = getOrDeriveProgressKey(state);
   const terminalCtx = {
-    blockersPresent: normalized.length > 0,
+    blockersPresent: effectiveBlockers.length > 0,
     admissionWaitingCount: admissionWaiting.length,
     live,
     mergeTrainEnabled,
