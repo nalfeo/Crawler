@@ -28,7 +28,8 @@ describe('AI runner lab default config wiring', () => {
     // Every occurrence of retreatThreshold must use the shared constant, never a literal
     expect(source).not.toContain('retreatThreshold: 0.15');
     // Confirm the replacement is present (there are three call-sites: initial, rebuildAiBrain, reseed)
-    const occurrences = source.split('retreatThreshold: DEFAULT_CONFIG.retreatThreshold').length - 1;
+    const occurrences =
+      source.split('retreatThreshold: DEFAULT_CONFIG.retreatThreshold').length - 1;
     expect(occurrences).toBe(3);
   });
 
