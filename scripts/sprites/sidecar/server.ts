@@ -500,7 +500,9 @@ function mapApproveError(reply: FastifyReply, err: unknown): { error: string; me
         ? 404
         : err.kind === 'already-approved'
           ? 409
-          : 500;
+          : err.kind === 'hard-blocked'
+            ? 422
+            : 500;
     reply.code(status);
     return { error: err.kind, message: err.message };
   }
