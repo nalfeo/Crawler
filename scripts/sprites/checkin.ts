@@ -24,8 +24,29 @@
 
 import { hashStringToSeed } from '../../src/shared/random.js';
 
-/** The art surface a check-in captures (repo-relative, POSIX separators). */
-export const ASSET_SURFACE_PATHS = [
+/**
+ * The art surface a check-in WRITES (repo-relative, POSIX separators).
+ *
+ * `src/shared/data/sprite-catalog.json` is deliberately absent: its `generated:`
+ * rows merely restate manifest data, so writing both made every pair of
+ * parallel art check-ins conflict by construction. New check-ins therefore
+ * touch exactly one shared committed JSON file.
+ *
+ * This is NOT the same list as {@link ART_SURFACE_ALLOWLIST}: we stopped
+ * producing catalog changes, but in-flight branches and CI's own art-only
+ * classifier must still tolerate them.
+ */
+export const ASSET_SURFACE_PATHS = ['public/assets/generated'] as const;
+
+/**
+ * The art surface guards TOLERATE on an existing diff (repo-relative, POSIX).
+ *
+ * Must match `detect-art-only.sh` EXACTLY so the reconcile guard and the CI
+ * art-only classifier agree by construction. It stays a superset of
+ * {@link ASSET_SURFACE_PATHS} so branches created before check-ins stopped
+ * writing the catalog still reconcile.
+ */
+export const ART_SURFACE_ALLOWLIST = [
   'public/assets/generated',
   'src/shared/data/sprite-catalog.json',
 ] as const;
