@@ -44,7 +44,11 @@ import {
   runJudgePass,
   type ProcessedVariant,
 } from './run-pipeline.js';
-import type { PostprocessOptions } from './postprocess.js';
+import {
+  frameSequenceDisabledModules,
+  computeFrameSequenceUnionCropRect,
+  type PostprocessOptions,
+} from './postprocess.js';
 import {
   EFFECTIVE_PIPELINE_JSON_KEY,
   EFFECTIVE_PIPELINE_YAML_KEY,
@@ -243,12 +247,41 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   const optionsMode =
     args.optionsMode ??
     (args.options !== undefined ? 'replace' : persistedProfile ? 'persisted' : 'default');
-  const effectiveOptions =
+  // Modules that frame-sequence briefs MUST disable in every re-run mode —
+  // `reset`, explicit `replace`, and `persisted`. These modules have per-frame
+  // independent behavior (e.g. `trim-and-fit` re-trims after resize) that
+  // reintroduces varying scale/centering across the ordered cycle, which the
+  // coherence gate does NOT detect (it validates the generated pixels, not the
+  // postprocess profile). A caller could otherwise reset/replace options and
+  // silently produce an incoherent strip that passes the gate only because the
+  // already-approved frames were consistent, then gets reprocessed with a
+  // different scale per frame.
+  const requiredDisabledModules = frameSequenceDisabledModules(brief);
+  // First-time-default PostProcess of a raw-only generate (ADR 0024's
+  // two-step split, no persisted profile yet, no explicit override).
+  const defaultFrameSequenceOptions: PostprocessOptions = {
+    disabledModules: requiredDisabledModules,
+  };
+  const baseEffectiveOptions: PostprocessOptions =
     optionsMode === 'reset'
       ? {}
       : args.options !== undefined
         ? args.options
-        : (persistedProfile?.options ?? {});
+        : (persistedProfile?.options ?? defaultFrameSequenceOptions);
+  // Union the required disabled modules into every effective option mode so
+  // a `reset` or explicit `replace` cannot re-enable them.
+  const effectiveOptions: PostprocessOptions =
+    requiredDisabledModules.length > 0
+      ? {
+          ...baseEffectiveOptions,
+          disabledModules: [
+            ...new Set([
+              ...(baseEffectiveOptions.disabledModules ?? []),
+              ...requiredDisabledModules,
+            ]),
+          ],
+        }
+      : baseEffectiveOptions;
   const effectiveManualAnchor =
     optionsMode === 'reset'
       ? null
@@ -295,7 +328,9 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   let sliceResult: BriefSliceResult;
   try {
     sliceResult = priorGrid
-      ? sliceSheetWithGrid(sheetPng, priorGrid)
+      ? sliceSheetWithGrid(sheetPng, priorGrid, {
+          fixedGrid: brief.frameSequence?.enabled === true,
+        })
       : sliceSheetFromBrief(sheetPng, brief);
   } catch (err) {
     throw new RerunError('slice-failed', err instanceof Error ? err.message : String(err));
@@ -339,6 +374,18 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       );
     }
   }
+
+  // For frame-sequence briefs: recompute the union crop rect from the current
+  // raw frames so transparent-trim gives every pose the same crop-to-canvas
+  // mapping. This is always derived fresh (never loaded from the stored profile)
+  // so it stays correct if frames were regenerated on a different machine.
+  const sharedCropRect = brief.frameSequence.enabled
+    ? computeFrameSequenceUnionCropRect(sliced)
+    : null;
+  const effectiveOptionsWithCrop: PostprocessOptions = sharedCropRect
+    ? { ...effectiveOptions, sharedCropRect }
+    : effectiveOptions;
+
   const priorEntriesByIndex = new Map<number, RunSummaryEntry>(
     summary.candidates.map((entry) => [entry.index, entry]),
   );
@@ -372,7 +419,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       raw: sliced[i]!,
       brief,
       palette,
-      options: effectiveOptions,
+      options: effectiveOptionsWithCrop,
       ...(effectiveManualAnchor ? { manualAnchor: effectiveManualAnchor } : {}),
       ...(effectiveManualWeaponAnchor ? { manualWeaponAnchor: effectiveManualWeaponAnchor } : {}),
       traceRefs: {

@@ -125,6 +125,34 @@ function encodeRowWidths(widths: readonly number[], gutter: number, margin: numb
   return PNG.sync.write(png);
 }
 
+/**
+ * A single row of `cols` equal-width, full-height solid-colour blocks with NO
+ * gutter between them at all — content touches edge-to-edge across the whole
+ * sheet width. This mirrors a `frameSequence` walk-cycle sheet: frames are
+ * drawn close together by design, so there is no reliable background band
+ * between them for the gutter detector to key off. Used to prove the
+ * `frameSequence` fixed-grid slicing path (unlike the gutter detector, which
+ * would collapse this into a single 1×1 cell).
+ */
+function encodeGutterFreeRow(cols: number, cellW: number, cellH: number): Buffer {
+  const width = cols * cellW;
+  const height = cellH;
+  const png = new PNG({ width, height });
+  for (let c = 0; c < cols; c++) {
+    const col: Rgb = { r: 10 + c * 50, g: 200 - c * 30, b: 80 + c * 20 };
+    for (let y = 0; y < height; y++) {
+      for (let x = c * cellW; x < (c + 1) * cellW; x++) {
+        const i = (y * width + x) * 4;
+        png.data[i] = col.r;
+        png.data[i + 1] = col.g;
+        png.data[i + 2] = col.b;
+        png.data[i + 3] = 255;
+      }
+    }
+  }
+  return PNG.sync.write(png);
+}
+
 function containsColor(buf: Buffer, color: Rgb): boolean {
   const png = PNG.sync.read(buf);
   for (let i = 0; i < png.data.length; i += 4) {
@@ -484,6 +512,105 @@ describe('sliceSheetFromBrief', () => {
     expect(result.cells).toHaveLength(3);
     expect(result.variantCount).toBe(3);
     expect(result.grid).toEqual({ rows: 1, cols: 3, emptyCells: [] });
+  });
+});
+
+describe('sliceSheetFromBrief: frameSequence bypasses gutter detection', () => {
+  // frameSequence walk-cycle frames are drawn close together by design (see
+  // brief-schema.ts's frameSequence cross-validation and build-prompt.ts's
+  // sequence-mode instructions) — there is no reliable background gutter
+  // between poses for the content-aware detector to key off. Discovered via a
+  // real generation run: a genuinely coherent 4-frame sheet with no interior
+  // gutter collapsed to a single 1×1 "cell" (the whole row), which was then
+  // mis-scored as one character. `frameSequence.enabled` must bypass gutter
+  // detection and use a fixed uniform grid instead.
+  function frameSequenceBrief(cols: number): Brief {
+    return {
+      generation: {
+        sheet: { rows: 1, cols, emptyCells: [] as ReadonlyArray<readonly [number, number]> },
+      },
+      frameSequence: { enabled: true, frameCount: cols, frameRate: 8, loop: true },
+    } as unknown as Brief;
+  }
+
+  it('slices a gutter-free 4-frame row into 4 equal cells instead of collapsing to 1', () => {
+    const sheet = encodeGutterFreeRow(4, 16, 16);
+    const brief = frameSequenceBrief(4);
+
+    const result = sliceSheetFromBrief(sheet, brief);
+
+    expect(result.grid).toEqual({ rows: 1, cols: 4, emptyCells: [] });
+    expect(result.cells).toHaveLength(4);
+    expect(result.variantCount).toBe(4);
+
+    // Each cell is uniformly the frame's own colour end-to-end (fixed-width
+    // division, not a content-aware crop) and cells are in reading order.
+    for (let c = 0; c < 4; c++) {
+      const png = PNG.sync.read(result.cells[c]!);
+      expect(png.width).toBe(16);
+      expect(png.height).toBe(16);
+      const expected: Rgb = { r: 10 + c * 50, g: 200 - c * 30, b: 80 + c * 20 };
+      expect(containsColor(result.cells[c]!, expected)).toBe(true);
+      // No bleed from a neighbouring frame's colour.
+      for (let other = 0; other < 4; other++) {
+        if (other === c) continue;
+        const otherColor: Rgb = { r: 10 + other * 50, g: 200 - other * 30, b: 80 + other * 20 };
+        expect(containsColor(result.cells[c]!, otherColor)).toBe(false);
+      }
+    }
+  });
+
+  it('does not use frameSequence.frameCount as a gutter-detection soft anchor at all', () => {
+    // Regression guard: a non-frameSequence brief commanding the identical
+    // cols would ordinarily anchor gutter detection (chooseAxisCuts), which
+    // still collapses a gutter-free sheet to 1×1. Confirms the frameSequence
+    // path is a genuinely different code path, not just a different anchor
+    // value fed into the same gutter detector.
+    const sheet = encodeGutterFreeRow(4, 16, 16);
+    const nonSequenceBrief = {
+      generation: {
+        sheet: { rows: 1, cols: 4, emptyCells: [] as ReadonlyArray<readonly [number, number]> },
+      },
+      frameSequence: { enabled: false, frameCount: 4, frameRate: 8, loop: true },
+    } as unknown as Brief;
+
+    const result = sliceSheetFromBrief(sheet, nonSequenceBrief);
+    expect(result.grid).toEqual({ rows: 1, cols: 1, emptyCells: [] });
+    expect(result.cells).toHaveLength(1);
+  });
+
+  it('distributes remainder pixels into the last column when width does not divide evenly', () => {
+    // Schema validation (brief-schema.ts) requires nativeCanvas % cols === 0
+    // in practice, but the slicer itself is defensive against a non-exact
+    // division rather than silently dropping trailing pixels.
+    const sheet = encodeGutterFreeRow(3, 10, 8);
+    // Manually widen by 2px of extra background to simulate an odd width.
+    const original = PNG.sync.read(sheet);
+    const widened = new PNG({ width: original.width + 2, height: original.height });
+    for (let y = 0; y < widened.height; y++) {
+      for (let x = 0; x < widened.width; x++) {
+        const di = (y * widened.width + x) * 4;
+        if (x < original.width) {
+          const si = (y * original.width + x) * 4;
+          original.data.copy(widened.data, di, si, si + 4);
+        } else {
+          widened.data[di] = BG.r;
+          widened.data[di + 1] = BG.g;
+          widened.data[di + 2] = BG.b;
+          widened.data[di + 3] = 255;
+        }
+      }
+    }
+    const widenedSheet = PNG.sync.write(widened);
+    const brief = frameSequenceBrief(3);
+
+    const result = sliceSheetFromBrief(widenedSheet, brief);
+    expect(result.cells).toHaveLength(3);
+    // First two columns keep the nominal cell width; the last absorbs the
+    // remainder so the whole sheet width (32) is covered: 10 + 10 + 12.
+    expect(PNG.sync.read(result.cells[0]!).width).toBe(10);
+    expect(PNG.sync.read(result.cells[1]!).width).toBe(10);
+    expect(PNG.sync.read(result.cells[2]!).width).toBe(12);
   });
 });
 

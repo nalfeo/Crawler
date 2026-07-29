@@ -539,6 +539,30 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  # Aggregate row ownership guard — detects silent data-loss when a PR
+  # regenerates an aggregate file (manifest.json, boss-abilities status) from a
+  # stale snapshot, silently reverting rows that concurrent PRs updated.
+  # Runs only on pull_request events; skipped for docs-only changes.
+  # Requires fetch-depth: 0 so git merge-base can find the true common ancestor.
+  check-aggregate-rows:
+    name: Aggregate row ownership guard
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.docs_only != 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Aggregate row ownership guard
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: npm run check:aggregate-row-ownership
+
   # Job 6: Build (moved to advisory, not blocking)
   build:
     name: Build
@@ -564,6 +588,7 @@ jobs:
       [
         changes,
         check-lightweight,
+        check-aggregate-rows,
         test-unit,
         test-integration,
         test-sprites,
@@ -656,6 +681,9 @@ jobs:
           # Set-piece reachability sweep: scoped to carve/gate files. A skipped job
           # is an intentional scope skip (or non-PR event) and counts as pass.
           check "Set-piece reachability"      "${{ needs.set-piece-reachability.result }}" "true"
+          # Aggregate row ownership guard: only runs on pull_request events; skipped
+          # for docs-only and push-to-main (allow_skipped=true).
+          check "Aggregate row ownership"     "${{ needs.check-aggregate-rows.result }}"   "true"
           # E2E visual jobs: each runs only when its surface was touched (allow_skipped=true).
           # visual_touched=false (CI/tooling-only) skips all three → no Playwright runner launched.
           # art_only=true → only e2e-assets runs (targeted asset smoke, not the full game suite).

@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "aggregate-row-ownership-guard",
+  "task_title": "Aggregate row ownership guard — CI check for silent stale-regeneration reverts",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-5",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "convergent",
+      "notes": "Rubber-duck review found 4 blocking issues and 3 non-blocking. B1: CI shallow checkout makes merge-base fail silently — fixed by using dedicated job with fetch-depth: 0 (not modifying check-lightweight). B2: Volatile fields in manifest entries — analyzed: approvedAt/sourceRun are stable-per-approval, not auto-generated each run; whole-row comparison is safe for these specific files. B3: Deletions not covered — added Rule 1 (deleted-row) and Rule 3 (deleted-field). B4: Skip-on-missing-merge-base must be hard failure in CI — implemented: hard-fail when GITHUB_ACTIONS=true. N1: canonicalize needs recursive key sorting — implemented canonicalizeInner recursively. N2: Duplicate/missing keys in boss-abilities — added validation. S1: Use execFile with array args, validate SHA format — implemented with SHA_RE regex. Plan not substantially changed; all findings were implementation refinements."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Critical: Rule 2 stale-check fires false positives for any PR that never touches the aggregate file (prValue===mergeBaseValue is expected when file is untouched — git 3-way merge takes main's content, no revert risk). Fixed by adding prContent===mergeBaseContent guard before row parsing; skips check entirely when file unchanged. Medium: unused fromRepo import in CLI causes noUnusedLocals typecheck error — removed. Low: unused OwnershipCheckResult type import in test file — removed. Canary check updated to only fire when filesWithRowsChecked>0 to avoid false alarm for PRs that touch no registered files."
+        }
+      ]
+    }
+  }
+}
