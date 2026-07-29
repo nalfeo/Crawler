@@ -289,12 +289,45 @@ export function blockerFingerprint(blockers) {
 }
 
 function normalizeThreadComments(thread) {
-  return (thread?.comments?.nodes ?? []).map((comment) => [
-    compact(comment.id),
-    String(comment.body ?? ''),
-    compact(comment.author?.login),
-    compact(comment.authorAssociation),
+  // Recovery attempts that post non-marker diagnostics in the same review
+  // thread should not count as blocker progress: they can churn comment digests
+  // forever while leaving the underlying blocker unchanged. Keep marker replies
+  // in digest identity, but ignore known recovery-agent replies that do not
+  // carry a resolution marker.
+  const knownRecoveryReplyLogins = new Set([
+    'copilot',
+    'copilot[bot]',
+    'app/copilot',
+    'copilot-swe-agent',
+    'copilot-swe-agent[bot]',
+    'app/copilot-swe-agent',
   ]);
+  const hasResolutionMarker = (body) => {
+    // Strip quoted lines (lines starting with ">") before testing — a recovery
+    // reply may quote a prior task body that itself contains a stale marker SHA,
+    // and testing the raw body would incorrectly classify such a reply as
+    // marker-bearing.  Same normalization as reconcile.mjs:1926-1929.
+    const unquotedText = String(body ?? '')
+      .split(/\r?\n/)
+      .filter((line) => !line.trimStart().startsWith('>'))
+      .join('\n');
+    // Use extractAddressedMarkerSha rather than the raw pattern so that a bare
+    // "✅ Addressed in invalid-token" (no parseable SHA/URL) is not treated as
+    // a resolution marker.
+    return Boolean(extractAddressedMarkerSha(unquotedText) || hasNotApplicableMarker(unquotedText));
+  };
+  return (thread?.comments?.nodes ?? [])
+    .filter((comment) => {
+      const authorLogin = String(comment?.author?.login ?? '').toLowerCase();
+      if (!knownRecoveryReplyLogins.has(authorLogin)) return true;
+      return hasResolutionMarker(comment?.body);
+    })
+    .map((comment) => [
+      compact(comment.id),
+      String(comment.body ?? ''),
+      compact(comment.author?.login),
+      compact(comment.authorAssociation),
+    ]);
 }
 
 export function reviewThreadCommentDigest(thread) {
