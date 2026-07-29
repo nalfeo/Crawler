@@ -205,9 +205,7 @@ describe('exact generated-asset collision validation', () => {
     const asset = writeSurface(source, 'Bone dagger', Buffer.from([1, 2, 3]));
     writeSurface(catalogDiff, 'Different label', Buffer.from([1, 2, 3]));
 
-    await expect(
-      validateExactAssetPayloads(source, catalogDiff, [asset]),
-    ).resolves.toBeUndefined();
+    await expect(validateExactAssetPayloads(source, catalogDiff, [asset])).resolves.toBeUndefined();
   });
 
   it('rejects a manifest-only difference', async () => {

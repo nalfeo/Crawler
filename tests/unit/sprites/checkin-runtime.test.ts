@@ -202,9 +202,7 @@ describe('overlayCatalogEntries — canonical order after insert', () => {
     roots.push(src, dest);
 
     // Source has the new generated: entry to be overlaid.
-    writeCatalog(src, [
-      { id: 'generated:zzz-sprite-var-0', kind: 'sprite', label: 'zzz sprite' },
-    ]);
+    writeCatalog(src, [{ id: 'generated:zzz-sprite-var-0', kind: 'sprite', label: 'zzz sprite' }]);
 
     // Destination catalog ends with sprite: entries (kind="sheet" comes first in canonical order).
     writeCatalog(dest, [
@@ -213,9 +211,7 @@ describe('overlayCatalogEntries — canonical order after insert', () => {
       { id: 'generated:aaa-sprite-var-0', kind: 'sprite', label: 'aaa sprite' },
     ]);
 
-    const { overlayCatalogEntries } = await import(
-      '../../../scripts/sprites/checkin-runtime.js'
-    );
+    const { overlayCatalogEntries } = await import('../../../scripts/sprites/checkin-runtime.js');
     const changed = await overlayCatalogEntries(src, dest, ['generated:zzz-sprite-var-0']);
     expect(changed).toBe(true);
 
@@ -244,9 +240,7 @@ describe('overlayCatalogEntries — canonical order after insert', () => {
       { id: 'generated:zzz-sprite-var-0', kind: 'sprite', label: 'zzz sprite' },
     ]);
 
-    const { overlayCatalogEntries } = await import(
-      '../../../scripts/sprites/checkin-runtime.js'
-    );
+    const { overlayCatalogEntries } = await import('../../../scripts/sprites/checkin-runtime.js');
     const changed = await overlayCatalogEntries(src, dest, ['generated:aaa-sprite-var-0']);
     expect(changed).toBe(true);
 
