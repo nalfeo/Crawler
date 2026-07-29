@@ -371,11 +371,23 @@ export const FLOOR1_SPECIAL_FLOOR_SPECS: readonly SpecialFloorSpec[] = [
     id: 'welcome',
     manifestKey: 'welcome',
     material: {
-      cacheKey: 'floor1-welcome-floor',
+      // v2: the v1 prompt asked for "thin brass inlay lines" plus a "geometric
+      // border pattern repeating across the surface" and the model delivered
+      // exactly that — four columns spiking to luminance 133 against an 84.5
+      // field. Because the tile is seamless those lines chain across tile
+      // boundaries into unbroken lines spanning the whole room, reading as a
+      // debug grid over the floor the player spawns on. Every guard passed: the
+      // tile's column SD (11.58) is LOWER than the plain floor's (12.49), so a
+      // regular lattice is a low-variance signal that mean/SD/silhouette/seam
+      // checks are all blind to. The fix is to ask for irregular slab variation
+      // and to name the failure mode as an explicit negative.
+      cacheKey: 'floor1-welcome-floor-v2',
       prompt:
-        'Ceremonial entrance hall floor of polished dark slate tiles with thin ' +
-        'brass inlay lines and a faint engraved geometric border pattern repeating ' +
-        'across the surface. ' +
+        'Ceremonial entrance hall floor of large polished dark slate slabs, ' +
+        'irregular in size and shape, worn smooth by foot traffic, with subtle ' +
+        'mineral mottling and faint scuffs scattered unevenly across the stone. ' +
+        'No inlay, no metal strips, no painted lines, no grid, no lattice, ' +
+        'no geometric pattern, no regular repeating motif. ' +
         SHARED_STYLE,
       tile: ACCENT_FLOOR_TILE,
     },

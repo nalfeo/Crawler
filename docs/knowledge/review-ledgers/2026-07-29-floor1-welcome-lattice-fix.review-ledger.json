@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "floor1-welcome-lattice-fix",
+  "task_title": "Remove baked lattice from Floor 1 welcome-room floor",
+  "estimated_apples": 2,
+  "stages": {}
+}
