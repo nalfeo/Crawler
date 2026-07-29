@@ -153,6 +153,41 @@ canvas/helper) rather than assuming it will work.
 - `npm run verify:fast` — passed (multiple times, after each round of fixes).
 - `npm run scope` — `gameplay_safe=false`, `visual_touched=true` → warranted
   heavier validation.
+
+## Slice C scope check (added post-publish)
+
+A late scope clarification named a follow-up Slice C that owns blood-footprint
+geometry tuning and asked this PR to flag two things explicitly:
+
+- **Footprint/trail-VFX carve-out respected.** Verified via
+  `git diff origin/main...HEAD --stat -- src/shared/blood-surfaces.ts src/engine/PlayerTrailVfx.ts`
+  — empty diff. Neither `createBloodFootprintSurface()`'s geometry constants nor
+  `TRAIL_PUFF_FOOT_OFFSET_PX` were touched by this PR.
+- **Player on-screen render size changed — likely unintentionally.** The
+  player's rendered width/height is `frameWidth/Height × generated.scale` from
+  `src/shared/data/entity-sprite-mappings.json` (Phaser's `setScale` multiplies
+  against the native texture/frame pixel size, not a fixed target size):
+  - **Before**: Kenney Tiny Dungeon frame, 16×16px native × `kenneyScale: 1.6`
+    → **25.6×25.6px** on screen.
+  - **After**: new placeholder walk sheet, 64×64px native frame ×
+    `generated.scale: 0.72` (set in this PR's `entity-sprite-mappings.json`
+    player entry) → **46.08×46.08px** on screen — **~1.8× larger (+80%)**.
+  - For comparison, every generated-art enemy entry in the same file uses
+    `generated.scale: 0.4` against the same 64×64 native frame size, which
+    resolves to 25.6×25.6px — i.e. **exact parity with the player's old
+    on-screen size**. This strongly suggests `0.72` was an oversight rather
+    than an intentional resize — `0.4` (matching the enemy convention) would
+    have preserved the player's prior on-screen footprint exactly.
+  - **Not changed by this session**, per the explicit carve-out: since the
+    player is now visibly ~80% larger, the fixed-offset foot anchor
+    (`TRAIL_PUFF_FOOT_OFFSET_PX`) and blood-footprint geometry constants (both
+    tuned against the old, smaller sprite) will likely look mis-scaled/
+    misaligned relative to the new sprite. This is exactly the kind of
+    consequence Slice C's carve-out anticipated — left untouched here.
+  - **Recommendation for Slice C**: consider correcting `generated.scale` for
+    the player entry to `0.4` (or whatever value Slice C's real generated art
+    calls for) as part of its first measurement step, rather than treating
+    `0.72` as an intentional target size.
 - `VERIFY_FULL=1 npm run verify` — 2119/2120 non-flaky tests passed; the single
   failure (`.github/extensions/sprite-editor/tests/renderer.test.mjs`, "stale
   scaling results cannot overwrite a mid-flight edit") is a pre-existing,
