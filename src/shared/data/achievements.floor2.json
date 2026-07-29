@@ -166,10 +166,9 @@
     },
     "unlockRules": [
       {
-        "type": "numberCompare",
-        "fact": "familiesAtFriendlyCount",
-        "op": ">=",
-        "value": 3
+        "type": "booleanIs",
+        "fact": "allPresentFamiliesFriendly",
+        "value": true
       }
     ]
   },
@@ -481,12 +480,14 @@
     "unlockRules": [
       {
         "type": "allQuestsComplete",
-        "questIds": ["floor2-leave-floor"]
+        "questIds": ["floor2-leave-floor"],
+        "phase": "run_end_clear"
       },
       {
         "type": "booleanIs",
         "fact": "runClearedFloor",
-        "value": true
+        "value": true,
+        "phase": "run_end_clear"
       }
     ]
   },

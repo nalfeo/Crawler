@@ -27,9 +27,13 @@ import {
 /**
  * Goal-flag key set once the player completes the Broker's settlement
  * introduction (`src/game/floor2Scenario.ts`, `FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID`).
- * Referenced here by its raw string literal — not imported from
- * `floor2Scenario.ts` — to avoid coupling the achievement fact pipeline to that
- * module's exports.
+ * Referenced here by its raw string literal rather than imported from
+ * `floor2Scenario.ts`: that module already imports
+ * `evaluateAchievementUnlocksForPhase` from this file, so importing the
+ * constant back would create a circular module dependency, not just add
+ * coupling. Keep this string in sync with the source-of-truth constant by hand
+ * (covered by the fact-computation regression test in
+ * `tests/game/achievement-system.test.ts`).
  */
 const FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID = 'floor2-broker-intro-complete';
 
@@ -129,10 +133,27 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
   const slimesKilled = floor1Objective?.slimesKilled ?? 0;
   const familyState = world.floor === 2 ? world.floorExtendedState?.familyState : undefined;
   const familyBossesDefeated = familyState?.decapitatedFamilies?.size ?? 0;
-  const familyBossEncounterCount = familyState?.bossEncounters?.size ?? 0;
-  const familiesEngagedInCombatCount = familyState?.trashKillsByFamily?.size ?? 0;
+  // `bossEncounters` is seeded with a `started: false` entry for EVERY present
+  // family at Floor 2 init (floor2Scenario.ts), so `.size` alone counts families
+  // regardless of player engagement. Only count encounters the player has
+  // actually started (entered the den).
+  const familyBossEncounterCount = familyState?.bossEncounters
+    ? [...familyState.bossEncounters.values()].filter((encounter) => encounter.started).length
+    : 0;
+  // `trashKillsByFamily` is likewise seeded with a 0-kill entry for every
+  // present family at init, so `.size` counts families regardless of combat.
+  // Only count families with at least one player-attributed trash kill.
+  const familiesEngagedInCombatCount = familyState?.trashKillsByFamily
+    ? [...familyState.trashKillsByFamily.values()].filter((kills) => kills > 0).length
+    : 0;
   const familiesAtFriendlyCount = familiesAtBandCount(world, 'friendly');
   const familiesAtHateCount = familiesAtBandCount(world, 'hate');
+  const presentFamilyCount = world.floor === 2 ? (familyState?.presentFamilies?.length ?? 0) : 0;
+  // Dynamic "every present family is Friendly" check — Floor 2's roster size
+  // varies (3 or 4 families), so a fixed numeric threshold would either miss a
+  // 4-family run or under-require a 3-family run.
+  const allPresentFamiliesFriendly =
+    presentFamilyCount > 0 && familiesAtFriendlyCount === presentFamilyCount;
   const hasBetrayedAlly = familyState?.betrayerFlag === true;
   const floor2SafeRoomVisited = world.floor === 2 && isInSafeContext(world);
   const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
@@ -161,6 +182,7 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     },
     booleanFacts: {
       ...empty.booleanFacts,
+      allPresentFamiliesFriendly,
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
       staircaseUnlocked:
         floor1Objective?.staircaseUnlocked === true ||

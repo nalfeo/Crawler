@@ -157,6 +157,7 @@ export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'hasBetrayedAlly',
   'floor2SafeRoomVisited',
   'hasMetBroker',
+  'allPresentFamiliesFriendly',
 ] as const;
 export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
 export const ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS = [
@@ -579,6 +580,7 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
       hasBetrayedAlly: false,
       floor2SafeRoomVisited: false,
       hasMetBroker: false,
+      allPresentFamiliesFriendly: false,
     },
     questIds: [],
     completedQuestIds: [],

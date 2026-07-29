@@ -27,7 +27,7 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
     }),
     reachedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
     clearedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
-    booleans: fc.array(fc.boolean(), { minLength: 9, maxLength: 9 }),
+    booleans: fc.array(fc.boolean(), { minLength: 10, maxLength: 10 }),
   })
   .map((value) => {
     const empty = createEmptyAchievementFactSnapshot();
@@ -58,6 +58,7 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
         hasBetrayedAlly: value.booleans[6]!,
         floor2SafeRoomVisited: value.booleans[7]!,
         hasMetBroker: value.booleans[8]!,
+        allPresentFamiliesFriendly: value.booleans[9]!,
       },
       questIds: value.questIds,
       completedQuestIds: value.completedQuestIds,
