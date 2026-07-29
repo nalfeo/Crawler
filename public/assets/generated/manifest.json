@@ -2029,7 +2029,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -5.60° is more than ±5° away from vertical"
+          "reason": "principal axis -5.60\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -2137,7 +2137,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -4.42° is more than ±5° away from vertical"
+          "reason": "principal axis -4.42\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -2245,7 +2245,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -6.03° is more than ±5° away from vertical"
+          "reason": "principal axis -6.03\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -3696,12 +3696,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=20 is outside ±3 of center 32"
+          "reason": "grip midpoint x=20 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -59.51° is more than ±5° away from vertical"
+          "reason": "principal axis -59.51\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -3804,12 +3804,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=20 is outside ±3 of center 32"
+          "reason": "grip midpoint x=20 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -55.45° is more than ±5° away from vertical"
+          "reason": "principal axis -55.45\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -3917,7 +3917,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -51.23° is more than ±5° away from vertical"
+          "reason": "principal axis -51.23\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -5086,12 +5086,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=24 is outside ±3 of center 32"
+          "reason": "grip midpoint x=24 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -72.64° is more than ±5° away from vertical"
+          "reason": "principal axis -72.64\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -5194,12 +5194,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=23 is outside ±3 of center 32"
+          "reason": "grip midpoint x=23 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -75.30° is more than ±5° away from vertical"
+          "reason": "principal axis -75.30\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -5302,12 +5302,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=24 is outside ±3 of center 32"
+          "reason": "grip midpoint x=24 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -73.97° is more than ±5° away from vertical"
+          "reason": "principal axis -73.97\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -5691,7 +5691,7 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=26 is outside ±3 of center 32"
+          "reason": "grip midpoint x=26 is outside \u00b13 of center 32"
         },
         {
           "ok": true,
@@ -6833,12 +6833,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=47 is outside ±3 of center 32"
+          "reason": "grip midpoint x=47 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -80.16° is more than ±5° away from vertical"
+          "reason": "principal axis -80.16\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -6946,7 +6946,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -0.97° is more than ±5° away from vertical"
+          "reason": "principal axis -0.97\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -7054,7 +7054,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -8.02° is more than ±5° away from vertical"
+          "reason": "principal axis -8.02\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -9191,12 +9191,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=27 is outside ±3 of center 32"
+          "reason": "grip midpoint x=27 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -72.82° is more than ±5° away from vertical"
+          "reason": "principal axis -72.82\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -9299,12 +9299,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=27 is outside ±3 of center 32"
+          "reason": "grip midpoint x=27 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -69.40° is more than ±5° away from vertical"
+          "reason": "principal axis -69.40\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -9412,7 +9412,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -68.72° is more than ±5° away from vertical"
+          "reason": "principal axis -68.72\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -10530,7 +10530,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -72.63° is more than ±5° away from vertical"
+          "reason": "principal axis -72.63\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -10638,7 +10638,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -68.91° is more than ±5° away from vertical"
+          "reason": "principal axis -68.91\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -10741,12 +10741,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=26 is outside ±3 of center 32"
+          "reason": "grip midpoint x=26 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -74.34° is more than ±5° away from vertical"
+          "reason": "principal axis -74.34\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -11712,12 +11712,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=21 is outside ±3 of center 32"
+          "reason": "grip midpoint x=21 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -57.37° is more than ±5° away from vertical"
+          "reason": "principal axis -57.37\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -11820,12 +11820,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=21 is outside ±3 of center 32"
+          "reason": "grip midpoint x=21 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -55.58° is more than ±5° away from vertical"
+          "reason": "principal axis -55.58\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -11928,12 +11928,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=20 is outside ±3 of center 32"
+          "reason": "grip midpoint x=20 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -57.13° is more than ±5° away from vertical"
+          "reason": "principal axis -57.13\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -12078,12 +12078,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=37 is outside ±3 of center 32"
+          "reason": "grip midpoint x=37 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis 76.23° is more than ±5° away from vertical"
+          "reason": "principal axis 76.23\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -12186,12 +12186,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=36 is outside ±3 of center 32"
+          "reason": "grip midpoint x=36 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis 76.58° is more than ±5° away from vertical"
+          "reason": "principal axis 76.58\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -12294,12 +12294,12 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=36 is outside ±3 of center 32"
+          "reason": "grip midpoint x=36 is outside \u00b13 of center 32"
         },
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis 77.78° is more than ±5° away from vertical"
+          "reason": "principal axis 77.78\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -12479,7 +12479,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -80.74° is more than ±5° away from vertical"
+          "reason": "principal axis -80.74\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -12582,7 +12582,7 @@
         {
           "ok": false,
           "sensor": "anchor-derivable",
-          "reason": "grip midpoint x=21 is outside ±3 of center 32"
+          "reason": "grip midpoint x=21 is outside \u00b13 of center 32"
         },
         {
           "ok": true,
@@ -12705,7 +12705,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis -81.57° is more than ±5° away from vertical"
+          "reason": "principal axis -81.57\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -15793,124 +15793,6 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
-    "tile-door-v1-var-1": {
-      "briefId": "tile-door-v1",
-      "spriteName": "tile-door-v1-var-1",
-      "assetPath": "generated/tile-door-v1-var-1.png",
-      "approvedAt": "2026-07-28T22:48:57.498Z",
-      "sourceRun": "generated/runs/tile-door-v1/2026-07-28T22-31-23-b3205ed1",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 55,
-        "y": 120,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 55,
-          "y": 120,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 46,
-          "y": 65,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "1",
-      "sensorBreakdown": [
-        {
-          "ok": true,
-          "sensor": "dimensions-exact"
-        },
-        {
-          "ok": true,
-          "sensor": "alpha-binary"
-        },
-        {
-          "ok": true,
-          "sensor": "palette-membership"
-        },
-        {
-          "ok": true,
-          "sensor": "opaque-bbox-fits"
-        },
-        {
-          "ok": true,
-          "sensor": "opaque-ratio"
-        },
-        {
-          "ok": true,
-          "sensor": "interior-transparency-holes"
-        },
-        {
-          "ok": true,
-          "sensor": "anchor-derivable",
-          "anchor": {
-            "x": 55,
-            "y": 120
-          }
-        }
-      ],
-      "judgeScorecard": {
-        "variantIndex": 1,
-        "modelDeployment": "gpt-4o",
-        "judgedAt": "2026-07-28T22:32:30.849Z",
-        "designLanguage": {
-          "score": 2,
-          "rationale": "The door has a heavy, worn appearance with visible iron banding and a ring handle, but the inclusion of a stone frame violates the brief. The silhouette is also too wide, making it feel more like a gate than a narrow dungeon door."
-        },
-        "referenceStyleMatch": {
-          "score": 3,
-          "rationale": "The rendering style is close to the references in terms of shading, color palette, and outline treatment, but the inclusion of the stone frame and the overly wide proportions detract from the overall match."
-        },
-        "styleMatch": {
-          "score": 3,
-          "rationale": "The rendering style is close to the references in terms of shading, color palette, and outline treatment, but the inclusion of the stone frame and the overly wide proportions detract from the overall match."
-        },
-        "briefMatch": {
-          "score": 1,
-          "rationale": "The door does not meet the brief's critical requirements. It includes a stone frame, which is explicitly prohibited, and the width is significantly larger than specified. Additionally, the silhouette does not convey the intended narrow, tall proportions."
-        },
-        "readability": {
-          "score": 3,
-          "rationale": "The silhouette is clear at game scale, but the inclusion of the stone frame and the overly wide proportions reduce the clarity of the intended subject as a narrow dungeon door."
-        },
-        "presentation": {
-          "score": 2,
-          "rationale": "The inclusion of the stone frame violates the brief's requirement for a fully transparent background outside the door leaf. The door's proportions also do not match the specified dimensions, further detracting from its presentation."
-        },
-        "passed": false,
-        "minScore": 1,
-        "rejectedBy": ["design_language", "brief_match", "presentation"],
-        "hardBlockEvaluated": true,
-        "hardBlocked": true,
-        "hardBlockInstruction": "I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME",
-        "hardBlockRationale": "The candidate fails to meet the critical brief requirements, including incorrect width, the presence of a stone frame, and a lack of adherence to the specified design language.",
-        "confidence": 0.7,
-        "usage": {
-          "promptTokens": 4737,
-          "completionTokens": 394,
-          "totalTokens": 5131
-        }
-      },
-      "type": "prop",
-      "contentHash": "00b1d5b803e3cd3d066bb7f3ec9509fb39e3c9b2dcf747e62efdeaf97ebd62fd",
-      "opaqueBounds": {
-        "x": 7,
-        "y": 7,
-        "width": 77,
-        "height": 114,
-        "canvasWidth": 91,
-        "canvasHeight": 128
-      },
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-v1\\2026-07-28T22-31-23-b3205ed1\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-v1\\2026-07-28T22-31-23-b3205ed1\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-v1\\2026-07-28T22-31-23-b3205ed1\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
-    },
     "tile-door-v1-var-9": {
       "briefId": "tile-door-v1",
       "spriteName": "tile-door-v1-var-9",
@@ -17679,7 +17561,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis 72.33° is more than ±5° away from vertical"
+          "reason": "principal axis 72.33\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -17798,7 +17680,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis 66.59° is more than ±5° away from vertical"
+          "reason": "principal axis 66.59\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
@@ -17917,7 +17799,7 @@
         {
           "ok": false,
           "sensor": "silhouette-orientation-axis",
-          "reason": "principal axis 72.84° is more than ±5° away from vertical"
+          "reason": "principal axis 72.84\u00b0 is more than \u00b15\u00b0 away from vertical"
         }
       ],
       "judgeScorecard": {
