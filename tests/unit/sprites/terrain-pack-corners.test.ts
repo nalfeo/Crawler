@@ -602,17 +602,18 @@ describe('square dungeon corners', () => {
     // Guards against the parameter being silently inert (both styles identical)
     // or over-broad (changing masks that have no exposed corner at all).
     const rounded = generateQuadrantKit();
-    let differing = 0;
-    for (const mask of BLOB47_CANONICAL_MASKS) {
+    const differing = BLOB47_CANONICAL_MASKS.filter((mask) => {
       const a = composeWallCellOutput(mask, kit);
       const b = composeWallCellOutput(mask, rounded);
-      if (Buffer.compare(Buffer.from(a.data), Buffer.from(b.data)) !== 0) differing += 1;
-    }
-    expect(differing).toBeGreaterThan(0);
-    // Mask 255 has no exposed corner, so it must be byte-identical in both.
-    const solidSquare = composeWallCellOutput(255, kit);
-    const solidRounded = composeWallCellOutput(255, rounded);
-    expect(Buffer.compare(Buffer.from(solidSquare.data), Buffer.from(solidRounded.data))).toBe(0);
+      return Buffer.compare(Buffer.from(a.data), Buffer.from(b.data)) !== 0;
+    });
+    const expected = BLOB47_CANONICAL_MASKS.filter((mask) =>
+      QUADRANT_CORNERS.some((corner) => {
+        const state = quadrantStateFromMask(mask, corner);
+        return state === 'open' || state === 'concave';
+      }),
+    );
+    expect(differing).toEqual(expected);
   });
 });
 
