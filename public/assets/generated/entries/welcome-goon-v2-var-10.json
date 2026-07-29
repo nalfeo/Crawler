@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-goon-v2",
+  "spriteName": "welcome-goon-v2-var-10",
+  "assetPath": "generated/welcome-goon-v2-var-10.png",
+  "approvedAt": "2026-07-27T16:36:15.435Z",
+  "sourceRun": "generated/runs/welcome-goon-v2/2026-07-27T16-27-00-90c3c66e",
+  "variantIndex": 10,
+  "anchor": {
+    "x": 31,
+    "y": 31,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 31,
+        "y": 31
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 10,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-27T16:29:32.270Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The character's weary posture, headset, lanyard, and clipboard convey the intended identity of a bored production greeter. The proportions and attitude align with the darkly humorous tone of Crawler, though the execution could be slightly more exaggerated for impact."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, and shading. The sprite uses a hard one-pixel outline and appropriate tonal stops, though the dithering on the trousers could be slightly more refined."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, and shading. The sprite uses a hard one-pixel outline and appropriate tonal stops, though the dithering on the trousers could be slightly more refined."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The sprite meets the brief's requirements for proportions, posture, and key elements like the lanyard, headset, and clipboard. However, the head appears slightly larger than the specified one-seventh of the total height, which detracts from the intended lanky proportions."
+    },
+    "readability": {
+      "score": 3,
+      "rationale": "The silhouette is clear at game scale, and the light shirt contrasts well with the dark trousers and boots. However, the clipboard and arms blend slightly into the torso, reducing clarity. The badge is bright and readable, but the overall figure could separate more distinctly from the dark floor."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to most of the brief's requirements, though there are areas for improvement.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4917,
+      "completionTokens": 367,
+      "totalTokens": 5284
+    }
+  },
+  "type": "character",
+  "contentHash": "65d98c842a120a6e504efbee4963f4556dfe1a8b3830fdc52139a2b5805643c0",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-goon-v2\\2026-07-27T16-27-00-90c3c66e\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-goon-v2\\2026-07-27T16-27-00-90c3c66e\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-goon-v2\\2026-07-27T16-27-00-90c3c66e\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 17,
+    "y": 3,
+    "width": 29,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

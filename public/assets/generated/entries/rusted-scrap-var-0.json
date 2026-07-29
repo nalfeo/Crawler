@@ -1,0 +1,42 @@
+{
+  "briefId": "rusted-scrap",
+  "spriteName": "rusted-scrap-var-0",
+  "assetPath": "generated/rusted-scrap-var-0.png",
+  "approvedAt": "2026-07-08T00:17:18.648Z",
+  "sourceRun": "generated/runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 38,
+    "y": 59,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 38,
+      "y": 59,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 34,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "5f73950a69a990f37b9baa781c86913fc770cf76d72025a206a030057746a17d",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 4,
+    "width": 51,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

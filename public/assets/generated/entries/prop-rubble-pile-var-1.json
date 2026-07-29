@@ -1,0 +1,45 @@
+{
+  "briefId": "prop-rubble-pile",
+  "spriteName": "prop-rubble-pile-var-1",
+  "assetPath": "generated/prop-rubble-pile-var-1.png",
+  "approvedAt": "2026-07-08T00:25:29.616Z",
+  "sourceRun": "generated/runs/prop-rubble-pile/2026-07-08T00-21-17-9228c900",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 34,
+    "y": 32,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 34,
+      "y": 32,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 33,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "type": "prop",
+  "contentHash": "22bd0ca97e111f061c587e394c102cedcd40102a04afd477a3272726b762b0b6",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\prop-rubble-pile\\2026-07-08T00-21-17-9228c900\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 7,
+    "width": 58,
+    "height": 50,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "catalog": {
+    "tags": ["item", "generated", "pipeline-approved"]
+  }
+}

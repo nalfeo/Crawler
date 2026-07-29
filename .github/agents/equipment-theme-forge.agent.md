@@ -1,4 +1,5 @@
 ---
+name: Equipment Theme Forge
 description: 'Produce a complete reusable equipment art collection for a named theme through the four-phase theme-equipment pipeline. Select for "make a themed equipment set", "generate fantasy/pirate/samurai equipment", or any request for broad equipment art with variants and slot coverage.'
 ---
 
@@ -48,3 +49,28 @@ Your output is one cohesive, reusable base-art collection for the requested them
 Report the stable set ID, final weapon and slot coverage, approved variant count per item, collection
 judge evidence, and the single publication result. If any item cannot converge after bounded
 iteration, leave the set held and escalate with the rejected artifacts and feedback.
+
+## Relationship to Asset Forge
+
+This agent and [`asset-forge`](./asset-forge.agent.md) are both Graphics Designer
+entry points and must not diverge into parallel pipelines:
+
+- **Equipment Theme Forge** (this agent) owns **collection-scale** work: a whole
+  themed set with slot-coverage and variant invariants, gated by the Theme
+  Equipment Review canvas and published atomically through
+  `.github/workflows/theme-equipment.yml`.
+- **Asset Forge** owns **per-asset** work: placeholder burndown, individual briefs,
+  and the generic art→check-in→batch-PR→wire loop.
+
+The judging bar is the same in both (`sprite-judge` sensors + VLM judge). If you
+find yourself hand-rolling a per-asset generate/judge/approve loop here, stop and
+delegate that leg to `asset-forge` instead of forking it.
+
+## Related
+
+- Persona: `docs/agent-os/personas/graphics-designer.md`
+- Skill: `.github/skills/theme-equipment-forge/SKILL.md`
+- Per-asset sibling: `.github/agents/asset-forge.agent.md`
+- Judging: `.github/skills/sprite-judge/SKILL.md`
+- Style ground-truth: `docs/agent-os/sprite-style.md`
+- Pipeline guide: `docs/guides/theme-equipment-pipeline.md`

@@ -1,0 +1,36 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "persona-refresh-agent-convergence",
+  "date": "2026-07-27",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 411,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 411
+    }
+  },
+  "tools": {
+    "ask_user": 3,
+    "create": 22,
+    "edit": 77,
+    "get_changes_overview": 1,
+    "github-mcp-server-get_file_contents": 1,
+    "github-mcp-server-search_code": 1,
+    "glob": 5,
+    "grep": 10,
+    "powershell": 113,
+    "read_agent": 10,
+    "read_powershell": 9,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "rg": 19,
+    "sql": 3,
+    "task": 5,
+    "view": 102,
+    "web_fetch": 28
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

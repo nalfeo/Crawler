@@ -1,0 +1,42 @@
+{
+  "briefId": "glistening-rat-tail",
+  "spriteName": "glistening-rat-tail-var-2",
+  "assetPath": "generated/glistening-rat-tail-var-2.png",
+  "approvedAt": "2026-07-08T00:17:15.703Z",
+  "sourceRun": "generated/runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 33,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 33,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 33,
+      "y": 29,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "09c5a1627d4ab4f91fafc25cad3999134db6399b1dcbf64e37d39223e4eef45f",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/glistening-rat-tail-v1/2026-07-07T23-51-12-30098a40/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 3,
+    "width": 52,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}
