@@ -366,6 +366,44 @@ test('review-thread blocker identity changes when comments change', () => {
       ],
     },
   };
+  const recoveryNoMarkerReplyThread = {
+    id: 'thread-1',
+    comments: {
+      nodes: [
+        {
+          id: 'comment-1',
+          body: 'Root finding',
+          author: { login: 'dev' },
+          authorAssociation: 'OWNER',
+        },
+        {
+          id: 'comment-2',
+          body: 'Still unresolved; this needs an external waiver.',
+          author: { login: 'copilot-swe-agent' },
+          authorAssociation: 'NONE',
+        },
+      ],
+    },
+  };
+  const recoveryMarkerReplyThread = {
+    id: 'thread-1',
+    comments: {
+      nodes: [
+        {
+          id: 'comment-1',
+          body: 'Root finding',
+          author: { login: 'dev' },
+          authorAssociation: 'OWNER',
+        },
+        {
+          id: 'comment-2',
+          body: '✅ Not applicable: requires explicit maintainer waiver outside this branch',
+          author: { login: 'copilot-swe-agent' },
+          authorAssociation: 'NONE',
+        },
+      ],
+    },
+  };
   const blocker = {
     kind: 'review-thread',
     id: reviewThreadBlockerId(baseThread),
@@ -377,6 +415,14 @@ test('review-thread blocker identity changes when comments change', () => {
   assert.notEqual(reviewThreadCommentDigest(baseThread), reviewThreadCommentDigest(laterThread));
   assert.notEqual(reviewThreadCommentDigest(baseThread), reviewThreadCommentDigest(editedThread));
   assert.equal(
+    reviewThreadCommentDigest(baseThread),
+    reviewThreadCommentDigest(recoveryNoMarkerReplyThread),
+  );
+  assert.notEqual(
+    reviewThreadCommentDigest(baseThread),
+    reviewThreadCommentDigest(recoveryMarkerReplyThread),
+  );
+  assert.equal(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(identicalThread) }]),
   );
@@ -387,6 +433,14 @@ test('review-thread blocker identity changes when comments change', () => {
   assert.notEqual(
     blockerFingerprint([blocker]),
     blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(editedThread) }]),
+  );
+  assert.equal(
+    blockerFingerprint([blocker]),
+    blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(recoveryNoMarkerReplyThread) }]),
+  );
+  assert.notEqual(
+    blockerFingerprint([blocker]),
+    blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(recoveryMarkerReplyThread) }]),
   );
 });
 

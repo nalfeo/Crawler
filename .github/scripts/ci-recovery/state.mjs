@@ -268,12 +268,35 @@ export function blockerFingerprint(blockers) {
 }
 
 function normalizeThreadComments(thread) {
-  return (thread?.comments?.nodes ?? []).map((comment) => [
-    compact(comment.id),
-    String(comment.body ?? ''),
-    compact(comment.author?.login),
-    compact(comment.authorAssociation),
+  // Recovery attempts that post non-marker diagnostics in the same review
+  // thread should not count as blocker progress: they can churn comment digests
+  // forever while leaving the underlying blocker unchanged. Keep marker replies
+  // in digest identity, but ignore known recovery-agent replies that do not
+  // carry a resolution marker.
+  const knownRecoveryReplyLogins = new Set([
+    'copilot',
+    'copilot[bot]',
+    'app/copilot',
+    'copilot-swe-agent',
+    'copilot-swe-agent[bot]',
+    'app/copilot-swe-agent',
   ]);
+  const hasResolutionMarker = (body) => {
+    const text = String(body ?? '');
+    return addressedInPrefixPattern.test(text) || notApplicablePattern.test(text);
+  };
+  return (thread?.comments?.nodes ?? [])
+    .filter((comment) => {
+      const authorLogin = String(comment?.author?.login ?? '').toLowerCase();
+      if (!knownRecoveryReplyLogins.has(authorLogin)) return true;
+      return hasResolutionMarker(comment?.body);
+    })
+    .map((comment) => [
+      compact(comment.id),
+      String(comment.body ?? ''),
+      compact(comment.author?.login),
+      compact(comment.authorAssociation),
+    ]);
 }
 
 export function reviewThreadCommentDigest(thread) {
