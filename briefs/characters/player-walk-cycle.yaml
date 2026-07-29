@@ -89,6 +89,26 @@ generation:
     cols: 4
     emptyCells: []
     nativeCanvas: 1024
+sensors:
+  anchor:
+    # A standing/walking biped is not a handheld weapon; see welcome-goon-v2
+    # and sweaty-merchant-v2 for the same override on other standing bipeds.
+    # `grip` locks onto a single boot's opaque run, so a natural stance width
+    # (or a mid-stride pose with one foot forward) reads as off-centre by
+    # half a stance width. `center-of-mass` is this sensor's own documented
+    # contract for "mobs and most non-held sprites".
+    mode: center-of-mass
+  interiorHoles:
+    # Mid-stride poses (frames where the legs separate) open a small enclosed
+    # gap of background between the legs that the strict default (0px)
+    # flags as a "hole". This is the SAME kind of legitimate interior
+    # negative-space several existing prop briefs already tolerate (e.g.
+    # welcome-room-kitchenette.yaml: 256px, welcome-room-cable-coil.yaml:
+    # 24px) rather than a stray background-bleed artifact. 64px comfortably
+    # covers the observed real leg-gap size (55px) with headroom, while
+    # staying far below the "wholesale bleed-through" range those other
+    # briefs cap at (256-512px).
+    maxPixels: 64
 judge:
   enabled: false
 minVariations: 0
