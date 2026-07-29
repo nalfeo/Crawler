@@ -28,11 +28,7 @@ room — the "scattered props in a box" slop model.
 
 Two hard constraints shaped the fix:
 
-<<<<<<< Updated upstream
-1. **The entity-free determinism invariant** (`src/core/spawners/world-objects.ts:241`):
-=======
 1. **The entity-free determinism invariant** (`src/core/spawners/world-objects.ts`):
->>>>>>> Stashed changes
    set-piece props are render-only and must **never** become ECS entities, because
    allocating entity ids for dressing shifts ambient-mob/drop ids, perturbing
    collision-pair enumeration order and the global RNG — breaking headless↔rendered

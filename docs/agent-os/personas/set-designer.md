@@ -5,13 +5,10 @@ Designer owns **individual sprites**; the Set Designer owns **rooms** — how pr
 selected, sized, stacked and arranged so a space reads as hand-built rather than
 generated.
 
-<<<<<<< Updated upstream
-=======
 ## Agent
 
 [`set-piece-designer`](../../../.github/agents/set-piece-designer.agent.md)
 
->>>>>>> Stashed changes
 ## Responsibilities
 
 - Own set-piece layouts in `src/shared/data/set-pieces.json` end to end: blockout,
@@ -47,11 +44,7 @@ generated.
 - Must not treat a lab render as proof. A set piece is done when it has been observed
   in the real artifact (project rule #9).
 
-<<<<<<< Updated upstream
-## Quality bar
-=======
 ## Quality Criteria
->>>>>>> Stashed changes
 
 A set piece ships when **both** gates pass:
 
@@ -63,8 +56,6 @@ Neither gate substitutes for the other. The score catches empty boxes, stamped
 floors and conveyor-belt placement; the judge catches "technically dense but
 tasteless".
 
-<<<<<<< Updated upstream
-=======
 ## Skills
 
 - [`set-piece-blockout`](../../../.github/skills/set-piece-blockout/SKILL.md)
@@ -73,7 +64,6 @@ tasteless".
 - [`set-piece-dress`](../../../.github/skills/set-piece-dress/SKILL.md)
 - [`set-piece-review`](../../../.github/skills/set-piece-review/SKILL.md)
 
->>>>>>> Stashed changes
 ## Tools & Workflows
 
 - **Plan-first + review harness:** output the full plan in-session before writing
