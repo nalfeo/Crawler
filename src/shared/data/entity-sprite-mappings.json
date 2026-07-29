@@ -26,8 +26,8 @@
       "kenneySpriteId": "player",
       "kenneyScale": 1.6,
       "generated": {
-        "briefId": "player-walk-placeholder-v1",
-        "pinnedTextureKey": "player-walk-placeholder-v1-var-0",
+        "briefId": "rhea-vale-v1-walk",
+        "pinnedTextureKey": "rhea-vale-v1-var-0-walk",
         "scale": 0.72
       }
     },
