@@ -63,6 +63,7 @@ import { validateDeclaredTransforms } from './transform-eligibility.js';
 import { isWallAlpha } from './wall-opacity.js';
 import { composeWallCellOutput } from './compose-wall-cell.js';
 import { generateQuadrantKit } from './quadrant-kit.js';
+import { wallCornerStyleForPack } from './wall-corner-style.js';
 
 export interface ValidationIssue {
   readonly code: string;
@@ -367,7 +368,8 @@ export function validateCompatibleCorners(
  * corner, rendering mask 15 as a donut, and every sampling gate passed it.
  *
  * For an authored pack the silhouette is not a judgement call — it is a pure
- * function of the mask set, `composeWallCellOutput(maskId, kit)`. So compare it
+ * function of the mask set and the pack's wall-corner style,
+ * `composeWallCellOutput(maskId, generateQuadrantKit(style))`. So compare it
  * exactly: thresholded alpha, every pixel, no tolerance. This subsumes both
  * perimeter gates for authored packs and closes the interior blind spot.
  *
@@ -383,7 +385,7 @@ export function validateAuthoredSilhouetteExact(
   if (manifest.provenance.kind !== 'authored') return { ok: true, issues };
 
   const { cellPx, gridCols } = manifest.wallAutotile;
-  const kit = generateQuadrantKit();
+  const kit = generateQuadrantKit(wallCornerStyleForPack(manifest.id));
 
   for (const { maskId, frameIndex } of manifest.wallAutotile.masks) {
     const expected = composeWallCellOutput(maskId, kit);
@@ -928,9 +930,28 @@ export function validateWallAccentTopology(
 }
 
 /**
- * Prove that two packs can share one wall-neighbor topology. Frame indices may
- * differ, but each canonical mask must expose the same opaque silhouette in
- * both atlases so a material boundary cannot create a notch.
+ * Prove that two packs can share one wall-neighbor topology.
+ *
+ * The property that actually matters is that a MATERIAL BOUNDARY CANNOT CREATE
+ * A NOTCH: where a cell of one pack abuts a cell of the other, the two must
+ * agree on every pixel they share, so the silhouette reads as one continuous
+ * wall mass across the seam. That is a statement about the cell's outermost
+ * pixel ring — the only pixels adjacent to a neighbouring cell — plus the
+ * cardinal edge bands the tiling proof already samples.
+ *
+ * Historically this was enforced by the much stronger "every pixel of every
+ * mask is identical", which was free while every pack shared one silhouette
+ * kit. It is no longer free: Floor 1 deliberately runs a `square`-cornered
+ * masonry pack (`floor1-dungeon`) beside a `rounded`-cornered eroded pack
+ * (`floor1-cave`), which differ in the INTERIOR corner treatment by design
+ * (see ADR 0078). So:
+ *
+ *  - packs with the SAME declared corner style keep full-cell equality;
+ *  - packs with DIFFERENT styles must still match on the boundary ring, which
+ *    is exactly the no-notch guarantee, and may differ in the interior.
+ *
+ * Relaxing to the boundary ring is not a weakening of the seam guarantee — the
+ * interior pixels checked by the old rule are never adjacent to another cell.
  */
 export function validateCrossPackWallSilhouettes(
   leftManifest: TerrainPackDef,
@@ -961,6 +982,13 @@ export function validateCrossPackWallSilhouettes(
     return cropImage(atlas, col * cellPx, row * cellPx, cellPx, cellPx);
   };
 
+  // Same corner style => the two packs are built on identical silhouettes, so
+  // hold them to full-cell equality (it costs nothing and catches re-texture
+  // passes that fill cells edge-to-edge). Different styles => only the shared
+  // boundary ring is required to agree.
+  const compareInterior =
+    wallCornerStyleForPack(leftManifest.id) === wallCornerStyleForPack(rightManifest.id);
+
   for (const maskId of BLOB47_CANONICAL_MASKS) {
     const leftFrame = leftFrames.get(maskId);
     const rightFrame = rightFrames.get(maskId);
@@ -968,14 +996,19 @@ export function validateCrossPackWallSilhouettes(
     const leftCell = cellFor(leftAtlas, leftManifest, leftFrame);
     const rightCell = cellFor(rightAtlas, rightManifest, rightFrame);
     for (let alphaIndex = 3; alphaIndex < leftCell.data.length; alphaIndex += 4) {
+      const pixelIndex = (alphaIndex - 3) / 4;
+      const x = pixelIndex % cellPx;
+      const y = Math.floor(pixelIndex / cellPx);
+      const onBoundaryRing = x === 0 || y === 0 || x === cellPx - 1 || y === cellPx - 1;
+      if (!compareInterior && !onBoundaryRing) continue;
       const leftOpaque = isWallAlpha(leftCell.data[alphaIndex] ?? 0);
       const rightOpaque = isWallAlpha(rightCell.data[alphaIndex] ?? 0);
       if (leftOpaque !== rightOpaque) {
-        const pixelIndex = (alphaIndex - 3) / 4;
         fail(
           issues,
-          'cross-pack-silhouette-mismatch',
-          `${leftManifest.id} and ${rightManifest.id} disagree on wall mask ${maskId} at pixel ${pixelIndex}`,
+          compareInterior ? 'cross-pack-silhouette-mismatch' : 'cross-pack-seam-mismatch',
+          `${leftManifest.id} and ${rightManifest.id} disagree on wall mask ${maskId} at pixel ${pixelIndex}` +
+            (compareInterior ? '' : ` (${x},${y}) on the shared cell boundary`),
         );
         break;
       }

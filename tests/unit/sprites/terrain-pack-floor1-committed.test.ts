@@ -31,6 +31,7 @@ import {
 } from '../../../scripts/sprites/terrain-packs/validate.js';
 import { decodePng } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 import { composeWallAtlas } from '../../../scripts/sprites/terrain-packs/gen/compose-pack.js';
+import { wallCornerStyleForPack } from '../../../scripts/sprites/terrain-packs/wall-corner-style.js';
 import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
 
 function repoRoot(): string {
@@ -243,7 +244,7 @@ describe.each(FLOOR1_PACK_IDS)('committed terrain pack — %s', (packId) => {
     const wallTile = decodePng(readFileSync(sourcePath));
     expect({ width: wallTile.width, height: wallTile.height }).toEqual({ width: 64, height: 64 });
 
-    const rebuilt = composeWallAtlas(wallTile);
+    const rebuilt = composeWallAtlas(wallTile, wallCornerStyleForPack(packId));
     expect({ width: rebuilt.atlas.width, height: rebuilt.atlas.height }).toEqual({
       width: atlas.width,
       height: atlas.height,

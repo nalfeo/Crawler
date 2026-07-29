@@ -1,0 +1,41 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "floor1-dungeon-square-walls",
+  "task_title": "Floor 1 dungeon walls: square corners and flush door junctions",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "0 blocking, 3 non-blocking. (1) Corner style lived in an opt-IN pack-id set that a future floor3-dungeon could silently miss - resolved by making the registry EXHAUSTIVE over all shipped packs plus a fail-to-pass test asserting every public/assets/terrain-packs dir is declared; rejected the reviewers preferred manifest-owned field because cornerStyle is build-time-only data and composePack would still need an authoring-side registry to generate the manifest. (2) terrain-pack-lab computed masks with doors as non-walls - resolved by exporting PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES from terrain-renderer and importing it into the lab neighbour predicate only. (3) door regression test only covered industrial-cave - resolved by it.each over floor1-dungeon and industrial-cave. Reviewer independently confirmed geometry/byte-stability math (48/256 source bite = 12 output px, corner sample 6 px, edge band starts at 16 px) and that DOOR is the only punched-hole TerrainType.",
+      "adversarial": true,
+      "alternatives_considered": 4
+    },
+    "code_review": {
+      "completed": true,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewed the full diff (quadrant-kit corner-style parameterization, png-buffer eraseRect, compose-pack threading, validate.ts style derivation, terrain-renderer DOOR mask rule, regenerated floor1-dungeon atlas, tests). No issues found."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Covered the post-round-1 edits (exhaustive registry, lab wiring, parameterized door test). TWO real findings, both fixed. (1) BLOCKER: npm run terrain-packs:validate failed with 40 cross-pack-silhouette-mismatch errors because floor1.manifest.json makes floor1-dungeon and floor1-cave co-resident and validateCrossPackWallSilhouettes demanded byte-identical silhouettes. Measured the conflict: 2214 differing pixels across 47 masks, 0 on the outermost boundary ring, 0 in the cardinal edge bands - all strictly interior. Escalated the design question to the human, who chose boundary-ring compatibility; implemented in validate.ts with a compareInterior flag and a new cross-pack-seam-mismatch code, documented in ADR 0078, and pinned by 4 new regression tests (real pair passes, boundary-ring flip still fails, interior flip tolerated for mixed styles, same-style pair still fails on interior flip). (2) Prototype-chain pack ids (constructor, toString, __proto__) returned an inherited truthy value from the plain-object corner-style registry, so the ?? DEFAULT fallback never fired and a non-WallCornerStyle reached the geometry branch; ComposePackInput.id is an arbitrary string. Fixed by switching the registry to a ReadonlyMap plus a prototype-key regression test."
+        }
+      ]
+    }
+  }
+}

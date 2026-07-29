@@ -1,6 +1,6 @@
 /**
- * Deterministic procedural quadrant-kit generator for the authored
- * "industrial-cave" terrain pack.
+ * Deterministic procedural quadrant-kit generator shared by every authored
+ * terrain pack.
  *
  * Produces the 20-quadrant kit (4 corners × 5 local states, reviewed-design
  * refinement) as pure in-memory RGBA images — original, geometrically
@@ -9,6 +9,11 @@
  * quadrant paints wall pixels along a given cell edge is a direct function of
  * whether the corresponding cardinal bit is set, never of the diagonal bit
  * alone (see `WALL_INSET_PX` below).
+ *
+ * The only per-pack degree of freedom is `WallCornerStyle` (see
+ * `wall-corner-style.ts`): caves get eroded `rounded` corners, dungeons get cut
+ * `square` ones. Everything else — inset, edge coverage, fill — is identical, so
+ * the compatibility invariant holds in both styles.
  *
  * Silhouette model (crenellation fix): each quadrant fills a SINGLE solid
  * rectangle. The wall reaches fully to an OUTER edge whose cardinal is present
@@ -24,10 +29,12 @@ import { QUADRANT_CORNERS } from '../../../src/shared/terrain-pack-mask.js';
 import {
   createImage,
   eraseQuarterDisc,
+  eraseRect,
   fillRect,
   roundConvexCorner,
   type RgbaImage,
 } from './png-buffer.js';
+import { DEFAULT_WALL_CORNER_STYLE, type WallCornerStyle } from './wall-corner-style.js';
 
 /** Source quadrant size in px — 4 quadrants of this size compose one 256x256 wall cell. */
 export const QUADRANT_SRC_PX = 128;
@@ -51,15 +58,16 @@ const WALL_INSET_PX = 48;
 const WALL_COLOR: readonly [number, number, number, number] = [58, 56, 64, 255];
 
 /**
- * Corner rounding radius (px, cell space) applied to exposed wall corners.
+ * Corner treatment extent (px, cell space) applied to exposed wall corners.
  *
- * Caves are eroded, not cut, so their silhouettes should have no sharp
- * 90-degree corners. Equal to `WALL_INSET_PX` so a convex corner rounds across
- * exactly the inset it sits on — the wall meets the floor tangentially instead
- * of stepping — and so a `concave` bite reaches the full depth of the notch it
+ * Both corner styles use this same extent — only the SHAPE of the cut differs
+ * (`rounded` sweeps a quarter-disc arc, `square` removes a hard-edged square).
+ * Equal to `WALL_INSET_PX` so a convex corner is treated across exactly the
+ * inset it sits on — a rounded wall meets the floor tangentially instead of
+ * stepping — and so a `concave` bite reaches the full depth of the notch it
  * replaces.
  *
- * CRITICAL — why this value is safe for both validator gates. All rounding is
+ * CRITICAL — why this value is safe for both validator gates. All corner work is
  * confined to a `WALL_INSET_PX`-sized square at a cell corner, i.e. the outer
  * 48/256 = 18.75% of each axis:
  *
@@ -70,10 +78,11 @@ const WALL_COLOR: readonly [number, number, number, number] = [58, 56, 64, 255];
  *    sampled band.
  *  - Corner coverage gate: `AUTHORED_CORNER_SAMPLING.sampleFraction` is 0.09, so
  *    the sample square is the outer ~23px at the cell corner. `concave` must
- *    read floor there and the r=48 bite covers [0, 23] entirely (max distance
- *    from the corner is 23*sqrt(2) = 32.5 < 48). `open` already reads floor
- *    there and the round never touches it. `full` — the one state whose corner
- *    must read wall — is not rounded at all.
+ *    read floor there; the rounded r=48 bite covers [0, 23] entirely (max
+ *    distance from the corner is 23*sqrt(2) = 32.5 < 48) and the square 48x48
+ *    bite covers it outright. `open` already reads floor there and neither
+ *    treatment touches it. `full` — the one state whose corner must read wall —
+ *    is never treated at all.
  *
  * Both properties are asserted, not assumed: see
  * `tests/unit/sprites/terrain-pack-corners.test.ts`.
@@ -128,31 +137,37 @@ const QUADRANT_GEOMETRY: Record<QuadrantCorner, QuadrantGeometry> = {
  * the missing diagonal neighbour). That is the defining visual of a blob47 inner
  * corner: the diagonal cell is floor, so the wall must be nicked back there.
  *
- * Corner rounding. Caves are eroded, not cut, so no exposed corner is left at
- * 90 degrees:
- *   - `concave` → the notch is a quarter-disc bite, so the wall sweeps around
- *     the floor poking in at the diagonal.
+ * Corner treatment. `cornerStyle` decides whether an exposed corner is eroded or
+ * cut. Caves are eroded, so no exposed corner is left at 90 degrees; dungeons
+ * are cut masonry, so every exposed corner IS 90 degrees:
+ *   - `concave` → the notch is bitten out of the outer corner, as a quarter-disc
+ *     (`rounded`) so the wall sweeps around the floor poking in at the diagonal,
+ *     or as a hard square (`square`) so the wall turns a clean masonry corner.
  *   - `open` → the two inset lines meet at a genuine convex corner inside this
- *     cell; it is rounded tangent to both insets.
- *   - `edgeA` / `edgeB` → deliberately NOT rounded. Exactly one cardinal is
+ *     cell; `rounded` eases it tangent to both insets, `square` leaves it sharp.
+ *   - `edgeA` / `edgeB` → never treated, in either style. Exactly one cardinal is
  *     wall, so the single inset line runs straight on into the connected
- *     neighbour's matching quadrant. There is no corner to round, and rounding
- *     there would pinch the wall at every wall-to-wall seam.
- *   - `full` → solid, nothing to round.
+ *     neighbour's matching quadrant. There is no corner there, and treating one
+ *     would pinch the wall at every wall-to-wall seam.
+ *   - `full` → solid, nothing to treat.
  *
- * All rounding is confined to a `WALL_INSET_PX` square at the cell corner, i.e.
- * the outer 18.75% of each axis, which sits entirely inside
+ * All corner work is confined to a `WALL_INSET_PX` square at the cell corner,
+ * i.e. the outer 18.75% of each axis, which sits entirely inside
  * `AUTHORED_EDGE_SAMPLING`'s 25% corner-exclusion margin (sampled edge span is
  * [64, 192] of 256). The cardinal-edge compatibility invariant is therefore
- * preserved (still provably 100%) while the corner now carries the diagonal
- * information the corner-coverage validator checks.
+ * preserved (still provably 100%, in BOTH styles) while the corner carries the
+ * diagonal information the corner-coverage validator checks.
  *
  * Because "present cardinal → wall reaches that edge; absent cardinal → inset
  * off it" holds independently per cardinal, each cell edge's wall/no-wall
  * coverage depends only on the corresponding cardinal bit — exactly the
  * invariant the compatible-boundary validator asserts (provably 100% here).
  */
-function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): RgbaImage {
+function renderQuadrant(
+  corner: QuadrantCorner,
+  state: QuadrantState,
+  cornerStyle: WallCornerStyle,
+): RgbaImage {
   const img = createImage(QUADRANT_SRC_PX, QUADRANT_SRC_PX);
   const geom = QUADRANT_GEOMETRY[corner];
   const cardAPresent = state === 'edgeA' || state === 'concave' || state === 'full';
@@ -182,16 +197,27 @@ function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): RgbaImage
 
   if (state === 'concave') {
     // Both cardinals present (wall reaches both outer edges) but the diagonal is
-    // ABSENT → bite a rounded notch out of the OUTER corner (the corner facing
-    // the missing diagonal neighbour). This is what makes an inner corner read
-    // as an inner corner instead of flat wall, and is what `cornerIsWallFromMask`
-    // / the corner-coverage validator assert.
+    // ABSENT → bite a notch out of the OUTER corner (the corner facing the
+    // missing diagonal neighbour). This is what makes an inner corner read as an
+    // inner corner instead of flat wall, and is what `cornerIsWallFromMask` /
+    // the corner-coverage validator assert.
     //
-    // The bite is a quarter-disc rather than a square so the wall sweeps around
-    // the floor that pokes in at the diagonal — an eroded scoop, which is the
-    // whole point of a cave silhouette.
-    eraseQuarterDisc(img, outerX, outerY, CORNER_RADIUS_PX, inX, inY);
-  } else if (!cardAPresent && !cardBPresent) {
+    // `rounded`: a quarter-disc, so the wall sweeps around the floor that pokes
+    // in at the diagonal — an eroded scoop, the whole point of a cave silhouette.
+    // `square`: a hard-edged square of the same extent, so the wall turns a
+    // clean 90-degree masonry corner around it.
+    if (cornerStyle === 'rounded') {
+      eraseQuarterDisc(img, outerX, outerY, CORNER_RADIUS_PX, inX, inY);
+    } else {
+      eraseRect(
+        img,
+        Math.min(outerX, outerX + inX * CORNER_RADIUS_PX),
+        Math.min(outerY, outerY + inY * CORNER_RADIUS_PX),
+        CORNER_RADIUS_PX,
+        CORNER_RADIUS_PX,
+      );
+    }
+  } else if (!cardAPresent && !cardBPresent && cornerStyle === 'rounded') {
     // 'open': inset off BOTH outer edges, so the two inset lines meet at a real
     // convex corner INSIDE this cell. Round it.
     //
@@ -200,6 +226,9 @@ function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): RgbaImage
     // into the connected neighbour's matching quadrant — there is no corner
     // there, and rounding one would pinch the wall at every wall-to-wall seam.
     // 'full' is solid.
+    //
+    // `square` deliberately does nothing here: the corner the two inset lines
+    // already form IS the desired cut-masonry corner.
     roundConvexCorner(
       img,
       outerX + inX * WALL_INSET_PX,
@@ -213,13 +242,21 @@ function renderQuadrant(corner: QuadrantCorner, state: QuadrantState): RgbaImage
   return img;
 }
 
-/** Generate the full 20-quadrant kit: all 4 corners × all 5 states. */
-export function generateQuadrantKit(): ReadonlyMap<string, RgbaImage> {
+/**
+ * Generate the full 20-quadrant kit: all 4 corners × all 5 states.
+ *
+ * `cornerStyle` selects eroded (`rounded`, the default and the behaviour every
+ * cave/cavern pack ships) vs cut (`square`) corner geometry. See
+ * `wall-corner-style.ts` for which packs use which.
+ */
+export function generateQuadrantKit(
+  cornerStyle: WallCornerStyle = DEFAULT_WALL_CORNER_STYLE,
+): ReadonlyMap<string, RgbaImage> {
   const kit = new Map<string, RgbaImage>();
   const states: readonly QuadrantState[] = ['open', 'edgeA', 'edgeB', 'concave', 'full'];
   for (const corner of QUADRANT_CORNERS) {
     for (const state of states) {
-      kit.set(quadrantKitKey(corner, state), renderQuadrant(corner, state));
+      kit.set(quadrantKitKey(corner, state), renderQuadrant(corner, state, cornerStyle));
     }
   }
   return kit;

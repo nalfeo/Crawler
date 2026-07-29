@@ -27,6 +27,7 @@ import {
 import { PIXELS_PER_FOOT } from '../../src/shared/units.js';
 import { getTerrainPack } from '../../src/shared/terrain-pack-registry.js';
 import {
+  MASK_BIT,
   computeRawMask8,
   neighborMask8InTerrain,
   normalizeBlob47Mask,
@@ -240,6 +241,57 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(centerStamp!.key).toBe(pack.wallAutotile.textureKey);
     expect(centerStamp!.frame).toBe(expectedFrame);
   });
+
+  it.each(['floor1-dungeon', 'industrial-cave'] as const)(
+    'treats a DOOR neighbour as wall so %s walls run flush into the jamb',
+    (packId) => {
+      // The defect: a door is a hole in a wall line, and its own art is a
+      // full-bleed tile. When the blob47 mask read DOOR as floor, each flanking
+      // wall picked mask 0 (isolated), which insets `WALL_INSET_PX` off every
+      // side — leaving a visible strip of floor between the wall and the door
+      // jamb. The wall must instead select the mask with the door's cardinal bit
+      // set, whose silhouette reaches that shared boundary. Covered for BOTH the
+      // square dungeon pack this session regenerated and a rounded cave pack, so
+      // the rule is proven to be a terrain semantic rather than dungeon-only.
+      const doorPack = getTerrainPack(packId);
+      const keys = new Set<string>([
+        doorPack.wallAutotile.textureKey,
+        ...doorPack.floorPool.map((v) => v.textureKey),
+        ...doorPack.corridorPool.map((v) => v.textureKey),
+        ...Object.values(doorPack.doorSet).map((v) => v.textureKey),
+        ...(doorPack.wallAccents ?? []).map((a) => a.textureKey),
+        ...(doorPack.linework ?? []).map((l) => l.textureKey),
+      ]);
+      const { scene, rt } = createPackScene(keys);
+      const floorMap = makeFloorMap(
+        [TerrainType.STONE_WALL, TerrainType.DOOR, TerrainType.STONE_WALL],
+        3,
+        1,
+      );
+
+      buildTerrainLayer(scene, floorMap, { terrainPackId: packId });
+
+      const baseWallStamps = rt.stamps.filter((s) => s.key === doorPack.wallAutotile.textureKey);
+      // The door tile itself is NOT stamped from the wall atlas — this is a
+      // neighbour-only rule.
+      expect(baseWallStamps).toHaveLength(2);
+
+      const frameFor = (rawMask: number) =>
+        doorPack.wallAutotile.masks.find((m) => m.maskId === normalizeBlob47Mask(rawMask))!
+          .frameIndex;
+      const isolatedFrame = frameFor(0);
+      // Left wall connects EAST to the door; right wall connects WEST.
+      const eastFrame = frameFor(MASK_BIT.E);
+      const westFrame = frameFor(MASK_BIT.W);
+
+      expect(baseWallStamps[0]!.frame).toBe(eastFrame);
+      expect(baseWallStamps[1]!.frame).toBe(westFrame);
+      // Guards against the assertion passing vacuously if the pack ever collapsed
+      // those masks onto one frame.
+      expect(eastFrame).not.toBe(isolatedFrame);
+      expect(westFrame).not.toBe(isolatedFrame);
+    },
+  );
 
   it('treats STONE_WALL and CAVE_WALL as connected pack walls for mask selection', () => {
     const { scene, rt } = createPackScene(allPackKeys);

@@ -106,6 +106,28 @@ const PACK_FLOOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([
 const PACK_CORRIDOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([TerrainType.CORRIDOR]);
 
 /**
+ * Terrain a wall's blob47 neighbour mask must read as WALL even though the tile
+ * itself is not stamped from the wall atlas.
+ *
+ * A door is a hole punched through a wall line, and its own art
+ * (`doorSet`) is a full-bleed tile whose jambs run edge to edge. If the mask
+ * treated a door as floor, the walls flanking it would inset `WALL_INSET_PX`
+ * away from the shared boundary and (on a rounded pack) curve away from it too,
+ * leaving a visible strip of floor between wall and jamb — the wall would stop
+ * short of the doorway instead of running into it. Counting the door as wall
+ * makes the flanking cells reach that boundary flush, which is how a masonry
+ * doorway actually reads.
+ *
+ * This is a NEIGHBOUR-ONLY rule: the door tile is still not a wall tile, so it
+ * is never stamped from the wall atlas and never collides differently. Only the
+ * silhouette of its neighbours changes.
+ */
+export const PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([
+  ...PACK_WALL_TERRAIN_TYPES,
+  TerrainType.DOOR,
+]);
+
+/**
  * Minimum share of a ground decal's rotated bounding box that must be ground for
  * the decal to be placed. Decals are clipped by the wall pass rather than
  * excluded by it, so this is not a containment rule — it only stops a large set
@@ -457,7 +479,9 @@ export function buildTerrainLayer(
           const maskFrameLookup = maskFrameLookups.get(family);
           if (wallPack && maskFrameLookup) {
             const rawMask = computeRawMask8(tx, ty, width, height, (nx, ny) =>
-              PACK_WALL_TERRAIN_TYPES.has(floorMap.terrain[ny * width + nx] as TerrainType),
+              PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(
+                floorMap.terrain[ny * width + nx] as TerrainType,
+              ),
             );
             const canonicalMask = normalizeBlob47Mask(rawMask);
             const frameIndex = maskFrameLookup.get(canonicalMask);

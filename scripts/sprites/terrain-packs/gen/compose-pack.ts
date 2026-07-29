@@ -19,6 +19,11 @@ import { compositeInto, createImage, cropImage, encodePng, type RgbaImage } from
 import { generateQuadrantKit } from '../quadrant-kit.js';
 import { renderDoorTile, type DoorOrientation } from '../procedural-surfaces.js';
 import {
+  DEFAULT_WALL_CORNER_STYLE,
+  wallCornerStyleForPack,
+  type WallCornerStyle,
+} from '../wall-corner-style.js';
+import {
   TERRAIN_PACK_CELL_PX,
   type TerrainPackDef,
 } from '../../../../src/shared/terrain-pack-types.js';
@@ -63,11 +68,14 @@ export function deriveVariantTiles(
 }
 
 /** Build the 512×384 wall atlas by re-texturing every blob47 silhouette. */
-export function composeWallAtlas(wallTile: RgbaImage): {
+export function composeWallAtlas(
+  wallTile: RgbaImage,
+  cornerStyle: WallCornerStyle = DEFAULT_WALL_CORNER_STYLE,
+): {
   readonly atlas: RgbaImage;
   readonly masks: readonly { readonly maskId: number; readonly frameIndex: number }[];
 } {
-  const quadrantKit = generateQuadrantKit();
+  const quadrantKit = generateQuadrantKit(cornerStyle);
   const assignments = buildMaskFrameAssignments();
   const atlas = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
   for (const { maskId, frameIndex } of assignments) {
@@ -162,7 +170,7 @@ export function composePack(input: ComposePackInput): ComposePackResult {
   const packDir = `assets/terrain-packs/${input.id}`;
   const files: PackOutputFile[] = [];
 
-  const { atlas, masks } = composeWallAtlas(input.wallTile);
+  const { atlas, masks } = composeWallAtlas(input.wallTile, wallCornerStyleForPack(input.id));
   const atlasRelPath = `${packDir}/wall-atlas.png`;
   files.push({ relativePath: atlasRelPath, buffer: encodePng(atlas) });
 
