@@ -103,36 +103,35 @@ function writeFakeRun(
       hold: derivedSet.has(index) ? { x: 4 + index, y: 12 } : null,
       centerOfGravity: centerOfGravitySet.has(index) ? { x: 7, y: 8 } : null,
     },
-    judgeScorecard:
-      hardBlockedSet.has(index)
+    judgeScorecard: hardBlockedSet.has(index)
+      ? {
+          passed: false,
+          minScore: 1,
+          hardBlockEvaluated: true,
+          hardBlocked: true,
+          hardBlockInstruction: 'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME',
+          hardBlockRationale: 'The sheet is fundamentally unusable at game scale.',
+          designLanguage: { score: 1, rationale: 'Rejected' },
+          briefMatch: { score: 1, rationale: 'Rejected' },
+        }
+      : judgeFailedSet.has(index)
         ? {
             passed: false,
-            minScore: 1,
+            minScore: 2,
             hardBlockEvaluated: true,
-            hardBlocked: true,
-            hardBlockInstruction: 'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME',
-            hardBlockRationale: 'The sheet is fundamentally unusable at game scale.',
-            designLanguage: { score: 1, rationale: 'Rejected' },
-            briefMatch: { score: 1, rationale: 'Rejected' },
+            hardBlocked: false,
+            hardBlockInstruction: null,
+            designLanguage: { score: 2, rationale: 'Below threshold' },
+            briefMatch: { score: 3, rationale: 'Marginal' },
           }
-        : judgeFailedSet.has(index)
-          ? {
-              passed: false,
-              minScore: 2,
-              hardBlockEvaluated: true,
-              hardBlocked: false,
-              hardBlockInstruction: null,
-              designLanguage: { score: 2, rationale: 'Below threshold' },
-              briefMatch: { score: 3, rationale: 'Marginal' },
-            }
-          : judgeByIndex.has(index) === false
-            ? null
-            : {
-                passed: true,
-                minScore: judgeByIndex.get(index)!,
-                designLanguage: { score: 4, rationale: 'Crawler-specific' },
-                briefMatch: { score: 5, rationale: 'Matches the brief' },
-              },
+        : judgeByIndex.has(index) === false
+          ? null
+          : {
+              passed: true,
+              minScore: judgeByIndex.get(index)!,
+              designLanguage: { score: 4, rationale: 'Crawler-specific' },
+              briefMatch: { score: 5, rationale: 'Matches the brief' },
+            },
     judgeSkipReason: null,
   }));
 
@@ -895,7 +894,9 @@ describe('approveVariant', () => {
       } catch (err) {
         expect((err as ApproveError).kind).toBe('hard-blocked');
         expect((err as ApproveError).message).toContain('hard-blocked by the judge');
-        expect((err as ApproveError).message).toContain('I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME');
+        expect((err as ApproveError).message).toContain(
+          'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME',
+        );
       }
       // Manifest must NOT have been created — the veto must mutate nothing.
       expect(existsSync(manifestPath)).toBe(false);
@@ -919,6 +920,10 @@ describe('approveVariant', () => {
       // The entry is written — operator consciously overruled the veto.
       expect(entry.spriteName).toBe('iron-sword-var-1');
       expect(existsSync(manifestPath)).toBe(true);
+      // hardBlocked must be cleared (false) so the CI invariant doesn't reject
+      // the manifest, and humanHardBlockOverride must be set as durable evidence.
+      expect(entry.judgeScorecard?.hardBlocked).toBe(false);
+      expect(entry.judgeScorecard?.humanHardBlockOverride).toBe(true);
     });
 
     it('non-hard-blocked variant is not affected by the hard-block gate', () => {
