@@ -1,5 +1,16 @@
 [
   {
+    "commit": "bcf29730802e014df811f5ff2c5052abd49c2428",
+    "commitDate": "2026-07-29T01:48:43Z",
+    "commitSubject": "perf(sprites): speed up theme-equipment rejudge ~4× (rejudge-only cap 6 + concurrency 4) (#2259)",
+    "capturedAt": "2026-07-29T02:54:58.532Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30415578430",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/bcf29730802e014df811f5ff2c5052abd49c2428.json"
+  },
+  {
     "commit": "9c8075baa9181050ea8c5413b523e464e06473aa",
     "commitDate": "2026-07-29T01:19:00Z",
     "commitSubject": "Set Piece Designer: hand-curated interiors, real prop geometry, and dungeon door art (#2254)",
