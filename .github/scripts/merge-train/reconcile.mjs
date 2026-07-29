@@ -809,9 +809,17 @@ for (const pr of queued) {
         );
         process.stdout.write(`update-branch pr=#${pr.number} reason=clean-behind\n`);
       } catch (err) {
-        // 422 covers "already up-to-date" and stale expected_head_sha — log
-        // it so stale-head races are visible and not silently swallowed.
-        if (err.status !== 422) throw err;
+        // 422 covers "already up-to-date" and stale expected_head_sha; 403
+        // covers a token/branch permission mismatch (observed for `copilot/*`
+        // branches, which some tokens cannot push to). Both are per-PR
+        // conditions, not train-wide failures -- log and let the FIFO `break`
+        // below hold this PR's slot for the next reconcile instead of
+        // crashing the whole batch on an uncaught throw (incident 2026-07-29:
+        // a single BEHIND PR's persistent 403 deadlocked the entire train for
+        // 90+ minutes because every other status is fatal here). Anything
+        // else (5xx, unexpected 4xx) still throws so genuinely novel failures
+        // stay visible rather than being silently swallowed.
+        if (err.status !== 422 && err.status !== 403) throw err;
         process.stderr.write(
           `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
         );
