@@ -6,7 +6,7 @@
   "estimated_apples": 4,
   "stages": {
     "plan_review": {
-      "completed": false,
+      "completed": true,
       "reviewer_model": "gpt-5.4",
       "concerns_count": 8,
       "resolved_count": 8,
@@ -30,9 +30,19 @@
       ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview", "claude-opus-4.7"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "summary": "Fanned out the full branch diff to three code-review agents on distinct models: gpt-5.3-codex (0 findings, clean), claude-opus-4.7 acting as security-review (0 findings, clean - no injection/secrets/trust-boundary issues in the sidecar/CLI/queue-commit paths), and gemini-3.1-pro-preview (2 findings). Adjudicator (claude-sonnet-5) reviewed all reports: gemini finding 1 (Critical) - postprocess.ts ran per-frame independent transparent-trim before resize-nearest, giving each walk-cycle pose its own scale factor and breaking uniform scale/floor-line across the strip - confirmed valid and is exactly the class of bug the coherence gate exists to catch; fixed by adding frameSequenceDisabledModules(brief) to skip transparent-trim/trim-and-fit for frame-sequence briefs, threaded through run-full.ts and rerun.ts default mode. gemini finding 2 (Medium) - sensors/frame-coherence.ts massDeltaRatio computed 1 (100% different) for two fully-transparent frames instead of 0 - confirmed valid arithmetic bug (division by near-zero denominator); fixed the zero-mass short-circuit and added a regression test. Both fixes verified via targeted tests (postprocess-disabled-modules.test.ts: 6/6, frame-coherence.test.ts zero-mass case) plus full verify:fast (462/462) before commit 5a360f0cb. All 3 concerns valid and resolved; final state clean."
+        }
+      ]
     }
   }
 }
