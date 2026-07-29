@@ -14,7 +14,7 @@ ci-policy
 `claude-sonnet-4.5` was deprecated by GitHub on 2026-05-06. Any session or
 `task()` call that requests it fails at `session.create` with
 `Model "claude-sonnet-4.5" is not available`. This caused a wave of CI recovery
-loop-incidents (#2196, #2140, and earlier documented in handoffs 2026-07-25-*).
+loop-incidents (#2196, #2140, and earlier documented in handoffs 2026-07-25-\*).
 
 This PR removes the deprecated model from accessible configuration and adds a
 prominent warning in the agent instructions so future sessions do not accidentally

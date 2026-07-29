@@ -1,0 +1,86 @@
+{
+  "schema_version": "persona-routing/v1",
+  "_comment": "Single source of truth for persona -> agent -> system routing. Consumed by scripts/agent/producer.ts (decomposition) and validated against docs/agent-os/personas/README.md by scripts/agent/docs/check-personas.ts. Edit this file first; the guard will tell you which docs to update.",
+  "unrouted_persona": "Producer",
+  "personas": [
+    {
+      "name": "Producer",
+      "file": "producer.md",
+      "agent": "producer.agent.md",
+      "systems": []
+    },
+    {
+      "name": "Systems Engineer",
+      "file": "systems-engineer.md",
+      "agent": "systems-engineer.agent.md",
+      "systems": ["core"]
+    },
+    {
+      "name": "Game Designer",
+      "file": "game-designer.md",
+      "agent": "game-designer.agent.md",
+      "systems": ["game", "combat", "loot", "progression", "economy", "floor-generation"]
+    },
+    {
+      "name": "Game AI Engineer",
+      "file": "game-ai-engineer.md",
+      "agent": "game-ai-engineer.agent.md",
+      "systems": ["ai"]
+    },
+    {
+      "name": "Content Designer",
+      "file": "content-designer.md",
+      "agent": "content-designer.agent.md",
+      "systems": ["quests", "story"]
+    },
+    {
+      "name": "Graphics Designer",
+      "file": "graphics-designer.md",
+      "agent": "asset-forge.agent.md",
+      "systems": ["graphics"]
+    },
+    {
+      "name": "Set Designer",
+      "file": "set-designer.md",
+      "agent": "set-piece-designer.agent.md",
+      "systems": ["set-piece", "set-design"]
+    },
+    {
+      "name": "UX Designer",
+      "file": "ux-designer.md",
+      "agent": "ux-designer.agent.md",
+      "systems": ["ui", "audio"]
+    },
+    {
+      "name": "QA Engineer",
+      "file": "qa-engineer.md",
+      "agent": "qa-engineer.agent.md",
+      "systems": []
+    },
+    {
+      "name": "DevOps Engineer",
+      "file": "devops-engineer.md",
+      "agent": "devops-engineer.agent.md",
+      "systems": []
+    },
+    {
+      "name": "Playtester",
+      "file": "playtester.md",
+      "agent": "playtester.agent.md",
+      "systems": []
+    },
+    {
+      "name": "Reviewer",
+      "file": "reviewer.md",
+      "agent": "reviewer.agent.md",
+      "systems": []
+    }
+  ],
+  "siblings": [
+    { "agent": "perf-optimizer.agent.md", "inherits": "systems-engineer.md" },
+    { "agent": "velocity-engineer.agent.md", "inherits": "devops-engineer.md" },
+    { "agent": "pr-shepherd.agent.md", "inherits": "devops-engineer.md" },
+    { "agent": "ci-review-validator.agent.md", "inherits": "reviewer.md" },
+    { "agent": "equipment-theme-forge.agent.md", "inherits": "graphics-designer.md" }
+  ]
+}

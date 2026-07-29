@@ -97,3 +97,7 @@ pipelines are designed to tolerate individual step failures gracefully.
 
 - First test iteration had `check_runs: []` → hit `wait-admission` instead of ARM_AUTO_MERGE.
   Fixed by returning passing check runs for `ci` and `Security checks`.
+
+### Opportunities for Future Improvement
+
+- Add a deterministic handoff autofix for missing retrospective subsections so structure-only misses are corrected before docs-lint runs.

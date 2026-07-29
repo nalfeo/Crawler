@@ -8,57 +8,9 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  validateManifestKeys,
   validateCatalogEntries,
   type CatalogEntry,
 } from '../../../scripts/sprites/check-sort-assets.js';
-
-// ---------------------------------------------------------------------------
-// validateManifestKeys
-// ---------------------------------------------------------------------------
-
-describe('validateManifestKeys', () => {
-  it('returns no errors for an empty key list', () => {
-    expect(validateManifestKeys([])).toEqual([]);
-  });
-
-  it('returns no errors for a single key', () => {
-    expect(validateManifestKeys(['only-key'])).toEqual([]);
-  });
-
-  it('returns no errors when keys are already sorted', () => {
-    expect(validateManifestKeys(['apple', 'banana', 'cherry'])).toEqual([]);
-  });
-
-  it('detects out-of-order keys and reports the first violation', () => {
-    const errors = validateManifestKeys(['banana', 'apple']);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('"banana"');
-    expect(errors[0]).toContain('"apple"');
-    expect(errors[0]).toContain('position 1');
-  });
-
-  it('uses localeCompare — order is locale-sensitive (not code-point order)', () => {
-    // In code-point order 'B' < 'a' because uppercase letters have lower code
-    // points. localeCompare (in common locales) considers 'B' > 'a', so ['B', 'a']
-    // is out of order under localeCompare even though it would be valid under
-    // a simple < comparison.  Verify the validator uses localeCompare.
-    const errors = validateManifestKeys(['b', 'a']);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('"b"');
-    expect(errors[0]).toContain('"a"');
-  });
-
-  it('reports only the first violation even when multiple exist', () => {
-    const errors = validateManifestKeys(['z', 'y', 'x']);
-    expect(errors).toHaveLength(1);
-  });
-
-  it('uses a custom label in the error message', () => {
-    const errors = validateManifestKeys(['b', 'a'], 'my-manifest.json');
-    expect(errors[0]).toContain('my-manifest.json');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // validateCatalogEntries

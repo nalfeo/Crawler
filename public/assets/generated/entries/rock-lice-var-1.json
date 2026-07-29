@@ -1,0 +1,42 @@
+{
+  "briefId": "rock-lice",
+  "spriteName": "rock-lice-var-1",
+  "assetPath": "generated/rock-lice-var-1.png",
+  "approvedAt": "2026-07-08T01:29:38.345Z",
+  "sourceRun": "generated/runs/rock-lice/2026-07-08T01-24-37-b8a95a30",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 33,
+    "y": 31,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 33,
+      "y": 31,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 33,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "3",
+  "type": "enemy",
+  "contentHash": "45119ce53a5deed2f4409f080cb14d3ef414a4b13233477f4bc6d231999ad4b9",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\rock-lice\\2026-07-08T01-24-37-b8a95a30\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 7,
+    "width": 58,
+    "height": 49,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

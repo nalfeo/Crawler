@@ -36,12 +36,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
-import manifest from '../../public/assets/generated/manifest.json' with { type: 'json' };
+import { loadShippedManifest } from '../helpers/generated-manifest.js';
 import setPieces from '../../src/shared/data/set-pieces.json' with { type: 'json' };
 import { resolveOpaqueFit, type OpaqueBounds } from '../../src/shared/generated-assets.js';
 
 const ROOT = process.cwd();
-const ENTRIES = manifest.entries as Record<
+const ENTRIES = loadShippedManifest().entries as Record<
   string,
   { assetPath?: string; opaqueBounds?: OpaqueBounds }
 >;

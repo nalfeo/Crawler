@@ -114,6 +114,40 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
     expect(Math.hypot(debug.dodgeX, debug.dodgeY)).toBeGreaterThan(0);
   });
 
+  it('treats committed lane telegraphs as danger cues and sidesteps laterally', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 15, 10);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.position.x[player] = 15;
+    world.stores.position.y[player] = 10;
+    world.mobAbilities.cues.push({
+      abilityId: 'big-mama-bufo-tongue-repossession',
+      casterEid: 77,
+      phase: 'telegraph',
+      telegraphProgress: 0.6,
+      geometry: {
+        kind: 'lane',
+        originX: 10,
+        originY: 10,
+        endX: 30,
+        endY: 10,
+        dirX: 1,
+        dirY: 0,
+        widthFt: 3,
+        lengthFt: 20,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: "TONGUE REPOSSESSION — Big Mama wants what's hers!",
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const debug = ai.getOpportunisticDebug();
+    expect(Math.abs(debug.dodgeY)).toBeGreaterThan(0.1);
+  });
+
   it('uses radial-projectile telegraphs as danger cues and sidesteps out of a spoke lane', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 8, 0);

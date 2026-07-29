@@ -1,0 +1,42 @@
+{
+  "briefId": "pebble",
+  "spriteName": "pebble-var-1",
+  "assetPath": "generated/pebble-var-1.png",
+  "approvedAt": "2026-07-08T00:17:13.724Z",
+  "sourceRun": "generated/runs/pebble-v1/2026-07-08T00-07-14-e9891db2",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 28,
+    "y": 56,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 28,
+      "y": 56,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "78144d2dc652fd411178750c8bb7aa2f625fa2994e14d149221482b5a6bb6f1c",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 7,
+    "width": 56,
+    "height": 50,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

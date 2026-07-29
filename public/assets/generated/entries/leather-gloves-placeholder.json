@@ -1,0 +1,21 @@
+{
+  "briefId": "leather-gloves",
+  "spriteName": "leather-gloves",
+  "assetPath": "generated/leather-gloves-placeholder.png",
+  "approvedAt": "2026-07-06T00:00:00.000Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "equipment",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 9,
+    "width": 116,
+    "height": 110,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  },
+  "placeholder": true
+}

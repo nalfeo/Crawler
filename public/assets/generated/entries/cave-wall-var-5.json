@@ -1,0 +1,42 @@
+{
+  "briefId": "cave-wall",
+  "spriteName": "cave-wall-var-5",
+  "assetPath": "generated/cave-wall-var-5.png",
+  "approvedAt": "2026-07-08T00:39:00.044Z",
+  "sourceRun": "generated/runs/cave-wall/2026-07-08T00-34-06-cb8a2d11",
+  "variantIndex": 5,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": "tile",
+  "contentHash": "7770c33af2c15c16b3d66abbbb62b33b5e209e5a51de8921bf417acf58600d30",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-wall\\2026-07-08T00-34-06-cb8a2d11\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}

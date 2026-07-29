@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-wall-shelf",
+  "spriteName": "welcome-room-wall-shelf-var-0",
+  "assetPath": "generated/welcome-room-wall-shelf-var-0.png",
+  "approvedAt": "2026-07-25T06:46:25.963Z",
+  "sourceRun": "generated/runs/welcome-room-wall-shelf/2026-07-25T06-19-45-07aa007c",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 61,
+    "y": 40,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 61,
+      "y": 40,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 61,
+      "y": 40,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 61,
+        "y": 40
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T06:20:53.711Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a dusty shelf with ledgers and a candle fits the dark-fantasy dungeon theme and the 'worn by syndication' aesthetic. The elements are cohesive and the design feels authored, though the dust detail could be slightly more pronounced for better readability."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, palette, and shading. However, the candle flame is slightly more saturated than the muted tones of the references, which could be toned down for better consistency."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, palette, and shading. However, the candle flame is slightly more saturated than the muted tones of the references, which could be toned down for better consistency."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a wall-mounted shelf with ledgers and a candle, as described in the brief. The elements are well-placed and the overall design is faithful to the prompt."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the elements are distinguishable at 16px. However, the candle flame could be slightly less bright to avoid drawing too much attention away from the rest of the shelf."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a grounded, single object with a clear top-down perspective and appropriate tile footprint. The iron brackets and shadow placement reinforce its wall-mounted nature effectively."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 3659,
+      "completionTokens": 390,
+      "totalTokens": 4049
+    }
+  },
+  "type": "prop",
+  "contentHash": "b0beb4d4bcd72998ab8df502e814b1c46e4ed008926924a078899c0af51e96b9",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-wall-shelf\\2026-07-25T06-19-45-07aa007c\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-wall-shelf\\2026-07-25T06-19-45-07aa007c\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-wall-shelf\\2026-07-25T06-19-45-07aa007c\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 114,
+    "height": 72,
+    "canvasWidth": 128,
+    "canvasHeight": 86
+  }
+}

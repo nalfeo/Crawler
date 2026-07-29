@@ -5,6 +5,14 @@
 > about and stays silent on style the formatter already owns. It **augments** the
 > deterministic automated gates — it does not duplicate them.
 
+## Agent
+
+[`reviewer`](../../../.github/agents/reviewer.agent.md) — declared
+`tools: ["read", "search"]`, so it is **structurally incapable of editing files**.
+The Reviewer reports; the owning persona fixes. For validating specific PR review
+threads with a second model, use
+[`ci-review-validator`](../../../.github/agents/ci-review-validator.agent.md).
+
 ## Responsibilities
 
 - Review diffs for correctness, security, and **policy compliance** specific to
@@ -38,7 +46,7 @@
 
 ## Tools & Workflows
 
-- **Plan-first + review harness:** Before writing any code, output your **full plan** in the session. Then run the apple-scaled review harness — separate-model **plan review** (≥3🍎; **adversarial** at >3🍎: enumerate ≥2 alternatives and argue against the chosen design, and record `plan_divergence`), **code-review loop** until no concerns _or_ a 2-round cap then human escalation (≥3🍎), and **multi-model review + adjudication** (>3🍎) — recording each required stage in the review ledger the `pr-review-ledger` guard checks before PR. See [`.github/skills/review-harness/`](../../../.github/skills/review-harness/SKILL.md).
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, the apple-scaled review harness + ledger, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
 - Complement, don't duplicate, the existing automation:
   - **`parallel_validation`** (harness Code Review + CodeQL Security Scan) — run
     on PR changes; read its output before adding human-judgment findings.
@@ -50,6 +58,14 @@
 - Read the diff against the author's declared apple estimate and the touched
   persona's quality criteria.
 - Prefer concrete, actionable findings with a file/line and the rule violated.
+
+## Skills
+
+- [`security-review`](../../../.github/skills/security-review/SKILL.md) — for any
+  diff touching credentials, fetched content, dynamic execution, or prompt
+  surfaces.
+- [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — the
+  apple-scaled stage requirements and the ledger schema you are checking against.
 
 ## Quality Criteria
 
