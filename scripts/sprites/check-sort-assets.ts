@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * check-sort-assets.ts — Verify that manifest.json and sprite-catalog.json
- * have entries in canonical sorted order.
+ * check-sort-assets.ts — Verify that sprite-catalog.json has entries in
+ * canonical sorted order.
  *
  * Canonical order:
- *   manifest.json      → entries keyed by string, sorted lexicographically.
  *   sprite-catalog.json → array sorted by: sheet entries first (kind="sheet"),
  *                         then by id lexicographically within each kind group.
  *
  * This matches the sort order enforced by:
- *   - scripts/sprites/approve.ts > upsertManifest (manifest)
  *   - scripts/sprites/approve.ts > upsertCatalog  (catalog)
  *
- * Keeping both files sorted means concurrent sprite PRs that add entries at
+ * Keeping the catalog sorted means concurrent sprite PRs that add entries at
  * different alphabetical positions produce non-overlapping line changes →
- * git's 3-way merge succeeds without conflicts.
+ * git's 3-way merge succeeds without conflicts. (The aggregate manifest.json is
+ * now a build artifact composed from per-asset shards, so it has no committed
+ * sort order to enforce.)
  *
  * Run automatically in CI (check-lightweight job). Fix violations with:
  *   npx tsx scripts/sprites/sort-assets.ts --apply
@@ -25,7 +25,6 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const MANIFEST_PATH = path.join('public', 'assets', 'generated', 'manifest.json');
 const CATALOG_PATH = path.join('src', 'shared', 'data', 'sprite-catalog.json');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -34,28 +33,6 @@ export interface CatalogEntry {
   id: string;
   kind: string;
   [key: string]: unknown;
-}
-
-/**
- * Pure validator: checks that manifest entry keys are in lexicographic order.
- * Returns an array of human-readable error strings (empty = valid).
- *
- * @param keys   Ordered array of manifest entry keys to validate.
- * @param label  File label used in error messages (defaults to MANIFEST_PATH).
- */
-export function validateManifestKeys(keys: string[], label = MANIFEST_PATH): string[] {
-  for (let i = 1; i < keys.length; i++) {
-    const prev = keys[i - 1]!;
-    const curr = keys[i]!;
-    if (prev.localeCompare(curr) > 0) {
-      return [
-        `${label}: entry keys out of order at position ${i}: ` +
-          `"${prev}" should come after "${curr}". ` +
-          `Run \`npx tsx scripts/sprites/sort-assets.ts --apply\` to fix.`,
-      ];
-    }
-  }
-  return [];
 }
 
 /**
