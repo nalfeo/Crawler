@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "restore-rhea-vale-player-art",
+  "task_title": "Restore Rhea Vale player art (Kenney-knight regression)",
+  "estimated_apples": 2,
+  "stages": {}
+}
