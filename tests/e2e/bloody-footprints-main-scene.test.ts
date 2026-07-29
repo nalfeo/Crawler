@@ -1,11 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { mixBloodColors } from '../../src/shared/blood-surfaces.js';
+import {
+  BLOODY_FOOTPRINT_EMIT_DISTANCE_FT,
+  mixBloodColors,
+} from '../../src/shared/blood-surfaces.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
 
 const RED_BLOOD = 0xcc0000;
 const BLUE_BLOOD = 0x3355cc;
+/** One walk step, slightly over the emit threshold so each move lays a print. */
+const STEP_FT = BLOODY_FOOTPRINT_EMIT_DISTANCE_FT * 1.05;
 
 describe('MainGameScene bloody footprints', () => {
   let browser: Browser;
@@ -41,22 +46,22 @@ describe('MainGameScene bloody footprints', () => {
       .poll(async () => (await mainSceneProbe.getBloodSurfaceSummary(page)).activeSourceColor)
       .toBe(RED_BLOOD);
 
-    await mainSceneProbe.setPlayerFeet(page, start.x + 0.8, start.y);
+    await mainSceneProbe.setPlayerFeet(page, start.x + STEP_FT, start.y);
     await mainSceneProbe.advanceSimulationFrames(page, 1);
-    await mainSceneProbe.setPlayerFeet(page, start.x + 1.6, start.y);
+    await mainSceneProbe.setPlayerFeet(page, start.x + STEP_FT * 2, start.y);
     await mainSceneProbe.advanceSimulationFrames(page, 1);
     await expect
       .poll(async () => (await mainSceneProbe.getBloodSurfaceSummary(page)).footprintCount)
       .toBeGreaterThan(0);
 
-    await mainSceneProbe.seedBloodPool(page, start.x + 1.6, start.y, BLUE_BLOOD);
+    await mainSceneProbe.seedBloodPool(page, start.x + STEP_FT * 2, start.y, BLUE_BLOOD);
     await mainSceneProbe.advanceSimulationFrames(page, 1);
     const mixed = mixBloodColors(RED_BLOOD, BLUE_BLOOD);
     await expect
       .poll(async () => (await mainSceneProbe.getBloodSurfaceSummary(page)).activeSourceColor)
       .toBe(mixed);
 
-    await mainSceneProbe.setPlayerFeet(page, start.x + 2.4, start.y);
+    await mainSceneProbe.setPlayerFeet(page, start.x + STEP_FT * 3, start.y);
     await mainSceneProbe.advanceSimulationFrames(page, 1);
 
     const summary = await mainSceneProbe.getBloodSurfaceSummary(page);

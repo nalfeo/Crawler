@@ -53,13 +53,11 @@ describe('merge-train D2 fix: auto-update clean-BEHIND admitted PRs', () => {
     expect(ghTokenIdx).toBeGreaterThan(patIdx);
   });
 
-  it('does not throw for non-422 update-branch errors (prevents queue deadlock)', () => {
+  it('dequeues 403 errors and only re-throws unexpected errors (prevents queue deadlock)', () => {
     const raw = readFileSync(RECONCILE_PATH, 'utf8');
-    // The catch block around the update-branch API call must NEVER re-throw.
-    // A single PR that returns 403 (permission denied) or any other non-422
-    // status must not crash the whole reconcile process and deadlock the queue.
-    // Extract from the update-branch try/catch block.
-    const updateBranchTryStart = raw.indexOf("'/update-branch'");
+    // Extract the update-branch try/catch block.
+    // The template-literal URL uses backtick quotes: `/repos/.../update-branch`
+    const updateBranchTryStart = raw.indexOf('/update-branch`');
     expect(updateBranchTryStart).toBeGreaterThan(-1);
     const catchStart = raw.indexOf('catch (err)', updateBranchTryStart);
     expect(catchStart).toBeGreaterThan(-1);
@@ -67,10 +65,15 @@ describe('merge-train D2 fix: auto-update clean-BEHIND admitted PRs', () => {
     const catchEnd = raw.indexOf('// Stop admitting', catchStart);
     expect(catchEnd).toBeGreaterThan(-1);
     const catchBlock = raw.slice(catchStart, catchEnd);
-    // Must log to stderr — all errors are non-fatal
+    // 403 must be dequeued (removeLabel) so it does not poison every reconcile cycle
+    expect(catchBlock).toContain('err.status === 403');
+    expect(catchBlock).toContain('removeLabel');
+    expect(catchBlock).toContain('dequeuedFork = true');
+    // 422 must be non-fatal (log to stderr, no throw)
+    expect(catchBlock).toContain('err.status !== 422');
     expect(catchBlock).toContain('process.stderr.write');
-    // Must NOT re-throw — this is the fix for the queue deadlock
-    expect(catchBlock).not.toContain('throw err');
+    // Non-422/non-403 errors must still throw so novel failures stay visible
+    expect(catchBlock).toContain('throw err');
   });
 
   it('uses break to halt admission after a BEHIND PR to preserve queue ordering', () => {

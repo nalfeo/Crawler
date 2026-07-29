@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-26",
+  "session_slug": "floor1-harvestable-special-room-recovery",
+  "task_title": "Exclude Floor 1 harvestables from special rooms",
+  "estimated_apples": 2,
+  "stages": {}
+}

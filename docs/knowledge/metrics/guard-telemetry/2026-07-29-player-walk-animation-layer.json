@@ -1,0 +1,47 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "player-walk-animation-layer",
+  "date": "2026-07-29",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 577,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 576,
+      "crash": 1
+    }
+  },
+  "tools": {
+    "chrome-devtools-click": 2,
+    "chrome-devtools-close_page": 1,
+    "chrome-devtools-evaluate_script": 29,
+    "chrome-devtools-list_console_messages": 1,
+    "chrome-devtools-list_network_requests": 3,
+    "chrome-devtools-list_pages": 4,
+    "chrome-devtools-navigate_page": 4,
+    "chrome-devtools-new_page": 1,
+    "chrome-devtools-press_key": 16,
+    "chrome-devtools-select_page": 1,
+    "chrome-devtools-take_screenshot": 40,
+    "chrome-devtools-take_snapshot": 5,
+    "chrome-devtools-wait_for": 6,
+    "create": 9,
+    "edit": 42,
+    "filesystem-list_allowed_directories": 2,
+    "glob": 9,
+    "grep": 85,
+    "list_powershell": 1,
+    "playwright-browser_find": 1,
+    "powershell": 135,
+    "read_powershell": 18,
+    "rename_branch": 1,
+    "rg": 4,
+    "send_session_message": 1,
+    "skill": 2,
+    "task": 3,
+    "view": 151
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
