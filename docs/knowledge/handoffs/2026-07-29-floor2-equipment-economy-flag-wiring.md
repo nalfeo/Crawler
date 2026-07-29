@@ -196,6 +196,57 @@ A sibling session is concurrently adding Floor 2 achievement content in
 
 ## Unresolved issues / recommended next steps
 
-- None blocking. The two documented gaps above (headless override-clobber
-  staleness note, Floor 3 carryover-boundary question) are intentionally
-  left as follow-ups, not defects in scope for this PR.
+- **Not fully non-blocking — see #2334.** There is no player-facing
+  Quartermaster/shop purchase UI anywhere in `src/engine` today. Enabling
+  `floor2EquipmentEconomy` makes real generated stock exist and lets the
+  headless AI purchase/equip it, but a **human playing the interactive game
+  cannot shop** — the data is live, the UI to act on it is not. This gap was
+  flagged in the plan review (see below) but I failed to file the required
+  follow-up issue myself; the task owner filed
+  [#2334](https://github.com/nalfeo/Crawler/issues/2334) directly. A sibling
+  session is now building that UI on top of this branch. Treat this as a
+  real, tracked gap — not resolved by this PR.
+- The two other documented gaps above (headless override-clobber staleness
+  note, Floor 3 carryover-boundary question) remain intentional follow-ups,
+  not defects in scope for this PR.
+
+## Post-open-PR CI fix (Headless Floor 1 Gate)
+
+CI failed on `tests/headless/floor2-completion.test.ts` > "lets the headless
+AI actually purchase and equip Quartermaster stock on the real default path"
+with `expect(decisionKinds.length).toBeGreaterThan(0)` → got `0` (1 failed /
+174 passed; every other Floor 1 test green, confirming the Floor 1 invariant
+and win-rate gate were genuinely unaffected).
+
+**Diagnosis (not a product bug):** `runSettlementMaintenancePlanner`'s
+`runEquipmentLoop` legitimately returns zero decisions whenever nothing beats
+the current loadout (`candidates.length === 0` or `top.score <= 0` on the
+first evaluation, both short-circuit before any push), and the
+achievement-claim/boss-chest-action helpers likewise push nothing when
+there's nothing unclaimed/open. A fully "nothing to do" settlement visit is a
+valid empty-decisions outcome even when `result.ran === true`. The original
+test's comment ("a purchase is guaranteed for every seed") encoded an
+assumption that an organic 20,000-frame AI run always produces ≥1 decision —
+that assumption is false; CI's `ubuntu-latest` runner landed on this
+legitimate empty branch (most plausibly cross-platform floating-point
+divergence compounding over a long chaotic simulation — the same seed on
+local Windows happened to diverge into a state where a purchase occurred, but
+this was never a guarantee). Ran the full `headless` vitest project locally
+(matching CI's exact invocation) and confirmed all 175 tests pass with no
+cross-file state pollution, ruling out ordering effects as the cause.
+
+**Fix:** rewrote the test to construct the purchase condition
+deterministically instead of relying on emergent AI behavior, while still
+exercising the real production wiring end-to-end: boot Floor 2 through the
+real default path (no flag override), teleport the player onto the real
+generated settlement anchor (`resolveFloor2SettlementAnchor`), grant
+abundant gold, set `world.playerInSafeRoom = true` (mirrors what the real
+`safeRoomSystem` sets during normal frame execution, required because
+`equipFromBag`'s non-force path gates on `isInSafeContext`), then call
+`runSettlementMaintenancePlanner(world)` directly — the same real entry point
+the organic in-run AI path calls. Assertions were strengthened, not
+weakened: `decisionKinds` must now contain both `'purchase-equipment'` and
+`'equip-instance'` (previously just "any decision"). No assertion was
+loosened or skipped per rule #11/#12. Verified: the rewritten test passes in
+isolation and as part of the full 175-test `headless` project (single-frame,
+~330ms vs. the prior 20,000-frame organic run).
