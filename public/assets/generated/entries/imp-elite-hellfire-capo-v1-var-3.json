@@ -30,5 +30,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "manual",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 4,
+    "width": 53,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

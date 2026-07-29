@@ -10,6 +10,14 @@
   "judgeScore": null,
   "type": "equipment",
   "contentHash": "51baee84d222c27d4696892674c742ea1d447af94be95f4d70c84463672c4c12",
+  "opaqueBounds": {
+    "x": 38,
+    "y": 18,
+    "width": 53,
+    "height": 89,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  },
   "catalog": {
     "tags": ["item", "generated", "pipeline-approved"]
   }

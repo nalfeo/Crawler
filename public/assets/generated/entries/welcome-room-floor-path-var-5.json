@@ -106,5 +106,13 @@
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-path\\2026-07-25T21-02-56-215dc2ec\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-path\\2026-07-25T21-02-56-215dc2ec\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 21,
+    "y": 3,
+    "width": 21,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

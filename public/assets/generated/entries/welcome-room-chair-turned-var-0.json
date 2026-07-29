@@ -106,5 +106,13 @@
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 45,
+    "height": 58,
+    "canvasWidth": 52,
+    "canvasHeight": 64
+  }
 }

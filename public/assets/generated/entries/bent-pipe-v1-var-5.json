@@ -27,5 +27,13 @@
   },
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
-  "contentHash": "f3dae58264f6ca83ee1490c86c00092226c48017064aab420e090b18384acfac"
+  "contentHash": "f3dae58264f6ca83ee1490c86c00092226c48017064aab420e090b18384acfac",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 64,
+    "height": 68,
+    "canvasWidth": 64,
+    "canvasHeight": 68
+  }
 }

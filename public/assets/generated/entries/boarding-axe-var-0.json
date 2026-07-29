@@ -31,6 +31,14 @@
   "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "brief",
   "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 9,
+    "y": 0,
+    "width": 39,
+    "height": 62,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
   "catalog": {
     "description": "Hand-authored pixel art sprite for brief: boarding-axe."
   }

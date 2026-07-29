@@ -96,5 +96,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ritual-dagger-v1/2026-07-25T05-32-12-e32ce037/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ritual-dagger-v1/2026-07-25T05-32-12-e32ce037/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 10,
+    "y": 3,
+    "width": 43,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

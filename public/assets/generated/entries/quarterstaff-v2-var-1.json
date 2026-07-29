@@ -96,5 +96,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quarterstaff-v2/2026-07-25T05-48-51-51240ee6/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/quarterstaff-v2/2026-07-25T05-48-51-51240ee6/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 18,
+    "y": 4,
+    "width": 27,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

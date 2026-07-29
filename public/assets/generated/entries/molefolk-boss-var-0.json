@@ -30,5 +30,13 @@
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-boss\\2026-07-08T02-36-04-4d62866e\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "manual",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 3,
+    "width": 58,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

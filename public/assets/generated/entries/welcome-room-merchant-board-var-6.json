@@ -106,5 +106,13 @@
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-merchant-board\\2026-07-25T21-28-08-f8b18374\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-merchant-board\\2026-07-25T21-28-08-f8b18374\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 4,
+    "width": 48,
+    "height": 55,
+    "canvasWidth": 54,
+    "canvasHeight": 64
+  }
 }

@@ -27,5 +27,13 @@
   "type": "weapon",
   "contentHash": "58ccda72dccca16bd9eb85fa71bb1f975f3c019c18c3e9a2f62454c4e113cc9d",
   "effectiveAnchorSource": "manual",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 4,
+    "width": 56,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

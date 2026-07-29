@@ -96,5 +96,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/brass-knuckles-v3/2026-07-25T05-35-07-f1e54ac1/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/brass-knuckles-v3/2026-07-25T05-35-07-f1e54ac1/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 7,
+    "width": 58,
+    "height": 49,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

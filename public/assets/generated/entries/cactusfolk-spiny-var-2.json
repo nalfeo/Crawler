@@ -30,5 +30,13 @@
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-spiny\\2026-07-08T04-52-36-bb38bad6\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-spiny\\2026-07-08T04-52-36-bb38bad6\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 3,
+    "width": 50,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

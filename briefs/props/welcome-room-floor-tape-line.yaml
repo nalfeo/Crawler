@@ -1,0 +1,196 @@
+# FLOOR DECAL RETRY (Asset Forge, 2026-07-25). Square 64x64 canvas because this
+# is a top-down floor decal on a 1x1 tile — a square canvas IS its true
+# proportions.
+#
+# WHY A DEDICATED PALETTE: the previous `welcome-room-floor-tape` was an ACCEPTED
+# RESIDUAL DEFECT — after the strict quantization to data/palettes/welcome-room-carpet.json
+# the tape lost its identity and read as another anonymous wear smudge. That
+# palette is a pure warm-orange carpet ramp with no neutral entries, so a
+# grey-tan gaffer-tape pixel had nowhere to land except on an orange one.
+#
+# Round 1 of THIS retry tried a hybrid ramp (carpet steps + taupe steps) and
+# failed the same way: the model painted the strip warm brown, quantization
+# found the carpet entries nearer, and every variant came back as an orange
+# WOODEN PLANK with a hard dark outline.
+#
+# `welcome-room-tape.json` is therefore NEUTRAL-ONLY — six desaturated taupe /
+# warm-grey steps, no orange entry at all, luma 132-210 which sits inside the
+# SAME luma band as the carpet ramp (130-206). The model now cannot produce an
+# orange strip even if it paints one: there is nowhere orange to land. The lock
+# is kept, the luma floor is kept, and the palette-membership sensor stays
+# active — this TIGHTENS the gate and makes the tape identity structural rather
+# than requested.
+type: prop
+name: welcome-room-floor-tape-line
+description: |
+  A strip of production GAFFER TAPE (spike tape) stuck flat to the carpet,
+  forming a straight dividing line across the floor. Top-down floor decal, pixel
+  art, readable at 16px.
+
+  Rendered in the game at approximately 2 x 2 feet (1 tile = 16px = 2 feet).
+  Keep detail count low enough to survive at 16px and do not over-detail.
+
+  NARRATIVE: three NPCs have been stuck living in this reception room together
+  for many seasons and are bored out of their minds. Dungeon rules stop them
+  harming each other, leaving, or complaining on camera — so the aggression comes
+  out sideways. One of them laid this tape line down the floor as a passive-
+  aggressive territory divider: "your side, my side". It is petty, deliberate and
+  has been there long enough to get filthy.
+
+  REQUIREMENT 1 — IT MUST READ UNMISTAKABLY AS TAPE. The previous attempt lost
+  its identity and read as an anonymous smudge; that is the defect this retry
+  exists to fix. The reading cues, all of which matter:
+  - A strip of ROUGHLY CONSTANT WIDTH with two long, broadly parallel sides. It
+    was TORN OFF A ROLL BY HAND, not cut with a knife, so those long sides are
+    slightly ragged and uneven from pixel to pixel — they wander by a pixel or
+    two and break into stipple in the last pixel or so. Do not rule them
+    perfectly straight, and equally do not make the strip organic or blobby.
+    Rounds 1 and 2 both drew a perfectly ruled rectangle and then, inevitably,
+    put a border round it. A hand-torn edge removes that temptation.
+  - It is a FLAT APPLIED MATERIAL sitting on the carpet, slightly lighter and
+    noticeably LESS ORANGE / more neutral-taupe than the carpet around it. That
+    chroma difference is what says "different material" — it must be present.
+  - It PEELS: at least one long edge lifts away from the carpet in a short
+    ripple, and a corner or two curls up, showing a tiny wedge of the strip's
+    underside where grit has collected. A small bubble or wrinkle where it was
+    pressed down badly.
+  - It is GRIMY: matte, scuffed, walked-on, with dark-ish (but still in-band)
+    grit caught along both edges and a few scuffs across the face.
+
+  REQUIREMENT 2 — A NARROW STRIP THAT RUNS OFF TWO OPPOSITE EDGES.
+  (A sibling decal briefed with looser wording came back as a solid rectangle
+  filling its whole tile — a mat, not a mark. Read this geometry literally.)
+  Picture the tile divided into five equal vertical columns:
+  - The OUTER TWO COLUMNS ON THE LEFT are completely empty. Every pixel
+    transparent.
+  - The OUTER TWO COLUMNS ON THE RIGHT are completely empty. Every pixel
+    transparent.
+  - Only the MIDDLE COLUMN carries the tape: one straight strip of constant
+    width running straight down it from the TOP EDGE of the tile to the BOTTOM
+    EDGE.
+  So the painted area is a thin vertical ribbon about a fifth of the tile wide,
+  and roughly four fifths of the tile is bare transparency. If your result fills
+  the tile, or is wider than about a quarter of it, it is wrong.
+
+  The strip must reach the top edge and the bottom edge and be cut off CLEANLY
+  and FLAT there, so that copies laid end to end join into one continuous
+  unbroken tape line. Do NOT stop the strip short of those edges. Do NOT draw a
+  cross, a corner mark, an L, a T, an X, or a short stub. One straight strip, all
+  the way down. Do NOT draw a stippled or ragged border all the way around the
+  art — a speckle ring around a rectangle is what makes a decal read as a patch;
+  grit belongs alongside the two LONG sides only.
+
+  IT IS NOT: a plank, a board, a beam, a wooden batten, a painted metal strip, a
+  rope, a cable, a crack, a seam, a stain, a rug, a mat, a sword, or any discrete
+  three-dimensional object. It is a thin flat adhesive strip lying on carpet, with
+  no thickness to speak of and no cast shadow beyond a single dark pixel under a
+  lifted edge.
+
+  COLOUR — THE TAPE IS GREY. THIS IS THE OTHER THING ROUND 1 GOT WRONG.
+  Round 1 painted the strip warm orange-brown with a hard dark brown outline, and
+  every variant read as a WOODEN PLANK lying on the floor. The floor underneath
+  is a pale sandy warm orange (#eaa56c, luma 175); the tape must be visibly
+  NEUTRAL against it — desaturated warm grey / taupe, close in brightness to the
+  carpet but clearly, obviously LOWER IN CHROMA. That greyness is the single cue
+  that says "different material, applied on top". If it looks warm, tan, sandy,
+  golden, wooden or planky, it is wrong.
+  Draw the tape from this neutral ramp and nothing else:
+    #e0d0c0  — the lightest, cleanest part of the tape face
+    #cdbeb0  — the ordinary tape tone
+    #baac9f  — slightly shaded tape
+    #a6998e  — scuffs and dirt on the face
+    #93877d  — grit along the edges
+    #8d8279  — the darkest tone permitted, for the shadow under a lifted corner,
+               used sparingly
+  #8d8279 is the DARKEST PIXEL PERMITTED ANYWHERE. Nothing darker. No pixel may
+  have a luma below about 130. Banned outright: black, near-black, dark brown,
+  chocolate, coffee, walnut, ochre, sandy tan, orange, maroon, brick, rust, gold,
+  yellow, bright cream, pure white, silver, chrome, teal, cyan, blue, green,
+  magenta, red speckle. A warm brown or orange strip reading as a wooden plank is
+  an automatic rejection; so is a bright pale strip reading as painted metal.
+
+  ABSOLUTELY NO DARK OUTLINE — ROUNDS 1 AND 2 WERE BOTH REJECTED FOR THIS.
+  The house prop style calls for a hard dark contour; that rule is SUSPENDED for
+  this asset and must not be applied. Do not draw a black or brown keyline,
+  contour, rim, frame, border or ANY darkened boundary around the strip. Both
+  previous rounds drew a hard dark line all the way round the strip and that
+  single choice is what turned it into a plank each time.
+
+  THE RULE THAT REPLACES IT: THE EDGE IS LIGHTER THAN THE MIDDLE. Where tape has
+  been walked on for years the centre of the strip is the dirtiest and darkest
+  part, and the outermost pixels along each long side are the LIGHTEST tones in
+  the ramp (#e0d0c0 / #cdbeb0), because that is where the adhesive has lifted and
+  caught dust. So work OUTWARDS FROM DARK TO LIGHT. No pixel on the boundary of
+  the strip may be darker than the pixel just inside it. If you find yourself
+  darkening the boundary, you are drawing a plank, and the result is rejected.
+  The only permitted dark pixels (#93877d / #8d8279) are a handful of grit specks
+  and the single-pixel shadow directly under ONE lifted corner — never a line,
+  never continuous, never all the way round.
+
+  IT MUST NOT BE A FEATURELESS BAR. Round 2 came back as a flat uniform slab with
+  no incident at all, which reads as an anonymous grey smear. The strip needs
+  visible, few-pixel INCIDENT along its length: a dirty scuffed patch where boots
+  cross it, a wrinkle or crease running across the width, a short section where
+  one long edge has lifted and rippled, and one curled corner. Three or four
+  distinct events down the length. A perfectly even slab is a rejection.
+
+  HOW TO FEATHER IN PIXEL ART (the pipeline forces alpha to be binary — every
+  pixel ends up either fully transparent or fully opaque, never half). Do NOT
+  rely on a soft gradient alpha ramp; it will be thresholded away. The two long
+  sides of the strip stay crisp and straight (that is the tape identity), but
+  the grit that has spread onto the carpet alongside them should DITHER AND
+  STIPPLE out into scattered single-pixel speckle that thins with distance.
+  Interior speckle and pinholes are wanted, not faults.
+
+  BACKGROUND: fully transparent (alpha 0). Do NOT paint a carpet base. Do NOT
+  fill the canvas. Do NOT paint a backing colour "close to" the floor — the floor
+  is already painted underneath this art. Paint ONLY the tape strip and its
+  immediate grit. No border, no frame, no vignette, no panel edge, no backing
+  plate.
+
+  MOOD: a grimy reality-TV dungeon set, threadbare and over-used.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the tape's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, and do not draw any panel, border or frame behind the strip.
+palette:
+  id: welcome-room-tape
+postprocessing:
+  paletteMode: strict
+tags:
+  - welcome-room
+  - floor
+  - decal
+  - reality-show
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 8
+sensors:
+  # A decal has no grounded base, so bottom-center grip is meaningless here.
+  anchor:
+    mode: center-of-mass
+  # TIGHTENED relative to the prop default [0.10, 0.65], and tightened further
+  # than the sibling floor-path brief because tape is narrower than a trodden
+  # track. A strip a fifth of the tile wide running its full length lands near
+  # 0.20; the 0.30 cap mechanically forbids the "solid rectangle filling the
+  # tile" failure that the looser 0.45 cap let through on the sibling decal.
+  opaqueRatio:
+    min: 0.08
+    max: 0.30
+  # Same documented subject-level override as the approved welcome-room-floor-tape
+  # brief: binary alpha means the required grit feathering can only be expressed
+  # as dithered stipple, which leaves interior transparent pixels by construction.
+  # Wholesale background bleed-through is still caught by the opaqueRatio cap.
+  interiorHoles:
+    maxPixels: 512
+  # This decal is REQUIRED to run edge to edge so copies tile into one continuous
+  # line — that is the brief. The edge sensor's default (no main-silhouette edge
+  # contact) would reject the correct art. Detached edge fragments (the real
+  # bleed-from-adjacent-cell failure) stay banned.
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+    maxDetachedEdgePixels: 0
+minVariations: 0

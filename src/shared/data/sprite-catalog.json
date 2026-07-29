@@ -4,7 +4,9 @@
     "kind": "sheet",
     "label": "custom-pixel-sprites",
     "description": "custom pixel sprites spritesheet for game asset lookup.",
-    "tags": ["sheet"],
+    "tags": [
+      "sheet"
+    ],
     "sheetKey": "custom-pixel-sprites",
     "path": "/assets/generated/custom-pixel-sprites.png",
     "frameWidth": 16,
@@ -18,7 +20,11 @@
     "kind": "sheet",
     "label": "junk-rat-critters",
     "description": "junk rat critters spritesheet for game asset lookup.",
-    "tags": ["sheet", "enemy", "generated"],
+    "tags": [
+      "sheet",
+      "enemy",
+      "generated"
+    ],
     "sheetKey": "junk-rat-critters",
     "path": "/assets/generated/junk-rat-critters.png",
     "frameWidth": 16,
@@ -32,7 +38,11 @@
     "kind": "sheet",
     "label": "kenney-roguelike-characters",
     "description": "kenney roguelike characters spritesheet for game asset lookup.",
-    "tags": ["characters", "kenney", "sheet"],
+    "tags": [
+      "characters",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-roguelike-characters",
     "path": "/assets/kenney/roguelike-characters/spritesheet.png",
     "frameWidth": 16,
@@ -46,7 +56,11 @@
     "kind": "sheet",
     "label": "kenney-roguelike-rpg-pack",
     "description": "kenney roguelike rpg pack spritesheet for game asset lookup.",
-    "tags": ["tiles", "kenney", "sheet"],
+    "tags": [
+      "tiles",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-roguelike-rpg-pack",
     "path": "/assets/kenney/roguelike-rpg-pack/spritesheet.png",
     "frameWidth": 16,
@@ -60,7 +74,11 @@
     "kind": "sheet",
     "label": "kenney-tiny-battle",
     "description": "kenney tiny battle spritesheet for game asset lookup.",
-    "tags": ["battle", "kenney", "sheet"],
+    "tags": [
+      "battle",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-tiny-battle",
     "path": "/assets/kenney/tiny-battle/spritesheet.png",
     "frameWidth": 16,
@@ -74,7 +92,11 @@
     "kind": "sheet",
     "label": "kenney-tiny-dungeon",
     "description": "kenney tiny dungeon spritesheet for game asset lookup.",
-    "tags": ["dungeon", "kenney", "sheet"],
+    "tags": [
+      "dungeon",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-tiny-dungeon",
     "path": "/assets/kenney/tiny-dungeon/spritesheet.png",
     "frameWidth": 16,
@@ -88,7 +110,11 @@
     "kind": "sheet",
     "label": "kenney-tiny-ski",
     "description": "kenney tiny ski spritesheet for game asset lookup.",
-    "tags": ["winter", "kenney", "sheet"],
+    "tags": [
+      "winter",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-tiny-ski",
     "path": "/assets/kenney/tiny-ski/spritesheet.png",
     "frameWidth": 16,
@@ -102,7 +128,11 @@
     "kind": "sheet",
     "label": "kenney-tiny-town",
     "description": "kenney tiny town spritesheet for game asset lookup.",
-    "tags": ["town", "kenney", "sheet"],
+    "tags": [
+      "town",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-tiny-town",
     "path": "/assets/kenney/tiny-town/spritesheet.png",
     "frameWidth": 16,
@@ -116,7 +146,9 @@
     "kind": "sprite",
     "label": "effect.aoe",
     "description": "Custom AoE sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.aoe",
     "sheetKey": "custom-pixel-sprites",
     "frame": 10,
@@ -129,7 +161,9 @@
     "kind": "sprite",
     "label": "effect.dead",
     "description": "Custom dead marker sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.dead",
     "sheetKey": "custom-pixel-sprites",
     "frame": 18,
@@ -142,7 +176,10 @@
     "kind": "sprite",
     "label": "effect.enemy_aoe",
     "description": "Custom enemy AoE sprite.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "effect.enemy_aoe",
     "sheetKey": "custom-pixel-sprites",
     "frame": 11,
@@ -150,7 +187,10 @@
     "row": 0,
     "note": "Custom enemy AoE sprite.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -158,7 +198,10 @@
     "kind": "sprite",
     "label": "effect.enemy_explosion",
     "description": "Custom enemy explosion sprite.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "effect.enemy_explosion",
     "sheetKey": "custom-pixel-sprites",
     "frame": 17,
@@ -166,7 +209,10 @@
     "row": 0,
     "note": "Custom enemy explosion sprite.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -174,7 +220,10 @@
     "kind": "sprite",
     "label": "effect.enemy_proj",
     "description": "Custom enemy projectile sprite.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "effect.enemy_proj",
     "sheetKey": "custom-pixel-sprites",
     "frame": 9,
@@ -182,7 +231,10 @@
     "row": 0,
     "note": "Custom enemy projectile sprite.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -190,7 +242,9 @@
     "kind": "sprite",
     "label": "effect.explosion",
     "description": "Custom explosion sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.explosion",
     "sheetKey": "custom-pixel-sprites",
     "frame": 16,
@@ -203,7 +257,9 @@
     "kind": "sprite",
     "label": "effect.melee",
     "description": "Custom melee arc sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.melee",
     "sheetKey": "custom-pixel-sprites",
     "frame": 13,
@@ -216,7 +272,9 @@
     "kind": "sprite",
     "label": "effect.proj",
     "description": "Custom projectile sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.proj",
     "sheetKey": "custom-pixel-sprites",
     "frame": 8,
@@ -229,7 +287,9 @@
     "kind": "sprite",
     "label": "effect.trap_armed",
     "description": "Custom trap armed sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.trap_armed",
     "sheetKey": "custom-pixel-sprites",
     "frame": 15,
@@ -242,7 +302,9 @@
     "kind": "sprite",
     "label": "effect.trap_arming",
     "description": "Custom trap arming sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.trap_arming",
     "sheetKey": "custom-pixel-sprites",
     "frame": 14,
@@ -255,7 +317,10 @@
     "kind": "sprite",
     "label": "enemy.boss",
     "description": "Tiny Dungeon bat-beast (frame 120) — temp CC0 art.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "enemy.boss",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 120,
@@ -263,7 +328,10 @@
     "row": 10,
     "note": "Tiny Dungeon bat-beast (frame 120) — temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -271,7 +339,11 @@
     "kind": "sprite",
     "label": "enemy.brigand",
     "description": "Brown-cloaked humanoid.",
-    "tags": ["enemy", "humanoid", "sprite"],
+    "tags": [
+      "enemy",
+      "humanoid",
+      "sprite"
+    ],
     "spriteId": "enemy.brigand",
     "sheetKey": "kenney-roguelike-characters",
     "frame": 378,
@@ -279,7 +351,10 @@
     "row": 7,
     "note": "Brown-cloaked humanoid.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -287,7 +362,11 @@
     "kind": "sprite",
     "label": "enemy.ghost",
     "description": "Pale spectral character (last row).",
-    "tags": ["enemy", "undead", "sprite"],
+    "tags": [
+      "enemy",
+      "undead",
+      "sprite"
+    ],
     "spriteId": "enemy.ghost",
     "sheetKey": "kenney-roguelike-characters",
     "frame": 595,
@@ -295,7 +374,10 @@
     "row": 11,
     "note": "Pale spectral character (last row).",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -303,7 +385,11 @@
     "kind": "sprite",
     "label": "enemy.goblin",
     "description": "Tiny Dungeon goblin (frame 121) — temp CC0 art.",
-    "tags": ["enemy", "goblin", "sprite"],
+    "tags": [
+      "enemy",
+      "goblin",
+      "sprite"
+    ],
     "spriteId": "enemy.goblin",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 121,
@@ -311,7 +397,10 @@
     "row": 10,
     "note": "Tiny Dungeon goblin (frame 121) — temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -319,7 +408,11 @@
     "kind": "sprite",
     "label": "enemy.orc",
     "description": "Tiny Dungeon brawler (frame 109) — temp CC0 art.",
-    "tags": ["enemy", "orc", "sprite"],
+    "tags": [
+      "enemy",
+      "orc",
+      "sprite"
+    ],
     "spriteId": "enemy.orc",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 109,
@@ -327,7 +420,10 @@
     "row": 9,
     "note": "Tiny Dungeon brawler (frame 109) — temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -335,7 +431,10 @@
     "kind": "sprite",
     "label": "enemy.rat",
     "description": "Tiny Dungeon rat (frame 123) — temp CC0 art.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "enemy.rat",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 123,
@@ -343,7 +442,10 @@
     "row": 10,
     "note": "Tiny Dungeon rat (frame 123) — temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -351,7 +453,10 @@
     "kind": "sprite",
     "label": "enemy.slime",
     "description": "Tiny Dungeon teal slime (frame 108) — temp CC0 art.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "enemy.slime",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 108,
@@ -359,7 +464,10 @@
     "row": 9,
     "note": "Tiny Dungeon teal slime (frame 108) — temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -367,7 +475,10 @@
     "kind": "sprite",
     "label": "item.gem",
     "description": "Custom gem sprite.",
-    "tags": ["sprite", "item"],
+    "tags": [
+      "sprite",
+      "item"
+    ],
     "spriteId": "item.gem",
     "sheetKey": "custom-pixel-sprites",
     "frame": 7,
@@ -380,7 +491,11 @@
     "kind": "sprite",
     "label": "kenney-roguelike-characters.frame.3",
     "description": "kenney-roguelike-characters frame 3 sprite metadata entry.",
-    "tags": ["generated", "kenney-roguelike-characters", "sprite"],
+    "tags": [
+      "generated",
+      "kenney-roguelike-characters",
+      "sprite"
+    ],
     "spriteId": "kenney-roguelike-characters.frame.3",
     "sheetKey": "kenney-roguelike-characters",
     "frame": 3,
@@ -392,7 +507,9 @@
     "kind": "sprite",
     "label": "npc.guide",
     "description": "Tiny Dungeon princess (frame 99) — temp CC0 art.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "npc.guide",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 99,
@@ -405,7 +522,11 @@
     "kind": "sprite",
     "label": "player",
     "description": "Tiny Dungeon knight (frame 96) — temp CC0 art.",
-    "tags": ["player", "hero", "sprite"],
+    "tags": [
+      "player",
+      "hero",
+      "sprite"
+    ],
     "spriteId": "player",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 96,
@@ -413,7 +534,10 @@
     "row": 8,
     "note": "Tiny Dungeon knight (frame 96) — temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -447,7 +571,10 @@
     "kind": "sprite",
     "label": "weapon.returning",
     "description": "Custom returning weapon sprite.",
-    "tags": ["sprite", "weapon"],
+    "tags": [
+      "sprite",
+      "weapon"
+    ],
     "spriteId": "weapon.returning",
     "sheetKey": "custom-pixel-sprites",
     "frame": 12,

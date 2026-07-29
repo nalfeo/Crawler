@@ -30,5 +30,13 @@
   "effectivePipelineSnapshotPath": null,
   "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 54,
+    "height": 114,
+    "canvasWidth": 68,
+    "canvasHeight": 128
+  }
 }

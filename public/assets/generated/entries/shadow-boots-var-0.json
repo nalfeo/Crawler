@@ -28,6 +28,14 @@
   "contentHash": "11a576309686ea155d062da3c0e0a44a17cb525fef201a21a15fc9730aa0dbcc",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 9,
+    "width": 26,
+    "height": 14,
+    "canvasWidth": 32,
+    "canvasHeight": 32
+  },
   "catalog": {
     "tags": ["item", "generated", "pipeline-approved"]
   }

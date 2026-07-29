@@ -27,5 +27,13 @@
   "type": "character",
   "contentHash": "f3eeec48332df0843eb9a3e92fb4fa92570996ce15209639e28d5d1fbe97f752",
   "effectiveAnchorSource": "manual",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 3,
+    "width": 48,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

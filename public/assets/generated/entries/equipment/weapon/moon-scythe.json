@@ -17,5 +17,13 @@
     "family": "magic-focus",
     "slot": "weapon",
     "productionWaveId": "floor2-equipment-weapon-magic-focus"
+  },
+  "opaqueBounds": {
+    "x": 19,
+    "y": 7,
+    "width": 17,
+    "height": 54,
+    "canvasWidth": 64,
+    "canvasHeight": 64
   }
 }

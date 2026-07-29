@@ -22,5 +22,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 10,
+    "y": 3,
+    "width": 44,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

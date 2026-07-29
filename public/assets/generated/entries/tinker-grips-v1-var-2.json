@@ -106,5 +106,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tinker-grips-v1/2026-07-25T05-21-51-912c9470/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tinker-grips-v1/2026-07-25T05-21-51-912c9470/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 4,
+    "width": 49,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

@@ -96,5 +96,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 13,
+    "y": 3,
+    "width": 37,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

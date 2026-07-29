@@ -31,6 +31,14 @@
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-rug\\2026-07-08T03-53-58-1d62f27a\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 114,
+    "height": 59,
+    "canvasWidth": 128,
+    "canvasHeight": 73
+  },
   "catalog": {
     "tags": ["item", "generated", "pipeline-approved"]
   }

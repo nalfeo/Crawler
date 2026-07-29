@@ -29,5 +29,13 @@
   "postprocessOverrideProfilePath": null,
   "effectivePipelineSnapshotPath": null,
   "effectivePipelineSnapshotYamlPath": null,
-  "effectiveAnchorSource": "derived"
+  "effectiveAnchorSource": "derived",
+  "opaqueBounds": {
+    "x": 10,
+    "y": 3,
+    "width": 43,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

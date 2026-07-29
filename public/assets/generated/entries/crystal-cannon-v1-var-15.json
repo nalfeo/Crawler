@@ -96,5 +96,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/crystal-cannon-v1/2026-07-25T06-14-48-d1ad9f0a/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/crystal-cannon-v1/2026-07-25T06-14-48-d1ad9f0a/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 3,
+    "width": 46,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

@@ -29,5 +29,13 @@
   "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
-  "effectiveAnchorSource": "derived"
+  "effectiveAnchorSource": "derived",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 512,
+    "height": 512,
+    "canvasWidth": 512,
+    "canvasHeight": 512
+  }
 }

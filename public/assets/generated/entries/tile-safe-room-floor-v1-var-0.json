@@ -30,5 +30,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-safe-room-floor-v1/2026-07-07T22-19-35-65fb0ca2/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
 }

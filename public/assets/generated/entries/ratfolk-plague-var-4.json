@@ -30,5 +30,13 @@
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-plague\\2026-07-08T04-37-38-9ce6303d\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-plague\\2026-07-08T04-37-38-9ce6303d\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 5,
+    "width": 57,
+    "height": 54,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

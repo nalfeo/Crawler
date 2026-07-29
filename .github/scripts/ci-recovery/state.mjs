@@ -71,10 +71,7 @@ export const LIFECYCLE_PHASES = {
 // QUARANTINED is intentionally NOT terminal: a human can revive a quarantined
 // PR to QUEUED by commenting "KEEP" (see parseDispositionCommand). Only DONE
 // and ABANDONED are true dead ends with no further lifecycle transitions.
-export const TERMINAL_PHASES = new Set([
-  LIFECYCLE_PHASES.DONE,
-  LIFECYCLE_PHASES.ABANDONED,
-]);
+export const TERMINAL_PHASES = new Set([LIFECYCLE_PHASES.DONE, LIFECYCLE_PHASES.ABANDONED]);
 
 // Structurally non-blocking phases (D11): a PR in one of these can never be a
 // merge-train admission candidate, a conflict-cluster leader, or an ordering

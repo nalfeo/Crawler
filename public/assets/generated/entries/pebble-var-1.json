@@ -30,5 +30,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/pebble-v1/2026-07-08T00-07-14-e9891db2/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 7,
+    "width": 56,
+    "height": 50,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

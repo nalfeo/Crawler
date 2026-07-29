@@ -9,6 +9,14 @@
   "sensorScore": "manual",
   "judgeScore": null,
   "type": "weapon",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 23,
+    "width": 105,
+    "height": 84,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  },
   "catalog": {
     "description": "Hand-authored silhouette icon for runtime key equipment/weapon/twin-katar.",
     "tags": ["weapon", "generated", "hand-authored"]

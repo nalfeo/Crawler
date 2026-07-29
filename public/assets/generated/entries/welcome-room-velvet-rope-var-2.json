@@ -22,5 +22,13 @@
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 5,
+    "width": 86,
+    "height": 57,
+    "canvasWidth": 96,
+    "canvasHeight": 67
+  }
 }

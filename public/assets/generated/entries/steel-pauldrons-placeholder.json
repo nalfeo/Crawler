@@ -9,5 +9,13 @@
   "sensorScore": "placeholder",
   "judgeScore": null,
   "type": "equipment",
+  "opaqueBounds": {
+    "x": 19,
+    "y": 4,
+    "width": 90,
+    "height": 120,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  },
   "placeholder": true
 }

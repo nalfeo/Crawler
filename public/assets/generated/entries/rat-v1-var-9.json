@@ -25,5 +25,13 @@
   "sensorScore": "7/8",
   "judgeScore": "3",
   "type": "enemy",
-  "contentHash": "390dee2ea1a072093f5d7b5dd6be13c024673c0fe95df98ba1f1a214360c0abb"
+  "contentHash": "390dee2ea1a072093f5d7b5dd6be13c024673c0fe95df98ba1f1a214360c0abb",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 11,
+    "width": 56,
+    "height": 41,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

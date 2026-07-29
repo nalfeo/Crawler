@@ -30,5 +30,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 114,
+    "height": 50,
+    "canvasWidth": 128,
+    "canvasHeight": 64
+  }
 }

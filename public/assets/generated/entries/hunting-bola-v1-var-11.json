@@ -96,5 +96,13 @@
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/hunting-bola-v1/2026-07-25T05-38-43-9d6cfe08/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/hunting-bola-v1/2026-07-25T05-38-43-9d6cfe08/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 10,
+    "width": 58,
+    "height": 43,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

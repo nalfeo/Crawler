@@ -27,5 +27,13 @@
   "type": "enemy",
   "contentHash": "3d447f401509a247a18aaa9c58f22fedfc2dc876e792630090000fbcd29a03a0",
   "effectiveAnchorSource": "manual",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 12,
+    "y": 3,
+    "width": 39,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

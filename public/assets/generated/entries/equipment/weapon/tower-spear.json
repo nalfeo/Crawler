@@ -39,6 +39,14 @@
     "slot": "weapon",
     "productionWaveId": "floor2-equipment-weapon-polearm"
   },
+  "opaqueBounds": {
+    "x": 24,
+    "y": 2,
+    "width": 16,
+    "height": 61,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
   "catalog": {
     "description": "Generated sprite for stable runtime key: equipment/weapon/tower-spear."
   }

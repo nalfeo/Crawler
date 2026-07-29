@@ -36,6 +36,14 @@
     "slot": "weapon",
     "productionWaveId": "floor2-equipment-weapon-blade"
   },
+  "opaqueBounds": {
+    "x": 21,
+    "y": 3,
+    "width": 23,
+    "height": 59,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
   "catalog": {
     "description": "Generated sprite for stable runtime key: equipment/weapon/bone-saw."
   }

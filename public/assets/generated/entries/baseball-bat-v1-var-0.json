@@ -25,5 +25,13 @@
   "sensorScore": "8/8",
   "judgeScore": "2",
   "type": "weapon",
-  "contentHash": "85bbc108b1c0e32f647d63fd4dd906d0979501e562d4477f125910614614fb49"
+  "contentHash": "85bbc108b1c0e32f647d63fd4dd906d0979501e562d4477f125910614614fb49",
+  "opaqueBounds": {
+    "x": 22,
+    "y": 3,
+    "width": 20,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

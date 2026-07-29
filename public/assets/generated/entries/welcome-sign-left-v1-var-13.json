@@ -25,5 +25,13 @@
   "sensorScore": "7/8",
   "judgeScore": "2",
   "type": "tile",
-  "contentHash": "6483106289cc7195c1bc67a5ab434a38321c0a131417620200ca08f71d168be4"
+  "contentHash": "6483106289cc7195c1bc67a5ab434a38321c0a131417620200ca08f71d168be4",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 3,
+    "width": 50,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

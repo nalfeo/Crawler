@@ -17,5 +17,13 @@
   "sensorScore": "6/7",
   "judgeScore": "2",
   "type": "item",
-  "contentHash": "c35d08db740d34afee830dfcb7f560080272fcccda7c770e8cdb7f116a9b00a0"
+  "contentHash": "c35d08db740d34afee830dfcb7f560080272fcccda7c770e8cdb7f116a9b00a0",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 3,
+    "width": 56,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }

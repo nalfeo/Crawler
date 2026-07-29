@@ -9,5 +9,13 @@
   "sensorScore": "issue-request",
   "judgeScore": null,
   "type": "weapon",
-  "contentHash": "245058fad5a81c263a66e6924b4ca276dd829ef978b31613eb319f1414866b3a"
+  "contentHash": "245058fad5a81c263a66e6924b4ca276dd829ef978b31613eb319f1414866b3a",
+  "opaqueBounds": {
+    "x": 36,
+    "y": 16,
+    "width": 55,
+    "height": 105,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  }
 }

@@ -28,6 +28,14 @@
   "contentHash": "dd5885a474498ff120e0d95b42cf3dd1f9a8b6aab87fd5d2077184c824d24d85",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 11,
+    "y": 16,
+    "width": 42,
+    "height": 35,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
   "catalog": {
     "description": "Manually authored sprite for brief: merchant-sandals.",
     "tags": ["item", "generated", "manual-authored"]

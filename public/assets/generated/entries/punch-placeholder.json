@@ -8,5 +8,13 @@
   "anchor": null,
   "sensorScore": "placeholder",
   "judgeScore": null,
+  "opaqueBounds": {
+    "x": 2,
+    "y": 3,
+    "width": 12,
+    "height": 11,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
   "placeholder": true
 }

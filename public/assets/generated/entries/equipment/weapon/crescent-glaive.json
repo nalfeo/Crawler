@@ -17,5 +17,13 @@
     "slot": "weapon",
     "productionWaveId": "floor2-equipment-weapon-polearm"
   },
+  "opaqueBounds": {
+    "x": 1,
+    "y": 0,
+    "width": 13,
+    "height": 16,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
   "placeholder": true
 }

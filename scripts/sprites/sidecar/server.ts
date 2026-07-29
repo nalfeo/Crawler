@@ -3001,7 +3001,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             deps.repoRoot,
             changedAssets,
             createDefaultQueueCommitDeps(deps.repoRoot, env),
-            { message: `chore(assets): metadata for ${changedAssets.length} sprite(s)` },
+            {
+              message: `chore(assets): metadata for ${changedAssets.length} sprite(s)`,
+            },
           );
         } catch (err) {
           // ci-refused is EXPECTED on CI (the primitive is local-only) — surface

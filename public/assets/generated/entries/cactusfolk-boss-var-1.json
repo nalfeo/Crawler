@@ -31,6 +31,14 @@
   "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 4,
+    "width": 48,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
   "catalog": {
     "description": "Abuela Saguaro, cactusfolk cartel matriarch. Current sprite is 64x64 v1 from the pre-redesign brief; a grandmother-themed variant with spectacles, floral rebozo, devotional charms, and salvage-armor dressing is pending regeneration."
   }

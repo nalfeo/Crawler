@@ -31,6 +31,14 @@
   "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 8,
+    "width": 49,
+    "height": 49,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
   "catalog": {
     "tags": ["item", "generated", "pipeline-approved"]
   }

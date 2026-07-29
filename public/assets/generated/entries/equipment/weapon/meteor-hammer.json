@@ -17,5 +17,13 @@
     "slot": "weapon",
     "productionWaveId": "floor2-equipment-weapon-trap"
   },
+  "opaqueBounds": {
+    "x": 1,
+    "y": 2,
+    "width": 14,
+    "height": 13,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
   "placeholder": true
 }

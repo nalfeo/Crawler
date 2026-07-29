@@ -9,5 +9,13 @@
   "sensorScore": "manual",
   "judgeScore": null,
   "type": "weapon",
-  "contentHash": "8fe853d18f6b7507ff67eb471b44486d9c8cb84d5409243adb203acd4a4b5c7a"
+  "contentHash": "8fe853d18f6b7507ff67eb471b44486d9c8cb84d5409243adb203acd4a4b5c7a",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 9,
+    "width": 35,
+    "height": 43,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }
