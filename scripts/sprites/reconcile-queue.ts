@@ -51,6 +51,10 @@
  * — running in CI (the hourly workflow) is the entire point of PR2.
  */
 
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+
 import { parseAssetIssueBody } from './asset-issues.js';
 import { ASSET_CHECKIN_LABEL, ASSET_SURFACE_PATHS, type Exec } from './checkin.js';
 
@@ -741,7 +745,13 @@ export async function runReconcile(
       '--',
       ...ASSET_SURFACE_PATHS,
     ]);
-    const queueVsMainArt = parseNameOnly(delta);
+    const queueVsMainArt = parseNameOnly(delta).filter(
+      // The aggregate manifest.json is a gitignored build artifact composed from
+      // per-asset shards. It must never be committed directly; exclude it here so
+      // a legacy queue branch that still carries a committed manifest.json does
+      // not keep promoting it after main stopped tracking it.
+      (p) => !p.endsWith('/manifest.json') && p !== 'manifest.json',
+    );
     if (queueVsMainArt.length === 0) {
       // Queue's art surface already matches main (steady state after a merge, or
       // no pending edits). Deliberately DO NOT reset assets/queue (data-loss
@@ -767,6 +777,41 @@ export async function runReconcile(
       // (e.g. the legacy asset-PR) without ever being committed to the queue.
       await mustGit(deps.exec, worktree, ['checkout', queueRef, '--', ...queueVsMainArt]);
       await mustGit(deps.exec, worktree, ['add', '--', ...queueVsMainArt]);
+
+      // Sync contentHash in per-asset shard files for any PNGs just promoted
+      // whose shard did NOT come from the queue (i.e. the shard is absent from
+      // the queue branch and was inherited from main with a stale hash).
+      //
+      // When the shard IS in queueVsMainArt it was checked out from the queue
+      // above and carries the queue-authoritative hash — do NOT patch it, as
+      // that would produce a permanent queue-vs-main divergence on every cycle.
+      // Only patch when the shard comes from main (legacy queue branches that
+      // predate the sharding migration and carry PNGs but no entries/ shards).
+      const queueArtSet = new Set(queueVsMainArt);
+      const shardsToPatch: string[] = [];
+      for (const promoted of queueVsMainArt) {
+        if (!promoted.endsWith('.png')) continue;
+        const basename = path.basename(promoted, '.png');
+        const shardRel = `public/assets/generated/entries/${basename}.json`;
+        // Skip: queue already supplied this shard with its authoritative hash.
+        if (queueArtSet.has(shardRel)) continue;
+        const shardAbs = path.join(worktree, shardRel);
+        const pngAbs = path.join(worktree, promoted);
+        if (!existsSync(shardAbs) || !existsSync(pngAbs)) continue;
+        const shardText = readFileSync(shardAbs, 'utf8');
+        const newHash = createHash('sha256').update(readFileSync(pngAbs)).digest('hex');
+        // Surgical replace: only update contentHash, preserve all other formatting.
+        const patched = shardText.replace(
+          /"contentHash":\s*"[0-9a-f]+"/,
+          `"contentHash": "${newHash}"`,
+        );
+        if (patched === shardText) continue; // already matches or field absent
+        writeFileSync(shardAbs, patched, 'utf8');
+        shardsToPatch.push(shardRel);
+      }
+      if (shardsToPatch.length > 0) {
+        await mustGit(deps.exec, worktree, ['add', '--', ...shardsToPatch]);
+      }
 
       // No-op guard: if nothing staged, main already carries identical art bytes
       // (the two-dot path delta can list paths whose CONTENT is unchanged after
