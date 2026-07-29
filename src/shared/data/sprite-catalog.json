@@ -3232,6 +3232,32 @@
     "row": 0
   },
   {
+    "id": "generated:tile-door-open-v1-var-0",
+    "kind": "sprite",
+    "label": "tile-door-open-v1-var-0",
+    "description": "Generated sprite from brief: tile-door-open-v1.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "tile-door-open-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/tile-door-open-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:tile-door-open-v1-var-11",
+    "kind": "sprite",
+    "label": "tile-door-open-v1-var-11",
+    "description": "Generated sprite from brief: tile-door-open-v1.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "tile-door-open-v1-var-11",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/tile-door-open-v1-var-11.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:tile-door-v1-var-0",
     "kind": "sprite",
     "label": "tile-door-v1-var-0",
@@ -3240,6 +3266,32 @@
     "spriteId": "tile-door-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-door-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:tile-door-v1-var-1",
+    "kind": "sprite",
+    "label": "tile-door-v1-var-1",
+    "description": "Generated sprite from brief: tile-door-v1.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "tile-door-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/tile-door-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:tile-door-v1-var-9",
+    "kind": "sprite",
+    "label": "tile-door-v1-var-9",
+    "description": "Generated sprite from brief: tile-door-v1.",
+    "tags": ["prop", "generated", "pipeline-approved"],
+    "spriteId": "tile-door-v1-var-9",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/tile-door-v1-var-9.png",
     "frame": 0,
     "col": 0,
     "row": 0

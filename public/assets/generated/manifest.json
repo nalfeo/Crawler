@@ -12668,6 +12668,201 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived"
     },
+    "tile-door-open-v1-var-0": {
+      "briefId": "tile-door-open-v1",
+      "spriteName": "tile-door-open-v1-var-0",
+      "assetPath": "generated/tile-door-open-v1-var-0.png",
+      "approvedAt": "2026-07-28T23:26:01.982Z",
+      "sourceRun": "generated/runs/tile-door-open-v1/2026-07-28T23-18-39-96339fbf",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 52,
+        "y": 65,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 52,
+          "y": 65,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 52,
+          "y": 65,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 52,
+            "y": 65
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 0,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-28T23:19:42.463Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The candidate adheres to the dark-fantasy dungeon aesthetic of Crawler. The warm walnut wood and iron straps match the described materials, and the dark opening conveys the intended mood. However, the door's angle and placement could be slightly refined to better emphasize the 'swung inward' aspect."
+        },
+        "referenceStyleMatch": {
+          "score": 5,
+          "rationale": "The rendering style matches the references well, with consistent outline weight, shading, and color palette. The materials are distinct and appropriately textured."
+        },
+        "styleMatch": {
+          "score": 5,
+          "rationale": "The rendering style matches the references well, with consistent outline weight, shading, and color palette. The materials are distinct and appropriately textured."
+        },
+        "briefMatch": {
+          "score": 4,
+          "rationale": "The candidate mostly matches the brief, with the door swung inward and the archway consistent with the closed door. However, the door's angle and its placement against the left side could be adjusted to better align with the description of being 'against the inside of the left side of the opening.'"
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and the door is easily identifiable as an open door within a stone archway. The dark opening contrasts well with the warm wood and iron details, ensuring visibility at game scale."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is a single, grounded object with a clear top-down perspective and appropriate tile footprint. The transparent background outside the archway is correctly implemented."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": null,
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 4562,
+          "completionTokens": 376,
+          "totalTokens": 4938
+        }
+      },
+      "type": "prop",
+      "contentHash": "6625a358d2eed9473900cb33457a7697787590605a0da2add9fb4c5da85b647c",
+      "opaqueBounds": {
+        "x": 7,
+        "y": 7,
+        "width": 90,
+        "height": 114,
+        "canvasWidth": 104,
+        "canvasHeight": 128
+      },
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-open-v1\\2026-07-28T23-18-39-96339fbf\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-open-v1\\2026-07-28T23-18-39-96339fbf\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-open-v1\\2026-07-28T23-18-39-96339fbf\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-door-open-v1-var-11": {
+      "briefId": "tile-door-open-v1",
+      "spriteName": "tile-door-open-v1-var-11",
+      "assetPath": "generated/tile-door-open-v1-var-11.png",
+      "approvedAt": "2026-07-28T22:49:56.518Z",
+      "sourceRun": "generated/runs/tile-door-open-v1/2026-07-28T22-44-46-1d09b03b",
+      "variantIndex": 11,
+      "anchor": {
+        "x": 57,
+        "y": 120,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 57,
+          "y": 120,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 57,
+          "y": 66,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": null,
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 57,
+            "y": 66
+          }
+        }
+      ],
+      "judgeScorecard": null,
+      "type": "prop",
+      "contentHash": "a03ddbc77cee039bd8a8789b6a57949eeec347c89dbf5ea6dc8d9be8710f87ec",
+      "opaqueBounds": {
+        "x": 7,
+        "y": 7,
+        "width": 102,
+        "height": 114,
+        "canvasWidth": 116,
+        "canvasHeight": 128
+      },
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-open-v1\\2026-07-28T22-44-46-1d09b03b\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-open-v1\\2026-07-28T22-44-46-1d09b03b\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-open-v1\\2026-07-28T22-44-46-1d09b03b\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "tile-door-v1-var-0": {
       "briefId": "tile-door-v1",
       "spriteName": "tile-door-v1-var-0",
@@ -12699,6 +12894,246 @@
       "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-door-v1/2026-07-07T22-23-11-e6aaed05/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-door-v1-var-1": {
+      "briefId": "tile-door-v1",
+      "spriteName": "tile-door-v1-var-1",
+      "assetPath": "generated/tile-door-v1-var-1.png",
+      "approvedAt": "2026-07-28T22:48:57.498Z",
+      "sourceRun": "generated/runs/tile-door-v1/2026-07-28T22-31-23-b3205ed1",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 55,
+        "y": 120,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 55,
+          "y": 120,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 46,
+          "y": 65,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "1",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-derivable",
+          "anchor": {
+            "x": 55,
+            "y": 120
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 1,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-28T22:32:30.849Z",
+        "designLanguage": {
+          "score": 2,
+          "rationale": "The door has a heavy, worn appearance with visible iron banding and a ring handle, but the inclusion of a stone frame violates the brief. The silhouette is also too wide, making it feel more like a gate than a narrow dungeon door."
+        },
+        "referenceStyleMatch": {
+          "score": 3,
+          "rationale": "The rendering style is close to the references in terms of shading, color palette, and outline treatment, but the inclusion of the stone frame and the overly wide proportions detract from the overall match."
+        },
+        "styleMatch": {
+          "score": 3,
+          "rationale": "The rendering style is close to the references in terms of shading, color palette, and outline treatment, but the inclusion of the stone frame and the overly wide proportions detract from the overall match."
+        },
+        "briefMatch": {
+          "score": 1,
+          "rationale": "The door does not meet the brief's critical requirements. It includes a stone frame, which is explicitly prohibited, and the width is significantly larger than specified. Additionally, the silhouette does not convey the intended narrow, tall proportions."
+        },
+        "readability": {
+          "score": 3,
+          "rationale": "The silhouette is clear at game scale, but the inclusion of the stone frame and the overly wide proportions reduce the clarity of the intended subject as a narrow dungeon door."
+        },
+        "presentation": {
+          "score": 2,
+          "rationale": "The inclusion of the stone frame violates the brief's requirement for a fully transparent background outside the door leaf. The door's proportions also do not match the specified dimensions, further detracting from its presentation."
+        },
+        "passed": false,
+        "minScore": 1,
+        "rejectedBy": [
+          "design_language",
+          "brief_match",
+          "presentation"
+        ],
+        "hardBlockEvaluated": true,
+        "hardBlocked": true,
+        "hardBlockInstruction": "I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME",
+        "hardBlockRationale": "The candidate fails to meet the critical brief requirements, including incorrect width, the presence of a stone frame, and a lack of adherence to the specified design language.",
+        "confidence": 0.7,
+        "usage": {
+          "promptTokens": 4737,
+          "completionTokens": 394,
+          "totalTokens": 5131
+        }
+      },
+      "type": "prop",
+      "contentHash": "00b1d5b803e3cd3d066bb7f3ec9509fb39e3c9b2dcf747e62efdeaf97ebd62fd",
+      "opaqueBounds": {
+        "x": 7,
+        "y": 7,
+        "width": 77,
+        "height": 114,
+        "canvasWidth": 91,
+        "canvasHeight": 128
+      },
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-v1\\2026-07-28T22-31-23-b3205ed1\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-v1\\2026-07-28T22-31-23-b3205ed1\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-v1\\2026-07-28T22-31-23-b3205ed1\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "tile-door-v1-var-9": {
+      "briefId": "tile-door-v1",
+      "spriteName": "tile-door-v1-var-9",
+      "assetPath": "generated/tile-door-v1-var-9.png",
+      "approvedAt": "2026-07-28T23:25:06.658Z",
+      "sourceRun": "generated/runs/tile-door-v1/2026-07-28T23-16-43-67835ee7",
+      "variantIndex": 9,
+      "anchor": {
+        "x": 53,
+        "y": 120,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 53,
+          "y": 120,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 55,
+          "y": 65,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "sensorBreakdown": [
+        {
+          "ok": true,
+          "sensor": "dimensions-exact"
+        },
+        {
+          "ok": true,
+          "sensor": "alpha-binary"
+        },
+        {
+          "ok": true,
+          "sensor": "palette-membership"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-bbox-fits"
+        },
+        {
+          "ok": true,
+          "sensor": "opaque-ratio"
+        },
+        {
+          "ok": true,
+          "sensor": "interior-transparency-holes"
+        },
+        {
+          "ok": true,
+          "sensor": "anchor-center-of-mass",
+          "anchor": {
+            "x": 55,
+            "y": 65
+          }
+        }
+      ],
+      "judgeScorecard": {
+        "variantIndex": 9,
+        "modelDeployment": "gpt-4o",
+        "judgedAt": "2026-07-28T23:18:31.202Z",
+        "designLanguage": {
+          "score": 4,
+          "rationale": "The design aligns well with the Crawler aesthetic, featuring a heavy, worn wooden door with iron banding and a ring handle. The details like rust and wood grain add to the grimy, dark-fantasy feel. However, the stone archway could be slightly more weathered to better match the mood of a derelict dungeon."
+        },
+        "referenceStyleMatch": {
+          "score": 4,
+          "rationale": "The rendering is consistent with the references in terms of outline weight, shading, and palette depth. The materials are well-defined, but the stone archway's texture feels slightly less refined compared to the references."
+        },
+        "styleMatch": {
+          "score": 4,
+          "rationale": "The rendering is consistent with the references in terms of outline weight, shading, and palette depth. The materials are well-defined, but the stone archway's texture feels slightly less refined compared to the references."
+        },
+        "briefMatch": {
+          "score": 5,
+          "rationale": "The sprite matches the brief perfectly, depicting a closed dungeon door with three planks, iron banding, a ring handle, and a slim stone archway. All specified details are present and accurate."
+        },
+        "readability": {
+          "score": 5,
+          "rationale": "The silhouette is clear and readable at game scale. The door and archway are distinct, and the key elements like the handle and iron bands are easily identifiable."
+        },
+        "presentation": {
+          "score": 5,
+          "rationale": "The sprite is a single, grounded object with a clear top-down perspective. The dimensions and proportions align with the brief, and the background is fully transparent outside the archway."
+        },
+        "passed": true,
+        "minScore": 4,
+        "rejectedBy": [],
+        "hardBlockEvaluated": true,
+        "hardBlocked": false,
+        "hardBlockInstruction": null,
+        "hardBlockRationale": null,
+        "confidence": 0.92,
+        "usage": {
+          "promptTokens": 4549,
+          "completionTokens": 361,
+          "totalTokens": 4910
+        }
+      },
+      "type": "prop",
+      "contentHash": "0ccd55e044848037d555b6e96198ef9d742d958527a91448a1a6abb74426bf22",
+      "opaqueBounds": {
+        "x": 7,
+        "y": 7,
+        "width": 93,
+        "height": 114,
+        "canvasWidth": 110,
+        "canvasHeight": 128
+      },
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-v1\\2026-07-28T23-16-43-67835ee7\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-v1\\2026-07-28T23-16-43-67835ee7\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\tile-door-v1\\2026-07-28T23-16-43-67835ee7\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
