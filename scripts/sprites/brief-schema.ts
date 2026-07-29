@@ -409,22 +409,18 @@ export const briefSchema = z
         message: `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${nativeCanvas / cols}x${nativeCanvas / rows})`,
       });
     }
-    // frameSequence mode reuses the sheet grid as an ordered single-row strip:
-    // cols must equal frameCount and every cell must be a required frame.
+    // frameSequence mode: the grid cells are ordered animation frames, so
+    // rows × cols must equal frameCount and every cell must be a required frame.
+    // Any rectangular layout (1×N, 2×2, 2×3, etc.) is valid — the content-aware
+    // slicer reads cells in row-major order, matching the animation frame order.
     if (brief.frameSequence.enabled) {
       const { frameCount } = brief.frameSequence;
-      if (rows !== 1) {
+      const totalCells = rows * cols;
+      if (totalCells !== frameCount) {
         ctx.addIssue({
           code: 'custom',
-          path: ['generation', 'sheet', 'rows'],
-          message: `frameSequence.enabled requires generation.sheet.rows === 1 (ordered frames read left-to-right in a single row), got ${rows}`,
-        });
-      }
-      if (cols !== frameCount) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['generation', 'sheet', 'cols'],
-          message: `frameSequence.enabled requires generation.sheet.cols === frameSequence.frameCount (${frameCount}), got ${cols}`,
+          path: ['generation', 'sheet'],
+          message: `frameSequence.enabled requires generation.sheet.rows × cols === frameSequence.frameCount (${frameCount}), got ${rows}×${cols} = ${totalCells}`,
         });
       }
       if (emptyCells.length > 0) {
