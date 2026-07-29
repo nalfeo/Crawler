@@ -138,7 +138,18 @@ function computeMaxLineZScore(width: number, height: number, data: Buffer | Uint
     // k equal lines each score z=√((n−k)/k); for k≥6 this falls below 3.4.
     // Counting |z|>2.5 lines and scaling by 0.6 makes k=6 score 6×0.6=3.6.
     const nAbsOutliers = means.filter((v) => Math.abs((v - mean) / sd) > 2.5).length;
-    return Math.max(maxPositiveZ, nAbsOutliers * 0.6);
+    // Term 3: dense periodicity term — catches k≥9 equal-spacing lattices.
+    // For k=9 lines in a 64px profile, z=√(55/9)≈2.47, which is below the 2.5
+    // threshold so Term 2 gives 0.  Counting |z|>2.0 lines and gating on ≥7
+    // catches k≥9 without triggering on organic tiles (observed tiles have ≤6
+    // lines with |z|>2.0 in the committed packs).  Scaling by 0.4 puts k=9
+    // above the 3.4 gate (9×0.4=3.6).
+    const nDenseOutliers = means.filter((v) => Math.abs((v - mean) / sd) > 2.0).length;
+    return Math.max(
+      maxPositiveZ,
+      nAbsOutliers * 0.6,
+      nDenseOutliers >= 7 ? nDenseOutliers * 0.4 : 0,
+    );
   };
   return Math.max(
     axisPeak(width, height, (x, y) => (y * width + x) * 4),
@@ -309,18 +320,22 @@ describe.each(FLOOR1_PACK_IDS)('committed terrain pack — %s', (packId) => {
    *
    * Threshold calibrated against individual tile images across three
    * independently generated packs (floor1-dungeon, floor1-cave, industrial-cave).
-   * The score is max(maxPositiveZ, nAbsOutliers25 × 0.6); for organic tiles the
-   * worst observed score is 2.80.  The original gridded welcome tile scored 4.11
-   * (columns) / 4.04 (rows), so 3.4 separates them with margin on both sides.
+   * The score is max(maxPositiveZ, nAbsOutliers25 × 0.6, nDenseOutliers≥7 ? nDenseOutliers × 0.4 : 0);
+   * for organic tiles the worst observed score is 2.80.  The original gridded
+   * welcome tile scored 4.11 (columns) / 4.04 (rows), so 3.4 separates them
+   * with margin on both sides.
    *
    * See the negative-control tests below for synthetic proofs that the guard
-   * catches dense (k=6) and dark-line lattice variants.
+   * catches dense (k=6), dark-line, and k=9 lattice variants.
    */
   it('bakes no straight bright line into a tile (anti-lattice)', () => {
     const MAX_LINE_Z = 3.4;
-    // Exclude the wall-atlas: it is a composed atlas, not a floor tile.
+    // Exclude the wall-atlas (composed atlas, not a floor tile) and all
+    // doorSet images (doors have legitimate straight edges/highlights and are
+    // never tiled as room-scale floors, so the lattice artifact cannot occur).
+    const doorSetPaths = new Set(Object.values(manifest.doorSet).map((v) => v.imagePath));
     const tileImagePaths = allImagePaths(manifest).filter(
-      (p) => p !== manifest.wallAutotile.imagePath,
+      (p) => p !== manifest.wallAutotile.imagePath && !doorSetPaths.has(p),
     );
     const offenders: string[] = [];
     for (const imagePath of tileImagePaths) {
@@ -408,6 +423,15 @@ describe('anti-lattice guard: synthetic negative controls (guard must reject)', 
   it('catches 6 equally dark row lines (dark lattice on the row axis)', () => {
     const darkRows = new Set([0, 10, 21, 32, 43, 53]);
     const data = makeGrey((_x, y) => (darkRows.has(y) ? 30 : 180));
+    expect(computeMaxLineZScore(W, H, data)).toBeGreaterThan(THRESHOLD);
+  });
+
+  it('catches 9 equally bright column lines (denser lattice — Term 3 required)', () => {
+    // k=9, n=64: z=√(55/9)≈2.47 < 2.5, so Term 2 (|z|>2.5 count) gives 0.
+    // Without Term 3, the final score is only 2.47 — below the 3.4 gate.
+    // Term 3 counts |z|>2.0 lines (=9) and gates on ≥7, scoring 9×0.4=3.6>3.4.
+    const brightCols = new Set([0, 7, 14, 21, 28, 35, 42, 49, 56]);
+    const data = makeGrey((x) => (brightCols.has(x) ? 200 : 50));
     expect(computeMaxLineZScore(W, H, data)).toBeGreaterThan(THRESHOLD);
   });
 });

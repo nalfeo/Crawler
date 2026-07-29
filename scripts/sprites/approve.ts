@@ -137,7 +137,22 @@ export interface ManifestEntry {
     readonly pixels?: ReadonlyArray<unknown>;
   }>;
   /** Full per-axis VLM scorecard retained for later calibration. */
-  readonly judgeScorecard?: Readonly<Record<string, unknown>> | null;
+  readonly judgeScorecard?:
+    | (Readonly<Record<string, unknown>> & {
+        /**
+         * When true, the judge issued a hard-block veto.  `approve.ts` rejects
+         * these unless `allowHardBlocked: true` is passed, in which case this
+         * field is cleared to `false` and `humanHardBlockOverride` is set.
+         */
+        readonly hardBlocked?: boolean;
+        /**
+         * Set to `true` when a human consciously approved a hard-blocked variant
+         * via `allowHardBlocked: true`.  The CI invariant only blocks
+         * `hardBlocked === true`, so this survives the check.
+         */
+        readonly humanHardBlockOverride?: boolean;
+      })
+    | null;
   /**
    * Canonical sprite type resolved from the brief, or `null` when it couldn't
    * be resolved. Written
@@ -490,7 +505,17 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     sensorScore,
     judgeScore,
     sensorBreakdown: candidate.breakdown,
-    judgeScorecard: candidate.judgeScorecard ?? null,
+    judgeScorecard: (() => {
+      const sc = candidate.judgeScorecard ?? null;
+      // When a human consciously overrides a hard-block, clear the hardBlocked
+      // flag so the CI invariant (check-manifest-hard-blocked) doesn't reject
+      // the entry. Persist humanHardBlockOverride as durable evidence of the
+      // conscious override decision.
+      if (sc && options.allowHardBlocked && sc.hardBlocked === true) {
+        return { ...sc, hardBlocked: false, humanHardBlockOverride: true };
+      }
+      return sc;
+    })(),
     type,
     contentHash,
     ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),
